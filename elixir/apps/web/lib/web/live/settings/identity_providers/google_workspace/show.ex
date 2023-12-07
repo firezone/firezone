@@ -29,8 +29,8 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.Show do
     <.section>
       <:title>
         Identity Provider <code><%= @provider.name %></code>
-        <span :if={not is_nil(@provider.disabled_at)} class="text-fz_orange-600">(disabled)</span>
-        <span :if={not is_nil(@provider.deleted_at)} class="text-fz_red-600">(deleted)</span>
+        <span :if={not is_nil(@provider.disabled_at)} class="text-orange-600">(disabled)</span>
+        <span :if={not is_nil(@provider.deleted_at)} class="text-red-600">(deleted)</span>
       </:title>
       <:action :if={is_nil(@provider.deleted_at)}>
         <.edit_button navigate={

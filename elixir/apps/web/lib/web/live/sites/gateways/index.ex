@@ -67,7 +67,7 @@ defmodule Web.Sites.Gateways.Index do
               <div class="pb-4">
                 No gateways to display.
                 <.link
-                  class="font-medium text-fz_blue-600 hover:underline"
+                  class="font-medium text-blue-600 hover:underline"
                   navigate={~p"/#{@account}/sites/#{@group}/new_token"}
                 >
                   Deploy a gateway to connect resources.

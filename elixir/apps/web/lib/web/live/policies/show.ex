@@ -38,8 +38,8 @@ defmodule Web.Policies.Show do
     <.section>
       <:title>
         <%= @page_title %>: <code><%= @policy.id %></code>
-        <span :if={not is_nil(@policy.disabled_at)} class="text-fz_orange-600">(disabled)</span>
-        <span :if={not is_nil(@policy.deleted_at)} class="text-fz_red-600">(deleted)</span>
+        <span :if={not is_nil(@policy.disabled_at)} class="text-orange-600">(disabled)</span>
+        <span :if={not is_nil(@policy.deleted_at)} class="text-red-600">(deleted)</span>
       </:title>
       <:action :if={is_nil(@policy.deleted_at)}>
         <.edit_button navigate={~p"/#{@account}/policies/#{@policy}/edit"}>
@@ -80,7 +80,7 @@ defmodule Web.Policies.Show do
               <.link navigate={~p"/#{@account}/groups/#{@policy.actor_group_id}"} class={link_style()}>
                 <%= @policy.actor_group.name %>
               </.link>
-              <span :if={not is_nil(@policy.actor_group.deleted_at)} class="text-fz_red-600">
+              <span :if={not is_nil(@policy.actor_group.deleted_at)} class="text-red-600">
                 (deleted)
               </span>
             </:value>
@@ -93,7 +93,7 @@ defmodule Web.Policies.Show do
               <.link navigate={~p"/#{@account}/resources/#{@policy.resource_id}"} class={link_style()}>
                 <%= @policy.resource.name %>
               </.link>
-              <span :if={not is_nil(@policy.resource.deleted_at)} class="text-fz_red-600">
+              <span :if={not is_nil(@policy.resource.deleted_at)} class="text-red-600">
                 (deleted)
               </span>
             </:value>

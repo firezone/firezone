@@ -41,7 +41,7 @@ defmodule Web.Resources.Show do
     <.section>
       <:title>
         Resource: <code><%= @resource.name %></code>
-        <span :if={not is_nil(@resource.deleted_at)} class="text-fz_red-600">(deleted)</span>
+        <span :if={not is_nil(@resource.deleted_at)} class="text-red-600">(deleted)</span>
       </:title>
       <:action :if={is_nil(@resource.deleted_at)}>
         <.edit_button navigate={~p"/#{@account}/resources/#{@resource.id}/edit?#{@params}"}>
@@ -74,7 +74,7 @@ defmodule Web.Resources.Show do
               <:value>
                 <.peek peek={@actor_groups_peek}>
                   <:empty>
-                    <.icon name="hero-exclamation-triangle" class="text-fz_red-500 mr-1" /> None,
+                    <.icon name="hero-exclamation-triangle" class="text-red-500 mr-1" /> None,
                     <.link
                       class={link_style() ++ ["px-1"]}
                       navigate={

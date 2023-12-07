@@ -42,7 +42,7 @@ defmodule Web.Actors.Show do
       <:title>
         <%= actor_type(@actor.type) %>: <span class="font-bold"><%= @actor.name %></span>
         <span :if={@actor.id == @subject.actor.id} class="text-neutral-400">(you)</span>
-        <span :if={not is_nil(@actor.deleted_at)} class="text-fz_red-600">(deleted)</span>
+        <span :if={not is_nil(@actor.deleted_at)} class="text-red-600">(deleted)</span>
       </:title>
       <:action :if={is_nil(@actor.deleted_at)}>
         <.edit_button navigate={~p"/#{@account}/actors/#{@actor}/edit"}>

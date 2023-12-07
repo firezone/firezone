@@ -455,9 +455,9 @@ defmodule Web.FormComponents do
   defp button_style("danger") do
     button_style() ++
       [
-        "text-fz_red-600",
-        "border border-fz_red-600",
-        "hover:text-white hover:bg-fz_red-600"
+        "text-red-600",
+        "border border-red-600",
+        "hover:text-white hover:bg-red-600"
       ]
   end
 

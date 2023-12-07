@@ -13,10 +13,10 @@ defmodule Web.Actors.Components do
 
   def actor_status(assigns) do
     ~H"""
-    <span :if={Actors.actor_disabled?(@actor)} class="text-fz_red-800">
+    <span :if={Actors.actor_disabled?(@actor)} class="text-red-800">
       (Disabled)
     </span>
-    <span :if={Actors.actor_deleted?(@actor)} class="text-fz_red-800">
+    <span :if={Actors.actor_deleted?(@actor)} class="text-red-800">
       (Deleted)
     </span>
     """

@@ -37,7 +37,7 @@ defmodule Web.Clients.Show do
     <.section>
       <:title>
         Client Details
-        <span :if={not is_nil(@client.deleted_at)} class="text-fz_red-600">(deleted)</span>
+        <span :if={not is_nil(@client.deleted_at)} class="text-red-600">(deleted)</span>
       </:title>
       <:action :if={is_nil(@client.deleted_at)}>
         <.edit_button navigate={~p"/#{@account}/clients/#{@client}/edit"}>

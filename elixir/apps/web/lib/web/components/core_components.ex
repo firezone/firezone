@@ -345,9 +345,9 @@ defmodule Web.CoreComponents do
       id={@id}
       class={[
         "p-4 text-sm flash-#{@kind}",
-        @kind == :success && "text-fz_green-800 bg-fz_green-50",
-        @kind == :info && "text-fz_yellow-800 bg-fz_yellow-50",
-        @kind == :error && "text-fz_red-800 bg-fz_red-50",
+        @kind == :success && "text-green-800 bg-green-50",
+        @kind == :info && "text-yellow-800 bg-yellow-50",
+        @kind == :error && "text-red-800 bg-red-50",
         @style != "wide" && "mb-4 rounded"
       ]}
       role="alert"
@@ -691,10 +691,10 @@ defmodule Web.CoreComponents do
 
   def badge(assigns) do
     colors = %{
-      "success" => "bg-fz_green-100 text-fz_green-800 ",
-      "danger" => "bg-fz_red-100 text-fz_red-800",
-      "warning" => "bg-fz_yellow-100 text-fz_yellow-800",
-      "info" => "bg-fz_blue-100 text-fz_blue-800",
+      "success" => "bg-green-100 text-green-800 ",
+      "danger" => "bg-red-100 text-red-800",
+      "warning" => "bg-yellow-100 text-yellow-800",
+      "info" => "bg-blue-100 text-blue-800",
       "primary" => "bg-primary-400 text-primary-800",
       "accent" => "bg-accent-200 text-accent-800",
       "neutral" => "bg-neutral-100 text-neutral-800"
@@ -724,20 +724,20 @@ defmodule Web.CoreComponents do
   def dual_badge(assigns) do
     colors = %{
       "success" => %{
-        "dark" => "bg-fz_green-300 text-fz_green-800",
-        "light" => "bg-fz_green-100 text-fz_green-800"
+        "dark" => "bg-green-300 text-green-800",
+        "light" => "bg-green-100 text-green-800"
       },
       "danger" => %{
-        "dark" => "bg-fz_red-300 text-fz_red-800",
-        "light" => "bg-fz_red-100 text-fz_red-800"
+        "dark" => "bg-red-300 text-red-800",
+        "light" => "bg-red-100 text-red-800"
       },
       "warning" => %{
-        "dark" => "bg-fz_yellow-300 text-fz_yellow-800",
-        "light" => "bg-fz_yellow-100 text-fz_yellow-800"
+        "dark" => "bg-yellow-300 text-yellow-800",
+        "light" => "bg-yellow-100 text-yellow-800"
       },
       "info" => %{
-        "dark" => "bg-fz_blue-300 text-fz_blue-800",
-        "light" => "bg-fz_blue-100 text-fz_blue-800"
+        "dark" => "bg-blue-300 text-blue-800",
+        "light" => "bg-blue-100 text-blue-800"
       },
       "primary" => %{
         "dark" => "bg-primary-400 text-primary-800",
@@ -844,7 +844,7 @@ defmodule Web.CoreComponents do
         "flex items-center justify-center",
         "font-medium text-sm text-white",
         "rounded-full",
-        (@connected? && "bg-fz_green-500") || "bg-fz_orange-400 cursor-progress"
+        (@connected? && "bg-green-500") || "bg-orange-400 cursor-progress"
       ]}
       navigate={@navigate}
       {
@@ -918,8 +918,8 @@ defmodule Web.CoreComponents do
           text-xs font-medium
           rounded-l
           py-0.5 pl-2.5 pr-1.5
-          text-fz_blue-800
-          bg-fz_blue-100]}
+          text-blue-800
+          bg-blue-100]}
       >
         <%= @identity.provider.name %>
       </.link>
@@ -927,8 +927,8 @@ defmodule Web.CoreComponents do
         "text-xs font-medium",
         "rounded-r",
         "mr-2 py-0.5 pl-1.5 pr-2.5",
-        "text-fz_blue-800",
-        "bg-fz_blue-50"
+        "text-blue-800",
+        "bg-blue-50"
       ]}>
         <%= get_identity_email(@identity) %>
       </span>

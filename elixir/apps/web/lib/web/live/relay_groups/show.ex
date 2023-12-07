@@ -30,7 +30,7 @@ defmodule Web.RelayGroups.Show do
     <.section>
       <:title>
         Relay Instance Group: <code><%= @group.name %></code>
-        <span :if={not is_nil(@group.deleted_at)} class="text-fz_red-600">(deleted)</span>
+        <span :if={not is_nil(@group.deleted_at)} class="text-red-600">(deleted)</span>
       </:title>
       <:action :if={not is_nil(@group.account_id) and is_nil(@group.deleted_at)}>
         <.edit_button navigate={~p"/#{@account}/relay_groups/#{@group}/edit"}>

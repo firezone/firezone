@@ -46,7 +46,7 @@ defmodule Web.Sites.Show do
     <.section>
       <:title>
         Site: <code><%= @group.name %></code>
-        <span :if={not is_nil(@group.deleted_at)} class="text-fz_red-600">(deleted)</span>
+        <span :if={not is_nil(@group.deleted_at)} class="text-red-600">(deleted)</span>
       </:title>
       <:action :if={is_nil(@group.deleted_at)}>
         <.edit_button navigate={~p"/#{@account}/sites/#{@group}/edit"}>
@@ -119,7 +119,7 @@ defmodule Web.Sites.Show do
                   No gateways to display.
                   <span :if={is_nil(@group.deleted_at)}>
                     <.link
-                      class="font-medium text-fz_blue-600 hover:underline"
+                      class="font-medium text-blue-600 hover:underline"
                       navigate={~p"/#{@account}/sites/#{@group}/new_token"}
                     >
                       Deploy a gateway to connect resources.

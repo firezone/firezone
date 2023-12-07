@@ -41,7 +41,7 @@ defmodule Web.Settings.Account do
           Terminate account
         </h3>
         <p class="ml-4 mb-4 font-medium text-neutral-600">
-          <.icon name="hero-exclamation-circle" class="inline-block w-5 h-5 mr-1 text-fz_red-500" />
+          <.icon name="hero-exclamation-circle" class="inline-block w-5 h-5 mr-1 text-red-500" />
           To disable your account and schedule it for deletion, please <.link
             class="text-accent-600 hover:underline"
             href="mailto:support@firezone.dev"

@@ -48,12 +48,12 @@ defmodule Web.Groups.EditActors do
               <.icon
                 :if={removed?(actor, @removed_ids)}
                 name="hero-minus"
-                class="h-3.5 w-3.5 mr-2 text-fz_red-500"
+                class="h-3.5 w-3.5 mr-2 text-red-500"
               />
               <.icon
                 :if={added?(actor, @added_ids)}
                 name="hero-plus"
-                class="h-3.5 w-3.5 mr-2 text-fz_green-500"
+                class="h-3.5 w-3.5 mr-2 text-green-500"
               />
 
               <.actor_name_and_role
@@ -61,8 +61,8 @@ defmodule Web.Groups.EditActors do
                 actor={actor}
                 class={
                   cond do
-                    removed?(actor, @removed_ids) -> "text-fz_red-500"
-                    added?(actor, @added_ids) -> "text-fz_green-500"
+                    removed?(actor, @removed_ids) -> "text-red-500"
+                    added?(actor, @added_ids) -> "text-green-500"
                     true -> ""
                   end
                 }

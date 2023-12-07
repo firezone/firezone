@@ -29,7 +29,7 @@ defmodule Web.Settings.IdentityProviders.Components do
 
     ~H"""
     <div class="flex items-center">
-      <span class="w-3 h-3 bg-fz_red-500 rounded-full"></span>
+      <span class="w-3 h-3 bg-red-500 rounded-full"></span>
       <span class="ml-3">
         No refresh token provided by IdP and access token expires on
         <.datetime datetime={@expires_at} /> UTC
@@ -50,7 +50,7 @@ defmodule Web.Settings.IdentityProviders.Components do
       when not is_nil(disabled_at) do
     ~H"""
     <div class="flex items-center">
-      <span class="w-3 h-3 bg-fz_red-500 rounded-full"></span>
+      <span class="w-3 h-3 bg-red-500 rounded-full"></span>
       <span class="ml-3">
         Provisioning
         <span :if={@provider.adapter_state["status"]}>
@@ -80,7 +80,7 @@ defmodule Web.Settings.IdentityProviders.Components do
       when not is_nil(disabled_at) do
     ~H"""
     <div class="flex items-center">
-      <span class="w-3 h-3 bg-fz_red-500 rounded-full"></span>
+      <span class="w-3 h-3 bg-red-500 rounded-full"></span>
       <span class="ml-3">
         Provisioning
         <span :if={@provider.adapter_state["status"]}>
@@ -117,7 +117,7 @@ defmodule Web.Settings.IdentityProviders.Components do
   def status(assigns) do
     ~H"""
     <div class="flex items-center">
-      <span class="w-3 h-3 bg-fz_green-500 rounded-full"></span>
+      <span class="w-3 h-3 bg-green-500 rounded-full"></span>
       <span class="ml-3">
         Active
       </span>
@@ -149,7 +149,7 @@ defmodule Web.Settings.IdentityProviders.Components do
   def sync_status(%{provider: %{provisioner: :custom}} = assigns) do
     ~H"""
     <div :if={not is_nil(@provider.last_synced_at)} class="flex items-center">
-      <span class="w-3 h-3 bg-fz_green-500 rounded-full"></span>
+      <span class="w-3 h-3 bg-green-500 rounded-full"></span>
       <span class="ml-3">
         Synced
         <.link
@@ -178,7 +178,7 @@ defmodule Web.Settings.IdentityProviders.Components do
       </span>
     </div>
     <div :if={is_nil(@provider.last_synced_at)} class="flex items-center">
-      <span class="w-3 h-3 bg-fz_red-500 rounded-full"></span>
+      <span class="w-3 h-3 bg-red-500 rounded-full"></span>
       <span class="ml-3">
         Never synced
       </span>
@@ -190,7 +190,7 @@ defmodule Web.Settings.IdentityProviders.Components do
       when provisioner in [:just_in_time, :manual] do
     ~H"""
     <div class="flex items-center">
-      <span class="w-3 h-3 bg-fz_green-500 rounded-full"></span>
+      <span class="w-3 h-3 bg-green-500 rounded-full"></span>
       <span class="ml-3">
         Created
         <.link

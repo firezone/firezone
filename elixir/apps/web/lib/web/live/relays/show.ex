@@ -43,7 +43,7 @@ defmodule Web.Relays.Show do
             <code><%= @relay.ipv4 %></code>
           </:item>
         </.intersperse_blocks>
-        <span :if={not is_nil(@relay.deleted_at)} class="text-fz_red-600">(deleted)</span>
+        <span :if={not is_nil(@relay.deleted_at)} class="text-red-600">(deleted)</span>
       </:title>
       <:content>
         <div class="bg-white overflow-hidden">
