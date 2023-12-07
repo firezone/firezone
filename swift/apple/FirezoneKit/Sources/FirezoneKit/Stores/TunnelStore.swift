@@ -19,8 +19,14 @@ enum TunnelStoreError: Error {
 
 public struct TunnelProviderKeys {
   static let keyAuthBaseURLString = "authBaseURLString"
-  static let keyAccountId = "accountId"  // Unused
   public static let keyConnlibLogFilter = "connlibLogFilter"
+
+  // The following key is not added to the tunnel provider.
+  // The key is defined so that the key can be removed if it exists
+  // in a tunnel provider configuration. A tunnel configuration
+  // created by an earlier version of the app could have this
+  // key, and we use this key definition to remove it.
+  static let keyAccountId = "accountId"
 }
 
 final class TunnelStore: ObservableObject {
