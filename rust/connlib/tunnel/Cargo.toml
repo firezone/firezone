@@ -21,7 +21,7 @@ connlib-shared = { workspace = true }
 libc = { version = "0.2", default-features = false, features = ["std", "const-extern-fn", "extra_traits"] }
 ip_network = { version = "0.4", default-features = false }
 ip_network_table = { version = "0.2", default-features = false }
-domain = "0.9"
+domain = { workspace = true }
 boringtun = { workspace = true }
 chrono = { workspace = true }
 pnet_packet = { version = "0.34" }

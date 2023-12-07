@@ -7,7 +7,7 @@ use connlib_shared::messages::{
     ResourceId, ReuseConnection,
 };
 use url::Url;
-use webrtc::ice_transport::{ice_candidate::RTCIceCandidate, ice_parameters::RTCIceParameters};
+use webrtc::ice_transport::ice_candidate::RTCIceCandidate;
 
 #[derive(Debug, PartialEq, Eq, Deserialize, Serialize, Clone)]
 pub struct InitClient {

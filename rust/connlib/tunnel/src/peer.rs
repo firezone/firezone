@@ -13,7 +13,7 @@ use connlib_shared::{messages::ResourceDescription, Error, Result};
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
 use parking_lot::{Mutex, RwLock};
-use pnet_packet::{MutablePacket, Packet};
+use pnet_packet::Packet;
 use secrecy::ExposeSecret;
 
 use crate::client::IpProvider;

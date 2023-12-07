@@ -13,7 +13,7 @@ use connlib_shared::messages::{
     ResourceDescriptionDns, ResourceId, ReuseConnection, SecretKey,
 };
 use connlib_shared::{Callbacks, DNS_SENTINEL};
-use domain::base::Rtype;
+use domain::base::{Dname, Rtype};
 use futures::channel::mpsc::Receiver;
 use futures::stream;
 use futures_bounded::{PushError, StreamMap};
@@ -31,6 +31,24 @@ use std::task::{Context, Poll};
 use std::time::Duration;
 use tokio::time::Instant;
 use webrtc::ice_transport::ice_candidate::RTCIceCandidate;
+
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub struct DnsResource {
+    pub id: ResourceId,
+    pub address: Dname<Vec<u8>>,
+}
+
+impl DnsResource {
+    pub fn from_description(
+        description: &ResourceDescriptionDns,
+        address: Dname<Vec<u8>>,
+    ) -> DnsResource {
+        DnsResource {
+            id: description.id,
+            address,
+        }
+    }
+}
 
 impl<CB> Tunnel<CB, ClientState>
 where
@@ -159,11 +177,11 @@ pub struct ClientState {
     // the dns name from the portal we should parse it and use it always as that.
     // Note: implement this as part of the current PR!
     // TODO: this should expire with the associated peer?
-    pub dns_resources_internal_ips: HashMap<ResourceDescriptionDns, Vec<IpAddr>>,
+    pub dns_resources_internal_ips: HashMap<DnsResource, Vec<IpAddr>>,
     dns_resources: HashMap<String, Arc<ResourceDescriptionDns>>,
     cidr_resources: IpNetworkTable<ResourceDescriptionCidr>,
     pub resources_id: HashMap<ResourceId, ResourceDescription>,
-    pub local_dns_queries: HashMap<(ResourceDescriptionDns, Rtype), IpPacket<'static>>,
+    pub local_dns_queries: HashMap<(DnsResource, Rtype), IpPacket<'static>>,
 
     #[allow(clippy::type_complexity)]
     pub peers_by_ip: IpNetworkTable<ConnectedPeer<GatewayId, PacketTransformClient>>,
@@ -178,7 +196,7 @@ pub struct ClientState {
 pub struct AwaitingConnectionDetails {
     total_attemps: usize,
     response_received: bool,
-    domain: Option<String>,
+    domain: Option<Dname<Vec<u8>>>,
     gateways: HashSet<GatewayId>,
 }
 
@@ -218,7 +236,7 @@ impl ClientState {
     pub(crate) fn get_awaiting_connection_domain(
         &self,
         resource: &ResourceId,
-    ) -> Result<&Option<String>, ConnlibError> {
+    ) -> Result<&Option<Dname<Vec<u8>>>, ConnlibError> {
         Ok(&self
             .awaiting_connection
             .get(resource)
@@ -254,9 +272,7 @@ impl ClientState {
             return Err(Error::UnexpectedConnectionDetails);
         }
 
-        tracing::trace!(?self.gateway_awaiting_connection, "contains?");
         if self.gateway_awaiting_connection.contains(&gateway) {
-            tracing::trace!(?self.gateway_awaiting_connection, "yeah");
             self.awaiting_connection.remove(&resource);
             self.awaiting_connection_timers.remove(resource);
             return Err(Error::PendingConnection);
@@ -305,13 +321,13 @@ impl ClientState {
         self.gateway_awaiting_connection.remove(&gateway);
     }
 
-    fn is_awaiting_connection_to_dns(&self, resource: &ResourceDescriptionDns) -> bool {
+    fn is_awaiting_connection_to_dns(&self, resource: &DnsResource) -> bool {
         // This does mean that we never generate 2 connection intents to the same resoruce id with different domain.
         // This will be optimized in a separate PR.
         self.awaiting_connection.contains_key(&resource.id)
     }
 
-    pub fn on_connection_intent_dns(&mut self, resource: &ResourceDescriptionDns) {
+    pub fn on_connection_intent_dns(&mut self, resource: &DnsResource) {
         if self.is_awaiting_connection_to_dns(resource) {
             return;
         }
@@ -328,8 +344,6 @@ impl ClientState {
             .chain(self.resources_gateways.values())
             .copied()
             .collect();
-
-        tracing::trace!(?gateways, "connected_gateways");
 
         match self.awaiting_connection_timers.try_push(
             resource_id,
@@ -348,7 +362,6 @@ impl ClientState {
             }
         }
 
-        tracing::trace!("going to connect to {resource:?}");
         self.awaiting_connection.insert(
             resource_id,
             AwaitingConnectionDetails {
@@ -382,8 +395,6 @@ impl ClientState {
             .copied()
             .collect();
 
-        tracing::trace!(?gateways, "connected_gateways");
-
         match self.awaiting_connection_timers.try_push(
             resource_id,
             stream::poll_fn({
@@ -401,13 +412,12 @@ impl ClientState {
             }
         }
 
-        tracing::trace!("going to connect to {resource:?}");
         self.awaiting_connection.insert(
             resource_id,
             AwaitingConnectionDetails {
                 total_attemps: 0,
                 response_received: false,
-                domain: resource.dns_name().map(ToString::to_string),
+                domain: None,
                 gateways,
             },
         );
@@ -417,7 +427,7 @@ impl ClientState {
         &mut self,
         resource: ResourceId,
         gateway: GatewayId,
-        domain: &Option<String>,
+        domain: &Option<Dname<Vec<u8>>>,
     ) -> Result<PeerConfig, ConnlibError> {
         let shared_key = self
             .gateway_preshared_keys
@@ -447,9 +457,7 @@ impl ClientState {
         };
 
         // Tidy up state once everything succeeded.
-        tracing::trace!(?self.gateway_awaiting_connection, "before removal");
         self.gateway_awaiting_connection.remove(&gateway);
-        tracing::trace!(?self.gateway_awaiting_connection, "after removal");
         self.awaiting_connection.remove(&resource);
 
         Ok(config)
@@ -500,7 +508,7 @@ impl ClientState {
         &self,
         resource: ResourceId,
         connected_peers: &IpNetworkTable<ConnectedPeer<GatewayId, PacketTransformClient>>,
-        domain: &Option<String>,
+        domain: &Option<Dname<Vec<u8>>>,
     ) -> bool {
         let Some(resource) = self.resources_id.get(&resource) else {
             return false;
@@ -514,7 +522,7 @@ impl ClientState {
     fn get_resoruce_ip(
         &self,
         resource: &ResourceDescription,
-        domain: &Option<String>,
+        domain: &Option<Dname<Vec<u8>>>,
     ) -> Vec<IpNetwork> {
         match resource {
             // TODO: this will be cleaned up as part of refactoring the way we store resources.
@@ -523,7 +531,7 @@ impl ClientState {
                     return vec![];
                 };
 
-                let description = dns_resource.subdomain(domain.clone());
+                let description = DnsResource::from_description(dns_resource, domain.clone());
                 self.dns_resources_internal_ips
                     .get(&description)
                     .cloned()

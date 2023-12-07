@@ -11,6 +11,7 @@ use connlib_shared::{
     },
     Callbacks, Error, Result,
 };
+use domain::base::Dname;
 use ip_network::IpNetwork;
 use std::{net::ToSocketAddrs, sync::Arc};
 use webrtc::ice_transport::{
@@ -39,14 +40,13 @@ where
     pub async fn set_peer_connection_request(
         self: &Arc<Self>,
         remote_params: RTCIceParameters,
-        domain: Option<String>,
+        domain: Option<Dname<Vec<u8>>>,
         peer: PeerConfig,
         relays: Vec<Relay>,
         client_id: ClientId,
         expires_at: DateTime<Utc>,
         resource: ResourceDescription,
     ) -> Result<ConnectionAccepted> {
-        tracing::trace!("domain: {domain:?}");
         let IceConnection {
             ice_parameters: local_params,
             ice_transport: ice,
@@ -66,7 +66,7 @@ where
                 let Some(domain) = domain.clone() else {
                     return Err(Error::ControlProtocolError);
                 };
-                (domain, 0)
+                (domain.to_string(), 0)
                     .to_socket_addrs()?
                     .map(|addrs| addrs.ip().into())
                     .collect()
@@ -119,10 +119,8 @@ where
         client_id: ClientId,
         expires_at: DateTime<Utc>,
         // TODO: we could put the domain inside the ResourceDescription
-        domain: Option<String>,
+        domain: Option<Dname<Vec<u8>>>,
     ) -> Option<ResourceAccepted> {
-        tracing::trace!(?resource);
-        tracing::trace!(?domain);
         if let Some((_, peer)) = self
             .role_state
             .lock()
@@ -130,15 +128,13 @@ where
             .iter_mut()
             .find(|(_, p)| p.inner.conn_id == client_id)
         {
-            tracing::trace!("found peer");
             let addresses = match &resource {
                 ResourceDescription::Dns(_) => {
-                    tracing::trace!("it's a dns resource");
                     let Some(ref domain) = domain else {
                         return None;
                     };
 
-                    (domain.clone(), 0)
+                    (domain.to_string(), 0)
                         .to_socket_addrs()
                         .ok()?
                         .map(|a| a.ip())
@@ -147,15 +143,14 @@ where
                 }
                 ResourceDescription::Cidr(cidr) => vec![cidr.address],
             };
-            tracing::trace!("{addresses:?}");
+
             for address in &addresses {
-                tracing::trace!("adding address {address}");
                 peer.inner
                     .transform
                     .add_resource(*address, resource.clone(), expires_at);
             }
+
             if let Some(domain) = domain {
-                tracing::trace!("sending response");
                 return Some(ResourceAccepted {
                     domain_response: DomainResponse {
                         domain,

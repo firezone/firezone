@@ -2,6 +2,7 @@
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 
 use chrono::{serde::ts_seconds, DateTime, Utc};
+use domain::base::Dname;
 use ip_network::IpNetwork;
 use serde::{Deserialize, Serialize};
 use std::{fmt, str::FromStr};
@@ -98,7 +99,7 @@ pub struct RequestConnection {
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct ClientPayload {
     pub ice_parameters: RTCIceParameters,
-    pub domain: Option<String>,
+    pub domain: Option<Dname<Vec<u8>>>,
 }
 
 /// Represent a request to reuse an existing gateway connection from a client to a given resource.
@@ -112,8 +113,7 @@ pub struct ReuseConnection {
     /// Id of the gateway we want to reuse
     pub gateway_id: GatewayId,
     /// Payload that the gateway will recieve
-    // This is the domain name! change it to Dname.
-    pub payload: Option<String>,
+    pub payload: Option<Dname<Vec<u8>>>,
 }
 
 // Custom implementation of partial eq to ignore client_rtc_sdp
@@ -132,9 +132,9 @@ pub enum ResourceDescription {
     Cidr(ResourceDescriptionCidr),
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Deserialize, Serialize, Clone, Hash, PartialEq, Eq)]
 pub struct DomainResponse {
-    pub domain: String,
+    pub domain: Dname<Vec<u8>>,
     pub address: Vec<IpAddr>,
 }
 
@@ -166,15 +166,6 @@ pub struct ResourceDescriptionDns {
     ///
     /// Used only for display.
     pub name: String,
-}
-
-impl ResourceDescriptionDns {
-    pub fn subdomain(&self, address: String) -> ResourceDescriptionDns {
-        ResourceDescriptionDns {
-            address,
-            ..self.clone()
-        }
-    }
 }
 
 impl ResourceDescription {

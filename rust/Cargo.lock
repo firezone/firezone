@@ -731,6 +731,7 @@ dependencies = [
  "base64 0.21.5",
  "boringtun",
  "chrono",
+ "domain",
  "futures",
  "futures-util",
  "hickory-resolver",
@@ -1014,6 +1015,7 @@ checksum = "54a83205ec042ce7339c73344d6666a39acb30021121dab68eb983740dcff86e"
 dependencies = [
  "octseq",
  "rand",
+ "serde",
  "time",
 ]
 
@@ -1148,6 +1150,7 @@ dependencies = [
  "chrono",
  "clap",
  "connlib-shared",
+ "domain",
  "firezone-cli-utils",
  "firezone-tunnel",
  "futures",
@@ -2248,6 +2251,9 @@ name = "octseq"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d233b7fea8c1c9f4ffda5dcc961c8edd2fc1587e4b355b2752fe7c27e0cd50ca"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "oid-registry"

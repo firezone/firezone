@@ -10,7 +10,6 @@ use connlib_shared::{
     Callbacks,
 };
 use domain::base::Rtype;
-use ip_network::IpNetwork;
 use secrecy::Secret;
 use webrtc::ice_transport::{
     ice_parameters::RTCIceParameters, ice_role::RTCIceRole,
@@ -18,10 +17,11 @@ use webrtc::ice_transport::{
 };
 
 use crate::{
+    client::DnsResource,
     control_protocol::{new_ice_connection, IceConnection},
     dns,
     peer::PacketTransformClient,
-    peer_handler, PEER_QUEUE_SIZE,
+    PEER_QUEUE_SIZE,
 };
 use crate::{peer::Peer, ClientState, ConnectedPeer, Error, Request, Result, Tunnel};
 
@@ -94,7 +94,6 @@ where
             gateway_id,
             reference,
         )? {
-            tracing::trace!("reusing_connection: {connection:?}");
             return Ok(Request::ReuseConnection(connection));
         }
 
@@ -168,7 +167,8 @@ where
                 // We should never get a domain_response for a CIDR resource!
                 return Err(Error::ControlProtocolError);
             };
-            let resource_description = resource_description.subdomain(domain_response.domain);
+            let resource_description =
+                DnsResource::from_description(&resource_description, domain_response.domain);
             {
                 let mut role_state = self.role_state.lock();
                 let addrs: Vec<_> = domain_response
@@ -277,17 +277,11 @@ where
             .lock()
             .gateway_by_resource(&resource_id)
             .ok_or(Error::UnknownResource)?;
+
         let peer_connection = self
             .peer_connections
             .lock()
             .get(&gateway_id)
-            .ok_or(Error::UnknownResource)?
-            .clone();
-        let resource_description = self
-            .role_state
-            .lock()
-            .resources_id
-            .get(&resource_id)
             .ok_or(Error::UnknownResource)?
             .clone();
 
@@ -340,8 +334,8 @@ where
             return Err(Error::ControlProtocolError);
         };
 
-        tracing::trace!(?resource_description, ?domain_response, "domain parameters");
-        let resource_description = resource_description.subdomain(domain_response.domain);
+        let resource_description =
+            DnsResource::from_description(&resource_description, domain_response.domain);
 
         let mut role_state = self.role_state.lock();
 

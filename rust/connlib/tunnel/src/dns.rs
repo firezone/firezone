@@ -1,3 +1,4 @@
+use crate::client::DnsResource;
 use crate::device_channel::Packet;
 use crate::ip_packet::{to_dns, IpPacket, MutableIpPacket, Version};
 use crate::{get_v4, get_v6, DnsFallbackStrategy, DnsQuery};
@@ -6,7 +7,7 @@ use connlib_shared::messages::ResourceDescriptionDns;
 use connlib_shared::DNS_SENTINEL;
 use domain::base::{
     iana::{Class, Rcode, Rtype},
-    Dname, Message, MessageBuilder, ParsedDname, Question, ToDname,
+    Dname, Message, MessageBuilder, Question, ToDname,
 };
 use hickory_resolver::lookup::Lookup;
 use hickory_resolver::proto::op::Message as TrustDnsMessage;
@@ -61,10 +62,10 @@ impl<T, V> ResolveStrategy<T, DnsQueryParams, V> {
 // See: https://stackoverflow.com/a/55093896
 pub(crate) fn parse<'a>(
     dns_resources: &HashMap<String, Arc<ResourceDescriptionDns>>,
-    dns_resources_internal_ips: &HashMap<ResourceDescriptionDns, Vec<IpAddr>>,
+    dns_resources_internal_ips: &HashMap<DnsResource, Vec<IpAddr>>,
     packet: IpPacket<'a>,
     resolve_strategy: DnsFallbackStrategy,
-) -> Option<ResolveStrategy<Packet<'static>, DnsQuery<'a>, (ResourceDescriptionDns, Rtype)>> {
+) -> Option<ResolveStrategy<Packet<'static>, DnsQuery<'a>, (DnsResource, Rtype)>> {
     if packet.destination() != IpAddr::from(DNS_SENTINEL) {
         return None;
     }
@@ -195,7 +196,7 @@ fn build_response(original_pkt: IpPacket<'_>, mut dns_answer: Vec<u8>) -> Option
 fn build_dns_with_answer<N>(
     message: &Message<[u8]>,
     qname: &N,
-    resource: &Option<RecordData<ParsedDname<Vec<u8>>>>,
+    resource: &Option<RecordData<Dname<Vec<u8>>>>,
 ) -> Option<Vec<u8>>
 where
     N: ToDname + ?Sized,
@@ -242,11 +243,10 @@ enum RecordData<T> {
 
 fn resource_from_question<N: ToDname>(
     dns_resources: &HashMap<String, Arc<ResourceDescriptionDns>>,
-    dns_resources_internal_ips: &HashMap<ResourceDescriptionDns, Vec<IpAddr>>,
+    dns_resources_internal_ips: &HashMap<DnsResource, Vec<IpAddr>>,
     question: &Question<N>,
-) -> Option<ResolveStrategy<RecordData<ParsedDname<Vec<u8>>>, DnsQueryParams, ResourceDescriptionDns>>
-{
-    let name = ToDname::to_cow(question.qname());
+) -> Option<ResolveStrategy<RecordData<Dname<Vec<u8>>>, DnsQueryParams, DnsResource>> {
+    let name = ToDname::to_vec(question.qname());
     let qtype = question.qtype();
 
     match qtype {
@@ -257,7 +257,7 @@ fn resource_from_question<N: ToDname>(
             else {
                 return Some(ResolveStrategy::forward(name.to_string(), qtype));
             };
-            let description = description.subdomain(name.to_string());
+            let description = DnsResource::from_description(description, name);
             let Some(ips) = dns_resources_internal_ips.get(&description) else {
                 // TODO!!: Sometimes we need to respond with nxdomain for this
                 // it might just not have this in the gateway.
@@ -279,7 +279,7 @@ fn resource_from_question<N: ToDname>(
             else {
                 return Some(ResolveStrategy::forward(name.to_string(), qtype));
             };
-            let description = description.subdomain(name.to_string());
+            let description = DnsResource::from_description(description, name);
             let Some(ips) = dns_resources_internal_ips.get(&description) else {
                 return Some(ResolveStrategy::DeferredResponse(description));
             };
@@ -302,9 +302,7 @@ fn resource_from_question<N: ToDname>(
                 return Some(ResolveStrategy::forward(name.to_string(), qtype));
             };
             Some(ResolveStrategy::LocalResponse(RecordData::Ptr(
-                domain::rdata::Ptr::<ParsedDname<_>>::new(
-                    resource.address.parse::<Dname<Vec<u8>>>().ok()?.into(),
-                ),
+                domain::rdata::Ptr::new(resource.address.clone()),
             )))
         }
         _ => Some(ResolveStrategy::forward(name.to_string(), qtype)),
