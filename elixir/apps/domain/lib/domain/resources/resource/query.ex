@@ -25,14 +25,17 @@ defmodule Domain.Resources.Resource.Query do
   end
 
   def by_authorized_actor_id(queryable \\ not_deleted(), actor_id) do
-    subquery = Domain.Policies.Policy.Query.by_actor_id(actor_id)
+    subquery =
+      Domain.Policies.Policy.Query.by_actor_id(actor_id)
+      |> where([policies: policies], policies.resource_id == parent_as(:resources).id)
+      |> limit(1)
 
     queryable
     |> join(
-      :inner,
+      :inner_lateral,
       [resources: resources],
       policies in subquery(subquery),
-      on: policies.resource_id == resources.id,
+      on: true,
       as: :authorized_by_policies
     )
     # Note: this will only write one of policies to a map, which means that
