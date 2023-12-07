@@ -169,8 +169,6 @@ pub struct ClientState {
     pub gateway_preshared_keys: HashMap<GatewayId, StaticSecret>,
     resources_gateways: HashMap<ResourceId, GatewayId>,
 
-    // TODO: model these along with resources to enforce consistency
-    // TODO: this should expire with the associated peer?
     pub dns_resources_internal_ips: HashMap<DnsResource, Vec<IpAddr>>,
     dns_resources: HashMap<String, ResourceDescriptionDns>,
     cidr_resources: IpNetworkTable<ResourceDescriptionCidr>,
@@ -210,6 +208,7 @@ impl ClientState {
             packet.as_immutable(),
             resolve_strategy,
         ) {
+            // TODO: what if the connection expires this will send LocalReponse and there will be no intent
             Some(dns::ResolveStrategy::LocalResponse(query)) => Ok(Some(query)),
             Some(dns::ResolveStrategy::ForwardQuery(query)) => {
                 self.add_pending_dns_query(query);
