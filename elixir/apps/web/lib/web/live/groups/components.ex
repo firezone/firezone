@@ -9,7 +9,7 @@ defmodule Web.Groups.Components do
     <span :if={not is_nil(@group.provider_id)}>
       Synced from
       <.link
-        class="font-medium text-blue-600 hover:underline"
+        class="font-medium text-accent-600 hover:underline"
         navigate={Web.Settings.IdentityProviders.Components.view_provider(@account, @group.provider)}
       >
         <%= @group.provider.name %>

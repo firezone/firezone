@@ -41,9 +41,9 @@ defmodule Web.Settings.IdentityProviders.Index do
         </.add_button>
       </:action>
       <:content>
-        <p class="ml-4 mb-4 font-medium text-gray-600">
+        <p class="ml-4 mb-4 font-medium text-neutral-600">
           <.link
-            class="text-blue-600 hover:underline"
+            class={link_style()}
             href="https://www.firezone.dev/kb/authenticate?utm_source=product"
             target="_blank"
           >
@@ -57,7 +57,7 @@ defmodule Web.Settings.IdentityProviders.Index do
             <:col :let={provider} label="Name">
               <.link
                 navigate={view_provider(@account, provider)}
-                class="font-medium text-blue-600 hover:underline"
+                class={["font-medium", link_style()]}
               >
                 <%= provider.name %>
               </.link>
@@ -75,7 +75,7 @@ defmodule Web.Settings.IdentityProviders.Index do
               />
             </:col>
             <:empty>
-              <div class="flex justify-center text-center text-slate-500 p-4">
+              <div class="flex justify-center text-center text-neutral-500 p-4">
                 <div class="w-auto">
                   <div class="pb-4">
                     No identity providers to display
