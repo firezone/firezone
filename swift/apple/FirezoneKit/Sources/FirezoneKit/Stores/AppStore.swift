@@ -36,7 +36,7 @@ final class AppStore: ObservableObject {
     Task {
       do {
         try await tunnel.stop()
-        auth.signOut()
+        await auth.signOut()
       } catch {
         logger.error("\(#function): Error stopping tunnel: \(String(describing: error))")
       }
