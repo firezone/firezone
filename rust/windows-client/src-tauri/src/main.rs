@@ -29,6 +29,8 @@ mod local_webserver;
 // Relies on some types from Tauri
 #[cfg(target_os = "windows")]
 mod settings;
+#[cfg(target_os = "windows")]
+mod wintun_install;
 
 /// Prevents a problem where changing the args to `gui::run` breaks static analysis on non-Windows targets, where the gui is stubbed out
 #[allow(dead_code)]
