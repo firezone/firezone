@@ -202,7 +202,7 @@ defmodule Web.Live.Groups.ShowTest do
              {:error, {:live_redirect, %{to: ~p"/#{account}/groups/#{group}/edit", kind: :push}}}
   end
 
-  test "does not allow editing synced groups", %{
+  test "does not allow editing or deleting synced groups", %{
     account: account,
     group: group,
     identity: identity,
@@ -219,12 +219,14 @@ defmodule Web.Live.Groups.ShowTest do
     )
     |> Repo.update!()
 
-    {:ok, lv, _html} =
+    {:ok, lv, html} =
       conn
       |> authorize_conn(identity)
       |> live(~p"/#{account}/groups/#{group}")
 
     refute has_element?(lv, "a", "Edit Group")
+    refute has_element?(lv, "a", "Delete Group")
+    refute html =~ "Danger Zone"
   end
 
   test "allows editing actors", %{

@@ -101,7 +101,7 @@ defmodule Web.Groups.Show do
       </:content>
     </.section>
 
-    <.danger_zone :if={is_nil(@group.deleted_at)}>
+    <.danger_zone :if={is_nil(@group.deleted_at) and not Actors.group_synced?(@group)}>
       <:action>
         <.delete_button
           phx-click="delete"
