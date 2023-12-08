@@ -9,7 +9,7 @@ fn main() -> anyhow::Result<()> {
 
 #[cfg(target_family = "unix")]
 mod client {
-    fn main() -> anyhow::Result<()> {
+    fn run() -> anyhow::Result<()> {
         panic!("The Windows client does not compile on non-Windows platforms");
     }
 }
