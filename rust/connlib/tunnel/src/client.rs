@@ -205,11 +205,7 @@ impl ClientState {
             packet.as_immutable(),
             resolve_strategy,
         ) {
-            // TODO: what if the connection expires this will send LocalReponse and there will be no intent
-            Some(dns::ResolveStrategy::LocalResponse(query)) => {
-                // TODO: to fix the comment above just call on_connection_intent_dns, this will just send the connection intent if it was expired.
-                Ok(Some(query))
-            }
+            Some(dns::ResolveStrategy::LocalResponse(query)) => Ok(Some(query)),
             Some(dns::ResolveStrategy::ForwardQuery(query)) => {
                 self.add_pending_dns_query(query);
 
@@ -363,7 +359,7 @@ impl ClientState {
         );
     }
 
-    pub fn on_connection_intent_cidr(&mut self, destination: IpAddr) {
+    pub fn on_connection_intent_ip(&mut self, destination: IpAddr) {
         if self.is_awaiting_connection_to_cidr(destination) {
             return;
         }
@@ -371,6 +367,14 @@ impl ClientState {
         tracing::trace!(resource_ip = %destination, "resource_connection_intent");
 
         let Some(resource) = self.get_cidr_resource_by_destination(destination) else {
+            if let Some(resource) = self
+                .dns_resources_internal_ips
+                .iter()
+                .find_map(|(r, i)| i.contains(&destination).then_some(r))
+                .cloned()
+            {
+                self.on_connection_intent_dns(&resource);
+            }
             return;
         };
 

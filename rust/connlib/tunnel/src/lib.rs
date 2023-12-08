@@ -259,7 +259,7 @@ where
             let dest = packet.destination();
 
             let Some(peer) = peer_by_ip(&role_state.peers_by_ip, dest) else {
-                role_state.on_connection_intent_cidr(dest);
+                role_state.on_connection_intent_ip(dest);
                 continue;
             };
 
