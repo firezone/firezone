@@ -55,9 +55,9 @@ locals {
 }
 
 # Fetch most recent COS image
-data "google_compute_image" "coreos" {
-  family  = "cos-109-lts"
-  project = "cos-cloud"
+data "google_compute_image" "ubuntu" {
+  family  = "ubuntu-2204-lts"
+  project = "ubuntu-os-cloud"
 }
 
 # Deploy app
@@ -75,7 +75,7 @@ resource "google_compute_instance_template" "application" {
   tags = local.application_tags
 
   labels = merge({
-    container-vm = data.google_compute_image.coreos.name
+    container-vm = data.google_compute_image.ubuntu.name
     version      = local.application_version
   }, local.application_labels)
 
@@ -86,7 +86,7 @@ resource "google_compute_instance_template" "application" {
   }
 
   disk {
-    source_image = data.google_compute_image.coreos.self_link
+    source_image = data.google_compute_image.ubuntu.self_link
     auto_delete  = true
     boot         = true
   }
