@@ -336,12 +336,10 @@ impl<TId, TTranform> Clone for ConnectedPeer<TId, TTranform> {
     }
 }
 
-// TODO: For now we only use these fields with debug
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct TunnelStats<TId> {
     public_key: String,
-    // peers_by_ip: HashMap<IpNetwork, PeerStats<TId>>,
     peer_connections: Vec<TId>,
 }
 
@@ -351,18 +349,10 @@ where
     TRoleState: RoleState,
 {
     pub fn stats(&self) -> TunnelStats<TRoleState::Id> {
-        // let peers_by_ip = self
-        //     .role_state
-        //     .lock()
-        //     .peers_by_ip
-        //     .iter()
-        //     .map(|(ip, peer)| (ip, peer.inner.stats()))
-        //     .collect();
         let peer_connections = self.peer_connections.lock().keys().cloned().collect();
 
         TunnelStats {
             public_key: Key::from(self.public_key).to_string(),
-            // peers_by_ip,
             peer_connections,
         }
     }

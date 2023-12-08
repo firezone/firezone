@@ -29,13 +29,11 @@ pub(crate) struct Peer<TId, TTransform> {
     pub transform: TTransform,
 }
 
-// TODO: For now we only use these fields with debug
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub(crate) struct PeerStats<TId> {
     pub allowed_ips: Vec<IpNetwork>,
     pub conn_id: TId,
-    // pub resources: HashMap<IpNetwork, ExpiryingResource>,
 }
 
 impl<TId, TTransform> Peer<TId, TTransform>
@@ -44,20 +42,10 @@ where
     TTransform: PacketTransform,
 {
     pub(crate) fn stats(&self) -> PeerStats<TId> {
-        // let resources = self.resources.read().as_ref().map_or_else(
-        //     || HashMap::new(),
-        //     |resources| {
-        //         resources
-        //             .iter()
-        //             .map(|(i, r)| (i.clone(), r.clone()))
-        //             .collect()
-        //     },
-        // );
         let allowed_ips = self.allowed_ips.read().iter().map(|(ip, _)| ip).collect();
         PeerStats {
             allowed_ips,
             conn_id: self.conn_id,
-            // resources,
         }
     }
 
