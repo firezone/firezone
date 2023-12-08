@@ -199,7 +199,7 @@ defmodule Web.Auth do
       get_load_balancer_ip_location(conn)
 
     context = %Auth.Context{
-      user_agent: conn.assigns.user_agent,
+      user_agent: Map.get(conn.assigns, :user_agent),
       remote_ip: conn.remote_ip,
       remote_ip_location_region: location_region,
       remote_ip_location_city: location_city,

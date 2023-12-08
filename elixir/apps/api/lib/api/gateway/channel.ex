@@ -76,7 +76,11 @@ defmodule API.Gateway.Channel do
     end
   end
 
-  def handle_info({:allow_access, attrs, {opentelemetry_ctx, opentelemetry_span_ctx}}, socket) do
+  def handle_info(
+        {:allow_access, {channel_pid, socket_ref}, attrs,
+         {opentelemetry_ctx, opentelemetry_span_ctx}},
+        socket
+      ) do
     OpenTelemetry.Ctx.attach(opentelemetry_ctx)
     OpenTelemetry.Tracer.set_current_span(opentelemetry_span_ctx)
 
@@ -85,17 +89,38 @@ defmodule API.Gateway.Channel do
         client_id: client_id,
         resource_id: resource_id,
         flow_id: flow_id,
-        authorization_expires_at: authorization_expires_at
+        authorization_expires_at: authorization_expires_at,
+        client_payload: payload
       } = attrs
 
       resource = Resources.fetch_resource_by_id!(resource_id)
 
+      ref = Ecto.UUID.generate()
+
       push(socket, "allow_access", %{
+        ref: ref,
         client_id: client_id,
         flow_id: flow_id,
         resource: Views.Resource.render(resource),
-        expires_at: DateTime.to_unix(authorization_expires_at, :second)
+        expires_at: DateTime.to_unix(authorization_expires_at, :second),
+        payload: payload
       })
+
+      Logger.debug("Awaiting gateway connection_ready message",
+        client_id: client_id,
+        resource_id: resource_id,
+        flow_id: flow_id,
+        ref: ref
+      )
+
+      refs =
+        Map.put(
+          socket.assigns.refs,
+          ref,
+          {channel_pid, socket_ref, resource_id, {opentelemetry_ctx, opentelemetry_span_ctx}}
+        )
+
+      socket = assign(socket, :refs, refs)
 
       {:noreply, socket}
     end
@@ -136,7 +161,7 @@ defmodule API.Gateway.Channel do
         resource_id: resource_id,
         flow_id: flow_id,
         authorization_expires_at: authorization_expires_at,
-        client_rtc_session_description: rtc_session_description,
+        client_payload: payload,
         client_preshared_key: preshared_key
       } = attrs
 
@@ -151,8 +176,7 @@ defmodule API.Gateway.Channel do
       {relay_hosting_type, relay_connection_type} =
         Gateways.relay_strategy([socket.assigns.gateway_group])
 
-      {:ok, relays} =
-        Relays.list_connected_relays_for_resource(resource, relay_hosting_type)
+      {:ok, relays} = Relays.list_connected_relays_for_resource(resource, relay_hosting_type)
 
       ref = Ecto.UUID.generate()
 
@@ -162,7 +186,7 @@ defmodule API.Gateway.Channel do
         actor: Views.Actor.render(client.actor),
         relays: Views.Relay.render_many(relays, authorization_expires_at, relay_connection_type),
         resource: Views.Resource.render(resource),
-        client: Views.Client.render(client, rtc_session_description, preshared_key),
+        client: Views.Client.render(client, payload, preshared_key),
         expires_at: DateTime.to_unix(authorization_expires_at, :second)
       })
 
@@ -191,7 +215,7 @@ defmodule API.Gateway.Channel do
         "connection_ready",
         %{
           "ref" => ref,
-          "gateway_rtc_session_description" => rtc_session_description
+          "gateway_payload" => payload
         },
         socket
       ) do
@@ -209,8 +233,8 @@ defmodule API.Gateway.Channel do
 
       send(
         channel_pid,
-        {:connect, socket_ref, resource_id, socket.assigns.gateway.public_key,
-         rtc_session_description, {opentelemetry_ctx, opentelemetry_span_ctx}}
+        {:connect, socket_ref, resource_id, socket.assigns.gateway.public_key, payload,
+         {opentelemetry_ctx, opentelemetry_span_ctx}}
       )
 
       Logger.debug("Gateway replied to the Client with :connect message",

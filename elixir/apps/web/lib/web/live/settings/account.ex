@@ -45,9 +45,7 @@ defmodule Web.Settings.Account do
           To disable your account and schedule it for deletion, please <.link
             class={link_style()}
             href="mailto:support@firezone.dev"
-          >
-        contact support
-      </.link>.
+          >contact support</.link>.
         </p>
       </:content>
     </.section>

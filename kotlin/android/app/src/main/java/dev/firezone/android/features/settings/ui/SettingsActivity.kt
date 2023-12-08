@@ -56,9 +56,6 @@ internal class SettingsActivity : AppCompatActivity() {
                 is SettingsViewModel.ViewAction.NavigateBack ->
                     finish()
                 is SettingsViewModel.ViewAction.FillSettings -> {
-                    binding.etAccountIdInput.apply {
-                        setText(action.accountId)
-                    }
                     binding.etAuthBaseUrlInput.apply {
                         setText(action.authBaseUrl)
                     }
@@ -74,14 +71,6 @@ internal class SettingsActivity : AppCompatActivity() {
     }
 
     private fun setupViews() {
-        binding.etAccountIdInput.apply {
-            imeOptions = EditorInfo.IME_ACTION_DONE
-            setOnClickListener { isCursorVisible = true }
-            doOnTextChanged { accountId, _, _, _ ->
-                viewModel.onValidateAccountId(accountId.toString())
-            }
-        }
-
         binding.etAuthBaseUrlInput.apply {
             imeOptions = EditorInfo.IME_ACTION_DONE
             setOnClickListener { isCursorVisible = true }

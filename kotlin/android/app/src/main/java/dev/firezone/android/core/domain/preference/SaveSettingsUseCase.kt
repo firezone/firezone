@@ -11,9 +11,8 @@ internal class SaveSettingsUseCase
         private val repository: PreferenceRepository,
     ) {
         operator fun invoke(
-            accountId: String,
             authBaseUrl: String,
             apiUrl: String,
             logFilter: String,
-        ): Flow<Unit> = repository.saveSettings(accountId, authBaseUrl, apiUrl, logFilter)
+        ): Flow<Unit> = repository.saveSettings(authBaseUrl, apiUrl, logFilter)
     }

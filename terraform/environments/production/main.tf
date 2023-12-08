@@ -814,6 +814,8 @@ module "ops" {
   slack_alerts_auth_token = var.slack_alerts_auth_token
   slack_alerts_channel    = var.slack_alerts_channel
 
+  pagerduty_auth_token = var.pagerduty_auth_token
+
   api_host = module.api.host
   web_host = module.web.host
 }

@@ -33,15 +33,6 @@ defmodule Domain.Resources.Resource.Changeset do
     )
   end
 
-  def finalize_create(%Resource{} = resource, ipv4, ipv6) do
-    resource
-    |> change()
-    |> put_change(:ipv4, ipv4)
-    |> put_change(:ipv6, ipv6)
-    |> unique_constraint(:ipv4, name: :resources_account_id_ipv4_index)
-    |> unique_constraint(:ipv6, name: :resources_account_id_ipv6_index)
-  end
-
   defp validate_address(changeset) do
     if has_errors?(changeset, :type) do
       changeset
@@ -53,6 +44,9 @@ defmodule Domain.Resources.Resource.Changeset do
         {_data_or_changes, :cidr} ->
           validate_cidr_address(changeset)
 
+        {_data_or_changes, :ip} ->
+          validate_ip_address(changeset)
+
         _other ->
           changeset
       end
@@ -60,12 +54,71 @@ defmodule Domain.Resources.Resource.Changeset do
   end
 
   defp validate_dns_address(changeset) do
-    validate_length(changeset, :address, min: 1, max: 253)
+    changeset
+    |> validate_length(:address, min: 1, max: 253)
+    |> validate_does_not_end_with(:address, "localhost",
+      message: "localhost can not be used, please add a DNS alias to /etc/hosts instead"
+    )
+    |> validate_format(:address, ~r/^([*?]\.)?[\p{L}0-9-]{1,63}(\.[\p{L}0-9-]{1,63})*$/iu)
   end
 
   defp validate_cidr_address(changeset) do
-    changeset = validate_and_normalize_cidr(changeset, :address)
+    changeset
+    |> validate_and_normalize_cidr(:address)
+    |> validate_not_in_cidr(:address, %Postgrex.INET{address: {0, 0, 0, 0}, netmask: 32},
+      message: "can not contain all IPv4 addresses"
+    )
+    |> validate_not_in_cidr(:address, %Postgrex.INET{address: {127, 0, 0, 0}, netmask: 8},
+      message: "can not contain loopback addresses"
+    )
+    |> validate_not_in_cidr(
+      :address,
+      %Postgrex.INET{
+        address: {0, 0, 0, 0, 0, 0, 0, 0},
+        netmask: 128
+      },
+      message: "can not contain all IPv6 addresses"
+    )
+    |> validate_not_in_cidr(
+      :address,
+      %Postgrex.INET{
+        address: {0, 0, 0, 0, 0, 0, 0, 1},
+        netmask: 128
+      },
+      message: "can not contain loopback addresses"
+    )
+    |> validate_address_is_not_in_private_range()
+  end
 
+  defp validate_ip_address(changeset) do
+    changeset
+    |> validate_and_normalize_ip(:address)
+    |> validate_not_in_cidr(:address, %Postgrex.INET{address: {0, 0, 0, 0}, netmask: 32},
+      message: "can not contain all IPv4 addresses"
+    )
+    |> validate_not_in_cidr(:address, %Postgrex.INET{address: {127, 0, 0, 0}, netmask: 8},
+      message: "can not contain loopback addresses"
+    )
+    |> validate_not_in_cidr(
+      :address,
+      %Postgrex.INET{
+        address: {0, 0, 0, 0, 0, 0, 0, 0},
+        netmask: 128
+      },
+      message: "can not contain all IPv6 addresses"
+    )
+    |> validate_not_in_cidr(
+      :address,
+      %Postgrex.INET{
+        address: {0, 0, 0, 0, 0, 0, 0, 1},
+        netmask: 128
+      },
+      message: "can not contain loopback addresses"
+    )
+    |> validate_address_is_not_in_private_range()
+  end
+
+  defp validate_address_is_not_in_private_range(changeset) do
     cond do
       has_errors?(changeset, :address) ->
         changeset
@@ -84,28 +137,6 @@ defmodule Domain.Resources.Resource.Changeset do
     end
   end
 
-  def put_resource_type(changeset) do
-    put_default_value(changeset, :type, fn _cs ->
-      address = get_field(changeset, :address)
-
-      if address_contains_cidr?(address) do
-        :cidr
-      else
-        :dns
-      end
-    end)
-  end
-
-  defp address_contains_cidr?(address) do
-    case Domain.Types.INET.cast(address) do
-      {:ok, _} ->
-        true
-
-      _ ->
-        false
-    end
-  end
-
   def update(%Resource{} = resource, attrs, %Auth.Subject{} = subject) do
     resource
     |> cast(attrs, @update_fields)
@@ -119,9 +150,7 @@ defmodule Domain.Resources.Resource.Changeset do
 
   defp changeset(changeset) do
     changeset
-    |> put_default_value(:name, from: :address)
     |> validate_length(:name, min: 1, max: 255)
-    |> put_resource_type()
     |> cast_embed(:filters, with: &cast_filter/2)
     |> unique_constraint(:ipv4, name: :resources_account_id_ipv4_index)
     |> unique_constraint(:ipv6, name: :resources_account_id_ipv6_index)

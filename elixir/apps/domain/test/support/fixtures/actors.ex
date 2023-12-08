@@ -16,8 +16,7 @@ defmodule Domain.Fixtures.Actors do
         Fixtures.Accounts.create_account(assoc_attrs)
       end)
 
-    {provider, attrs} =
-      Map.pop(attrs, :provider)
+    {provider, attrs} = Map.pop(attrs, :provider)
 
     {provider_identifier, attrs} =
       Map.pop_lazy(attrs, :provider_identifier, fn ->
@@ -98,8 +97,7 @@ defmodule Domain.Fixtures.Actors do
         Fixtures.Accounts.create_account(assoc_attrs)
       end)
 
-    {provider, attrs} =
-      Map.pop(attrs, :provider)
+    {provider, attrs} = Map.pop(attrs, :provider)
 
     {group_id, attrs} =
       pop_assoc_fixture_id(attrs, :group, fn assoc_attrs ->
