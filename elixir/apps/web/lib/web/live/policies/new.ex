@@ -37,7 +37,29 @@ defmodule Web.Policies.New do
       <:content>
         <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
           <h2 class="mb-4 text-xl font-bold text-neutral-900">Policy details</h2>
-          <.simple_form for={@form} phx-submit="submit" phx-change="validate">
+          <div
+            :if={@actor_groups == []}
+            class={[
+              "p-4 text-sm flash-error",
+              "text-red-800 bg-red-50"
+            ]}
+            role="alert"
+          >
+            <p class="text-sm font-semibold leading-6">
+              <.icon name="hero-exclamation-circle-mini" class="h-4 w-4" />
+              You have no groups to create policies for. You can create a group <.link
+                navigate={~p"/#{@account}/groups/new"}
+                class={link_style()}
+              >here</.link>.
+            </p>
+          </div>
+
+          <.simple_form
+            :if={@actor_groups != []}
+            for={@form}
+            phx-submit="submit"
+            phx-change="validate"
+          >
             <.base_error form={@form} field={:base} />
             <.input
               field={@form[:actor_group_id]}

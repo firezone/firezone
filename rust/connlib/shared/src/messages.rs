@@ -12,6 +12,8 @@ mod key;
 
 pub use key::{Key, SecretKey};
 
+use crate::Dname;
+
 #[derive(Hash, Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq)]
 pub struct GatewayId(Uuid);
 #[derive(Hash, Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq)]
@@ -92,7 +94,13 @@ pub struct RequestConnection {
     /// The preshared key the client generated for the connection that it is trying to establish.
     pub client_preshared_key: SecretKey,
     /// Client's local RTC Session Description that the client will use for this connection.
-    pub client_rtc_session_description: RTCIceParameters,
+    pub client_payload: ClientPayload,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+pub struct ClientPayload {
+    pub ice_parameters: RTCIceParameters,
+    pub domain: Option<Dname>,
 }
 
 /// Represent a request to reuse an existing gateway connection from a client to a given resource.
@@ -105,6 +113,8 @@ pub struct ReuseConnection {
     pub resource_id: ResourceId,
     /// Id of the gateway we want to reuse
     pub gateway_id: GatewayId,
+    /// Payload that the gateway will receive
+    pub payload: Option<Dname>,
 }
 
 // Custom implementation of partial eq to ignore client_rtc_sdp
@@ -123,23 +133,36 @@ pub enum ResourceDescription {
     Cidr(ResourceDescriptionCidr),
 }
 
+#[derive(Debug, Deserialize, Serialize, Clone, Hash, PartialEq, Eq)]
+pub struct DomainResponse {
+    pub domain: Dname,
+    pub address: Vec<IpAddr>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct ConnectionAccepted {
+    pub ice_parameters: RTCIceParameters,
+    pub domain_response: Option<DomainResponse>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct ResourceAccepted {
+    pub domain_response: DomainResponse,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub enum GatewayResponse {
+    ConnectionAccepted(ConnectionAccepted),
+    ResourceAccepted(ResourceAccepted),
+}
+
 /// Description of a resource that maps to a DNS record.
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, Hash)]
 pub struct ResourceDescriptionDns {
     /// Resource's id.
     pub id: ResourceId,
     /// Internal resource's domain name.
     pub address: String,
-    /// Resource's ipv4 mapping.
-    ///
-    /// Note that this is not the actual ipv4 for the resource not even wireguard's ipv4 for the resource.
-    /// This is just the mapping we use internally between a resource and its ip for intercepting packets.
-    pub ipv4: Ipv4Addr,
-    /// Resource's ipv6 mapping.
-    ///
-    /// Note that this is not the actual ipv6 for the resource not even wireguard's ipv6 for the resource.
-    /// This is just the mapping we use internally between a resource and its ip for intercepting packets.
-    pub ipv6: Ipv6Addr,
     /// Name of the resource.
     ///
     /// Used only for display.
@@ -149,28 +172,7 @@ pub struct ResourceDescriptionDns {
 impl ResourceDescription {
     pub fn dns_name(&self) -> Option<&str> {
         match self {
-            ResourceDescription::Dns(r) => Some(&r.name),
-            ResourceDescription::Cidr(_) => None,
-        }
-    }
-
-    pub fn ips(&self) -> Vec<IpNetwork> {
-        match self {
-            ResourceDescription::Dns(r) => vec![r.ipv4.into(), r.ipv6.into()],
-            ResourceDescription::Cidr(r) => vec![r.address],
-        }
-    }
-
-    pub fn ipv4(&self) -> Option<Ipv4Addr> {
-        match self {
-            ResourceDescription::Dns(r) => Some(r.ipv4),
-            ResourceDescription::Cidr(_) => None,
-        }
-    }
-
-    pub fn ipv6(&self) -> Option<Ipv6Addr> {
-        match self {
-            ResourceDescription::Dns(r) => Some(r.ipv6),
+            ResourceDescription::Dns(r) => Some(&r.address),
             ResourceDescription::Cidr(_) => None,
         }
     }
@@ -179,13 +181,6 @@ impl ResourceDescription {
         match self {
             ResourceDescription::Dns(r) => r.id,
             ResourceDescription::Cidr(r) => r.id,
-        }
-    }
-
-    pub fn contains(&self, ip: IpAddr) -> bool {
-        match self {
-            ResourceDescription::Dns(r) => r.ipv4 == ip || r.ipv6 == ip,
-            ResourceDescription::Cidr(r) => r.address.contains(ip),
         }
     }
 }

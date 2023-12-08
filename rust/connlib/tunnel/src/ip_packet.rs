@@ -170,6 +170,15 @@ impl<'a> MutableIpPacket<'a> {
         }
     }
 
+    #[inline]
+    pub(crate) fn set_src(&mut self, src: IpAddr) {
+        match (self, src) {
+            (Self::MutableIpv4Packet(p), IpAddr::V4(s)) => p.set_source(s),
+            (Self::MutableIpv6Packet(p), IpAddr::V6(s)) => p.set_source(s),
+            _ => {}
+        }
+    }
+
     pub(crate) fn set_len(&mut self, total_len: usize, payload_len: usize) {
         match self {
             Self::MutableIpv4Packet(p) => p.set_total_length(total_len as u16),
@@ -199,6 +208,11 @@ impl<'a> IpPacket<'a> {
         };
 
         Some(packet)
+    }
+
+    pub(crate) fn to_owned(&self) -> IpPacket<'static> {
+        // This should never fail as the provided buffer is a vec (unless oom)
+        IpPacket::owned(self.packet().to_vec()).unwrap()
     }
 
     pub(crate) fn version(&self) -> Version {

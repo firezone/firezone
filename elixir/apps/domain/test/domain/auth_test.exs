@@ -269,8 +269,7 @@ defmodule Domain.AuthTest do
     end
 
     test "ignores disabled providers" do
-      {provider, _bypass} =
-        Fixtures.Auth.start_and_create_google_workspace_provider()
+      {provider, _bypass} = Fixtures.Auth.start_and_create_google_workspace_provider()
 
       Domain.Fixture.update!(provider, %{
         disabled_at: DateTime.utc_now(),
@@ -283,8 +282,7 @@ defmodule Domain.AuthTest do
     end
 
     test "ignores non-custom provisioners" do
-      {provider, _bypass} =
-        Fixtures.Auth.start_and_create_google_workspace_provider()
+      {provider, _bypass} = Fixtures.Auth.start_and_create_google_workspace_provider()
 
       Domain.Fixture.update!(provider, %{
         provisioner: :manual,
@@ -297,8 +295,7 @@ defmodule Domain.AuthTest do
     end
 
     test "returns providers with tokens that will expire in ~1 hour" do
-      {provider, _bypass} =
-        Fixtures.Auth.start_and_create_google_workspace_provider()
+      {provider, _bypass} = Fixtures.Auth.start_and_create_google_workspace_provider()
 
       Domain.Fixture.update!(provider, %{
         adapter_state: %{
@@ -328,8 +325,7 @@ defmodule Domain.AuthTest do
     end
 
     test "ignores disabled providers" do
-      {provider, _bypass} =
-        Fixtures.Auth.start_and_create_google_workspace_provider()
+      {provider, _bypass} = Fixtures.Auth.start_and_create_google_workspace_provider()
 
       Domain.Fixture.update!(provider, %{
         disabled_at: DateTime.utc_now(),
@@ -342,8 +338,7 @@ defmodule Domain.AuthTest do
     end
 
     test "ignores non-custom provisioners" do
-      {provider, _bypass} =
-        Fixtures.Auth.start_and_create_google_workspace_provider()
+      {provider, _bypass} = Fixtures.Auth.start_and_create_google_workspace_provider()
 
       Domain.Fixture.update!(provider, %{
         provisioner: :manual,
@@ -362,8 +357,7 @@ defmodule Domain.AuthTest do
       eleven_minutes_ago = DateTime.utc_now() |> DateTime.add(-11, :minute)
       Domain.Fixture.update!(provider2, %{last_synced_at: eleven_minutes_ago})
 
-      assert {:ok, providers} =
-               list_providers_pending_sync_by_adapter(:google_workspace)
+      assert {:ok, providers} = list_providers_pending_sync_by_adapter(:google_workspace)
 
       assert Enum.map(providers, & &1.id) |> Enum.sort() ==
                Enum.sort([provider1.id, provider2.id])
@@ -2158,8 +2152,7 @@ defmodule Domain.AuthTest do
       redirect_uri = "https://example.com/"
       payload = {redirect_uri, code_verifier, "MyFakeCode"}
 
-      assert {:ok, %Auth.Subject{} = subject} =
-               sign_in(provider, payload, user_agent, remote_ip)
+      assert {:ok, %Auth.Subject{} = subject} = sign_in(provider, payload, user_agent, remote_ip)
 
       assert subject.account.id == account.id
       assert subject.actor.id == identity.actor_id
@@ -2192,8 +2185,7 @@ defmodule Domain.AuthTest do
       redirect_uri = "https://example.com/"
       payload = {redirect_uri, code_verifier, "MyFakeCode"}
 
-      assert {:ok, %Auth.Subject{} = subject} =
-               sign_in(provider, payload, user_agent, remote_ip)
+      assert {:ok, %Auth.Subject{} = subject} = sign_in(provider, payload, user_agent, remote_ip)
 
       one_week = 7 * 24 * 60 * 60
       assert_datetime_diff(subject.expires_at, DateTime.utc_now(), one_week)
@@ -2223,8 +2215,7 @@ defmodule Domain.AuthTest do
       redirect_uri = "https://example.com/"
       payload = {redirect_uri, code_verifier, "MyFakeCode"}
 
-      assert {:ok, %Auth.Subject{} = subject} =
-               sign_in(provider, payload, user_agent, remote_ip)
+      assert {:ok, %Auth.Subject{} = subject} = sign_in(provider, payload, user_agent, remote_ip)
 
       three_hours = 3 * 60 * 60
       assert_datetime_diff(subject.expires_at, DateTime.utc_now(), three_hours)
@@ -2369,8 +2360,7 @@ defmodule Domain.AuthTest do
       redirect_uri = "https://example.com/"
       payload = {redirect_uri, code_verifier, "MyFakeCode"}
 
-      assert {:ok, _subject} =
-               sign_in(provider, payload, user_agent, remote_ip)
+      assert {:ok, _subject} = sign_in(provider, payload, user_agent, remote_ip)
 
       assert updated_identity = Repo.one(Auth.Identity)
       assert updated_identity.last_seen_at != identity.last_seen_at

@@ -41,7 +41,6 @@ internal class SettingsViewModel
         private val actionMutableLiveData = MutableLiveData<ViewAction>()
         val actionLiveData: LiveData<ViewAction> = actionMutableLiveData
 
-        private var accountId = ""
         private var authBaseUrl = ""
         private var apiUrl = ""
         private var logFilter = ""
@@ -51,7 +50,6 @@ internal class SettingsViewModel
                 getConfigUseCase().collect {
                     actionMutableLiveData.postValue(
                         ViewAction.FillSettings(
-                            it.accountId.orEmpty(),
                             it.authBaseUrl.orEmpty(),
                             it.apiUrl.orEmpty(),
                             it.logFilter.orEmpty(),
@@ -75,7 +73,7 @@ internal class SettingsViewModel
 
         fun onSaveSettingsCompleted() {
             viewModelScope.launch {
-                saveSettingsUseCase(accountId, authBaseUrl, apiUrl, logFilter).collect {
+                saveSettingsUseCase(authBaseUrl, apiUrl, logFilter).collect {
                     actionMutableLiveData.postValue(ViewAction.NavigateBack)
                 }
             }
@@ -83,11 +81,6 @@ internal class SettingsViewModel
 
         fun onCancel() {
             actionMutableLiveData.postValue(ViewAction.NavigateBack)
-        }
-
-        fun onValidateAccountId(accountId: String) {
-            this.accountId = accountId
-            onFieldUpdated()
         }
 
         fun onValidateAuthBaseUrl(authBaseUrl: String) {
@@ -182,9 +175,7 @@ internal class SettingsViewModel
 
         private fun areFieldsValid(): Boolean {
             // This comes from the backend account slug validator at elixir/apps/domain/lib/domain/accounts/account/changeset.ex
-            val accountIdRegex = Regex("^[a-z0-9_]{3,100}\$")
-            return accountIdRegex.matches(accountId) &&
-                URLUtil.isValidUrl(authBaseUrl) &&
+            return URLUtil.isValidUrl(authBaseUrl) &&
                 isUriValid(apiUrl) &&
                 logFilter.isNotBlank()
         }
@@ -207,7 +198,6 @@ internal class SettingsViewModel
             object NavigateBack : ViewAction()
 
             data class FillSettings(
-                val accountId: String,
                 val authBaseUrl: String,
                 val apiUrl: String,
                 val logFilter: String,

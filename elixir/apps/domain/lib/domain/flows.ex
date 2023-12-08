@@ -110,8 +110,7 @@ defmodule Domain.Flows do
   end
 
   def upsert_activities(activities) do
-    {num, _} =
-      Repo.insert_all(Activity, activities, on_conflict: :nothing)
+    {num, _} = Repo.insert_all(Activity, activities, on_conflict: :nothing)
 
     {:ok, num}
   end

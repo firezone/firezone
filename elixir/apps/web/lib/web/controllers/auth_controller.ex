@@ -30,8 +30,7 @@ defmodule Web.AuthController do
           }
         } = params
       ) do
-    redirect_params =
-      take_non_empty_params(params, ["client_platform", "client_csrf_token"])
+    redirect_params = take_non_empty_params(params, ["client_platform", "client_csrf_token"])
 
     with {:ok, provider} <- Domain.Auth.fetch_active_provider_by_id(provider_id),
          {:ok, subject} <-

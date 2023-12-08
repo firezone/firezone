@@ -21,13 +21,14 @@ connlib-shared = { workspace = true }
 libc = { version = "0.2", default-features = false, features = ["std", "const-extern-fn", "extra_traits"] }
 ip_network = { version = "0.4", default-features = false }
 ip_network_table = { version = "0.2", default-features = false }
-domain = "0.9"
+domain = { workspace = true }
 boringtun = { workspace = true }
 chrono = { workspace = true }
 pnet_packet = { version = "0.34" }
 futures-bounded = { workspace = true }
 hickory-resolver = { workspace = true }
 arc-swap = "1.6.0"
+bimap = "0.6"
 
 # TODO: research replacing for https://github.com/algesten/str0m
 webrtc = { workspace = true }
@@ -39,7 +40,7 @@ log = "0.4"
 [target.'cfg(target_os = "linux")'.dependencies]
 netlink-packet-route = { version = "0.17", default-features = false }
 netlink-packet-core = { version = "0.7", default-features = false }
-rtnetlink = { version = "0.13", default-features = false, features = ["tokio_socket"] }
+rtnetlink = { version = "0.13" }
 
 # Android tunnel dependencies
 [target.'cfg(target_os = "android")'.dependencies]

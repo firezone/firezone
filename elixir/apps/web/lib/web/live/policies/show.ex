@@ -38,7 +38,7 @@ defmodule Web.Policies.Show do
     <.section>
       <:title>
         <%= @page_title %>: <code><%= @policy.id %></code>
-        <span :if={not is_nil(@policy.disabled_at)} class="text-orange-600">(disabled)</span>
+        <span :if={not is_nil(@policy.disabled_at)} class="text-primary-600">(disabled)</span>
         <span :if={not is_nil(@policy.deleted_at)} class="text-red-600">(deleted)</span>
       </:title>
       <:action :if={is_nil(@policy.deleted_at)}>
