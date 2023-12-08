@@ -1,13 +1,11 @@
 defmodule Domain.Ops do
-  def initialize_account(
-        %{
-          account_name: account_name,
-          account_slug: account_slug,
-          account_admin_name: account_admin_name,
-          account_admin_email: account_admin_email
-        }
-      ) do
-    Domain.Repo.transaction fn ->
+  def provision_account(%{
+        account_name: account_name,
+        account_slug: account_slug,
+        account_admin_name: account_admin_name,
+        account_admin_email: account_admin_email
+      }) do
+    Domain.Repo.transaction(fn ->
       {:ok, account} = Domain.Accounts.create_account(%{name: account_name, slug: account_slug})
 
       {:ok, magic_link_provider} =
@@ -25,6 +23,6 @@ defmodule Domain.Ops do
           provider_identifier: account_admin_email,
           provider_identifier_confirmation: account_admin_email
         })
-    end
+    end)
   end
 end

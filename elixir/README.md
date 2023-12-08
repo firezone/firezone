@@ -284,6 +284,15 @@ Interactive Elixir (1.15.2) - press Ctrl+C to exit (type h() ENTER for help)
 iex(web@web-w2f6.us-east1-d.c.firezone-staging.internal)1>
 ```
 
+### Quickly provisioning an account
+
+Useful for onboarding beta customers. See the `Domain.Ops.provision_account/1`
+function:
+
+```elixir
+iex> Domain.Ops.provision_account(%{account_name: "Customer Account", slug: "customer_account", account_admin_name: "Test User", account_email: "test@firezone.localhost"})
+```
+
 ### Creating an account on staging instance using CLI
 
 ```elixir
