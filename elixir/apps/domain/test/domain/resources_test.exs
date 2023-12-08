@@ -275,6 +275,27 @@ defmodule Domain.ResourcesTest do
       assert fetch_and_authorize_resource_by_id(resource.id, subject) == {:error, :not_found}
     end
 
+    test "does not authorize using disabled policies", %{
+      account: account,
+      actor: actor,
+      subject: subject
+    } do
+      resource = Fixtures.Resources.create_resource(account: account)
+      actor_group = Fixtures.Actors.create_group(account: account)
+      Fixtures.Actors.create_membership(account: account, actor: actor, group: actor_group)
+
+      policy =
+        Fixtures.Policies.create_policy(
+          account: account,
+          actor_group: actor_group,
+          resource: resource
+        )
+
+      {:ok, _policy} = Domain.Policies.disable_policy(policy, subject)
+
+      assert fetch_and_authorize_resource_by_id(resource.id, subject) == {:error, :not_found}
+    end
+
     test "does not return resources in other accounts", %{subject: subject} do
       resource = Fixtures.Resources.create_resource()
       assert fetch_and_authorize_resource_by_id(resource.id, subject) == {:error, :not_found}
@@ -352,6 +373,27 @@ defmodule Domain.ResourcesTest do
       )
 
       {:ok, _resource} = delete_resource(resource, subject)
+
+      assert list_authorized_resources(subject) == {:ok, []}
+    end
+
+    test "does not list resources authorized by disabled policy", %{
+      account: account,
+      actor: actor,
+      subject: subject
+    } do
+      resource = Fixtures.Resources.create_resource(account: account)
+      actor_group = Fixtures.Actors.create_group(account: account)
+      Fixtures.Actors.create_membership(account: account, actor: actor, group: actor_group)
+
+      policy =
+        Fixtures.Policies.create_policy(
+          account: account,
+          actor_group: actor_group,
+          resource: resource
+        )
+
+      {:ok, _policy} = Domain.Policies.disable_policy(policy, subject)
 
       assert list_authorized_resources(subject) == {:ok, []}
     end
