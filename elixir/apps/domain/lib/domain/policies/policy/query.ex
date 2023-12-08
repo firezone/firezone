@@ -14,6 +14,10 @@ defmodule Domain.Policies.Policy.Query do
     |> where([resource: resource], is_nil(resource.deleted_at))
   end
 
+  def not_disabled(queryable \\ not_deleted()) do
+    where(queryable, [policies: policies], is_nil(policies.disabled_at))
+  end
+
   def by_id(queryable \\ not_deleted(), id) do
     where(queryable, [policies: policies], policies.id == ^id)
   end
