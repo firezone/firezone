@@ -844,7 +844,8 @@ defmodule Web.CoreComponents do
         "flex items-center justify-center",
         "font-medium text-sm text-white",
         "rounded-full",
-        (@connected? && "bg-green-500") || "bg-orange-400 cursor-progress"
+        "transition-colors",
+        (@connected? && "bg-accent-500") || "bg-orange-400 cursor-progress"
       ]}
       navigate={@navigate}
       {
