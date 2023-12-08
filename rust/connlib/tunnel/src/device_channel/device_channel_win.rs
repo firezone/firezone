@@ -1,5 +1,6 @@
 use crate::device_channel::Packet;
 use crate::Device;
+use crate::DnsFallbackStrategy;
 use connlib_shared::{messages::Interface, Callbacks, Result};
 use ip_network::IpNetwork;
 use std::task::{Context, Poll};

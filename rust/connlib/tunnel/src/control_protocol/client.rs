@@ -288,11 +288,12 @@ where
 
                 send_dns_answer(&mut role_state, Rtype::Aaaa, device, &resource, &ips);
             }
-        });
 
-        role_state
-            .dns_resources_internal_ips
-            .insert(resource_description.clone(), addrs.clone());
+            dev.role_state
+                .lock()
+                .dns_resources_internal_ips
+                .insert(resource, ips);
+        });
 
         let ips: Vec<IpNetwork> = addrs.into_iter().map(Into::into).collect();
         for ip in &ips {
