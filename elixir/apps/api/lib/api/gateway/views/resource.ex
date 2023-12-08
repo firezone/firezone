@@ -22,10 +22,14 @@ defmodule API.Gateway.Views.Resource do
   end
 
   def render(%Resources.Resource{type: :ip} = resource) do
+    {:ok, inet} = Domain.Types.IP.cast(resource.address)
+    netmask = Domain.Types.CIDR.max_netmask(inet)
+    address = to_string(%{inet | netmask: netmask})
+
     %{
       id: resource.id,
       type: :cidr,
-      address: "#{resource.address}/32",
+      address: address,
       name: resource.name,
       filters: Enum.flat_map(resource.filters, &render_filter/1)
     }

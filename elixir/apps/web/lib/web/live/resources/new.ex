@@ -47,7 +47,7 @@ defmodule Web.Resources.New do
             />
 
             <div>
-              <label for="resource_type" class="block mb-2 text-sm font-medium text-gray-900">
+              <label for="resource_type" class="block mb-2 text-sm font-medium text-neutral-900">
                 Type
               </label>
               <div class="flex text-sm leading-6 text-zinc-600">
