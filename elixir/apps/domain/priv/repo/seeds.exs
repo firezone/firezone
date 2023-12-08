@@ -469,6 +469,7 @@ IO.puts("")
   Resources.create_resource(
     %{
       type: :dns,
+      name: "t.firez.one",
       address: "t.firez.one",
       connections: [%{gateway_group_id: gateway_group.id}],
       filters: [%{protocol: :all}]
@@ -480,6 +481,7 @@ IO.puts("")
   Resources.create_resource(
     %{
       type: :dns,
+      name: "ping.firez.one",
       address: "ping.firez.one",
       connections: [%{gateway_group_id: gateway_group.id}],
       filters: [%{protocol: :all}]
@@ -491,6 +493,7 @@ IO.puts("")
   Resources.create_resource(
     %{
       type: :dns,
+      name: "ip6only",
       address: "ip6only.me",
       connections: [%{gateway_group_id: gateway_group.id}],
       filters: [%{protocol: :all}]
