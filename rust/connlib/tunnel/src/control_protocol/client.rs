@@ -250,7 +250,7 @@ where
         let resource_description = self
             .role_state
             .lock()
-            .resources_id
+            .resource_ids
             .get(resource_id)
             .ok_or(Error::UnknownResource)?
             .clone();

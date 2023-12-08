@@ -79,10 +79,10 @@ where
 
         let mut role_state = self.role_state.lock();
         role_state
-            .resources_id
+            .resource_ids
             .insert(resource_description.id(), resource_description);
         self.callbacks
-            .on_update_resources(role_state.resources_id.values().cloned().collect())?;
+            .on_update_resources(role_state.resource_ids.values().cloned().collect())?;
         Ok(())
     }
 
@@ -170,7 +170,7 @@ pub struct ClientState {
     pub dns_resources_internal_ips: HashMap<DnsResource, Vec<IpAddr>>,
     dns_resources: HashMap<String, ResourceDescriptionDns>,
     cidr_resources: IpNetworkTable<ResourceDescriptionCidr>,
-    pub resources_id: HashMap<ResourceId, ResourceDescription>,
+    pub resource_ids: HashMap<ResourceId, ResourceDescription>,
     pub deferred_dns_queries: HashMap<(DnsResource, Rtype), IpPacket<'static>>,
 
     #[allow(clippy::type_complexity)]
@@ -241,7 +241,7 @@ impl ClientState {
         expected_attempts: usize,
     ) -> Result<Option<ReuseConnection>, ConnlibError> {
         let desc = self
-            .resources_id
+            .resource_ids
             .get(&resource)
             .ok_or(Error::UnknownResource)?;
 
@@ -438,7 +438,7 @@ impl ClientState {
         };
 
         let desc = self
-            .resources_id
+            .resource_ids
             .get(&resource)
             .ok_or(Error::ControlProtocolError)?;
 
@@ -505,7 +505,7 @@ impl ClientState {
         connected_peers: &IpNetworkTable<ConnectedPeer<GatewayId, PacketTransformClient>>,
         domain: &Option<Dname>,
     ) -> bool {
-        let Some(resource) = self.resources_id.get(&resource) else {
+        let Some(resource) = self.resource_ids.get(&resource) else {
             return false;
         };
 
@@ -601,7 +601,7 @@ impl Default for ClientState {
             dns_resources_internal_ips: Default::default(),
             dns_resources: Default::default(),
             cidr_resources: IpNetworkTable::new(),
-            resources_id: Default::default(),
+            resource_ids: Default::default(),
             peers_by_ip: IpNetworkTable::new(),
             deferred_dns_queries: Default::default(),
         }
@@ -651,7 +651,7 @@ impl RoleState for ClientState {
 
                     return Poll::Ready(Event::ConnectionIntent {
                         resource: self
-                            .resources_id
+                            .resource_ids
                             .get(&resource)
                             .expect("inconsistent internal state")
                             .clone(),
