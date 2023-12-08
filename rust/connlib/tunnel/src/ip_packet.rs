@@ -247,13 +247,6 @@ impl<'a> IpPacket<'a> {
             .flatten()
     }
 
-    pub(crate) fn source(&self) -> IpAddr {
-        match self {
-            Self::Ipv4Packet(p) => p.get_source().into(),
-            Self::Ipv6Packet(p) => p.get_source().into(),
-        }
-    }
-
     pub(crate) fn destination(&self) -> IpAddr {
         match self {
             Self::Ipv4Packet(p) => p.get_destination().into(),

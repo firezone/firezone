@@ -272,8 +272,6 @@ where
             })
             .collect();
 
-        tracing::trace!(?addrs, ?domain_response, "!!!!!!!!!!!!!!!!!");
-
         let dev = Arc::clone(self);
         let ips = addrs.clone();
         let resource = resource_description.clone();
