@@ -14,12 +14,10 @@ defmodule Web.Clients.Show do
           socket,
           client: client,
           flows: flows,
-          todos_enabled?: Config.todos_enabled?(),
           flow_activities_enabled?: Config.flow_activities_enabled?()
         )
 
-      {:ok, socket,
-       temporary_assigns: [flows: [], todos_enabled?: nil, flow_activities_enabled?: nil]}
+      {:ok, socket}
     else
       {:error, _reason} -> raise Web.LiveErrors.NotFoundError
     end
@@ -76,10 +74,6 @@ defmodule Web.Clients.Show do
             <:value>
               <.relative_datetime datetime={@client.last_seen_at} />
             </:value>
-          </.vertical_table_row>
-          <.vertical_table_row :if={@todos_enabled?}>
-            <:label>Transfer</:label>
-            <:value>TODO</:value>
           </.vertical_table_row>
           <.vertical_table_row>
             <:label>Last Seen Remote IP</:label>
