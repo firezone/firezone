@@ -4,17 +4,13 @@ package dev.firezone.android.features.auth.ui
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
-import android.widget.Toast
 import androidx.activity.viewModels
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
-import androidx.browser.customtabs.CustomTabsIntent
 import dagger.hilt.android.AndroidEntryPoint
 import dev.firezone.android.R
 import dev.firezone.android.core.presentation.MainActivity
 import dev.firezone.android.databinding.ActivityAuthBinding
-import dev.firezone.android.util.CustomTabsHelper
-import java.lang.Exception
 
 @AndroidEntryPoint
 class AuthActivity : AppCompatActivity(R.layout.activity_auth) {
@@ -48,30 +44,8 @@ class AuthActivity : AppCompatActivity(R.layout.activity_auth) {
     }
 
     private fun setupWebView(url: String) {
-        if (CustomTabsHelper.checkIfChromeIsInstalled(this)) {
-            val intent = CustomTabsIntent.Builder().build()
-            val packageName = CustomTabsHelper.getPackageNameToUse(this)
-            if (CustomTabsHelper.checkIfChromeAppIsDefault()) {
-                if (packageName != null) {
-                    intent.intent.setPackage(packageName)
-                }
-            } else {
-                intent.intent.setPackage(CustomTabsHelper.STABLE_PACKAGE)
-            }
-
-            try {
-                intent.launchUrl(this@AuthActivity, Uri.parse(url))
-            } catch (e: Exception) {
-                showChromeAppRequiredError()
-            }
-        } else {
-            showChromeAppRequiredError()
-        }
-    }
-
-    private fun showChromeAppRequiredError() {
-        Toast.makeText(this, getString(R.string.signing_in_requires_chrome_browser), Toast.LENGTH_LONG).show()
-        navigateToSignIn()
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+        startActivity(intent)
     }
 
     private fun navigateToSignIn() {
