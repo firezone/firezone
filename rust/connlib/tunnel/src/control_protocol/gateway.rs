@@ -190,7 +190,7 @@ where
             peer_config.clone(),
             client_id,
             self.rate_limiter.clone(),
-            PacketTransformGateway::new(),
+            PacketTransformGateway::default(),
         ));
 
         for address in resource_addresses {

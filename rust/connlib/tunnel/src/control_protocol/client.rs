@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{net::IpAddr, sync::Arc};
 
 use boringtun::x25519::PublicKey;
 use connlib_shared::{
@@ -10,6 +10,7 @@ use connlib_shared::{
     Callbacks,
 };
 use domain::base::Rtype;
+use ip_network::IpNetwork;
 use secrecy::Secret;
 use webrtc::ice_transport::{
     ice_parameters::RTCIceParameters, ice_role::RTCIceRole,
@@ -19,6 +20,7 @@ use webrtc::ice_transport::{
 use crate::{
     client::DnsResource,
     control_protocol::{new_ice_connection, IceConnection},
+    device_channel::Device,
     dns,
     peer::PacketTransformClient,
     PEER_QUEUE_SIZE,
@@ -136,7 +138,7 @@ where
         ice: Arc<RTCIceTransport>,
         domain_response: Option<DomainResponse>,
     ) -> Result<()> {
-        let mut peer_config = self
+        let peer_config = self
             .role_state
             .lock()
             .create_peer_config_for_new_connection(
@@ -151,83 +153,14 @@ where
             peer_config.clone(),
             gateway_id,
             self.rate_limiter.clone(),
-            PacketTransformClient::new(),
+            Default::default(),
         ));
 
-        if let Some(domain_response) = domain_response {
-            let resource_description = self
-                .role_state
-                .lock()
-                .resources_id
-                .get(&resource_id)
-                .ok_or(Error::UnknownResource)?
-                .clone();
-
-            let ResourceDescription::Dns(resource_description) = resource_description else {
-                // We should never get a domain_response for a CIDR resource!
-                return Err(Error::ControlProtocolError);
-            };
-            let resource_description =
-                DnsResource::from_description(&resource_description, domain_response.domain);
-            {
-                let mut role_state = self.role_state.lock();
-                let addrs: Vec<_> = domain_response
-                    .address
-                    .iter()
-                    .filter_map(|addr| {
-                        peer.transform
-                            .get_or_assign_translation(addr, &mut role_state.ip_provider)
-                    })
-                    .collect();
-
-                // TODO: we need to readd this routes when the fd changes
-                {
-                    let dev = Arc::clone(self);
-                    let ips = addrs.clone();
-                    tokio::spawn(async move {
-                        for ip in ips {
-                            if let Err(e) = dev.add_route(ip.into()).await {
-                                tracing::error!(err = ?e, "add route failed");
-                            }
-                        }
-                    });
-                }
-
-                role_state
-                    .dns_resources_internal_ips
-                    .insert(resource_description.clone(), addrs.clone());
-                let packet = role_state
-                    .local_dns_queries
-                    .remove(&(resource_description.clone(), Rtype::Aaaa));
-                if let Some(packet) = packet {
-                    let packet = dns::create_local_answer(&addrs, packet);
-                    if let Some(device) = self.device.load().clone() {
-                        if let Some(packet) = packet {
-                            device.write(packet);
-                        }
-                    }
-                }
-
-                let packet = role_state
-                    .local_dns_queries
-                    .remove(&(resource_description.clone(), Rtype::A));
-                if let Some(packet) = packet {
-                    let packet = dns::create_local_answer(&addrs, packet);
-                    if let Some(device) = self.device.load().clone() {
-                        if let Some(packet) = packet {
-                            device.write(packet);
-                        }
-                    }
-                }
-
-                for ip in addrs {
-                    let ip = ip.into();
-                    peer.add_allowed_ip(ip);
-                    // TODO: change me :(
-                    peer_config.ips.push(ip);
-                }
-            }
-        }
+        let peer_ips = if let Some(domain_response) = domain_response {
+            self.dns_response(&resource_id, &domain_response, &peer)?
+        } else {
+            peer_config.ips
+        };
 
         let (peer_sender, peer_receiver) = tokio::sync::mpsc::channel(PEER_QUEUE_SIZE);
 
@@ -239,13 +172,11 @@ where
             peer_receiver,
         );
 
-        tracing::trace!(?peer_config.ips, "peer config");
-
         // Partial reads of peers_by_ip can be problematic in the very unlikely case of an expiration
         // before inserting finishes.
         insert_peers(
             &mut self.role_state.lock().peers_by_ip,
-            &peer_config.ips,
+            &peer_ips,
             ConnectedPeer {
                 inner: peer,
                 channel: peer_sender,
@@ -310,6 +241,80 @@ where
         Ok(())
     }
 
+    fn dns_response(
+        self: &Arc<Self>,
+        resource_id: &ResourceId,
+        domain_response: &DomainResponse,
+        peer: &Peer<GatewayId, PacketTransformClient>,
+    ) -> Result<Vec<IpNetwork>> {
+        let resource_description = self
+            .role_state
+            .lock()
+            .resources_id
+            .get(resource_id)
+            .ok_or(Error::UnknownResource)?
+            .clone();
+
+        let ResourceDescription::Dns(resource_description) = resource_description else {
+            // We should never get a domain_response for a CIDR resource!
+            return Err(Error::ControlProtocolError);
+        };
+        let resource_description =
+            DnsResource::from_description(&resource_description, domain_response.domain.clone());
+
+        let mut role_state = self.role_state.lock();
+        let addrs: Vec<_> = domain_response
+            .address
+            .iter()
+            .filter_map(|addr| {
+                peer.transform
+                    .get_or_assign_translation(addr, &mut role_state.ip_provider)
+            })
+            .collect();
+
+        let dev = Arc::clone(self);
+        let ips = addrs.clone();
+        tokio::spawn(async move {
+            for ip in ips {
+                if let Err(e) = dev.add_route(ip.into()).await {
+                    tracing::error!(err = ?e, "add route failed");
+                }
+            }
+        });
+
+        role_state
+            .dns_resources_internal_ips
+            .insert(resource_description.clone(), addrs.clone());
+
+        let device = self.device.load();
+        let device = device
+            .as_ref()
+            .expect("As the tunnel is started we should always have a loaded device");
+
+        send_dns_answer(
+            &mut role_state,
+            Rtype::A,
+            device,
+            &resource_description,
+            &addrs,
+        );
+
+        send_dns_answer(
+            &mut role_state,
+            Rtype::Aaaa,
+            device,
+            &resource_description,
+            &addrs,
+        );
+
+        let ips: Vec<IpNetwork> = addrs.into_iter().map(Into::into).collect();
+        for ip in &ips {
+            peer.add_allowed_ip(*ip);
+        }
+
+        Ok(ips)
+    }
+
     #[tracing::instrument(level = "trace", skip(self))]
     pub fn received_domain_parameters(
         self: &Arc<Self>,
@@ -322,23 +327,9 @@ where
             .gateway_by_resource(&resource_id)
             .ok_or(Error::UnknownResource)?;
 
-        let resource_description = self
+        let Some(peer) = self
             .role_state
             .lock()
-            .resources_id
-            .get(&resource_id)
-            .ok_or(Error::UnknownResource)?
-            .clone();
-        let ResourceDescription::Dns(resource_description) = resource_description else {
-            return Err(Error::ControlProtocolError);
-        };
-
-        let resource_description =
-            DnsResource::from_description(&resource_description, domain_response.domain);
-
-        let mut role_state = self.role_state.lock();
-
-        let Some(peer) = role_state
             .peers_by_ip
             .iter_mut()
             .find_map(|(_, p)| (p.inner.conn_id == gateway_id).then_some(p.clone()))
@@ -346,79 +337,28 @@ where
             return Err(Error::ControlProtocolError);
         };
 
-        let mut ips = Vec::new();
-
-        for ip in domain_response.address {
-            let Some(ip) = peer
-                .inner
-                .transform
-                .get_or_assign_translation(&ip, &mut role_state.ip_provider)
-            else {
-                continue;
-            };
-            let ip = ip.into();
-            peer.inner.add_allowed_ip(ip);
-            role_state.peers_by_ip.insert(ip, peer.clone());
-            ips.push(ip);
-        }
-        {
-            let dev = Arc::clone(self);
-            let ips = ips.clone();
-            tokio::spawn(async move {
-                for ip in ips {
-                    if let Err(e) = dev.add_route(ip).await {
-                        tracing::error!(err = ?e, "add route failed");
-                    }
-                }
-            });
-        }
-
-        role_state.dns_resources_internal_ips.insert(
-            resource_description.clone(),
-            ips.iter()
-                .map(|ip| ip.network_address())
-                .collect::<Vec<_>>(),
-        );
-
-        let packet = role_state
-            .local_dns_queries
-            .remove(&(resource_description.clone(), Rtype::Aaaa));
-        if let Some(packet) = packet {
-            let packet = dns::create_local_answer(
-                &ips.iter()
-                    .map(|ip| ip.network_address())
-                    .collect::<Vec<_>>(),
-                packet,
-            );
-            if let Some(device) = self.device.load().clone() {
-                if let Some(packet) = packet {
-                    if let Err(e) = device.write(packet) {
-                        // We can drop because then we will just recieve another query
-                        tracing::error!(err = ?e, "failed to write dns answer");
-                    }
-                }
-            }
-        }
-
-        let packet = role_state
-            .local_dns_queries
-            .remove(&(resource_description, Rtype::A));
-        if let Some(packet) = packet {
-            let packet = dns::create_local_answer(
-                &ips.iter()
-                    .map(|ip| ip.network_address())
-                    .collect::<Vec<_>>(),
-                packet,
-            );
-            if let Some(device) = self.device.load().clone() {
-                if let Some(packet) = packet {
-                    if let Err(e) = device.write(packet) {
-                        // We can drop because then we will just recieve another query
-                        tracing::error!(err = ?e, "failed to write dns answer");
-                    }
-                }
-            }
-        }
+        let peer_ips = self.dns_response(&resource_id, &domain_response, &peer.inner)?;
+        insert_peers(&mut self.role_state.lock().peers_by_ip, &peer_ips, peer);
         Ok(())
+    }
+}
+
+fn send_dns_answer(
+    role_state: &mut ClientState,
+    qtype: Rtype,
+    device: &Device,
+    resource_description: &DnsResource,
+    addrs: &[IpAddr],
+) {
+    let packet = role_state
+        .local_dns_queries
+        .remove(&(resource_description.clone(), qtype));
+    if let Some(packet) = packet {
+        let Some(packet) = dns::create_local_answer(addrs, packet) else {
+            return;
+        };
+        if let Err(e) = device.write(packet) {
+            tracing::error!(err = ?e, "error writing packet: {e:#?}");
+        }
     }
 }

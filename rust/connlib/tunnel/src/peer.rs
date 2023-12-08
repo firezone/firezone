@@ -121,7 +121,7 @@ where
     /// Sends the given packet to this peer by encapsulating it in a wireguard packet.
     pub(crate) fn encapsulate(
         &self,
-        mut packet: MutableIpPacket,
+        packet: MutableIpPacket,
         buf: &mut [u8],
     ) -> Result<Option<Bytes>> {
         let Some(packet) = self.transform.packet_transform(packet) else {
@@ -201,25 +201,28 @@ pub struct PacketTransformGateway {
     resources: RwLock<IpNetworkTable<ExpiryingResource>>,
 }
 
+impl Default for PacketTransformGateway {
+    fn default() -> Self {
+        Self {
+            resources: RwLock::new(IpNetworkTable::new()),
+        }
+    }
+}
+
+#[derive(Default)]
 pub struct PacketTransformClient {
     // TODO: we need to refresh the translations ips periodically, just add a timer to resend allow access
     translations: RwLock<BiMap<IpAddr, IpAddr>>,
 }
 
 impl PacketTransformClient {
-    pub fn new() -> PacketTransformClient {
-        Self {
-            translations: RwLock::new(BiMap::new()),
-        }
-    }
-
     pub fn get_or_assign_translation(
         &self,
         external_ip: &IpAddr,
         ip_provider: &mut IpProvider,
     ) -> Option<IpAddr> {
         let mut translations = self.translations.write();
-        if let Some(internal_ip) = translations.get_by_right(&external_ip) {
+        if let Some(internal_ip) = translations.get_by_right(external_ip) {
             return Some(*internal_ip);
         }
         let internal_ip = match external_ip {
@@ -232,12 +235,6 @@ impl PacketTransformClient {
 }
 
 impl PacketTransformGateway {
-    pub fn new() -> PacketTransformGateway {
-        Self {
-            resources: RwLock::new(IpNetworkTable::new()),
-        }
-    }
-
     pub(crate) fn is_emptied(&self) -> bool {
         self.resources.read().is_empty()
     }
@@ -281,7 +278,7 @@ impl PacketTransform for PacketTransformGateway {
             Ok((packet, *addr))
         } else {
             tracing::warn!(%dst, "unallowed packet");
-            return Err(Error::InvalidDst);
+            Err(Error::InvalidDst)
         }
     }
 
@@ -322,13 +319,9 @@ impl PacketTransform for PacketTransformClient {
 }
 
 #[inline(always)]
-fn make_packet<'a, 'b>(packet: &'a mut [u8], dst_addr: &'b IpAddr) -> device_channel::Packet<'a> {
+fn make_packet<'a>(packet: &'a mut [u8], dst_addr: &IpAddr) -> device_channel::Packet<'a> {
     match dst_addr {
         IpAddr::V4(_) => device_channel::Packet::Ipv4(Cow::Borrowed(packet)),
         IpAddr::V6(_) => device_channel::Packet::Ipv6(Cow::Borrowed(packet)),
     }
-}
-
-fn get_matching_version_ip(addr: &IpAddr, ip: &IpAddr) -> Option<IpAddr> {
-    ((addr.is_ipv4() && ip.is_ipv4()) || (addr.is_ipv6() && ip.is_ipv6())).then_some(*ip)
 }

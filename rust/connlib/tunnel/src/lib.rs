@@ -101,7 +101,7 @@ impl Default for DnsFallbackStrategy {
     }
 }
 
-#[cfg(any(target_os = "android"))]
+#[cfg(target_os = "android")]
 impl Default for DnsFallbackStrategy {
     fn default() -> DnsFallbackStrategy {
         Self::UpstreamResolver
