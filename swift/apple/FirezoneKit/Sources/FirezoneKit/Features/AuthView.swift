@@ -31,16 +31,20 @@ struct AuthView: View {
   @ObservedObject var model: AuthViewModel
 
   var body: some View {
-    VStack {
-      Text("Welcome to Firezone").font(.largeTitle)
-
-      Button("Sign in") {
-        Task {
-          await model.signInButtonTapped()
+    VStack(
+      alignment: .center,
+      content: {
+        Spacer()
+        Image("LogoText")
+        Spacer()
+        Button("Sign in") {
+          Task {
+            await model.signInButtonTapped()
+          }
         }
-      }
-      .buttonStyle(.borderedProminent)
-    }
+        .buttonStyle(.borderedProminent)
+        .controlSize(.large)
+      })
   }
 }
 
