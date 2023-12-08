@@ -274,7 +274,7 @@ where
 
         let dev = Arc::clone(self);
         let ips = addrs.clone();
-        tokio::spawn(async move {
+        tokio::runtime::Handle::current().block_on(async move {
             for ip in ips {
                 if let Err(e) = dev.add_route(ip.into()).await {
                     tracing::error!(err = ?e, "add route failed");

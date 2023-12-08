@@ -176,8 +176,7 @@ defmodule API.Gateway.Channel do
       {relay_hosting_type, relay_connection_type} =
         Gateways.relay_strategy([socket.assigns.gateway_group])
 
-      {:ok, relays} =
-        Relays.list_connected_relays_for_resource(resource, relay_hosting_type)
+      {:ok, relays} = Relays.list_connected_relays_for_resource(resource, relay_hosting_type)
 
       ref = Ecto.UUID.generate()
 

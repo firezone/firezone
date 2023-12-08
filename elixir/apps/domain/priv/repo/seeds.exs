@@ -535,59 +535,65 @@ IO.puts("  #{dns_gitlab_resource.address} - DNS - gateways: #{gateway_name}")
 IO.puts("  #{cidr_resource.address} - CIDR - gateways: #{gateway_name}")
 IO.puts("")
 
-{:ok, _} = Policies.create_policy(
-  %{
-    name: "All Access To Google",
-    actor_group_id: all_group.id,
-    resource_id: dns_google_resource.id
-  },
-  admin_subject
-)
+{:ok, _} =
+  Policies.create_policy(
+    %{
+      name: "All Access To Google",
+      actor_group_id: all_group.id,
+      resource_id: dns_google_resource.id
+    },
+    admin_subject
+  )
 
-{:ok, _} = Policies.create_policy(
-  %{
-    name: "All Access To t.firez.one",
-    actor_group_id: all_group.id,
-    resource_id: t_firez_one.id
-  },
-  admin_subject
-)
+{:ok, _} =
+  Policies.create_policy(
+    %{
+      name: "All Access To t.firez.one",
+      actor_group_id: all_group.id,
+      resource_id: t_firez_one.id
+    },
+    admin_subject
+  )
 
-{:ok, _} = Policies.create_policy(
-  %{
-    name: "All Access To ping.firez.one",
-    actor_group_id: all_group.id,
-    resource_id: ping_firez_one.id
-  },
-  admin_subject
-)
+{:ok, _} =
+  Policies.create_policy(
+    %{
+      name: "All Access To ping.firez.one",
+      actor_group_id: all_group.id,
+      resource_id: ping_firez_one.id
+    },
+    admin_subject
+  )
 
-{:ok, _} = Policies.create_policy(
-  %{
-    name: "All Access To ip6only.me",
-    actor_group_id: all_group.id,
-    resource_id: ip6only.id
-  },
-  admin_subject
-)
+{:ok, _} =
+  Policies.create_policy(
+    %{
+      name: "All Access To ip6only.me",
+      actor_group_id: all_group.id,
+      resource_id: ip6only.id
+    },
+    admin_subject
+  )
 
-{:ok, _} = Policies.create_policy(
-  %{
-    name: "Eng Access To Gitlab",
-    actor_group_id: eng_group.id,
-    resource_id: dns_gitlab_resource.id
-  },
-  admin_subject
-)
+{:ok, _} =
+  Policies.create_policy(
+    %{
+      name: "Eng Access To Gitlab",
+      actor_group_id: eng_group.id,
+      resource_id: dns_gitlab_resource.id
+    },
+    admin_subject
+  )
 
-{:ok, _} = Policies.create_policy(
-  %{
-    name: "All Access To Network",
-    actor_group_id: all_group.id,
-    resource_id: cidr_resource.id
-  },
-  admin_subject
-)
+{:ok, _} =
+  Policies.create_policy(
+    %{
+      name: "All Access To Network",
+      actor_group_id: all_group.id,
+      resource_id: cidr_resource.id
+    },
+    admin_subject
+  )
 
 IO.puts("Policies Created")
 IO.puts("")

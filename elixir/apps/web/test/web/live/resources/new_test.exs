@@ -59,11 +59,10 @@ defmodule Web.Live.Resources.NewTest do
 
     form = form(lv, "form")
 
-    connection_inputs =
-      [
-        "resource[connections][#{group.id}][enabled]",
-        "resource[connections][#{group.id}][gateway_group_id]"
-      ]
+    connection_inputs = [
+      "resource[connections][#{group.id}][enabled]",
+      "resource[connections][#{group.id}][gateway_group_id]"
+    ]
 
     expected_inputs =
       (connection_inputs ++

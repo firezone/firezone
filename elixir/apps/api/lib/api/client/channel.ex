@@ -186,8 +186,7 @@ defmodule API.Client.Channel do
            {:ok, [_ | _] = gateways} <-
              Gateways.list_connected_gateways_for_resource(resource, preload: :group),
            gateway_groups = Enum.map(gateways, & &1.group),
-           {relay_hosting_type, relay_connection_type} =
-             Gateways.relay_strategy(gateway_groups),
+           {relay_hosting_type, relay_connection_type} = Gateways.relay_strategy(gateway_groups),
            {:ok, [_ | _] = relays} <-
              Relays.list_connected_relays_for_resource(resource, relay_hosting_type) do
         location = {

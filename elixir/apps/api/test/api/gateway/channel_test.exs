@@ -551,19 +551,18 @@ defmodule API.Gateway.ChannelTest do
 
       {:ok, destination} = Domain.Types.IPPort.cast("127.0.0.1:80")
 
-      attrs =
-        %{
-          "started_at" => DateTime.to_unix(one_minute_ago),
-          "ended_at" => DateTime.to_unix(now),
-          "metrics" => [
-            %{
-              "flow_id" => flow.id,
-              "destination" => destination,
-              "rx_bytes" => 100,
-              "tx_bytes" => 200
-            }
-          ]
-        }
+      attrs = %{
+        "started_at" => DateTime.to_unix(one_minute_ago),
+        "ended_at" => DateTime.to_unix(now),
+        "metrics" => [
+          %{
+            "flow_id" => flow.id,
+            "destination" => destination,
+            "rx_bytes" => 100,
+            "tx_bytes" => 200
+          }
+        ]
+      }
 
       push_ref = push(socket, "metrics", attrs)
       assert_reply push_ref, :ok

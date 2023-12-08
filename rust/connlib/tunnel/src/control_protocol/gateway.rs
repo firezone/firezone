@@ -55,7 +55,7 @@ where
     /// - `client_id`: UUID of the remote client.
     ///
     /// # Returns
-    /// An [RTCIceParameters] of the local sdp, with candidates gathered.
+    /// The connection details
     pub async fn set_peer_connection_request(
         self: &Arc<Self>,
         client_payload: ClientPayload,

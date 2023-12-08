@@ -113,7 +113,7 @@ pub struct ReuseConnection {
     pub resource_id: ResourceId,
     /// Id of the gateway we want to reuse
     pub gateway_id: GatewayId,
-    /// Payload that the gateway will recieve
+    /// Payload that the gateway will receive
     pub payload: Option<Dname>,
 }
 
