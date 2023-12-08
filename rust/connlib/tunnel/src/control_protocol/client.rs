@@ -272,6 +272,8 @@ where
             })
             .collect();
 
+        tracing::trace!(?addrs, ?domain_response, "!!!!!!!!!!!!!!!!!");
+
         let dev = Arc::clone(self);
         let ips = addrs.clone();
         let resource = resource_description.clone();
@@ -284,9 +286,8 @@ where
 
             if let Some(device) = dev.device.load().as_ref() {
                 let mut role_state = dev.role_state.lock();
-                send_dns_answer(&mut role_state, Rtype::A, device, &resource, &ips);
-
                 send_dns_answer(&mut role_state, Rtype::Aaaa, device, &resource, &ips);
+                send_dns_answer(&mut role_state, Rtype::A, device, &resource, &ips);
             }
 
             dev.role_state
