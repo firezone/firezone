@@ -7,7 +7,8 @@ defmodule Web.Policies.Edit do
     with {:ok, policy} <-
            Policies.fetch_policy_by_id(id, socket.assigns.subject,
              preload: [:actor_group, :resource]
-           ) do
+           ),
+         nil <- policy.deleted_at do
       form = to_form(Policies.Policy.Changeset.update(policy, %{}))
       socket = assign(socket, policy: policy, page_title: "Edit Policy", form: form)
       {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
@@ -32,7 +33,7 @@ defmodule Web.Policies.Edit do
       <:title><%= "#{@page_title}: #{@policy.id}" %></:title>
       <:content>
         <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
-          <h2 class="mb-4 text-xl font-bold text-gray-900 dark:text-white">Edit Policy details</h2>
+          <h2 class="mb-4 text-xl font-bold text-neutral-900">Edit Policy details</h2>
           <.simple_form
             for={@form}
             class="space-y-4 lg:space-y-6"

@@ -41,7 +41,7 @@
     private var connectingAnimationTimer: Timer?
 
     let settingsViewModel: SettingsViewModel
-    private var loginStatus: AuthStore.LoginStatus = .signedOut(accountId: nil)
+    private var loginStatus: AuthStore.LoginStatus = .signedOut
     private var tunnelStatus: NEVPNStatus = .invalid
 
     public init(settingsViewModel: SettingsViewModel) {
@@ -127,7 +127,7 @@
     private lazy var resourcesUnavailableReasonMenuItem = createMenuItem(
       menu,
       title: "",
-      action: #selector(reconnectButtonTapped),
+      action: nil,
       isHidden: true,
       target: self
     )
@@ -154,9 +154,9 @@
       let menuItem = createMenuItem(
         menu,
         title: "Quit",
-        action: #selector(NSApplication.terminate(_:)),
+        action: #selector(quitButtonTapped),
         key: "q",
-        target: nil
+        target: self
       )
       if let appName = Bundle.main.infoDictionary?[kCFBundleNameKey as String] as? String {
         menuItem.title = "Quit \(appName)"
@@ -201,14 +201,8 @@
     }
 
     @objc private func reconnectButtonTapped() {
-      Task {
-        if case .signedIn = appStore?.auth.loginStatus {
-          do {
-            try await appStore?.tunnel.start()
-          } catch {
-            logger.error("error connecting to tunnel (reconnect): \(String(describing: error))")
-          }
-        }
+      if case .signedIn = appStore?.auth.loginStatus {
+        appStore?.auth.startTunnel()
       }
     }
 
@@ -216,8 +210,6 @@
       Task {
         do {
           try await appStore?.auth.signIn()
-        } catch FirezoneError.missingTeamId {
-          openSettingsWindow()
         } catch {
           logger.error("Error signing in: \(String(describing: error))")
         }
@@ -226,11 +218,7 @@
 
     @objc private func signOutButtonTapped() {
       Task {
-        do {
-          try await appStore?.auth.signOut()
-        } catch {
-          logger.error("error signing out: \(String(describing: error))")
-        }
+        await appStore?.auth.signOut()
       }
     }
 
@@ -241,6 +229,17 @@
     @objc private func aboutButtonTapped() {
       NSApp.activate(ignoringOtherApps: true)
       NSApp.orderFrontStandardAboutPanel(self)
+    }
+
+    @objc private func quitButtonTapped() {
+      Task {
+        do {
+          try await appStore?.tunnel.stop()
+        } catch {
+          logger.error("\(#function): Error stopping tunnel: \(error)")
+        }
+        NSApp.terminate(self)
+      }
     }
 
     private func openSettingsWindow() {
@@ -315,8 +314,9 @@
       case .signedOut:
         signInMenuItem.title = "Sign In"
         signInMenuItem.target = self
+        signInMenuItem.isEnabled = true
         signOutMenuItem.isHidden = true
-      case .signedIn(_, let actorName):
+      case .signedIn(let actorName):
         signInMenuItem.title = actorName.isEmpty ? "Signed in" : "Signed in as \(actorName)"
         signInMenuItem.target = nil
         signOutMenuItem.isHidden = false
@@ -360,18 +360,24 @@
         resourcesUnavailableReasonMenuItem.target = nil
         resourcesUnavailableReasonMenuItem.title = "Disconnecting…"
         resourcesSeparatorMenuItem.isHidden = false
-      case (.signedIn, _):
-        // Ideally, this shouldn't happen, but it's better
-        // we handle this case, so that in case connlib errors out,
-        // the user is able to try to reconnect.
+      case (.signedIn, .disconnected), (.signedIn, .invalid), (.signedIn, _):
+        // We should never be in a state where the tunnel is
+        // down but the user is signed in, but we have
+        // code to handle it just for the sake of completion.
         resourcesTitleMenuItem.isHidden = true
         resourcesUnavailableMenuItem.isHidden = false
         resourcesUnavailableReasonMenuItem.isHidden = false
-        resourcesUnavailableReasonMenuItem.target = self
-        resourcesUnavailableReasonMenuItem.isEnabled = true
-        resourcesUnavailableReasonMenuItem.title = "Reconnect"
+        resourcesUnavailableReasonMenuItem.title = "Disconnected"
         resourcesSeparatorMenuItem.isHidden = false
       }
+      quitMenuItem.title = {
+        switch self.tunnelStatus {
+        case .connected, .connecting:
+          return "Disconnect and Quit"
+        default:
+          return "Quit"
+        }
+      }()
     }
 
     private func handleMenuVisibilityOrStatusChanged() {

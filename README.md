@@ -72,6 +72,8 @@ Firezone is:
   routing through our infrastructure.
 - **Secure:** Zero attack surface thanks to Firezone's holepunching tech which
   establishes tunnels on-the-fly at the time of access.
+- **Open:** Our entire product is open-source, allowing anyone to audit the
+  codebase.
 - **Flexible:** Authenticate users via email, Google Workspace, or OIDC and sync
   users and groups automatically.
 - **Simple:** Deploy gateways and configure access in minutes with a snappy
@@ -97,6 +99,7 @@ product documentation, organized as follows:
   - [rust/relay](./rust/relay): Relay - STUN/TURN server to facilitate
     holepunching.
   - [rust/linux-client](./rust/linux-client): Linux client.
+  - [rust/windows-client](./rust/windows-client): Windows client.
 - [swift/](./swift/apple): macOS / iOS clients.
 - [kotlin/](./kotlin/android): Android / ChromeOS clients.
 - [website/](./website): Marketing website and product documentation.

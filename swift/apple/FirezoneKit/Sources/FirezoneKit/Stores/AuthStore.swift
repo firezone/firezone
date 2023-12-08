@@ -7,6 +7,7 @@
 import Combine
 import Dependencies
 import Foundation
+import NetworkExtension
 import OSLog
 
 extension AuthStore: DependencyKey {
@@ -26,16 +27,19 @@ final class AuthStore: ObservableObject {
 
   static let shared = AuthStore(tunnelStore: TunnelStore.shared)
 
-  enum LoginStatus {
+  enum LoginStatus: CustomStringConvertible {
     case uninitialized
-    case signedOut(accountId: String?)
-    case signedIn(accountId: String, actorName: String)
+    case signedOut
+    case signedIn(actorName: String)
 
-    var accountId: String? {
+    var description: String {
       switch self {
-      case .uninitialized: return nil
-      case .signedOut(let accountId): return accountId
-      case .signedIn(let accountId, _): return accountId
+      case .uninitialized:
+        return "uninitialized"
+      case .signedOut:
+        return "signedOut"
+      case .signedIn(let actorName):
+        return "signedIn(actorName: \(actorName))"
       }
     }
   }
@@ -47,7 +51,16 @@ final class AuthStore: ObservableObject {
 
   private var cancellables = Set<AnyCancellable>()
 
-  @Published private(set) var loginStatus: LoginStatus
+  @Published private(set) var loginStatus: LoginStatus {
+    didSet {
+      self.handleLoginStatusChanged()
+    }
+  }
+
+  private var status: NEVPNStatus = .invalid
+
+  private static let maxReconnectionAttemptCount = 3
+  private var reconnectionAttemptsRemaining = maxReconnectionAttemptCount
 
   private init(tunnelStore: TunnelStore) {
     self.tunnelStore = tunnelStore
@@ -60,8 +73,28 @@ final class AuthStore: ObservableObject {
     tunnelStore.$tunnelAuthStatus
       .sink { [weak self] tunnelAuthStatus in
         guard let self = self else { return }
+        logger.log("Tunnel auth status changed to: \(tunnelAuthStatus)")
         Task {
-          self.loginStatus = await self.getLoginStatus(from: tunnelAuthStatus)
+          let loginStatus = await self.getLoginStatus(from: tunnelAuthStatus)
+          if tunnelStore.tunnelAuthStatus == tunnelAuthStatus {
+            // Make sure the tunnelAuthStatus hasn't changed while we were getting the login status
+            self.loginStatus = loginStatus
+          }
+        }
+      }
+      .store(in: &cancellables)
+
+    tunnelStore.$status
+      .sink { [weak self] status in
+        guard let self = self else { return }
+        Task {
+          if status == .disconnected {
+            self.handleTunnelDisconnectionEvent()
+          }
+          if status == .connected {
+            self.resetReconnectionAttemptsRemaining()
+          }
+          self.status = status
         }
       }
       .store(in: &cancellables)
@@ -80,74 +113,151 @@ final class AuthStore: ObservableObject {
     switch tunnelAuthStatus {
     case .tunnelUninitialized:
       return .uninitialized
-    case .accountNotSetup:
-      return .signedOut(accountId: nil)
-    case .signedOut(_, let tunnelAccountId):
-      return .signedOut(accountId: tunnelAccountId)
-    case .signedIn(let tunnelAuthBaseURL, let tunnelAccountId, let tokenReference):
+    case .signedOut:
+      return .signedOut
+    case .signedIn(let tunnelAuthBaseURL, let tokenReference):
       guard self.authBaseURL == tunnelAuthBaseURL else {
-        return .signedOut(accountId: tunnelAccountId)
+        return .signedOut
       }
-      let tunnelPortalURLString = self.authURL(accountId: tunnelAccountId).absoluteString
+      let tunnelBaseURLString = self.authBaseURL.absoluteString
       guard let tokenAttributes = await keychain.loadAttributes(tokenReference),
-        tunnelPortalURLString == tokenAttributes.authURLString
+        tunnelBaseURLString == tokenAttributes.authBaseURLString
       else {
-        return .signedOut(accountId: tunnelAccountId)
+        return .signedOut
       }
-      return .signedIn(accountId: tunnelAccountId, actorName: tokenAttributes.actorName)
+      return .signedIn(actorName: tokenAttributes.actorName)
     }
-  }
-
-  func signIn(accountId: String) async throws {
-    logger.trace("\(#function)")
-
-    let portalURL = authURL(accountId: accountId)
-    let authResponse = try await auth.signIn(portalURL)
-    let attributes = Keychain.TokenAttributes(
-      authURLString: portalURL.absoluteString, actorName: authResponse.actorName ?? "")
-    let tokenRef = try await keychain.store(authResponse.token, attributes)
-
-    try await tunnelStore.saveAuthStatus(
-      .signedIn(authBaseURL: self.authBaseURL, accountId: accountId, tokenReference: tokenRef))
   }
 
   func signIn() async throws {
     logger.trace("\(#function)")
 
-    guard case .signedOut(let accountId) = self.loginStatus, let accountId = accountId,
-      !accountId.isEmpty
-    else {
-      logger.log("No account-id found in tunnel")
-      throw FirezoneError.missingTeamId
-    }
+    let authResponse = try await auth.signIn(self.authBaseURL)
+    let attributes = Keychain.TokenAttributes(
+      authBaseURLString: self.authBaseURL.absoluteString, actorName: authResponse.actorName ?? "")
+    let tokenRef = try await keychain.store(authResponse.token, attributes)
 
-    try await signIn(accountId: accountId)
+    try await tunnelStore.saveAuthStatus(
+      .signedIn(authBaseURL: self.authBaseURL, tokenReference: tokenRef))
   }
 
-  func signOut() async throws {
+  func signOut() async {
     logger.trace("\(#function)")
 
-    guard case .signedIn = self.loginStatus else {
+    guard case .signedIn = self.tunnelStore.tunnelAuthStatus else {
+      logger.trace("\(#function): Not signed in, so can't signout.")
+      return
+    }
+
+    do {
+      try await tunnelStore.stop()
+      if let tokenRef = try await tunnelStore.signOut() {
+        try await keychain.delete(tokenRef)
+      }
+    } catch {
+      logger.error("\(#function): Error signing out: \(error, privacy: .public)")
+    }
+
+    resetReconnectionAttemptsRemaining()
+  }
+
+  func startTunnel() {
+    logger.trace("\(#function)")
+
+    guard case .signedIn = self.tunnelStore.tunnelAuthStatus else {
+      logger.trace("\(#function): Not signed in, so can't start the tunnel.")
       return
     }
 
     Task {
-      if let tokenRef = try await tunnelStore.stopAndSignOut() {
-        try await keychain.delete(tokenRef)
+      do {
+        try await tunnelStore.start()
+      } catch {
+        if case TunnelStoreError.startTunnelErrored(let startTunnelError) = error {
+          logger.error(
+            "\(#function): Starting tunnel errored: \(String(describing: startTunnelError))"
+          )
+          handleTunnelDisconnectionEvent()
+        } else {
+          logger.error("\(#function): Starting tunnel failed: \(String(describing: error))")
+          // Disconnection event will be handled in the tunnel status change handler
+        }
       }
     }
   }
 
-  func tunnelAuthStatusForAccount(accountId: String) async -> TunnelAuthStatus {
-    let portalURL = authURL(accountId: accountId)
-    if let tokenRef = await keychain.searchByAuthURL(portalURL) {
-      return .signedIn(authBaseURL: authBaseURL, accountId: accountId, tokenReference: tokenRef)
+  func handleTunnelDisconnectionEvent() {
+    logger.log("\(#function)")
+    if let tsEvent = TunnelShutdownEvent.loadFromDisk() {
+      self.logger.log(
+        "\(#function): Tunnel shutdown event: \(tsEvent, privacy: .public)"
+      )
+      switch tsEvent.action {
+      case .signoutImmediately:
+        Task {
+          await self.signOut()
+        }
+      case .retryThenSignout:
+        self.retryStartTunnel()
+      case .doNothing:
+        break
+      }
     } else {
-      return .signedOut(authBaseURL: authBaseURL, accountId: accountId)
+      self.logger.log("\(#function): Tunnel shutdown event not found")
     }
   }
 
-  func authURL(accountId: String) -> URL {
-    self.authBaseURL.appendingPathComponent(accountId)
+  func retryStartTunnel() {
+    // Try to reconnect, but don't try more than 3 times at a time.
+    // If this gets called the third time, sign out.
+    let shouldReconnect = (self.reconnectionAttemptsRemaining > 0)
+    self.reconnectionAttemptsRemaining = self.reconnectionAttemptsRemaining - 1
+    if shouldReconnect {
+      self.logger.log(
+        "\(#function): Will try to reconnect after 1 second (\(self.reconnectionAttemptsRemaining) attempts after this)"
+      )
+      DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(1)) {
+        self.logger.log("\(#function): Trying to reconnect")
+        self.startTunnel()
+      }
+    } else {
+      Task {
+        await self.signOut()
+      }
+    }
+  }
+
+  private func handleLoginStatusChanged() {
+    logger.log("\(#function): Login status: \(self.loginStatus)")
+    switch self.loginStatus {
+    case .signedIn:
+      self.startTunnel()
+    case .signedOut:
+      Task {
+        do {
+          try await tunnelStore.stop()
+        } catch {
+          logger.error("\(#function): Error stopping tunnel: \(String(describing: error))")
+        }
+        if tunnelStore.tunnelAuthStatus != .signedOut {
+          // Bring tunnelAuthStatus in line, in case it's out of touch with the login status
+          try await tunnelStore.saveAuthStatus(.signedOut)
+        }
+      }
+    case .uninitialized:
+      break
+    }
+  }
+
+  func resetReconnectionAttemptsRemaining() {
+    self.reconnectionAttemptsRemaining = Self.maxReconnectionAttemptCount
+  }
+
+  func tunnelAuthStatus(for authBaseURL: URL) async -> TunnelAuthStatus {
+    if let tokenRef = await keychain.searchByAuthBaseURL(authBaseURL) {
+      return .signedIn(authBaseURL: authBaseURL, tokenReference: tokenRef)
+    } else {
+      return .signedOut
+    }
   }
 }

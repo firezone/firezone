@@ -35,7 +35,7 @@ defmodule Web.Live.Settings.IdentityProviders.GoogleWorkspace.ShowTest do
                }}}
   end
 
-  test "renders not found error when provider is deleted", %{
+  test "renders deleted provider without action buttons", %{
     account: account,
     provider: provider,
     identity: identity,
@@ -43,11 +43,16 @@ defmodule Web.Live.Settings.IdentityProviders.GoogleWorkspace.ShowTest do
   } do
     provider = Fixtures.Auth.delete_provider(provider)
 
-    assert_raise Web.LiveErrors.NotFoundError, fn ->
+    {:ok, _lv, html} =
       conn
       |> authorize_conn(identity)
       |> live(~p"/#{account}/settings/identity_providers/google_workspace/#{provider}")
-    end
+
+    assert html =~ "(deleted)"
+    refute html =~ "Danger Zone"
+    refute html =~ "Add"
+    refute html =~ "Edit"
+    refute html =~ "Deploy"
   end
 
   test "renders breadcrumbs item", %{
@@ -153,7 +158,7 @@ defmodule Web.Live.Settings.IdentityProviders.GoogleWorkspace.ShowTest do
            |> element("#provider")
            |> render()
            |> vertical_table_to_map()
-           |> Map.fetch!("status") == "Provisioning connect IdP"
+           |> Map.fetch!("status") == "Provisioning Connect IdP"
   end
 
   test "disables status while pending for access token", %{

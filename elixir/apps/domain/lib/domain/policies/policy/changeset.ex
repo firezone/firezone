@@ -24,6 +24,18 @@ defmodule Domain.Policies.Policy.Changeset do
     |> changeset()
   end
 
+  def disable(%Policy{} = policy, %Auth.Subject{}) do
+    policy
+    |> change()
+    |> put_default_value(:disabled_at, DateTime.utc_now())
+  end
+
+  def enable(%Policy{} = policy) do
+    policy
+    |> change()
+    |> put_change(:disabled_at, nil)
+  end
+
   def delete(%Policy{} = policy) do
     policy
     |> change()

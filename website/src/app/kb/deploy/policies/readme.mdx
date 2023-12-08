@@ -1,0 +1,19 @@
+import Alert from "@/components/DocsAlert";
+
+# Create Policies
+
+Policies are what grant users access to resources.
+
+To define a policy, go to `Policies` -> `Add Policy`.
+
+Policies define a single group access to a single resource.
+
+<Alert
+  color="warning"
+  html={`
+    <strong>Note:</strong> To preserve audit trails, policy
+    access cannot be changed once a policy is created.
+    Double-check to ensure the group and resource selected
+    are correct before creating the policy.
+  `}
+/>

@@ -3,10 +3,14 @@ defmodule Domain.Actors.Actor.Query do
 
   def all do
     from(actors in Domain.Actors.Actor, as: :actors)
+  end
+
+  def not_deleted do
+    all()
     |> where([actors: actors], is_nil(actors.deleted_at))
   end
 
-  def by_id(queryable \\ all(), id)
+  def by_id(queryable \\ not_deleted(), id)
 
   def by_id(queryable, {:in, ids}) do
     where(queryable, [actors: actors], actors.id in ^ids)
@@ -20,19 +24,19 @@ defmodule Domain.Actors.Actor.Query do
     where(queryable, [actors: actors], actors.id == ^id)
   end
 
-  def by_account_id(queryable \\ all(), account_id) do
+  def by_account_id(queryable \\ not_deleted(), account_id) do
     where(queryable, [actors: actors], actors.account_id == ^account_id)
   end
 
-  def by_type(queryable \\ all(), type) do
+  def by_type(queryable \\ not_deleted(), type) do
     where(queryable, [actors: actors], actors.type == ^type)
   end
 
-  def not_disabled(queryable \\ all()) do
+  def not_disabled(queryable \\ not_deleted()) do
     where(queryable, [actors: actors], is_nil(actors.disabled_at))
   end
 
-  def preload_few_groups_for_each_actor(queryable \\ all(), limit) do
+  def preload_few_groups_for_each_actor(queryable \\ not_deleted(), limit) do
     queryable
     |> with_joined_memberships(limit)
     |> with_joined_groups()
@@ -49,7 +53,10 @@ defmodule Domain.Actors.Actor.Query do
       Domain.Actors.Membership.Query.all()
       |> where([memberships: memberships], memberships.actor_id == parent_as(:actors).id)
       # we need second join to exclude soft deleted actors before applying a limit
-      |> join(:inner, [memberships: memberships], groups in ^Domain.Actors.Group.Query.all(),
+      |> join(
+        :inner,
+        [memberships: memberships],
+        groups in ^Domain.Actors.Group.Query.not_deleted(),
         on: groups.id == memberships.group_id
       )
       |> select([memberships: memberships], memberships.group_id)
@@ -70,18 +77,22 @@ defmodule Domain.Actors.Actor.Query do
     )
   end
 
-  def with_joined_groups(queryable \\ all()) do
-    join(queryable, :left, [memberships: memberships], groups in ^Domain.Actors.Group.Query.all(),
+  def with_joined_groups(queryable \\ not_deleted()) do
+    join(
+      queryable,
+      :left,
+      [memberships: memberships],
+      groups in ^Domain.Actors.Group.Query.not_deleted(),
       on: groups.id == memberships.group_id,
       as: :groups
     )
   end
 
-  def lock(queryable \\ all()) do
+  def lock(queryable \\ not_deleted()) do
     lock(queryable, "FOR UPDATE")
   end
 
-  def with_assoc(queryable \\ all(), qual \\ :left, assoc) do
+  def with_assoc(queryable \\ not_deleted(), qual \\ :left, assoc) do
     with_named_binding(queryable, assoc, fn query, binding ->
       join(query, qual, [actors: actors], a in assoc(actors, ^binding), as: ^binding)
     end)

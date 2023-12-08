@@ -54,7 +54,7 @@ private enum AdapterState: CustomStringConvertible {
 }
 
 // Loosely inspired from WireGuardAdapter from WireGuardKit
-public class Adapter {
+class Adapter {
 
   typealias StartTunnelCompletionHandler = ((AdapterError?) -> Void)
   typealias StopTunnelCompletionHandler = (() -> Void)
@@ -67,7 +67,7 @@ public class Adapter {
   private var networkSettings: NetworkSettings?
 
   /// Packet tunnel provider.
-  private weak var packetTunnelProvider: NEPacketTunnelProvider?
+  private weak var packetTunnelProvider: PacketTunnelProvider?
 
   /// Network routes monitor.
   private var networkMonitor: NWPathMonitor?
@@ -92,9 +92,9 @@ public class Adapter {
   private let logFilter: String
   private let connlibLogFolderPath: String
 
-  public init(
+  init(
     controlPlaneURLString: String, token: String,
-    logFilter: String, packetTunnelProvider: NEPacketTunnelProvider
+    logFilter: String, packetTunnelProvider: PacketTunnelProvider
   ) {
     self.controlPlaneURLString = controlPlaneURLString
     self.token = token
@@ -126,6 +126,9 @@ public class Adapter {
 
       self.logger.log("Adapter.start")
       guard case .stoppedTunnel = self.state else {
+        packetTunnelProvider?.handleTunnelShutdown(
+          dueTo: .invalidAdapterState,
+          errorMessage: "Adapter is in invalid state")
         completionHandler(.invalidState)
         return
       }
@@ -146,19 +149,25 @@ public class Adapter {
         )
       } catch let error {
         self.logger.error("Adapter.start: Error: \(error, privacy: .public)")
+        packetTunnelProvider?.handleTunnelShutdown(
+          dueTo: .connlibConnectFailure,
+          errorMessage: error.localizedDescription)
         self.state = .stoppedTunnel
         completionHandler(AdapterError.connlibConnectError(error))
       }
-
     }
   }
 
   /// Stop the tunnel
-  public func stop(completionHandler: @escaping () -> Void) {
+  public func stop(reason: NEProviderStopReason, completionHandler: @escaping () -> Void) {
     workQueue.async { [weak self] in
       guard let self = self else { return }
 
       self.logger.log("Adapter.stop")
+
+      packetTunnelProvider?.handleTunnelShutdown(
+        dueTo: .stopped(reason),
+        errorMessage: "\(reason)")
 
       switch self.state {
       case .stoppedTunnel, .stoppingTunnel:
@@ -213,17 +222,22 @@ public class Adapter {
 // MARK: Device unique identifiers
 
 extension Adapter {
+  // uuidString and copyMACAddress() *should* reliably return valid Strings, but if
+  // for whatever reason they're nil, return a random UUID instead to prevent
+  // upsert collisions in the portal.
   func getDeviceId() -> String {
     #if os(iOS)
       guard let extId = UIDevice.current.identifierForVendor?.uuidString else {
-        // Send a blank string, letting either connlib or the portal handle this
-        return ""
+        // FIXME: We should store this random deviceID fallback in the AppStore
+        // to use for upsert instead of generating a random UUID each time.
+        return UUID().uuidString
       }
 
     #elseif os(macOS)
       guard let extId = PrimaryMacAddress.copyMACAddress() as? String else {
-        // Send a blank string, letting either connlib or the portal handle this
-        return ""
+        // FIXME: We should store this random deviceID fallback in the AppStore
+        // to use for upsert instead of generating a random UUID each time.
+        return UUID().uuidString
       }
     #else
       #error("Unsupported platform")
@@ -359,6 +373,9 @@ extension Adapter: CallbackHandlerDelegate {
       }
       networkSettings.apply(on: packetTunnelProvider, logger: self.logger) { error in
         if let error = error {
+          packetTunnelProvider.handleTunnelShutdown(
+            dueTo: .networkSettingsApplyFailure,
+            errorMessage: error.localizedDescription)
           onStarted?(AdapterError.setNetworkSettings(error))
           self.state = .stoppedTunnel
         } else {
@@ -449,7 +466,7 @@ extension Adapter: CallbackHandlerDelegate {
     workQueue.async { [weak self] in
       guard let self = self else { return }
 
-      self.logger.log("Adapter.onDisconnect")
+      self.logger.log("Adapter.onDisconnect: \(error ?? "No error", privacy: .public)")
       if let errorMessage = error {
         self.logger.error(
           "Connlib disconnected with unrecoverable error: \(errorMessage, privacy: .public)")
@@ -466,6 +483,9 @@ extension Adapter: CallbackHandlerDelegate {
         case .stoppedTunnelTemporarily:
           self.state = .stoppedTunnel
         default:
+          packetTunnelProvider?.handleTunnelShutdown(
+            dueTo: .connlibDisconnected,
+            errorMessage: errorMessage)
           self.packetTunnelProvider?.cancelTunnelWithError(
             AdapterError.connlibFatalError(errorMessage))
           self.state = .stoppedTunnel
@@ -480,7 +500,6 @@ extension Adapter: CallbackHandlerDelegate {
           onStopped?()
           self.state = .stoppedTunnelTemporarily
         default:
-          // This should not happen
           self.state = .stoppedTunnel
         }
       }

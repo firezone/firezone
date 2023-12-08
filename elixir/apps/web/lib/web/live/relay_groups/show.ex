@@ -3,7 +3,8 @@ defmodule Web.RelayGroups.Show do
   alias Domain.Relays
 
   def mount(%{"id" => id}, _session, socket) do
-    with {:ok, group} <-
+    with true <- Domain.Config.self_hosted_relays_enabled?(),
+         {:ok, group} <-
            Relays.fetch_group_by_id(id, socket.assigns.subject,
              preload: [
                relays: [token: [created_by_identity: [:actor]]],
@@ -13,7 +14,7 @@ defmodule Web.RelayGroups.Show do
       :ok = Relays.subscribe_for_relays_presence_in_group(group)
       {:ok, assign(socket, group: group)}
     else
-      {:error, _reason} -> raise Web.LiveErrors.NotFoundError
+      _other -> raise Web.LiveErrors.NotFoundError
     end
   end
 
@@ -29,14 +30,15 @@ defmodule Web.RelayGroups.Show do
     <.section>
       <:title>
         Relay Instance Group: <code><%= @group.name %></code>
+        <span :if={not is_nil(@group.deleted_at)} class="text-red-600">(deleted)</span>
       </:title>
-      <:action :if={@group.account_id}>
+      <:action :if={not is_nil(@group.account_id) and is_nil(@group.deleted_at)}>
         <.edit_button navigate={~p"/#{@account}/relay_groups/#{@group}/edit"}>
           Edit Instance Group
         </.edit_button>
       </:action>
       <:content>
-        <div class="bg-white dark:bg-gray-800 overflow-hidden">
+        <div class="bg-white overflow-hidden">
           <.vertical_table id="group">
             <.vertical_table_row>
               <:label>Instance Group Name</:label>
@@ -55,7 +57,7 @@ defmodule Web.RelayGroups.Show do
 
     <.section>
       <:title>Relays</:title>
-      <:action>
+      <:action :if={not is_nil(@group.account_id) and is_nil(@group.deleted_at)}>
         <.add_button navigate={~p"/#{@account}/relay_groups/#{@group}/new_token"}>
           Deploy
         </.add_button>
@@ -66,7 +68,7 @@ defmodule Web.RelayGroups.Show do
             <:col :let={relay} label="INSTANCE">
               <.link
                 navigate={~p"/#{@account}/relays/#{relay.id}"}
-                class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
+                class={["font-medium", link_style()]}
               >
                 <code :if={relay.name} class="block text-xs">
                   <%= relay.name %>
@@ -86,14 +88,14 @@ defmodule Web.RelayGroups.Show do
               <.connection_status schema={relay} />
             </:col>
             <:empty>
-              <div class="text-center text-slate-500 p-4">No relay instances to display</div>
+              <div class="text-center text-neutral-500 p-4">No relay instances to display</div>
             </:empty>
           </.table>
         </div>
       </:content>
     </.section>
 
-    <.danger_zone>
+    <.danger_zone :if={not is_nil(@group.account_id) and is_nil(@group.deleted_at)}>
       <:action :if={@group.account_id}>
         <.delete_button
           phx-click="delete"

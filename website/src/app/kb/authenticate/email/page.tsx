@@ -2,7 +2,7 @@ import Content from "./readme.mdx";
 import { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Email Auth • Firezone Docs",
+  title: "Email Authentication • Firezone Docs",
   description: "Firezone Documentation",
 };
 

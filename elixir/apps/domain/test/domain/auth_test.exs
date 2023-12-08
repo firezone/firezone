@@ -75,11 +75,12 @@ defmodule Domain.AuthTest do
       assert fetch_provider_by_id("foo", subject) == {:error, :not_found}
     end
 
-    test "returns error when provider is deleted", %{account: account, subject: subject} do
+    test "returns deleted provider", %{account: account, subject: subject} do
       provider = Fixtures.Auth.create_userpass_provider(account: account)
       {:ok, _provider} = delete_provider(provider, subject)
 
-      assert fetch_provider_by_id(provider.id, subject) == {:error, :not_found}
+      assert {:ok, fetched_provider} = fetch_provider_by_id(provider.id, subject)
+      assert fetched_provider.id == provider.id
     end
 
     test "returns provider", %{account: account, subject: subject} do
@@ -877,11 +878,12 @@ defmodule Domain.AuthTest do
       subject: subject,
       provider: provider
     } do
-      assert {:ok, provider} = enable_provider(provider, subject)
       assert provider.disabled_at
+      assert {:ok, provider} = enable_provider(provider, subject)
+      assert is_nil(provider.disabled_at)
 
       assert provider = Repo.get(Auth.Provider, provider.id)
-      assert provider.disabled_at
+      assert is_nil(provider.disabled_at)
     end
 
     test "does not do anything when an provider is enabled twice", %{
@@ -1258,7 +1260,7 @@ defmodule Domain.AuthTest do
 
       assert Enum.all?(provider_identifiers, &(&1 in delete))
       assert Repo.aggregate(Auth.Identity, :count) == 2
-      assert Repo.aggregate(Auth.Identity.Query.all(), :count) == 0
+      assert Repo.aggregate(Auth.Identity.Query.not_deleted(), :count) == 0
 
       assert Enum.empty?(actor_ids_by_provider_identifier)
     end
@@ -1337,7 +1339,11 @@ defmodule Domain.AuthTest do
           provider: provider
         )
 
-      attrs = %{provider_identifier: provider_identifier}
+      attrs = %{
+        provider_identifier: provider_identifier,
+        provider_identifier_confirmation: provider_identifier
+      }
+
       assert {:ok, identity} = upsert_identity(actor, provider, attrs)
 
       assert identity.provider_id == provider.id
@@ -1368,7 +1374,11 @@ defmodule Domain.AuthTest do
           provider_state: %{"foo" => "bar"}
         )
 
-      attrs = %{provider_identifier: provider_identifier}
+      attrs = %{
+        provider_identifier: provider_identifier,
+        provider_identifier_confirmation: provider_identifier
+      }
+
       assert {:ok, updated_identity} = upsert_identity(actor, provider, attrs)
 
       assert Repo.aggregate(Auth.Identity, :count) == 1
@@ -1388,13 +1398,23 @@ defmodule Domain.AuthTest do
           provider: provider
         )
 
-      attrs = %{provider_identifier: Ecto.UUID.generate()}
+      provider_identifier = Ecto.UUID.generate()
+
+      attrs = %{
+        provider_identifier: provider_identifier,
+        provider_identifier_confirmation: provider_identifier
+      }
+
       assert {:error, changeset} = upsert_identity(actor, provider, attrs)
       assert errors_on(changeset) == %{provider_identifier: ["is an invalid email address"]}
 
-      attrs = %{provider_identifier: nil}
+      attrs = %{provider_identifier: nil, provider_identifier_confirmation: nil}
       assert {:error, changeset} = upsert_identity(actor, provider, attrs)
       assert errors_on(changeset) == %{provider_identifier: ["can't be blank"]}
+
+      attrs = %{provider_identifier: Fixtures.Auth.email()}
+      assert {:error, changeset} = upsert_identity(actor, provider, attrs)
+      assert errors_on(changeset) == %{provider_identifier_confirmation: ["email does not match"]}
     end
   end
 
@@ -1464,7 +1484,11 @@ defmodule Domain.AuthTest do
 
       subject = Fixtures.Auth.create_subject(actor: actor)
 
-      attrs = %{provider_identifier: provider_identifier}
+      attrs = %{
+        provider_identifier: provider_identifier,
+        provider_identifier_confirmation: provider_identifier
+      }
+
       assert {:ok, _identity} = create_identity(actor, provider, attrs, subject)
     end
 
@@ -1537,13 +1561,23 @@ defmodule Domain.AuthTest do
           provider: provider
         )
 
-      attrs = %{provider_identifier: Ecto.UUID.generate()}
+      provider_identifier = Ecto.UUID.generate()
+
+      attrs = %{
+        provider_identifier: provider_identifier,
+        provider_identifier_confirmation: provider_identifier
+      }
+
       assert {:error, changeset} = create_identity(actor, provider, attrs)
       assert errors_on(changeset) == %{provider_identifier: ["is an invalid email address"]}
 
-      attrs = %{provider_identifier: nil}
+      attrs = %{provider_identifier: nil, provider_identifier_confirmation: nil}
       assert {:error, changeset} = create_identity(actor, provider, attrs)
       assert errors_on(changeset) == %{provider_identifier: ["can't be blank"]}
+
+      attrs = %{provider_identifier: Fixtures.Auth.email()}
+      assert {:error, changeset} = create_identity(actor, provider, attrs)
+      assert errors_on(changeset) == %{provider_identifier_confirmation: ["email does not match"]}
     end
 
     test "updates existing identity" do
@@ -1561,7 +1595,11 @@ defmodule Domain.AuthTest do
         provider_state: %{"foo" => "bar"}
       )
 
-      attrs = %{provider_identifier: provider_identifier}
+      attrs = %{
+        provider_identifier: provider_identifier,
+        provider_identifier_confirmation: provider_identifier
+      }
+
       assert {:error, changeset} = create_identity(actor, provider, attrs)
       assert errors_on(changeset) == %{provider_identifier: ["has already been taken"]}
     end
@@ -1603,13 +1641,23 @@ defmodule Domain.AuthTest do
       identity: identity,
       subject: subject
     } do
-      attrs = %{provider_identifier: Ecto.UUID.generate()}
+      provider_identifier = Ecto.UUID.generate()
+
+      attrs = %{
+        provider_identifier: provider_identifier,
+        provider_identifier_confirmation: provider_identifier
+      }
+
       assert {:error, changeset} = replace_identity(identity, attrs, subject)
       assert errors_on(changeset) == %{provider_identifier: ["is an invalid email address"]}
 
-      attrs = %{provider_identifier: nil}
+      attrs = %{provider_identifier: nil, provider_identifier_confirmation: nil}
       assert {:error, changeset} = replace_identity(identity, attrs, subject)
       assert errors_on(changeset) == %{provider_identifier: ["can't be blank"]}
+
+      attrs = %{provider_identifier: Fixtures.Auth.email()}
+      assert {:error, changeset} = replace_identity(identity, attrs, subject)
+      assert errors_on(changeset) == %{provider_identifier_confirmation: ["email does not match"]}
 
       refute Repo.get(Auth.Identity, identity.id).deleted_at
     end
@@ -1619,7 +1667,12 @@ defmodule Domain.AuthTest do
       provider: provider,
       subject: subject
     } do
-      attrs = %{provider_identifier: Fixtures.Auth.random_provider_identifier(provider)}
+      provider_identifier = Fixtures.Auth.random_provider_identifier(provider)
+
+      attrs = %{
+        provider_identifier: provider_identifier,
+        provider_identifier_confirmation: provider_identifier
+      }
 
       assert {:ok, new_identity} = replace_identity(identity, attrs, subject)
 
@@ -1798,7 +1851,7 @@ defmodule Domain.AuthTest do
 
       assert Repo.aggregate(Auth.Identity.Query.all(), :count) == 3
       assert delete_actor_identities(actor) == :ok
-      assert Repo.aggregate(Auth.Identity.Query.all(), :count) == 0
+      assert Repo.aggregate(Auth.Identity.Query.not_deleted(), :count) == 0
     end
 
     test "does not remove identities that belong to another actor", %{

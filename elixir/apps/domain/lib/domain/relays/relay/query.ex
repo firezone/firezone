@@ -3,26 +3,30 @@ defmodule Domain.Relays.Relay.Query do
 
   def all do
     from(relays in Domain.Relays.Relay, as: :relays)
+  end
+
+  def not_deleted do
+    all()
     |> where([relays: relays], is_nil(relays.deleted_at))
   end
 
-  def by_id(queryable \\ all(), id) do
+  def by_id(queryable \\ not_deleted(), id) do
     where(queryable, [relays: relays], relays.id == ^id)
   end
 
-  def by_ids(queryable \\ all(), ids) do
+  def by_ids(queryable \\ not_deleted(), ids) do
     where(queryable, [relays: relays], relays.id in ^ids)
   end
 
-  def by_user_id(queryable \\ all(), user_id) do
+  def by_user_id(queryable \\ not_deleted(), user_id) do
     where(queryable, [relays: relays], relays.user_id == ^user_id)
   end
 
-  def by_account_id(queryable \\ all(), account_id) do
+  def by_account_id(queryable \\ not_deleted(), account_id) do
     where(queryable, [relays: relays], relays.account_id == ^account_id)
   end
 
-  def public(queryable \\ all()) do
+  def public(queryable \\ not_deleted()) do
     where(
       queryable,
       [relays: relays],
@@ -30,7 +34,7 @@ defmodule Domain.Relays.Relay.Query do
     )
   end
 
-  def public_or_by_account_id(queryable \\ all(), account_id) do
+  def public_or_by_account_id(queryable \\ not_deleted(), account_id) do
     where(
       queryable,
       [relays: relays],
@@ -38,7 +42,7 @@ defmodule Domain.Relays.Relay.Query do
     )
   end
 
-  def global_or_by_account_id(queryable \\ all(), account_id) do
+  def global_or_by_account_id(queryable \\ not_deleted(), account_id) do
     where(
       queryable,
       [relays: relays],
@@ -46,11 +50,11 @@ defmodule Domain.Relays.Relay.Query do
     )
   end
 
-  def returning_all(queryable \\ all()) do
+  def returning_not_deleted(queryable \\ not_deleted()) do
     select(queryable, [relays: relays], relays)
   end
 
-  def with_preloaded_user(queryable \\ all()) do
+  def with_preloaded_user(queryable \\ not_deleted()) do
     with_named_binding(queryable, :user, fn queryable, binding ->
       queryable
       |> join(:inner, [relays: relays], user in assoc(relays, ^binding), as: ^binding)

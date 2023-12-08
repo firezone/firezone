@@ -34,12 +34,13 @@ defmodule Domain.PoliciesTest do
       assert fetched_policy.id == policy.id
     end
 
-    test "does not return deleted policy", %{account: account, subject: subject} do
+    test "returns deleted policies", %{account: account, subject: subject} do
       {:ok, policy} =
         Fixtures.Policies.create_policy(account: account)
         |> delete_policy(subject)
 
-      assert fetch_policy_by_id(policy.id, subject) == {:error, :not_found}
+      assert {:ok, fetched_policy} = fetch_policy_by_id(policy.id, subject)
+      assert fetched_policy.id == policy.id
     end
 
     test "does not return policies in other accounts", %{subject: subject} do
@@ -337,6 +338,117 @@ defmodule Domain.PoliciesTest do
 
       assert update_policy(policy, %{description: "Should not be allowed"}, other_subject) ==
                {:error, :unauthorized}
+    end
+  end
+
+  describe "disable_policy/2" do
+    setup context do
+      policy =
+        Fixtures.Policies.create_policy(
+          account: context.account,
+          subject: context.subject
+        )
+
+      Map.put(context, :policy, policy)
+    end
+
+    test "disables a given policy", %{
+      account: account,
+      subject: subject,
+      policy: policy
+    } do
+      other_policy = Fixtures.Policies.create_policy(account: account)
+
+      assert {:ok, policy} = disable_policy(policy, subject)
+      assert policy.disabled_at
+
+      assert policy = Repo.get(Policies.Policy, policy.id)
+      assert policy.disabled_at
+
+      assert other_policy = Repo.get(Policies.Policy, other_policy.id)
+      assert is_nil(other_policy.disabled_at)
+    end
+
+    test "does not do anything when an policy is disabled twice", %{
+      subject: subject,
+      account: account
+    } do
+      policy = Fixtures.Policies.create_policy(account: account)
+      assert {:ok, _policy} = disable_policy(policy, subject)
+      assert {:ok, policy} = disable_policy(policy, subject)
+      assert {:ok, _policy} = disable_policy(policy, subject)
+    end
+
+    test "does not allow to disable policies in other accounts", %{
+      subject: subject
+    } do
+      policy = Fixtures.Policies.create_policy()
+      assert disable_policy(policy, subject) == {:error, :not_found}
+    end
+
+    test "returns error when subject can not disable policies", %{
+      subject: subject,
+      policy: policy
+    } do
+      subject = Fixtures.Auth.remove_permissions(subject)
+
+      assert disable_policy(policy, subject) ==
+               {:error,
+                {:unauthorized,
+                 [missing_permissions: [Policies.Authorizer.manage_policies_permission()]]}}
+    end
+  end
+
+  describe "enable_policy/2" do
+    setup context do
+      policy =
+        Fixtures.Policies.create_policy(
+          account: context.account,
+          subject: context.subject
+        )
+
+      {:ok, policy} = disable_policy(policy, context.subject)
+
+      Map.put(context, :policy, policy)
+    end
+
+    test "enables a given policy", %{
+      subject: subject,
+      policy: policy
+    } do
+      assert {:ok, policy} = enable_policy(policy, subject)
+      assert is_nil(policy.disabled_at)
+
+      assert policy = Repo.get(Policies.Policy, policy.id)
+      assert is_nil(policy.disabled_at)
+    end
+
+    test "does not do anything when an policy is enabled twice", %{
+      subject: subject,
+      policy: policy
+    } do
+      assert {:ok, _policy} = enable_policy(policy, subject)
+      assert {:ok, policy} = enable_policy(policy, subject)
+      assert {:ok, _policy} = enable_policy(policy, subject)
+    end
+
+    test "does not allow to enable policies in other accounts", %{
+      subject: subject
+    } do
+      policy = Fixtures.Policies.create_policy()
+      assert enable_policy(policy, subject) == {:error, :not_found}
+    end
+
+    test "returns error when subject can not enable policies", %{
+      subject: subject,
+      policy: policy
+    } do
+      subject = Fixtures.Auth.remove_permissions(subject)
+
+      assert enable_policy(policy, subject) ==
+               {:error,
+                {:unauthorized,
+                 [missing_permissions: [Policies.Authorizer.manage_policies_permission()]]}}
     end
   end
 

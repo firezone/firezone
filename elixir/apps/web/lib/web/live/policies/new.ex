@@ -36,7 +36,7 @@ defmodule Web.Policies.New do
       </:title>
       <:content>
         <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
-          <h2 class="mb-4 text-xl font-bold text-gray-900 dark:text-white">Policy details</h2>
+          <h2 class="mb-4 text-xl font-bold text-neutral-900">Policy details</h2>
           <.simple_form for={@form} phx-submit="submit" phx-change="validate">
             <.base_error form={@form} field={:base} />
             <.input

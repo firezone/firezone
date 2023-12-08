@@ -37,8 +37,9 @@ defmodule Web.Clients.Show do
     <.section>
       <:title>
         Client Details
+        <span :if={not is_nil(@client.deleted_at)} class="text-red-600">(deleted)</span>
       </:title>
-      <:action>
+      <:action :if={is_nil(@client.deleted_at)}>
         <.edit_button navigate={~p"/#{@account}/clients/#{@client}/edit"}>
           Edit Client
         </.edit_button>
@@ -58,7 +59,7 @@ defmodule Web.Clients.Show do
             <:value>
               <.link
                 navigate={~p"/#{@account}/actors/#{@client.actor.id}"}
-                class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
+                class={["font-medium", link_style()]}
               >
                 <%= @client.actor.name %>
               </.link>
@@ -114,7 +115,7 @@ defmodule Web.Clients.Show do
           <:col :let={flow} label="POLICY">
             <.link
               navigate={~p"/#{@account}/policies/#{flow.policy_id}"}
-              class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
+              class={["font-medium", link_style()]}
             >
               <.policy_name policy={flow.policy} />
             </.link>
@@ -122,28 +123,25 @@ defmodule Web.Clients.Show do
           <:col :let={flow} label="GATEWAY (IP)">
             <.link
               navigate={~p"/#{@account}/gateways/#{flow.gateway_id}"}
-              class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
+              class={["font-medium", link_style()]}
             >
               <%= flow.gateway.group.name %>-<%= flow.gateway.name %>
             </.link>
             (<%= flow.gateway_remote_ip %>)
           </:col>
           <:col :let={flow} :if={@flow_activities_enabled?} label="ACTIVITY">
-            <.link
-              navigate={~p"/#{@account}/flows/#{flow.id}"}
-              class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
-            >
+            <.link navigate={~p"/#{@account}/flows/#{flow.id}"} class={["font-medium", link_style()]}>
               Show
             </.link>
           </:col>
           <:empty>
-            <div class="text-center text-slate-500 p-4">No authorizations to display</div>
+            <div class="text-center text-neutral-500 p-4">No authorizations to display</div>
           </:empty>
         </.table>
       </:content>
     </.section>
 
-    <.danger_zone>
+    <.danger_zone :if={is_nil(@client.deleted_at)}>
       <:action>
         <.delete_button
           phx-click="delete"

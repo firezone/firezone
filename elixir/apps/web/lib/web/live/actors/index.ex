@@ -36,6 +36,9 @@ defmodule Web.Actors.Index do
           Add Actor
         </.add_button>
       </:action>
+      <:help>
+        Actors are the people and services that can access your resources.
+      </:help>
       <:content>
         <.table id="actors" rows={@actors} row_id={&"user-#{&1.id}"}>
           <:col :let={actor} label="name" sortable="false">
@@ -77,7 +80,7 @@ defmodule Web.Actors.Index do
             <.relative_datetime datetime={last_seen_at(actor.identities)} />
           </:col>
           <:empty>
-            <div class="flex justify-center text-center text-slate-500 p-4">
+            <div class="flex justify-center text-center text-neutral-500 p-4">
               <div class="w-auto">
                 <div class="pb-4">
                   No actors to display

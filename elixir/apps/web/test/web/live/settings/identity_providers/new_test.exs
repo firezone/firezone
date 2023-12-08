@@ -43,6 +43,8 @@ defmodule Web.Live.Settings.IdentityProviders.NewTest do
 
     assert has_element?(lv, "#idp-option-google_workspace")
     assert html =~ "Google Workspace"
+    assert html =~ "Feature available on the Enterprise plan"
+    assert html =~ "ENTERPRISE"
 
     assert has_element?(lv, "#idp-option-openid_connect")
     assert html =~ "OpenID Connect"

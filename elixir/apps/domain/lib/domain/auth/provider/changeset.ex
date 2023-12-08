@@ -68,7 +68,7 @@ defmodule Domain.Auth.Provider.Changeset do
   def enable_provider(%Provider{} = provider) do
     provider
     |> change()
-    |> put_default_value(:disabled_at, nil)
+    |> put_change(:disabled_at, nil)
   end
 
   def delete_provider(%Provider{} = provider) do

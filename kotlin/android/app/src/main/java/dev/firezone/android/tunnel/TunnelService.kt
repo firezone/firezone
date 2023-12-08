@@ -234,7 +234,7 @@ class TunnelService : VpnService() {
 
     private fun getLogDir(): String {
         // Create log directory if it doesn't exist
-        val logDir = cacheDir.absolutePath + "/log"
+        val logDir = cacheDir.absolutePath + "/logs"
         Files.createDirectories(Paths.get(logDir))
         return logDir
     }

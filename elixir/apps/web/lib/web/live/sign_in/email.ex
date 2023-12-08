@@ -31,13 +31,13 @@ defmodule Web.SignIn.Email do
 
   def render(assigns) do
     ~H"""
-    <section class="bg-gray-50 dark:bg-gray-900">
-      <div class="flex flex-col items-center justify-center px-6 py-8 mx-auto md:h-screen lg:py-0">
+    <section class="bg-neutral-50">
+      <div class="flex flex-col items-center justify-center px-6 py-8 mx-auto lg:py-0">
         <.logo />
 
-        <div class="w-full col-span-6 mx-auto bg-white rounded shadow dark:bg-gray-800 md:mt-0 sm:max-w-lg xl:p-0">
+        <div class="w-full col-span-6 mx-auto bg-white rounded shadow md:mt-0 sm:max-w-lg xl:p-0">
           <div class="p-6 space-y-4 lg:space-y-6 sm:p-8">
-            <h1 class="text-xl font-bold leading-tight tracking-tight text-gray-900 sm:text-2xl dark:text-white">
+            <h1 class="text-xl font-bold leading-tight tracking-tight text-neutral-900 sm:text-2xl">
               Please check your email
             </h1>
             <.flash flash={@flash} kind={:error} phx-click={JS.hide(transition: "fade-out")} />
@@ -45,10 +45,9 @@ defmodule Web.SignIn.Email do
 
             <div>
               <p>
-                Should the provided email be registered, a sign-in link and token are dispatched to your email account.
-                Please copy and paste this token into the form below to proceed with your login.
+                Should the provided email be registered, a sign in token has been sent to your email account.
+                Please copy and paste this into the form below to proceed with your login.
               </p>
-
               <form
                 id="verify-sign-in-token"
                 action={
@@ -65,8 +64,8 @@ defmodule Web.SignIn.Email do
                   id="secret"
                   class={[
                     "block p-2.5 w-full text-sm",
-                    "bg-gray-50 text-gray-900",
-                    "rounded-l border-gray-300 focus:border-primary-600 focus:ring-primary-600"
+                    "bg-neutral-50 text-neutral-900",
+                    "rounded-l border-neutral-300"
                   ]}
                   required
                   placeholder="Enter token from email"
@@ -78,8 +77,8 @@ defmodule Web.SignIn.Email do
                     "block p-2.5",
                     "text-sm text-white font-medium",
                     "items-center text-center",
-                    "bg-primary-700 rounded-r",
-                    "focus:ring-4 focus:ring-primary-200 hover:bg-primary-800"
+                    "bg-accent-600 rounded-r",
+                    "hover:bg-accent-700"
                   ]}
                 >
                   Submit
@@ -94,7 +93,7 @@ defmodule Web.SignIn.Email do
               /> or
               <.link
                 navigate={~p"/#{@account_id_or_slug}?#{@redirect_params}"}
-                class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
+                class={["font-medium", link_style()]}
               >
                 use a different Sign In method
               </.link>
@@ -153,10 +152,7 @@ defmodule Web.SignIn.Email do
       />
       <span>
         Did not receive it?
-        <button
-          type="submit"
-          class="inline font-medium text-blue-600 dark:text-blue-500 hover:underline"
-        >
+        <button type="submit" class="inline font-medium text-accent-600 hover:underline">
           Resend email
         </button>
       </span>
@@ -170,10 +166,9 @@ defmodule Web.SignIn.Email do
       href={@url}
       class={[
         "w-1/2 m-2 inline-flex items-center justify-center py-2.5 px-5",
-        "text-sm font-medium text-gray-900 bg-white ",
-        "rounded border border-gray-200",
-        "focus:outline-none focus:z-10 focus:ring-4 focus:ring-gray-200",
-        "hover:text-gray-900 hover:bg-gray-100"
+        "text-sm font-medium text-neutral-900 bg-white ",
+        "rounded border border-neutral-200",
+        "hover:text-neutral-900 hover:bg-neutral-100"
       ]}
     >
       Open <%= @name %>

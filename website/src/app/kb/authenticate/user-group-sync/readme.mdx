@@ -1,1 +1,70 @@
+import Alert from "@/components/DocsAlert";
+import PlanBadge from "@/components/PlanBadge";
+
+<PlanBadge plans={["enterprise"]} />
+
 # User / Group Sync
+
+Firezone supports user / group sync from Google Workspace. This feature is
+**automatically enabled** for the
+[Google Workspace connector](/kb/authenticate/google). Once the connector is
+activated, users, groups, and organizational units will be synced from your
+Google Workspace account every few minutes.
+
+<Alert
+  color="info"
+  html={`
+    User / group sync is only supported with the Google Workspace connector
+    at this time. Support for more providers is currently
+    <a href="https://github.com/firezone/firezone/issues/2016">in development</a>.
+  `}
+/>
+
+## Deleting entities
+
+To preserve audit log trails, Firezone <strong>never</strong> deletes synced
+users or groups.
+
+### Deleting or suspending users
+
+When a user is deleted or suspended in your Google Workspace account, Firezone
+will disable the user and clear all active client and admin portal web sessions
+for that user upon the next user/group sync. The user will be **signed out of
+all clients** and forced to reauthenticate.
+
+This ensures terminated employees will have all Firezone access revoked within a
+few minutes of deleting or suspending them in your Google Workspace account.
+
+### Deleting a group or organizational unit
+
+Deleting a group or organizational unit in Google Workspace will hide the group
+and associated policy in Firezone.
+
+## Nested groups and organizational units
+
+Firezone flattens nested groups and organizational units synced from Google
+Workspace. User membership is determined **only** by its immediate parent. For
+example, if you had the following group structure in your Google Workspace
+account:
+
+```
+- Product
+  - steve@company.com
+  - Engineering
+    - bob@company.com
+    - alice@company.com
+  - Support
+    - patrick@company.com
+```
+
+In Firezone, you would see the follow groups after sync:
+
+```
+- Group:Product
+  - steve@company.com
+- Group:Engineering
+  - bob@company.com
+  - alice@company.com
+- Group:Support
+  - patrick@company.com
+```

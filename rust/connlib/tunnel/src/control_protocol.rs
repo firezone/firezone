@@ -10,11 +10,11 @@ use connlib_shared::{
     messages::{Relay, RequestConnection, ReuseConnection},
     Callbacks, Error, Result,
 };
-use webrtc::ice_transport::RTCIceTransport;
 use webrtc::ice_transport::{
     ice_candidate::RTCIceCandidate, ice_gatherer::RTCIceGatherOptions,
     ice_parameters::RTCIceParameters,
 };
+use webrtc::ice_transport::{ice_candidate_type::RTCIceCandidateType, RTCIceTransport};
 use webrtc::ice_transport::{ice_credential_type::RTCIceCredentialType, ice_server::RTCIceServer};
 
 use crate::{
@@ -30,6 +30,8 @@ const ICE_CANDIDATE_BUFFER: usize = 100;
 // We should use not more than 1-2 relays (WebRTC in Firefox breaks at 5) due to combinatoric
 // complexity of checking all the ICE candidate pairs
 const MAX_RELAYS: usize = 2;
+
+const MAX_HOST_CANDIDATES: usize = 8;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Request {
@@ -47,6 +49,7 @@ where
         conn_id: TRoleState::Id,
         ice_candidate: RTCIceCandidate,
     ) -> Result<()> {
+        tracing::info!(%ice_candidate, %conn_id, "adding new remote candidate");
         let peer_connection = self
             .peer_connections
             .lock()
@@ -104,8 +107,24 @@ pub(crate) async fn new_ice_connection(
                 return Box::pin(async {});
             };
 
+            tracing::info!(%candidate, "found new local candidate");
+
             let mut ice_candidate_tx = ice_candidate_tx.clone();
+            let gatherer = gatherer.clone();
             Box::pin(async move {
+                if candidate.typ == RTCIceCandidateType::Host {
+                    if let Ok(candidates) = gatherer.get_local_candidates().await {
+                        if candidates
+                            .iter()
+                            .filter(|c| c.typ == RTCIceCandidateType::Host)
+                            .count()
+                            > MAX_HOST_CANDIDATES
+                        {
+                            return;
+                        }
+                    }
+                }
+
                 if ice_candidate_tx.send(candidate).await.is_err() {
                     debug_assert!(false, "receiver was dropped before sender");
                 }

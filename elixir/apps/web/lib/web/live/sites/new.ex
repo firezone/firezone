@@ -27,7 +27,7 @@ defmodule Web.Sites.New do
                 <.input label="Name" field={@form[:name]} placeholder="Name of this Site" required />
               </div>
               <div>
-                <p class="text-lg text-slate-900 mb-2">
+                <p class="text-lg text-neutral-900 mb-2">
                   Data Routing -
                   <a
                     class={[link_style(), "text-sm"]}
@@ -47,8 +47,16 @@ defmodule Web.Sites.New do
                       label={pretty_print_routing(:managed)}
                       checked={@form[:routing].value == :managed}
                       required
-                    />
-                    <p class="ml-6 mb-4 text-sm text-slate-500 dark:text-slate-400">
+                    >
+                      <.badge
+                        class="ml-2"
+                        type="primary"
+                        title="Feature available on the Enterprise plan"
+                      >
+                        ENTERPRISE
+                      </.badge>
+                    </.input>
+                    <p class="ml-6 mb-4 text-sm text-neutral-500 dark:text-neutral-400">
                       Firezone will route connections through our managed Relays only if a direct connection to a Gateway is not possible.
                       Firezone can never decrypt the contents of your traffic.
                     </p>
@@ -63,7 +71,7 @@ defmodule Web.Sites.New do
                       checked={@form[:routing].value == :stun_only}
                       required
                     />
-                    <p class="ml-6 mb-4 text-sm text-gray-500 dark:text-gray-400">
+                    <p class="ml-6 mb-4 text-sm text-neutral-500 dark:text-neutral-400">
                       Firezone will enforce direct connections to all Gateways in this Site. This could cause connectivity issues in rare cases.
                     </p>
                   </div>

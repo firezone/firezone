@@ -284,7 +284,7 @@ jobs:
           cat /tmp/iperf3results-main/udp_client2server.json | jq -r '"udp_client2server_sum_jitter_ms=" + (.end.sum.jitter_ms|tostring)' >> "$GITHUB_OUTPUT"
           cat /tmp/iperf3results-main/udp_client2server.json | jq -r '"udp_client2server_sum_lost_percent=" + (.end.sum.lost_percent|tostring)' >> "$GITHUB_OUTPUT"
       - name: Update PR
-        uses: actions/github-script@v6
+        uses: actions/github-script@v7
         id: perf-comment
         if: ${{ github.event_name == 'pull_request' }}
         with:
@@ -367,21 +367,22 @@ jobs:
 
             `;
 
-            // 3. Delete previous comment so PR timeline makes sense
+            // 3. Update previous comment or create new one
             if (botComment) {
-              github.rest.issues.deleteComment({
+              github.rest.issues.updateComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 comment_id: botComment.id,
+                body: output
+              });
+            } else {
+              github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: output
               });
             }
-
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: output
-            });
       - name: Show Client logs
         if: "!cancelled()"
         run: docker compose logs client

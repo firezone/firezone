@@ -43,7 +43,7 @@ defmodule Web.Live.Policies.ShowTest do
                }}}
   end
 
-  test "renders not found error when gateway is deleted", %{
+  test "renders deleted gateway group without action buttons", %{
     account: account,
     policy: policy,
     identity: identity,
@@ -51,11 +51,17 @@ defmodule Web.Live.Policies.ShowTest do
   } do
     policy = Fixtures.Policies.delete_policy(policy)
 
-    assert_raise Web.LiveErrors.NotFoundError, fn ->
+    {:ok, _lv, html} =
       conn
       |> authorize_conn(identity)
       |> live(~p"/#{account}/policies/#{policy}")
-    end
+
+    assert html =~ "(deleted)"
+    refute html =~ "Danger Zone"
+    refute html =~ "Add"
+    refute html =~ "Delete"
+    refute html =~ "Edit"
+    refute html =~ "Deploy"
   end
 
   test "renders breadcrumbs item", %{
@@ -177,5 +183,36 @@ defmodule Web.Live.Policies.ShowTest do
              {:error, {:live_redirect, %{to: ~p"/#{account}/policies", kind: :push}}}
 
     assert Repo.get(Domain.Policies.Policy, policy.id).deleted_at
+
+    {:ok, _lv, html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/policies/#{policy}")
+
+    assert html =~ "(deleted)"
+  end
+
+  test "allows disabling and enabling policy", %{
+    account: account,
+    policy: policy,
+    identity: identity,
+    conn: conn
+  } do
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/policies/#{policy}")
+
+    assert lv
+           |> element("button", "Disable Policy")
+           |> render_click() =~ "(disabled)"
+
+    assert Repo.get(Domain.Policies.Policy, policy.id).disabled_at
+
+    refute lv
+           |> element("button", "Enable Policy")
+           |> render_click() =~ "(disabled)"
+
+    refute Repo.get(Domain.Policies.Policy, policy.id).disabled_at
   end
 end

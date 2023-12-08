@@ -1,0 +1,28 @@
+import Alert from "@/components/DocsAlert";
+
+# Service Accounts
+
+Service accounts are actors that can be used with the Firezone Linux client in
+headless operation to manage access from a server, machine, or other non-user
+machine to your Resources.
+
+Service accounts behave like any other actor in Firezone. They can be added to
+Groups and Policies to gain access to Resources.
+
+<Alert
+  color="warning"
+  html={`
+    Because service accounts authenticate to your Firezone account
+    without user interaction, <strong>their tokens don't expire</strong>.
+    We recommend manually rotating service account tokens on a scheduled
+    interval as a best practice.
+  `}
+/>
+
+## Create a service account
+
+To create a service account, head to `Actors` -> `Add Actor` and select
+`Service Account` as the type.
+
+You will then be shown a token you'll need to copy somewhere safe to use with
+the [Linux client](/kb/user-guides/linux-client).

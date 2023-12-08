@@ -9,7 +9,7 @@ use std::net::SocketAddr;
 use tokio::task;
 
 /// The maximum amount of items that can be buffered in the channel to the allocation task.
-const MAX_BUFFERED_ITEMS: usize = 10;
+const MAX_BUFFERED_ITEMS: usize = 1000;
 
 pub struct Allocation {
     id: AllocationId,

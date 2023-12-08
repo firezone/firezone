@@ -13,6 +13,26 @@ resource "google_monitoring_notification_channel" "slack" {
   }
 }
 
+resource "google_monitoring_notification_channel" "pagerduty" {
+  count = var.pagerduty_auth_token != null ? 1 : 0
+
+  project = var.project_id
+
+  display_name = "PagerDuty"
+  type         = "pagerduty"
+
+  sensitive_labels {
+    service_key = var.pagerduty_auth_token
+  }
+}
+
+locals {
+  notification_channels = concat(
+    [google_monitoring_notification_channel.slack.name],
+    var.pagerduty_auth_token != null ? [google_monitoring_notification_channel.pagerduty[0].name] : []
+  )
+}
+
 resource "google_monitoring_uptime_check_config" "api-https" {
   project = var.project_id
 
@@ -102,9 +122,7 @@ resource "google_monitoring_alert_policy" "api-downtime" {
   display_name = "API service is DOWN!"
   combiner     = "OR"
 
-  notification_channels = [
-    google_monitoring_notification_channel.slack.name
-  ]
+  notification_channels = local.notification_channels
 
   conditions {
     display_name = "Uptime Health Check on api-https"
@@ -144,9 +162,7 @@ resource "google_monitoring_alert_policy" "web-downtime" {
   display_name = "Portal service is DOWN!"
   combiner     = "OR"
 
-  notification_channels = [
-    google_monitoring_notification_channel.slack.name
-  ]
+  notification_channels = local.notification_channels
 
   conditions {
     display_name = "Uptime Health Check on web-https"
@@ -186,9 +202,7 @@ resource "google_monitoring_alert_policy" "instances_high_cpu_policy" {
   display_name = "High Instance CPU utilization"
   combiner     = "OR"
 
-  notification_channels = [
-    google_monitoring_notification_channel.slack.name
-  ]
+  notification_channels = local.notification_channels
 
   conditions {
     display_name = "VM Instance - CPU utilization"
@@ -223,9 +237,7 @@ resource "google_monitoring_alert_policy" "sql_high_cpu_policy" {
   display_name = "High Cloud SQL CPU utilization"
   combiner     = "OR"
 
-  notification_channels = [
-    google_monitoring_notification_channel.slack.name
-  ]
+  notification_channels = local.notification_channels
 
   conditions {
     display_name = "Cloud SQL Database - CPU utilization"
@@ -260,9 +272,7 @@ resource "google_monitoring_alert_policy" "sql_disk_utiliziation_policy" {
   display_name = "High Cloud SQL Disk utilization"
   combiner     = "OR"
 
-  notification_channels = [
-    google_monitoring_notification_channel.slack.name
-  ]
+  notification_channels = local.notification_channels
 
   conditions {
     display_name = "Cloud SQL Database - Disk utilization"
@@ -282,6 +292,75 @@ resource "google_monitoring_alert_policy" "sql_disk_utiliziation_policy" {
         alignment_period     = "300s"
         cross_series_reducer = "REDUCE_NONE"
         per_series_aligner   = "ALIGN_MEAN"
+      }
+    }
+  }
+
+  alert_strategy {
+    auto_close = "28800s"
+  }
+}
+
+resource "google_monitoring_alert_policy" "genservers_crash_policy" {
+  project = var.project_id
+
+  display_name = "GenServer Crashes"
+  combiner     = "OR"
+
+  notification_channels = local.notification_channels
+
+  conditions {
+    display_name = "Log match condition"
+
+    condition_matched_log {
+      filter = <<-EOT
+      resource.type="gce_instance"
+      severity>=ERROR
+      EOT
+    }
+  }
+
+  alert_strategy {
+    auto_close = "28800s"
+
+    notification_rate_limit {
+      period = "3600s"
+    }
+  }
+}
+
+resource "google_monitoring_alert_policy" "ssl_certs_expiring_policy" {
+  project = var.project_id
+
+  display_name = "SSL certificate expiring soon"
+  combiner     = "OR"
+
+  notification_channels = local.notification_channels
+
+  user_labels = {
+    version = "1"
+    uptime  = "ssl_cert_expiration"
+  }
+
+  conditions {
+    display_name = "SSL certificate expiring soon"
+
+    condition_threshold {
+      comparison = "COMPARISON_LT"
+      filter     = "metric.type=\"monitoring.googleapis.com/uptime_check/time_until_ssl_cert_expires\" AND resource.type=\"uptime_url\""
+
+      aggregations {
+        alignment_period     = "1200s"
+        cross_series_reducer = "REDUCE_MEAN"
+        group_by_fields      = ["resource.label.*"]
+        per_series_aligner   = "ALIGN_NEXT_OLDER"
+      }
+
+      duration        = "600s"
+      threshold_value = 15
+
+      trigger {
+        count = 1
       }
     }
   }

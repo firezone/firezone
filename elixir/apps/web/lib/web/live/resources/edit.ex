@@ -6,6 +6,7 @@ defmodule Web.Resources.Edit do
   def mount(%{"id" => id} = params, _session, socket) do
     with {:ok, resource} <-
            Resources.fetch_resource_by_id(id, socket.assigns.subject, preload: :gateway_groups),
+         nil <- resource.deleted_at,
          {:ok, gateway_groups} <- Gateways.list_groups(socket.assigns.subject) do
       form = Resources.change_resource(resource, socket.assigns.subject) |> to_form()
 
@@ -42,7 +43,7 @@ defmodule Web.Resources.Edit do
       </:title>
       <:content>
         <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
-          <h2 class="mb-4 text-xl font-bold text-gray-900 dark:text-white">Edit Resource details</h2>
+          <h2 class="mb-4 text-xl font-bold text-neutral-900">Edit Resource details</h2>
 
           <.form for={@form} phx-change={:change} phx-submit={:submit} class="space-y-4 lg:space-y-6">
             <.input

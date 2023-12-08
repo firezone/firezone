@@ -1,5 +1,5 @@
-import Content from "./readme.mdx";
 import { Metadata } from "next";
+import _Page from "./_page";
 
 export const metadata: Metadata = {
   title: "User Guides: Add Devices • Firezone Docs",
@@ -7,5 +7,5 @@ export const metadata: Metadata = {
 };
 
 export default function Page() {
-  return <Content />;
+  return <_Page />;
 }

@@ -32,7 +32,7 @@ defmodule Web.Live.Clients.ShowTest do
                }}}
   end
 
-  test "renders not found error when client is deleted", %{
+  test "renders deleted client without action buttons", %{
     account: account,
     client: client,
     identity: identity,
@@ -40,11 +40,17 @@ defmodule Web.Live.Clients.ShowTest do
   } do
     client = Fixtures.Clients.delete_client(client)
 
-    assert_raise Web.LiveErrors.NotFoundError, fn ->
+    {:ok, _lv, html} =
       conn
       |> authorize_conn(identity)
       |> live(~p"/#{account}/clients/#{client}")
-    end
+
+    assert html =~ "(deleted)"
+    refute html =~ "Danger Zone"
+    refute html =~ "Add"
+    refute html =~ "Delete"
+    refute html =~ "Edit"
+    refute html =~ "Deploy"
   end
 
   test "renders breadcrumbs item", %{
@@ -112,7 +118,7 @@ defmodule Web.Live.Clients.ShowTest do
            |> Map.fetch!("owner") =~ actor.name
   end
 
-  test "renders logs table", %{
+  test "renders flows table", %{
     account: account,
     identity: identity,
     client: client,
@@ -125,6 +131,79 @@ defmodule Web.Live.Clients.ShowTest do
       )
 
     flow = Repo.preload(flow, [:client, gateway: [:group], policy: [:actor_group, :resource]])
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/clients/#{client}")
+
+    [row] =
+      lv
+      |> element("#flows")
+      |> render()
+      |> table_to_map()
+
+    assert row["authorized at"]
+    assert row["expires at"]
+    assert row["remote ip"] == to_string(client.last_seen_remote_ip)
+    assert row["policy"] =~ flow.policy.actor_group.name
+    assert row["policy"] =~ flow.policy.resource.name
+
+    assert row["gateway (ip)"] ==
+             "#{flow.gateway.group.name}-#{flow.gateway.name} (189.172.73.153)"
+  end
+
+  test "renders flows even for deleted policies", %{
+    account: account,
+    identity: identity,
+    client: client,
+    conn: conn
+  } do
+    flow =
+      Fixtures.Flows.create_flow(
+        account: account,
+        client: client
+      )
+
+    flow = Repo.preload(flow, [:client, gateway: [:group], policy: [:actor_group, :resource]])
+    Fixtures.Policies.delete_policy(flow.policy)
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/clients/#{client}")
+
+    [row] =
+      lv
+      |> element("#flows")
+      |> render()
+      |> table_to_map()
+
+    assert row["authorized at"]
+    assert row["expires at"]
+    assert row["remote ip"] == to_string(client.last_seen_remote_ip)
+    assert row["policy"] =~ flow.policy.actor_group.name
+    assert row["policy"] =~ flow.policy.resource.name
+
+    assert row["gateway (ip)"] ==
+             "#{flow.gateway.group.name}-#{flow.gateway.name} (189.172.73.153)"
+  end
+
+  test "renders flows even for deleted policy assocs", %{
+    account: account,
+    identity: identity,
+    client: client,
+    conn: conn
+  } do
+    flow =
+      Fixtures.Flows.create_flow(
+        account: account,
+        client: client
+      )
+
+    flow = Repo.preload(flow, [:client, gateway: [:group], policy: [:actor_group, :resource]])
+    Fixtures.Actors.delete_group(flow.policy.actor_group)
+    Fixtures.Resources.delete_resource(flow.policy.resource)
 
     {:ok, lv, _html} =
       conn

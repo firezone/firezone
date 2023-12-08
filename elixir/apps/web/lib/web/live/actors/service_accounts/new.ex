@@ -37,7 +37,7 @@ defmodule Web.Actors.ServiceAccounts.New do
       </:title>
       <:content>
         <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
-          <h2 class="mb-4 text-xl font-bold text-gray-900 dark:text-white">
+          <h2 class="mb-4 text-xl font-bold text-neutral-900">
             Create a Service Account
           </h2>
           <.flash kind={:error} flash={@flash} />

@@ -12,16 +12,13 @@ export default function Collapse({
 }) {
   const ctl = label.toLowerCase().replace(" ", "-") + "-dropdown";
   const indent = "ml-3";
-  const hidden = expanded ? "" : "hidden";
-  const text = expanded ? "bg-neutral-100 " : "text-neutral-900 ";
-  const [expandedState, setExpandedState] = useState(expanded);
+  const [expandedState, setExpandedState] = useState(expanded || false);
 
   return (
     <>
       <button
         type="button"
         className={
-          text +
           " flex items-center w-full transition duration-75 rounded group hover:bg-neutral-100 "
         }
         aria-controls={ctl}
@@ -29,18 +26,21 @@ export default function Collapse({
         onClick={() => setExpandedState(!expandedState)}
       >
         <span
-          className="ml-3 flex-1 text-left whitespace-nowrap"
+          className="ml-3 flex-1 text-left whitespace-nowrap font-semibold"
           sidebar-toggle-item="true"
         >
           {label}
         </span>
         {expandedState ? (
-          <HiChevronDown sidebar-toggle-item="true" className="w-6 h-6" />
+          <HiChevronDown sidebar-toggle-item="true" className="w-4 h-4" />
         ) : (
-          <HiChevronRight sidebar-toggle-item="true" className="w-6 h-6" />
+          <HiChevronRight sidebar-toggle-item="true" className="w-4 h-4" />
         )}
       </button>
-      <ul id={ctl} className={[hidden, "ml-3 py-1 space-y-0.5"].join(" ")}>
+      <ul
+        id={ctl}
+        className={[expandedState ? "" : "hidden", "ml-3 py-1"].join(" ")}
+      >
         {children}
       </ul>
     </>

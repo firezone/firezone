@@ -5,6 +5,7 @@ const plugin = require("tailwindcss/plugin")
 const fs = require("fs")
 const path = require("path")
 const defaultTheme = require("tailwindcss/defaultTheme")
+const colors = require('tailwindcss/colors')
 
 const firezoneColors = {
   // See our brand palette in Figma.
@@ -38,18 +39,19 @@ const firezoneColors = {
     800: "#28005c",
     900: "#160033",
   },
-  // neutral: night-rider
-  "night-rider": {
-    50: "#fcfcfc",
-    100: "#f8f7f7",
-    200: "#ebebea",
-    300: "#dfdedd",
-    400: "#c7c4c2",
-    500: "#a7a3a0",
-    600: "#90867f",
-    700: "#766a60",
-    800: "#4c3e33",
-    900: "#1b140e",
+  // neutral: chicago
+  "chicago": {
+    50:  "#f6f6f6",
+    100: "#e7e7e7",
+    200: "#d1d1d1",
+    300: "#b0b0b0",
+    400: "#888888",
+    500: "#6d6d6d",
+    600: "#575757",
+    700: "#4f4f4f",
+    800: "#454545",
+    900: "#3d3d3d",
+    950: "#262626",
   },
 };
 
@@ -71,19 +73,7 @@ module.exports = {
         brand: "#FD4F00",
         primary: firezoneColors["heat-wave"],
         accent: firezoneColors["electric-violet"],
-        neutral: firezoneColors["night-rider"]
-        //primary: {
-        //  "50": "#eff6ff",
-        //  "100": "#dbeafe",
-        //  "200": "#bfdbfe",
-        //  "300": "#93c5fd",
-        //  "400": "#60a5fa",
-        //  "500": "#3b82f6",
-        //  "600": "#2563eb",
-        //  "700": "#1d4ed8",
-        //  "800": "#1e40af",
-        //  "900": "#1e3a8a"
-        //}
+        neutral: firezoneColors["chicago"]
       }
     },
   },

@@ -34,13 +34,14 @@ export default function EarlyAccessForm() {
           <li>Automatic failover, load balancing</li>
         </ul>
         <h3 className="mb-4 lg:text-2xl md:text-xl font-bold tracking-tight text-neutral-900 text-lg ">
-          How much will it cost?
+          What's the pricing model?
         </h3>
         <p className="md:text-lg mb-6">
-          We're still working out pricing details for the 1.0 release and will
-          launch an updated pricing page when we have more to share. Our goal is
-          to price Firezone competitively among other products in the space with
-          a cost that scales predictably.
+          See our{" "}
+          <Link href="/pricing" className="hover:underline text-accent-500">
+            pricing page
+          </Link>{" "}
+          for details.
         </p>
       </div>
       <div className="w-full">

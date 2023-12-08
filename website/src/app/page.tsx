@@ -3,9 +3,12 @@ import CodeBlock from "@/components/CodeBlock";
 import Link from "next/link";
 import Image from "next/image";
 import ActionLink from "@/components/ActionLink";
+import CustomerLogos from "@/components/CustomerLogos";
 import {
+  HiFingerPrint,
   HiArrowLongRight,
   HiCheck,
+  HiShieldCheck,
   HiHome,
   HiRocketLaunch,
   HiWrenchScrewdriver,
@@ -13,8 +16,8 @@ import {
 } from "react-icons/hi2";
 
 export const metadata: Metadata = {
-  title: "Open-source Remote Access • Firezone",
-  description: "Open-source remote access built on WireGuard®.",
+  title: "WireGuard® for Enterprise • Firezone",
+  description: "Open-source, zero-trust access platform built on WireGuard®",
 };
 
 export default function Page() {
@@ -23,20 +26,20 @@ export default function Page() {
       <section className="bg-gradient-to-b from-primary-50 to-neutral-100 pt-24">
         <div className="px-4 py-8 mx-auto max-w-screen-xl text-center lg:py-16 lg:px-12">
           <h1 className="mb-4 md:text-6xl text-5xl justify-center font-extrabold tracking-tight leading-none text-neutral-900">
-            Fast, effortless secure access.
+            Blazing-fast alternative to legacy VPNs
           </h1>
           <h2 className="mb-8 text-xl tracking-tight text-neutral-800 sm:px-16 xl:px-48">
-            Firezone is an open-source remote access platform built on
-            WireGuard®, a modern VPN protocol that's 4-6x faster than OpenVPN.
-            Deploy on your infrastructure and start onboarding users in minutes.
+            Manage secure remote access to your company’s most valuable services
+            and resources with Firezone. We’re open source, and built on
+            WireGuard®, a modern protocol that’s up to 4-6x faster than OpenVPN.
           </h2>
           <div className="flex mb-8 lg:mb-16 flex-row justify-center space-y-0 space-x-4">
-            <Link href="/product/early-access">
+            <Link href="/contact/sales">
               <button
                 type="button"
-                className="inline-flex shadow-lg justify-center items-center py-3 px-5 text-base font-bold text-center text-white rounded bg-gradient-to-br from-accent-700 to-accent-600 hover:scale-105 duration-0 transform transition"
+                className="inline-flex shadow-lg justify-center items-center py-3 px-5 text-base font-bold text-center text-white rounded bg-accent-450 hover:bg-accent-700 hover:scale-105 duration-0 transform transition"
               >
-                Request early access
+                Request demo
                 <HiArrowLongRight className="ml-2 -mr-1 w-6 h-6" />
               </button>
             </Link>
@@ -56,49 +59,7 @@ export default function Page() {
               videos.
             </video>
           </div>
-          <div className="flex justify-center items-center p-8 mt-8">
-            <h3 className="text-2xl tracking-tight font-bold text-neutral-800 ">
-              Trusted by organizations like
-            </h3>
-          </div>
-          <div className="gap-8 max-w-screen-xl grid justify-items-center sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 px-16 py-8">
-            <Image
-              alt="bunq logo"
-              src="/images/bunq-logo.png"
-              width={100}
-              height={55}
-            />
-            <Image
-              alt="tribe logo"
-              src="/images/tribe-logo.png"
-              width={100}
-              height={55}
-            />
-            <Image
-              alt="wolfram logo"
-              src="/images/wolfram-logo.png"
-              width={100}
-              height={55}
-            />
-            <Image
-              alt="rebank logo"
-              src="/images/rebank-logo.png"
-              width={100}
-              height={55}
-            />
-            <Image
-              alt="square1 logo"
-              src="/images/square1-logo.png"
-              width={100}
-              height={55}
-            />
-            <Image
-              alt="db11 logo"
-              src="/images/db11-logo.png"
-              width={100}
-              height={55}
-            />
-          </div>
+          <CustomerLogos />
         </div>
       </section>
 
@@ -106,7 +67,8 @@ export default function Page() {
       <section className="border-t border-neutral-200 bg-gradient-to-b from-white via-neutral-50 to-white py-24">
         <div className="mx-4 flex flex-col justify-center items-center">
           <h2 className="text-center justify-center mb-4 text-4xl tracking-tight font-bold text-neutral-900 ">
-            A modern alternative to legacy VPNs
+            Least-privileged access to your most valuable resources in just a
+            few minutes.
           </h2>
         </div>
 
@@ -114,35 +76,63 @@ export default function Page() {
         <div className="gap-8 items-center py-8 px-4 mx-auto max-w-screen-xl lg:grid lg:grid-cols-2 xl:gap-16 sm:py-16 lg:px-6 ">
           <div>
             <h4 className="mb-8 text-lg font-semibold tracking-tight text-primary-450 ">
-              SIMPLE TO MANAGE
+              EFFORTLESS SETUP
             </h4>
-            <h3 className="text-2xl font-semibold tracking-tight text-neutral-900">
-              Streamline workflows.
-              <br />
-              Reduce total cost of ownership.
-            </h3>
             <p className="text-xl text-neutral-800 my-4">
-              Legacy VPNs are cumbersome to manage and take weeks to configure
-              correctly. Firezone takes minutes to deploy and the Web GUI makes
-              managing secure access effortless for admins.
+              Replace your legacy VPN with a modern zero trust solution.
+              Firezone supports the workflows you're already familiar with, so
+              you can get started in minutes and incrementally adopt zero trust
+              over time.
             </p>
             <ul role="list" className="my-6 lg:mb-0 space-y-4">
               <li className="flex space-x-2.5">
                 <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
                 <span className="leading-tight text-lg text-neutral-900 ">
-                  Integrate any identity provider to enforce 2FA / MFA
+                  Create a{" "}
+                  <Link
+                    className="text-accent-500 underline hover:no-underline"
+                    href="/kb/learn/concepts/site?utm_source=website"
+                  >
+                    site
+                  </Link>
                 </span>
               </li>
               <li className="flex space-x-2.5">
                 <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
                 <span className="leading-tight text-lg text-neutral-900 ">
-                  Define user-scoped access rules
+                  Deploy one or more{" "}
+                  <Link
+                    className="text-accent-500 underline hover:no-underline"
+                    href="/kb/learn/concepts/gateway?utm_source=website"
+                  >
+                    gateways
+                  </Link>
                 </span>
               </li>
               <li className="flex space-x-2.5">
                 <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
                 <span className="leading-tight text-lg text-neutral-900 ">
-                  Manage access with a snappy admin dashboard
+                  Add a{" "}
+                  <Link
+                    className="text-accent-500 underline hover:no-underline"
+                    href="/kb/learn/concepts/resource?utm_source=website"
+                  >
+                    resource
+                  </Link>{" "}
+                  (e.g. subnet, host or service)
+                </span>
+              </li>
+              <li className="flex space-x-2.5">
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
+                <span className="leading-tight text-lg text-neutral-900 ">
+                  Choose which{" "}
+                  <Link
+                    className="text-accent-500 underline hover:no-underline"
+                    href="/kb/learn/concepts/group?utm_source=website"
+                  >
+                    user groups
+                  </Link>{" "}
+                  have access
                 </span>
               </li>
             </ul>
@@ -159,66 +149,44 @@ export default function Page() {
         <div className="gap-8 py-8 px-4 mx-auto max-w-screen-xl flex flex-col-reverse lg:grid lg:grid-cols-2 xl:gap-16 sm:py-16 lg:px-6 ">
           <div className="flex flex-col">
             <Image
-              className="rounded shadow-md"
               width={600}
               height={500}
               alt="Feature 2"
               src="/images/feature-2.png"
             />
-            <Link
-              className="mt-4 lg:mx-auto text-accent-600 hover:underline"
-              href="https://core.ac.uk/download/pdf/322886318.pdf"
-            >
-              Performance comparison of VPN solutions (Osswald et al.)
-            </Link>
           </div>
           <div>
             <h4 className="mb-8 text-lg font-semibold tracking-tight text-primary-450 ">
-              FAST AND LIGHTWEIGHT
+              RELIABLE ACCESS
             </h4>
-            <h3 className="text-2xl font-semibold tracking-tight text-neutral-900">
-              High throughput and low latency. <br />
-              Up to 4-6x faster than OpenVPN.
-            </h3>
             <p className="text-xl text-neutral-800 my-4">
-              Increase productivity and decrease connection issues for your
-              remote team. Firezone uses kernel WireGuard® to be efficient,
-              reliable, and performant in any environment.
+              Firezone is fast and dependable so your team is always connected
+              to the resources they need most. It works on all major platforms
+              and stays connected even when switching WiFi networks.
             </p>
             <ul role="list" className="my-6 lg:mb-0 space-y-4">
               <li className="flex space-x-2.5">
                 <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
                 <span className="leading-tight text-lg text-neutral-900 ">
-                  <Link
-                    className="text-accent-600 hover:underline"
-                    href="https://www.wireguard.com/protocol/"
-                  >
-                    State-of-the-art cryptography
-                  </Link>
+                  Automatic NAT traversal
                 </span>
               </li>
               <li className="flex space-x-2.5">
                 <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
                 <span className="leading-tight text-lg text-neutral-900 ">
-                  Auditable and{" "}
-                  <Link
-                    className="text-accent-600 hover:underline"
-                    href="https://www.wireguard.com/formal-verification/"
-                  >
-                    formally verified
-                  </Link>
+                  Global relay network
                 </span>
               </li>
               <li className="flex space-x-2.5">
                 <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
                 <span className="leading-tight text-lg text-neutral-900 ">
-                  <Link
-                    className="text-accent-600 hover:underline"
-                    href="https://www.wireguard.com/performance/"
-                  >
-                    Multi-threaded
-                  </Link>{" "}
-                  performance that scales
+                  Automatic gateway failover and load balancing
+                </span>
+              </li>
+              <li className="flex space-x-2.5">
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
+                <span className="leading-tight text-lg text-neutral-900 ">
+                  Native clients for all major platforms
                 </span>
               </li>
             </ul>
@@ -229,45 +197,36 @@ export default function Page() {
         <div className="gap-8 items-center pt-8 px-4 mx-auto max-w-screen-xl lg:grid lg:grid-cols-2 xl:gap-16 sm:pt-16 lg:px-6 ">
           <div>
             <h4 className="mb-8 text-lg font-semibold tracking-tight text-primary-450 ">
-              RUN ANYWHERE
+              MAINTAIN CONTROL
             </h4>
-            <h3 className="text-2xl font-semibold tracking-tight text-neutral-900">
-              Firezone runs entirely on your infrastructure. <br />
-              No vendor lock-in.
-            </h3>
             <p className="text-xl text-neutral-800 my-4">
-              Deploy Firezone on any platform that supports Docker. There's no
-              need to risk breaches by sending data to third parties.
+              Firezone establishes secure, direct tunnels between your users and
+              gateways, then gets out of the way. Gateways are deployed on your
+              infrastructure, so you retain full control over your data at all
+              times.
             </p>
             <ul role="list" className="my-6 lg:mb-0 space-y-4">
               <li className="flex space-x-2.5">
                 <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
                 <span className="leading-tight text-lg text-neutral-900 ">
-                  VPC, data center, or on-prem
+                  Deploy gateways as Docker containers or standalone binaries
                 </span>
               </li>
               <li className="flex space-x-2.5">
                 <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
                 <span className="leading-tight text-lg text-neutral-900 ">
-                  Auto-renewing SSL certs from Let's Encrypt via ACME
+                  Connect VPC, data center, on-prem, and cloud resources
                 </span>
               </li>
               <li className="flex space-x-2.5">
                 <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
                 <span className="leading-tight text-lg text-neutral-900 ">
-                  Flexible and configurable
+                  Enforce direct connections between users and resources
                 </span>
               </li>
             </ul>
-            <ActionLink
-              className="inline-flex items-center text-accent-600 hover:underline text-lg mt-8"
-              href="/docs/deploy"
-            >
-              Explore the deployment docs
-            </ActionLink>
           </div>
           <Image
-            className="rounded shadow-md"
             width={600}
             height={500}
             alt="Feature 3"
@@ -279,17 +238,88 @@ export default function Page() {
       <section className="border-t border-neutral-200 bg-gradient-to-b from-neutral-100 to-primary-50 py-24">
         <div className="mx-4 flex flex-col justify-center items-center">
           <h2 className="mb-4 text-4xl justify-center text-center tracking-tight font-bold text-neutral-900 ">
-            Integrate your identity provider to enforce 2FA / MFA
+            Next-Gen security
           </h2>
           <h3 className="my-4 text-xl tracking-tight max-w-screen-lg text-center text-neutral-800 ">
-            Only allow connections from authenticated users and automatically
-            disable access for employees who have left. Firezone integrates with
-            any OIDC and SAML 2.0 compatible identity provider for single
-            sign-on (SSO).
+            Firezone is built from the ground up with modern security best
+            practices in mind.
           </h3>
+          <ul
+            role="list"
+            className="max-w-screen-sm mt-6 mb-8 space-y-4 text-lg"
+          >
+            <li className="flex space-x-5">
+              <HiShieldCheck className="text-accent-600 flex-shrink-0 w-7 h-7" />
+              <p>
+                <strong>Resource-level access policies</strong> that update in{" "}
+                <strong className="text-primary-450">real-time</strong> based on
+                changes from your IdP.
+              </p>
+            </li>
+            <li className="flex space-x-5">
+              <HiShieldCheck className="text-accent-600 flex-shrink-0 w-7 h-7" />
+              <p>
+                <strong>NAT hole punching</strong> means{" "}
+                <strong className="text-primary-450">no</strong> exposed attack
+                surface and <strong className="text-primary-450">zero</strong>{" "}
+                firewall configuration required.
+              </p>
+            </li>
+            <li className="flex space-x-5">
+              <HiShieldCheck className="text-accent-600 flex-shrink-0 w-7 h-7" />
+              <p>
+                <strong>Self-hosted gateways</strong> and configurable routing
+                rules ensure data-plane traffic passes{" "}
+                <strong className="text-primary-450">only</strong> through your
+                infrastructure.
+              </p>
+            </li>
+          </ul>
+        </div>
+        <div className="mx-4 mb-8 flex flex-col justify-center items-center">
+          <h2 className="inline-block mb-4 text-4xl justify-center text-center tracking-tight font-bold text-neutral-900 ">
+            That works <span className="text-primary-450">with</span> your IdP
+          </h2>
+          <div className="mx-auto gap-4 max-w-screen-md grid justify-items-center sm:grid-cols-2 pt-8 px-8">
+            <div className="text-center">
+              <Image
+                width={96}
+                height={96}
+                className="mx-auto mb-4"
+                alt="fingerprint icon"
+                src="/images/fingerprint.svg"
+              />
+              <h3 className="justify-center text-xl tracking-tight font-bold text-neutral-900 ">
+                Enforce 2FA / MFA
+              </h3>
+              <p className="mt-4 text-neutral-900 text-lg">
+                Add SSO with any OIDC-compatible identity provider (IdP) to
+                limit connections to current and authenticated users only.
+              </p>
+            </div>
+            <div className="text-center">
+              <Image
+                width={96}
+                height={96}
+                className="mx-auto mb-4"
+                alt="user group sync icon"
+                src="/images/user-group-sync.svg"
+              />
+              <h3 className="justify-center text-xl tracking-tight font-bold text-neutral-900 ">
+                Sync users & groups<sup className="text-xs">*</sup>
+              </h3>
+              <p className="mt-4 text-neutral-900 text-lg">
+                Sync IdP users and groups to ensure active employees can access
+                your network, and revoke access when employees leave.
+              </p>
+              <p className="mt-2 text-neutral-900 text-xs">
+                * Currently available for Google Workspace
+              </p>
+            </div>
+          </div>
         </div>
         <div className="mx-auto gap-8 max-w-screen-xl grid justify-items-center sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 px-16 pt-8">
-          <Link href="/docs/authenticate/oidc/keycloak/">
+          <Link href="/docs/authenticate/oidc/keycloak">
             <Image
               width={150}
               height={75}
@@ -297,7 +327,7 @@ export default function Page() {
               src="/images/keycloak-logo.png"
             />
           </Link>
-          <Link href="/docs/authenticate/oidc/google/">
+          <Link href="/docs/authenticate/oidc/google">
             <Image
               width={150}
               height={75}
@@ -305,7 +335,7 @@ export default function Page() {
               src="/images/google-logo.png"
             />
           </Link>
-          <Link href="/docs/authenticate/oidc/okta/">
+          <Link href="/docs/authenticate/oidc/okta">
             <Image
               width={150}
               height={75}
@@ -313,7 +343,7 @@ export default function Page() {
               src="/images/okta-logo.png"
             />
           </Link>
-          <Link href="/docs/authenticate/oidc/onelogin/">
+          <Link href="/docs/authenticate/oidc/onelogin">
             <Image
               width={150}
               height={75}
@@ -321,7 +351,7 @@ export default function Page() {
               src="/images/onelogin-logo.png"
             />
           </Link>
-          <Link href="/docs/authenticate/oidc/azuread/">
+          <Link href="/docs/authenticate/oidc/azuread">
             <Image
               width={150}
               height={75}
@@ -329,7 +359,7 @@ export default function Page() {
               src="/images/azure-logo.png"
             />
           </Link>
-          <Link href="/docs/authenticate/saml/jumpcloud/">
+          <Link href="/docs/authenticate/saml/jumpcloud">
             <Image
               width={150}
               height={75}
@@ -343,121 +373,105 @@ export default function Page() {
       <section className="border-t border-neutral-200 py-24 bg-white">
         <div className="mx-4 flex flex-col justify-center items-center">
           <h2 className="mb-4 justify-center text-center text-4xl tracking-tight font-bold text-neutral-900 ">
-            Who can benefit using Firezone?
+            How customers are using Firezone
           </h2>
-          <h3 className="my-4 text-xl tracking-tight max-w-screen-lg text-center text-neutral-800 ">
-            Easy to deploy and manage for individuals and organizations alike.
-            Only allow connections from authenticated users and automatically
-            disable access for employees who have left. Firezone integrates with
-            any OIDC and SAML 2.0 compatible identity provider for single
-            sign-on (SSO).
-          </h3>
         </div>
-        <div className="gap-4 items-center pt-8 px-4 mx-auto max-w-screen-xl lg:grid lg:grid-cols-2 xl:gap-8 sm:pt-16 lg:px-6 ">
-          <div className="bg-neutral-100 p-8 rounded shadow-md">
+        <div className="gap-4 items-center pt-8 px-4 mx-auto max-w-screen-xl md:grid md:grid-cols-2 xl:gap-8 sm:pt-16 lg:px-6 ">
+          <div className="bg-neutral-100 p-8 border border-neutral-200">
             <div className="flex items-center space-x-2.5">
-              <HiHome className="flex-shrink-0 w-5 h-5 text-primary-450" />
+              <HiShieldCheck className=" lex-shrink-0 w-6 h-6 text-accent-600" />
               <h3 className="text-xl tracking-tight font-bold text-neutral-900 ">
-                Individuals and homelab users
+                VPN Replacement
               </h3>
             </div>
             <p className="mt-8 text-neutral-900 text-xl">
-              Lightweight and fast. Access your home network securely when on
-              the road.
+              Remote employees can securely access office networks, cloud VPCs,
+              and other private subnets and resources from anywhere in the
+              world, on any device.
             </p>
             <ul role="list" className="my-6 lg:mb-0 space-y-4">
               <li className="flex space-x-2.5">
                 <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
                 <span className="leading-tight text-lg text-neutral-900 ">
-                  Effortless to deploy on any infrastructure
+                  Easy to use, no training required
                 </span>
               </li>
               <li className="flex space-x-2.5">
                 <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
                 <span className="leading-tight text-lg text-neutral-900 ">
-                  Community plan supports unlimited devices
+                  Authenticate with virtually any IdP
                 </span>
               </li>
               <li className="flex space-x-2.5">
                 <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
                 <span className="leading-tight text-lg text-neutral-900 ">
-                  Lightweight with minimal resource usage
+                  Highly available gateways
                 </span>
               </li>
               <li className="flex space-x-2.5">
                 <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
                 <span className="leading-tight text-lg text-neutral-900 ">
-                  Open-source and self-hosted
+                  Modern encryption and authentication
                 </span>
               </li>
             </ul>
-            <ActionLink
-              className="inline-flex items-center text-accent-600 hover:underline text-lg mt-8"
-              href="/docs"
-            >
-              Access your personal project
-            </ActionLink>
           </div>
-          <div className="bg-neutral-100 p-8 rounded shadow-md">
+          <div className="bg-neutral-100 p-8 border border-neutral-200">
             <div className="flex items-center space-x-2.5">
-              <HiRocketLaunch className="flex-shrink-0 w-5 h-5 text-primary-450" />
+              <HiRocketLaunch className="flex-shrink-0 w-6 h-6 text-accent-600" />
               <h3 className="text-xl tracking-tight font-bold text-neutral-900 ">
-                Growing businesses
+                Infrastructure Access
               </h3>
             </div>
             <p className="mt-8 text-neutral-900 text-xl">
-              Keep up with increasing network and compliance demands as you
-              scale your team and infrastructure.
+              Empower engineers and DevOps to manage their team’s access to
+              technical resources like test/prod servers both on-prem, and in
+              the cloud.
             </p>
             <ul role="list" className="my-6 lg:mb-0 space-y-4">
               <li className="flex space-x-2.5">
                 <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
                 <span className="leading-tight text-lg text-neutral-900 ">
-                  Integrate your identity provider
+                  Admin REST API
                 </span>
               </li>
               <li className="flex space-x-2.5">
                 <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
                 <span className="leading-tight text-lg text-neutral-900 ">
-                  Quickly onboard/offboard employees{" "}
+                  Multiple admins per account
                 </span>
               </li>
               <li className="flex space-x-2.5">
                 <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
                 <span className="leading-tight text-lg text-neutral-900 ">
-                  Segment access for contractors
+                  Docker and Terraform integrations
                 </span>
               </li>
               <li className="flex space-x-2.5">
                 <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
                 <span className="leading-tight text-lg text-neutral-900 ">
-                  High performance, reduce bottlenecks
+                  Automatically sync users and groups from your IdP
                 </span>
               </li>
             </ul>
-            <ActionLink
-              className="inline-flex items-center text-accent-600 hover:underline text-lg mt-8"
-              href="/docs"
-            >
-              Scale your secure access
-            </ActionLink>
           </div>
-          <div className="bg-neutral-100 p-8 rounded shadow-md">
+          <div className="bg-neutral-100 p-8 border border-neutral-200">
             <div className="flex items-center space-x-2.5">
-              <HiGlobeAlt className=" lex-shrink-0 w-5 h-5 text-primary-450" />
+              <HiGlobeAlt className=" lex-shrink-0 w-6 h-6 text-accent-600" />
               <h3 className="text-xl tracking-tight font-bold text-neutral-900 ">
-                Remote organizations
+                Internet Security
               </h3>
             </div>
             <p className="mt-8 text-neutral-900 text-xl">
-              Transitioning to remote? Perfect timing to replace the legacy VPN.
-              Improve your security posture and reduce support tickets.
+              Route sensitive internet traffic through a trusted gateway to keep
+              remote employees more secure, even when they’re traveling or using
+              public WiFi.
             </p>
             <ul role="list" className="my-6 lg:mb-0 space-y-4">
               <li className="flex space-x-2.5">
                 <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
                 <span className="leading-tight text-lg text-neutral-900 ">
-                  Require periodic re-authentication
+                  Native clients for all major platforms
                 </span>
               </li>
               <li className="flex space-x-2.5">
@@ -469,66 +483,83 @@ export default function Page() {
               <li className="flex space-x-2.5">
                 <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
                 <span className="leading-tight text-lg text-neutral-900 ">
-                  Self-serve user portal
+                  Filter malicious or unwanted DNS requests
                 </span>
               </li>
               <li className="flex space-x-2.5">
                 <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
                 <span className="leading-tight text-lg text-neutral-900 ">
-                  Export logs to your observability platform
+                  Monitor and audit authorized connections
                 </span>
               </li>
             </ul>
-            <ActionLink
-              className="inline-flex items-center text-accent-600 hover:underline text-lg mt-8"
-              href="/docs"
-            >
-              Secure your remote workforce
-            </ActionLink>
           </div>
-          <div className="bg-neutral-100 p-8 rounded shadow-md">
+          <div className="bg-neutral-100 p-8 border border-neutral-200">
             <div className="flex items-center space-x-2.5">
-              <HiWrenchScrewdriver className=" lex-shrink-0 w-5 h-5 text-primary-450" />
+              <HiHome className="flex-shrink-0 w-6 h-6 text-accent-600" />
               <h3 className="text-xl tracking-tight font-bold text-neutral-900 ">
-                Technical IT teams
+                Homelab Access
               </h3>
             </div>
             <p className="mt-8 text-neutral-900 text-xl">
-              Firezone runs on your infrastructure. Customize it to suit your
-              needs and architecture.
+              Securely access your home network, and services like Plex,
+              security cameras, a Raspberry Pi, and other self-hosted apps when
+              you’re away from home.
             </p>
             <ul role="list" className="my-6 lg:mb-0 space-y-4">
               <li className="flex space-x-2.5">
                 <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
                 <span className="leading-tight text-lg text-neutral-900 ">
-                  Built on WireGuard®
+                  Easy to setup and simple to manage
                 </span>
               </li>
               <li className="flex space-x-2.5">
                 <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
                 <span className="leading-tight text-lg text-neutral-900 ">
-                  No vendor lock-in
+                  Authenticate with Magic link or OIDC
                 </span>
               </li>
               <li className="flex space-x-2.5">
                 <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
                 <span className="leading-tight text-lg text-neutral-900 ">
-                  Supports OIDC and SAML 2.0
+                  Reliable NAT traversal
                 </span>
               </li>
               <li className="flex space-x-2.5">
                 <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
                 <span className="leading-tight text-lg text-neutral-900 ">
-                  Flexible and configurable
+                  Invite friends and family to your private network
                 </span>
               </li>
             </ul>
-            <ActionLink
-              className="inline-flex items-center text-accent-600 hover:underline text-lg mt-8"
-              href="/docs"
+          </div>
+        </div>
+      </section>
+
+      <section className="border-t border-neutral-200 py-24 bg-gradient-to-b from-accent-800 to-accent-700">
+        <div className="flex flex-col px-4 justify-center items-center">
+          <h2 className="mb-4 text-4xl tracking-tight text-center font-bold text-neutral-50">
+            Ready to get started?
+          </h2>
+          <h3 className="my-4 font-medium text-xl max-w-screen-md tracking-tight text-center text-neutral-200 ">
+            Give your team secure access to company resources in minutes.
+          </h3>
+          <div className="w-full max-w-screen-sm flex justify-between mt-8">
+            <button
+              type="button"
+              className="w-64 inline-flex shadow-lg justify-center items-center py-3 px-5 text-base font-semibold text-center text-neutral-900 rounded bg-neutral-50 hover:scale-105 duration-0 transform transition"
             >
-              Explore the documentation
-            </ActionLink>
+              <Link href="/product/early-access">
+                Register for early access
+              </Link>
+            </button>
+            <button
+              type="button"
+              className="w-64 inline-flex shadow-lg justify-center items-center py-3 px-5 text-base font-bold text-center text-white rounded bg-primary-450 hover:scale-105 duration-0 transform transition"
+            >
+              <Link href="/contact/sales">Request demo</Link>
+              <HiArrowLongRight className="ml-2 -mr-1 w-6 h-6" />
+            </button>
           </div>
         </div>
       </section>

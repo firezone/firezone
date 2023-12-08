@@ -10,9 +10,11 @@ defmodule Web.PageComponents do
     attr :flash, :any, doc: "The flash to be displayed above the content"
   end
 
+  slot :help, required: false, doc: "A slot for help text to be displayed above the content"
+
   def section(assigns) do
     ~H"""
-    <div class="bg-white dark:bg-gray-800 overflow-hidden border-solid border-slate-200 border-t">
+    <div class="bg-white overflow-hidden border-solid border-neutral-200 border-t">
       <.header>
         <:title>
           <%= render_slot(@title) %>
@@ -24,6 +26,10 @@ defmodule Web.PageComponents do
           <% end %>
         </:actions>
       </.header>
+
+      <p :for={help <- @help} class="px-4 pb-3">
+        <%= render_slot(help) %>
+      </p>
 
       <section :for={content <- @content} class="section-body">
         <div :if={Map.get(content, :flash)}>
@@ -38,7 +44,7 @@ defmodule Web.PageComponents do
 
   slot :action, required: false, doc: "A slot for action to the right of the title"
 
-  slot :content, required: true, doc: "A slot for content of the section" do
+  slot :content, required: false, doc: "A slot for content of the section" do
     attr :flash, :any, doc: "The flash to be displayed above the content"
   end
 
@@ -60,10 +66,8 @@ defmodule Web.PageComponents do
 
   def link_style do
     [
-      "text-blue-600",
-      "dark:text-blue-500",
-      "hover:underline",
-      "dark:hover:underline"
+      "text-accent-600",
+      "hover:underline"
     ]
   end
 end

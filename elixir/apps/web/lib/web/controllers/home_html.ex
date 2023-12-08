@@ -3,45 +3,59 @@ defmodule Web.HomeHTML do
 
   def home(assigns) do
     ~H"""
-    <section class="bg-gray-50 dark:bg-gray-900">
+    <section class="bg-neutral-50">
       <div class="flex flex-col items-center justify-center px-6 py-8 mx-auto lg:py-0">
         <.logo />
 
-        <div class="w-full col-span-6 mx-auto bg-white rounded shadow dark:bg-gray-800 md:mt-0 sm:max-w-lg xl:p-0">
+        <div class="w-full col-span-6 mx-auto bg-white rounded shadow md:mt-0 sm:max-w-lg xl:p-0">
           <div class="p-6 space-y-4 lg:space-y-6 sm:p-8">
-            <h1 class="text-xl text-center font-bold leading-tight tracking-tight text-gray-900 sm:text-2xl dark:text-white">
+            <h1 class="text-xl text-center font-bold leading-tight tracking-tight text-neutral-900 sm:text-2xl">
               Welcome to Firezone
             </h1>
 
             <h3
               :if={@accounts != []}
-              class="text-m font-bold leading-tight tracking-tight text-gray-900 sm:text-xl dark:text-white"
+              class="text-m font-bold leading-tight tracking-tight text-neutral-900 sm:text-xl"
             >
               Recently used accounts
             </h3>
 
             <div :if={@accounts != []} class="space-y-3 items-center">
-              <.account_button :for={account <- @accounts} account={account} />
+              <.account_button
+                :for={account <- @accounts}
+                account={account}
+                redirect_params={@redirect_params}
+              />
             </div>
 
             <.separator :if={@accounts != []} />
 
-            <.form :let={f} for={%{}} action={~p"/"} class="space-y-4 lg:space-y-6">
+            <.form
+              :let={f}
+              for={%{}}
+              action={~p"/?#{@redirect_params}"}
+              class="space-y-4 lg:space-y-6"
+            >
               <.input
                 field={f[:account_id_or_slug]}
                 type="text"
                 label="Account ID or Slug"
-                placeholder={~s|As shown in your "Welcome to Firezone" email|}
+                prefix={url(~p"/")}
                 required
+                autofocus
               />
+              <p>As shown in your "Welcome to Firezone" email</p>
 
               <.button class="w-full">
                 Go to Sign In page
               </.button>
             </.form>
-            <p :if={Domain.Config.sign_up_enabled?()} class="py-2">
+            <p
+              :if={Domain.Config.sign_up_enabled?() and is_nil(@redirect_params["client_platform"])}
+              class="py-2"
+            >
               Don't have an account?
-              <a href={~p"/sign_up"} class="font-medium text-blue-600 hover:text-blue-500">
+              <a href={~p"/sign_up"} class={["font-medium", link_style()]}>
                 Sign up here.
               </a>
             </p>
@@ -54,16 +68,13 @@ defmodule Web.HomeHTML do
 
   def account_button(assigns) do
     ~H"""
-    <a href={~p"/#{@account}"} class={~w[
+    <a href={~p"/#{@account}?#{@redirect_params}"} class={~w[
           w-full inline-flex items-center justify-center py-2.5 px-5
           bg-white rounded
-          text-sm font-medium text-gray-900
-          focus:outline-none
-          border border-gray-200
-          hover:bg-gray-100 hover:text-gray-900
-          focus:z-10 focus:ring-4 focus:ring-gray-200
-          dark:focus:ring-gray-700 dark:bg-gray-800 dark:text-gray-400
-          dark:border-gray-600 dark:hover:text-white dark:hover:bg-gray-700]}>
+          text-sm font-medium text-neutral-900
+          border border-neutral-200
+          hover:bg-neutral-100 hover:text-neutral-900
+    ]}>
       <%= @account.name %>
     </a>
     """
@@ -72,9 +83,9 @@ defmodule Web.HomeHTML do
   def separator(assigns) do
     ~H"""
     <div class="flex items-center">
-      <div class="w-full h-0.5 bg-gray-200 dark:bg-gray-700"></div>
-      <div class="px-5 text-center text-gray-500 dark:text-gray-400">or</div>
-      <div class="w-full h-0.5 bg-gray-200 dark:bg-gray-700"></div>
+      <div class="w-full h-0.5 bg-neutral-200"></div>
+      <div class="px-5 text-center text-neutral-500">or</div>
+      <div class="w-full h-0.5 bg-neutral-200"></div>
     </div>
     """
   end

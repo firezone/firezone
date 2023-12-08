@@ -38,11 +38,29 @@ defmodule Web.Policies.Show do
     <.section>
       <:title>
         <%= @page_title %>: <code><%= @policy.id %></code>
+        <span :if={not is_nil(@policy.disabled_at)} class="text-orange-600">(disabled)</span>
+        <span :if={not is_nil(@policy.deleted_at)} class="text-red-600">(deleted)</span>
       </:title>
-      <:action>
+      <:action :if={is_nil(@policy.deleted_at)}>
         <.edit_button navigate={~p"/#{@account}/policies/#{@policy}/edit"}>
           Edit Policy
         </.edit_button>
+      </:action>
+      <:action :if={is_nil(@policy.deleted_at)}>
+        <.button
+          :if={not is_nil(@policy.disabled_at)}
+          phx-click="enable"
+          data-confirm="Are you sure want to enable this policy?"
+        >
+          Enable Policy
+        </.button>
+        <.button
+          :if={is_nil(@policy.disabled_at)}
+          phx-click="disable"
+          data-confirm="Are you sure want to disable this policy? All authorizations will be revoked and users can loose access to the resource."
+        >
+          Disable Policy
+        </.button>
       </:action>
       <:content>
         <.vertical_table id="policy">
@@ -62,6 +80,9 @@ defmodule Web.Policies.Show do
               <.link navigate={~p"/#{@account}/groups/#{@policy.actor_group_id}"} class={link_style()}>
                 <%= @policy.actor_group.name %>
               </.link>
+              <span :if={not is_nil(@policy.actor_group.deleted_at)} class="text-red-600">
+                (deleted)
+              </span>
             </:value>
           </.vertical_table_row>
           <.vertical_table_row>
@@ -72,6 +93,9 @@ defmodule Web.Policies.Show do
               <.link navigate={~p"/#{@account}/resources/#{@policy.resource_id}"} class={link_style()}>
                 <%= @policy.resource.name %>
               </.link>
+              <span :if={not is_nil(@policy.resource.deleted_at)} class="text-red-600">
+                (deleted)
+              </span>
             </:value>
           </.vertical_table_row>
           <.vertical_table_row>
@@ -134,13 +158,13 @@ defmodule Web.Policies.Show do
             </.link>
           </:col>
           <:empty>
-            <div class="text-center text-slate-500 p-4">No authorizations to display</div>
+            <div class="text-center text-neutral-500 p-4">No authorizations to display</div>
           </:empty>
         </.table>
       </:content>
     </.section>
 
-    <.danger_zone>
+    <.danger_zone :if={is_nil(@policy.deleted_at)}>
       <:action>
         <.delete_button
           phx-click="delete"
@@ -150,12 +174,37 @@ defmodule Web.Policies.Show do
           Delete Policy
         </.delete_button>
       </:action>
-      <:content></:content>
     </.danger_zone>
     """
   end
 
-  def handle_event("delete", %{"id" => _policy_id}, socket) do
+  def handle_event("disable", _params, socket) do
+    {:ok, policy} = Policies.disable_policy(socket.assigns.policy, socket.assigns.subject)
+
+    policy = %{
+      policy
+      | actor_group: socket.assigns.policy.actor_group,
+        resource: socket.assigns.policy.resource,
+        created_by_identity: socket.assigns.policy.created_by_identity
+    }
+
+    {:noreply, assign(socket, policy: policy)}
+  end
+
+  def handle_event("enable", _params, socket) do
+    {:ok, policy} = Policies.enable_policy(socket.assigns.policy, socket.assigns.subject)
+
+    policy = %{
+      policy
+      | actor_group: socket.assigns.policy.actor_group,
+        resource: socket.assigns.policy.resource,
+        created_by_identity: socket.assigns.policy.created_by_identity
+    }
+
+    {:noreply, assign(socket, policy: policy)}
+  end
+
+  def handle_event("delete", _params, socket) do
     {:ok, _} = Policies.delete_policy(socket.assigns.policy, socket.assigns.subject)
     {:noreply, push_navigate(socket, to: ~p"/#{socket.assigns.account}/policies")}
   end

@@ -135,10 +135,10 @@ defmodule Web.SignIn.EmailTest do
                "&client_csrf_token=foo" <>
                "&provider_identifier=#{identity.id}"
 
-    assert conn.assigns.flash["error"] == "The sign in link is invalid or expired."
+    assert conn.assigns.flash["error"] == "The sign in token is invalid or expired."
   end
 
-  test "allows to resend magic link", %{
+  test "allows resending sign in link", %{
     account: account,
     provider: provider,
     identity: identity,

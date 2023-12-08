@@ -3,7 +3,8 @@ defmodule Web.Relays.Show do
   alias Domain.{Relays, Config}
 
   def mount(%{"id" => id}, _session, socket) do
-    with {:ok, relay} <-
+    with true <- Domain.Config.self_hosted_relays_enabled?(),
+         {:ok, relay} <-
            Relays.fetch_relay_by_id(id, socket.assigns.subject, preload: :group) do
       :ok = Relays.subscribe_for_relays_presence_in_group(relay.group)
 
@@ -16,7 +17,7 @@ defmodule Web.Relays.Show do
 
       {:ok, assign(socket, relay: relay)}
     else
-      {:error, _reason} -> raise Web.LiveErrors.NotFoundError
+      _other -> raise Web.LiveErrors.NotFoundError
     end
   end
 
@@ -42,9 +43,10 @@ defmodule Web.Relays.Show do
             <code><%= @relay.ipv4 %></code>
           </:item>
         </.intersperse_blocks>
+        <span :if={not is_nil(@relay.deleted_at)} class="text-red-600">(deleted)</span>
       </:title>
       <:content>
-        <div class="bg-white dark:bg-gray-800 overflow-hidden">
+        <div class="bg-white overflow-hidden">
           <.vertical_table id="relay">
             <.vertical_table_row>
               <:label>Instance Group Name</:label>
@@ -111,9 +113,9 @@ defmodule Web.Relays.Show do
       </:content>
     </.section>
 
-    <.danger_zone>
+    <.danger_zone :if={is_nil(@relay.deleted_at)}>
       <:action :if={@relay.account_id}>
-        <.delete_button phx-click="delete">
+        <.delete_button phx-click="delete" data-confirm="Are you sure you want to delete this relay?">
           Delete Relay
         </.delete_button>
       </:action>

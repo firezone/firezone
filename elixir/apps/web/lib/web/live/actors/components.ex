@@ -30,7 +30,7 @@ defmodule Web.Actors.Components do
     ~H"""
     <.link
       navigate={~p"/#{@account}/actors/#{@actor}"}
-      class={["font-medium text-blue-600 dark:text-blue-500 hover:underline", @class]}
+      class={["font-medium text-accent-600 hover:underline", @class]}
     >
       <%= @actor.name %>
     </.link>
@@ -86,7 +86,7 @@ defmodule Web.Actors.Components do
         options={Enum.map(@groups, fn group -> {group.name, group.id} end)}
         placeholder="Groups"
       />
-      <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+      <p class="mt-2 text-xs text-neutral-500">
         Hold <kbd>Ctrl</kbd> (or <kbd>Command</kbd> on Mac) to select or unselect multiple groups.
       </p>
     </div>
@@ -129,6 +129,14 @@ defmodule Web.Actors.Components do
         label="Email"
         placeholder="Email"
         field={@form[:provider_identifier]}
+        autocomplete="off"
+      />
+    </div>
+    <div>
+      <.input
+        label="Email Confirmation"
+        placeholder="Email Confirmation"
+        field={@form[:provider_identifier_confirmation]}
         autocomplete="off"
       />
     </div>
@@ -177,21 +185,14 @@ defmodule Web.Actors.Components do
           type="radio"
           name="next"
           value={next_step_path(@type, @account)}
-          class={~w[
-            w-4 h-4 border-gray-300
-            focus:ring-2 focus:ring-blue-300
-            dark:focus:ring-blue-600 dark:bg-gray-700 dark:border-gray-600
-          ]}
+          class={~w[w-4 h-4 border-neutral-300]}
           required
         />
-        <label
-          for={"idp-option-#{@type}"}
-          class="block ml-2 text-lg font-medium text-gray-900 dark:text-gray-300"
-        >
+        <label for={"idp-option-#{@type}"} class="block ml-2 text-lg font-medium text-neutral-900">
           <%= @name %>
         </label>
       </div>
-      <p class="ml-6 mb-6 text-sm text-gray-500 dark:text-gray-400">
+      <p class="ml-6 mb-6 text-sm text-neutral-500">
         <%= @description %>
       </p>
     </div>

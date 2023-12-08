@@ -11,12 +11,23 @@ import OSLog
 
 enum TunnelStoreError: Error {
   case tunnelCouldNotBeStarted
+  case tunnelCouldNotBeStopped
+  case cannotSaveToTunnelWhenConnected
+  case cannotSignOutWhenConnected
+  case stopAlreadyBeingAttempted
+  case startTunnelErrored(Error)
 }
 
 public struct TunnelProviderKeys {
   static let keyAuthBaseURLString = "authBaseURLString"
-  static let keyAccountId = "accountId"
   public static let keyConnlibLogFilter = "connlibLogFilter"
+
+  // The following key is not added to the tunnel provider.
+  // The key is defined so that the key can be removed if it exists
+  // in a tunnel provider configuration. A tunnel configuration
+  // created by an earlier version of the app could have this
+  // key, and we use this key definition to remove it.
+  static let keyAccountId = "accountId"
 }
 
 final class TunnelStore: ObservableObject {
@@ -39,6 +50,7 @@ final class TunnelStore: ObservableObject {
 
   private var tunnelObservingTasks: [Task<Void, Never>] = []
   private var startTunnelContinuation: CheckedContinuation<(), Error>?
+  private var stopTunnelContinuation: CheckedContinuation<(), Error>?
   private var cancellables = Set<AnyCancellable>()
 
   init() {
@@ -70,6 +82,7 @@ final class TunnelStore: ObservableObject {
         }
         self.tunnel = tunnel
         self.tunnelAuthStatus = tunnel.authStatus()
+        self.status = tunnel.connection.status
       } else {
         let tunnel = NETunnelProviderManager()
         tunnel.localizedDescription = "Firezone"
@@ -77,7 +90,7 @@ final class TunnelStore: ObservableObject {
         try await tunnel.saveToPreferences()
         Self.logger.log("\(#function): Tunnel created")
         self.tunnel = tunnel
-        self.tunnelAuthStatus = .accountNotSetup
+        self.tunnelAuthStatus = .signedOut
       }
       setupTunnelObservers()
       Self.logger.log("\(#function): TunnelStore initialized")
@@ -87,32 +100,35 @@ final class TunnelStore: ObservableObject {
   }
 
   func saveAuthStatus(_ tunnelAuthStatus: TunnelAuthStatus) async throws {
+    Self.logger.log("TunnelStore.\(#function) \(tunnelAuthStatus, privacy: .public)")
     guard let tunnel = tunnel else {
       fatalError("Tunnel not initialized yet")
     }
 
-    let wasConnected =
-      (tunnel.connection.status == .connected || tunnel.connection.status == .connecting)
-    if wasConnected {
-      stop()
+    let tunnelStatus = tunnel.connection.status
+    if tunnelStatus == .connected || tunnelStatus == .connecting {
+      throw TunnelStoreError.cannotSaveToTunnelWhenConnected
     }
 
+    try await tunnel.loadFromPreferences()
     try await tunnel.saveAuthStatus(tunnelAuthStatus)
     self.tunnelAuthStatus = tunnelAuthStatus
   }
 
   func saveAdvancedSettings(_ advancedSettings: AdvancedSettings) async throws {
+    Self.logger.log("TunnelStore.\(#function) \(advancedSettings, privacy: .public)")
     guard let tunnel = tunnel else {
       fatalError("Tunnel not initialized yet")
     }
 
-    let wasConnected =
-      (tunnel.connection.status == .connected || tunnel.connection.status == .connecting)
-    if wasConnected {
-      stop()
+    let tunnelStatus = tunnel.connection.status
+    if tunnelStatus == .connected || tunnelStatus == .connecting {
+      throw TunnelStoreError.cannotSaveToTunnelWhenConnected
     }
 
+    try await tunnel.loadFromPreferences()
     try await tunnel.saveAdvancedSettings(advancedSettings)
+    self.tunnelAuthStatus = tunnel.authStatus()
   }
 
   func advancedSettings() -> AdvancedSettings? {
@@ -158,35 +174,57 @@ final class TunnelStore: ObservableObject {
     try await tunnel.loadFromPreferences()
 
     let session = castToSession(tunnel.connection)
-    try session.startTunnel()
+    do {
+      try session.startTunnel()
+    } catch {
+      throw TunnelStoreError.startTunnelErrored(error)
+    }
     try await withCheckedThrowingContinuation { continuation in
       self.startTunnelContinuation = continuation
     }
   }
 
-  func stop() {
+  func stop() async throws {
     guard let tunnel = tunnel else {
       Self.logger.log("\(#function): TunnelStore is not initialized")
       return
     }
 
+    guard self.stopTunnelContinuation == nil else {
+      throw TunnelStoreError.stopAlreadyBeingAttempted
+    }
+
     TunnelStore.logger.trace("\(#function)")
-    let session = castToSession(tunnel.connection)
-    session.stopTunnel()
+
+    let status = tunnel.connection.status
+    if status == .connected || status == .connecting {
+      let session = castToSession(tunnel.connection)
+      session.stopTunnel()
+      try await withCheckedThrowingContinuation { continuation in
+        self.stopTunnelContinuation = continuation
+      }
+    }
   }
 
-  func stopAndSignOut() async throws -> Keychain.PersistentRef? {
+  func signOut() async throws -> Keychain.PersistentRef? {
     guard let tunnel = tunnel else {
       Self.logger.log("\(#function): TunnelStore is not initialized")
       return nil
     }
 
-    TunnelStore.logger.trace("\(#function)")
-    let session = castToSession(tunnel.connection)
-    session.stopTunnel()
+    let tunnelStatus = tunnel.connection.status
+    if tunnelStatus == .connected || tunnelStatus == .connecting {
+      throw TunnelStoreError.cannotSignOutWhenConnected
+    }
 
-    if case .signedIn(let authBaseURL, let accountId, let tokenReference) = self.tunnelAuthStatus {
-      try await saveAuthStatus(.signedOut(authBaseURL: authBaseURL, accountId: accountId))
+    if case .signedIn(_, let tokenReference) = self.tunnelAuthStatus {
+      do {
+        try await saveAuthStatus(.signedOut)
+      } catch {
+        TunnelStore.logger.trace(
+          "\(#function): Error saving signed out auth status: \(error)"
+        )
+      }
       return tokenReference
     }
 
@@ -279,6 +317,18 @@ final class TunnelStore: ObservableObject {
               break
             }
           }
+          if let stopTunnelContinuation = self.stopTunnelContinuation {
+            switch status {
+            case .disconnected:
+              stopTunnelContinuation.resume(returning: ())
+              self.stopTunnelContinuation = nil
+            case .connected:
+              stopTunnelContinuation.resume(throwing: TunnelStoreError.tunnelCouldNotBeStopped)
+              self.stopTunnelContinuation = nil
+            default:
+              break
+            }
+          }
           if status != .connected {
             self.resources = DisplayableResources()
           }
@@ -298,11 +348,10 @@ final class TunnelStore: ObservableObject {
   }
 }
 
-enum TunnelAuthStatus {
+enum TunnelAuthStatus: Equatable, CustomStringConvertible {
   case tunnelUninitialized
-  case accountNotSetup
-  case signedOut(authBaseURL: URL, accountId: String)
-  case signedIn(authBaseURL: URL, accountId: String, tokenReference: Data)
+  case signedOut
+  case signedIn(authBaseURL: URL, tokenReference: Data)
 
   var isInitialized: Bool {
     switch self {
@@ -311,14 +360,14 @@ enum TunnelAuthStatus {
     }
   }
 
-  func accountId() -> String? {
+  var description: String {
     switch self {
-    case .tunnelUninitialized, .accountNotSetup:
-      return nil
-    case .signedOut(_, let accountId):
-      return accountId
-    case .signedIn(_, let accountId, _):
-      return accountId
+    case .tunnelUninitialized:
+      return "tunnel uninitialized"
+    case .signedOut:
+      return "signedOut"
+    case .signedIn(let authBaseURL, _):
+      return "signedIn(authBaseURL: \(authBaseURL))"
     }
   }
 }
@@ -352,19 +401,18 @@ extension NETunnelProviderManager {
         }
         return URL(string: urlString)
       }()
-      let accountId = providerConfig[TunnelProviderKeys.keyAccountId] as? String
       let tokenRef = protocolConfiguration.passwordReference
-      if let authBaseURL = authBaseURL, let accountId = accountId {
+      if let authBaseURL = authBaseURL {
         if let tokenRef = tokenRef {
-          return .signedIn(authBaseURL: authBaseURL, accountId: accountId, tokenReference: tokenRef)
+          return .signedIn(authBaseURL: authBaseURL, tokenReference: tokenRef)
         } else {
-          return .signedOut(authBaseURL: authBaseURL, accountId: accountId)
+          return .signedOut
         }
       } else {
-        return .accountNotSetup
+        return .signedOut
       }
     }
-    return .accountNotSetup
+    return .signedOut
   }
 
   func saveAuthStatus(_ authStatus: TunnelAuthStatus) async throws {
@@ -372,19 +420,21 @@ extension NETunnelProviderManager {
       var providerConfig: [String: Any] = protocolConfiguration.providerConfiguration ?? [:]
 
       switch authStatus {
-      case .tunnelUninitialized, .accountNotSetup:
+      case .tunnelUninitialized:
+        protocolConfiguration.passwordReference = nil
         break
-      case .signedOut(let authBaseURL, let accountId):
+      case .signedOut:
+        protocolConfiguration.passwordReference = nil
+        break
+      case .signedIn(let authBaseURL, let tokenReference):
         providerConfig[TunnelProviderKeys.keyAuthBaseURLString] = authBaseURL.absoluteString
-        providerConfig[TunnelProviderKeys.keyAccountId] = accountId
-      case .signedIn(let authBaseURL, let accountId, let tokenReference):
-        providerConfig[TunnelProviderKeys.keyAuthBaseURLString] = authBaseURL.absoluteString
-        providerConfig[TunnelProviderKeys.keyAccountId] = accountId
         protocolConfiguration.passwordReference = tokenReference
       }
 
+      providerConfig.removeValue(forKey: TunnelProviderKeys.keyAccountId)
       protocolConfiguration.providerConfiguration = providerConfig
 
+      ensureTunnelConfigurationIsValid()
       try await saveToPreferences()
     }
   }
@@ -440,7 +490,30 @@ extension NETunnelProviderManager {
       protocolConfiguration.providerConfiguration = providerConfig
       protocolConfiguration.serverAddress = advancedSettings.apiURLString
 
+      ensureTunnelConfigurationIsValid()
       try await saveToPreferences()
+    }
+  }
+
+  private func ensureTunnelConfigurationIsValid() {
+    // Ensure the tunnel config has required values populated, because
+    // to even sign out, we need saveToPreferences() to succeed.
+    if let protocolConfiguration = protocolConfiguration as? NETunnelProviderProtocol {
+      protocolConfiguration.providerBundleIdentifier = Bundle.main.bundleIdentifier.map {
+        "\($0).network-extension"
+      }
+      if protocolConfiguration.serverAddress?.isEmpty ?? true {
+        protocolConfiguration.serverAddress = "unknown-server"
+      }
+    } else {
+      let protocolConfiguration = NETunnelProviderProtocol()
+      protocolConfiguration.providerBundleIdentifier = Bundle.main.bundleIdentifier.map {
+        "\($0).network-extension"
+      }
+      protocolConfiguration.serverAddress = "unknown-server"
+    }
+    if localizedDescription?.isEmpty ?? true {
+      localizedDescription = "Firezone"
     }
   }
 }

@@ -35,7 +35,7 @@ defmodule Web.Settings.IdentityProviders.SAML.New do
       <:content>
         <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
           <.form for={@form} id="saml-form" phx-change="change" phx-submit="submit">
-            <h2 class="mb-4 text-xl font-bold text-gray-900 dark:text-white">SAML configuration</h2>
+            <h2 class="mb-4 text-xl font-bold text-neutral-900">SAML configuration</h2>
             <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
               <div>
                 <.input
@@ -43,14 +43,13 @@ defmodule Web.Settings.IdentityProviders.SAML.New do
                   autocomplete="off"
                   field={@form[:name]}
                   class={[
-                    "bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded focus:ring-primary-600",
-                    "focus:border-primary-600 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600",
-                    "dark:placeholder-gray-400 dark:text-white dark:focus:ring-primary-500 dark:focus:border-primary-500"
+                    "bg-neutral-50 border border-neutral-300 text-neutral-900 text-sm rounded",
+                    "block w-full p-2.5"
                   ]}
                   placeholder="Name this identity provider"
                   required
                 />
-                <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                <p class="mt-2 text-xs text-neutral-500">
                   A friendly name for this identity provider. This will be displayed to end-users.
                 </p>
               </div>

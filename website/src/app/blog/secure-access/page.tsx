@@ -11,10 +11,10 @@ export default function Page() {
   return (
     <Post
       authorName="Jeff Spencer"
-      authorTitle="Interim Head of Marketing"
+      authorTitle="Head of Marketing"
       authorEmail="jeff@firezone.dev"
       title="Secure remote access makes remote work a win-win"
-      date="2023-11-17"
+      date="November 17, 2023"
     >
       <Content />
     </Post>

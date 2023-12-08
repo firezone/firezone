@@ -6,10 +6,12 @@ members = [
   "connlib/shared",
   "connlib/tunnel",
   "gateway",
+  "hello-world",
   "linux-client",
   "firezone-cli-utils",
   "phoenix-channel",
   "relay",
+  "windows-client/src-tauri",
 ]
 
 resolver = "2"
@@ -32,6 +34,7 @@ connlib-client-apple = { path = "connlib/clients/apple"}
 connlib-client-shared = { path = "connlib/clients/shared"}
 firezone-gateway = { path = "gateway"}
 firezone-linux-client = { path = "linux-client"}
+firezone-windows-client = { path = "windows-client/src-tauri"}
 firezone-cli-utils = { path = "firezone-cli-utils"}
 connlib-shared = { path = "connlib/shared"}
 firezone-tunnel = { path = "connlib/tunnel"}

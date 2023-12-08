@@ -15,7 +15,8 @@ defmodule Domain.Policies do
 
     with :ok <- Auth.ensure_has_permissions(subject, required_permissions),
          true <- Validator.valid_uuid?(id) do
-      Policy.Query.by_id(id)
+      Policy.Query.all()
+      |> Policy.Query.by_id(id)
       |> Authorizer.for_subject(subject)
       |> Repo.fetch()
       |> case do
@@ -40,7 +41,7 @@ defmodule Domain.Policies do
 
     with :ok <- Auth.ensure_has_permissions(subject, required_permissions) do
       {:ok, policies} =
-        Policy.Query.all()
+        Policy.Query.not_deleted()
         |> Authorizer.for_subject(subject)
         |> Repo.list()
 
@@ -66,6 +67,22 @@ defmodule Domain.Policies do
          :ok <- ensure_has_access_to(subject, policy) do
       Policy.Changeset.update(policy, attrs)
       |> Repo.update()
+    end
+  end
+
+  def disable_policy(%Policy{} = policy, %Auth.Subject{} = subject) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_policies_permission()) do
+      Policy.Query.by_id(policy.id)
+      |> Authorizer.for_subject(subject)
+      |> Repo.fetch_and_update(with: &Policy.Changeset.disable(&1, subject))
+    end
+  end
+
+  def enable_policy(%Policy{} = policy, %Auth.Subject{} = subject) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_policies_permission()) do
+      Policy.Query.by_id(policy.id)
+      |> Authorizer.for_subject(subject)
+      |> Repo.fetch_and_update(with: &Policy.Changeset.enable/1)
     end
   end
 

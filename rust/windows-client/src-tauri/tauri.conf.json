@@ -1,0 +1,59 @@
+{
+  "build": {
+    "beforeDevCommand": "",
+    "beforeBuildCommand": "",
+    "devPath": "../src",
+    "distDir": "../src",
+    "withGlobalTauri": true
+  },
+  "package": {
+    "productName": "firezone-windows-client",
+    "version": "0.0.0"
+  },
+  "tauri": {
+    "allowlist": {
+      "all": false,
+      "shell": {
+        "all": false,
+        "open": false
+      }
+    },
+    "bundle": {
+      "active": true,
+      "targets": "all",
+      "identifier": "dev.firezone.client",
+      "icon": [
+        "icons/firezone.ico"
+      ]
+    },
+    "security": {
+      "csp": null
+    },
+    "systemTray": {
+      "iconPath": "icons/firezone.ico",
+      "iconAsTemplate": true
+    },
+    "windows": [
+      {
+        "label": "about",
+        "title": "About Firezone",
+        "url": "about.html",
+        "fullscreen": false,
+        "resizable": true,
+        "width": 640,
+        "height": 480,
+        "visible": true
+      },
+      {
+        "label": "settings",
+        "title": "Settings",
+        "url": "settings.html",
+        "fullscreen": false,
+        "resizable": true,
+        "width": 640,
+        "height": 480,
+        "visible": true
+      }
+    ]
+  }
+}

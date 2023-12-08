@@ -4,11 +4,12 @@ defmodule Web.Sites.Edit do
   alias Domain.Gateways
 
   def mount(%{"id" => id}, _session, socket) do
-    with {:ok, group} <- Gateways.fetch_group_by_id(id, socket.assigns.subject) do
+    with {:ok, group} <- Gateways.fetch_group_by_id(id, socket.assigns.subject),
+         nil <- group.deleted_at do
       changeset = Gateways.change_group(group)
       {:ok, assign(socket, group: group, form: to_form(changeset))}
     else
-      {:error, _reason} -> raise Web.LiveErrors.NotFoundError
+      _other -> raise Web.LiveErrors.NotFoundError
     end
   end
 
@@ -32,7 +33,7 @@ defmodule Web.Sites.Edit do
                 <.input label="Name" field={@form[:name]} placeholder="Name of this Site" required />
               </div>
               <div>
-                <p class="text-lg text-slate-900 mb-2">
+                <p class="text-lg text-neutral-900 mb-2">
                   Data Routing -
                   <a
                     class={[link_style(), "text-sm"]}
@@ -53,7 +54,7 @@ defmodule Web.Sites.Edit do
                       checked={@form[:routing].value == :managed}
                       required
                     />
-                    <p class="ml-6 mb-4 text-sm text-slate-500 dark:text-slate-400">
+                    <p class="ml-6 mb-4 text-sm text-neutral-500 dark:text-neutral-400">
                       Firezone will route connections through our managed Relays only if a direct connection to a Gateway is not possible.
                       Firezone can never decrypt the contents of your traffic.
                     </p>
@@ -68,7 +69,7 @@ defmodule Web.Sites.Edit do
                       checked={@form[:routing].value == :stun_only}
                       required
                     />
-                    <p class="ml-6 mb-4 text-sm text-gray-500 dark:text-gray-400">
+                    <p class="ml-6 mb-4 text-sm text-neutral-500 dark:text-neutral-400">
                       Firezone will enforce direct connections to all Gateways in this Site. This could cause connectivity issues in rare cases.
                     </p>
                   </div>

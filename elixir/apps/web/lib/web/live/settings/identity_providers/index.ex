@@ -41,23 +41,23 @@ defmodule Web.Settings.IdentityProviders.Index do
         </.add_button>
       </:action>
       <:content>
-        <p class="ml-4 mb-4 font-medium text-gray-600 dark:text-gray-500">
+        <p class="ml-4 mb-4 font-medium text-neutral-600">
           <.link
-            class="text-blue-600 dark:text-blue-500 hover:underline"
-            href="https://www.firezone.dev/docs/architecture/sso"
+            class={link_style()}
+            href="https://www.firezone.dev/kb/authenticate?utm_source=product"
             target="_blank"
           >
-            Read more about how SSO works in Firezone.
+            Read more about setting up SSO in Firezone.
             <.icon name="hero-arrow-top-right-on-square" class="-ml-1 mb-3 w-3 h-3" />
           </.link>
         </p>
         <.flash_group flash={@flash} />
-        <div class="bg-white dark:bg-gray-800 overflow-hidden">
+        <div class="bg-white overflow-hidden">
           <.table id="providers" rows={@providers} row_id={&"providers-#{&1.id}"}>
             <:col :let={provider} label="Name">
               <.link
                 navigate={view_provider(@account, provider)}
-                class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
+                class={["font-medium", link_style()]}
               >
                 <%= provider.name %>
               </.link>
@@ -75,7 +75,7 @@ defmodule Web.Settings.IdentityProviders.Index do
               />
             </:col>
             <:empty>
-              <div class="flex justify-center text-center text-slate-500 p-4">
+              <div class="flex justify-center text-center text-neutral-500 p-4">
                 <div class="w-auto">
                   <div class="pb-4">
                     No identity providers to display

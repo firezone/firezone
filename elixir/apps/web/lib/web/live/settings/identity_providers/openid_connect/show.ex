@@ -28,8 +28,10 @@ defmodule Web.Settings.IdentityProviders.OpenIDConnect.Show do
     <.section>
       <:title>
         Identity Provider <code><%= @provider.name %></code>
+        <span :if={not is_nil(@provider.disabled_at)} class="text-orange-600">(disabled)</span>
+        <span :if={not is_nil(@provider.deleted_at)} class="text-red-600">(deleted)</span>
       </:title>
-      <:action>
+      <:action :if={is_nil(@provider.deleted_at)}>
         <.edit_button navigate={
           ~p"/#{@account}/settings/identity_providers/openid_connect/#{@provider}/edit"
         }>
@@ -37,21 +39,25 @@ defmodule Web.Settings.IdentityProviders.OpenIDConnect.Show do
         </.edit_button>
       </:action>
       <!-- Wondering if these next two buttons can be combined? -->
-      <:action>
-        <.button :if={not is_nil(@provider.disabled_at)} phx-click="enable">
+      <:action :if={is_nil(@provider.deleted_at)}>
+        <.button
+          :if={not is_nil(@provider.disabled_at)}
+          phx-click="enable"
+          data-confirm="Are you sure want to enable this provider?"
+        >
           Enable
         </.button>
       </:action>
-      <:action>
+      <:action :if={is_nil(@provider.deleted_at)}>
         <.button
           :if={is_nil(@provider.disabled_at)}
           phx-click="disable"
-          data-confirm="Are you sure want to disable this provider?"
+          data-confirm="Are you sure want to disable this provider? All authorizations will be revoked and actors won't be able to use it to access Firezone."
         >
           Disable
         </.button>
       </:action>
-      <:action>
+      <:action :if={is_nil(@provider.deleted_at)}>
         <.button
           style="primary"
           navigate={
@@ -68,7 +74,7 @@ defmodule Web.Settings.IdentityProviders.OpenIDConnect.Show do
         </.header>
         <.flash_group flash={@flash} />
 
-        <div class="bg-white dark:bg-gray-800 overflow-hidden">
+        <div class="bg-white overflow-hidden">
           <.vertical_table id="provider">
             <.vertical_table_row>
               <:label>Name</:label>
@@ -115,10 +121,7 @@ defmodule Web.Settings.IdentityProviders.OpenIDConnect.Show do
         </div>
       </:content>
     </.section>
-    <.section>
-      <:title>
-        Danger zone
-      </:title>
+    <.danger_zone :if={is_nil(@provider.deleted_at)}>
       <:action>
         <.delete_button
           data-confirm="Are you sure want to delete this provider along with all related data?"
@@ -127,8 +130,7 @@ defmodule Web.Settings.IdentityProviders.OpenIDConnect.Show do
           Delete Identity Provider
         </.delete_button>
       </:action>
-      <:content></:content>
-    </.section>
+    </.danger_zone>
     """
   end
 

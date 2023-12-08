@@ -242,6 +242,7 @@ defmodule Domain.Fixtures.Auth do
       end)
 
     attrs = Map.put(attrs, :provider_identifier, provider_identifier)
+    attrs = Map.put(attrs, :provider_identifier_confirmation, provider_identifier)
 
     {:ok, identity} = Auth.upsert_identity(actor, provider, attrs)
 

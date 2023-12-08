@@ -36,7 +36,7 @@ jobs:
         run: |
           terraform fmt --check --recursive
       - name: Upload Configuration
-        uses: hashicorp/tfc-workflows-github/actions/upload-configuration@v1.0.4
+        uses: hashicorp/tfc-workflows-github/actions/upload-configuration@v1.1.1
         id: plan-upload
         with:
           workspace: ${{ env.TF_WORKSPACE }}
@@ -45,7 +45,7 @@ jobs:
           directory: "./"
           speculative: true
       - name: Create Plan Run
-        uses: hashicorp/tfc-workflows-github/actions/create-run@v1.0.4
+        uses: hashicorp/tfc-workflows-github/actions/create-run@v1.1.1
         id: plan-run
         env:
           TF_VAR_image_tag: '"${{ env.VERSION }}-${{ github.sha }}"'
@@ -55,12 +55,12 @@ jobs:
             ${{ steps.plan-upload.outputs.configuration_version_id }}
           plan_only: true
       - name: Get Plan Output
-        uses: hashicorp/tfc-workflows-github/actions/plan-output@v1.0.4
+        uses: hashicorp/tfc-workflows-github/actions/plan-output@v1.1.1
         id: plan-output
         with:
           plan: ${{ fromJSON(steps.plan-run.outputs.payload).data.relationships.plan.data.id }}
       - name: Update PR
-        uses: actions/github-script@v6
+        uses: actions/github-script@v7
         id: plan-comment
         if: ${{ github.event_name == 'pull_request' }}
         with:
@@ -83,17 +83,19 @@ jobs:
 
             [Terraform Cloud Plan](${{ steps.plan-run.outputs.run_link }})
             `;
-            // 3. Delete previous comment so PR timeline makes sense
+            // 3. Update previous comment or create new one
             if (botComment) {
-              github.rest.issues.deleteComment({
+              github.rest.issues.updateComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 comment_id: botComment.id,
+                body: output
+              });
+            } else {
+              github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: output
               });
             }
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: output
-            });

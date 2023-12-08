@@ -29,7 +29,8 @@ defmodule Domain.Actors do
          true <- Validator.valid_uuid?(id) do
       {preload, _opts} = Keyword.pop(opts, :preload, [])
 
-      Group.Query.by_id(id)
+      Group.Query.all()
+      |> Group.Query.by_id(id)
       |> Authorizer.for_subject(subject)
       |> Repo.fetch()
       |> case do
@@ -47,7 +48,7 @@ defmodule Domain.Actors do
       {preload, _opts} = Keyword.pop(opts, :preload, [])
 
       {:ok, groups} =
-        Group.Query.all()
+        Group.Query.not_deleted()
         |> Authorizer.for_subject(subject)
         |> Repo.list()
 
@@ -153,7 +154,8 @@ defmodule Domain.Actors do
          true <- Validator.valid_uuid?(id) do
       {preload, _opts} = Keyword.pop(opts, :preload, [])
 
-      Actor.Query.by_id(id)
+      Actor.Query.all()
+      |> Actor.Query.by_id(id)
       |> Authorizer.for_subject(subject)
       |> Repo.fetch()
       |> case do
@@ -185,7 +187,7 @@ defmodule Domain.Actors do
 
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
       {:ok, actors} =
-        Actor.Query.all()
+        Actor.Query.not_deleted()
         |> Authorizer.for_subject(subject)
         |> Repo.list()
 

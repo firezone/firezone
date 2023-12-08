@@ -15,7 +15,7 @@ jobs:
         working-directory: ./kotlin/android
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-java@v3
+      - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 17
@@ -40,7 +40,7 @@ jobs:
       - uses: ./.github/actions/setup-rust
         with:
           targets: armv7-linux-androideabi aarch64-linux-android x86_64-linux-android
-      - uses: actions/setup-java@v3
+      - uses: actions/setup-java@v4
         with:
           distribution: oracle
           java-version: 17

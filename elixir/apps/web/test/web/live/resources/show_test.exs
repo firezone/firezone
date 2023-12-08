@@ -43,7 +43,7 @@ defmodule Web.Live.Resources.ShowTest do
                }}}
   end
 
-  test "renders not found error when resource is deleted", %{
+  test "renders deleted resource without action buttons", %{
     account: account,
     resource: resource,
     identity: identity,
@@ -51,11 +51,16 @@ defmodule Web.Live.Resources.ShowTest do
   } do
     resource = Fixtures.Resources.delete_resource(resource)
 
-    assert_raise Web.LiveErrors.NotFoundError, fn ->
+    {:ok, _lv, html} =
       conn
       |> authorize_conn(identity)
       |> live(~p"/#{account}/resources/#{resource}")
-    end
+
+    assert html =~ "(deleted)"
+    refute html =~ "Danger Zone"
+    refute html =~ "Delete"
+    refute html =~ "Edit"
+    refute html =~ "Deploy"
   end
 
   test "renders breadcrumbs item", %{

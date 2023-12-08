@@ -6,6 +6,7 @@ defmodule Web.Actors.Edit do
   def mount(%{"id" => id}, _session, socket) do
     with {:ok, actor} <-
            Actors.fetch_actor_by_id(id, socket.assigns.subject, preload: [:memberships]),
+         nil <- actor.deleted_at,
          {:ok, groups} <- Actors.list_groups(socket.assigns.subject) do
       changeset = Actors.change_actor(actor)
 
@@ -19,7 +20,7 @@ defmodule Web.Actors.Edit do
          page_title: "Edit actor #{actor.name}"
        ]}
     else
-      {:error, _reason} -> raise Web.LiveErrors.NotFoundError
+      _other -> raise Web.LiveErrors.NotFoundError
     end
   end
 
@@ -41,7 +42,7 @@ defmodule Web.Actors.Edit do
       </:title>
       <:content>
         <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
-          <h2 class="mb-4 text-xl font-bold text-gray-900 dark:text-white">Edit User Details</h2>
+          <h2 class="mb-4 text-xl font-bold text-neutral-900">Edit User Details</h2>
           <.flash kind={:error} flash={@flash} />
           <.form for={@form} phx-change={:change} phx-submit={:submit}>
             <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">

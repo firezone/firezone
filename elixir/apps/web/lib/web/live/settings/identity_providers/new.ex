@@ -35,7 +35,7 @@ defmodule Web.Settings.IdentityProviders.New do
       </:title>
       <:content>
         <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
-          <h2 class="mb-4 text-xl font-bold text-gray-900 dark:text-white">Choose type</h2>
+          <h2 class="mb-4 text-xl font-bold text-neutral-900">Choose type</h2>
           <.form id="identity-provider-type-form" for={@form} phx-submit="submit">
             <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
               <fieldset>
@@ -73,7 +73,7 @@ defmodule Web.Settings.IdentityProviders.New do
       adapter={@adapter}
       account={@account}
       name="Google Workspace"
-      description="Authenticate users and synchronize users and groups with preconfigured Google Workspace connector."
+      description="Authenticate users and synchronize users and groups with a custom Google Workspace connector."
     />
     """
   end
@@ -84,7 +84,7 @@ defmodule Web.Settings.IdentityProviders.New do
       adapter={@adapter}
       account={@account}
       name="OpenID Connect"
-      description="Authenticate users with a generic OpenID Connect adapter and synchronize users and groups with just-in-time provisioning."
+      description="Authenticate users with a universal OpenID Connect adapter and synchronize users with just-in-time (JIT) provisioning."
     />
     """
   end
@@ -109,21 +109,19 @@ defmodule Web.Settings.IdentityProviders.New do
           type="radio"
           name="next"
           value={next_step_path(@adapter, @account)}
-          class={~w[
-            w-4 h-4 border-gray-300
-            focus:ring-2 focus:ring-blue-300
-            dark:focus:ring-blue-600 dark:bg-gray-700 dark:border-gray-600
-          ]}
+          class={~w[ w-4 h-4 border-neutral-300 ]}
           required
         />
-        <label
-          for={"idp-option-#{@adapter}"}
-          class="block ml-2 text-lg font-medium text-gray-900 dark:text-gray-300"
-        >
+        <label for={"idp-option-#{@adapter}"} class="block ml-2 text-lg font-medium text-neutral-900">
           <%= @name %>
         </label>
+        <%= if @adapter == :google_workspace do %>
+          <.badge class="ml-2" type="primary" title="Feature available on the Enterprise plan">
+            ENTERPRISE
+          </.badge>
+        <% end %>
       </div>
-      <p class="ml-6 mb-6 text-sm text-gray-500 dark:text-gray-400">
+      <p class="ml-6 mb-6 text-sm text-neutral-500">
         <%= @description %>
       </p>
     </div>

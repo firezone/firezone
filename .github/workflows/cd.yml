@@ -40,7 +40,7 @@ jobs:
         with:
           ref: ${{ github.event.workflow_run.head_branch }}
       - name: Upload Configuration
-        uses: hashicorp/tfc-workflows-github/actions/upload-configuration@v1.0.4
+        uses: hashicorp/tfc-workflows-github/actions/upload-configuration@v1.1.1
         id: apply-upload
         with:
           workspace: ${{ env.TF_WORKSPACE }}
@@ -48,7 +48,7 @@ jobs:
           # https://app.terraform.io/app/firezone/workspaces/staging/settings/general
           directory: "./"
       - name: Create Plan Run
-        uses: hashicorp/tfc-workflows-github/actions/create-run@v1.0.4
+        uses: hashicorp/tfc-workflows-github/actions/create-run@v1.1.1
         id: apply-run
         env:
           TF_VAR_image_tag: '"${{ env.VERSION }}-${{ github.sha }}"'
@@ -57,7 +57,7 @@ jobs:
           configuration_version:
             ${{ steps.apply-upload.outputs.configuration_version_id }}
       - name: Apply
-        uses: hashicorp/tfc-workflows-github/actions/apply-run@v1.0.4
+        uses: hashicorp/tfc-workflows-github/actions/apply-run@v1.1.1
         if: fromJSON(steps.apply-run.outputs.payload).data.attributes.actions.IsConfirmable
         id: apply
         with:
@@ -113,7 +113,7 @@ jobs:
       tag_name: ${{ steps.update-release-draft.outputs.tag_name }}
       upload_url: ${{ steps.update-release-draft.outputs.upload_url }}
 
-  build-push-release-artifacts:
+  build-push-linux-release-artifacts:
     permissions:
       id-token: write
       contents: write
@@ -243,10 +243,61 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+  # Build for Windows
+  build-push-windows-release-artifacts:
+    permissions:
+      id-token: write
+      contents: write
+    needs: update-release-draft
+    runs-on: windows-2019
+    defaults:
+      run:
+        working-directory: ./rust
+    strategy:
+      fail-fast: false
+      # The matrix is 1x1 to match the style of build-push-linux-release-artifacts
+      # In the future we could try to cross-compile aarch64-windows here.
+      matrix:
+        name:
+          - package: firezone-windows-client
+            artifact: windows-client
+    env:
+      BINARY_DEST_PATH: ${{ matrix.name.artifact }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-rust
+        with:
+          targets: x86_64-pc-windows-msvc
+      - name: Build release binaries
+        run: |
+          cargo install tauri-cli
+
+          # Tauri build already defaults to '--release'
+          cargo tauri build
+
+          # Used for release artifact
+          cp target/release/${{ matrix.name.package }}.exe "${{ env.BINARY_DEST_PATH }}-x64.exe"
+
+          pwd
+          ls *.exe
+
+          # There's an MSI and NSIS installer here but their names include the version so I'll try those later.
+
+
+      - name: Upload Release Assets
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # TODO: Calculate sha256sum for this binary and attach to release
+          gh release upload ${{ needs.update-release-draft.outputs.tag_name }} `
+            ${{ env.BINARY_DEST_PATH }}-x64.exe `
+            --clobber `
+            --repo ${{ github.repository }}
+
   merge-release-artifacts:
     permissions:
       id-token: write
-    needs: build-push-release-artifacts
+    needs: build-push-linux-release-artifacts
     runs-on: ubuntu-22.04
     strategy:
       fail-fast: false

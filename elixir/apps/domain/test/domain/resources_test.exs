@@ -49,23 +49,24 @@ defmodule Domain.ResourcesTest do
 
       assert fetch_resource_by_id(resource.id, subject) == {:error, :not_found}
 
-      Fixtures.Policies.create_policy(
-        account: account,
-        actor_group: actor_group,
-        resource: resource
-      )
+      policy =
+        Fixtures.Policies.create_policy(
+          account: account,
+          actor_group: actor_group,
+          resource: resource
+        )
 
       assert {:ok, fetched_resource} = fetch_resource_by_id(resource.id, subject)
       assert fetched_resource.id == resource.id
-      refute is_nil(fetched_resource.authorized_by_policy)
+      assert fetched_resource.authorized_by_policy.id == policy.id
     end
 
-    test "does not return deleted resources", %{account: account, subject: subject} do
+    test "returns deleted resources", %{account: account, subject: subject} do
       {:ok, resource} =
         Fixtures.Resources.create_resource(account: account)
         |> delete_resource(subject)
 
-      assert fetch_resource_by_id(resource.id, subject) == {:error, :not_found}
+      assert {:ok, _resource} = fetch_resource_by_id(resource.id, subject)
     end
 
     test "does not return resources in other accounts", %{subject: subject} do
@@ -152,15 +153,49 @@ defmodule Domain.ResourcesTest do
 
       assert fetch_and_authorize_resource_by_id(resource.id, subject) == {:error, :not_found}
 
-      Fixtures.Policies.create_policy(
-        account: account,
-        actor_group: actor_group,
-        resource: resource
-      )
+      policy =
+        Fixtures.Policies.create_policy(
+          account: account,
+          actor_group: actor_group,
+          resource: resource
+        )
 
       assert {:ok, fetched_resource} = fetch_and_authorize_resource_by_id(resource.id, subject)
       assert fetched_resource.id == resource.id
-      refute is_nil(fetched_resource.authorized_by_policy)
+      assert fetched_resource.authorized_by_policy.id == policy.id
+    end
+
+    test "returns authorized resource using one of multiple policies for account user", %{
+      account: account
+    } do
+      actor = Fixtures.Actors.create_actor(type: :account_user, account: account)
+      identity = Fixtures.Auth.create_identity(account: account, actor: actor)
+      subject = Fixtures.Auth.create_subject(identity: identity)
+      resource = Fixtures.Resources.create_resource(account: account)
+
+      actor_group1 = Fixtures.Actors.create_group(account: account)
+      Fixtures.Actors.create_membership(account: account, actor: actor, group: actor_group1)
+
+      policy1 =
+        Fixtures.Policies.create_policy(
+          account: account,
+          actor_group: actor_group1,
+          resource: resource
+        )
+
+      actor_group2 = Fixtures.Actors.create_group(account: account)
+      Fixtures.Actors.create_membership(account: account, actor: actor, group: actor_group2)
+
+      policy2 =
+        Fixtures.Policies.create_policy(
+          account: account,
+          actor_group: actor_group2,
+          resource: resource
+        )
+
+      assert {:ok, fetched_resource} = fetch_and_authorize_resource_by_id(resource.id, subject)
+      assert fetched_resource.id == resource.id
+      assert fetched_resource.authorized_by_policy.id in [policy1.id, policy2.id]
     end
 
     test "does not return deleted resources", %{account: account, actor: actor, subject: subject} do
@@ -169,6 +204,66 @@ defmodule Domain.ResourcesTest do
         |> delete_resource(subject)
 
       actor_group = Fixtures.Actors.create_group(account: account)
+      Fixtures.Actors.create_membership(account: account, actor: actor, group: actor_group)
+
+      Fixtures.Policies.create_policy(
+        account: account,
+        actor_group: actor_group,
+        resource: resource
+      )
+
+      assert fetch_and_authorize_resource_by_id(resource.id, subject) == {:error, :not_found}
+    end
+
+    test "does not authorize using deleted policies", %{
+      account: account,
+      actor: actor,
+      subject: subject
+    } do
+      resource = Fixtures.Resources.create_resource(account: account)
+      actor_group = Fixtures.Actors.create_group(account: account)
+      Fixtures.Actors.create_membership(account: account, actor: actor, group: actor_group)
+
+      Fixtures.Policies.create_policy(
+        account: account,
+        actor_group: actor_group,
+        resource: resource
+      )
+      |> Fixtures.Policies.delete_policy()
+
+      assert fetch_and_authorize_resource_by_id(resource.id, subject) == {:error, :not_found}
+    end
+
+    test "does not authorize using deleted group membership", %{
+      account: account,
+      subject: subject
+    } do
+      resource = Fixtures.Resources.create_resource(account: account)
+      actor_group = Fixtures.Actors.create_group(account: account)
+
+      # memberships are not soft deleted
+      # Fixtures.Actors.create_membership(account: account, actor: actor, group: actor_group)
+
+      Fixtures.Policies.create_policy(
+        account: account,
+        actor_group: actor_group,
+        resource: resource
+      )
+
+      assert fetch_and_authorize_resource_by_id(resource.id, subject) == {:error, :not_found}
+    end
+
+    test "does not authorize using deleted group", %{
+      account: account,
+      actor: actor,
+      subject: subject
+    } do
+      resource = Fixtures.Resources.create_resource(account: account)
+
+      actor_group =
+        Fixtures.Actors.create_group(account: account)
+        |> Fixtures.Actors.delete_group()
+
       Fixtures.Actors.create_membership(account: account, actor: actor, group: actor_group)
 
       Fixtures.Policies.create_policy(
@@ -288,14 +383,17 @@ defmodule Domain.ResourcesTest do
       assert length(resources) == 1
       assert hd(resources).authorized_by_policy.id == policy.id
 
-      Fixtures.Policies.create_policy(
-        account: account,
-        actor_group: actor_group,
-        resource: resource2
-      )
+      policy2 =
+        Fixtures.Policies.create_policy(
+          account: account,
+          actor_group: actor_group,
+          resource: resource2
+        )
 
-      assert {:ok, resources} = list_authorized_resources(subject)
-      assert length(resources) == 2
+      assert {:ok, resources2} = list_authorized_resources(subject)
+      assert length(resources2) == 2
+
+      assert hd(resources2 -- resources).authorized_by_policy.id == policy2.id
     end
 
     test "returns authorized resources for account admin subject", %{

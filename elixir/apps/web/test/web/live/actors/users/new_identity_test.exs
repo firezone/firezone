@@ -63,7 +63,8 @@ defmodule Web.Live.Actors.User.NewIdentityTest do
            |> form("form")
            |> find_inputs() == [
              "identity[provider_id]",
-             "identity[provider_identifier]"
+             "identity[provider_identifier]",
+             "identity[provider_identifier_confirmation]"
            ]
   end
 
@@ -113,6 +114,21 @@ defmodule Web.Live.Actors.User.NewIdentityTest do
                "identity[provider_identifier]" => ["can't be blank"]
              }
     end)
+
+    lv
+    |> form("form", identity: %{})
+    |> validate_change(
+      %{
+        identity: %{
+          provider_identifier: Fixtures.Auth.email()
+        }
+      },
+      fn form, _html ->
+        assert form_validation_errors(form) == %{
+                 "identity[provider_identifier_confirmation]" => ["email does not match"]
+               }
+      end
+    )
   end
 
   test "renders changeset errors on submit", %{
@@ -134,6 +150,13 @@ defmodule Web.Live.Actors.User.NewIdentityTest do
            |> form_validation_errors() == %{
              "identity[provider_identifier]" => ["can't be blank"]
            }
+
+    assert lv
+           |> form("form", identity: %{provider_identifier: Fixtures.Auth.email()})
+           |> render_submit()
+           |> form_validation_errors() == %{
+             "identity[provider_identifier_confirmation]" => ["email does not match"]
+           }
   end
 
   test "creates a new actor on valid attrs", %{
@@ -142,8 +165,11 @@ defmodule Web.Live.Actors.User.NewIdentityTest do
     identity: identity,
     conn: conn
   } do
+    email_addr = Fixtures.Auth.email()
+
     attrs = %{
-      provider_identifier: Fixtures.Auth.email()
+      provider_identifier: email_addr,
+      provider_identifier_confirmation: email_addr
     }
 
     {:ok, lv, _html} =

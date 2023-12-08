@@ -93,7 +93,7 @@ defmodule Web.Live.Settings.IdentityProviders.IndexTest do
       assert row["sync status"] =~ "Created 1 identity and 0 groups"
     end)
     |> with_table_row("name", email_provider.name, fn row ->
-      assert row["type"] == "Magic Link"
+      assert row["type"] == "Email"
       assert row["status"] =~ "Disabled"
       assert row["sync status"] =~ "Created 0 identities and 0 groups"
     end)
@@ -176,7 +176,7 @@ defmodule Web.Live.Settings.IdentityProviders.IndexTest do
     |> render()
     |> table_to_map()
     |> with_table_row("name", provider.name, fn row ->
-      assert row["status"] == "Provisioning connect IdP"
+      assert row["status"] == "Provisioning Connect IdP"
     end)
   end
 

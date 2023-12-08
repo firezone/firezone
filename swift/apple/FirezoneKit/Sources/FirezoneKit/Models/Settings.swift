@@ -6,25 +6,6 @@
 
 import Foundation
 
-struct AccountSettings {
-  var accountId: String = "" {
-    didSet { if oldValue != accountId { isSavedToDisk = false } }
-  }
-
-  var isSavedToDisk = true
-
-  var isValid: Bool {
-    !accountId.isEmpty
-      && accountId.unicodeScalars.allSatisfy { Self.teamIdAllowedCharacterSet.contains($0) }
-  }
-
-  static let teamIdAllowedCharacterSet: CharacterSet = {
-    var pathAllowed = CharacterSet.urlPathAllowed
-    pathAllowed.remove("/")
-    return pathAllowed
-  }()
-}
-
 struct AdvancedSettings: Equatable {
   var authBaseURLString: String {
     didSet { if oldValue != authBaseURLString { isSavedToDisk = false } }
@@ -57,11 +38,17 @@ struct AdvancedSettings: Equatable {
         authBaseURLString: "https://app.firezone.dev/",
         apiURLString: "wss://api.firezone.dev/",
         connlibLogFilterString:
-          "connlib_client_apple=info,firezone_tunnel=info,connlib_shared=info,connlib_client_shared=info,warn"
+          "connlib_client_apple=info,firezone_tunnel=trace,connlib_shared=info,connlib_client_shared=info,warn"
       )
     #endif
   }()
 
   // Note: To see what the connlibLogFilterString values mean, see:
   // https://docs.rs/tracing-subscriber/latest/tracing_subscriber/filter/struct.EnvFilter.html
+}
+
+extension AdvancedSettings: CustomStringConvertible {
+  var description: String {
+    "(\(authBaseURLString), \(apiURLString), \(connlibLogFilterString))"
+  }
 }
