@@ -966,8 +966,8 @@ defmodule Web.CoreComponents do
           "text-xs font-medium",
           "rounded-l",
           "py-0.5 pl-2.5 pr-1.5",
-          "text-accent-800",
-          "bg-accent-100",
+          "text-neutral-800",
+          "bg-neutral-100",
           "whitespace-nowrap"
         ]}
       >
