@@ -116,12 +116,6 @@ where
             return Ok(None);
         };
 
-        tracing::trace!(
-            "packet src: {}, packet dst {}",
-            packet.as_immutable().source(),
-            packet.as_immutable().destination()
-        );
-
         let packet = match self.tunnel.lock().encapsulate(packet.packet(), buf) {
             TunnResult::Done => return Ok(None),
             TunnResult::Err(e) => return Err(e.into()),
@@ -288,7 +282,6 @@ impl PacketTransform for PacketTransformClient {
             return Err(Error::BadPacket);
         };
 
-        tracing::trace!("setting packet source from: {addr} to {src}");
         pkt.set_src(*src);
         pkt.update_checksum();
         let packet = make_packet(packet, addr);
@@ -299,7 +292,6 @@ impl PacketTransform for PacketTransformClient {
         if let Some(translated_ip) = self.translations.read().get_by_left(&packet.destination()) {
             packet.set_dst(*translated_ip);
             packet.update_checksum();
-            tracing::trace!("translating to ip: {translated_ip}");
         }
 
         Some(packet)
