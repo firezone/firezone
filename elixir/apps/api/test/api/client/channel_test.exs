@@ -38,6 +38,14 @@ defmodule API.Client.ChannelTest do
         connections: [%{gateway_group_id: gateway_group.id}]
       )
 
+    ip_resource =
+      Fixtures.Resources.create_resource(
+        type: :ip,
+        address: "192.168.100.1",
+        account: account,
+        connections: [%{gateway_group_id: gateway_group.id}]
+      )
+
     unauthorized_resource =
       Fixtures.Resources.create_resource(
         account: account,
@@ -54,6 +62,12 @@ defmodule API.Client.ChannelTest do
       account: account,
       actor_group: actor_group,
       resource: cidr_resource
+    )
+
+    Fixtures.Policies.create_policy(
+      account: account,
+      actor_group: actor_group,
+      resource: ip_resource
     )
 
     expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
@@ -80,6 +94,7 @@ defmodule API.Client.ChannelTest do
       gateway: gateway,
       dns_resource: dns_resource,
       cidr_resource: cidr_resource,
+      ip_resource: ip_resource,
       unauthorized_resource: unauthorized_resource,
       socket: socket
     }
@@ -119,10 +134,11 @@ defmodule API.Client.ChannelTest do
     test "sends list of resources after join", %{
       client: client,
       dns_resource: dns_resource,
-      cidr_resource: cidr_resource
+      cidr_resource: cidr_resource,
+      ip_resource: ip_resource
     } do
       assert_push "init", %{resources: resources, interface: interface}
-      assert length(resources) == 2
+      assert length(resources) == 3
 
       assert %{
                id: dns_resource.id,
@@ -136,6 +152,13 @@ defmodule API.Client.ChannelTest do
                type: :cidr,
                name: cidr_resource.name,
                address: cidr_resource.address
+             } in resources
+
+      assert %{
+               id: ip_resource.id,
+               type: :cidr,
+               name: ip_resource.name,
+               address: "#{ip_resource.address}/32"
              } in resources
 
       assert interface == %{

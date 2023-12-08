@@ -21,6 +21,16 @@ defmodule API.Gateway.Views.Resource do
     }
   end
 
+  def render(%Resources.Resource{type: :ip} = resource) do
+    %{
+      id: resource.id,
+      type: :cidr,
+      address: "#{resource.address}/32",
+      name: resource.name,
+      filters: Enum.flat_map(resource.filters, &render_filter/1)
+    }
+  end
+
   def render_filter(%Resources.Resource.Filter{} = filter) do
     Enum.map(filter.ports, fn port ->
       case String.split(port, "-") do

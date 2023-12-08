@@ -789,6 +789,7 @@ defmodule Domain.ResourcesTest do
 
       assert errors_on(changeset) == %{
                address: ["can't be blank"],
+               type: ["can't be blank"],
                connections: ["can't be blank"]
              }
     end
@@ -800,6 +801,7 @@ defmodule Domain.ResourcesTest do
       assert errors_on(changeset) == %{
                address: ["can't be blank"],
                name: ["should be at most 255 character(s)"],
+               type: ["can't be blank"],
                filters: ["is invalid"],
                connections: ["is invalid"]
              }
@@ -820,9 +822,9 @@ defmodule Domain.ResourcesTest do
       assert {:error, changeset} = create_resource(attrs, subject)
       assert "is not a valid CIDR range" in errors_on(changeset).address
 
-      attrs = %{"address" => "192.168.1.1", "type" => "cidr"}
+      attrs = %{"address" => "192.168.1.1", "type" => "ip"}
       assert {:error, changeset} = create_resource(attrs, subject)
-      assert "is not a valid CIDR range" in errors_on(changeset).address
+      refute Map.has_key?(errors_on(changeset), :address)
 
       attrs = %{"address" => "100.64.0.0/8", "type" => "cidr"}
       assert {:error, changeset} = create_resource(attrs, subject)
@@ -834,11 +836,13 @@ defmodule Domain.ResourcesTest do
 
       attrs = %{"address" => "::/0", "type" => "cidr"}
       assert {:error, changeset} = create_resource(attrs, subject)
-      refute Map.has_key?(errors_on(changeset), :address)
+      assert "can not contain loopback addresses" in errors_on(changeset).address
+      assert "can not contain all IPv6 addresses" in errors_on(changeset).address
 
       attrs = %{"address" => "0.0.0.0/0", "type" => "cidr"}
       assert {:error, changeset} = create_resource(attrs, subject)
-      refute Map.has_key?(errors_on(changeset), :address)
+      assert "can not contain loopback addresses" in errors_on(changeset).address
+      assert "can not contain all IPv4 addresses" in errors_on(changeset).address
     end
 
     # We allow names to be duplicate because Resources are split into Sites
@@ -901,14 +905,14 @@ defmodule Domain.ResourcesTest do
             %{gateway_group_id: gateway.group_id}
           ],
           type: :cidr,
-          name: nil,
+          name: "mycidr",
           address: "192.168.1.1/28"
         )
 
       assert {:ok, resource} = create_resource(attrs, subject)
 
       assert resource.address == "192.168.1.0/28"
-      assert resource.name == attrs.address
+      assert resource.name == attrs.name
       assert resource.account_id == account.id
 
       assert [

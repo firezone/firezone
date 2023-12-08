@@ -111,6 +111,7 @@ defmodule API.Gateway.ChannelTest do
                ]
              }
 
+      assert payload.ref
       assert payload.flow_id == flow_id
       assert payload.client_id == client.id
       assert DateTime.from_unix!(payload.expires_at) == DateTime.truncate(expires_at, :second)

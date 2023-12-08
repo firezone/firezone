@@ -24,7 +24,7 @@ defmodule Domain.Types.CIDR do
 
   def range(%Postgrex.INET{address: address, netmask: netmask} = cidr) do
     tuple_size = tuple_size(address)
-    shift = max_netmask(cidr) - netmask
+    shift = max_netmask(cidr) - (netmask || 32)
     address_as_number = address2number(address)
 
     first_address_number = reset_right_bits(address_as_number, shift)
