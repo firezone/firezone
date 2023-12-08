@@ -112,6 +112,8 @@ defmodule API.Client.ChannelTest do
         |> subscribe_and_join(API.Client.Channel, "client")
 
       assert_push "token_expired", %{}, 250
+      assert_receive {:EXIT, _pid, {:shutdown, :token_expired}}
+      assert_receive {:socket_close, _pid, {:shutdown, :token_expired}}
     end
 
     test "sends list of resources after join", %{
