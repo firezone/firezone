@@ -81,7 +81,7 @@ const ICE_GATHERING_TIMEOUT_SECONDS: u64 = 5 * 60;
 
 /// How many concurrent ICE gathering attempts we are allow.
 ///
-/// Chosen arbitrarily.Miami-Dade County,
+/// Chosen arbitrarily,
 const MAX_CONCURRENT_ICE_GATHERING: usize = 100;
 
 // Note: Taken from boringtun
