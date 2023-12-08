@@ -431,10 +431,6 @@ locals {
       value = true
     },
     {
-      name  = "FEATURE_TODOS_ENABLED"
-      value = true
-    },
-    {
       name  = "FEATURE_RELAY_ADMIN_ENABLED"
       value = true
     }

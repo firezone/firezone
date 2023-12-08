@@ -7,14 +7,6 @@ defmodule Web.Relays.Show do
          {:ok, relay} <-
            Relays.fetch_relay_by_id(id, socket.assigns.subject, preload: :group) do
       :ok = Relays.subscribe_for_relays_presence_in_group(relay.group)
-
-      socket =
-        assign(
-          socket,
-          relay: relay,
-          todos_enabled?: Config.todos_enabled?()
-        )
-
       {:ok, assign(socket, relay: relay)}
     else
       _other -> raise Web.LiveErrors.NotFoundError
@@ -103,10 +95,6 @@ defmodule Web.Relays.Show do
               <:value>
                 <%= @relay.last_seen_user_agent %>
               </:value>
-            </.vertical_table_row>
-            <.vertical_table_row :if={@todos_enabled?}>
-              <:label>Deployment Method</:label>
-              <:value>TODO: Docker</:value>
             </.vertical_table_row>
           </.vertical_table>
         </div>

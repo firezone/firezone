@@ -121,15 +121,11 @@ defmodule Domain.Config do
   end
 
   def sign_up_enabled? do
-    feature_enabled?(:signups)
+    feature_enabled?(:sign_up)
   end
 
   def flow_activities_enabled? do
     feature_enabled?(:flow_activities)
-  end
-
-  def todos_enabled? do
-    feature_enabled?(:todos)
   end
 
   def traffic_filters_enabled? do
