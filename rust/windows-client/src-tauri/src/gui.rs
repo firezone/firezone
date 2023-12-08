@@ -269,10 +269,21 @@ impl connlib_client_shared::Callbacks for CallbackHandler {
 }
 
 struct Controller {
+    /// Debugging-only settings like API URL, auth URL, log filter
     advanced_settings: AdvancedSettings,
+    /// mpsc sender to send things to the controller task
     ctlr_tx: CtlrTx,
-    session: Option<connlib_client_shared::Session<CallbackHandler>>,
-    token: Option<SecretString>,
+    /// connlib / tunnel session
+    connlib_session: Option<connlib_client_shared::Session<CallbackHandler>>,
+    /// Info about currently signed-in user, if there is one
+    session: Option<Session>,
+}
+
+/// Information for a signed-in user session
+struct Session {
+    /// User name, e.g. "John Doe", from the sign-in deep link
+    actor_name: String,
+    token: SecretString,
 }
 
 impl Controller {
@@ -287,12 +298,17 @@ impl Controller {
             .unwrap_or_default();
 
         tracing::trace!("re-loading token");
-        let token: Option<SecretString> = tokio::task::spawn_blocking(|| {
+        let session: Option<Session> = tokio::task::spawn_blocking(|| {
             let entry = keyring_entry()?;
             match entry.get_password() {
                 Ok(token) => {
+                    let token = SecretString::new(token);
                     tracing::debug!("re-loaded token from Windows credential manager");
-                    Ok(Some(SecretString::new(token)))
+                    let session = Session {
+                        actor_name: "TODO".to_string(),
+                        token,
+                    };
+                    Ok(Some(session))
                 }
                 Err(keyring::Error::NoEntry) => {
                     tracing::debug!("no token in Windows credential manager");
@@ -303,11 +319,11 @@ impl Controller {
         })
         .await??;
 
-        let session = if let Some(token) = token.as_ref() {
+        let connlib_session = if let Some(session) = session.as_ref() {
             Some(Self::start_session(
                 &advanced_settings,
                 ctlr_tx.clone(),
-                token,
+                &session.token,
             )?)
         } else {
             None
@@ -316,8 +332,8 @@ impl Controller {
         Ok(Self {
             advanced_settings,
             ctlr_tx,
+            connlib_session,
             session,
-            token,
         })
     }
 
@@ -374,12 +390,15 @@ async fn run_controller(
                     tracing::debug!("setting new token");
                     let entry = keyring_entry()?;
                     entry.set_password(auth.token.expose_secret())?;
-                    controller.session = Some(Controller::start_session(
+                    controller.connlib_session = Some(Controller::start_session(
                         &controller.advanced_settings,
                         controller.ctlr_tx.clone(),
                         &auth.token,
                     )?);
-                    controller.token = Some(auth.token);
+                    controller.session = Some(Session {
+                        actor_name: auth.actor_name,
+                        token: auth.token,
+                    });
                 } else {
                     tracing::warn!("couldn't handle scheme request");
                 }
@@ -397,8 +416,13 @@ async fn run_controller(
                 let resources: Vec<_> = resources.into_iter().map(ResourceDisplay::from).collect();
 
                 // TODO: Save the user name between runs of the app
+                let actor_name = controller
+                    .session
+                    .as_ref()
+                    .map(|x| x.actor_name.as_str())
+                    .unwrap_or("TODO");
                 app.tray_handle()
-                    .set_menu(signed_in_menu("placeholder", &resources))?;
+                    .set_menu(signed_in_menu(actor_name, &resources))?;
             }
         }
     }
@@ -407,6 +431,7 @@ async fn run_controller(
 }
 
 pub(crate) struct AuthCallback {
+    actor_name: String,
     token: SecretString,
     _identifier: SecretString,
 }
@@ -416,11 +441,18 @@ fn parse_auth_callback(input: &SecretString) -> Result<AuthCallback> {
 
     let url = url::Url::parse(input.expose_secret())?;
 
+    let mut actor_name = None;
     let mut token = None;
     let mut identifier = None;
 
     for (key, value) in url.query_pairs() {
         match key.as_ref() {
+            "actor_name" => {
+                if actor_name.is_some() {
+                    bail!("actor_name must appear exactly once");
+                }
+                actor_name = Some(value.to_string());
+            }
             "client_auth_token" => {
                 if token.is_some() {
                     bail!("client_auth_token must appear exactly once");
@@ -438,6 +470,7 @@ fn parse_auth_callback(input: &SecretString) -> Result<AuthCallback> {
     }
 
     Ok(AuthCallback {
+        actor_name: actor_name.ok_or_else(|| anyhow!("expected actor_name"))?,
         token: token.ok_or_else(|| anyhow!("expected client_auth_token"))?,
         _identifier: identifier.ok_or_else(|| anyhow!("expected identity_provider_identifier"))?,
     })
@@ -521,6 +554,7 @@ mod tests {
 
         let actual = super::parse_auth_callback(&SecretString::from_str(input)?)?;
 
+        assert_eq!(actual.actor_name, "Reactor Scram");
         assert_eq!(actual.token.expose_secret(), "a_very_secret_string");
 
         Ok(())
