@@ -8,7 +8,7 @@ use tokio::fs;
 /// Returns: The hexadecimal SHA256 of the UUID, suitable for sending directly to `connlib_client_shared::Session::connect`.
 /// Errors: If the disk is unwritable when initially generating the ID, or unreadable when reading it back, or if the file is not valid JSON or doesn't match the expected schema
 pub(crate) async fn hashed_device_id(
-    app_local_data_dir: &crate::AppLocalDataDir,
+    app_local_data_dir: &crate::client::AppLocalDataDir,
 ) -> anyhow::Result<String> {
     let dir = app_local_data_dir.0.join("config");
     let path = dir.join("device_id.json");

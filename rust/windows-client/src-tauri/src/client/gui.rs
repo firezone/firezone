@@ -3,8 +3,9 @@
 
 // TODO: `git grep` for unwraps before 1.0, especially this gui module
 
-use crate::settings::{self, AdvancedSettings};
+use crate::client::{self, AppLocalDataDir};
 use anyhow::{anyhow, bail, Result};
+use client::settings::{self, AdvancedSettings};
 use connlib_client_shared::file_logger;
 use firezone_cli_utils::setup_global_subscriber;
 use secrecy::SecretString;
@@ -18,12 +19,12 @@ use ControllerRequest as Req;
 
 pub(crate) type CtlrTx = mpsc::Sender<ControllerRequest>;
 
-pub(crate) fn app_local_data_dir(app: &tauri::AppHandle) -> Result<crate::AppLocalDataDir> {
+pub(crate) fn app_local_data_dir(app: &tauri::AppHandle) -> Result<AppLocalDataDir> {
     let path = app
         .path_resolver()
         .app_local_data_dir()
         .ok_or_else(|| anyhow!("getting app_local_data_dir"))?;
-    Ok(crate::AppLocalDataDir(path))
+    Ok(AppLocalDataDir(path))
 }
 
 /// All managed state that we might need to access from odd places like Tauri commands.
@@ -33,8 +34,8 @@ pub(crate) struct Managed {
 }
 
 /// Runs the Tauri GUI and returns on exit or unrecoverable error
-pub(crate) fn run(params: crate::GuiParams) -> Result<()> {
-    let crate::GuiParams {
+pub(crate) fn run(params: client::GuiParams) -> Result<()> {
+    let client::GuiParams {
         deep_link,
         inject_faults,
     } = params;
@@ -104,7 +105,7 @@ pub(crate) fn run(params: crate::GuiParams) -> Result<()> {
 
             // From https://github.com/FabianLars/tauri-plugin-deep-link/blob/main/example/main.rs
             let handle = app.handle();
-            if let Err(e) = tauri_plugin_deep_link::register(crate::DEEP_LINK_SCHEME, move |url| {
+            if let Err(e) = tauri_plugin_deep_link::register(client::DEEP_LINK_SCHEME, move |url| {
                 match handle_deep_link(&handle, url) {
                     Ok(()) => {}
                     Err(e) => tracing::error!("{e}"),
@@ -328,7 +329,7 @@ impl Controller {
         .await??;
 
         let hashed_device_id =
-            crate::device_id::hashed_device_id(&app_local_data_dir(&app)?).await?;
+            client::device_id::hashed_device_id(&app_local_data_dir(&app)?).await?;
 
         // Connect immediately if we reloaded the token
         let connlib_session = if let Some(session) = session.as_ref() {

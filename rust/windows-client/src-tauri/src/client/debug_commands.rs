@@ -1,7 +1,7 @@
 //! CLI subcommands used to test features / dependencies before integrating
 //! them with the GUI, or to exercise features programmatically.
 
-use crate::cli::Cli;
+use crate::client::cli::Cli;
 use anyhow::Result;
 use keyring::Entry;
 
