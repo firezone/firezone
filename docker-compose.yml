@@ -184,7 +184,7 @@ services:
   httpbin:
     image: kennethreitz/httpbin
     healthcheck:
-      test: ["CMD-SHELL", "ps -C guinicorn"]
+      test: ["CMD-SHELL", "ps -C gunicorn"]
     networks:
       resources:
         ipv4_address: 172.20.0.100
