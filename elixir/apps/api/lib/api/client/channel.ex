@@ -71,7 +71,7 @@ defmodule API.Client.Channel do
 
     OpenTelemetry.Tracer.with_span "client.token_expired" do
       push(socket, "token_expired", %{})
-      {:stop, :token_expired, socket}
+      {:stop, {:shutdown, :token_expired}, socket}
     end
   end
 
