@@ -69,7 +69,7 @@ if config_env() == :prod do
     traffic_filters: compile_config!(:feature_traffic_filters_enabled),
     sign_up: compile_config!(:feature_sign_up_enabled),
     flow_activities: compile_config!(:feature_flow_activities_enabled),
-    relay_admin: compile_config!(:feature_self_hosted_relays_enabled)
+    self_hosted_relays: compile_config!(:feature_self_hosted_relays_enabled)
 
   config :domain, docker_registry: compile_config!(:docker_registry)
 

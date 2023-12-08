@@ -431,10 +431,9 @@ locals {
       value = true
     },
     {
-      name  = "FEATURE_RELAY_ADMIN_ENABLED"
+      name  = "FEATURE_SELF_HOSTED_RELAYS_ENABLED"
       value = true
     }
-
   ]
 }
 
