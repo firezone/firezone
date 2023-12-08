@@ -71,7 +71,6 @@ internal class SettingsActivity : AppCompatActivity() {
     }
 
     private fun setupViews() {
-
         binding.etAuthBaseUrlInput.apply {
             imeOptions = EditorInfo.IME_ACTION_DONE
             setOnClickListener { isCursorVisible = true }
