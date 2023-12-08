@@ -159,10 +159,10 @@ defmodule Web.CoreComponents do
           <%= for tab <- @tab do %>
             <li class="mr-2" role="presentation">
               <button
-                class={~w[
-                inline-block p-4 border-b-2 border-transparent rounded-t
-                hover:text-neutral-600 hover:border-neutral-300
-              ]}
+                class={[
+                  "inline-block p-4 border-b-2 border-transparent rounded-t",
+                  "hover:text-neutral-600 hover:border-neutral-300"
+                ]}
                 id={"#{tab.id}-tab"}
                 data-tabs-target={"##{tab.id}"}
                 type="button"
