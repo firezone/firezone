@@ -275,6 +275,9 @@ struct Controller {
     ctlr_tx: CtlrTx,
     /// connlib / tunnel session
     connlib_session: Option<connlib_client_shared::Session<CallbackHandler>>,
+    /// Hexadecimal SHA256 of the on-disk UUIDv4
+    /// Sent verbatim to Session::connect
+    hashed_device_id: String,
     /// Info about currently signed-in user, if there is one
     session: Option<Session>,
 }
@@ -319,10 +322,14 @@ impl Controller {
         })
         .await??;
 
+        let hashed_device_id = crate::device_id::hashed_device_id(&app).await?;
+
+        // Connect immediately if we reloaded the token
         let connlib_session = if let Some(session) = session.as_ref() {
             Some(Self::start_session(
                 &advanced_settings,
                 ctlr_tx.clone(),
+                hashed_device_id.clone(),
                 &session.token,
             )?)
         } else {
@@ -333,6 +340,7 @@ impl Controller {
             advanced_settings,
             ctlr_tx,
             connlib_session,
+            hashed_device_id,
             session,
         })
     }
@@ -340,6 +348,7 @@ impl Controller {
     fn start_session(
         advanced_settings: &settings::AdvancedSettings,
         ctlr_tx: CtlrTx,
+        hashed_device_id: String,
         token: &SecretString,
     ) -> Result<connlib_client_shared::Session<CallbackHandler>> {
         let (layer, logger) = file_logger::layer(std::path::Path::new("logs"));
@@ -353,7 +362,7 @@ impl Controller {
         Ok(connlib_client_shared::Session::connect(
             advanced_settings.api_url.clone(),
             token.clone(),
-            crate::device_id::get(),
+            hashed_device_id,
             CallbackHandler {
                 ctlr_tx,
                 logger: Some(logger),
@@ -393,6 +402,7 @@ async fn run_controller(
                     controller.connlib_session = Some(Controller::start_session(
                         &controller.advanced_settings,
                         controller.ctlr_tx.clone(),
+                        controller.hashed_device_id.clone(),
                         &auth.token,
                     )?);
                     controller.session = Some(Session {
