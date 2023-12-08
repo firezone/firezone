@@ -12,8 +12,8 @@ use connlib_shared::messages::{
     GatewayId, Interface as InterfaceConfig, Key, ResourceDescription, ResourceDescriptionCidr,
     ResourceDescriptionDns, ResourceId, ReuseConnection, SecretKey,
 };
-use connlib_shared::{Callbacks, DNS_SENTINEL};
-use domain::base::{Dname, Rtype};
+use connlib_shared::{Callbacks, Dname, DNS_SENTINEL};
+use domain::base::Rtype;
 use futures::channel::mpsc::Receiver;
 use futures::stream;
 use futures_bounded::{PushError, StreamMap};
@@ -35,14 +35,11 @@ use webrtc::ice_transport::ice_candidate::RTCIceCandidate;
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct DnsResource {
     pub id: ResourceId,
-    pub address: Dname<Vec<u8>>,
+    pub address: Dname,
 }
 
 impl DnsResource {
-    pub fn from_description(
-        description: &ResourceDescriptionDns,
-        address: Dname<Vec<u8>>,
-    ) -> DnsResource {
+    pub fn from_description(description: &ResourceDescriptionDns, address: Dname) -> DnsResource {
         DnsResource {
             id: description.id,
             address,
@@ -188,7 +185,7 @@ pub struct ClientState {
 pub struct AwaitingConnectionDetails {
     total_attemps: usize,
     response_received: bool,
-    domain: Option<Dname<Vec<u8>>>,
+    domain: Option<Dname>,
     gateways: HashSet<GatewayId>,
 }
 
@@ -232,7 +229,7 @@ impl ClientState {
     pub(crate) fn get_awaiting_connection_domain(
         &self,
         resource: &ResourceId,
-    ) -> Result<&Option<Dname<Vec<u8>>>, ConnlibError> {
+    ) -> Result<&Option<Dname>, ConnlibError> {
         Ok(&self
             .awaiting_connection
             .get(resource)
@@ -420,7 +417,7 @@ impl ClientState {
         &mut self,
         resource: ResourceId,
         gateway: GatewayId,
-        domain: &Option<Dname<Vec<u8>>>,
+        domain: &Option<Dname>,
     ) -> Result<PeerConfig, ConnlibError> {
         let shared_key = self
             .gateway_preshared_keys
@@ -501,7 +498,7 @@ impl ClientState {
         &self,
         resource: ResourceId,
         connected_peers: &IpNetworkTable<ConnectedPeer<GatewayId, PacketTransformClient>>,
-        domain: &Option<Dname<Vec<u8>>>,
+        domain: &Option<Dname>,
     ) -> bool {
         let Some(resource) = self.resources_id.get(&resource) else {
             return false;
@@ -515,7 +512,7 @@ impl ClientState {
     fn get_resource_ip(
         &self,
         resource: &ResourceDescription,
-        domain: &Option<Dname<Vec<u8>>>,
+        domain: &Option<Dname>,
     ) -> Vec<IpNetwork> {
         match resource {
             ResourceDescription::Dns(dns_resource) => {

@@ -1,9 +1,11 @@
 use chrono::{serde::ts_seconds, DateTime, Utc};
-use connlib_shared::messages::{
-    ActorId, ClientId, ClientPayload, GatewayResponse, Interface, Peer, Relay, ResourceDescription,
-    ResourceId,
+use connlib_shared::{
+    messages::{
+        ActorId, ClientId, ClientPayload, GatewayResponse, Interface, Peer, Relay,
+        ResourceDescription, ResourceId,
+    },
+    Dname,
 };
-use domain::base::Dname;
 use serde::{Deserialize, Serialize};
 use std::net::IpAddr;
 use webrtc::ice_transport::ice_candidate::RTCIceCandidate;
@@ -80,7 +82,7 @@ pub struct AllowAccess {
     pub resource: ResourceDescription,
     #[serde(with = "ts_seconds")]
     pub expires_at: DateTime<Utc>,
-    pub payload: Option<Dname<Vec<u8>>>,
+    pub payload: Option<Dname>,
     #[serde(rename = "ref")]
     pub reference: String,
 }

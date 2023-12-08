@@ -2,7 +2,6 @@
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 
 use chrono::{serde::ts_seconds, DateTime, Utc};
-use domain::base::Dname;
 use ip_network::IpNetwork;
 use serde::{Deserialize, Serialize};
 use std::{fmt, str::FromStr};
@@ -12,6 +11,8 @@ use webrtc::ice_transport::ice_parameters::RTCIceParameters;
 mod key;
 
 pub use key::{Key, SecretKey};
+
+use crate::Dname;
 
 #[derive(Hash, Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq)]
 pub struct GatewayId(Uuid);
@@ -99,7 +100,7 @@ pub struct RequestConnection {
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct ClientPayload {
     pub ice_parameters: RTCIceParameters,
-    pub domain: Option<Dname<Vec<u8>>>,
+    pub domain: Option<Dname>,
 }
 
 /// Represent a request to reuse an existing gateway connection from a client to a given resource.
@@ -113,7 +114,7 @@ pub struct ReuseConnection {
     /// Id of the gateway we want to reuse
     pub gateway_id: GatewayId,
     /// Payload that the gateway will recieve
-    pub payload: Option<Dname<Vec<u8>>>,
+    pub payload: Option<Dname>,
 }
 
 // Custom implementation of partial eq to ignore client_rtc_sdp
@@ -134,7 +135,7 @@ pub enum ResourceDescription {
 
 #[derive(Debug, Deserialize, Serialize, Clone, Hash, PartialEq, Eq)]
 pub struct DomainResponse {
-    pub domain: Dname<Vec<u8>>,
+    pub domain: Dname,
     pub address: Vec<IpAddr>,
 }
 

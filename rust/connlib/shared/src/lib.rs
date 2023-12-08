@@ -25,6 +25,8 @@ use url::Url;
 
 pub const DNS_SENTINEL: Ipv4Addr = Ipv4Addr::new(100, 100, 111, 1);
 
+pub type Dname = domain::base::Dname<Vec<u8>>;
+
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 const LIB_NAME: &str = "connlib";
 

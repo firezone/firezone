@@ -10,9 +10,8 @@ use connlib_shared::{
         ClientId, ClientPayload, ConnectionAccepted, DomainResponse, Relay, ResourceAccepted,
         ResourceDescription,
     },
-    Callbacks, Error, Result,
+    Callbacks, Dname, Error, Result,
 };
-use domain::base::Dname;
 use ip_network::IpNetwork;
 use std::{net::ToSocketAddrs, sync::Arc};
 use webrtc::ice_transport::{ice_role::RTCIceRole, RTCIceTransport};
@@ -115,7 +114,7 @@ where
         resource: ResourceDescription,
         client_id: ClientId,
         expires_at: DateTime<Utc>,
-        domain: Option<Dname<Vec<u8>>>,
+        domain: Option<Dname>,
     ) -> Option<ResourceAccepted> {
         if let Some((_, peer)) = self
             .role_state

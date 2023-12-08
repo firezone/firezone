@@ -4,10 +4,10 @@ use crate::ip_packet::{to_dns, IpPacket, MutableIpPacket, Version};
 use crate::{get_v4, get_v6, DnsFallbackStrategy, DnsQuery};
 use connlib_shared::error::ConnlibError;
 use connlib_shared::messages::ResourceDescriptionDns;
-use connlib_shared::DNS_SENTINEL;
+use connlib_shared::{Dname, DNS_SENTINEL};
 use domain::base::{
     iana::{Class, Rcode, Rtype},
-    Dname, Message, MessageBuilder, Question, ToDname,
+    Message, MessageBuilder, Question, ToDname,
 };
 use hickory_resolver::lookup::Lookup;
 use hickory_resolver::proto::op::Message as TrustDnsMessage;
@@ -195,7 +195,7 @@ fn build_response(original_pkt: IpPacket<'_>, mut dns_answer: Vec<u8>) -> Option
 fn build_dns_with_answer<N>(
     message: &Message<[u8]>,
     qname: &N,
-    resource: &Option<RecordData<Dname<Vec<u8>>>>,
+    resource: &Option<RecordData<Dname>>,
 ) -> Option<Vec<u8>>
 where
     N: ToDname + ?Sized,
@@ -244,7 +244,7 @@ fn resource_from_question<N: ToDname>(
     dns_resources: &HashMap<String, ResourceDescriptionDns>,
     dns_resources_internal_ips: &HashMap<DnsResource, Vec<IpAddr>>,
     question: &Question<N>,
-) -> Option<ResolveStrategy<RecordData<Dname<Vec<u8>>>, DnsQueryParams, DnsResource>> {
+) -> Option<ResolveStrategy<RecordData<Dname>, DnsQueryParams, DnsResource>> {
     let name = ToDname::to_vec(question.qname());
     let qtype = question.qtype();
 
