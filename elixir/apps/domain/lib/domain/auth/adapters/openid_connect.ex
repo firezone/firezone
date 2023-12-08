@@ -166,8 +166,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
           adapter_state_updates =
             Map.take(adapter_state, ["expires_at", "access_token", "userinfo", "claims"])
 
-          adapter_state =
-            Map.merge(provider.adapter_state, adapter_state_updates)
+          adapter_state = Map.merge(provider.adapter_state, adapter_state_updates)
 
           Provider.Changeset.update(provider, %{adapter_state: adapter_state})
         end

@@ -15,6 +15,8 @@ use std::{
 };
 use tokio::io::unix::AsyncFd;
 
+use crate::DnsFallbackStrategy;
+
 const IFACE_NAME: &str = "tun-firezone";
 const TUNSETIFF: u64 = 0x4004_54ca;
 const TUN_FILE: &[u8] = b"/dev/net/tun\0";
@@ -103,6 +105,7 @@ impl IfaceDevice {
     pub async fn new(
         config: &InterfaceConfig,
         cb: &impl Callbacks,
+        _: DnsFallbackStrategy,
     ) -> Result<(Self, Arc<AsyncFd<IfaceStream>>)> {
         debug_assert!(IFACE_NAME.as_bytes().len() < IFNAMSIZ);
 

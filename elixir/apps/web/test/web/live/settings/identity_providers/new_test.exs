@@ -7,8 +7,7 @@ defmodule Web.Live.Settings.IdentityProviders.NewTest do
     account = Fixtures.Accounts.create_account()
     actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
 
-    {provider, bypass} =
-      Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
+    {provider, bypass} = Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
 
     identity = Fixtures.Auth.create_identity(account: account, actor: actor, provider: provider)
 

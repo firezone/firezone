@@ -474,8 +474,7 @@ defmodule Domain.Gateways do
         online_at: System.system_time(:second)
       })
 
-    {:ok, _} =
-      Presence.track(self(), "gateway_groups:#{gateway.group_id}", gateway.id, %{})
+    {:ok, _} = Presence.track(self(), "gateway_groups:#{gateway.group_id}", gateway.id, %{})
 
     :ok
   end

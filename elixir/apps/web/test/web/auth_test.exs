@@ -519,8 +519,7 @@ defmodule Web.AuthTest do
       session = conn |> put_session(:session_token, session_token) |> get_session()
       params = %{"account_id_or_slug" => subject.account.id}
 
-      assert {:cont, updated_socket} =
-               on_mount(:ensure_authenticated, params, session, socket)
+      assert {:cont, updated_socket} = on_mount(:ensure_authenticated, params, session, socket)
 
       assert updated_socket.assigns.subject.identity.id == subject.identity.id
       assert is_nil(updated_socket.redirected)
@@ -535,8 +534,7 @@ defmodule Web.AuthTest do
       session = conn |> put_session(:session_token, session_token) |> get_session()
       params = %{"account_id_or_slug" => subject.account.slug}
 
-      assert {:halt, updated_socket} =
-               on_mount(:ensure_authenticated, params, session, socket)
+      assert {:halt, updated_socket} = on_mount(:ensure_authenticated, params, session, socket)
 
       assert is_nil(updated_socket.assigns.subject)
 
@@ -551,8 +549,7 @@ defmodule Web.AuthTest do
       session = conn |> get_session()
       params = %{"account_id_or_slug" => subject.account.slug}
 
-      assert {:halt, updated_socket} =
-               on_mount(:ensure_authenticated, params, session, socket)
+      assert {:halt, updated_socket} = on_mount(:ensure_authenticated, params, session, socket)
 
       assert is_nil(updated_socket.assigns.subject)
 

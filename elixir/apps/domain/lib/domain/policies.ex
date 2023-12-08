@@ -50,8 +50,7 @@ defmodule Domain.Policies do
   end
 
   def create_policy(attrs, %Auth.Subject{} = subject) do
-    required_permissions =
-      {:one_of, [Authorizer.manage_policies_permission()]}
+    required_permissions = {:one_of, [Authorizer.manage_policies_permission()]}
 
     with :ok <- Auth.ensure_has_permissions(subject, required_permissions) do
       Policy.Changeset.create(attrs, subject)
@@ -60,8 +59,7 @@ defmodule Domain.Policies do
   end
 
   def update_policy(%Policy{} = policy, attrs, %Auth.Subject{} = subject) do
-    required_permissions =
-      {:one_of, [Authorizer.manage_policies_permission()]}
+    required_permissions = {:one_of, [Authorizer.manage_policies_permission()]}
 
     with :ok <- Auth.ensure_has_permissions(subject, required_permissions),
          :ok <- ensure_has_access_to(subject, policy) do
@@ -87,8 +85,7 @@ defmodule Domain.Policies do
   end
 
   def delete_policy(%Policy{} = policy, %Auth.Subject{} = subject) do
-    required_permissions =
-      {:one_of, [Authorizer.manage_policies_permission()]}
+    required_permissions = {:one_of, [Authorizer.manage_policies_permission()]}
 
     with :ok <- Auth.ensure_has_permissions(subject, required_permissions) do
       Policy.Query.by_id(policy.id)

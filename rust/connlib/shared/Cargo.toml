@@ -33,6 +33,7 @@ uuid = { version = "1.5", default-features = false, features = ["std", "v4", "se
 webrtc = { workspace = true }
 ring = "0.17"
 hickory-resolver = { workspace = true }
+domain = { workspace = true }
 
 # Needed for Android logging until tracing is working
 log = "0.4"

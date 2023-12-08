@@ -27,6 +27,7 @@ tracing = { workspace = true }
 tracing-subscriber = "0.3.17"
 url = { version = "2.4.1", default-features = false }
 webrtc = { workspace = true }
+domain = { workspace = true }
 
 [dev-dependencies]
 serde_json = { version = "1.0", default-features = false, features = ["std"] }

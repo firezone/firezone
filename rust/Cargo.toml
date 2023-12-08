@@ -27,6 +27,7 @@ secrecy = "0.8"
 hickory-resolver = { version = "0.24", features = ["tokio-runtime"] }
 webrtc = "0.9"
 futures-bounded = "0.2.1"
+domain = { version = "0.9", features = ["serde"] }
 
 connlib-client-android = { path = "connlib/clients/android"}
 connlib-client-apple = { path = "connlib/clients/apple"}

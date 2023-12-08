@@ -5,15 +5,12 @@ defmodule Domain.Resources.Resource do
     field :address, :string
     field :name, :string
 
-    field :type, Ecto.Enum, values: [:cidr, :dns]
+    field :type, Ecto.Enum, values: [:cidr, :ip, :dns]
 
     embeds_many :filters, Filter, on_replace: :delete, primary_key: false do
       field :protocol, Ecto.Enum, values: [tcp: 6, udp: 17, icmp: 1, all: -1]
       field :ports, {:array, Domain.Types.Int4Range}, default: []
     end
-
-    field :ipv4, Domain.Types.IP
-    field :ipv6, Domain.Types.IP
 
     belongs_to :account, Domain.Accounts.Account
     has_many :connections, Domain.Resources.Connection, on_replace: :delete

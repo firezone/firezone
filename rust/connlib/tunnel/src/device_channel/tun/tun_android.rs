@@ -15,11 +15,10 @@ use std::{
 };
 use tokio::io::unix::AsyncFd;
 
+use crate::DnsFallbackStrategy;
+
 mod closeable;
 mod wrapped_socket;
-// Android doesn't support Split DNS. So we intercept all requests and forward
-// the non-Firezone name resolution requests to the upstream DNS resolver.
-const DNS_FALLBACK_STRATEGY: &str = "upstream_resolver";
 
 #[repr(C)]
 union IfrIfru {
@@ -108,13 +107,14 @@ impl IfaceDevice {
     pub async fn new(
         config: &InterfaceConfig,
         callbacks: &impl Callbacks<Error = Error>,
+        fallback_strategy: DnsFallbackStrategy,
     ) -> Result<(Self, Arc<AsyncFd<IfaceStream>>)> {
         let fd = callbacks
             .on_set_interface_config(
                 config.ipv4,
                 config.ipv6,
                 DNS_SENTINEL,
-                DNS_FALLBACK_STRATEGY.to_string(),
+                fallback_strategy.to_string(),
             )?
             .ok_or(Error::NoFd)?;
         let iface_stream = Arc::new(AsyncFd::new(IfaceStream {

@@ -10,7 +10,7 @@ use cli::CliCommands as Cmd;
 mod cli;
 mod debug_commands;
 mod device_id;
-#[cfg(target_os = "linux")]
+#[cfg(target_family = "unix")]
 mod gui {
     use super::*;
 

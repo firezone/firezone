@@ -59,11 +59,10 @@ defmodule Web.Live.Resources.NewTest do
 
     form = form(lv, "form")
 
-    connection_inputs =
-      [
-        "resource[connections][#{group.id}][enabled]",
-        "resource[connections][#{group.id}][gateway_group_id]"
-      ]
+    connection_inputs = [
+      "resource[connections][#{group.id}][enabled]",
+      "resource[connections][#{group.id}][gateway_group_id]"
+    ]
 
     expected_inputs =
       (connection_inputs ++
@@ -79,7 +78,8 @@ defmodule Web.Live.Resources.NewTest do
            "resource[filters][udp][enabled]",
            "resource[filters][udp][ports]",
            "resource[filters][udp][protocol]",
-           "resource[name]"
+           "resource[name]",
+           "resource[type]"
          ])
       |> Enum.sort()
 
@@ -111,7 +111,8 @@ defmodule Web.Live.Resources.NewTest do
              "resource[filters][udp][enabled]",
              "resource[filters][udp][ports]",
              "resource[filters][udp][protocol]",
-             "resource[name]"
+             "resource[name]",
+             "resource[type]"
            ]
   end
 
@@ -121,11 +122,11 @@ defmodule Web.Live.Resources.NewTest do
     conn: conn
   } do
     attrs = %{
-      name: "foobar.com",
+      name: "my website",
       address: "foobar.com",
       filters: %{
         tcp: %{ports: "80, 443", enabled: true},
-        udp: %{ports: "100", enabled: true}
+        udp: %{ports: "100,102-105", enabled: true}
       }
     }
 
@@ -135,12 +136,11 @@ defmodule Web.Live.Resources.NewTest do
       |> live(~p"/#{account}/resources/new")
 
     lv
+    |> form("form")
+    |> render_change(resource: %{type: :dns})
+
+    lv
     |> form("form", resource: attrs)
-    |> validate_change(%{resource: %{name: String.duplicate("a", 256)}}, fn form, _html ->
-      assert form_validation_errors(form) == %{
-               "resource[name]" => ["should be at most 255 character(s)"]
-             }
-    end)
     |> validate_change(%{resource: %{filters: %{tcp: %{ports: "a"}}}}, fn form, _html ->
       assert form_validation_errors(form) == %{
                "resource[filters][tcp][ports]" => ["is invalid"]
@@ -171,6 +171,10 @@ defmodule Web.Live.Resources.NewTest do
       conn
       |> authorize_conn(identity)
       |> live(~p"/#{account}/resources/new")
+
+    lv
+    |> form("form")
+    |> render_change(resource: %{type: :dns})
 
     assert lv
            |> form("form", resource: attrs)
@@ -203,6 +207,10 @@ defmodule Web.Live.Resources.NewTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/resources/new")
 
+    lv
+    |> form("form")
+    |> render_change(resource: %{type: :dns})
+
     assert lv
            |> form("form", resource: attrs)
            |> render_submit()
@@ -220,12 +228,7 @@ defmodule Web.Live.Resources.NewTest do
     [connection | _] = resource.connections
 
     attrs = %{
-      name: "foobar.com",
       address: "foobar.com",
-      filters: %{
-        tcp: %{ports: "80, 443", enabled: true},
-        udp: %{ports: "100", enabled: true}
-      },
       connections: %{connection.gateway_group_id => %{enabled: false}}
     }
 
@@ -233,6 +236,10 @@ defmodule Web.Live.Resources.NewTest do
       conn
       |> authorize_conn(identity)
       |> live(~p"/#{account}/resources/new")
+
+    lv
+    |> form("form")
+    |> render_change(resource: %{type: :dns})
 
     assert lv
            |> form("form", resource: attrs)
@@ -251,6 +258,7 @@ defmodule Web.Live.Resources.NewTest do
 
     attrs = %{
       name: "foobar.com",
+      type: "dns",
       address: "foobar.com",
       filters: %{
         icmp: %{enabled: true},
@@ -264,6 +272,10 @@ defmodule Web.Live.Resources.NewTest do
       conn
       |> authorize_conn(identity)
       |> live(~p"/#{account}/resources/new")
+
+    lv
+    |> form("form")
+    |> render_change(resource: %{type: :dns})
 
     lv
     |> form("form", resource: attrs)
@@ -296,6 +308,10 @@ defmodule Web.Live.Resources.NewTest do
       |> live(~p"/#{account}/resources/new?site_id=#{group}")
 
     lv
+    |> form("form")
+    |> render_change(resource: %{type: :dns})
+
+    lv
     |> form("form", resource: attrs)
     |> render_submit()
 
@@ -319,7 +335,11 @@ defmodule Web.Live.Resources.NewTest do
 
     form = form(lv, "form")
 
-    assert find_inputs(form) == ["resource[address]", "resource[name]"]
+    assert find_inputs(form) == [
+             "resource[address]",
+             "resource[name]",
+             "resource[type]"
+           ]
   end
 
   test "creates a resource on valid attrs when traffic filter form disabled", %{
@@ -337,6 +357,10 @@ defmodule Web.Live.Resources.NewTest do
       conn
       |> authorize_conn(identity)
       |> live(~p"/#{account}/resources/new?site_id=#{group}")
+
+    lv
+    |> form("form")
+    |> render_change(resource: %{type: :dns})
 
     lv
     |> form("form", resource: attrs)

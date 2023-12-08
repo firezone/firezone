@@ -227,8 +227,7 @@ defmodule Domain.Fixtures.Auth do
         random_provider_identifier(provider)
       end)
 
-    {provider_state, attrs} =
-      Map.pop(attrs, :provider_state)
+    {provider_state, attrs} = Map.pop(attrs, :provider_state)
 
     {actor, attrs} =
       pop_assoc_fixture(attrs, :actor, fn assoc_attrs ->

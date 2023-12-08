@@ -387,8 +387,7 @@ defmodule Domain.Relays do
         secret: secret
       })
 
-    {:ok, _} =
-      Presence.track(self(), "relay_groups:#{relay.group_id}", relay.id, %{})
+    {:ok, _} = Presence.track(self(), "relay_groups:#{relay.group_id}", relay.id, %{})
 
     :ok
   end

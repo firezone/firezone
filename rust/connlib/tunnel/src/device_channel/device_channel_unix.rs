@@ -12,6 +12,7 @@ use tokio::io::{unix::AsyncFd, Ready};
 use tun::{IfaceDevice, IfaceStream};
 
 use crate::device_channel::{Device, Packet};
+use crate::DnsFallbackStrategy;
 
 mod tun;
 
@@ -83,8 +84,9 @@ impl IfaceConfig {
 pub(crate) async fn create_iface(
     config: &Interface,
     callbacks: &impl Callbacks<Error = Error>,
+    fallback_strategy: DnsFallbackStrategy,
 ) -> Result<Device> {
-    let (iface, stream) = IfaceDevice::new(config, callbacks).await?;
+    let (iface, stream) = IfaceDevice::new(config, callbacks, fallback_strategy).await?;
     iface.up().await?;
     let io = DeviceIo(stream);
     let mtu = iface.mtu().await?;

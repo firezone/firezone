@@ -1,11 +1,14 @@
-use std::net::IpAddr;
-
 use chrono::{serde::ts_seconds, DateTime, Utc};
-use connlib_shared::messages::{
-    ActorId, ClientId, Interface, Peer, Relay, ResourceDescription, ResourceId,
+use connlib_shared::{
+    messages::{
+        ActorId, ClientId, ClientPayload, GatewayResponse, Interface, Peer, Relay,
+        ResourceDescription, ResourceId,
+    },
+    Dname,
 };
 use serde::{Deserialize, Serialize};
-use webrtc::ice_transport::{ice_candidate::RTCIceCandidate, ice_parameters::RTCIceParameters};
+use std::net::IpAddr;
+use webrtc::ice_transport::ice_candidate::RTCIceCandidate;
 
 // TODO: Should this have a resource?
 #[derive(Debug, PartialEq, Eq, Deserialize, Serialize, Clone)]
@@ -23,7 +26,7 @@ pub struct Actor {
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Client {
     pub id: ClientId,
-    pub rtc_session_description: RTCIceParameters,
+    pub payload: ClientPayload,
     pub peer: Peer,
 }
 
@@ -79,6 +82,9 @@ pub struct AllowAccess {
     pub resource: ResourceDescription,
     #[serde(with = "ts_seconds")]
     pub expires_at: DateTime<Utc>,
+    pub payload: Option<Dname>,
+    #[serde(rename = "ref")]
+    pub reference: String,
 }
 
 // These messages are the messages that can be received
@@ -127,7 +133,7 @@ pub enum EgressMessages {
 pub struct ConnectionReady {
     #[serde(rename = "ref")]
     pub reference: String,
-    pub gateway_rtc_session_description: RTCIceParameters,
+    pub gateway_payload: GatewayResponse,
 }
 
 #[cfg(test)]
@@ -153,10 +159,12 @@ mod test {
                         "persistent_keepalive": 25,
                         "preshared_key": "sMeTuiJ3mezfpVdan948CmisIWbwBZ1z7jBNnbVtfVg="
                     },
-                    "rtc_session_description": {
-                        "ice_lite":false,
-                        "password": "xEwoXEzHuSyrcgOCSRnwOXQVnbnbeGeF",
-                        "username_fragment": "PvCPFevCOgkvVCtH"
+                    "payload": {
+                        "ice_parameters": {
+                            "ice_lite":false,
+                            "password": "xEwoXEzHuSyrcgOCSRnwOXQVnbnbeGeF",
+                            "username_fragment": "PvCPFevCOgkvVCtH"
+                        }
                     }
                 },
                 "resource": {

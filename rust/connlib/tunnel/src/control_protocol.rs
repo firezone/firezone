@@ -17,7 +17,11 @@ use webrtc::ice_transport::{
 use webrtc::ice_transport::{ice_candidate_type::RTCIceCandidateType, RTCIceTransport};
 use webrtc::ice_transport::{ice_credential_type::RTCIceCredentialType, ice_server::RTCIceServer};
 
-use crate::{device_channel::Device, peer::Peer, peer_handler, ConnectedPeer, RoleState, Tunnel};
+use crate::{
+    device_channel::Device,
+    peer::{PacketTransform, Peer},
+    peer_handler, ConnectedPeer, RoleState, Tunnel,
+};
 
 mod client;
 mod gateway;
@@ -30,7 +34,6 @@ const MAX_RELAYS: usize = 2;
 const MAX_HOST_CANDIDATES: usize = 8;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[allow(clippy::large_enum_variant)]
 pub enum Request {
     NewConnection(RequestConnection),
     ReuseConnection(ReuseConnection),
@@ -61,7 +64,7 @@ where
 }
 
 pub(crate) struct IceConnection {
-    pub ice_params: RTCIceParameters,
+    pub ice_parameters: RTCIceParameters,
     pub ice_transport: Arc<RTCIceTransport>,
     pub ice_candidate_rx: mpsc::Receiver<RTCIceCandidate>,
 }
@@ -132,30 +135,31 @@ pub(crate) async fn new_ice_connection(
     gatherer.gather().await?;
 
     Ok(IceConnection {
-        ice_params: gatherer.get_local_parameters().await?,
+        ice_parameters: gatherer.get_local_parameters().await?,
         ice_transport,
         ice_candidate_rx,
     })
 }
 
-fn insert_peers<TId: Copy>(
-    peers_by_ip: &mut IpNetworkTable<ConnectedPeer<TId>>,
+fn insert_peers<TId: Copy, TTransform>(
+    peers_by_ip: &mut IpNetworkTable<ConnectedPeer<TId, TTransform>>,
     ips: &Vec<IpNetwork>,
-    peer: ConnectedPeer<TId>,
+    peer: ConnectedPeer<TId, TTransform>,
 ) {
     for ip in ips {
         peers_by_ip.insert(*ip, peer.clone());
     }
 }
 
-fn start_handlers<TId>(
+fn start_handlers<TId, TTransform>(
     device: Arc<ArcSwapOption<Device>>,
     callbacks: impl Callbacks + 'static,
-    peer: Arc<Peer<TId>>,
+    peer: Arc<Peer<TId, TTransform>>,
     ice: Arc<RTCIceTransport>,
     peer_receiver: tokio::sync::mpsc::Receiver<Bytes>,
 ) where
     TId: Copy + Send + Sync + fmt::Debug + 'static,
+    TTransform: Send + Sync + PacketTransform + 'static,
 {
     ice.on_connection_state_change(Box::new(|_| Box::pin(async {})));
     tokio::spawn({

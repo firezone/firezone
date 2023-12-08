@@ -3,11 +3,11 @@ use std::{collections::HashSet, net::IpAddr};
 use serde::{Deserialize, Serialize};
 
 use connlib_shared::messages::{
-    GatewayId, Interface, Key, Relay, RequestConnection, ResourceDescription, ResourceId,
-    ReuseConnection,
+    GatewayId, GatewayResponse, Interface, Key, Relay, RequestConnection, ResourceDescription,
+    ResourceId, ReuseConnection,
 };
 use url::Url;
-use webrtc::ice_transport::{ice_candidate::RTCIceCandidate, ice_parameters::RTCIceParameters};
+use webrtc::ice_transport::ice_candidate::RTCIceCandidate;
 
 #[derive(Debug, PartialEq, Eq, Deserialize, Serialize, Clone)]
 pub struct InitClient {
@@ -31,7 +31,7 @@ pub struct ConnectionDetails {
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Connect {
-    pub gateway_rtc_session_description: RTCIceParameters,
+    pub gateway_payload: GatewayResponse,
     pub resource_id: ResourceId,
     pub gateway_public_key: Key,
     pub persistent_keepalive: u64,
@@ -180,10 +180,21 @@ mod test {
                 "response": {
                     "resource_id": "ea6570d1-47c7-49d2-9dc3-efff1c0c9e0b",
                     "gateway_public_key": "dvy0IwyxAi+txSbAdT7WKgf7K4TekhKzrnYwt5WfbSM=",
-                    "gateway_rtc_session_description": {
-                        "ice_lite":false,
-                        "password": "xEwoXEzHuSyrcgOCSRnwOXQVnbnbeGeF",
-                        "username_fragment": "PvCPFevCOgkvVCtH"
+                    "gateway_payload": {
+                       "ConnectionAccepted":{
+                          "domain_response":{
+                             "address":[
+                                "2607:f8b0:4008:804::200e",
+                                "142.250.64.206"
+                             ],
+                             "domain":"google.com"
+                          },
+                          "ice_parameters":{
+                             "ice_lite":false,
+                             "password":"pMAxxTgHHSdpqHRzHGNvuNsZinLrMxwe",
+                             "username_fragment":"tGeqOjtGuPzPpuOx"
+                          }
+                       }
                     },
                     "persistent_keepalive": 25
                 }
@@ -211,8 +222,6 @@ mod test {
                     ResourceDescription::Dns(ResourceDescriptionDns {
                         id: "03000143-e25e-45c7-aafb-144990e57dcd".parse().unwrap(),
                         address: "gitlab.mycorp.com".to_string(),
-                        ipv4: "100.126.44.50".parse().unwrap(),
-                        ipv6: "fd00:2021:1111::e:7758".parse().unwrap(),
                         name: "gitlab.mycorp.com".to_string(),
                     }),
                 ],

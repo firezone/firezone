@@ -4,8 +4,8 @@ defmodule Domain.Network do
 
   @cidrs %{
     # Notice: those are also part of "resources_account_id_cidr_address_index" DB constraint
-    ipv4: %Postgrex.INET{address: {100, 64, 0, 0}, netmask: 10},
-    ipv6: %Postgrex.INET{address: {64_768, 8_225, 4_369, 0, 0, 0, 0, 0}, netmask: 106}
+    ipv4: %Postgrex.INET{address: {100, 64, 0, 0}, netmask: 11},
+    ipv6: %Postgrex.INET{address: {64_768, 8_225, 4_369, 0, 0, 0, 0, 0}, netmask: 107}
   }
 
   def cidrs, do: @cidrs
