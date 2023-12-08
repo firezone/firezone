@@ -306,7 +306,7 @@ iex(web@web-3vmw.us-east1-d.c.firezone-staging.internal)2> {:ok, magic_link_prov
 iex(web@web-3vmw.us-east1-d.c.firezone-staging.internal)3> {:ok, actor} = Domain.Actors.create_actor(account, %{type: :account_admin_user, name: "Andrii Dryga"})
 {:ok, ...}
 
-iex(web@web-3vmw.us-east1-d.c.firezone-staging.internal)4> {:ok, identity} = Domain.Auth.upsert_identity(actor, magic_link_provider, %{provider_identifier: "a@firezone.dev"})
+iex(web@web-3vmw.us-east1-d.c.firezone-staging.internal)4> {:ok, identity} = Domain.Auth.upsert_identity(actor, magic_link_provider, %{provider_identifier: "a@firezone.dev", provider_identifier_confirmation: "a@firezone.dev"})
 ...
 
 iex(web@web-3vmw.us-east1-d.c.firezone-staging.internal)5> {:ok, identity} = Domain.Auth.Adapters.Email.request_sign_in_token(identity)
