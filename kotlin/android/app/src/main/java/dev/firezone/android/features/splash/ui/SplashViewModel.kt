@@ -36,9 +36,7 @@ internal class SplashViewModel
                             Log.e("Error", it.message.toString())
                         }
                         .collect { user ->
-                            if (user.accountId.isNullOrEmpty()) {
-                                actionMutableLiveData.postValue(ViewAction.NavigateToSettings)
-                            } else if (user.token.isNullOrBlank()) {
+                            if (user.token.isNullOrBlank()) {
                                 actionMutableLiveData.postValue(ViewAction.NavigateToSignIn)
                             } else {
                                 actionMutableLiveData.postValue(ViewAction.NavigateToSession)

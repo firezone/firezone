@@ -176,11 +176,10 @@ class TunnelService : VpnService() {
         try {
             val config = getConfigUseCase.sync()
 
-            Log.d("Connlib", "connect(): accountId: ${config.accountId}")
             if (tunnelRepository.getState() == Tunnel.State.Up) {
                 shouldReconnect = true
                 disconnect()
-            } else if (config.accountId != null && config.token != null) {
+            } else if (config.token != null) {
                 onTunnelStateUpdate(Tunnel.State.Connecting)
                 updateStatusNotification("Status: Connecting...")
 

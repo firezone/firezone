@@ -19,7 +19,6 @@ internal class PreferenceRepositoryImpl
     ) : PreferenceRepository {
         override fun getConfigSync(): Config =
             Config(
-                accountId = sharedPreferences.getString(ACCOUNT_ID_KEY, null),
                 authBaseUrl = sharedPreferences.getString(AUTH_BASE_URL_KEY, null) ?: BuildConfig.AUTH_BASE_URL,
                 apiUrl = sharedPreferences.getString(API_URL_KEY, null) ?: BuildConfig.API_URL,
                 logFilter = sharedPreferences.getString(LOG_FILTER_KEY, null) ?: BuildConfig.LOG_FILTER,
@@ -32,7 +31,6 @@ internal class PreferenceRepositoryImpl
             }.flowOn(coroutineDispatcher)
 
         override fun saveSettings(
-            accountId: String,
             authBaseUrl: String,
             apiUrl: String,
             logFilter: String,
@@ -41,7 +39,6 @@ internal class PreferenceRepositoryImpl
                 emit(
                     sharedPreferences
                         .edit()
-                        .putString(ACCOUNT_ID_KEY, accountId)
                         .putString(AUTH_BASE_URL_KEY, authBaseUrl)
                         .putString(API_URL_KEY, apiUrl)
                         .putString(LOG_FILTER_KEY, logFilter)
@@ -78,7 +75,6 @@ internal class PreferenceRepositoryImpl
         }
 
         companion object {
-            private const val ACCOUNT_ID_KEY = "accountId"
             private const val AUTH_BASE_URL_KEY = "authBaseUrl"
             private const val API_URL_KEY = "apiUrl"
             private const val LOG_FILTER_KEY = "logFilter"

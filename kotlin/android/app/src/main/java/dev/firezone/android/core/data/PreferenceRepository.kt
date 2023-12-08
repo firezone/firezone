@@ -10,7 +10,6 @@ internal interface PreferenceRepository {
     fun getConfig(): Flow<Config>
 
     fun saveSettings(
-        accountId: String,
         authBaseUrl: String,
         apiUrl: String,
         logFilter: String,
