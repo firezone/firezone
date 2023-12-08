@@ -159,10 +159,10 @@ defmodule Web.CoreComponents do
           <%= for tab <- @tab do %>
             <li class="mr-2" role="presentation">
               <button
-                class={~w[
-                inline-block p-4 border-b-2 border-transparent rounded-t
-                hover:text-neutral-600 hover:border-neutral-300
-              ]}
+                class={[
+                  "inline-block p-4 border-b-2 border-transparent rounded-t",
+                  "hover:text-neutral-600 hover:border-neutral-300"
+                ]}
                 id={"#{tab.id}-tab"}
                 data-tabs-target={"##{tab.id}"}
                 type="button"
@@ -844,7 +844,8 @@ defmodule Web.CoreComponents do
         "flex items-center justify-center",
         "font-medium text-sm text-white",
         "rounded-full",
-        (@connected? && "bg-green-500") || "bg-orange-400 cursor-progress"
+        "transition-colors",
+        (@connected? && "bg-accent-500") || "bg-primary-400 cursor-progress"
       ]}
       navigate={@navigate}
       {
