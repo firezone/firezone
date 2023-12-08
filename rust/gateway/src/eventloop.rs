@@ -111,8 +111,7 @@ impl Eventloop {
                         async move {
                             let conn = tunnel
                                 .set_peer_connection_request(
-                                    req.client.payload.ice_parameters,
-                                    req.client.payload.domain,
+                                    req.client.payload,
                                     req.client.peer.into(),
                                     req.relays,
                                     req.client.id,

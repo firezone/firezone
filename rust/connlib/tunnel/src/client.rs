@@ -173,7 +173,7 @@ pub struct ClientState {
     dns_resources: HashMap<String, ResourceDescriptionDns>,
     cidr_resources: IpNetworkTable<ResourceDescriptionCidr>,
     pub resources_id: HashMap<ResourceId, ResourceDescription>,
-    pub local_dns_queries: HashMap<(DnsResource, Rtype), IpPacket<'static>>,
+    pub deferred_dns_queries: HashMap<(DnsResource, Rtype), IpPacket<'static>>,
 
     #[allow(clippy::type_complexity)]
     pub peers_by_ip: IpNetworkTable<ConnectedPeer<GatewayId, PacketTransformClient>>,
@@ -220,7 +220,7 @@ impl ClientState {
             }
             Some(dns::ResolveStrategy::DeferredResponse(resource)) => {
                 self.on_connection_intent_dns(&resource.0);
-                self.local_dns_queries
+                self.deferred_dns_queries
                     .insert(resource, packet.as_immutable().to_owned());
 
                 Ok(None)
@@ -282,7 +282,6 @@ impl ClientState {
                 channel: p.channel.clone(),
             })
         }) else {
-            // This was deleted in https://github.com/firezone/firezone/pull/2454 and should never have been
             self.gateway_awaiting_connection.insert(gateway);
             return Ok(None);
         };
@@ -543,7 +542,7 @@ impl ClientState {
             .map(|(_, res)| ResourceDescription::Cidr(res.clone()))
     }
 
-    pub fn add_pending_dns_query(&mut self, query: DnsQuery) {
+    fn add_pending_dns_query(&mut self, query: DnsQuery) {
         if self
             .forwarded_dns_queries
             .push_back(query.into_owned())
@@ -602,7 +601,7 @@ impl Default for ClientState {
             cidr_resources: IpNetworkTable::new(),
             resources_id: Default::default(),
             peers_by_ip: IpNetworkTable::new(),
-            local_dns_queries: Default::default(),
+            deferred_dns_queries: Default::default(),
         }
     }
 }

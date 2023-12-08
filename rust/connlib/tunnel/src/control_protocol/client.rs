@@ -286,26 +286,23 @@ where
             .dns_resources_internal_ips
             .insert(resource_description.clone(), addrs.clone());
 
-        let device = self.device.load();
-        let device = device
-            .as_ref()
-            .expect("As the tunnel is started we should always have a loaded device");
+        if let Some(device) = self.device.load().as_ref() {
+            send_dns_answer(
+                &mut role_state,
+                Rtype::A,
+                device,
+                &resource_description,
+                &addrs,
+            );
 
-        send_dns_answer(
-            &mut role_state,
-            Rtype::A,
-            device,
-            &resource_description,
-            &addrs,
-        );
-
-        send_dns_answer(
-            &mut role_state,
-            Rtype::Aaaa,
-            device,
-            &resource_description,
-            &addrs,
-        );
+            send_dns_answer(
+                &mut role_state,
+                Rtype::Aaaa,
+                device,
+                &resource_description,
+                &addrs,
+            );
+        }
 
         let ips: Vec<IpNetwork> = addrs.into_iter().map(Into::into).collect();
         for ip in &ips {
@@ -351,7 +348,7 @@ fn send_dns_answer(
     addrs: &[IpAddr],
 ) {
     let packet = role_state
-        .local_dns_queries
+        .deferred_dns_queries
         .remove(&(resource_description.clone(), qtype));
     if let Some(packet) = packet {
         let Some(packet) = dns::create_local_answer(addrs, packet) else {
