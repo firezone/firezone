@@ -37,6 +37,15 @@ If the client stops running while signed in, then the token may be stored in Win
 - [ ] Given the client is signed in, when the user clicks "Apply", then the client will show a dialog explaining that they will be signed out, and asking for confirmation ([#2668](https://github.com/firezone/firezone/issues/2668))
 - [ ] Given the client is signed in, when the user confirms that they want to apply new settings, then the client will clear their token, and change to signed-out state, and save the settings to disk ([#2668](https://github.com/firezone/firezone/issues/2668))
 
+# Diagnostic logs
+
+- [ ] Given the client app is signed out, when you change the log filter in the Advanced Settings tab, then the log filter for both the GUI and connlib will change immediately
+- [ ] Given the Diagnostic Logs tabs is not displayed, when you open the Diagnostic Logs tab, then the log directory size is computed in a worker task (not blocking the GUI) and displayed
+- [ ] Given the client app is computing the log directory size, when you click "Clear Logs", then the computation will be canceled.
+- [ ] Given the log tab is displayed, when a 1-minute timer ticks, then the log directory size will be re-computed.
+- [ ] Given the log tab is displayed, when you switch to another tab or close the window, then any ongoing computation will be canceled.
+- [ ] Given the log tab is computing log directory size, when the 1-minute refresh timer ticks, then the computation will time out and show an error e.g. "timed out while computing size"
+
 # Token storage
 
 ([#2740](https://github.com/firezone/firezone/issues/2740))
