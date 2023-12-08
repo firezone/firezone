@@ -110,14 +110,12 @@ public struct SettingsView: View {
   #endif
 
   struct PlaceholderText {
-    static let accountId = "account-id"
     static let authBaseURL = "Admin portal base URL"
     static let apiURL = "Control plane WebSocket URL"
     static let logFilter = "RUST_LOG-style filter string"
   }
 
   struct FootnoteText {
-    static let forAccount = "Your account ID is provided by your admin"
     static let forAdvanced = try! AttributedString(
       markdown: """
         **WARNING:** These settings are intended for internal debug purposes **only**. \

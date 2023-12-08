@@ -91,39 +91,27 @@ import SwiftUI
           Group {
             switch self.model.loginStatus {
             case .signedIn(let actorName):
-              HStack {
-                Text(actorName.isEmpty ? "Signed in" : "Signed in as")
-                Spacer()
-                Text(actorName)
-                  .foregroundColor(.secondary)
-              }
-              HStack {
-                Spacer()
-                Button("Sign Out") {
-                  self.model.signOutButtonTapped()
+              if self.model.tunnelStatus == .connected {
+                HStack {
+                  Text(actorName.isEmpty ? "Signed in" : "Signed in as")
+                  Spacer()
+                  Text(actorName)
+                    .foregroundColor(.secondary)
                 }
-                Spacer()
+                HStack {
+                  Spacer()
+                  Button("Sign Out") {
+                    self.model.signOutButtonTapped()
+                  }
+                  Spacer()
+                }
+              } else {
+                Text(self.model.tunnelStatus.description)
               }
             case .signedOut:
               Text("Signed Out")
             case .uninitialized:
               Text("Initializing…")
-            }
-          }
-        }
-        if case .signedIn = self.model.loginStatus {
-          Section(header: Text("Connection")) {
-            Text(self.model.tunnelStatus.description)
-            if self.model.tunnelStatus == .disconnected || self.model.tunnelStatus == .invalid {
-              HStack {
-                Spacer()
-                Button("Reconnect") {
-                  Task {
-                    await self.model.startTunnel()
-                  }
-                }
-                Spacer()
-              }
             }
           }
         }
@@ -154,7 +142,7 @@ import SwiftUI
         }
       }
       .listStyle(GroupedListStyle())
-      .navigationTitle("firezone")
+      .navigationTitle("Firezone")
     }
 
     private func copyResourceTapped(_ resource: DisplayableResources.Resource) {
