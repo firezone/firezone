@@ -125,6 +125,9 @@ pub enum ConnlibError {
     /// Invalid source address for peer
     #[error("Invalid source address")]
     InvalidSource,
+    /// Invalid destination for packet
+    #[error("Invalid dest address")]
+    InvalidDst,
     /// Any parse error
     #[error("parse error")]
     ParseError,

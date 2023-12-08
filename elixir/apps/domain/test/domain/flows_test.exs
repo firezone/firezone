@@ -394,16 +394,15 @@ defmodule Domain.FlowsTest do
 
       {:ok, destination} = Domain.Types.IPPort.cast("127.0.0.1:80")
 
-      activity =
-        %{
-          window_started_at: DateTime.add(now, -1, :minute),
-          window_ended_at: now,
-          destination: destination,
-          rx_bytes: 100,
-          tx_bytes: 200,
-          flow_id: flow.id,
-          account_id: account.id
-        }
+      activity = %{
+        window_started_at: DateTime.add(now, -1, :minute),
+        window_ended_at: now,
+        destination: destination,
+        rx_bytes: 100,
+        tx_bytes: 200,
+        flow_id: flow.id,
+        account_id: account.id
+      }
 
       assert upsert_activities([activity]) == {:ok, 1}
 

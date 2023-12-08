@@ -114,7 +114,7 @@ services:
   client:
     environment:
       FIREZONE_TOKEN: "SFMyNTY.g2gDaAN3CGlkZW50aXR5bQAAACQ3ZGE3ZDFjZC0xMTFjLTQ0YTctYjVhYy00MDI3YjlkMjMwZTVtAAAAIBn8Xu1jtFlxZxp4ZvAz0f0QEN2PZThA-7awHMPxn_tHbgYAbLRvQokBYgHhM38.pM-prhb7uvvCVKf51-tAUMEtMzLPZk1n3nLsY44dGFA"
-      RUST_LOG: firezone_linux_client=trace,connlib_client_shared=trace,firezone_tunnel=trace,connlib_shared=trace,warn
+      RUST_LOG: firezone_linux_client=trace,wire=trace,connlib_client_shared=trace,firezone_tunnel=trace,connlib_shared=trace,warn
       FIREZONE_API_URL: ws://api:8081
       FIREZONE_ID: D0455FDE-8F65-4960-A778-B934E4E85A5F
     build:
@@ -128,7 +128,6 @@ services:
     image: us-east1-docker.pkg.dev/firezone-staging/firezone/client:${VERSION:-main}
     dns:
       - 100.100.111.1
-      - 8.8.8.8
     cap_add:
       - NET_ADMIN
     sysctls:
@@ -151,7 +150,7 @@ services:
       test: ["CMD-SHELL", "ip link | grep tun-firezone"]
     environment:
       FIREZONE_TOKEN: "SFMyNTY.g2gDaAJtAAAAJDNjZWYwNTY2LWFkZmQtNDhmZS1hMGYxLTU4MDY3OTYwOGY2Zm0AAABAamp0enhSRkpQWkdCYy1vQ1o5RHkyRndqd2FIWE1BVWRwenVScjJzUnJvcHg3NS16bmhfeHBfNWJUNU9uby1yYm4GAEC0b0KJAWIAAVGA.9Oirn9t8rvQpfOhW7hwGBFVzeMm9di0xYGTlwf9cFFk"
-      RUST_LOG: firezone_gateway=trace,connlib_gateway_shared=trace,firezone_tunnel=trace,connlib_shared=trace,warn
+      RUST_LOG: firezone_gateway=trace,wire=trace,connlib_gateway_shared=trace,firezone_tunnel=trace,connlib_shared=trace,warn
       FIREZONE_ENABLE_MASQUERADE: 1
       FIREZONE_API_URL: ws://api:8081
       FIREZONE_ID: 4694E56C-7643-4A15-9DF3-638E5B05F570
@@ -371,15 +370,17 @@ services:
 
 networks:
   resources:
-    enable_ipv6: false
+    enable_ipv6: true
     ipam:
       config:
         - subnet: 172.20.0.0/16
+        - subnet: 2001:db8:1::/64
   app:
-    enable_ipv6: false
+    enable_ipv6: true
     ipam:
       config:
         - subnet: 172.28.0.0/16
+        - subnet: 2001:db8:2::/64
 
 volumes:
   postgres-data:

@@ -7,8 +7,6 @@ defmodule API.Gateway.Views.Resource do
       type: :dns,
       address: resource.address,
       name: resource.name,
-      ipv4: resource.ipv4,
-      ipv6: resource.ipv6,
       filters: Enum.flat_map(resource.filters, &render_filter/1)
     }
   end
@@ -18,6 +16,20 @@ defmodule API.Gateway.Views.Resource do
       id: resource.id,
       type: :cidr,
       address: resource.address,
+      name: resource.name,
+      filters: Enum.flat_map(resource.filters, &render_filter/1)
+    }
+  end
+
+  def render(%Resources.Resource{type: :ip} = resource) do
+    {:ok, inet} = Domain.Types.IP.cast(resource.address)
+    netmask = Domain.Types.CIDR.max_netmask(inet)
+    address = to_string(%{inet | netmask: netmask})
+
+    %{
+      id: resource.id,
+      type: :cidr,
+      address: address,
       name: resource.name,
       filters: Enum.flat_map(resource.filters, &render_filter/1)
     }

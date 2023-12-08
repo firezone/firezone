@@ -112,7 +112,7 @@ pub fn device_id() -> Result<()> {
 
 pub use details::wintun;
 
-#[cfg(target_os = "linux")]
+#[cfg(target_family = "unix")]
 mod details {
     use super::*;
 
