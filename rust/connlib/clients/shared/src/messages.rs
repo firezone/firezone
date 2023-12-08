@@ -181,9 +181,20 @@ mod test {
                     "resource_id": "ea6570d1-47c7-49d2-9dc3-efff1c0c9e0b",
                     "gateway_public_key": "dvy0IwyxAi+txSbAdT7WKgf7K4TekhKzrnYwt5WfbSM=",
                     "gateway_payload": {
-                        "ice_lite":false,
-                        "password": "xEwoXEzHuSyrcgOCSRnwOXQVnbnbeGeF",
-                        "username_fragment": "PvCPFevCOgkvVCtH"
+                       "ConnectionAccepted":{
+                          "domain_response":{
+                             "address":[
+                                "2607:f8b0:4008:804::200e",
+                                "142.250.64.206"
+                             ],
+                             "domain":"google.com"
+                          },
+                          "ice_parameters":{
+                             "ice_lite":false,
+                             "password":"pMAxxTgHHSdpqHRzHGNvuNsZinLrMxwe",
+                             "username_fragment":"tGeqOjtGuPzPpuOx"
+                          }
+                       }
                     },
                     "persistent_keepalive": 25
                 }

@@ -160,9 +160,11 @@ mod test {
                         "preshared_key": "sMeTuiJ3mezfpVdan948CmisIWbwBZ1z7jBNnbVtfVg="
                     },
                     "payload": {
-                        "ice_lite":false,
-                        "password": "xEwoXEzHuSyrcgOCSRnwOXQVnbnbeGeF",
-                        "username_fragment": "PvCPFevCOgkvVCtH"
+                        "ice_parameters": {
+                            "ice_lite":false,
+                            "password": "xEwoXEzHuSyrcgOCSRnwOXQVnbnbeGeF",
+                            "username_fragment": "PvCPFevCOgkvVCtH"
+                        }
                     }
                 },
                 "resource": {
