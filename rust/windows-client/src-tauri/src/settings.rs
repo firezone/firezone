@@ -27,11 +27,7 @@ impl Default for AdvancedSettings {
 
 /// Gets the path for storing advanced settings, creating parent dirs if needed.
 pub(crate) async fn advanced_settings_path(app: &tauri::AppHandle) -> Result<PathBuf> {
-    let dir = app
-        .path_resolver()
-        .app_local_data_dir()
-        .ok_or_else(|| anyhow::anyhow!("can't get app_local_data_dir"))?
-        .join("config");
+    let dir = crate::gui::app_local_data_dir(app)?.0.join("config");
     tokio::fs::create_dir_all(&dir).await?;
     Ok(dir.join("advanced_settings.json"))
 }

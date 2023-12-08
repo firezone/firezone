@@ -1,4 +1,5 @@
 //! The Tauri GUI for Windows
+//! This is not checked or compiled on other platforms.
 
 // TODO: `git grep` for unwraps before 1.0, especially this gui module
 
@@ -16,6 +17,14 @@ use tokio::sync::{mpsc, oneshot};
 use ControllerRequest as Req;
 
 pub(crate) type CtlrTx = mpsc::Sender<ControllerRequest>;
+
+pub(crate) fn app_local_data_dir(app: &tauri::AppHandle) -> Result<crate::AppLocalDataDir> {
+    let path = app
+        .path_resolver()
+        .app_local_data_dir()
+        .ok_or_else(|| anyhow!("getting app_local_data_dir"))?;
+    Ok(crate::AppLocalDataDir(path))
+}
 
 /// All managed state that we might need to access from odd places like Tauri commands.
 pub(crate) struct Managed {
@@ -79,11 +88,7 @@ pub(crate) fn run(params: crate::GuiParams) -> Result<()> {
         })
         .setup(|app| {
             // Change to data dir so the file logger will write there and not in System32 if we're launching from an app link
-            let cwd = app
-                .path_resolver()
-                .app_local_data_dir()
-                .ok_or_else(|| anyhow::anyhow!("can't get app_local_data_dir"))?
-                .join("data");
+            let cwd = app_local_data_dir(&app.handle())?.0.join("data");
             std::fs::create_dir_all(&cwd)?;
             std::env::set_current_dir(&cwd)?;
 
@@ -322,7 +327,8 @@ impl Controller {
         })
         .await??;
 
-        let hashed_device_id = crate::device_id::hashed_device_id(&app).await?;
+        let hashed_device_id =
+            crate::device_id::hashed_device_id(&app_local_data_dir(&app)?).await?;
 
         // Connect immediately if we reloaded the token
         let connlib_session = if let Some(session) = session.as_ref() {

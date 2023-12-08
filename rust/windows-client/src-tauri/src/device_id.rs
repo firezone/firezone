@@ -1,4 +1,3 @@
-use anyhow::{anyhow, Result};
 use ring::digest;
 use tokio::fs;
 
@@ -8,12 +7,10 @@ use tokio::fs;
 ///
 /// Returns: The hexadecimal SHA256 of the UUID, suitable for sending directly to `connlib_client_shared::Session::connect`.
 /// Errors: If the disk is unwritable when initially generating the ID, or unreadable when reading it back, or if the file is not valid JSON or doesn't match the expected schema
-pub async fn hashed_device_id(app: &tauri::AppHandle) -> Result<String> {
-    let app_local_data_dir = app
-        .path_resolver()
-        .app_local_data_dir()
-        .ok_or_else(|| anyhow!("getting app_local_data_dir"))?;
-    let dir = app_local_data_dir.join("config");
+pub(crate) async fn hashed_device_id(
+    app_local_data_dir: &crate::AppLocalDataDir,
+) -> anyhow::Result<String> {
+    let dir = app_local_data_dir.0.join("config");
     let path = dir.join("device_id.json");
 
     // Try to read it back from disk
@@ -28,6 +25,7 @@ pub async fn hashed_device_id(app: &tauri::AppHandle) -> Result<String> {
     let j = DeviceIdJson { id };
     // TODO: This file write has the same possible problems with power loss as described here https://github.com/firezone/firezone/pull/2757#discussion_r1416374516
     // Since the device ID is random, typically only written once in the device's lifetime, and the read will error out if it's corrupted, it's low-risk.
+    fs::create_dir_all(&dir).await?;
     fs::write(&path, serde_json::to_string(&j)?).await?;
 
     tracing::debug!("device ID saved to disk is {}", j.id.to_string());

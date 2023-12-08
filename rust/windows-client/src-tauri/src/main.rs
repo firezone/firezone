@@ -39,6 +39,10 @@ pub(crate) struct GuiParams {
     inject_faults: bool,
 }
 
+/// Newtype for our per-user directory in AppData, e.g.
+/// `C:/Users/$USER/AppData/Local/dev.firezone.client`
+pub(crate) struct AppLocalDataDir(std::path::PathBuf);
+
 fn main() -> Result<()> {
     // Special case for app link URIs
     if let Some(arg) = std::env::args().nth(1) {
