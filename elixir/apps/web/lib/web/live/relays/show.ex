@@ -3,7 +3,7 @@ defmodule Web.Relays.Show do
   alias Domain.{Relays, Config}
 
   def mount(%{"id" => id}, _session, socket) do
-    with true <- Domain.Config.self_hosted_relays_enabled?(),
+    with true <- Config.self_hosted_relays_enabled?(),
          {:ok, relay} <-
            Relays.fetch_relay_by_id(id, socket.assigns.subject, preload: :group) do
       :ok = Relays.subscribe_for_relays_presence_in_group(relay.group)
