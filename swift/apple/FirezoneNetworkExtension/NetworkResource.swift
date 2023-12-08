@@ -9,19 +9,19 @@ import Foundation
 
 public struct NetworkResource: Decodable {
   enum ResourceLocation {
-    case dns(domain: String, ipv4: String, ipv6: String)
+    case dns(domain: String)
     case cidr(cidrAddress: String)
 
     func toString() -> String {
       switch self {
-      case .dns(let domain, ipv4: _, ipv6: _): return domain
+      case .dns(let domain): return domain
       case .cidr(let cidrAddress): return cidrAddress
       }
     }
 
     var domain: String? {
       switch self {
-      case .dns(let domain, ipv4: _, ipv6: _): return domain
+      case .dns(let domain): return domain
       case .cidr: return nil
       }
     }
@@ -40,8 +40,6 @@ public struct NetworkResource: Decodable {
 //    "type": "dns",
 //    "address": "app.posthog.com",
 //    "name": "PostHog",
-//    "ipv4": "100.64.0.1",
-//    "ipv6": "fd00:2021:11111::1"
 //  }
 //
 // A CIDR resource example:
@@ -56,8 +54,6 @@ extension NetworkResource {
     case type
     case address
     case name
-    case ipv4
-    case ipv6
   }
 
   enum DecodeError: Error {
@@ -72,9 +68,7 @@ extension NetworkResource {
       switch type {
       case "dns":
         let domain = try container.decode(String.self, forKey: .address)
-        let ipv4 = try container.decode(String.self, forKey: .ipv4)
-        let ipv6 = try container.decode(String.self, forKey: .ipv6)
-        return .dns(domain: domain, ipv4: ipv4, ipv6: ipv6)
+        return .dns(domain: domain)
       case "cidr":
         let address = try container.decode(String.self, forKey: .address)
         return .cidr(cidrAddress: address)

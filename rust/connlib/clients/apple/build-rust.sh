@@ -38,7 +38,7 @@ done
 
 # Use pristine path; the PATH from Xcode is polluted with stuff we don't want which can
 # confuse rustc.
-export PATH="/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:$HOME/.cargo/bin"
+export PATH="/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:$HOME/.cargo/bin:/run/current-system/sw/bin/"
 
 if [[ $1 == "clean" ]]; then
   echo "Skipping build during 'clean'"
