@@ -47,7 +47,11 @@ impl IfaceConfig {
     }
 }
 
-pub(crate) async fn create_iface(_: &Interface, _: &impl Callbacks) -> Result<Device> {
+pub(crate) async fn create_iface(
+    _: &Interface,
+    _: &impl Callbacks,
+    _: DnsFallbackStrategy,
+) -> Result<Device> {
     Ok(Device {
         config: IfaceConfig {},
         io: DeviceIo {},
