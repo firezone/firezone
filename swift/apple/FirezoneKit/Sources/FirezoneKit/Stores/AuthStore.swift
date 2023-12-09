@@ -59,7 +59,9 @@ final class AuthStore: ObservableObject {
 
   private var status: NEVPNStatus = .invalid
 
-  private static let maxReconnectionAttemptCount = 3
+  // Try to automatically reconnect on network changes
+  private static let maxReconnectionAttemptCount = 60
+  private let reconnectDelaySecs = 1
   private var reconnectionAttemptsRemaining = maxReconnectionAttemptCount
 
   private init(tunnelStore: TunnelStore) {
@@ -214,9 +216,9 @@ final class AuthStore: ObservableObject {
     self.reconnectionAttemptsRemaining = self.reconnectionAttemptsRemaining - 1
     if shouldReconnect {
       self.logger.log(
-        "\(#function): Will try to reconnect after 1 second (\(self.reconnectionAttemptsRemaining) attempts after this)"
+        "\(#function): Will try every second to reconnect (\(self.reconnectionAttemptsRemaining) attempts after this)"
       )
-      DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(1)) {
+      DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(self.reconnectDelaySecs)) {
         self.logger.log("\(#function): Trying to reconnect")
         self.startTunnel()
       }
