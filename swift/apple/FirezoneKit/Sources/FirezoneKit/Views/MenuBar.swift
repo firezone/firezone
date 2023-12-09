@@ -30,7 +30,6 @@
     }
     private lazy var signedOutIcon = NSImage(named: "MenuBarIconSignedOut")
     private lazy var signedInConnectedIcon = NSImage(named: "MenuBarIconSignedInConnected")
-    private lazy var signedInNotConnectedIcon = NSImage(named: "MenuBarIconSignedInNotConnected")
 
     private lazy var connectingAnimationImages = [
       NSImage(named: "MenuBarIconConnecting1"),
@@ -260,22 +259,20 @@
           return self.signedOutIcon
         case .signedIn:
           switch self.tunnelStatus {
-          case .invalid, .disconnected, .reasserting:
-            return self.signedInNotConnectedIcon
           case .connected:
+            self.stopConnectingAnimation()
             return self.signedInConnectedIcon
-          case .connecting, .disconnecting:
+          case .connecting, .disconnecting, .reasserting:
+            self.startConnectingAnimation()
             return self.connectingAnimationImages.last!
+          case .invalid, .disconnected:
+            self.stopConnectingAnimation()
+            return self.signedOutIcon
           @unknown default:
             return nil
           }
         }
       }()
-      if self.tunnelStatus == .connecting || self.tunnelStatus == .disconnecting {
-        self.startConnectingAnimation()
-      } else {
-        self.stopConnectingAnimation()
-      }
     }
 
     private func startConnectingAnimation() {
