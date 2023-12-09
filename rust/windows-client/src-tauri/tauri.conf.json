@@ -20,7 +20,7 @@
     },
     "bundle": {
       "active": true,
-      "targets": "all",
+      "targets": "msi",
       "identifier": "dev.firezone.client",
       "icon": [
         "icons/firezone.ico"
