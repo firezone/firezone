@@ -18,7 +18,7 @@ defmodule Domain.Ops do
       {:ok, actor} =
         Domain.Actors.create_actor(account, %{type: :account_admin_user, name: account_admin_name})
 
-      {:ok, identity} =
+      {:ok, _identity} =
         Domain.Auth.upsert_identity(actor, magic_link_provider, %{
           provider_identifier: account_admin_email,
           provider_identifier_confirmation: account_admin_email
