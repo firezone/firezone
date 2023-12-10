@@ -59,7 +59,7 @@ export default function EarlyAccess() {
           </div>
         </div>
       </div>
-      <section className="bg-gradient-to-b from-white to-primary-50 border-t border-neutral-200 pb-14">
+      <section className="bg-white border-t border-neutral-200 pb-14">
         <div className="mx-auto lg:max-w-screen-lg max-w-screen-sm">
           <div className="py-14 mx-auto">
             <h2 className="justify-center mb-8 sm:mb-16 text-2xl font-extrabold tracking-tight text-neutral-900 sm:text-4xl">
