@@ -7,7 +7,7 @@ Please refer to this document for the license terms of the components that this 
 
 ===
 
-Portions of the Firezone product contain derivate work from the https://github.com/cloudflare/boringtun. Its license is included below:
+Portions of the Firezone product contain derivative work from the https://github.com/cloudflare/boringtun. Its license is included below:
 
 Copyright (c) 2019 Cloudflare, Inc. All rights reserved.
 
@@ -21,7 +21,7 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 
 ===
 
-Portions of this product contain derivate work from https://github.com/wireguard/wireguard-apple. Its license is included below:
+Portions of this product contain derivative work from https://github.com/wireguard/wireguard-apple. Its license is included below:
 
 Copyright © 2018-2023 WireGuard LLC. All Rights Reserved.
 
@@ -45,7 +45,7 @@ SOFTWARE.
 
 ===
 
-Portions of this product contain derivate work from https://github.com/Willena/OpenDNSUpdater. Its license is included below:
+Portions of this product contain derivative work from https://github.com/Willena/OpenDNSUpdater. Its license is included below:
 
 The MIT License
 
