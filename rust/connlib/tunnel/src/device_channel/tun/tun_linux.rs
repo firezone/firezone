@@ -1,4 +1,4 @@
-use crate::device_channel::device_channel::ioctl;
+use crate::device_channel::ioctl;
 use connlib_shared::{messages::Interface as InterfaceConfig, Callbacks, Error, Result};
 use futures::TryStreamExt;
 use ip_network::IpNetwork;
