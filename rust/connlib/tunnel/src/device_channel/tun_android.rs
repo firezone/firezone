@@ -57,7 +57,7 @@ impl Tun {
         self.fd.close();
     }
 
-    pub async fn new(
+    pub fn new(
         config: &InterfaceConfig,
         callbacks: &impl Callbacks<Error = Error>,
         fallback_strategy: DnsFallbackStrategy,
@@ -83,7 +83,7 @@ impl Tun {
         self.name.as_str()
     }
 
-    pub async fn add_route(
+    pub fn add_route(
         &self,
         route: IpNetwork,
         callbacks: &impl Callbacks<Error = Error>,

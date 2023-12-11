@@ -2,15 +2,18 @@ use crate::device_channel::ioctl;
 use crate::DnsFallbackStrategy;
 use connlib_shared::{messages::Interface as InterfaceConfig, Callbacks, Error, Result};
 use futures::TryStreamExt;
+use futures_util::future::BoxFuture;
+use futures_util::FutureExt;
 use ip_network::IpNetwork;
 use libc::{
     close, fcntl, open, F_GETFL, F_SETFL, IFF_MULTI_QUEUE, IFF_NO_PI, IFF_TUN, O_NONBLOCK, O_RDWR,
 };
 use netlink_packet_route::RT_SCOPE_UNIVERSE;
+use parking_lot::Mutex;
 use rtnetlink::{new_connection, Error::NetlinkError, Handle};
 use std::task::{ready, Context, Poll};
 use std::{
-    io,
+    fmt, io,
     os::fd::{AsRawFd, RawFd},
 };
 use tokio::io::unix::AsyncFd;
@@ -25,12 +28,22 @@ const RT_PROT_STATIC: u8 = 4;
 const DEFAULT_MTU: u32 = 1280;
 const FILE_ALREADY_EXISTS: i32 = -17;
 
-#[derive(Debug)]
 pub struct Tun {
     handle: Handle,
     connection: tokio::task::JoinHandle<()>,
-    interface_index: u32,
     fd: AsyncFd<RawFd>,
+
+    worker: Mutex<Option<BoxFuture<'static, Result<()>>>>,
+}
+
+impl fmt::Debug for Tun {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Tun")
+            .field("handle", &self.handle)
+            .field("connection", &self.connection)
+            .field("fd", &self.fd)
+            .finish_non_exhaustive()
+    }
 }
 
 impl Drop for Tun {
@@ -50,6 +63,20 @@ impl Tun {
     }
 
     pub fn poll_read(&self, buf: &mut [u8], cx: &mut Context<'_>) -> Poll<io::Result<usize>> {
+        let mut guard = self.worker.lock();
+        if let Some(worker) = guard.as_mut() {
+            match worker.poll_unpin(cx) {
+                Poll::Ready(Ok(())) => {
+                    *guard = None;
+                }
+                Poll::Ready(Err(e)) => {
+                    *guard = None;
+                    return Poll::Ready(Err(io::Error::new(io::ErrorKind::Other, e)));
+                }
+                Poll::Pending => return Poll::Pending,
+            }
+        }
+
         loop {
             let mut guard = ready!(self.fd.poll_read_ready(cx))?;
 
@@ -66,7 +93,7 @@ impl Tun {
         }
     }
 
-    pub async fn new(
+    pub fn new(
         config: &InterfaceConfig,
         _: &impl Callbacks,
         _: DnsFallbackStrategy,
@@ -81,61 +108,79 @@ impl Tun {
             ioctl::exec(fd, TUNSETIFF, &ioctl::Request::<SetTunFlagsPayload>::new())?;
         }
 
-        let (connection, handle, _) = new_connection()?;
-        let join_handle = tokio::spawn(connection);
-        let interface_index = handle
-            .link()
-            .get()
-            .match_name(IFACE_NAME.to_string())
-            .execute()
-            .try_next()
-            .await?
-            .ok_or(Error::NoIface)?
-            .header
-            .index;
-
         set_non_blocking(fd)?;
 
-        set_iface_config(config, handle.clone(), interface_index).await?;
-
-        handle.link().set(interface_index).up().execute().await?;
+        let (connection, handle, _) = new_connection()?;
+        let join_handle = tokio::spawn(connection);
 
         Ok(Self {
-            handle,
+            handle: handle.clone(),
             connection: join_handle,
-            interface_index,
             fd: AsyncFd::new(fd)?,
+            worker: Mutex::new(Some(set_iface_config(config.clone(), handle).boxed())),
         })
     }
 
-    pub async fn add_route(&self, route: IpNetwork, _: &impl Callbacks) -> Result<Option<Self>> {
-        let req = self
-            .handle
-            .route()
-            .add()
-            .output_interface(self.interface_index)
-            .protocol(RT_PROT_STATIC)
-            .scope(RT_SCOPE_UNIVERSE);
-        let res = match route {
-            IpNetwork::V4(ipnet) => {
-                req.v4()
-                    .destination_prefix(ipnet.network_address(), ipnet.netmask())
-                    .execute()
-                    .await
-            }
-            IpNetwork::V6(ipnet) => {
-                req.v6()
-                    .destination_prefix(ipnet.network_address(), ipnet.netmask())
-                    .execute()
-                    .await
+    pub fn add_route(&self, route: IpNetwork, _: &impl Callbacks) -> Result<Option<Self>> {
+        let handle = self.handle.clone();
+
+        let add_route_worker = async move {
+            let index = handle
+                .link()
+                .get()
+                .match_name(IFACE_NAME.to_string())
+                .execute()
+                .try_next()
+                .await?
+                .ok_or(Error::NoIface)?
+                .header
+                .index;
+
+            let req = handle
+                .route()
+                .add()
+                .output_interface(index)
+                .protocol(RT_PROT_STATIC)
+                .scope(RT_SCOPE_UNIVERSE);
+            let res = match route {
+                IpNetwork::V4(ipnet) => {
+                    req.v4()
+                        .destination_prefix(ipnet.network_address(), ipnet.netmask())
+                        .execute()
+                        .await
+                }
+                IpNetwork::V6(ipnet) => {
+                    req.v6()
+                        .destination_prefix(ipnet.network_address(), ipnet.netmask())
+                        .execute()
+                        .await
+                }
+            };
+
+            match res {
+                Ok(_) => Ok(()),
+                Err(NetlinkError(err)) if err.raw_code() == FILE_ALREADY_EXISTS => Ok(()),
+                Err(err) => Err(err.into()),
             }
         };
 
-        match res {
-            Ok(_) => Ok(None),
-            Err(NetlinkError(err)) if err.raw_code() == FILE_ALREADY_EXISTS => Ok(None),
-            Err(err) => Err(err.into()),
+        let mut guard = self.worker.lock();
+        match guard.take() {
+            None => *guard = Some(add_route_worker.boxed()),
+            Some(current_worker) => {
+                *guard = Some(
+                    async move {
+                        current_worker.await?;
+                        add_route_worker.await?;
+
+                        Ok(())
+                    }
+                    .boxed(),
+                )
+            }
         }
+
+        Ok(None)
     }
 
     pub fn name(&self) -> &str {
@@ -144,7 +189,18 @@ impl Tun {
 }
 
 #[tracing::instrument(level = "trace", skip(handle))]
-async fn set_iface_config(config: &InterfaceConfig, handle: Handle, index: u32) -> Result<()> {
+async fn set_iface_config(config: InterfaceConfig, handle: Handle) -> Result<()> {
+    let index = handle
+        .link()
+        .get()
+        .match_name(IFACE_NAME.to_string())
+        .execute()
+        .try_next()
+        .await?
+        .ok_or(Error::NoIface)?
+        .header
+        .index;
+
     let ips = handle
         .address()
         .get()
@@ -166,6 +222,8 @@ async fn set_iface_config(config: &InterfaceConfig, handle: Handle, index: u32) 
         .add(index, config.ipv6.into(), 128)
         .execute()
         .await;
+
+    handle.link().set(index).up().execute().await?;
 
     Ok(res_v4.or(res_v6)?)
 }

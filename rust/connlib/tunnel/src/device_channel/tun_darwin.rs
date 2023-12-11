@@ -82,7 +82,7 @@ impl Tun {
         }
     }
 
-    pub async fn new(
+    pub fn new(
         config: &InterfaceConfig,
         callbacks: &impl Callbacks<Error = Error>,
         fallback_strategy: DnsFallbackStrategy,
@@ -162,7 +162,7 @@ impl Tun {
         Err(get_last_error())
     }
 
-    pub async fn add_route(
+    pub fn add_route(
         &self,
         route: IpNetwork,
         callbacks: &impl Callbacks<Error = Error>,
