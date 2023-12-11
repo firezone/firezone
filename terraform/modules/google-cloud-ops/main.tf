@@ -330,6 +330,39 @@ resource "google_monitoring_alert_policy" "genservers_crash_policy" {
   }
 }
 
+resource "google_monitoring_alert_policy" "production_db_access_policy" {
+  project = var.project_id
+
+  display_name = "Production DB Access"
+  combiner     = "OR"
+
+  notification_channels = [
+    google_monitoring_notification_channel.slack.name
+  ]
+
+  conditions {
+    display_name = "Log match condition"
+
+    condition_matched_log {
+      filter = <<-EOT
+      protoPayload.methodName="cloudsql.instances.connect"
+      EOT
+
+      label_extractors = {
+        "Email" = "protoPayload.authenticationInfo.principalEmail"
+      }
+    }
+  }
+
+  alert_strategy {
+    auto_close = "3600s"
+
+    notification_rate_limit {
+      period = "28800s"
+    }
+  }
+}
+
 resource "google_monitoring_alert_policy" "ssl_certs_expiring_policy" {
   project = var.project_id
 

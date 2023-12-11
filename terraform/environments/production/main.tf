@@ -43,6 +43,45 @@ module "google-cloud-project" {
   billing_account_id = "01DFC9-3D6951-579BE1"
 }
 
+# Enable audit logs for the production project
+resource "google_project_iam_audit_config" "audit" {
+  project = module.google-cloud-project.project.project_id
+
+  service = "allServices"
+
+  audit_log_config {
+    log_type = "ADMIN_READ"
+  }
+
+  audit_log_config {
+    log_type = "DATA_READ"
+
+    exempted_members = concat(
+      [
+        module.web.service_account.member,
+        module.api.service_account.member,
+        module.metabase.service_account.member,
+      ],
+      module.gateways[*].service_account.member,
+      module.relays[*].service_account.member
+    )
+  }
+
+  audit_log_config {
+    log_type = "DATA_WRITE"
+
+    exempted_members = concat(
+      [
+        module.web.service_account.member,
+        module.api.service_account.member,
+        module.metabase.service_account.member,
+      ],
+      module.gateways[*].service_account.member,
+      module.relays[*].service_account.member
+    )
+  }
+}
+
 # Grant owner access to the project
 resource "google_project_iam_binding" "project_owners" {
   project = module.google-cloud-project.project.project_id
