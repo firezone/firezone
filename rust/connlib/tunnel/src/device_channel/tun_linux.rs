@@ -68,7 +68,7 @@ impl Tun {
 
     pub async fn new(
         config: &InterfaceConfig,
-        cb: &impl Callbacks,
+        _: &impl Callbacks,
         _: DnsFallbackStrategy,
     ) -> Result<Self> {
         let fd = match unsafe { open(TUN_FILE.as_ptr() as _, O_RDWR) } {
@@ -96,16 +96,14 @@ impl Tun {
 
         set_non_blocking(fd)?;
 
-        let this = Self {
+        set_iface_config(config, handle.clone(), interface_index).await?;
+
+        Ok(Self {
             handle,
             connection: join_handle,
             interface_index,
             fd: AsyncFd::new(fd)?,
-        };
-
-        this.set_iface_config(config, cb).await?;
-
-        Ok(this)
+        })
     }
 
     pub async fn add_route(&self, route: IpNetwork, _: &impl Callbacks) -> Result<Option<Self>> {
@@ -138,45 +136,6 @@ impl Tun {
         }
     }
 
-    #[tracing::instrument(level = "trace", skip(self))]
-    pub async fn set_iface_config(
-        &self,
-        config: &InterfaceConfig,
-        _: &impl Callbacks,
-    ) -> Result<()> {
-        let ips = self
-            .handle
-            .address()
-            .get()
-            .set_link_index_filter(self.interface_index)
-            .execute();
-
-        ips.try_for_each(|ip| self.handle.address().del(ip).execute())
-            .await?;
-
-        self.handle
-            .link()
-            .set(self.interface_index)
-            .mtu(DEFAULT_MTU)
-            .execute()
-            .await?;
-
-        let res_v4 = self
-            .handle
-            .address()
-            .add(self.interface_index, config.ipv4.into(), 32)
-            .execute()
-            .await;
-        let res_v6 = self
-            .handle
-            .address()
-            .add(self.interface_index, config.ipv6.into(), 128)
-            .execute()
-            .await;
-
-        Ok(res_v4.or(res_v6)?)
-    }
-
     pub async fn up(&self) -> Result<()> {
         self.handle
             .link()
@@ -190,6 +149,33 @@ impl Tun {
     pub fn name(&self) -> &str {
         IFACE_NAME
     }
+}
+
+#[tracing::instrument(level = "trace", skip(handle))]
+async fn set_iface_config(config: &InterfaceConfig, handle: Handle, index: u32) -> Result<()> {
+    let ips = handle
+        .address()
+        .get()
+        .set_link_index_filter(index)
+        .execute();
+
+    ips.try_for_each(|ip| handle.address().del(ip).execute())
+        .await?;
+
+    handle.link().set(index).mtu(DEFAULT_MTU).execute().await?;
+
+    let res_v4 = handle
+        .address()
+        .add(index, config.ipv4.into(), 32)
+        .execute()
+        .await;
+    let res_v6 = handle
+        .address()
+        .add(index, config.ipv6.into(), 128)
+        .execute()
+        .await;
+
+    Ok(res_v4.or(res_v6)?)
 }
 
 fn get_last_error() -> Error {
