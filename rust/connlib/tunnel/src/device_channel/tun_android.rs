@@ -5,13 +5,14 @@ use connlib_shared::{
 };
 use ip_network::IpNetwork;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::task::{ready, Context, Poll};
+use std::task::{Context, Poll};
 use std::{
     io,
     os::fd::{AsRawFd, RawFd},
 };
 use tokio::io::unix::AsyncFd;
-use tokio::io::Ready;
+
+mod utils;
 
 pub(crate) const SIOCGIFMTU: libc::c_ulong = libc::SIOCGIFMTU;
 
@@ -37,20 +38,8 @@ impl Tun {
     }
 
     pub fn poll_read(&self, buf: &mut [u8], cx: &mut Context<'_>) -> Poll<io::Result<usize>> {
-        self.fd.with(|fd| loop {
-            let mut guard = ready!(fd.poll_read_ready(cx))?;
-
-            match read(*guard.get_inner(), buf) {
-                Ok(n) => return Poll::Ready(Ok(n)),
-                Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
-                    // a read has blocked, but a write might still succeed.
-                    // clear only the read readiness.
-                    guard.clear_ready_matching(Ready::READABLE);
-                    continue;
-                }
-                Err(e) => return Poll::Ready(Err(e)),
-            }
-        })?
+        self.fd
+            .with(|fd| utils::poll_raw_fd(&fd, |fd| read(fd, buf), cx))?
     }
 
     pub fn close(&self) {

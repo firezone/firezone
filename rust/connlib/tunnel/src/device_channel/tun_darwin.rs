@@ -8,14 +8,15 @@ use libc::{
     socklen_t, AF_INET, AF_INET6, AF_SYSTEM, CTLIOCGINFO, F_GETFL, F_SETFL, IF_NAMESIZE,
     O_NONBLOCK, SYSPROTO_CONTROL, UTUN_OPT_IFNAME,
 };
-use std::task::{ready, Context, Poll};
+use std::task::{Context, Poll};
 use std::{
     io,
     mem::size_of,
     os::fd::{AsRawFd, RawFd},
 };
 use tokio::io::unix::AsyncFd;
-use tokio::io::Ready;
+
+mod utils;
 
 const CTL_NAME: &[u8] = b"com.apple.net.utun_control";
 /// `libc` for darwin doesn't define this constant so we declare it here.
@@ -37,20 +38,7 @@ impl Tun {
     }
 
     pub fn poll_read(&self, buf: &mut [u8], cx: &mut Context<'_>) -> Poll<io::Result<usize>> {
-        loop {
-            let mut guard = ready!(self.fd.poll_read_ready(cx))?;
-
-            match read(guard.get_inner().as_raw_fd(), buf) {
-                Ok(n) => return Poll::Ready(Ok(n)),
-                Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
-                    // a read has blocked, but a write might still succeed.
-                    // clear only the read readiness.
-                    guard.clear_ready_matching(Ready::READABLE);
-                    continue;
-                }
-                Err(e) => return Poll::Ready(Err(e)),
-            }
-        }
+        utils::poll_raw_fd(&self.fd, |fd| read(fd, buf), cx)
     }
 
     fn write(&self, src: &[u8], af: u8) -> std::io::Result<usize> {

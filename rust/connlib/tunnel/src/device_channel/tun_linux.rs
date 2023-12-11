@@ -11,13 +11,14 @@ use libc::{
 use netlink_packet_route::RT_SCOPE_UNIVERSE;
 use parking_lot::Mutex;
 use rtnetlink::{new_connection, Error::NetlinkError, Handle};
-use std::task::{ready, Context, Poll};
+use std::task::{Context, Poll};
 use std::{
     fmt, io,
     os::fd::{AsRawFd, RawFd},
 };
 use tokio::io::unix::AsyncFd;
-use tokio::io::Ready;
+
+mod utils;
 
 pub(crate) const SIOCGIFMTU: libc::c_ulong = libc::SIOCGIFMTU;
 
@@ -77,20 +78,7 @@ impl Tun {
             }
         }
 
-        loop {
-            let mut guard = ready!(self.fd.poll_read_ready(cx))?;
-
-            match read(guard.get_inner().as_raw_fd(), buf) {
-                Ok(n) => return Poll::Ready(Ok(n)),
-                Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
-                    // a read has blocked, but a write might still succeed.
-                    // clear only the read readiness.
-                    guard.clear_ready_matching(Ready::READABLE);
-                    continue;
-                }
-                Err(e) => return Poll::Ready(Err(e)),
-            }
-        }
+        utils::poll_raw_fd(&self.fd, |fd| read(fd, buf), cx)
     }
 
     pub fn new(
