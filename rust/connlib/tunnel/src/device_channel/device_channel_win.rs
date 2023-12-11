@@ -15,7 +15,3 @@ impl DeviceIo {
         todo!()
     }
 }
-
-pub(super) async fn create_iface(_: &Interface, _: &impl Callbacks) -> Result<Device> {
-    todo!()
-}
