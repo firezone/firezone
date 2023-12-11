@@ -42,7 +42,7 @@ defmodule Web.RelayGroups.NewToken do
 
     <.section>
       <:title>
-        Deploy your Relay
+        Deploy a new Relay
       </:title>
       <:content>
         <div class="py-8 px-4 mx-auto max-w-2xl lg:py-16">

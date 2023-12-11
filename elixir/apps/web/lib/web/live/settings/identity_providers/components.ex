@@ -93,7 +93,6 @@ defmodule Web.Settings.IdentityProviders.Components do
           px-2 py-1 text-center
           hover:bg-primary-700
           focus:ring-4 focus:outline-none focus:ring-primary-300
-          dark:bg-primary-600 dark:hover:bg-primary-700 dark:focus:ring-primary-800
           active:text-white/80
         ]}>connect IdP</button>
           </.link>
