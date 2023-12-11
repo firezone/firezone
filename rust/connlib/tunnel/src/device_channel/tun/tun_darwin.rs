@@ -140,7 +140,7 @@ impl IfaceDevice {
     pub async fn new(
         config: &InterfaceConfig,
         callbacks: &impl Callbacks<Error = Error>,
-        _: DnsFallbackStrategy,
+        fallback_strategy: DnsFallbackStrategy,
     ) -> Result<(Self, Arc<AsyncFd<IfaceStream>>)> {
         let mut info = ctl_info {
             ctl_id: 0,
@@ -202,7 +202,7 @@ impl IfaceDevice {
                     config.ipv4,
                     config.ipv6,
                     DNS_SENTINEL,
-                    "system_resolver".to_string(),
+                    fallback_strategy.to_string(),
                 )?;
 
                 set_non_blocking(fd)?;

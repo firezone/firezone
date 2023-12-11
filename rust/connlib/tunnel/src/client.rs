@@ -107,6 +107,10 @@ where
     /// Sets the interface configuration and starts background tasks.
     #[tracing::instrument(level = "trace", skip(self))]
     pub async fn set_interface(&self, config: &InterfaceConfig) -> connlib_shared::Result<()> {
+        if !config.upstream_dns.is_empty() {
+            self.role_state.lock().dns_strategy = DnsFallbackStrategy::UpstreamResolver;
+        }
+
         let dns_strategy = self.role_state.lock().dns_strategy;
         let device = Arc::new(create_iface(config, self.callbacks(), dns_strategy).await?);
 
@@ -116,10 +120,6 @@ where
         self.add_route(DNS_SENTINEL.into()).await?;
 
         self.callbacks.on_tunnel_ready()?;
-
-        if !config.upstream_dns.is_empty() {
-            self.role_state.lock().dns_strategy = DnsFallbackStrategy::UpstreamResolver;
-        }
 
         tracing::debug!("background_loop_started");
 

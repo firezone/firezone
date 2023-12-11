@@ -173,9 +173,11 @@ class NetworkSettings {
     switch dnsFallbackStrategy {
     case .systemResolver:
       // Enable split-DNS. Only those domains matching the resources will be sent to the tunnel's DNS.
+      logger.log("dnsFallbackStrategy is system resolver. Using split DNS.")
       dnsSettings.matchDomains = resourceDomains
     case .upstreamResolver:
       // All DNS queries go to the tunnel's DNS.
+      logger.log("dnsFallbackStrategy is upstream resolver. Intercepting all queries.")
       dnsSettings.matchDomains = [""]
     }
     tunnelNetworkSettings.dnsSettings = dnsSettings
