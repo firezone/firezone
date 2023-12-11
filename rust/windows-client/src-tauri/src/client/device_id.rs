@@ -1,13 +1,12 @@
-use ring::digest;
 use tokio::fs;
 
-/// Get the hashed device ID, generating it if it's not already on disk.
+/// Get the device ID, generating it if it's not already on disk.
 /// Per <https://github.com/firezone/firezone/issues/2697> and <https://github.com/firezone/firezone/issues/2711>,
 /// clients must generate their own random IDs and persist them to disk, to handle situations like VMs where a hardware ID is not unique or not available.
 ///
-/// Returns: The hexadecimal SHA256 of the UUID, suitable for sending directly to `connlib_client_shared::Session::connect`.
-/// Errors: If the disk is unwritable when initially generating the ID, or unreadable when reading it back, or if the file is not valid JSON or doesn't match the expected schema
-pub(crate) async fn hashed_device_id(
+/// Returns: The UUID as a String, suitable for sending verbatim to `connlib_client_shared::Session::connect`.
+/// Errors: If the disk is unwritable when initially generating the ID, or unwritable when re-generating an invalid ID.
+pub(crate) async fn device_id(
     app_local_data_dir: &crate::client::AppLocalDataDir,
 ) -> anyhow::Result<String> {
     let dir = app_local_data_dir.0.join("config");
@@ -20,7 +19,7 @@ pub(crate) async fn hashed_device_id(
         .and_then(|s| serde_json::from_str::<DeviceIdJson>(&s).ok())
     {
         tracing::debug!("device ID loaded from disk is {}", j.id.to_string());
-        return Ok(j.hashed_device_id());
+        return Ok(j.device_id());
     }
 
     // Couldn't read, it's missing or invalid, generate a new one and save it.
@@ -32,7 +31,7 @@ pub(crate) async fn hashed_device_id(
     fs::write(&path, serde_json::to_string(&j)?).await?;
 
     tracing::debug!("device ID saved to disk is {}", j.id.to_string());
-    Ok(j.hashed_device_id())
+    Ok(j.device_id())
 }
 
 #[derive(serde::Deserialize, serde::Serialize)]
@@ -41,7 +40,7 @@ struct DeviceIdJson {
 }
 
 impl DeviceIdJson {
-    fn hashed_device_id(&self) -> String {
-        hex::encode(digest::digest(&digest::SHA256, self.id.as_bytes()))
+    fn device_id(&self) -> String {
+        self.id.to_string()
     }
 }

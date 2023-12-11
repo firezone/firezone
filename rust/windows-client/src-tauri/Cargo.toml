@@ -14,14 +14,10 @@ clap = { version = "4.4", features = ["derive",  "env"] }
 connlib-client-shared = { workspace = true }
 connlib-shared = { workspace = true }
 firezone-cli-utils = { workspace = true }
-# Same `hex` as the relay uses
-hex = "0.4.3"
 http-body-util = "0.1.0"
 hyper = { version = "1.0.1", features = ["http1", "server"] }
 hyper-util = { version = "0.1.1", features = ["full"] }
 keyring = "2.0.5"
-# Same `ring` as connlib uses
-ring = "0.17"
 secrecy.workspace = true
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
