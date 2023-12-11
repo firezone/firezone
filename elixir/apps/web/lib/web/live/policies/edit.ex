@@ -48,9 +48,11 @@ defmodule Web.Policies.Edit do
               phx-debounce="300"
             />
             <:actions>
-              <.button phx-disable-with="Updating Policy..." class="w-full">
-                Update Policy
-              </.button>
+              <div class="w-full flex justify-end">
+              <.submit_button phx-disable-with="Updating Policy...">
+                Save
+              </.submit_button>
+            </div>
             </:actions>
           </.simple_form>
         </div>

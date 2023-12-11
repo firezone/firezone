@@ -78,9 +78,11 @@ defmodule Web.Settings.DNS do
                   <%= msg %>
                 </.error>
               </div>
-              <.submit_button>
-                Save
-              </.submit_button>
+              <div class="flex justify-end">
+                <.submit_button>
+                  Save
+                </.submit_button>
+              </div>
             </div>
           </.form>
         </div>

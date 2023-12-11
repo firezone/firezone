@@ -54,7 +54,7 @@ defmodule Web.Sites.Edit do
                       checked={@form[:routing].value == :managed}
                       required
                     />
-                    <p class="ml-6 mb-4 text-sm text-neutral-500 dark:text-neutral-400">
+                    <p class="ml-6 mb-4 text-sm text-neutral-500">
                       Firezone will route connections through our managed Relays only if a direct connection to a Gateway is not possible.
                       Firezone can never decrypt the contents of your traffic.
                     </p>
@@ -69,16 +69,18 @@ defmodule Web.Sites.Edit do
                       checked={@form[:routing].value == :stun_only}
                       required
                     />
-                    <p class="ml-6 mb-4 text-sm text-neutral-500 dark:text-neutral-400">
+                    <p class="ml-6 mb-4 text-sm text-neutral-500">
                       Firezone will enforce direct connections to all Gateways in this Site. This could cause connectivity issues in rare cases.
                     </p>
                   </div>
                 </div>
               </div>
             </div>
+            <div class="flex justify-end">
             <.submit_button>
               Save
             </.submit_button>
+          </div>
           </.form>
         </div>
       </:content>

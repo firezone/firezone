@@ -35,9 +35,11 @@ defmodule Web.RelayGroups.New do
               </div>
             </div>
 
-            <.submit_button>
-              Save
-            </.submit_button>
+            <div class="flex justify-end">
+              <.submit_button>
+                Save
+              </.submit_button>
+            </div>
           </.form>
         </div>
       </:content>

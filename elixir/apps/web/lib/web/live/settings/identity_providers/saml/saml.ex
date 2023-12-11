@@ -86,7 +86,7 @@ defmodule Web.Settings.IdentityProviders.SAML.New do
 
             <.provisioning_strategy_form form={@form} />
 
-            <div class="flex justify-end items-center space-x-4">
+            <div class="flex justify-end">
               <.submit_button>
                 Create Identity Provider
               </.submit_button>

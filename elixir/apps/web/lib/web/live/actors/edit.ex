@@ -54,7 +54,9 @@ defmodule Web.Actors.Edit do
                 subject={@subject}
               />
             </div>
+            <div class="flex justify-end">
             <.submit_button>Save</.submit_button>
+          </div>
           </.form>
         </div>
       </:content>

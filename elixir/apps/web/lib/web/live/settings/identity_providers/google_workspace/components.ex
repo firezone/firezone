@@ -9,7 +9,7 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.Components do
           <h2 class="mb-4 text-xl font-bold text-neutral-900">
             Step 1. Enable Admin SDK API
           </h2>
-          Please visit following link and enable Admin SDK API for your Google Workspace account:
+          Visit the following link to enable the Admin SDK API for your Google Workspace account:
           <a
             href="https://console.cloud.google.com/apis/library/admin.googleapis.com"
             class={link_style()}
@@ -23,7 +23,10 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.Components do
           <h2 class="mb-4 text-xl font-bold text-neutral-900">
             Step 2. Configure OAuth consent screen
           </h2>
-          Please make sure that following scopes are added to the OAuth application permissions: <.code_block
+          <p class="mb-4">
+            Ensure the following scopes are added to the OAuth client:
+          </p>
+            <.code_block
             :for={
               {name, scope} <- [
                 openid: "openid",
@@ -44,7 +47,10 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.Components do
           <h2 class="mb-4 text-xl font-bold text-neutral-900">
             Step 3: Create OAuth client
           </h2>
-          Please make sure that OAuth client has following redirect URL's whitelisted: <.code_block
+          <p class="mb-4">
+          Ensure the OAuth client has following redirect URLs configured:
+          </p>
+          <.code_block
             :for={
               {type, redirect_url} <- [
                 sign_in: url(~p"/#{@account.id}/sign_in/providers/#{@id}/handle_callback"),

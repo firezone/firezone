@@ -74,9 +74,11 @@ defmodule Web.Actors.Users.NewIdentity do
               </div>
               <.provider_form :if={@provider} form={@form} provider={@provider} />
             </div>
-            <.submit_button>
-              Save
-            </.submit_button>
+            <div class="flex justify-end">
+              <.submit_button>
+                Save
+              </.submit_button>
+            </div>
           </.form>
         </div>
       </:content>

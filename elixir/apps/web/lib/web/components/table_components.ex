@@ -302,7 +302,7 @@ defmodule Web.TableComponents do
 
   def vertical_table_row(assigns) do
     ~H"""
-    <tr class="border-b border-neutral-200">
+    <tr>
       <th
         scope="row"
         class={[

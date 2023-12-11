@@ -452,6 +452,15 @@ defmodule Web.FormComponents do
     ]
   end
 
+  defp button_style("warning") do
+    button_style() ++
+      [
+        "text-primary-500",
+        "border border-primary-500",
+        "hover:text-white hover:bg-primary-500"
+      ]
+  end
+
   defp button_style("danger") do
     button_style() ++
       [

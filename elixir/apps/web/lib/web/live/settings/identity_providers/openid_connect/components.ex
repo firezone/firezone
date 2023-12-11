@@ -109,7 +109,7 @@ defmodule Web.Settings.IdentityProviders.OpenIDConnect.Components do
             </.inputs_for>
           </div>
 
-          <div class="flex items-center space-x-4">
+          <div class="flex justify-end">
             <.submit_button>
               Connect Identity Provider
             </.submit_button>

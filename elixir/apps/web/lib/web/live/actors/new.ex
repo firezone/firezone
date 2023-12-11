@@ -42,7 +42,7 @@ defmodule Web.Actors.New do
                 />
               </fieldset>
             </div>
-            <div class="flex justify-end items-center space-x-4">
+            <div class="flex justify-end">
               <.submit_button>
                 Next: Create Actor
               </.submit_button>

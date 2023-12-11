@@ -39,9 +39,11 @@ defmodule Web.Actors.Users.New do
             <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
               <.actor_form form={@form} type={:user} groups={@groups} subject={@subject} />
             </div>
+            <div class="flex justify-end">
             <.submit_button>
               Create
             </.submit_button>
+          </div>
           </.form>
         </div>
       </:content>
