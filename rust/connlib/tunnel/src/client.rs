@@ -1,5 +1,5 @@
 use crate::bounded_queue::BoundedQueue;
-use crate::device_channel::{create_iface, Packet};
+use crate::device_channel::{Device, Packet};
 use crate::ip_packet::{IpPacket, MutableIpPacket};
 use crate::peer::PacketTransformClient;
 use crate::{
@@ -116,7 +116,7 @@ where
         }
 
         let dns_strategy = self.role_state.lock().dns_strategy;
-        let device = Arc::new(create_iface(config, self.callbacks(), dns_strategy).await?);
+        let device = Arc::new(Device::new(config, self.callbacks(), dns_strategy).await?);
 
         self.device.store(Some(device.clone()));
         self.no_device_waker.wake();

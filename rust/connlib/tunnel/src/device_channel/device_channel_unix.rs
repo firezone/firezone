@@ -83,7 +83,7 @@ impl IfaceConfig {
     }
 }
 
-pub(crate) async fn create_iface(
+pub(super) async fn create_iface(
     config: &Interface,
     callbacks: &impl Callbacks<Error = Error>,
     fallback_strategy: DnsFallbackStrategy,

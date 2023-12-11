@@ -48,7 +48,7 @@ impl IfaceConfig {
     }
 }
 
-pub(crate) async fn create_iface(
+pub(super) async fn create_iface(
     _: &Interface,
     _: &impl Callbacks,
     _: DnsFallbackStrategy,

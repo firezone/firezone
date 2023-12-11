@@ -9,12 +9,16 @@ mod device_channel;
 mod device_channel;
 
 use crate::ip_packet::MutableIpPacket;
+use crate::DnsFallbackStrategy;
+use connlib_shared::error::ConnlibError;
+use connlib_shared::messages::Interface;
 use connlib_shared::{Callbacks, Error};
-pub(crate) use device_channel::*;
 use ip_network::IpNetwork;
 use std::borrow::Cow;
 use std::io;
 use std::task::{ready, Context, Poll};
+
+pub(crate) use device_channel::*;
 
 pub struct Device {
     config: IfaceConfig,
@@ -22,6 +26,14 @@ pub struct Device {
 }
 
 impl Device {
+    pub(crate) async fn new(
+        config: &Interface,
+        callbacks: &impl Callbacks<Error = Error>,
+        fallback_strategy: DnsFallbackStrategy,
+    ) -> Result<Device, ConnlibError> {
+        create_iface(config, callbacks, fallback_strategy).await
+    }
+
     pub(crate) fn poll_read<'b>(
         &self,
         buf: &'b mut [u8],
