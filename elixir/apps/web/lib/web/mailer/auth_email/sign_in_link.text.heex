@@ -1,11 +1,10 @@
-Dear Firezone user,
+Finish Signing In!
 
-Please copy the code and paste it into the Firezone application to proceed with
-the sign in to "<%= @account.name %>":
+Copy and paste the following token in to the Sign In form
 
 <%= @secret %>
 
-or click on the magic sign-in if you are on the same device where you are trying to sign in:
+or click on the following link if you are on the same device where you are trying to sign in:
 
 <%= @sign_in_url %>
 
@@ -16,7 +15,8 @@ and discard this email. However, if you continue to receive multiple unsolicited
 we strongly recommend contacting your system administrator to report the issue.
 
 Request details:
+  Account: <%= @account.name %>
+  Account ID: <%= @account.id %>
   Time: <%= @sign_in_token_created_at %>
   IP address: <%= @remote_ip %>
   User Agent: <%= @user_agent %>
-  Account ID: <%= @account.id %>
