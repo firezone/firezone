@@ -7,11 +7,14 @@ use libc::{
     socklen_t, AF_INET, AF_INET6, AF_SYSTEM, CTLIOCGINFO, F_GETFL, F_SETFL, IF_NAMESIZE,
     O_NONBLOCK, SYSPROTO_CONTROL, UTUN_OPT_IFNAME,
 };
+use std::task::{ready, Context, Poll};
 use std::{
     io,
     mem::size_of,
     os::fd::{AsRawFd, RawFd},
 };
+use tokio::io::unix::AsyncFd;
+use tokio::io::Ready;
 
 /// `libc` for darwin doesn't define this constant so we declare it here.
 pub(crate) const SIOCGIFMTU: u64 = 0x0000_0000_c020_6933;
@@ -20,13 +23,7 @@ const CTL_NAME: &[u8] = b"com.apple.net.utun_control";
 #[derive(Debug)]
 pub(crate) struct Tun {
     name: String,
-    fd: RawFd,
-}
-
-impl AsRawFd for Tun {
-    fn as_raw_fd(&self) -> RawFd {
-        self.fd
-    }
+    fd: AsyncFd<RawFd>,
 }
 
 impl Tun {
@@ -38,34 +35,20 @@ impl Tun {
         self.write(src, AF_INET6 as u8)
     }
 
-    pub fn read(&self, dst: &mut [u8]) -> std::io::Result<usize> {
-        let mut hdr = [0u8; 4];
+    pub fn poll_read(&self, buf: &mut [u8], cx: &mut Context<'_>) -> Poll<io::Result<usize>> {
+        loop {
+            let mut guard = ready!(self.fd.poll_read_ready(cx))?;
 
-        let mut iov = [
-            iovec {
-                iov_base: hdr.as_mut_ptr() as _,
-                iov_len: hdr.len(),
-            },
-            iovec {
-                iov_base: dst.as_mut_ptr() as _,
-                iov_len: dst.len(),
-            },
-        ];
-
-        let mut msg_hdr = msghdr {
-            msg_name: std::ptr::null_mut(),
-            msg_namelen: 0,
-            msg_iov: &mut iov[0],
-            msg_iovlen: iov.len() as _,
-            msg_control: std::ptr::null_mut(),
-            msg_controllen: 0,
-            msg_flags: 0,
-        };
-
-        match unsafe { recvmsg(self.fd, &mut msg_hdr, 0) } {
-            -1 => Err(io::Error::last_os_error()),
-            0..=4 => Ok(0),
-            n => Ok((n - 4) as usize),
+            match read(guard.get_inner().as_raw_fd(), buf) {
+                Ok(n) => return Poll::Ready(Ok(n)),
+                Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
+                    // a read has blocked, but a write might still succeed.
+                    // clear only the read readiness.
+                    guard.clear_ready_matching(Ready::READABLE);
+                    continue;
+                }
+                Err(e) => return Poll::Ready(Err(e)),
+            }
         }
     }
 
@@ -92,7 +75,7 @@ impl Tun {
             msg_flags: 0,
         };
 
-        match unsafe { sendmsg(self.fd, &msg_hdr, 0) } {
+        match unsafe { sendmsg(self.fd.as_raw_fd(), &msg_hdr, 0) } {
             -1 => Err(io::Error::last_os_error()),
             n => Ok(n as usize),
         }
@@ -171,7 +154,7 @@ impl Tun {
 
                 return Ok(Self {
                     name: name(fd)?,
-                    fd,
+                    fd: AsyncFd::new(fd)?,
                 });
             }
         }
@@ -209,6 +192,38 @@ fn set_non_blocking(fd: RawFd) -> Result<()> {
             -1 => Err(get_last_error()),
             _ => Ok(()),
         },
+    }
+}
+
+fn read(fd: RawFd, dst: &mut [u8]) -> std::io::Result<usize> {
+    let mut hdr = [0u8; 4];
+
+    let mut iov = [
+        iovec {
+            iov_base: hdr.as_mut_ptr() as _,
+            iov_len: hdr.len(),
+        },
+        iovec {
+            iov_base: dst.as_mut_ptr() as _,
+            iov_len: dst.len(),
+        },
+    ];
+
+    let mut msg_hdr = msghdr {
+        msg_name: std::ptr::null_mut(),
+        msg_namelen: 0,
+        msg_iov: &mut iov[0],
+        msg_iovlen: iov.len() as _,
+        msg_control: std::ptr::null_mut(),
+        msg_controllen: 0,
+        msg_flags: 0,
+    };
+
+    // Safety: Within this module, the file descriptor is always valid.
+    match unsafe { recvmsg(fd, &mut msg_hdr, 0) } {
+        -1 => Err(io::Error::last_os_error()),
+        0..=4 => Ok(0),
+        n => Ok((n - 4) as usize),
     }
 }
 
