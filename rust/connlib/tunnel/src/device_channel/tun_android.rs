@@ -24,17 +24,17 @@ pub(crate) struct Tun {
 
 impl Drop for Tun {
     fn drop(&mut self) {
-        unsafe { libc::close(self.fd.value.as_raw_fd()) };
+        unsafe { libc::close(self.fd.fd.as_raw_fd()) };
     }
 }
 
 impl Tun {
     pub fn write4(&self, src: &[u8]) -> std::io::Result<usize> {
-        self.fd.with(|fd| write(fd, src))?
+        self.fd.with(|fd| write(*fd.get_ref(), src))?
     }
 
     pub fn write6(&self, src: &[u8]) -> std::io::Result<usize> {
-        self.fd.with(|fd| write(fd, src))?
+        self.fd.with(|fd| write(*fd.get_ref(), src))?
     }
 
     pub fn poll_read(&self, buf: &mut [u8], cx: &mut Context<'_>) -> Poll<io::Result<usize>> {
@@ -132,7 +132,7 @@ fn read(fd: RawFd, dst: &mut [u8]) -> io::Result<usize> {
 }
 
 /// Write the buffer to the given file descriptor.
-fn write(fd: impl AsRawFd, buf: &[u8]) -> io::Result<usize> {
+fn write(fd: RawFd, buf: &[u8]) -> io::Result<usize> {
     // Safety: Within this module, the file descriptor is always valid.
     match unsafe { libc::write(fd.as_raw_fd(), buf.as_ptr() as _, buf.len() as _) } {
         -1 => Err(io::Error::last_os_error()),
@@ -143,23 +143,23 @@ fn write(fd: impl AsRawFd, buf: &[u8]) -> io::Result<usize> {
 #[derive(Debug)]
 struct Closeable {
     closed: AtomicBool,
-    value: AsyncFd<RawFd>,
+    fd: AsyncFd<RawFd>,
 }
 
 impl Closeable {
     fn new(fd: AsyncFd<RawFd>) -> Self {
         Self {
             closed: AtomicBool::new(false),
-            value: fd,
+            fd: fd,
         }
     }
 
-    fn with<U>(&self, f: impl FnOnce(AsyncFd<RawFd>) -> U) -> std::io::Result<U> {
+    fn with<U>(&self, f: impl FnOnce(&AsyncFd<RawFd>) -> U) -> std::io::Result<U> {
         if self.closed.load(Ordering::Acquire) {
             return Err(std::io::Error::from_raw_os_error(9));
         }
 
-        Ok(f(self.value))
+        Ok(f(&self.fd))
     }
 
     fn close(&self) {
