@@ -71,23 +71,17 @@ impl Tun {
             fd => fd,
         };
 
+        let request = ioctl::Request::<GetInterfaceIndexRequestPayload>::new();
+
         // Safety: We just opened the file descriptor.
         unsafe {
             ioctl::exec(fd, TUNSETIFF, &ioctl::Request::<SetTunFlagsPayload>::new())?;
+            ioctl::exec(fd, libc::SIOCGIFINDEX, &request)?;
         }
 
         let (connection, handle, _) = new_connection()?;
         let join_handle = tokio::spawn(connection);
-        let interface_index = handle
-            .link()
-            .get()
-            .match_name(IFACE_NAME.to_string())
-            .execute()
-            .try_next()
-            .await?
-            .ok_or(Error::NoIface)?
-            .header
-            .index;
+        let interface_index = request.index();
 
         set_non_blocking(fd)?;
 
@@ -225,4 +219,29 @@ impl ioctl::Request<SetTunFlagsPayload> {
 #[repr(C)]
 struct SetTunFlagsPayload {
     flags: std::ffi::c_short,
+}
+
+impl ioctl::Request<GetInterfaceIndexRequestPayload> {
+    fn new() -> Self {
+        let name_as_bytes = IFACE_NAME.as_bytes();
+        debug_assert!(name_as_bytes.len() < libc::IF_NAMESIZE);
+
+        let mut name = [0u8; libc::IF_NAMESIZE];
+        name[..name_as_bytes.len()].copy_from_slice(name_as_bytes);
+
+        Self {
+            name,
+            payload: GetInterfaceIndexRequestPayload::default(),
+        }
+    }
+
+    fn index(&self) -> u32 {
+        self.payload.index as _
+    }
+}
+
+#[derive(Default)]
+#[repr(C)]
+struct GetInterfaceIndexRequestPayload {
+    index: std::ffi::c_uint,
 }
