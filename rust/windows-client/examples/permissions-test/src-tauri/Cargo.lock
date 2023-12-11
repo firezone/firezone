@@ -3513,6 +3513,7 @@ dependencies = [
  "tauri",
  "tauri-build",
  "tokio",
+ "uuid",
  "wintun",
 ]
 

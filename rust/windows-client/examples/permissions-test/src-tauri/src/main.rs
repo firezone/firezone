@@ -3,7 +3,10 @@
 
 use Result as StdResult;
 use anyhow::Result as Result;
-use std::sync::Arc;
+use std::{
+    str::FromStr,
+    sync::Arc,
+};
 use tokio::sync::mpsc;
 
 #[tauri::command]
@@ -55,22 +58,19 @@ struct Controller {
     tunnel: Option<Tunnel>,
 }
 
+const TUNNEL_UUID: &str = "ab722ec1-9a87-4d8c-a976-e22ed7b8f6a9";
+
 impl Controller {
     fn start_tunnel (&mut self) -> Result <()> {
         self.stop_tunnel()?;
 
-        // Try to open an adapter with the name "Demo"
-        let adapter = match wintun::Adapter::open(&self.wintun_lib, "Demo") {
-            Ok(a) => a,
-            Err(_) => {
-                //If loading failed (most likely it didn't exist), create a new one
-                match wintun::Adapter::create(&self.wintun_lib, "Demo", "Example manor hatch stash", None) {
-                    Ok(x) => x,
-                    Err(e) => {
-                        eprintln!("Adapter::create failed, probably need admin privileges");
-                        return Err(e.into());
-                    }
-                }
+        let uuid = uuid::Uuid::from_str(TUNNEL_UUID)?;
+
+        let adapter = match wintun::Adapter::create(&self.wintun_lib, "Firezone", "Example manor hatch stash", Some(uuid.as_u128())) {
+            Ok(x) => x,
+            Err(e) => {
+                eprintln!("Adapter::create failed, probably need admin privileges");
+                return Err(e.into());
             }
         };
 
