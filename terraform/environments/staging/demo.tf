@@ -51,6 +51,7 @@ resource "google_compute_instance" "demo" {
   }
 
   # We can install any tools we need for the demo in the startup script
+  # TODO: enable IPv6 for the demo VM
   metadata_startup_script = <<EOT
   set -xe \
     && sudo apt update -y \
