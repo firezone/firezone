@@ -1,7 +1,8 @@
-fn main() {
+fn main() -> anyhow::Result<()> {
     let win = tauri_build::WindowsAttributes::new().app_manifest(WINDOWS_MANIFEST);
     let attr = tauri_build::Attributes::new().windows_attributes(win);
-    tauri_build::try_build(attr).expect("build.rs");
+    tauri_build::try_build(attr)?;
+    Ok(())
 }
 
 // If we ask for admin privilege in the manifest, we can't run in the CLI,
