@@ -215,7 +215,7 @@ defmodule Web.CoreComponents do
 
   def header(assigns) do
     ~H"""
-    <div class="py-6 px-4 grid grid-cols-1 xl:grid-cols-3 xl:gap-4">
+    <div class="py-6 px-1 grid grid-cols-1 xl:grid-cols-3 xl:gap-4">
       <div class="col-span-full">
         <div class="flex justify-between items-center">
           <h2 class="text-2xl font-bold leading-none tracking-tight text-neutral-900">
