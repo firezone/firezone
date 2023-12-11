@@ -41,7 +41,7 @@ defmodule Web.Live.Sites.NewTokenTest do
 
     assert_receive %Phoenix.Socket.Broadcast{topic: "gateway_groups:" <> _group_id}
 
-    assert element(lv, "#deployment-instructions")
+    assert element(lv, "#connection-status")
            |> render() =~ "Connected, click to continue"
   end
 end

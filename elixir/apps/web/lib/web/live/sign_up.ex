@@ -164,7 +164,7 @@ defmodule Web.SignUp do
             name="email[provider_identifier]"
             value={@identity.provider_identifier}
           />
-          <.submit_button class="w-full">
+          <.submit_button>
             Sign In
           </.submit_button>
         </.form>

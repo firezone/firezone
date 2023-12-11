@@ -113,7 +113,7 @@ defmodule Web.Settings.IdentityProviders.SAML.Components do
           />
           <p class="ml-8 text-sm text-neutral-500">
             <.link
-              class="text-accent-600 hover:underline"
+              class="text-accent-500 hover:underline"
               href="https://www.firezone.dev/kb/authenticate/user-group-sync?utm_source=product"
               target="_blank"
             >
@@ -159,7 +159,7 @@ defmodule Web.Settings.IdentityProviders.SAML.Components do
                 <button
                   phx-click={JS.dispatch("phx:copy", to: "#endpoint-value")}
                   title="Copy Endpoint"
-                  class="text-accent-600"
+                  class="text-accent-500"
                 >
                   <.icon name="hero-document-duplicate" class="w-5 h-5 mr-1" />
                 </button>
@@ -181,14 +181,14 @@ defmodule Web.Settings.IdentityProviders.SAML.Components do
                 <button
                   phx-click={JS.dispatch("phx:copy", to: "#visible-token")}
                   title="Copy SCIM token"
-                  class="text-accent-600"
+                  class="text-accent-500"
                 >
                   <.icon name="hero-document-duplicate" class="w-5 h-5 mr-1" />
                 </button>
                 <button
                   phx-click={toggle_scim_token()}
                   title="Show SCIM token"
-                  class="text-accent-600"
+                  class="text-accent-500"
                 >
                   <.icon name="hero-eye" class="w-5 h-5 mr-1" />
                 </button>

@@ -152,7 +152,7 @@ defmodule Web.SignIn.Email do
       />
       <span>
         Did not receive it?
-        <button type="submit" class="inline font-medium text-accent-600 hover:underline">
+        <button type="submit" class="inline font-medium text-accent-500 hover:underline">
           Resend email
         </button>
       </span>

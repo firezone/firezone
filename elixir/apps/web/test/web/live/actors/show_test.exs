@@ -338,7 +338,7 @@ defmodule Web.Live.Actors.ShowTest do
         |> live(~p"/#{account}/actors/#{actor}")
 
       lv
-      |> element("a", "Create Identity")
+      |> element("a", "Add Identity")
       |> render_click()
 
       assert_redirect(lv, ~p"/#{account}/actors/users/#{actor}/new_identity")
@@ -351,7 +351,7 @@ defmodule Web.Live.Actors.ShowTest do
         |> live(~p"/#{account}/actors/#{actor}")
 
       lv
-      |> element("a", "Create Identity")
+      |> element("a", "Add Identity")
       |> render_click()
 
       assert_redirect(lv, ~p"/#{account}/actors/users/#{actor}/new_identity")

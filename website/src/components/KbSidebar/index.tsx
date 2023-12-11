@@ -104,9 +104,12 @@ export default function KbSidebar() {
                 />
               </li>
               <li>
+                <Item href="/kb/administer/logs" label="Viewing logs" />
+              </li>
+              <li>
                 <Item
-                  href="/kb/administer/logs"
-                  label="Logs and troubleshooting"
+                  href="/kb/administer/troubleshooting"
+                  label="Troubleshooting"
                 />
               </li>
             </Collapse>

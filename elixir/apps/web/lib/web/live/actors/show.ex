@@ -104,7 +104,7 @@ defmodule Web.Actors.Show do
           :if={@actor.type != :service_account}
           navigate={~p"/#{@account}/actors/users/#{@actor}/new_identity"}
         >
-          Create Identity
+          Add Identity
         </.add_button>
       </:action>
 
@@ -228,35 +228,35 @@ defmodule Web.Actors.Show do
 
     <.danger_zone :if={is_nil(@actor.deleted_at)}>
       <:action>
-        <.delete_button
-          :if={not Actors.actor_synced?(@actor)}
-          phx-click="delete"
-          data-confirm="Are you sure want to delete this actor and all it's identities?"
+        <.button
+          :if={not Actors.actor_disabled?(@actor)}
+          style="warning"
+          icon="hero-lock-closed"
+          phx-click="disable"
+          data-confirm={"Are you sure want to disable this #{actor_type(@actor.type)}?"}
         >
-          Delete <%= actor_type(@actor.type) %>
-        </.delete_button>
+          Disable <%= actor_type(@actor.type) %>
+        </.button>
       </:action>
       <:action>
         <.button
           :if={Actors.actor_disabled?(@actor)}
-          style="danger"
+          style="warning"
           icon="hero-lock-open"
           phx-click="enable"
-          data-confirm="Are you sure want to enable this actor?"
+          data-confirm={"Are you sure want to enable this #{actor_type(@actor.type)}?"}
         >
           Enable <%= actor_type(@actor.type) %>
         </.button>
       </:action>
       <:action>
-        <.button
-          :if={not Actors.actor_disabled?(@actor)}
-          style="danger"
-          icon="hero-lock-closed"
-          phx-click="disable"
-          data-confirm="Are you sure want to disable this actor?"
+        <.delete_button
+          :if={not Actors.actor_synced?(@actor)}
+          phx-click="delete"
+          data-confirm={"Are you sure want to delete this #{actor_type(@actor.type)} and all associated identities?"}
         >
-          Disable <%= actor_type(@actor.type) %>
-        </.button>
+          Delete <%= actor_type(@actor.type) %>
+        </.delete_button>
       </:action>
       <:content></:content>
     </.danger_zone>

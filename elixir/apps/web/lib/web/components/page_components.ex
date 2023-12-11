@@ -14,7 +14,7 @@ defmodule Web.PageComponents do
 
   def section(assigns) do
     ~H"""
-    <div class="bg-white overflow-hidden border-solid border-neutral-200 border-t">
+    <div class="mb-12 bg-white overflow-hidden shadow mx-5 rounded border px-6 pb-6">
       <.header>
         <:title>
           <%= render_slot(@title) %>
@@ -27,7 +27,7 @@ defmodule Web.PageComponents do
         </:actions>
       </.header>
 
-      <p :for={help <- @help} class="px-4 pb-3">
+      <p :for={help <- @help} class="px-1 pb-3">
         <%= render_slot(help) %>
       </p>
 
@@ -66,7 +66,7 @@ defmodule Web.PageComponents do
 
   def link_style do
     [
-      "text-accent-600",
+      "text-accent-500",
       "hover:underline"
     ]
   end
