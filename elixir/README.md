@@ -347,6 +347,31 @@ iex(web@web-xxxx.us-east1-d.c.firezone-staging.internal)3> Domain.Relays.encode_
 ...
 ```
 
+## Connection to production Cloud SQL instance
+
+Install
+[`cloud-sql-proxy`](https://cloud.google.com/sql/docs/postgres/connect-instance-auth-proxy)
+(eg. `brew install cloud-sql-proxy`) and run:
+
+```bash
+cloud-sql-proxy --auto-iam-authn "firezone-prod:us-east1:firezone-prod?address=0.0.0.0&port=9000"
+```
+
+Then you can connect to the PostgreSQL using `psql`:
+
+```bash
+# Use your work email as username to connect
+PG_USER=$(gcloud auth list --filter=status:ACTIVE --format="value(account)" | head -n 1)
+psql "host=localhost port=9000 sslmode=disable dbname=firezone user=${PG_USER}"
+```
+
+If you have issues with credentials try refreshing the application default
+token:
+
+```bash
+gcloud auth application-default login
+```
+
 ## Viewing logs
 
 Logs can be viewed via th [Logs Explorer](https://console.cloud.google.com/logs)
