@@ -14,16 +14,6 @@ jobs:
             runs-on: macos-13
             platform: macOS
             destination: platform=macOS
-            xcode: "14.3"
-          - sdk: iphoneos
-            runs-on: macos-13
-            platform: iOS
-            destination: generic/platform=iOS
-            xcode: "14.3"
-          - sdk: macosx
-            runs-on: macos-13
-            platform: macOS
-            destination: platform=macOS
             xcode: "15.0"
           - sdk: iphoneos
             runs-on: macos-13
