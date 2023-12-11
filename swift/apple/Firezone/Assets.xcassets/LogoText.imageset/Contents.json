@@ -1,7 +1,7 @@
 {
   "images" : [
     {
-      "filename" : "logo-text.svg",
+      "filename" : "logo-text-any.svg",
       "idiom" : "universal",
       "scale" : "1x"
     },
@@ -12,7 +12,7 @@
           "value" : "light"
         }
       ],
-      "filename" : "logo-text 1.svg",
+      "filename" : "logo-text-light.svg",
       "idiom" : "universal",
       "scale" : "1x"
     },
