@@ -35,18 +35,18 @@ pub struct Device {
 
 impl Device {
     #[cfg(target_family = "unix")]
-    pub(crate) async fn new(
+    pub(crate) fn new(
         config: &Interface,
         callbacks: &impl Callbacks<Error = Error>,
     ) -> Result<Device, ConnlibError> {
-        let tun = Tun::new(config, callbacks).await?;
+        let tun = Tun::new(config, callbacks)?;
         let mtu = AtomicUsize::new(ioctl::interface_mtu_by_name(tun.name())?);
 
         Ok(Device { mtu, tun })
     }
 
     #[cfg(target_family = "windows")]
-    pub(crate) async fn new(
+    pub(crate) fn new(
         _: &Interface,
         _: &impl Callbacks<Error = Error>,
     ) -> Result<Device, ConnlibError> {
@@ -89,12 +89,12 @@ impl Device {
     }
 
     #[cfg(target_family = "unix")]
-    pub(crate) async fn add_route(
+    pub(crate) fn add_route(
         &self,
         route: IpNetwork,
         callbacks: &impl Callbacks<Error = Error>,
     ) -> Result<Option<Device>, Error> {
-        let Some(tun) = self.tun.add_route(route, callbacks).await? else {
+        let Some(tun) = self.tun.add_route(route, callbacks)? else {
             return Ok(None);
         };
         let mtu = AtomicUsize::new(ioctl::interface_mtu_by_name(tun.name())?);
@@ -103,7 +103,7 @@ impl Device {
     }
 
     #[cfg(target_family = "windows")]
-    pub(crate) async fn add_route(
+    pub(crate) fn add_route(
         &self,
         _: IpNetwork,
         _: &impl Callbacks<Error = Error>,

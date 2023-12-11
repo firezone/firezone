@@ -145,15 +145,11 @@ where
         tracing::trace!(?peer_config.ips, "new_data_channel_open");
         let device = self.device.load().clone().ok_or(Error::NoIface)?;
         let callbacks = self.callbacks.clone();
-        let ips = peer_config.ips.clone();
-        // Worst thing if this is not run before peers_by_ip is that some packets are lost to the default route
-        tokio::spawn(async move {
-            for ip in ips {
-                if let Ok(res) = device.add_route(ip, &callbacks).await {
-                    assert!(res.is_none(),  "gateway does not run on android and thus never produces a new device upon `add_route`");
-                }
+        for ip in &peer_config.ips {
+            if let Ok(res) = device.add_route(*ip, &callbacks) {
+                assert!(res.is_none(),  "gateway does not run on android and thus never produces a new device upon `add_route`");
             }
-        });
+        }
 
         let peer = Arc::new(Peer::new(
             self.private_key.clone(),

@@ -65,7 +65,6 @@ async fn run(
 
     tunnel
         .set_interface(&init.interface)
-        .await
         .context("Failed to set interface")?;
 
     let mut eventloop = Eventloop::new(tunnel, portal);

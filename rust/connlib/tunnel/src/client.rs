@@ -38,14 +38,14 @@ where
     /// Once added, when a packet for the resource is intercepted a new data channel will be created
     /// and packets will be wrapped with wireguard and sent through it.
     #[tracing::instrument(level = "trace", skip(self))]
-    pub async fn add_resource(
+    pub fn add_resource(
         &self,
         resource_description: ResourceDescription,
     ) -> connlib_shared::Result<()> {
         let mut any_valid_route = false;
         {
             for ip in resource_description.ips() {
-                if let Err(e) = self.add_route(ip).await {
+                if let Err(e) = self.add_route(ip) {
                     tracing::warn!(route = %ip, error = ?e, "add_route");
                     let _ = self.callbacks().on_error(&e);
                 } else {
@@ -87,13 +87,13 @@ where
 
     /// Sets the interface configuration and starts background tasks.
     #[tracing::instrument(level = "trace", skip(self))]
-    pub async fn set_interface(&self, config: &InterfaceConfig) -> connlib_shared::Result<()> {
-        let device = Arc::new(Device::new(config, self.callbacks()).await?);
+    pub fn set_interface(&self, config: &InterfaceConfig) -> connlib_shared::Result<()> {
+        let device = Arc::new(Device::new(config, self.callbacks())?);
 
         self.device.store(Some(device.clone()));
         self.no_device_waker.wake();
 
-        self.add_route(DNS_SENTINEL.into()).await?;
+        self.add_route(DNS_SENTINEL.into())?;
 
         self.callbacks.on_tunnel_ready()?;
 
@@ -110,14 +110,13 @@ where
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn add_route(&self, route: IpNetwork) -> connlib_shared::Result<()> {
+    fn add_route(&self, route: IpNetwork) -> connlib_shared::Result<()> {
         let maybe_new_device = self
             .device
             .load()
             .as_ref()
             .ok_or(Error::ControlProtocolError)?
-            .add_route(route, self.callbacks())
-            .await?;
+            .add_route(route, self.callbacks())?;
 
         if let Some(new_device) = maybe_new_device {
             self.device.swap(Some(Arc::new(new_device)));

@@ -17,8 +17,8 @@ where
 {
     /// Sets the interface configuration and starts background tasks.
     #[tracing::instrument(level = "trace", skip(self))]
-    pub async fn set_interface(&self, config: &InterfaceConfig) -> connlib_shared::Result<()> {
-        let device = Arc::new(Device::new(config, self.callbacks()).await?);
+    pub fn set_interface(&self, config: &InterfaceConfig) -> connlib_shared::Result<()> {
+        let device = Arc::new(Device::new(config, self.callbacks())?);
 
         self.device.store(Some(device.clone()));
         self.no_device_waker.wake();

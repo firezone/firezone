@@ -86,7 +86,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
         {
             let mut init = self.tunnel_init.lock().await;
             if !*init {
-                if let Err(e) = self.tunnel.set_interface(&interface).await {
+                if let Err(e) = self.tunnel.set_interface(&interface) {
                     tracing::error!(error = ?e, "Error initializing interface");
                     return Err(e);
                 } else {
@@ -101,7 +101,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
         }
 
         for resource_description in resources {
-            self.add_resource(resource_description).await;
+            self.add_resource(resource_description);
         }
         Ok(())
     }
@@ -126,8 +126,8 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    pub async fn add_resource(&self, resource_description: ResourceDescription) {
-        if let Err(e) = self.tunnel.add_resource(resource_description).await {
+    pub fn add_resource(&self, resource_description: ResourceDescription) {
+        if let Err(e) = self.tunnel.add_resource(resource_description) {
             tracing::error!(message = "Can't add resource", error = ?e);
             let _ = self.tunnel.callbacks().on_error(&e);
         }
@@ -225,7 +225,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                 self.connection_details(connection_details, reference)
             }
             Messages::Connect(connect) => self.connect(connect),
-            Messages::ResourceAdded(resource) => self.add_resource(resource).await,
+            Messages::ResourceAdded(resource) => self.add_resource(resource),
             Messages::ResourceRemoved(resource) => self.remove_resource(resource.id),
             Messages::ResourceUpdated(resource) => self.update_resource(resource),
             Messages::IceCandidates(ice_candidate) => self.add_ice_candidate(ice_candidate).await,
