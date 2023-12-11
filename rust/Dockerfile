@@ -1,5 +1,5 @@
 # Global args to use in build commands
-ARG ALPINE_VERSION="3.18"
+ARG ALPINE_VERSION="3.19"
 ARG CARGO_CHEF_VERSION="0.1.62"
 
 # This image is used to prepare Cargo Chef which is used to cache dependencies
