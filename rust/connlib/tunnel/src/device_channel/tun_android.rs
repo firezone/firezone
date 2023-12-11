@@ -99,10 +99,6 @@ impl Tun {
             name,
         }))
     }
-
-    pub async fn up(&self) -> Result<()> {
-        Ok(())
-    }
 }
 
 /// Retrieves the name of the interface pointed to by the provided file descriptor.

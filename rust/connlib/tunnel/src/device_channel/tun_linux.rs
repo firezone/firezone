@@ -87,6 +87,8 @@ impl Tun {
 
         set_iface_config(config, handle.clone(), interface_index).await?;
 
+        handle.link().set(interface_index).up().execute().await?;
+
         Ok(Self {
             handle,
             connection: join_handle,
@@ -123,16 +125,6 @@ impl Tun {
             Err(NetlinkError(err)) if err.raw_code() == FILE_ALREADY_EXISTS => Ok(None),
             Err(err) => Err(err.into()),
         }
-    }
-
-    pub async fn up(&self) -> Result<()> {
-        self.handle
-            .link()
-            .set(self.interface_index)
-            .up()
-            .execute()
-            .await?;
-        Ok(())
     }
 
     pub fn name(&self) -> &str {

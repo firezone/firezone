@@ -40,7 +40,6 @@ impl Device {
         callbacks: &impl Callbacks<Error = Error>,
     ) -> Result<Device, ConnlibError> {
         let tun = Tun::new(config, callbacks).await?;
-        tun.up().await?;
         let mtu = AtomicUsize::new(ioctl::interface_mtu_by_name(tun.name())?);
 
         Ok(Device { mtu, tun })
