@@ -297,6 +297,17 @@ resource "google_sql_database" "firezone" {
 
 }
 
+resource "google_sql_user" "iam_users" {
+  for_each = toset(local.project_owners)
+
+  project  = module.google-cloud-project.project.project_id
+  instance = module.google-cloud-sql.master_instance_name
+
+  type = "CLOUD_IAM_USER"
+  name = each.value
+}
+
+
 # Create bucket for client logs
 resource "google_storage_bucket" "client-logs" {
   project = module.google-cloud-project.project.project_id

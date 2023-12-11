@@ -233,6 +233,16 @@ resource "random_password" "web_db_password" {
   }
 }
 
+resource "google_sql_user" "iam_users" {
+  for_each = local.project_owners
+
+  project  = module.google-cloud-project.project.project_id
+  instance = module.google-cloud-sql.master_instance_name
+
+  type = "CLOUD_IAM_USER"
+  name = each.value
+}
+
 # TODO: raname it to "firezone"
 resource "google_sql_user" "web" {
   project = module.google-cloud-project.project.project_id
