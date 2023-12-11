@@ -1,5 +1,5 @@
 use crate::bounded_queue::BoundedQueue;
-use crate::device_channel::{create_iface, Packet};
+use crate::device_channel::{Device, Packet};
 use crate::ip_packet::{IpPacket, MutableIpPacket};
 use crate::resource_table::ResourceTable;
 use crate::{
@@ -88,7 +88,7 @@ where
     /// Sets the interface configuration and starts background tasks.
     #[tracing::instrument(level = "trace", skip(self))]
     pub async fn set_interface(&self, config: &InterfaceConfig) -> connlib_shared::Result<()> {
-        let device = Arc::new(create_iface(config, self.callbacks()).await?);
+        let device = Arc::new(Device::new(config, self.callbacks()).await?);
 
         self.device.store(Some(device.clone()));
         self.no_device_waker.wake();
