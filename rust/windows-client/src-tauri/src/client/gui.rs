@@ -35,12 +35,11 @@ pub(crate) struct Managed {
 
 /// Runs the Tauri GUI and returns on exit or unrecoverable error
 pub(crate) fn run(params: client::GuiParams) -> Result<()> {
-    let client::GuiParams {
-        deep_link,
-        inject_faults,
-    } = params;
+    let client::GuiParams { inject_faults } = params;
 
     // Make sure we're single-instance
+    // If another instance is already running, this call
+    // signals the other instance and then exits our process.
     tauri_plugin_deep_link::prepare("dev.firezone");
 
     let rt = tokio::runtime::Runtime::new()?;
@@ -98,10 +97,6 @@ pub(crate) fn run(params: client::GuiParams) -> Result<()> {
             setup_global_subscriber(layer);
 
             let _ctlr_task = tokio::spawn(run_controller(app.handle(), ctlr_rx));
-
-            if let Some(_deep_link) = deep_link {
-                // TODO: Handle app links that we catch at startup here
-            }
 
             // From https://github.com/FabianLars/tauri-plugin-deep-link/blob/main/example/main.rs
             let handle = app.handle();

@@ -28,8 +28,6 @@ mod settings;
 /// Prevents a problem where changing the args to `gui::run` breaks static analysis on non-Windows targets, where the gui is stubbed out
 #[allow(dead_code)]
 pub(crate) struct GuiParams {
-    /// The URL of an incoming deep link from a web browser
-    deep_link: Option<String>,
     /// True if we should slow down I/O operations to test how the GUI handles slow I/O
     inject_faults: bool,
 }
@@ -41,10 +39,9 @@ pub(crate) struct AppLocalDataDir(std::path::PathBuf);
 pub(crate) fn run() -> Result<()> {
     // Special case for app link URIs
     if let Some(arg) = std::env::args().nth(1) {
-        let scheme = format!("{DEEP_LINK_SCHEME}://");
-        if arg.starts_with(&scheme) {
+        let url = url::Url::parse(&arg)?;
+        if url.scheme() == DEEP_LINK_SCHEME {
             return gui::run(GuiParams {
-                deep_link: Some(arg),
                 inject_faults: false,
             });
         }
@@ -54,7 +51,6 @@ pub(crate) fn run() -> Result<()> {
 
     match cli.command {
         None => gui::run(GuiParams {
-            deep_link: None,
             inject_faults: cli.inject_faults,
         }),
         Some(Cmd::Debug) => {
