@@ -1,4 +1,5 @@
 #![allow(clippy::module_inception)]
+#![cfg_attr(target_family = "windows", allow(dead_code))] // TODO: Remove when windows is fully implemented.
 
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 #[path = "device_channel/tun_darwin.rs"]
@@ -26,7 +27,7 @@ use ip_network::IpNetwork;
 use std::borrow::Cow;
 use std::io;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::task::{ready, Context, Poll};
+use std::task::{Context, Poll};
 use tun::Tun;
 
 pub struct Device {
@@ -51,7 +52,7 @@ impl Device {
     pub(crate) fn new(
         _: &Interface,
         _: &impl Callbacks<Error = Error>,
-        fallback_strategy: DnsFallbackStrategy,
+        _: DnsFallbackStrategy,
     ) -> Result<Device, ConnlibError> {
         Ok(Device {
             tun: Tun::new(),
@@ -65,7 +66,7 @@ impl Device {
         buf: &'b mut [u8],
         cx: &mut Context<'_>,
     ) -> Poll<io::Result<Option<MutableIpPacket<'b>>>> {
-        let n = ready!(self.tun.poll_read(&mut buf[..self.mtu()], cx))?;
+        let n = std::task::ready!(self.tun.poll_read(&mut buf[..self.mtu()], cx))?;
 
         if n == 0 {
             return Poll::Ready(Ok(None));
