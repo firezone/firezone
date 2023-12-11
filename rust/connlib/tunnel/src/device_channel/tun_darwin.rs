@@ -172,10 +172,6 @@ impl Tun {
         Ok(None)
     }
 
-    pub async fn up(&self) -> Result<()> {
-        Ok(())
-    }
-
     pub fn name(&self) -> &str {
         self.name.as_str()
     }
