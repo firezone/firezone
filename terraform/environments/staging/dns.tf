@@ -261,6 +261,31 @@ resource "google_dns_record_set" "sendgrid-domainkey2" {
   ttl     = 3600
 }
 
+# Mailgun
+
+resource "google_dns_record_set" "mailgun-dkim" {
+  project      = module.google-cloud-project.project.project_id
+  managed_zone = module.google-cloud-dns.zone_name
+
+  name = "kone._domainkey.${module.google-cloud-dns.dns_name}"
+  type = "TXT"
+  ttl  = 3600
+
+  rrdatas = [
+    "k=rsa; p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAwYyTkBcuzLi1l+bHezuxJlmmpSdabjHY67YxWG8chz7pd12IfbE7JDM4Qi+AYq6Wp6ZDqEukFHIMJjz2PceHuf/5sgJazWLwBWp6DN6J2/WXgs2vWBWYJ0Kpj6l+p2t8jNrPNNVZrkO7BT2AmJAV5c9bemXkY801XkATAvAzvHs7pMsvjVmALWhh9eQoflVjYZUBwSDWjItdflK4IlrU5+yM5xHRIshazUmWiM8b6lBzV7WKLrDir+Td8NdBAwkFnlxIuqePlfXqIA3190Mk03PqOjlqhuqjZVg441e4A2TwlSShOv9EWtwseKwO1uWiky5uKGo4mlNPU4aZAi/UFwIDAQAB"
+  ]
+}
+
+resource "google_dns_record_set" "mailgun-tracking" {
+  project      = module.google-cloud-project.project.project_id
+  managed_zone = module.google-cloud-dns.zone_name
+
+  type    = "CNAME"
+  name    = "email.${module.google-cloud-dns.dns_name}"
+  rrdatas = ["mailgun.org"]
+  ttl     = 3600
+}
+
 # Postmark
 
 resource "google_dns_record_set" "postmark-dkim" {
@@ -328,7 +353,7 @@ resource "google_dns_record_set" "google-spf" {
   ttl  = 3600
 
   rrdatas = [
-    "\"v=spf1 include:_spf.google.com ~all\""
+    "\"v=spf1 include:_spf.google.com include:mailgun.org ~all\""
   ]
 }
 
