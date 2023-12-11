@@ -116,7 +116,7 @@ jobs:
           - package: firezone-windows-client
             artifact: windows-client
     env:
-      BINARY_DEST_PATH: ${{ matrix.name.artifact }}
+      BINARY_DEST_PATH: windows-client
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-rust
@@ -126,27 +126,31 @@ jobs:
         run: |
           npm install -g @tauri-apps/cli
 
-          # Cargo install builds from source, it's slow, let's try to skip that
-          # cargo install tauri-cli
-
-          # Tauri build already defaults to '--release'
-          # cargo tauri build
-
           # NPM installs tauri-cli to somewhere in $PATH
           tauri build
 
           # Used for release artifact
-          cp target/release/${{ matrix.name.package }}.exe "${{ env.BINARY_DEST_PATH }}-x64.exe"
+          cp target/release/firezone-windows-client.exe "windows-client-x64.exe"
 
-          pwd
-          ls *.exe
+          # There's an MSI and NSIS installer too, but their names include the version so I'll try those later.
 
-          # There's an MSI and NSIS installer here but their names include the version so I'll try those later.
-      - name: Save build artifacts
+          cd windows-client/examples/permissions-test
+
+          # Hopefully sccache speeds this up.
+          tauri build
+
+          cp src-tauri/target/release/windows-permissions-test.exe "windows-permissions-test-x64.exe"
+
+      - name: Save Windows client
         uses: actions/upload-artifact@v3
         with:
-          name: ${{ matrix.name.artifact }}-x64.exe
-          path: ${{ github.workspace }}/rust/${{ env.BINARY_DEST_PATH }}-x64.exe
+          name: windows-client-x64.exe
+          path: ${{ github.workspace }}/rust/windows-client-x64.exe
+      - name: Save Windows permissions test
+        uses: actions/upload-artifact@v3
+        with:
+          name: windows-permissions-test-x64.exe
+          path: ${{ github.workspace }}/rust/windows-client/examples/permissions-test/windows-permissions-test-x64.exe
 
   smoke-test-relay:
     runs-on: ubuntu-22.04
