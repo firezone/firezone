@@ -351,6 +351,7 @@ resource "google_monitoring_alert_policy" "production_db_access_policy" {
     condition_matched_log {
       filter = <<-EOT
       protoPayload.methodName="cloudsql.instances.connect"
+      protoPayload.authenticationInfo.principalEmail!="terraform-cloud@terraform-iam-387817.iam.gserviceaccount.com"
       EOT
 
       label_extractors = {
