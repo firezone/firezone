@@ -1,14 +1,18 @@
 #![allow(clippy::module_inception)]
 
-#[cfg(target_family = "unix")]
-#[path = "device_channel/device_channel_unix.rs"]
-mod device_channel;
+#[cfg(any(target_os = "macos", target_os = "ios"))]
+#[path = "device_channel/tun_darwin.rs"]
+mod tun;
 
-#[cfg(target_family = "windows")]
-#[path = "device_channel/device_channel_win.rs"]
-mod device_channel;
+#[cfg(target_os = "linux")]
+#[path = "device_channel/tun_linux.rs"]
+mod tun;
 
-use crate::device_channel::device_channel::tun::IfaceDevice;
+// TODO: Android and linux are nearly identical; use a common tunnel module?
+#[cfg(target_os = "android")]
+#[path = "device_channel/tun_android.rs"]
+mod tun;
+
 use crate::ip_packet::MutableIpPacket;
 use connlib_shared::error::ConnlibError;
 use connlib_shared::messages::Interface;
@@ -18,13 +22,12 @@ use std::borrow::Cow;
 use std::io;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::task::{ready, Context, Poll};
-
-pub(crate) use device_channel::*;
+use tokio::io::Ready;
 
 pub struct Device {
     mtu: AtomicUsize,
-    iface: IfaceDevice,
-    io: DeviceIo,
+    #[cfg(target_family = "unix")]
+    tun: tokio::io::unix::AsyncFd<tun::Tun>,
 }
 
 impl Device {
@@ -33,34 +36,49 @@ impl Device {
         config: &Interface,
         callbacks: &impl Callbacks<Error = Error>,
     ) -> Result<Device, ConnlibError> {
-        let (iface, stream) = IfaceDevice::new(config, callbacks).await?;
-        iface.up().await?;
-        let io = DeviceIo(stream);
-        let mtu = AtomicUsize::new(ioctl::interface_mtu_by_name(iface.name())?);
+        let tun = tun::Tun::new(config, callbacks).await?;
+        tun.up().await?;
+        let mtu = AtomicUsize::new(ioctl::interface_mtu_by_name(tun.name())?);
 
-        Ok(Device { io, mtu, iface })
+        Ok(Device {
+            mtu,
+            tun: tokio::io::unix::AsyncFd::new(tun)?,
+        })
     }
 
     #[cfg(target_family = "windows")]
     pub(crate) async fn new(
-        config: &Interface,
-        callbacks: &impl Callbacks<Error = Error>,
+        _: &Interface,
+        _: &impl Callbacks<Error = Error>,
     ) -> Result<Device, ConnlibError> {
         todo!()
     }
 
+    #[cfg(target_family = "unix")]
     pub(crate) fn poll_read<'b>(
         &self,
         buf: &'b mut [u8],
         cx: &mut Context<'_>,
     ) -> Poll<io::Result<Option<MutableIpPacket<'b>>>> {
-        let res = ready!(self.io.poll_read(&mut buf[..self.mtu()], cx))?;
+        let mtu = self.mtu();
 
-        if res == 0 {
-            return Poll::Ready(Ok(None));
-        }
+        let n = loop {
+            let mut guard = ready!(self.tun.poll_read_ready(cx))?;
 
-        Poll::Ready(Ok(Some(MutableIpPacket::new(&mut buf[..res]).ok_or_else(
+            match guard.get_inner().read(&mut buf[..mtu]) {
+                Ok(0) => return Poll::Ready(Ok(None)),
+                Ok(n) => break n,
+                Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
+                    // a read has blocked, but a write might still succeed.
+                    // clear only the read readiness.
+                    guard.clear_ready_matching(Ready::READABLE);
+                    continue;
+                }
+                Err(e) => return Poll::Ready(Err(e)),
+            }
+        };
+
+        Poll::Ready(Ok(Some(MutableIpPacket::new(&mut buf[..n]).ok_or_else(
             || {
                 io::Error::new(
                     io::ErrorKind::InvalidInput,
@@ -68,6 +86,15 @@ impl Device {
                 )
             },
         )?)))
+    }
+
+    #[cfg(target_family = "windows")]
+    pub(crate) fn poll_read<'b>(
+        &self,
+        _: &'b mut [u8],
+        _: &mut Context<'_>,
+    ) -> Poll<io::Result<Option<MutableIpPacket<'b>>>> {
+        todo!()
     }
 
     pub(crate) fn mtu(&self) -> usize {
@@ -80,27 +107,29 @@ impl Device {
         route: IpNetwork,
         callbacks: &impl Callbacks<Error = Error>,
     ) -> Result<Option<Device>, Error> {
-        let Some((iface, stream)) = self.iface.add_route(route, callbacks).await? else {
+        let Some(tun) = self.as_tun().add_route(route, callbacks).await? else {
             return Ok(None);
         };
-        let io = DeviceIo(stream);
-        let mtu = AtomicUsize::new(ioctl::interface_mtu_by_name(iface.name())?);
+        let mtu = AtomicUsize::new(ioctl::interface_mtu_by_name(tun.name())?);
 
-        Ok(Some(Device { io, mtu, iface }))
+        Ok(Some(Device {
+            mtu,
+            tun: tokio::io::unix::AsyncFd::new(tun)?,
+        }))
     }
 
     #[cfg(target_family = "windows")]
     pub(crate) async fn add_route(
         &self,
-        route: IpNetwork,
-        callbacks: &impl Callbacks<Error = Error>,
+        _: IpNetwork,
+        _: &impl Callbacks<Error = Error>,
     ) -> Result<Option<Device>, Error> {
         todo!()
     }
 
     #[cfg(target_family = "unix")]
     pub(crate) fn refresh_mtu(&self) -> Result<usize, Error> {
-        let mtu = ioctl::interface_mtu_by_name(self.iface.name())?;
+        let mtu = ioctl::interface_mtu_by_name(self.as_tun().name())?;
         self.mtu.store(mtu, Ordering::Relaxed);
 
         Ok(mtu)
@@ -112,7 +141,15 @@ impl Device {
     }
 
     pub fn write(&self, packet: Packet<'_>) -> io::Result<usize> {
-        self.io.write(packet)
+        match packet {
+            Packet::Ipv4(msg) => self.as_tun().write4(&msg),
+            Packet::Ipv6(msg) => self.as_tun().write6(&msg),
+        }
+    }
+
+    #[cfg(target_family = "unix")]
+    fn as_tun(&self) -> &tun::Tun {
+        self.tun.get_ref()
     }
 }
 

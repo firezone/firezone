@@ -11,9 +11,7 @@ use rtnetlink::{new_connection, Error::NetlinkError, Handle};
 use std::{
     io,
     os::fd::{AsRawFd, RawFd},
-    sync::Arc,
 };
-use tokio::io::unix::AsyncFd;
 
 pub(crate) const SIOCGIFMTU: libc::c_ulong = libc::SIOCGIFMTU;
 
@@ -25,36 +23,29 @@ const DEFAULT_MTU: u32 = 1280;
 const FILE_ALREADY_EXISTS: i32 = -17;
 
 #[derive(Debug)]
-pub struct IfaceDevice {
+pub struct Tun {
     handle: Handle,
     connection: tokio::task::JoinHandle<()>,
     interface_index: u32,
+    fd: RawFd,
 }
 
-#[derive(Debug)]
-pub struct IfaceStream(RawFd);
-
-impl AsRawFd for IfaceStream {
+impl AsRawFd for Tun {
     fn as_raw_fd(&self) -> RawFd {
-        self.0
+        self.fd
     }
 }
 
-impl Drop for IfaceStream {
+impl Drop for Tun {
     fn drop(&mut self) {
-        unsafe { close(self.0) };
-    }
-}
-
-impl Drop for IfaceDevice {
-    fn drop(&mut self) {
+        unsafe { close(self.fd) };
         self.connection.abort();
     }
 }
 
-impl IfaceStream {
+impl Tun {
     fn write(&self, buf: &[u8]) -> std::io::Result<usize> {
-        match unsafe { write(self.0, buf.as_ptr() as _, buf.len() as _) } {
+        match unsafe { write(self.fd, buf.as_ptr() as _, buf.len() as _) } {
             -1 => Err(io::Error::last_os_error()),
             n => Ok(n as usize),
         }
@@ -69,18 +60,15 @@ impl IfaceStream {
     }
 
     pub fn read(&self, dst: &mut [u8]) -> std::io::Result<usize> {
-        match unsafe { read(self.0, dst.as_mut_ptr() as _, dst.len()) } {
+        match unsafe { read(self.fd, dst.as_mut_ptr() as _, dst.len()) } {
             -1 => Err(io::Error::last_os_error()),
             n => Ok(n as usize),
         }
     }
 }
 
-impl IfaceDevice {
-    pub async fn new(
-        config: &InterfaceConfig,
-        cb: &impl Callbacks,
-    ) -> Result<(Self, Arc<AsyncFd<IfaceStream>>)> {
+impl Tun {
+    pub async fn new(config: &InterfaceConfig, cb: &impl Callbacks) -> Result<Self> {
         let fd = match unsafe { open(TUN_FILE.as_ptr() as _, O_RDWR) } {
             -1 => return Err(get_last_error()),
             fd => fd,
@@ -110,18 +98,15 @@ impl IfaceDevice {
             handle,
             connection: join_handle,
             interface_index,
+            fd,
         };
 
         this.set_iface_config(config, cb).await?;
 
-        Ok((this, Arc::new(AsyncFd::new(IfaceStream(fd))?)))
+        Ok(this)
     }
 
-    pub async fn add_route(
-        &self,
-        route: IpNetwork,
-        _: &impl Callbacks,
-    ) -> Result<Option<(Self, Arc<AsyncFd<IfaceStream>>)>> {
+    pub async fn add_route(&self, route: IpNetwork, _: &impl Callbacks) -> Result<Option<Self>> {
         let req = self
             .handle
             .route()
