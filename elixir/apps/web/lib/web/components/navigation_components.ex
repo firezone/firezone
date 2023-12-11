@@ -272,7 +272,7 @@ defmodule Web.NavigationComponents do
         <.link
           :if={not is_nil(@path)}
           navigate={@path}
-          class="ml-1 text-sm font-medium text-neutral-700 hover:text-neutral-900 md:ml-2"
+          class="ml-1 font-medium text-neutral-700 hover:text-neutral-900 md:ml-2"
         >
           <%= render_slot(@inner_block) %>
         </.link>

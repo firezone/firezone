@@ -83,7 +83,7 @@ defmodule Web.Sites.Show do
       </:title>
       <:action :if={is_nil(@group.deleted_at)}>
         <.add_button navigate={~p"/#{@account}/sites/#{@group}/new_token"}>
-          Deploy
+          Deploy Gateway
         </.add_button>
       </:action>
       <:help :if={is_nil(@group.deleted_at)}>
@@ -139,9 +139,12 @@ defmodule Web.Sites.Show do
       </:title>
       <:action :if={is_nil(@group.deleted_at)}>
         <.add_button navigate={~p"/#{@account}/resources/new?site_id=#{@group}"}>
-          Create
+          Add Resource
         </.add_button>
       </:action>
+      <:help>
+        Resources are the endpoints that you want to make available to your clients.
+      </:help>
       <:content>
         <div class="relative overflow-x-auto">
           <.table
@@ -195,19 +198,6 @@ defmodule Web.Sites.Show do
               <div class="flex flex-col items-center justify-center text-center text-neutral-500 p-4">
                 <div class="pb-4">
                   No resources to display.
-                </div>
-                <div class="pb-4">
-                  <.add_button navigate={~p"/#{@account}/resources/new?site_id=#{@group}"}>
-                    Create a Resource
-                  </.add_button>
-                </div>
-                <div>
-                  <p>
-                    Resources are the endpoints that you want to make available to your clients.
-                  </p>
-                  <p>
-                    Access to them is controlled by Policies.
-                  </p>
                 </div>
               </div>
             </:empty>

@@ -34,7 +34,6 @@ defmodule Web.RelayGroups.New do
                 />
               </div>
             </div>
-
             <.submit_button>
               Save
             </.submit_button>
