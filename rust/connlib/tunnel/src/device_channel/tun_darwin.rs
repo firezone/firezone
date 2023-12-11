@@ -12,31 +12,25 @@ use std::{
     io,
     mem::size_of,
     os::fd::{AsRawFd, RawFd},
-    sync::Arc,
 };
-use tokio::io::unix::AsyncFd;
 
 const CTL_NAME: &[u8] = b"com.apple.net.utun_control";
 /// `libc` for darwin doesn't define this constant so we declare it here.
 pub(crate) const SIOCGIFMTU: u64 = 0x0000_0000_c020_6933;
 
 #[derive(Debug)]
-pub(crate) struct IfaceDevice {
+pub(crate) struct Tun {
     name: String,
-}
-
-#[derive(Debug)]
-pub(crate) struct IfaceStream {
     fd: RawFd,
 }
 
-impl AsRawFd for IfaceStream {
+impl AsRawFd for Tun {
     fn as_raw_fd(&self) -> RawFd {
         self.fd
     }
 }
 
-impl IfaceStream {
+impl Tun {
     pub fn write4(&self, src: &[u8]) -> std::io::Result<usize> {
         self.write(src, AF_INET as u8)
     }
@@ -104,14 +98,12 @@ impl IfaceStream {
             n => Ok(n as usize),
         }
     }
-}
 
-impl IfaceDevice {
     pub async fn new(
         config: &InterfaceConfig,
         callbacks: &impl Callbacks<Error = Error>,
         fallback_strategy: DnsFallbackStrategy,
-    ) -> Result<(Self, Arc<AsyncFd<IfaceStream>>)> {
+    ) -> Result<Self> {
         let mut info = ctl_info {
             ctl_id: 0,
             ctl_name: [0; 96],
@@ -177,10 +169,10 @@ impl IfaceDevice {
 
                 set_non_blocking(fd)?;
 
-                return Ok((
-                    Self { name: name(fd)? },
-                    Arc::new(AsyncFd::new(IfaceStream { fd })?),
-                ));
+                return Ok(Self {
+                    name: name(fd)?,
+                    fd,
+                });
             }
         }
 
@@ -191,7 +183,7 @@ impl IfaceDevice {
         &self,
         route: IpNetwork,
         callbacks: &impl Callbacks<Error = Error>,
-    ) -> Result<Option<(Self, Arc<AsyncFd<IfaceStream>>)>> {
+    ) -> Result<Option<Self>> {
         // This will always be None in macos
         callbacks.on_add_route(route)?;
         Ok(None)

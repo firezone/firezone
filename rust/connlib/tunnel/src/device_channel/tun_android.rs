@@ -1,4 +1,4 @@
-use crate::device_channel::device_channel::ioctl;
+use crate::device_channel::ioctl;
 use crate::DnsFallbackStrategy;
 use closeable::Closeable;
 use connlib_shared::{
@@ -21,27 +21,24 @@ mod closeable;
 pub(crate) const SIOCGIFMTU: libc::c_ulong = libc::SIOCGIFMTU;
 
 #[derive(Debug)]
-pub(crate) struct IfaceDevice(Arc<AsyncFd<IfaceStream>>);
-
-#[derive(Debug)]
-pub(crate) struct IfaceStream {
+pub(crate) struct Tun {
     fd: Closeable,
     name: String,
 }
 
-impl AsRawFd for IfaceStream {
+impl AsRawFd for Tun {
     fn as_raw_fd(&self) -> RawFd {
         self.fd.as_raw_fd()
     }
 }
 
-impl Drop for IfaceStream {
+impl Drop for Tun {
     fn drop(&mut self) {
         unsafe { close(self.fd.as_raw_fd()) };
     }
 }
 
-impl IfaceStream {
+impl Tun {
     fn write(&self, buf: &[u8]) -> std::io::Result<usize> {
         match self
             .fd
@@ -75,14 +72,12 @@ impl IfaceStream {
     pub fn close(&self) {
         self.fd.close();
     }
-}
 
-impl IfaceDevice {
     pub async fn new(
         config: &InterfaceConfig,
         callbacks: &impl Callbacks<Error = Error>,
         fallback_strategy: DnsFallbackStrategy,
-    ) -> Result<(Self, Arc<AsyncFd<IfaceStream>>)> {
+    ) -> Result<Self> {
         let fd = callbacks
             .on_set_interface_config(
                 config.ipv4,
@@ -94,35 +89,29 @@ impl IfaceDevice {
         // Safety: File descriptor is open.
         let name = unsafe { interface_name(fd)? };
 
-        let iface_stream = Arc::new(AsyncFd::new(IfaceStream {
+        Ok(Tun {
             fd: Closeable::new(fd.into()),
             name,
-        })?);
-        let this = Self(Arc::clone(&iface_stream));
-
-        Ok((this, iface_stream))
+        })
     }
 
     pub fn name(&self) -> &str {
-        self.0.get_ref().name.as_str()
+        self.name.as_str()
     }
 
     pub async fn add_route(
         &self,
         route: IpNetwork,
         callbacks: &impl Callbacks<Error = Error>,
-    ) -> Result<Option<(Self, Arc<AsyncFd<IfaceStream>>)>> {
-        self.0.get_ref().close();
+    ) -> Result<Option<Self>> {
+        self.fd.close();
         let fd = callbacks.on_add_route(route)?.ok_or(Error::NoFd)?;
         let name = unsafe { interface_name(fd)? };
 
-        let iface_stream = Arc::new(AsyncFd::new(IfaceStream {
+        Ok(Some(Tun {
             fd: Closeable::new(fd.into()),
             name,
-        })?);
-        let this = Self(Arc::clone(&iface_stream));
-
-        Ok(Some((this, iface_stream)))
+        }))
     }
 
     pub async fn up(&self) -> Result<()> {
