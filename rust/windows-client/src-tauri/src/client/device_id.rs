@@ -14,13 +14,16 @@ pub(crate) async fn hashed_device_id(
     let path = dir.join("device_id.json");
 
     // Try to read it back from disk
-    if let Ok(s) = fs::read_to_string(&path).await {
-        let j: DeviceIdJson = serde_json::from_str(&s)?;
+    if let Some(j) = fs::read_to_string(&path)
+        .await
+        .ok()
+        .and_then(|s| serde_json::from_str::<DeviceIdJson>(&s).ok())
+    {
         tracing::debug!("device ID loaded from disk is {}", j.id.to_string());
         return Ok(j.hashed_device_id());
     }
 
-    // Try to save it to disk
+    // Couldn't read, it's missing or invalid, generate a new one and save it.
     let id = uuid::Uuid::new_v4();
     let j = DeviceIdJson { id };
     // TODO: This file write has the same possible problems with power loss as described here https://github.com/firezone/firezone/pull/2757#discussion_r1416374516
