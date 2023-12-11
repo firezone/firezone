@@ -61,8 +61,8 @@ struct Controller {
 const TUNNEL_UUID: &str = "ab722ec1-9a87-4d8c-a976-e22ed7b8f6a9";
 
 impl Controller {
-    fn start_tunnel (&mut self) -> Result <()> {
-        self.stop_tunnel()?;
+    async fn start_tunnel (&mut self) -> Result <()> {
+        self.stop_tunnel().await?;
 
         let uuid = uuid::Uuid::from_str(TUNNEL_UUID)?;
 
@@ -74,26 +74,43 @@ impl Controller {
             }
         };
 
+        println!("Adapter has addresses {:?}", adapter.get_addresses()?);
+
         // Specify the size of the ring buffer the wintun driver should use.
         let session = Arc::new(adapter.start_session(wintun::MAX_RING_CAPACITY)?);
 
+        let session_2 = Arc::clone(&session);
+        let recv_task = tokio::task::spawn_blocking(move || {
+            let session = session_2;
+
+            while let Ok(pkt) = session.receive_blocking() {
+                println!("Got packet! {} bytes", pkt.bytes().len());
+            }
+            println!("recv_task exiting gracefully");
+        });
+
         self.tunnel = Some(Tunnel {
             _adapter: adapter,
-            _session: session,
+            recv_task,
+            session,
         });
 
         Ok(())
     }
 
-    fn stop_tunnel (&mut self) -> Result <()> {
-        self.tunnel = None;
+    async fn stop_tunnel (&mut self) -> Result <()> {
+        if let Some(tunnel) = self.tunnel.take() {
+            tunnel.session.shutdown()?;
+            tunnel.recv_task.await?;
+        }
         Ok(())
     }
 }
 
 struct Tunnel {
     _adapter: Arc<wintun::Adapter>,
-    _session: Arc<wintun::Session>,
+    recv_task: tokio::task::JoinHandle<()>,
+    session: Arc<wintun::Session>,
 }
 
 async fn run_controller(_app: tauri::AppHandle, mut ctlr_rx: mpsc::Receiver<ControllerRequest>, wintun_lib: wintun::Wintun) -> Result<()> {
@@ -105,13 +122,13 @@ async fn run_controller(_app: tauri::AppHandle, mut ctlr_rx: mpsc::Receiver<Cont
     while let Some(req) = ctlr_rx.recv().await { match req {
         ControllerRequest::StartTunnel => {
             println!("start tunnel");
-            if let Err(e) = controller.start_tunnel() {
+            if let Err(e) = controller.start_tunnel().await {
                 eprintln!("{e}");
             }
         },
         ControllerRequest::StopTunnel => {
             println!("stop tunnel");
-            if let Err(e) = controller.stop_tunnel() {
+            if let Err(e) = controller.stop_tunnel().await {
                 eprintln!("{e}");
             }
         },
