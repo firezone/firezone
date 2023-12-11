@@ -32,7 +32,7 @@ defmodule Web.Sites.Index do
       <:content>
         <.table id="groups" rows={@groups} row_id={&"group-#{&1.id}"}>
           <:col :let={group} label="site">
-            <.link navigate={~p"/#{@account}/sites/#{group}"} class={["font-bold", link_style()]}>
+            <.link navigate={~p"/#{@account}/sites/#{group}"} class={["font-medium", link_style()]}>
               <%= group.name %>
             </.link>
           </:col>

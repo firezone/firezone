@@ -42,11 +42,9 @@ defmodule Web.Actors.New do
                 />
               </fieldset>
             </div>
-            <div class="flex justify-end items-center space-x-4">
-              <.submit_button>
-                Next: Create Actor
-              </.submit_button>
-            </div>
+            <.submit_button>
+              Next: Create Actor
+            </.submit_button>
           </.form>
         </div>
       </:content>
