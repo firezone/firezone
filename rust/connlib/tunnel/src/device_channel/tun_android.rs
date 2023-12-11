@@ -1,22 +1,17 @@
 use crate::device_channel::ioctl;
 use crate::DnsFallbackStrategy;
-use closeable::Closeable;
 use connlib_shared::{
     messages::Interface as InterfaceConfig, Callbacks, Error, Result, DNS_SENTINEL,
 };
 use ip_network::IpNetwork;
-use libc::{
-    close, ioctl, read, sockaddr, sockaddr_in, write, AF_INET, IFNAMSIZ, IPPROTO_IP, SOCK_STREAM,
-};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::task::{ready, Context, Poll};
 use std::{
-    ffi::{c_int, c_short, c_uchar},
     io,
     os::fd::{AsRawFd, RawFd},
-    sync::Arc,
 };
 use tokio::io::unix::AsyncFd;
-
-mod closeable;
+use tokio::io::Ready;
 
 pub(crate) const SIOCGIFMTU: libc::c_ulong = libc::SIOCGIFMTU;
 
@@ -26,47 +21,36 @@ pub(crate) struct Tun {
     name: String,
 }
 
-impl AsRawFd for Tun {
-    fn as_raw_fd(&self) -> RawFd {
-        self.fd.as_raw_fd()
-    }
-}
-
 impl Drop for Tun {
     fn drop(&mut self) {
-        unsafe { close(self.fd.as_raw_fd()) };
+        unsafe { libc::close(self.fd.value.as_raw_fd()) };
     }
 }
 
 impl Tun {
-    fn write(&self, buf: &[u8]) -> std::io::Result<usize> {
-        match self
-            .fd
-            .with(|fd| unsafe { write(fd, buf.as_ptr() as _, buf.len() as _) })?
-        {
-            -1 => Err(io::Error::last_os_error()),
-            n => Ok(n as usize),
-        }
-    }
-
     pub fn write4(&self, src: &[u8]) -> std::io::Result<usize> {
-        self.write(src)
+        self.fd.with(|fd| write(fd, src))?
     }
 
     pub fn write6(&self, src: &[u8]) -> std::io::Result<usize> {
-        self.write(src)
+        self.fd.with(|fd| write(fd, src))?
     }
 
-    pub fn read(&self, dst: &mut [u8]) -> std::io::Result<usize> {
-        // We don't read(or write) again from the fd because the given fd number might be reclaimed
-        // so this could make an spurious read/write to another fd and we DEFINITELY don't want that
-        match self
-            .fd
-            .with(|fd| unsafe { read(fd, dst.as_mut_ptr() as _, dst.len()) })?
-        {
-            -1 => Err(io::Error::last_os_error()),
-            n => Ok(n as usize),
-        }
+    pub fn poll_read(&self, buf: &mut [u8], cx: &mut Context<'_>) -> Poll<io::Result<usize>> {
+        self.fd.with(|fd| loop {
+            let mut guard = ready!(fd.poll_read_ready(cx))?;
+
+            match read(*guard.get_inner(), buf) {
+                Ok(n) => return Poll::Ready(Ok(n)),
+                Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
+                    // a read has blocked, but a write might still succeed.
+                    // clear only the read readiness.
+                    guard.clear_ready_matching(Ready::READABLE);
+                    continue;
+                }
+                Err(e) => return Poll::Ready(Err(e)),
+            }
+        })?
     }
 
     pub fn close(&self) {
@@ -90,7 +74,7 @@ impl Tun {
         let name = unsafe { interface_name(fd)? };
 
         Ok(Tun {
-            fd: Closeable::new(fd.into()),
+            fd: Closeable::new(AsyncFd::new(fd)?),
             name,
         })
     }
@@ -109,7 +93,7 @@ impl Tun {
         let name = unsafe { interface_name(fd)? };
 
         Ok(Some(Tun {
-            fd: Closeable::new(fd.into()),
+            fd: Closeable::new(AsyncFd::new(fd)?),
             name,
         }))
     }
@@ -152,3 +136,48 @@ impl ioctl::Request<GetInterfaceNamePayload> {
 #[derive(Default)]
 #[repr(C)]
 struct GetInterfaceNamePayload;
+
+/// Read from the given file descriptor in the buffer.
+fn read(fd: RawFd, dst: &mut [u8]) -> io::Result<usize> {
+    // Safety: Within this module, the file descriptor is always valid.
+    match unsafe { libc::read(fd, dst.as_mut_ptr() as _, dst.len()) } {
+        -1 => Err(io::Error::last_os_error()),
+        n => Ok(n as usize),
+    }
+}
+
+/// Write the buffer to the given file descriptor.
+fn write(fd: impl AsRawFd, buf: &[u8]) -> io::Result<usize> {
+    // Safety: Within this module, the file descriptor is always valid.
+    match unsafe { libc::write(fd.as_raw_fd(), buf.as_ptr() as _, buf.len() as _) } {
+        -1 => Err(io::Error::last_os_error()),
+        n => Ok(n as usize),
+    }
+}
+
+#[derive(Debug)]
+struct Closeable {
+    closed: AtomicBool,
+    value: AsyncFd<RawFd>,
+}
+
+impl Closeable {
+    fn new(fd: AsyncFd<RawFd>) -> Self {
+        Self {
+            closed: AtomicBool::new(false),
+            value: fd,
+        }
+    }
+
+    fn with<U>(&self, f: impl FnOnce(AsyncFd<RawFd>) -> U) -> std::io::Result<U> {
+        if self.closed.load(Ordering::Acquire) {
+            return Err(std::io::Error::from_raw_os_error(9));
+        }
+
+        Ok(f(self.value))
+    }
+
+    fn close(&self) {
+        self.closed.store(true, Ordering::Release);
+    }
+}

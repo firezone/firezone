@@ -8,6 +8,10 @@ mod tun;
 #[path = "device_channel/tun_linux.rs"]
 mod tun;
 
+#[cfg(target_family = "windows")]
+#[path = "device_channel/tun_windows.rs"]
+mod tun;
+
 // TODO: Android and linux are nearly identical; use a common tunnel module?
 #[cfg(target_os = "android")]
 #[path = "device_channel/tun_android.rs"]
@@ -23,12 +27,11 @@ use std::borrow::Cow;
 use std::io;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::task::{ready, Context, Poll};
-use tokio::io::Ready;
+use tun::Tun;
 
 pub struct Device {
     mtu: AtomicUsize,
-    #[cfg(target_family = "unix")]
-    tun: tokio::io::unix::AsyncFd<tun::Tun>,
+    tun: Tun,
 }
 
 impl Device {
@@ -38,14 +41,11 @@ impl Device {
         callbacks: &impl Callbacks<Error = Error>,
         dns: DnsFallbackStrategy,
     ) -> Result<Device, ConnlibError> {
-        let tun = tun::Tun::new(config, callbacks, dns).await?;
+        let tun = Tun::new(config, callbacks, dns).await?;
         tun.up().await?;
         let mtu = AtomicUsize::new(ioctl::interface_mtu_by_name(tun.name())?);
 
-        Ok(Device {
-            mtu,
-            tun: tokio::io::unix::AsyncFd::new(tun)?,
-        })
+        Ok(Device { mtu, tun })
     }
 
     #[cfg(target_family = "windows")]
@@ -63,23 +63,11 @@ impl Device {
         buf: &'b mut [u8],
         cx: &mut Context<'_>,
     ) -> Poll<io::Result<Option<MutableIpPacket<'b>>>> {
-        let mtu = self.mtu();
+        let n = ready!(self.tun.poll_read(&mut buf[..self.mtu()], cx))?;
 
-        let n = loop {
-            let mut guard = ready!(self.tun.poll_read_ready(cx))?;
-
-            match guard.get_inner().read(&mut buf[..mtu]) {
-                Ok(0) => return Poll::Ready(Ok(None)),
-                Ok(n) => break n,
-                Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
-                    // a read has blocked, but a write might still succeed.
-                    // clear only the read readiness.
-                    guard.clear_ready_matching(Ready::READABLE);
-                    continue;
-                }
-                Err(e) => return Poll::Ready(Err(e)),
-            }
-        };
+        if n == 0 {
+            return Poll::Ready(Ok(None));
+        }
 
         Poll::Ready(Ok(Some(MutableIpPacket::new(&mut buf[..n]).ok_or_else(
             || {
@@ -110,15 +98,12 @@ impl Device {
         route: IpNetwork,
         callbacks: &impl Callbacks<Error = Error>,
     ) -> Result<Option<Device>, Error> {
-        let Some(tun) = self.as_tun().add_route(route, callbacks).await? else {
+        let Some(tun) = self.tun.add_route(route, callbacks).await? else {
             return Ok(None);
         };
         let mtu = AtomicUsize::new(ioctl::interface_mtu_by_name(tun.name())?);
 
-        Ok(Some(Device {
-            mtu,
-            tun: tokio::io::unix::AsyncFd::new(tun)?,
-        }))
+        Ok(Some(Device { mtu, tun }))
     }
 
     #[cfg(target_family = "windows")]
@@ -132,7 +117,7 @@ impl Device {
 
     #[cfg(target_family = "unix")]
     pub(crate) fn refresh_mtu(&self) -> Result<usize, Error> {
-        let mtu = ioctl::interface_mtu_by_name(self.as_tun().name())?;
+        let mtu = ioctl::interface_mtu_by_name(self.tun.name())?;
         self.mtu.store(mtu, Ordering::Relaxed);
 
         Ok(mtu)
@@ -145,14 +130,9 @@ impl Device {
 
     pub fn write(&self, packet: Packet<'_>) -> io::Result<usize> {
         match packet {
-            Packet::Ipv4(msg) => self.as_tun().write4(&msg),
-            Packet::Ipv6(msg) => self.as_tun().write6(&msg),
+            Packet::Ipv4(msg) => self.tun.write4(&msg),
+            Packet::Ipv6(msg) => self.tun.write6(&msg),
         }
-    }
-
-    #[cfg(target_family = "unix")]
-    fn as_tun(&self) -> &tun::Tun {
-        self.tun.get_ref()
     }
 }
 
