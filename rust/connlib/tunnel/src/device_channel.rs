@@ -53,7 +53,10 @@ impl Device {
         _: &impl Callbacks<Error = Error>,
         fallback_strategy: DnsFallbackStrategy,
     ) -> Result<Device, ConnlibError> {
-        todo!()
+        Ok(Device {
+            tun: Tun::new(),
+            mtu: AtomicUsize::default(), // Dummy value for now.
+        })
     }
 
     #[cfg(target_family = "unix")]
@@ -84,7 +87,7 @@ impl Device {
         _: &'b mut [u8],
         _: &mut Context<'_>,
     ) -> Poll<io::Result<Option<MutableIpPacket<'b>>>> {
-        todo!()
+        Poll::Pending
     }
 
     pub(crate) fn mtu(&self) -> usize {
@@ -111,7 +114,7 @@ impl Device {
         _: IpNetwork,
         _: &impl Callbacks<Error = Error>,
     ) -> Result<Option<Device>, Error> {
-        todo!()
+        Ok(None)
     }
 
     #[cfg(target_family = "unix")]
@@ -124,7 +127,7 @@ impl Device {
 
     #[cfg(target_family = "windows")]
     pub(crate) fn refresh_mtu(&self) -> Result<usize, Error> {
-        todo!()
+        Ok(0)
     }
 
     pub fn write(&self, packet: Packet<'_>) -> io::Result<usize> {
