@@ -457,8 +457,46 @@ IO.puts("")
   Resources.create_resource(
     %{
       type: :dns,
+      name: "google.com",
       address: "google.com",
-      connections: [%{gateway_group_id: gateway_group.id}]
+      connections: [%{gateway_group_id: gateway_group.id}],
+      filters: [%{protocol: :all}]
+    },
+    admin_subject
+  )
+
+{:ok, t_firez_one} =
+  Resources.create_resource(
+    %{
+      type: :dns,
+      name: "t.firez.one",
+      address: "t.firez.one",
+      connections: [%{gateway_group_id: gateway_group.id}],
+      filters: [%{protocol: :all}]
+    },
+    admin_subject
+  )
+
+{:ok, ping_firez_one} =
+  Resources.create_resource(
+    %{
+      type: :dns,
+      name: "ping.firez.one",
+      address: "ping.firez.one",
+      connections: [%{gateway_group_id: gateway_group.id}],
+      filters: [%{protocol: :all}]
+    },
+    admin_subject
+  )
+
+{:ok, ip6only} =
+  Resources.create_resource(
+    %{
+      type: :dns,
+      name: "ip6only",
+      address: "ip6only.me",
+      connections: [%{gateway_group_id: gateway_group.id}],
+      filters: [%{protocol: :all}]
     },
     admin_subject
   )
@@ -467,6 +505,7 @@ IO.puts("")
   Resources.create_resource(
     %{
       type: :dns,
+      name: "gitlab.mycorp.com",
       address: "gitlab.mycorp.com",
       connections: [%{gateway_group_id: gateway_group.id}],
       filters: [
@@ -482,6 +521,7 @@ IO.puts("")
   Resources.create_resource(
     %{
       type: :cidr,
+      name: "MyCorp Network",
       address: "172.20.0.1/16",
       connections: [%{gateway_group_id: gateway_group.id}],
       filters: [%{protocol: :all}]
@@ -490,35 +530,70 @@ IO.puts("")
   )
 
 IO.puts("Created resources:")
-
-IO.puts(
-  "  #{dns_google_resource.address} - DNS - #{dns_google_resource.ipv4} - gateways: #{gateway_name}"
-)
-
-IO.puts(
-  "  #{dns_gitlab_resource.address} - DNS - #{dns_gitlab_resource.ipv4} - gateways: #{gateway_name}"
-)
-
+IO.puts("  #{dns_google_resource.address} - DNS - gateways: #{gateway_name}")
+IO.puts("  #{dns_gitlab_resource.address} - DNS - gateways: #{gateway_name}")
 IO.puts("  #{cidr_resource.address} - CIDR - gateways: #{gateway_name}")
 IO.puts("")
 
-Policies.create_policy(
-  %{
-    name: "Eng Access To Gitlab",
-    actor_group_id: eng_group.id,
-    resource_id: dns_gitlab_resource.id
-  },
-  admin_subject
-)
+{:ok, _} =
+  Policies.create_policy(
+    %{
+      name: "All Access To Google",
+      actor_group_id: all_group.id,
+      resource_id: dns_google_resource.id
+    },
+    admin_subject
+  )
 
-Policies.create_policy(
-  %{
-    name: "All Access To Network",
-    actor_group_id: all_group.id,
-    resource_id: cidr_resource.id
-  },
-  admin_subject
-)
+{:ok, _} =
+  Policies.create_policy(
+    %{
+      name: "All Access To t.firez.one",
+      actor_group_id: all_group.id,
+      resource_id: t_firez_one.id
+    },
+    admin_subject
+  )
+
+{:ok, _} =
+  Policies.create_policy(
+    %{
+      name: "All Access To ping.firez.one",
+      actor_group_id: all_group.id,
+      resource_id: ping_firez_one.id
+    },
+    admin_subject
+  )
+
+{:ok, _} =
+  Policies.create_policy(
+    %{
+      name: "All Access To ip6only.me",
+      actor_group_id: all_group.id,
+      resource_id: ip6only.id
+    },
+    admin_subject
+  )
+
+{:ok, _} =
+  Policies.create_policy(
+    %{
+      name: "Eng Access To Gitlab",
+      actor_group_id: eng_group.id,
+      resource_id: dns_gitlab_resource.id
+    },
+    admin_subject
+  )
+
+{:ok, _} =
+  Policies.create_policy(
+    %{
+      name: "All Access To Network",
+      actor_group_id: all_group.id,
+      resource_id: cidr_resource.id
+    },
+    admin_subject
+  )
 
 IO.puts("Policies Created")
 IO.puts("")

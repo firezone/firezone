@@ -32,3 +32,14 @@ variable "slack_alerts_auth_token" {
 variable "postmark_server_api_token" {
   type = string
 }
+
+variable "pagerduty_auth_token" {
+  type = string
+}
+
+# TODO: add this variable to make sure you can't accidentally run script from staging to deploy prod
+# variable "deploy_to_production" {
+#   type        = bool
+#   description = "Whether to deploy to production or not"
+#   default     = false
+# }

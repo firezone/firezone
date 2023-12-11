@@ -275,6 +275,27 @@ defmodule Domain.ResourcesTest do
       assert fetch_and_authorize_resource_by_id(resource.id, subject) == {:error, :not_found}
     end
 
+    test "does not authorize using disabled policies", %{
+      account: account,
+      actor: actor,
+      subject: subject
+    } do
+      resource = Fixtures.Resources.create_resource(account: account)
+      actor_group = Fixtures.Actors.create_group(account: account)
+      Fixtures.Actors.create_membership(account: account, actor: actor, group: actor_group)
+
+      policy =
+        Fixtures.Policies.create_policy(
+          account: account,
+          actor_group: actor_group,
+          resource: resource
+        )
+
+      {:ok, _policy} = Domain.Policies.disable_policy(policy, subject)
+
+      assert fetch_and_authorize_resource_by_id(resource.id, subject) == {:error, :not_found}
+    end
+
     test "does not return resources in other accounts", %{subject: subject} do
       resource = Fixtures.Resources.create_resource()
       assert fetch_and_authorize_resource_by_id(resource.id, subject) == {:error, :not_found}
@@ -352,6 +373,27 @@ defmodule Domain.ResourcesTest do
       )
 
       {:ok, _resource} = delete_resource(resource, subject)
+
+      assert list_authorized_resources(subject) == {:ok, []}
+    end
+
+    test "does not list resources authorized by disabled policy", %{
+      account: account,
+      actor: actor,
+      subject: subject
+    } do
+      resource = Fixtures.Resources.create_resource(account: account)
+      actor_group = Fixtures.Actors.create_group(account: account)
+      Fixtures.Actors.create_membership(account: account, actor: actor, group: actor_group)
+
+      policy =
+        Fixtures.Policies.create_policy(
+          account: account,
+          actor_group: actor_group,
+          resource: resource
+        )
+
+      {:ok, _policy} = Domain.Policies.disable_policy(policy, subject)
 
       assert list_authorized_resources(subject) == {:ok, []}
     end
@@ -789,6 +831,7 @@ defmodule Domain.ResourcesTest do
 
       assert errors_on(changeset) == %{
                address: ["can't be blank"],
+               type: ["can't be blank"],
                connections: ["can't be blank"]
              }
     end
@@ -800,6 +843,7 @@ defmodule Domain.ResourcesTest do
       assert errors_on(changeset) == %{
                address: ["can't be blank"],
                name: ["should be at most 255 character(s)"],
+               type: ["can't be blank"],
                filters: ["is invalid"],
                connections: ["is invalid"]
              }
@@ -820,25 +864,27 @@ defmodule Domain.ResourcesTest do
       assert {:error, changeset} = create_resource(attrs, subject)
       assert "is not a valid CIDR range" in errors_on(changeset).address
 
-      attrs = %{"address" => "192.168.1.1", "type" => "cidr"}
+      attrs = %{"address" => "192.168.1.1", "type" => "ip"}
       assert {:error, changeset} = create_resource(attrs, subject)
-      assert "is not a valid CIDR range" in errors_on(changeset).address
+      refute Map.has_key?(errors_on(changeset), :address)
 
       attrs = %{"address" => "100.64.0.0/8", "type" => "cidr"}
       assert {:error, changeset} = create_resource(attrs, subject)
-      assert "can not be in the CIDR 100.64.0.0/10" in errors_on(changeset).address
+      assert "can not be in the CIDR 100.64.0.0/11" in errors_on(changeset).address
 
       attrs = %{"address" => "fd00:2021:1111::/102", "type" => "cidr"}
       assert {:error, changeset} = create_resource(attrs, subject)
-      assert "can not be in the CIDR fd00:2021:1111::/106" in errors_on(changeset).address
+      assert "can not be in the CIDR fd00:2021:1111::/107" in errors_on(changeset).address
 
       attrs = %{"address" => "::/0", "type" => "cidr"}
       assert {:error, changeset} = create_resource(attrs, subject)
-      refute Map.has_key?(errors_on(changeset), :address)
+      assert "can not contain loopback addresses" in errors_on(changeset).address
+      assert "can not contain all IPv6 addresses" in errors_on(changeset).address
 
       attrs = %{"address" => "0.0.0.0/0", "type" => "cidr"}
       assert {:error, changeset} = create_resource(attrs, subject)
-      refute Map.has_key?(errors_on(changeset), :address)
+      assert "can not contain loopback addresses" in errors_on(changeset).address
+      assert "can not contain all IPv4 addresses" in errors_on(changeset).address
     end
 
     # We allow names to be duplicate because Resources are split into Sites
@@ -875,9 +921,6 @@ defmodule Domain.ResourcesTest do
       assert resource.name == attrs.address
       assert resource.account_id == account.id
 
-      refute is_nil(resource.ipv4)
-      refute is_nil(resource.ipv6)
-
       assert resource.created_by == :identity
       assert resource.created_by_identity_id == subject.identity.id
 
@@ -904,18 +947,15 @@ defmodule Domain.ResourcesTest do
             %{gateway_group_id: gateway.group_id}
           ],
           type: :cidr,
-          name: nil,
+          name: "mycidr",
           address: "192.168.1.1/28"
         )
 
       assert {:ok, resource} = create_resource(attrs, subject)
 
       assert resource.address == "192.168.1.0/28"
-      assert resource.name == attrs.address
+      assert resource.name == attrs.name
       assert resource.account_id == account.id
-
-      assert is_nil(resource.ipv4)
-      assert is_nil(resource.ipv6)
 
       assert [
                %Domain.Resources.Connection{
@@ -935,59 +975,6 @@ defmodule Domain.ResourcesTest do
              ] = resource.filters
 
       assert Repo.aggregate(Domain.Network.Address, :count) == address_count
-    end
-
-    test "does not allow to reuse IP addresses within an account", %{
-      account: account,
-      subject: subject
-    } do
-      gateway = Fixtures.Gateways.create_gateway(account: account)
-
-      attrs =
-        Fixtures.Resources.resource_attrs(
-          connections: [
-            %{gateway_group_id: gateway.group_id}
-          ]
-        )
-
-      assert {:ok, resource} = create_resource(attrs, subject)
-
-      addresses =
-        Domain.Network.Address
-        |> Repo.all()
-        |> Enum.map(fn %Domain.Network.Address{address: address, type: type} ->
-          %{address: address, type: type}
-        end)
-
-      assert %{address: resource.ipv4, type: :ipv4} in addresses
-      assert %{address: resource.ipv6, type: :ipv6} in addresses
-
-      assert_raise Ecto.ConstraintError, fn ->
-        Fixtures.Network.create_address(address: resource.ipv4, account: account)
-      end
-
-      assert_raise Ecto.ConstraintError, fn ->
-        Fixtures.Network.create_address(address: resource.ipv6, account: account)
-      end
-    end
-
-    test "ip addresses are unique per account", %{
-      account: account,
-      subject: subject
-    } do
-      gateway = Fixtures.Gateways.create_gateway(account: account)
-
-      attrs =
-        Fixtures.Resources.resource_attrs(
-          connections: [
-            %{gateway_group_id: gateway.group_id}
-          ]
-        )
-
-      assert {:ok, resource} = create_resource(attrs, subject)
-
-      assert %Domain.Network.Address{} = Fixtures.Network.create_address(address: resource.ipv4)
-      assert %Domain.Network.Address{} = Fixtures.Network.create_address(address: resource.ipv6)
     end
 
     test "returns error when subject has no permission to create resources", %{

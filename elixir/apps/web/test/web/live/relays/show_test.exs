@@ -48,7 +48,6 @@ defmodule Web.Live.Relays.ShowTest do
 
     assert html =~ "(deleted)"
     refute html =~ "Danger Zone"
-    refute html =~ "Add"
     refute html =~ "Delete"
     refute html =~ "Edit"
   end

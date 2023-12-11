@@ -12,6 +12,12 @@ variable "slack_alerts_auth_token" {
   description = "Slack auth token for the infra alerts channel"
 }
 
+variable "pagerduty_auth_token" {
+  type        = string
+  description = "Pagerduty auth token for the infra alerts channel"
+  default     = null
+}
+
 variable "api_host" {
   type = string
 }

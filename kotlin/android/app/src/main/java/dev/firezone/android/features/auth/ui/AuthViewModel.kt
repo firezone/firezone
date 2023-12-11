@@ -43,7 +43,7 @@ internal class AuthViewModel
                             authFlowLaunched = true
                             ViewAction.LaunchAuthFlow(
                                 url =
-                                    "${config.authBaseUrl}/${config.accountId}" +
+                                    "${config.authBaseUrl}" +
                                         "?client_csrf_token=$csrfToken&client_platform=android",
                             )
                         },

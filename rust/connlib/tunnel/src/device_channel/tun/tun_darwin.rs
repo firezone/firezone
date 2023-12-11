@@ -16,6 +16,8 @@ use std::{
 };
 use tokio::io::unix::AsyncFd;
 
+use crate::DnsFallbackStrategy;
+
 const CTL_NAME: &[u8] = b"com.apple.net.utun_control";
 const SIOCGIFMTU: u64 = 0x0000_0000_c020_6933;
 
@@ -138,6 +140,7 @@ impl IfaceDevice {
     pub async fn new(
         config: &InterfaceConfig,
         callbacks: &impl Callbacks<Error = Error>,
+        fallback_strategy: DnsFallbackStrategy,
     ) -> Result<(Self, Arc<AsyncFd<IfaceStream>>)> {
         let mut info = ctl_info {
             ctl_id: 0,
@@ -199,7 +202,7 @@ impl IfaceDevice {
                     config.ipv4,
                     config.ipv6,
                     DNS_SENTINEL,
-                    "system_resolver".to_string(),
+                    fallback_strategy.to_string(),
                 )?;
 
                 set_non_blocking(fd)?;

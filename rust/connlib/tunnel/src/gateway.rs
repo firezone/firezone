@@ -1,11 +1,16 @@
 use crate::device_channel::create_iface;
+use crate::peer::PacketTransformGateway;
 use crate::{
-    Event, RoleState, Tunnel, ICE_GATHERING_TIMEOUT_SECONDS, MAX_CONCURRENT_ICE_GATHERING,
+    ConnectedPeer, DnsFallbackStrategy, Event, RoleState, Tunnel, ICE_GATHERING_TIMEOUT_SECONDS,
+    MAX_CONCURRENT_ICE_GATHERING,
 };
 use connlib_shared::messages::{ClientId, Interface as InterfaceConfig};
 use connlib_shared::Callbacks;
 use futures::channel::mpsc::Receiver;
 use futures_bounded::{PushError, StreamMap};
+use ip_network_table::IpNetworkTable;
+use itertools::Itertools;
+use std::collections::VecDeque;
 use std::sync::Arc;
 use std::task::{ready, Context, Poll};
 use std::time::Duration;
@@ -18,7 +23,9 @@ where
     /// Sets the interface configuration and starts background tasks.
     #[tracing::instrument(level = "trace", skip(self))]
     pub async fn set_interface(&self, config: &InterfaceConfig) -> connlib_shared::Result<()> {
-        let device = Arc::new(create_iface(config, self.callbacks()).await?);
+        // Note: the dns fallback strategy is irrelevant for gateways
+        let device =
+            Arc::new(create_iface(config, self.callbacks(), DnsFallbackStrategy::default()).await?);
 
         self.device.store(Some(device.clone()));
         self.no_device_waker.wake();
@@ -38,6 +45,8 @@ where
 /// [`Tunnel`] state specific to gateways.
 pub struct GatewayState {
     pub candidate_receivers: StreamMap<ClientId, RTCIceCandidate>,
+    #[allow(clippy::type_complexity)]
+    pub peers_by_ip: IpNetworkTable<ConnectedPeer<ClientId, PacketTransformGateway>>,
 }
 
 impl GatewayState {
@@ -61,6 +70,7 @@ impl Default for GatewayState {
                 Duration::from_secs(ICE_GATHERING_TIMEOUT_SECONDS),
                 MAX_CONCURRENT_ICE_GATHERING,
             ),
+            peers_by_ip: IpNetworkTable::new(),
         }
     }
 }
@@ -83,5 +93,48 @@ impl RoleState for GatewayState {
                 (_, None) => {}
             }
         }
+    }
+
+    fn remove_peers(&mut self, conn_id: ClientId) {
+        self.peers_by_ip.retain(|_, p| p.inner.conn_id != conn_id);
+    }
+
+    fn refresh_peers(&mut self) -> VecDeque<Self::Id> {
+        let mut peers_to_stop = VecDeque::new();
+        for (_, peer) in self.peers_by_ip.iter().unique_by(|(_, p)| p.inner.conn_id) {
+            let conn_id = peer.inner.conn_id;
+
+            peer.inner.transform.expire_resources();
+
+            if peer.inner.transform.is_emptied() {
+                tracing::trace!(%conn_id, "peer_expired");
+                peers_to_stop.push_back(conn_id);
+
+                continue;
+            }
+
+            let bytes = match peer.inner.update_timers() {
+                Ok(Some(bytes)) => bytes,
+                Ok(None) => continue,
+                Err(e) => {
+                    tracing::error!("Failed to update timers for peer: {e}");
+                    if e.is_fatal_connection_error() {
+                        peers_to_stop.push_back(conn_id);
+                    }
+
+                    continue;
+                }
+            };
+
+            let peer_channel = peer.channel.clone();
+
+            tokio::spawn(async move {
+                if let Err(e) = peer_channel.send(bytes).await {
+                    tracing::error!("Failed to send packet to peer: {e:#}");
+                }
+            });
+        }
+
+        peers_to_stop
     }
 }

@@ -4,11 +4,13 @@ defmodule Web.Live.Policies.NewTest do
   setup do
     account = Fixtures.Accounts.create_account()
     actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+    actor_group = Fixtures.Actors.create_group(account: account)
     identity = Fixtures.Auth.create_identity(account: account, actor: actor)
 
     %{
       account: account,
       actor: actor,
+      actor_group: actor_group,
       identity: identity
     }
   end

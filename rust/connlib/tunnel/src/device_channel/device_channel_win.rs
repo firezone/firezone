@@ -1,5 +1,6 @@
 use crate::device_channel::Packet;
 use crate::Device;
+use crate::DnsFallbackStrategy;
 use connlib_shared::{messages::Interface, Callbacks, Result};
 use ip_network::IpNetwork;
 use std::task::{Context, Poll};
@@ -47,7 +48,11 @@ impl IfaceConfig {
     }
 }
 
-pub(crate) async fn create_iface(_: &Interface, _: &impl Callbacks) -> Result<Device> {
+pub(crate) async fn create_iface(
+    _: &Interface,
+    _: &impl Callbacks,
+    _: DnsFallbackStrategy,
+) -> Result<Device> {
     Ok(Device {
         config: IfaceConfig {},
         io: DeviceIo {},
