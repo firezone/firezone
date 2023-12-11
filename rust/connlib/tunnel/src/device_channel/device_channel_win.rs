@@ -23,11 +23,3 @@ impl DeviceIo {
         }
     }
 }
-
-pub(super) async fn create_iface(
-    _: &Interface,
-    _: &impl Callbacks,
-    _: DnsFallbackStrategy,
-) -> Result<Device> {
-    todo!()
-}

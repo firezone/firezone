@@ -29,12 +29,27 @@ pub struct Device {
 }
 
 impl Device {
+    #[cfg(target_family = "unix")]
+    pub(crate) async fn new(
+        config: &Interface,
+        callbacks: &impl Callbacks<Error = Error>,
+        dns: DnsFallbackStrategy,
+    ) -> Result<Device, ConnlibError> {
+        let (iface, stream) = IfaceDevice::new(config, callbacks, dns).await?;
+        iface.up().await?;
+        let io = DeviceIo(stream);
+        let mtu = AtomicUsize::new(ioctl::interface_mtu_by_name(iface.name())?);
+
+        Ok(Device { io, mtu, iface })
+    }
+
+    #[cfg(target_family = "windows")]
     pub(crate) async fn new(
         config: &Interface,
         callbacks: &impl Callbacks<Error = Error>,
         fallback_strategy: DnsFallbackStrategy,
     ) -> Result<Device, ConnlibError> {
-        create_iface(config, callbacks, fallback_strategy).await
+        todo!()
     }
 
     pub(crate) fn poll_read<'b>(

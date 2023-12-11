@@ -1,15 +1,14 @@
 use std::io;
 use std::os::fd::RawFd;
-use std::sync::{atomic::AtomicUsize, Arc};
+use std::sync::Arc;
 use std::task::{ready, Context, Poll};
 
 use tokio::io::{unix::AsyncFd, Ready};
 
-use connlib_shared::{messages::Interface, Callbacks, Error, Result};
-use tun::{IfaceDevice, IfaceStream, SIOCGIFMTU};
+use connlib_shared::Result;
+use tun::{IfaceStream, SIOCGIFMTU};
 
-use crate::device_channel::{Device, Packet};
-use crate::DnsFallbackStrategy;
+use crate::device_channel::Packet;
 
 pub(super) mod tun;
 
@@ -42,19 +41,6 @@ impl DeviceIo {
             Packet::Ipv6(msg) => self.0.get_ref().write6(&msg),
         }
     }
-}
-
-pub(super) async fn create_iface(
-    config: &Interface,
-    callbacks: &impl Callbacks<Error = Error>,
-    fallback_strategy: DnsFallbackStrategy,
-) -> Result<Device> {
-    let (iface, stream) = IfaceDevice::new(config, callbacks, fallback_strategy).await?;
-    iface.up().await?;
-    let io = DeviceIo(stream);
-    let mtu = AtomicUsize::new(ioctl::interface_mtu_by_name(iface.name())?);
-
-    Ok(Device { io, mtu, iface })
 }
 
 pub(crate) mod ioctl {
