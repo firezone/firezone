@@ -375,11 +375,27 @@ enum OkReply<T> {
     NoMessage(Empty),
 }
 
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+pub struct UnexpectedError(pub String);
+
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+pub enum ExpectedError {
+    #[serde(rename = "unmatched topic")]
+    UnmatchedTopic,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+#[serde(untagged)]
+pub enum Reason {
+    Expected(ExpectedError),
+    UnExpected(UnexpectedError),
+}
+
 /// This represents the info we have about the error
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum ErrorInfo {
-    Reason(String),
+    Reason(Reason),
     Offline,
     Disabled,
 }
