@@ -80,9 +80,7 @@ impl Tun {
             n => Ok(n as usize),
         }
     }
-}
 
-impl Tun {
     pub async fn new(
         config: &InterfaceConfig,
         callbacks: &impl Callbacks<Error = Error>,

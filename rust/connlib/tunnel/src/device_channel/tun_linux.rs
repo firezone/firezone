@@ -40,11 +40,11 @@ impl Drop for Tun {
 }
 
 impl Tun {
-    pub fn write4(&self, buf: &[u8]) -> std::io::Result<usize> {
+    pub fn write4(&self, buf: &[u8]) -> io::Result<usize> {
         write(self.fd.as_raw_fd(), buf)
     }
 
-    pub fn write6(&self, buf: &[u8]) -> std::io::Result<usize> {
+    pub fn write6(&self, buf: &[u8]) -> io::Result<usize> {
         write(self.fd.as_raw_fd(), buf)
     }
 
@@ -64,9 +64,7 @@ impl Tun {
             }
         }
     }
-}
 
-impl Tun {
     pub async fn new(config: &InterfaceConfig, cb: &impl Callbacks) -> Result<Self> {
         let fd = match unsafe { open(TUN_FILE.as_ptr() as _, O_RDWR) } {
             -1 => return Err(get_last_error()),

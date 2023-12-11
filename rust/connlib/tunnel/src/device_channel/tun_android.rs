@@ -59,9 +59,7 @@ impl Tun {
     pub fn close(&self) {
         self.fd.close();
     }
-}
 
-impl Tun {
     pub async fn new(
         config: &InterfaceConfig,
         callbacks: &impl Callbacks<Error = Error>,
