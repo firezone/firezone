@@ -377,9 +377,11 @@ defmodule Web.FormComponents do
 
   def submit_button(assigns) do
     ~H"""
-    <.button style="primary" {@rest}>
-      <%= render_slot(@inner_block) %>
-    </.button>
+    <div class="flex justify-end">
+      <.button style="primary" {@rest}>
+        <%= render_slot(@inner_block) %>
+      </.button>
+    </div>
     """
   end
 
@@ -529,7 +531,13 @@ defmodule Web.FormComponents do
     <.form :let={f} for={@for} as={@as} {@rest}>
       <div class="space-y-8 bg-white">
         <%= render_slot(@inner_block, f) %>
-        <div :for={action <- @actions} class="mt-2 flex items-center justify-between gap-6">
+        <div
+          :for={action <- @actions}
+          class={[
+            "mt-2 flex items-center gap-6",
+            (length(@actions) > 1 && "justify-between") || "justify-end"
+          ]}
+        >
           <%= render_slot(action, f) %>
         </div>
       </div>

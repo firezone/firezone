@@ -44,11 +44,9 @@ defmodule Web.Settings.IdentityProviders.New do
                 <.adapter :for={{adapter, _module} <- @adapters} adapter={adapter} account={@account} />
               </fieldset>
             </div>
-            <div class="flex justify-end">
-              <.submit_button>
-                Next: Configure
-              </.submit_button>
-            </div>
+            <.submit_button>
+              Next: Configure
+            </.submit_button>
           </.form>
         </div>
       </:content>

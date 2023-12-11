@@ -41,7 +41,7 @@ defmodule Web.Sites.NewToken do
 
     <.section>
       <:title>
-        Deploy your Gateway
+        Deploy a new Gateway
       </:title>
       <:content>
         <div class="py-8 px-4 mx-auto max-w-2xl lg:py-16">
@@ -109,7 +109,7 @@ defmodule Web.Sites.NewToken do
             </:tab>
           </.tabs>
 
-          <div class="flex justify-between items-center">
+          <div id="connection-status" class="flex justify-between items-center">
             <p class="text-sm">
               Gateway not connecting? See our <.link
                 class="text-accent-500 hover:underline"

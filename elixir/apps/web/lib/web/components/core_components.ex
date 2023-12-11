@@ -60,7 +60,7 @@ defmodule Web.CoreComponents do
   def code_block(assigns) do
     ~H"""
     <div id={@id} phx-hook="Copy" class="relative">
-      <div class={[~w[
+      <div id={"#{@id}-nested"} class={[~w[
         text-sm text-left text-neutral-50
         inline-flex items-center
         space-x-4 p-4 pl-6

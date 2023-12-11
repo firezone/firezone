@@ -108,11 +108,9 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.Components do
             </.inputs_for>
           </div>
 
-          <div class="flex items-center space-x-4">
-            <.submit_button>
-              Connect Identity Provider
-            </.submit_button>
-          </div>
+          <.submit_button>
+            Connect Identity Provider
+          </.submit_button>
         </div>
       </.form>
     </div>
