@@ -48,7 +48,7 @@ defmodule Web.Settings.IdentityProviders.Index do
         >
           Read more
         </.link>
-          about how authentication works in Firezone.
+        about how authentication works in Firezone.
       </:help>
       <:content>
         <.flash_group flash={@flash} />

@@ -67,14 +67,10 @@ defmodule Web.CoreComponents do
         bg-neutral-800
         overflow-x-auto
       ], @class]} {@rest}>
-        <code
-          class="block w-full no-scrollbar whitespace-pre rounded-b"
-          data-copy
-          phx-no-format
-        ><%= render_slot(@inner_block) %></code>
-    </div>
+        <code class="block w-full no-scrollbar whitespace-pre rounded-b" data-copy phx-no-format><%= render_slot(@inner_block) %></code>
+      </div>
 
-        <span title="Click to copy" class={~w[
+      <span title="Click to copy" class={~w[
             absolute top-1 right-1
             items-center
             cursor-pointer
@@ -86,8 +82,8 @@ defmodule Web.CoreComponents do
             hover:text-neutral-900
             hover:opacity-50
           ]}>
-          <.icon name="hero-clipboard-document" data-icon class="h-4 w-4" />
-        </span>
+        <.icon name="hero-clipboard-document" data-icon class="h-4 w-4" />
+      </span>
     </div>
     """
   end
@@ -162,8 +158,9 @@ defmodule Web.CoreComponents do
             <li class="mr-2" role="presentation">
               <button
                 class={[
-                  (Map.get(tab, :selected) && "rounded-t text-accent-600 border-accent-600" || "text-neutral-500 hover:border-accent-200 hover:text-accent-600"),
-                  "inline-block p-4 border-b-2",
+                  (Map.get(tab, :selected) && "rounded-t text-accent-600 border-accent-600") ||
+                    "text-neutral-500 hover:border-accent-200 hover:text-accent-600",
+                  "inline-block p-4 border-b-2"
                 ]}
                 id={"#{tab.id}-tab"}
                 data-tabs-target={"##{tab.id}"}

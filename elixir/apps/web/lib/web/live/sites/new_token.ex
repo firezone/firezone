@@ -112,17 +112,17 @@ defmodule Web.Sites.NewToken do
           <div class="flex justify-between items-center">
             <p class="text-sm">
               Gateway not connecting? See our <.link
-                  class="text-accent-500 hover:underline"
-                  href="https://www.firezone.dev/kb/administer/troubleshooting#gateway-not-connecting"
-                  >gateway troubleshooting guide</.link>.
-              </p>
-                <.initial_connection_status
-                  :if={@env}
-                  type="gateway"
-                  navigate={~p"/#{@account}/sites/#{@group}"}
-                  connected?={@connected?}
-                />
-            </div>
+                class="text-accent-500 hover:underline"
+                href="https://www.firezone.dev/kb/administer/troubleshooting#gateway-not-connecting"
+              >gateway troubleshooting guide</.link>.
+            </p>
+            <.initial_connection_status
+              :if={@env}
+              type="gateway"
+              navigate={~p"/#{@account}/sites/#{@group}"}
+              connected?={@connected?}
+            />
+          </div>
         </div>
       </:content>
     </.section>

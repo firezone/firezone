@@ -80,10 +80,10 @@ defmodule Web.Sites.New do
             </div>
 
             <div class="flex justify-end">
-            <.submit_button>
-              Create
-            </.submit_button>
-          </div>
+              <.submit_button>
+                Create
+              </.submit_button>
+            </div>
           </.form>
         </div>
       </:content>

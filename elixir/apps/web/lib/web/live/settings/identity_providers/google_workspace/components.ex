@@ -26,7 +26,7 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.Components do
           <p class="mb-4">
             Ensure the following scopes are added to the OAuth client:
           </p>
-            <.code_block
+          <.code_block
             :for={
               {name, scope} <- [
                 openid: "openid",
@@ -48,7 +48,7 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.Components do
             Step 3: Create OAuth client
           </h2>
           <p class="mb-4">
-          Ensure the OAuth client has following redirect URLs configured:
+            Ensure the OAuth client has following redirect URLs configured:
           </p>
           <.code_block
             :for={

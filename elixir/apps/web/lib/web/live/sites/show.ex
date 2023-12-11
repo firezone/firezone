@@ -143,9 +143,8 @@ defmodule Web.Sites.Show do
         </.add_button>
       </:action>
       <:help>
-                    Resources are the endpoints that you want to make available to your clients.
-
-                </:help>
+        Resources are the endpoints that you want to make available to your clients.
+      </:help>
       <:content>
         <div class="relative overflow-x-auto">
           <.table

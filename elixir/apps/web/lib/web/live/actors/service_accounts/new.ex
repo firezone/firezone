@@ -46,10 +46,10 @@ defmodule Web.Actors.ServiceAccounts.New do
               <.actor_form form={@form} type={:service_account} groups={@groups} subject={@subject} />
             </div>
             <div class="flex justify-end">
-            <.submit_button>
-              Create
-            </.submit_button>
-          </div>
+              <.submit_button>
+                Create
+              </.submit_button>
+            </div>
           </.form>
         </div>
       </:content>

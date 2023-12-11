@@ -49,10 +49,10 @@ defmodule Web.Policies.Edit do
             />
             <:actions>
               <div class="w-full flex justify-end">
-              <.submit_button phx-disable-with="Updating Policy...">
-                Save
-              </.submit_button>
-            </div>
+                <.submit_button phx-disable-with="Updating Policy...">
+                  Save
+                </.submit_button>
+              </div>
             </:actions>
           </.simple_form>
         </div>

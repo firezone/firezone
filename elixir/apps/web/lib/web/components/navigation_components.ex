@@ -248,8 +248,7 @@ defmodule Web.NavigationComponents do
             navigate={if @account, do: ~p"/#{@account}", else: @home_path}
             class="inline-flex items-center text-neutral-700 hover:text-neutral-900"
           >
-            <.icon name="hero-home-solid" class="w-4 h-4 mr-2" />
-            Home
+            <.icon name="hero-home-solid" class="w-4 h-4 mr-2" /> Home
           </.link>
 
           <%= render_slot(@inner_block) %>

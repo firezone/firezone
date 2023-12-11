@@ -40,10 +40,10 @@ defmodule Web.Actors.Users.New do
               <.actor_form form={@form} type={:user} groups={@groups} subject={@subject} />
             </div>
             <div class="flex justify-end">
-            <.submit_button>
-              Create
-            </.submit_button>
-          </div>
+              <.submit_button>
+                Create
+              </.submit_button>
+            </div>
           </.form>
         </div>
       </:content>
