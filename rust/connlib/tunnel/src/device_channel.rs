@@ -8,6 +8,7 @@ mod device_channel;
 #[path = "device_channel/device_channel_win.rs"]
 mod device_channel;
 
+use crate::device_channel::device_channel::tun::IfaceDevice;
 use crate::ip_packet::MutableIpPacket;
 use crate::DnsFallbackStrategy;
 use connlib_shared::error::ConnlibError;
@@ -16,12 +17,14 @@ use connlib_shared::{Callbacks, Error};
 use ip_network::IpNetwork;
 use std::borrow::Cow;
 use std::io;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::task::{ready, Context, Poll};
 
 pub(crate) use device_channel::*;
 
 pub struct Device {
-    config: IfaceConfig,
+    mtu: AtomicUsize,
+    iface: IfaceDevice,
     io: DeviceIo,
 }
 
@@ -39,7 +42,7 @@ impl Device {
         buf: &'b mut [u8],
         cx: &mut Context<'_>,
     ) -> Poll<io::Result<Option<MutableIpPacket<'b>>>> {
-        let res = ready!(self.io.poll_read(&mut buf[..self.config.mtu()], cx))?;
+        let res = ready!(self.io.poll_read(&mut buf[..self.mtu()], cx))?;
 
         if res == 0 {
             return Poll::Ready(Ok(None));
@@ -55,16 +58,45 @@ impl Device {
         )?)))
     }
 
+    pub(crate) fn mtu(&self) -> usize {
+        self.mtu.load(Ordering::Relaxed)
+    }
+
+    #[cfg(target_family = "unix")]
     pub(crate) async fn add_route(
         &self,
         route: IpNetwork,
         callbacks: &impl Callbacks<Error = Error>,
     ) -> Result<Option<Device>, Error> {
-        self.config.add_route(route, callbacks).await
+        let Some((iface, stream)) = self.iface.add_route(route, callbacks).await? else {
+            return Ok(None);
+        };
+        let io = DeviceIo(stream);
+        let mtu = AtomicUsize::new(ioctl::interface_mtu_by_name(iface.name())?);
+
+        Ok(Some(Device { io, mtu, iface }))
     }
 
+    #[cfg(target_family = "windows")]
+    pub(crate) async fn add_route(
+        &self,
+        route: IpNetwork,
+        callbacks: &impl Callbacks<Error = Error>,
+    ) -> Result<Option<Device>, Error> {
+        todo!()
+    }
+
+    #[cfg(target_family = "unix")]
     pub(crate) fn refresh_mtu(&self) -> Result<usize, Error> {
-        self.config.refresh_mtu()
+        let mtu = ioctl::interface_mtu_by_name(self.iface.name())?;
+        self.mtu.store(mtu, Ordering::Relaxed);
+
+        Ok(mtu)
+    }
+
+    #[cfg(target_family = "windows")]
+    pub(crate) fn refresh_mtu(&self) -> Result<usize, Error> {
+        todo!()
     }
 
     pub fn write(&self, packet: Packet<'_>) -> io::Result<usize> {

@@ -1,12 +1,8 @@
 use std::io;
 use std::os::fd::RawFd;
-use std::sync::{
-    atomic::{AtomicUsize, Ordering::Relaxed},
-    Arc,
-};
+use std::sync::{atomic::AtomicUsize, Arc};
 use std::task::{ready, Context, Poll};
 
-use ip_network::IpNetwork;
 use tokio::io::{unix::AsyncFd, Ready};
 
 use connlib_shared::{messages::Interface, Callbacks, Error, Result};
@@ -15,14 +11,9 @@ use tun::{IfaceDevice, IfaceStream, SIOCGIFMTU};
 use crate::device_channel::{Device, Packet};
 use crate::DnsFallbackStrategy;
 
-mod tun;
+pub(super) mod tun;
 
-pub(crate) struct IfaceConfig {
-    mtu: AtomicUsize,
-    iface: IfaceDevice,
-}
-
-pub(crate) struct DeviceIo(Arc<AsyncFd<IfaceStream>>);
+pub(crate) struct DeviceIo(pub(crate) Arc<AsyncFd<IfaceStream>>);
 
 impl DeviceIo {
     pub fn poll_read(&self, out: &mut [u8], cx: &mut Context<'_>) -> Poll<io::Result<usize>> {
@@ -53,36 +44,6 @@ impl DeviceIo {
     }
 }
 
-impl IfaceConfig {
-    pub(crate) fn mtu(&self) -> usize {
-        self.mtu.load(Relaxed)
-    }
-
-    pub(crate) fn refresh_mtu(&self) -> Result<usize> {
-        let mtu = ioctl::interface_mtu_by_name(self.iface.name())?;
-        self.mtu.store(mtu, Relaxed);
-
-        Ok(mtu)
-    }
-
-    pub(crate) async fn add_route(
-        &self,
-        route: IpNetwork,
-        callbacks: &impl Callbacks<Error = Error>,
-    ) -> Result<Option<Device>> {
-        let Some((iface, stream)) = self.iface.add_route(route, callbacks).await? else {
-            return Ok(None);
-        };
-        let io = DeviceIo(stream);
-        let mtu = ioctl::interface_mtu_by_name(iface.name())?;
-        let config = IfaceConfig {
-            iface,
-            mtu: AtomicUsize::new(mtu),
-        };
-        Ok(Some(Device { io, config }))
-    }
-}
-
 pub(super) async fn create_iface(
     config: &Interface,
     callbacks: &impl Callbacks<Error = Error>,
@@ -91,16 +52,12 @@ pub(super) async fn create_iface(
     let (iface, stream) = IfaceDevice::new(config, callbacks, fallback_strategy).await?;
     iface.up().await?;
     let io = DeviceIo(stream);
-    let mtu = ioctl::interface_mtu_by_name(iface.name())?;
-    let config = IfaceConfig {
-        iface,
-        mtu: AtomicUsize::new(mtu),
-    };
+    let mtu = AtomicUsize::new(ioctl::interface_mtu_by_name(iface.name())?);
 
-    Ok(Device { io, config })
+    Ok(Device { io, mtu, iface })
 }
 
-mod ioctl {
+pub(crate) mod ioctl {
     use super::*;
 
     pub(crate) fn interface_mtu_by_name(name: &str) -> Result<usize> {
