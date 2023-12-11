@@ -99,8 +99,12 @@ impl Tun {
 
         // Safety: We just opened the file descriptor.
         unsafe {
-            ioctl::exec(fd, TUNSETIFF, &ioctl::Request::<SetTunFlagsPayload>::new())?;
-            ioctl::exec(fd, libc::SIOCGIFINDEX, &request)?;
+            dbg!(ioctl::exec(
+                fd,
+                TUNSETIFF,
+                &ioctl::Request::<SetTunFlagsPayload>::new()
+            ))?;
+            dbg!(ioctl::exec(fd, libc::SIOCGIFINDEX, &request))?;
         }
 
         set_non_blocking(fd)?;
