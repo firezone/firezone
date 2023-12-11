@@ -34,6 +34,7 @@ struct AuthView: View {
     VStack(
       alignment: .center,
       content: {
+        Spacer()
         Image("LogoText")
         Spacer()
         Button("Sign in") {
