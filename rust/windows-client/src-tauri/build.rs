@@ -5,12 +5,11 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-// If we ask for admin privilege in the manifest, we can't run in the CLI,
-// which makes debugging hard.
+// If we ask for admin privilege in the manifest, we can't run in Cygwin,
+// which makes debugging hard on my dev system.
 // So always ask for it in Release, which is simpler for users, and in Release
 // mode we run as a GUI so we lose stdout/stderr anyway.
-// If you need admin privileges for debugging, you can right-click the debug
-// exe anyway, it's not any worse.
+// If you need admin privileges for debugging, you can right-click the debug exe.
 
 #[cfg(debug_assertions)]
 const WINDOWS_MANIFEST: &str = include_str!("firezone-windows-client-debug.manifest");
