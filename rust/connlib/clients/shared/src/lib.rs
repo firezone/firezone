@@ -138,11 +138,11 @@ where
             // to force queue ordering.
             let (control_plane_sender, mut control_plane_receiver) = tokio::sync::mpsc::channel(1);
 
-            let mut connection = PhoenixChannel::<_, IngressMessages, ReplyMessages, Messages>::new(Secret::new(SecureUrl::from_url(connect_url)), move |msg, reference| {
+            let mut connection = PhoenixChannel::<_, IngressMessages, ReplyMessages, Messages>::new(Secret::new(SecureUrl::from_url(connect_url)), move |msg, reference, topic| {
                 let control_plane_sender = control_plane_sender.clone();
                 async move {
                     tracing::trace!(?msg);
-                    if let Err(e) = control_plane_sender.send((msg, reference)).await {
+                    if let Err(e) = control_plane_sender.send((msg, reference, topic)).await {
                         tracing::warn!("Received a message after handler already closed: {e}. Probably message received during session clean up.");
                     }
                 }
@@ -166,10 +166,10 @@ where
                 let mut upload_logs_interval = upload_interval();
                 loop {
                     tokio::select! {
-                        Some((msg, reference)) = control_plane_receiver.recv() => {
+                        Some((msg, reference, topic)) = control_plane_receiver.recv() => {
                             match msg {
                                 Ok(msg) => control_plane.handle_message(msg, reference).await?,
-                                Err(err) => control_plane.handle_error(err, reference).await,
+                                Err(err) => control_plane.handle_error(err, reference, topic).await,
                             }
                         },
                         event = control_plane.tunnel.next_event() => control_plane.handle_tunnel_event(event).await,
