@@ -1060,4 +1060,13 @@ defmodule Domain.GatewaysTest do
       assert {:managed, :turn} == relay_strategy([managed_group])
     end
   end
+
+  describe "connect_gateway/2" do
+    test "does not allow duplicate presence", %{account: account} do
+      gateway = Fixtures.Gateways.create_gateway(account: account)
+
+      assert connect_gateway(gateway) == :ok
+      assert {:error, {:already_tracked, _pid, _topic, _key}} = connect_gateway(gateway)
+    end
+  end
 end
