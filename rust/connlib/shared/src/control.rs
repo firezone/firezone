@@ -507,3 +507,55 @@ impl PhoenixSender {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::control::{
+        ErrorInfo, ExpectedError, Payload, PhxReply::Error, Reason, ReplyMessage::PhxReply,
+        UnexpectedError,
+    };
+
+    #[test]
+    fn unmatched_topic_reply() {
+        let actual_reply = r#"
+            {
+               "event":"phx_reply",
+               "ref":"12",
+               "topic":"client",
+               "payload":{
+                  "status":"error",
+                  "response":{
+                     "reason":"unmatched topic"
+                  }
+               }
+            }
+        "#;
+        let actual_reply: Payload<(), ()> = serde_json::from_str(actual_reply).unwrap();
+        let expected_reply = Payload::<(), ()>::Reply(PhxReply(Error(ErrorInfo::Reason(
+            Reason::Expected(ExpectedError::UnmatchedTopic),
+        ))));
+        assert_eq!(actual_reply, expected_reply);
+    }
+
+    #[test]
+    fn unexpected_error_reply() {
+        let actual_reply = r#"
+            {
+               "event":"phx_reply",
+               "ref":"12",
+               "topic":"client",
+               "payload":{
+                  "status":"error",
+                  "response":{
+                     "reason":"bad reply"
+                  }
+               }
+            }
+        "#;
+        let actual_reply: Payload<(), ()> = serde_json::from_str(actual_reply).unwrap();
+        let expected_reply = Payload::<(), ()>::Reply(PhxReply(Error(ErrorInfo::Reason(
+            Reason::UnExpected(UnexpectedError("bad reply".to_string())),
+        ))));
+        assert_eq!(actual_reply, expected_reply);
+    }
+}

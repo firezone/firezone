@@ -287,12 +287,6 @@ mod test {
     }
 
     #[test]
-    fn unmatched_topic_reply() {
-        let reply = r#"{\"event\":\"phx_reply\",\"ref\":\"12\",\"topic\":\"revert me!\",\"payload\":{\"status\":\"error\",\"response\":{\"reason\":\"unmatched topic\"}}}"#;
-        assert!(false)
-    }
-
-    #[test]
     fn connection_details_reply() {
         let m = PhoenixMessage::<IngressMessages, ReplyMessages>::new_ok_reply(
             "client",
