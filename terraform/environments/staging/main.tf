@@ -252,7 +252,7 @@ resource "google_sql_database" "firezone" {
 
 # Create IAM users for the database for all project owners
 resource "google_sql_user" "iam_users" {
-  for_each = local.project_owners
+  for_each = toset(local.project_owners)
 
   project  = module.google-cloud-project.project.project_id
   instance = module.google-cloud-sql.master_instance_name
