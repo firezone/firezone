@@ -251,9 +251,9 @@ impl connlib_client_shared::Callbacks for CallbackHandler {
     fn on_set_interface_config(
         &self,
         tunnel_addr_ipv4: Ipv4Addr,
-        tunnel_addr_ipv6: Ipv6Addr,
-        dns_addr: Ipv4Addr,
-        dns_fallback_strategy: String,
+        _tunnel_addr_ipv6: Ipv6Addr,
+        _dns_addr: Ipv4Addr,
+        _dns_fallback_strategy: String,
     ) -> Result<Option<i32>, Self::Error> {
         tracing::info!("Tunnel IPv4 = {tunnel_addr_ipv4}");
         Ok(None)

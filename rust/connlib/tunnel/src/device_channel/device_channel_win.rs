@@ -6,15 +6,15 @@ use ip_network::IpNetwork;
 use std::{
     str::FromStr,
     sync::Arc,
-    task::{Context, Poll, ready},
+    task::{ready, Context, Poll},
 };
 use tokio::sync::mpsc;
 
 // TODO: Make sure this gets dropped gracefully on disconnect
 pub(crate) struct IfaceConfig {
-    adapter: Arc<wintun::Adapter>,
-    recv_thread: std::thread::JoinHandle<()>,
-    session: Arc<wintun::Session>,
+    _adapter: Arc<wintun::Adapter>,
+    _recv_thread: std::thread::JoinHandle<()>,
+    _session: Arc<wintun::Session>,
 }
 
 pub(crate) struct DeviceIo {
@@ -32,13 +32,13 @@ impl DeviceIo {
         match pkt {
             Some(pkt) => {
                 out[0..pkt.len()].copy_from_slice(&pkt);
-                tracing::debug!("tx {} bytes", pkt.len());
+                tracing::debug!("tx {} B, {}", pkt.len(), explain_packet(&pkt));
                 Poll::Ready(Ok(pkt.len()))
-            },
+            }
             None => {
                 tracing::error!("error receiving packet from mpsc channel");
                 Poll::Ready(Err(std::io::ErrorKind::Other.into()))
-            },
+            }
         }
     }
 
@@ -48,15 +48,18 @@ impl DeviceIo {
             Packet::Ipv4(msg) => msg,
             Packet::Ipv6(msg) => msg,
         };
-        tracing::debug!("Received packet from WAN, {} bytes, {}", bytes.len(), explain_packet(&bytes));
-        let mut pkt = self.session.allocate_send_packet(bytes.len().try_into().unwrap()).unwrap();
+        tracing::debug!("rx {} B, {}", bytes.len(), explain_packet(&bytes));
+        let mut pkt = self
+            .session
+            .allocate_send_packet(bytes.len().try_into().unwrap())
+            .unwrap();
         pkt.bytes_mut().copy_from_slice(&bytes);
         self.session.send_packet(pkt);
         Ok(bytes.len())
     }
 }
 
-const BOGUS_MTU: usize = 500;
+const BOGUS_MTU: usize = 1_500;
 
 impl IfaceConfig {
     pub(crate) fn mtu(&self) -> usize {
@@ -89,13 +92,17 @@ pub(crate) async fn create_iface(
 
     let wintun = unsafe { wintun::load_from_path("./wintun.dll") }?;
     let uuid = uuid::Uuid::from_str(TUNNEL_UUID)?;
-    let adapter = match wintun::Adapter::create(&wintun, "Firezone", "Firezone VPN", Some(uuid.as_u128())) {
-        Ok(x) => x,
-        Err(e) => {
-            tracing::error!("wintun::Adapter::create failed, probably need admin powers: {}", e);
-            return Err(e.into());
-        },
-    };
+    let adapter =
+        match wintun::Adapter::create(&wintun, "Firezone", "Firezone VPN", Some(uuid.as_u128())) {
+            Ok(x) => x,
+            Err(e) => {
+                tracing::error!(
+                    "wintun::Adapter::create failed, probably need admin powers: {}",
+                    e
+                );
+                return Err(e.into());
+            }
+        };
 
     adapter.set_address(config.ipv4)?;
 
@@ -108,9 +115,9 @@ pub(crate) async fn create_iface(
 
     Ok(Device {
         config: IfaceConfig {
-            adapter,
-            recv_thread,
-            session: Arc::clone(&session),
+            _adapter: adapter,
+            _recv_thread: recv_thread,
+            _session: Arc::clone(&session),
         },
         io: DeviceIo {
             packet_rx,
@@ -119,10 +126,12 @@ pub(crate) async fn create_iface(
     })
 }
 
-fn start_recv_thread(packet_tx: mpsc::Sender<Vec<u8>>, session: Arc<wintun::Session>) -> std::thread::JoinHandle<()> {
+fn start_recv_thread(
+    packet_tx: mpsc::Sender<Vec<u8>>,
+    session: Arc<wintun::Session>,
+) -> std::thread::JoinHandle<()> {
     std::thread::spawn(move || {
         while let Ok(pkt) = session.receive_blocking() {
-            tracing::debug!("Sending packet to WAN, {} bytes, {}", pkt.bytes().len(), explain_packet(pkt.bytes()));
             // TODO: Don't allocate here if we can help it
             packet_tx.blocking_send(pkt.bytes().to_vec()).unwrap();
         }
@@ -137,7 +146,7 @@ fn explain_packet(pkt: &[u8]) -> String {
         6 => "TCP",
         17 => "UDP",
         132 => "SCTP",
-        x => "Unknown",
+        _ => "Unknown",
     };
 
     let src = &pkt[12..16];
