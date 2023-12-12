@@ -21,7 +21,7 @@ pub struct Tun {
 
 impl Tun {
     pub fn new(config: &InterfaceConfig) -> Result<Self> {
-        // The unsafe is here because we're loading a DLL from disk and it has arbitary C code in it.
+        // The unsafe is here because we're loading a DLL from disk and it has arbitrary C code in it.
         // As a defense, we could verify the hash before loading it. This would protect against accidental corruption, but not against attacks. (Because of TOCTOU)
         let wintun = unsafe { wintun::load_from_path("./wintun.dll") }?;
         let uuid = uuid::Uuid::from_str(TUNNEL_UUID)?;
