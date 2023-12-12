@@ -329,6 +329,15 @@ pub(crate) struct Transmit {
     pub payload: Vec<u8>,
 }
 
+impl fmt::Debug for Transmit {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Transmit")
+            .field("dst", &self.dst)
+            .field("payload_len", &self.payload.len())
+            .finish()
+    }
+}
+
 impl From<firezone_relay::client::Transmit> for Transmit {
     fn from(value: firezone_relay::client::Transmit) -> Self {
         Self {

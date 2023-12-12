@@ -625,7 +625,7 @@ impl State {
         &mut self,
         cx: &mut Context<'_>,
     ) -> Poll<Either<Event, Transmit>> {
-        if let Poll::Ready(event) = self.pending_events.poll(cx) {
+        if let Poll::Ready(event) = dbg!(self.pending_events.poll(cx)) {
             return Poll::Ready(event);
         }
 
@@ -645,7 +645,7 @@ impl State {
             let connection = entry.get_mut();
 
             loop {
-                match connection.poll(cx) {
+                match dbg!(connection.poll(cx)) {
                     Poll::Ready(connection::ConnectingEvent::Connection { src, dst }) => {
                         let connection = entry.remove().into_established_client_to_gateway(
                             src,
@@ -676,19 +676,19 @@ impl State {
                     Poll::Ready(connection::ConnectingEvent::Transmit(transmit)) => {
                         return Poll::Ready(Either::Right(transmit));
                     }
-                    Poll::Pending => break,
+                    Poll::Pending => continue 'outer,
                 }
             }
         }
 
-        if self.update_timer_interval.poll_tick(cx).is_ready() {
+        if dbg!(self.update_timer_interval.poll_tick(cx)).is_ready() {
             for connection in self.established_connections.values_mut() {
                 connection.update_timers();
             }
         }
 
         for connection in self.established_connections.values_mut() {
-            while let Some(transmit) = connection.poll_transmit() {
+            while let Some(transmit) = dbg!(connection.poll_transmit()) {
                 let _ = self.pending_events.push_back(Either::Right(transmit));
             }
         }
@@ -774,6 +774,7 @@ impl IpProvider {
     }
 }
 
+#[derive(Debug)]
 pub enum Event {
     SignalIceCandidate {
         conn_id: GatewayId,

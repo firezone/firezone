@@ -284,15 +284,15 @@ impl Connection<Connecting> {
 
     pub fn poll(&mut self, cx: &mut Context<'_>) -> Poll<ConnectingEvent> {
         loop {
-            if let Some(event) = self.state.pending_events.pop_front() {
+            if let Some(event) = dbg!(self.state.pending_events.pop_front()) {
                 return Poll::Ready(event);
             }
 
-            if let Poll::Ready(timeout) = self.agent_timeout.poll_unpin(cx) {
+            if let Poll::Ready(timeout) = dbg!(self.agent_timeout.poll_unpin(cx)) {
                 self.ice_agent.handle_timeout(timeout);
             }
 
-            if let Some(transmit) = self.ice_agent.poll_transmit() {
+            if let Some(transmit) = dbg!(self.ice_agent.poll_transmit()) {
                 // TODO: Do we need to handle `transmit.source`?
                 return Poll::Ready(ConnectingEvent::Transmit(Transmit {
                     dst: transmit.destination,
@@ -300,7 +300,7 @@ impl Connection<Connecting> {
                 }));
             }
 
-            match self.ice_agent.poll_event() {
+            match dbg!(self.ice_agent.poll_event()) {
                 Some(IceAgentEvent::IceConnectionStateChange(new_state)) => {
                     tracing::debug!(?new_state);
                     continue;
@@ -330,7 +330,7 @@ impl Connection<Connecting> {
                 None => {}
             }
 
-            if let Some(timeout) = self.ice_agent.poll_timeout() {
+            if let Some(timeout) = dbg!(self.ice_agent.poll_timeout()) {
                 self.agent_timeout = agent_timeout(timeout).boxed().fuse();
                 continue;
             }
@@ -747,6 +747,7 @@ impl<T> Connection<T> {
     }
 }
 
+#[derive(Debug)]
 pub(crate) enum ConnectingEvent {
     WantChannelToPeer { relay: SocketAddr, peer: SocketAddr },
     Connection { src: SocketAddr, dst: SocketAddr },
