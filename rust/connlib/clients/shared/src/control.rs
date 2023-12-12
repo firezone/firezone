@@ -270,35 +270,22 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
         reference: Option<Reference>,
         topic: String,
     ) {
-        match reply_error.error {
-            ErrorInfo::Offline => {
-                match reference {
-                    Some(reference) => {
-                        let Ok(resource_id) = reference.parse::<ResourceId>() else {
-                            tracing::error!(
-                            "An offline error came back with a reference to a non-valid resource id"
-                        );
-                            let _ = self
-                                .tunnel
-                                .callbacks()
-                                .on_error(&Error::ControlProtocolError);
-                            return;
-                        };
-                        // TODO: Rate limit the number of attempts of getting the relays before just trying a local network connection
-                        self.tunnel.cleanup_connection(resource_id);
-                    }
-                    None => {
-                        tracing::error!(
-                        "An offline portal error came without a reference that originated the error"
+        match (reply_error.error, reference) {
+            (ErrorInfo::Offline, Some(reference)) => {
+                let Ok(resource_id) = reference.parse::<ResourceId>() else {
+                    tracing::error!(
+                        "An offline error came back with a reference to a non-valid resource id"
                     );
-                        let _ = self
-                            .tunnel
-                            .callbacks()
-                            .on_error(&Error::ControlProtocolError);
-                    }
-                }
+                    let _ = self
+                        .tunnel
+                        .callbacks()
+                        .on_error(&Error::ControlProtocolError);
+                    return;
+                };
+                // TODO: Rate limit the number of attempts of getting the relays before just trying a local network connection
+                self.tunnel.cleanup_connection(resource_id);
             }
-            ErrorInfo::Reason(Known(KnownError::UnmatchedTopic)) => {
+            (ErrorInfo::Reason(Known(KnownError::UnmatchedTopic)), _) => {
                 if let Err(e) = self.phoenix_channel.get_sender().join_topic(topic).await {
                     tracing::debug!(err = ?e, "couldn't join topic: {e:#?}");
                 }
