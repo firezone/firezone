@@ -44,10 +44,18 @@ defmodule Web.Sites.NewToken do
         Deploy a new Gateway
       </:title>
       <:help>
-        Gateways require outbound access to <code class="text-sm bg-neutral-600 text-white px-1 py-0.5 rounded">api.firezone.dev:433</code> only. <strong>No inbound firewall rules</strong> are required or recommended.
+        Gateways require outbound access to
+        <code class="text-sm bg-neutral-600 text-white px-1 py-0.5 rounded">
+          api.firezone.dev:433
+        </code>
+        only. <strong>No inbound firewall rules</strong>
+        are required or recommended.
       </:help>
       <:help>
-        <.link href="http://www.firezone.dev/kb/deploy/gateways?utm_source=product" class="text-accent-500 hover:underline">Read the gateway deployment guide for more detailed instructions</.link>.
+        <.link
+          href="http://www.firezone.dev/kb/deploy/gateways?utm_source=product"
+          class="text-accent-500 hover:underline"
+        >Read the gateway deployment guide for more detailed instructions</.link>.
       </:help>
       <:content>
         <div class="py-8 px-4 mx-auto max-w-2xl lg:py-16">

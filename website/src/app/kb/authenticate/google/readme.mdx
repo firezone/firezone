@@ -43,6 +43,15 @@ To setup the Google Workspace connector, follow the steps below.
 
 ### Step 1: Create a new project in Google Cloud
 
+<Alert
+  color="info"
+  html={`
+    You may skip this step and proceed directly to
+    <a href="#step-2-enable-the-admin-sdk-api" class="hover:underline text-accent-500">
+    Step 2</a> if you already have a GCP project you'd like to use with Firezone.
+  `}
+/>
+
 [Go here to create a new project](https://console.cloud.google.com/projectcreate)
 in your Google Cloud account and fill in the following fields:
 
@@ -179,7 +188,7 @@ Ensure your Scopes configuration looks like the screenshot above, then click
 
 Your OAuth app summary should look similar to the screenshot above.
 
-### Step 5: Configure client credentials
+### Step 5: Create client credentials
 
 Next, you'll need to add OAuth credentials to allow Firezone to connect to your
 Google Workspace account.
