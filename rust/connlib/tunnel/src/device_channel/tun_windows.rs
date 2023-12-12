@@ -3,7 +3,8 @@ use ip_network::IpNetwork;
 use std::{
     io,
     net::Ipv6Addr,
-    process::Command,
+    os::windows::process::CommandExt,
+    process::{Command, Stdio},
     str::FromStr,
     sync::Arc,
     task::{ready, Context, Poll},
@@ -16,12 +17,18 @@ const TUNNEL_UUID: &str = "e9245bc1-b8c1-44ca-ab1d-c6aad4f13b9c";
 pub struct Tun {
     _adapter: Arc<wintun::Adapter>,
     /// The index of our network adapter, we can use this when asking Windows to add / remove routes / DNS rules
+    /// It's stable across app restarts and I'm assuming across system reboots too.
     iface_idx: u32,
     // TODO: Get rid of this mutex. It's a hack to deal with `poll_read` taking a `&self` instead of `&mut self`
     packet_rx: std::sync::Mutex<mpsc::Receiver<wintun::Packet>>,
     _recv_thread: std::thread::JoinHandle<()>,
     session: Arc<wintun::Session>,
 }
+
+// Hides Powershell's console on Windows
+// https://stackoverflow.com/questions/59692146/is-it-possible-to-use-the-standard-library-to-spawn-a-process-without-showing-th#60958956
+const CREATE_NO_WINDOW: u32 = 0x08000000;
+const DETACHED_PROCESS: u32 = 0x00000008;
 
 impl Tun {
     pub fn new(config: &InterfaceConfig) -> Result<Self> {
@@ -45,6 +52,7 @@ impl Tun {
             }
         };
 
+        // TODO: I think wintun flashes a couple console windows here when it shells out to netsh. We should upstream the same patch I'm doing for powershell to the wintun project
         adapter.set_network_addresses_tuple(
             config.ipv4.into(),
             [255, 255, 255, 255].into(),
@@ -65,10 +73,23 @@ impl Tun {
         // Remove any routes that were previously associated with us
         // TODO: Pick a more elegant way to do this
         Command::new("powershell")
+            .creation_flags(CREATE_NO_WINDOW)
             .arg("-Command")
             .arg(format!(
                 "Remove-NetRoute -InterfaceIndex {iface_idx} -Confirm:$false"
             ))
+            .stdout(Stdio::null())
+            .status()?;
+
+        // Set our DNS IP as the DNS server for our interface
+        // TODO: Lots of issues with this. Windows does seem to use it, but I'm not sure why. And there's a delay before some Firefox windows pick it up. Curl might be picking it up faster because its DNS cache starts cold every time.
+        Command::new("powershell")
+            .creation_flags(CREATE_NO_WINDOW)
+            .arg("-Command")
+            .arg(format!(
+                "Set-DnsClientServerAddress -InterfaceIndex {iface_idx} -ServerAddresses(\"100.100.111.1\")"
+            ))
+            .stdout(Stdio::null())
             .status()?;
 
         let session = Arc::new(adapter.start_session(wintun::MAX_RING_CAPACITY)?);
@@ -92,10 +113,12 @@ impl Tun {
         let iface_idx = self.iface_idx;
         // TODO: Pick a more elegant way to do this
         Command::new("powershell")
+            .creation_flags(CREATE_NO_WINDOW)
             .arg("-Command")
             .arg(format!(
                 "New-NetRoute -InterfaceIndex {iface_idx} -DestinationPrefix \"{route}\""
             ))
+            .stdout(Stdio::null())
             .status()?;
         Ok(())
     }
