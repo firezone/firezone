@@ -6,6 +6,7 @@ description = "Firezone Windows Client"
 edition = "2021"
 
 [build-dependencies]
+anyhow = { version = "1.0" }
 tauri-build = { version = "1.5", features = [] }
 
 [dependencies]
