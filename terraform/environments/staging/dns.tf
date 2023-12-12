@@ -305,7 +305,7 @@ resource "google_dns_record_set" "google-mail" {
   ]
 }
 
-resource "google_dns_record_set" "google-dmark" {
+resource "google_dns_record_set" "google-dmarc" {
   project      = module.google-cloud-project.project.project_id
   managed_zone = module.google-cloud-dns.zone_name
 

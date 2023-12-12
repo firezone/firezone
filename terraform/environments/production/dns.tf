@@ -180,6 +180,16 @@ resource "google_dns_record_set" "sendgrid-domainkey2" {
   ttl     = 3600
 }
 
+resource "google_dns_record_set" "sendgrid-reverse-dns" {
+  project      = module.google-cloud-project.project.project_id
+  managed_zone = module.google-cloud-dns.zone_name
+
+  type    = "A"
+  name    = "o1.ptr3213.${module.google-cloud-dns.dns_name}"
+  rrdatas = ["159.183.164.144"]
+  ttl     = 3600
+}
+
 # Postmark
 
 resource "google_dns_record_set" "postmark-dkim" {
@@ -254,7 +264,7 @@ resource "google_dns_record_set" "google-mail" {
   ]
 }
 
-resource "google_dns_record_set" "google-dmark" {
+resource "google_dns_record_set" "google-dmarc" {
   project      = module.google-cloud-project.project.project_id
   managed_zone = module.google-cloud-dns.zone_name
 
@@ -318,7 +328,7 @@ resource "google_dns_record_set" "google-ext-mail" {
   ]
 }
 
-resource "google_dns_record_set" "google-ext-dmark" {
+resource "google_dns_record_set" "google-ext-dmarc" {
   project      = module.google-cloud-project.project.project_id
   managed_zone = module.google-cloud-dns.zone_name
 
