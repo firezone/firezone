@@ -1,5 +1,5 @@
 use crate::bounded_queue::BoundedQueue;
-use crate::device_channel::{create_iface, Packet};
+use crate::device_channel::{Device, Packet};
 use crate::ip_packet::{IpPacket, MutableIpPacket};
 use crate::peer::PacketTransformClient;
 use crate::{
@@ -60,7 +60,7 @@ where
     /// Once added, when a packet for the resource is intercepted a new data channel will be created
     /// and packets will be wrapped with wireguard and sent through it.
     #[tracing::instrument(level = "trace", skip(self))]
-    pub async fn add_resource(
+    pub fn add_resource(
         &self,
         resource_description: ResourceDescription,
     ) -> connlib_shared::Result<()> {
@@ -72,7 +72,7 @@ where
                     .insert(dns.address.clone(), dns.clone());
             }
             ResourceDescription::Cidr(cidr) => {
-                self.add_route(cidr.address).await?;
+                self.add_route(cidr.address)?;
 
                 self.role_state
                     .lock()
@@ -110,13 +110,13 @@ where
 
     /// Sets the interface configuration and starts background tasks.
     #[tracing::instrument(level = "trace", skip(self))]
-    pub async fn set_interface(&self, config: &InterfaceConfig) -> connlib_shared::Result<()> {
+    pub fn set_interface(&self, config: &InterfaceConfig) -> connlib_shared::Result<()> {
         if !config.upstream_dns.is_empty() {
             self.role_state.lock().dns_strategy = DnsFallbackStrategy::UpstreamResolver;
         }
 
         let dns_strategy = self.role_state.lock().dns_strategy;
-        let device = Arc::new(create_iface(config, self.callbacks(), dns_strategy).await?);
+        let device = Arc::new(Device::new(config, self.callbacks(), dns_strategy)?);
 
         self.device.store(Some(device.clone()));
         self.no_device_waker.wake();
@@ -124,12 +124,12 @@ where
         // TODO: the requirement for the DNS_SENTINEL means you NEED ipv4 stack
         // we are trying to support ipv4 and ipv6, so we should have an ipv6 dns sentinel
         // alternative.
-        self.add_route(DNS_SENTINEL.into()).await?;
+        self.add_route(DNS_SENTINEL.into())?;
         // Note: I'm just assuming this needs to succeed since we already require ipv4 stack due to the dns sentinel
         // TODO: change me when we don't require ipv4
-        self.add_route(IPV4_RESOURCES.parse().unwrap()).await?;
+        self.add_route(IPV4_RESOURCES.parse().unwrap())?;
 
-        if let Err(e) = self.add_route(IPV6_RESOURCES.parse().unwrap()).await {
+        if let Err(e) = self.add_route(IPV6_RESOURCES.parse().unwrap()) {
             tracing::warn!(err = ?e, "ipv6 not supported");
         }
 
@@ -148,14 +148,13 @@ where
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    pub async fn add_route(&self, route: IpNetwork) -> connlib_shared::Result<()> {
+    pub fn add_route(&self, route: IpNetwork) -> connlib_shared::Result<()> {
         let maybe_new_device = self
             .device
             .load()
             .as_ref()
             .ok_or(Error::ControlProtocolError)?
-            .add_route(route, self.callbacks())
-            .await?;
+            .add_route(route, self.callbacks())?;
 
         if let Some(new_device) = maybe_new_device {
             self.device.swap(Some(Arc::new(new_device)));
