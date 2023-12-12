@@ -61,10 +61,10 @@ Two or more Gateways deployed in the same site will automatically fail over and
 load balance for each other.
 
 When the portal detects a particular gateway is unhealthy, it will stop using it
-for new connection requests to resources in the site. Fail over takes around 60
-to 120 seconds for clients to time out their existing gateway connections and
-fail over to a healthy one. During this time, connection to resources will be
-interrupted, so it's important to plan gateway downtime appropriately.
+for new connection requests to resources in the site. Fail over takes up to 25
+seconds for clients to time out their existing gateway connections and fail over
+to a healthy one. During this time, connection to resources will be interrupted,
+so it's important to plan gateway downtime appropriately.
 
 ## Load balancing
 
