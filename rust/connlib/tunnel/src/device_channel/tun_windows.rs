@@ -2,6 +2,8 @@ use connlib_shared::{messages::Interface as InterfaceConfig, Result};
 use ip_network::IpNetwork;
 use std::{
     io,
+    net::Ipv6Addr,
+    process::Command,
     str::FromStr,
     sync::Arc,
     task::{ready, Context, Poll},
@@ -13,6 +15,8 @@ const TUNNEL_UUID: &str = "e9245bc1-b8c1-44ca-ab1d-c6aad4f13b9c";
 // TODO: Make sure all these get dropped gracefully on disconnect
 pub struct Tun {
     _adapter: Arc<wintun::Adapter>,
+    /// The index of our network adapter, we can use this when asking Windows to add / remove routes / DNS rules
+    iface_idx: u32,
     // TODO: Get rid of this mutex. It's a hack to deal with `poll_read` taking a `&self` instead of `&mut self`
     packet_rx: std::sync::Mutex<mpsc::Receiver<wintun::Packet>>,
     _recv_thread: std::thread::JoinHandle<()>,
@@ -41,7 +45,31 @@ impl Tun {
             }
         };
 
-        adapter.set_address(config.ipv4)?;
+        adapter.set_network_addresses_tuple(
+            config.ipv4.into(),
+            [255, 255, 255, 255].into(),
+            None,
+        )?;
+        adapter.set_network_addresses_tuple(
+            config.ipv6.into(),
+            Ipv6Addr::new(
+                0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff,
+            )
+            .into(),
+            None,
+        )?;
+
+        let iface_idx = adapter.get_adapter_index()?;
+        tracing::debug!("adapter index = {}", iface_idx);
+
+        // Remove any routes that were previously associated with us
+        // TODO: Pick a more elegant way to do this
+        Command::new("powershell")
+            .arg("-Command")
+            .arg(format!(
+                "Remove-NetRoute -InterfaceIndex {iface_idx} -Confirm:$false"
+            ))
+            .status()?;
 
         let session = Arc::new(adapter.start_session(wintun::MAX_RING_CAPACITY)?);
 
@@ -52,6 +80,7 @@ impl Tun {
 
         Ok(Self {
             _adapter: adapter,
+            iface_idx,
             _recv_thread: recv_thread,
             packet_rx,
             session: Arc::clone(&session),
@@ -60,6 +89,14 @@ impl Tun {
 
     pub fn add_route(&self, route: IpNetwork) -> Result<()> {
         tracing::debug!("add_route {route}");
+        let iface_idx = self.iface_idx;
+        // TODO: Pick a more elegant way to do this
+        Command::new("powershell")
+            .arg("-Command")
+            .arg(format!(
+                "New-NetRoute -InterfaceIndex {iface_idx} -DestinationPrefix \"{route}\""
+            ))
+            .status()?;
         Ok(())
     }
 
