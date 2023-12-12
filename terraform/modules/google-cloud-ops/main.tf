@@ -1,7 +1,7 @@
 resource "google_monitoring_notification_channel" "slack" {
   project = var.project_id
 
-  display_name = "Slack: #alerts-infra"
+  display_name = "Slack: ${var.slack_alerts_channel}"
   type         = "slack"
 
   labels = {
@@ -333,7 +333,7 @@ resource "google_monitoring_alert_policy" "genservers_crash_policy" {
 resource "google_monitoring_alert_policy" "production_db_access_policy" {
   project = var.project_id
 
-  display_name = "Production DB Access"
+  display_name = "DB Access"
   combiner     = "OR"
 
   notification_channels = [
