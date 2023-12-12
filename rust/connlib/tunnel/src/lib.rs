@@ -398,16 +398,10 @@ where
                     continue;
                 };
 
-                tokio::spawn({
-                    let callbacks = self.callbacks.clone();
-
-                    async move {
-                        if let Err(e) = device.refresh_mtu().await {
-                            tracing::error!(error = ?e, "refresh_mtu");
-                            let _ = callbacks.on_error(&e);
-                        }
-                    }
-                });
+                if let Err(e) = device.refresh_mtu() {
+                    tracing::error!(error = ?e, "refresh_mtu");
+                    let _ = self.callbacks.on_error(&e);
+                }
             }
 
             if let Poll::Ready(event) = self.role_state.lock().poll_next_event(cx) {
