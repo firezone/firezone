@@ -30,7 +30,7 @@ defmodule Web.Actors.Components do
     ~H"""
     <.link
       navigate={~p"/#{@account}/actors/#{@actor}"}
-      class={["font-medium text-accent-600 hover:underline", @class]}
+      class={["font-medium text-accent-500 hover:underline", @class]}
     >
       <%= @actor.name %>
     </.link>

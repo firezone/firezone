@@ -41,11 +41,11 @@ defmodule Web.Sites.NewToken do
 
     <.section>
       <:title>
-        Deploy your Gateway
+        Deploy a new Gateway
       </:title>
       <:content>
         <div class="py-8 px-4 mx-auto max-w-2xl lg:py-16">
-          <div class="text-xl mb-2">
+          <div class="text-xl mb-4">
             Select deployment method:
           </div>
 
@@ -56,36 +56,11 @@ defmodule Web.Sites.NewToken do
               phx_click="tab_selected"
               selected={@selected_tab == "docker-instructions"}
             >
-              <p class="pl-4 mb-2">
+              <p class="p-4">
                 Copy-paste this command to your server:
               </p>
 
               <.code_block id="code-sample-docker1" class="w-full" phx-no-format phx-update="ignore"><%= docker_command(@env) %></.code_block>
-
-              <.initial_connection_status
-                :if={@env}
-                type="gateway"
-                navigate={~p"/#{@account}/sites/#{@group}"}
-                connected?={@connected?}
-              />
-
-              <hr />
-
-              <p class="pl-4 mb-2 mt-4 text-xl font-semibold">
-                Troubleshooting
-              </p>
-
-              <p class="pl-4 mb-2 mt-4">
-                Check the container status:
-              </p>
-
-              <.code_block id="code-sample-docker2" class="w-full" phx-no-format>docker ps --filter "name=firezone-gateway"</.code_block>
-
-              <p class="pl-4 mb-2 mt-4">
-                Check the container logs:
-              </p>
-
-              <.code_block id="code-sample-docker3" class="w-full rounded-b" phx-no-format>docker logs firezone-gateway</.code_block>
             </:tab>
             <:tab
               id="systemd-instructions"
@@ -93,14 +68,14 @@ defmodule Web.Sites.NewToken do
               phx_click="tab_selected"
               selected={@selected_tab == "systemd-instructions"}
             >
-              <p class="pl-4 mb-2">
-                1. Create a systemd unit file with the following content:
+              <p class="p-4">
+                1. Create a new systemd unit file:
               </p>
 
               <.code_block id="code-sample-systemd1" class="w-full" phx-no-format>sudo nano /etc/systemd/system/firezone-gateway.service</.code_block>
 
-              <p class="pl-4 mb-2 mt-4">
-                2. Copy-paste the following content into the file:
+              <p class="p-4">
+                2. Copy-paste the following contents into the file:
               </p>
 
               <.code_block
@@ -110,54 +85,44 @@ defmodule Web.Sites.NewToken do
                 phx-update="ignore"
               ><%= systemd_command(@env) %></.code_block>
 
-              <p class="pl-4 mb-2 mt-4">
+              <p class="p-4">
                 3. Save by pressing <kbd>Ctrl</kbd>+<kbd>X</kbd>, then <kbd>Y</kbd>, then <kbd>Enter</kbd>.
               </p>
 
-              <p class="pl-4 mb-2 mt-4">
+              <p class="p-4">
                 4. Reload systemd configuration:
               </p>
 
               <.code_block id="code-sample-systemd4" class="w-full" phx-no-format>sudo systemctl daemon-reload</.code_block>
 
-              <p class="pl-4 mb-2 mt-4">
+              <p class="p-4">
                 5. Start the service:
               </p>
 
               <.code_block id="code-sample-systemd5" class="w-full" phx-no-format>sudo systemctl start firezone-gateway</.code_block>
 
-              <p class="pl-4 mb-2 mt-4">
+              <p class="p-4">
                 6. Enable the service to start on boot:
               </p>
 
               <.code_block id="code-sample-systemd6" class="w-full" phx-no-format>sudo systemctl enable firezone-gateway</.code_block>
-
-              <.initial_connection_status
-                :if={@env}
-                type="gateway"
-                navigate={~p"/#{@account}/sites/#{@group}"}
-                connected?={@connected?}
-              />
-
-              <hr />
-
-              <p class="pl-4 mb-2 mt-4 text-xl font-semibold">
-                Troubleshooting
-              </p>
-
-              <p class="pl-4 mb-2 mt-4">
-                Check the status of the service:
-              </p>
-
-              <.code_block id="code-sample-systemd7" class="w-full rounded-b" phx-no-format>sudo systemctl status firezone-gateway</.code_block>
-
-              <p class="pl-4 mb-2 mt-4">
-                Check the logs:
-              </p>
-
-              <.code_block id="code-sample-systemd8" class="w-full rounded-b" phx-no-format>sudo journalctl -u firezone-gateway.service</.code_block>
             </:tab>
           </.tabs>
+
+          <div id="connection-status" class="flex justify-between items-center">
+            <p class="text-sm">
+              Gateway not connecting? See our <.link
+                class="text-accent-500 hover:underline"
+                href="https://www.firezone.dev/kb/administer/troubleshooting#gateway-not-connecting"
+              >gateway troubleshooting guide</.link>.
+            </p>
+            <.initial_connection_status
+              :if={@env}
+              type="gateway"
+              navigate={~p"/#{@account}/sites/#{@group}"}
+              connected?={@connected?}
+            />
+          </div>
         </div>
       </:content>
     </.section>

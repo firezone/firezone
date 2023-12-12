@@ -32,6 +32,10 @@ use std::time::Duration;
 use tokio::time::Instant;
 use webrtc::ice_transport::ice_candidate::RTCIceCandidate;
 
+// Using str here because Ipv4/6Network doesn't support `const` 🙃
+const IPV4_RESOURCES: &str = "100.96.0.0/11";
+const IPV6_RESOURCES: &str = "fd00:2021:1111:8000::/107";
+
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct DnsResource {
     pub id: ResourceId,
@@ -117,7 +121,17 @@ where
         self.device.store(Some(device.clone()));
         self.no_device_waker.wake();
 
+        // TODO: the requirement for the DNS_SENTINEL means you NEED ipv4 stack
+        // we are trying to support ipv4 and ipv6, so we should have an ipv6 dns sentinel
+        // alternative.
         self.add_route(DNS_SENTINEL.into()).await?;
+        // Note: I'm just assuming this needs to succeed since we already require ipv4 stack due to the dns sentinel
+        // TODO: change me when we don't require ipv4
+        self.add_route(IPV4_RESOURCES.parse().unwrap()).await?;
+
+        if let Err(e) = self.add_route(IPV6_RESOURCES.parse().unwrap()).await {
+            tracing::warn!(err = ?e, "ipv6 not supported");
+        }
 
         self.callbacks.on_tunnel_ready()?;
 
@@ -595,8 +609,8 @@ impl Default for ClientState {
             dns_strategy: Default::default(),
             // TODO: decide ip ranges
             ip_provider: IpProvider::new(
-                "100.96.0.0/11".parse().unwrap(),
-                "fd00:2021:1111:8000::/107".parse().unwrap(),
+                IPV4_RESOURCES.parse().unwrap(),
+                IPV6_RESOURCES.parse().unwrap(),
             ),
             dns_resources_internal_ips: Default::default(),
             dns_resources: Default::default(),

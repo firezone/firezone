@@ -272,31 +272,31 @@ where
             })
             .collect();
 
-        let dev = Arc::clone(self);
-        let ips = addrs.clone();
-        let resource = resource_description.clone();
-        tokio::spawn(async move {
-            for ip in &ips {
-                if let Err(e) = dev.add_route((*ip).into()).await {
-                    tracing::error!(err = ?e, "add route failed");
-                }
-            }
+        role_state
+            .dns_resources_internal_ips
+            .insert(resource_description.clone(), addrs.clone());
 
-            if let Some(device) = dev.device.load().as_ref() {
-                let mut role_state = dev.role_state.lock();
-                send_dns_answer(&mut role_state, Rtype::Aaaa, device, &resource, &ips);
-                send_dns_answer(&mut role_state, Rtype::A, device, &resource, &ips);
-            }
-
-            dev.role_state
-                .lock()
-                .dns_resources_internal_ips
-                .insert(resource, ips);
-        });
-
-        let ips: Vec<IpNetwork> = addrs.into_iter().map(Into::into).collect();
+        let ips: Vec<IpNetwork> = addrs.iter().copied().map(Into::into).collect();
         for ip in &ips {
             peer.add_allowed_ip(*ip);
+        }
+
+        if let Some(device) = self.device.load().as_ref() {
+            send_dns_answer(
+                &mut role_state,
+                Rtype::Aaaa,
+                device,
+                &resource_description,
+                &addrs,
+            );
+
+            send_dns_answer(
+                &mut role_state,
+                Rtype::A,
+                device,
+                &resource_description,
+                &addrs,
+            );
         }
 
         Ok(ips)
