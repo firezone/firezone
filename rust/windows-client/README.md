@@ -26,14 +26,11 @@ From this dir:
 
 ```
 # Tauri has some hot-reloading features. If the Rust code changes it will even recompile and restart the program for you.
-cargo tauri dev
+RUST_LOG=info,firezone_windows_client=debug cargo tauri dev
 
 # You can call debug subcommands on the exe from this directory too
 # e.g. this is equivalent to `cargo run -- debug`
 cargo tauri dev -- -- debug
-
-# Debug connlib GUI integration
-cargo tauri dev -- -- debug-connlib
 
 # The exe is up in the workspace
 stat ../target/debug/firezone-windows-client.exe

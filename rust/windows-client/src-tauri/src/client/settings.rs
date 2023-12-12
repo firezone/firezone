@@ -1,7 +1,7 @@
 //! Everything related to the Settings window, including
 //! advanced settings and code for manipulating diagnostic logs.
 
-use crate::gui::{ControllerRequest, Managed};
+use crate::client::gui::{self, ControllerRequest, Managed};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::{path::PathBuf, result::Result as StdResult, time::Duration};
@@ -27,11 +27,7 @@ impl Default for AdvancedSettings {
 
 /// Gets the path for storing advanced settings, creating parent dirs if needed.
 pub(crate) async fn advanced_settings_path(app: &tauri::AppHandle) -> Result<PathBuf> {
-    let dir = app
-        .path_resolver()
-        .app_local_data_dir()
-        .ok_or_else(|| anyhow::anyhow!("can't get app_local_data_dir"))?
-        .join("config");
+    let dir = gui::app_local_data_dir(app)?.0.join("config");
     tokio::fs::create_dir_all(&dir).await?;
     Ok(dir.join("advanced_settings.json"))
 }
@@ -102,7 +98,7 @@ pub(crate) async fn clear_logs_inner() -> Result<()> {
     todo!()
 }
 
-pub(crate) async fn export_logs_inner(ctlr_tx: crate::gui::CtlrTx) -> Result<()> {
+pub(crate) async fn export_logs_inner(ctlr_tx: gui::CtlrTx) -> Result<()> {
     tauri::api::dialog::FileDialogBuilder::new()
         .add_filter("Zip", &["zip"])
         .save_file(move |file_path| match file_path {

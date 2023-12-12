@@ -1,5 +1,4 @@
 use clap::Parser;
-use firezone_cli_utils::CommonArgs;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -13,11 +12,6 @@ pub struct Cli {
 #[derive(clap::Subcommand)]
 pub enum CliCommands {
     Debug,
-    DebugConnlib {
-        #[command(flatten)]
-        common: CommonArgs,
-    },
-    DebugDeviceId,
     DebugToken,
     DebugWintun,
 }

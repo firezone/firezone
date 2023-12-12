@@ -1,78 +1,9 @@
 //! CLI subcommands used to test features / dependencies before integrating
 //! them with the GUI, or to exercise features programmatically.
 
-use crate::cli::Cli;
+use crate::client::cli::Cli;
 use anyhow::Result;
-use connlib_client_shared::{file_logger, Callbacks, Error, ResourceDescription, Session};
-use firezone_cli_utils::{block_on_ctrl_c, setup_global_subscriber, CommonArgs};
 use keyring::Entry;
-use secrecy::SecretString;
-use smbioslib::SMBiosSystemInformation as SysInfo;
-use std::path::PathBuf;
-
-/// Test connlib and its callbacks.
-pub fn connlib(common_args: CommonArgs) -> Result<()> {
-    #[derive(Clone)]
-    struct CallbackHandler {
-        handle: Option<file_logger::Handle>,
-    }
-
-    impl Callbacks for CallbackHandler {
-        type Error = std::convert::Infallible;
-
-        fn on_disconnect(&self, error: Option<&Error>) -> Result<(), Self::Error> {
-            tracing::error!("on_disconnect not implemented. Error: {error:?}");
-            Ok(())
-        }
-
-        fn on_error(&self, error: &Error) -> Result<(), Self::Error> {
-            tracing::error!("on_error not implemented. Error: {error}");
-            Ok(())
-        }
-
-        fn on_update_resources(
-            &self,
-            _resource_list: Vec<ResourceDescription>,
-        ) -> Result<(), Self::Error> {
-            tracing::error!("on_update_resources not implemented");
-            Ok(())
-        }
-
-        fn roll_log_file(&self) -> Option<PathBuf> {
-            self.handle
-                .as_ref()?
-                .roll_to_new_file()
-                .unwrap_or_else(|e| {
-                    tracing::debug!("Failed to roll over to new file: {e}");
-                    let _ = self.on_error(&Error::LogFileRollError(e));
-
-                    None
-                })
-        }
-    }
-
-    let (layer, handle) = file_logger::layer(std::path::Path::new("."));
-    setup_global_subscriber(layer);
-
-    let device_id = crate::device_id::get();
-
-    let mut session = Session::connect(
-        common_args.api_url,
-        SecretString::from(common_args.token),
-        device_id,
-        CallbackHandler {
-            handle: Some(handle),
-        },
-    )
-    .unwrap();
-
-    tracing::info!("new_session");
-
-    block_on_ctrl_c();
-
-    session.disconnect(None);
-    Ok(())
-}
 
 /// Test encrypted credential storage
 pub fn token() -> Result<()> {
@@ -93,18 +24,6 @@ pub fn token() -> Result<()> {
             entry.set_password(new_password)?;
         }
         Err(e) => return Err(e.into()),
-    }
-
-    Ok(())
-}
-
-/// Test generating a device ID from the BIOS or MAC address. This should survive OS re-installs and uniquely identify a device.
-pub fn device_id() -> Result<()> {
-    let data = smbioslib::table_load_from_device()?;
-    if let Some(uuid) = data.find_map(|sys_info: SysInfo| sys_info.uuid()) {
-        println!("SMBios uuid: {uuid}");
-    } else {
-        println!("SMBios couldn't find uuid");
     }
 
     Ok(())

@@ -12,6 +12,12 @@ If the client is running, the GUI may be in a "signed out", "signed in", or "sig
 
 If the client stops running while signed in, then the token may be stored in Windows' credential manager on disk.
 
+# Device ID
+
+- [ ] Given the AppData dir for the client doesn't exist, when you run the client, then the client will generate a UUIDv4 (random) and store it in AppData
+- [ ] Given the UUID is stored in AppData, when you run the client, then it will load the UUID and compute its SHA256 hash
+- [ ] Given the client is running, when a session starts, then the hexadecimal SHA256 hash of the UUID will be used as the device ID
+
 # Permissions
 
 - [ ] Given a production exe, when you run it normally, then it will ask to escalate to Admin privileges ([#2751](https://github.com/firezone/firezone/issues/2751))
