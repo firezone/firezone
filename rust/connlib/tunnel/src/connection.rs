@@ -7,7 +7,7 @@ use connlib_shared::error::ConnlibError;
 use connlib_shared::messages::{Key, ResourceDescription, ResourceId, SecretKey};
 use either::Either;
 use firezone_relay::client::ChannelBinding;
-use futures_util::future::{BoxFuture, Fuse};
+use futures_util::future::BoxFuture;
 use futures_util::FutureExt;
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
@@ -28,7 +28,7 @@ use str0m::{Candidate, CandidateKind};
 /// This struct itself doesn't actually perform any IO but it does have internal timers so it is not strictly SANS-IO.
 pub(crate) struct Connection<T> {
     ice_agent: IceAgent,
-    agent_timeout: Fuse<BoxFuture<'static, Instant>>,
+    agent_timeout: BoxFuture<'static, Instant>,
     state: T,
 
     /// The STUN servers we've been configured to use.
@@ -104,7 +104,7 @@ impl Connection<WantsRemoteCredentials> {
 
         Self {
             ice_agent,
-            agent_timeout: agent_timeout(Instant::now()).boxed().fuse(),
+            agent_timeout: agent_timeout(Instant::now()).boxed(),
             state: WantsRemoteCredentials {
                 preshared_key: SecretKey::new(Key(StaticSecret::random_from_rng(OsRng).to_bytes())),
             },
@@ -162,7 +162,7 @@ impl Connection<Connecting> {
 
         Self {
             ice_agent,
-            agent_timeout: agent_timeout(Instant::now()).boxed().fuse(),
+            agent_timeout: agent_timeout(Instant::now()).boxed(),
             state: Connecting {
                 preshared_key,
                 remote,
@@ -284,15 +284,11 @@ impl Connection<Connecting> {
 
     pub fn poll(&mut self, cx: &mut Context<'_>) -> Poll<ConnectingEvent> {
         loop {
-            if let Some(event) = dbg!(self.state.pending_events.pop_front()) {
+            if let Some(event) = self.state.pending_events.pop_front() {
                 return Poll::Ready(event);
             }
 
-            if let Poll::Ready(timeout) = dbg!(self.agent_timeout.poll_unpin(cx)) {
-                self.ice_agent.handle_timeout(timeout);
-            }
-
-            if let Some(transmit) = dbg!(self.ice_agent.poll_transmit()) {
+            if let Some(transmit) = self.ice_agent.poll_transmit() {
                 // TODO: Do we need to handle `transmit.source`?
                 return Poll::Ready(ConnectingEvent::Transmit(Transmit {
                     dst: transmit.destination,
@@ -300,7 +296,7 @@ impl Connection<Connecting> {
                 }));
             }
 
-            match dbg!(self.ice_agent.poll_event()) {
+            match self.ice_agent.poll_event() {
                 Some(IceAgentEvent::IceConnectionStateChange(new_state)) => {
                     tracing::debug!(?new_state);
                     continue;
@@ -330,8 +326,9 @@ impl Connection<Connecting> {
                 None => {}
             }
 
-            if let Some(timeout) = dbg!(self.ice_agent.poll_timeout()) {
-                self.agent_timeout = agent_timeout(timeout).boxed().fuse();
+            if let Poll::Ready(timeout) = self.agent_timeout.poll_unpin(cx) {
+                self.ice_agent.handle_timeout(timeout);
+                self.agent_timeout = agent_timeout(timeout).boxed();
                 continue;
             }
 
