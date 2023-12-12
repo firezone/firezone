@@ -145,7 +145,7 @@ resource "google_dns_record_set" "sendgrid-return-1" {
   managed_zone = module.google-cloud-dns.zone_name
 
   type    = "CNAME"
-  name    = "em7493.${module.google-cloud-dns.dns_name}"
+  name    = "em8227.${module.google-cloud-dns.dns_name}"
   rrdatas = ["u23539796.wl047.sendgrid.net."]
   ttl     = 3600
 }
