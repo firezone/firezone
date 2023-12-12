@@ -59,18 +59,23 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
     {:ok, provider}
   end
 
-  def authorization_uri(%Provider{} = provider, redirect_uri) when is_binary(redirect_uri) do
+  def authorization_uri(%Provider{} = provider, redirect_uri, params \\ %{})
+      when is_binary(redirect_uri) do
     config = config_for_provider(provider)
 
     verifier = PKCE.code_verifier()
     state = State.new()
 
-    params = %{
-      access_type: :offline,
-      state: state,
-      code_challenge_method: PKCE.code_challenge_method(),
-      code_challenge: PKCE.code_challenge(verifier)
-    }
+    params =
+      Map.merge(
+        %{
+          access_type: :offline,
+          state: state,
+          code_challenge_method: PKCE.code_challenge_method(),
+          code_challenge: PKCE.code_challenge(verifier)
+        },
+        params
+      )
 
     with {:ok, uri} <- OpenIDConnect.authorization_uri(config, redirect_uri, params) do
       {:ok, uri, {state, verifier}}

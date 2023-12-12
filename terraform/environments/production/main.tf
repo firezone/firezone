@@ -43,6 +43,45 @@ module "google-cloud-project" {
   billing_account_id = "01DFC9-3D6951-579BE1"
 }
 
+# Enable audit logs for the production project
+resource "google_project_iam_audit_config" "audit" {
+  project = module.google-cloud-project.project.project_id
+
+  service = "allServices"
+
+  audit_log_config {
+    log_type = "ADMIN_READ"
+  }
+
+  audit_log_config {
+    log_type = "DATA_READ"
+
+    exempted_members = concat(
+      [
+        module.web.service_account.member,
+        module.api.service_account.member,
+        module.metabase.service_account.member,
+      ],
+      module.gateways[*].service_account.member,
+      module.relays[*].service_account.member
+    )
+  }
+
+  audit_log_config {
+    log_type = "DATA_WRITE"
+
+    exempted_members = concat(
+      [
+        module.web.service_account.member,
+        module.api.service_account.member,
+        module.metabase.service_account.member,
+      ],
+      module.gateways[*].service_account.member,
+      module.relays[*].service_account.member
+    )
+  }
+}
+
 # Grant owner access to the project
 resource "google_project_iam_binding" "project_owners" {
   project = module.google-cloud-project.project.project_id
@@ -255,7 +294,60 @@ resource "google_sql_database" "firezone" {
 
   name     = "firezone"
   instance = module.google-cloud-sql.master_instance_name
+}
 
+# Create IAM users for the database for all project owners
+resource "google_sql_user" "iam_users" {
+  for_each = toset(local.project_owners)
+
+  project  = module.google-cloud-project.project.project_id
+  instance = module.google-cloud-sql.master_instance_name
+
+  type = "CLOUD_IAM_USER"
+  name = each.value
+}
+
+# We can't remove passwords complete because for IAM users we still need to execute those GRANT statements
+provider "postgresql" {
+  scheme    = "gcppostgres"
+  host      = "${module.google-cloud-project.project.project_id}:${local.region}:${module.google-cloud-sql.master_instance_name}"
+  port      = 5432
+  username  = google_sql_user.firezone.name
+  password  = random_password.firezone_db_password.result
+  superuser = false
+  sslmode   = "disable"
+}
+
+resource "postgresql_grant" "grant_select_on_all_tables_schema_to_iam_users" {
+  for_each = toset(local.project_owners)
+
+  database = google_sql_database.firezone.name
+
+  privileges  = ["SELECT", "INSERT", "UPDATE", "DELETE"]
+  objects     = [] # ALL
+  object_type = "table"
+  schema      = "public"
+  role        = each.key
+
+  depends_on = [
+    google_sql_user.iam_users
+  ]
+}
+
+resource "postgresql_grant" "grant_execute_on_all_functions_schema_to_iam_users" {
+  for_each = toset(local.project_owners)
+
+  database = google_sql_database.firezone.name
+
+  privileges  = ["EXECUTE"]
+  objects     = [] # ALL
+  object_type = "function"
+  schema      = "public"
+  role        = each.key
+
+  depends_on = [
+    google_sql_user.iam_users
+  ]
 }
 
 # Create bucket for client logs
@@ -746,10 +838,6 @@ module "relays" {
 
   api_url = "wss://api.${local.tld}"
   token   = var.relay_token
-
-  depends_on = [
-    module.api
-  ]
 }
 
 resource "google_compute_firewall" "portal-ssh-ipv4" {

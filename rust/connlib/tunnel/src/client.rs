@@ -320,6 +320,7 @@ impl ClientState {
         let Some(gateway) = self.resources_gateways.remove(&resource) else {
             return;
         };
+
         self.gateway_awaiting_connection.remove(&gateway);
     }
 

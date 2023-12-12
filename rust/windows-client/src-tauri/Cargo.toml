@@ -6,6 +6,7 @@ description = "Firezone Windows Client"
 edition = "2021"
 
 [build-dependencies]
+anyhow = { version = "1.0" }
 tauri-build = { version = "1.5", features = [] }
 
 [dependencies]
@@ -18,7 +19,6 @@ http-body-util = "0.1.0"
 hyper = { version = "1.0.1", features = ["http1", "server"] }
 hyper-util = { version = "0.1.1", features = ["full"] }
 keyring = "2.0.5"
-smbios-lib = "0.9"
 secrecy.workspace = true
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
