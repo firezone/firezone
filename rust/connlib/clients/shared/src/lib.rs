@@ -58,6 +58,8 @@ where
     /// The generic parameter `CB` should implement all the handlers and that's how errors will be surfaced.
     ///
     /// On a fatal error you should call `[Session::disconnect]` and start a new one.
+    ///
+    /// * `device_id` - The cleartext device ID. connlib will obscure this with a hash internally.
     // TODO: token should be something like SecretString but we need to think about FFI compatibility
     pub fn connect(
         api_url: impl TryInto<Url>,
