@@ -1,6 +1,6 @@
 use async_compression::tokio::bufread::GzipEncoder;
 use connlib_shared::control::KnownError;
-use connlib_shared::control::Reason::Known;
+use connlib_shared::control::Reason;
 use connlib_shared::messages::{DnsServer, GatewayResponse, IpDnsServer};
 use std::path::PathBuf;
 use std::{io, sync::Arc};
@@ -285,7 +285,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                 // TODO: Rate limit the number of attempts of getting the relays before just trying a local network connection
                 self.tunnel.cleanup_connection(resource_id);
             }
-            (ErrorInfo::Reason(Known(KnownError::UnmatchedTopic)), _) => {
+            (ErrorInfo::Reason(Reason::Known(KnownError::UnmatchedTopic)), _) => {
                 if let Err(e) = self.phoenix_channel.get_sender().join_topic(topic).await {
                     tracing::debug!(err = ?e, "couldn't join topic: {e:#?}");
                 }
