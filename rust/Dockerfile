@@ -1,9 +1,57 @@
 # Global args to use in build commands
 ARG ALPINE_VERSION="3.19"
 ARG CARGO_CHEF_VERSION="0.1.62"
+ARG RUSTUP_VERSION="1.26.0"
+ARG RUSTUP_x86_DOWNLOAD_SHA256="7aa9e2a380a9958fc1fc426a3323209b2c86181c6816640979580f62ff7d48d4"
+ARG RUSTUP_aarch64_DOWNLOAD_SHA256="b1962dfc18e1fd47d01341e6897cace67cddfabf547ef394e8883939bd6e002e"
+ARG RUST_VERSION="1.74.1"
+
+FROM alpine:${ALPINE_VERSION} as rust
+
+# Important!  Update this no-op ENV variable when this Dockerfile
+# is updated with the current date. It will force refresh of all
+# of the base images and things like `apk add` won't be using
+# old cached versions when the Dockerfile is built.
+ENV REFRESHED_AT=2023-12-11 \
+  LANG=C.UTF-8 \
+  TERM=xterm
+
+RUN set -xe \
+  # Upgrade Alpine and base packages
+  && apk --no-cache --update-cache --available upgrade \
+  # Install required deps
+  && apk add --no-cache --update-cache \
+  ca-certificates \
+  gcc
+
+ENV RUSTUP_HOME=/usr/local/rustup \
+  CARGO_HOME=/usr/local/cargo \
+  PATH=/usr/local/cargo/bin:$PATH
+
+ARG RUSTUP_VERSION
+ARG RUSTUP_x86_DOWNLOAD_SHA256
+ARG RUSTUP_aarch64_DOWNLOAD_SHA256
+ARG RUST_VERSION
+RUN set -eux; \
+  apkArch="$(apk --print-arch)"; \
+  case "$apkArch" in \
+  x86_64) rustArch='x86_64-unknown-linux-musl'; rustupSha256=${RUSTUP_x86_DOWNLOAD_SHA256} ;; \
+  aarch64) rustArch='aarch64-unknown-linux-musl'; rustupSha256=${RUSTUP_aarch64_DOWNLOAD_SHA256} ;; \
+  *) echo >&2 "unsupported architecture: $apkArch"; exit 1 ;; \
+  esac; \
+  url="https://static.rust-lang.org/rustup/archive/${RUSTUP_VERSION}/${rustArch}/rustup-init"; \
+  wget "$url"; \
+  echo "${rustupSha256} *rustup-init" | sha256sum -c -; \
+  chmod +x rustup-init; \
+  ./rustup-init -y --no-modify-path --profile minimal --default-toolchain ${RUST_VERSION} --default-host ${rustArch}; \
+  rm rustup-init; \
+  chmod -R a+w $RUSTUP_HOME $CARGO_HOME; \
+  rustup --version; \
+  cargo --version; \
+  rustc --version;
 
 # This image is used to prepare Cargo Chef which is used to cache dependencies
-FROM rust:1-alpine${ALPINE_VERSION} as chef
+FROM rust as chef
 
 ARG CARGO_CHEF_VERSION
 RUN set -xe \
