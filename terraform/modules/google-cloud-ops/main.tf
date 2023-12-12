@@ -304,7 +304,7 @@ resource "google_monitoring_alert_policy" "sql_disk_utiliziation_policy" {
 resource "google_monitoring_alert_policy" "genservers_crash_policy" {
   project = var.project_id
 
-  display_name = "GenServer Crashes"
+  display_name = "Errors in logs"
   combiner     = "OR"
 
   notification_channels = local.notification_channels
@@ -326,6 +326,45 @@ resource "google_monitoring_alert_policy" "genservers_crash_policy" {
 
     notification_rate_limit {
       period = "3600s"
+    }
+  }
+}
+
+resource "google_monitoring_alert_policy" "production_db_access_policy" {
+  project = var.project_id
+
+  display_name = "Production DB Access"
+  combiner     = "OR"
+
+  notification_channels = [
+    google_monitoring_notification_channel.slack.name
+  ]
+
+  documentation {
+    content   = "Somebody just accessed the production database, this notification incident will be automatically discarded in 1 hour."
+    mime_type = "text/markdown"
+  }
+
+  conditions {
+    display_name = "Log match condition"
+
+    condition_matched_log {
+      filter = <<-EOT
+      protoPayload.methodName="cloudsql.instances.connect"
+      protoPayload.authenticationInfo.principalEmail!="terraform-cloud@terraform-iam-387817.iam.gserviceaccount.com"
+      EOT
+
+      label_extractors = {
+        "Email" = "EXTRACT(protoPayload.authenticationInfo.principalEmail)"
+      }
+    }
+  }
+
+  alert_strategy {
+    auto_close = "3600s"
+
+    notification_rate_limit {
+      period = "28800s"
     }
   }
 }
