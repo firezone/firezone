@@ -838,10 +838,6 @@ module "relays" {
 
   api_url = "wss://api.${local.tld}"
   token   = var.relay_token
-
-  depends_on = [
-    module.api
-  ]
 }
 
 resource "google_compute_firewall" "portal-ssh-ipv4" {
