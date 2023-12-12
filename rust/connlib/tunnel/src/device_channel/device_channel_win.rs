@@ -3,30 +3,60 @@ use crate::Device;
 use crate::DnsFallbackStrategy;
 use connlib_shared::{messages::Interface, Callbacks, Result};
 use ip_network::IpNetwork;
-use std::task::{Context, Poll};
+use std::{
+    str::FromStr,
+    sync::Arc,
+    task::{Context, Poll, ready},
+};
+use tokio::sync::mpsc;
 
-// TODO: Fill all this out. These are just stubs to test the GUI.
+// TODO: Make sure this gets dropped gracefully on disconnect
+pub(crate) struct IfaceConfig {
+    adapter: Arc<wintun::Adapter>,
+    recv_thread: std::thread::JoinHandle<()>,
+    session: Arc<wintun::Session>,
+}
 
-pub(crate) struct DeviceIo;
-
-pub(crate) struct IfaceConfig;
+pub(crate) struct DeviceIo {
+    packet_rx: std::sync::Mutex<mpsc::Receiver<Vec<u8>>>,
+    session: Arc<wintun::Session>,
+}
 
 impl DeviceIo {
-    pub fn poll_read(&self, _: &mut [u8], _: &mut Context<'_>) -> Poll<std::io::Result<usize>> {
-        // Incoming packets will never appear
-        Poll::Pending
+    pub fn poll_read(&self, out: &mut [u8], cx: &mut Context<'_>) -> Poll<std::io::Result<usize>> {
+        let mut packet_rx = self.packet_rx.try_lock().unwrap();
+
+        tracing::trace!("poll_read");
+        let pkt = ready!(packet_rx.poll_recv(cx));
+
+        match pkt {
+            Some(pkt) => {
+                out[0..pkt.len()].copy_from_slice(&pkt);
+                tracing::debug!("tx {} bytes", pkt.len());
+                Poll::Ready(Ok(pkt.len()))
+            },
+            None => {
+                tracing::error!("error receiving packet from mpsc channel");
+                Poll::Ready(Err(std::io::ErrorKind::Other.into()))
+            },
+        }
     }
 
     pub fn write(&self, packet: Packet<'_>) -> std::io::Result<usize> {
         // All outgoing packets are successfully written to the void
-        match packet {
-            Packet::Ipv4(msg) => Ok(msg.len()),
-            Packet::Ipv6(msg) => Ok(msg.len()),
-        }
+        let bytes = match packet {
+            Packet::Ipv4(msg) => msg,
+            Packet::Ipv6(msg) => msg,
+        };
+        tracing::debug!("Received packet from WAN, {} bytes, {}", bytes.len(), explain_packet(&bytes));
+        let mut pkt = self.session.allocate_send_packet(bytes.len().try_into().unwrap()).unwrap();
+        pkt.bytes_mut().copy_from_slice(&bytes);
+        self.session.send_packet(pkt);
+        Ok(bytes.len())
     }
 }
 
-const BOGUS_MTU: usize = 1_500;
+const BOGUS_MTU: usize = 500;
 
 impl IfaceConfig {
     pub(crate) fn mtu(&self) -> usize {
@@ -39,22 +69,79 @@ impl IfaceConfig {
 
     pub(crate) async fn add_route(
         &self,
-        _: IpNetwork,
+        route: IpNetwork,
         _: &impl Callbacks,
     ) -> Result<Option<Device>> {
-        let io = DeviceIo {};
-        let config = IfaceConfig {};
-        Ok(Some(Device { io, config }))
+        tracing::debug!("add_route {route}");
+
+        Ok(None)
     }
 }
 
+const TUNNEL_UUID: &str = "e9245bc1-b8c1-44ca-ab1d-c6aad4f13b9c";
+
 pub(crate) async fn create_iface(
-    _: &Interface,
+    config: &Interface,
     _: &impl Callbacks,
     _: DnsFallbackStrategy,
 ) -> Result<Device> {
+    tracing::debug!("create_iface {}", config.ipv4);
+
+    let wintun = unsafe { wintun::load_from_path("./wintun.dll") }?;
+    let uuid = uuid::Uuid::from_str(TUNNEL_UUID)?;
+    let adapter = match wintun::Adapter::create(&wintun, "Firezone", "Firezone VPN", Some(uuid.as_u128())) {
+        Ok(x) => x,
+        Err(e) => {
+            tracing::error!("wintun::Adapter::create failed, probably need admin powers: {}", e);
+            return Err(e.into());
+        },
+    };
+
+    adapter.set_address(config.ipv4)?;
+
+    let session = Arc::new(adapter.start_session(wintun::MAX_RING_CAPACITY)?);
+
+    let (packet_tx, packet_rx) = mpsc::channel(5);
+
+    let recv_thread = start_recv_thread(packet_tx, Arc::clone(&session));
+    let packet_rx = std::sync::Mutex::new(packet_rx);
+
     Ok(Device {
-        config: IfaceConfig {},
-        io: DeviceIo {},
+        config: IfaceConfig {
+            adapter,
+            recv_thread,
+            session: Arc::clone(&session),
+        },
+        io: DeviceIo {
+            packet_rx,
+            session: Arc::clone(&session),
+        },
     })
+}
+
+fn start_recv_thread(packet_tx: mpsc::Sender<Vec<u8>>, session: Arc<wintun::Session>) -> std::thread::JoinHandle<()> {
+    std::thread::spawn(move || {
+        while let Ok(pkt) = session.receive_blocking() {
+            tracing::debug!("Sending packet to WAN, {} bytes, {}", pkt.bytes().len(), explain_packet(pkt.bytes()));
+            // TODO: Don't allocate here if we can help it
+            packet_tx.blocking_send(pkt.bytes().to_vec()).unwrap();
+        }
+        tracing::debug!("recv_task exiting gracefully");
+    })
+}
+
+// TODO: Remove before prod
+fn explain_packet(pkt: &[u8]) -> String {
+    let proto = match pkt[9] {
+        1 => "ICMP",
+        6 => "TCP",
+        17 => "UDP",
+        132 => "SCTP",
+        x => "Unknown",
+    };
+
+    let src = &pkt[12..16];
+    let dst = &pkt[16..20];
+
+    format!("proto {proto} src {src:?} dst {dst:?}")
 }

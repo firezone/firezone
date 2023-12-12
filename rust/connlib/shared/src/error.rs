@@ -141,6 +141,11 @@ pub enum ConnlibError {
     /// Connection is still being stablished, retry later
     #[error("Pending connection")]
     PendingConnection,
+    #[error(transparent)]
+    Uuid(#[from] uuid::Error),
+    #[cfg(target_os = "windows")]
+    #[error(transparent)]
+    Wintun(#[from] wintun::Error),
 }
 
 impl ConnlibError {

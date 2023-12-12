@@ -50,3 +50,7 @@ tracing-android = "0.2"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 rtnetlink = { version = "0.13", default-features = false, features = ["tokio_socket"] }
+
+# Windows tunnel dependencies
+[target.'cfg(target_os = "windows")'.dependencies]
+wintun = "0.3.2"

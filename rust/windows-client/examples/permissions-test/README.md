@@ -2,6 +2,8 @@ This is a test program for features that aren't working in the GUI Windows clien
 
 # Debugging
 
+In Powershell
+
 ```
 cd src-tauri
 cargo build
