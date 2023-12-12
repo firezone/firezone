@@ -15,7 +15,7 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.Connect do
           ~p"/#{provider.account_id}/settings/identity_providers/google_workspace/#{provider}/handle_callback"
         )
 
-      Web.AuthController.redirect_to_idp(conn, redirect_url, provider)
+      Web.AuthController.redirect_to_idp(conn, redirect_url, provider, %{prompt: "consent"})
     else
       {:error, :not_found} ->
         conn

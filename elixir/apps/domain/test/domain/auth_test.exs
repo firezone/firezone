@@ -1950,8 +1950,8 @@ defmodule Domain.AuthTest do
       assert {:ok, %Auth.Subject{} = subject} =
                sign_in(provider, identity.provider_identifier, secret, user_agent, remote_ip)
 
-      three_hours = 3 * 60 * 60
-      assert_datetime_diff(subject.expires_at, DateTime.utc_now(), three_hours)
+      one_week = 7 * 24 * 60 * 60
+      assert_datetime_diff(subject.expires_at, DateTime.utc_now(), one_week - 60 * 60)
 
       actor = Fixtures.Actors.create_actor(type: :account_user, account: account)
       identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
@@ -1960,7 +1960,6 @@ defmodule Domain.AuthTest do
       assert {:ok, %Auth.Subject{} = subject} =
                sign_in(provider, identity.provider_identifier, secret, user_agent, remote_ip)
 
-      one_week = 7 * 24 * 60 * 60
       assert_datetime_diff(subject.expires_at, DateTime.utc_now(), one_week)
     end
 
@@ -2191,7 +2190,7 @@ defmodule Domain.AuthTest do
       assert_datetime_diff(subject.expires_at, DateTime.utc_now(), one_week)
     end
 
-    test "returned expiration duration is capped at 3 hours for account admin users", %{
+    test "returned expiration duration is capped at 1 week for account admin users", %{
       bypass: bypass,
       account: account,
       provider: provider,
@@ -2217,8 +2216,8 @@ defmodule Domain.AuthTest do
 
       assert {:ok, %Auth.Subject{} = subject} = sign_in(provider, payload, user_agent, remote_ip)
 
-      three_hours = 3 * 60 * 60
-      assert_datetime_diff(subject.expires_at, DateTime.utc_now(), three_hours)
+      one_week = 7 * 24 * 60 * 60
+      assert_datetime_diff(subject.expires_at, DateTime.utc_now(), one_week - 60 * 60)
     end
 
     test "returns error when provider is disabled", %{

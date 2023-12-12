@@ -94,7 +94,8 @@ defmodule Web.Live.Settings.IdentityProviders.GoogleWorkspace.Connect do
                    "https://www.googleapis.com/auth/admin.directory.orgunit.readonly " <>
                    "https://www.googleapis.com/auth/admin.directory.group.readonly " <>
                    "https://www.googleapis.com/auth/admin.directory.user.readonly",
-               "state" => state
+               "state" => state,
+               "prompt" => "consent"
              }
     end
   end

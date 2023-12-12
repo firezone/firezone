@@ -521,15 +521,17 @@ defmodule Domain.RelaysTest do
 
     test "returns list of connected account relays", %{account: account} do
       resource = Fixtures.Resources.create_resource(account: account)
-      relay = Fixtures.Relays.create_relay(account: account)
+      relay1 = Fixtures.Relays.create_relay(account: account)
+      relay2 = Fixtures.Relays.create_relay(account: account)
       stamp_secret = Ecto.UUID.generate()
 
-      assert connect_relay(relay, stamp_secret) == :ok
+      assert connect_relay(relay1, stamp_secret) == :ok
+      assert connect_relay(relay2, stamp_secret) == :ok
 
-      assert {:ok, [connected_relay]} = list_connected_relays_for_resource(resource, :self_hosted)
+      assert {:ok, connected_relays} = list_connected_relays_for_resource(resource, :self_hosted)
 
-      assert connected_relay.id == relay.id
-      assert connected_relay.stamp_secret == stamp_secret
+      assert Enum.all?(connected_relays, &(&1.stamp_secret == stamp_secret))
+      assert Enum.sort(Enum.map(connected_relays, & &1.id)) == Enum.sort([relay1.id, relay2.id])
     end
 
     test "returns list of connected global relays", %{account: account} do
@@ -959,6 +961,16 @@ defmodule Domain.RelaysTest do
 
     test "returns error when secret is invalid" do
       assert authorize_relay(Ecto.UUID.generate()) == {:error, :invalid_token}
+    end
+  end
+
+  describe "connect_relay/2" do
+    test "does not allow duplicate presence", %{account: account} do
+      relay = Fixtures.Relays.create_relay(account: account)
+      stamp_secret = Ecto.UUID.generate()
+
+      assert connect_relay(relay, stamp_secret) == :ok
+      assert {:error, {:already_tracked, _pid, _topic, _key}} = connect_relay(relay, stamp_secret)
     end
   end
 end

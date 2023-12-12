@@ -14,12 +14,6 @@ resource "random_password" "metabase_db_password" {
   min_special = 1
 }
 
-# This user can also be used to connect to the Firezone database,
-# but following SQL should be run manually using the Cloud SQL Proxy:
-#
-#   GRANT SELECT ON ALL TABLES IN SCHEMA public TO metabase;
-#   GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO metabase;
-#
 resource "google_sql_user" "metabase" {
   project = module.google-cloud-project.project.project_id
 
@@ -34,6 +28,34 @@ resource "google_sql_database" "metabase" {
 
   name     = "metabase"
   instance = module.google-cloud-sql.master_instance_name
+}
+
+resource "postgresql_grant" "grant_select_on_all_tables_schema_to_metabase" {
+  database = google_sql_database.firezone.name
+
+  privileges  = ["SELECT"]
+  objects     = [] # ALL
+  object_type = "table"
+  schema      = "public"
+  role        = google_sql_user.metabase.name
+
+  depends_on = [
+    google_sql_user.metabase
+  ]
+}
+
+resource "postgresql_grant" "grant_execute_on_all_functions_schema_to_metabase" {
+  database = google_sql_database.firezone.name
+
+  privileges  = ["EXECUTE"]
+  objects     = [] # ALL
+  object_type = "function"
+  schema      = "public"
+  role        = google_sql_user.metabase.name
+
+  depends_on = [
+    google_sql_user.metabase
+  ]
 }
 
 module "metabase" {

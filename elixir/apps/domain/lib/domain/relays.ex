@@ -277,7 +277,13 @@ defmodule Domain.Relays do
       |> filter.()
       |> Repo.all()
       |> Enum.map(fn relay ->
-        %{metas: [%{secret: stamp_secret}]} = Map.get(connected_relays, relay.id)
+        %{metas: metas} = Map.get(connected_relays, relay.id)
+
+        %{secret: stamp_secret} =
+          metas
+          |> Enum.sort_by(& &1.online_at, :desc)
+          |> List.first()
+
         %{relay | stamp_secret: stamp_secret}
       end)
 
@@ -381,15 +387,15 @@ defmodule Domain.Relays do
         ""
       end
 
-    {:ok, _} =
-      Presence.track(self(), "relays#{scope}", relay.id, %{
-        online_at: System.system_time(:second),
-        secret: secret
-      })
+    meta = %{
+      online_at: System.system_time(:second),
+      secret: secret
+    }
 
-    {:ok, _} = Presence.track(self(), "relay_groups:#{relay.group_id}", relay.id, %{})
-
-    :ok
+    with {:ok, _} <- Presence.track(self(), "relays#{scope}", relay.id, meta) do
+      {:ok, _} = Presence.track(self(), "relay_groups:#{relay.group_id}", relay.id, %{})
+      :ok
+    end
   end
 
   def subscribe_for_relays_presence_in_account(%Accounts.Account{} = account) do

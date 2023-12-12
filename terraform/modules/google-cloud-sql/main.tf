@@ -120,6 +120,11 @@ resource "google_sql_database_instance" "master" {
       name  = "maintenance_work_mem"
       value = floor(var.compute_instance_memory_size * 1024 / 100 * 5)
     }
+
+    database_flags {
+      name  = "cloudsql.iam_authentication"
+      value = "on"
+    }
   }
 
   lifecycle {

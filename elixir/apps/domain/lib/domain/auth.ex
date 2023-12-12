@@ -6,7 +6,7 @@ defmodule Domain.Auth do
   alias Domain.Auth.{Adapters, Provider}
 
   @default_session_duration_hours %{
-    account_admin_user: 3,
+    account_admin_user: 24 * 7 - 1,
     account_user: 24 * 7
   }
 

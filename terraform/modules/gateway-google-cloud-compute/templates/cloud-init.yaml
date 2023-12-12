@@ -83,8 +83,8 @@ write_files:
       [Service]
       TimeoutStartSec=0
       Restart=always
-      ExecStartPre=/usr/bin/docker pull otel/opentelemetry-collector-contrib:0.87.0
-      ExecStart=/usr/bin/docker run --rm -u 2000 --name=otel-collector --network host --volume /etc/otelcol-contrib/:/etc/otelcol-contrib/ otel/opentelemetry-collector-contrib:0.87.0
+      ExecStartPre=/usr/bin/docker pull otel/opentelemetry-collector-contrib:0.90.1
+      ExecStart=/usr/bin/docker run --rm -u 2000 --name=otel-collector --network host --volume /etc/otelcol-contrib/:/etc/otelcol-contrib/ otel/opentelemetry-collector-contrib:0.90.1
       ExecStop=/usr/bin/docker stop otel-collector
       ExecStopPost=/usr/bin/docker rm otel-collector
 
@@ -157,6 +157,7 @@ runcmd:
   - sudo apt install docker-ce docker-ce-cli containerd.io -y
   - sudo usermod -aG docker $(whoami)
   - sudo systemctl enable docker
+  - sudo echo '{"ipv6":true,"fixed-cidr-v6":"fd00::/80"}' > /etc/docker/daemon.json
   - sudo systemctl start docker
   - sudo ip6tables-restore < /etc/iptables/rules.v6
   - sudo systemctl daemon-reload
