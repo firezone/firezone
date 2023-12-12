@@ -76,7 +76,6 @@ fn create_resolver(
 }
 
 impl<CB: Callbacks + 'static> ControlPlane<CB> {
-    #[tracing::instrument(level = "trace", skip(self))]
     async fn init(
         &mut self,
         InitClient {

@@ -141,7 +141,6 @@ where
             let mut connection = PhoenixChannel::<_, IngressMessages, ReplyMessages, Messages>::new(Secret::new(SecureUrl::from_url(connect_url)), move |msg, reference| {
                 let control_plane_sender = control_plane_sender.clone();
                 async move {
-                    tracing::trace!(?msg);
                     if let Err(e) = control_plane_sender.send((msg, reference)).await {
                         tracing::warn!("Received a message after handler already closed: {e}. Probably message received during session clean up.");
                     }

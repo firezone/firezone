@@ -360,7 +360,7 @@ impl State {
             return;
         }
 
-        tracing::trace!(resource_ip = %destination, "resource_connection_intent");
+        tracing::trace!("resource_connection_intent");
 
         let Some(resource) = self.get_cidr_resource_by_destination(destination) else {
             if let Some(resource) = self
