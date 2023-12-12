@@ -1,4 +1,4 @@
-use crate::device_channel::create_iface;
+use crate::device_channel::Device;
 use crate::peer::PacketTransformGateway;
 use crate::{
     ConnectedPeer, DnsFallbackStrategy, Event, RoleState, Tunnel, ICE_GATHERING_TIMEOUT_SECONDS,
@@ -22,10 +22,13 @@ where
 {
     /// Sets the interface configuration and starts background tasks.
     #[tracing::instrument(level = "trace", skip(self))]
-    pub async fn set_interface(&self, config: &InterfaceConfig) -> connlib_shared::Result<()> {
+    pub fn set_interface(&self, config: &InterfaceConfig) -> connlib_shared::Result<()> {
         // Note: the dns fallback strategy is irrelevant for gateways
-        let device =
-            Arc::new(create_iface(config, self.callbacks(), DnsFallbackStrategy::default()).await?);
+        let device = Arc::new(Device::new(
+            config,
+            self.callbacks(),
+            DnsFallbackStrategy::default(),
+        )?);
 
         self.device.store(Some(device.clone()));
         self.no_device_waker.wake();
