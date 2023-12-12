@@ -1,14 +1,47 @@
 import SupportOptions from "@/components/SupportOptions";
+import { TabsGroup, TabsItem } from "@/components/DocsTabs";
 
 # Troubleshooting Guide
 
 Start with this guide for solutions to common issues faced by Firezone admins
 and end-users.
 
-1. macOS client troubleshooting guide
-1. iOS client troubleshooting guide
-1. Android/ChromeOS troubleshooting guide
-1. Linux client troubleshooting guide
-1. Gateway troubleshooting guide
+## Gateway not connecting
+
+If you're trying to deploy a new gateway and it's not connecting, try running
+some of the troubleshooting commands below to dianose the issue.
+
+<TabsGroup>
+<TabsItem title="Docker" active>
+
+Check the container status:
+
+```bash
+docker ps --filter "name=firezone-gateway"
+```
+
+Check the container logs:
+
+```bash
+docker logs firezone-gateway
+```
+
+</TabsItem>
+<TabsItem title="Systemd">
+
+Check the status of the service:
+
+```bash
+sudo systemctl status firezone-gateway
+```
+
+Check the logs:
+
+```bash
+sudo journalctl -u firezone-gateway.service
+```
+
+</TabsItem>
+</TabsGroup>
 
 <SupportOptions />
