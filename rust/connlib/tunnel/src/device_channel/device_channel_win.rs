@@ -18,6 +18,7 @@ pub(crate) struct IfaceConfig {
 }
 
 pub(crate) struct DeviceIo {
+    // TODO: Get rid of this mutex. It's a hack to deal with `poll_read` taking a `&self` instead of `&mut self`
     packet_rx: std::sync::Mutex<mpsc::Receiver<Vec<u8>>>,
     session: Arc<wintun::Session>,
 }
@@ -26,7 +27,6 @@ impl DeviceIo {
     pub fn poll_read(&self, out: &mut [u8], cx: &mut Context<'_>) -> Poll<std::io::Result<usize>> {
         let mut packet_rx = self.packet_rx.try_lock().unwrap();
 
-        tracing::trace!("poll_read");
         let pkt = ready!(packet_rx.poll_recv(cx));
 
         match pkt {
