@@ -19,7 +19,7 @@ pub(crate) struct IfaceConfig {
 
 pub(crate) struct DeviceIo {
     // TODO: Get rid of this mutex. It's a hack to deal with `poll_read` taking a `&self` instead of `&mut self`
-    packet_rx: std::sync::Mutex<mpsc::Receiver<Vec<u8>>>,
+    packet_rx: std::sync::Mutex<mpsc::Receiver<wintun::Packet>>,
     session: Arc<wintun::Session>,
 }
 
@@ -31,9 +31,11 @@ impl DeviceIo {
 
         match pkt {
             Some(pkt) => {
-                out[0..pkt.len()].copy_from_slice(&pkt);
-                tracing::debug!("tx {} B, {}", pkt.len(), explain_packet(&pkt));
-                Poll::Ready(Ok(pkt.len()))
+                let bytes = pkt.bytes();
+                let len = bytes.len();
+                out[0..len].copy_from_slice(bytes);
+                tracing::debug!("tx {} B, {}", len, explain_packet(bytes));
+                Poll::Ready(Ok(len))
             }
             None => {
                 tracing::error!("error receiving packet from mpsc channel");
@@ -127,13 +129,13 @@ pub(crate) async fn create_iface(
 }
 
 fn start_recv_thread(
-    packet_tx: mpsc::Sender<Vec<u8>>,
+    packet_tx: mpsc::Sender<wintun::Packet>,
     session: Arc<wintun::Session>,
 ) -> std::thread::JoinHandle<()> {
     std::thread::spawn(move || {
         while let Ok(pkt) = session.receive_blocking() {
             // TODO: Don't allocate here if we can help it
-            packet_tx.blocking_send(pkt.bytes().to_vec()).unwrap();
+            packet_tx.blocking_send(pkt).unwrap();
         }
         tracing::debug!("recv_task exiting gracefully");
     })
