@@ -151,6 +151,17 @@ where
                 return Poll::Pending;
             };
 
+            match role_state.poll_next_event(cx) {
+                Poll::Ready(Either::Left(event)) => {
+                    return Poll::Ready(Ok(event));
+                }
+                Poll::Ready(Either::Right(transmit)) => {
+                    self.try_send_to(&transmit.payload, transmit.dst)?;
+                    continue;
+                }
+                Poll::Pending => {}
+            }
+
             match device.poll_read(read_buf.initialized_mut(), cx)? {
                 Poll::Ready(Some(packet)) => match role_state.handle_device_input(packet) {
                     Some(Either::Left(packet)) => {
@@ -185,17 +196,6 @@ where
                 device.write(packet)?;
 
                 continue;
-            }
-
-            match role_state.poll_next_event(cx) {
-                Poll::Ready(Either::Left(event)) => {
-                    return Poll::Ready(Ok(event));
-                }
-                Poll::Ready(Either::Right(transmit)) => {
-                    self.try_send_to(&transmit.payload, transmit.dst)?;
-                    continue;
-                }
-                Poll::Pending => {}
             }
 
             return Poll::Pending;
@@ -226,6 +226,17 @@ where
                 return Poll::Pending;
             };
 
+            match role_state.poll_next_event(cx) {
+                Poll::Ready(Either::Left(event)) => {
+                    return Poll::Ready(Ok(event));
+                }
+                Poll::Ready(Either::Right(transmit)) => {
+                    self.try_send_to(&transmit.payload, transmit.dst)?;
+                    continue;
+                }
+                Poll::Pending => {}
+            }
+
             match device.poll_read(read_buf.initialized_mut(), cx)? {
                 Poll::Ready(Some(packet)) => match role_state.handle_device_input(packet) {
                     Some(Either::Left(packet)) => {
@@ -260,17 +271,6 @@ where
                 device.write(packet)?;
 
                 continue;
-            }
-
-            match role_state.poll_next_event(cx) {
-                Poll::Ready(Either::Left(event)) => {
-                    return Poll::Ready(Ok(event));
-                }
-                Poll::Ready(Either::Right(transmit)) => {
-                    self.try_send_to(&transmit.payload, transmit.dst)?;
-                    continue;
-                }
-                Poll::Pending => {}
             }
 
             return Poll::Pending;
