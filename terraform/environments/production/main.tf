@@ -294,9 +294,9 @@ resource "google_sql_database" "firezone" {
 
   name     = "firezone"
   instance = module.google-cloud-sql.master_instance_name
-
 }
 
+# Create IAM users for the database for all project owners
 resource "google_sql_user" "iam_users" {
   for_each = toset(local.project_owners)
 
@@ -307,6 +307,48 @@ resource "google_sql_user" "iam_users" {
   name = each.value
 }
 
+# We can't remove passwords complete because for IAM users we still need to execute those GRANT statements
+provider "postgresql" {
+  scheme    = "gcppostgres"
+  host      = "${module.google-cloud-project.project.project_id}:${local.region}:${module.google-cloud-sql.master_instance_name}"
+  port      = 5432
+  username  = google_sql_user.firezone.name
+  password  = random_password.firezone_db_password.result
+  superuser = false
+  sslmode   = "disable"
+}
+
+resource "postgresql_grant" "grant_select_on_all_tables_schema_to_iam_users" {
+  for_each = toset(local.project_owners)
+
+  database = google_sql_database.firezone.name
+
+  privileges  = ["SELECT", "INSERT", "UPDATE", "DELETE"]
+  objects     = [] # ALL
+  object_type = "table"
+  schema      = "public"
+  role        = each.key
+
+  depends_on = [
+    google_sql_user.iam_users
+  ]
+}
+
+resource "postgresql_grant" "grant_execute_on_all_functions_schema_to_iam_users" {
+  for_each = toset(local.project_owners)
+
+  database = google_sql_database.firezone.name
+
+  privileges  = ["EXECUTE"]
+  objects     = [] # ALL
+  object_type = "function"
+  schema      = "public"
+  role        = each.key
+
+  depends_on = [
+    google_sql_user.iam_users
+  ]
+}
 
 # Create bucket for client logs
 resource "google_storage_bucket" "client-logs" {

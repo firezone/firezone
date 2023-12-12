@@ -233,16 +233,6 @@ resource "random_password" "web_db_password" {
   }
 }
 
-resource "google_sql_user" "iam_users" {
-  for_each = local.project_owners
-
-  project  = module.google-cloud-project.project.project_id
-  instance = module.google-cloud-sql.master_instance_name
-
-  type = "CLOUD_IAM_USER"
-  name = each.value
-}
-
 # TODO: raname it to "firezone"
 resource "google_sql_user" "web" {
   project = module.google-cloud-project.project.project_id
@@ -258,6 +248,60 @@ resource "google_sql_database" "firezone" {
 
   name     = "firezone"
   instance = module.google-cloud-sql.master_instance_name
+}
+
+# Create IAM users for the database for all project owners
+resource "google_sql_user" "iam_users" {
+  for_each = local.project_owners
+
+  project  = module.google-cloud-project.project.project_id
+  instance = module.google-cloud-sql.master_instance_name
+
+  type = "CLOUD_IAM_USER"
+  name = each.value
+}
+
+# We can't remove passwords complete because for IAM users we still need to execute those GRANT statements
+provider "postgresql" {
+  scheme    = "gcppostgres"
+  host      = "${module.google-cloud-project.project.project_id}:${local.region}:${module.google-cloud-sql.master_instance_name}"
+  port      = 5432
+  username  = google_sql_user.web.name
+  password  = random_password.web_db_password.result
+  superuser = false
+  sslmode   = "disable"
+}
+
+resource "postgresql_grant" "grant_select_on_all_tables_schema_to_iam_users" {
+  for_each = toset(local.project_owners)
+
+  database = google_sql_database.firezone.name
+
+  privileges  = ["SELECT", "INSERT", "UPDATE", "DELETE"]
+  objects     = [] # ALL
+  object_type = "table"
+  schema      = "public"
+  role        = each.key
+
+  depends_on = [
+    google_sql_user.iam_users
+  ]
+}
+
+resource "postgresql_grant" "grant_execute_on_all_functions_schema_to_iam_users" {
+  for_each = toset(local.project_owners)
+
+  database = google_sql_database.firezone.name
+
+  privileges  = ["EXECUTE"]
+  objects     = [] # ALL
+  object_type = "function"
+  schema      = "public"
+  role        = each.key
+
+  depends_on = [
+    google_sql_user.iam_users
+  ]
 }
 
 resource "google_storage_bucket" "client-logs" {
