@@ -379,10 +379,10 @@ enum OkReply<T> {
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
-pub struct UnexpectedError(pub String);
+pub struct UnknownError(pub String);
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
-pub enum ExpectedError {
+pub enum KnownError {
     #[serde(rename = "unmatched topic")]
     UnmatchedTopic,
 }
@@ -390,8 +390,8 @@ pub enum ExpectedError {
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 #[serde(untagged)]
 pub enum Reason {
-    Expected(ExpectedError),
-    UnExpected(UnexpectedError),
+    Known(KnownError),
+    Unknown(UnknownError),
 }
 
 /// This represents the info we have about the error
@@ -511,8 +511,8 @@ impl PhoenixSender {
 #[cfg(test)]
 mod tests {
     use crate::control::{
-        ErrorInfo, ExpectedError, Payload, PhxReply::Error, Reason, ReplyMessage::PhxReply,
-        UnexpectedError,
+        ErrorInfo, KnownError, Payload, PhxReply::Error, Reason, ReplyMessage::PhxReply,
+        UnknownError,
     };
 
     #[test]
@@ -532,7 +532,7 @@ mod tests {
         "#;
         let actual_reply: Payload<(), ()> = serde_json::from_str(actual_reply).unwrap();
         let expected_reply = Payload::<(), ()>::Reply(PhxReply(Error(ErrorInfo::Reason(
-            Reason::Expected(ExpectedError::UnmatchedTopic),
+            Reason::Known(KnownError::UnmatchedTopic),
         ))));
         assert_eq!(actual_reply, expected_reply);
     }
@@ -554,7 +554,7 @@ mod tests {
         "#;
         let actual_reply: Payload<(), ()> = serde_json::from_str(actual_reply).unwrap();
         let expected_reply = Payload::<(), ()>::Reply(PhxReply(Error(ErrorInfo::Reason(
-            Reason::UnExpected(UnexpectedError("bad reply".to_string())),
+            Reason::Unknown(UnknownError("bad reply".to_string())),
         ))));
         assert_eq!(actual_reply, expected_reply);
     }

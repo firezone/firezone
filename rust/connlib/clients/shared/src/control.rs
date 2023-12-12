@@ -1,6 +1,6 @@
 use async_compression::tokio::bufread::GzipEncoder;
-use connlib_shared::control::ExpectedError;
-use connlib_shared::control::Reason::Expected;
+use connlib_shared::control::KnownError;
+use connlib_shared::control::Reason::Known;
 use connlib_shared::messages::{DnsServer, GatewayResponse, IpDnsServer};
 use std::path::PathBuf;
 use std::{io, sync::Arc};
@@ -95,10 +95,10 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                     *init = true;
                     *self.fallback_resolver.lock() =
                         create_resolver(interface.upstream_dns, self.tunnel.callbacks());
-                    tracing::info!("Firezoned Started!");
+                    tracing::info!("Firezone Started!");
                 }
             } else {
-                tracing::info!("Firezoned reinitializated");
+                tracing::info!("Firezone reinitializated");
             }
         }
 
@@ -298,14 +298,12 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                     }
                 }
             }
-            ErrorInfo::Reason(Expected(ExpectedError::UnmatchedTopic)) => {
+            ErrorInfo::Reason(Known(KnownError::UnmatchedTopic)) => {
                 if let Err(e) = self.phoenix_channel.get_sender().join_topic(topic).await {
                     tracing::debug!(err = ?e, "couldn't join topic: {e:#?}");
                 }
             }
-            e => {
-                tracing::warn!(err = ?e, "phoenix error: {e:#?}");
-            }
+            _ => {}
         }
     }
 
