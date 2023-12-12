@@ -1,9 +1,11 @@
 //! The Tauri GUI for Windows
+//! This is not checked or compiled on other platforms.
 
 // TODO: `git grep` for unwraps before 1.0, especially this gui module
 
-use crate::settings::{self, AdvancedSettings};
+use crate::client::{self, AppLocalDataDir};
 use anyhow::{anyhow, bail, Result};
+use client::settings::{self, AdvancedSettings};
 use connlib_client_shared::file_logger;
 use firezone_cli_utils::setup_global_subscriber;
 use secrecy::SecretString;
@@ -21,6 +23,14 @@ use ControllerRequest as Req;
 
 pub(crate) type CtlrTx = mpsc::Sender<ControllerRequest>;
 
+pub(crate) fn app_local_data_dir(app: &tauri::AppHandle) -> Result<AppLocalDataDir> {
+    let path = app
+        .path_resolver()
+        .app_local_data_dir()
+        .ok_or_else(|| anyhow!("getting app_local_data_dir"))?;
+    Ok(AppLocalDataDir(path))
+}
+
 /// All managed state that we might need to access from odd places like Tauri commands.
 pub(crate) struct Managed {
     pub ctlr_tx: CtlrTx,
@@ -28,13 +38,12 @@ pub(crate) struct Managed {
 }
 
 /// Runs the Tauri GUI and returns on exit or unrecoverable error
-pub(crate) fn run(params: crate::GuiParams) -> Result<()> {
-    let crate::GuiParams {
-        deep_link,
-        inject_faults,
-    } = params;
+pub(crate) fn run(params: client::GuiParams) -> Result<()> {
+    let client::GuiParams { inject_faults } = params;
 
     // Make sure we're single-instance
+    // If another instance is already running, this call
+    // signals the other instance and then exits our process.
     tauri_plugin_deep_link::prepare("dev.firezone");
 
     let rt = tokio::runtime::Runtime::new()?;
@@ -83,11 +92,7 @@ pub(crate) fn run(params: crate::GuiParams) -> Result<()> {
         })
         .setup(|app| {
             // Change to data dir so the file logger will write there and not in System32 if we're launching from an app link
-            let cwd = app
-                .path_resolver()
-                .app_local_data_dir()
-                .ok_or_else(|| anyhow::anyhow!("can't get app_local_data_dir"))?
-                .join("data");
+            let cwd = app_local_data_dir(&app.handle())?.0.join("data");
             std::fs::create_dir_all(&cwd)?;
             std::env::set_current_dir(&cwd)?;
 
@@ -97,13 +102,9 @@ pub(crate) fn run(params: crate::GuiParams) -> Result<()> {
 
             let _ctlr_task = tokio::spawn(run_controller(app.handle(), ctlr_rx));
 
-            if let Some(_deep_link) = deep_link {
-                // TODO: Handle app links that we catch at startup here
-            }
-
             // From https://github.com/FabianLars/tauri-plugin-deep-link/blob/main/example/main.rs
             let handle = app.handle();
-            if let Err(e) = tauri_plugin_deep_link::register(crate::DEEP_LINK_SCHEME, move |url| {
+            if let Err(e) = tauri_plugin_deep_link::register(client::DEEP_LINK_SCHEME, move |url| {
                 match handle_deep_link(&handle, url) {
                     Ok(()) => {}
                     Err(e) => tracing::error!("{e}"),
@@ -295,6 +296,9 @@ struct Controller {
     ctlr_tx: CtlrTx,
     /// connlib / tunnel session
     connlib_session: Option<connlib_client_shared::Session<CallbackHandler>>,
+    /// The UUIDv4 device ID persisted to disk
+    /// Sent verbatim to Session::connect
+    device_id: String,
     /// Info about currently signed-in user, if there is one
     session: Option<Session>,
 }
@@ -339,10 +343,14 @@ impl Controller {
         })
         .await??;
 
+        let device_id = client::device_id::device_id(&app_local_data_dir(&app)?).await?;
+
+        // Connect immediately if we reloaded the token
         let connlib_session = if let Some(session) = session.as_ref() {
             Some(Self::start_session(
                 &advanced_settings,
                 ctlr_tx.clone(),
+                device_id.clone(),
                 &session.token,
             )?)
         } else {
@@ -353,6 +361,7 @@ impl Controller {
             advanced_settings,
             ctlr_tx,
             connlib_session,
+            device_id,
             session,
         })
     }
@@ -360,6 +369,7 @@ impl Controller {
     fn start_session(
         advanced_settings: &settings::AdvancedSettings,
         ctlr_tx: CtlrTx,
+        device_id: String,
         token: &SecretString,
     ) -> Result<connlib_client_shared::Session<CallbackHandler>> {
         let (layer, logger) = file_logger::layer(std::path::Path::new("logs"));
@@ -373,7 +383,7 @@ impl Controller {
         Ok(connlib_client_shared::Session::connect(
             advanced_settings.api_url.clone(),
             token.clone(),
-            crate::device_id::get(),
+            device_id,
             CallbackHandler {
                 ctlr_tx,
                 logger: Some(logger),
@@ -413,6 +423,7 @@ async fn run_controller(
                     controller.connlib_session = Some(Controller::start_session(
                         &controller.advanced_settings,
                         controller.ctlr_tx.clone(),
+                        controller.device_id.clone(),
                         &auth.token,
                     )?);
                     controller.session = Some(Session {
