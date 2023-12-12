@@ -1,4 +1,6 @@
 use async_compression::tokio::bufread::GzipEncoder;
+use connlib_shared::control::KnownError;
+use connlib_shared::control::Reason;
 use connlib_shared::messages::{DnsServer, GatewayResponse, IpDnsServer};
 use std::path::PathBuf;
 use std::{io, sync::Arc};
@@ -86,22 +88,22 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
         {
             let mut init = self.tunnel_init.lock().await;
             if !*init {
-                if let Err(e) = self.tunnel.set_interface(&interface).await {
+                if let Err(e) = self.tunnel.set_interface(&interface) {
                     tracing::error!(error = ?e, "Error initializing interface");
                     return Err(e);
                 } else {
                     *init = true;
                     *self.fallback_resolver.lock() =
                         create_resolver(interface.upstream_dns, self.tunnel.callbacks());
-                    tracing::info!("Firezoned Started!");
+                    tracing::info!("Firezone Started!");
                 }
             } else {
-                tracing::info!("Firezoned reinitializated");
+                tracing::info!("Firezone reinitializated");
             }
         }
 
         for resource_description in resources {
-            self.add_resource(resource_description).await;
+            self.add_resource(resource_description);
         }
         Ok(())
     }
@@ -139,8 +141,8 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    pub async fn add_resource(&self, resource_description: ResourceDescription) {
-        if let Err(e) = self.tunnel.add_resource(resource_description).await {
+    pub fn add_resource(&self, resource_description: ResourceDescription) {
+        if let Err(e) = self.tunnel.add_resource(resource_description) {
             tracing::error!(message = "Can't add resource", error = ?e);
             let _ = self.tunnel.callbacks().on_error(&e);
         }
@@ -238,7 +240,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                 self.connection_details(connection_details, reference)
             }
             Messages::Connect(connect) => self.connect(connect),
-            Messages::ResourceAdded(resource) => self.add_resource(resource).await,
+            Messages::ResourceAdded(resource) => self.add_resource(resource),
             Messages::ResourceRemoved(resource) => self.remove_resource(resource.id),
             Messages::ResourceUpdated(resource) => self.update_resource(resource),
             Messages::IceCandidates(ice_candidate) => self.add_ice_candidate(ice_candidate).await,
@@ -262,33 +264,33 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    pub async fn handle_error(&mut self, reply_error: ErrorReply, reference: Option<Reference>) {
-        if matches!(reply_error.error, ErrorInfo::Offline) {
-            match reference {
-                Some(reference) => {
-                    let Ok(resource_id) = reference.parse::<ResourceId>() else {
-                        tracing::error!(
-                            "An offline error came back with a reference to a non-valid resource id"
-                        );
-                        let _ = self
-                            .tunnel
-                            .callbacks()
-                            .on_error(&Error::ControlProtocolError);
-                        return;
-                    };
-                    // TODO: Rate limit the number of attempts of getting the relays before just trying a local network connection
-                    self.tunnel.cleanup_connection(resource_id);
-                }
-                None => {
+    pub async fn handle_error(
+        &mut self,
+        reply_error: ErrorReply,
+        reference: Option<Reference>,
+        topic: String,
+    ) {
+        match (reply_error.error, reference) {
+            (ErrorInfo::Offline, Some(reference)) => {
+                let Ok(resource_id) = reference.parse::<ResourceId>() else {
                     tracing::error!(
-                        "An offline portal error came without a reference that originated the error"
+                        "An offline error came back with a reference to a non-valid resource id"
                     );
                     let _ = self
                         .tunnel
                         .callbacks()
                         .on_error(&Error::ControlProtocolError);
+                    return;
+                };
+                // TODO: Rate limit the number of attempts of getting the relays before just trying a local network connection
+                self.tunnel.cleanup_connection(resource_id);
+            }
+            (ErrorInfo::Reason(Reason::Known(KnownError::UnmatchedTopic)), _) => {
+                if let Err(e) = self.phoenix_channel.get_sender().join_topic(topic).await {
+                    tracing::debug!(err = ?e, "couldn't join topic: {e:#?}");
                 }
             }
+            _ => {}
         }
     }
 
