@@ -4,6 +4,7 @@
 //! [Tunnel] is the main entry-point for this crate.
 use crate::device_channel::Device;
 use boringtun::x25519::{PublicKey, StaticSecret};
+use connlib_shared::error::ConnlibError;
 use connlib_shared::messages::SecretKey;
 use connlib_shared::Result;
 use connlib_shared::{CallbackErrorFacade, Callbacks};
@@ -162,22 +163,6 @@ where
                 Poll::Pending => {}
             }
 
-            match device.poll_read(read_buf.initialized_mut(), cx)? {
-                Poll::Ready(Some(packet)) => match role_state.handle_device_input(packet) {
-                    Some(Either::Left(packet)) => {
-                        device.write(packet).expect("TODO");
-                        continue;
-                    }
-                    Some(Either::Right((dest, packet))) => {
-                        self.try_send_to(packet, dest)?;
-                        continue;
-                    }
-                    None => {}
-                },
-                Poll::Ready(None) => continue,
-                Poll::Pending => {}
-            }
-
             if let Poll::Ready(from) = self.ip4_socket.poll_recv_from(cx, &mut read_buf)? {
                 let Some(packet) = role_state.handle_socket_input(from, read_buf.filled()) else {
                     continue;
@@ -196,6 +181,22 @@ where
                 device.write(packet)?;
 
                 continue;
+            }
+
+            match device.poll_read(read_buf.initialized_mut(), cx)? {
+                Poll::Ready(Some(packet)) => match role_state.handle_device_input(packet) {
+                    Some(Either::Left(packet)) => {
+                        device.write(packet).expect("TODO");
+                        continue;
+                    }
+                    Some(Either::Right((dest, packet))) => {
+                        self.try_send_to(packet, dest)?;
+                        continue;
+                    }
+                    None => {}
+                },
+                Poll::Ready(None) => return Poll::Ready(Err(ConnlibError::Other("device closed"))),
+                Poll::Pending => {}
             }
 
             return Poll::Pending;
@@ -226,17 +227,6 @@ where
                 return Poll::Pending;
             };
 
-            match role_state.poll_next_event(cx) {
-                Poll::Ready(Either::Left(event)) => {
-                    return Poll::Ready(Ok(event));
-                }
-                Poll::Ready(Either::Right(transmit)) => {
-                    self.try_send_to(&transmit.payload, transmit.dst)?;
-                    continue;
-                }
-                Poll::Pending => {}
-            }
-
             match device.poll_read(read_buf.initialized_mut(), cx)? {
                 Poll::Ready(Some(packet)) => match role_state.handle_device_input(packet) {
                     Some(Either::Left(packet)) => {
@@ -271,6 +261,22 @@ where
                 device.write(packet)?;
 
                 continue;
+            }
+
+            match device.poll_read(read_buf.initialized_mut(), cx)? {
+                Poll::Ready(Some(packet)) => match role_state.handle_device_input(packet) {
+                    Some(Either::Left(packet)) => {
+                        device.write(packet).expect("TODO");
+                        continue;
+                    }
+                    Some(Either::Right((dest, packet))) => {
+                        self.try_send_to(packet, dest)?;
+                        continue;
+                    }
+                    None => {}
+                },
+                Poll::Ready(None) => return Poll::Ready(Err(ConnlibError::Other("device closed"))),
+                Poll::Pending => {}
             }
 
             return Poll::Pending;
