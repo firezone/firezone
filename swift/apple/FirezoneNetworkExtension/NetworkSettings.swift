@@ -34,8 +34,10 @@ class NetworkSettings {
   let tunnelAddressIPv6: String
   let dnsAddress: String
 
-  // WireGuard has an 80-byte overhead.
-  let tunnelOverheadBytes = NSNumber(80)
+  // WireGuard has an 80-byte overhead. We could try setting tunnelOverheadBytes
+  // but that's not a reliable way to calculate how big our packets should be,
+  // so just use the minimum.
+  let mtu: NSNumber = 1280
 
   // Modifiable values
   private(set) var dnsFallbackStrategy: DNSFallbackStrategy
@@ -181,7 +183,7 @@ class NetworkSettings {
       dnsSettings.matchDomains = [""]
     }
     tunnelNetworkSettings.dnsSettings = dnsSettings
-    tunnelNetworkSettings.tunnelOverheadBytes = tunnelOverheadBytes
+    tunnelNetworkSettings.mtu = mtu
 
     self.hasUnappliedChanges = false
     logger.log("Attempting to set network settings")
