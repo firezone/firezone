@@ -14,7 +14,7 @@ defmodule Web.PageComponents do
 
   def section(assigns) do
     ~H"""
-    <div class="mb-12 bg-white overflow-hidden shadow mx-5 rounded border px-6 pb-6">
+    <div class="mb-6 bg-white overflow-hidden shadow mx-5 rounded border px-6 pb-6">
       <.header>
         <:title>
           <%= render_slot(@title) %>

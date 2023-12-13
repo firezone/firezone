@@ -39,6 +39,11 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.New do
       <:title>
         Add a new Google Workspace Identity Provider
       </:title>
+      <:help>
+        For a more detailed guide on setting up Firezone with Google Workspace, please <.link class={
+          link_style()
+        }>refer to our documentation</.link>.
+      </:help>
       <:content>
         <.provider_form account={@account} id={@id} form={@form} />
       </:content>

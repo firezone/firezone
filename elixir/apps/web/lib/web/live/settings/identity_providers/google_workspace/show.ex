@@ -48,13 +48,6 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.Show do
           >
             Enable Identity Provider
           </.button>
-          <.button
-            :if={is_nil(@provider.disabled_at)}
-            phx-click="disable"
-            data-confirm="Are you sure want to disable this provider? All authorizations will be revoked and actors won't be able to use it to access Firezone."
-          >
-            Disable Identity Provider
-          </.button>
         <% end %>
       </:action>
       <:action :if={is_nil(@provider.deleted_at)}>
@@ -104,6 +97,15 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.Show do
 
     <.danger_zone :if={is_nil(@provider.deleted_at)}>
       <:action>
+        <.button
+          :if={is_nil(@provider.disabled_at)}
+          style="warning"
+          phx-click="disable"
+          icon="hero-no-symbol"
+          data-confirm="Are you sure want to disable this provider? Users will no longer be able to sign in with this provider and user / group sync will be paused."
+        >
+          Disable Identity Provider
+        </.button>
         <.delete_button
           data-confirm="Are you sure want to delete this provider along with all related data?"
           phx-click="delete"

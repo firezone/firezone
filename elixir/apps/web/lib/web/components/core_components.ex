@@ -1100,4 +1100,39 @@ defmodule Web.CoreComponents do
   def translate_errors(errors, field) when is_list(errors) do
     for {^field, {msg, opts}} <- errors, do: translate_error({msg, opts})
   end
+
+  @doc """
+  This component is meant to be used for step by step instructions
+
+  ex.
+  <.step>
+    <:title>Step 1. Do Something</:title>
+    <:content>
+      Here are instructions for step 1...
+    </:content>
+  </.step>
+
+  <.step>
+    <:title>Step 2. Do Another Thing</:title>
+    <:content>
+      Here are instructions for step 2...
+    </:content>
+  </.step>
+
+  """
+  slot :title, required: true
+  slot :content, required: true
+
+  def step(assigns) do
+    ~H"""
+    <div class="mb-6">
+      <h2 class="mb-2 text-2xl tracking-tight font-bold text-neutral-900">
+        <%= render_slot(@title) %>
+      </h2>
+      <div class="px-4">
+        <%= render_slot(@content) %>
+      </div>
+    </div>
+    """
+  end
 end
