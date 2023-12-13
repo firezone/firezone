@@ -523,7 +523,13 @@ public struct SettingsView: View {
                       self.isPresentingExportLogShareSheet = false
                       self.isExportingLogs = false
                       self.logTempZipFileURL = nil
-                    })
+                    }
+                  )
+                  .onDisappear {
+                    self.isPresentingExportLogShareSheet = false
+                    self.isExportingLogs = false
+                    self.logTempZipFileURL = nil
+                  }
                 }
               }
               Spacer()
