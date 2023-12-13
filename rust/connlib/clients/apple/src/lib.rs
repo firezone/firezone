@@ -5,7 +5,7 @@ use connlib_client_shared::{file_logger, Callbacks, Error, ResourceDescription, 
 use ip_network::IpNetwork;
 use secrecy::SecretString;
 use std::{
-    net::{Ipv4Addr, Ipv6Addr},
+    net::{IpAddr, Ipv4Addr, Ipv6Addr},
     os::fd::RawFd,
     path::PathBuf,
     sync::Arc,
@@ -40,7 +40,6 @@ mod ffi {
             tunnelAddressIPv4: String,
             tunnelAddressIPv6: String,
             dnsAddress: String,
-            dnsFallbackStrategy: String,
         );
 
         #[swift_bridge(swift_name = "onTunnelReady")]
@@ -57,6 +56,9 @@ mod ffi {
 
         #[swift_bridge(swift_name = "onDisconnect")]
         fn on_disconnect(&self, error: String);
+
+        #[swift_bridge(swift_name = "getSystemDefaultResolvers")]
+        fn get_system_default_resolvers(&self) -> String;
 
         #[swift_bridge(swift_name = "onError")]
         fn on_error(&self, error: String);
@@ -88,13 +90,11 @@ impl Callbacks for CallbackHandler {
         tunnel_address_v4: Ipv4Addr,
         tunnel_address_v6: Ipv6Addr,
         dns_address: Ipv4Addr,
-        dns_fallback_strategy: String,
     ) -> Result<Option<RawFd>, Self::Error> {
         self.inner.on_set_interface_config(
             tunnel_address_v4.to_string(),
             tunnel_address_v6.to_string(),
             dns_address.to_string(),
-            dns_fallback_strategy.to_string(),
         );
         Ok(None)
     }
@@ -129,6 +129,18 @@ impl Callbacks for CallbackHandler {
         self.inner
             .on_disconnect(error.map(ToString::to_string).unwrap_or_default());
         Ok(())
+    }
+
+    fn get_system_default_resolvers(&self) -> Result<Option<Vec<IpAddr>>, Self::Error> {
+        let resolvers_json = self.inner.get_system_default_resolvers();
+        tracing::debug!(
+            "get_system_default_resolvers returned: {:?}",
+            resolvers_json
+        );
+
+        let resolvers: Vec<IpAddr> = serde_json::from_str(&resolvers_json)
+            .expect("developer error: failed to deserialize resolvers");
+        Ok(Some(resolvers))
     }
 
     fn on_error(&self, error: &Error) -> Result<(), Self::Error> {

@@ -9,26 +9,6 @@ import os.log
 
 class NetworkSettings {
 
-  // How to handle DNS requests for domains not handled by Firezone
-  enum DNSFallbackStrategy: String {
-    // Have the OS handle it using split-DNS
-    case systemResolver = "system_resolver"
-
-    // Have connlib pass it on to a user-specified DNS server
-    case upstreamResolver = "upstream_resolver"
-
-    init(_ string: String) {
-      if string == "upstream_resolver" {
-        self = .upstreamResolver
-      } else if string == "system_resolver" {
-        self = .systemResolver
-      } else {
-        // silent default
-        self = .systemResolver
-      }
-    }
-  }
-
   // Unchanging values
   let tunnelAddressIPv4: String
   let tunnelAddressIPv6: String
@@ -40,7 +20,6 @@ class NetworkSettings {
   let mtu: NSNumber = 1280
 
   // Modifiable values
-  private(set) var dnsFallbackStrategy: DNSFallbackStrategy
   private(set) var routes: [String] = []
   private(set) var resourceDomains: [String] = []
 
@@ -48,21 +27,12 @@ class NetworkSettings {
   private(set) var hasUnappliedChanges: Bool
 
   init(
-    tunnelAddressIPv4: String, tunnelAddressIPv6: String, dnsAddress: String,
-    dnsFallbackStrategy: DNSFallbackStrategy
+    tunnelAddressIPv4: String, tunnelAddressIPv6: String, dnsAddress: String
   ) {
     self.tunnelAddressIPv4 = tunnelAddressIPv4
     self.tunnelAddressIPv6 = tunnelAddressIPv6
     self.dnsAddress = dnsAddress
-    self.dnsFallbackStrategy = dnsFallbackStrategy
     self.hasUnappliedChanges = true
-  }
-
-  func setDNSFallbackStrategy(_ dnsFallbackStrategy: DNSFallbackStrategy) {
-    if self.dnsFallbackStrategy != dnsFallbackStrategy {
-      self.dnsFallbackStrategy = dnsFallbackStrategy
-      self.hasUnappliedChanges = true
-    }
   }
 
   func addRoute(_ route: String) {
@@ -83,9 +53,6 @@ class NetworkSettings {
     let sortedResourceDomains = resourceDomains.sorted()
     if self.resourceDomains != sortedResourceDomains {
       self.resourceDomains = sortedResourceDomains
-      if dnsFallbackStrategy == .systemResolver {
-        self.hasUnappliedChanges = true
-      }
     }
   }
 
@@ -172,16 +139,8 @@ class NetworkSettings {
     tunnelNetworkSettings.ipv6Settings = ipv6Settings
 
     let dnsSettings = NEDNSSettings(servers: [dnsAddress])
-    switch dnsFallbackStrategy {
-    case .systemResolver:
-      // Enable split-DNS. Only those domains matching the resources will be sent to the tunnel's DNS.
-      logger.log("dnsFallbackStrategy is system resolver. Using split DNS.")
-      dnsSettings.matchDomains = resourceDomains
-    case .upstreamResolver:
-      // All DNS queries go to the tunnel's DNS.
-      logger.log("dnsFallbackStrategy is upstream resolver. Intercepting all queries.")
-      dnsSettings.matchDomains = [""]
-    }
+    // Intercept all DNS queries; SplitDNS will be handled by connlib
+    dnsSettings.matchDomains = [""]
     tunnelNetworkSettings.dnsSettings = dnsSettings
     tunnelNetworkSettings.mtu = mtu
 

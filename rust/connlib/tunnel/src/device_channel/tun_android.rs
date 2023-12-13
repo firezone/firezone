@@ -1,5 +1,4 @@
 use crate::device_channel::ioctl;
-use crate::DnsFallbackStrategy;
 use connlib_shared::{
     messages::Interface as InterfaceConfig, Callbacks, Error, Result, DNS_SENTINEL,
 };
@@ -49,15 +48,9 @@ impl Tun {
     pub fn new(
         config: &InterfaceConfig,
         callbacks: &impl Callbacks<Error = Error>,
-        fallback_strategy: DnsFallbackStrategy,
     ) -> Result<Self> {
         let fd = callbacks
-            .on_set_interface_config(
-                config.ipv4,
-                config.ipv6,
-                DNS_SENTINEL,
-                fallback_strategy.to_string(),
-            )?
+            .on_set_interface_config(config.ipv4, config.ipv6, DNS_SENTINEL)?
             .ok_or(Error::NoFd)?;
         // Safety: File descriptor is open.
         let name = unsafe { interface_name(fd)? };

@@ -1,5 +1,4 @@
 use crate::device_channel::ioctl;
-use crate::DnsFallbackStrategy;
 use connlib_shared::{messages::Interface as InterfaceConfig, Callbacks, Error, Result};
 use futures::TryStreamExt;
 use futures_util::future::BoxFuture;
@@ -81,11 +80,7 @@ impl Tun {
         utils::poll_raw_fd(&self.fd, |fd| read(fd, buf), cx)
     }
 
-    pub fn new(
-        config: &InterfaceConfig,
-        _: &impl Callbacks,
-        _: DnsFallbackStrategy,
-    ) -> Result<Self> {
+    pub fn new(config: &InterfaceConfig, _: &impl Callbacks) -> Result<Self> {
         let fd = match unsafe { open(TUN_FILE.as_ptr() as _, O_RDWR) } {
             -1 => return Err(get_last_error()),
             fd => fd,

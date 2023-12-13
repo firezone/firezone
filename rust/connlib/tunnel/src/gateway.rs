@@ -1,7 +1,7 @@
 use crate::device_channel::Device;
 use crate::peer::PacketTransformGateway;
 use crate::{
-    ConnectedPeer, DnsFallbackStrategy, Event, RoleState, Tunnel, ICE_GATHERING_TIMEOUT_SECONDS,
+    ConnectedPeer, Event, RoleState, Tunnel, ICE_GATHERING_TIMEOUT_SECONDS,
     MAX_CONCURRENT_ICE_GATHERING,
 };
 use connlib_shared::messages::{ClientId, Interface as InterfaceConfig};
@@ -24,11 +24,7 @@ where
     #[tracing::instrument(level = "trace", skip(self))]
     pub fn set_interface(&self, config: &InterfaceConfig) -> connlib_shared::Result<()> {
         // Note: the dns fallback strategy is irrelevant for gateways
-        let device = Arc::new(Device::new(
-            config,
-            self.callbacks(),
-            DnsFallbackStrategy::default(),
-        )?);
+        let device = Arc::new(Device::new(config, self.callbacks())?);
 
         self.device.store(Some(device.clone()));
         self.no_device_waker.wake();

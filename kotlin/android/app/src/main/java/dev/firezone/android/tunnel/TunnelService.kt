@@ -66,7 +66,6 @@ class TunnelService : VpnService() {
                 tunnelAddressIPv4: String,
                 tunnelAddressIPv6: String,
                 dnsAddress: String,
-                dnsFallbackStrategy: String,
             ): Int {
                 Log.d(
                     TAG,
@@ -75,7 +74,6 @@ class TunnelService : VpnService() {
                     [IPv4:$tunnelAddressIPv4]
                     [IPv6:$tunnelAddressIPv6]
                     [dns:$dnsAddress]
-                    [dnsFallbackStrategy:$dnsFallbackStrategy]
                     """.trimIndent(),
                 )
 
@@ -84,7 +82,6 @@ class TunnelService : VpnService() {
                         tunnelAddressIPv4,
                         tunnelAddressIPv6,
                         dnsAddress,
-                        dnsFallbackStrategy,
                     ),
                 )
 

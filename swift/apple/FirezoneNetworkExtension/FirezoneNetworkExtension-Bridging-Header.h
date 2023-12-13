@@ -3,3 +3,4 @@
 //
 
 #include "Connlib/connlib.h"
+#include <resolv.h>
