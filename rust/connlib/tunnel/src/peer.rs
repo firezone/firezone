@@ -16,7 +16,6 @@ use parking_lot::{Mutex, RwLock};
 use pnet_packet::Packet;
 use secrecy::ExposeSecret;
 
-use crate::client::IpProvider;
 use crate::MAX_UDP_SIZE;
 use crate::{device_channel, ip_packet::MutableIpPacket, PeerConfig};
 
@@ -200,19 +199,15 @@ pub struct PacketTransformClient {
 impl PacketTransformClient {
     pub fn get_or_assign_translation(
         &self,
+        internal_ip: &IpAddr,
         external_ip: &IpAddr,
-        ip_provider: &mut IpProvider,
     ) -> Option<IpAddr> {
         let mut translations = self.translations.write();
         if let Some(internal_ip) = translations.get_by_right(external_ip) {
             return Some(*internal_ip);
         }
-        let internal_ip = match external_ip {
-            IpAddr::V4(_) => ip_provider.next_ipv4()?.into(),
-            IpAddr::V6(_) => ip_provider.next_ipv6()?.into(),
-        };
-        translations.insert(internal_ip, *external_ip);
-        Some(internal_ip)
+        translations.insert(*internal_ip, *external_ip);
+        Some(*internal_ip)
     }
 }
 
