@@ -10,7 +10,7 @@ use domain::base::{
     Message, MessageBuilder, Question, ToDname,
 };
 use hickory_resolver::lookup::Lookup;
-use hickory_resolver::proto::op::Message as TrustDnsMessage;
+use hickory_resolver::proto::op::{Message as TrustDnsMessage, MessageType};
 use hickory_resolver::proto::rr::RecordType;
 use itertools::Itertools;
 use pnet_packet::{udp::MutableUdpPacket, MutablePacket, Packet as UdpPacket, PacketSize};
@@ -136,6 +136,8 @@ pub(crate) fn build_response_from_resolve_result(
         debug_assert!(false, "The original message should be a DNS query for us to ever call write_dns_lookup_response");
         return Ok(None);
     };
+
+    message.set_message_type(MessageType::Response);
 
     let response = match response.map_err(|err| err.kind().clone()) {
         Ok(response) => message.add_answers(response.records().to_vec()),
