@@ -2040,6 +2040,7 @@ dependencies = [
  "thiserror",
  "tokio",
  "tracing",
+ "tracing-log 0.2.0",
  "tracing-subscriber",
  "url",
  "uuid",
