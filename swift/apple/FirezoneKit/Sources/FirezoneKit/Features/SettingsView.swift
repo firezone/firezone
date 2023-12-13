@@ -217,7 +217,8 @@ public struct SettingsView: View {
   @State private var isShowingConfirmationAlert = false
   @State private var confirmationAlertContinueAction: ConfirmationAlertContinueAction = .none
 
-  @State private var recalculateLogSizeTask: Task<(), Never>?
+  @State private var calculateLogSizeTask: Task<(), Never>?
+  @State private var calculateLogSizeTimer: Timer?
 
   #if os(iOS)
     @State private var logTempZipFileURL: URL?
@@ -479,9 +480,12 @@ public struct SettingsView: View {
               sizeString: $calculatedLogsSize
             )
             .onAppear {
-              Task {
-                self.recalculateLogSize()
-              }
+              self.refreshLogSize()
+              self.startRefreshingLogSizePeriodically()
+            }
+            .onDisappear {
+              self.cancelRefreshLogSize()
+              self.stopRefreshingLogSizePeriodically()
             }
             HStack {
               Spacer()
@@ -535,9 +539,12 @@ public struct SettingsView: View {
             sizeString: $calculatedLogsSize
           )
           .onAppear {
-            Task {
-              self.recalculateLogSize()
-            }
+            self.refreshLogSize()
+            self.startRefreshingLogSizePeriodically()
+          }
+          .onDisappear {
+            self.cancelRefreshLogSize()
+            self.stopRefreshingLogSizePeriodically()
           }
           HStack(spacing: 30) {
             ButtonWithProgress(
@@ -659,30 +666,46 @@ public struct SettingsView: View {
     return try await task.value
   }
 
-  func recalculateLogSize() {
-    self.recalculateLogSizeTask = Task {
-      self.isCalculatingLogsSize = true
-      Task.detached(priority: .userInitiated) {
-        let calculatedLogsSize = await model.calculateLogDirSize(logger: self.logger)
-        await MainActor.run {
-          self.calculatedLogsSize = calculatedLogsSize ?? "Unknown"
-          self.isCalculatingLogsSize = false
-          self.recalculateLogSizeTask = nil
-        }
+  func refreshLogSize() {
+    self.isCalculatingLogsSize = true
+    self.calculateLogSizeTask = Task.detached(priority: .userInitiated) {
+      let calculatedLogsSize = await model.calculateLogDirSize(logger: self.logger)
+      await MainActor.run {
+        self.calculatedLogsSize = calculatedLogsSize ?? "Unknown"
+        self.isCalculatingLogsSize = false
+        self.calculateLogSizeTask = nil
       }
     }
   }
 
+  func cancelRefreshLogSize() {
+    self.calculateLogSizeTask?.cancel()
+  }
+
+  func startRefreshingLogSizePeriodically() {
+    // Refresh every 1 minute
+    let timer = Timer(timeInterval: 60, repeats: true) { _ in
+      self.refreshLogSize()
+    }
+    RunLoop.main.add(timer, forMode: .common)
+    self.calculateLogSizeTimer = timer
+  }
+
+  func stopRefreshingLogSizePeriodically() {
+    self.calculateLogSizeTimer?.invalidate()
+    self.calculateLogSizeTimer = nil
+  }
+
   func clearLogFiles() {
     self.isClearingLogs = true
-    if self.isCalculatingLogsSize {
-      self.recalculateLogSizeTask?.cancel()
-    }
+    self.cancelRefreshLogSize()
     Task.detached(priority: .userInitiated) {
       try? await model.clearAllLogs(logger: self.logger)
       await MainActor.run {
         self.isClearingLogs = false
-        self.recalculateLogSize()
+        if !self.isCalculatingLogsSize {
+          self.refreshLogSize()
+        }
       }
     }
   }
