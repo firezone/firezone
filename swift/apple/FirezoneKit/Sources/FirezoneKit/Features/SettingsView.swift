@@ -256,7 +256,7 @@ public struct SettingsView: View {
           logsTab
             .tabItem {
               Image(systemName: "doc.text")
-              Text("Logs")
+              Text("Diagnostic Logs")
             }
         }
         .toolbar {
@@ -309,7 +309,7 @@ public struct SettingsView: View {
             }
           logsTab
             .tabItem {
-              Text("Logs")
+              Text("Diagnostic Logs")
             }
         }
         .padding(20)
