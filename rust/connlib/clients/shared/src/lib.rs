@@ -163,7 +163,10 @@ where
                 fallback_resolver: parking_lot::Mutex::new(None),
             };
 
-            tokio::spawn(async move {
+            tokio::spawn({
+                let runtime_stopper = runtime_stopper.clone();
+                let callbacks = callbacks.clone();
+                async move {
                 let mut log_stats_interval = tokio::time::interval(Duration::from_secs(10));
                 let mut upload_logs_interval = upload_interval();
                 loop {
@@ -171,7 +174,12 @@ where
                         Some((msg, reference, topic)) = control_plane_receiver.recv() => {
                             match msg {
                                 Ok(msg) => control_plane.handle_message(msg, reference).await?,
-                                Err(err) => control_plane.handle_error(err, reference, topic).await,
+                                Err(err) => {
+                                    if let Err(e) = control_plane.handle_error(err, reference, topic).await {
+                                        Self::disconnect_inner(runtime_stopper, &callbacks, Some(e));
+                                        break;
+                                    }
+                                },
                             }
                         },
                         event = control_plane.tunnel.next_event() => control_plane.handle_tunnel_event(event).await,
@@ -182,7 +190,7 @@ where
                 }
 
                 Result::Ok(())
-            });
+            }});
 
             tokio::spawn(async move {
                 let mut exponential_backoff = ExponentialBackoffBuilder::default().build();

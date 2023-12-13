@@ -10,14 +10,17 @@ high-availability deployments.
 
 ## How versioning works in Firezone
 
-Firezone uses a semantic versioning scheme in the standard
-`MAJOR`.`MINOR`.`PATCH` format with the following structure:
+Firezone uses a simple versioning scheme with the following structure:
 
-| Version type | Example    | Explanation                                                                                                                                                                                                      |
-| ------------ | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `MAJOR`      | `1`        | Marketing version. Updates to this version generally constitute a new architecture or product. Updated every few years on average.                                                                               |
-| `MINOR`      | `20231001` | API version. Clients and gateways **must** be the same API version to function together. The Firezone admin portal supports the latest **two** API versions at the same time. Updated every 6 months on average. |
-| `PATCH`      | `11`       | Patch version. Represents backwards-compatible bug fixes and updates that are generally recommended for all users. Updated on average every week.                                                                |
+`MARKETING`.`API_DATE`.`PATCH`
+
+Each of these fields is described below.
+
+| Version field | Example    | Explanation                                                                                                                                                                                                      |
+| ------------- | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `MARKETING`   | `1`        | Marketing version. Updates to this version generally constitute a new architecture or product. Updated every few years on average.                                                                               |
+| `API_DATE`    | `20231001` | API version. Clients and gateways **must** be the same API version to function together. The Firezone admin portal supports the latest **two** API versions at the same time. Updated every 6 months on average. |
+| `PATCH`       | `11`       | Patch version. Represents backwards-compatible bug fixes and updates that are generally recommended for all users. Updated on average every week.                                                                |
 
 All Firezone components follow the structure above, so it is trivial to
 determine which clients work with which gateways and for how long.
@@ -51,7 +54,7 @@ Gateways deployed in the same site will automatically
 one-by-one, clients connected to the gateway being upgraded will automatically
 reconnect to an available gateway.
 
-Currently the failover timeout is maximum 120 seconds, so upgrades should be
+Currently the failover timeout is maximum 25 seconds, so upgrades should be
 performed during a scheduled maintenance window to ensure minimal disruption.
 Other than a possible short-term connection interruption to in-use resources,
 users won't be impacted by upgrading high-availability gateways.
