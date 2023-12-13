@@ -3,7 +3,35 @@
 
 use crate::client::cli::Cli;
 use anyhow::Result;
+use interprocess::local_socket;
 use keyring::Entry;
+use std::io::{Read, Write};
+
+const PIPE_NAME: &str = "dev.firezone.client";
+
+// This gets a `Error: Access is denied. (os error 5)`
+// if the server is running as admin and the client is not admin
+pub fn pipe_client() -> Result<()> {
+    println!("Client is connecting...");
+    let mut stream = local_socket::LocalSocketStream::connect(PIPE_NAME)?;
+    println!("Client is connected");
+    stream.write_all("firezone://example.com".as_bytes())?;
+    println!("Client wrote");
+    Ok(())
+}
+
+pub fn pipe_server() -> Result<()> {
+    let listener = local_socket::LocalSocketListener::bind(PIPE_NAME)?;
+    println!("Server is bound");
+    while let Ok(mut stream) = listener.accept() {
+        let mut req = vec![];
+        stream.read_to_end(&mut req)?;
+        println!("Server read");
+        let req = String::from_utf8(req)?;
+        println!("{}", req);
+    }
+    Ok(())
+}
 
 /// Test encrypted credential storage
 pub fn token() -> Result<()> {
