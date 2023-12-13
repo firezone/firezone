@@ -10,8 +10,10 @@ import Foundation
 
 enum AuthClientError: Error {
   case invalidCallbackURL(URL?)
+  case invalidStateReturnedInCallback(expected: String, got: String)
   case authResponseError(Error)
   case sessionFailure(Error)
+  case randomNumberGenerationFailure(errorStatus: Int32)
 }
 
 struct AuthClient: Sendable {
@@ -41,10 +43,16 @@ private final class WebAuthenticationSession: NSObject,
 {
   @MainActor
   func signIn(_ host: URL) async throws -> AuthResponse {
-    try await withCheckedThrowingContinuation { continuation in
+    let statePassedToPortal = try Self.createRandomHexString(byteCount: 32)
+    let nonce = try Self.createRandomHexString(byteCount: 32)
+    let url =
+      host
+      .appendingQueryItem(URLQueryItem(name: "state", value: statePassedToPortal))
+      .appendingQueryItem(URLQueryItem(name: "nonce", value: nonce))
+    return try await withCheckedThrowingContinuation { continuation in
       let callbackURLScheme = "firezone"
       let session = ASWebAuthenticationSession(
-        url: host.appendingQueryItem(URLQueryItem(name: "client_platform", value: "apple")),
+        url: url,
         callbackURLScheme: callbackURLScheme
       ) { callbackURL, error in
         if let error {
@@ -58,9 +66,26 @@ private final class WebAuthenticationSession: NSObject,
         }
 
         guard
-          let token = URLComponents(url: callbackURL, resolvingAgainstBaseURL: false)?
+          let stateInCallback = URLComponents(url: callbackURL, resolvingAgainstBaseURL: false)?
             .queryItems?
-            .first(where: { $0.name == "client_auth_token" })?
+            .first(where: { $0.name == "state" })?
+            .value
+        else {
+          continuation.resume(throwing: AuthClientError.invalidCallbackURL(callbackURL))
+          return
+        }
+
+        guard statePassedToPortal == stateInCallback else {
+          continuation.resume(
+            throwing: AuthClientError.invalidStateReturnedInCallback(
+              expected: statePassedToPortal, got: stateInCallback))
+          return
+        }
+
+        guard
+          let fragment = URLComponents(url: callbackURL, resolvingAgainstBaseURL: false)?
+            .queryItems?
+            .first(where: { $0.name == "fragment" })?
             .value
         else {
           continuation.resume(throwing: AuthClientError.invalidCallbackURL(callbackURL))
@@ -79,6 +104,7 @@ private final class WebAuthenticationSession: NSObject,
           return
         }
 
+        let token = nonce + fragment
         let authResponse = AuthResponse(portalURL: host, token: token, actorName: actorName)
         continuation.resume(returning: authResponse)
       }
@@ -93,6 +119,17 @@ private final class WebAuthenticationSession: NSObject,
       #endif
       session.start()
     }
+  }
+
+  static func createRandomHexString(byteCount: Int) throws -> String {
+    var bytes = [Int8](repeating: 0, count: byteCount)
+    let status = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
+
+    guard status == errSecSuccess else {
+      throw AuthClientError.randomNumberGenerationFailure(errorStatus: status)
+    }
+
+    return bytes.map { String(format: "%02hhx", $0) }.joined()
   }
 
   func presentationAnchor(for _: ASWebAuthenticationSession) -> ASPresentationAnchor {
