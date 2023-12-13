@@ -43,6 +43,7 @@ pub fn pipe_server() -> Result<()> {
             let mut sd = WinSec::SECURITY_DESCRIPTOR::default();
             let psd = WinSec::PSECURITY_DESCRIPTOR(&mut sd as *mut _ as *mut c_void);
             unsafe {
+                // ChatGPT pointed me to these functions, it's better than the official MS docs
                 WinSec::InitializeSecurityDescriptor(
                     psd,
                     windows::Win32::System::SystemServices::SECURITY_DESCRIPTOR_REVISION,
@@ -66,6 +67,7 @@ pub fn pipe_server() -> Result<()> {
             server.connect().await?;
             println!("Server got connection");
 
+            // TODO: Limit the read size here. Our typical callback is 350 bytes, so 4,096 bytes should be more than enough.
             let mut req = vec![];
             server.read_to_end(&mut req).await?;
 
