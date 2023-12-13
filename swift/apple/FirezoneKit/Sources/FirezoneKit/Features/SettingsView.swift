@@ -668,6 +668,9 @@ public struct SettingsView: View {
   }
 
   func refreshLogSize() {
+    guard !self.isCalculatingLogsSize else {
+      return
+    }
     self.isCalculatingLogsSize = true
     self.calculateLogSizeTask = Task.detached(priority: .userInitiated) {
       let calculatedLogsSize = await model.calculateLogDirSize(logger: self.logger)
