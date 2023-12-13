@@ -11,6 +11,12 @@ use windows::Win32::Security as WinSec;
 
 const PIPE_NAME: &str = "dev.firezone.client";
 
+pub fn open_deep_link(path: &url::Url) -> Result<()> {
+    println!("Opened deep link {path}");
+    std::thread::sleep(std::time::Duration::from_secs(10));
+    Ok(())
+}
+
 // This gets a `Error: Access is denied. (os error 5)`
 // if the server is running as admin and the client is not admin
 pub fn pipe_client() -> Result<()> {
@@ -22,6 +28,9 @@ pub fn pipe_client() -> Result<()> {
     Ok(())
 }
 
+// Copied the named pipe idea from `interprocess` and `tauri-plugin-deep-link`,
+// although I believe it's considered best practice on Windows to use named pipes for
+// single-instance apps.
 pub fn pipe_server() -> Result<()> {
     let rt = Runtime::new()?;
     rt.block_on(async {
@@ -82,6 +91,9 @@ pub fn pipe_server() -> Result<()> {
     })?;
 
     Ok(())
+}
+pub fn register_deep_link() -> Result<()> {
+    todo!()
 }
 
 /// Test encrypted credential storage

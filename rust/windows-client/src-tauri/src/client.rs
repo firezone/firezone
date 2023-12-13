@@ -67,6 +67,8 @@ pub(crate) fn run() -> Result<()> {
         Some(Cmd::DebugPipeServer) => debug_commands::pipe_server(),
         Some(Cmd::DebugToken) => debug_commands::token(),
         Some(Cmd::DebugWintun) => debug_commands::wintun(cli),
+        Some(Cmd::OpenDeepLink(deep_link)) => debug_commands::open_deep_link(&deep_link.url),
+        Some(Cmd::RegisterDeepLink) => debug_commands::register_deep_link(),
     }
 }
 
