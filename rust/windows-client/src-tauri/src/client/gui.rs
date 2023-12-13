@@ -9,7 +9,11 @@ use client::settings::{self, AdvancedSettings};
 use connlib_client_shared::file_logger;
 use firezone_cli_utils::setup_global_subscriber;
 use secrecy::SecretString;
-use std::{path::PathBuf, str::FromStr};
+use std::{
+    net::{Ipv4Addr, Ipv6Addr},
+    path::PathBuf,
+    str::FromStr,
+};
 use tauri::{
     CustomMenuItem, Manager, SystemTray, SystemTrayEvent, SystemTrayMenu, SystemTrayMenuItem,
     SystemTraySubmenu,
@@ -242,6 +246,21 @@ impl connlib_client_shared::Callbacks for CallbackHandler {
 
     fn on_error(&self, error: &connlib_client_shared::Error) -> Result<(), Self::Error> {
         tracing::error!("on_error not implemented. Error: {error:?}");
+        Ok(())
+    }
+
+    fn on_set_interface_config(
+        &self,
+        tunnel_addr_ipv4: Ipv4Addr,
+        _tunnel_addr_ipv6: Ipv6Addr,
+        _dns_addr: Ipv4Addr,
+    ) -> Result<Option<i32>, Self::Error> {
+        tracing::info!("Tunnel IPv4 = {tunnel_addr_ipv4}");
+        Ok(None)
+    }
+
+    fn on_tunnel_ready(&self) -> Result<(), Self::Error> {
+        tracing::info!("on_tunnel_ready");
         Ok(())
     }
 

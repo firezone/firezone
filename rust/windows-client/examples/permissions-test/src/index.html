@@ -2,7 +2,11 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>Hello Tauri!</title>
+    <link rel="stylesheet" href="styles.css" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Settings</title>
+    <script src="index.js"></script>
+    <title>Permissions test</title>
     <style>
       body {
         /* Add a nice colorscheme */
@@ -24,6 +28,11 @@
     </style>
   </head>
   <body>
-    <h1>Hello, Tauri!</h1>
+    <div class="container">
+      <div class="row">
+        <button type="button" id="start-tunnel-btn">Start Tunnel</button>
+        <button type="button" id="stop-tunnel-btn">Stop Tunnel</button>
+      </div>
+    </div>
   </body>
 </html>
