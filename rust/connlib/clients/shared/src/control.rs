@@ -254,9 +254,6 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                         tracing::warn!("Failed to upload log file: {e}");
                         return;
                     }
-                    if let Err(e) = tokio::fs::remove_file(&path).await {
-                        tracing::warn!("Failed to upload log file: {e}")
-                    }
                 });
             }
         }
