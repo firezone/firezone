@@ -126,7 +126,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                     gateway_payload.domain_response,
                     gateway_public_key.0.into(),
                 ) {
-                    tracing::error!(message = "Error in received_offer_response", error = ?e);
+                    let _ = self.tunnel.callbacks().on_error(&e);
                 }
             }
             GatewayResponse::ResourceAccepted(gateway_payload) => {
@@ -134,7 +134,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                     .tunnel
                     .received_domain_parameters(resource_id, gateway_payload.domain_response)
                 {
-                    tracing::error!(message = "Error in received_domain_parameters", error = ?e);
+                    let _ = self.tunnel.callbacks().on_error(&e);
                 }
             }
         }
@@ -144,6 +144,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
     pub fn add_resource(&self, resource_description: ResourceDescription) {
         if let Err(e) = self.tunnel.add_resource(resource_description) {
             tracing::error!(message = "Can't add resource", error = ?e);
+            let _ = self.tunnel.callbacks().on_error(&e);
         }
     }
 
@@ -208,6 +209,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
 
             tunnel.cleanup_connection(resource_id);
             tracing::error!("Error request connection details: {err}");
+            let _ = tunnel.callbacks().on_error(&err);
         });
     }
 
@@ -221,6 +223,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
         for candidate in candidates {
             if let Err(e) = self.tunnel.add_ice_candidate(gateway_id, candidate).await {
                 tracing::error!(err = ?e,"add_ice_candidate");
+                let _ = self.tunnel.callbacks().on_error(&e);
             }
         }
     }
@@ -249,6 +252,10 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                 tokio::spawn(async move {
                     if let Err(e) = upload(path.clone(), url).await {
                         tracing::warn!("Failed to upload log file: {e}");
+                        return;
+                    }
+                    if let Err(e) = tokio::fs::remove_file(&path).await {
+                        tracing::warn!("Failed to upload log file: {e}")
                     }
                 });
             }
@@ -270,6 +277,10 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                     tracing::error!(
                         "An offline error came back with a reference to a non-valid resource id"
                     );
+                    let _ = self
+                        .tunnel
+                        .callbacks()
+                        .on_error(&Error::ControlProtocolError);
                     return Ok(());
                 };
                 // TODO: Rate limit the number of attempts of getting the relays before just trying a local network connection

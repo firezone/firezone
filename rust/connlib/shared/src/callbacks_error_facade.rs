@@ -81,6 +81,14 @@ impl<CB: Callbacks> Callbacks for CallbackErrorFacade<CB> {
         Ok(())
     }
 
+    fn on_error(&self, error: &Error) -> Result<()> {
+        if let Err(err) = self.0.on_error(error) {
+            tracing::error!(?err, "`on_error` failed");
+        }
+        // There's nothing we really want to do if `on_error` fails.
+        Ok(())
+    }
+
     fn roll_log_file(&self) -> Option<PathBuf> {
         self.0.roll_log_file()
     }

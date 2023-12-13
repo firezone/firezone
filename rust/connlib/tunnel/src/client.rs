@@ -3,8 +3,8 @@ use crate::device_channel::{Device, Packet};
 use crate::ip_packet::{IpPacket, MutableIpPacket};
 use crate::peer::PacketTransformClient;
 use crate::{
-    dns, ConnectedPeer, DnsQuery, Event, PeerConfig, RoleState, Tunnel, DNS_QUERIES_QUEUE_SIZE,
-    ICE_GATHERING_TIMEOUT_SECONDS, MAX_CONCURRENT_ICE_GATHERING,
+    dns, get_v4, get_v6, ConnectedPeer, DnsQuery, Event, PeerConfig, RoleState, Tunnel,
+    DNS_QUERIES_QUEUE_SIZE, ICE_GATHERING_TIMEOUT_SECONDS, MAX_CONCURRENT_ICE_GATHERING,
 };
 use boringtun::x25519::{PublicKey, StaticSecret};
 use connlib_shared::error::{ConnlibError as Error, ConnlibError};

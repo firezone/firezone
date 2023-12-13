@@ -99,6 +99,11 @@ class TunnelService : VpnService() {
                 return true
             }
 
+            override fun onError(error: String): Boolean {
+                Log.d(TAG, "onError: $error")
+                return true
+            }
+
             override fun onAddRoute(
                 addr: String,
                 prefix: Int,

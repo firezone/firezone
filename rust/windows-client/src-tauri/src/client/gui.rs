@@ -240,6 +240,11 @@ impl connlib_client_shared::Callbacks for CallbackHandler {
         Ok(())
     }
 
+    fn on_error(&self, error: &connlib_client_shared::Error) -> Result<(), Self::Error> {
+        tracing::error!("on_error not implemented. Error: {error:?}");
+        Ok(())
+    }
+
     fn on_update_resources(
         &self,
         resources: Vec<connlib_client_shared::ResourceDescription>,
@@ -256,7 +261,9 @@ impl connlib_client_shared::Callbacks for CallbackHandler {
             .as_ref()?
             .roll_to_new_file()
             .unwrap_or_else(|e| {
-                tracing::error!("Failed to roll over to new file: {e}");
+                tracing::debug!("Failed to roll over to new file: {e}");
+                let _ = self.on_error(&connlib_client_shared::Error::LogFileRollError(e));
+
                 None
             })
     }

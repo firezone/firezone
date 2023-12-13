@@ -506,4 +506,8 @@ extension Adapter: CallbackHandlerDelegate {
     let resolvers = Resolv().getservers().map(Resolv.getnameinfo)
     self.logger.info("getSystemDefaultResolvers: \(resolvers)")
   }
+
+  public func onError(error: String) {
+    self.logger.error("Internal connlib error: \(error, privacy: .public)")
+  }
 }

@@ -24,5 +24,7 @@ interface ConnlibCallback {
 
     fun onDisconnect(error: String?): Boolean
 
+    fun onError(error: String): Boolean
+
     fun getSystemDefaultResolvers(): Array<ByteArray>
 }

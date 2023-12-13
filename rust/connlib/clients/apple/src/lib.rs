@@ -59,6 +59,9 @@ mod ffi {
 
         #[swift_bridge(swift_name = "getSystemDefaultResolvers")]
         fn get_system_default_resolvers(&self) -> String;
+
+        #[swift_bridge(swift_name = "onError")]
+        fn on_error(&self, error: String);
     }
 }
 
@@ -123,7 +126,6 @@ impl Callbacks for CallbackHandler {
     }
 
     fn on_disconnect(&self, error: Option<&Error>) -> Result<(), Self::Error> {
-        tracing::debug!("on_disconnect: {:?}", error);
         self.inner
             .on_disconnect(error.map(ToString::to_string).unwrap_or_default());
         Ok(())
@@ -131,16 +133,26 @@ impl Callbacks for CallbackHandler {
 
     fn get_system_default_resolvers(&self) -> Result<Option<Vec<IpAddr>>, Self::Error> {
         let resolvers_json = self.inner.get_system_default_resolvers();
-        tracing::debug!("get_system_default_resolvers: {:?}", resolvers_json);
+        tracing::debug!(
+            "get_system_default_resolvers returned: {:?}",
+            resolvers_json
+        );
 
         let resolvers: Vec<IpAddr> = serde_json::from_str(&resolvers_json)
             .expect("developer error: failed to deserialize resolvers");
         Ok(Some(resolvers))
     }
 
+    fn on_error(&self, error: &Error) -> Result<(), Self::Error> {
+        self.inner.on_error(error.to_string());
+        Ok(())
+    }
+
     fn roll_log_file(&self) -> Option<PathBuf> {
         self.handle.roll_to_new_file().unwrap_or_else(|e| {
-            tracing::error!("Failed to roll over to new file: {e}");
+            tracing::debug!("Failed to roll over to new file: {e}");
+            let _ = self.on_error(&Error::LogFileRollError(e));
+
             None
         })
     }

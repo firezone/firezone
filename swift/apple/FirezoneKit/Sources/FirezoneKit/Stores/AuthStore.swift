@@ -181,8 +181,7 @@ final class AuthStore: ObservableObject {
           )
           handleTunnelDisconnectionEvent()
         } else {
-          logger.error(
-            "\(#function): Starting tunnel failed: \(String(describing: error), privacy: .public)")
+          logger.error("\(#function): Starting tunnel failed: \(String(describing: error))")
           // Disconnection event will be handled in the tunnel status change handler
         }
       }
