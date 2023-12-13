@@ -87,6 +87,12 @@ const MAX_CONCURRENT_ICE_GATHERING: usize = 100;
 // Note: Taken from boringtun
 const HANDSHAKE_RATE_LIMIT: u64 = 100;
 
+// These 2 are the default timeouts
+const ICE_DISCONNECTED_TIMEOUT: Duration = Duration::from_secs(5);
+const ICE_KEEPALIVE: Duration = Duration::from_secs(2);
+// This is approximately how long failoever will take :)
+const ICE_FAILED_TIMEOUT: Duration = Duration::from_secs(10);
+
 pub(crate) fn get_v4(ip: IpAddr) -> Option<Ipv4Addr> {
     match ip {
         IpAddr::V4(v4) => Some(v4),
@@ -471,6 +477,11 @@ where
         registry = register_default_interceptors(registry, &mut media_engine)?;
         let mut setting_engine = SettingEngine::default();
         setting_engine.set_interface_filter(Box::new(|name| !name.contains("tun")));
+        setting_engine.set_ice_timeouts(
+            Some(ICE_DISCONNECTED_TIMEOUT),
+            Some(ICE_FAILED_TIMEOUT),
+            Some(ICE_KEEPALIVE),
+        );
 
         let webrtc_api = APIBuilder::new()
             .with_media_engine(media_engine)

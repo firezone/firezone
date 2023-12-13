@@ -205,7 +205,7 @@ where
     }
 
     fn new_tunnel(
-        &self,
+        self: &Arc<Self>,
         peer_config: PeerConfig,
         client_id: ClientId,
         resource: ResourceDescription,
@@ -239,6 +239,7 @@ where
         let (peer_sender, peer_receiver) = tokio::sync::mpsc::channel(PEER_QUEUE_SIZE);
 
         start_handlers(
+            Arc::clone(self),
             Arc::clone(&self.device),
             self.callbacks.clone(),
             peer.clone(),

@@ -12,7 +12,7 @@ use connlib_shared::{
 };
 use webrtc::ice_transport::{
     ice_candidate::RTCIceCandidate, ice_gatherer::RTCIceGatherOptions,
-    ice_parameters::RTCIceParameters,
+    ice_parameters::RTCIceParameters, ice_transport_state::RTCIceTransportState,
 };
 use webrtc::ice_transport::{ice_candidate_type::RTCIceCandidateType, RTCIceTransport};
 use webrtc::ice_transport::{ice_credential_type::RTCIceCredentialType, ice_server::RTCIceServer};
@@ -151,7 +151,8 @@ fn insert_peers<TId: Copy, TTransform>(
     }
 }
 
-fn start_handlers<TId, TTransform>(
+fn start_handlers<TId, TTransform, TRoleState>(
+    tunnel: Arc<Tunnel<impl Callbacks + 'static, TRoleState>>,
     device: Arc<ArcSwapOption<Device>>,
     callbacks: impl Callbacks + 'static,
     peer: Arc<Peer<TId, TTransform>>,
@@ -160,8 +161,17 @@ fn start_handlers<TId, TTransform>(
 ) where
     TId: Copy + Send + Sync + fmt::Debug + 'static,
     TTransform: Send + Sync + PacketTransform + 'static,
+    TRoleState: RoleState<Id = TId>,
 {
-    ice.on_connection_state_change(Box::new(|_| Box::pin(async {})));
+    let conn_id = peer.conn_id;
+    ice.on_connection_state_change(Box::new(move |state| {
+        let tunnel = tunnel.clone();
+        Box::pin(async move {
+            if state == RTCIceTransportState::Failed {
+                tunnel.peers_to_stop.lock().push_back(conn_id);
+            }
+        })
+    }));
     tokio::spawn({
         async move {
             // If this fails receiver will be dropped and the connection will expire at some point
