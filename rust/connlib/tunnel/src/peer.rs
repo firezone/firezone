@@ -16,7 +16,6 @@ use parking_lot::{Mutex, RwLock};
 use pnet_packet::Packet;
 use secrecy::ExposeSecret;
 
-use crate::client::IpProvider;
 use crate::MAX_UDP_SIZE;
 use crate::{device_channel, ip_packet::MutableIpPacket, PeerConfig};
 

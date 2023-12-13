@@ -21,7 +21,7 @@ use crate::{
     client::DnsResource,
     control_protocol::{new_ice_connection, IceConnection},
     device_channel::Device,
-    dns, get_v4,
+    dns,
     peer::PacketTransformClient,
     PEER_QUEUE_SIZE,
 };
