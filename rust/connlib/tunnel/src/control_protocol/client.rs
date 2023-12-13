@@ -165,6 +165,7 @@ where
         let (peer_sender, peer_receiver) = tokio::sync::mpsc::channel(PEER_QUEUE_SIZE);
 
         start_handlers(
+            Arc::clone(self),
             Arc::clone(&self.device),
             self.callbacks.clone(),
             peer.clone(),
