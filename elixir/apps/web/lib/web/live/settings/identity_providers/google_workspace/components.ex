@@ -216,7 +216,7 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.Components do
     """
   end
 
-  def scopes() do
+  def scopes do
     """
     openid
     profile
