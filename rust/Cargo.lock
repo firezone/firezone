@@ -2030,7 +2030,6 @@ dependencies = [
  "http-body-util",
  "hyper 1.0.1",
  "hyper-util",
- "interprocess",
  "keyring",
  "secrecy",
  "serde",
@@ -3102,25 +3101,12 @@ version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "81f2533f3be42fffe3b5e63b71aeca416c1c3bc33e4e27be018521e76b1f38fb"
 dependencies = [
- "blocking",
  "cfg-if",
- "futures-core",
- "futures-io",
- "intmap",
  "libc",
- "once_cell",
  "rustc_version",
- "spinning",
- "thiserror",
  "to_method",
  "winapi",
 ]
-
-[[package]]
-name = "intmap"
-version = "0.7.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ae52f28f45ac2bc96edb7714de995cffc174a395fb0abf5bff453587c980d7b9"
 
 [[package]]
 name = "io-kit-sys"
@@ -5745,15 +5731,6 @@ name = "spin"
 version = "0.9.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6980e8d7511241f8acf4aebddbb1ff938df5eebe98691418c4468d0b72a96a67"
-
-[[package]]
-name = "spinning"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2d4f0e86297cad2658d92a707320d87bf4e6ae1050287f51d19b67ef3f153a7b"
-dependencies = [
- "lock_api",
-]
 
 [[package]]
 name = "spki"

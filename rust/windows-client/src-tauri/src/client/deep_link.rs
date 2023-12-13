@@ -1,25 +1,32 @@
 //! A module for registering deep links that are sent over to the app's already-running instance
-//! Based on reading some of the Windows code from https://github.com/FabianLars/tauri-plugin-deep-link, which is licensed "MIT OR Apache-2.0"
+//! Based on reading some of the Windows code from <https://github.com/FabianLars/tauri-plugin-deep-link>, which is licensed "MIT OR Apache-2.0"
 
 use std::{ffi::c_void, io, path::Path};
-use tokio::{io::AsyncReadExt, net::windows::named_pipe};
+use tokio::{io::AsyncReadExt, io::AsyncWriteExt, net::windows::named_pipe};
 use windows::Win32::Security as WinSec;
 
 pub(crate) const FZ_SCHEME: &str = "firezone-fd0020211111";
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
-    /// Error while communicating with the client
+    /// Error from client's POV
     #[error(transparent)]
-    Client(io::Error),
+    ClientCommunications(io::Error),
+    /// Error while connecting to the server
+    #[error(transparent)]
+    Connect(io::Error),
     /// Something went wrong finding the path to our own exe
     #[error(transparent)]
     CurrentExe(io::Error),
     /// We got some data but it's not UTF-8
     #[error(transparent)]
     LinkNotUtf8(std::string::FromUtf8Error),
+    /// This means we are probably the second instance
     #[error("named pipe server couldn't start listening")]
     Listen,
+    /// Error from server's POV
+    #[error(transparent)]
+    ServerCommunications(io::Error),
     /// Something went wrong setting up the registry
     #[error(transparent)]
     WindowsRegistry(io::Error),
@@ -37,8 +44,6 @@ pub async fn accept(id: &str) -> Result<(), Error> {
 
     let mut server_options = named_pipe::ServerOptions::new();
     server_options.first_pipe_instance(true);
-
-    let path = format!(r"\\.\pipe\{}", id);
 
     // This will allow non-admin clients to connect to us even if we're running as admin
     let mut sd = WinSec::SECURITY_DESCRIPTOR::default();
@@ -60,20 +65,28 @@ pub async fn accept(id: &str) -> Result<(), Error> {
         lpSecurityDescriptor: psd.0,
         bInheritHandle: false.into(),
     };
+
+    let path = named_pipe_path(id);
     let mut server = unsafe {
         server_options.create_with_security_attributes_raw(path, &mut sa as *mut _ as *mut c_void)
     }
     .map_err(|_| Error::Listen)?;
 
     tracing::debug!("server is bound");
-    server.connect().await.map_err(Error::Client)?;
+    server
+        .connect()
+        .await
+        .map_err(Error::ServerCommunications)?;
     tracing::debug!("server got connection");
 
     // TODO: Limit the read size here. Our typical callback is 350 bytes, so 4,096 bytes should be more than enough.
     // Also, I think `read_to_end` can do partial reads because this is a network socket,
-    // not a file. We might need a length-prefixed format for IPC.
+    // not a file. We might need a length-prefixed or newline-terminated format for IPC.
     let mut req = vec![];
-    server.read_to_end(&mut req).await.map_err(Error::Client)?;
+    server
+        .read_to_end(&mut req)
+        .await
+        .map_err(Error::ServerCommunications)?;
 
     server.disconnect().ok();
 
@@ -81,6 +94,19 @@ pub async fn accept(id: &str) -> Result<(), Error> {
     let req = String::from_utf8(req).map_err(Error::LinkNotUtf8)?;
     tracing::info!("{}", req);
 
+    Ok(())
+}
+
+/// Open a deep link by sending it to the already-running instance of the app
+pub async fn open(id: &str, url: &url::Url) -> Result<(), Error> {
+    let path = named_pipe_path(id);
+    let mut client = named_pipe::ClientOptions::new()
+        .open(path)
+        .map_err(Error::Connect)?;
+    client
+        .write_all(url.as_str().as_bytes())
+        .await
+        .map_err(Error::ClientCommunications)?;
     Ok(())
 }
 
@@ -120,4 +146,8 @@ fn set_registry_values(id: &str, exe: &str) -> Result<(), io::Error> {
     cmd.set_value("", &format!("{} open-deep-link \"%1\"", &exe))?;
 
     Ok(())
+}
+
+fn named_pipe_path(id: &str) -> String {
+    format!(r"\\.\pipe\{}", id)
 }

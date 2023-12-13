@@ -18,8 +18,6 @@ firezone-cli-utils = { workspace = true }
 http-body-util = "0.1.0"
 hyper = { version = "1.0.1", features = ["http1", "server"] }
 hyper-util = { version = "0.1.1", features = ["full"] }
-# To test local sockets directly without tauri-plugin-deep-link
-interprocess = "1.2.1"
 keyring = "2.0.5"
 secrecy.workspace = true
 serde = { version = "1.0", features = ["derive"] }

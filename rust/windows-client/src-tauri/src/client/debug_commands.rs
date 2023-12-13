@@ -3,19 +3,11 @@
 
 use crate::client::cli::Cli;
 use anyhow::Result;
-use interprocess::local_socket;
 use keyring::Entry;
-use std::io::Write;
 use tokio::runtime::Runtime;
 
 // TODO: In tauri-plugin-deep-link, this is the identifier in tauri.conf.json
 const PIPE_NAME: &str = "dev.firezone.client";
-
-pub fn open_deep_link(path: &url::Url) -> Result<()> {
-    println!("Opened deep link {path}");
-    std::thread::sleep(std::time::Duration::from_secs(10));
-    Ok(())
-}
 
 /// Test encrypted credential storage
 pub fn token() -> Result<()> {
@@ -41,13 +33,13 @@ pub fn token() -> Result<()> {
     Ok(())
 }
 
-pub use details::{pipe_client, pipe_server, register_deep_link, wintun};
+pub use details::{open_deep_link, pipe_server, register_deep_link, wintun};
 
 #[cfg(target_family = "unix")]
 mod details {
     use super::*;
 
-    pub fn pipe_client(_: Cli) -> Result<()> {
+    pub fn open_deep_link(_: &url::Url) -> Result<()> {
         unimplemented!()
     }
 
@@ -69,14 +61,15 @@ mod details {
     use super::*;
     use std::sync::Arc;
 
-    // This gets a `Error: Access is denied. (os error 5)`
-    // if the server is running as admin and the client is not admin
-    pub fn pipe_client() -> Result<()> {
-        println!("Client is connecting...");
-        let mut stream = local_socket::LocalSocketStream::connect(PIPE_NAME)?;
-        println!("Client is connected");
-        stream.write_all("firezone://example.com".as_bytes())?;
-        println!("Client wrote");
+    pub fn open_deep_link(path: &url::Url) -> Result<()> {
+        let subscriber = tracing_subscriber::FmtSubscriber::builder()
+            .with_max_level(tracing::Level::TRACE)
+            .finish();
+        tracing::subscriber::set_global_default(subscriber)
+            .expect("setting default subscriber failed");
+
+        let rt = Runtime::new()?;
+        rt.block_on(crate::client::deep_link::open(PIPE_NAME, path))?;
         Ok(())
     }
 

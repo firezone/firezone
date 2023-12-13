@@ -50,7 +50,6 @@ pub(crate) fn run() -> Result<()> {
             println!("debug");
             Ok(())
         }
-        Some(Cmd::DebugPipeClient) => debug_commands::pipe_client(),
         Some(Cmd::DebugPipeServer) => debug_commands::pipe_server(),
         Some(Cmd::DebugToken) => debug_commands::token(),
         Some(Cmd::DebugWintun) => debug_commands::wintun(cli),
