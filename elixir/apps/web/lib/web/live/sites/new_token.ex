@@ -241,10 +241,10 @@ defmodule Web.Sites.NewToken do
         chmod 0755 /etc/firezone; \\
         iptables-nft -A FORWARD -i tun-firezone -j ACCEPT; \\
         iptables-nft -A FORWARD -o tun-firezone -j ACCEPT; \\
-        iptables-nft -t nat -A POSTROUTING -o eth+ -j MASQUERADE; \\
+        iptables-nft -t nat -A POSTROUTING -o e+ -j MASQUERADE; \\
         ip6tables-nft -A FORWARD -i tun-firezone -j ACCEPT; \\
         ip6tables-nft -A FORWARD -o tun-firezone -j ACCEPT; \\
-        ip6tables-nft -t nat -A POSTROUTING -o eth+ -j MASQUERADE; \\
+        ip6tables-nft -t nat -A POSTROUTING -o e+ -j MASQUERADE; \\
       fi; \\
     '
     AmbientCapabilities=CAP_NET_ADMIN
