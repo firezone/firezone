@@ -1,7 +1,7 @@
 use crate::client::DnsResource;
 use crate::device_channel::Packet;
 use crate::ip_packet::{to_dns, IpPacket, MutableIpPacket, Version};
-use crate::{get_v4, get_v6, DnsFallbackStrategy, DnsQuery};
+use crate::{get_v4, get_v6, DnsQuery};
 use connlib_shared::error::ConnlibError;
 use connlib_shared::messages::ResourceDescriptionDns;
 use connlib_shared::{Dname, DNS_SENTINEL};
@@ -63,7 +63,6 @@ pub(crate) fn parse<'a>(
     dns_resources: &HashMap<String, ResourceDescriptionDns>,
     dns_resources_internal_ips: &HashMap<DnsResource, Vec<IpAddr>>,
     packet: IpPacket<'a>,
-    resolve_strategy: DnsFallbackStrategy,
 ) -> Option<ResolveStrategy<Packet<'static>, DnsQuery<'a>, (DnsResource, Rtype)>> {
     if packet.destination() != IpAddr::from(DNS_SENTINEL) {
         return None;
@@ -81,10 +80,7 @@ pub(crate) fn parse<'a>(
         match resource_from_question(dns_resources, dns_resources_internal_ips, &question) {
             Some(ResolveStrategy::LocalResponse(resource)) => Some(resource),
             Some(ResolveStrategy::ForwardQuery(params)) => {
-                if resolve_strategy.is_upstream() {
-                    return Some(ResolveStrategy::ForwardQuery(params.into_query(packet)));
-                }
-                None
+                return Some(ResolveStrategy::ForwardQuery(params.into_query(packet)));
             }
             Some(ResolveStrategy::DeferredResponse(resource)) => {
                 return Some(ResolveStrategy::DeferredResponse((
@@ -217,6 +213,7 @@ where
     };
 
     let mut answer_builder = msg_builder.start_answer(message, Rcode::NoError).ok()?;
+    answer_builder.header_mut().set_ra(true);
 
     // W/O object-safety there's no other way to access the inner type
     // we could as well implement the ComposeRecordData trait for RecordData
@@ -231,6 +228,7 @@ where
         RecordData::Ptr(r) => answer_builder.push((qname, Class::In, DNS_TTL, r)),
     }
     .ok()?;
+
     Some(answer_builder.finish())
 }
 

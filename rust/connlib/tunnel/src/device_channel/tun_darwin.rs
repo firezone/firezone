@@ -1,4 +1,3 @@
-use crate::DnsFallbackStrategy;
 use connlib_shared::{
     messages::Interface as InterfaceConfig, Callbacks, Error, Result, DNS_SENTINEL,
 };
@@ -73,7 +72,6 @@ impl Tun {
     pub fn new(
         config: &InterfaceConfig,
         callbacks: &impl Callbacks<Error = Error>,
-        fallback_strategy: DnsFallbackStrategy,
     ) -> Result<Self> {
         let mut info = ctl_info {
             ctl_id: 0,
@@ -131,12 +129,7 @@ impl Tun {
             }
 
             if addr.sc_id == info.ctl_id {
-                callbacks.on_set_interface_config(
-                    config.ipv4,
-                    config.ipv6,
-                    DNS_SENTINEL,
-                    fallback_strategy.to_string(),
-                )?;
+                callbacks.on_set_interface_config(config.ipv4, config.ipv6, DNS_SENTINEL)?;
 
                 set_non_blocking(fd)?;
 
