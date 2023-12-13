@@ -142,7 +142,7 @@ defmodule Web.Sites.NewToken do
     """
   end
 
-  defp version do
+  defp major_minor_version do
     vsn =
       Application.spec(:domain)
       |> Keyword.fetch!(:vsn)
@@ -161,9 +161,19 @@ defmodule Web.Sites.NewToken do
     [
       {"FIREZONE_ID", Ecto.UUID.generate()},
       {"FIREZONE_TOKEN", token},
-      {"FIREZONE_ENABLE_MASQUERADE", "1"},
       api_url_override,
-      {"RUST_LOG", "warn"}
+      {"RUST_LOG",
+       Enum.join(
+         [
+           "firezone_gateway=trace",
+           "firezone_tunnel=trace",
+           "connlib_shared=trace",
+           "tunnel_state=trace",
+           "phoenix_channel=debug",
+           "warn"
+         ],
+         ","
+       )}
     ]
     |> Enum.reject(&is_nil/1)
   end
@@ -183,9 +193,11 @@ defmodule Web.Sites.NewToken do
       "--sysctl net.ipv6.conf.all.forwarding=1",
       "--sysctl net.ipv6.conf.default.forwarding=1",
       "--device=\"/dev/net/tun:/dev/net/tun\"",
-      Enum.map(env, fn {key, value} -> "--env #{key}=\"#{value}\"" end),
+      Enum.map(env ++ [{"FIREZONE_ENABLE_MASQUERADE", "1"}], fn {key, value} ->
+        "--env #{key}=\"#{value}\""
+      end),
       "--env FIREZONE_NAME=$(hostname)",
-      "#{Domain.Config.fetch_env!(:domain, :docker_registry)}/gateway:#{version()}"
+      "#{Domain.Config.fetch_env!(:domain, :docker_registry)}/gateway:#{major_minor_version()}"
     ]
     |> List.flatten()
     |> Enum.join(" \\\n  ")
@@ -200,51 +212,47 @@ defmodule Web.Sites.NewToken do
 
     [Service]
     Type=simple
-    ExecStartPre=/bin/sh -c 'id -u firezone &>/dev/null || useradd -r -s /bin/false firezone'
     #{Enum.map_join(env, "\n", fn {key, value} -> "Environment=\"#{key}=#{value}\"" end)}
-    ExecStartPre=/bin/sh -c 'set -xe; \\
-      remote_version=$(curl -Ls \\
-        -H "Accept: application/vnd.github+json" \\
-        -H "X-GitHub-Api-Version: 2022-11-28" \\
-        https://api.github.com/repos/firezone/firezone/releases/latest | \\
-        grep "\\"tag_name\\": " | sed "s/.*\\"tag_name\\": \\"\\\\([^\\\\\\"]*\\\\).*/\\\\1/"); \\
-      if [ -e /usr/local/bin/firezone-gateway ]; then \\
-        current_version=$(/usr/local/bin/firezone-gateway --version | awk '"'"'{print $NF}'"'"'); \\
-      else \\
-        current_version=""; \\
-      fi; \\
-      if [ ! "$current_version" = "${remote_version:-latest}" ]; then \\
-        echo "There is a new version of Firezone Gateway, downloading: ${remote_version:-latest}"; \\
+    ExecStartPre=/bin/sh -c 'set -xue; \\
+      if [ ! -e /usr/local/bin/firezone-gateway ]; then \\
+        FIREZONE_VERSION=$(curl -Ls \\
+          -H "Accept: application/vnd.github+json" \\
+          -H "X-GitHub-Api-Version: 2022-11-28" \\
+          "https://api.github.com/repos/firezone/firezone/releases/latest" | \\
+          grep "\\\\"tag_name\\\\":" | sed "s/.*\\\\"tag_name\\\\": \\\\"\\([^\\\\"\\\\]*\\).*/\\1/" \\
+        ); \\
+        [ "$FIREZONE_VERSION" = "" ] && echo "[Error] Can not fetch latest version, rate limited by GitHub?" && exit 1; \\
+        echo "Downloading Firezone Gateway version $FIREZONE_VERSION"; \\
         arch=$(uname -m); \\
         case $arch in \\
           aarch64) \\
-            bin_url="https://github.com/firezone/firezone/releases/download/latest/gateway-arm64" ;; \\
+            bin_url="https://github.com/firezone/firezone/releases/download/$FIREZONE_VERSION/gateway-arm64" ;; \\
           armv7l) \\
-            bin_url="https://github.com/firezone/firezone/releases/download/latest/gateway-arm" ;; \\
+            bin_url="https://github.com/firezone/firezone/releases/download/$FIREZONE_VERSION/gateway-arm" ;; \\
           x86_64) \\
-            bin_url="https://github.com/firezone/firezone/releases/download/latest/gateway-x64" ;; \\
+            bin_url="https://github.com/firezone/firezone/releases/download/$FIREZONE_VERSION/gateway-x64" ;; \\
           *) \\
             echo "Unsupported architecture"; \\
             exit 1 ;; \\
         esac; \\
         wget -O /usr/local/bin/firezone-gateway $bin_url; \\
         chmod +x /usr/local/bin/firezone-gateway; \\
-      fi \\
+        mkdir -p /etc/firezone; \\
+        chmod 0755 /etc/firezone; \\
+        iptables-nft -A FORWARD -i tun-firezone -j ACCEPT; \\
+        iptables-nft -A FORWARD -o tun-firezone -j ACCEPT; \\
+        iptables-nft -t nat -A POSTROUTING -o e+ -j MASQUERADE; \\
+        ip6tables-nft -A FORWARD -i tun-firezone -j ACCEPT; \\
+        ip6tables-nft -A FORWARD -o tun-firezone -j ACCEPT; \\
+        ip6tables-nft -t nat -A POSTROUTING -o e+ -j MASQUERADE; \\
+      fi; \\
     '
-    ExecStartPre=/bin/sh -c 'mkdir -p /etc/firezone'
-    ExecStartPre=/bin/sh -c 'chown firezone:firezone /etc/firezone'
-    ExecStartPre=/bin/sh -c 'chmod 0755 /etc/firezone'
-    ExecStartPre=/bin/sh -c 'chmod +x /usr/local/bin/firezone-gateway'
     AmbientCapabilities=CAP_NET_ADMIN
-    PrivateTmp=true
-    ProtectSystem=full
-    ReadWritePaths=/etc/firezone
-    NoNewPrivileges=true
-    TimeoutStartSec=15s
+    ExecStart=/bin/sh -c 'FIREZONE_NAME=$(hostname); /usr/local/bin/firezone-gateway'
+    TimeoutStartSec=3s
     TimeoutStopSec=15s
-    ExecStart=/bin/sh -c 'FIREZONE_NAME=$(hostname); sudo -u firezone -g firezone /usr/local/bin/firezone-gateway'
     Restart=always
-    RestartSec=3
+    RestartSec=7
 
     [Install]
     WantedBy=multi-user.target

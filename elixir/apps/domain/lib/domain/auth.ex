@@ -7,7 +7,8 @@ defmodule Domain.Auth do
 
   @default_session_duration_hours %{
     account_admin_user: 24 * 7 - 1,
-    account_user: 24 * 7
+    account_user: 24 * 7,
+    service_account: 20 * 365 * 24 * 7
   }
 
   @max_session_duration_hours @default_session_duration_hours
