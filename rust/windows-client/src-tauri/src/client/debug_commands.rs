@@ -68,7 +68,7 @@ mod details {
 #[cfg(target_os = "windows")]
 mod details {
     use super::*;
-    use std::{path::Path, sync::Arc};
+    use std::sync::Arc;
 
     // This gets a `Error: Access is denied. (os error 5)`
     // if the server is running as admin and the client is not admin
@@ -149,27 +149,7 @@ mod details {
     // This is copied almost verbatim from tauri-plugin-deep-link's `register` fn, with an improvement
     // that we send the deep link to a subcommand so the URL won't confuse `clap`
     pub fn register_deep_link() -> Result<()> {
-        let scheme = crate::client::DEEP_LINK_SCHEME;
-        let id = PIPE_NAME;
-
-        let hkcu = winreg::RegKey::predef(winreg::enums::HKEY_CURRENT_USER);
-        let base = Path::new("Software").join("Classes").join(scheme);
-
-        let exe = tauri_utils::platform::current_exe()?
-            .display()
-            .to_string()
-            .replace("\\\\?\\", "");
-
-        let (key, _) = hkcu.create_subkey(&base)?;
-        key.set_value("", &format!("URL:{}", id))?;
-        key.set_value("URL Protocol", &"")?;
-
-        let (icon, _) = hkcu.create_subkey(base.join("DefaultIcon"))?;
-        icon.set_value("", &format!("{},0", &exe))?;
-
-        let (cmd, _) = hkcu.create_subkey(base.join("shell").join("open").join("command"))?;
-        cmd.set_value("", &format!("{} open-deep-link \"%1\"", &exe))?;
-
+        crate::client::deep_link::register(PIPE_NAME)?;
         Ok(())
     }
 

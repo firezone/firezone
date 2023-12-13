@@ -114,12 +114,14 @@ pub(crate) fn run(params: client::GuiParams) -> Result<()> {
 
             // From https://github.com/FabianLars/tauri-plugin-deep-link/blob/main/example/main.rs
             let handle = app.handle();
-            if let Err(e) = tauri_plugin_deep_link::register(client::DEEP_LINK_SCHEME, move |url| {
-                match handle_deep_link(&handle, url) {
-                    Ok(()) => {}
-                    Err(e) => tracing::error!("{e}"),
-                }
-            }) {
+            if let Err(e) =
+                tauri_plugin_deep_link::register(client::deep_link::FZ_SCHEME, move |url| {
+                    match handle_deep_link(&handle, url) {
+                        Ok(()) => {}
+                        Err(e) => tracing::error!("{e}"),
+                    }
+                })
+            {
                 tracing::error!("couldn't register deep link scheme: {e}");
             }
             Ok(())
