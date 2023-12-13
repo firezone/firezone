@@ -5,7 +5,8 @@ use crate::client::cli::Cli;
 use anyhow::Result;
 use interprocess::local_socket;
 use keyring::Entry;
-use std::io::{Read, Write};
+use std::io::Write;
+use tokio::{io::AsyncReadExt, net::windows::named_pipe, runtime::Runtime};
 
 const PIPE_NAME: &str = "dev.firezone.client";
 
@@ -21,15 +22,39 @@ pub fn pipe_client() -> Result<()> {
 }
 
 pub fn pipe_server() -> Result<()> {
-    let listener = local_socket::LocalSocketListener::bind(PIPE_NAME)?;
-    println!("Server is bound");
-    while let Ok(mut stream) = listener.accept() {
-        let mut req = vec![];
-        stream.read_to_end(&mut req)?;
-        println!("Server read");
-        let req = String::from_utf8(req)?;
-        println!("{}", req);
-    }
+    let rt = Runtime::new()?;
+    rt.block_on(async {
+        for _ in 0..20 {
+            // This isn't air-tight - We recreate the whole server on each loop,
+            // rather than binding 1 socket and accepting many streams like a normal socket API.
+            // I can only assume Tokio is following Windows' underlying API.
+
+            // We could instead pick an ephemeral TCP port and write that to a file,
+            // akin to how Unix processes will write their PID to a file to manage long-running instances
+            // But this doesn't require us to listen on TCP.
+
+            let mut server_options = named_pipe::ServerOptions::new();
+            server_options.first_pipe_instance(true);
+
+            let mut server = server_options.create(format!(r"\\.\pipe\{}", PIPE_NAME))?;
+
+            println!("Server is bound");
+            server.connect().await?;
+            println!("Server got connection");
+
+            let mut req = vec![];
+            server.read_to_end(&mut req).await?;
+
+            server.disconnect().ok();
+
+            println!("Server read");
+            let req = String::from_utf8(req)?;
+            println!("{}", req);
+        }
+
+        Ok::<_, anyhow::Error>(())
+    })?;
+
     Ok(())
 }
 
