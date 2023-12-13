@@ -3,9 +3,8 @@ use crate::device_channel::{Device, Packet};
 use crate::ip_packet::{IpPacket, MutableIpPacket};
 use crate::peer::PacketTransformClient;
 use crate::{
-    dns, get_v4, get_v6, ConnectedPeer, DnsFallbackStrategy, DnsQuery, Event, PeerConfig,
-    RoleState, Tunnel, DNS_QUERIES_QUEUE_SIZE, ICE_GATHERING_TIMEOUT_SECONDS,
-    MAX_CONCURRENT_ICE_GATHERING,
+    dns, ConnectedPeer, DnsQuery, Event, PeerConfig, RoleState, Tunnel, DNS_QUERIES_QUEUE_SIZE,
+    ICE_GATHERING_TIMEOUT_SECONDS, MAX_CONCURRENT_ICE_GATHERING,
 };
 use boringtun::x25519::{PublicKey, StaticSecret};
 use connlib_shared::error::{ConnlibError as Error, ConnlibError};
@@ -112,12 +111,7 @@ where
     /// Sets the interface configuration and starts background tasks.
     #[tracing::instrument(level = "trace", skip(self))]
     pub fn set_interface(&self, config: &InterfaceConfig) -> connlib_shared::Result<()> {
-        if !config.upstream_dns.is_empty() {
-            self.role_state.lock().dns_strategy = DnsFallbackStrategy::UpstreamResolver;
-        }
-
-        let dns_strategy = self.role_state.lock().dns_strategy;
-        let device = Arc::new(Device::new(config, self.callbacks(), dns_strategy)?);
+        let device = Arc::new(Device::new(config, self.callbacks())?);
 
         self.device.store(Some(device.clone()));
         self.no_device_waker.wake();
@@ -190,7 +184,6 @@ pub struct ClientState {
     #[allow(clippy::type_complexity)]
     pub peers_by_ip: IpNetworkTable<ConnectedPeer<GatewayId, PacketTransformClient>>,
 
-    pub dns_strategy: DnsFallbackStrategy,
     forwarded_dns_queries: BoundedQueue<DnsQuery<'static>>,
 
     ip_provider: IpProvider,
@@ -212,13 +205,11 @@ impl ClientState {
     pub(crate) fn handle_dns<'a>(
         &mut self,
         packet: MutableIpPacket<'a>,
-        resolve_strategy: DnsFallbackStrategy,
     ) -> Result<Option<Packet<'a>>, MutableIpPacket<'a>> {
         match dns::parse(
             &self.dns_resources,
             &self.dns_resources_internal_ips,
             packet.as_immutable(),
-            resolve_strategy,
         ) {
             Some(dns::ResolveStrategy::LocalResponse(query)) => Ok(Some(query)),
             Some(dns::ResolveStrategy::ForwardQuery(query)) => {
@@ -628,7 +619,6 @@ impl Default for ClientState {
             resources_gateways: Default::default(),
             forwarded_dns_queries: BoundedQueue::with_capacity(DNS_QUERIES_QUEUE_SIZE),
             gateway_preshared_keys: Default::default(),
-            dns_strategy: Default::default(),
             // TODO: decide ip ranges
             ip_provider: IpProvider::new(
                 IPV4_RESOURCES.parse().unwrap(),

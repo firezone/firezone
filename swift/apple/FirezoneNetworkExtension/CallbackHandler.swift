@@ -19,15 +19,14 @@ public protocol CallbackHandlerDelegate: AnyObject {
   func onSetInterfaceConfig(
     tunnelAddressIPv4: String,
     tunnelAddressIPv6: String,
-    dnsAddress: String,
-    dnsFallbackStrategy: String
+    dnsAddress: String
   )
   func onTunnelReady()
   func onAddRoute(_: String)
   func onRemoveRoute(_: String)
   func onUpdateResources(resourceList: String)
   func onDisconnect(error: String?)
-  func onError(error: String)
+  func getSystemDefaultResolvers()
 }
 
 public class CallbackHandler {
@@ -37,8 +36,7 @@ public class CallbackHandler {
   func onSetInterfaceConfig(
     tunnelAddressIPv4: RustString,
     tunnelAddressIPv6: RustString,
-    dnsAddress: RustString,
-    dnsFallbackStrategy: RustString
+    dnsAddress: RustString
   ) {
     logger.log(
       """
@@ -46,13 +44,11 @@ public class CallbackHandler {
           IPv4: \(tunnelAddressIPv4.toString(), privacy: .public)
           IPv6: \(tunnelAddressIPv6.toString(), privacy: .public)
           DNS: \(dnsAddress.toString(), privacy: .public)
-          dnsFallbackStrategy: \(dnsFallbackStrategy.toString(), privacy: .public)
       """)
     delegate?.onSetInterfaceConfig(
       tunnelAddressIPv4: tunnelAddressIPv4.toString(),
       tunnelAddressIPv6: tunnelAddressIPv6.toString(),
-      dnsAddress: dnsAddress.toString(),
-      dnsFallbackStrategy: dnsFallbackStrategy.toString()
+      dnsAddress: dnsAddress.toString()
     )
   }
 
@@ -86,8 +82,13 @@ public class CallbackHandler {
     delegate?.onDisconnect(error: optionalError)
   }
 
-  func onError(error: RustString) {
-    logger.log("CallbackHandler.onError: \(error.toString(), privacy: .public)")
-    delegate?.onError(error: error.toString())
+  func getSystemDefaultResolvers() -> RustString {
+    let resolvers = Resolv().getservers().map(Resolv.getnameinfo)
+    logger.log("CallbackHandler.getSystemDefaultResolvers: \(resolvers, privacy: .public)")
+    do {
+      return try String(decoding: JSONEncoder().encode(resolvers), as: UTF8.self).intoRustString()
+    } catch {
+      return "[]".intoRustString()
+    }
   }
 }

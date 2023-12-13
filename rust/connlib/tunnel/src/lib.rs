@@ -87,48 +87,6 @@ const MAX_CONCURRENT_ICE_GATHERING: usize = 100;
 // Note: Taken from boringtun
 const HANDSHAKE_RATE_LIMIT: u64 = 100;
 
-// Note: the windows dns fallback strategy might change when implementing, however we prefer
-// splitdns to trying to obtain the default server.
-#[cfg(any(
-    target_os = "macos",
-    target_os = "ios",
-    target_os = "linux",
-    target_os = "windows"
-))]
-impl Default for DnsFallbackStrategy {
-    fn default() -> DnsFallbackStrategy {
-        Self::SystemResolver
-    }
-}
-
-#[cfg(target_os = "android")]
-impl Default for DnsFallbackStrategy {
-    fn default() -> DnsFallbackStrategy {
-        Self::UpstreamResolver
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DnsFallbackStrategy {
-    UpstreamResolver,
-    SystemResolver,
-}
-
-impl DnsFallbackStrategy {
-    fn is_upstream(&self) -> bool {
-        self == &DnsFallbackStrategy::UpstreamResolver
-    }
-}
-
-impl fmt::Display for DnsFallbackStrategy {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            DnsFallbackStrategy::UpstreamResolver => write!(f, "upstream_resolver"),
-            DnsFallbackStrategy::SystemResolver => write!(f, "system_resolver"),
-        }
-    }
-}
-
 pub(crate) fn get_v4(ip: IpAddr) -> Option<Ipv4Addr> {
     match ip {
         IpAddr::V4(v4) => Some(v4),
@@ -246,8 +204,7 @@ where
 
             tracing::trace!(target: "wire", action = "read", from = "device", dest = %packet.destination());
 
-            let dns_strategy = role_state.dns_strategy;
-            let packet = match role_state.handle_dns(packet, dns_strategy) {
+            let packet = match role_state.handle_dns(packet) {
                 Ok(Some(response)) => {
                     device.write(response)?;
                     continue;
@@ -364,11 +321,9 @@ where
 
                 if let Some(conn) = self.peer_connections.lock().remove(&conn_id) {
                     tokio::spawn({
-                        let callbacks = self.callbacks.clone();
                         async move {
                             if let Err(e) = conn.stop().await {
                                 tracing::warn!(%conn_id, error = ?e, "Can't close peer");
-                                let _ = callbacks.on_error(&e.into());
                             }
                         }
                     });
@@ -400,7 +355,6 @@ where
 
                 if let Err(e) = device.refresh_mtu() {
                     tracing::error!(error = ?e, "refresh_mtu");
-                    let _ = self.callbacks.on_error(&e);
                 }
             }
 

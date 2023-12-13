@@ -18,16 +18,10 @@ impl<CB: Callbacks> Callbacks for CallbackErrorFacade<CB> {
         tunnel_address_v4: Ipv4Addr,
         tunnel_address_v6: Ipv6Addr,
         dns_address: Ipv4Addr,
-        dns_fallback_strategy: String,
     ) -> Result<Option<RawFd>> {
         let result = self
             .0
-            .on_set_interface_config(
-                tunnel_address_v4,
-                tunnel_address_v6,
-                dns_address,
-                dns_fallback_strategy,
-            )
+            .on_set_interface_config(tunnel_address_v4, tunnel_address_v6, dns_address)
             .map_err(|err| Error::OnSetInterfaceConfigFailed(err.to_string()));
         if let Err(err) = result.as_ref() {
             tracing::error!(?err);
@@ -84,14 +78,6 @@ impl<CB: Callbacks> Callbacks for CallbackErrorFacade<CB> {
             tracing::error!(?err, "`on_disconnect` failed");
         }
         // There's nothing we can really do if `on_disconnect` fails.
-        Ok(())
-    }
-
-    fn on_error(&self, error: &Error) -> Result<()> {
-        if let Err(err) = self.0.on_error(error) {
-            tracing::error!(?err, "`on_error` failed");
-        }
-        // There's nothing we really want to do if `on_error` fails.
         Ok(())
     }
 

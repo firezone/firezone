@@ -22,7 +22,6 @@ pub trait Callbacks: Clone + Send + Sync {
         _: Ipv4Addr,
         _: Ipv6Addr,
         _: Ipv4Addr,
-        _: String,
     ) -> Result<Option<RawFd>, Self::Error> {
         Ok(None)
     }
@@ -65,13 +64,7 @@ pub trait Callbacks: Clone + Send + Sync {
         std::process::exit(0);
     }
 
-    /// Called when there's a recoverable error.
-    fn on_error(&self, error: &crate::Error) -> Result<(), Self::Error> {
-        tracing::warn!(error = ?error);
-        Ok(())
-    }
-
-    /// Returns the system's default resolver iff split dns isn't available for platform
+    /// Returns the system's default resolver
     fn get_system_default_resolvers(&self) -> Result<Option<Vec<IpAddr>>, Self::Error> {
         Ok(None)
     }

@@ -45,7 +45,7 @@ pub(crate) async fn start_peer_handler<TId, TTransform>(
 }
 
 async fn peer_handler<TId, TTransform>(
-    callbacks: &impl Callbacks,
+    _callbacks: &impl Callbacks,
     peer: &Arc<Peer<TId, TTransform>>,
     channel: Arc<Endpoint>,
     device: &Device,
@@ -83,7 +83,6 @@ where
             Ok(None) => {}
             Err(other) => {
                 tracing::error!(error = ?other, "failed to handle peer packet");
-                let _ = callbacks.on_error(&other);
             }
         }
     }

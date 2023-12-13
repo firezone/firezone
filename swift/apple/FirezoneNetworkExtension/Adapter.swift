@@ -322,8 +322,7 @@ extension Adapter {
 
 extension Adapter: CallbackHandlerDelegate {
   public func onSetInterfaceConfig(
-    tunnelAddressIPv4: String, tunnelAddressIPv6: String, dnsAddress: String,
-    dnsFallbackStrategy: String
+    tunnelAddressIPv4: String, tunnelAddressIPv6: String, dnsAddress: String
   ) {
     workQueue.async { [weak self] in
       guard let self = self else { return }
@@ -334,12 +333,9 @@ extension Adapter: CallbackHandlerDelegate {
       case .startingTunnel:
         self.networkSettings = NetworkSettings(
           tunnelAddressIPv4: tunnelAddressIPv4, tunnelAddressIPv6: tunnelAddressIPv6,
-          dnsAddress: dnsAddress,
-          dnsFallbackStrategy: NetworkSettings.DNSFallbackStrategy(dnsFallbackStrategy))
+          dnsAddress: dnsAddress)
       case .tunnelReady:
         if let networkSettings = self.networkSettings {
-          networkSettings.setDNSFallbackStrategy(
-            NetworkSettings.DNSFallbackStrategy(dnsFallbackStrategy))
           if let packetTunnelProvider = self.packetTunnelProvider {
             networkSettings.apply(
               on: packetTunnelProvider, logger: self.logger, completionHandler: nil)
@@ -506,7 +502,8 @@ extension Adapter: CallbackHandlerDelegate {
     }
   }
 
-  public func onError(error: String) {
-    self.logger.error("Internal connlib error: \(error, privacy: .public)")
+  public func getSystemDefaultResolvers() {
+    let resolvers = Resolv().getservers().map(Resolv.getnameinfo)
+    self.logger.info("getSystemDefaultResolvers: \(resolvers)")
   }
 }

@@ -6,7 +6,6 @@ interface ConnlibCallback {
         tunnelAddressIPv4: String,
         tunnelAddressIPv6: String,
         dnsAddress: String,
-        dnsFallbackStrategy: String,
     ): Int
 
     fun onTunnelReady(): Boolean
@@ -24,8 +23,6 @@ interface ConnlibCallback {
     fun onUpdateResources(resourceListJSON: String)
 
     fun onDisconnect(error: String?): Boolean
-
-    fun onError(error: String): Boolean
 
     fun getSystemDefaultResolvers(): Array<ByteArray>
 }
