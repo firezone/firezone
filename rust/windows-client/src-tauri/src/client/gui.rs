@@ -4,10 +4,9 @@
 // TODO: `git grep` for unwraps before 1.0, especially this gui module
 
 use crate::client::{self, AppLocalDataDir};
-use anyhow::{anyhow, bail, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use client::settings::{self, AdvancedSettings};
 use connlib_client_shared::file_logger;
-use firezone_cli_utils::setup_global_subscriber;
 use secrecy::SecretString;
 use std::{
     net::{Ipv4Addr, Ipv6Addr},
@@ -96,11 +95,24 @@ pub(crate) fn run(params: client::GuiParams) -> Result<()> {
             std::fs::create_dir_all(&cwd)?;
             std::env::set_current_dir(&cwd)?;
 
-            // Set up logger with connlib_client_shared
-            let (layer, _handle) = file_logger::layer(std::path::Path::new("logs"));
-            setup_global_subscriber(layer);
+            let advanced_settings = tokio::runtime::Handle::current()
+                .block_on(settings::load_advanced_settings(&app.handle()))
+                .unwrap_or_default();
 
-            let _ctlr_task = tokio::spawn(run_controller(app.handle(), ctlr_rx));
+            // Set up logger
+            // It's hard to set it up before Tauri's setup, because Tauri knows where all the config and data go in AppData and I don't want to replicate their logic.
+
+            let logging_handles = client::logging::setup(&advanced_settings.log_filter)?;
+            tracing::info!("started log");
+
+            let app_handle = app.handle();
+            let _ctlr_task = tokio::spawn(async move {
+                if let Err(e) =
+                    run_controller(app_handle, ctlr_rx, logging_handles, advanced_settings).await
+                {
+                    tracing::error!("run_controller returned an error: {e}");
+                }
+            });
 
             // From https://github.com/FabianLars/tauri-plugin-deep-link/blob/main/example/main.rs
             let handle = app.handle();
@@ -298,6 +310,7 @@ struct Controller {
     /// The UUIDv4 device ID persisted to disk
     /// Sent verbatim to Session::connect
     device_id: String,
+    logging_handles: client::logging::Handles,
     /// Info about currently signed-in user, if there is one
     session: Option<Session>,
 }
@@ -310,15 +323,16 @@ struct Session {
 }
 
 impl Controller {
-    async fn new(app: tauri::AppHandle) -> Result<Self> {
+    async fn new(
+        app: tauri::AppHandle,
+        logging_handles: client::logging::Handles,
+        advanced_settings: AdvancedSettings,
+    ) -> Result<Self> {
         let ctlr_tx = app
             .try_state::<Managed>()
             .ok_or_else(|| anyhow::anyhow!("can't get Managed object from Tauri"))?
             .ctlr_tx
             .clone();
-        let advanced_settings = settings::load_advanced_settings(&app)
-            .await
-            .unwrap_or_default();
 
         tracing::trace!("re-loading token");
         let session: Option<Session> = tokio::task::spawn_blocking(|| {
@@ -351,6 +365,7 @@ impl Controller {
                 ctlr_tx.clone(),
                 device_id.clone(),
                 &session.token,
+                logging_handles.logger.clone(),
             )?)
         } else {
             None
@@ -361,6 +376,7 @@ impl Controller {
             ctlr_tx,
             connlib_session,
             device_id,
+            logging_handles,
             session,
         })
     }
@@ -370,14 +386,8 @@ impl Controller {
         ctlr_tx: CtlrTx,
         device_id: String,
         token: &SecretString,
+        logger: file_logger::Handle,
     ) -> Result<connlib_client_shared::Session<CallbackHandler>> {
-        let (layer, logger) = file_logger::layer(std::path::Path::new("logs"));
-        // TODO: How can I set up the tracing subscriber if the Session isn't ready yet? Check what other clients do.
-        if false {
-            // This helps the type inference
-            setup_global_subscriber(layer);
-        }
-
         tracing::info!("Session::connect");
         Ok(connlib_client_shared::Session::connect(
             advanced_settings.api_url.clone(),
@@ -394,15 +404,12 @@ impl Controller {
 async fn run_controller(
     app: tauri::AppHandle,
     mut rx: mpsc::Receiver<ControllerRequest>,
+    logging_handles: client::logging::Handles,
+    advanced_settings: AdvancedSettings,
 ) -> Result<()> {
-    let mut controller = match Controller::new(app.clone()).await {
-        Err(e) => {
-            // TODO: There must be a shorter way to write these?
-            tracing::error!("couldn't create controller: {e}");
-            return Err(e);
-        }
-        Ok(x) => x,
-    };
+    let mut controller = Controller::new(app.clone(), logging_handles, advanced_settings)
+        .await
+        .context("couldn't create Controller")?;
 
     tracing::debug!("GUI controller main loop start");
 
@@ -424,6 +431,7 @@ async fn run_controller(
                         controller.ctlr_tx.clone(),
                         controller.device_id.clone(),
                         &auth.token,
+                        controller.logging_handles.logger.clone(),
                     )?);
                     controller.session = Some(Session {
                         actor_name: auth.actor_name,
