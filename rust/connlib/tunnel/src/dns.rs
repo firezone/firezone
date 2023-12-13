@@ -213,6 +213,7 @@ where
     };
 
     let mut answer_builder = msg_builder.start_answer(message, Rcode::NoError).ok()?;
+    answer_builder.header_mut().set_ra(true);
 
     // W/O object-safety there's no other way to access the inner type
     // we could as well implement the ComposeRecordData trait for RecordData
@@ -227,6 +228,7 @@ where
         RecordData::Ptr(r) => answer_builder.push((qname, Class::In, DNS_TTL, r)),
     }
     .ok()?;
+
     Some(answer_builder.finish())
 }
 
