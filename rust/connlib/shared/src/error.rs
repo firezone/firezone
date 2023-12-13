@@ -141,6 +141,8 @@ pub enum ConnlibError {
     /// Connection is still being stablished, retry later
     #[error("Pending connection")]
     PendingConnection,
+    #[error("Token has expired")]
+    TokenExpired,
 }
 
 impl ConnlibError {

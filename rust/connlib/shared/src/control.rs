@@ -385,6 +385,8 @@ pub struct UnknownError(pub String);
 pub enum KnownError {
     #[serde(rename = "unmatched topic")]
     UnmatchedTopic,
+    #[serde(rename = "token_expired")]
+    TokenExpired,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
