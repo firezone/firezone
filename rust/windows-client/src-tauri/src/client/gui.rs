@@ -4,7 +4,7 @@
 // TODO: `git grep` for unwraps before 1.0, especially this gui module
 
 use crate::client::{self, AppLocalDataDir};
-use anyhow::{anyhow, bail, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use client::settings::{self, AdvancedSettings};
 use connlib_client_shared::file_logger;
 use secrecy::SecretString;
@@ -105,12 +105,14 @@ pub(crate) fn run(params: client::GuiParams) -> Result<()> {
             let logging_handles = client::logging::setup(&advanced_settings.log_filter)?;
             tracing::info!("started log");
 
-            let _ctlr_task = tokio::spawn(run_controller(
-                app.handle(),
-                ctlr_rx,
-                logging_handles,
-                advanced_settings,
-            ));
+            let app_handle = app.handle();
+            let _ctlr_task = tokio::spawn(async move {
+                if let Err(e) =
+                    run_controller(app_handle, ctlr_rx, logging_handles, advanced_settings).await
+                {
+                    tracing::error!("run_controller returned an error: {e}");
+                }
+            });
 
             // From https://github.com/FabianLars/tauri-plugin-deep-link/blob/main/example/main.rs
             let handle = app.handle();
@@ -405,15 +407,9 @@ async fn run_controller(
     logging_handles: client::logging::Handles,
     advanced_settings: AdvancedSettings,
 ) -> Result<()> {
-    let mut controller =
-        match Controller::new(app.clone(), logging_handles, advanced_settings).await {
-            Err(e) => {
-                // TODO: There must be a shorter way to write these?
-                tracing::error!("couldn't create controller: {e}");
-                return Err(e);
-            }
-            Ok(x) => x,
-        };
+    let mut controller = Controller::new(app.clone(), logging_handles, advanced_settings)
+        .await
+        .context("couldn't create Controller")?;
 
     tracing::debug!("GUI controller main loop start");
 
