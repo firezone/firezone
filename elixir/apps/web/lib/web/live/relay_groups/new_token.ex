@@ -198,7 +198,18 @@ defmodule Web.RelayGroups.NewToken do
       {"PUBLIC_IP4_ADDR", "YOU_MUST_SET_THIS_VALUE"},
       {"PUBLIC_IP6_ADDR", "YOU_MUST_SET_THIS_VALUE"},
       api_url_override,
-      {"RUST_LOG", "warn"},
+      {"RUST_LOG",
+       Enum.join(
+         [
+           "firezone_relay=trace",
+           "firezone_tunnel=trace",
+           "connlib_shared=trace",
+           "tunnel_state=trace",
+           "phoenix_channel=debug",
+           "warn"
+         ],
+         ","
+       )},
       {"LOG_FORMAT", "google-cloud"}
     ]
     |> Enum.reject(&is_nil/1)
