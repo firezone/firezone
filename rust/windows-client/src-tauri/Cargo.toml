@@ -45,7 +45,9 @@ wintun = "0.3.2"
 version = "0.52.0"
 features = [
   "Win32_Foundation",
+  "Win32_Security",
   "Win32_System_LibraryLoader",
+  "Win32_System_SystemServices",
   "Win32_UI_Shell",
   "Win32_UI_WindowsAndMessaging",
 ]

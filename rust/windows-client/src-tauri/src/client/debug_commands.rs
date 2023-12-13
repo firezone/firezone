@@ -5,8 +5,9 @@ use crate::client::cli::Cli;
 use anyhow::Result;
 use interprocess::local_socket;
 use keyring::Entry;
-use std::io::Write;
+use std::{ffi::c_void, io::Write};
 use tokio::{io::AsyncReadExt, net::windows::named_pipe, runtime::Runtime};
+use windows::Win32::Security as WinSec;
 
 const PIPE_NAME: &str = "dev.firezone.client";
 
@@ -36,7 +37,30 @@ pub fn pipe_server() -> Result<()> {
             let mut server_options = named_pipe::ServerOptions::new();
             server_options.first_pipe_instance(true);
 
-            let mut server = server_options.create(format!(r"\\.\pipe\{}", PIPE_NAME))?;
+            let path = format!(r"\\.\pipe\{}", PIPE_NAME);
+
+            // This will allow non-admin clients to connect to us even if we're running as admin
+            let mut sd = WinSec::SECURITY_DESCRIPTOR::default();
+            let psd = WinSec::PSECURITY_DESCRIPTOR(&mut sd as *mut _ as *mut c_void);
+            unsafe {
+                WinSec::InitializeSecurityDescriptor(
+                    psd,
+                    windows::Win32::System::SystemServices::SECURITY_DESCRIPTOR_REVISION,
+                )?;
+                WinSec::SetSecurityDescriptorDacl(psd, true, None, false)?;
+            }
+
+            let mut sa = WinSec::SECURITY_ATTRIBUTES {
+                nLength: std::mem::size_of::<WinSec::SECURITY_ATTRIBUTES>()
+                    .try_into()
+                    .unwrap(),
+                lpSecurityDescriptor: psd.0,
+                bInheritHandle: false.into(),
+            };
+            let mut server = unsafe {
+                server_options
+                    .create_with_security_attributes_raw(path, &mut sa as *mut _ as *mut c_void)
+            }?;
 
             println!("Server is bound");
             server.connect().await?;
