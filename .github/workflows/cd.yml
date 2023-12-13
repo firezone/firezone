@@ -63,20 +63,6 @@ jobs:
         with:
           run: ${{ steps.apply-run.outputs.run_id }}
           comment: "Apply Run from GitHub Actions CI ${{ github.sha }}"
-      - name: Report Status
-        if: failure()
-        uses: rtCamp/action-slack-notify@v2
-        env:
-          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK_URL }}
-          SLACK_USERNAME: "GitHub Actions"
-          SLACK_COLOR: "#ff0000"
-          MSG_MINIMAL: "ref,actions url"
-          SLACK_TITLE: "Deployment Failed"
-          SLACK_MESSAGE:
-            "Automatic deployment to ${{ env.TF_WORKSPACE }} failed"
-        with:
-          status: ${{ job.status }}
-          notify_when: "failure"
 
   update-release-draft:
     needs: deploy-staging

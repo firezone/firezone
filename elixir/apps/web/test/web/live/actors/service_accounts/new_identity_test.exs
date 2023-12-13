@@ -128,9 +128,11 @@ defmodule Web.Live.Actors.ServiceAccounts.NewIdentityTest do
     identity: identity,
     conn: conn
   } do
+    expires_at = Date.utc_today() |> Date.add(3)
+
     attrs = %{
       provider_virtual_state: %{
-        expires_at: Date.utc_today() |> Date.add(3) |> Date.to_iso8601()
+        expires_at: Date.to_iso8601(expires_at)
       }
     }
 
@@ -153,9 +155,12 @@ defmodule Web.Live.Actors.ServiceAccounts.NewIdentityTest do
       remote_ip_location_lon: -120.4194
     }
 
-    # TODO: assert {:ok, _token} =
-    Floki.find(html, "code")
-    |> element_to_text()
-    |> Domain.Auth.sign_in(context)
+    assert {:ok, subject} =
+             Floki.find(html, "code")
+             |> element_to_text()
+             |> Domain.Auth.sign_in(context)
+
+    assert subject.actor.id == actor.id
+    assert DateTime.to_date(subject.expires_at) == expires_at
   end
 end

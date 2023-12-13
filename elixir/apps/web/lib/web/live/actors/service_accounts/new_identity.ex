@@ -16,7 +16,7 @@ defmodule Web.Actors.ServiceAccounts.NewIdentity do
         assign(socket,
           actor: actor,
           provider: provider,
-          identity: nil,
+          encoded_token: nil,
           form: to_form(changeset)
         )
 
@@ -43,7 +43,7 @@ defmodule Web.Actors.ServiceAccounts.NewIdentity do
         Create <%= actor_type(@actor.type) %> Token
       </:title>
       <:content>
-        <div :if={is_nil(@identity)} class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
+        <div :if={is_nil(@encoded_token)} class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
           <h2 class="mb-4 text-xl font-bold text-neutral-900">Create a Token</h2>
           <.flash kind={:error} flash={@flash} />
           <.form for={@form} phx-change={:change} phx-submit={:submit}>
@@ -65,13 +65,13 @@ defmodule Web.Actors.ServiceAccounts.NewIdentity do
           </.form>
         </div>
 
-        <div :if={not is_nil(@identity)} class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
+        <div :if={not is_nil(@encoded_token)} class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
           <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
             <div class="text-xl mb-2">
               Your API token (will be shown only once):
             </div>
 
-            <.code_block id="code-sample-docker" class="w-full mw-1/2 rounded" phx-no-format><%= @identity.provider_virtual_state.changes.secret %></.code_block>
+            <.code_block id="code-sample-docker" class="w-full mw-1/2 rounded" phx-no-format><%= @encoded_token %></.code_block>
 
             <.button icon="hero-arrow-uturn-left" navigate={~p"/#{@account}/actors/#{@actor}"}>
               Back to Actor
@@ -103,7 +103,8 @@ defmodule Web.Actors.ServiceAccounts.NewIdentity do
              attrs,
              socket.assigns.subject
            ) do
-      {:noreply, assign(socket, identity: identity)}
+      {:ok, encoded_token} = Auth.create_access_token_for_identity(identity)
+      {:noreply, assign(socket, encoded_token: encoded_token)}
     else
       {:error, changeset} ->
         {:noreply, assign(socket, form: to_form(changeset))}

@@ -53,5 +53,10 @@ defmodule Web.HomeControllerTest do
       conn = post(conn, ~p"/", %{"account_id_or_slug" => id})
       assert redirected_to(conn) == ~p"/#{id}"
     end
+
+    test "downcases account slug on redirect", %{conn: conn} do
+      conn = post(conn, ~p"/", %{"account_id_or_slug" => "FOO"})
+      assert redirected_to(conn) == ~p"/foo"
+    end
   end
 end
