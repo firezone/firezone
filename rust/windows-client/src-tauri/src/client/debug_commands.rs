@@ -9,91 +9,13 @@ use std::{ffi::c_void, io::Write};
 use tokio::{io::AsyncReadExt, net::windows::named_pipe, runtime::Runtime};
 use windows::Win32::Security as WinSec;
 
+// TODO: In tauri-plugin-deep-link, this is the identifier in tauri.conf.json
 const PIPE_NAME: &str = "dev.firezone.client";
 
 pub fn open_deep_link(path: &url::Url) -> Result<()> {
     println!("Opened deep link {path}");
     std::thread::sleep(std::time::Duration::from_secs(10));
     Ok(())
-}
-
-// This gets a `Error: Access is denied. (os error 5)`
-// if the server is running as admin and the client is not admin
-pub fn pipe_client() -> Result<()> {
-    println!("Client is connecting...");
-    let mut stream = local_socket::LocalSocketStream::connect(PIPE_NAME)?;
-    println!("Client is connected");
-    stream.write_all("firezone://example.com".as_bytes())?;
-    println!("Client wrote");
-    Ok(())
-}
-
-// Copied the named pipe idea from `interprocess` and `tauri-plugin-deep-link`,
-// although I believe it's considered best practice on Windows to use named pipes for
-// single-instance apps.
-pub fn pipe_server() -> Result<()> {
-    let rt = Runtime::new()?;
-    rt.block_on(async {
-        for _ in 0..20 {
-            // This isn't air-tight - We recreate the whole server on each loop,
-            // rather than binding 1 socket and accepting many streams like a normal socket API.
-            // I can only assume Tokio is following Windows' underlying API.
-
-            // We could instead pick an ephemeral TCP port and write that to a file,
-            // akin to how Unix processes will write their PID to a file to manage long-running instances
-            // But this doesn't require us to listen on TCP.
-
-            let mut server_options = named_pipe::ServerOptions::new();
-            server_options.first_pipe_instance(true);
-
-            let path = format!(r"\\.\pipe\{}", PIPE_NAME);
-
-            // This will allow non-admin clients to connect to us even if we're running as admin
-            let mut sd = WinSec::SECURITY_DESCRIPTOR::default();
-            let psd = WinSec::PSECURITY_DESCRIPTOR(&mut sd as *mut _ as *mut c_void);
-            unsafe {
-                // ChatGPT pointed me to these functions, it's better than the official MS docs
-                WinSec::InitializeSecurityDescriptor(
-                    psd,
-                    windows::Win32::System::SystemServices::SECURITY_DESCRIPTOR_REVISION,
-                )?;
-                WinSec::SetSecurityDescriptorDacl(psd, true, None, false)?;
-            }
-
-            let mut sa = WinSec::SECURITY_ATTRIBUTES {
-                nLength: std::mem::size_of::<WinSec::SECURITY_ATTRIBUTES>()
-                    .try_into()
-                    .unwrap(),
-                lpSecurityDescriptor: psd.0,
-                bInheritHandle: false.into(),
-            };
-            let mut server = unsafe {
-                server_options
-                    .create_with_security_attributes_raw(path, &mut sa as *mut _ as *mut c_void)
-            }?;
-
-            println!("Server is bound");
-            server.connect().await?;
-            println!("Server got connection");
-
-            // TODO: Limit the read size here. Our typical callback is 350 bytes, so 4,096 bytes should be more than enough.
-            let mut req = vec![];
-            server.read_to_end(&mut req).await?;
-
-            server.disconnect().ok();
-
-            println!("Server read");
-            let req = String::from_utf8(req)?;
-            println!("{}", req);
-        }
-
-        Ok::<_, anyhow::Error>(())
-    })?;
-
-    Ok(())
-}
-pub fn register_deep_link() -> Result<()> {
-    todo!()
 }
 
 /// Test encrypted credential storage
@@ -120,21 +42,136 @@ pub fn token() -> Result<()> {
     Ok(())
 }
 
-pub use details::wintun;
+pub use details::{pipe_client, pipe_server, register_deep_link, wintun};
 
 #[cfg(target_family = "unix")]
 mod details {
     use super::*;
 
+    pub fn pipe_client(_: Cli) -> Result<()> {
+        unimplemented!()
+    }
+
+    pub fn pipe_server(_: Cli) -> Result<()> {
+        unimplemented!()
+    }
+
+    pub fn register_deep_link(_: Cli) -> Result<()> {
+        unimplemented!()
+    }
+
     pub fn wintun(_: Cli) -> Result<()> {
-        panic!("Wintun not implemented for Linux.");
+        unimplemented!()
     }
 }
 
 #[cfg(target_os = "windows")]
 mod details {
     use super::*;
-    use std::sync::Arc;
+    use std::{path::Path, sync::Arc};
+
+    // This gets a `Error: Access is denied. (os error 5)`
+    // if the server is running as admin and the client is not admin
+    pub fn pipe_client() -> Result<()> {
+        println!("Client is connecting...");
+        let mut stream = local_socket::LocalSocketStream::connect(PIPE_NAME)?;
+        println!("Client is connected");
+        stream.write_all("firezone://example.com".as_bytes())?;
+        println!("Client wrote");
+        Ok(())
+    }
+
+    // Copied the named pipe idea from `interprocess` and `tauri-plugin-deep-link`,
+    // although I believe it's considered best practice on Windows to use named pipes for
+    // single-instance apps.
+    pub fn pipe_server() -> Result<()> {
+        let rt = Runtime::new()?;
+        rt.block_on(async {
+            for _ in 0..20 {
+                // This isn't air-tight - We recreate the whole server on each loop,
+                // rather than binding 1 socket and accepting many streams like a normal socket API.
+                // I can only assume Tokio is following Windows' underlying API.
+
+                // We could instead pick an ephemeral TCP port and write that to a file,
+                // akin to how Unix processes will write their PID to a file to manage long-running instances
+                // But this doesn't require us to listen on TCP.
+
+                let mut server_options = named_pipe::ServerOptions::new();
+                server_options.first_pipe_instance(true);
+
+                let path = format!(r"\\.\pipe\{}", PIPE_NAME);
+
+                // This will allow non-admin clients to connect to us even if we're running as admin
+                let mut sd = WinSec::SECURITY_DESCRIPTOR::default();
+                let psd = WinSec::PSECURITY_DESCRIPTOR(&mut sd as *mut _ as *mut c_void);
+                unsafe {
+                    // ChatGPT pointed me to these functions, it's better than the official MS docs
+                    WinSec::InitializeSecurityDescriptor(
+                        psd,
+                        windows::Win32::System::SystemServices::SECURITY_DESCRIPTOR_REVISION,
+                    )?;
+                    WinSec::SetSecurityDescriptorDacl(psd, true, None, false)?;
+                }
+
+                let mut sa = WinSec::SECURITY_ATTRIBUTES {
+                    nLength: std::mem::size_of::<WinSec::SECURITY_ATTRIBUTES>()
+                        .try_into()
+                        .unwrap(),
+                    lpSecurityDescriptor: psd.0,
+                    bInheritHandle: false.into(),
+                };
+                let mut server = unsafe {
+                    server_options
+                        .create_with_security_attributes_raw(path, &mut sa as *mut _ as *mut c_void)
+                }?;
+
+                println!("Server is bound");
+                server.connect().await?;
+                println!("Server got connection");
+
+                // TODO: Limit the read size here. Our typical callback is 350 bytes, so 4,096 bytes should be more than enough.
+                let mut req = vec![];
+                server.read_to_end(&mut req).await?;
+
+                server.disconnect().ok();
+
+                println!("Server read");
+                let req = String::from_utf8(req)?;
+                println!("{}", req);
+            }
+
+            Ok::<_, anyhow::Error>(())
+        })?;
+
+        Ok(())
+    }
+
+    // This is copied almost verbatim from tauri-plugin-deep-link's `register` fn, with an improvement
+    // that we send the deep link to a subcommand so the URL won't confuse `clap`
+    pub fn register_deep_link() -> Result<()> {
+        let scheme = crate::client::DEEP_LINK_SCHEME;
+        let id = PIPE_NAME;
+
+        let hkcu = winreg::RegKey::predef(winreg::enums::HKEY_CURRENT_USER);
+        let base = Path::new("Software").join("Classes").join(scheme);
+
+        let exe = tauri_utils::platform::current_exe()?
+            .display()
+            .to_string()
+            .replace("\\\\?\\", "");
+
+        let (key, _) = hkcu.create_subkey(&base)?;
+        key.set_value("", &format!("URL:{}", id))?;
+        key.set_value("URL Protocol", &"")?;
+
+        let (icon, _) = hkcu.create_subkey(base.join("DefaultIcon"))?;
+        icon.set_value("", &format!("{},0", &exe))?;
+
+        let (cmd, _) = hkcu.create_subkey(base.join("shell").join("open").join("command"))?;
+        cmd.set_value("", &format!("{} open-deep-link \"%1\"", &exe))?;
+
+        Ok(())
+    }
 
     pub fn wintun(_: Cli) -> Result<()> {
         for _ in 0..3 {

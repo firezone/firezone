@@ -2038,6 +2038,7 @@ dependencies = [
  "tauri",
  "tauri-build",
  "tauri-plugin-deep-link",
+ "tauri-utils",
  "thiserror",
  "tokio",
  "tracing",
