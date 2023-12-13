@@ -3,8 +3,9 @@ use crate::device_channel::{Device, Packet};
 use crate::ip_packet::{IpPacket, MutableIpPacket};
 use crate::peer::PacketTransformClient;
 use crate::{
-    dns, ConnectedPeer, DnsFallbackStrategy, DnsQuery, Event, PeerConfig, RoleState, Tunnel,
-    DNS_QUERIES_QUEUE_SIZE, ICE_GATHERING_TIMEOUT_SECONDS, MAX_CONCURRENT_ICE_GATHERING,
+    dns, get_v4, get_v6, ConnectedPeer, DnsFallbackStrategy, DnsQuery, Event, PeerConfig,
+    RoleState, Tunnel, DNS_QUERIES_QUEUE_SIZE, ICE_GATHERING_TIMEOUT_SECONDS,
+    MAX_CONCURRENT_ICE_GATHERING,
 };
 use boringtun::x25519::{PublicKey, StaticSecret};
 use connlib_shared::error::{ConnlibError as Error, ConnlibError};
@@ -192,7 +193,7 @@ pub struct ClientState {
     pub dns_strategy: DnsFallbackStrategy,
     forwarded_dns_queries: BoundedQueue<DnsQuery<'static>>,
 
-    pub ip_provider: IpProvider,
+    ip_provider: IpProvider,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -382,12 +383,14 @@ impl ClientState {
         tracing::trace!(resource_ip = %destination, "resource_connection_intent");
 
         let Some(resource) = self.get_cidr_resource_by_destination(destination) else {
+            tracing::trace!(?self.dns_resources_internal_ips, "checking for dns");
             if let Some(resource) = self
                 .dns_resources_internal_ips
                 .iter()
                 .find_map(|(r, i)| i.contains(&destination).then_some(r))
                 .cloned()
             {
+                tracing::trace!(?resource, %destination, "expired_dns_connection_intent");
                 self.on_connection_intent_dns(&resource);
             }
             return;
@@ -567,6 +570,37 @@ impl ClientState {
             tracing::warn!("Too many DNS queries, dropping new ones");
         }
     }
+
+    pub fn get_or_assign_ip(
+        &mut self,
+        resource: &DnsResource,
+        addrs: &[IpAddr],
+    ) -> Vec<(IpAddr, IpAddr)> {
+        let internal_ips = self
+            .dns_resources_internal_ips
+            .get(resource)
+            .cloned()
+            .unwrap_or(Vec::new());
+        let addr_v4 = addrs.iter().copied().filter(IpAddr::is_ipv4);
+        let internal_ips_v4 = internal_ips
+            .iter()
+            .copied()
+            .filter_map(get_v4)
+            .chain(&mut self.ip_provider.ipv4)
+            .map(Into::<IpAddr>::into)
+            .zip(addr_v4);
+
+        let addr_v6 = addrs.iter().copied().filter(IpAddr::is_ipv6);
+        let internal_ips_v6 = internal_ips
+            .iter()
+            .copied()
+            .filter_map(get_v6)
+            .chain(&mut self.ip_provider.ipv6)
+            .map(Into::<IpAddr>::into)
+            .zip(addr_v6);
+
+        internal_ips_v4.chain(internal_ips_v6).collect()
+    }
 }
 
 pub struct IpProvider {
@@ -580,14 +614,6 @@ impl IpProvider {
             ipv4: Box::new(ipv4.hosts()),
             ipv6: Box::new(ipv6.subnets_with_prefix(128).map(|ip| ip.network_address())),
         }
-    }
-
-    pub fn next_ipv4(&mut self) -> Option<Ipv4Addr> {
-        self.ipv4.next()
-    }
-
-    pub fn next_ipv6(&mut self) -> Option<Ipv6Addr> {
-        self.ipv6.next()
     }
 }
 

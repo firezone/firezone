@@ -21,7 +21,7 @@ use crate::{
     client::DnsResource,
     control_protocol::{new_ice_connection, IceConnection},
     device_channel::Device,
-    dns,
+    dns, get_v4,
     peer::PacketTransformClient,
     PEER_QUEUE_SIZE,
 };
@@ -263,12 +263,13 @@ where
             DnsResource::from_description(&resource_description, domain_response.domain.clone());
 
         let mut role_state = self.role_state.lock();
-        let addrs: Vec<_> = domain_response
-            .address
+
+        let addrs: Vec<_> = role_state
+            .get_or_assign_ip(&resource_description, &domain_response.address)
             .iter()
-            .filter_map(|addr| {
+            .filter_map(|(internal_ip, external_ip)| {
                 peer.transform
-                    .get_or_assign_translation(addr, &mut role_state.ip_provider)
+                    .get_or_assign_translation(internal_ip, external_ip)
             })
             .collect();
 
