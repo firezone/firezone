@@ -102,13 +102,13 @@ pub(crate) fn run(params: client::GuiParams) -> Result<()> {
             // Set up logger
             // It's hard to set it up before Tauri's setup, because Tauri knows where all the config and data go in AppData and I don't want to replicate their logic.
 
-            let logger = client::logging::setup(&advanced_settings.log_filter)?;
+            let logging_handles = client::logging::setup(&advanced_settings.log_filter)?;
             tracing::info!("started log");
 
             let _ctlr_task = tokio::spawn(run_controller(
                 app.handle(),
                 ctlr_rx,
-                logger,
+                logging_handles,
                 advanced_settings,
             ));
 
@@ -309,7 +309,7 @@ struct Controller {
     /// The UUIDv4 device ID persisted to disk
     /// Sent verbatim to Session::connect
     device_id: String,
-    logger: file_logger::Handle,
+    logging_handles: client::logging::Handles,
     /// Info about currently signed-in user, if there is one
     session: Option<Session>,
 }
@@ -324,7 +324,7 @@ struct Session {
 impl Controller {
     async fn new(
         app: tauri::AppHandle,
-        logger: file_logger::Handle,
+        logging_handles: client::logging::Handles,
         advanced_settings: AdvancedSettings,
     ) -> Result<Self> {
         let ctlr_tx = app
@@ -364,7 +364,7 @@ impl Controller {
                 ctlr_tx.clone(),
                 device_id.clone(),
                 &session.token,
-                logger.clone(),
+                logging_handles.logger.clone(),
             )?)
         } else {
             None
@@ -375,7 +375,7 @@ impl Controller {
             ctlr_tx,
             connlib_session,
             device_id,
-            logger,
+            logging_handles,
             session,
         })
     }
@@ -403,17 +403,18 @@ impl Controller {
 async fn run_controller(
     app: tauri::AppHandle,
     mut rx: mpsc::Receiver<ControllerRequest>,
-    logger: file_logger::Handle,
+    logging_handles: client::logging::Handles,
     advanced_settings: AdvancedSettings,
 ) -> Result<()> {
-    let mut controller = match Controller::new(app.clone(), logger, advanced_settings).await {
-        Err(e) => {
-            // TODO: There must be a shorter way to write these?
-            tracing::error!("couldn't create controller: {e}");
-            return Err(e);
-        }
-        Ok(x) => x,
-    };
+    let mut controller =
+        match Controller::new(app.clone(), logging_handles, advanced_settings).await {
+            Err(e) => {
+                // TODO: There must be a shorter way to write these?
+                tracing::error!("couldn't create controller: {e}");
+                return Err(e);
+            }
+            Ok(x) => x,
+        };
 
     tracing::debug!("GUI controller main loop start");
 
@@ -435,7 +436,7 @@ async fn run_controller(
                         controller.ctlr_tx.clone(),
                         controller.device_id.clone(),
                         &auth.token,
-                        controller.logger.clone(),
+                        controller.logging_handles.logger.clone(),
                     )?);
                     controller.session = Some(Session {
                         actor_name: auth.actor_name,
