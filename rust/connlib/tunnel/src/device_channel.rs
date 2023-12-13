@@ -53,7 +53,7 @@ impl Device {
     ) -> Result<Device, ConnlibError> {
         Ok(Device {
             tun: Tun::new(config)?,
-            mtu: AtomicUsize::new(1_500), // TODO: Dummy value for now.
+            mtu: AtomicUsize::new(1_280),
         })
     }
 
@@ -85,8 +85,6 @@ impl Device {
         buf: &'b mut [u8],
         cx: &mut Context<'_>,
     ) -> Poll<io::Result<Option<MutableIpPacket<'b>>>> {
-        // TODO: I don't understand the MTU slice here
-        // Are we doing partial reads so that the IP packets can fragment if needed instead of dropping?
         let n = std::task::ready!(self.tun.poll_read(&mut buf[..self.mtu()], cx))?;
 
         if n == 0 {
