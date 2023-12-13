@@ -218,7 +218,6 @@ public struct SettingsView: View {
   @State private var confirmationAlertContinueAction: ConfirmationAlertContinueAction = .none
 
   @State private var calculateLogSizeTask: Task<(), Never>?
-  @State private var calculateLogSizeTimer: Timer?
 
   #if os(iOS)
     @State private var logTempZipFileURL: URL?
@@ -481,11 +480,9 @@ public struct SettingsView: View {
             )
             .onAppear {
               self.refreshLogSize()
-              self.startRefreshingLogSizePeriodically()
             }
             .onDisappear {
               self.cancelRefreshLogSize()
-              self.stopRefreshingLogSizePeriodically()
             }
             HStack {
               Spacer()
@@ -546,11 +543,9 @@ public struct SettingsView: View {
           )
           .onAppear {
             self.refreshLogSize()
-            self.startRefreshingLogSizePeriodically()
           }
           .onDisappear {
             self.cancelRefreshLogSize()
-            self.stopRefreshingLogSizePeriodically()
           }
           HStack(spacing: 30) {
             ButtonWithProgress(
@@ -686,20 +681,6 @@ public struct SettingsView: View {
 
   func cancelRefreshLogSize() {
     self.calculateLogSizeTask?.cancel()
-  }
-
-  func startRefreshingLogSizePeriodically() {
-    // Refresh every 1 minute
-    let timer = Timer(timeInterval: 60, repeats: true) { _ in
-      self.refreshLogSize()
-    }
-    RunLoop.main.add(timer, forMode: .common)
-    self.calculateLogSizeTimer = timer
-  }
-
-  func stopRefreshingLogSizePeriodically() {
-    self.calculateLogSizeTimer?.invalidate()
-    self.calculateLogSizeTimer = nil
   }
 
   func clearLogFiles() {
