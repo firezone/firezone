@@ -24,6 +24,7 @@ defmodule Web.HomeController do
   end
 
   def redirect_to_sign_in(conn, %{"account_id_or_slug" => account_id_or_slug} = params) do
+    account_id_or_slug = String.downcase(account_id_or_slug)
     redirect_params = take_non_empty_params(params, ["client_platform", "client_csrf_token"])
 
     redirect(conn, to: ~p"/#{account_id_or_slug}?#{redirect_params}")
