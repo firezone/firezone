@@ -19,7 +19,6 @@ mod tun;
 mod tun;
 
 use crate::ip_packet::MutableIpPacket;
-use crate::DnsFallbackStrategy;
 use connlib_shared::error::ConnlibError;
 use connlib_shared::messages::Interface;
 use connlib_shared::{Callbacks, Error};
@@ -40,9 +39,8 @@ impl Device {
     pub(crate) fn new(
         config: &Interface,
         callbacks: &impl Callbacks<Error = Error>,
-        dns: DnsFallbackStrategy,
     ) -> Result<Device, ConnlibError> {
-        let tun = Tun::new(config, callbacks, dns)?;
+        let tun = Tun::new(config, callbacks)?;
         let mtu = AtomicUsize::new(ioctl::interface_mtu_by_name(tun.name())?);
 
         Ok(Device { mtu, tun })
@@ -52,7 +50,6 @@ impl Device {
     pub(crate) fn new(
         config: &Interface,
         _: &impl Callbacks<Error = Error>,
-        _: DnsFallbackStrategy,
     ) -> Result<Device, ConnlibError> {
         Ok(Device {
             tun: Tun::new(config)?,

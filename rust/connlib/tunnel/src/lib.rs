@@ -87,47 +87,11 @@ const MAX_CONCURRENT_ICE_GATHERING: usize = 100;
 // Note: Taken from boringtun
 const HANDSHAKE_RATE_LIMIT: u64 = 100;
 
-// Note: the windows dns fallback strategy might change when implementing, however we prefer
-// splitdns to trying to obtain the default server.
-#[cfg(any(
-    target_os = "macos",
-    target_os = "ios",
-    target_os = "linux",
-    target_os = "windows"
-))]
-impl Default for DnsFallbackStrategy {
-    fn default() -> DnsFallbackStrategy {
-        Self::SystemResolver
-    }
-}
-
-#[cfg(target_os = "android")]
-impl Default for DnsFallbackStrategy {
-    fn default() -> DnsFallbackStrategy {
-        Self::UpstreamResolver
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DnsFallbackStrategy {
-    UpstreamResolver,
-    SystemResolver,
-}
-
-impl DnsFallbackStrategy {
-    fn is_upstream(&self) -> bool {
-        self == &DnsFallbackStrategy::UpstreamResolver
-    }
-}
-
-impl fmt::Display for DnsFallbackStrategy {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            DnsFallbackStrategy::UpstreamResolver => write!(f, "upstream_resolver"),
-            DnsFallbackStrategy::SystemResolver => write!(f, "system_resolver"),
-        }
-    }
-}
+// These 2 are the default timeouts
+const ICE_DISCONNECTED_TIMEOUT: Duration = Duration::from_secs(5);
+const ICE_KEEPALIVE: Duration = Duration::from_secs(2);
+// This is approximately how long failoever will take :)
+const ICE_FAILED_TIMEOUT: Duration = Duration::from_secs(10);
 
 pub(crate) fn get_v4(ip: IpAddr) -> Option<Ipv4Addr> {
     match ip {
@@ -246,8 +210,7 @@ where
 
             tracing::trace!(target: "wire", action = "read", from = "device", dest = %packet.destination());
 
-            let dns_strategy = role_state.dns_strategy;
-            let packet = match role_state.handle_dns(packet, dns_strategy) {
+            let packet = match role_state.handle_dns(packet) {
                 Ok(Some(response)) => {
                     device.write(response)?;
                     continue;
@@ -514,6 +477,11 @@ where
         registry = register_default_interceptors(registry, &mut media_engine)?;
         let mut setting_engine = SettingEngine::default();
         setting_engine.set_interface_filter(Box::new(|name| !name.contains("tun")));
+        setting_engine.set_ice_timeouts(
+            Some(ICE_DISCONNECTED_TIMEOUT),
+            Some(ICE_FAILED_TIMEOUT),
+            Some(ICE_KEEPALIVE),
+        );
 
         let webrtc_api = APIBuilder::new()
             .with_media_engine(media_engine)
