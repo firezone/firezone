@@ -146,6 +146,8 @@ pub enum ConnlibError {
     #[cfg(target_os = "windows")]
     #[error(transparent)]
     Wintun(#[from] wintun::Error),
+    #[error("Token has expired")]
+    TokenExpired,
 }
 
 impl ConnlibError {

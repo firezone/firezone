@@ -263,13 +263,14 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
         Ok(())
     }
 
+    // Errors here means we need to disconnect
     #[tracing::instrument(level = "trace", skip(self))]
     pub async fn handle_error(
         &mut self,
         reply_error: ErrorReply,
         reference: Option<Reference>,
         topic: String,
-    ) {
+    ) -> Result<()> {
         match (reply_error.error, reference) {
             (ErrorInfo::Offline, Some(reference)) => {
                 let Ok(resource_id) = reference.parse::<ResourceId>() else {
@@ -280,7 +281,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                         .tunnel
                         .callbacks()
                         .on_error(&Error::ControlProtocolError);
-                    return;
+                    return Ok(());
                 };
                 // TODO: Rate limit the number of attempts of getting the relays before just trying a local network connection
                 self.tunnel.cleanup_connection(resource_id);
@@ -290,8 +291,12 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                     tracing::debug!(err = ?e, "couldn't join topic: {e:#?}");
                 }
             }
+            (ErrorInfo::Reason(Reason::Known(KnownError::TokenExpired)), _) => {
+                return Err(Error::TokenExpired);
+            }
             _ => {}
         }
+        Ok(())
     }
 
     pub async fn stats_event(&mut self) {
