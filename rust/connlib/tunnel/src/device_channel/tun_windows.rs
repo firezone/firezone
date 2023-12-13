@@ -28,7 +28,7 @@ impl Tun {
         let adapter = match wintun::Adapter::create(
             &wintun,
             "Firezone",
-            "Firezone VPN",
+            "Firezone Tunnel",
             Some(uuid.as_u128()),
         ) {
             Ok(x) => x,
