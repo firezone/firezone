@@ -137,7 +137,6 @@ impl Callbacks for CallbackHandler {
         tunnel_address_v4: Ipv4Addr,
         tunnel_address_v6: Ipv6Addr,
         dns_address: Ipv4Addr,
-        dns_fallback_strategy: String,
     ) -> Result<Option<RawFd>, Self::Error> {
         self.env(|mut env| {
             let tunnel_address_v4 =
@@ -158,14 +157,6 @@ impl Callbacks for CallbackHandler {
                     source,
                 }
             })?;
-            let dns_fallback_strategy =
-                env.new_string(dns_fallback_strategy).map_err(|source| {
-                    CallbackError::NewStringFailed {
-                        name: "dns_fallback_strategy",
-                        source,
-                    }
-                })?;
-
             let name = "onSetInterfaceConfig";
             env.call_method(
                 &self.callback_handler,
@@ -175,7 +166,6 @@ impl Callbacks for CallbackHandler {
                     JValue::from(&tunnel_address_v4),
                     JValue::from(&tunnel_address_v6),
                     JValue::from(&dns_address),
-                    JValue::from(&dns_fallback_strategy),
                 ],
             )
             .and_then(|val| val.i())

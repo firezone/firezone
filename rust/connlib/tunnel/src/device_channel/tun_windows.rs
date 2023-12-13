@@ -28,7 +28,7 @@ impl Tun {
         let adapter = match wintun::Adapter::create(
             &wintun,
             "Firezone",
-            "Firezone VPN",
+            "Firezone Tunnel",
             Some(uuid.as_u128()),
         ) {
             Ok(x) => x,
@@ -73,7 +73,6 @@ impl Tun {
                 let bytes = pkt.bytes();
                 let len = bytes.len();
                 buf[0..len].copy_from_slice(bytes);
-                tracing::debug!("tx {} B, {}", len, explain_packet(bytes));
                 Poll::Ready(Ok(len))
             }
             None => {
@@ -92,8 +91,6 @@ impl Tun {
     }
 
     fn write(&self, bytes: &[u8]) -> io::Result<usize> {
-        tracing::debug!("rx {} B, {}", bytes.len(), explain_packet(bytes));
-
         // TODO: If the ring buffer is full, don't panic, just return Ok(None) or an error or whatever the Unix impls do
         // Don't block.
         let mut pkt = self
@@ -117,20 +114,4 @@ fn start_recv_thread(
         }
         tracing::debug!("recv_task exiting gracefully");
     })
-}
-
-// TODO: Remove before prod
-fn explain_packet(pkt: &[u8]) -> String {
-    let proto = match pkt[9] {
-        1 => "ICMP",
-        6 => "TCP",
-        17 => "UDP",
-        132 => "SCTP",
-        _ => "Unknown",
-    };
-
-    let src = &pkt[12..16];
-    let dst = &pkt[16..20];
-
-    format!("proto {proto} src {src:?} dst {dst:?}")
 }
