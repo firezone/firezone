@@ -334,8 +334,6 @@ impl ClientState {
             return;
         }
 
-        tracing::trace!(?resource, "resource_connection_intent");
-
         const MAX_SIGNAL_CONNECTION_DELAY: Duration = Duration::from_secs(2);
 
         let resource_id = resource.id;
@@ -383,14 +381,12 @@ impl ClientState {
         tracing::trace!(resource_ip = %destination, "resource_connection_intent");
 
         let Some(resource) = self.get_cidr_resource_by_destination(destination) else {
-            tracing::trace!(?self.dns_resources_internal_ips, "checking for dns");
             if let Some(resource) = self
                 .dns_resources_internal_ips
                 .iter()
                 .find_map(|(r, i)| i.contains(&destination).then_some(r))
                 .cloned()
             {
-                tracing::trace!(?resource, %destination, "expired_dns_connection_intent");
                 self.on_connection_intent_dns(&resource);
             }
             return;
