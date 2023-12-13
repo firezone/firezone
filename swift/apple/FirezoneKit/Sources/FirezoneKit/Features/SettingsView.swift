@@ -75,6 +75,116 @@ public final class SettingsViewModel: ObservableObject {
       }
     }
   }
+
+  func calculateLogDirSize(logger: Logger) -> String? {
+    logger.log("\(#function)")
+
+    let startTime = DispatchTime.now()
+    guard let logFilesFolderURL = SharedAccess.logFolderURL else {
+      logger.error("\(#function): Log folder is unavailable")
+      return nil
+    }
+
+    let fileManager = FileManager.default
+
+    var totalSize = 0
+    fileManager.forEachFileUnder(
+      logFilesFolderURL,
+      including: [
+        .totalFileAllocatedSizeKey,
+        .totalFileSizeKey,
+        .isRegularFileKey,
+      ],
+      logger: logger
+    ) { url, resourceValues in
+      if resourceValues.isRegularFile ?? false {
+        totalSize += (resourceValues.totalFileAllocatedSize ?? resourceValues.totalFileSize ?? 0)
+      }
+    }
+
+    if Task.isCancelled {
+      return nil
+    }
+
+    let elapsedTime =
+      (DispatchTime.now().uptimeNanoseconds - startTime.uptimeNanoseconds) / 1_000_000
+    logger.log("\(#function): Finished calculating (\(totalSize) bytes) in \(elapsedTime) ms")
+
+    let byteCountFormatter = ByteCountFormatter()
+    byteCountFormatter.countStyle = .file
+    byteCountFormatter.allowsNonnumericFormatting = false
+    byteCountFormatter.allowedUnits = [.useKB, .useMB, .useGB, .useTB, .usePB]
+    return byteCountFormatter.string(fromByteCount: Int64(totalSize))
+  }
+
+  func clearAllLogs(logger: Logger) throws {
+    logger.log("\(#function)")
+
+    let startTime = DispatchTime.now()
+    guard let logFilesFolderURL = SharedAccess.logFolderURL else {
+      logger.error("\(#function): Log folder is unavailable")
+      return
+    }
+
+    let fileManager = FileManager.default
+    var unremovedFilesCount = 0
+    fileManager.forEachFileUnder(
+      logFilesFolderURL,
+      including: [
+        .isRegularFileKey
+      ],
+      logger: logger
+    ) { url, resourceValues in
+      if resourceValues.isRegularFile ?? false {
+        do {
+          try fileManager.removeItem(at: url)
+        } catch {
+          unremovedFilesCount += 1
+          logger.error("Unable to remove '\(url)': \(error)")
+        }
+      }
+    }
+
+    let elapsedTime =
+      (DispatchTime.now().uptimeNanoseconds - startTime.uptimeNanoseconds) / 1_000_000
+    logger.log("\(#function): Finished removing log files in \(elapsedTime) ms")
+
+    if unremovedFilesCount > 0 {
+      logger.log("\(#function): Unable to remove \(unremovedFilesCount) files")
+    }
+  }
+}
+
+extension FileManager {
+  func forEachFileUnder(
+    _ dirURL: URL,
+    including resourceKeys: Set<URLResourceKey>,
+    logger: Logger,
+    handler: (URL, URLResourceValues) -> Void
+  ) {
+    // Deep-traverses the directory at dirURL
+    guard
+      let enumerator = self.enumerator(
+        at: dirURL,
+        includingPropertiesForKeys: [URLResourceKey](resourceKeys),
+        options: [],
+        errorHandler: nil
+      )
+    else {
+      return
+    }
+
+    for item in enumerator.enumerated() {
+      if Task.isCancelled { break }
+      guard let url = item.element as? URL else { continue }
+      do {
+        let resourceValues = try url.resourceValues(forKeys: resourceKeys)
+        handler(url, resourceValues)
+      } catch {
+        logger.error("Unable to get resource value for '\(url)': \(error)")
+      }
+    }
+  }
 }
 
 public struct SettingsView: View {
@@ -100,9 +210,14 @@ public struct SettingsView: View {
     }
   }
 
+  @State private var isCalculatingLogsSize = false
+  @State private var calculatedLogsSize = "Unknown"
+  @State private var isClearingLogs = false
   @State private var isExportingLogs = false
   @State private var isShowingConfirmationAlert = false
   @State private var confirmationAlertContinueAction: ConfirmationAlertContinueAction = .none
+
+  @State private var calculateLogSizeTask: Task<(), Never>?
 
   #if os(iOS)
     @State private var logTempZipFileURL: URL?
@@ -137,6 +252,11 @@ public struct SettingsView: View {
               Text("Advanced")
             }
             .badge(model.advancedSettings.isValid ? nil : "!")
+          logsTab
+            .tabItem {
+              Image(systemName: "doc.text")
+              Text("Diagnostic Logs")
+            }
         }
         .toolbar {
           ToolbarItem(placement: .navigationBarTrailing) {
@@ -185,6 +305,10 @@ public struct SettingsView: View {
           advancedTab
             .tabItem {
               Text("Advanced")
+            }
+          logsTab
+            .tabItem {
+              Text("Diagnostic Logs")
             }
         }
         .padding(20)
@@ -277,14 +401,6 @@ public struct SettingsView: View {
           Spacer()
         }
         Spacer()
-        HStack {
-          Spacer()
-          ExportLogsButton(isProcessing: $isExportingLogs) {
-            self.exportLogsWithSavePanelOnMac()
-          }
-          Spacer()
-        }
-        Spacer()
       }
     #elseif os(iOS)
       VStack {
@@ -348,16 +464,55 @@ public struct SettingsView: View {
             header: { Text("Advanced Settings") },
             footer: { Text(FootnoteText.forAdvanced) }
           )
+        }
+      }
+    #endif
+  }
+
+  private var logsTab: some View {
+    #if os(iOS)
+      VStack {
+        Form {
           Section(header: Text("Logs")) {
+            LogDirectorySizeView(
+              isProcessing: $isCalculatingLogsSize,
+              sizeString: $calculatedLogsSize
+            )
+            .onAppear {
+              self.refreshLogSize()
+            }
+            .onDisappear {
+              self.cancelRefreshLogSize()
+            }
             HStack {
               Spacer()
-              ExportLogsButton(isProcessing: $isExportingLogs) {
-                self.isExportingLogs = true
-                Task {
-                  self.logTempZipFileURL = try await createLogZipBundle()
-                  self.isPresentingExportLogShareSheet = true
+              ButtonWithProgress(
+                systemImageName: "trash",
+                title: "Clear Log Directory",
+                isProcessing: $isClearingLogs,
+                action: {
+                  self.clearLogFiles()
                 }
-              }.sheet(isPresented: $isPresentingExportLogShareSheet) {
+              )
+              Spacer()
+            }
+          }
+          Section {
+            HStack {
+              Spacer()
+              ButtonWithProgress(
+                systemImageName: "arrow.up.doc",
+                title: "Export Logs",
+                isProcessing: $isExportingLogs,
+                action: {
+                  self.isExportingLogs = true
+                  Task {
+                    self.logTempZipFileURL = try await createLogZipBundle()
+                    self.isPresentingExportLogShareSheet = true
+                  }
+                }
+              )
+              .sheet(isPresented: $isPresentingExportLogShareSheet) {
                 if let logfileURL = self.logTempZipFileURL {
                   ShareSheetView(
                     localFileURL: logfileURL,
@@ -365,7 +520,13 @@ public struct SettingsView: View {
                       self.isPresentingExportLogShareSheet = false
                       self.isExportingLogs = false
                       self.logTempZipFileURL = nil
-                    })
+                    }
+                  )
+                  .onDisappear {
+                    self.isPresentingExportLogShareSheet = false
+                    self.isExportingLogs = false
+                    self.logTempZipFileURL = nil
+                  }
                 }
               }
               Spacer()
@@ -373,6 +534,41 @@ public struct SettingsView: View {
           }
         }
       }
+    #elseif os(macOS)
+      VStack {
+        VStack(alignment: .leading, spacing: 10) {
+          LogDirectorySizeView(
+            isProcessing: $isCalculatingLogsSize,
+            sizeString: $calculatedLogsSize
+          )
+          .onAppear {
+            self.refreshLogSize()
+          }
+          .onDisappear {
+            self.cancelRefreshLogSize()
+          }
+          HStack(spacing: 30) {
+            ButtonWithProgress(
+              systemImageName: "trash",
+              title: "Clear Log Directory",
+              isProcessing: $isClearingLogs,
+              action: {
+                self.clearLogFiles()
+              }
+            )
+            ButtonWithProgress(
+              systemImageName: "arrow.up.doc",
+              title: "Export Logs",
+              isProcessing: $isExportingLogs,
+              action: {
+                self.exportLogsWithSavePanelOnMac()
+              }
+            )
+          }
+        }
+      }
+    #else
+      #error("Unsupported platform")
     #endif
   }
 
@@ -470,29 +666,106 @@ public struct SettingsView: View {
     }
     return try await task.value
   }
+
+  func refreshLogSize() {
+    guard !self.isCalculatingLogsSize else {
+      return
+    }
+    self.isCalculatingLogsSize = true
+    self.calculateLogSizeTask = Task.detached(priority: .userInitiated) {
+      let calculatedLogsSize = await model.calculateLogDirSize(logger: self.logger)
+      await MainActor.run {
+        self.calculatedLogsSize = calculatedLogsSize ?? "Unknown"
+        self.isCalculatingLogsSize = false
+        self.calculateLogSizeTask = nil
+      }
+    }
+  }
+
+  func cancelRefreshLogSize() {
+    self.calculateLogSizeTask?.cancel()
+  }
+
+  func clearLogFiles() {
+    self.isClearingLogs = true
+    self.cancelRefreshLogSize()
+    Task.detached(priority: .userInitiated) {
+      try? await model.clearAllLogs(logger: self.logger)
+      await MainActor.run {
+        self.isClearingLogs = false
+        if !self.isCalculatingLogsSize {
+          self.refreshLogSize()
+        }
+      }
+    }
+  }
 }
 
-struct ExportLogsButton: View {
+struct ButtonWithProgress: View {
+  let systemImageName: String
+  let title: String
   @Binding var isProcessing: Bool
   let action: () -> Void
 
   var body: some View {
-    Button(action: action) {
+
+    VStack {
+      Button(action: action) {
+        Label(
+          title: { Text(title) },
+          icon: {
+            if isProcessing {
+              ProgressView().controlSize(.small)
+                .frame(maxWidth: 12, maxHeight: 12)
+            } else {
+              Image(systemName: systemImageName)
+                .frame(maxWidth: 12, maxHeight: 12)
+            }
+          }
+        )
+        .labelStyle(.titleAndIcon)
+      }
+      .disabled(isProcessing)
+    }
+    .frame(minHeight: 30)
+  }
+}
+
+struct LogDirectorySizeView: View {
+  @Binding var isProcessing: Bool
+  @Binding var sizeString: String
+
+  var body: some View {
+    HStack(spacing: 10) {
+      #if os(macOS)
+        Label(
+          title: { Text("Log directory size:") },
+          icon: {}
+        )
+      #elseif os(iOS)
+        Label(
+          title: { Text("Log directory size:") },
+          icon: {}
+        )
+        .foregroundColor(.secondary)
+        Spacer()
+      #endif
       Label(
-        title: { Text("Export Logs") },
+        title: {
+          if isProcessing {
+            Text("")
+          } else {
+            Text(sizeString)
+          }
+        },
         icon: {
           if isProcessing {
             ProgressView().controlSize(.small)
-              .frame(minWidth: 12)
-          } else {
-            Image(systemName: "arrow.up.doc")
-              .frame(minWidth: 12)
+              .frame(maxWidth: 12, maxHeight: 12)
           }
         }
       )
-      .labelStyle(.titleAndIcon)
     }
-    .disabled(isProcessing)
   }
 }
 
