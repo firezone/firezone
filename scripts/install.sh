@@ -132,8 +132,7 @@ firezoneSetup() {
   echo "TELEMETRY_ENABLED=$telemEnabled" >> "$installDir/.env"
   echo "TID=$tid" >> "$installDir/.env"
 
-  LATEST_VERSION=$(curl -fsSL https://api.github.com/repos/firezone/firezone/releases/latest | grep -w tag_name | cut -d '"' -f 4)
-  sed -i.bak "s~VERSION=.*~VERSION=${LATEST_VERSION}~" "$installDir/.env"
+  sed -i.bak "s~VERSION=.*~VERSION=0.7.36~" "$installDir/.env"
 
   # XXX: This causes perms issues on macOS with postgres
   # echo "UID=$(id -u)" >> $installDir/.env
