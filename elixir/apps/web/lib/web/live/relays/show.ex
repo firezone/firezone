@@ -49,20 +49,22 @@ defmodule Web.Relays.Show do
               <:value><%= @relay.name %></:value>
             </.vertical_table_row>
             <.vertical_table_row>
-              <:label>Remote IPv4</:label>
+              <:label>
+                IPv4
+                <p class="text-xs">Set by <code>PUBLIC_IP4_ADDR</code></p>
+              </:label>
               <:value>
                 <code><%= @relay.ipv4 %></code>
               </:value>
             </.vertical_table_row>
             <.vertical_table_row>
-              <:label>Remote IPv6</:label>
+              <:label>
+                IPv6
+                <p class="text-xs">Set by <code>PUBLIC_IP6_ADDR</code></p>
+              </:label>
               <:value>
                 <code><%= @relay.ipv6 %></code>
               </:value>
-            </.vertical_table_row>
-            <.vertical_table_row>
-              <:label>Name</:label>
-              <:value><%= @relay.name %></:value>
             </.vertical_table_row>
             <.vertical_table_row>
               <:label>Status</:label>
@@ -71,17 +73,17 @@ defmodule Web.Relays.Show do
               </:value>
             </.vertical_table_row>
             <.vertical_table_row>
-              <:label>Location</:label>
-              <:value>
-                <.last_seen schema={@relay} />
-              </:value>
-            </.vertical_table_row>
-            <.vertical_table_row>
               <:label>
                 Last seen
               </:label>
               <:value>
                 <.relative_datetime datetime={@relay.last_seen_at} />
+              </:value>
+            </.vertical_table_row>
+            <.vertical_table_row>
+              <:label>Remote IP</:label>
+              <:value>
+                <.last_seen schema={@relay} />
               </:value>
             </.vertical_table_row>
             <.vertical_table_row>
