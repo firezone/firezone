@@ -473,7 +473,7 @@ defmodule Web.AuthControllerTest do
 
       assert_email_sent(fn email ->
         assert email.subject == "Firezone sign in token"
-        assert email.text_body =~ "Copy and paste the following token in to the Sign In form"
+        assert email.text_body =~ "Copy and paste the following token into the Sign In form"
       end)
 
       assert url = redirected_to(conn)
