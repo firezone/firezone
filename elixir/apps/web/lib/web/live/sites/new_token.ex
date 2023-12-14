@@ -170,6 +170,7 @@ defmodule Web.Sites.NewToken do
            "connlib_shared=trace",
            "tunnel_state=trace",
            "phoenix_channel=debug",
+           "webrtc=error",
            "warn"
          ],
          ","
