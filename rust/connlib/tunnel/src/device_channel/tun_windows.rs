@@ -131,6 +131,10 @@ impl Tun {
             Some(pkt) => {
                 let bytes = pkt.bytes();
                 let len = bytes.len();
+                if len > buf.len() {
+                    tracing::warn!("Packet is too long to read ({len} bytes)");
+                    return Poll::Ready(Ok(0));
+                }
                 buf[0..len].copy_from_slice(bytes);
                 Poll::Ready(Ok(len))
             }

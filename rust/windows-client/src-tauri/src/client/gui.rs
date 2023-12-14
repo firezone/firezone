@@ -7,6 +7,7 @@ use crate::client::{self, AppLocalDataDir};
 use anyhow::{anyhow, bail, Context, Result};
 use client::settings::{self, AdvancedSettings};
 use connlib_client_shared::file_logger;
+use connlib_shared::messages::ResourceId;
 use secrecy::SecretString;
 use std::{
     net::{Ipv4Addr, Ipv6Addr},
@@ -178,6 +179,11 @@ impl FromStr for TrayMenuEvent {
 }
 
 fn handle_system_tray_event(app: &tauri::AppHandle, event: TrayMenuEvent) -> Result<()> {
+    let ctlr_tx = &app
+        .try_state::<Managed>()
+        .ok_or_else(|| anyhow!("can't get Managed struct from Tauri"))?
+        .ctlr_tx;
+
     match event {
         TrayMenuEvent::About => {
             let win = app
@@ -190,7 +196,9 @@ fn handle_system_tray_event(app: &tauri::AppHandle, event: TrayMenuEvent) -> Res
                 win.show()?;
             }
         }
-        TrayMenuEvent::Resource { id } => tracing::warn!("TODO copy {id} to clipboard"),
+        TrayMenuEvent::Resource { id } => {
+            ctlr_tx.blocking_send(ControllerRequest::CopyResource(id))?
+        }
         TrayMenuEvent::Settings => {
             let win = app
                 .get_window("settings")
@@ -203,11 +211,7 @@ fn handle_system_tray_event(app: &tauri::AppHandle, event: TrayMenuEvent) -> Res
                 win.show()?;
             }
         }
-        TrayMenuEvent::SignIn => app
-            .try_state::<Managed>()
-            .ok_or_else(|| anyhow!("getting ctlr_tx state"))?
-            .ctlr_tx
-            .blocking_send(ControllerRequest::SignIn)?,
+        TrayMenuEvent::SignIn => ctlr_tx.blocking_send(ControllerRequest::SignIn)?,
         TrayMenuEvent::SignOut => app.tray_handle().set_menu(signed_out_menu())?,
         TrayMenuEvent::Quit => app.exit(0),
     }
@@ -215,6 +219,7 @@ fn handle_system_tray_event(app: &tauri::AppHandle, event: TrayMenuEvent) -> Res
 }
 
 pub(crate) enum ControllerRequest {
+    CopyResource(String),
     ExportLogs(PathBuf),
     GetAdvancedSettings(oneshot::Sender<AdvancedSettings>),
     // Secret because it will have the token in it
@@ -411,10 +416,20 @@ async fn run_controller(
         .await
         .context("couldn't create Controller")?;
 
+    let mut resources: Vec<ResourceDisplay> = vec![];
+
     tracing::debug!("GUI controller main loop start");
 
     while let Some(req) = rx.recv().await {
         match req {
+            Req::CopyResource(id) => {
+                let id = ResourceId::from_str(&id)?;
+                if let Some(res) = resources.iter().find(|r| r.id == id) {
+                    let mut clipboard = arboard::Clipboard::new()?;
+                    clipboard.set_text(&res.pastable)?;
+                    tracing::info!("Copied a resource to clipboard");
+                }
+            }
             Req::ExportLogs(file_path) => settings::export_logs_to(file_path).await?,
             Req::GetAdvancedSettings(tx) => {
                 tx.send(controller.advanced_settings.clone()).ok();
@@ -449,9 +464,9 @@ async fn run_controller(
                     None,
                 )?;
             }
-            Req::UpdateResources(resources) => {
+            Req::UpdateResources(r) => {
                 tracing::debug!("controller got UpdateResources");
-                let resources: Vec<_> = resources.into_iter().map(ResourceDisplay::from).collect();
+                resources = r.into_iter().map(ResourceDisplay::from).collect();
 
                 // TODO: Save the user name between runs of the app
                 let actor_name = controller
@@ -516,7 +531,7 @@ fn parse_auth_callback(input: &SecretString) -> Result<AuthCallback> {
 
 /// The information needed for the GUI to display a resource inside the Firezone VPN
 struct ResourceDisplay {
-    id: connlib_shared::messages::ResourceId,
+    id: ResourceId,
     /// User-friendly name, e.g. "GitLab"
     name: String,
     /// What will be copied to the clipboard to paste into a web browser
@@ -534,7 +549,7 @@ impl From<connlib_client_shared::ResourceDescription> for ResourceDisplay {
             connlib_client_shared::ResourceDescription::Cidr(x) => Self {
                 id: x.id,
                 name: x.name,
-                // TODO: CIDRs aren't URLs right?
+                // // TODO: CIDRs aren't URLs right?
                 pastable: x.address.to_string(),
             },
         }
