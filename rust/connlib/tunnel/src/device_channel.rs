@@ -19,7 +19,6 @@ mod tun;
 mod tun;
 
 use crate::ip_packet::MutableIpPacket;
-use crate::DnsFallbackStrategy;
 use connlib_shared::error::ConnlibError;
 use connlib_shared::messages::Interface;
 use connlib_shared::{Callbacks, Error};
@@ -40,9 +39,8 @@ impl Device {
     pub(crate) fn new(
         config: &Interface,
         callbacks: &impl Callbacks<Error = Error>,
-        dns: DnsFallbackStrategy,
     ) -> Result<Device, ConnlibError> {
-        let tun = Tun::new(config, callbacks, dns)?;
+        let tun = Tun::new(config, callbacks)?;
         let mtu = AtomicUsize::new(ioctl::interface_mtu_by_name(tun.name())?);
 
         Ok(Device { mtu, tun })
@@ -52,11 +50,10 @@ impl Device {
     pub(crate) fn new(
         config: &Interface,
         _: &impl Callbacks<Error = Error>,
-        _: DnsFallbackStrategy,
     ) -> Result<Device, ConnlibError> {
         Ok(Device {
             tun: Tun::new(config)?,
-            mtu: AtomicUsize::new(1_500), // TODO: Dummy value for now.
+            mtu: AtomicUsize::new(1_280),
         })
     }
 
@@ -88,8 +85,6 @@ impl Device {
         buf: &'b mut [u8],
         cx: &mut Context<'_>,
     ) -> Poll<io::Result<Option<MutableIpPacket<'b>>>> {
-        // TODO: I don't understand the MTU slice here
-        // Are we doing partial reads so that the IP packets can fragment if needed instead of dropping?
         let n = std::task::ready!(self.tun.poll_read(&mut buf[..self.mtu()], cx))?;
 
         if n == 0 {

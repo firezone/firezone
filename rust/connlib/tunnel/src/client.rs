@@ -3,7 +3,7 @@ use crate::device_channel::{Device, Packet};
 use crate::ip_packet::{IpPacket, MutableIpPacket};
 use crate::peer::PacketTransformClient;
 use crate::{
-    dns, ConnectedPeer, DnsFallbackStrategy, DnsQuery, Event, PeerConfig, RoleState, Tunnel,
+    dns, get_v4, get_v6, ConnectedPeer, DnsQuery, Event, PeerConfig, RoleState, Tunnel,
     DNS_QUERIES_QUEUE_SIZE, ICE_GATHERING_TIMEOUT_SECONDS, MAX_CONCURRENT_ICE_GATHERING,
 };
 use boringtun::x25519::{PublicKey, StaticSecret};
@@ -111,12 +111,7 @@ where
     /// Sets the interface configuration and starts background tasks.
     #[tracing::instrument(level = "trace", skip(self))]
     pub fn set_interface(&self, config: &InterfaceConfig) -> connlib_shared::Result<()> {
-        if !config.upstream_dns.is_empty() {
-            self.role_state.lock().dns_strategy = DnsFallbackStrategy::UpstreamResolver;
-        }
-
-        let dns_strategy = self.role_state.lock().dns_strategy;
-        let device = Arc::new(Device::new(config, self.callbacks(), dns_strategy)?);
+        let device = Arc::new(Device::new(config, self.callbacks())?);
 
         self.device.store(Some(device.clone()));
         self.no_device_waker.wake();
@@ -189,10 +184,9 @@ pub struct ClientState {
     #[allow(clippy::type_complexity)]
     pub peers_by_ip: IpNetworkTable<ConnectedPeer<GatewayId, PacketTransformClient>>,
 
-    pub dns_strategy: DnsFallbackStrategy,
     forwarded_dns_queries: BoundedQueue<DnsQuery<'static>>,
 
-    pub ip_provider: IpProvider,
+    ip_provider: IpProvider,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -211,13 +205,11 @@ impl ClientState {
     pub(crate) fn handle_dns<'a>(
         &mut self,
         packet: MutableIpPacket<'a>,
-        resolve_strategy: DnsFallbackStrategy,
     ) -> Result<Option<Packet<'a>>, MutableIpPacket<'a>> {
         match dns::parse(
             &self.dns_resources,
             &self.dns_resources_internal_ips,
             packet.as_immutable(),
-            resolve_strategy,
         ) {
             Some(dns::ResolveStrategy::LocalResponse(query)) => Ok(Some(query)),
             Some(dns::ResolveStrategy::ForwardQuery(query)) => {
@@ -332,8 +324,6 @@ impl ClientState {
         if self.is_awaiting_connection_to_dns(resource) {
             return;
         }
-
-        tracing::trace!(?resource, "resource_connection_intent");
 
         const MAX_SIGNAL_CONNECTION_DELAY: Duration = Duration::from_secs(2);
 
@@ -567,6 +557,37 @@ impl ClientState {
             tracing::warn!("Too many DNS queries, dropping new ones");
         }
     }
+
+    pub fn get_or_assign_ip(
+        &mut self,
+        resource: &DnsResource,
+        addrs: &[IpAddr],
+    ) -> Vec<(IpAddr, IpAddr)> {
+        let internal_ips = self
+            .dns_resources_internal_ips
+            .get(resource)
+            .cloned()
+            .unwrap_or(Vec::new());
+        let addr_v4 = addrs.iter().copied().filter(IpAddr::is_ipv4);
+        let internal_ips_v4 = internal_ips
+            .iter()
+            .copied()
+            .filter_map(get_v4)
+            .chain(&mut self.ip_provider.ipv4)
+            .map(Into::<IpAddr>::into)
+            .zip(addr_v4);
+
+        let addr_v6 = addrs.iter().copied().filter(IpAddr::is_ipv6);
+        let internal_ips_v6 = internal_ips
+            .iter()
+            .copied()
+            .filter_map(get_v6)
+            .chain(&mut self.ip_provider.ipv6)
+            .map(Into::<IpAddr>::into)
+            .zip(addr_v6);
+
+        internal_ips_v4.chain(internal_ips_v6).collect()
+    }
 }
 
 pub struct IpProvider {
@@ -580,14 +601,6 @@ impl IpProvider {
             ipv4: Box::new(ipv4.hosts()),
             ipv6: Box::new(ipv6.subnets_with_prefix(128).map(|ip| ip.network_address())),
         }
-    }
-
-    pub fn next_ipv4(&mut self) -> Option<Ipv4Addr> {
-        self.ipv4.next()
-    }
-
-    pub fn next_ipv6(&mut self) -> Option<Ipv6Addr> {
-        self.ipv6.next()
     }
 }
 
@@ -606,7 +619,6 @@ impl Default for ClientState {
             resources_gateways: Default::default(),
             forwarded_dns_queries: BoundedQueue::with_capacity(DNS_QUERIES_QUEUE_SIZE),
             gateway_preshared_keys: Default::default(),
-            dns_strategy: Default::default(),
             // TODO: decide ip ranges
             ip_provider: IpProvider::new(
                 IPV4_RESOURCES.parse().unwrap(),

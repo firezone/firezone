@@ -1,5 +1,4 @@
 use crate::device_channel::ioctl;
-use crate::DnsFallbackStrategy;
 use connlib_shared::{messages::Interface as InterfaceConfig, Callbacks, Error, Result};
 use futures::TryStreamExt;
 use futures_util::future::BoxFuture;
@@ -23,7 +22,7 @@ mod utils;
 pub(crate) const SIOCGIFMTU: libc::c_ulong = libc::SIOCGIFMTU;
 
 const IFACE_NAME: &str = "tun-firezone";
-const TUNSETIFF: u64 = 0x4004_54ca;
+const TUNSETIFF: libc::c_ulong = 0x4004_54ca;
 const TUN_FILE: &[u8] = b"/dev/net/tun\0";
 const RT_PROT_STATIC: u8 = 4;
 const DEFAULT_MTU: u32 = 1280;
@@ -81,11 +80,7 @@ impl Tun {
         utils::poll_raw_fd(&self.fd, |fd| read(fd, buf), cx)
     }
 
-    pub fn new(
-        config: &InterfaceConfig,
-        _: &impl Callbacks,
-        _: DnsFallbackStrategy,
-    ) -> Result<Self> {
+    pub fn new(config: &InterfaceConfig, _: &impl Callbacks) -> Result<Self> {
         let fd = match unsafe { open(TUN_FILE.as_ptr() as _, O_RDWR) } {
             -1 => return Err(get_last_error()),
             fd => fd,
