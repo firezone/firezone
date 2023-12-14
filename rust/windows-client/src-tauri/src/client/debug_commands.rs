@@ -86,7 +86,8 @@ mod details {
         let rt = Runtime::new()?;
         rt.block_on(async {
             loop {
-                crate::client::deep_link::accept(PIPE_NAME).await?;
+                let server = crate::client::deep_link::Server::new(PIPE_NAME)?;
+                server.accept().await?;
             }
         })
     }

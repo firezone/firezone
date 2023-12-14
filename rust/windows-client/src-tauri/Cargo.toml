@@ -36,7 +36,6 @@ zip = "0.6.6"
 [target.'cfg(windows)'.dependencies]
 # Tauri works fine on Linux, but it requires a lot of build-time deps like glib and gdk, so I've blocked it out for now.
 tauri = { version = "1.5", features = [ "dialog", "shell-open-api", "system-tray" ] }
-tauri-plugin-deep-link = "0.1.2"
 tauri-utils = "1.5.1"
 winreg = "0.51.0"
 wintun = "0.3.2"

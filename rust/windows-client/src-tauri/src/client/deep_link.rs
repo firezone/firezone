@@ -27,74 +27,97 @@ pub enum Error {
     /// Error from server's POV
     #[error(transparent)]
     ServerCommunications(io::Error),
+    #[error(transparent)]
+    UrlParse(#[from] url::ParseError),
     /// Something went wrong setting up the registry
     #[error(transparent)]
     WindowsRegistry(io::Error),
 }
 
-/// Accepts one incoming deep link from a named pipe client
-pub async fn accept(id: &str) -> Result<(), Error> {
-    // This isn't air-tight - We recreate the whole server on each loop,
-    // rather than binding 1 socket and accepting many streams like a normal socket API.
-    // I can only assume Tokio is following Windows' underlying API.
+/// A server for a named pipe, so we can receive deep links from other instances
+/// of the client launched by web browsers
+pub struct Server {
+    inner: named_pipe::NamedPipeServer,
+}
 
-    // We could instead pick an ephemeral TCP port and write that to a file,
-    // akin to how Unix processes will write their PID to a file to manage long-running instances
-    // But this doesn't require us to listen on TCP.
+impl Server {
+    /// Construct a server, but don't await client connections yet
+    ///
+    /// Panics if there is no Tokio runtime
+    pub fn new(id: &str) -> Result<Self, Error> {
+        // This isn't air-tight - We recreate the whole server on each loop,
+        // rather than binding 1 socket and accepting many streams like a normal socket API.
+        // I can only assume Tokio is following Windows' underlying API.
 
-    let mut server_options = named_pipe::ServerOptions::new();
-    server_options.first_pipe_instance(true);
+        // We could instead pick an ephemeral TCP port and write that to a file,
+        // akin to how Unix processes will write their PID to a file to manage long-running instances
+        // But this doesn't require us to listen on TCP.
 
-    // This will allow non-admin clients to connect to us even if we're running as admin
-    let mut sd = WinSec::SECURITY_DESCRIPTOR::default();
-    let psd = WinSec::PSECURITY_DESCRIPTOR(&mut sd as *mut _ as *mut c_void);
-    unsafe {
-        // ChatGPT pointed me to these functions, it's better than the official MS docs
-        WinSec::InitializeSecurityDescriptor(
-            psd,
-            windows::Win32::System::SystemServices::SECURITY_DESCRIPTOR_REVISION,
-        )
+        let mut server_options = named_pipe::ServerOptions::new();
+        server_options.first_pipe_instance(true);
+
+        // This will allow non-admin clients to connect to us even if we're running as admin
+        let mut sd = WinSec::SECURITY_DESCRIPTOR::default();
+        let psd = WinSec::PSECURITY_DESCRIPTOR(&mut sd as *mut _ as *mut c_void);
+        unsafe {
+            // ChatGPT pointed me to these functions, it's better than the official MS docs
+            WinSec::InitializeSecurityDescriptor(
+                psd,
+                windows::Win32::System::SystemServices::SECURITY_DESCRIPTOR_REVISION,
+            )
+            .map_err(|_| Error::Listen)?;
+            WinSec::SetSecurityDescriptorDacl(psd, true, None, false).map_err(|_| Error::Listen)?;
+        }
+
+        let mut sa = WinSec::SECURITY_ATTRIBUTES {
+            nLength: std::mem::size_of::<WinSec::SECURITY_ATTRIBUTES>()
+                .try_into()
+                .unwrap(),
+            lpSecurityDescriptor: psd.0,
+            bInheritHandle: false.into(),
+        };
+
+        let path = named_pipe_path(id);
+        let server = unsafe {
+            server_options
+                .create_with_security_attributes_raw(path, &mut sa as *mut _ as *mut c_void)
+        }
         .map_err(|_| Error::Listen)?;
-        WinSec::SetSecurityDescriptorDacl(psd, true, None, false).map_err(|_| Error::Listen)?;
+
+        tracing::debug!("server is bound");
+        Ok(Server { inner: server })
     }
 
-    let mut sa = WinSec::SECURITY_ATTRIBUTES {
-        nLength: std::mem::size_of::<WinSec::SECURITY_ATTRIBUTES>()
-            .try_into()
-            .unwrap(),
-        lpSecurityDescriptor: psd.0,
-        bInheritHandle: false.into(),
-    };
+    /// Await one incoming deep link from a named pipe client
+    /// Tokio's API is strange, so this consumes the server.
+    /// I assume this is based on the underlying Windows API.
+    /// I tried re-using the server and it acted strange. The official Tokio
+    /// examples are not clear on this.
+    pub async fn accept(mut self) -> Result<url::Url, Error> {
+        self.inner
+            .connect()
+            .await
+            .map_err(Error::ServerCommunications)?;
+        tracing::debug!("server got connection");
 
-    let path = named_pipe_path(id);
-    let mut server = unsafe {
-        server_options.create_with_security_attributes_raw(path, &mut sa as *mut _ as *mut c_void)
+        // TODO: Limit the read size here. Our typical callback is 350 bytes, so 4,096 bytes should be more than enough.
+        // Also, I think `read_to_end` can do partial reads because this is a network socket,
+        // not a file. We might need a length-prefixed or newline-terminated format for IPC.
+        let mut bytes = vec![];
+        self.inner
+            .read_to_end(&mut bytes)
+            .await
+            .map_err(Error::ServerCommunications)?;
+
+        self.inner.disconnect().ok();
+
+        tracing::debug!("Server read");
+        let s = String::from_utf8(bytes).map_err(Error::LinkNotUtf8)?;
+        tracing::info!("{}", s);
+        let url = url::Url::parse(&s)?;
+
+        Ok(url)
     }
-    .map_err(|_| Error::Listen)?;
-
-    tracing::debug!("server is bound");
-    server
-        .connect()
-        .await
-        .map_err(Error::ServerCommunications)?;
-    tracing::debug!("server got connection");
-
-    // TODO: Limit the read size here. Our typical callback is 350 bytes, so 4,096 bytes should be more than enough.
-    // Also, I think `read_to_end` can do partial reads because this is a network socket,
-    // not a file. We might need a length-prefixed or newline-terminated format for IPC.
-    let mut req = vec![];
-    server
-        .read_to_end(&mut req)
-        .await
-        .map_err(Error::ServerCommunications)?;
-
-    server.disconnect().ok();
-
-    tracing::debug!("Server read");
-    let req = String::from_utf8(req).map_err(Error::LinkNotUtf8)?;
-    tracing::info!("{}", req);
-
-    Ok(())
 }
 
 /// Open a deep link by sending it to the already-running instance of the app
