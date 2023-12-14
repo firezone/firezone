@@ -7,7 +7,7 @@ defmodule Domain.Actors.Actor do
     field :name, :string
 
     has_many :identities, Domain.Auth.Identity, where: [deleted_at: nil]
-    has_many :clients, Domain.Clients.Client, where: [deleted_at: nil]
+    has_many :clients, Domain.Clients.Client, where: [deleted_at: nil], preload_order: [desc: :last_seen_at]
     has_many :memberships, Domain.Actors.Membership, on_replace: :delete
     # TODO: where doesn't work on join tables so soft-deleted records will be preloaded,
     # ref https://github.com/firezone/firezone/issues/2162
