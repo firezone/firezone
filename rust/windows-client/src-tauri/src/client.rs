@@ -35,6 +35,8 @@ mod wintun_install;
 /// Prevents a problem where changing the args to `gui::run` breaks static analysis on non-Windows targets, where the gui is stubbed out
 #[allow(dead_code)]
 pub(crate) struct GuiParams {
+    /// True if we were re-launched with elevated permissions. If the user launched us directly with elevated permissions, this is false.
+    flag_elevated: bool,
     /// True if we should slow down I/O operations to test how the GUI handles slow I/O
     inject_faults: bool,
 }
@@ -55,6 +57,7 @@ pub(crate) fn run() -> Result<()> {
             if elevation::check()? {
                 // We're already elevated, just run the GUI
                 gui::run(GuiParams {
+                    flag_elevated: false,
                     inject_faults: cli.inject_faults,
                 })
             } else {
@@ -83,6 +86,7 @@ pub(crate) fn run() -> Result<()> {
         Some(Cmd::DebugWintun) => debug_commands::wintun(cli),
         // If we already tried to elevate ourselves, don't try again
         Some(Cmd::Elevated) => gui::run(GuiParams {
+            flag_elevated: true,
             inject_faults: cli.inject_faults,
         }),
         Some(Cmd::OpenDeepLink(deep_link)) => debug_commands::open_deep_link(&deep_link.url),
