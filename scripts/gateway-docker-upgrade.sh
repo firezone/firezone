@@ -6,11 +6,12 @@ echo2() {
   echo $* >&2
 }
 
-CONTAINER_NAME=firezone-gateway
 TARGET_IMAGE="${TARGET_IMAGE:-us-east1-docker.pkg.dev/firezone-prod/firezone/gateway:1}"          # use DOCKER_IMAGE to override default image
+REPO=$(dirname "$TARGET_IMAGE")
+IMAGE=$(basename "$TARGET_IMAGE")
 
 # find existing running gateway
-CURRENTLY_RUNNING=$(docker ps --format "{{.Names}} {{.Image}}" | grep -e "$CONTAINER_NAME" | awk '{print $1}')
+CURRENTLY_RUNNING=$(docker ps --format "{{.Names}} {{.Image}}" | grep -e "$TARGET_IMAGE" | awk '{print $1}')
 if [ "$CURRENTLY_RUNNING" == "" ]; then
     echo2 "No Firezone gateway found running on this system. Exiting."
     exit -1
@@ -24,18 +25,19 @@ for RUNNING_CONTAINER in $CURRENTLY_RUNNING
 do
     LATEST=$(docker inspect --format "{{.Id}}" "$TARGET_IMAGE")
     RUNNING=$(docker inspect --format "{{.Image}}" "$RUNNING_CONTAINER")
+    RUNNING_NAME=$(docker inspect --format "{{.Name}}" "$RUNNING_CONTAINER" | sed 's~/~~g')
 
     # Upgrade if necessary
     if [ "$RUNNING" != "$LATEST" ]; then
         echo2 -n "Upgrading gateway..."
         docker container inspect "$RUNNING_CONTAINER" --format '{{join .Config.Env "\n"}}' | grep -v "PATH" > variables.env
-        docker stop "$CONTAINER_NAME" > /dev/null
-        docker rm -f "$CONTAINER_NAME" > /dev/null
+        docker stop "$RUNNING_CONTAINER" > /dev/null
+        docker rm -f "$RUNNING_CONTAINER" > /dev/null
         docker run -d \
           --restart=unless-stopped \
           --pull=always \
           --health-cmd="ip link | grep tun-firezone" \
-          --name=firezone-gateway \
+          --name="$RUNNING_NAME" \
           --cap-add=NET_ADMIN \
           --volume /etc/firezone \
           --env-file variables.env \
