@@ -3,6 +3,7 @@ defmodule Domain.Clients do
   alias Domain.{Repo, Auth, Validator}
   alias Domain.Actors
   alias Domain.Clients.{Client, Authorizer, Presence}
+  require Ecto.Query
 
   def start_link(opts) do
     Supervisor.start_link(__MODULE__, opts, name: __MODULE__)
@@ -83,6 +84,7 @@ defmodule Domain.Clients do
       {:ok, clients} =
         Client.Query.not_deleted()
         |> Authorizer.for_subject(subject)
+        |> Ecto.Query.order_by([clients: clients], desc: clients.last_seen_at, desc: clients.id)
         |> Repo.list()
 
       clients =
