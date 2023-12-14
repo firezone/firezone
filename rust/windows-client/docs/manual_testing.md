@@ -61,4 +61,30 @@ If the client stops running while signed in, then the token may be stored in Win
 
 # Tunneling
 
-TODO
+If you can't test with resources that respond to ping, curl is fine too.
+
+- The tunnel can route public-routable IPs, e.g. 1.1.1.1, for public resources
+- All resources accessed by domain will get a private network address, e.g. 10.0.14.19, even public resources
+- When the client is signed in, all DNS requests go to Firezone first, so that it can route public resources
+
+## Signed out
+
+Given the client is signed out or not running, when you ping...
+
+1. [ ] a public resource by IP (e.g. 1.1.1.1), it will respond through a physical interface
+2. [ ] a protected resource by IP (e.g. 10.0.14.19), it will not respond
+3. [ ] a non-resource by IP (e.g. a.b.c.d), it will respond through a physical interface
+4. [ ] a public resource by domain (e.g. example.com), the system's DNS will resolve it, and it will respond through a physical interface
+5. [ ] a protected resource by domain (e.g. gitlab.company.com), the system's DNS will fail to resolve it
+6. [ ] a non-resource by domain (e.g. example.com), the system's DNS will resolve it, and it will respond through a physical interface
+
+## Signed in
+
+Given the client is signed in, when you ping...
+
+1. [ ] a public resource by IP (e.g. 1.1.1.1), it will respond through the tunnel
+2. [ ] a protected resource by IP (e.g. 10.0.14.19), it will respond through the tunnel
+3. [ ] a non-resource by IP (e.g. a.b.c.d), it will respond through a physical interface
+4. [ ] a public resource by domain (e.g. example.com), Firezone's DNS will make an IP for it, and it will respond through the tunnel
+5. [ ] a protected resource by domain (e.g. gitlab.company.com), Firezone's DNS will make an IP for it, and it will respond through the tunnel
+6. [ ] a non-resource by domain (e.g. example.com), Firezone's DNS will fall back on the system's DNS, which will find the domain's publicly-routable IP, and it will respond through a physical interface
