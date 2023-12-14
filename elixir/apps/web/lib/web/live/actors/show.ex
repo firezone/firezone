@@ -20,6 +20,7 @@ defmodule Web.Actors.Show do
       {:ok,
        assign(socket,
          actor: actor,
+         clients: Enum.sort_by(actor.clients, & &1.last_seen_at, :desc),
          flows: flows,
          page_title: actor.name,
          flow_activities_enabled?: Domain.Config.flow_activities_enabled?()

@@ -5,7 +5,7 @@ defmodule Web.Clients.Index do
 
   def mount(_params, _session, socket) do
     with {:ok, clients} <- Clients.list_clients(socket.assigns.subject, preload: :actor) do
-      clients = Enum.sort_by(clients, & &1.online?, :desc)
+      clients = Enum.sort_by(clients, & &1.last_seen_at, :desc)
       {:ok, assign(socket, clients: clients)}
     else
       {:error, _reason} -> raise Web.LiveErrors.NotFoundError

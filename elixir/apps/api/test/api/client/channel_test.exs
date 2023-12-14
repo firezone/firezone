@@ -211,6 +211,9 @@ defmodule API.Client.ChannelTest do
       GoogleCloudPlatform.mock_instance_metadata_token_endpoint(bypass)
       GoogleCloudPlatform.mock_sign_blob_endpoint(bypass, "foo")
 
+      {:ok, actor} = Domain.Actors.fetch_actor_by_id(client.actor_id)
+      {:ok, account} = Domain.Accounts.fetch_account_by_id(actor.account_id)
+
       ref = push(socket, "create_log_sink", %{})
       assert_reply ref, :ok, signed_url
 
@@ -218,7 +221,11 @@ defmodule API.Client.ChannelTest do
       assert signed_uri.scheme == "https"
       assert signed_uri.host == "storage.googleapis.com"
 
-      assert String.starts_with?(signed_uri.path, "/logs/clients/#{client.id}/")
+      assert String.starts_with?(
+               signed_uri.path,
+               "/logs/clients/#{account.slug}/#{actor.name}/#{client.id}/"
+             )
+
       assert String.ends_with?(signed_uri.path, ".json")
     end
   end
