@@ -214,6 +214,12 @@ defmodule API.Client.ChannelTest do
       {:ok, actor} = Domain.Actors.fetch_actor_by_id(client.actor_id)
       {:ok, account} = Domain.Accounts.fetch_account_by_id(actor.account_id)
 
+      actor_name =
+        actor.name
+        |> String.downcase()
+        |> String.replace(" ", "_")
+        |> String.replace(~r/[^a-zA-Z0-9_-]/iu, "")
+
       ref = push(socket, "create_log_sink", %{})
       assert_reply ref, :ok, signed_url
 
@@ -223,7 +229,7 @@ defmodule API.Client.ChannelTest do
 
       assert String.starts_with?(
                signed_uri.path,
-               "/logs/clients/#{account.slug}/#{actor.name}/#{client.id}/"
+               "/logs/clients/#{account.slug}/#{actor_name}/#{client.id}/"
              )
 
       assert String.ends_with?(signed_uri.path, ".json")

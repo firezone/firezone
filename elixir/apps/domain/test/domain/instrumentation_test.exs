@@ -9,7 +9,7 @@ defmodule Domain.InstrumentationTest do
 
       Domain.Config.put_env_override(Domain.Instrumentation, client_logs_enabled: false)
 
-      assert create_remote_log_sink(client) == {:error, :disabled}
+      assert create_remote_log_sink(client, "acct_slug", "john_doe") == {:error, :disabled}
     end
 
     test "returns a signed URL" do
@@ -21,7 +21,13 @@ defmodule Domain.InstrumentationTest do
       {:ok, actor} = Domain.Actors.fetch_actor_by_id(client.actor_id)
       {:ok, account} = Domain.Accounts.fetch_account_by_id(actor.account_id)
 
-      assert {:ok, signed_url} = create_remote_log_sink(client)
+      actor_name =
+        actor.name
+        |> String.downcase()
+        |> String.replace(" ", "_")
+        |> String.replace(~r/[^a-zA-Z0-9_-]/iu, "")
+
+      assert {:ok, signed_url} = create_remote_log_sink(client, actor_name, account.slug)
 
       assert signed_uri = URI.parse(signed_url)
       assert signed_uri.scheme == "https"
@@ -29,7 +35,7 @@ defmodule Domain.InstrumentationTest do
 
       assert String.starts_with?(
                signed_uri.path,
-               "/logs/clients/#{account.slug}/#{actor.name}/#{client.id}/"
+               "/logs/clients/#{account.slug}/#{actor_name}/#{client.id}/"
              )
 
       assert String.ends_with?(signed_uri.path, ".json")

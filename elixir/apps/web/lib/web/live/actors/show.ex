@@ -17,7 +17,6 @@ defmodule Web.Actors.Show do
            Flows.list_flows_for(actor, socket.assigns.subject,
              preload: [gateway: [:group], client: [], policy: [:resource, :actor_group]]
            ) do
-
       {:ok,
        assign(socket,
          actor: actor,
