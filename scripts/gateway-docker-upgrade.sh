@@ -6,7 +6,7 @@ echo2() {
   echo $* >&2
 }
 
-TARGET_IMAGE="${TARGET_IMAGE:-us-east1-docker.pkg.dev/firezone-prod/firezone/gateway:1}"          # use DOCKER_IMAGE to override default image
+TARGET_IMAGE="${TARGET_IMAGE:-us-east1-docker.pkg.dev/firezone-prod/firezone/gateway:1}"
 REPO=$(dirname "$TARGET_IMAGE")
 IMAGE=$(basename "$TARGET_IMAGE")
 
