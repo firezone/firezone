@@ -165,8 +165,16 @@ defmodule API.Client.Channel do
     OpenTelemetry.Ctx.attach(socket.assigns.opentelemetry_ctx)
     OpenTelemetry.Tracer.set_current_span(socket.assigns.opentelemetry_span_ctx)
 
+    account_slug = socket.assigns.subject.account.slug
+
+    actor_name =
+      socket.assigns.subject.actor.name
+      |> String.downcase()
+      |> String.replace(" ", "_")
+      |> String.replace(~r/[^a-zA-Z0-9_-]/iu, "")
+
     OpenTelemetry.Tracer.with_span "client.create_log_sink" do
-      case Instrumentation.create_remote_log_sink(socket.assigns.client) do
+      case Instrumentation.create_remote_log_sink(socket.assigns.client, actor_name, account_slug) do
         {:ok, signed_url} -> {:reply, {:ok, signed_url}, socket}
         {:error, :disabled} -> {:reply, {:error, :disabled}, socket}
       end
