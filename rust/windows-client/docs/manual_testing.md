@@ -18,6 +18,13 @@ If the client stops running while signed in, then the token may be stored in Win
 - [ ] Given the UUID is stored in AppData, when you run the client, then it will load the UUID
 - [ ] Given the client is running, when a session starts, then the UUID will be used as the device ID
 
+# DLL
+
+- [ ] Given wintun.dll does not exist in the same directory as the exe, when you run the exe, then it will create wintun.dll
+- [ ] Given wintun.dll has extra bytes appended to the end, when you run the exe, then it will re-write wintun.dll
+- [ ] Given wintun.dll does not have the expected SHA256, when you run the exe, then it will re-write wintun.dll
+- [ ] Given wintun.dll has the expected SHA256, when you run the exe, then it will not re-write wintun.dll
+
 # Launching
 
 - [ ] Given the client is not running, when you open a deep link, then the client will not start

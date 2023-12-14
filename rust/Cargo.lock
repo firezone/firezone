@@ -2010,6 +2010,7 @@ dependencies = [
  "hyper 1.0.1",
  "hyper-util",
  "keyring",
+ "ring 0.17.7",
  "secrecy",
  "serde",
  "serde_json",
