@@ -22,7 +22,7 @@ mod utils;
 pub(crate) const SIOCGIFMTU: libc::c_ulong = libc::SIOCGIFMTU;
 
 const IFACE_NAME: &str = "tun-firezone";
-const TUNSETIFF: u64 = 0x4004_54ca;
+const TUNSETIFF: u32 = 0x4004_54ca;
 const TUN_FILE: &[u8] = b"/dev/net/tun\0";
 const RT_PROT_STATIC: u8 = 4;
 const DEFAULT_MTU: u32 = 1280;
@@ -88,11 +88,7 @@ impl Tun {
 
         // Safety: We just opened the file descriptor.
         unsafe {
-            ioctl::exec(
-                fd,
-                TUNSETIFF.try_into().unwrap(),
-                &ioctl::Request::<SetTunFlagsPayload>::new(),
-            )?;
+            ioctl::exec(fd, TUNSETIFF, &ioctl::Request::<SetTunFlagsPayload>::new())?;
         }
 
         set_non_blocking(fd)?;
