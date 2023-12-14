@@ -112,7 +112,6 @@ pub(crate) fn run(params: client::GuiParams) -> Result<()> {
 
             // Set up logger
             // It's hard to set it up before Tauri's setup, because Tauri knows where all the config and data go in AppData and I don't want to replicate their logic.
-
             let logging_handles = client::logging::setup(&advanced_settings.log_filter)?;
             tracing::info!("started log");
 
