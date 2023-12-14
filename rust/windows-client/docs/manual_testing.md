@@ -15,8 +15,15 @@ If the client stops running while signed in, then the token may be stored in Win
 # Device ID
 
 - [ ] Given the AppData dir for the client doesn't exist, when you run the client, then the client will generate a UUIDv4 (random) and store it in AppData
-- [ ] Given the UUID is stored in AppData, when you run the client, then it will load the UUID and compute its SHA256 hash
-- [ ] Given the client is running, when a session starts, then the hexadecimal SHA256 hash of the UUID will be used as the device ID
+- [ ] Given the UUID is stored in AppData, when you run the client, then it will load the UUID
+- [ ] Given the client is running, when a session starts, then the UUID will be used as the device ID
+
+# Launching
+
+- [ ] Given the client is not running, when you open a deep link, then the client will not start
+- [ ] Given the client is not running, when you run the exe with normal privileges, then the client will unpack wintun.dll next to the exe if needed, try to start a bogus probe tunnel, and re-launch itself with elevated privilege
+- [ ] Given the client is not running, when you run the exe as admin, then the client will unpack wintun.dll next to the exe if needed, try to start a bogus probe tunnel, and keep running
+- [ ] Given the client is running, when you open a deep link as part of sign-in, then the client will sign in without a second UAC prompt
 
 # Permissions
 

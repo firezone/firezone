@@ -7,6 +7,8 @@ mod debug_commands;
 #[cfg(target_family = "windows")]
 mod deep_link;
 mod device_id;
+#[cfg(target_family = "windows")]
+mod elevation;
 #[cfg(target_family = "unix")]
 mod gui {
     use super::*;
@@ -27,6 +29,7 @@ mod logging;
 // Relies on some types from Tauri
 #[cfg(target_os = "windows")]
 mod settings;
+mod wintun_install;
 
 /// Prevents a problem where changing the args to `gui::run` breaks static analysis on non-Windows targets, where the gui is stubbed out
 #[allow(dead_code)]
