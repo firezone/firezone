@@ -1,7 +1,11 @@
-# Tauri + Vanilla
+This is a test program for features that aren't working in the GUI Windows client yet.
 
-This template should help get you started developing with Tauri in vanilla HTML, CSS and Javascript.
+# Debugging
 
-## Recommended IDE Setup
+In Powershell
 
-- [VS Code](https://code.visualstudio.com/) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
+```
+cd src-tauri
+cargo build
+Start-Process target/debug/windows-permissions-test.exe -verb runas
+```

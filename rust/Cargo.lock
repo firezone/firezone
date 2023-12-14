@@ -1184,6 +1184,7 @@ dependencies = [
  "url",
  "uuid",
  "webrtc",
+ "wintun",
 ]
 
 [[package]]
@@ -2012,6 +2013,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-android",
+ "uuid",
  "webrtc",
  "wintun",
 ]
@@ -2038,6 +2040,7 @@ dependencies = [
  "thiserror",
  "tokio",
  "tracing",
+ "tracing-log 0.2.0",
  "tracing-subscriber",
  "url",
  "uuid",

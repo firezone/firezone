@@ -48,12 +48,12 @@ impl Device {
 
     #[cfg(target_family = "windows")]
     pub(crate) fn new(
-        _: &Interface,
+        config: &Interface,
         _: &impl Callbacks<Error = Error>,
     ) -> Result<Device, ConnlibError> {
         Ok(Device {
-            tun: Tun::new(),
-            mtu: AtomicUsize::default(), // Dummy value for now.
+            tun: Tun::new(config)?,
+            mtu: AtomicUsize::new(1_280),
         })
     }
 
@@ -82,10 +82,23 @@ impl Device {
     #[cfg(target_family = "windows")]
     pub(crate) fn poll_read<'b>(
         &self,
-        _: &'b mut [u8],
-        _: &mut Context<'_>,
+        buf: &'b mut [u8],
+        cx: &mut Context<'_>,
     ) -> Poll<io::Result<Option<MutableIpPacket<'b>>>> {
-        Poll::Pending
+        let n = std::task::ready!(self.tun.poll_read(&mut buf[..self.mtu()], cx))?;
+
+        if n == 0 {
+            return Poll::Ready(Ok(None));
+        }
+
+        Poll::Ready(Ok(Some(MutableIpPacket::new(&mut buf[..n]).ok_or_else(
+            || {
+                io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "received bytes are not an IP packet",
+                )
+            },
+        )?)))
     }
 
     pub(crate) fn mtu(&self) -> usize {
@@ -109,9 +122,10 @@ impl Device {
     #[cfg(target_family = "windows")]
     pub(crate) fn add_route(
         &self,
-        _: IpNetwork,
+        route: IpNetwork,
         _: &impl Callbacks<Error = Error>,
     ) -> Result<Option<Device>, Error> {
+        self.tun.add_route(route)?;
         Ok(None)
     }
 
@@ -125,6 +139,7 @@ impl Device {
 
     #[cfg(target_family = "windows")]
     pub(crate) fn refresh_mtu(&self) -> Result<usize, Error> {
+        // TODO
         Ok(0)
     }
 
