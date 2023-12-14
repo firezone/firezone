@@ -63,10 +63,11 @@ curl -s https://github.com/firezone/firezone/main/scripts/gateway-docker-upgrade
 <TabsItem title="systemd">
 
 If you deployed via the portal, your unit file should already contain logic
-necessary to upgrade the gateway on service start. Simply restart the service to
-upgrade:
+necessary to upgrade the gateway on service start. Simply move the old binary
+and restart the service to trigger the upgrade:
 
 ```bash
+sudo mv /usr/local/bin/firezone-gateway /usr/local/bin/firezone-gateway.bak
 sudo systemctl restart firezone-gateway
 ```
 
