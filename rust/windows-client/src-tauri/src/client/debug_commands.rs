@@ -105,8 +105,11 @@ mod details {
         tracing::subscriber::set_global_default(subscriber)
             .expect("setting default subscriber failed");
 
-        crate::client::elevation::check()?;
-        println!("Elevated - wintun was able to create an adapter");
+        if crate::client::elevation::check()? {
+            tracing::info!("Elevated");
+        } else {
+            tracing::warn!("Not elevated")
+        }
         Ok(())
     }
 }
