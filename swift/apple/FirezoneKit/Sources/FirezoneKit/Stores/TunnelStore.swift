@@ -29,7 +29,7 @@ final class TunnelStore: ObservableObject {
   static let shared = TunnelStore()
 
   @Published private var tunnel: NETunnelProviderManager?
-  @Published private(set) var tunnelAuthStatus: TunnelAuthStatus = .tunnelUninitialized
+  @Published private(set) var tunnelAuthStatus: TunnelAuthStatus = .uninitialized
 
   @Published private(set) var status: NEVPNStatus {
     didSet { TunnelStore.logger.info("status changed: \(self.status.description)") }
@@ -48,15 +48,15 @@ final class TunnelStore: ObservableObject {
 
   init() {
     self.tunnel = nil
-    self.tunnelAuthStatus = .tunnelUninitialized
+    self.tunnelAuthStatus = .uninitialized
     self.status = .invalid
 
     Task {
-      await initializeTunnel()
+      await initializeTunnel(canCreateTunnel: false)
     }
   }
 
-  func initializeTunnel() async {
+  func initializeTunnel(canCreateTunnel: Bool) async {
     do {
       let managers = try await NETunnelProviderManager.loadAllFromPreferences()
       Self.logger.log("\(#function): \(managers.count) tunnel managers found")
@@ -76,7 +76,7 @@ final class TunnelStore: ObservableObject {
         self.tunnel = tunnel
         self.tunnelAuthStatus = tunnel.authStatus()
         self.status = tunnel.connection.status
-      } else {
+      } else if canCreateTunnel {
         let tunnel = NETunnelProviderManager()
         tunnel.localizedDescription = "Firezone"
         tunnel.protocolConfiguration = basicProviderProtocol()
@@ -84,6 +84,8 @@ final class TunnelStore: ObservableObject {
         Self.logger.log("\(#function): Tunnel created")
         self.tunnel = tunnel
         self.tunnelAuthStatus = .signedOut
+      } else {
+        self.tunnelAuthStatus = .noTunnelFound
       }
       setupTunnelObservers()
       Self.logger.log("\(#function): TunnelStore initialized")
@@ -342,21 +344,24 @@ final class TunnelStore: ObservableObject {
 }
 
 enum TunnelAuthStatus: Equatable, CustomStringConvertible {
-  case tunnelUninitialized
+  case uninitialized
+  case noTunnelFound
   case signedOut
   case signedIn(authBaseURL: URL, tokenReference: Data)
 
   var isInitialized: Bool {
     switch self {
-    case .tunnelUninitialized: return false
+    case .uninitialized: return false
     default: return true
     }
   }
 
   var description: String {
     switch self {
-    case .tunnelUninitialized:
+    case .uninitialized:
       return "tunnel uninitialized"
+    case .noTunnelFound:
+      return "no tunnel found"
     case .signedOut:
       return "signedOut"
     case .signedIn(let authBaseURL, _):
@@ -413,9 +418,9 @@ extension NETunnelProviderManager {
       var providerConfig: [String: Any] = protocolConfiguration.providerConfiguration ?? [:]
 
       switch authStatus {
-      case .tunnelUninitialized:
-        protocolConfiguration.passwordReference = nil
-        break
+      case .uninitialized, .noTunnelFound:
+        return
+
       case .signedOut:
         protocolConfiguration.passwordReference = nil
         break

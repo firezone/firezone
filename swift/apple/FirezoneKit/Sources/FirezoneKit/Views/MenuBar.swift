@@ -255,7 +255,7 @@
     private func updateStatusItemIcon() {
       self.statusItem.button?.image = {
         switch self.loginStatus {
-        case .signedOut, .uninitialized:
+        case .signedOut, .uninitialized, .needsTunnelCreationPermission:
           return self.signedOutIcon
         case .signedIn:
           switch self.tunnelStatus {
@@ -308,6 +308,10 @@
         signInMenuItem.title = "Initializing"
         signInMenuItem.target = nil
         signOutMenuItem.isHidden = true
+      case .needsTunnelCreationPermission:
+        signInMenuItem.title = "Requires VPN permission"
+        signInMenuItem.target = nil
+        signOutMenuItem.isHidden = true
       case .signedOut:
         signInMenuItem.title = "Sign In"
         signInMenuItem.target = self
@@ -321,6 +325,11 @@
       // Update resources "header" menu items
       switch (self.loginStatus, self.tunnelStatus) {
       case (.uninitialized, _):
+        resourcesTitleMenuItem.isHidden = true
+        resourcesUnavailableMenuItem.isHidden = true
+        resourcesUnavailableReasonMenuItem.isHidden = true
+        resourcesSeparatorMenuItem.isHidden = true
+      case (.needsTunnelCreationPermission, _):
         resourcesTitleMenuItem.isHidden = true
         resourcesUnavailableMenuItem.isHidden = true
         resourcesUnavailableReasonMenuItem.isHidden = true

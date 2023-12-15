@@ -112,6 +112,8 @@ import SwiftUI
               Text("Signed Out")
             case .uninitialized:
               Text("Initializing…")
+            case .needsTunnelCreationPermission:
+              Text("Requires VPN permission")
             }
           }
         }

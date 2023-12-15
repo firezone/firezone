@@ -29,6 +29,7 @@ final class AuthStore: ObservableObject {
 
   enum LoginStatus: CustomStringConvertible {
     case uninitialized
+    case needsTunnelCreationPermission
     case signedOut
     case signedIn(actorName: String)
 
@@ -36,6 +37,8 @@ final class AuthStore: ObservableObject {
       switch self {
       case .uninitialized:
         return "uninitialized"
+      case .needsTunnelCreationPermission:
+        return "needsTunnelCreationPermission"
       case .signedOut:
         return "signedOut"
       case .signedIn(let actorName):
@@ -113,8 +116,10 @@ final class AuthStore: ObservableObject {
 
   private func getLoginStatus(from tunnelAuthStatus: TunnelAuthStatus) async -> LoginStatus {
     switch tunnelAuthStatus {
-    case .tunnelUninitialized:
+    case .uninitialized:
       return .uninitialized
+    case .noTunnelFound:
+      return .needsTunnelCreationPermission
     case .signedOut:
       return .signedOut
     case .signedIn(let tunnelAuthBaseURL, let tokenReference):
@@ -246,6 +251,8 @@ final class AuthStore: ObservableObject {
           try await tunnelStore.saveAuthStatus(.signedOut)
         }
       }
+    case .needsTunnelCreationPermission:
+      break
     case .uninitialized:
       break
     }
