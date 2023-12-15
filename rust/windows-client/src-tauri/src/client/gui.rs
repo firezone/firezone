@@ -7,9 +7,10 @@ use crate::client::{self, deep_link, AppLocalDataDir};
 use anyhow::{anyhow, bail, Context, Result};
 use client::settings::{self, AdvancedSettings};
 use connlib_client_shared::file_logger;
+use connlib_shared::messages::ResourceId;
 use secrecy::{ExposeSecret, SecretString};
 use std::{
-    net::{Ipv4Addr, Ipv6Addr},
+    net::{IpAddr, Ipv4Addr},
     path::PathBuf,
     str::FromStr,
 };
@@ -188,6 +189,11 @@ impl FromStr for TrayMenuEvent {
 }
 
 fn handle_system_tray_event(app: &tauri::AppHandle, event: TrayMenuEvent) -> Result<()> {
+    let ctlr_tx = &app
+        .try_state::<Managed>()
+        .ok_or_else(|| anyhow!("can't get Managed struct from Tauri"))?
+        .ctlr_tx;
+
     match event {
         TrayMenuEvent::About => {
             let win = app
@@ -200,7 +206,9 @@ fn handle_system_tray_event(app: &tauri::AppHandle, event: TrayMenuEvent) -> Res
                 win.show()?;
             }
         }
-        TrayMenuEvent::Resource { id } => tracing::warn!("TODO copy {id} to clipboard"),
+        TrayMenuEvent::Resource { id } => {
+            ctlr_tx.blocking_send(ControllerRequest::CopyResource(id))?
+        }
         TrayMenuEvent::Settings => {
             let win = app
                 .get_window("settings")
@@ -213,11 +221,7 @@ fn handle_system_tray_event(app: &tauri::AppHandle, event: TrayMenuEvent) -> Res
                 win.show()?;
             }
         }
-        TrayMenuEvent::SignIn => app
-            .try_state::<Managed>()
-            .ok_or_else(|| anyhow!("getting ctlr_tx state"))?
-            .ctlr_tx
-            .blocking_send(ControllerRequest::SignIn)?,
+        TrayMenuEvent::SignIn => ctlr_tx.blocking_send(ControllerRequest::SignIn)?,
         TrayMenuEvent::SignOut => {
             keyring_entry()?.delete_password()?;
             app.tray_handle().set_menu(signed_out_menu())?;
@@ -228,6 +232,7 @@ fn handle_system_tray_event(app: &tauri::AppHandle, event: TrayMenuEvent) -> Res
 }
 
 pub(crate) enum ControllerRequest {
+    CopyResource(String),
     ExportLogs(PathBuf),
     GetAdvancedSettings(oneshot::Sender<AdvancedSettings>),
     SchemeRequest(url::Url),
@@ -255,6 +260,8 @@ struct CallbackHandler {
 enum CallbackError {
     #[error(transparent)]
     ControllerRequest(#[from] tokio::sync::mpsc::error::TrySendError<ControllerRequest>),
+    #[error(transparent)]
+    IpConfig(#[from] ipconfig::error::Error),
 }
 
 impl connlib_client_shared::Callbacks for CallbackHandler {
@@ -264,6 +271,7 @@ impl connlib_client_shared::Callbacks for CallbackHandler {
         &self,
         error: Option<&connlib_client_shared::Error>,
     ) -> Result<(), Self::Error> {
+        // TODO: implement
         tracing::error!("on_disconnect {error:?}");
         Ok(())
     }
@@ -273,17 +281,8 @@ impl connlib_client_shared::Callbacks for CallbackHandler {
         Ok(())
     }
 
-    fn on_set_interface_config(
-        &self,
-        tunnel_addr_ipv4: Ipv4Addr,
-        _tunnel_addr_ipv6: Ipv6Addr,
-        _dns_addr: Ipv4Addr,
-    ) -> Result<Option<i32>, Self::Error> {
-        tracing::info!("Tunnel IPv4 = {tunnel_addr_ipv4}");
-        Ok(None)
-    }
-
     fn on_tunnel_ready(&self) -> Result<(), Self::Error> {
+        // TODO: implement
         tracing::info!("on_tunnel_ready");
         Ok(())
     }
@@ -297,6 +296,22 @@ impl connlib_client_shared::Callbacks for CallbackHandler {
         self.ctlr_tx
             .try_send(ControllerRequest::UpdateResources(resources))?;
         Ok(())
+    }
+
+    fn get_system_default_resolvers(&self) -> Result<Option<Vec<IpAddr>>, Self::Error> {
+        let mut resolvers = vec![];
+
+        for adapter in ipconfig::get_adapters()? {
+            for resolver in adapter.dns_servers().iter().filter(|x| match x {
+                // Ignore our DNS sentinel
+                IpAddr::V4(addr) => *addr != Ipv4Addr::from([100, 100, 111, 1]),
+                // TODO: Enable IPv6. The only ones I got on my dev system appeared to be link-local nonsense addresses
+                IpAddr::V6(_) => false,
+            }) {
+                resolvers.push(*resolver);
+            }
+        }
+        Ok(Some(resolvers))
     }
 
     fn roll_log_file(&self) -> Option<PathBuf> {
@@ -423,10 +438,20 @@ async fn run_controller(
         .await
         .context("couldn't create Controller")?;
 
+    let mut resources: Vec<ResourceDisplay> = vec![];
+
     tracing::debug!("GUI controller main loop start");
 
     while let Some(req) = rx.recv().await {
         match req {
+            Req::CopyResource(id) => {
+                let id = ResourceId::from_str(&id)?;
+                if let Some(res) = resources.iter().find(|r| r.id == id) {
+                    let mut clipboard = arboard::Clipboard::new()?;
+                    clipboard.set_text(&res.pastable)?;
+                    tracing::info!("Copied a resource to clipboard");
+                }
+            }
             Req::ExportLogs(file_path) => settings::export_logs_to(file_path).await?,
             Req::GetAdvancedSettings(tx) => {
                 tx.send(controller.advanced_settings.clone()).ok();
@@ -459,9 +484,9 @@ async fn run_controller(
                     None,
                 )?;
             }
-            Req::UpdateResources(resources) => {
+            Req::UpdateResources(r) => {
                 tracing::debug!("controller got UpdateResources");
-                let resources: Vec<_> = resources.into_iter().map(ResourceDisplay::from).collect();
+                resources = r.into_iter().map(ResourceDisplay::from).collect();
 
                 // TODO: Save the user name between runs of the app
                 let actor_name = controller
@@ -522,7 +547,7 @@ fn parse_auth_callback(url: &url::Url) -> Result<AuthCallback> {
 
 /// The information needed for the GUI to display a resource inside the Firezone VPN
 struct ResourceDisplay {
-    id: connlib_shared::messages::ResourceId,
+    id: ResourceId,
     /// User-friendly name, e.g. "GitLab"
     name: String,
     /// What will be copied to the clipboard to paste into a web browser
@@ -540,7 +565,7 @@ impl From<connlib_client_shared::ResourceDescription> for ResourceDisplay {
             connlib_client_shared::ResourceDescription::Cidr(x) => Self {
                 id: x.id,
                 name: x.name,
-                // TODO: CIDRs aren't URLs right?
+                // // TODO: CIDRs aren't URLs right?
                 pastable: x.address.to_string(),
             },
         }

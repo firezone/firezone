@@ -8,6 +8,23 @@ use tokio::runtime::Runtime;
 
 // TODO: In tauri-plugin-deep-link, this is the identifier in tauri.conf.json
 const PIPE_NAME: &str = "dev.firezone.client";
+use std::net::{IpAddr, Ipv4Addr};
+
+pub fn resolvers() -> Result<()> {
+    let mut resolvers = vec![];
+
+    for adapter in ipconfig::get_adapters()? {
+        for resolver in adapter.dns_servers().iter().filter(|x| match x {
+            IpAddr::V4(addr) => *addr != Ipv4Addr::from([100, 100, 111, 1]),
+            IpAddr::V6(_) => false,
+        }) {
+            resolvers.push(*resolver);
+        }
+    }
+
+    println!("{resolvers:?}");
+    Ok(())
+}
 
 /// Test encrypted credential storage
 pub fn token() -> Result<()> {
