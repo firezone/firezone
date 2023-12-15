@@ -2,6 +2,8 @@ use async_compression::tokio::bufread::GzipEncoder;
 use connlib_shared::control::KnownError;
 use connlib_shared::control::Reason;
 use connlib_shared::messages::{DnsServer, GatewayResponse, IpDnsServer};
+use connlib_shared::DNS_SENTINEL;
+use std::net::IpAddr;
 use std::path::PathBuf;
 use std::{io, sync::Arc};
 
@@ -46,12 +48,16 @@ fn create_resolver(
         let Ok(Some(dns_servers)) = callbacks.get_system_default_resolvers() else {
             return None;
         };
-        if dns_servers.is_empty() {
+        let mut dns_servers = dns_servers
+            .into_iter()
+            .filter(|ip| ip != &IpAddr::from(DNS_SENTINEL))
+            .peekable();
+        if dns_servers.peek().is_none() {
             tracing::error!("No system default DNS servers available! Can't initialize resolver. DNS will be broken.");
             return None;
         }
+
         dns_servers
-            .into_iter()
             .map(|ip| {
                 DnsServer::IpPort(IpDnsServer {
                     address: (ip, DNS_PORT).into(),
