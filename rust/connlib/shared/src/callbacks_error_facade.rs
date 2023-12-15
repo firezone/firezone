@@ -1,5 +1,5 @@
 use crate::messages::ResourceDescription;
-use crate::{Callbacks, Error, Result, DNS_SENTINEL};
+use crate::{Callbacks, Error, Result};
 use ip_network::IpNetwork;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::path::PathBuf;
@@ -99,22 +99,5 @@ impl<CB: Callbacks> Callbacks for CallbackErrorFacade<CB> {
         self.0
             .get_system_default_resolvers()
             .map_err(|err| Error::GetSystemDefaultResolverFailed(err.to_string()))
-            .map(|resolvers| {
-                if let Some(mut resolvers) = resolvers {
-                    resolvers.retain(|resolver| {
-                        if *resolver == DNS_SENTINEL {
-                            tracing::warn!("Found our DNS Sentinel {:?} in the list of returned system resolvers. Ignoring...", resolver);
-                            // Remove the sentinel from the list of resolvers
-                            false
-                        } else {
-                            true
-                        }
-                    });
-
-                    Some(resolvers)
-                } else {
-                    Some(vec![])
-                }
-            })
     }
 }
