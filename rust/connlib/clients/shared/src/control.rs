@@ -47,6 +47,7 @@ fn create_resolver(
             return None;
         };
         if dns_servers.is_empty() {
+            tracing::error!("No system default DNS servers available! Can't initialize resolver. DNS will be broken.");
             return None;
         }
         dns_servers
