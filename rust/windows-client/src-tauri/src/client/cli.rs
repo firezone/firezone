@@ -16,6 +16,7 @@ pub enum CliCommands {
     DebugResolvers,
     DebugToken,
     DebugWintun,
+    Elevated,
     OpenDeepLink(DeepLink),
     RegisterDeepLink,
 }

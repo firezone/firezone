@@ -11,8 +11,6 @@ use std::{
 };
 use tokio::sync::mpsc;
 
-const TUNNEL_UUID: &str = "e9245bc1-b8c1-44ca-ab1d-c6aad4f13b9c";
-
 // TODO: Make sure all these get dropped gracefully on disconnect
 pub struct Tun {
     _adapter: Arc<wintun::Adapter>,
@@ -31,25 +29,24 @@ const CREATE_NO_WINDOW: u32 = 0x08000000;
 
 impl Tun {
     pub fn new(config: &InterfaceConfig) -> Result<Self> {
+        const TUNNEL_UUID: &str = "e9245bc1-b8c1-44ca-ab1d-c6aad4f13b9c";
+        const TUNNEL_NAME: &str = "Firezone Tunnel";
+
         // The unsafe is here because we're loading a DLL from disk and it has arbitrary C code in it.
-        // As a defense, we could verify the hash before loading it. This would protect against accidental corruption, but not against attacks. (Because of TOCTOU)
+        // TODO: As a defense, we could verify the hash before loading it. This would protect against accidental corruption, but not against attacks. (Because of TOCTOU)
         let wintun = unsafe { wintun::load_from_path("./wintun.dll") }?;
         let uuid = uuid::Uuid::from_str(TUNNEL_UUID)?;
-        let adapter = match wintun::Adapter::create(
-            &wintun,
-            "Firezone",
-            "Firezone Tunnel",
-            Some(uuid.as_u128()),
-        ) {
-            Ok(x) => x,
-            Err(e) => {
-                tracing::error!(
-                    "wintun::Adapter::create failed, probably need admin powers: {}",
-                    e
-                );
-                return Err(e.into());
-            }
-        };
+        let adapter =
+            match wintun::Adapter::create(&wintun, "Firezone", TUNNEL_NAME, Some(uuid.as_u128())) {
+                Ok(x) => x,
+                Err(e) => {
+                    tracing::error!(
+                        "wintun::Adapter::create failed, probably need admin powers: {}",
+                        e
+                    );
+                    return Err(e.into());
+                }
+            };
 
         // TODO: I think wintun flashes a couple console windows here when it shells out to netsh. We should upstream the same patch I'm doing for powershell to the wintun project
         adapter.set_network_addresses_tuple(

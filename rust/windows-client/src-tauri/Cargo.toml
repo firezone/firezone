@@ -22,6 +22,7 @@ hyper-util = { version = "0.1.1", features = ["full"] }
 # This is the same crate hickory uses to get system resolvers
 ipconfig = "0.3.2"
 keyring = "2.0.5"
+ring = "0.17"
 secrecy.workspace = true
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
