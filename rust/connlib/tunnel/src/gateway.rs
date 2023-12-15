@@ -1,12 +1,14 @@
 use crate::bounded_queue::BoundedQueue;
-use crate::connection::{Connecting, Connection, DirectGatewayToClient};
+use crate::connection::{Active, Connection};
 use crate::device_channel::Device;
 use crate::index::IndexLfsr;
 use crate::rate_limiter::RateLimiter;
 use crate::shared_utils::{
     poll_allocations, poll_bindings, update_candidates_of_connections, upsert_relays,
 };
-use crate::{connection, device_channel, DnsFallbackStrategy, Transmit, Tunnel, MAX_UDP_SIZE};
+use crate::{
+    client, connection, device_channel, DnsFallbackStrategy, Transmit, Tunnel, MAX_UDP_SIZE,
+};
 use boringtun::noise::Tunn;
 use boringtun::x25519::{PublicKey, StaticSecret};
 use chrono::{DateTime, Utc};
@@ -19,9 +21,10 @@ use firezone_relay::client::{Allocation, Binding};
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
 use secrecy::ExposeSecret;
+use std::borrow::Cow;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
-use std::net::SocketAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::task::{Context, Poll};
 use std::time::Duration;
 use str0m::ice::IceCreds;
@@ -56,8 +59,7 @@ pub struct State {
     // TODO: Choose a better name as this is also used to expire resources.
     update_timer_interval: tokio::time::Interval,
 
-    pending_connections: HashMap<ClientId, Connection<Connecting>>,
-    established_connections: HashMap<ClientId, Connection<DirectGatewayToClient>>,
+    connections: HashMap<ClientId, Connection<Active>>,
 
     clients_by_ip: IpNetworkTable<ClientId>,
 
@@ -76,8 +78,7 @@ impl State {
             bindings: Default::default(),
             allocations: Default::default(),
             update_timer_interval: tokio::time::interval(Duration::from_secs(1)),
-            pending_connections: Default::default(),
-            established_connections: Default::default(),
+            connections: Default::default(),
             clients_by_ip: IpNetworkTable::new(),
             buf: [0u8; MAX_UDP_SIZE],
             pending_events: BoundedQueue::with_capacity(1000), // Really this should never fill up!
@@ -91,13 +92,13 @@ impl State {
         expires_at: DateTime<Utc>,
     ) {
         // TODO: Should we also keep state already for pending connections?
-        let Some(conn) = self.established_connections.get_mut(&client) else {
-            return;
-        };
+        // let Some(conn) = self.established_connections.get_mut(&client) else {
+        //     return;
+        // };
 
         tracing::info!(%client, resource = %resource.id(), %expires_at, "Allowing access to resource");
 
-        conn.allow_access(resource, expires_at);
+        // conn.allow_access(resource, expires_at);
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -117,15 +118,21 @@ impl State {
             upsert_relays(&mut self.bindings, &mut self.allocations, relays);
 
         let connection = Connection::new_gateway_to_client(
-            preshared_key,
-            client_key,
+            Tunn::new(
+                self.tunnel_private_key.clone(),
+                client_key,
+                Some(preshared_key.expose_secret().0),
+                None,
+                self.next_index.next(),
+                Some(self.rate_limiter.clone_to()),
+            ),
             remote_credentials,
             local,
             stun_servers,
             turn_servers,
         );
         let local_credentials = connection.ice_credentials();
-        self.pending_connections.insert(id, connection);
+        self.connections.insert(id, connection);
 
         // TODO: Only update candidates of this connection.
         self.pending_events.extend(
@@ -133,7 +140,7 @@ impl State {
                 self.bindings.iter(),
                 self.allocations.iter(),
                 &mut HashMap::new(),
-                &mut self.pending_connections,
+                &mut self.connections,
             )
             .map(|(conn_id, candidate)| {
                 Either::Left(Event::SignalIceCandidate { conn_id, candidate })
@@ -156,7 +163,7 @@ impl State {
     }
 
     pub(crate) fn add_remote_candidate(&mut self, client: ClientId, candidate: Candidate) {
-        let Some(agent) = self.pending_connections.get_mut(&client) else {
+        let Some(agent) = self.connections.get_mut(&client) else {
             return;
         };
 
@@ -179,7 +186,7 @@ impl State {
                         self.bindings.iter(),
                         self.allocations.iter(),
                         &mut HashMap::new(),
-                        &mut self.pending_connections,
+                        &mut self.connections,
                     )
                     .map(|(conn_id, candidate)| {
                         Either::Left(Event::SignalIceCandidate { conn_id, candidate })
@@ -196,7 +203,7 @@ impl State {
                         self.bindings.iter(),
                         self.allocations.iter(),
                         &mut HashMap::new(),
-                        &mut self.pending_connections,
+                        &mut self.connections,
                     )
                     .map(|(conn_id, candidate)| {
                         Either::Left(Event::SignalIceCandidate { conn_id, candidate })
@@ -206,19 +213,18 @@ impl State {
             }
         }
 
-        for connection in self.pending_connections.values_mut() {
-            if connection.handle_input(sender, packet) {
-                return None;
-            }
-        }
-
-        for connection in self.established_connections.values_mut() {
-            if connection.accepts(sender, packet) {
-                match connection.decapsulate(sender, packet, &mut self.buf) {
-                    Ok(maybe_packet) => return maybe_packet,
-                    Err(e) => {
-                        todo!("{e}")
-                    }
+        for connection in self.connections.values_mut() {
+            match connection.decapsulate(sender, packet, &mut self.buf) {
+                // TODO: Enforce connection policy like resources here.
+                Ok(Some((packet, IpAddr::V4(_)))) => {
+                    return Some(device_channel::Packet::Ipv4(Cow::Borrowed(packet)))
+                }
+                Ok(Some((packet, IpAddr::V6(_)))) => {
+                    return Some(device_channel::Packet::Ipv6(Cow::Borrowed(packet)))
+                }
+                Ok(None) => continue,
+                Err(e) => {
+                    todo!("{e}")
                 }
             }
         }
@@ -239,7 +245,7 @@ impl State {
 
         let (_, client) = self.clients_by_ip.longest_match(dst)?;
 
-        let peer = self.established_connections.get_mut(client)?; // TODO: Better error logging on inconsistent state?
+        let peer = self.connections.get_mut(client)?; // TODO: Better error logging on inconsistent state?
 
         match peer.encapsulate(packet, &mut self.buf).transpose()? {
             Ok((dst, bytes)) => Some(Either::Right((dst, bytes))),
@@ -266,8 +272,8 @@ impl State {
             return Poll::Ready(Either::Right(transmit.into()));
         }
 
-        'outer: for client in self.pending_connections.keys().copied().collect::<Vec<_>>() {
-            let Entry::Occupied(mut entry) = self.pending_connections.entry(client) else {
+        'outer: for client in self.connections.keys().copied().collect::<Vec<_>>() {
+            let Entry::Occupied(mut entry) = self.connections.entry(client) else {
                 unreachable!("ID comes from list")
             };
 
@@ -275,23 +281,12 @@ impl State {
 
             loop {
                 match connection.poll(cx) {
-                    Poll::Ready(connection::ConnectingEvent::Connection { src, dst }) => {
-                        let connection = entry.remove().into_established_gateway_to_client(
-                            src,
-                            dst,
-                            self.new_tunnel_fn(),
-                        );
-
-                        self.established_connections.insert(client, connection);
-
-                        continue 'outer;
-                    }
-                    Poll::Ready(connection::ConnectingEvent::WantChannelToPeer { .. }) => {
+                    Poll::Ready(connection::Event::WantChannelToPeer { .. }) => {
                         tracing::warn!("Ignoring request to create channel");
 
                         continue;
                     }
-                    Poll::Ready(connection::ConnectingEvent::Transmit(transmit)) => {
+                    Poll::Ready(connection::Event::Transmit(transmit)) => {
                         return Poll::Ready(Either::Right(transmit));
                     }
                     Poll::Pending => continue 'outer,
@@ -300,15 +295,9 @@ impl State {
         }
 
         if self.update_timer_interval.poll_tick(cx).is_ready() {
-            for connection in self.established_connections.values_mut() {
+            for connection in self.connections.values_mut() {
                 connection.update_timers();
-                connection.expire_resources();
-            }
-        }
-
-        for connection in self.established_connections.values_mut() {
-            while let Some(transmit) = dbg!(connection.poll_transmit()) {
-                let _ = self.pending_events.push_back(Either::Right(transmit));
+                // connection.expire_resources();
             }
         }
 

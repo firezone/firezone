@@ -1,5 +1,5 @@
 use crate::bounded_queue::BoundedQueue;
-use crate::connection::{Connecting, Connection, DirectClientToGateway, WantsRemoteCredentials};
+use crate::connection::{Active, Connection, WantsRemoteCredentials};
 use crate::device_channel::Device;
 use crate::index::IndexLfsr;
 use crate::ip_packet::IpPacket;
@@ -26,6 +26,7 @@ use hickory_resolver::lookup::Lookup;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
 use secrecy::ExposeSecret;
+use std::borrow::Cow;
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
@@ -175,8 +176,7 @@ pub struct State {
 
     awaiting_connection: HashMap<ResourceId, AwaitingConnectionDetails>,
     initial_connections: HashMap<GatewayId, Connection<WantsRemoteCredentials>>,
-    pending_connections: HashMap<GatewayId, Connection<Connecting>>,
-    established_connections: HashMap<GatewayId, Connection<DirectClientToGateway>>,
+    active_connections: HashMap<GatewayId, Connection<Active>>,
 
     dns_resources_internal_ips: HashMap<DnsResource, Vec<IpAddr>>,
     dns_resources: HashMap<String, ResourceDescriptionDns>,
@@ -275,7 +275,10 @@ impl State {
             return Err(Error::UnexpectedConnectionDetails);
         }
 
-        if self.pending_connections.contains_key(&gateway)
+        if self
+            .active_connections
+            .get(&gateway)
+            .is_some_and(|c| !c.is_connected())
             || self.initial_connections.contains_key(&gateway)
         {
             // TODO: Also established?
@@ -286,12 +289,8 @@ impl State {
 
         let ips = self.get_resource_ip(desc, &domain);
 
-        let Some(connection) = self.established_connections.get_mut(&gateway) else {
-            return Ok(None);
-        };
-
         for ip in ips {
-            connection.add_allowed_ip(ip);
+            // connection.add_allowed_ip(ip);
             self.gateways_by_resource_ip.insert(ip, gateway);
         }
 
@@ -307,7 +306,7 @@ impl State {
             return;
         };
         self.initial_connections.remove(&gateway);
-        self.pending_connections.remove(&gateway);
+        self.active_connections.remove(&gateway);
     }
 
     fn is_awaiting_connection_to_dns(&self, resource: &DnsResource) -> bool {
@@ -316,7 +315,7 @@ impl State {
         };
 
         self.initial_connections.contains_key(gateway)
-            || self.pending_connections.contains_key(gateway)
+            || self.active_connections.contains_key(gateway)
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
@@ -483,7 +482,7 @@ impl State {
                 self.bindings.iter(),
                 self.allocations.iter(),
                 &mut self.initial_connections,
-                &mut self.pending_connections,
+                &mut self.active_connections,
             )
             .map(|(conn_id, candidate)| {
                 Either::Left(Event::SignalIceCandidate { conn_id, candidate })
@@ -518,15 +517,19 @@ impl State {
             .remove(&gateway)
             .ok_or(Error::Other("no ice agent for gateway"))?;
 
-        let connection = connection.with_remote_credentials(gateway_public_key, remote_credentials);
+        let connection = connection.with_remote_credentials(
+            gateway_public_key,
+            remote_credentials,
+            self.new_tunnel_fn(),
+        );
 
-        self.pending_connections.insert(gateway, connection);
+        self.active_connections.insert(gateway, connection);
 
         Ok(())
     }
 
     pub(crate) fn add_remote_candidate(&mut self, gateway: GatewayId, candidate: Candidate) {
-        let Some(agent) = self.pending_connections.get_mut(&gateway) else {
+        let Some(agent) = self.active_connections.get_mut(&gateway) else {
             return;
         };
 
@@ -540,7 +543,7 @@ impl State {
     pub(crate) fn handle_socket_input<'b>(
         &'b mut self,
         sender: SocketAddr,
-        packet: &'b [u8],
+        packet: &[u8],
     ) -> Option<device_channel::Packet<'b>> {
         if let Some(binding) = self.bindings.get_mut(&sender) {
             if binding.handle_input(sender, packet) {
@@ -549,7 +552,7 @@ impl State {
                         self.bindings.iter(),
                         self.allocations.iter(),
                         &mut self.initial_connections,
-                        &mut self.pending_connections,
+                        &mut self.active_connections,
                     )
                     .map(|(conn_id, candidate)| {
                         Either::Left(Event::SignalIceCandidate { conn_id, candidate })
@@ -566,7 +569,7 @@ impl State {
                         self.bindings.iter(),
                         self.allocations.iter(),
                         &mut self.initial_connections,
-                        &mut self.pending_connections,
+                        &mut self.active_connections,
                     )
                     .map(|(conn_id, candidate)| {
                         Either::Left(Event::SignalIceCandidate { conn_id, candidate })
@@ -576,19 +579,18 @@ impl State {
             }
         }
 
-        for connection in self.pending_connections.values_mut() {
-            if connection.handle_input(sender, packet) {
-                return None;
-            }
-        }
-
-        for connection in self.established_connections.values_mut() {
-            if connection.accepts(sender, packet) {
-                match connection.decapsulate(sender, packet, &mut self.buf) {
-                    Ok(maybe_packet) => return maybe_packet,
-                    Err(e) => {
-                        todo!("{e}")
-                    }
+        for connection in self.active_connections.values_mut() {
+            match connection.decapsulate(sender, packet, &mut self.buf) {
+                // TODO: Enforce connection policy like resources here.
+                Ok(Some((packet, IpAddr::V4(_)))) => {
+                    return Some(device_channel::Packet::Ipv4(Cow::Borrowed(packet)))
+                }
+                Ok(Some((packet, IpAddr::V6(_)))) => {
+                    return Some(device_channel::Packet::Ipv6(Cow::Borrowed(packet)))
+                }
+                Ok(None) => continue,
+                Err(e) => {
+                    todo!("{e}")
                 }
             }
         }
@@ -618,7 +620,7 @@ impl State {
             return None;
         };
 
-        let peer = self.established_connections.get_mut(gateway)?; // TODO: Better error logging on inconsistent state?
+        let peer = self.active_connections.get_mut(gateway)?; // TODO: Better error logging on inconsistent state?
 
         match peer.encapsulate(packet, &mut self.buf).transpose()? {
             Ok((dst, bytes)) => Some(Either::Right((dst, bytes))),
@@ -645,8 +647,8 @@ impl State {
             return Poll::Ready(Either::Right(transmit.into()));
         }
 
-        'outer: for gateway in self.pending_connections.keys().copied().collect::<Vec<_>>() {
-            let Entry::Occupied(mut entry) = self.pending_connections.entry(gateway) else {
+        'outer: for gateway in self.active_connections.keys().copied().collect::<Vec<_>>() {
+            let Entry::Occupied(mut entry) = self.active_connections.entry(gateway) else {
                 unreachable!("ID comes from list")
             };
 
@@ -654,18 +656,7 @@ impl State {
 
             loop {
                 match connection.poll(cx) {
-                    Poll::Ready(connection::ConnectingEvent::Connection { src, dst }) => {
-                        let connection = entry.remove().into_established_client_to_gateway(
-                            src,
-                            dst,
-                            self.new_tunnel_fn(),
-                        );
-
-                        self.gateways_by_socket.insert(dst, gateway);
-                        self.established_connections.insert(gateway, connection);
-                        continue 'outer;
-                    }
-                    Poll::Ready(connection::ConnectingEvent::WantChannelToPeer { relay, peer }) => {
+                    Poll::Ready(connection::Event::WantChannelToPeer { relay, peer }) => {
                         let Some(allocation) = self.allocations.get_mut(&relay) else {
                             debug_assert!(
                                 false,
@@ -681,7 +672,7 @@ impl State {
 
                         continue;
                     }
-                    Poll::Ready(connection::ConnectingEvent::Transmit(transmit)) => {
+                    Poll::Ready(connection::Event::Transmit(transmit)) => {
                         return Poll::Ready(Either::Right(transmit));
                     }
                     Poll::Pending => continue 'outer,
@@ -690,14 +681,8 @@ impl State {
         }
 
         if self.update_timer_interval.poll_tick(cx).is_ready() {
-            for connection in self.established_connections.values_mut() {
+            for connection in self.active_connections.values_mut() {
                 connection.update_timers();
-            }
-        }
-
-        for connection in self.established_connections.values_mut() {
-            while let Some(transmit) = dbg!(connection.poll_transmit()) {
-                let _ = self.pending_events.push_back(Either::Right(transmit));
             }
         }
 
@@ -736,8 +721,7 @@ impl State {
             allocations: Default::default(),
             awaiting_connection: Default::default(),
             initial_connections: Default::default(),
-            pending_connections: Default::default(),
-            established_connections: Default::default(),
+            active_connections: Default::default(),
             dns_resources_internal_ips: Default::default(),
             dns_resources: Default::default(),
             cidr_resources: IpNetworkTable::new(),

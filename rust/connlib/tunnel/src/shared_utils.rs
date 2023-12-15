@@ -1,4 +1,4 @@
-use crate::connection::{Connecting, Connection, WantsRemoteCredentials};
+use crate::connection::{Active, Connection, WantsRemoteCredentials};
 use connlib_shared::messages::Relay;
 use firezone_relay::client::{Allocation, Binding, Transmit};
 use std::collections::HashMap;
@@ -25,7 +25,7 @@ pub(crate) fn update_candidates_of_connections<'a, TId: 'a>(
     bindings: impl Iterator<Item = (&'a SocketAddr, &'a Binding)>,
     allocations: impl Iterator<Item = (&'a SocketAddr, &'a Allocation)>,
     initial_connections: &mut HashMap<TId, Connection<WantsRemoteCredentials>>,
-    pending_connections: &mut HashMap<TId, Connection<Connecting>>,
+    pending_connections: &mut HashMap<TId, Connection<Active>>,
 ) -> impl Iterator<Item = (TId, Candidate)>
 where
     TId: Copy,
