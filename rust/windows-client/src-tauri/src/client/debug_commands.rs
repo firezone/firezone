@@ -4,6 +4,10 @@
 use crate::client::cli::Cli;
 use anyhow::Result;
 use keyring::Entry;
+use tokio::runtime::Runtime;
+
+// TODO: In tauri-plugin-deep-link, this is the identifier in tauri.conf.json
+const PIPE_NAME: &str = "dev.firezone.client";
 
 /// Test encrypted credential storage
 pub fn token() -> Result<()> {
@@ -29,14 +33,26 @@ pub fn token() -> Result<()> {
     Ok(())
 }
 
-pub use details::wintun;
+pub use details::{open_deep_link, pipe_server, register_deep_link, wintun};
 
 #[cfg(target_family = "unix")]
 mod details {
     use super::*;
 
+    pub fn open_deep_link(_: &url::Url) -> Result<()> {
+        unimplemented!()
+    }
+
+    pub fn pipe_server(_: Cli) -> Result<()> {
+        unimplemented!()
+    }
+
+    pub fn register_deep_link(_: Cli) -> Result<()> {
+        unimplemented!()
+    }
+
     pub fn wintun(_: Cli) -> Result<()> {
-        panic!("Wintun not implemented for Linux.");
+        unimplemented!()
     }
 }
 
@@ -44,6 +60,44 @@ mod details {
 mod details {
     use super::*;
     use std::sync::Arc;
+
+    pub fn open_deep_link(path: &url::Url) -> Result<()> {
+        let subscriber = tracing_subscriber::FmtSubscriber::builder()
+            .with_max_level(tracing::Level::TRACE)
+            .finish();
+        tracing::subscriber::set_global_default(subscriber)
+            .expect("setting default subscriber failed");
+
+        let rt = Runtime::new()?;
+        rt.block_on(crate::client::deep_link::open(PIPE_NAME, path))?;
+        Ok(())
+    }
+
+    // Copied the named pipe idea from `interprocess` and `tauri-plugin-deep-link`,
+    // although I believe it's considered best practice on Windows to use named pipes for
+    // single-instance apps.
+    pub fn pipe_server() -> Result<()> {
+        let subscriber = tracing_subscriber::FmtSubscriber::builder()
+            .with_max_level(tracing::Level::TRACE)
+            .finish();
+        tracing::subscriber::set_global_default(subscriber)
+            .expect("setting default subscriber failed");
+
+        let rt = Runtime::new()?;
+        rt.block_on(async {
+            loop {
+                let server = crate::client::deep_link::Server::new(PIPE_NAME)?;
+                server.accept().await?;
+            }
+        })
+    }
+
+    // This is copied almost verbatim from tauri-plugin-deep-link's `register` fn, with an improvement
+    // that we send the deep link to a subcommand so the URL won't confuse `clap`
+    pub fn register_deep_link() -> Result<()> {
+        crate::client::deep_link::register(PIPE_NAME)?;
+        Ok(())
+    }
 
     pub fn wintun(_: Cli) -> Result<()> {
         for _ in 0..3 {
