@@ -190,6 +190,25 @@ resource "google_dns_record_set" "sendgrid-reverse-dns" {
   ttl     = 3600
 }
 
+# Mailgun
+
+resource "google_dns_record_set" "mailgun-dkim" {
+  project      = module.google-cloud-project.project.project_id
+  managed_zone = module.google-cloud-dns.zone_name
+
+  name = "kone._domainkey.${module.google-cloud-dns.dns_name}"
+  type = "TXT"
+  ttl  = 3600
+
+  # Reference: https://groups.google.com/g/cloud-dns-discuss/c/k_l6JP-H29Y
+  # Individual strings cannot exceed 255 characters in length, or "Invalid record data" results
+  # DKIM clients concatenate all of the strings in the client before parsing tags, so to workaround the limit
+  # all you need to do is add whitespace within the p= tag such that each string fits within the 255 character limit.
+  rrdatas = [
+    "\"k=rsa;\" \"p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAwhTddUFz+LHTx63SpYvoAc4UzPgXy71Lq950bgVgrwHqLiktRnXFliKGbwL/QPyzOOWBYd1B3brC81B0IoBZkNxFj1mA1EKd8oFi8GMaKA5YuPbrkTT9AGXx0VpMMqDUcYoGWplXnMSY2ICdSRxOdQ5sXLdLqEyIVWm8WiF2+U7Zq15PSNr1VigByCknc7N0Pes0qbVTuWVNd\" \"BBYFO5igHpRaHZtYU/dT5ebXxcvZJgQinW23erS6fFgNuUOOwhGJCay5ahpAnufuQB52eEkM/AHb9cXxVG5g04+6xZSMT7/aI7m1IOzulOds71RAn7FN4LJhdI0DgOmIUVj4G32OwIDAQAB\""
+  ]
+}
+
 # Postmark
 
 resource "google_dns_record_set" "postmark-dkim" {
@@ -286,7 +305,7 @@ resource "google_dns_record_set" "google-spf" {
   ttl  = 3600
 
   rrdatas = [
-    "\"v=spf1 mx include:23723443.spf07.hubspotemail.net include:sendgrid.net include:_spf.google.com ~all\"",
+    "\"v=spf1 mx include:23723443.spf07.hubspotemail.net include:sendgrid.net include:_spf.google.com include:mailgun.org ~all\"",
     # TODO: only keep the last one needed
     "google-site-verification=hbBLPfTlejIaxyFTPZN0RaIk6Y6qhQTG2yma7I06Emo",
     "google-site-verification=oAugt2Arr7OyWaqJ0bkytkmIE-VQ8D_IFa-rdNiqa8s",
