@@ -25,7 +25,7 @@ Each of these fields is described below.
 All Firezone components follow the structure above, so it is trivial to
 determine which clients work with which gateways and for how long.
 
-## Auto-updates
+## Client application auto-updates
 
 In general we recommend keeping clients and gateways as up-to-date as possible.
 See below for auto-update details for each client.
@@ -41,20 +41,47 @@ See below for auto-update details for each client.
     Linux auto-updates are configured by default if you deployed using the Linux
     client deployment guide.
   </TabsItem>
-  <TabsItem title="Gateway">
-    Gateway auto-updates are configured by default if you deployed using the
-    Linux client deployment guide.
-  </TabsItem>
 </TabsGroup>
 
-## Upgrading gateways with minimal downtime
+## Upgrading gateways
+
+Upgrading a gateway generally consists of simply replacing the binary or Docker
+image and then restarting. See below for specific steps depending on how you've
+deployed your gateway:
+
+<TabsGroup>
+<TabsItem title="Docker" active>
+
+Run the following upgrade script which pulls the latest image, stops the running
+gateway, and then restarts it using the newer image with the same configuration.
+
+```bash
+curl -s https://github.com/firezone/firezone/main/scripts/gateway-docker-upgrade.sh | bash
+```
+
+</TabsItem>
+<TabsItem title="systemd">
+
+If you deployed via the portal, your unit file should already contain logic
+necessary to upgrade the gateway on service start. Simply move the old binary
+and restart the service to trigger the upgrade:
+
+```bash
+sudo mv /usr/local/bin/firezone-gateway /usr/local/bin/firezone-gateway.bak
+sudo systemctl restart firezone-gateway
+```
+
+</TabsItem>
+</TabsGroup>
+
+### Downtime considerations
 
 Gateways deployed in the same site will automatically
 [failover](/kb/deploy/gateways#failover) for each other. By upgrading gateways
 one-by-one, clients connected to the gateway being upgraded will automatically
 reconnect to an available gateway.
 
-Currently the failover timeout is maximum 25 seconds, so upgrades should be
+Currently the failover timeout is about **15 seconds**. Upgrades should be
 performed during a scheduled maintenance window to ensure minimal disruption.
 Other than a possible short-term connection interruption to in-use resources,
-users won't be impacted by upgrading high-availability gateways.
+users won't otherwise be impacted by upgrading gateways in the same site.
