@@ -261,6 +261,38 @@ resource "google_dns_record_set" "sendgrid-domainkey2" {
   ttl     = 3600
 }
 
+# Mailgun
+#
+resource "google_dns_record_set" "mailgun-spf" {
+  project      = module.google-cloud-project.project.project_id
+  managed_zone = module.google-cloud-dns.zone_name
+
+  name = module.google-cloud-dns.dns_name
+  type = "TXT"
+  ttl  = 3600
+
+  rrdatas = [
+    "\"v=spf1 include:mailgun.org ~all\""
+  ]
+}
+
+resource "google_dns_record_set" "mailgun-dkim" {
+  project      = module.google-cloud-project.project.project_id
+  managed_zone = module.google-cloud-dns.zone_name
+
+  name = "kone._domainkey.${module.google-cloud-dns.dns_name}"
+  type = "TXT"
+  ttl  = 3600
+
+  # Reference: https://groups.google.com/g/cloud-dns-discuss/c/k_l6JP-H29Y
+  # Individual strings cannot exceed 255 characters in length, or "Invalid record data" results
+  # DKIM clients concatenate all of the strings in the client before parsing tags, so to workaround the limit
+  # all you need to do is add whitespace within the p= tag such that each string fits within the 255 character limit.
+  rrdatas = [
+    "\"k=rsa;\" \"p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAwYyTkBcuzLi1l+bHezuxJlmmpSdabjHY67YxWG8chz7pd12IfbE7JDM4Qi+AYq6Wp6ZDqEukFHIMJjz2PceHuf/5sgJazWLwBWp6DN6J2/WXgs2vWBWYJ0Kpj6l+p2t8jNrPNNVZrkO7BT2AmJAV5c9bemXkY801XkATAvAzvHs7pMsvjVmALWhh9eQoflVjYZUBwSDWjItd\" \"flK4IlrU5+yM5xHRIshazUmWiM8b6lBzV7WKLrDir+Td8NdBAwkFnlxIuqePlfXqIA3190Mk03PqOjlqhuqjZVg441e4A2TwlSShOv9EWtwseKwO1uWiky5uKGo4mlNPU4aZAi/UFwIDAQAB\""
+  ]
+}
+
 # Postmark
 
 resource "google_dns_record_set" "postmark-dkim" {
