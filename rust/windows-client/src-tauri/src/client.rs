@@ -40,11 +40,12 @@ pub(crate) struct AppLocalDataDir(std::path::PathBuf);
 pub(crate) fn run() -> Result<()> {
     // Special case for app link URIs
     if let Some(arg) = std::env::args().nth(1) {
-        let url = url::Url::parse(&arg)?;
-        if url.scheme() == DEEP_LINK_SCHEME {
-            return gui::run(GuiParams {
-                inject_faults: false,
-            });
+        if let Ok(url) = url::Url::parse(&arg) {
+            if url.scheme() == DEEP_LINK_SCHEME {
+                return gui::run(GuiParams {
+                    inject_faults: false,
+                });
+            }
         }
     }
 
@@ -58,6 +59,7 @@ pub(crate) fn run() -> Result<()> {
             println!("debug");
             Ok(())
         }
+        Some(Cmd::DebugResolvers) => debug_commands::resolvers(),
         Some(Cmd::DebugToken) => debug_commands::token(),
         Some(Cmd::DebugWintun) => debug_commands::wintun(cli),
     }

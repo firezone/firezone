@@ -10,7 +10,7 @@ use connlib_client_shared::file_logger;
 use connlib_shared::messages::ResourceId;
 use secrecy::SecretString;
 use std::{
-    net::{Ipv4Addr, Ipv6Addr},
+    net::{IpAddr, Ipv4Addr},
     path::PathBuf,
     str::FromStr,
 };
@@ -248,6 +248,8 @@ struct CallbackHandler {
 enum CallbackError {
     #[error(transparent)]
     ControllerRequest(#[from] tokio::sync::mpsc::error::TrySendError<ControllerRequest>),
+    #[error(transparent)]
+    IpConfig(#[from] ipconfig::error::Error),
 }
 
 impl connlib_client_shared::Callbacks for CallbackHandler {
@@ -257,6 +259,7 @@ impl connlib_client_shared::Callbacks for CallbackHandler {
         &self,
         error: Option<&connlib_client_shared::Error>,
     ) -> Result<(), Self::Error> {
+        // TODO: implement
         tracing::error!("on_disconnect {error:?}");
         Ok(())
     }
@@ -266,17 +269,8 @@ impl connlib_client_shared::Callbacks for CallbackHandler {
         Ok(())
     }
 
-    fn on_set_interface_config(
-        &self,
-        tunnel_addr_ipv4: Ipv4Addr,
-        _tunnel_addr_ipv6: Ipv6Addr,
-        _dns_addr: Ipv4Addr,
-    ) -> Result<Option<i32>, Self::Error> {
-        tracing::info!("Tunnel IPv4 = {tunnel_addr_ipv4}");
-        Ok(None)
-    }
-
     fn on_tunnel_ready(&self) -> Result<(), Self::Error> {
+        // TODO: implement
         tracing::info!("on_tunnel_ready");
         Ok(())
     }
@@ -290,6 +284,22 @@ impl connlib_client_shared::Callbacks for CallbackHandler {
         self.ctlr_tx
             .try_send(ControllerRequest::UpdateResources(resources))?;
         Ok(())
+    }
+
+    fn get_system_default_resolvers(&self) -> Result<Option<Vec<IpAddr>>, Self::Error> {
+        let mut resolvers = vec![];
+
+        for adapter in ipconfig::get_adapters()? {
+            for resolver in adapter.dns_servers().iter().filter(|x| match x {
+                // Ignore our DNS sentinel
+                IpAddr::V4(addr) => *addr != Ipv4Addr::from([100, 100, 111, 1]),
+                // TODO: Enable IPv6. The only ones I got on my dev system appeared to be link-local nonsense addresses
+                IpAddr::V6(_) => false,
+            }) {
+                resolvers.push(*resolver);
+            }
+        }
+        Ok(Some(resolvers))
     }
 
     fn roll_log_file(&self) -> Option<PathBuf> {
