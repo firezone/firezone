@@ -9,11 +9,7 @@ use client::settings::{self, AdvancedSettings};
 use connlib_client_shared::file_logger;
 use connlib_shared::messages::ResourceId;
 use secrecy::SecretString;
-use std::{
-    net::{IpAddr, Ipv4Addr},
-    path::PathBuf,
-    str::FromStr,
-};
+use std::{net::IpAddr, path::PathBuf, str::FromStr};
 use tauri::{
     CustomMenuItem, Manager, SystemTray, SystemTrayEvent, SystemTrayMenu, SystemTrayMenuItem,
     SystemTraySubmenu,
@@ -292,7 +288,7 @@ impl connlib_client_shared::Callbacks for CallbackHandler {
         for adapter in ipconfig::get_adapters()? {
             for resolver in adapter.dns_servers().iter().filter(|x| match x {
                 // Ignore our DNS sentinel
-                IpAddr::V4(addr) => *addr != Ipv4Addr::from([100, 100, 111, 1]),
+                IpAddr::V4(addr) => *addr != connlib_shared::DNS_SENTINEL,
                 // TODO: Enable IPv6. The only ones I got on my dev system appeared to be link-local nonsense addresses
                 IpAddr::V6(_) => false,
             }) {

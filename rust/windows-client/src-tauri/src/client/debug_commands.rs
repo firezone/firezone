@@ -4,14 +4,14 @@
 use crate::client::cli::Cli;
 use anyhow::Result;
 use keyring::Entry;
-use std::net::{IpAddr, Ipv4Addr};
+use std::net::IpAddr;
 
 pub fn resolvers() -> Result<()> {
     let mut resolvers = vec![];
 
     for adapter in ipconfig::get_adapters()? {
         for resolver in adapter.dns_servers().iter().filter(|x| match x {
-            IpAddr::V4(addr) => *addr != Ipv4Addr::from([100, 100, 111, 1]),
+            IpAddr::V4(addr) => *addr != connlib_shared::DNS_SENTINEL,
             IpAddr::V6(_) => false,
         }) {
             resolvers.push(*resolver);
