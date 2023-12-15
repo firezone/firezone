@@ -52,6 +52,14 @@ If the client stops running while signed in, then the token may be stored in Win
 - [ ] Given the log tab is displayed, when you switch to another tab or close the window, then any ongoing computation will be canceled.
 - [ ] Given the log tab is computing log directory size, when the 1-minute refresh timer ticks, then the computation will time out and show an error e.g. "timed out while computing size"
 
+# Resetting state
+
+This is a list of all the on-disk state that you need to reset to test a first-time install / first-time run of the Firezone client.
+
+- `AppData/Local/dev.firezone.client/` (Config, logs, webview cache, etc.)
+- Registry key `Computer\HKEY_CURRENT_USER\Software\Classes\firezone-fd0020211111` (Deep link association)
+- Token, in Windows Credential Manager
+
 # Token storage
 
 ([#2740](https://github.com/firezone/firezone/issues/2740))
