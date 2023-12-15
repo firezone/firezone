@@ -16,6 +16,9 @@ use std::task::{ready, Context, Poll};
 use std::time::Duration;
 use webrtc::ice_transport::ice_candidate::RTCIceCandidate;
 
+const PEERS_IPV4: &str = "100.64.0.0/11";
+const PEERS_IPV6: &str = "fd00:2021:1111::/107";
+
 impl<CB> Tunnel<CB, GatewayState>
 where
     CB: Callbacks + 'static,
@@ -25,6 +28,10 @@ where
     pub fn set_interface(&self, config: &InterfaceConfig) -> connlib_shared::Result<()> {
         // Note: the dns fallback strategy is irrelevant for gateways
         let device = Arc::new(Device::new(config, self.callbacks())?);
+
+        let result_v4 = device.add_route(PEERS_IPV4.parse().unwrap(), self.callbacks());
+        let result_v6 = device.add_route(PEERS_IPV6.parse().unwrap(), self.callbacks());
+        result_v4.or(result_v6)?;
 
         self.device.store(Some(device.clone()));
         self.no_device_waker.wake();

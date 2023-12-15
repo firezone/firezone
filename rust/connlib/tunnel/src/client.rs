@@ -687,7 +687,9 @@ impl RoleState for ClientState {
                 }
 
                 Poll::Ready((id, Some(Err(e)))) => {
-                    tracing::warn!(resource_id = %id, "Connection establishment timeout: {e}")
+                    tracing::warn!(resource_id = %id, "Connection establishment timeout: {e}");
+                    self.awaiting_connection.remove(&id);
+                    self.awaiting_connection_timers.remove(id);
                 }
                 Poll::Ready((_, None)) => continue,
                 Poll::Pending => {}

@@ -3,11 +3,10 @@ use crate::messages::{
     EgressMessages, IngressMessages,
 };
 use crate::CallbackHandler;
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use connlib_shared::messages::{ClientId, GatewayResponse};
 use connlib_shared::Error;
 use firezone_tunnel::{Event, GatewayState, Tunnel};
-use phoenix_channel::PhoenixChannel;
 use std::convert::Infallible;
 use std::sync::Arc;
 use std::task::{Context, Poll};
@@ -17,7 +16,8 @@ pub const PHOENIX_TOPIC: &str = "gateway";
 
 pub struct Eventloop {
     tunnel: Arc<Tunnel<CallbackHandler, GatewayState>>,
-    portal: PhoenixChannel<IngressMessages, ()>,
+    portal: tokio::sync::mpsc::Receiver<IngressMessages>,
+    portal_sender: tokio::sync::mpsc::Sender<EgressMessages>,
 
     // TODO: Strongly type request reference (currently `String`)
     connection_request_tasks:
@@ -30,11 +30,13 @@ pub struct Eventloop {
 impl Eventloop {
     pub(crate) fn new(
         tunnel: Arc<Tunnel<CallbackHandler, GatewayState>>,
-        portal: PhoenixChannel<IngressMessages, ()>,
+        portal: tokio::sync::mpsc::Receiver<IngressMessages>,
+        portal_sender: tokio::sync::mpsc::Sender<EgressMessages>,
     ) -> Self {
         Self {
             tunnel,
             portal,
+            portal_sender,
 
             // TODO: Pick sane values for timeouts and size.
             connection_request_tasks: futures_bounded::FuturesMap::new(
@@ -51,17 +53,46 @@ impl Eventloop {
     #[tracing::instrument(name = "Eventloop::poll", skip_all, level = "debug")]
     pub fn poll(&mut self, cx: &mut Context<'_>) -> Poll<Result<Infallible>> {
         loop {
+            match self.tunnel.poll_next_event(cx)? {
+                Poll::Ready(firezone_tunnel::Event::SignalIceCandidate {
+                    conn_id: client,
+                    candidate,
+                }) => {
+                    tracing::debug!(%client, %candidate, "Sending ICE candidate to client");
+
+                    let sender = self.portal_sender.clone();
+                    tokio::spawn(async move {
+                        sender
+                            .send(EgressMessages::BroadcastIceCandidates(
+                                BroadcastClientIceCandidates {
+                                    client_ids: vec![client],
+                                    candidates: vec![candidate],
+                                },
+                            ))
+                            .await
+                    });
+                    continue;
+                }
+                Poll::Ready(Event::ConnectionIntent { .. }) => {
+                    unreachable!("Not used on the gateway, split the events!")
+                }
+                Poll::Ready(_) => continue,
+                Poll::Pending => {}
+            }
+
             match self.connection_request_tasks.poll_unpin(cx) {
                 Poll::Ready(((client, reference), Ok(Ok(gateway_payload)))) => {
                     tracing::debug!(%client, %reference, "Connection is ready");
 
-                    let _id = self.portal.send(
-                        PHOENIX_TOPIC,
-                        EgressMessages::ConnectionReady(ConnectionReady {
-                            reference,
-                            gateway_payload,
-                        }),
-                    );
+                    let sender = self.portal_sender.clone();
+                    tokio::spawn(async move {
+                        sender
+                            .send(EgressMessages::ConnectionReady(ConnectionReady {
+                                reference,
+                                gateway_payload,
+                            }))
+                            .await
+                    });
 
                     // TODO: If outbound request fails, cleanup connection.
                     continue;
@@ -99,11 +130,8 @@ impl Eventloop {
                 Poll::Pending => {}
             }
 
-            match self.portal.poll(cx)? {
-                Poll::Ready(phoenix_channel::Event::InboundMessage {
-                    msg: IngressMessages::RequestConnection(req),
-                    ..
-                }) => {
+            match self.portal.poll_recv(cx) {
+                Poll::Ready(Some(IngressMessages::RequestConnection(req))) => {
                     let tunnel = Arc::clone(&self.tunnel);
 
                     match self.connection_request_tasks.try_push(
@@ -132,42 +160,35 @@ impl Eventloop {
                     };
                     continue;
                 }
-                Poll::Ready(phoenix_channel::Event::InboundMessage {
-                    msg:
-                        IngressMessages::AllowAccess(AllowAccess {
-                            client_id,
-                            resource,
-                            expires_at,
-                            payload,
-                            reference,
-                        }),
-                    ..
-                }) => {
+                Poll::Ready(Some(IngressMessages::AllowAccess(AllowAccess {
+                    client_id,
+                    resource,
+                    expires_at,
+                    payload,
+                    reference,
+                }))) => {
                     tracing::debug!(client = %client_id, resource = %resource.id(), expires = %expires_at.to_rfc3339() ,"Allowing access to resource");
 
                     if let Some(res) = self
                         .tunnel
                         .allow_access(resource, client_id, expires_at, payload)
                     {
-                        tracing::trace!("sending response");
-                        self.portal.send(
-                            PHOENIX_TOPIC,
-                            EgressMessages::ConnectionReady(ConnectionReady {
-                                reference,
-                                gateway_payload: GatewayResponse::ResourceAccepted(res),
-                            }),
-                        );
+                        let sender = self.portal_sender.clone();
+                        tokio::spawn(async move {
+                            sender
+                                .send(EgressMessages::ConnectionReady(ConnectionReady {
+                                    reference,
+                                    gateway_payload: GatewayResponse::ResourceAccepted(res),
+                                }))
+                                .await
+                        });
                     }
                     continue;
                 }
-                Poll::Ready(phoenix_channel::Event::InboundMessage {
-                    msg:
-                        IngressMessages::IceCandidates(ClientIceCandidates {
-                            client_id,
-                            candidates,
-                        }),
-                    ..
-                }) => {
+                Poll::Ready(Some(IngressMessages::IceCandidates(ClientIceCandidates {
+                    client_id,
+                    candidates,
+                }))) => {
                     for candidate in candidates {
                         tracing::debug!(client = %client_id, %candidate, "Adding ICE candidate from client");
 
@@ -184,30 +205,11 @@ impl Eventloop {
                     }
                     continue;
                 }
+                // if we dropped the sender it means that there was an unrecoverable error
+                Poll::Ready(None) => {
+                    return Poll::Ready(Err(anyhow!("portal connection completely dropped")));
+                }
                 _ => {}
-            }
-
-            match self.tunnel.poll_next_event(cx)? {
-                Poll::Ready(firezone_tunnel::Event::SignalIceCandidate {
-                    conn_id: client,
-                    candidate,
-                }) => {
-                    tracing::debug!(%client, %candidate, "Sending ICE candidate to client");
-
-                    let _id = self.portal.send(
-                        PHOENIX_TOPIC,
-                        EgressMessages::BroadcastIceCandidates(BroadcastClientIceCandidates {
-                            client_ids: vec![client],
-                            candidates: vec![candidate],
-                        }),
-                    );
-                    continue;
-                }
-                Poll::Ready(Event::ConnectionIntent { .. }) => {
-                    unreachable!("Not used on the gateway, split the events!")
-                }
-                Poll::Ready(_) => continue,
-                Poll::Pending => {}
             }
 
             if self.print_stats_timer.poll_tick(cx).is_ready() {

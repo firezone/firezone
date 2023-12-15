@@ -214,13 +214,6 @@ where
         resource_addresses: Vec<IpNetwork>,
     ) -> Result<()> {
         tracing::trace!(?peer_config.ips, "new_data_channel_open");
-        let device = self.device.load().clone().ok_or(Error::NoIface)?;
-        let callbacks = self.callbacks.clone();
-        for ip in &peer_config.ips {
-            if let Ok(res) = device.add_route(*ip, &callbacks) {
-                assert!(res.is_none(),  "gateway does not run on android and thus never produces a new device upon `add_route`");
-            }
-        }
 
         let peer = Arc::new(Peer::new(
             self.private_key.clone(),
