@@ -105,7 +105,7 @@ android {
             buildConfigField(
                 "String",
                 "LOG_FILTER",
-                "\"connlib_client_android=info,firezone_tunnel=trace,connlib_shared=info,connlib_client_shared=info,warn\"",
+                "\"connlib_client_android=info,firezone_tunnel=trace,connlib_shared=info,connlib_client_shared=info,webrtc=error,warn\"",
             )
             firebaseAppDistribution {
                 serviceCredentialsFile = System.getenv("FIREBASE_CREDENTIALS_PATH")
