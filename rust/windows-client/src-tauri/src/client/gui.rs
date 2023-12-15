@@ -3,12 +3,12 @@
 
 // TODO: `git grep` for unwraps before 1.0, especially this gui module
 
-use crate::client::{self, AppLocalDataDir};
+use crate::client::{self, deep_link, AppLocalDataDir};
 use anyhow::{anyhow, bail, Context, Result};
 use client::settings::{self, AdvancedSettings};
 use connlib_client_shared::file_logger;
 use connlib_shared::messages::ResourceId;
-use secrecy::SecretString;
+use secrecy::{ExposeSecret, SecretString};
 use std::{net::IpAddr, path::PathBuf, str::FromStr};
 use tauri::{
     CustomMenuItem, Manager, SystemTray, SystemTrayEvent, SystemTrayMenu, SystemTrayMenuItem,
@@ -33,19 +33,30 @@ pub(crate) struct Managed {
     pub inject_faults: bool,
 }
 
+// TODO: We're supposed to get this from Tauri, but I'd need to move some things around first
+const TAURI_ID: &str = "dev.firezone.client";
+
 /// Runs the Tauri GUI and returns on exit or unrecoverable error
 pub(crate) fn run(params: client::GuiParams) -> Result<()> {
     let client::GuiParams { inject_faults } = params;
 
-    // Make sure we're single-instance
-    // If another instance is already running, this call
-    // signals the other instance and then exits our process.
-    tauri_plugin_deep_link::prepare("dev.firezone");
-
+    // Needed for the deep link server
     let rt = tokio::runtime::Runtime::new()?;
     let _guard = rt.enter();
 
+    // Make sure we're single-instance
+    // We register our deep links to call the `open-deep-link` subcommand,
+    // so if we're at this point, we know we've been launched manually
+    let server = deep_link::Server::new(TAURI_ID)?;
+
+    // We know now we're the only instance on the computer, so register our exe
+    // to handle deep links
+    deep_link::register(TAURI_ID)?;
+
     let (ctlr_tx, ctlr_rx) = mpsc::channel(5);
+
+    tokio::spawn(accept_deep_links(server, ctlr_tx.clone()));
+
     let managed = Managed {
         ctlr_tx,
         inject_faults,
@@ -98,7 +109,6 @@ pub(crate) fn run(params: client::GuiParams) -> Result<()> {
 
             // Set up logger
             // It's hard to set it up before Tauri's setup, because Tauri knows where all the config and data go in AppData and I don't want to replicate their logic.
-
             let logging_handles = client::logging::setup(&advanced_settings.log_filter)?;
             tracing::info!("started log");
 
@@ -111,16 +121,6 @@ pub(crate) fn run(params: client::GuiParams) -> Result<()> {
                 }
             });
 
-            // From https://github.com/FabianLars/tauri-plugin-deep-link/blob/main/example/main.rs
-            let handle = app.handle();
-            if let Err(e) = tauri_plugin_deep_link::register(client::DEEP_LINK_SCHEME, move |url| {
-                match handle_deep_link(&handle, url) {
-                    Ok(()) => {}
-                    Err(e) => tracing::error!("{e}"),
-                }
-            }) {
-                tracing::error!("couldn't register deep link scheme: {e}");
-            }
             Ok(())
         })
         .build(tauri::generate_context!())?
@@ -135,12 +135,22 @@ pub(crate) fn run(params: client::GuiParams) -> Result<()> {
     Ok(())
 }
 
-fn handle_deep_link(app: &tauri::AppHandle, url: String) -> Result<()> {
-    Ok(app
-        .try_state::<Managed>()
-        .ok_or_else(|| anyhow!("can't get Managed object from Tauri"))?
-        .ctlr_tx
-        .blocking_send(ControllerRequest::SchemeRequest(SecretString::new(url)))?)
+/// Worker task to accept deep links from a named pipe forever
+///
+/// * `server` An initial named pipe server to consume before making new servers. This lets us also use the named pipe to enforce single-instance
+async fn accept_deep_links(
+    mut server: deep_link::Server,
+    ctlr_tx: mpsc::Sender<ControllerRequest>,
+) -> Result<()> {
+    loop {
+        if let Ok(url) = server.accept().await {
+            ctlr_tx
+                .send(ControllerRequest::SchemeRequest(url))
+                .await
+                .ok();
+        }
+        server = deep_link::Server::new(TAURI_ID)?;
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -208,7 +218,10 @@ fn handle_system_tray_event(app: &tauri::AppHandle, event: TrayMenuEvent) -> Res
             }
         }
         TrayMenuEvent::SignIn => ctlr_tx.blocking_send(ControllerRequest::SignIn)?,
-        TrayMenuEvent::SignOut => app.tray_handle().set_menu(signed_out_menu())?,
+        TrayMenuEvent::SignOut => {
+            keyring_entry()?.delete_password()?;
+            app.tray_handle().set_menu(signed_out_menu())?;
+        }
         TrayMenuEvent::Quit => app.exit(0),
     }
     Ok(())
@@ -218,8 +231,7 @@ pub(crate) enum ControllerRequest {
     CopyResource(String),
     ExportLogs(PathBuf),
     GetAdvancedSettings(oneshot::Sender<AdvancedSettings>),
-    // Secret because it will have the token in it
-    SchemeRequest(SecretString),
+    SchemeRequest(url::Url),
     SignIn,
     UpdateResources(Vec<connlib_client_shared::ResourceDescription>),
 }
@@ -428,10 +440,8 @@ async fn run_controller(
             Req::GetAdvancedSettings(tx) => {
                 tx.send(controller.advanced_settings.clone()).ok();
             }
-            Req::SchemeRequest(req) => {
-                use secrecy::ExposeSecret;
-
-                if let Ok(auth) = parse_auth_callback(&req) {
+            Req::SchemeRequest(url) => {
+                if let Ok(auth) = parse_auth_callback(&url) {
                     tracing::debug!("setting new token");
                     let entry = keyring_entry()?;
                     entry.set_password(auth.token.expose_secret())?;
@@ -483,11 +493,7 @@ pub(crate) struct AuthCallback {
     _identifier: SecretString,
 }
 
-fn parse_auth_callback(input: &SecretString) -> Result<AuthCallback> {
-    use secrecy::ExposeSecret;
-
-    let url = url::Url::parse(input.expose_secret())?;
-
+fn parse_auth_callback(url: &url::Url) -> Result<AuthCallback> {
     let mut actor_name = None;
     let mut token = None;
     let mut identifier = None;
@@ -592,14 +598,14 @@ fn signed_out_menu() -> SystemTrayMenu {
 mod tests {
     use super::TrayMenuEvent;
     use anyhow::Result;
-    use secrecy::{ExposeSecret, SecretString};
+    use secrecy::ExposeSecret;
     use std::str::FromStr;
 
     #[test]
     fn parse_auth_callback() -> Result<()> {
         let input = "firezone://handle_client_auth_callback/?actor_name=Reactor+Scram&client_auth_token=a_very_secret_string&identity_provider_identifier=12345";
 
-        let actual = super::parse_auth_callback(&SecretString::from_str(input)?)?;
+        let actual = super::parse_auth_callback(&url::Url::parse(input)?)?;
 
         assert_eq!(actual.actor_name, "Reactor Scram");
         assert_eq!(actual.token.expose_secret(), "a_very_secret_string");

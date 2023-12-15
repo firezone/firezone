@@ -4,6 +4,8 @@ use cli::CliCommands as Cmd;
 
 mod cli;
 mod debug_commands;
+#[cfg(target_family = "windows")]
+mod deep_link;
 mod device_id;
 #[cfg(target_family = "unix")]
 mod gui {
@@ -39,17 +41,6 @@ pub(crate) struct GuiParams {
 pub(crate) struct AppLocalDataDir(std::path::PathBuf);
 
 pub(crate) fn run() -> Result<()> {
-    // Special case for app link URIs
-    if let Some(arg) = std::env::args().nth(1) {
-        if let Ok(url) = url::Url::parse(&arg) {
-            if url.scheme() == DEEP_LINK_SCHEME {
-                return gui::run(GuiParams {
-                    inject_faults: false,
-                });
-            }
-        }
-    }
-
     let cli = cli::Cli::parse();
 
     match cli.command {
@@ -61,9 +52,10 @@ pub(crate) fn run() -> Result<()> {
             Ok(())
         }
         Some(Cmd::DebugResolvers) => debug_commands::resolvers(),
+        Some(Cmd::DebugPipeServer) => debug_commands::pipe_server(),
         Some(Cmd::DebugToken) => debug_commands::token(),
         Some(Cmd::DebugWintun) => debug_commands::wintun(cli),
+        Some(Cmd::OpenDeepLink(deep_link)) => debug_commands::open_deep_link(&deep_link.url),
+        Some(Cmd::RegisterDeepLink) => debug_commands::register_deep_link(),
     }
 }
-
-pub(crate) const DEEP_LINK_SCHEME: &str = "firezone-fd0020211111";
