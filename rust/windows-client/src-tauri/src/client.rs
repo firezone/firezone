@@ -22,6 +22,7 @@ mod gui {
 mod gui;
 mod local_webserver;
 mod logging;
+mod resolvers;
 // Relies on some types from Tauri
 #[cfg(target_os = "windows")]
 mod settings;

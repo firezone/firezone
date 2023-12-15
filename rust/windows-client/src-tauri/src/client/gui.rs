@@ -244,8 +244,8 @@ struct CallbackHandler {
 enum CallbackError {
     #[error(transparent)]
     ControllerRequest(#[from] tokio::sync::mpsc::error::TrySendError<ControllerRequest>),
-    #[error(transparent)]
-    IpConfig(#[from] ipconfig::error::Error),
+    #[error("system DNS resolver problem: {0}")]
+    Resolvers(#[from] client::resolvers::Error),
 }
 
 impl connlib_client_shared::Callbacks for CallbackHandler {
@@ -283,19 +283,7 @@ impl connlib_client_shared::Callbacks for CallbackHandler {
     }
 
     fn get_system_default_resolvers(&self) -> Result<Option<Vec<IpAddr>>, Self::Error> {
-        let mut resolvers = vec![];
-
-        for adapter in ipconfig::get_adapters()? {
-            for resolver in adapter.dns_servers().iter().filter(|x| match x {
-                // Ignore our DNS sentinel
-                IpAddr::V4(addr) => *addr != connlib_shared::DNS_SENTINEL,
-                // TODO: Enable IPv6. The only ones I got on my dev system appeared to be link-local nonsense addresses
-                IpAddr::V6(_) => false,
-            }) {
-                resolvers.push(*resolver);
-            }
-        }
-        Ok(Some(resolvers))
+        Ok(Some(client::resolvers::get()?))
     }
 
     fn roll_log_file(&self) -> Option<PathBuf> {
