@@ -131,7 +131,12 @@ where
     CB: Callbacks + 'static,
 {
     pub fn client(private_key: StaticSecret, callbacks: CB) -> Result<Self> {
-        Self::new(client::State::new(private_key), callbacks)
+        Self::new(
+            client::State::new(private_key),
+            callbacks,
+            Ipv4Addr::new(172, 28, 0, 100),
+            Ipv6Addr::UNSPECIFIED,
+        )
     }
 
     pub async fn next_event(&self) -> Result<client::Event> {
@@ -209,7 +214,12 @@ where
     CB: Callbacks + 'static,
 {
     pub fn gateway(tunnel_private_key: StaticSecret, callbacks: CB) -> Result<Self> {
-        Self::new(gateway::State::new(tunnel_private_key), callbacks)
+        Self::new(
+            gateway::State::new(tunnel_private_key),
+            callbacks,
+            Ipv4Addr::new(172, 28, 0, 105),
+            Ipv6Addr::UNSPECIFIED,
+        )
     }
 
     // TODO: De-duplicate with client.
@@ -227,19 +237,14 @@ where
                 return Poll::Pending;
             };
 
-            match device.poll_read(read_buf.initialized_mut(), cx)? {
-                Poll::Ready(Some(packet)) => match role_state.handle_device_input(packet) {
-                    Some(Either::Left(packet)) => {
-                        device.write(packet).expect("TODO");
-                        continue;
-                    }
-                    Some(Either::Right((dest, packet))) => {
-                        self.try_send_to(packet, dest)?;
-                        continue;
-                    }
-                    None => {}
-                },
-                Poll::Ready(None) => continue,
+            match role_state.poll_next_event(cx) {
+                Poll::Ready(Either::Left(event)) => {
+                    return Poll::Ready(Ok(event));
+                }
+                Poll::Ready(Either::Right(transmit)) => {
+                    self.try_send_to(&transmit.payload, transmit.dst)?;
+                    continue;
+                }
                 Poll::Pending => {}
             }
 
@@ -290,14 +295,23 @@ where
 {
     /// Creates a new tunnel.
     #[tracing::instrument(level = "trace", skip(role_state, callbacks))]
-    pub fn new(role_state: TRoleState, callbacks: CB) -> Result<Self> {
+    pub fn new(
+        role_state: TRoleState,
+        callbacks: CB,
+        ip4_listen_addr: Ipv4Addr,
+        ip6_listen_addr: Ipv6Addr,
+    ) -> Result<Self> {
         Ok(Self {
             device: Default::default(),
             read_buf: Mutex::new(Box::new([0u8; MAX_UDP_SIZE])),
             callbacks: CallbackErrorFacade(callbacks),
             role_state: Mutex::new(role_state),
-            ip4_socket: UdpSocket::from_std(make_wildcard_socket(socket2::Domain::IPV4, 9999)?)?,
-            ip6_socket: UdpSocket::from_std(make_wildcard_socket(socket2::Domain::IPV6, 9999)?)?,
+            ip4_socket: UdpSocket::from_std(make_listening_socket(
+                (ip4_listen_addr, 9999).into(),
+            )?)?,
+            ip6_socket: UdpSocket::from_std(make_listening_socket(
+                (ip6_listen_addr, 9999).into(),
+            )?)?,
             no_device_waker: Default::default(),
         })
     }
@@ -356,13 +370,12 @@ impl From<firezone_relay::client::Transmit> for Transmit {
 /// Creates an [std::net::UdpSocket] via the [socket2] library that is configured for our needs.
 ///
 /// Most importantly, this sets the `IPV6_V6ONLY` flag to ensure we disallow IP4-mapped IPv6 addresses and can bind to IP4 and IP6 addresses on the same port.
-fn make_wildcard_socket(domain: socket2::Domain, port: u16) -> io::Result<std::net::UdpSocket> {
+fn make_listening_socket(addr: SocketAddr) -> io::Result<std::net::UdpSocket> {
     use socket2::*;
 
-    let address = match domain {
-        Domain::IPV4 => IpAddr::from(Ipv4Addr::UNSPECIFIED),
-        Domain::IPV6 => IpAddr::from(Ipv6Addr::UNSPECIFIED),
-        _ => return Err(io::ErrorKind::InvalidInput.into()),
+    let domain = match addr {
+        SocketAddr::V4(_) => Domain::IPV4,
+        SocketAddr::V6(_) => Domain::IPV6,
     };
 
     let socket = Socket::new(domain, Type::DGRAM, Some(Protocol::UDP))?;
@@ -371,7 +384,7 @@ fn make_wildcard_socket(domain: socket2::Domain, port: u16) -> io::Result<std::n
     }
 
     socket.set_nonblocking(true)?;
-    socket.bind(&SockAddr::from(SocketAddr::new(address, port)))?;
+    socket.bind(&SockAddr::from(addr))?;
 
     Ok(socket.into())
 }

@@ -56,13 +56,13 @@ where
 
     for (server, candidate) in binding_candidates.chain(allocation_candidates) {
         for (conn, connection) in initial_connections.iter_mut() {
-            if connection.add_local_candidate(server, candidate.clone()) {
+            if connection.add_local_server_candidate(server, candidate.clone()) {
                 new_candidates.push((*conn, candidate.clone()));
             }
         }
 
         for (conn, connection) in pending_connections.iter_mut() {
-            if connection.add_local_candidate(server, candidate.clone()) {
+            if connection.add_local_server_candidate(server, candidate.clone()) {
                 new_candidates.push((*conn, candidate.clone()));
             }
         }
@@ -130,6 +130,11 @@ pub(crate) fn upsert_relays(
     let (stun_servers, turn_servers) = parse_relays(relays);
 
     for stun_server in stun_servers.clone() {
+        // Temporarily skip IPv6 stuff
+        if stun_server.is_ipv6() {
+            continue;
+        }
+
         bindings.entry(stun_server).or_insert_with(|| {
             tracing::debug!(addr = %stun_server, "Adding STUN server");
 
@@ -138,6 +143,11 @@ pub(crate) fn upsert_relays(
     }
 
     for (turn_server, username, password) in turn_servers.clone() {
+        // Temporarily skip IPv6 stuff
+        if turn_server.is_ipv6() {
+            continue;
+        }
+
         allocations.entry(turn_server).or_insert_with(|| {
             tracing::debug!(addr = %turn_server, username = %username.name(), "Adding TURN server");
 

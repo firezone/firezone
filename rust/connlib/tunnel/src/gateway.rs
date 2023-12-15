@@ -25,6 +25,7 @@ use std::net::SocketAddr;
 use std::task::{Context, Poll};
 use std::time::Duration;
 use str0m::ice::IceCreds;
+use str0m::net::Protocol;
 use str0m::Candidate;
 
 impl<CB> Tunnel<CB, State>
@@ -125,6 +126,28 @@ impl State {
         );
         let local_credentials = connection.ice_credentials();
         self.pending_connections.insert(id, connection);
+
+        // TODO: Only update candidates of this connection.
+        self.pending_events.extend(
+            update_candidates_of_connections(
+                self.bindings.iter(),
+                self.allocations.iter(),
+                &mut HashMap::new(),
+                &mut self.pending_connections,
+            )
+            .map(|(conn_id, candidate)| {
+                Either::Left(Event::SignalIceCandidate { conn_id, candidate })
+            }),
+        );
+
+        // TODO: Do this as part of the connection, maybe emit an event?
+        self.pending_events
+            .push_back(Either::Left(Event::SignalIceCandidate {
+                conn_id: id,
+                candidate: Candidate::host(local, Protocol::Udp).unwrap(),
+            }))
+            .unwrap();
+
         for ip in client_ips {
             self.clients_by_ip.insert(ip, id);
         }
@@ -231,6 +254,10 @@ impl State {
         &mut self,
         cx: &mut Context<'_>,
     ) -> Poll<Either<Event, Transmit>> {
+        if let Poll::Ready(event) = self.pending_events.poll(cx) {
+            return Poll::Ready(event);
+        }
+
         if let Poll::Ready(transmit) = poll_bindings(self.bindings.values_mut(), cx) {
             return Poll::Ready(Either::Right(transmit.into()));
         }
@@ -247,7 +274,7 @@ impl State {
             let connection = entry.get_mut();
 
             loop {
-                match dbg!(connection.poll(cx)) {
+                match connection.poll(cx) {
                     Poll::Ready(connection::ConnectingEvent::Connection { src, dst }) => {
                         let connection = entry.remove().into_established_gateway_to_client(
                             src,
@@ -272,7 +299,7 @@ impl State {
             }
         }
 
-        if dbg!(self.update_timer_interval.poll_tick(cx)).is_ready() {
+        if self.update_timer_interval.poll_tick(cx).is_ready() {
             for connection in self.established_connections.values_mut() {
                 connection.update_timers();
                 connection.expire_resources();

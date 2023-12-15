@@ -32,6 +32,7 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::task::{Context, Poll};
 use std::time::Duration;
 use str0m::ice::IceCreds;
+use str0m::net::Protocol;
 use str0m::Candidate;
 
 // Using str here because Ipv4/6Network doesn't support `const` 🙃
@@ -488,6 +489,13 @@ impl State {
                 Either::Left(Event::SignalIceCandidate { conn_id, candidate })
             }),
         );
+        // TODO: Do this as part of the connection, maybe emit an event?
+        self.pending_events
+            .push_back(Either::Left(Event::SignalIceCandidate {
+                conn_id: id,
+                candidate: Candidate::host(local, Protocol::Udp).unwrap(),
+            }))
+            .unwrap();
 
         (preshared_key, ice_creds)
     }
@@ -625,7 +633,7 @@ impl State {
         &mut self,
         cx: &mut Context<'_>,
     ) -> Poll<Either<Event, Transmit>> {
-        if let Poll::Ready(event) = dbg!(self.pending_events.poll(cx)) {
+        if let Poll::Ready(event) = self.pending_events.poll(cx) {
             return Poll::Ready(event);
         }
 
@@ -645,7 +653,7 @@ impl State {
             let connection = entry.get_mut();
 
             loop {
-                match dbg!(connection.poll(cx)) {
+                match connection.poll(cx) {
                     Poll::Ready(connection::ConnectingEvent::Connection { src, dst }) => {
                         let connection = entry.remove().into_established_client_to_gateway(
                             src,
@@ -681,7 +689,7 @@ impl State {
             }
         }
 
-        if dbg!(self.update_timer_interval.poll_tick(cx)).is_ready() {
+        if self.update_timer_interval.poll_tick(cx).is_ready() {
             for connection in self.established_connections.values_mut() {
                 connection.update_timers();
             }

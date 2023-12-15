@@ -387,7 +387,7 @@ fn make_allocate_request() -> Message<Attribute> {
     );
 
     message.add_attribute(RequestedTransport::new(17));
-    message.add_attribute(AdditionalAddressFamily::new(AddressFamily::V6));
+    // message.add_attribute(AdditionalAddressFamily::new(AddressFamily::V6)); TODO: Request IPv6 binding.
 
     message
 }

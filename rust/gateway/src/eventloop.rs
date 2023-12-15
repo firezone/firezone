@@ -94,7 +94,6 @@ impl Eventloop {
                 }) => {
                     for candidate in candidates {
                         if let Ok(c) = Candidate::from_sdp_string(&candidate) {
-                            tracing::debug!(client = %client_id, %candidate, "Adding ICE candidate from client");
                             self.tunnel.add_ice_candidate(client_id, c)
                         }
                     }

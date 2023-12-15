@@ -207,6 +207,8 @@ impl Connection<Connecting> {
             return;
         }
 
+        tracing::debug!(%relay, peer = %binding.peer(), "Adding channel binding to connection");
+
         self.state.channel_bindings.push(binding);
     }
 
@@ -328,7 +330,11 @@ impl Connection<Connecting> {
 
             if let Poll::Ready(timeout) = self.agent_timeout.poll_unpin(cx) {
                 self.ice_agent.handle_timeout(timeout);
-                self.agent_timeout = agent_timeout(timeout).boxed();
+
+                if let Some(timeout) = self.ice_agent.poll_timeout() {
+                    self.agent_timeout = agent_timeout(timeout).boxed();
+                }
+
                 continue;
             }
 
@@ -355,10 +361,6 @@ impl Connection<Connecting> {
             tracing::warn!(%peer, "Received non-STUN message");
             return false;
         };
-
-        if !self.ice_agent.accepts_message(&stun) {
-            return false;
-        }
 
         self.ice_agent.handle_receive(
             Instant::now(),
@@ -726,17 +728,25 @@ fn update_timers(tunn: &mut Tunn, dst: SocketAddr, queue: &mut VecDeque<crate::T
 
 impl<T> Connection<T> {
     pub fn add_remote_candidate(&mut self, candidate: Candidate) {
-        tracing::trace!(%candidate, "Received remote candidate");
-
         self.ice_agent.add_remote_candidate(candidate);
+
+        if let Some(waker) = self.waker.take() {
+            waker.wake();
+        }
     }
 
-    pub fn add_local_candidate(&mut self, server: SocketAddr, candidate: Candidate) -> bool {
+    pub fn add_local_server_candidate(&mut self, server: SocketAddr, candidate: Candidate) -> bool {
         if !self.stun_servers.contains(&server) && !self.turn_servers.contains(&server) {
             return false;
         }
 
-        self.ice_agent.add_local_candidate(candidate)
+        let is_new = self.ice_agent.add_local_candidate(candidate);
+
+        if let Some(waker) = self.waker.take() {
+            waker.wake()
+        }
+
+        is_new
     }
 
     pub fn ice_credentials(&self) -> IceCreds {
