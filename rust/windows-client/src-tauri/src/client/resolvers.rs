@@ -14,6 +14,7 @@ pub fn get() -> Result<Vec<IpAddr>, Error> {
         .flat_map(|adapter| adapter.dns_servers())
         .filter(|ip| match ip {
             IpAddr::V4(ip) => *ip != connlib_shared::DNS_SENTINEL,
+            // Filter out bogus DNS resolvers on my dev laptop that start with fec0:
             IpAddr::V6(ip) => !ip.octets().starts_with(&[0xfe, 0xc0]),
         })
         .cloned()
