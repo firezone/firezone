@@ -22,7 +22,7 @@ defmodule Web.Sites.NewToken do
          group: group,
          env: env,
          connected?: false,
-         selected_tab: "docker-instructions"
+         selected_tab: "systemd-instructions"
        )}
     else
       {:error, _reason} -> raise Web.LiveErrors.NotFoundError
@@ -59,22 +59,10 @@ defmodule Web.Sites.NewToken do
       <:content>
         <div class="py-8 px-4 mx-auto max-w-2xl lg:py-16">
           <div class="text-xl mb-4">
-            Select deployment method:
+            Select deployment method then follow the instructions below:
           </div>
 
           <.tabs :if={@env} id="deployment-instructions">
-            <:tab
-              id="docker-instructions"
-              label="Docker"
-              phx_click="tab_selected"
-              selected={@selected_tab == "docker-instructions"}
-            >
-              <p class="p-4">
-                Copy-paste this command to your server:
-              </p>
-
-              <.code_block id="code-sample-docker1" class="w-full" phx-no-format phx-update="ignore"><%= docker_command(@env) %></.code_block>
-            </:tab>
             <:tab
               id="systemd-instructions"
               label="Systemd"
@@ -85,7 +73,11 @@ defmodule Web.Sites.NewToken do
                 1. Create a new systemd unit file:
               </p>
 
-              <.code_block id="code-sample-systemd1" class="w-full" phx-no-format>sudo nano /etc/systemd/system/firezone-gateway.service</.code_block>
+              <.code_block
+                id="code-sample-systemd1"
+                class="w-full text-xs whitespace-pre-line"
+                phx-no-format
+              >sudo nano /etc/systemd/system/firezone-gateway.service</.code_block>
 
               <p class="p-4">
                 2. Copy-paste the following contents into the file:
@@ -93,7 +85,7 @@ defmodule Web.Sites.NewToken do
 
               <.code_block
                 id="code-sample-systemd2"
-                class="w-full rounded-b"
+                class="w-full text-xs whitespace-pre-line"
                 phx-no-format
                 phx-update="ignore"
               ><%= systemd_command(@env) %></.code_block>
@@ -106,19 +98,48 @@ defmodule Web.Sites.NewToken do
                 4. Reload systemd configuration:
               </p>
 
-              <.code_block id="code-sample-systemd4" class="w-full" phx-no-format>sudo systemctl daemon-reload</.code_block>
+              <.code_block
+                id="code-sample-systemd4"
+                class="w-full text-xs whitespace-pre-line"
+                phx-no-format
+              >sudo systemctl daemon-reload</.code_block>
 
               <p class="p-4">
-                5. Start the service:
+                6. Start the service:
               </p>
 
-              <.code_block id="code-sample-systemd5" class="w-full" phx-no-format>sudo systemctl start firezone-gateway</.code_block>
+              <.code_block
+                id="code-sample-systemd5"
+                class="w-full text-xs whitespace-pre-line"
+                phx-no-format
+              >sudo systemctl start firezone-gateway</.code_block>
 
               <p class="p-4">
-                6. Enable the service to start on boot:
+                7. Enable the service to start on boot:
               </p>
 
-              <.code_block id="code-sample-systemd6" class="w-full" phx-no-format>sudo systemctl enable firezone-gateway</.code_block>
+              <.code_block
+                id="code-sample-systemd6"
+                class="w-full text-xs whitespace-pre-line"
+                phx-no-format
+              >sudo systemctl enable firezone-gateway</.code_block>
+            </:tab>
+            <:tab
+              id="docker-instructions"
+              label="Docker"
+              phx_click="tab_selected"
+              selected={@selected_tab == "docker-instructions"}
+            >
+              <p class="p-4">
+                Copy-paste this command to your server:
+              </p>
+
+              <.code_block
+                id="code-sample-docker1"
+                class="w-full text-xs whitespace-pre-line"
+                phx-no-format
+                phx-update="ignore"
+              ><%= docker_command(@env) %></.code_block>
             </:tab>
           </.tabs>
 
@@ -187,7 +208,7 @@ defmodule Web.Sites.NewToken do
       "--health-cmd=\"ip link | grep tun-firezone\"",
       "--name=firezone-gateway",
       "--cap-add=NET_ADMIN",
-      "--volume /etc/firezone",
+      "--volume /var/lib/firezone",
       "--sysctl net.ipv4.ip_forward=1",
       "--sysctl net.ipv4.conf.all.src_valid_mark=1",
       "--sysctl net.ipv6.conf.all.disable_ipv6=0",
@@ -214,7 +235,7 @@ defmodule Web.Sites.NewToken do
     [Service]
     Type=simple
     #{Enum.map_join(env, "\n", fn {key, value} -> "Environment=\"#{key}=#{value}\"" end)}
-    ExecStartPre=/bin/sh -c 'set -xue; \\
+    ExecStartPre=/bin/sh -c 'set -ue; \\
       if [ ! -e /usr/local/bin/firezone-gateway ]; then \\
         FIREZONE_VERSION=$(curl -Ls \\
           -H "Accept: application/vnd.github+json" \\
@@ -236,20 +257,29 @@ defmodule Web.Sites.NewToken do
             echo "Unsupported architecture"; \\
             exit 1 ;; \\
         esac; \\
-        wget -O /usr/local/bin/firezone-gateway $bin_url; \\
-        chmod +x /usr/local/bin/firezone-gateway; \\
-        mkdir -p /etc/firezone; \\
-        chmod 0755 /etc/firezone; \\
-        iptables-nft -A FORWARD -i tun-firezone -j ACCEPT; \\
-        iptables-nft -A FORWARD -o tun-firezone -j ACCEPT; \\
-        iptables-nft -t nat -A POSTROUTING -o e+ -j MASQUERADE; \\
-        ip6tables-nft -A FORWARD -i tun-firezone -j ACCEPT; \\
-        ip6tables-nft -A FORWARD -o tun-firezone -j ACCEPT; \\
-        ip6tables-nft -t nat -A POSTROUTING -o e+ -j MASQUERADE; \\
+        curl -Ls $bin_url -o /usr/local/bin/firezone-gateway; \\
+        chgrp firezone /usr/local/bin/firezone-gateway; \\
+        chmod 0750 /usr/local/bin/firezone-gateway; \\
+        setcap 'cap_net_admin+eip' /usr/local/bin/firezone-gateway; \\
       fi; \\
+      groupadd -f firezone; \\
+      id -u firezone &>/dev/null || useradd -r -g firezone -s /sbin/nologin firezone; \\
+      mkdir -p /var/lib/firezone; \\
+      chown firezone:firezone /var/lib/firezone; \\
+      chmod 0775 /var/lib/firezone; \\
+      iptables-nft -A FORWARD -i tun-firezone -j ACCEPT; \\
+      iptables-nft -A FORWARD -o tun-firezone -j ACCEPT; \\
+      iptables-nft -t nat -A POSTROUTING -o e+ -j MASQUERADE; \\
+      ip6tables-nft -A FORWARD -i tun-firezone -j ACCEPT; \\
+      ip6tables-nft -A FORWARD -o tun-firezone -j ACCEPT; \\
+      ip6tables-nft -t nat -A POSTROUTING -o e+ -j MASQUERADE; \\
     '
-    AmbientCapabilities=CAP_NET_ADMIN
-    ExecStart=/bin/sh -c 'FIREZONE_NAME=$(hostname); /usr/local/bin/firezone-gateway'
+    ExecStart=/usr/bin/sudo \\
+      --preserve-env=FIREZONE_NAME,FIREZONE_ID,FIREZONE_TOKEN,FIREZONE_API_URL,RUST_LOG \\
+      -u firezone \\
+      -g firezone \\
+      FIREZONE_NAME=$(hostname) \\
+      /usr/local/bin/firezone-gateway
     TimeoutStartSec=3s
     TimeoutStopSec=15s
     Restart=always
