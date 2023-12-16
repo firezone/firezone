@@ -31,7 +31,7 @@ concurrency:
 jobs:
   push-images-to-production-artifacts:
     if:
-      ${{ github.ref == 'refs/heads/main' || github.event_name == 'release' || inputs.foolproof == true }}
+      ${{ github.event_name == 'release' || (github.ref == 'refs/heads/main' && inputs.foolproof == true) }}
     runs-on: ubuntu-22.04
     strategy:
       fail-fast: false
@@ -123,7 +123,7 @@ jobs:
             "Apply Run from GitHub Actions CI ${{ inputs.tag || github.sha }}"
 
   publish-images-to-ghcr:
-    if: ${{ github.ref == 'refs/heads/main' || github.event_name == 'release' }}
+    if: ${{ github.event_name == 'release' }}
     needs: deploy-production
     runs-on: ubuntu-22.04
     strategy:
