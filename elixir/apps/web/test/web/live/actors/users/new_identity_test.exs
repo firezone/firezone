@@ -186,5 +186,12 @@ defmodule Web.Live.Actors.User.NewIdentityTest do
              Repo.get_by(Domain.Auth.Identity, provider_identifier: attrs.provider_identifier)
 
     assert_redirect(lv, ~p"/#{account}/actors/#{identity.actor_id}")
+
+    assert_email_sent(fn email ->
+      assert email.subject == "Welcome to Firezone"
+      assert email.text_body =~ "You've been invited to the following Firezone Account"
+      assert email.text_body =~ account.name
+      assert email.text_body =~ account.slug
+    end)
   end
 end

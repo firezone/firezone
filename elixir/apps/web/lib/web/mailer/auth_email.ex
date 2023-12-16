@@ -59,4 +59,22 @@ defmodule Web.Mailer.AuthEmail do
       remote_ip: "#{:inet.ntoa(remote_ip)}"
     )
   end
+
+  def new_user_email(
+        %Domain.Accounts.Account{} = account,
+        %Domain.Actors.Actor{} = actor,
+        %Domain.Auth.Identity{} = identity
+      ) do
+    sign_in_form_url = url(~p"/#{account}")
+
+    default_email()
+    |> subject("Welcome to Firezone")
+    |> to(identity.provider_identifier)
+    |> render_body(__MODULE__, :new_user,
+      account: account,
+      sign_in_form_url: sign_in_form_url,
+      actor: actor,
+      identity: identity
+    )
+  end
 end
