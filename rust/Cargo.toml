@@ -6,7 +6,6 @@ members = [
   "connlib/shared",
   "connlib/tunnel",
   "gateway",
-  "hello-world",
   "linux-client",
   "firezone-cli-utils",
   "phoenix-channel",
