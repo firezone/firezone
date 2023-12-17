@@ -28,7 +28,7 @@ pub(crate) struct Connection<T> {
     /// The STUN servers we've been configured to use.
     stun_servers: Vec<SocketAddr>,
 
-    /// The STUN servers we've been configured to use.
+    /// The TURN servers we've been configured to use.
     turn_servers: Vec<SocketAddr>,
 
     /// The local address of our socket.
@@ -241,7 +241,7 @@ impl Connection<Active> {
                 Some(IceAgentEvent::DiscoveredRecv { source, .. }) => {
                     self.state
                         .pending_events
-                        .extend(self.stun_servers.iter().copied().map(|relay| {
+                        .extend(self.turn_servers.iter().copied().map(|relay| {
                             Event::WantChannelToPeer {
                                 peer: source,
                                 relay,
@@ -254,6 +254,7 @@ impl Connection<Active> {
                     destination,
                     ..
                 }) => {
+                    // TODO: `source` tells us whether or not we are relayed.
                     self.state.remote_socket = Some(destination);
                     continue;
                 }
@@ -290,7 +291,7 @@ impl Connection<Active> {
             .remote_socket
             .is_some_and(|remote| remote == from);
 
-        from_remote || stun_response || turn_response
+        from_remote || stun_response || turn_response || direct_traffic
     }
 
     fn ice_agent_handle_packet(&mut self, peer: SocketAddr, packet: &[u8]) -> bool {
