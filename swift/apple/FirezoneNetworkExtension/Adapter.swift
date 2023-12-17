@@ -450,8 +450,6 @@ extension Adapter: CallbackHandlerDelegate {
         self.logger.error("Adapter.onUpdateResources: No packet tunnel provider")
         return
       }
-      let updatedResourceDomains = networkResources.compactMap { $0.resourceLocation.domain }
-      networkSettings.setResourceDomains(updatedResourceDomains)
       if case .tunnelReady = self.state {
         networkSettings.apply(on: packetTunnelProvider, logger: self.logger, completionHandler: nil)
       }
@@ -502,9 +500,13 @@ extension Adapter: CallbackHandlerDelegate {
     }
   }
 
-  public func getSystemDefaultResolvers() {
-    let resolvers = Resolv().getservers().map(Resolv.getnameinfo)
-    self.logger.info("getSystemDefaultResolvers: \(resolvers)")
+  // On macOS and iOS (probably others too), setting the tunnel's `matchDomains = [""]` routes all DNS through the tunnel.
+  // This appears to be achieved by replacing the nameservers in `/etc/resolv.conf` with our DNS sentinel address returned
+  // in onSetInterfaceConfig.
+  // This means it's possible we return our DNS sentinel here if this is called after the `onTunnelReady` callback.
+  // See https://github.com/firezone/firezone/issues/2939
+  public func getSystemDefaultResolvers() -> [String?] {
+    Resolv().getservers().map(Resolv.getnameinfo)
   }
 
   public func onError(error: String) {

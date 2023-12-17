@@ -26,7 +26,7 @@ public protocol CallbackHandlerDelegate: AnyObject {
   func onRemoveRoute(_: String)
   func onUpdateResources(resourceList: String)
   func onDisconnect(error: String?)
-  func getSystemDefaultResolvers()
+  func getSystemDefaultResolvers() -> [String?]
   func onError(error: String)
 }
 
@@ -84,11 +84,15 @@ public class CallbackHandler {
   }
 
   func getSystemDefaultResolvers() -> RustString {
-    let resolvers = Resolv().getservers().map(Resolv.getnameinfo)
-    logger.log("CallbackHandler.getSystemDefaultResolvers: \(resolvers, privacy: .public)")
+    logger.log("CallbackHandler.getSystemDefaultResolvers")
+    let resolvers = delegate?.getSystemDefaultResolvers()
+
     do {
       return try String(decoding: JSONEncoder().encode(resolvers), as: UTF8.self).intoRustString()
-    } catch {
+    } catch let error {
+      logger.error(
+        "CallbackHandler.getSystemDefaultResolvers Error encoding resolvers: \(error, privacy: .public)"
+      )
       return "[]".intoRustString()
     }
   }

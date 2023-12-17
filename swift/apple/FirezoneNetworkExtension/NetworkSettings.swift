@@ -49,14 +49,6 @@ class NetworkSettings {
     }
   }
 
-  func setResourceDomains(_ resourceDomains: [String]) {
-    let sortedResourceDomains = resourceDomains.sorted()
-    if self.resourceDomains != sortedResourceDomains {
-      self.resourceDomains = sortedResourceDomains
-    }
-    self.hasUnappliedChanges = true
-  }
-
   func apply(
     on packetTunnelProvider: NEPacketTunnelProvider, logger: Logger,
     completionHandler: ((Error?) -> Void)?
@@ -138,11 +130,7 @@ class NetworkSettings {
     let ipv6Settings = NEIPv6Settings(addresses: [tunnelAddressIPv6], networkPrefixLengths: [128])
     ipv6Settings.includedRoutes = tunnelIPv6Routes
     tunnelNetworkSettings.ipv6Settings = ipv6Settings
-
-    let dnsSettings = NEDNSSettings(servers: [dnsAddress])
-    // Intercept all DNS queries; SplitDNS will be handled by connlib
-    dnsSettings.matchDomains = [""]
-    tunnelNetworkSettings.dnsSettings = dnsSettings
+    tunnelNetworkSettings.dnsSettings = createDNSSettings(dnsSentinelAddress: dnsAddress)
     tunnelNetworkSettings.mtu = mtu
 
     self.hasUnappliedChanges = false
@@ -165,6 +153,23 @@ class NetworkSettings {
       }
       completionHandler?(error)
     }
+  }
+
+  // See https://github.com/firezone/firezone/issues/2939
+  // 1. Read existing system default servers from resolv.conf
+  // 2. Remove our sentinel if it's already there
+  // 3. Create a new Array with our sentinel first (order matters)
+  private func createDNSSettings(dnsSentinelAddress: String) -> NEDNSSettings {
+    var systemDefaultResolvers = Resolv().getservers().map(Resolv.getnameinfo)
+    systemDefaultResolvers.removeAll(where: { dnsSentinelAddress == $0 })
+    let dnsServers = [dnsSentinelAddress] + systemDefaultResolvers
+    let dnsSettings = NEDNSSettings(servers: dnsServers)
+
+    // Intercept all DNS queries; SplitDNS will be handled by connlib
+    dnsSettings.matchDomains = [""]
+    dnsSettings.matchDomainsNoSearch = true
+
+    return dnsSettings
   }
 }
 

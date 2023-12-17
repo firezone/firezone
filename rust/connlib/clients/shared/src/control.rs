@@ -46,14 +46,20 @@ fn create_resolver(
 ) -> Option<TokioAsyncResolver> {
     let dns_servers = if upstream_dns.is_empty() {
         let Ok(Some(dns_servers)) = callbacks.get_system_default_resolvers() else {
+            tracing::error!(
+                "No system default DNS servers available! Can't initialize resolver. DNS will be broken."
+            );
             return None;
         };
+        tracing::debug!(?dns_servers, "System default DNS servers");
         let mut dns_servers = dns_servers
             .into_iter()
             .filter(|ip| ip != &IpAddr::from(DNS_SENTINEL))
             .peekable();
         if dns_servers.peek().is_none() {
-            tracing::error!("No system default DNS servers available! Can't initialize resolver. DNS will be broken.");
+            tracing::error!(
+                "No DNS servers available! Can't initialize resolver. DNS will be broken."
+            );
             return None;
         }
 

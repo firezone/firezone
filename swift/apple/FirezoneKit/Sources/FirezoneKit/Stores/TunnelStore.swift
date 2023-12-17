@@ -32,7 +32,9 @@ final class TunnelStore: ObservableObject {
   @Published private(set) var tunnelAuthStatus: TunnelAuthStatus = .tunnelUninitialized
 
   @Published private(set) var status: NEVPNStatus {
-    didSet { TunnelStore.logger.info("status changed: \(self.status.description)") }
+    didSet {
+      TunnelStore.logger.info("status changed: \(self.status.description, privacy: .public)")
+    }
   }
 
   @Published private(set) var resources = DisplayableResources()
