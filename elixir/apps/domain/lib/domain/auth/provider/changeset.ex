@@ -4,7 +4,7 @@ defmodule Domain.Auth.Provider.Changeset do
   alias Domain.Auth.{Subject, Provider}
 
   @create_fields ~w[id name adapter provisioner adapter_config adapter_state disabled_at]a
-  @update_fields ~w[name adapter_config adapter_state provisioner disabled_at deleted_at]a
+  @update_fields ~w[name adapter_config last_syncs_failed last_sync_error adapter_state provisioner disabled_at deleted_at]a
   @required_fields ~w[name adapter adapter_config provisioner]a
 
   def create(account, attrs, %Subject{} = subject) do
