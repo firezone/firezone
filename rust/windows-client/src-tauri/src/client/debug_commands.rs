@@ -61,11 +61,7 @@ mod details {
     use super::*;
 
     pub fn open_deep_link(path: &url::Url) -> Result<()> {
-        let subscriber = tracing_subscriber::FmtSubscriber::builder()
-            .with_max_level(tracing::Level::TRACE)
-            .finish();
-        tracing::subscriber::set_global_default(subscriber)
-            .expect("setting default subscriber failed");
+        tracing_subscriber::fmt::init();
 
         let rt = Runtime::new()?;
         rt.block_on(crate::client::deep_link::open(PIPE_NAME, path))?;
@@ -76,11 +72,7 @@ mod details {
     // although I believe it's considered best practice on Windows to use named pipes for
     // single-instance apps.
     pub fn pipe_server() -> Result<()> {
-        let subscriber = tracing_subscriber::FmtSubscriber::builder()
-            .with_max_level(tracing::Level::TRACE)
-            .finish();
-        tracing::subscriber::set_global_default(subscriber)
-            .expect("setting default subscriber failed");
+        tracing_subscriber::fmt::init();
 
         let rt = Runtime::new()?;
         rt.block_on(async {
@@ -99,11 +91,7 @@ mod details {
     }
 
     pub fn wintun(_: Cli) -> Result<()> {
-        let subscriber = tracing_subscriber::FmtSubscriber::builder()
-            .with_max_level(tracing::Level::TRACE)
-            .finish();
-        tracing::subscriber::set_global_default(subscriber)
-            .expect("setting default subscriber failed");
+        tracing_subscriber::fmt::init();
 
         if crate::client::elevation::check()? {
             tracing::info!("Elevated");
