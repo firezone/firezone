@@ -41,7 +41,10 @@ const TAURI_ID: &str = "dev.firezone.client";
 
 /// Runs the Tauri GUI and returns on exit or unrecoverable error
 pub(crate) fn run(params: client::GuiParams) -> Result<()> {
-    let client::GuiParams { inject_faults } = params;
+    let client::GuiParams {
+        flag_elevated,
+        inject_faults,
+    } = params;
 
     // Needed for the deep link server
     let rt = tokio::runtime::Runtime::new()?;
@@ -100,7 +103,7 @@ pub(crate) fn run(params: client::GuiParams) -> Result<()> {
                 }
             }
         })
-        .setup(|app| {
+        .setup(move |app| {
             // Change to data dir so the file logger will write there and not in System32 if we're launching from an app link
             let cwd = app_local_data_dir(&app.handle())?.0.join("data");
             std::fs::create_dir_all(&cwd)?;
@@ -114,6 +117,8 @@ pub(crate) fn run(params: client::GuiParams) -> Result<()> {
             // It's hard to set it up before Tauri's setup, because Tauri knows where all the config and data go in AppData and I don't want to replicate their logic.
             let logging_handles = client::logging::setup(&advanced_settings.log_filter)?;
             tracing::info!("started log");
+            // I checked this on my dev system to make sure Powershell is doing what I expect and passing the argument back to us after relaunch
+            tracing::debug!("flag_elevated: {flag_elevated}");
 
             let app_handle = app.handle();
             let _ctlr_task = tokio::spawn(async move {

@@ -1989,6 +1989,7 @@ dependencies = [
  "connlib-shared",
  "firezone-cli-utils",
  "keyring",
+ "ring 0.17.7",
  "secrecy",
  "serde",
  "serde_json",
