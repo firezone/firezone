@@ -5,30 +5,11 @@ use std::{os::windows::process::CommandExt, process::Command};
 
 mod cli;
 mod debug_commands;
-#[cfg(target_family = "windows")]
 mod deep_link;
 mod device_id;
-#[cfg(target_family = "windows")]
 mod elevation;
-#[cfg(target_family = "unix")]
-mod gui {
-    use super::*;
-
-    pub enum ControllerRequest {
-        SignIn,
-    }
-
-    pub(crate) fn run(_: GuiParams) -> Result<()> {
-        // The Ubuntu CI runner doesn't have gdk and some other Tauri deps installed, so it fails unless we stub out the GUI.
-        panic!("The Tauri GUI isn't implemented for Linux.");
-    }
-}
-#[cfg(target_os = "windows")]
 mod gui;
-mod local_webserver;
 mod logging;
-// Relies on some types from Tauri
-#[cfg(target_os = "windows")]
 mod settings;
 mod wintun_install;
 
