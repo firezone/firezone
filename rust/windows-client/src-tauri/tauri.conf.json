@@ -7,8 +7,7 @@
     "withGlobalTauri": true
   },
   "package": {
-    "productName": "firezone-windows-client",
-    "version": "0.0.0"
+    "productName": "firezone-windows-client"
   },
   "tauri": {
     "allowlist": {
