@@ -1,4 +1,3 @@
-import StatusPage from "../vendor/status_page";
 import { initTabs } from "flowbite";
 
 let Hooks = {};
@@ -60,40 +59,6 @@ Hooks.Copy = {
       }, 2000);
     });
   },
-};
-
-// Update status indicator when sidebar is mounted or updated
-let statusIndicatorClassNames = {
-  none: "bg-green-100 text-green-800",
-  minor: "bg-yellow-100 text-yellow-800",
-  major: "bg-orange-100 text-orange-800",
-  critical: "bg-red-100 text-red-800",
-};
-
-const statusUpdater = function () {
-  const self = this;
-  const sp = new StatusPage.page({ page: "firezone" });
-
-  sp.summary({
-    success: function (data) {
-      self.el.innerHTML = `
-        <span class="text-xs font-medium mr-2 px-2.5 py-0.5 rounded ${
-          statusIndicatorClassNames[data.status.indicator]
-        }">
-          ${data.status.description}
-        </span>
-      `;
-    },
-    error: function (data) {
-      console.error("An error occurred while fetching status page data");
-      self.el.innerHTML = `<span class="${statusIndicatorClassNames.minor}">Unable to fetch status</span>`;
-    },
-  });
-};
-
-Hooks.StatusPage = {
-  mounted: statusUpdater,
-  updated: statusUpdater,
 };
 
 export default Hooks;
