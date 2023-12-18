@@ -126,10 +126,23 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.APIClient do
          {:ok, list} <- Map.fetch(json_response, key) do
       {:ok, list, json_response["nextPageToken"]}
     else
-      {:ok, %Finch.Response{status: status}} when status in 500..599 -> {:error, :retry_later}
-      {:ok, %Finch.Response{body: response, status: status}} -> {:error, {status, response}}
-      :error -> {:ok, [], nil}
-      other -> other
+      {:ok, %Finch.Response{status: status}} when status in 500..599 ->
+        {:error, :retry_later}
+
+      {:ok, %Finch.Response{body: response, status: status}} ->
+        case Jason.decode(response) do
+          {:ok, json_response} ->
+            {:error, {status, json_response}}
+
+          _error ->
+            {:error, {status, response}}
+        end
+
+      :error ->
+        {:ok, [], nil}
+
+      other ->
+        other
     end
   end
 end

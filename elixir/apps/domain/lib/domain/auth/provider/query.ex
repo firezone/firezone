@@ -38,6 +38,19 @@ defmodule Domain.Auth.Provider.Query do
     )
   end
 
+  def only_ready_to_be_synced(queryable \\ not_deleted()) do
+    where(
+      queryable,
+      [provider: provider],
+      is_nil(provider.last_synced_at) or
+        fragment(
+          "? + LEAST((interval '10 minute' * (COALESCE(?, 0) ^ 2 + 1)), interval '4 hours') < NOW()",
+          provider.last_synced_at,
+          provider.last_syncs_failed
+        )
+    )
+  end
+
   def by_non_empty_refresh_token(queryable \\ not_deleted()) do
     where(
       queryable,
@@ -64,6 +77,10 @@ defmodule Domain.Auth.Provider.Query do
 
   def not_disabled(queryable \\ not_deleted()) do
     where(queryable, [provider: provider], is_nil(provider.disabled_at))
+  end
+
+  def not_exceeded_attempts(queryable \\ not_deleted()) do
+    where(queryable, [provider: provider], provider.last_syncs_failed <= 10)
   end
 
   def lock(queryable \\ not_deleted()) do
