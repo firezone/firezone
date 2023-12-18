@@ -187,10 +187,10 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.Jobs do
       reason: message
     ]
 
-    if provider.last_syncs_failed >= 5 do
-      Logger.error("Failed syncing provider", metadata)
+    if provider.last_syncs_failed >= 3 do
+      Logger.warning("Failed syncing provider", metadata)
     else
-      Logger.error("Failed syncing provider", metadata)
+      Logger.info("Failed syncing provider", metadata)
     end
   end
 
