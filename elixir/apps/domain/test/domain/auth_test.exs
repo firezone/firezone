@@ -365,22 +365,26 @@ defmodule Domain.AuthTest do
 
     test "uses 1/2 regular timeout backoff for failed attempts" do
       {provider, _bypass} = Fixtures.Auth.start_and_create_google_workspace_provider()
+      # backoff: 10 minutes * (1 + 3 ^ 2) = 100 minutes
       provider = Domain.Fixture.update!(provider, %{last_sync_error: "foo", last_syncs_failed: 3})
 
-      eleven_minutes_ago = DateTime.utc_now() |> DateTime.add(-11, :minute)
-      Domain.Fixture.update!(provider, %{last_synced_at: eleven_minutes_ago})
+      ninety_nine_minute_ago = DateTime.utc_now() |> DateTime.add(-99, :minute)
+      Domain.Fixture.update!(provider, %{last_synced_at: ninety_nine_minute_ago})
       assert list_providers_pending_sync_by_adapter(:google_workspace) == {:ok, []}
 
-      fifteen_one_minute_ago = DateTime.utc_now() |> DateTime.add(-15, :minute)
-      Domain.Fixture.update!(provider, %{last_synced_at: fifteen_one_minute_ago})
+      one_hundred_one_minute_ago = DateTime.utc_now() |> DateTime.add(-101, :minute)
+      Domain.Fixture.update!(provider, %{last_synced_at: one_hundred_one_minute_ago})
+      assert {:ok, [_provider]} = list_providers_pending_sync_by_adapter(:google_workspace)
+
+      # max backoff: 4 hours
+      provider = Domain.Fixture.update!(provider, %{last_syncs_failed: 300})
+
+      three_hours_fifty_nine_minutes_ago = DateTime.utc_now() |> DateTime.add(-239, :minute)
+      Domain.Fixture.update!(provider, %{last_synced_at: three_hours_fifty_nine_minutes_ago})
       assert list_providers_pending_sync_by_adapter(:google_workspace) == {:ok, []}
 
-      twenty_one_minute_ago = DateTime.utc_now() |> DateTime.add(-21, :minute)
-      Domain.Fixture.update!(provider, %{last_synced_at: twenty_one_minute_ago})
-      assert list_providers_pending_sync_by_adapter(:google_workspace) == {:ok, []}
-
-      thirty_six_minutes_ago = DateTime.utc_now() |> DateTime.add(-36, :minute)
-      Domain.Fixture.update!(provider, %{last_synced_at: thirty_six_minutes_ago})
+      four_hours_one_minute_ago = DateTime.utc_now() |> DateTime.add(-241, :minute)
+      Domain.Fixture.update!(provider, %{last_synced_at: four_hours_one_minute_ago})
       assert {:ok, [_provider]} = list_providers_pending_sync_by_adapter(:google_workspace)
     end
   end

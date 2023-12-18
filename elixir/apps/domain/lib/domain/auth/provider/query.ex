@@ -44,7 +44,7 @@ defmodule Domain.Auth.Provider.Query do
       [provider: provider],
       is_nil(provider.last_synced_at) or
         fragment(
-          "? + (interval '10 minute' * (COALESCE(?, 0) * 0.5 + 1)) < NOW()",
+          "? + LEAST((interval '10 minute' * (COALESCE(?, 0) ^ 2 + 1)), interval '4 hours') < NOW()",
           provider.last_synced_at,
           provider.last_syncs_failed
         )
