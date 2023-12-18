@@ -362,6 +362,27 @@ defmodule Domain.AuthTest do
       assert Enum.map(providers, & &1.id) |> Enum.sort() ==
                Enum.sort([provider1.id, provider2.id])
     end
+
+    test "uses 1/2 regular timeout backoff for failed attempts" do
+      {provider, _bypass} = Fixtures.Auth.start_and_create_google_workspace_provider()
+      provider = Domain.Fixture.update!(provider, %{last_sync_error: "foo", last_syncs_failed: 3})
+
+      eleven_minutes_ago = DateTime.utc_now() |> DateTime.add(-11, :minute)
+      Domain.Fixture.update!(provider, %{last_synced_at: eleven_minutes_ago})
+      assert list_providers_pending_sync_by_adapter(:google_workspace) == {:ok, []}
+
+      fifteen_one_minute_ago = DateTime.utc_now() |> DateTime.add(-15, :minute)
+      Domain.Fixture.update!(provider, %{last_synced_at: fifteen_one_minute_ago})
+      assert list_providers_pending_sync_by_adapter(:google_workspace) == {:ok, []}
+
+      twenty_one_minute_ago = DateTime.utc_now() |> DateTime.add(-21, :minute)
+      Domain.Fixture.update!(provider, %{last_synced_at: twenty_one_minute_ago})
+      assert list_providers_pending_sync_by_adapter(:google_workspace) == {:ok, []}
+
+      thirty_six_minutes_ago = DateTime.utc_now() |> DateTime.add(-36, :minute)
+      Domain.Fixture.update!(provider, %{last_synced_at: thirty_six_minutes_ago})
+      assert {:ok, [_provider]} = list_providers_pending_sync_by_adapter(:google_workspace)
+    end
   end
 
   describe "new_provider/2" do
