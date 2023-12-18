@@ -673,16 +673,6 @@ defmodule Web.CoreComponents do
     """
   end
 
-  def status_page_widget(assigns) do
-    ~H"""
-    <div class="absolute bottom-0 left-0 justify-left p-4 space-x-4 w-full lg:flex bg-white z-20">
-      <.link href="https://firezone.statuspage.io" class="text-xs hover:underline">
-        <span id="status-page-widget" phx-update="ignore" phx-hook="StatusPage" />
-      </.link>
-    </div>
-    """
-  end
-
   attr :type, :string, default: "neutral"
   attr :class, :string, default: nil
   attr :rest, :global

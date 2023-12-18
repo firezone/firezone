@@ -118,15 +118,21 @@ defmodule Web.Relays.Show do
         %Phoenix.Socket.Broadcast{topic: "relay_groups:" <> _account_id, payload: payload},
         socket
       ) do
-    if Map.has_key?(payload.joins, socket.assigns.relay.id) or
-         Map.has_key?(payload.leaves, socket.assigns.relay.id) do
-      {:ok, relay} =
-        Relays.fetch_relay_by_id(socket.assigns.relay.id, socket.assigns.subject, preload: :group)
+    relay = socket.assigns.relay
 
-      {:noreply, assign(socket, relay: relay)}
-    else
-      {:noreply, socket}
-    end
+    socket =
+      cond do
+        Map.has_key?(payload.joins, relay.id) ->
+          assign(socket, relay: %{relay | online?: true})
+
+        Map.has_key?(payload.leaves, relay.id) ->
+          assign(socket, relay: %{relay | online?: false})
+
+        true ->
+          socket
+      end
+
+    {:noreply, socket}
   end
 
   def handle_event("delete", _params, socket) do

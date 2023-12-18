@@ -17,7 +17,10 @@ defmodule Domain.Auth.Provider do
     field :created_by, Ecto.Enum, values: ~w[system identity]a
     belongs_to :created_by_identity, Domain.Auth.Identity
 
+    field :last_syncs_failed, :integer
+    field :last_sync_error, :string
     field :last_synced_at, :utc_datetime_usec
+
     field :disabled_at, :utc_datetime_usec
     field :deleted_at, :utc_datetime_usec
     timestamps()

@@ -198,6 +198,18 @@ defmodule Domain.Fixtures.Auth do
     update!(provider, deleted_at: DateTime.utc_now())
   end
 
+  def fail_provider_sync(provider) do
+    update!(provider, last_sync_error: "Message from fixture", last_syncs_failed: 3)
+  end
+
+  def finish_provider_sync(provider) do
+    update!(provider,
+      last_synced_at: DateTime.utc_now(),
+      last_sync_error: nil,
+      last_syncs_failed: 0
+    )
+  end
+
   def identity_attrs(attrs \\ %{}) do
     Enum.into(attrs, %{
       provider_virtual_state: %{}
