@@ -64,45 +64,9 @@ jobs:
       - uses: ./.github/actions/setup-rust
       - run: cargo test --all-features ${{ matrix.packages }}
 
-  # TODO: Remove when windows build works reliably in cd.yml
-  # These `temp-` jobs serve as a sanity check to early exit if there's an issue in the workflow
-  temp-build-windows-artifacts:
-    runs-on: windows-2019
-    defaults:
-      run:
-        working-directory: ./rust
-    strategy:
-      fail-fast: false
-      # The matrix is 1x1 to match the style of build-push-linux-release-artifacts
-      # In the future we could try to cross-compile aarch64-windows here.
-      matrix:
-        name:
-          - package: hello-world
-            artifact: hello-world
-    env:
-      BINARY_DEST_PATH: ${{ matrix.name.artifact }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/setup-rust
-        with:
-          targets: x86_64-pc-windows-msvc
-      - name: Build release binaries
-        run: |
-          cargo `
-          build `
-          --release -p ${{ matrix.name.package }}
-          cp target/release/${{ matrix.name.package }}.exe "${{ env.BINARY_DEST_PATH }}-x64.exe"
-          pwd
-          ls *.exe
-      - name: Save build artifacts
-        uses: actions/upload-artifact@v3
-        with:
-          name: ${{ matrix.name.artifact }}-x64.exe
-          path: ${{ github.workspace }}/rust/${{ env.BINARY_DEST_PATH }}-x64.exe
-
   # This should be identical to `build-push-windows-release-artifacts` in `cd.yml` except for the permissions, needs, and uploading step
   # TODO: Get rid of "temp" and figure out what to do with this
-  temp-build-tauri:
+  build-tauri:
     runs-on: windows-2019
     defaults:
       run:
@@ -134,23 +98,11 @@ jobs:
 
           # There's an MSI and NSIS installer too, but their names include the version so I'll try those later.
 
-          cd windows-client/examples/permissions-test
-
-          # Hopefully sccache speeds this up.
-          tauri build
-
-          cp src-tauri/target/release/windows-permissions-test.exe "windows-permissions-test-x64.exe"
-
       - name: Save Windows client
         uses: actions/upload-artifact@v3
         with:
           name: windows-client-x64.exe
           path: ${{ github.workspace }}/rust/windows-client-x64.exe
-      - name: Save Windows permissions test
-        uses: actions/upload-artifact@v3
-        with:
-          name: windows-permissions-test-x64.exe
-          path: ${{ github.workspace }}/rust/windows-client/examples/permissions-test/windows-permissions-test-x64.exe
 
   smoke-test-relay:
     runs-on: ubuntu-22.04
