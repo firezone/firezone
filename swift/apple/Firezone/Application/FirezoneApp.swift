@@ -14,13 +14,22 @@ struct FirezoneApp: App {
   #endif
 
   #if os(iOS)
-    @StateObject var model = AppViewModel()
+    @StateObject var appViewModel: AppViewModel
   #endif
+
+  init() {
+    let tunnelStore = TunnelStore()
+    let appStore = AppStore(tunnelStore: tunnelStore)
+    #if os(macOS)
+    #elseif os(iOS)
+      self._appViewModel = StateObject(wrappedValue: AppViewModel(appStore: appStore))
+    #endif
+  }
 
   var body: some Scene {
     #if os(iOS)
       WindowGroup {
-        AppView(model: model)
+        AppView(model: appViewModel)
       }
     #else
       WindowGroup("Settings", id: "firezone-settings") {

@@ -23,7 +23,7 @@ public struct TunnelProviderKeys {
   public static let keyConnlibLogFilter = "connlibLogFilter"
 }
 
-final class TunnelStore: ObservableObject {
+public final class TunnelStore: ObservableObject {
   private static let logger = Logger.make(for: TunnelStore.self)
 
   static let shared = TunnelStore()
@@ -46,7 +46,7 @@ final class TunnelStore: ObservableObject {
   private var stopTunnelContinuation: CheckedContinuation<(), Error>?
   private var cancellables = Set<AnyCancellable>()
 
-  init() {
+  public init() {
     self.tunnel = nil
     self.tunnelAuthStatus = .uninitialized
     self.status = .invalid

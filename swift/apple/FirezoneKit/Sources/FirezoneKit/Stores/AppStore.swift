@@ -9,7 +9,7 @@ import Dependencies
 import OSLog
 
 @MainActor
-final class AppStore: ObservableObject {
+public final class AppStore: ObservableObject {
   private let logger = Logger.make(for: AppStore.self)
 
   @Dependency(\.authStore) var auth
@@ -18,7 +18,7 @@ final class AppStore: ObservableObject {
   let tunnel: TunnelStore
   private var cancellables: Set<AnyCancellable> = []
 
-  init(tunnelStore: TunnelStore) {
+  public init(tunnelStore: TunnelStore) {
     tunnel = tunnelStore
 
     Publishers.Merge(
