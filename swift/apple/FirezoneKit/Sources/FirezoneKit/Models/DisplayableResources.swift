@@ -46,7 +46,7 @@ extension DisplayableResources {
   public func toData() -> Data? {
     ("\(versionString),"
       + (orderedResources.flatMap { [$0.name, $0.location] })
-      .map { $0.addingPercentEncoding(withAllowedCharacters: .urlHostAllowed) }.compactMap { $0 }
+      .map { $0.addingPercentEncoding(withAllowedCharacters: .alphanumerics) }.compactMap { $0 }
       .joined(separator: ",")).data(using: .utf8)
   }
 
