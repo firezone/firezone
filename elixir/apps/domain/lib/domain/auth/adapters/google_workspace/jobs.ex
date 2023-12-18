@@ -100,7 +100,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.Jobs do
             |> Ecto.Multi.append(Actors.sync_provider_groups_multi(provider, actor_groups_attrs))
             |> Actors.sync_provider_memberships_multi(provider, tuples)
             |> Ecto.Multi.update(:save_last_updated_at, fn _effects_so_far ->
-              Ecto.Changeset.change(provider, last_synced_at: DateTime.utc_now())
+              Auth.Provider.Changeset.sync_finished(provider)
             end)
             |> Domain.Repo.transaction()
             |> case do
@@ -152,14 +152,45 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.Jobs do
                 )
             end
           else
+            {:error, {status, %{"error" => %{"message" => message}}}} ->
+              provider =
+                Auth.Provider.Changeset.sync_failed(provider, message)
+                |> Domain.Repo.update!()
+
+              log_sync_error(provider, "Google API returned #{status}: #{message}")
+
+            {:error, :retry_later} ->
+              message = "Google API is temporarily unavailable"
+
+              provider =
+                Auth.Provider.Changeset.sync_failed(provider, message)
+                |> Domain.Repo.update!()
+
+              log_sync_error(provider, message)
+
             {:error, reason} ->
               Logger.error("Failed syncing provider",
+                account_id: provider.account_id,
                 provider_id: provider.id,
                 reason: inspect(reason)
               )
           end
         end)
       end)
+    end
+  end
+
+  defp log_sync_error(provider, message) do
+    metadata = [
+      account_id: provider.account_id,
+      provider_id: provider.id,
+      reason: message
+    ]
+
+    if provider.last_syncs_failed >= 5 do
+      Logger.error("Failed syncing provider", metadata)
+    else
+      Logger.error("Failed syncing provider", metadata)
     end
   end
 

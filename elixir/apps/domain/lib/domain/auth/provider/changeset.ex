@@ -28,6 +28,24 @@ defmodule Domain.Auth.Provider.Changeset do
     |> changeset()
   end
 
+  def sync_finished(%Provider{} = provider) do
+    provider
+    |> change()
+    |> put_change(:last_synced_at, DateTime.utc_now())
+    |> put_change(:last_sync_error, nil)
+    |> put_change(:last_syncs_failed, 0)
+  end
+
+  def sync_failed(%Provider{} = provider, error) do
+    last_syncs_failed = provider.last_syncs_failed || 0
+
+    provider
+    |> change()
+    |> put_change(:last_synced_at, nil)
+    |> put_change(:last_sync_error, error)
+    |> put_change(:last_syncs_failed, last_syncs_failed + 1)
+  end
+
   defp changeset(changeset) do
     changeset
     |> validate_length(:name, min: 1, max: 255)
