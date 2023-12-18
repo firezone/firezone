@@ -94,7 +94,8 @@ jobs:
           tauri build
 
           # Used for release artifact
-          cp target/release/firezone-windows-client.exe "windows-client-x64.exe"
+          # In release mode the name comes from tauri.conf.json
+          cp "target/release/Firezone Windows Client.exe" "windows-client-x64.exe"
 
       - name: Save Windows client
         uses: actions/upload-artifact@v3
