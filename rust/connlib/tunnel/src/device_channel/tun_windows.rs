@@ -23,7 +23,7 @@ impl Tun {
         const TUNNEL_NAME: &str = "Firezone Tunnel";
 
         // The unsafe is here because we're loading a DLL from disk and it has arbitrary C code in it.
-        // TODO: As a defense, we could verify the hash before loading it. This would protect against accidental corruption, but not against attacks. (Because of TOCTOU)
+        // The Windows client, in `wintun_install` hashes the DLL at startup, before calling connlib, so it's unlikely for the DLL to be accidentally corrupted by the time we get here.
         let wintun = unsafe { wintun::load_from_path("./wintun.dll") }?;
         let uuid = uuid::Uuid::from_str(TUNNEL_UUID)?;
         let adapter =

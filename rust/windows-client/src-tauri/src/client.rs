@@ -63,12 +63,15 @@ pub(crate) fn run() -> Result<()> {
             } else {
                 // We're not elevated, ask Powershell to re-launch us, then exit
                 let current_exe = tauri_utils::platform::current_exe()?;
+                if current_exe.display().to_string().contains('\"') {
+                    anyhow::bail!("The exe path must not contain double quotes, it makes it hard to elevate with Powershell");
+                }
                 Command::new("powershell")
                     .creation_flags(CREATE_NO_WINDOW)
                     .arg("-Command")
                     .arg("Start-Process")
                     .arg("-FilePath")
-                    .arg(current_exe)
+                    .arg(format!(r#""{}""#, current_exe.display()))
                     .arg("-Verb")
                     .arg("RunAs")
                     .arg("-ArgumentList")
@@ -91,5 +94,19 @@ pub(crate) fn run() -> Result<()> {
         }),
         Some(Cmd::OpenDeepLink(deep_link)) => debug_commands::open_deep_link(&deep_link.url),
         Some(Cmd::RegisterDeepLink) => debug_commands::register_deep_link(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use anyhow::Result;
+
+    #[test]
+    fn exe_path() -> Result<()> {
+        // e.g. `\\\\?\\C:\\cygwin64\\home\\User\\projects\\firezone\\rust\\target\\debug\\deps\\firezone_windows_client-5f44800b2dafef90.exe`
+        let path = tauri_utils::platform::current_exe()?.display().to_string();
+        assert!(path.contains("target"));
+        assert!(!path.contains('\"'), "`{}`", path);
+        Ok(())
     }
 }
