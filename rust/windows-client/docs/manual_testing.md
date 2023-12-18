@@ -51,6 +51,8 @@ If the client stops running while signed in, then the token may be stored in Win
 - [ ] Given the log tab is displayed, when a 1-minute timer ticks, then the log directory size will be re-computed.
 - [ ] Given the log tab is displayed, when you switch to another tab or close the window, then any ongoing computation will be canceled.
 - [ ] Given the log tab is computing log directory size, when the 1-minute refresh timer ticks, then the computation will time out and show an error e.g. "timed out while computing size"
+- [ ] Given the client is using the default log filter, when we handle a DNS lookup, then the domain name will not be logged (PR #2934)
+- [ ] Given the client is showing all possible logs, when (any time), then secrets (e.g. tokens) will never be logged (PR #2934)
 
 # Resetting state
 
