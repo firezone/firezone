@@ -9,6 +9,8 @@ defmodule Web.Clients.Show do
            Flows.list_flows_for(client, socket.assigns.subject,
              preload: [gateway: [:group], policy: [:resource, :actor_group]]
            ) do
+      :ok = Clients.subscribe_for_clients_presence_in_account(client.account_id)
+
       socket =
         assign(
           socket,
@@ -154,6 +156,27 @@ defmodule Web.Clients.Show do
       <:content></:content>
     </.danger_zone>
     """
+  end
+
+  def handle_info(
+        %Phoenix.Socket.Broadcast{topic: "clients:" <> _account_id, payload: payload},
+        socket
+      ) do
+    client = socket.assigns.client
+
+    socket =
+      cond do
+        Map.has_key?(payload.joins, client.id) ->
+          assign(socket, client: %{client | online?: true})
+
+        Map.has_key?(payload.leaves, client.id) ->
+          assign(socket, client: %{client | online?: false})
+
+        true ->
+          socket
+      end
+
+    {:noreply, socket}
   end
 
   def handle_event("delete", _params, socket) do
