@@ -61,7 +61,13 @@
   </.sidebar_item_group>
 
   <:bottom>
-    <.status_page_widget />
+    <div class="absolute bottom-0 left-0 justify-left p-4 space-x-4 w-full lg:flex bg-white z-20">
+      <.link href="https://firezone.statuspage.io" class={["text-xs", link_style()]}>
+        <span class="mr-2 px-2.5 py-0.5 rounded bg-neutral-100 text-neutral-800">
+          Platform status
+        </span>
+      </.link>
+    </div>
   </:bottom>
 </.sidebar>
 
