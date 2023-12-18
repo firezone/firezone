@@ -127,13 +127,15 @@ defmodule Domain.Clients do
 
   # TODO: this is ugly!
   defp preload_online_status(client) do
-    connected_clients = Presence.list("clients:#{client.id}")
-    %{client | online?: Map.has_key?(connected_clients, client.id)}
+    case Presence.get_by_key("clients:#{client.account_id}", client.id) do
+      [] -> %{client | online?: false}
+      %{metas: [_ | _]} -> %{client | online?: true}
+    end
   end
 
-  defp preload_online_statuses([]), do: []
+  def preload_online_statuses([]), do: []
 
-  defp preload_online_statuses([client | _] = clients) do
+  def preload_online_statuses([client | _] = clients) do
     connected_clients = Presence.list("clients:#{client.account_id}")
 
     Enum.map(clients, fn client ->

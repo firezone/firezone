@@ -1,7 +1,7 @@
 defmodule Web.Actors.Show do
   use Web, :live_view
   import Web.Actors.Components
-  alias Domain.{Auth, Flows}
+  alias Domain.{Auth, Flows, Clients}
   alias Domain.Actors
 
   def mount(%{"id" => id}, _session, socket) do
@@ -17,6 +17,8 @@ defmodule Web.Actors.Show do
            Flows.list_flows_for(actor, socket.assigns.subject,
              preload: [gateway: [:group], client: [], policy: [:resource, :actor_group]]
            ) do
+      actor = %{actor | clients: Clients.preload_online_statuses(actor.clients)}
+
       {:ok,
        assign(socket,
          actor: actor,

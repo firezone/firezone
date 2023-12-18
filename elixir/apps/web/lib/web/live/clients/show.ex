@@ -53,6 +53,10 @@ defmodule Web.Clients.Show do
             <:value><%= @client.name %></:value>
           </.vertical_table_row>
           <.vertical_table_row>
+            <:label>Status</:label>
+            <:value><.connection_status schema={@client} /></:value>
+          </.vertical_table_row>
+          <.vertical_table_row>
             <:label>Owner</:label>
             <:value>
               <.link
