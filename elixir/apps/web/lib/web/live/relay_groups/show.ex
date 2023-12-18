@@ -110,12 +110,15 @@ defmodule Web.RelayGroups.Show do
   end
 
   def handle_info(%Phoenix.Socket.Broadcast{topic: "relay_groups:" <> _account_id}, socket) do
-    socket =
-      push_navigate(socket,
-        to: ~p"/#{socket.assigns.account}/relay_groups/#{socket.assigns.group}"
+    {:ok, group} =
+      Relays.fetch_group_by_id(socket.assigns.group.id, socket.assigns.subject,
+        preload: [
+          relays: [token: [created_by_identity: [:actor]]],
+          created_by_identity: [:actor]
+        ]
       )
 
-    {:noreply, socket}
+    {:noreply, assign(socket, group: group)}
   end
 
   def handle_event("delete", _params, socket) do

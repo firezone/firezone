@@ -47,7 +47,9 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.Connect do
              GoogleWorkspace.verify_and_upsert_identity(subject.actor, provider, payload),
            attrs = %{
              adapter_state: identity.provider_state,
-             disabled_at: nil
+             disabled_at: nil,
+             last_syncs_failed: 0,
+             last_sync_error: nil
            },
            {:ok, _provider} <- Domain.Auth.update_provider(provider, attrs, subject) do
         redirect(conn,

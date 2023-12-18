@@ -121,17 +121,21 @@ defmodule Web.Gateways.Show do
         %Phoenix.Socket.Broadcast{topic: "gateway_groups:" <> _account_id, payload: payload},
         socket
       ) do
-    if Map.has_key?(payload.joins, socket.assigns.gateway.id) or
-         Map.has_key?(payload.leaves, socket.assigns.gateway.id) do
-      {:ok, gateway} =
-        Gateways.fetch_gateway_by_id(socket.assigns.gateway.id, socket.assigns.subject,
-          preload: :group
-        )
+    gateway = socket.assigns.gateway
 
-      {:noreply, assign(socket, gateway: gateway)}
-    else
-      {:noreply, socket}
-    end
+    socket =
+      cond do
+        Map.has_key?(payload.joins, gateway.id) ->
+          assign(socket, gateway: %{gateway | online?: true})
+
+        Map.has_key?(payload.leaves, gateway.id) ->
+          assign(socket, gateway: %{gateway | online?: false})
+
+        true ->
+          socket
+      end
+
+    {:noreply, socket}
   end
 
   def handle_event("delete", _params, socket) do

@@ -91,8 +91,46 @@ defmodule Web.Live.Settings.IdentityProviders.GoogleWorkspace.ShowTest do
 
     assert table["name"] == provider.name
     assert table["status"] == "Active"
+    assert table["sync status"] == "Never synced"
     assert table["client id"] == provider.adapter_config["client_id"]
     assert around_now?(table["created"])
+  end
+
+  test "renders sync status", %{
+    account: account,
+    provider: provider,
+    identity: identity,
+    conn: conn
+  } do
+    provider = Fixtures.Auth.fail_provider_sync(provider)
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/settings/identity_providers/google_workspace/#{provider}")
+
+    table =
+      lv
+      |> element("#provider")
+      |> render()
+      |> vertical_table_to_map()
+
+    assert table["sync status"] =~ provider.last_sync_error
+
+    provider = Fixtures.Auth.finish_provider_sync(provider)
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/settings/identity_providers/google_workspace/#{provider}")
+
+    table =
+      lv
+      |> element("#provider")
+      |> render()
+      |> vertical_table_to_map()
+
+    assert table["sync status"] =~ "Synced 1 identity and 0 groups"
   end
 
   test "renders name of actor that created provider", %{

@@ -1,7 +1,7 @@
 defmodule Domain.Clients do
   use Supervisor
   alias Domain.{Repo, Auth, Validator}
-  alias Domain.Actors
+  alias Domain.{Accounts, Actors}
   alias Domain.Clients.{Client, Authorizer, Presence}
   require Ecto.Query
 
@@ -127,13 +127,15 @@ defmodule Domain.Clients do
 
   # TODO: this is ugly!
   defp preload_online_status(client) do
-    connected_clients = Presence.list("clients:#{client.id}")
-    %{client | online?: Map.has_key?(connected_clients, client.id)}
+    case Presence.get_by_key("clients:#{client.account_id}", client.id) do
+      [] -> %{client | online?: false}
+      %{metas: [_ | _]} -> %{client | online?: true}
+    end
   end
 
-  defp preload_online_statuses([]), do: []
+  def preload_online_statuses([]), do: []
 
-  defp preload_online_statuses([client | _] = clients) do
+  def preload_online_statuses([client | _] = clients) do
     connected_clients = Presence.list("clients:#{client.account_id}")
 
     Enum.map(clients, fn client ->
@@ -231,6 +233,18 @@ defmodule Domain.Clients do
     {:ok, _} = Presence.track(self(), "actor_clients:#{client.actor_id}", client.id, %{})
 
     :ok
+  end
+
+  def subscribe_for_clients_presence_in_account(%Accounts.Account{} = account) do
+    subscribe_for_clients_presence_in_account(account.id)
+  end
+
+  def subscribe_for_clients_presence_in_account(account_id) do
+    Phoenix.PubSub.subscribe(Domain.PubSub, "clients:#{account_id}")
+  end
+
+  def subscribe_for_clients_presence_for_actor(%Actors.Actor{} = actor) do
+    Phoenix.PubSub.subscribe(Domain.PubSub, "actor_clients:#{actor.id}")
   end
 
   def fetch_client_config!(%Client{} = client) do

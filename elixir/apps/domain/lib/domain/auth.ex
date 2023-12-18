@@ -142,11 +142,9 @@ defmodule Domain.Auth do
   end
 
   def list_providers_pending_sync_by_adapter(adapter) do
-    datetime_filter = DateTime.utc_now() |> DateTime.add(-10, :minute)
-
     Provider.Query.by_adapter(adapter)
     |> Provider.Query.by_provisioner(:custom)
-    |> Provider.Query.last_synced_at({:lt, datetime_filter})
+    |> Provider.Query.only_ready_to_be_synced()
     |> Provider.Query.not_disabled()
     |> Repo.list()
   end

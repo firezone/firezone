@@ -91,6 +91,7 @@ defmodule Web.Live.Clients.ShowTest do
     assert table["identifier"] == client.id
     assert table["name"] == client.name
     assert table["owner"] =~ actor.name
+    assert table["status"] =~ "Offline"
     assert table["created"]
     assert table["last seen"]
     assert table["last seen remote ip"] =~ to_string(client.last_seen_remote_ip)

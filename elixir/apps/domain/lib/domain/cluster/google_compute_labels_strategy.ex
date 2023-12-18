@@ -123,13 +123,17 @@ defmodule Domain.Cluster.GoogleComputeLabelsStrategy do
         end
 
       {:error, reason} ->
-        Logger.error("Can not fetch list of nodes or access token: #{inspect(reason)}",
-          module: __MODULE__
-        )
-
         if remaining_retry_count == 0 do
+          Logger.error("Can not fetch list of nodes or access token: #{inspect(reason)}",
+            module: __MODULE__
+          )
+
           {:error, reason}
         else
+          Logger.warning("Can not fetch list of nodes or access token: #{inspect(reason)}",
+            module: __MODULE__
+          )
+
           backoff_interval = Keyword.get(state.config, :backoff_interval, 1_000)
           :timer.sleep(backoff_interval)
           fetch_nodes(state, remaining_retry_count - 1)

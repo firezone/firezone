@@ -1,7 +1,7 @@
 defmodule Web.Actors.Show do
   use Web, :live_view
   import Web.Actors.Components
-  alias Domain.{Auth, Flows}
+  alias Domain.{Auth, Flows, Clients}
   alias Domain.Actors
 
   def mount(%{"id" => id}, _session, socket) do
@@ -17,6 +17,9 @@ defmodule Web.Actors.Show do
            Flows.list_flows_for(actor, socket.assigns.subject,
              preload: [gateway: [:group], client: [], policy: [:resource, :actor_group]]
            ) do
+      actor = %{actor | clients: Clients.preload_online_statuses(actor.clients)}
+      :ok = Clients.subscribe_for_clients_presence_for_actor(actor)
+
       {:ok,
        assign(socket,
          actor: actor,
@@ -261,6 +264,17 @@ defmodule Web.Actors.Show do
       <:content></:content>
     </.danger_zone>
     """
+  end
+
+  def handle_info(%Phoenix.Socket.Broadcast{topic: "actor_clients:" <> _account_id}, socket) do
+    {:ok, actor} =
+      Actors.fetch_actor_by_id(socket.assigns.actor.id, socket.assigns.subject,
+        preload: [clients: []]
+      )
+
+    actor = %{socket.assigns.actor | clients: Clients.preload_online_statuses(actor.clients)}
+
+    {:noreply, assign(socket, actor: actor)}
   end
 
   def handle_event("delete", _params, socket) do

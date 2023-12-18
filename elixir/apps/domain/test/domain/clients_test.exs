@@ -71,6 +71,17 @@ defmodule Domain.ClientsTest do
       assert fetch_client_by_id(client.id, subject) == {:ok, client}
     end
 
+    test "preloads online status", %{unprivileged_actor: actor, unprivileged_subject: subject} do
+      client = Fixtures.Clients.create_client(actor: actor)
+
+      assert {:ok, client} = fetch_client_by_id(client.id, subject)
+      assert client.online? == false
+
+      assert connect_client(client) == :ok
+      assert {:ok, client} = fetch_client_by_id(client.id, subject)
+      assert client.online? == true
+    end
+
     test "returns client that belongs to another actor with manage permission", %{
       account: account,
       unprivileged_subject: subject
@@ -180,6 +191,17 @@ defmodule Domain.ClientsTest do
 
       assert {:ok, clients} = list_clients(subject)
       assert length(clients) == 2
+    end
+
+    test "preloads online status", %{unprivileged_actor: actor, unprivileged_subject: subject} do
+      Fixtures.Clients.create_client(actor: actor)
+
+      assert {:ok, [client]} = list_clients(subject)
+      assert client.online? == false
+
+      assert connect_client(client) == :ok
+      assert {:ok, [client]} = list_clients(subject)
+      assert client.online? == true
     end
 
     test "returns error when subject has no permission to manage clients", %{

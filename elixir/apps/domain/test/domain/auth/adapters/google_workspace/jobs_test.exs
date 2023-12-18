@@ -466,5 +466,75 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.JobsTest do
       assert org_unit.id in membership_group_ids
       assert deleted_group.id not in membership_group_ids
     end
+
+    test "persists the sync error on the provider", %{provider: provider} do
+      bypass = Bypass.open()
+      GoogleWorkspaceDirectory.override_endpoint_url("http://localhost:#{bypass.port}/")
+
+      error_message =
+        "Admin SDK API has not been used in project XXXX before or it is disabled. " <>
+          "Enable it by visiting https://console.developers.google.com/apis/api/admin.googleapis.com/overview?project=XXXX " <>
+          "then retry. If you enabled this API recently, wait a few minutes for the action to propagate to our systems and retry."
+
+      response =
+        %{
+          "error" => %{
+            "code" => 403,
+            "message" => error_message,
+            "errors" => [
+              %{
+                "message" => error_message,
+                "domain" => "usageLimits",
+                "reason" => "accessNotConfigured",
+                "extendedHelp" => "https://console.developers.google.com"
+              }
+            ],
+            "status" => "PERMISSION_DENIED",
+            "details" => [
+              %{
+                "@type" => "type.googleapis.com/google.rpc.Help",
+                "links" => [
+                  %{
+                    "description" => "Google developers console API activation",
+                    "url" =>
+                      "https://console.developers.google.com/apis/api/admin.googleapis.com/overview?project=100421656358"
+                  }
+                ]
+              },
+              %{
+                "@type" => "type.googleapis.com/google.rpc.ErrorInfo",
+                "reason" => "SERVICE_DISABLED",
+                "domain" => "googleapis.com",
+                "metadata" => %{
+                  "service" => "admin.googleapis.com",
+                  "consumer" => "projects/100421656358"
+                }
+              }
+            ]
+          }
+        }
+
+      Bypass.expect_once(bypass, "GET", "/admin/directory/v1/users", fn conn ->
+        Plug.Conn.send_resp(conn, 403, Jason.encode!(response))
+      end)
+
+      assert sync_directory(%{}) == :ok
+
+      assert updated_provider = Repo.get(Domain.Auth.Provider, provider.id)
+      refute updated_provider.last_synced_at
+      assert updated_provider.last_syncs_failed == 1
+      assert updated_provider.last_sync_error == error_message
+
+      Bypass.expect_once(bypass, "GET", "/admin/directory/v1/users", fn conn ->
+        Plug.Conn.send_resp(conn, 500, "")
+      end)
+
+      assert sync_directory(%{}) == :ok
+
+      assert updated_provider = Repo.get(Domain.Auth.Provider, provider.id)
+      refute updated_provider.last_synced_at
+      assert updated_provider.last_syncs_failed == 2
+      assert updated_provider.last_sync_error == "Google API is temporarily unavailable"
+    end
   end
 end
