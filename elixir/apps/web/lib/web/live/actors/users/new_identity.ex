@@ -106,7 +106,8 @@ defmodule Web.Actors.Users.NewIdentity do
         Web.Mailer.AuthEmail.new_user_email(
           socket.assigns.account,
           socket.assigns.actor,
-          identity
+          identity,
+          socket.assigns.subject
         )
         |> Web.Mailer.deliver()
       end

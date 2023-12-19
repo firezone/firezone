@@ -63,7 +63,8 @@ defmodule Web.Mailer.AuthEmail do
   def new_user_email(
         %Domain.Accounts.Account{} = account,
         %Domain.Actors.Actor{} = actor,
-        %Domain.Auth.Identity{} = identity
+        %Domain.Auth.Identity{} = identity,
+        %Domain.Auth.Subject{} = subject
       ) do
     sign_in_form_url = url(~p"/#{account}")
 
@@ -74,7 +75,8 @@ defmodule Web.Mailer.AuthEmail do
       account: account,
       sign_in_form_url: sign_in_form_url,
       actor: actor,
-      identity: identity
+      identity: identity,
+      subject: subject
     )
   end
 end

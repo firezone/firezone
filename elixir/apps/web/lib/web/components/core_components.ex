@@ -345,7 +345,8 @@ defmodule Web.CoreComponents do
       class={[
         "p-4 text-sm flash-#{@kind}",
         @kind == :success && "text-green-800 bg-green-50",
-        @kind == :info && "text-yellow-800 bg-yellow-50",
+        @kind == :info && "text-blue-800 bg-blue-50",
+        @kind == :warning && "text-yellow-800 bg-yellow-50",
         @kind == :error && "text-red-800 bg-red-50",
         @style != "wide" && "mb-4 rounded"
       ]}

@@ -125,6 +125,18 @@ defmodule Web.Actors.Show do
           </:col>
           <:action :let={identity}>
             <button
+              :if={has_email?(identity)}
+              phx-click="send_welcome_email"
+              phx-value-id={identity.id}
+              class={[
+                "block w-full py-2 px-4 hover:bg-neutral-100"
+              ]}
+            >
+              Send Welcome Email
+            </button>
+          </:action>
+          <:action :let={identity}>
+            <button
               :if={identity.created_by != :provider}
               phx-click="delete_identity"
               data-confirm="Are you sure want to delete this identity?"
@@ -350,6 +362,25 @@ defmodule Web.Actors.Show do
     {:noreply, socket}
   end
 
+  def handle_event("send_welcome_email", %{"id" => id}, socket) do
+    {:ok, identity} = Auth.fetch_identity_by_id(id, socket.assigns.subject)
+
+    {:ok, _} =
+      Web.Mailer.AuthEmail.new_user_email(
+        socket.assigns.account,
+        socket.assigns.actor,
+        identity,
+        socket.assigns.subject
+      )
+      |> Web.Mailer.deliver()
+
+    socket =
+      socket
+      |> put_flash(:info, "Welcome email sent to #{identity.provider_identifier}")
+
+    {:noreply, socket}
+  end
+
   defp last_seen_at(identities) do
     identities
     |> Enum.reject(&is_nil(&1.last_seen_at))
@@ -358,5 +389,10 @@ defmodule Web.Actors.Show do
       nil -> nil
       identity -> identity.last_seen_at
     end
+  end
+
+  defp has_email?(identity) do
+    not is_nil(get_in(identity.provider_state, ["userinfo", "email"])) ||
+      identity.provider.adapter == :email
   end
 end

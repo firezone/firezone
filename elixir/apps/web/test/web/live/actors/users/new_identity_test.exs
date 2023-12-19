@@ -189,7 +189,7 @@ defmodule Web.Live.Actors.User.NewIdentityTest do
 
     assert_email_sent(fn email ->
       assert email.subject == "Welcome to Firezone"
-      assert email.text_body =~ "You've been invited to the following Firezone Account"
+      assert email.text_body =~ "invited you to the following Firezone Account"
       assert email.text_body =~ account.name
       assert email.text_body =~ account.slug
     end)
