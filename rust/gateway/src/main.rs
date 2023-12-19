@@ -52,9 +52,7 @@ async fn main() -> Result<()> {
         future::Either::Left((res, _)) => {
             res?;
         }
-        future::Either::Right(_) => {
-            std::process::exit(0);
-        }
+        future::Either::Right(_) => {}
     };
 
     Ok(())
