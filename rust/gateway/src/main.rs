@@ -118,9 +118,10 @@ async fn run(connect_url: Url, private_key: StaticSecret) -> Result<Infallible> 
             .context("Eventloop failed")
     });
 
-    future::try_select(portal_task, eventloop_task)
+    let res = future::try_select(portal_task, eventloop_task)
         .await
         .map_err(|e| e.factor_first().0)?;
+    res.factor_first().0?;
 
     unreachable!("should never exit without error");
 }
