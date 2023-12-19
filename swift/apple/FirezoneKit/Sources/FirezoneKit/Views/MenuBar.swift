@@ -137,7 +137,7 @@
       menu,
       title: "Settings",
       action: #selector(settingsButtonTapped),
-      target: self
+      target: nil
     )
     private lazy var quitMenuItem: NSMenuItem = {
       let menuItem = createMenuItem(
@@ -287,19 +287,23 @@
         signInMenuItem.title = "Initializing"
         signInMenuItem.target = nil
         signOutMenuItem.isHidden = true
+        settingsMenuItem.target = nil
       case .needsTunnelCreationPermission:
         signInMenuItem.title = "Requires VPN permission"
         signInMenuItem.target = nil
         signOutMenuItem.isHidden = true
+        settingsMenuItem.target = nil
       case .signedOut:
         signInMenuItem.title = "Sign In"
         signInMenuItem.target = self
         signInMenuItem.isEnabled = true
         signOutMenuItem.isHidden = true
+        settingsMenuItem.target = self
       case .signedIn(let actorName):
         signInMenuItem.title = actorName.isEmpty ? "Signed in" : "Signed in as \(actorName)"
         signInMenuItem.target = nil
         signOutMenuItem.isHidden = false
+        settingsMenuItem.target = self
       }
       // Update resources "header" menu items
       switch (self.loginStatus, self.tunnelStatus) {
