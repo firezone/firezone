@@ -18,8 +18,19 @@ import SwiftUINavigationCore
     private var cancellables = Set<AnyCancellable>()
 
     enum State {
+      case uninitialized
+      case needsPermission(AskPermissionViewModel)
       case unauthenticated(AuthViewModel)
       case authenticated(MainViewModel)
+
+      var shouldDisableSettings: Bool {
+        switch self {
+        case .uninitialized: return true
+        case .needsPermission: return true
+        case .unauthenticated: return false
+        case .authenticated: return false
+        }
+      }
     }
 
     @Published var state: State? {
@@ -52,8 +63,14 @@ import SwiftUINavigationCore
           switch loginStatus {
           case .signedIn:
             self.state = .authenticated(MainViewModel(appStore: self.appStore))
-          default:
+          case .signedOut:
             self.state = .unauthenticated(AuthViewModel(authStore: self.appStore.authStore))
+          case .needsTunnelCreationPermission:
+            self.state = .needsPermission(
+              AskPermissionViewModel(tunnelStore: self.appStore.tunnelStore)
+            )
+          case .uninitialized:
+            self.state = .uninitialized
           }
         })
         .store(in: &cancellables)
@@ -70,7 +87,7 @@ import SwiftUINavigationCore
           self?.isSettingsSheetPresented = true
         }
 
-      case .authenticated, .none:
+      case .authenticated, .uninitialized, .needsPermission, .none:
         break
       }
     }
@@ -83,6 +100,10 @@ import SwiftUINavigationCore
       NavigationView {
         Group {
           switch model.state {
+          case .uninitialized:
+            Image("LogoText")
+          case .needsPermission(let model):
+            AskPermissionView(model: model)
           case .unauthenticated(let model):
             AuthView(model: model)
           case .authenticated(let model):
@@ -99,6 +120,7 @@ import SwiftUINavigationCore
             } label: {
               Label("Settings", systemImage: "gear")
             }
+            .disabled(model.state?.shouldDisableSettings ?? true)
           }
         }
       }
