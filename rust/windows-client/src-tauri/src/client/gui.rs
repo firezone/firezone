@@ -4,7 +4,7 @@
 // TODO: `git grep` for unwraps before 1.0, especially this gui module
 
 use crate::client::{self, deep_link, AppLocalDataDir};
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{anyhow, Context, Result};
 use client::settings::{self, AdvancedSettings};
 use connlib_client_shared::file_logger;
 use secrecy::{ExposeSecret, SecretString};
@@ -13,12 +13,12 @@ use std::{
     path::PathBuf,
     str::FromStr,
 };
-use tauri::{
-    CustomMenuItem, Manager, SystemTray, SystemTrayEvent, SystemTrayMenu, SystemTrayMenuItem,
-    SystemTraySubmenu,
-};
+use system_tray_menu::{Event as TrayMenuEvent, Resource as ResourceDisplay};
+use tauri::{Manager, SystemTray, SystemTrayEvent};
 use tokio::sync::{mpsc, oneshot};
 use ControllerRequest as Req;
+
+mod system_tray_menu;
 
 pub(crate) type CtlrTx = mpsc::Sender<ControllerRequest>;
 
@@ -68,7 +68,7 @@ pub(crate) fn run(params: client::GuiParams) -> Result<()> {
         inject_faults,
     };
 
-    let tray = SystemTray::new().with_menu(signed_out_menu());
+    let tray = SystemTray::new().with_menu(system_tray_menu::signed_out());
 
     tauri::Builder::default()
         .manage(managed)
@@ -157,38 +157,8 @@ async fn accept_deep_links(
                 .await
                 .ok();
         }
+        // We re-create the named pipe server every time we get a link, because of an oddity in the Windows API.
         server = deep_link::Server::new(TAURI_ID)?;
-    }
-}
-
-#[derive(Debug, PartialEq)]
-enum TrayMenuEvent {
-    About,
-    Resource { id: String },
-    Settings,
-    SignIn,
-    SignOut,
-    Quit,
-}
-
-impl FromStr for TrayMenuEvent {
-    type Err = anyhow::Error;
-
-    fn from_str(s: &str) -> Result<Self> {
-        Ok(match s {
-            "/about" => Self::About,
-            "/settings" => Self::Settings,
-            "/sign_in" => Self::SignIn,
-            "/sign_out" => Self::SignOut,
-            "/quit" => Self::Quit,
-            s => {
-                if let Some(id) = s.strip_prefix("/resource/") {
-                    Self::Resource { id: id.to_string() }
-                } else {
-                    anyhow::bail!("unknown system tray menu event");
-                }
-            }
-        })
     }
 }
 
@@ -225,7 +195,7 @@ fn handle_system_tray_event(app: &tauri::AppHandle, event: TrayMenuEvent) -> Res
             .blocking_send(ControllerRequest::SignIn)?,
         TrayMenuEvent::SignOut => {
             keyring_entry()?.delete_password()?;
-            app.tray_handle().set_menu(signed_out_menu())?;
+            app.tray_handle().set_menu(system_tray_menu::signed_out())?;
         }
         TrayMenuEvent::Quit => app.exit(0),
     }
@@ -437,7 +407,7 @@ async fn run_controller(
                 tx.send(controller.advanced_settings.clone()).ok();
             }
             Req::SchemeRequest(url) => {
-                if let Ok(auth) = parse_auth_callback(&url) {
+                if let Some(auth) = client::deep_link::parse_auth_callback(&url) {
                     tracing::debug!("setting new token");
                     let entry = keyring_entry()?;
                     entry.set_password(auth.token.expose_secret())?;
@@ -475,167 +445,10 @@ async fn run_controller(
                     .map(|x| x.actor_name.as_str())
                     .unwrap_or("TODO");
                 app.tray_handle()
-                    .set_menu(signed_in_menu(actor_name, &resources))?;
+                    .set_menu(system_tray_menu::signed_in(actor_name, &resources))?;
             }
         }
     }
     tracing::debug!("GUI controller task exiting cleanly");
     Ok(())
-}
-
-pub(crate) struct AuthCallback {
-    actor_name: String,
-    token: SecretString,
-    _identifier: SecretString,
-}
-
-fn parse_auth_callback(url: &url::Url) -> Result<AuthCallback> {
-    let mut actor_name = None;
-    let mut token = None;
-    let mut identifier = None;
-
-    for (key, value) in url.query_pairs() {
-        match key.as_ref() {
-            "actor_name" => {
-                if actor_name.is_some() {
-                    bail!("actor_name must appear exactly once");
-                }
-                actor_name = Some(value.to_string());
-            }
-            "client_auth_token" => {
-                if token.is_some() {
-                    bail!("client_auth_token must appear exactly once");
-                }
-                token = Some(SecretString::new(value.to_string()));
-            }
-            "identity_provider_identifier" => {
-                if identifier.is_some() {
-                    bail!("identity_provider_identifier must appear exactly once");
-                }
-                identifier = Some(SecretString::new(value.to_string()));
-            }
-            _ => {}
-        }
-    }
-
-    Ok(AuthCallback {
-        actor_name: actor_name.ok_or_else(|| anyhow!("expected actor_name"))?,
-        token: token.ok_or_else(|| anyhow!("expected client_auth_token"))?,
-        _identifier: identifier.ok_or_else(|| anyhow!("expected identity_provider_identifier"))?,
-    })
-}
-
-/// The information needed for the GUI to display a resource inside the Firezone VPN
-struct ResourceDisplay {
-    id: connlib_shared::messages::ResourceId,
-    /// User-friendly name, e.g. "GitLab"
-    name: String,
-    /// What will be copied to the clipboard to paste into a web browser
-    pastable: String,
-}
-
-impl From<connlib_client_shared::ResourceDescription> for ResourceDisplay {
-    fn from(x: connlib_client_shared::ResourceDescription) -> Self {
-        match x {
-            connlib_client_shared::ResourceDescription::Dns(x) => Self {
-                id: x.id,
-                name: x.name,
-                pastable: x.address,
-            },
-            connlib_client_shared::ResourceDescription::Cidr(x) => Self {
-                id: x.id,
-                name: x.name,
-                // TODO: CIDRs aren't URLs right?
-                pastable: x.address.to_string(),
-            },
-        }
-    }
-}
-
-fn signed_in_menu(user_name: &str, resources: &[ResourceDisplay]) -> SystemTrayMenu {
-    let mut menu = SystemTrayMenu::new()
-        .add_item(
-            CustomMenuItem::new("".to_string(), format!("Signed in as {user_name}")).disabled(),
-        )
-        .add_item(CustomMenuItem::new("/sign_out".to_string(), "Sign out"))
-        .add_native_item(SystemTrayMenuItem::Separator)
-        .add_item(CustomMenuItem::new("".to_string(), "Resources").disabled());
-
-    for ResourceDisplay { id, name, pastable } in resources {
-        let submenu = SystemTrayMenu::new().add_item(CustomMenuItem::new(
-            format!("/resource/{id}"),
-            pastable.to_string(),
-        ));
-        menu = menu.add_submenu(SystemTraySubmenu::new(name, submenu));
-    }
-
-    menu = menu
-        .add_native_item(SystemTrayMenuItem::Separator)
-        .add_item(CustomMenuItem::new("/about".to_string(), "About"))
-        .add_item(CustomMenuItem::new("/settings".to_string(), "Settings"))
-        .add_item(
-            CustomMenuItem::new("/quit".to_string(), "Disconnect and quit Firezone")
-                .accelerator("Ctrl+Q"),
-        );
-
-    menu
-}
-
-fn signed_out_menu() -> SystemTrayMenu {
-    SystemTrayMenu::new()
-        .add_item(CustomMenuItem::new("/sign_in".to_string(), "Sign In"))
-        .add_native_item(SystemTrayMenuItem::Separator)
-        .add_item(CustomMenuItem::new("/about".to_string(), "About"))
-        .add_item(CustomMenuItem::new("/settings".to_string(), "Settings"))
-        .add_item(CustomMenuItem::new("/quit".to_string(), "Quit Firezone").accelerator("Ctrl+Q"))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::TrayMenuEvent;
-    use anyhow::Result;
-    use secrecy::ExposeSecret;
-    use std::str::FromStr;
-
-    #[test]
-    fn parse_auth_callback() -> Result<()> {
-        let input = "firezone://handle_client_auth_callback/?actor_name=Reactor+Scram&client_auth_token=a_very_secret_string&identity_provider_identifier=12345";
-
-        let actual = super::parse_auth_callback(&url::Url::parse(input)?)?;
-
-        assert_eq!(actual.actor_name, "Reactor Scram");
-        assert_eq!(actual.token.expose_secret(), "a_very_secret_string");
-
-        Ok(())
-    }
-
-    #[test]
-    fn systray_parse() {
-        assert_eq!(
-            TrayMenuEvent::from_str("/about").unwrap(),
-            TrayMenuEvent::About
-        );
-        assert_eq!(
-            TrayMenuEvent::from_str("/resource/1234").unwrap(),
-            TrayMenuEvent::Resource {
-                id: "1234".to_string()
-            }
-        );
-        assert_eq!(
-            TrayMenuEvent::from_str("/resource/quit").unwrap(),
-            TrayMenuEvent::Resource {
-                id: "quit".to_string()
-            }
-        );
-        assert_eq!(
-            TrayMenuEvent::from_str("/sign_out").unwrap(),
-            TrayMenuEvent::SignOut
-        );
-        assert_eq!(
-            TrayMenuEvent::from_str("/quit").unwrap(),
-            TrayMenuEvent::Quit
-        );
-
-        assert!(TrayMenuEvent::from_str("/unknown").is_err());
-    }
 }
