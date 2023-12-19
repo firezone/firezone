@@ -37,6 +37,7 @@ const LIB_NAME: &str = "connlib";
 // bytes)
 //
 // We are counting the nul-byte
+#[cfg(not(target_os = "windows"))]
 const HOST_NAME_MAX: usize = 256;
 
 /// Creates a new login URL to use with the portal.
@@ -83,6 +84,7 @@ pub fn get_user_agent() -> String {
     format!("{os_type}/{os_version} {lib_name}/{lib_version}")
 }
 
+#[cfg(not(target_os = "windows"))]
 fn get_host_name() -> Option<String> {
     let mut buf = [0; HOST_NAME_MAX];
     // SAFETY: we just allocated a buffer with that size
@@ -91,6 +93,12 @@ fn get_host_name() -> Option<String> {
     }
 
     String::from_utf8(buf.split(|c| *c == 0).next()?.to_vec()).ok()
+}
+
+#[cfg(target_os = "windows")]
+fn get_host_name() -> Option<String> {
+    // FIXME: windows
+    None
 }
 
 fn set_ws_scheme(url: &mut Url) -> Result<()> {
