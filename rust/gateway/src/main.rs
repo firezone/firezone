@@ -41,13 +41,21 @@ async fn main() -> Result<()> {
         cli.common.firezone_name,
     )?;
 
-    let task = tokio::spawn(async move { run(connect_url, private_key).await }).map_err(Into::into);
+    let task = tokio::spawn(run(connect_url, private_key)).err_into();
 
     let ctrl_c = pin!(ctrl_c().map_err(anyhow::Error::new));
 
-    future::try_select(task, ctrl_c)
+    match future::try_select(task, ctrl_c)
         .await
-        .map_err(|e| e.factor_first().0)?;
+        .map_err(|e| e.factor_first().0)?
+    {
+        future::Either::Left((res, _)) => {
+            res?;
+        }
+        future::Either::Right(_) => {
+            std::process::exit(0);
+        }
+    };
 
     Ok(())
 }
