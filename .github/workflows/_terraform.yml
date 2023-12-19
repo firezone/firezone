@@ -4,7 +4,7 @@ on:
 
 env:
   # mark:automatic-version
-  VERSION: "1.20231001.0"
+  VERSION: "1.0.0"
 
 jobs:
   plan-deploy:
