@@ -54,6 +54,7 @@ class NetworkSettings {
     if self.resourceDomains != sortedResourceDomains {
       self.resourceDomains = sortedResourceDomains
     }
+    self.hasUnappliedChanges = true
   }
 
   func apply(
