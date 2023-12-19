@@ -100,7 +100,7 @@ public final class TunnelStore: ObservableObject {
   func saveAuthStatus(_ tunnelAuthStatus: TunnelAuthStatus) async throws {
     Self.logger.log("TunnelStore.\(#function) \(tunnelAuthStatus, privacy: .public)")
     guard let tunnel = tunnel else {
-      fatalError("Tunnel not initialized yet")
+      fatalError("No tunnel yet. Can't save auth status.")
     }
 
     let tunnelStatus = tunnel.connection.status
@@ -116,7 +116,7 @@ public final class TunnelStore: ObservableObject {
   func saveAdvancedSettings(_ advancedSettings: AdvancedSettings) async throws {
     Self.logger.log("TunnelStore.\(#function) \(advancedSettings, privacy: .public)")
     guard let tunnel = tunnel else {
-      fatalError("Tunnel not initialized yet")
+      fatalError("No tunnel yet. Can't save advanced settings.")
     }
 
     let tunnelStatus = tunnel.connection.status
@@ -131,7 +131,7 @@ public final class TunnelStore: ObservableObject {
 
   func advancedSettings() -> AdvancedSettings? {
     guard let tunnel = tunnel else {
-      Self.logger.log("\(#function): Tunnel not initialized yet")
+      Self.logger.log("\(#function): No tunnel created yet")
       return nil
     }
 
@@ -153,7 +153,7 @@ public final class TunnelStore: ObservableObject {
 
   func start() async throws {
     guard let tunnel = tunnel else {
-      Self.logger.log("\(#function): TunnelStore is not initialized")
+      Self.logger.log("\(#function): No tunnel created yet")
       return
     }
 
@@ -184,7 +184,7 @@ public final class TunnelStore: ObservableObject {
 
   func stop() async throws {
     guard let tunnel = tunnel else {
-      Self.logger.log("\(#function): TunnelStore is not initialized")
+      Self.logger.log("\(#function): No tunnel created yet")
       return
     }
 
@@ -206,7 +206,7 @@ public final class TunnelStore: ObservableObject {
 
   func signOut() async throws -> Keychain.PersistentRef? {
     guard let tunnel = tunnel else {
-      Self.logger.log("\(#function): TunnelStore is not initialized")
+      Self.logger.log("\(#function): No tunnel created yet")
       return nil
     }
 
@@ -254,7 +254,7 @@ public final class TunnelStore: ObservableObject {
 
   private func updateResources() {
     guard let tunnel = tunnel else {
-      Self.logger.log("\(#function): TunnelStore is not initialized")
+      Self.logger.log("\(#function): No tunnel created yet")
       return
     }
 
@@ -338,7 +338,7 @@ public final class TunnelStore: ObservableObject {
   func removeProfile() async throws {
     TunnelStore.logger.trace("\(#function)")
     guard let tunnel = tunnel else {
-      Self.logger.log("\(#function): TunnelStore is not initialized")
+      Self.logger.log("\(#function): No tunnel created yet")
       return
     }
 
