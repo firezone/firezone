@@ -13,6 +13,7 @@ use messages::{EgressMessages, IngressMessages};
 use phoenix_channel::{PhoenixChannel, SecureUrl};
 use secrecy::{Secret, SecretString};
 use std::convert::Infallible;
+use std::path::Path;
 use std::pin::pin;
 use std::sync::Arc;
 use tokio::io::AsyncWriteExt;
@@ -32,7 +33,8 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
     setup_global_subscriber(layer::Identity::new());
 
-    let firezone_id = get_firezone_id(cli.firezone_id).await?;
+    let firezone_id = get_firezone_id(cli.firezone_id).await
+        .context("Couldn't read FIREZONE_ID or write it to disk: Please provide it through the env variable or provide rw access to /var/lib/firezone/")?;
     let (connect_url, private_key) = login_url(
         Mode::Gateway,
         cli.common.api_url,
@@ -71,7 +73,9 @@ async fn get_firezone_id(env_id: Option<String>) -> Result<String> {
         }
     }
 
-    let mut id_file = tokio::fs::File::open(ID_PATH).await?;
+    let id_path = Path::new(ID_PATH);
+    tokio::fs::create_dir_all(id_path.parent().unwrap()).await?;
+    let mut id_file = tokio::fs::File::create(id_path).await?;
     let id = Uuid::new_v4().to_string();
     id_file.write_all(id.as_bytes()).await?;
     Ok(id)
