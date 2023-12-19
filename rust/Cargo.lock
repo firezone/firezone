@@ -1162,6 +1162,7 @@ dependencies = [
  "futures-util",
  "hickory-resolver",
  "ip_network",
+ "libc",
  "log",
  "os_info",
  "parking_lot",
@@ -1901,6 +1902,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "url",
+ "uuid",
  "webrtc",
 ]
 
