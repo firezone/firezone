@@ -222,7 +222,7 @@
     }
 
     @objc private func settingsButtonTapped() {
-      openSettingsWindow()
+      AppStore.WindowDefinition.settings.openWindow()
     }
 
     @objc private func aboutButtonTapped() {
@@ -238,17 +238,6 @@
           logger.error("\(#function): Error stopping tunnel: \(error)")
         }
         NSApp.terminate(self)
-      }
-    }
-
-    private func openSettingsWindow() {
-      if let settingsWindow = NSApp.windows.first(where: {
-        $0.identifier?.rawValue.hasPrefix("firezone-settings") ?? false
-      }) {
-        NSApp.activate(ignoringOtherApps: true)
-        settingsWindow.makeKeyAndOrderFront(self)
-      } else {
-        NSWorkspace.shared.open(URL(string: "firezone://settings")!)
       }
     }
 

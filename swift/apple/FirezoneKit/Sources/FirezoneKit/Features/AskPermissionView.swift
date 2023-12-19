@@ -12,17 +12,57 @@ import SwiftUI
 public final class AskPermissionViewModel: ObservableObject {
   public var tunnelStore: TunnelStore
 
-  public init(tunnelStore: TunnelStore) {
-    self.tunnelStore = tunnelStore
+  private var cancellables: Set<AnyCancellable> = []
+
+  @Published var needsTunnelPermission = false {
+    didSet {
+      #if os(macOS)
+        Task {
+          await MainActor.run {
+            AppStore.WindowDefinition.askPermission.bringAlreadyOpenWindowFront()
+          }
+        }
+      #endif
+    }
   }
 
-  func grantPermissionButtonTapped() async {
-    NSLog("grantPermissionButtonTapped")
+  public init(tunnelStore: TunnelStore) {
+    self.tunnelStore = tunnelStore
+
+    tunnelStore.$tunnelAuthStatus
+      .filter { $0.isInitialized }
+      .sink { [weak self] tunnelAuthStatus in
+        guard let self = self else { return }
+
+        Task {
+          await MainActor.run {
+            if case .noTunnelFound = tunnelAuthStatus {
+              self.needsTunnelPermission = true
+            } else {
+              self.needsTunnelPermission = false
+            }
+          }
+        }
+      }
+      .store(in: &cancellables)
+
   }
+
+  func grantPermissionButtonTapped() {
+    Task {
+      await self.tunnelStore.initializeTunnel(canCreateTunnel: true)
+    }
+  }
+
+  #if os(macOS)
+    func closeAskPermissionWindow() {
+      AppStore.WindowDefinition.askPermission.window()?.close()
+    }
+  #endif
 }
 
 public struct AskPermissionView: View {
-  private var model: AskPermissionViewModel
+  @ObservedObject var model: AskPermissionViewModel
 
   public init(model: AskPermissionViewModel) {
     self.model = model
@@ -35,16 +75,52 @@ public struct AskPermissionView: View {
         Spacer()
         Image("LogoText")
         Spacer()
-        Text(
-          "Firezone requires the VPN tunnel permission. Until then, all functionality will be disabled."
-        )
-        Button("Grant VPN Permission") {
-          Task {
-            await model.grantPermissionButtonTapped()
+        if $model.needsTunnelPermission.wrappedValue {
+
+          Text(
+            "Firezone requires your permission to create VPN tunnels.\nUntil it has that permission, all functionality will be disabled."
+          )
+          .font(.body)
+          .multilineTextAlignment(.center)
+          Spacer()
+          Button("Grant VPN Permission") {
+            model.grantPermissionButtonTapped()
           }
+          .buttonStyle(.borderedProminent)
+          .controlSize(.large)
+          Spacer()
+            .frame(maxHeight: 20)
+          Text(
+            "After clicking on the above button,\nclick on 'Allow' when prompted."
+          )
+          .font(.caption)
+          .multilineTextAlignment(.center)
+
+        } else {
+
+          #if os(macOS)
+            Text(
+              "You can sign in to Firezone by clicking on the Firezone icon in the macOS menu bar.\nYou may now close this window."
+            )
+            .font(.body)
+            .multilineTextAlignment(.center)
+
+            Spacer()
+            Button("Close this Window") {
+              model.closeAskPermissionWindow()
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            Spacer()
+              .frame(maxHeight: 20)
+            Text(
+              "Firezone will continue running after this window is closed.\nIt will be available from the macOS menu bar."
+            )
+            .font(.caption)
+            .multilineTextAlignment(.center)
+          #endif
+
         }
-        .buttonStyle(.borderedProminent)
-        .controlSize(.large)
         Spacer()
       })
   }

@@ -83,7 +83,7 @@ public final class TunnelStore: ObservableObject {
         try await tunnel.saveToPreferences()
         Self.logger.log("\(#function): Tunnel created")
         self.tunnel = tunnel
-        self.tunnelAuthStatus = .signedOut
+        self.tunnelAuthStatus = tunnel.authStatus()
       } else {
         self.tunnelAuthStatus = .noTunnelFound
       }

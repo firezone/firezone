@@ -11,6 +11,7 @@ import SwiftUI
 struct FirezoneApp: App {
   #if os(macOS)
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+    @StateObject var askPermissionViewModel: AskPermissionViewModel
   #endif
 
   #if os(iOS)
@@ -21,6 +22,8 @@ struct FirezoneApp: App {
     let tunnelStore = TunnelStore()
     let appStore = AppStore(tunnelStore: tunnelStore)
     #if os(macOS)
+      self._askPermissionViewModel =
+        StateObject(wrappedValue: AskPermissionViewModel(tunnelStore: tunnelStore))
     #elseif os(iOS)
       self._appViewModel = StateObject(wrappedValue: AppViewModel(appStore: appStore))
     #endif
@@ -32,10 +35,24 @@ struct FirezoneApp: App {
         AppView(model: appViewModel)
       }
     #else
-      WindowGroup("Settings", id: "firezone-settings") {
+      WindowGroup(
+        "Firezone (VPN Permission)",
+        id: AppStore.WindowDefinition.askPermission.identifier
+      ) {
+        AskPermissionView(model: askPermissionViewModel)
+      }
+      .handlesExternalEvents(
+        matching: [AppStore.WindowDefinition.askPermission.externalEventMatchString]
+      )
+      WindowGroup(
+        "Settings",
+        id: AppStore.WindowDefinition.settings.identifier
+      ) {
         SettingsView(model: appDelegate.settingsViewModel)
       }
-      .handlesExternalEvents(matching: ["settings"])
+      .handlesExternalEvents(
+        matching: [AppStore.WindowDefinition.settings.externalEventMatchString]
+      )
     #endif
   }
 }
@@ -50,8 +67,7 @@ struct FirezoneApp: App {
       menuBar = MenuBar(settingsViewModel: settingsViewModel)
 
       // SwiftUI will show the first window group, so close it on launch
-      let window = NSApp.windows[0]
-      window.close()
+      _ = AppStore.WindowDefinition.allCases.map { $0.window()?.close() }
     }
 
     func applicationWillTerminate(_: Notification) {}
