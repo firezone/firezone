@@ -315,7 +315,6 @@ resource "google_monitoring_alert_policy" "genservers_crash_policy" {
     condition_matched_log {
       filter = <<-EOT
       resource.type="gce_instance"
-      -"Can not fetch list of nodes or access token"
       severity>=ERROR
       EOT
     }
