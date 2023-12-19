@@ -18,7 +18,6 @@ use boringtun::x25519::{PublicKey, StaticSecret};
 use messages::Key;
 use ring::digest::{Context, SHA256};
 use secrecy::{ExposeSecret, SecretString};
-use std::ffi::CString;
 use std::net::Ipv4Addr;
 use url::Url;
 
@@ -49,7 +48,6 @@ pub fn login_url(
     firezone_name: Option<String>,
 ) -> Result<(Url, StaticSecret)> {
     let private_key = StaticSecret::random_from_rng(rand::rngs::OsRng);
-    // FIXME: read FIREZONE_NAME from env (eg. for gateways) and use system hostname by default
     let name = firezone_name
         .or(get_host_name())
         .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
@@ -86,12 +84,13 @@ pub fn get_user_agent() -> String {
 }
 
 fn get_host_name() -> Option<String> {
-    let buf = CString::new([0u8; HOST_NAME_MAX]).ok()?;
-    if unsafe { libc::gethostname(buf.as_ptr() as *mut _, HOST_NAME_MAX) } != 0 {
+    let mut buf = [0; HOST_NAME_MAX];
+    // SAFETY: we just allocated a buffer with that size
+    if unsafe { libc::gethostname(buf.as_mut_ptr() as *mut _, HOST_NAME_MAX) } != 0 {
         return None;
     }
 
-    buf.into_string().ok()
+    String::from_utf8(buf.split(|c| *c == 0).next()?.to_vec()).ok()
 }
 
 fn set_ws_scheme(url: &mut Url) -> Result<()> {
