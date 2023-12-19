@@ -338,6 +338,39 @@ defmodule Web.Live.Actors.ShowTest do
       )
     end
 
+    test "allows sending welcome email", %{
+      account: account,
+      actor: actor,
+      identity: admin_identity,
+      conn: conn
+    } do
+      Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
+      email_provider = Fixtures.Auth.create_email_provider(account: account)
+
+      other_identity =
+        Fixtures.Auth.create_identity(account: account, actor: actor, provider: email_provider)
+        |> Ecto.Changeset.change(
+          created_by: :identity,
+          created_by_identity_id: admin_identity.id
+        )
+        |> Repo.update!()
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(admin_identity)
+        |> live(~p"/#{account}/actors/#{actor}")
+
+      assert lv
+             |> element("#identity-#{other_identity.id} button", "Send Welcome Email")
+             |> render_click()
+             |> Floki.find(".flash-info")
+             |> element_to_text() =~ "Welcome email sent to #{other_identity.provider_identifier}"
+
+      assert_email_sent(fn email ->
+        assert email.subject == "Welcome to Firezone"
+      end)
+    end
+
     test "allows deleting identities", %{
       account: account,
       actor: actor,
