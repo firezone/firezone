@@ -786,7 +786,7 @@ defmodule Domain.GatewaysTest do
       assert {:error, changeset} = update_gateway(gateway, attrs, subject)
 
       assert errors_on(changeset) == %{
-               name: ["should be at most 8 character(s)"]
+               name: ["should be at most 255 character(s)"]
              }
     end
 
