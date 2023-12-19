@@ -1,14 +1,23 @@
 defmodule Web.Settings.IdentityProviders.GoogleWorkspace.Show do
   use Web, :live_view
   import Web.Settings.IdentityProviders.Components
-  alias Domain.Auth
+  alias Domain.{Auth, Actors}
 
   def mount(%{"provider_id" => provider_id}, _session, socket) do
     with {:ok, provider} <-
            Auth.fetch_provider_by_id(provider_id, socket.assigns.subject,
              preload: [created_by_identity: [:actor]]
-           ) do
-      {:ok, assign(socket, provider: provider)}
+           ),
+         {:ok, identities_count_by_provider_id} <-
+           Auth.fetch_identities_count_grouped_by_provider_id(socket.assigns.subject),
+         {:ok, groups_count_by_provider_id} <-
+           Actors.fetch_groups_count_grouped_by_provider_id(socket.assigns.subject) do
+      {:ok,
+       assign(socket,
+         provider: provider,
+         identities_count_by_provider_id: identities_count_by_provider_id,
+         groups_count_by_provider_id: groups_count_by_provider_id
+       )}
     else
       _ -> raise Web.LiveErrors.NotFoundError
     end
@@ -80,6 +89,33 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.Show do
                 <.status provider={@provider} />
               </:value>
             </.vertical_table_row>
+
+            <.vertical_table_row>
+              <:label>Sync Status</:label>
+              <:value>
+                <.sync_status
+                  account={@account}
+                  provider={@provider}
+                  identities_count_by_provider_id={@identities_count_by_provider_id}
+                  groups_count_by_provider_id={@groups_count_by_provider_id}
+                />
+                <div
+                  :if={
+                    (is_nil(@provider.last_synced_at) and not is_nil(@provider.last_sync_error)) or
+                      (@provider.last_syncs_failed > 3 and not is_nil(@provider.last_sync_error))
+                  }
+                  class="p-3 mt-2 border-l-4 border-red-500 bg-red-100 rounded-md"
+                >
+                  <p class="font-bold text-red-700">
+                    IdP provider reported an error during the last sync:
+                  </p>
+                  <div class="flex items-center mt-1">
+                    <span class="text-red-500 font-mono"><%= @provider.last_sync_error %></span>
+                  </div>
+                </div>
+              </:value>
+            </.vertical_table_row>
+
             <.vertical_table_row>
               <:label>Client ID</:label>
               <:value><%= @provider.adapter_config["client_id"] %></:value>
