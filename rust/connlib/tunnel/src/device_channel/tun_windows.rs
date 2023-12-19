@@ -20,6 +20,7 @@ pub struct Tun {
 impl Tun {
     pub fn new(config: &InterfaceConfig) -> Result<Self> {
         const TUNNEL_UUID: &str = "e9245bc1-b8c1-44ca-ab1d-c6aad4f13b9c";
+        // wintun automatically appends " Tunnel" to this
         const TUNNEL_NAME: &str = "Firezone";
 
         // The unsafe is here because we're loading a DLL from disk and it has arbitrary C code in it.
