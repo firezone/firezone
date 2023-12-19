@@ -50,7 +50,15 @@ public final class AskPermissionViewModel: ObservableObject {
 
   func grantPermissionButtonTapped() {
     Task {
-      try? await self.tunnelStore.createTunnel()
+      do {
+        try await self.tunnelStore.createTunnel()
+      } catch {
+        #if os(macOS)
+          DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(500)) {
+            AppStore.WindowDefinition.askPermission.bringAlreadyOpenWindowFront()
+          }
+        #endif
+      }
     }
   }
 
