@@ -50,7 +50,7 @@ public final class AskPermissionViewModel: ObservableObject {
 
   func grantPermissionButtonTapped() {
     Task {
-      await self.tunnelStore.initializeTunnel(canCreateTunnel: true)
+      try? await self.tunnelStore.createTunnel()
     }
   }
 

@@ -50,11 +50,11 @@ public final class TunnelStore: ObservableObject {
     self.status = .invalid
 
     Task {
-      await initializeTunnel(canCreateTunnel: false)
+      await initializeTunnel()
     }
   }
 
-  func initializeTunnel(canCreateTunnel: Bool) async {
+  func initializeTunnel() async {
     do {
       let managers = try await NETunnelProviderManager.loadAllFromPreferences()
       Self.logger.log("\(#function): \(managers.count) tunnel managers found")
@@ -74,14 +74,6 @@ public final class TunnelStore: ObservableObject {
         self.tunnel = tunnel
         self.tunnelAuthStatus = tunnel.authStatus()
         self.status = tunnel.connection.status
-      } else if canCreateTunnel {
-        let tunnel = NETunnelProviderManager()
-        tunnel.localizedDescription = "Firezone"
-        tunnel.protocolConfiguration = basicProviderProtocol()
-        try await tunnel.saveToPreferences()
-        Self.logger.log("\(#function): Tunnel created")
-        self.tunnel = tunnel
-        self.tunnelAuthStatus = tunnel.authStatus()
       } else {
         self.tunnelAuthStatus = .noTunnelFound
       }
@@ -90,6 +82,19 @@ public final class TunnelStore: ObservableObject {
     } catch {
       Self.logger.error("Error (\(#function)): \(error)")
     }
+  }
+
+  func createTunnel() async throws {
+    guard self.tunnel == nil else {
+      return
+    }
+    let tunnel = NETunnelProviderManager()
+    tunnel.localizedDescription = "Firezone"
+    tunnel.protocolConfiguration = basicProviderProtocol()
+    try await tunnel.saveToPreferences()
+    Self.logger.log("\(#function): Tunnel created")
+    self.tunnel = tunnel
+    self.tunnelAuthStatus = tunnel.authStatus()
   }
 
   func saveAuthStatus(_ tunnelAuthStatus: TunnelAuthStatus) async throws {
