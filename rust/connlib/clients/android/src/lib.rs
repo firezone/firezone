@@ -161,7 +161,7 @@ impl Callbacks for CallbackHandler {
             env.call_method(
                 &self.callback_handler,
                 name,
-                "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)I",
+                "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)I",
                 &[
                     JValue::from(&tunnel_address_v4),
                     JValue::from(&tunnel_address_v6),
