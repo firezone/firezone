@@ -49,6 +49,7 @@ impl Tun {
             };
 
         // TODO: I think wintun flashes a couple console windows here when it shells out to netsh. We should upstream the same patch I'm doing for powershell to the wintun project
+        // We could also try to get rid of wintun dependency entirely
         adapter.set_network_addresses_tuple(
             config.ipv4.into(),
             [255, 255, 255, 255].into(),

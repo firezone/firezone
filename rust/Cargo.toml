@@ -43,10 +43,5 @@ phoenix-channel = { path = "phoenix-channel"}
 boringtun = { git = "https://github.com/cloudflare/boringtun", branch = "master" } # Contains unreleased patches we need (bump of x25519-dalek)
 webrtc = { git = "https://github.com/firezone/webrtc", branch = "expose-new-endpoint" }
 
-# Cargo does not let me set LTO to off for just the Windows client
-[profile.unopt]
-inherits = "dev"
-lto = "off"
-
 [profile.release]
 strip = true
