@@ -130,7 +130,7 @@ where
     ) {
         runtime.spawn(async move {
             let (connect_url, private_key) = fatal_error!(
-                login_url(Mode::Client, api_url, token, device_id),
+                login_url(Mode::Client, api_url, token, device_id, None),
                 runtime_stopper,
                 &callbacks
             );

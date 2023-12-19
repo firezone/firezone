@@ -34,6 +34,7 @@ webrtc = { workspace = true }
 ring = "0.17"
 hickory-resolver = { workspace = true }
 domain = { workspace = true }
+libc = "0.2"
 
 # Needed for Android logging until tracing is working
 log = "0.4"
