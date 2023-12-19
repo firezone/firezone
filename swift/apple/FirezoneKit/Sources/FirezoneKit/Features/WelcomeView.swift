@@ -35,14 +35,14 @@ import SwiftUINavigationCore
 
     init(appStore: AppStore) {
       self.appStore = appStore
-      self.settingsViewModel = SettingsViewModel()
+      self.settingsViewModel = appStore.settingsViewModel
 
       appStore.objectWillChange
         .receive(on: mainQueue)
         .sink { [weak self] in self?.objectWillChange.send() }
         .store(in: &cancellables)
 
-      appStore.auth.$loginStatus
+      appStore.authStore.$loginStatus
         .receive(on: mainQueue)
         .sink(receiveValue: { [weak self] loginStatus in
           guard let self else {
@@ -53,7 +53,7 @@ import SwiftUINavigationCore
           case .signedIn:
             self.state = .authenticated(MainViewModel(appStore: self.appStore))
           default:
-            self.state = .unauthenticated(AuthViewModel())
+            self.state = .unauthenticated(AuthViewModel(authStore: self.appStore.authStore))
           }
         })
         .store(in: &cancellables)
@@ -105,14 +105,6 @@ import SwiftUINavigationCore
       .sheet(isPresented: $model.isSettingsSheetPresented) {
         SettingsView(model: model.settingsViewModel)
       }
-    }
-  }
-
-  struct WelcomeView_Previews: PreviewProvider {
-    static var previews: some View {
-      WelcomeView(
-        model: WelcomeViewModel(appStore: AppStore(tunnelStore: TunnelStore.shared))
-      )
     }
   }
 #endif

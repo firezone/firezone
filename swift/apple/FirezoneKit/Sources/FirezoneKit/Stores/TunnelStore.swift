@@ -26,8 +26,6 @@ public struct TunnelProviderKeys {
 public final class TunnelStore: ObservableObject {
   private static let logger = Logger.make(for: TunnelStore.self)
 
-  static let shared = TunnelStore()
-
   @Published private var tunnel: NETunnelProviderManager?
   @Published private(set) var tunnelAuthStatus: TunnelAuthStatus = .uninitialized
 

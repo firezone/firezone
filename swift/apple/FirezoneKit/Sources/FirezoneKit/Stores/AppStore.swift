@@ -16,9 +16,6 @@ import OSLog
 public final class AppStore: ObservableObject {
   private let logger = Logger.make(for: AppStore.self)
 
-  @Dependency(\.authStore) var auth
-  @Dependency(\.mainQueue) var mainQueue
-
   #if os(macOS)
     public enum WindowDefinition: String, CaseIterable {
       case askPermission = "ask-permission"
@@ -66,11 +63,20 @@ public final class AppStore: ObservableObject {
     }
   #endif
 
-  let tunnel: TunnelStore
+  public let authStore: AuthStore
+  public let tunnelStore: TunnelStore
+  public let settingsViewModel: SettingsViewModel
+
   private var cancellables: Set<AnyCancellable> = []
 
-  public init(tunnelStore: TunnelStore) {
-    tunnel = tunnelStore
+  public init() {
+    let tunnelStore = TunnelStore()
+    let authStore = AuthStore(tunnelStore: tunnelStore)
+    let settingsViewModel = SettingsViewModel(authStore: authStore)
+
+    self.authStore = authStore
+    self.tunnelStore = tunnelStore
+    self.settingsViewModel = settingsViewModel
 
     #if os(macOS)
       tunnelStore.$tunnelAuthStatus
@@ -92,8 +98,8 @@ public final class AppStore: ObservableObject {
   private func signOutAndStopTunnel() {
     Task {
       do {
-        try await tunnel.stop()
-        await auth.signOut()
+        try await self.tunnelStore.stop()
+        await self.authStore.signOut()
       } catch {
         logger.error("\(#function): Error stopping tunnel: \(String(describing: error))")
       }

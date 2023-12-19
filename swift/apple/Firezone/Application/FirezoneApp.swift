@@ -18,15 +18,21 @@ struct FirezoneApp: App {
     @StateObject var appViewModel: AppViewModel
   #endif
 
+  @StateObject var appStore = AppStore()
+
   init() {
-    let tunnelStore = TunnelStore()
-    let appStore = AppStore(tunnelStore: tunnelStore)
+    let appStore = AppStore()
+    self._appStore = StateObject(wrappedValue: appStore)
+
     #if os(macOS)
       self._askPermissionViewModel =
-        StateObject(wrappedValue: AskPermissionViewModel(tunnelStore: tunnelStore))
+        StateObject(wrappedValue: AskPermissionViewModel(tunnelStore: appStore.tunnelStore))
+      appDelegate.appStore = appStore
     #elseif os(iOS)
-      self._appViewModel = StateObject(wrappedValue: AppViewModel(appStore: appStore))
+      self._appViewModel =
+        StateObject(wrappedValue: AppViewModel(appStore: appStore))
     #endif
+
   }
 
   var body: some Scene {
@@ -48,7 +54,7 @@ struct FirezoneApp: App {
         "Settings",
         id: AppStore.WindowDefinition.settings.identifier
       ) {
-        SettingsView(model: appDelegate.settingsViewModel)
+        SettingsView(model: appStore.settingsViewModel)
       }
       .handlesExternalEvents(
         matching: [AppStore.WindowDefinition.settings.externalEventMatchString]
@@ -60,11 +66,27 @@ struct FirezoneApp: App {
 #if os(macOS)
   @MainActor
   final class AppDelegate: NSObject, NSApplicationDelegate {
-    let settingsViewModel = SettingsViewModel()
-    private var menuBar: MenuBar!
+    private var isAppLaunched = false
+    private var menuBar: MenuBar?
+
+    public var appStore: AppStore? {
+      didSet {
+        if self.isAppLaunched {
+          // This is not expected to happen because appStore
+          // should be set before the app finishes launching.
+          // This code is only a contingency.
+          if let appStore = self.appStore {
+            self.menuBar = MenuBar(appStore: appStore)
+          }
+        }
+      }
+    }
 
     func applicationDidFinishLaunching(_: Notification) {
-      menuBar = MenuBar(settingsViewModel: settingsViewModel)
+      self.isAppLaunched = true
+      if let appStore = self.appStore {
+        self.menuBar = MenuBar(appStore: appStore)
+      }
 
       // SwiftUI will show the first window group, so close it on launch
       _ = AppStore.WindowDefinition.allCases.map { $0.window()?.close() }

@@ -10,22 +10,9 @@ import Foundation
 import NetworkExtension
 import OSLog
 
-extension AuthStore: DependencyKey {
-  static var liveValue: AuthStore = .shared
-}
-
-extension DependencyValues {
-  var authStore: AuthStore {
-    get { self[AuthStore.self] }
-    set { self[AuthStore.self] = newValue }
-  }
-}
-
 @MainActor
-final class AuthStore: ObservableObject {
+public final class AuthStore: ObservableObject {
   private let logger = Logger.make(for: AuthStore.self)
-
-  static let shared = AuthStore(tunnelStore: TunnelStore.shared)
 
   enum LoginStatus: CustomStringConvertible {
     case uninitialized
@@ -67,7 +54,7 @@ final class AuthStore: ObservableObject {
   private let reconnectDelaySecs = 1
   private var reconnectionAttemptsRemaining = maxReconnectionAttemptCount
 
-  private init(tunnelStore: TunnelStore) {
+  init(tunnelStore: TunnelStore) {
     self.tunnelStore = tunnelStore
     self.loginStatus = .uninitialized
 
