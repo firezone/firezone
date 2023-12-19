@@ -76,7 +76,7 @@ defmodule Domain.Gateways.Gateway.Changeset do
   defp changeset(changeset) do
     changeset
     |> trim_change(:name)
-    |> validate_length(:name, min: 1, max: 8)
+    |> validate_length(:name, min: 1, max: 255)
     |> unique_constraint(:name, name: :gateways_group_id_name_index)
     |> unique_constraint([:public_key])
     |> unique_constraint(:external_id)
