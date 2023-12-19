@@ -22,10 +22,16 @@ use tauri::{
 use tokio::sync::{mpsc, oneshot, Notify};
 use ControllerRequest as Req;
 
+/// CtlrTx allows the controller task to only await a single `Notify` even though it
+/// can receive messages from unrelated sources like connlib's `on_update_resources`
+/// and the `mpsc` channel that gets system tray events.
 #[derive(Clone)]
 pub(crate) struct CtlrTx {
     ctlr_tx: mpsc::Sender<ControllerRequest>,
     // The controller only waits for its Notify, so use that to wake it up
+    // Tokio docs say that Notify has the same inter-thread ordering as stdlib's
+    // thread parking, so it's safe to use Notify to wake up a task to read unrelated data.
+    // Tokio will synchronize and make sure that data written before `notify_*` is readable before the other task wakes.
     notify_controller: Arc<Notify>,
 }
 
@@ -289,8 +295,8 @@ struct CallbackHandler {
 
 #[derive(thiserror::Error, Debug)]
 enum CallbackError {
-    #[error(transparent)]
-    ControllerRequest(#[from] std::sync::mpsc::SendError<ControllerRequest>),
+    #[error("couldn't send message to Controller task: {0}")]
+    MessageSend(#[from] std::sync::mpsc::SendError<ControllerRequest>),
 }
 
 // Callbacks must all be non-blocking
@@ -354,6 +360,7 @@ struct Controller {
     /// Sent verbatim to Session::connect
     device_id: String,
     logging_handles: client::logging::Handles,
+    // TODO: Use `select!` over two notifiers instead of funneling everything through just one
     notify_controller: Arc<Notify>,
     resources: Arc<ArcSwap<Vec<ResourceDescription>>>,
     /// Info about currently signed-in user, if there is one
@@ -447,6 +454,7 @@ impl Controller {
     }
 }
 
+// TODO: After PR #2960 lands, move some of this into `impl Controler`
 async fn run_controller(
     app: tauri::AppHandle,
     mut rx: mpsc::Receiver<ControllerRequest>,
