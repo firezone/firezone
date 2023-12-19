@@ -21,6 +21,7 @@ use tokio::sync::{mpsc, oneshot};
 use ControllerRequest as Req;
 
 pub(crate) type CtlrTx = mpsc::Sender<ControllerRequest>;
+pub(crate) type SyncTx = std::sync::mpsc::SyncSender<ControllerRequest>;
 
 pub(crate) fn app_local_data_dir(app: &tauri::AppHandle) -> Result<AppLocalDataDir> {
     let path = app
@@ -47,6 +48,7 @@ pub(crate) fn run(params: client::GuiParams) -> Result<()> {
     } = params;
 
     // Needed for the deep link server
+    // TODO: Also needed for the sync-async bridge problem
     let rt = tokio::runtime::Runtime::new()?;
     let _guard = rt.enter();
 
@@ -60,6 +62,12 @@ pub(crate) fn run(params: client::GuiParams) -> Result<()> {
     deep_link::register(TAURI_ID)?;
 
     let (ctlr_tx, ctlr_rx) = mpsc::channel(5);
+    let (sync_tx, sync_rx) = std::sync::mpsc::sync_channel(5);
+
+    {
+        let ctlr_tx = ctlr_tx.clone();
+        std::thread::spawn(move || async_bridge(ctlr_tx, sync_rx));
+    }
 
     tokio::spawn(accept_deep_links(server, ctlr_tx.clone()));
 
@@ -122,8 +130,14 @@ pub(crate) fn run(params: client::GuiParams) -> Result<()> {
 
             let app_handle = app.handle();
             let _ctlr_task = tokio::spawn(async move {
-                if let Err(e) =
-                    run_controller(app_handle, ctlr_rx, logging_handles, advanced_settings).await
+                if let Err(e) = run_controller(
+                    app_handle,
+                    sync_tx,
+                    ctlr_rx,
+                    logging_handles,
+                    advanced_settings,
+                )
+                .await
                 {
                     tracing::error!("run_controller returned an error: {e}");
                 }
@@ -159,6 +173,20 @@ async fn accept_deep_links(
         }
         server = deep_link::Server::new(TAURI_ID)?;
     }
+}
+
+/// Thread to bridge between sync and async
+/// I don't like using up an OS thread just for this, and it probably adds
+/// latency, but I tried a few other refactors and I could not find another
+/// way to meet all requirements
+fn async_bridge(
+    ctlr_tx: mpsc::Sender<ControllerRequest>,
+    sync_rx: std::sync::mpsc::Receiver<ControllerRequest>,
+) -> Result<()> {
+    while let Ok(req) = sync_rx.recv() {
+        ctlr_tx.blocking_send(req)?;
+    }
+    Ok(())
 }
 
 #[derive(Debug, PartialEq)]
@@ -252,14 +280,14 @@ fn keyring_entry() -> Result<keyring::Entry> {
 
 #[derive(Clone)]
 struct CallbackHandler {
-    ctlr_tx: CtlrTx,
+    sync_tx: SyncTx,
     logger: Option<file_logger::Handle>,
 }
 
 #[derive(thiserror::Error, Debug)]
 enum CallbackError {
     #[error(transparent)]
-    ControllerRequest(#[from] tokio::sync::mpsc::error::TrySendError<ControllerRequest>),
+    ControllerRequest(#[from] std::sync::mpsc::SendError<ControllerRequest>),
 }
 
 impl connlib_client_shared::Callbacks for CallbackHandler {
@@ -269,7 +297,7 @@ impl connlib_client_shared::Callbacks for CallbackHandler {
         &self,
         error: Option<&connlib_client_shared::Error>,
     ) -> Result<(), Self::Error> {
-        tracing::error!("on_disconnect {error:?}");
+        tracing::warn!("on_disconnect {error:?}");
         Ok(())
     }
 
@@ -299,8 +327,8 @@ impl connlib_client_shared::Callbacks for CallbackHandler {
     ) -> Result<(), Self::Error> {
         tracing::trace!("on_update_resources");
         // TODO: Better error handling?
-        self.ctlr_tx
-            .try_send(ControllerRequest::UpdateResources(resources))?;
+        self.sync_tx
+            .send(ControllerRequest::UpdateResources(resources))?;
         Ok(())
     }
 
@@ -321,7 +349,7 @@ struct Controller {
     /// Debugging-only settings like API URL, auth URL, log filter
     advanced_settings: AdvancedSettings,
     /// mpsc sender to send things to the controller task
-    ctlr_tx: CtlrTx,
+    sync_tx: SyncTx,
     /// connlib / tunnel session
     connlib_session: Option<connlib_client_shared::Session<CallbackHandler>>,
     /// The UUIDv4 device ID persisted to disk
@@ -342,15 +370,10 @@ struct Session {
 impl Controller {
     async fn new(
         app: tauri::AppHandle,
+        sync_tx: SyncTx,
         logging_handles: client::logging::Handles,
         advanced_settings: AdvancedSettings,
     ) -> Result<Self> {
-        let ctlr_tx = app
-            .try_state::<Managed>()
-            .ok_or_else(|| anyhow::anyhow!("can't get Managed object from Tauri"))?
-            .ctlr_tx
-            .clone();
-
         tracing::trace!("re-loading token");
         let session: Option<Session> = tokio::task::spawn_blocking(|| {
             let entry = keyring_entry()?;
@@ -379,7 +402,7 @@ impl Controller {
         let connlib_session = if let Some(session) = session.as_ref() {
             Some(Self::start_session(
                 &advanced_settings,
-                ctlr_tx.clone(),
+                sync_tx.clone(),
                 device_id.clone(),
                 &session.token,
                 logging_handles.logger.clone(),
@@ -390,7 +413,7 @@ impl Controller {
 
         Ok(Self {
             advanced_settings,
-            ctlr_tx,
+            sync_tx,
             connlib_session,
             device_id,
             logging_handles,
@@ -400,7 +423,7 @@ impl Controller {
 
     fn start_session(
         advanced_settings: &settings::AdvancedSettings,
-        ctlr_tx: CtlrTx,
+        sync_tx: SyncTx,
         device_id: String,
         token: &SecretString,
         logger: file_logger::Handle,
@@ -411,7 +434,7 @@ impl Controller {
             token.clone(),
             device_id,
             CallbackHandler {
-                ctlr_tx,
+                sync_tx,
                 logger: Some(logger),
             },
         )?)
@@ -420,11 +443,12 @@ impl Controller {
 
 async fn run_controller(
     app: tauri::AppHandle,
+    sync_tx: SyncTx,
     mut rx: mpsc::Receiver<ControllerRequest>,
     logging_handles: client::logging::Handles,
     advanced_settings: AdvancedSettings,
 ) -> Result<()> {
-    let mut controller = Controller::new(app.clone(), logging_handles, advanced_settings)
+    let mut controller = Controller::new(app.clone(), sync_tx, logging_handles, advanced_settings)
         .await
         .context("couldn't create Controller")?;
 
@@ -443,7 +467,7 @@ async fn run_controller(
                     entry.set_password(auth.token.expose_secret())?;
                     controller.connlib_session = Some(Controller::start_session(
                         &controller.advanced_settings,
-                        controller.ctlr_tx.clone(),
+                        controller.sync_tx.clone(),
                         controller.device_id.clone(),
                         &auth.token,
                         controller.logging_handles.logger.clone(),
