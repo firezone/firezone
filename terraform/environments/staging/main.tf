@@ -463,7 +463,7 @@ locals {
     # Emails
     {
       name  = "OUTBOUND_EMAIL_ADAPTER"
-      value = "Elixir.Swoosh.Adapters.Postmark"
+      value = "Elixir.Swoosh.Adapters.Mailgun"
     },
     {
       name  = "OUTBOUND_EMAIL_FROM"
@@ -472,7 +472,7 @@ locals {
     {
       name = "OUTBOUND_EMAIL_ADAPTER_OPTS"
       value = jsonencode({
-        api_key = var.postmark_server_api_token
+        api_key = var.mailgun_server_api_token
       })
     },
     # Feature Flags
