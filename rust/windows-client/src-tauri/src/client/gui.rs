@@ -454,7 +454,7 @@ impl Controller {
     }
 }
 
-// TODO: After PR #2960 lands, move some of this into `impl Controler`
+// TODO: After PR #2960 lands, move some of this into `impl Controller`
 async fn run_controller(
     app: tauri::AppHandle,
     mut rx: mpsc::Receiver<ControllerRequest>,
