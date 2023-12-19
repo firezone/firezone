@@ -85,11 +85,19 @@ public struct AskPermissionView: View {
         Spacer()
         if $model.needsTunnelPermission.wrappedValue {
 
-          Text(
-            "Firezone requires your permission to create VPN tunnels.\nUntil it has that permission, all functionality will be disabled."
-          )
-          .font(.body)
-          .multilineTextAlignment(.center)
+          #if os(macOS)
+            Text(
+              "Firezone requires your permission to create VPN tunnels.\nUntil it has that permission, all functionality will be disabled."
+            )
+            .font(.body)
+            .multilineTextAlignment(.center)
+          #elseif os(iOS)
+            Text(
+              "Firezone requires your permission to create VPN tunnels. Until it has that permission, all functionality will be disabled."
+            )
+            .font(.body)
+            .multilineTextAlignment(.center)
+          #endif
           Spacer()
           Button("Grant VPN Permission") {
             model.grantPermissionButtonTapped()
@@ -98,11 +106,19 @@ public struct AskPermissionView: View {
           .controlSize(.large)
           Spacer()
             .frame(maxHeight: 20)
-          Text(
-            "After clicking on the above button,\nclick on 'Allow' when prompted."
-          )
-          .font(.caption)
-          .multilineTextAlignment(.center)
+          #if os(macOS)
+            Text(
+              "After clicking on the above button,\nclick on 'Allow' when prompted."
+            )
+            .font(.caption)
+            .multilineTextAlignment(.center)
+          #elseif os(iOS)
+            Text(
+              "After tapping on the above button, tap on 'Allow' when prompted."
+            )
+            .font(.caption)
+            .multilineTextAlignment(.center)
+          #endif
 
         } else {
 
