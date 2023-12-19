@@ -55,6 +55,7 @@ impl Tun {
         })
     }
 
+    // Blocking here until the route is added in the OS is acceptable
     pub fn add_route(&self, route: IpNetwork) -> Result<()> {
         tracing::debug!("add_route {route}");
         Ok(())

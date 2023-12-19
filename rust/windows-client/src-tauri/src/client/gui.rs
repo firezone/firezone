@@ -5,23 +5,45 @@
 
 use crate::client::{self, deep_link, AppLocalDataDir};
 use anyhow::{anyhow, bail, Context, Result};
+use arc_swap::ArcSwap;
 use client::settings::{self, AdvancedSettings};
-use connlib_client_shared::file_logger;
+use connlib_client_shared::{file_logger, ResourceDescription};
 use secrecy::{ExposeSecret, SecretString};
 use std::{
     net::{Ipv4Addr, Ipv6Addr},
     path::PathBuf,
     str::FromStr,
+    sync::Arc,
 };
 use tauri::{
     CustomMenuItem, Manager, SystemTray, SystemTrayEvent, SystemTrayMenu, SystemTrayMenuItem,
     SystemTraySubmenu,
 };
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{mpsc, oneshot, Notify};
 use ControllerRequest as Req;
 
-pub(crate) type CtlrTx = mpsc::Sender<ControllerRequest>;
-pub(crate) type SyncTx = std::sync::mpsc::SyncSender<ControllerRequest>;
+#[derive(Clone)]
+pub(crate) struct CtlrTx {
+    ctlr_tx: mpsc::Sender<ControllerRequest>,
+    // The controller only waits for its Notify, so use that to wake it up
+    notify_controller: Arc<Notify>,
+}
+
+impl CtlrTx {
+    pub(crate) fn blocking_send(&self, req: ControllerRequest) -> Result<()> {
+        tracing::debug!("blocking_send");
+        self.ctlr_tx.blocking_send(req)?;
+        self.notify_controller.notify_one();
+        Ok(())
+    }
+
+    pub(crate) async fn send(&self, req: ControllerRequest) -> Result<()> {
+        tracing::debug!("send");
+        self.ctlr_tx.send(req).await?;
+        self.notify_controller.notify_one();
+        Ok(())
+    }
+}
 
 pub(crate) fn app_local_data_dir(app: &tauri::AppHandle) -> Result<AppLocalDataDir> {
     let path = app
@@ -48,7 +70,6 @@ pub(crate) fn run(params: client::GuiParams) -> Result<()> {
     } = params;
 
     // Needed for the deep link server
-    // TODO: Also needed for the sync-async bridge problem
     let rt = tokio::runtime::Runtime::new()?;
     let _guard = rt.enter();
 
@@ -62,12 +83,11 @@ pub(crate) fn run(params: client::GuiParams) -> Result<()> {
     deep_link::register(TAURI_ID)?;
 
     let (ctlr_tx, ctlr_rx) = mpsc::channel(5);
-    let (sync_tx, sync_rx) = std::sync::mpsc::sync_channel(5);
-
-    {
-        let ctlr_tx = ctlr_tx.clone();
-        std::thread::spawn(move || async_bridge(ctlr_tx, sync_rx));
-    }
+    let notify_controller = Arc::new(Notify::new());
+    let ctlr_tx = CtlrTx {
+        ctlr_tx,
+        notify_controller: Arc::clone(&notify_controller),
+    };
 
     tokio::spawn(accept_deep_links(server, ctlr_tx.clone()));
 
@@ -132,10 +152,10 @@ pub(crate) fn run(params: client::GuiParams) -> Result<()> {
             let _ctlr_task = tokio::spawn(async move {
                 if let Err(e) = run_controller(
                     app_handle,
-                    sync_tx,
                     ctlr_rx,
                     logging_handles,
                     advanced_settings,
+                    notify_controller,
                 )
                 .await
                 {
@@ -160,10 +180,7 @@ pub(crate) fn run(params: client::GuiParams) -> Result<()> {
 /// Worker task to accept deep links from a named pipe forever
 ///
 /// * `server` An initial named pipe server to consume before making new servers. This lets us also use the named pipe to enforce single-instance
-async fn accept_deep_links(
-    mut server: deep_link::Server,
-    ctlr_tx: mpsc::Sender<ControllerRequest>,
-) -> Result<()> {
+async fn accept_deep_links(mut server: deep_link::Server, ctlr_tx: CtlrTx) -> Result<()> {
     loop {
         if let Ok(url) = server.accept().await {
             ctlr_tx
@@ -173,20 +190,6 @@ async fn accept_deep_links(
         }
         server = deep_link::Server::new(TAURI_ID)?;
     }
-}
-
-/// Thread to bridge between sync and async
-/// I don't like using up an OS thread just for this, and it probably adds
-/// latency, but I tried a few other refactors and I could not find another
-/// way to meet all requirements
-fn async_bridge(
-    ctlr_tx: mpsc::Sender<ControllerRequest>,
-    sync_rx: std::sync::mpsc::Receiver<ControllerRequest>,
-) -> Result<()> {
-    while let Ok(req) = sync_rx.recv() {
-        ctlr_tx.blocking_send(req)?;
-    }
-    Ok(())
 }
 
 #[derive(Debug, PartialEq)]
@@ -265,7 +268,6 @@ pub(crate) enum ControllerRequest {
     GetAdvancedSettings(oneshot::Sender<AdvancedSettings>),
     SchemeRequest(url::Url),
     SignIn,
-    UpdateResources(Vec<connlib_client_shared::ResourceDescription>),
 }
 
 // TODO: Should these be keyed to the Google ID or email or something?
@@ -280,8 +282,9 @@ fn keyring_entry() -> Result<keyring::Entry> {
 
 #[derive(Clone)]
 struct CallbackHandler {
-    sync_tx: SyncTx,
     logger: Option<file_logger::Handle>,
+    notify_controller: Arc<Notify>,
+    resources: Arc<ArcSwap<Vec<ResourceDescription>>>,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -290,6 +293,7 @@ enum CallbackError {
     ControllerRequest(#[from] std::sync::mpsc::SendError<ControllerRequest>),
 }
 
+// Callbacks must all be non-blocking
 impl connlib_client_shared::Callbacks for CallbackHandler {
     type Error = CallbackError;
 
@@ -321,14 +325,10 @@ impl connlib_client_shared::Callbacks for CallbackHandler {
         Ok(())
     }
 
-    fn on_update_resources(
-        &self,
-        resources: Vec<connlib_client_shared::ResourceDescription>,
-    ) -> Result<(), Self::Error> {
-        tracing::trace!("on_update_resources");
-        // TODO: Better error handling?
-        self.sync_tx
-            .send(ControllerRequest::UpdateResources(resources))?;
+    fn on_update_resources(&self, resources: Vec<ResourceDescription>) -> Result<(), Self::Error> {
+        tracing::debug!("connlib sees {} resources", resources.len());
+        self.resources.store(resources.into());
+        self.notify_controller.notify_one();
         Ok(())
     }
 
@@ -348,14 +348,14 @@ impl connlib_client_shared::Callbacks for CallbackHandler {
 struct Controller {
     /// Debugging-only settings like API URL, auth URL, log filter
     advanced_settings: AdvancedSettings,
-    /// mpsc sender to send things to the controller task
-    sync_tx: SyncTx,
     /// connlib / tunnel session
     connlib_session: Option<connlib_client_shared::Session<CallbackHandler>>,
     /// The UUIDv4 device ID persisted to disk
     /// Sent verbatim to Session::connect
     device_id: String,
     logging_handles: client::logging::Handles,
+    notify_controller: Arc<Notify>,
+    resources: Arc<ArcSwap<Vec<ResourceDescription>>>,
     /// Info about currently signed-in user, if there is one
     session: Option<Session>,
 }
@@ -370,9 +370,9 @@ struct Session {
 impl Controller {
     async fn new(
         app: tauri::AppHandle,
-        sync_tx: SyncTx,
         logging_handles: client::logging::Handles,
         advanced_settings: AdvancedSettings,
+        notify_controller: Arc<Notify>,
     ) -> Result<Self> {
         tracing::trace!("re-loading token");
         let session: Option<Session> = tokio::task::spawn_blocking(|| {
@@ -398,14 +398,17 @@ impl Controller {
 
         let device_id = client::device_id::device_id(&app_local_data_dir(&app)?).await?;
 
+        let resources = Default::default();
+
         // Connect immediately if we reloaded the token
         let connlib_session = if let Some(session) = session.as_ref() {
             Some(Self::start_session(
                 &advanced_settings,
-                sync_tx.clone(),
                 device_id.clone(),
                 &session.token,
                 logging_handles.logger.clone(),
+                Arc::clone(&notify_controller),
+                Arc::clone(&resources),
             )?)
         } else {
             None
@@ -413,20 +416,22 @@ impl Controller {
 
         Ok(Self {
             advanced_settings,
-            sync_tx,
             connlib_session,
             device_id,
             logging_handles,
+            notify_controller,
+            resources,
             session,
         })
     }
 
     fn start_session(
         advanced_settings: &settings::AdvancedSettings,
-        sync_tx: SyncTx,
         device_id: String,
         token: &SecretString,
         logger: file_logger::Handle,
+        notify_controller: Arc<Notify>,
+        resources: Arc<ArcSwap<Vec<ResourceDescription>>>,
     ) -> Result<connlib_client_shared::Session<CallbackHandler>> {
         tracing::info!("Session::connect");
         Ok(connlib_client_shared::Session::connect(
@@ -434,8 +439,9 @@ impl Controller {
             token.clone(),
             device_id,
             CallbackHandler {
-                sync_tx,
                 logger: Some(logger),
+                notify_controller,
+                resources,
             },
         )?)
     }
@@ -443,64 +449,81 @@ impl Controller {
 
 async fn run_controller(
     app: tauri::AppHandle,
-    sync_tx: SyncTx,
     mut rx: mpsc::Receiver<ControllerRequest>,
     logging_handles: client::logging::Handles,
     advanced_settings: AdvancedSettings,
+    notify_controller: Arc<Notify>,
 ) -> Result<()> {
-    let mut controller = Controller::new(app.clone(), sync_tx, logging_handles, advanced_settings)
-        .await
-        .context("couldn't create Controller")?;
+    let mut controller = Controller::new(
+        app.clone(),
+        logging_handles,
+        advanced_settings,
+        notify_controller,
+    )
+    .await
+    .context("couldn't create Controller")?;
 
     tracing::debug!("GUI controller main loop start");
 
-    while let Some(req) = rx.recv().await {
-        match req {
-            Req::ExportLogs(file_path) => settings::export_logs_to(file_path).await?,
-            Req::GetAdvancedSettings(tx) => {
-                tx.send(controller.advanced_settings.clone()).ok();
-            }
-            Req::SchemeRequest(url) => {
-                if let Ok(auth) = parse_auth_callback(&url) {
-                    tracing::debug!("setting new token");
-                    let entry = keyring_entry()?;
-                    entry.set_password(auth.token.expose_secret())?;
-                    controller.connlib_session = Some(Controller::start_session(
-                        &controller.advanced_settings,
-                        controller.sync_tx.clone(),
-                        controller.device_id.clone(),
-                        &auth.token,
-                        controller.logging_handles.logger.clone(),
-                    )?);
-                    controller.session = Some(Session {
-                        actor_name: auth.actor_name,
-                        token: auth.token,
-                    });
-                } else {
-                    tracing::warn!("couldn't handle scheme request");
-                }
-            }
-            Req::SignIn => {
-                // TODO: Put the platform and local server callback in here
-                tauri::api::shell::open(
-                    &app.shell_scope(),
-                    &controller.advanced_settings.auth_base_url,
-                    None,
-                )?;
-            }
-            Req::UpdateResources(resources) => {
-                tracing::debug!("controller got UpdateResources");
-                let resources: Vec<_> = resources.into_iter().map(ResourceDisplay::from).collect();
+    loop {
+        controller.notify_controller.notified().await;
+        tracing::debug!("controller woke up");
 
-                // TODO: Save the user name between runs of the app
-                let actor_name = controller
-                    .session
-                    .as_ref()
-                    .map(|x| x.actor_name.as_str())
-                    .unwrap_or("TODO");
-                app.tray_handle()
-                    .set_menu(signed_in_menu(actor_name, &resources))?;
+        match rx.try_recv() {
+            Err(mpsc::error::TryRecvError::Empty) => {}
+            Err(mpsc::error::TryRecvError::Disconnected) => break,
+            Ok(req) => {
+                match req {
+                    Req::ExportLogs(file_path) => settings::export_logs_to(file_path).await?,
+                    Req::GetAdvancedSettings(tx) => {
+                        tx.send(controller.advanced_settings.clone()).ok();
+                    }
+                    Req::SchemeRequest(url) => {
+                        if let Ok(auth) = parse_auth_callback(&url) {
+                            tracing::debug!("setting new token");
+                            let entry = keyring_entry()?;
+                            entry.set_password(auth.token.expose_secret())?;
+                            controller.connlib_session = Some(Controller::start_session(
+                                &controller.advanced_settings,
+                                controller.device_id.clone(),
+                                &auth.token,
+                                controller.logging_handles.logger.clone(),
+                                Arc::clone(&controller.notify_controller),
+                                Arc::clone(&controller.resources),
+                            )?);
+                            controller.session = Some(Session {
+                                actor_name: auth.actor_name,
+                                token: auth.token,
+                            });
+                        } else {
+                            tracing::warn!("couldn't handle scheme request");
+                        }
+                    }
+                    Req::SignIn => {
+                        // TODO: Put the platform and local server callback in here
+                        tauri::api::shell::open(
+                            &app.shell_scope(),
+                            &controller.advanced_settings.auth_base_url,
+                            None,
+                        )?;
+                    }
+                }
+                continue;
             }
+        }
+
+        {
+            let resources = controller.resources.load().as_ref().clone();
+            let resources: Vec<_> = resources.into_iter().map(ResourceDisplay::from).collect();
+            tracing::debug!("controller sees {} resources", resources.len());
+            // TODO: Save the user name between runs of the app
+            let actor_name = controller
+                .session
+                .as_ref()
+                .map(|x| x.actor_name.as_str())
+                .unwrap_or("TODO");
+            app.tray_handle()
+                .set_menu(signed_in_menu(actor_name, &resources))?;
         }
     }
     tracing::debug!("GUI controller task exiting cleanly");
@@ -558,15 +581,15 @@ struct ResourceDisplay {
     pastable: String,
 }
 
-impl From<connlib_client_shared::ResourceDescription> for ResourceDisplay {
-    fn from(x: connlib_client_shared::ResourceDescription) -> Self {
+impl From<ResourceDescription> for ResourceDisplay {
+    fn from(x: ResourceDescription) -> Self {
         match x {
-            connlib_client_shared::ResourceDescription::Dns(x) => Self {
+            ResourceDescription::Dns(x) => Self {
                 id: x.id,
                 name: x.name,
                 pastable: x.address,
             },
-            connlib_client_shared::ResourceDescription::Cidr(x) => Self {
+            ResourceDescription::Cidr(x) => Self {
                 id: x.id,
                 name: x.name,
                 // TODO: CIDRs aren't URLs right?
