@@ -415,8 +415,6 @@ async fn run_controller(
     .await
     .context("couldn't create Controller")?;
 
-    tracing::debug!("GUI controller main loop start");
-
     loop {
         tokio::select! {
             () = controller.notify_controller.notified() => {
@@ -484,7 +482,11 @@ async fn run_controller(
                         keyring_entry()?.delete_password()?;
                         if let Some(mut session) = controller.session.take() {
                             // TODO: Needs testing
+                            tracing::debug!("disconnecting connlib");
                             session.connlib.disconnect(None);
+                        }
+                        else {
+                            tracing::error!("tried to sign out but there's no session");
                         }
                         app.tray_handle().set_menu(system_tray_menu::signed_out())?;
                     }
