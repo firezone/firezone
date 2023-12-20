@@ -137,7 +137,7 @@ pub(crate) fn run(params: client::GuiParams) -> Result<()> {
                 )
                 .await
                 {
-                    tracing::error!("run_controller returned an error: {e}");
+                    tracing::error!("run_controller returned an error: {e:#?}");
                 }
             });
 
