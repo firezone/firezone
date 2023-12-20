@@ -70,7 +70,18 @@ defmodule Web.Sites.NewToken do
               selected={@selected_tab == "systemd-instructions"}
             >
               <p class="p-4">
-                1. Create a new systemd unit file:
+                1. Create an unprivileged user and group to run the gateway:
+              </p>
+
+              <.code_block
+                id="code-sample-systemd0"
+                class="w-full text-xs whitespace-pre-line"
+                phx-no-format
+              >sudo groupadd -f firezone \
+    && id -u firezone &>/dev/null || sudo useradd -r -g firezone -s /sbin/nologin firezone</.code_block>
+
+              <p class="p-4">
+                2. Create a new systemd unit file:
               </p>
 
               <.code_block
@@ -80,7 +91,7 @@ defmodule Web.Sites.NewToken do
               >sudo nano /etc/systemd/system/firezone-gateway.service</.code_block>
 
               <p class="p-4">
-                2. Copy-paste the following contents into the file:
+                3. Copy-paste the following contents into the file:
               </p>
 
               <.code_block
@@ -91,11 +102,11 @@ defmodule Web.Sites.NewToken do
               ><%= systemd_command(@env) %></.code_block>
 
               <p class="p-4">
-                3. Save by pressing <kbd>Ctrl</kbd>+<kbd>X</kbd>, then <kbd>Y</kbd>, then <kbd>Enter</kbd>.
+                4. Save by pressing <kbd>Ctrl</kbd>+<kbd>X</kbd>, then <kbd>Y</kbd>, then <kbd>Enter</kbd>.
               </p>
 
               <p class="p-4">
-                4. Reload systemd configuration:
+                5. Reload systemd configuration:
               </p>
 
               <.code_block
@@ -262,17 +273,15 @@ defmodule Web.Sites.NewToken do
         chmod 0750 /usr/local/bin/firezone-gateway; \\
         setcap 'cap_net_admin+eip' /usr/local/bin/firezone-gateway; \\
       fi; \\
-      groupadd -f firezone; \\
-      id -u firezone &>/dev/null || useradd -r -g firezone -s /sbin/nologin firezone; \\
       mkdir -p /var/lib/firezone; \\
       chown firezone:firezone /var/lib/firezone; \\
       chmod 0775 /var/lib/firezone; \\
-      iptables-nft -A FORWARD -i tun-firezone -j ACCEPT; \\
-      iptables-nft -A FORWARD -o tun-firezone -j ACCEPT; \\
-      iptables-nft -t nat -A POSTROUTING -o e+ -j MASQUERADE; \\
-      ip6tables-nft -A FORWARD -i tun-firezone -j ACCEPT; \\
-      ip6tables-nft -A FORWARD -o tun-firezone -j ACCEPT; \\
-      ip6tables-nft -t nat -A POSTROUTING -o e+ -j MASQUERADE; \\
+      iptables-nft -C FORWARD -i tun-firezone -j ACCEPT || iptables-nft -A FORWARD -i tun-firezone -j ACCEPT; \\
+      iptables-nft -C FORWARD -o tun-firezone -j ACCEPT || iptables-nft -A FORWARD -o tun-firezone -j ACCEPT; \\
+      iptables-nft -t nat -C POSTROUTING -o e+ -j MASQUERADE || iptables-nft -t nat -A POSTROUTING -o e+ -j MASQUERADE; \\
+      ip6tables-nft -C FORWARD -i tun-firezone -j ACCEPT || ip6tables-nft -A FORWARD -i tun-firezone -j ACCEPT; \\
+      ip6tables-nft -C FORWARD -o tun-firezone -j ACCEPT || ip6tables-nft -A FORWARD -o tun-firezone -j ACCEPT; \\
+      ip6tables-nft -t nat -C POSTROUTING -o e+ -j MASQUERADE || ip6tables-nft -t nat -A POSTROUTING -o e+ -j MASQUERADE; \\
     '
     ExecStart=/usr/bin/sudo \\
       --preserve-env=FIREZONE_NAME,FIREZONE_ID,FIREZONE_TOKEN,FIREZONE_API_URL,RUST_LOG \\

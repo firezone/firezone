@@ -58,7 +58,18 @@ defmodule Web.RelayGroups.NewToken do
               selected={@selected_tab == "systemd-instructions"}
             >
               <p class="p-4">
-                1. Create a new systemd unit file:
+                1. Create an unprivileged user and group to run the relay:
+              </p>
+
+              <.code_block
+                id="code-sample-systemd0"
+                class="w-full text-xs whitespace-pre-line"
+                phx-no-format
+              >sudo groupadd -f firezone \
+    && id -u firezone &>/dev/null || sudo useradd -r -g firezone -s /sbin/nologin firezone</.code_block>
+
+              <p class="p-4">
+                2. Create a new systemd unit file:
               </p>
 
               <.code_block
@@ -68,7 +79,7 @@ defmodule Web.RelayGroups.NewToken do
               >sudo nano /etc/systemd/system/firezone-relay.service</.code_block>
 
               <p class="p-4">
-                2. Copy-paste the following contents into the file:
+                3. Copy-paste the following contents into the file:
               </p>
 
               <.code_block
@@ -79,11 +90,11 @@ defmodule Web.RelayGroups.NewToken do
               ><%= systemd_command(@env) %></.code_block>
 
               <p class="p-4">
-                3. Save by pressing <kbd>Ctrl</kbd>+<kbd>X</kbd>, then <kbd>Y</kbd>, then <kbd>Enter</kbd>.
+                4. Save by pressing <kbd>Ctrl</kbd>+<kbd>X</kbd>, then <kbd>Y</kbd>, then <kbd>Enter</kbd>.
               </p>
 
               <p class="p-4">
-                4. Reload systemd configuration:
+                5. Reload systemd configuration:
               </p>
 
               <.code_block
@@ -93,7 +104,7 @@ defmodule Web.RelayGroups.NewToken do
               >sudo systemctl daemon-reload</.code_block>
 
               <p class="p-4">
-                5. Start the service:
+                6. Start the service:
               </p>
 
               <.code_block
@@ -103,7 +114,7 @@ defmodule Web.RelayGroups.NewToken do
               >sudo systemctl start firezone-relay</.code_block>
 
               <p class="p-4">
-                6. Enable the service to start on boot:
+                7. Enable the service to start on boot:
               </p>
 
               <.code_block
@@ -302,8 +313,6 @@ defmodule Web.RelayGroups.NewToken do
         chgrp firezone /usr/local/bin/firezone-relay; \\
         chmod 0750 /usr/local/bin/firezone-relay; \\
       fi; \\
-      groupadd -f firezone; \\
-      id -u firezone &>/dev/null || useradd -r -g firezone -s /sbin/nologin firezone; \\
       mkdir -p /var/lib/firezone; \\
       chown firezone:firezone /var/lib/firezone; \\
       chmod 0775 /var/lib/firezone; \\
