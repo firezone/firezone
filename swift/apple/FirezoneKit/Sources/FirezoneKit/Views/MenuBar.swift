@@ -16,12 +16,6 @@
     let logger = Logger.make(for: MenuBar.self)
     @Dependency(\.mainQueue) private var mainQueue
 
-    private var appStore: AppStore? {
-      didSet {
-        setupObservers()
-      }
-    }
-
     private var cancellables: Set<AnyCancellable> = []
     private var statusItem: NSStatusItem
     private var orderedResources: [DisplayableResources.Resource] = []
@@ -39,34 +33,30 @@
     private var connectingAnimationImageIndex: Int = 0
     private var connectingAnimationTimer: Timer?
 
-    let settingsViewModel: SettingsViewModel
+    private var appStore: AppStore
+    private var settingsViewModel: SettingsViewModel
     private var loginStatus: AuthStore.LoginStatus = .signedOut
     private var tunnelStatus: NEVPNStatus = .invalid
 
-    public init(settingsViewModel: SettingsViewModel) {
-      self.settingsViewModel = settingsViewModel
+    public init(appStore: AppStore) {
+      self.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
 
-      settingsViewModel.onSettingsSaved = {
-        // TODO: close settings window and sign in
-      }
-
-      statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+      self.appStore = appStore
+      self.settingsViewModel = appStore.settingsViewModel
 
       super.init()
       createMenu()
+      setupObservers()
 
       if let button = statusItem.button {
         button.image = signedOutIcon
       }
 
-      Task {
-        self.appStore = AppStore(tunnelStore: TunnelStore.shared)
-        updateStatusItemIcon()
-      }
+      updateStatusItemIcon()
     }
 
     private func setupObservers() {
-      appStore?.auth.$loginStatus
+      appStore.authStore.$loginStatus
         .receive(on: mainQueue)
         .sink { [weak self] loginStatus in
           self?.loginStatus = loginStatus
@@ -75,7 +65,7 @@
         }
         .store(in: &cancellables)
 
-      appStore?.tunnel.$status
+      appStore.tunnelStore.$status
         .receive(on: mainQueue)
         .sink { [weak self] status in
           self?.tunnelStatus = status
@@ -85,7 +75,7 @@
         }
         .store(in: &cancellables)
 
-      appStore?.tunnel.$resources
+      appStore.tunnelStore.$resources
         .receive(on: mainQueue)
         .sink { [weak self] resources in
           guard let self = self else { return }
@@ -147,7 +137,7 @@
       menu,
       title: "Settings",
       action: #selector(settingsButtonTapped),
-      target: self
+      target: nil
     )
     private lazy var quitMenuItem: NSMenuItem = {
       let menuItem = createMenuItem(
@@ -200,15 +190,15 @@
     }
 
     @objc private func reconnectButtonTapped() {
-      if case .signedIn = appStore?.auth.loginStatus {
-        appStore?.auth.startTunnel()
+      if case .signedIn = appStore.authStore.loginStatus {
+        appStore.authStore.startTunnel()
       }
     }
 
     @objc private func signInButtonTapped() {
       Task {
         do {
-          try await appStore?.auth.signIn()
+          try await appStore.authStore.signIn()
         } catch {
           logger.error("Error signing in: \(String(describing: error))")
         }
@@ -217,12 +207,12 @@
 
     @objc private func signOutButtonTapped() {
       Task {
-        await appStore?.auth.signOut()
+        await appStore.authStore.signOut()
       }
     }
 
     @objc private func settingsButtonTapped() {
-      openSettingsWindow()
+      AppStore.WindowDefinition.settings.openWindow()
     }
 
     @objc private func aboutButtonTapped() {
@@ -233,7 +223,7 @@
     @objc private func quitButtonTapped() {
       Task {
         do {
-          try await appStore?.tunnel.stop()
+          try await appStore.tunnelStore.stop()
         } catch {
           logger.error("\(#function): Error stopping tunnel: \(error)")
         }
@@ -241,21 +231,10 @@
       }
     }
 
-    private func openSettingsWindow() {
-      if let settingsWindow = NSApp.windows.first(where: {
-        $0.identifier?.rawValue.hasPrefix("firezone-settings") ?? false
-      }) {
-        NSApp.activate(ignoringOtherApps: true)
-        settingsWindow.makeKeyAndOrderFront(self)
-      } else {
-        NSWorkspace.shared.open(URL(string: "firezone://settings")!)
-      }
-    }
-
     private func updateStatusItemIcon() {
       self.statusItem.button?.image = {
         switch self.loginStatus {
-        case .signedOut, .uninitialized:
+        case .signedOut, .uninitialized, .needsTunnelCreationPermission:
           return self.signedOutIcon
         case .signedIn:
           switch self.tunnelStatus {
@@ -308,19 +287,32 @@
         signInMenuItem.title = "Initializing"
         signInMenuItem.target = nil
         signOutMenuItem.isHidden = true
+        settingsMenuItem.target = nil
+      case .needsTunnelCreationPermission:
+        signInMenuItem.title = "Requires VPN permission"
+        signInMenuItem.target = nil
+        signOutMenuItem.isHidden = true
+        settingsMenuItem.target = nil
       case .signedOut:
         signInMenuItem.title = "Sign In"
         signInMenuItem.target = self
         signInMenuItem.isEnabled = true
         signOutMenuItem.isHidden = true
+        settingsMenuItem.target = self
       case .signedIn(let actorName):
         signInMenuItem.title = actorName.isEmpty ? "Signed in" : "Signed in as \(actorName)"
         signInMenuItem.target = nil
         signOutMenuItem.isHidden = false
+        settingsMenuItem.target = self
       }
       // Update resources "header" menu items
       switch (self.loginStatus, self.tunnelStatus) {
       case (.uninitialized, _):
+        resourcesTitleMenuItem.isHidden = true
+        resourcesUnavailableMenuItem.isHidden = true
+        resourcesUnavailableReasonMenuItem.isHidden = true
+        resourcesSeparatorMenuItem.isHidden = true
+      case (.needsTunnelCreationPermission, _):
         resourcesTitleMenuItem.isHidden = true
         resourcesUnavailableMenuItem.isHidden = true
         resourcesUnavailableReasonMenuItem.isHidden = true
@@ -378,12 +370,11 @@
     }
 
     private func handleMenuVisibilityOrStatusChanged() {
-      guard let appStore = appStore else { return }
-      let status = appStore.tunnel.status
+      let status = appStore.tunnelStore.status
       if isMenuVisible && status == .connected {
-        appStore.tunnel.beginUpdatingResources()
+        appStore.tunnelStore.beginUpdatingResources()
       } else {
-        appStore.tunnel.endUpdatingResources()
+        appStore.tunnelStore.endUpdatingResources()
       }
     }
 
