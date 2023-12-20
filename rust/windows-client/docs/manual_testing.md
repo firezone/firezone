@@ -106,7 +106,7 @@ Given the client is signed out or not running, when you ping...
 Given the client is signed in, when you ping...
 
 1. [ ] a public resource by IP (e.g. 1.1.1.1), it will respond through the tunnel
-2. [ ] a protected resource by IP (e.g. 10.0.14.19), it will respond through the tunnel
+2. [ ] a protected resource by IP (e.g. 100.64.96.19), it will respond through the tunnel
 3. [ ] a non-resource by IP (e.g. a.b.c.d), it will respond through a physical interface
 4. [ ] a public resource by domain (e.g. example.com), Firezone's DNS will make an IP for it, and it will respond through the tunnel
 5. [ ] a protected resource by domain (e.g. gitlab.company.com), Firezone's DNS will make an IP for it, and it will respond through the tunnel
