@@ -143,7 +143,12 @@ impl Tun {
             match res {
                 Ok(_) => Ok(()),
                 Err(NetlinkError(err)) if err.raw_code() == FILE_ALREADY_EXISTS => Ok(()),
-                Err(err) => Err(err.into()),
+                // TODO: we should be able to surface this error and handle it depending on
+                // if any of the added routes succeeded.
+                Err(err) => {
+                    tracing::error!(%route, "failed to add route: {err:#?}");
+                    Ok(())
+                }
             }
         };
 
@@ -208,7 +213,8 @@ async fn set_iface_config(config: InterfaceConfig, handle: Handle) -> Result<()>
 
     handle.link().set(index).up().execute().await?;
 
-    Ok(res_v4.or(res_v6)?)
+    res_v4.or(res_v6)?;
+    Ok(())
 }
 
 fn get_last_error() -> Error {
