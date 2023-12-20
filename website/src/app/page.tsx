@@ -91,7 +91,7 @@ export default function Page() {
                   Create a{" "}
                   <Link
                     className="text-accent-500 underline hover:no-underline"
-                    href="/kb/learn/concepts/site?utm_source=website"
+                    href="/kb/deploy/sites?utm_source=website"
                   >
                     site
                   </Link>
@@ -103,7 +103,7 @@ export default function Page() {
                   Deploy one or more{" "}
                   <Link
                     className="text-accent-500 underline hover:no-underline"
-                    href="/kb/learn/concepts/gateway?utm_source=website"
+                    href="/kb/deploy/gateways?utm_source=website"
                   >
                     gateways
                   </Link>
@@ -115,7 +115,7 @@ export default function Page() {
                   Add a{" "}
                   <Link
                     className="text-accent-500 underline hover:no-underline"
-                    href="/kb/learn/concepts/resource?utm_source=website"
+                    href="/kb/deploy/resources?utm_source=website"
                   >
                     resource
                   </Link>{" "}
@@ -128,7 +128,7 @@ export default function Page() {
                   Choose which{" "}
                   <Link
                     className="text-accent-500 underline hover:no-underline"
-                    href="/kb/learn/concepts/group?utm_source=website"
+                    href="/kb/authenticate?utm_source=website"
                   >
                     user groups
                   </Link>{" "}
