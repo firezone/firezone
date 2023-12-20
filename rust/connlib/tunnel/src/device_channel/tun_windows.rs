@@ -8,13 +8,21 @@ use std::{
 };
 use tokio::sync::mpsc;
 
-// TODO: Make sure all these get dropped gracefully on disconnect
+// TODO: Double-check that all these get dropped gracefully on disconnect
 pub struct Tun {
     _adapter: Arc<wintun::Adapter>,
     // TODO: Get rid of this mutex. It's a hack to deal with `poll_read` taking a `&self` instead of `&mut self`
     packet_rx: std::sync::Mutex<mpsc::Receiver<wintun::Packet>>,
     _recv_thread: std::thread::JoinHandle<()>,
     session: Arc<wintun::Session>,
+}
+
+impl Drop for Tun {
+    fn drop(&mut self) {
+        if let Err(e) = self.session.shutdown() {
+            tracing::error!("wintun::Session::shutdown: {e:#?}");
+        }
+    }
 }
 
 impl Tun {
@@ -106,9 +114,22 @@ fn start_recv_thread(
     session: Arc<wintun::Session>,
 ) -> std::thread::JoinHandle<()> {
     std::thread::spawn(move || {
-        while let Ok(pkt) = session.receive_blocking() {
-            // TODO: Don't allocate here if we can help it
-            packet_tx.blocking_send(pkt).unwrap();
+        loop {
+            match session.receive_blocking() {
+                Ok(pkt) => {
+                    // TODO: Don't allocate here if we can help it
+                    if packet_tx.blocking_send(pkt).is_err() {
+                        // Most likely the receiver was dropped and we're closing down the connlib session.
+                        break;
+                    }
+                }
+                // We get an Error::String when `Session::shutdown` is called
+                Err(wintun::Error::String(_)) => break,
+                Err(e) => {
+                    tracing::error!("wintun::Session::receive_blocking: {e:#?}");
+                    break;
+                }
+            }
         }
         tracing::debug!("recv_task exiting gracefully");
     })
