@@ -424,7 +424,6 @@ async fn run_controller(
                 };
                 let resources = session.callback_handler.resources.load().as_ref().clone();
                 let resources: Vec<_> = resources.into_iter().map(ResourceDisplay::from).collect();
-                tracing::debug!("controller sees {} resources", resources.len());
                 // TODO: Save the user name between runs of the app
                 let actor_name = controller
                     .session
