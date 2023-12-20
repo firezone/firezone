@@ -6,6 +6,12 @@
 //
 //  Wraps libresolv to return the system's default resolvers
 
+struct DNSResolvers {
+  public static func getDNSResolverAddresses() -> [String] {
+    return Resolv().getservers().map(Resolv.getnameinfo)
+  }
+}
+
 public class Resolv {
   var state = __res_9_state()
 

@@ -503,7 +503,7 @@ extension Adapter: CallbackHandlerDelegate {
   }
 
   public func getSystemDefaultResolvers() {
-    let resolvers = Resolv().getservers().map(Resolv.getnameinfo)
+    let resolvers = DNSResolvers.getDNSResolverAddresses()
     self.logger.info("getSystemDefaultResolvers: \(resolvers)")
   }
 

@@ -84,7 +84,7 @@ public class CallbackHandler {
   }
 
   func getSystemDefaultResolvers() -> RustString {
-    let resolvers = Resolv().getservers().map(Resolv.getnameinfo)
+    let resolvers = DNSResolvers.getDNSResolverAddresses()
     logger.log("CallbackHandler.getSystemDefaultResolvers: \(resolvers, privacy: .public)")
     do {
       return try String(decoding: JSONEncoder().encode(resolvers), as: UTF8.self).intoRustString()
