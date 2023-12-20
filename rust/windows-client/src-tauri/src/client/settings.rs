@@ -44,18 +44,6 @@ pub(crate) async fn apply_advanced_settings(
 }
 
 #[tauri::command]
-pub(crate) async fn clear_logs() -> StdResult<(), String> {
-    clear_logs_inner().await.map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub(crate) async fn export_logs(managed: tauri::State<'_, Managed>) -> StdResult<(), String> {
-    export_logs_inner(managed.ctlr_tx.clone())
-        .await
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
 pub(crate) async fn get_advanced_settings(
     managed: tauri::State<'_, Managed>,
 ) -> StdResult<AdvancedSettings, String> {
@@ -92,33 +80,4 @@ pub(crate) async fn load_advanced_settings(app: &tauri::AppHandle) -> Result<Adv
     let text = tokio::fs::read_to_string(&path).await?;
     let settings = serde_json::from_str(&text)?;
     Ok(settings)
-}
-
-pub(crate) async fn clear_logs_inner() -> Result<()> {
-    todo!()
-}
-
-pub(crate) async fn export_logs_inner(ctlr_tx: gui::CtlrTx) -> Result<()> {
-    tauri::api::dialog::FileDialogBuilder::new()
-        .add_filter("Zip", &["zip"])
-        .save_file(move |file_path| match file_path {
-            None => {}
-            Some(x) => ctlr_tx
-                .blocking_send(ControllerRequest::ExportLogs(x))
-                .unwrap(),
-        });
-    Ok(())
-}
-
-pub(crate) async fn export_logs_to(file_path: PathBuf) -> Result<()> {
-    tracing::trace!("Exporting logs to {file_path:?}");
-
-    let mut entries = tokio::fs::read_dir("logs").await?;
-    while let Some(entry) = entries.next_entry().await? {
-        let path = entry.path();
-        tracing::trace!("Export {path:?}");
-    }
-    tokio::time::sleep(Duration::from_secs(1)).await;
-    // TODO: Somehow signal back to the GUI to unlock the log buttons when the export completes, or errors out
-    Ok(())
 }
