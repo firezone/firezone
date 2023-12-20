@@ -198,6 +198,12 @@ export default function Footer() {
             </Link>
           </span>
           <div className="flex mt-4 space-x-6 sm:justify-center sm:mt-0">
+            <Link
+              href={new URL("https://firezone.statuspage.io")}
+              className="hover:underline text-xs"
+            >
+              Platform status
+            </Link>
             <XIcon url={new URL("https://x.com/firezonehq")} />
             <GitHubIcon url={new URL("https://github.com/firezone")} />
             <LinkedInIcon
