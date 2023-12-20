@@ -49,6 +49,7 @@ If the client stops running while signed in, then the token may be stored in Win
 - [ ] Given the client is signed in, when you click "Sign Out", then the GUI will change to signed-out state, and the token will be wiped from the disk, and the client will continue running ([#2809](https://github.com/firezone/firezone/issues/2809))
 - [ ] Given the client is signed in, when you click "Disconnect and Quit", then the client will stop running, and the token will stay on disk in Window's credential manager. ([#2809](https://github.com/firezone/firezone/issues/2809))
 - [ ] Given the client was signed in when it stopped, when you start the client again, then the GUI will be in the signed-in state, and the user's name will be shown in the tray menu. ([#2712](https://github.com/firezone/firezone/issues/2712))
+- [ ] Given the client is signed out, when you sign in, then sign out, then sign in again, then the 2nd sign-in will work
 
 # Advanced settings
 

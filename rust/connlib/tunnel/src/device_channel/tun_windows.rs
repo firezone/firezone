@@ -109,7 +109,10 @@ fn start_recv_thread(
     std::thread::spawn(move || {
         while let Ok(pkt) = session.receive_blocking() {
             // TODO: Don't allocate here if we can help it
-            packet_tx.blocking_send(pkt).unwrap();
+            if packet_tx.blocking_send(pkt).is_err() {
+                // Most likely the receiver was dropped and we're closing down the connlib session.
+                break;
+            }
         }
         tracing::debug!("recv_task exiting gracefully");
     })

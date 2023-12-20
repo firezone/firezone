@@ -4,7 +4,7 @@
 // TODO: `git grep` for unwraps before 1.0, especially this gui module
 
 use crate::client::{self, deep_link, AppLocalDataDir};
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use arc_swap::ArcSwap;
 use client::settings::{self, AdvancedSettings};
 use connlib_client_shared::{file_logger, ResourceDescription};
@@ -17,7 +17,10 @@ use std::{
 };
 use system_tray_menu::{Event as TrayMenuEvent, Resource as ResourceDisplay};
 use tauri::{Manager, SystemTray, SystemTrayEvent};
-use tokio::sync::{mpsc, oneshot, Notify};
+use tokio::{
+    sync::{mpsc, oneshot, Notify},
+    task::spawn_blocking,
+};
 use ControllerRequest as Req;
 
 mod system_tray_menu;
@@ -299,12 +302,12 @@ struct Controller {
     logging_handles: client::logging::Handles,
     /// Tells us when to wake up and look for a new resource list. Tokio docs say that memory reads and writes are synchronized when notifying, so we don't need an extra mutex on the resources.
     notify_controller: Arc<Notify>,
-    resources: Arc<ArcSwap<Vec<ResourceDescription>>>,
 }
 
 /// Everything related to a signed-in user session
 struct Session {
     auth_info: AuthInfo,
+    callback_handler: CallbackHandler,
     connlib: connlib_client_shared::Session<CallbackHandler>,
 }
 
@@ -324,10 +327,18 @@ impl Controller {
         notify_controller: Arc<Notify>,
     ) -> Result<Self> {
         let device_id = client::device_id::device_id(&app_local_data_dir(&app)?).await?;
-        let resources = Default::default();
+
+        let mut this = Self {
+            advanced_settings,
+            session: None,
+            device_id,
+            logging_handles,
+            notify_controller,
+        };
 
         tracing::trace!("re-loading token");
-        let auth_info: Option<AuthInfo> = tokio::task::spawn_blocking(|| {
+        // spawn_blocking because accessing the keyring is I/O
+        if let Some(auth_info) = spawn_blocking(|| {
             let entry = keyring_entry()?;
             match entry.get_password() {
                 Ok(token) => {
@@ -347,53 +358,43 @@ impl Controller {
                 Err(e) => Err(anyhow::Error::from(e)),
             }
         })
-        .await??;
+        .await??
+        {
+            // Connect immediately if we reloaded the token
+            if let Err(e) = this.start_session(auth_info) {
+                tracing::error!("couldn't restart session on app start: {e:#?}");
+            }
+        }
 
-        // Connect immediately if we reloaded the token
-        let session = if let Some(auth_info) = auth_info {
-            let connlib = Self::start_session(
-                &advanced_settings,
-                device_id.clone(),
-                &auth_info.token,
-                logging_handles.logger.clone(),
-                Arc::clone(&notify_controller),
-                Arc::clone(&resources),
-            )?;
-
-            Some(Session { auth_info, connlib })
-        } else {
-            None
-        };
-
-        Ok(Self {
-            advanced_settings,
-            session,
-            device_id,
-            logging_handles,
-            notify_controller,
-            resources,
-        })
+        Ok(this)
     }
 
-    fn start_session(
-        advanced_settings: &settings::AdvancedSettings,
-        device_id: String,
-        token: &SecretString,
-        logger: file_logger::Handle,
-        notify_controller: Arc<Notify>,
-        resources: Arc<ArcSwap<Vec<ResourceDescription>>>,
-    ) -> Result<connlib_client_shared::Session<CallbackHandler>> {
-        tracing::info!("Session::connect");
-        Ok(connlib_client_shared::Session::connect(
-            advanced_settings.api_url.clone(),
-            token.clone(),
-            device_id,
-            CallbackHandler {
-                logger,
-                notify_controller,
-                resources,
-            },
-        )?)
+    // TODO: Figure out how re-starting sessions automatically will work
+    fn start_session(&mut self, auth_info: AuthInfo) -> Result<()> {
+        if self.session.is_some() {
+            bail!("can't start session, we're already in a session");
+        }
+
+        let callback_handler = CallbackHandler {
+            logger: self.logging_handles.logger.clone(),
+            notify_controller: Arc::clone(&self.notify_controller),
+            resources: Default::default(),
+        };
+
+        let connlib = connlib_client_shared::Session::connect(
+            self.advanced_settings.api_url.clone(),
+            auth_info.token.clone(),
+            self.device_id.clone(),
+            callback_handler.clone(),
+        )?;
+
+        self.session = Some(Session {
+            auth_info,
+            callback_handler,
+            connlib,
+        });
+
+        Ok(())
     }
 }
 
@@ -419,7 +420,11 @@ async fn run_controller(
     loop {
         tokio::select! {
             () = controller.notify_controller.notified() => {
-                let resources = controller.resources.load().as_ref().clone();
+                let Some(session) = &controller.session else {
+                    tracing::warn!("got notified to update resources but there is no session");
+                    continue;
+                };
+                let resources = session.callback_handler.resources.load().as_ref().clone();
                 let resources: Vec<_> = resources.into_iter().map(ResourceDisplay::from).collect();
                 tracing::debug!("controller sees {} resources", resources.len());
                 // TODO: Save the user name between runs of the app
@@ -441,28 +446,29 @@ async fn run_controller(
                         tx.send(controller.advanced_settings.clone()).ok();
                     }
                     Req::SchemeRequest(url) => {
-                        if let Some(auth) = client::deep_link::parse_auth_callback(&url) {
-                            let entry = keyring_entry()?;
-                            entry.set_password(auth.token.expose_secret())?;
+                        let Some(auth) = client::deep_link::parse_auth_callback(&url) else {
+                            tracing::error!("couldn't parse scheme request");
+                            // TODO: Move `run_controller` inside `Controller` and replace these `continue`s with `?`
+                            continue;
+                        };
 
-                            let connlib = Controller::start_session(
-                                &controller.advanced_settings,
-                                controller.device_id.clone(),
-                                &auth.token,
-                                controller.logging_handles.logger.clone(),
-                                Arc::clone(&controller.notify_controller),
-                                Arc::clone(&controller.resources),
-                            )?;
-                            let auth_info = AuthInfo {
-                                actor_name: auth.actor_name,
-                                token: auth.token,
-                            };
-                            controller.session = Some(Session {
-                                auth_info,
-                                connlib,
-                            });
-                        } else {
-                            tracing::warn!("couldn't handle scheme request");
+                        let token = auth.token.clone();
+                        // spawn_blocking because keyring access is I/O
+                        if let Err(e) = spawn_blocking(move || {
+                            let entry = keyring_entry()?;
+                            entry.set_password(token.expose_secret())?;
+                            Ok::<_, anyhow::Error>(())
+                        }).await? {
+                            tracing::warn!("couldn't save token to keyring: {e:#?}");
+                        }
+
+                        let auth_info = AuthInfo {
+                            actor_name: auth.actor_name,
+                            token: auth.token,
+                        };
+                        if let Err(e) = controller.start_session(auth_info) {
+                            tracing::error!("couldn't start session: {e:#?}");
+                            continue;
                         }
                     }
                     Req::SignIn => {
