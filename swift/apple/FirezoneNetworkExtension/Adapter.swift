@@ -82,8 +82,9 @@ class Adapter {
     }
   }
 
-  /// Keep track of resources
+  /// Keep track of stuff
   private var displayableResources = DisplayableResources()
+  private var systemDNSResolvers: [String] = []
 
   /// Starting parameters
   private var controlPlaneURLString: String
@@ -138,6 +139,11 @@ class Adapter {
       if self.connlibLogFolderPath.isEmpty {
         self.logger.error("Cannot get shared log folder for connlib")
       }
+
+      self.systemDNSResolvers = DNSResolvers.getDNSResolverAddresses()
+      self.logger.log(
+        "Adapter.start: Got system DNS resolvers: \(systemDNSResolvers, privacy: .public)"
+      )
 
       self.logger.log("Adapter.start: Starting connlib")
       do {
@@ -261,6 +267,11 @@ extension Adapter {
 
   private func didReceivePathUpdate(path: Network.NWPath) {
     // Will be invoked in the workQueue by the path monitor
+
+    self.logger.log(
+      "Adapter.didReceivePathUpdate: path = \(path.debugDescription, privacy: .public)"
+    )
+
     switch self.state {
 
     case .startingTunnel(let session, let onStarted):
@@ -314,6 +325,13 @@ extension Adapter {
     case .stoppingTunnel, .stoppedTunnel:
       // no-op
       break
+    }
+
+    if path.status == .satisfied {
+      self.systemDNSResolvers = DNSResolvers.getDNSResolverAddresses()
+      self.logger.log(
+        "Adapter.didReceivePathUpdate: Updated system DNS resolvers: \(self.systemDNSResolvers, privacy: .public)"
+      )
     }
   }
 }
@@ -502,9 +520,10 @@ extension Adapter: CallbackHandlerDelegate {
     }
   }
 
-  public func getSystemDefaultResolvers() {
-    let resolvers = DNSResolvers.getDNSResolverAddresses()
-    self.logger.info("getSystemDefaultResolvers: \(resolvers)")
+  public func getSystemDefaultResolvers() -> [String] {
+    let resolvers = self.systemDNSResolvers
+    self.logger.info("getSystemDefaultResolvers: \(resolvers, privacy: .public)")
+    return resolvers
   }
 
   public func onError(error: String) {
