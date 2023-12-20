@@ -87,7 +87,7 @@ This is a list of all the on-disk state that you need to reset to test a first-t
 If you can't test with resources that respond to ping, curl is fine too.
 
 - The tunnel can route public-routable IPs, e.g. 1.1.1.1, for public resources
-- All resources accessed by domain will get a private network address, e.g. 10.0.14.19, even public resources
+- All resources accessed by domain will get a CGNAT network address, e.g. 100.64.96.19, even public resources
 - When the client is signed in, all DNS requests go to Firezone first, so that it can route public resources
 
 ## Signed out
