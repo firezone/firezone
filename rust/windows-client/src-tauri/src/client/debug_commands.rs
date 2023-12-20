@@ -1,19 +1,13 @@
 //! CLI subcommands used to test features / dependencies before integrating
 //! them with the GUI, or to exercise features programmatically.
 
-use crate::client::{self, cli::Cli};
+use crate::client::cli::Cli;
 use anyhow::Result;
 use keyring::Entry;
 use tokio::runtime::Runtime;
 
 // TODO: In tauri-plugin-deep-link, this is the identifier in tauri.conf.json
 const PIPE_NAME: &str = "dev.firezone.client";
-
-pub fn resolvers() -> Result<()> {
-    let resolvers = client::resolvers::get()?;
-    println!("{resolvers:?}");
-    Ok(())
-}
 
 /// Test encrypted credential storage
 pub fn token() -> Result<()> {

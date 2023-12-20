@@ -435,11 +435,11 @@ async fn run_controller(
         match req {
             Req::CopyResource(id) => {
                 let id = ResourceId::from_str(&id)?;
-                if let Some(res) = resources.iter().find(|r| r.id == id) {
-                    let mut clipboard = arboard::Clipboard::new()?;
-                    clipboard.set_text(&res.pastable)?;
-                    tracing::info!("Copied a resource to clipboard");
-                }
+                let Some(res) = resources.iter().find(|r| r.id == id) else {
+                    continue;
+                };
+                let mut clipboard = arboard::Clipboard::new()?;
+                clipboard.set_text(&res.pastable)?;
             }
             Req::ExportLogs(file_path) => settings::export_logs_to(file_path).await?,
             Req::GetAdvancedSettings(tx) => {
@@ -535,6 +535,7 @@ fn parse_auth_callback(url: &url::Url) -> Result<AuthCallback> {
 }
 
 /// The information needed for the GUI to display a resource inside the Firezone VPN
+// TODO: Just make these methods on `ResourceDescription`
 struct ResourceDisplay {
     id: ResourceId,
     /// User-friendly name, e.g. "GitLab"
@@ -554,7 +555,7 @@ impl From<connlib_client_shared::ResourceDescription> for ResourceDisplay {
             connlib_client_shared::ResourceDescription::Cidr(x) => Self {
                 id: x.id,
                 name: x.name,
-                // // TODO: CIDRs aren't URLs right?
+                // TODO: CIDRs aren't URLs right?
                 pastable: x.address.to_string(),
             },
         }

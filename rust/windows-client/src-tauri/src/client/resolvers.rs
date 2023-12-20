@@ -17,6 +17,6 @@ pub fn get() -> Result<Vec<IpAddr>, Error> {
             // Filter out bogus DNS resolvers on my dev laptop that start with fec0:
             IpAddr::V6(ip) => !ip.octets().starts_with(&[0xfe, 0xc0]),
         })
-        .cloned()
+        .copied()
         .collect())
 }

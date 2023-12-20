@@ -1,4 +1,4 @@
-use connlib_shared::{messages::Interface as InterfaceConfig, Result};
+use connlib_shared::{messages::Interface as InterfaceConfig, Result, DNS_SENTINEL};
 use ip_network::IpNetwork;
 use std::{
     io,
@@ -65,7 +65,6 @@ impl Tun {
         )?;
 
         let iface_idx = adapter.get_adapter_index()?;
-        tracing::debug!("adapter index = {}", iface_idx);
 
         // Remove any routes that were previously associated with us
         // TODO: Pick a more elegant way to do this
@@ -84,7 +83,7 @@ impl Tun {
             .creation_flags(CREATE_NO_WINDOW)
             .arg("-Command")
             .arg(format!(
-                "Set-DnsClientServerAddress -InterfaceIndex {iface_idx} -ServerAddresses(\"100.100.111.1\")"
+                "Set-DnsClientServerAddress -InterfaceIndex {iface_idx} -ServerAddresses(\"{DNS_SENTINEL}\")"
             ))
             .stdout(Stdio::null())
             .status()?;
@@ -130,6 +129,7 @@ impl Tun {
                 let bytes = pkt.bytes();
                 let len = bytes.len();
                 if len > buf.len() {
+                    // TODO: Need to set MTU on the tunnel interface to prevent this
                     tracing::warn!("Packet is too long to read ({len} bytes)");
                     return Poll::Ready(Ok(0));
                 }
