@@ -68,8 +68,13 @@ pub(crate) async fn clear_logs_inner() -> Result<()> {
 
 /// Pops up the "Save File" dialog
 pub(crate) async fn export_logs_inner(ctlr_tx: CtlrTx) -> Result<()> {
+    let now = chrono::Local::now();
+    let datetime_string = now.format("%Y_%m_%d-%H-%M");
+    let filename = format!("connlib-{datetime_string}.zip");
+
     tauri::api::dialog::FileDialogBuilder::new()
         .add_filter("Zip", &["zip"])
+        .set_file_name(&filename)
         .save_file(move |file_path| match file_path {
             None => {}
             Some(x) => {
@@ -88,8 +93,8 @@ pub(crate) async fn export_logs_to(file_path: PathBuf) -> Result<()> {
 
     let mut entries = fs::read_dir("logs").await?;
     while let Some(entry) = entries.next_entry().await? {
-        let path = entry.path();
-        tracing::trace!("Export {path:?}");
+        let _path = entry.path();
+        // TODO: Actually add log files to a zip file
     }
     tokio::time::sleep(Duration::from_secs(1)).await;
     // TODO: Somehow signal back to the GUI to unlock the log buttons when the export completes, or errors out
