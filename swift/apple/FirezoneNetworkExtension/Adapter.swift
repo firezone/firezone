@@ -122,6 +122,14 @@ class Adapter {
   /// - Parameters:
   ///   - completionHandler: completion handler.
   public func start(completionHandler: @escaping (AdapterError?) -> Void) throws {
+
+    self.systemDNSResolvers = DNSResolvers.getDNSResolverAddresses()
+    self.logger.log(
+      "Adapter.start: Got system DNS resolvers: \(self.systemDNSResolvers, privacy: .public)"
+    )
+
+    self.beginPathMonitoring()
+
     workQueue.async { [weak self] in
       guard let self = self else { return }
 
@@ -139,11 +147,6 @@ class Adapter {
       if self.connlibLogFolderPath.isEmpty {
         self.logger.error("Cannot get shared log folder for connlib")
       }
-
-      self.systemDNSResolvers = DNSResolvers.getDNSResolverAddresses()
-      self.logger.log(
-        "Adapter.start: Got system DNS resolvers: \(systemDNSResolvers, privacy: .public)"
-      )
 
       self.logger.log("Adapter.start: Starting connlib")
       do {
@@ -395,7 +398,6 @@ extension Adapter: CallbackHandlerDelegate {
         } else {
           onStarted?(nil)
           self.state = .tunnelReady(session: session)
-          self.beginPathMonitoring()
         }
       }
     }
