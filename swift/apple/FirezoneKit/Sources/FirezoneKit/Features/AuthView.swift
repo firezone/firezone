@@ -12,11 +12,16 @@ import XCTestDynamicOverlay
 
 @MainActor
 final class AuthViewModel: ObservableObject {
-  @Dependency(\.authStore) private var authStore
+
+  let authStore: AuthStore
 
   var settingsUndefined: () -> Void = unimplemented("\(AuthViewModel.self).settingsUndefined")
 
   private var cancellables = Set<AnyCancellable>()
+
+  init(authStore: AuthStore) {
+    self.authStore = authStore
+  }
 
   func signInButtonTapped() async {
     do {
@@ -46,11 +51,5 @@ struct AuthView: View {
         .controlSize(.large)
         Spacer()
       })
-  }
-}
-
-struct AuthView_Previews: PreviewProvider {
-  static var previews: some View {
-    AuthView(model: AuthViewModel())
   }
 }
