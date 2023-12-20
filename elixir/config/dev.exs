@@ -62,8 +62,7 @@ config :web, Web.Plugs.SecureHeaders,
     "default-src 'self' 'nonce-${nonce}' https://cdn.tailwindcss.com/",
     "img-src 'self' data: https://www.gravatar.com",
     "style-src 'self' 'unsafe-inline'",
-    "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com/",
-    "connect-src 'self' data: https://firezone.statuspage.io"
+    "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com/"
   ]
 
 # Note: on Linux you may need to add `--add-host=host.docker.internal:host-gateway`

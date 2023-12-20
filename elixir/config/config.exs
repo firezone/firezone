@@ -128,8 +128,7 @@ config :web, Web.Plugs.SecureHeaders,
   csp_policy: [
     "default-src 'self' 'nonce-${nonce}'",
     "img-src 'self' data: https://www.gravatar.com",
-    "style-src 'self' 'unsafe-inline'",
-    "connect-src 'self' https://firezone.statuspage.io"
+    "style-src 'self' 'unsafe-inline'"
   ]
 
 config :web, api_url_override: "ws://localhost:13001/"
