@@ -10,11 +10,14 @@ anyhow = { version = "1.0" }
 tauri-build = { version = "1.5", features = [] }
 
 [dependencies]
+arboard = { version = "3.3.0", default-features = false }
 anyhow = { version = "1.0" }
 clap = { version = "4.4", features = ["derive",  "env"] }
 connlib-client-shared = { workspace = true }
 connlib-shared = { workspace = true }
 firezone-cli-utils = { workspace = true }
+# This is the same crate hickory uses to get system resolvers
+ipconfig = "0.3.2"
 keyring = "2.0.5"
 ring = "0.17"
 secrecy.workspace = true
