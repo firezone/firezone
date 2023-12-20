@@ -291,10 +291,8 @@ impl connlib_client_shared::Callbacks for CallbackHandler {
 struct Controller {
     /// Debugging-only settings like API URL, auth URL, log filter
     advanced_settings: AdvancedSettings,
-    /// Info and token for the currently signed-in user, if there is one
-    auth_info: Option<AuthInfo>,
-    /// connlib / tunnel session
-    connlib_session: Option<connlib_client_shared::Session<CallbackHandler>>,
+    /// Session for the currently signed-in user, if there is one
+    session: Option<Session>,
     /// The UUIDv4 device ID persisted to disk
     /// Sent verbatim to Session::connect
     device_id: String,
@@ -304,10 +302,17 @@ struct Controller {
     resources: Arc<ArcSwap<Vec<ResourceDescription>>>,
 }
 
-/// Information for a signed-in user session
+/// Everything related to a signed-in user session
+struct Session {
+    auth_info: AuthInfo,
+    connlib: connlib_client_shared::Session<CallbackHandler>,
+}
+
+/// Auth info that's persisted to disk if a session outlives an app instance
 struct AuthInfo {
     /// User name, e.g. "John Doe", from the sign-in deep link
     actor_name: String,
+    /// Secret token to authenticate with the portal
     token: SecretString,
 }
 
@@ -318,6 +323,9 @@ impl Controller {
         advanced_settings: AdvancedSettings,
         notify_controller: Arc<Notify>,
     ) -> Result<Self> {
+        let device_id = client::device_id::device_id(&app_local_data_dir(&app)?).await?;
+        let resources = Default::default();
+
         tracing::trace!("re-loading token");
         let auth_info: Option<AuthInfo> = tokio::task::spawn_blocking(|| {
             let entry = keyring_entry()?;
@@ -326,6 +334,7 @@ impl Controller {
                     let token = SecretString::new(token);
                     tracing::debug!("re-loaded token from Windows credential manager");
                     let auth_info = AuthInfo {
+                        // TODO: Reload actor name from disk here
                         actor_name: "TODO".to_string(),
                         token,
                     };
@@ -340,28 +349,25 @@ impl Controller {
         })
         .await??;
 
-        let device_id = client::device_id::device_id(&app_local_data_dir(&app)?).await?;
-
-        let resources = Default::default();
-
         // Connect immediately if we reloaded the token
-        let connlib_session = if let Some(auth_info) = auth_info.as_ref() {
-            Some(Self::start_session(
+        let session = if let Some(auth_info) = auth_info {
+            let connlib = Self::start_session(
                 &advanced_settings,
                 device_id.clone(),
                 &auth_info.token,
                 logging_handles.logger.clone(),
                 Arc::clone(&notify_controller),
                 Arc::clone(&resources),
-            )?)
+            )?;
+
+            Some(Session { auth_info, connlib })
         } else {
             None
         };
 
         Ok(Self {
             advanced_settings,
-            auth_info,
-            connlib_session,
+            session,
             device_id,
             logging_handles,
             notify_controller,
@@ -418,9 +424,9 @@ async fn run_controller(
                 tracing::debug!("controller sees {} resources", resources.len());
                 // TODO: Save the user name between runs of the app
                 let actor_name = controller
-                    .auth_info
+                    .session
                     .as_ref()
-                    .map(|x| x.actor_name.as_str())
+                    .map(|x| x.auth_info.actor_name.as_str())
                     .unwrap_or("TODO");
                 app.tray_handle()
                     .set_menu(system_tray_menu::signed_in(actor_name, &resources))?;
@@ -436,20 +442,24 @@ async fn run_controller(
                     }
                     Req::SchemeRequest(url) => {
                         if let Some(auth) = client::deep_link::parse_auth_callback(&url) {
-                            tracing::debug!("setting new token");
                             let entry = keyring_entry()?;
                             entry.set_password(auth.token.expose_secret())?;
-                            controller.connlib_session = Some(Controller::start_session(
+
+                            let connlib = Controller::start_session(
                                 &controller.advanced_settings,
                                 controller.device_id.clone(),
                                 &auth.token,
                                 controller.logging_handles.logger.clone(),
                                 Arc::clone(&controller.notify_controller),
                                 Arc::clone(&controller.resources),
-                            )?);
-                            controller.auth_info = Some(AuthInfo {
+                            )?;
+                            let auth_info = AuthInfo {
                                 actor_name: auth.actor_name,
                                 token: auth.token,
+                            };
+                            controller.session = Some(Session {
+                                auth_info,
+                                connlib,
                             });
                         } else {
                             tracing::warn!("couldn't handle scheme request");
@@ -464,10 +474,11 @@ async fn run_controller(
                         )?;
                     }
                     Req::SignOut => {
+                        // TODO: After we store the actor name on disk, clear the actor name here too.
                         keyring_entry()?.delete_password()?;
-                        if let Some(mut session) = controller.connlib_session.take() {
+                        if let Some(mut session) = controller.session.take() {
                             // TODO: Needs testing
-                            session.disconnect(None);
+                            session.connlib.disconnect(None);
                         }
                         app.tray_handle().set_menu(system_tray_menu::signed_out())?;
                     }
