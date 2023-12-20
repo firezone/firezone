@@ -59,6 +59,7 @@ If the client stops running while signed in, then the token may be stored in Win
 
 # Diagnostic logs
 
+- [ ] Given the client was built in release mode, when you first start the client, then it will use the release mode default settings
 - [ ] Given the client app is signed out, when you change the log filter in the Advanced Settings tab, then the log filter for both the GUI and connlib will change immediately
 - [ ] Given the Diagnostic Logs tabs is not displayed, when you open the Diagnostic Logs tab, then the log directory size is computed in a worker task (not blocking the GUI) and displayed
 - [ ] Given the client app is computing the log directory size, when you click "Clear Logs", then the computation will be canceled.

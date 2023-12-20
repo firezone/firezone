@@ -15,12 +15,24 @@ pub(crate) struct AdvancedSettings {
     pub log_filter: String,
 }
 
+#[cfg(debug_assertions)]
+impl Default for AdvancedSettings {
+    fn default() -> Self {
+        Self {
+            auth_base_url: Url::parse("https://app.firez.one").unwrap(),
+            api_url: Url::parse("wss://api.firez.one").unwrap(),
+            log_filter: "firezone_windows_client=debug,firezone_tunnel=trace,connlib_shared=debug,connlib_client_shared=debug,warn".to_string(),
+        }
+    }
+}
+
+#[cfg(not(debug_assertions))]
 impl Default for AdvancedSettings {
     fn default() -> Self {
         Self {
             auth_base_url: Url::parse("https://app.firezone.dev").unwrap(),
             api_url: Url::parse("wss://api.firezone.dev").unwrap(),
-            log_filter: "info".to_string(),
+            log_filter: "firezone_windows_client=info,firezone_tunnel=trace,connlib_shared=info,connlib_client_shared=info,webrtc=error,warn".to_string(),
         }
     }
 }

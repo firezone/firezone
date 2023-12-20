@@ -20,7 +20,8 @@ pub struct Tun {
 impl Tun {
     pub fn new(config: &InterfaceConfig) -> Result<Self> {
         const TUNNEL_UUID: &str = "e9245bc1-b8c1-44ca-ab1d-c6aad4f13b9c";
-        const TUNNEL_NAME: &str = "Firezone Tunnel";
+        // wintun automatically appends " Tunnel" to this
+        const TUNNEL_NAME: &str = "Firezone";
 
         // The unsafe is here because we're loading a DLL from disk and it has arbitrary C code in it.
         // The Windows client, in `wintun_install` hashes the DLL at startup, before calling connlib, so it's unlikely for the DLL to be accidentally corrupted by the time we get here.
