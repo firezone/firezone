@@ -5,6 +5,7 @@ members = [
   "connlib/clients/shared",
   "connlib/shared",
   "connlib/tunnel",
+  "connlib/connection",
   "gateway",
   "linux-client",
   "firezone-cli-utils",

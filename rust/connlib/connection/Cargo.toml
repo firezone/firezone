@@ -1,0 +1,11 @@
+[package]
+name = "firezone-connection"
+# mark:automatic-version
+version = "1.20231001.0"
+edition = "2021"
+
+[dependencies]
+boringtun = { workspace = true }
+firezone-relay = { workspace = true }
+str0m = { workspace = true }
+tokio = { version = "1", features = ["full"] }

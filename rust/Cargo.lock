@@ -1860,6 +1860,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "firezone-connection"
+version = "1.20231001.0"
+dependencies = [
+ "boringtun",
+ "firezone-relay",
+ "str0m",
+ "tokio",
+]
+
+[[package]]
 name = "firezone-gateway"
 version = "1.0.0"
 dependencies = [
