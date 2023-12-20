@@ -2025,6 +2025,7 @@ version = "1.0.0"
 dependencies = [
  "anyhow",
  "arboard",
+ "chrono",
  "clap",
  "connlib-client-shared",
  "connlib-shared",

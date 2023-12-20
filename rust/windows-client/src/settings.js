@@ -1,5 +1,6 @@
 let auth_base_url_input;
 let api_url_input;
+let log_count_output;
 let log_filter_input;
 let reset_advanced_settings_btn;
 let apply_advanced_settings_btn;
@@ -11,6 +12,7 @@ const querySel = function(id) {
 };
 
 const { invoke } = window.__TAURI__.tauri;
+const { listen } = window.__TAURI__.event;
 
 // Lock the UI when we're saving to disk, since disk writes are technically async.
 // Parameters:
@@ -116,12 +118,21 @@ function openTab(evt, tabName) {
     document.getElementById(tabName).style.display = "block";
     // TODO: There's a better way to do this
     evt.currentTarget.className += " active";
+
+    invoke("start_stop_log_counting", {"enable": tabName == "tab_logs"})
+    .then(() => {
+        // Good
+    })
+    .catch((e) => {
+        console.error(e);
+    });
 }
 
-window.addEventListener("DOMContentLoaded", () => {
+async function setup() {
     // Advanced tab
     auth_base_url_input = querySel("#auth-base-url-input");
     api_url_input = querySel("#api-url-input");
+    log_count_output = querySel("#log-count-output");
     log_filter_input = querySel("#log-filter-input");
     reset_advanced_settings_btn = querySel("#reset-advanced-settings-btn");
     apply_advanced_settings_btn = querySel("#apply-advanced-settings-btn");
@@ -142,8 +153,16 @@ window.addEventListener("DOMContentLoaded", () => {
         clear_logs();
     });
 
+    await listen("file_count_progress", (event) => {
+        const pl = event.payload;
+        const megabytes = Math.round(pl.bytes / 100000) / 10;
+        log_count_output.innerText = `${pl.files} files, ${megabytes} MB`;
+    });
+
     // TODO: Why doesn't this open the Advanced tab by default?
     querySel("#tab_advanced").click();
 
     get_advanced_settings().await;
-});
+}
+
+window.addEventListener("DOMContentLoaded",setup);
