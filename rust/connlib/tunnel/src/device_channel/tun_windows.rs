@@ -1,7 +1,10 @@
-use connlib_shared::{messages::Interface as InterfaceConfig, Result};
+use connlib_shared::{messages::Interface as InterfaceConfig, Result, DNS_SENTINEL};
 use ip_network::IpNetwork;
 use std::{
     io,
+    net::Ipv6Addr,
+    os::windows::process::CommandExt,
+    process::{Command, Stdio},
     str::FromStr,
     sync::Arc,
     task::{ready, Context, Poll},
@@ -11,11 +14,18 @@ use tokio::sync::mpsc;
 // TODO: Make sure all these get dropped gracefully on disconnect
 pub struct Tun {
     _adapter: Arc<wintun::Adapter>,
+    /// The index of our network adapter, we can use this when asking Windows to add / remove routes / DNS rules
+    /// It's stable across app restarts and I'm assuming across system reboots too.
+    iface_idx: u32,
     // TODO: Get rid of this mutex. It's a hack to deal with `poll_read` taking a `&self` instead of `&mut self`
     packet_rx: std::sync::Mutex<mpsc::Receiver<wintun::Packet>>,
     _recv_thread: std::thread::JoinHandle<()>,
     session: Arc<wintun::Session>,
 }
+
+// Hides Powershell's console on Windows
+// <https://stackoverflow.com/questions/59692146/is-it-possible-to-use-the-standard-library-to-spawn-a-process-without-showing-th#60958956>
+const CREATE_NO_WINDOW: u32 = 0x08000000;
 
 impl Tun {
     pub fn new(config: &InterfaceConfig) -> Result<Self> {
@@ -39,7 +49,45 @@ impl Tun {
                 }
             };
 
-        adapter.set_address(config.ipv4)?;
+        // TODO: I think wintun flashes a couple console windows here when it shells out to netsh. We should upstream the same patch I'm doing for powershell to the wintun project
+        // We could also try to get rid of wintun dependency entirely
+        adapter.set_network_addresses_tuple(
+            config.ipv4.into(),
+            [255, 255, 255, 255].into(),
+            None,
+        )?;
+        adapter.set_network_addresses_tuple(
+            config.ipv6.into(),
+            Ipv6Addr::new(
+                0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff,
+            )
+            .into(),
+            None,
+        )?;
+
+        let iface_idx = adapter.get_adapter_index()?;
+
+        // Remove any routes that were previously associated with us
+        // TODO: Pick a more elegant way to do this
+        Command::new("powershell")
+            .creation_flags(CREATE_NO_WINDOW)
+            .arg("-Command")
+            .arg(format!(
+                "Remove-NetRoute -InterfaceIndex {iface_idx} -Confirm:$false"
+            ))
+            .stdout(Stdio::null())
+            .status()?;
+
+        // Set our DNS IP as the DNS server for our interface
+        // TODO: Lots of issues with this. Windows does seem to use it, but I'm not sure why. And there's a delay before some Firefox windows pick it up. Curl might be picking it up faster because its DNS cache starts cold every time.
+        Command::new("powershell")
+            .creation_flags(CREATE_NO_WINDOW)
+            .arg("-Command")
+            .arg(format!(
+                "Set-DnsClientServerAddress -InterfaceIndex {iface_idx} -ServerAddresses(\"{DNS_SENTINEL}\")"
+            ))
+            .stdout(Stdio::null())
+            .status()?;
 
         let session = Arc::new(adapter.start_session(wintun::MAX_RING_CAPACITY)?);
 
@@ -50,6 +98,7 @@ impl Tun {
 
         Ok(Self {
             _adapter: adapter,
+            iface_idx,
             _recv_thread: recv_thread,
             packet_rx,
             session: Arc::clone(&session),
@@ -58,6 +107,16 @@ impl Tun {
 
     pub fn add_route(&self, route: IpNetwork) -> Result<()> {
         tracing::debug!("add_route {route}");
+        let iface_idx = self.iface_idx;
+        // TODO: Pick a more elegant way to do this
+        Command::new("powershell")
+            .creation_flags(CREATE_NO_WINDOW)
+            .arg("-Command")
+            .arg(format!(
+                "New-NetRoute -InterfaceIndex {iface_idx} -DestinationPrefix \"{route}\""
+            ))
+            .stdout(Stdio::null())
+            .status()?;
         Ok(())
     }
 
@@ -70,6 +129,11 @@ impl Tun {
             Some(pkt) => {
                 let bytes = pkt.bytes();
                 let len = bytes.len();
+                if len > buf.len() {
+                    // TODO: Need to set MTU on the tunnel interface to prevent this
+                    tracing::warn!("Packet is too long to read ({len} bytes)");
+                    return Poll::Ready(Ok(0));
+                }
                 buf[0..len].copy_from_slice(bytes);
                 Poll::Ready(Ok(len))
             }

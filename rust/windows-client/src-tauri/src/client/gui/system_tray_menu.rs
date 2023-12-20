@@ -3,6 +3,7 @@ use std::str::FromStr;
 use tauri::{CustomMenuItem, SystemTrayMenu, SystemTrayMenuItem, SystemTraySubmenu};
 
 /// The information needed for the GUI to display a resource inside the Firezone VPN
+// TODO: Just make these methods on `ResourceDescription`
 pub(crate) struct Resource {
     pub id: connlib_shared::messages::ResourceId,
     /// User-friendly name, e.g. "GitLab"
