@@ -199,6 +199,7 @@ export default function Footer() {
           </span>
           <div className="flex mt-4 space-x-6 sm:justify-center sm:mt-0">
             <Link
+              target="_blank"
               href={new URL("https://firezone.statuspage.io")}
               className="hover:underline text-xs"
             >
