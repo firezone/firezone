@@ -3,35 +3,10 @@
 
 use crate::client::cli::Cli;
 use anyhow::Result;
-use keyring::Entry;
 use tokio::runtime::Runtime;
 
 // TODO: In tauri-plugin-deep-link, this is the identifier in tauri.conf.json
 const PIPE_NAME: &str = "dev.firezone.client";
-
-/// Test encrypted credential storage
-pub fn token() -> Result<()> {
-    // TODO: Remove placeholder email
-    let entry = Entry::new_with_target("token", "firezone_windows_client", "username@example.com")?;
-    match entry.get_password() {
-        Ok(password) => {
-            println!("Placeholder password is '{password}'");
-
-            println!("Deleting password");
-            entry.delete_password()?;
-        }
-        Err(keyring::Error::NoEntry) => {
-            println!("No password in credential manager");
-
-            let new_password = "top_secret_password";
-            println!("Setting password to {new_password}");
-            entry.set_password(new_password)?;
-        }
-        Err(e) => return Err(e.into()),
-    }
-
-    Ok(())
-}
 
 pub fn open_deep_link(path: &url::Url) -> Result<()> {
     tracing_subscriber::fmt::init();
