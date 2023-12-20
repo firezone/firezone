@@ -15,13 +15,9 @@ import SwiftUINavigationCore
   public final class AppViewModel: ObservableObject {
     @Published var welcomeViewModel: WelcomeViewModel?
 
-    public init() {
+    public init(appStore: AppStore) {
       Task {
-        self.welcomeViewModel = WelcomeViewModel(
-          appStore: AppStore(
-            tunnelStore: TunnelStore.shared
-          )
-        )
+        self.welcomeViewModel = WelcomeViewModel(appStore: appStore)
       }
     }
   }
@@ -40,12 +36,6 @@ import SwiftUINavigationCore
       } else {
         ProgressView()
       }
-    }
-  }
-
-  struct AppView_Previews: PreviewProvider {
-    static var previews: some View {
-      AppView(model: AppViewModel())
     }
   }
 #endif
