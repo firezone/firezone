@@ -105,7 +105,6 @@ defmodule Web.Actors.Users.NewIdentity do
       if socket.assigns.provider.adapter == :email do
         Web.Mailer.AuthEmail.new_user_email(
           socket.assigns.account,
-          socket.assigns.actor,
           identity,
           socket.assigns.subject
         )

@@ -125,7 +125,7 @@ defmodule Web.Actors.Show do
           </:col>
           <:action :let={identity}>
             <button
-              :if={has_email?(identity)}
+              :if={identity_has_email?(identity)}
               phx-click="send_welcome_email"
               phx-value-id={identity.id}
               class={[
@@ -368,7 +368,6 @@ defmodule Web.Actors.Show do
     {:ok, _} =
       Web.Mailer.AuthEmail.new_user_email(
         socket.assigns.account,
-        socket.assigns.actor,
         identity,
         socket.assigns.subject
       )
@@ -389,10 +388,5 @@ defmodule Web.Actors.Show do
       nil -> nil
       identity -> identity.last_seen_at
     end
-  end
-
-  defp has_email?(identity) do
-    not is_nil(get_in(identity.provider_state, ["userinfo", "email"])) ||
-      identity.provider.adapter == :email
   end
 end

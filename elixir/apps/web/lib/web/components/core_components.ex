@@ -938,7 +938,15 @@ defmodule Web.CoreComponents do
   end
 
   def get_identity_email(identity) do
-    get_in(identity.provider_state, ["userinfo", "email"]) || identity.provider_identifier
+    provider_email(identity) || identity.provider_identifier
+  end
+
+  def identity_has_email?(identity) do
+    not is_nil(provider_email(identity)) || identity.provider.adapter == :email
+  end
+
+  defp provider_email(identity) do
+    get_in(identity.provider_state, ["userinfo", "email"])
   end
 
   attr :account, :any, required: true

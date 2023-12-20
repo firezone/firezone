@@ -62,19 +62,14 @@ defmodule Web.Mailer.AuthEmail do
 
   def new_user_email(
         %Domain.Accounts.Account{} = account,
-        %Domain.Actors.Actor{} = actor,
         %Domain.Auth.Identity{} = identity,
         %Domain.Auth.Subject{} = subject
       ) do
-    sign_in_form_url = url(~p"/#{account}")
-
     default_email()
     |> subject("Welcome to Firezone")
-    |> to(identity.provider_identifier)
+    |> to(get_identity_email(identity))
     |> render_body(__MODULE__, :new_user,
       account: account,
-      sign_in_form_url: sign_in_form_url,
-      actor: actor,
       identity: identity,
       subject: subject
     )
