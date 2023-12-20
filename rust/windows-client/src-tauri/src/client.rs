@@ -10,6 +10,7 @@ mod device_id;
 mod elevation;
 mod gui;
 mod logging;
+mod resolvers;
 mod settings;
 mod wintun_install;
 

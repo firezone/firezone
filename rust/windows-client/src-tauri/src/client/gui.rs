@@ -10,12 +10,9 @@ use client::{
     settings::{self, AdvancedSettings},
 };
 use connlib_client_shared::file_logger;
+use connlib_shared::messages::ResourceId;
 use secrecy::{ExposeSecret, SecretString};
-use std::{
-    net::{Ipv4Addr, Ipv6Addr},
-    path::PathBuf,
-    str::FromStr,
-};
+use std::{net::IpAddr, path::PathBuf, str::FromStr};
 use system_tray_menu::{Event as TrayMenuEvent, Resource as ResourceDisplay};
 use tauri::{Manager, SystemTray, SystemTrayEvent};
 use tokio::sync::{mpsc, oneshot};
@@ -167,6 +164,11 @@ async fn accept_deep_links(
 }
 
 fn handle_system_tray_event(app: &tauri::AppHandle, event: TrayMenuEvent) -> Result<()> {
+    let ctlr_tx = &app
+        .try_state::<Managed>()
+        .ok_or_else(|| anyhow!("can't get Managed struct from Tauri"))?
+        .ctlr_tx;
+
     match event {
         TrayMenuEvent::About => {
             let win = app
@@ -179,7 +181,9 @@ fn handle_system_tray_event(app: &tauri::AppHandle, event: TrayMenuEvent) -> Res
                 win.show()?;
             }
         }
-        TrayMenuEvent::Resource { id } => tracing::warn!("TODO copy {id} to clipboard"),
+        TrayMenuEvent::Resource { id } => {
+            ctlr_tx.blocking_send(ControllerRequest::CopyResource(id))?
+        }
         TrayMenuEvent::Settings => {
             let win = app
                 .get_window("settings")
@@ -192,22 +196,15 @@ fn handle_system_tray_event(app: &tauri::AppHandle, event: TrayMenuEvent) -> Res
                 win.show()?;
             }
         }
-        TrayMenuEvent::SignIn => app
-            .try_state::<Managed>()
-            .ok_or_else(|| anyhow!("couldn't get ctlr_tx state"))?
-            .ctlr_tx
-            .blocking_send(ControllerRequest::SignIn)?,
-        TrayMenuEvent::SignOut => app
-            .try_state::<Managed>()
-            .ok_or_else(|| anyhow!("couldn't get ctlr_tx state"))?
-            .ctlr_tx
-            .blocking_send(ControllerRequest::SignOut)?,
+        TrayMenuEvent::SignIn => ctlr_tx.blocking_send(ControllerRequest::SignIn)?,
+        TrayMenuEvent::SignOut => ctlr_tx.blocking_send(ControllerRequest::SignOut)?,
         TrayMenuEvent::Quit => app.exit(0),
     }
     Ok(())
 }
 
 pub(crate) enum ControllerRequest {
+    CopyResource(String),
     ExportLogs(PathBuf),
     GetAdvancedSettings(oneshot::Sender<AdvancedSettings>),
     SchemeRequest(url::Url),
@@ -237,6 +234,8 @@ struct CallbackHandler {
 enum CallbackError {
     #[error(transparent)]
     ControllerRequest(#[from] tokio::sync::mpsc::error::TrySendError<ControllerRequest>),
+    #[error("system DNS resolver problem: {0}")]
+    Resolvers(#[from] client::resolvers::Error),
 }
 
 impl connlib_client_shared::Callbacks for CallbackHandler {
@@ -246,6 +245,7 @@ impl connlib_client_shared::Callbacks for CallbackHandler {
         &self,
         error: Option<&connlib_client_shared::Error>,
     ) -> Result<(), Self::Error> {
+        // TODO: implement
         tracing::error!("on_disconnect {error:?}");
         Ok(())
     }
@@ -255,17 +255,8 @@ impl connlib_client_shared::Callbacks for CallbackHandler {
         Ok(())
     }
 
-    fn on_set_interface_config(
-        &self,
-        tunnel_addr_ipv4: Ipv4Addr,
-        _tunnel_addr_ipv6: Ipv6Addr,
-        _dns_addr: Ipv4Addr,
-    ) -> Result<Option<i32>, Self::Error> {
-        tracing::info!("Tunnel IPv4 = {tunnel_addr_ipv4}");
-        Ok(None)
-    }
-
     fn on_tunnel_ready(&self) -> Result<(), Self::Error> {
+        // TODO: implement
         tracing::info!("on_tunnel_ready");
         Ok(())
     }
@@ -279,6 +270,10 @@ impl connlib_client_shared::Callbacks for CallbackHandler {
         self.ctlr_tx
             .try_send(ControllerRequest::UpdateResources(resources))?;
         Ok(())
+    }
+
+    fn get_system_default_resolvers(&self) -> Result<Option<Vec<IpAddr>>, Self::Error> {
+        Ok(Some(client::resolvers::get()?))
     }
 
     fn roll_log_file(&self) -> Option<PathBuf> {
@@ -406,11 +401,20 @@ async fn run_controller(
         .context("couldn't create Controller")?;
 
     let mut log_counting_task = None;
+    let mut resources: Vec<ResourceDisplay> = vec![];
 
     tracing::debug!("GUI controller main loop start");
 
     while let Some(req) = rx.recv().await {
         match req {
+            Req::CopyResource(id) => {
+                let id = ResourceId::from_str(&id)?;
+                let Some(res) = resources.iter().find(|r| r.id == id) else {
+                    continue;
+                };
+                let mut clipboard = arboard::Clipboard::new()?;
+                clipboard.set_text(&res.pastable)?;
+            }
             Req::ExportLogs(file_path) => logging::export_logs_to(file_path).await?,
             Req::GetAdvancedSettings(tx) => {
                 tx.send(controller.advanced_settings.clone()).ok();
@@ -464,9 +468,9 @@ async fn run_controller(
                 }
                 app.tray_handle().set_menu(system_tray_menu::signed_out())?;
             }
-            Req::UpdateResources(resources) => {
+            Req::UpdateResources(r) => {
                 tracing::debug!("controller got UpdateResources");
-                let resources: Vec<_> = resources.into_iter().map(ResourceDisplay::from).collect();
+                resources = r.into_iter().map(ResourceDisplay::from).collect();
 
                 // TODO: Save the user name between runs of the app
                 let actor_name = controller
