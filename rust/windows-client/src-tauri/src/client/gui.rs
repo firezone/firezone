@@ -474,17 +474,20 @@ mod tests {
     fn test_keyring() -> anyhow::Result<()> {
         // I used this test to find that `service` is not used - We have to namespace on our own.
 
-        keyring::Entry::new_with_target("dev.firezone.client/test_1/token", "", "")?
-            .set_password("test_password_1")?;
+        let name_1 = "dev.firezone.client/test_1/token";
+        let name_2 = "dev.firezone.client/test_2/token";
 
-        keyring::Entry::new_with_target("dev.firezone.client/test_2/token", "", "")?
-            .set_password("test_password_2")?;
+        keyring::Entry::new_with_target(name_1, "", "")?.set_password("test_password_1")?;
 
-        let actual = keyring::Entry::new_with_target("dev.firezone.client/test_1/token", "", "")?
-            .get_password()?;
+        keyring::Entry::new_with_target(name_2, "", "")?.set_password("test_password_2")?;
+
+        let actual = keyring::Entry::new_with_target(name_1, "", "")?.get_password()?;
         let expected = "test_password_1";
 
         assert_eq!(actual, expected);
+
+        keyring::Entry::new_with_target(name_1, "", "")?.delete_password()?;
+        keyring::Entry::new_with_target(name_2, "", "")?.delete_password()?;
 
         Ok(())
     }
