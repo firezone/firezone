@@ -18,7 +18,7 @@ enum SettingsViewError: Error {
 public final class SettingsViewModel: ObservableObject {
   private let logger = Logger.make(for: SettingsViewModel.self)
 
-  @Dependency(\.authStore) private var authStore
+  let authStore: AuthStore
 
   var tunnelAuthStatus: TunnelAuthStatus {
     authStore.tunnelStore.tunnelAuthStatus
@@ -29,7 +29,8 @@ public final class SettingsViewModel: ObservableObject {
   public var onSettingsSaved: () -> Void = unimplemented()
   private var cancellables = Set<AnyCancellable>()
 
-  public init() {
+  public init(authStore: AuthStore) {
+    self.authStore = authStore
     advancedSettings = AdvancedSettings.defaultValue
     loadSettings()
   }
@@ -827,9 +828,3 @@ struct FormTextField: View {
     }
   }
 #endif
-
-struct SettingsView_Previews: PreviewProvider {
-  static var previews: some View {
-    SettingsView(model: SettingsViewModel())
-  }
-}
