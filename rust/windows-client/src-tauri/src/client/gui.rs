@@ -291,6 +291,8 @@ impl connlib_client_shared::Callbacks for CallbackHandler {
 struct Controller {
     /// Debugging-only settings like API URL, auth URL, log filter
     advanced_settings: AdvancedSettings,
+    /// Info and token for the currently signed-in user, if there is one
+    auth_info: Option<AuthInfo>,
     /// connlib / tunnel session
     connlib_session: Option<connlib_client_shared::Session<CallbackHandler>>,
     /// The UUIDv4 device ID persisted to disk
@@ -300,12 +302,10 @@ struct Controller {
     /// Tells us when to wake up and look for a new resource list. Tokio docs say that memory reads and writes are synchronized when notifying, so we don't need an extra mutex on the resources.
     notify_controller: Arc<Notify>,
     resources: Arc<ArcSwap<Vec<ResourceDescription>>>,
-    /// Info about currently signed-in user, if there is one
-    session: Option<Session>,
 }
 
 /// Information for a signed-in user session
-struct Session {
+struct AuthInfo {
     /// User name, e.g. "John Doe", from the sign-in deep link
     actor_name: String,
     token: SecretString,
@@ -319,17 +319,17 @@ impl Controller {
         notify_controller: Arc<Notify>,
     ) -> Result<Self> {
         tracing::trace!("re-loading token");
-        let session: Option<Session> = tokio::task::spawn_blocking(|| {
+        let auth_info: Option<AuthInfo> = tokio::task::spawn_blocking(|| {
             let entry = keyring_entry()?;
             match entry.get_password() {
                 Ok(token) => {
                     let token = SecretString::new(token);
                     tracing::debug!("re-loaded token from Windows credential manager");
-                    let session = Session {
+                    let auth_info = AuthInfo {
                         actor_name: "TODO".to_string(),
                         token,
                     };
-                    Ok(Some(session))
+                    Ok(Some(auth_info))
                 }
                 Err(keyring::Error::NoEntry) => {
                     tracing::debug!("no token in Windows credential manager");
@@ -345,11 +345,11 @@ impl Controller {
         let resources = Default::default();
 
         // Connect immediately if we reloaded the token
-        let connlib_session = if let Some(session) = session.as_ref() {
+        let connlib_session = if let Some(auth_info) = auth_info.as_ref() {
             Some(Self::start_session(
                 &advanced_settings,
                 device_id.clone(),
-                &session.token,
+                &auth_info.token,
                 logging_handles.logger.clone(),
                 Arc::clone(&notify_controller),
                 Arc::clone(&resources),
@@ -360,12 +360,12 @@ impl Controller {
 
         Ok(Self {
             advanced_settings,
+            auth_info,
             connlib_session,
             device_id,
             logging_handles,
             notify_controller,
             resources,
-            session,
         })
     }
 
@@ -418,7 +418,7 @@ async fn run_controller(
                 tracing::debug!("controller sees {} resources", resources.len());
                 // TODO: Save the user name between runs of the app
                 let actor_name = controller
-                    .session
+                    .auth_info
                     .as_ref()
                     .map(|x| x.actor_name.as_str())
                     .unwrap_or("TODO");
@@ -447,7 +447,7 @@ async fn run_controller(
                                 Arc::clone(&controller.notify_controller),
                                 Arc::clone(&controller.resources),
                             )?);
-                            controller.session = Some(Session {
+                            controller.auth_info = Some(AuthInfo {
                                 actor_name: auth.actor_name,
                                 token: auth.token,
                             });
