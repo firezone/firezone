@@ -33,8 +33,8 @@ defmodule Web.Live.RelayGroups.NewTokenTest do
     assert html =~ "docker run"
     assert html =~ "Waiting for connection..."
 
-    assert Regex.run(~r/FIREZONE_ID=([^&]+)/, html) |> List.last()
-    token = Regex.run(~r/FIREZONE_TOKEN=([^&]+)/, html) |> List.last() |> String.trim("&quot;")
+    assert Regex.run(~r/FIREZONE_ID=([^& ]+)/, html) |> List.last()
+    token = Regex.run(~r/FIREZONE_TOKEN=([^& ]+)/, html) |> List.last() |> String.trim("&quot;")
 
     :ok = Domain.Relays.subscribe_for_relays_presence_in_group(group)
     relay = Fixtures.Relays.create_relay(account: account, group: group)
