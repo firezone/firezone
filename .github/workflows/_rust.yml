@@ -94,15 +94,19 @@ jobs:
           tauri build
 
           # Used for release artifact
-          cp target/release/firezone-windows-client.exe "windows-client-x64.exe"
-
-          # There's an MSI and NSIS installer too, but their names include the version so I'll try those later.
+          # In release mode the name comes from tauri.conf.json
+          cp "target/release/Firezone Windows Client.exe" "windows-client-x64.exe"
 
       - name: Save Windows client
         uses: actions/upload-artifact@v3
         with:
-          name: windows-client-x64.exe
+          name: windows-client-x64
           path: ${{ github.workspace }}/rust/windows-client-x64.exe
+      - name: Save Windows installer
+        uses: actions/upload-artifact@v3
+        with:
+          name: windows-client-x64-msi
+          path: ${{ github.workspace }}/rust/target/release/bundle/msi
 
   smoke-test-relay:
     runs-on: ubuntu-22.04
