@@ -213,8 +213,8 @@ pub(crate) enum ControllerRequest {
 // The callback returns a human-readable name but those aren't good keys.
 fn keyring_entry() -> Result<keyring::Entry> {
     Ok(keyring::Entry::new_with_target(
-        "token",
-        "firezone_windows_client",
+        "dev.firezone.client/token",
+        "",
         "",
     )?)
 }
@@ -466,4 +466,26 @@ async fn run_controller(
     }
     tracing::debug!("GUI controller task exiting cleanly");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test_keyring() -> anyhow::Result<()> {
+        // I used this test to find that `service` is not used - We have to namespace on our own.
+
+        keyring::Entry::new_with_target("dev.firezone.client/test_1/token", "", "")?
+            .set_password("test_password_1")?;
+
+        keyring::Entry::new_with_target("dev.firezone.client/test_2/token", "", "")?
+            .set_password("test_password_2")?;
+
+        let actual = keyring::Entry::new_with_target("dev.firezone.client/test_1/token", "", "")?
+            .get_password()?;
+        let expected = "test_password_1";
+
+        assert_eq!(actual, expected);
+
+        Ok(())
+    }
 }
