@@ -66,7 +66,7 @@ pub(crate) fn run(params: client::GuiParams) -> Result<()> {
     tokio::spawn(accept_deep_links(server, ctlr_tx.clone()));
 
     let managed = Managed {
-        ctlr_tx,
+        ctlr_tx: ctlr_tx.clone(),
         inject_faults,
     };
 
@@ -126,6 +126,7 @@ pub(crate) fn run(params: client::GuiParams) -> Result<()> {
             let _ctlr_task = tokio::spawn(async move {
                 if let Err(e) = run_controller(
                     app_handle,
+                    ctlr_tx,
                     ctlr_rx,
                     logging_handles,
                     advanced_settings,
@@ -209,6 +210,7 @@ fn handle_system_tray_event(app: &tauri::AppHandle, event: TrayMenuEvent) -> Res
 
 pub(crate) enum ControllerRequest {
     CopyResource(String),
+    Disconnected,
     ExportLogs(PathBuf),
     GetAdvancedSettings(oneshot::Sender<AdvancedSettings>),
     SchemeRequest(url::Url),
@@ -230,6 +232,7 @@ fn keyring_entry() -> Result<keyring::Entry> {
 struct CallbackHandler {
     logger: file_logger::Handle,
     notify_controller: Arc<Notify>,
+    ctlr_tx: CtlrTx,
     resources: Arc<ArcSwap<Vec<ResourceDescription>>>,
 }
 
@@ -237,6 +240,8 @@ struct CallbackHandler {
 enum CallbackError {
     #[error("system DNS resolver problem: {0}")]
     Resolvers(#[from] client::resolvers::Error),
+    #[error("can't send to controller task: {0}")]
+    SendError(#[from] mpsc::error::TrySendError<ControllerRequest>),
 }
 
 // Callbacks must all be non-blocking
@@ -247,8 +252,8 @@ impl connlib_client_shared::Callbacks for CallbackHandler {
         &self,
         error: Option<&connlib_client_shared::Error>,
     ) -> Result<(), Self::Error> {
-        // TODO: implement
         tracing::debug!("on_disconnect {error:?}");
+        self.ctlr_tx.try_send(ControllerRequest::Disconnected)?;
         Ok(())
     }
 
@@ -286,6 +291,7 @@ impl connlib_client_shared::Callbacks for CallbackHandler {
 struct Controller {
     /// Debugging-only settings like API URL, auth URL, log filter
     advanced_settings: AdvancedSettings,
+    ctlr_tx: CtlrTx,
     /// Session for the currently signed-in user, if there is one
     session: Option<Session>,
     /// The UUIDv4 device ID persisted to disk
@@ -314,6 +320,7 @@ struct AuthInfo {
 impl Controller {
     async fn new(
         app: tauri::AppHandle,
+        ctlr_tx: CtlrTx,
         logging_handles: client::logging::Handles,
         advanced_settings: AdvancedSettings,
         notify_controller: Arc<Notify>,
@@ -322,6 +329,7 @@ impl Controller {
 
         let mut this = Self {
             advanced_settings,
+            ctlr_tx,
             session: None,
             device_id,
             logging_handles,
@@ -368,6 +376,7 @@ impl Controller {
         }
 
         let callback_handler = CallbackHandler {
+            ctlr_tx: self.ctlr_tx.clone(),
             logger: self.logging_handles.logger.clone(),
             notify_controller: Arc::clone(&self.notify_controller),
             resources: Default::default(),
@@ -393,6 +402,7 @@ impl Controller {
 // TODO: After PR #2960 lands, move some of this into `impl Controller`
 async fn run_controller(
     app: tauri::AppHandle,
+    ctlr_tx: CtlrTx,
     mut rx: mpsc::Receiver<ControllerRequest>,
     logging_handles: client::logging::Handles,
     advanced_settings: AdvancedSettings,
@@ -400,6 +410,7 @@ async fn run_controller(
 ) -> Result<()> {
     let mut controller = Controller::new(
         app.clone(),
+        ctlr_tx,
         logging_handles,
         advanced_settings,
         notify_controller,
@@ -447,6 +458,13 @@ async fn run_controller(
                             ResourceDescription::Cidr(x) => clipboard.set_text(&x.address.to_string())?,
                         }
                     }
+                    Req::Disconnected => {
+                        tracing::debug!("connlib disconnected, tearing down Session");
+                        if let Some(mut session) = controller.session.take() {
+                            tracing::debug!("disconnecting connlib");
+                            session.connlib.disconnect(None);
+                        }
+                    },
                     Req::ExportLogs(file_path) => settings::export_logs_to(file_path).await?,
                     Req::GetAdvancedSettings(tx) => {
                         tx.send(controller.advanced_settings.clone()).ok();
