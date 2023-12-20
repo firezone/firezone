@@ -259,9 +259,6 @@ fn resource_from_question<N: ToDname>(
 
             let description = DnsResource::from_description(description, name);
             let Some(ips) = dns_resources_internal_ips.get(&description) else {
-                // TODO!!: Sometimes we need to respond with nxdomain for this
-                // it might just not have this in the gateway.
-                // this is quite complicated, look at this again later
                 return Some(ResolveStrategy::DeferredResponse(description));
             };
             Some(ResolveStrategy::LocalResponse(RecordData::A(
@@ -306,7 +303,17 @@ fn resource_from_question<N: ToDname>(
                 domain::rdata::Ptr::new(resource.address.clone()),
             )))
         }
-        _ => Some(ResolveStrategy::forward(name.to_string(), qtype)),
+        _ => {
+            if name
+                .iter_suffixes()
+                .any(|n| dns_resources.contains_key(&n.to_string()))
+            {
+                // If it's a resource we manage we don't allow a leak here.
+                return None;
+            }
+
+            Some(ResolveStrategy::forward(name.to_string(), qtype))
+        }
     }
 }
 
