@@ -229,7 +229,7 @@ fn keyring_entry() -> Result<keyring::Entry> {
 
 #[derive(Clone)]
 struct CallbackHandler {
-    logger: Option<file_logger::Handle>,
+    logger: file_logger::Handle,
     notify_controller: Arc<Notify>,
     resources: Arc<ArcSwap<Vec<ResourceDescription>>>,
 }
@@ -273,22 +273,18 @@ impl connlib_client_shared::Callbacks for CallbackHandler {
     }
 
     fn on_update_resources(&self, resources: Vec<ResourceDescription>) -> Result<(), Self::Error> {
-        tracing::debug!("connlib sees {} resources", resources.len());
         self.resources.store(resources.into());
         self.notify_controller.notify_one();
         Ok(())
     }
 
     fn roll_log_file(&self) -> Option<PathBuf> {
-        self.logger
-            .as_ref()?
-            .roll_to_new_file()
-            .unwrap_or_else(|e| {
-                tracing::debug!("Failed to roll over to new file: {e}");
-                let _ = self.on_error(&connlib_client_shared::Error::LogFileRollError(e));
+        self.logger.roll_to_new_file().unwrap_or_else(|e| {
+            tracing::debug!("Failed to roll over to new file: {e}");
+            let _ = self.on_error(&connlib_client_shared::Error::LogFileRollError(e));
 
-                None
-            })
+            None
+        })
     }
 }
 
@@ -301,7 +297,7 @@ struct Controller {
     /// Sent verbatim to Session::connect
     device_id: String,
     logging_handles: client::logging::Handles,
-    // TODO: Use `select!` over two notifiers instead of funneling everything through just one
+    /// Tells us when to wake up and look for a new resource list. Tokio docs say that memory reads and writes are synchronized when notifying, so we don't need an extra mutex on the resources.
     notify_controller: Arc<Notify>,
     resources: Arc<ArcSwap<Vec<ResourceDescription>>>,
     /// Info about currently signed-in user, if there is one
@@ -387,7 +383,7 @@ impl Controller {
             token.clone(),
             device_id,
             CallbackHandler {
-                logger: Some(logger),
+                logger,
                 notify_controller,
                 resources,
             },
