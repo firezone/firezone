@@ -35,10 +35,10 @@
 
 **Note**: 🚧 The `main` branch is undergoing major restructuring in preparation
 
-for the release of Firezone 1.x 🚧.
+for the release of Firezone 1.0 🚧.
 
-See the [`legacy` branch](https://github.com/firezone/firezone/tree/legacy) to
-track the latest changes to Firezone 0.7.
+See the [`legacy` branch](https://github.com/firezone/firezone/tree/legacy) if
+you're looking for Firezone 0.7.
 
 [Read the 1.0 announcement for more](https://www.firezone.dev/blog/firezone-1-0).
 
@@ -153,13 +153,13 @@ setup and manage than 0.x and so you probably don't need to.
 ### How long will 0.7 be supported until?
 
 **Firezone 0.7 is currently end-of-life and will stop receiving updates after
-January 31st, 2024.**
+January 31st, 2024.** It will continue to be available indefinitely from the
+`legacy` branch of this repo under the Apache 2.0 license.
 
-<!-- TODO
-> What's your pricing structure like?
+### What's your pricing structure like?
 
-Please see our pricing page at https://www.firezone.dev/pricing?utm_source=readme
--->
+Please see our pricing page at
+https://www.firezone.dev/pricing?utm_source=readme
 
 ## Documentation
 
