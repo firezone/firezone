@@ -20,36 +20,9 @@ use tauri::{Manager, SystemTray, SystemTrayEvent};
 use tokio::sync::{mpsc, oneshot, Notify};
 use ControllerRequest as Req;
 
-/// CtlrTx allows the controller task to only await a single `Notify` even though it
-/// can receive messages from unrelated sources like connlib's `on_update_resources`
 mod system_tray_menu;
 
-/// and the `mpsc` channel that gets system tray events.
-#[derive(Clone)]
-pub(crate) struct CtlrTx {
-    ctlr_tx: mpsc::Sender<ControllerRequest>,
-    // The controller only waits for its Notify, so use that to wake it up
-    // Tokio docs say that Notify has the same inter-thread ordering as stdlib's
-    // thread parking, so it's safe to use Notify to wake up a task to read unrelated data.
-    // Tokio will synchronize and make sure that data written before `notify_*` is readable before the other task wakes.
-    notify_controller: Arc<Notify>,
-}
-
-impl CtlrTx {
-    pub(crate) fn blocking_send(&self, req: ControllerRequest) -> Result<()> {
-        tracing::debug!("blocking_send");
-        self.ctlr_tx.blocking_send(req)?;
-        self.notify_controller.notify_one();
-        Ok(())
-    }
-
-    pub(crate) async fn send(&self, req: ControllerRequest) -> Result<()> {
-        tracing::debug!("send");
-        self.ctlr_tx.send(req).await?;
-        self.notify_controller.notify_one();
-        Ok(())
-    }
-}
+pub(crate) type CtlrTx = mpsc::Sender<ControllerRequest>;
 
 pub(crate) fn app_local_data_dir(app: &tauri::AppHandle) -> Result<AppLocalDataDir> {
     let path = app
@@ -90,10 +63,6 @@ pub(crate) fn run(params: client::GuiParams) -> Result<()> {
 
     let (ctlr_tx, ctlr_rx) = mpsc::channel(5);
     let notify_controller = Arc::new(Notify::new());
-    let ctlr_tx = CtlrTx {
-        ctlr_tx,
-        notify_controller: Arc::clone(&notify_controller),
-    };
 
     tokio::spawn(accept_deep_links(server, ctlr_tx.clone()));
 
@@ -446,14 +415,25 @@ async fn run_controller(
     tracing::debug!("GUI controller main loop start");
 
     loop {
-        controller.notify_controller.notified().await;
-        tracing::debug!("controller woke up");
-
-        match rx.try_recv() {
-            Err(mpsc::error::TryRecvError::Empty) => {}
-            Err(mpsc::error::TryRecvError::Disconnected) => break,
-            Ok(req) => {
-                match req {
+        tokio::select! {
+            () = controller.notify_controller.notified() => {
+                let resources = controller.resources.load().as_ref().clone();
+                let resources: Vec<_> = resources.into_iter().map(ResourceDisplay::from).collect();
+                tracing::debug!("controller sees {} resources", resources.len());
+                // TODO: Save the user name between runs of the app
+                let actor_name = controller
+                    .session
+                    .as_ref()
+                    .map(|x| x.actor_name.as_str())
+                    .unwrap_or("TODO");
+                app.tray_handle()
+                    .set_menu(system_tray_menu::signed_in(actor_name, &resources))?;
+            }
+            req = rx.recv() => {
+                let Some(req) = req else {
+                    break;
+                };
+                 match req {
                     Req::ExportLogs(file_path) => settings::export_logs_to(file_path).await?,
                     Req::GetAdvancedSettings(tx) => {
                         tx.send(controller.advanced_settings.clone()).ok();
@@ -496,22 +476,7 @@ async fn run_controller(
                         app.tray_handle().set_menu(system_tray_menu::signed_out())?;
                     }
                 }
-                continue;
             }
-        }
-
-        {
-            let resources = controller.resources.load().as_ref().clone();
-            let resources: Vec<_> = resources.into_iter().map(ResourceDisplay::from).collect();
-            tracing::debug!("controller sees {} resources", resources.len());
-            // TODO: Save the user name between runs of the app
-            let actor_name = controller
-                .session
-                .as_ref()
-                .map(|x| x.actor_name.as_str())
-                .unwrap_or("TODO");
-            app.tray_handle()
-                .set_menu(system_tray_menu::signed_in(actor_name, &resources))?;
         }
     }
     tracing::debug!("GUI controller task exiting cleanly");
