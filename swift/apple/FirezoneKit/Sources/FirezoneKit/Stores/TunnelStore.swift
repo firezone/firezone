@@ -23,13 +23,11 @@ public struct TunnelProviderKeys {
   public static let keyConnlibLogFilter = "connlibLogFilter"
 }
 
-final class TunnelStore: ObservableObject {
+public final class TunnelStore: ObservableObject {
   private static let logger = Logger.make(for: TunnelStore.self)
 
-  static let shared = TunnelStore()
-
   @Published private var tunnel: NETunnelProviderManager?
-  @Published private(set) var tunnelAuthStatus: TunnelAuthStatus = .tunnelUninitialized
+  @Published private(set) var tunnelAuthStatus: TunnelAuthStatus = .uninitialized
 
   @Published private(set) var status: NEVPNStatus {
     didSet { TunnelStore.logger.info("status changed: \(self.status.description)") }
@@ -46,9 +44,9 @@ final class TunnelStore: ObservableObject {
   private var stopTunnelContinuation: CheckedContinuation<(), Error>?
   private var cancellables = Set<AnyCancellable>()
 
-  init() {
+  public init() {
     self.tunnel = nil
-    self.tunnelAuthStatus = .tunnelUninitialized
+    self.tunnelAuthStatus = .uninitialized
     self.status = .invalid
 
     Task {
@@ -77,13 +75,7 @@ final class TunnelStore: ObservableObject {
         self.tunnelAuthStatus = tunnel.authStatus()
         self.status = tunnel.connection.status
       } else {
-        let tunnel = NETunnelProviderManager()
-        tunnel.localizedDescription = "Firezone"
-        tunnel.protocolConfiguration = basicProviderProtocol()
-        try await tunnel.saveToPreferences()
-        Self.logger.log("\(#function): Tunnel created")
-        self.tunnel = tunnel
-        self.tunnelAuthStatus = .signedOut
+        self.tunnelAuthStatus = .noTunnelFound
       }
       setupTunnelObservers()
       Self.logger.log("\(#function): TunnelStore initialized")
@@ -92,10 +84,23 @@ final class TunnelStore: ObservableObject {
     }
   }
 
+  func createTunnel() async throws {
+    guard self.tunnel == nil else {
+      return
+    }
+    let tunnel = NETunnelProviderManager()
+    tunnel.localizedDescription = "Firezone"
+    tunnel.protocolConfiguration = basicProviderProtocol()
+    try await tunnel.saveToPreferences()
+    Self.logger.log("\(#function): Tunnel created")
+    self.tunnel = tunnel
+    self.tunnelAuthStatus = tunnel.authStatus()
+  }
+
   func saveAuthStatus(_ tunnelAuthStatus: TunnelAuthStatus) async throws {
     Self.logger.log("TunnelStore.\(#function) \(tunnelAuthStatus, privacy: .public)")
     guard let tunnel = tunnel else {
-      fatalError("Tunnel not initialized yet")
+      fatalError("No tunnel yet. Can't save auth status.")
     }
 
     let tunnelStatus = tunnel.connection.status
@@ -111,7 +116,7 @@ final class TunnelStore: ObservableObject {
   func saveAdvancedSettings(_ advancedSettings: AdvancedSettings) async throws {
     Self.logger.log("TunnelStore.\(#function) \(advancedSettings, privacy: .public)")
     guard let tunnel = tunnel else {
-      fatalError("Tunnel not initialized yet")
+      fatalError("No tunnel yet. Can't save advanced settings.")
     }
 
     let tunnelStatus = tunnel.connection.status
@@ -126,7 +131,7 @@ final class TunnelStore: ObservableObject {
 
   func advancedSettings() -> AdvancedSettings? {
     guard let tunnel = tunnel else {
-      Self.logger.log("\(#function): Tunnel not initialized yet")
+      Self.logger.log("\(#function): No tunnel created yet")
       return nil
     }
 
@@ -148,7 +153,7 @@ final class TunnelStore: ObservableObject {
 
   func start() async throws {
     guard let tunnel = tunnel else {
-      Self.logger.log("\(#function): TunnelStore is not initialized")
+      Self.logger.log("\(#function): No tunnel created yet")
       return
     }
 
@@ -179,7 +184,7 @@ final class TunnelStore: ObservableObject {
 
   func stop() async throws {
     guard let tunnel = tunnel else {
-      Self.logger.log("\(#function): TunnelStore is not initialized")
+      Self.logger.log("\(#function): No tunnel created yet")
       return
     }
 
@@ -201,7 +206,7 @@ final class TunnelStore: ObservableObject {
 
   func signOut() async throws -> Keychain.PersistentRef? {
     guard let tunnel = tunnel else {
-      Self.logger.log("\(#function): TunnelStore is not initialized")
+      Self.logger.log("\(#function): No tunnel created yet")
       return nil
     }
 
@@ -249,7 +254,7 @@ final class TunnelStore: ObservableObject {
 
   private func updateResources() {
     guard let tunnel = tunnel else {
-      Self.logger.log("\(#function): TunnelStore is not initialized")
+      Self.logger.log("\(#function): No tunnel created yet")
       return
     }
 
@@ -333,7 +338,7 @@ final class TunnelStore: ObservableObject {
   func removeProfile() async throws {
     TunnelStore.logger.trace("\(#function)")
     guard let tunnel = tunnel else {
-      Self.logger.log("\(#function): TunnelStore is not initialized")
+      Self.logger.log("\(#function): No tunnel created yet")
       return
     }
 
@@ -342,21 +347,24 @@ final class TunnelStore: ObservableObject {
 }
 
 enum TunnelAuthStatus: Equatable, CustomStringConvertible {
-  case tunnelUninitialized
+  case uninitialized
+  case noTunnelFound
   case signedOut
   case signedIn(authBaseURL: URL, tokenReference: Data)
 
   var isInitialized: Bool {
     switch self {
-    case .tunnelUninitialized: return false
+    case .uninitialized: return false
     default: return true
     }
   }
 
   var description: String {
     switch self {
-    case .tunnelUninitialized:
+    case .uninitialized:
       return "tunnel uninitialized"
+    case .noTunnelFound:
+      return "no tunnel found"
     case .signedOut:
       return "signedOut"
     case .signedIn(let authBaseURL, _):
@@ -413,9 +421,9 @@ extension NETunnelProviderManager {
       var providerConfig: [String: Any] = protocolConfiguration.providerConfiguration ?? [:]
 
       switch authStatus {
-      case .tunnelUninitialized:
-        protocolConfiguration.passwordReference = nil
-        break
+      case .uninitialized, .noTunnelFound:
+        return
+
       case .signedOut:
         protocolConfiguration.passwordReference = nil
         break
