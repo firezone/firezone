@@ -1,4 +1,6 @@
 mod index;
 mod pool;
 
-pub use pool::{Answer, ClientConnectionPool, Event, Offer, ServerConnectionPool};
+pub use pool::{
+    Answer, ClientConnectionPool, ConnectionPool, Error, Event, Offer, ServerConnectionPool,
+};

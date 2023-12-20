@@ -46,16 +46,21 @@ pub struct ConnectionPool<T, TId> {
     pending_events: VecDeque<Event<TId>>,
 
     buffer: Box<[u8; MAX_UDP_SIZE]>,
-    backup_buffer: Box<[u8; MAX_UDP_SIZE]>, // Only needed because rustc borrow-checker is not flow-control aware.
 
     marker: PhantomData<T>,
 }
 
+#[derive(thiserror::Error, Debug)]
 pub enum Error {
+    #[error("Unknown interface")]
     UnknownInterface,
+    #[error("Failed to decapsualte")]
     Decapsulate(boringtun::noise::errors::WireGuardError),
+    #[error("Failed to encapsulate")]
     Encapsulate(boringtun::noise::errors::WireGuardError),
+    #[error("Unmatched packet")]
     UnmatchedPacket,
+    #[error("Not connected")]
     NotConnected,
 }
 
@@ -77,7 +82,6 @@ where
             pending_events: VecDeque::default(),
             initial_connections: HashMap::default(),
             buffer: Box::new([0u8; MAX_UDP_SIZE]),
-            backup_buffer: Box::new([0u8; MAX_UDP_SIZE]),
         }
     }
 
@@ -109,11 +113,12 @@ where
     /// - `Ok(Some)` if the packet was an encrypted wireguard packet from a peer.
     ///   The `Option` contains the connection on which the packet was decrypted, plus the destination IP.
     pub fn decapsulate<'s>(
-        &'s mut self,
+        &mut self,
         local: SocketAddr,
         from: SocketAddr,
         packet: &[u8],
         now: Instant,
+        buffer: &'s mut [u8],
     ) -> Result<Option<(TId, IpAddr, &'s [u8])>, Error> {
         if !self.local_interfaces.contains(&local) {
             return Err(Error::UnknownInterface);
@@ -163,7 +168,7 @@ where
                     continue;
                 }
 
-                return match conn.tunnel.decapsulate(None, packet, self.buffer.as_mut()) {
+                return match conn.tunnel.decapsulate(None, packet, buffer) {
                     TunnResult::Done => Ok(None),
                     TunnResult::Err(e) => Err(Error::Decapsulate(e)),
                     TunnResult::WriteToTunnelV4(packet, ip) => Ok(Some((*id, ip.into(), packet))),
@@ -176,7 +181,7 @@ where
 
                         while let TunnResult::WriteToNetwork(packet) =
                             conn.tunnel
-                                .decapsulate(None, &[], self.backup_buffer.as_mut_slice())
+                                .decapsulate(None, &[], self.buffer.as_mut_slice())
                         {
                             self.buffered_transmits.push_back(Transmit {
                                 dst: from,
