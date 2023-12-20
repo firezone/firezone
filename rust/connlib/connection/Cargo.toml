@@ -5,7 +5,10 @@ version = "1.20231001.0"
 edition = "2021"
 
 [dependencies]
+anyhow = "1"
+secrecy = { workspace = true }
 boringtun = { workspace = true }
 firezone-relay = { workspace = true }
 str0m = { workspace = true }
-tokio = { version = "1", features = ["full"] }
+rand = "0.8"
+tracing = "0.1"

@@ -1,0 +1,13 @@
+[package]
+name = "firezone-connection-tests"
+# mark:automatic-version
+version = "1.20231001.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1"
+firezone-connection = { workspace = true }
+redis = { version = "0.23.3", default-features = false, features = ["tokio-comp"] }
+tokio = { version = "1", features = ["full"] }
+boringtun = { workspace = true }
+rand = "0.8"

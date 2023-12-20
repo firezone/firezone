@@ -4,12 +4,13 @@ services:
   dialer:
     build:
       target: debug
-      context: ../../..
+      context: ..
       args:
-        BIN: peer
+        PACKAGE: firezone-connection-tests
     init: true
     environment:
       ROLE: "dialer"
+      LISTEN_ADDR: 172.28.0.100
     cap_add:
       - NET_ADMIN
     depends_on:
@@ -24,12 +25,13 @@ services:
   listener:
     build:
       target: debug
-      context: ../../..
+      context: ..
       args:
-        BIN: peer
+        PACKAGE: firezone-connection-tests
     init: true
     environment:
       ROLE: "listener"
+      LISTEN_ADDR: 172.28.0.101
     cap_add:
       - NET_ADMIN
     depends_on:
@@ -51,11 +53,11 @@ services:
       RUST_BACKTRACE: 1
     build:
       target: debug
-      context: ../../..
+      context: ..
       cache_from:
         - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/cache/relay:main
       args:
-        BIN: firezone-relay
+        PACKAGE: firezone-relay
     init: true
     healthcheck:
       test: ["CMD-SHELL", "lsof -i UDP | grep firezone-relay"]

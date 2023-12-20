@@ -1863,9 +1863,24 @@ dependencies = [
 name = "firezone-connection"
 version = "1.20231001.0"
 dependencies = [
+ "anyhow",
  "boringtun",
  "firezone-relay",
+ "rand 0.8.5",
+ "secrecy",
  "str0m",
+ "tracing",
+]
+
+[[package]]
+name = "firezone-connection-tests"
+version = "1.20231001.0"
+dependencies = [
+ "anyhow",
+ "boringtun",
+ "firezone-connection",
+ "rand 0.8.5",
+ "redis",
  "tokio",
 ]
 
