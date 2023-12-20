@@ -1,6 +1,7 @@
-//! A module for registering deep links that are sent over to the app's already-running instance
+//! A module for registering, catching, and parsing deep links that are sent over to the app's already-running instance
 //! Based on reading some of the Windows code from <https://github.com/FabianLars/tauri-plugin-deep-link>, which is licensed "MIT OR Apache-2.0"
 
+use secrecy::SecretString;
 use std::{ffi::c_void, io, path::Path};
 use tokio::{io::AsyncReadExt, io::AsyncWriteExt, net::windows::named_pipe};
 use windows::Win32::Security as WinSec;
@@ -21,8 +22,7 @@ pub enum Error {
     /// We got some data but it's not UTF-8
     #[error(transparent)]
     LinkNotUtf8(std::string::FromUtf8Error),
-    /// This means we are probably the second instance
-    #[error("named pipe server couldn't start listening")]
+    #[error("named pipe server couldn't start listening, we are probably the second instance")]
     Listen,
     /// Error from server's POV
     #[error(transparent)]
@@ -32,6 +32,59 @@ pub enum Error {
     /// Something went wrong setting up the registry
     #[error(transparent)]
     WindowsRegistry(io::Error),
+}
+
+pub(crate) struct AuthCallback {
+    pub actor_name: String,
+    pub token: SecretString,
+    pub _identifier: SecretString,
+}
+
+pub(crate) fn parse_auth_callback(url: &url::Url) -> Option<AuthCallback> {
+    match url.host() {
+        Some(url::Host::Domain("handle_client_auth_callback")) => {}
+        _ => return None,
+    }
+    if url.path() != "/" {
+        return None;
+    }
+
+    let mut actor_name = None;
+    let mut token = None;
+    let mut identifier = None;
+
+    for (key, value) in url.query_pairs() {
+        match key.as_ref() {
+            "actor_name" => {
+                if actor_name.is_some() {
+                    // actor_name must appear exactly once
+                    return None;
+                }
+                actor_name = Some(value.to_string());
+            }
+            "client_auth_token" => {
+                if token.is_some() {
+                    // client_auth_token must appear exactly once
+                    return None;
+                }
+                token = Some(SecretString::new(value.to_string()));
+            }
+            "identity_provider_identifier" => {
+                if identifier.is_some() {
+                    // identity_provider_identifier must appear exactly once
+                    return None;
+                }
+                identifier = Some(SecretString::new(value.to_string()));
+            }
+            _ => {}
+        }
+    }
+
+    Some(AuthCallback {
+        actor_name: actor_name?,
+        token: token?,
+        _identifier: identifier?,
+    })
 }
 
 /// A server for a named pipe, so we can receive deep links from other instances
@@ -173,4 +226,27 @@ fn set_registry_values(id: &str, exe: &str) -> Result<(), io::Error> {
 
 fn named_pipe_path(id: &str) -> String {
     format!(r"\\.\pipe\{}", id)
+}
+
+#[cfg(test)]
+mod tests {
+    use anyhow::Result;
+    use secrecy::ExposeSecret;
+
+    #[test]
+    fn parse_auth_callback() -> Result<()> {
+        let input = "firezone://handle_client_auth_callback/?actor_name=Reactor+Scram&client_auth_token=a_very_secret_string&identity_provider_identifier=12345";
+        let input = url::Url::parse(input)?;
+        dbg!(&input);
+        let actual = super::parse_auth_callback(&input).unwrap();
+
+        assert_eq!(actual.actor_name, "Reactor Scram");
+        assert_eq!(actual.token.expose_secret(), "a_very_secret_string");
+
+        let input = "firezone://not_handle_client_auth_callback/?actor_name=Reactor+Scram&client_auth_token=a_very_secret_string&identity_provider_identifier=12345";
+        let actual = super::parse_auth_callback(&url::Url::parse(input)?);
+        assert!(actual.is_none());
+
+        Ok(())
+    }
 }
