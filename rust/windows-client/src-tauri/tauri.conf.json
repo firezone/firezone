@@ -7,8 +7,8 @@
     "withGlobalTauri": true
   },
   "package": {
-    "productName": "firezone-windows-client",
-    "version": "0.0.0"
+    "productName": "Firezone Windows Client",
+    "version": "1.0.0"
   },
   "tauri": {
     "allowlist": {
@@ -20,11 +20,13 @@
     },
     "bundle": {
       "active": true,
-      "targets": "all",
+      "targets": "msi",
       "identifier": "dev.firezone.client",
       "icon": [
         "icons/firezone.ico"
-      ]
+      ],
+      "publisher": "Firezone",
+      "shortDescription": "The Firezone Windows client"
     },
     "security": {
       "csp": null
@@ -42,7 +44,7 @@
         "resizable": true,
         "width": 640,
         "height": 480,
-        "visible": true
+        "visible": false
       },
       {
         "label": "settings",

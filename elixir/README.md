@@ -125,7 +125,7 @@ Now you can verify that it's working by connecting to a websocket:
 {"ref":"unique_prepare_connection_ref","topic":"client","event":"phx_reply","payload":{"status":"ok","response":{"relays":[{"type":"stun","uri":"stun:172.28.0.101:3478"},{"type":"turn","username":"1719090081:UVxHhieTJWaD8_Sg","password":"Ml65XDZyYpuBiEIvk/q0Zy6EEJ1ZwGa4pWztXFP+tOo","uri":"turn:172.28.0.101:3478","expires_at":1719090081}],"resource_id":"4429d3aa-53ea-4c03-9435-4dee2899672b"}}}
 
 # Initiate connection to a resource
-❯ {"event":"request_connection","topic":"client","payload":{"resource_id":"4429d3aa-53ea-4c03-9435-4dee2899672b","client_rtc_session_description":"RTC_SD","client_preshared_key":"+HapiGI5UdeRjKuKTwk4ZPPYpCnlXHvvqebcIevL+2A="},"ref":"unique_request_connection_ref"}
+❯ {"event":"request_connection","topic":"client","payload":{"resource_id":"4429d3aa-53ea-4c03-9435-4dee2899672b","client_payload":"RTC_SD","client_preshared_key":"+HapiGI5UdeRjKuKTwk4ZPPYpCnlXHvvqebcIevL+2A="},"ref":"unique_request_connection_ref"}
 
 ```
 
@@ -284,6 +284,15 @@ Interactive Elixir (1.15.2) - press Ctrl+C to exit (type h() ENTER for help)
 iex(web@web-w2f6.us-east1-d.c.firezone-staging.internal)1>
 ```
 
+### Quickly provisioning an account
+
+Useful for onboarding beta customers. See the `Domain.Ops.provision_account/1`
+function:
+
+```elixir
+iex> Domain.Ops.provision_account(%{account_name: "Customer Account", account_slug: "customer_account", account_admin_name: "Test User", account_admin_email: "test@firezone.localhost"})
+```
+
 ### Creating an account on staging instance using CLI
 
 ```elixir
@@ -306,7 +315,7 @@ iex(web@web-3vmw.us-east1-d.c.firezone-staging.internal)2> {:ok, magic_link_prov
 iex(web@web-3vmw.us-east1-d.c.firezone-staging.internal)3> {:ok, actor} = Domain.Actors.create_actor(account, %{type: :account_admin_user, name: "Andrii Dryga"})
 {:ok, ...}
 
-iex(web@web-3vmw.us-east1-d.c.firezone-staging.internal)4> {:ok, identity} = Domain.Auth.upsert_identity(actor, magic_link_provider, %{provider_identifier: "a@firezone.dev"})
+iex(web@web-3vmw.us-east1-d.c.firezone-staging.internal)4> {:ok, identity} = Domain.Auth.upsert_identity(actor, magic_link_provider, %{provider_identifier: "a@firezone.dev", provider_identifier_confirmation: "a@firezone.dev"})
 ...
 
 iex(web@web-3vmw.us-east1-d.c.firezone-staging.internal)5> {:ok, identity} = Domain.Auth.Adapters.Email.request_sign_in_token(identity)
@@ -345,6 +354,31 @@ iex(web@web-xxxx.us-east1-d.c.firezone-staging.internal)2> {:ok, %{tokens: [toke
 
 iex(web@web-xxxx.us-east1-d.c.firezone-staging.internal)3> Domain.Relays.encode_token!(token)
 ...
+```
+
+## Connection to production Cloud SQL instance
+
+Install
+[`cloud-sql-proxy`](https://cloud.google.com/sql/docs/postgres/connect-instance-auth-proxy)
+(eg. `brew install cloud-sql-proxy`) and run:
+
+```bash
+cloud-sql-proxy --auto-iam-authn "firezone-prod:us-east1:firezone-prod?address=0.0.0.0&port=9000"
+```
+
+Then you can connect to the PostgreSQL using `psql`:
+
+```bash
+# Use your work email as username to connect
+PG_USER=$(gcloud auth list --filter=status:ACTIVE --format="value(account)" | head -n 1)
+psql "host=localhost port=9000 sslmode=disable dbname=firezone user=${PG_USER}"
+```
+
+If you have issues with credentials try refreshing the application default
+token:
+
+```bash
+gcloud auth application-default login
 ```
 
 ## Viewing logs

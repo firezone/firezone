@@ -29,26 +29,26 @@ import SwiftUI
     }
 
     private func setupObservers() {
-      appStore.auth.$loginStatus
+      appStore.authStore.$loginStatus
         .receive(on: mainQueue)
         .sink { [weak self] loginStatus in
           self?.loginStatus = loginStatus
         }
         .store(in: &cancellables)
 
-      appStore.tunnel.$status
+      appStore.tunnelStore.$status
         .receive(on: mainQueue)
         .sink { [weak self] status in
           self?.tunnelStatus = status
           if status == .connected {
-            self?.appStore.tunnel.beginUpdatingResources()
+            self?.appStore.tunnelStore.beginUpdatingResources()
           } else {
-            self?.appStore.tunnel.endUpdatingResources()
+            self?.appStore.tunnelStore.endUpdatingResources()
           }
         }
         .store(in: &cancellables)
 
-      appStore.tunnel.$resources
+      appStore.tunnelStore.$resources
         .receive(on: mainQueue)
         .sink { [weak self] resources in
           guard let self = self else { return }
@@ -61,20 +61,20 @@ import SwiftUI
 
     func signOutButtonTapped() {
       Task {
-        await appStore.auth.signOut()
+        await appStore.authStore.signOut()
       }
     }
 
     func startTunnel() async {
       if case .signedIn = self.loginStatus {
-        appStore.auth.startTunnel()
+        appStore.authStore.startTunnel()
       }
     }
 
     func stopTunnel() {
       Task {
         do {
-          try await appStore.tunnel.stop()
+          try await appStore.tunnelStore.stop()
         } catch {
           logger.error("\(#function): Error stopping tunnel: \(error)")
         }
@@ -91,39 +91,29 @@ import SwiftUI
           Group {
             switch self.model.loginStatus {
             case .signedIn(let actorName):
-              HStack {
-                Text(actorName.isEmpty ? "Signed in" : "Signed in as")
-                Spacer()
-                Text(actorName)
-                  .foregroundColor(.secondary)
-              }
-              HStack {
-                Spacer()
-                Button("Sign Out") {
-                  self.model.signOutButtonTapped()
+              if self.model.tunnelStatus == .connected {
+                HStack {
+                  Text(actorName.isEmpty ? "Signed in" : "Signed in as")
+                  Spacer()
+                  Text(actorName)
+                    .foregroundColor(.secondary)
                 }
-                Spacer()
+                HStack {
+                  Spacer()
+                  Button("Sign Out") {
+                    self.model.signOutButtonTapped()
+                  }
+                  Spacer()
+                }
+              } else {
+                Text(self.model.tunnelStatus.description)
               }
             case .signedOut:
               Text("Signed Out")
             case .uninitialized:
               Text("Initializing…")
-            }
-          }
-        }
-        if case .signedIn = self.model.loginStatus {
-          Section(header: Text("Connection")) {
-            Text(self.model.tunnelStatus.description)
-            if self.model.tunnelStatus == .disconnected || self.model.tunnelStatus == .invalid {
-              HStack {
-                Spacer()
-                Button("Reconnect") {
-                  Task {
-                    await self.model.startTunnel()
-                  }
-                }
-                Spacer()
-              }
+            case .needsTunnelCreationPermission:
+              Text("Requires VPN permission")
             }
           }
         }
@@ -154,24 +144,12 @@ import SwiftUI
         }
       }
       .listStyle(GroupedListStyle())
-      .navigationTitle("firezone")
+      .navigationTitle("Firezone")
     }
 
     private func copyResourceTapped(_ resource: DisplayableResources.Resource) {
       let pasteboard = UIPasteboard.general
       pasteboard.string = resource.location
-    }
-  }
-
-  struct MainView_Previews: PreviewProvider {
-    static var previews: some View {
-      MainView(
-        model: MainViewModel(
-          appStore: AppStore(
-            tunnelStore: TunnelStore.shared
-          )
-        )
-      )
     }
   }
 #endif

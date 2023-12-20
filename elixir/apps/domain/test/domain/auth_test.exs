@@ -269,8 +269,7 @@ defmodule Domain.AuthTest do
     end
 
     test "ignores disabled providers" do
-      {provider, _bypass} =
-        Fixtures.Auth.start_and_create_google_workspace_provider()
+      {provider, _bypass} = Fixtures.Auth.start_and_create_google_workspace_provider()
 
       Domain.Fixture.update!(provider, %{
         disabled_at: DateTime.utc_now(),
@@ -283,8 +282,7 @@ defmodule Domain.AuthTest do
     end
 
     test "ignores non-custom provisioners" do
-      {provider, _bypass} =
-        Fixtures.Auth.start_and_create_google_workspace_provider()
+      {provider, _bypass} = Fixtures.Auth.start_and_create_google_workspace_provider()
 
       Domain.Fixture.update!(provider, %{
         provisioner: :manual,
@@ -297,8 +295,7 @@ defmodule Domain.AuthTest do
     end
 
     test "returns providers with tokens that will expire in ~1 hour" do
-      {provider, _bypass} =
-        Fixtures.Auth.start_and_create_google_workspace_provider()
+      {provider, _bypass} = Fixtures.Auth.start_and_create_google_workspace_provider()
 
       Domain.Fixture.update!(provider, %{
         adapter_state: %{
@@ -328,8 +325,7 @@ defmodule Domain.AuthTest do
     end
 
     test "ignores disabled providers" do
-      {provider, _bypass} =
-        Fixtures.Auth.start_and_create_google_workspace_provider()
+      {provider, _bypass} = Fixtures.Auth.start_and_create_google_workspace_provider()
 
       Domain.Fixture.update!(provider, %{
         disabled_at: DateTime.utc_now(),
@@ -342,8 +338,7 @@ defmodule Domain.AuthTest do
     end
 
     test "ignores non-custom provisioners" do
-      {provider, _bypass} =
-        Fixtures.Auth.start_and_create_google_workspace_provider()
+      {provider, _bypass} = Fixtures.Auth.start_and_create_google_workspace_provider()
 
       Domain.Fixture.update!(provider, %{
         provisioner: :manual,
@@ -362,11 +357,35 @@ defmodule Domain.AuthTest do
       eleven_minutes_ago = DateTime.utc_now() |> DateTime.add(-11, :minute)
       Domain.Fixture.update!(provider2, %{last_synced_at: eleven_minutes_ago})
 
-      assert {:ok, providers} =
-               list_providers_pending_sync_by_adapter(:google_workspace)
+      assert {:ok, providers} = list_providers_pending_sync_by_adapter(:google_workspace)
 
       assert Enum.map(providers, & &1.id) |> Enum.sort() ==
                Enum.sort([provider1.id, provider2.id])
+    end
+
+    test "uses 1/2 regular timeout backoff for failed attempts" do
+      {provider, _bypass} = Fixtures.Auth.start_and_create_google_workspace_provider()
+      # backoff: 10 minutes * (1 + 3 ^ 2) = 100 minutes
+      provider = Domain.Fixture.update!(provider, %{last_sync_error: "foo", last_syncs_failed: 3})
+
+      ninety_nine_minute_ago = DateTime.utc_now() |> DateTime.add(-99, :minute)
+      Domain.Fixture.update!(provider, %{last_synced_at: ninety_nine_minute_ago})
+      assert list_providers_pending_sync_by_adapter(:google_workspace) == {:ok, []}
+
+      one_hundred_one_minute_ago = DateTime.utc_now() |> DateTime.add(-101, :minute)
+      Domain.Fixture.update!(provider, %{last_synced_at: one_hundred_one_minute_ago})
+      assert {:ok, [_provider]} = list_providers_pending_sync_by_adapter(:google_workspace)
+
+      # max backoff: 4 hours
+      provider = Domain.Fixture.update!(provider, %{last_syncs_failed: 300})
+
+      three_hours_fifty_nine_minutes_ago = DateTime.utc_now() |> DateTime.add(-239, :minute)
+      Domain.Fixture.update!(provider, %{last_synced_at: three_hours_fifty_nine_minutes_ago})
+      assert list_providers_pending_sync_by_adapter(:google_workspace) == {:ok, []}
+
+      four_hours_one_minute_ago = DateTime.utc_now() |> DateTime.add(-241, :minute)
+      Domain.Fixture.update!(provider, %{last_synced_at: four_hours_one_minute_ago})
+      assert {:ok, [_provider]} = list_providers_pending_sync_by_adapter(:google_workspace)
     end
   end
 
@@ -1956,8 +1975,8 @@ defmodule Domain.AuthTest do
       assert {:ok, %Auth.Subject{} = subject} =
                sign_in(provider, identity.provider_identifier, secret, user_agent, remote_ip)
 
-      three_hours = 3 * 60 * 60
-      assert_datetime_diff(subject.expires_at, DateTime.utc_now(), three_hours)
+      one_week = 7 * 24 * 60 * 60
+      assert_datetime_diff(subject.expires_at, DateTime.utc_now(), one_week - 60 * 60)
 
       actor = Fixtures.Actors.create_actor(type: :account_user, account: account)
       identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
@@ -1966,7 +1985,6 @@ defmodule Domain.AuthTest do
       assert {:ok, %Auth.Subject{} = subject} =
                sign_in(provider, identity.provider_identifier, secret, user_agent, remote_ip)
 
-      one_week = 7 * 24 * 60 * 60
       assert_datetime_diff(subject.expires_at, DateTime.utc_now(), one_week)
     end
 
@@ -2158,8 +2176,7 @@ defmodule Domain.AuthTest do
       redirect_uri = "https://example.com/"
       payload = {redirect_uri, code_verifier, "MyFakeCode"}
 
-      assert {:ok, %Auth.Subject{} = subject} =
-               sign_in(provider, payload, user_agent, remote_ip)
+      assert {:ok, %Auth.Subject{} = subject} = sign_in(provider, payload, user_agent, remote_ip)
 
       assert subject.account.id == account.id
       assert subject.actor.id == identity.actor_id
@@ -2192,14 +2209,13 @@ defmodule Domain.AuthTest do
       redirect_uri = "https://example.com/"
       payload = {redirect_uri, code_verifier, "MyFakeCode"}
 
-      assert {:ok, %Auth.Subject{} = subject} =
-               sign_in(provider, payload, user_agent, remote_ip)
+      assert {:ok, %Auth.Subject{} = subject} = sign_in(provider, payload, user_agent, remote_ip)
 
       one_week = 7 * 24 * 60 * 60
       assert_datetime_diff(subject.expires_at, DateTime.utc_now(), one_week)
     end
 
-    test "returned expiration duration is capped at 3 hours for account admin users", %{
+    test "returned expiration duration is capped at 1 week for account admin users", %{
       bypass: bypass,
       account: account,
       provider: provider,
@@ -2223,11 +2239,10 @@ defmodule Domain.AuthTest do
       redirect_uri = "https://example.com/"
       payload = {redirect_uri, code_verifier, "MyFakeCode"}
 
-      assert {:ok, %Auth.Subject{} = subject} =
-               sign_in(provider, payload, user_agent, remote_ip)
+      assert {:ok, %Auth.Subject{} = subject} = sign_in(provider, payload, user_agent, remote_ip)
 
-      three_hours = 3 * 60 * 60
-      assert_datetime_diff(subject.expires_at, DateTime.utc_now(), three_hours)
+      one_week = 7 * 24 * 60 * 60
+      assert_datetime_diff(subject.expires_at, DateTime.utc_now(), one_week - 60 * 60)
     end
 
     test "returns error when provider is disabled", %{
@@ -2369,8 +2384,7 @@ defmodule Domain.AuthTest do
       redirect_uri = "https://example.com/"
       payload = {redirect_uri, code_verifier, "MyFakeCode"}
 
-      assert {:ok, _subject} =
-               sign_in(provider, payload, user_agent, remote_ip)
+      assert {:ok, _subject} = sign_in(provider, payload, user_agent, remote_ip)
 
       assert updated_identity = Repo.one(Auth.Identity)
       assert updated_identity.last_seen_at != identity.last_seen_at

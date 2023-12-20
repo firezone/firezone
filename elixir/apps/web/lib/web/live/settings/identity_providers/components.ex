@@ -93,7 +93,6 @@ defmodule Web.Settings.IdentityProviders.Components do
           px-2 py-1 text-center
           hover:bg-primary-700
           focus:ring-4 focus:outline-none focus:ring-primary-300
-          dark:bg-primary-600 dark:hover:bg-primary-700 dark:focus:ring-primary-800
           active:text-white/80
         ]}>connect IdP</button>
           </.link>
@@ -149,7 +148,11 @@ defmodule Web.Settings.IdentityProviders.Components do
   def sync_status(%{provider: %{provisioner: :custom}} = assigns) do
     ~H"""
     <div :if={not is_nil(@provider.last_synced_at)} class="flex items-center">
-      <span class="w-3 h-3 bg-green-500 rounded-full"></span>
+      <span class={[
+        "w-3 h-3 rounded-full",
+        (@provider.last_syncs_failed > 3 && "bg-red-500") || "bg-green-500"
+      ]}>
+      </span>
       <span class="ml-3">
         Synced
         <.link navigate={~p"/#{@account}/actors?provider_id=#{@provider.id}"} class={link_style()}>

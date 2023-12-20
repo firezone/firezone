@@ -28,7 +28,7 @@ defmodule Web.Settings.IdentityProviders.OpenIDConnect.Show do
     <.section>
       <:title>
         Identity Provider <code><%= @provider.name %></code>
-        <span :if={not is_nil(@provider.disabled_at)} class="text-orange-600">(disabled)</span>
+        <span :if={not is_nil(@provider.disabled_at)} class="text-primary-600">(disabled)</span>
         <span :if={not is_nil(@provider.deleted_at)} class="text-red-600">(deleted)</span>
       </:title>
       <:action :if={is_nil(@provider.deleted_at)}>

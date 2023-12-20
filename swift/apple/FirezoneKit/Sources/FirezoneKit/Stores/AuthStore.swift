@@ -10,25 +10,13 @@ import Foundation
 import NetworkExtension
 import OSLog
 
-extension AuthStore: DependencyKey {
-  static var liveValue: AuthStore = .shared
-}
-
-extension DependencyValues {
-  var authStore: AuthStore {
-    get { self[AuthStore.self] }
-    set { self[AuthStore.self] = newValue }
-  }
-}
-
 @MainActor
-final class AuthStore: ObservableObject {
+public final class AuthStore: ObservableObject {
   private let logger = Logger.make(for: AuthStore.self)
-
-  static let shared = AuthStore(tunnelStore: TunnelStore.shared)
 
   enum LoginStatus: CustomStringConvertible {
     case uninitialized
+    case needsTunnelCreationPermission
     case signedOut
     case signedIn(actorName: String)
 
@@ -36,6 +24,8 @@ final class AuthStore: ObservableObject {
       switch self {
       case .uninitialized:
         return "uninitialized"
+      case .needsTunnelCreationPermission:
+        return "needsTunnelCreationPermission"
       case .signedOut:
         return "signedOut"
       case .signedIn(let actorName):
@@ -59,10 +49,12 @@ final class AuthStore: ObservableObject {
 
   private var status: NEVPNStatus = .invalid
 
-  private static let maxReconnectionAttemptCount = 3
+  // Try to automatically reconnect on network changes
+  private static let maxReconnectionAttemptCount = 60
+  private let reconnectDelaySecs = 1
   private var reconnectionAttemptsRemaining = maxReconnectionAttemptCount
 
-  private init(tunnelStore: TunnelStore) {
+  init(tunnelStore: TunnelStore) {
     self.tunnelStore = tunnelStore
     self.loginStatus = .uninitialized
 
@@ -111,8 +103,10 @@ final class AuthStore: ObservableObject {
 
   private func getLoginStatus(from tunnelAuthStatus: TunnelAuthStatus) async -> LoginStatus {
     switch tunnelAuthStatus {
-    case .tunnelUninitialized:
+    case .uninitialized:
       return .uninitialized
+    case .noTunnelFound:
+      return .needsTunnelCreationPermission
     case .signedOut:
       return .signedOut
     case .signedIn(let tunnelAuthBaseURL, let tokenReference):
@@ -214,9 +208,9 @@ final class AuthStore: ObservableObject {
     self.reconnectionAttemptsRemaining = self.reconnectionAttemptsRemaining - 1
     if shouldReconnect {
       self.logger.log(
-        "\(#function): Will try to reconnect after 1 second (\(self.reconnectionAttemptsRemaining) attempts after this)"
+        "\(#function): Will try every second to reconnect (\(self.reconnectionAttemptsRemaining) attempts after this)"
       )
-      DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(1)) {
+      DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(self.reconnectDelaySecs)) {
         self.logger.log("\(#function): Trying to reconnect")
         self.startTunnel()
       }
@@ -244,6 +238,8 @@ final class AuthStore: ObservableObject {
           try await tunnelStore.saveAuthStatus(.signedOut)
         }
       }
+    case .needsTunnelCreationPermission:
+      break
     case .uninitialized:
       break
     }

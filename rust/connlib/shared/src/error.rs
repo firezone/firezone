@@ -125,6 +125,9 @@ pub enum ConnlibError {
     /// Invalid source address for peer
     #[error("Invalid source address")]
     InvalidSource,
+    /// Invalid destination for packet
+    #[error("Invalid dest address")]
+    InvalidDst,
     /// Any parse error
     #[error("parse error")]
     ParseError,
@@ -138,6 +141,13 @@ pub enum ConnlibError {
     /// Connection is still being stablished, retry later
     #[error("Pending connection")]
     PendingConnection,
+    #[error(transparent)]
+    Uuid(#[from] uuid::Error),
+    #[cfg(target_os = "windows")]
+    #[error(transparent)]
+    Wintun(#[from] wintun::Error),
+    #[error("Token has expired")]
+    TokenExpired,
 }
 
 impl ConnlibError {

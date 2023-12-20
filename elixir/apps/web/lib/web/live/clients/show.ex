@@ -9,17 +9,17 @@ defmodule Web.Clients.Show do
            Flows.list_flows_for(client, socket.assigns.subject,
              preload: [gateway: [:group], policy: [:resource, :actor_group]]
            ) do
+      :ok = Clients.subscribe_for_clients_presence_in_account(client.account_id)
+
       socket =
         assign(
           socket,
           client: client,
           flows: flows,
-          todos_enabled?: Config.todos_enabled?(),
           flow_activities_enabled?: Config.flow_activities_enabled?()
         )
 
-      {:ok, socket,
-       temporary_assigns: [flows: [], todos_enabled?: nil, flow_activities_enabled?: nil]}
+      {:ok, socket}
     else
       {:error, _reason} -> raise Web.LiveErrors.NotFoundError
     end
@@ -55,6 +55,10 @@ defmodule Web.Clients.Show do
             <:value><%= @client.name %></:value>
           </.vertical_table_row>
           <.vertical_table_row>
+            <:label>Status</:label>
+            <:value><.connection_status schema={@client} /></:value>
+          </.vertical_table_row>
+          <.vertical_table_row>
             <:label>Owner</:label>
             <:value>
               <.link
@@ -76,10 +80,6 @@ defmodule Web.Clients.Show do
             <:value>
               <.relative_datetime datetime={@client.last_seen_at} />
             </:value>
-          </.vertical_table_row>
-          <.vertical_table_row :if={@todos_enabled?}>
-            <:label>Transfer</:label>
-            <:value>TODO</:value>
           </.vertical_table_row>
           <.vertical_table_row>
             <:label>Last Seen Remote IP</:label>
@@ -156,6 +156,27 @@ defmodule Web.Clients.Show do
       <:content></:content>
     </.danger_zone>
     """
+  end
+
+  def handle_info(
+        %Phoenix.Socket.Broadcast{topic: "clients:" <> _account_id, payload: payload},
+        socket
+      ) do
+    client = socket.assigns.client
+
+    socket =
+      cond do
+        Map.has_key?(payload.joins, client.id) ->
+          assign(socket, client: %{client | online?: true})
+
+        Map.has_key?(payload.leaves, client.id) ->
+          assign(socket, client: %{client | online?: false})
+
+        true ->
+          socket
+      end
+
+    {:noreply, socket}
   end
 
   def handle_event("delete", _params, socket) do

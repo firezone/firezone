@@ -101,7 +101,7 @@ defmodule Web.Live.SignUpTest do
   end
 
   test "renders sign up disabled message", %{conn: conn} do
-    Domain.Config.feature_flag_override(:signups, false)
+    Domain.Config.feature_flag_override(:sign_up, false)
 
     {:ok, _lv, html} = live(conn, ~p"/sign_up")
 

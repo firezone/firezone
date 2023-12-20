@@ -38,7 +38,7 @@ defmodule Web.Policies.Show do
     <.section>
       <:title>
         <%= @page_title %>: <code><%= @policy.id %></code>
-        <span :if={not is_nil(@policy.disabled_at)} class="text-orange-600">(disabled)</span>
+        <span :if={not is_nil(@policy.disabled_at)} class="text-primary-600">(disabled)</span>
         <span :if={not is_nil(@policy.deleted_at)} class="text-red-600">(deleted)</span>
       </:title>
       <:action :if={is_nil(@policy.deleted_at)}>
@@ -53,13 +53,6 @@ defmodule Web.Policies.Show do
           data-confirm="Are you sure want to enable this policy?"
         >
           Enable Policy
-        </.button>
-        <.button
-          :if={is_nil(@policy.disabled_at)}
-          phx-click="disable"
-          data-confirm="Are you sure want to disable this policy? All authorizations will be revoked and users can loose access to the resource."
-        >
-          Disable Policy
         </.button>
       </:action>
       <:content>
@@ -166,6 +159,15 @@ defmodule Web.Policies.Show do
 
     <.danger_zone :if={is_nil(@policy.deleted_at)}>
       <:action>
+        <.button
+          :if={is_nil(@policy.disabled_at)}
+          phx-click="disable"
+          style="warning"
+          icon="hero-no-symbol"
+          data-confirm="Are you sure? Access granted by this policy will be revoked immediately."
+        >
+          Disable Policy
+        </.button>
         <.delete_button
           phx-click="delete"
           phx-value-id={@policy.id}

@@ -16,8 +16,6 @@ pub use error::Result;
 
 use boringtun::x25519::{PublicKey, StaticSecret};
 use messages::Key;
-use rand::distributions::Alphanumeric;
-use rand::{thread_rng, Rng};
 use ring::digest::{Context, SHA256};
 use secrecy::{ExposeSecret, SecretString};
 use std::net::Ipv4Addr;
@@ -25,8 +23,22 @@ use url::Url;
 
 pub const DNS_SENTINEL: Ipv4Addr = Ipv4Addr::new(100, 100, 111, 1);
 
+pub type Dname = domain::base::Dname<Vec<u8>>;
+
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 const LIB_NAME: &str = "connlib";
+
+// From https://man7.org/linux/man-pages/man2/gethostname.2.html
+// SUSv2 guarantees that "Host names are limited to 255 bytes".
+// POSIX.1 guarantees that "Host names (not including the
+// terminating null byte) are limited to HOST_NAME_MAX bytes".  On
+// Linux, HOST_NAME_MAX is defined with the value 64, which has been
+// the limit since Linux 1.0 (earlier kernels imposed a limit of 8
+// bytes)
+//
+// We are counting the nul-byte
+#[cfg(not(target_os = "windows"))]
+const HOST_NAME_MAX: usize = 256;
 
 /// Creates a new login URL to use with the portal.
 pub fn login_url(
@@ -34,14 +46,12 @@ pub fn login_url(
     api_url: Url,
     token: SecretString,
     device_id: String,
+    firezone_name: Option<String>,
 ) -> Result<(Url, StaticSecret)> {
     let private_key = StaticSecret::random_from_rng(rand::rngs::OsRng);
-    // FIXME: read FIREZONE_NAME from env (eg. for gateways) and use system hostname by default
-    let name: String = thread_rng()
-        .sample_iter(&Alphanumeric)
-        .take(8)
-        .map(char::from)
-        .collect();
+    let name = firezone_name
+        .or(get_host_name())
+        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
     let external_id = sha256(device_id);
 
     let url = get_websocket_path(
@@ -72,6 +82,23 @@ pub fn get_user_agent() -> String {
     let lib_version = VERSION;
     let lib_name = LIB_NAME;
     format!("{os_type}/{os_version} {lib_name}/{lib_version}")
+}
+
+#[cfg(not(target_os = "windows"))]
+fn get_host_name() -> Option<String> {
+    let mut buf = [0; HOST_NAME_MAX];
+    // SAFETY: we just allocated a buffer with that size
+    if unsafe { libc::gethostname(buf.as_mut_ptr() as *mut _, HOST_NAME_MAX) } != 0 {
+        return None;
+    }
+
+    String::from_utf8(buf.split(|c| *c == 0).next()?.to_vec()).ok()
+}
+
+#[cfg(target_os = "windows")]
+fn get_host_name() -> Option<String> {
+    // FIXME: windows
+    None
 }
 
 fn set_ws_scheme(url: &mut Url) -> Result<()> {

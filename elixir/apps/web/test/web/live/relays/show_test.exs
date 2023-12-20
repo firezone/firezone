@@ -48,7 +48,6 @@ defmodule Web.Live.Relays.ShowTest do
 
     assert html =~ "(deleted)"
     refute html =~ "Danger Zone"
-    refute html =~ "Add"
     refute html =~ "Delete"
     refute html =~ "Edit"
   end
@@ -90,9 +89,9 @@ defmodule Web.Live.Relays.ShowTest do
 
     assert table["instance group name"] =~ relay.group.name
     assert table["last seen"]
-    assert table["location"] =~ to_string(relay.last_seen_remote_ip)
-    assert table["remote ipv4"] =~ to_string(relay.ipv4)
-    assert table["remote ipv6"] =~ to_string(relay.ipv6)
+    assert table["remote ip"] =~ to_string(relay.last_seen_remote_ip)
+    assert table["ipv4 set by public_ip4_addr"] =~ to_string(relay.ipv4)
+    assert table["ipv6 set by public_ip6_addr"] =~ to_string(relay.ipv6)
     assert table["status"] =~ "Offline"
     assert table["user agent"] =~ relay.last_seen_user_agent
     assert table["version"] =~ relay.last_seen_version

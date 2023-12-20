@@ -94,7 +94,8 @@ defmodule Web.Live.Settings.IdentityProviders.GoogleWorkspace.Connect do
                    "https://www.googleapis.com/auth/admin.directory.orgunit.readonly " <>
                    "https://www.googleapis.com/auth/admin.directory.group.readonly " <>
                    "https://www.googleapis.com/auth/admin.directory.user.readonly",
-               "state" => state
+               "state" => state,
+               "prompt" => "consent"
              }
     end
   end
@@ -146,6 +147,59 @@ defmodule Web.Live.Settings.IdentityProviders.GoogleWorkspace.Connect do
                ~p"/#{account}/settings/identity_providers/google_workspace/#{provider}"
 
       assert flash(conn, :error) == "Your session has expired, please try again."
+    end
+
+    test "resets the sync error when IdP is reconnected", %{
+      account: account,
+      conn: conn
+    } do
+      {provider, bypass} =
+        Fixtures.Auth.start_and_create_google_workspace_provider(account: account)
+
+      provider = Fixtures.Auth.fail_provider_sync(provider)
+
+      actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+      identity = Fixtures.Auth.create_identity(account: account, actor: actor, provider: provider)
+
+      redirected_conn =
+        conn
+        |> authorize_conn(identity)
+        |> assign(:account, account)
+        |> get(
+          ~p"/#{account}/settings/identity_providers/google_workspace/#{provider}/redirect",
+          %{}
+        )
+
+      {token, _claims} = Mocks.OpenIDConnect.generate_openid_connect_token(provider, identity)
+      Mocks.OpenIDConnect.expect_refresh_token(bypass, %{"id_token" => token})
+      Mocks.OpenIDConnect.expect_userinfo(bypass)
+
+      cookie_key = "fz_auth_state_#{provider.id}"
+      redirected_conn = fetch_cookies(redirected_conn)
+      {state, _verifier} = redirected_conn.cookies[cookie_key] |> :erlang.binary_to_term([:safe])
+      %{value: signed_state} = redirected_conn.resp_cookies[cookie_key]
+
+      conn =
+        conn
+        |> authorize_conn(identity)
+        |> assign(:account, account)
+        |> put_req_cookie(cookie_key, signed_state)
+        |> put_session(:foo, "bar")
+        |> put_session(:preferred_locale, "en_US")
+        |> get(
+          ~p"/#{account.id}/settings/identity_providers/google_workspace/#{provider.id}/handle_callback",
+          %{
+            "state" => state,
+            "code" => "MyFakeCode"
+          }
+        )
+
+      assert redirected_to(conn) ==
+               ~p"/#{account}/settings/identity_providers/google_workspace/#{provider}"
+
+      assert provider = Repo.get(Domain.Auth.Provider, provider.id)
+      assert provider.last_sync_error == nil
+      assert provider.last_syncs_failed == 0
     end
 
     test "redirects to the actors index when credentials are valid and return path is empty", %{

@@ -23,7 +23,7 @@ export const metadata: Metadata = {
 export default function Page() {
   return (
     <>
-      <section className="bg-gradient-to-b from-primary-50 to-neutral-100 pt-24">
+      <section className="bg-neutral-100 pt-24">
         <div className="px-4 py-8 mx-auto max-w-screen-xl text-center lg:py-16 lg:px-12">
           <h1 className="mb-4 md:text-6xl text-5xl justify-center font-extrabold tracking-tight leading-none text-neutral-900">
             Blazing-fast alternative to legacy VPNs
@@ -64,7 +64,7 @@ export default function Page() {
       </section>
 
       {/* Features sections */}
-      <section className="border-t border-neutral-200 bg-gradient-to-b from-white via-neutral-50 to-white py-24">
+      <section className="border-t border-neutral-200 bg-white py-24">
         <div className="mx-4 flex flex-col justify-center items-center">
           <h2 className="text-center justify-center mb-4 text-4xl tracking-tight font-bold text-neutral-900 ">
             Least-privileged access to your most valuable resources in just a
@@ -91,7 +91,7 @@ export default function Page() {
                   Create a{" "}
                   <Link
                     className="text-accent-500 underline hover:no-underline"
-                    href="/kb/learn/concepts/site?utm_source=website"
+                    href="/kb/deploy/sites?utm_source=website"
                   >
                     site
                   </Link>
@@ -103,7 +103,7 @@ export default function Page() {
                   Deploy one or more{" "}
                   <Link
                     className="text-accent-500 underline hover:no-underline"
-                    href="/kb/learn/concepts/gateway?utm_source=website"
+                    href="/kb/deploy/gateways?utm_source=website"
                   >
                     gateways
                   </Link>
@@ -115,7 +115,7 @@ export default function Page() {
                   Add a{" "}
                   <Link
                     className="text-accent-500 underline hover:no-underline"
-                    href="/kb/learn/concepts/resource?utm_source=website"
+                    href="/kb/deploy/resources?utm_source=website"
                   >
                     resource
                   </Link>{" "}
@@ -128,7 +128,7 @@ export default function Page() {
                   Choose which{" "}
                   <Link
                     className="text-accent-500 underline hover:no-underline"
-                    href="/kb/learn/concepts/group?utm_source=website"
+                    href="/kb/authenticate?utm_source=website"
                   >
                     user groups
                   </Link>{" "}
@@ -235,7 +235,7 @@ export default function Page() {
         </div>
       </section>
 
-      <section className="border-t border-neutral-200 bg-gradient-to-b from-neutral-100 to-primary-50 py-24">
+      <section className="border-t border-neutral-200 bg-neutral-100 py-24">
         <div className="mx-4 flex flex-col justify-center items-center">
           <h2 className="mb-4 text-4xl justify-center text-center tracking-tight font-bold text-neutral-900 ">
             Next-Gen security
@@ -536,7 +536,7 @@ export default function Page() {
         </div>
       </section>
 
-      <section className="border-t border-neutral-200 py-24 bg-gradient-to-b from-accent-800 to-accent-700">
+      <section className="border-t border-neutral-200 py-24 bg-neutral-900">
         <div className="flex flex-col px-4 justify-center items-center">
           <h2 className="mb-4 text-4xl tracking-tight text-center font-bold text-neutral-50">
             Ready to get started?

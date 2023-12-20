@@ -42,7 +42,7 @@ defmodule Web.RelayGroups.NewToken do
 
     <.section>
       <:title>
-        Deploy your Relay
+        Deploy a new Relay
       </:title>
       <:content>
         <div class="py-8 px-4 mx-auto max-w-2xl lg:py-16">
@@ -69,13 +69,6 @@ defmodule Web.RelayGroups.NewToken do
                 phx-no-format
                 phx-update="ignore"
               ><%= docker_command(@env) %></.code_block>
-
-              <.initial_connection_status
-                :if={@env}
-                type="relay"
-                navigate={~p"/#{@account}/relays/#{@group}"}
-                connected?={@connected?}
-              />
 
               <hr />
 
@@ -143,13 +136,6 @@ defmodule Web.RelayGroups.NewToken do
 
               <.code_block id="code-sample-systemd6" class="w-full" phx-no-format>sudo systemctl enable firezone-relay</.code_block>
 
-              <.initial_connection_status
-                :if={@env}
-                type="relay"
-                navigate={~p"/#{@account}/sites/#{@group}"}
-                connected?={@connected?}
-              />
-
               <hr />
 
               <p class="pl-4 mb-2 mt-4 text-xl font-semibold">
@@ -169,13 +155,28 @@ defmodule Web.RelayGroups.NewToken do
               <.code_block id="code-sample-systemd8" class="w-full rounded-b" phx-no-format>sudo journalctl -u firezone-relay.service</.code_block>
             </:tab>
           </.tabs>
+
+          <div id="connection-status" class="flex justify-between items-center">
+            <p class="text-sm">
+              Relay not connecting? See our <.link
+                class="text-accent-500 hover:underline"
+                href="https://www.firezone.dev/kb/administer/troubleshooting#relay-not-connecting"
+              >relay troubleshooting guide</.link>.
+            </p>
+            <.initial_connection_status
+              :if={@env}
+              type="relay"
+              navigate={~p"/#{@account}/relay_groups/#{@group}"}
+              connected?={@connected?}
+            />
+          </div>
         </div>
       </:content>
     </.section>
     """
   end
 
-  defp version do
+  defp major_minor_version do
     vsn =
       Application.spec(:domain)
       |> Keyword.fetch!(:vsn)
@@ -197,7 +198,18 @@ defmodule Web.RelayGroups.NewToken do
       {"PUBLIC_IP4_ADDR", "YOU_MUST_SET_THIS_VALUE"},
       {"PUBLIC_IP6_ADDR", "YOU_MUST_SET_THIS_VALUE"},
       api_url_override,
-      {"RUST_LOG", "warn"},
+      {"RUST_LOG",
+       Enum.join(
+         [
+           "firezone_relay=trace",
+           "firezone_tunnel=trace",
+           "connlib_shared=trace",
+           "tunnel_state=trace",
+           "phoenix_channel=debug",
+           "warn"
+         ],
+         ","
+       )},
       {"LOG_FORMAT", "google-cloud"}
     ]
     |> Enum.reject(&is_nil/1)
@@ -220,7 +232,7 @@ defmodule Web.RelayGroups.NewToken do
       "--device=\"/dev/net/tun:/dev/net/tun\"",
       Enum.map(env, fn {key, value} -> "--env #{key}=\"#{value}\"" end),
       "--env FIREZONE_NAME=$(hostname)",
-      "#{Domain.Config.fetch_env!(:domain, :docker_registry)}/relay:#{version()}"
+      "#{Domain.Config.fetch_env!(:domain, :docker_registry)}/relay:#{major_minor_version()}"
     ]
     |> List.flatten()
     |> Enum.join(" \\\n  ")
@@ -235,52 +247,41 @@ defmodule Web.RelayGroups.NewToken do
 
     [Service]
     Type=simple
-    User=firezone
-    Group=firezone
-    ExecStartPre=/bin/sh -c 'id -u firezone &>/dev/null || useradd -r -s /bin/false firezone'
     #{Enum.map_join(env, "\n", fn {key, value} -> "Environment=\"#{key}=#{value}\"" end)}
-    ExecStartPre=/bin/sh -c ' \\
-      remote_version=$(curl -Ls \\
-        -H "Accept: application/vnd.github+json" \\
-        -H "X-GitHub-Api-Version: 2022-11-28" \\
-        https://api.github.com/repos/firezone/firezone/releases/latest | grep -oP '"'"'(?<="tag_name": ")[^"]*'"'"'); \\
-      if [ -e /usr/local/bin/firezone-relay ]; then \\
-        current_version=$(/usr/local/bin/firezone-relay --version | awk '"'"'{print $NF}'"'"'); \\
-      else \\
-        current_version=""; \\
-      fi; \\
-      if [ ! "$current_version" = "$remote_version" ]; then \\
+    ExecStartPre=/bin/sh -c 'set -xue; \\
+      if [ ! -e /usr/local/bin/firezone-relay ]; then \\
+        FIREZONE_VERSION=$(curl -Ls \\
+          -H "Accept: application/vnd.github+json" \\
+          -H "X-GitHub-Api-Version: 2022-11-28" \\
+          "https://api.github.com/repos/firezone/firezone/releases/latest" | \\
+          grep "\\\\"tag_name\\\\":" | sed "s/.*\\\\"tag_name\\\\": \\\\"\\([^\\\\"\\\\]*\\).*/\\1/" \\
+        ); \\
+        [ "$FIREZONE_VERSION" = "" ] && echo "[Error] Can not fetch latest version, rate limited by GitHub?" && exit 1; \\
+        echo "Downloading Firezone Relay version $FIREZONE_VERSION"; \\
         arch=$(uname -m); \\
         case $arch in \\
           aarch64) \\
-            bin_url="https://github.com/firezone/firezone/releases/download/latest/relay-arm64" ;; \\
+            bin_url="https://github.com/firezone/firezone/releases/download/$FIREZONE_VERSION/relay-arm64" ;; \\
           armv7l) \\
-            bin_url="https://github.com/firezone/firezone/releases/download/latest/relay-arm" ;; \\
+            bin_url="https://github.com/firezone/firezone/releases/download/$FIREZONE_VERSION/relay-arm" ;; \\
           x86_64) \\
-            bin_url="https://github.com/firezone/firezone/releases/download/latest/relay-x64" ;; \\
+            bin_url="https://github.com/firezone/firezone/releases/download/$FIREZONE_VERSION/relay-x64" ;; \\
           *) \\
             echo "Unsupported architecture"; \\
             exit 1 ;; \\
         esac; \\
         wget -O /usr/local/bin/firezone-relay $bin_url; \\
         chmod +x /usr/local/bin/firezone-relay; \\
-      fi \\
+        mkdir -p /etc/firezone; \\
+        chmod 0755 /etc/firezone; \\
+      fi; \\
     '
-    ExecStartPre=/usr/bin/mkdir -p /etc/firezone
-    ExecStartPre=/usr/bin/chown firezone:firezone /etc/firezone
-    ExecStartPre=/usr/bin/chmod 0755 /etc/firezone
-    ExecStartPre=/usr/bin/chmod +x /usr/local/bin/firezone-relay
     AmbientCapabilities=CAP_NET_ADMIN
-    CapabilityBoundingSet=CAP_NET_ADMIN
-    PrivateTmp=true
-    ProtectSystem=full
-    ReadWritePaths=/etc/firezone
-    NoNewPrivileges=true
-    TimeoutStartSec=15s
+    ExecStart=/bin/sh -c 'FIREZONE_NAME=$(hostname); /usr/local/bin/firezone-relay'
+    TimeoutStartSec=3s
     TimeoutStopSec=15s
-    ExecStart=FIREZONE_NAME=$(hostname) /usr/local/bin/firezone-relay
     Restart=always
-    RestartSec=3
+    RestartSec=7
 
     [Install]
     WantedBy=multi-user.target

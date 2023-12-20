@@ -1,5 +1,9 @@
 use async_compression::tokio::bufread::GzipEncoder;
-use connlib_shared::messages::{DnsServer, IpDnsServer};
+use connlib_shared::control::KnownError;
+use connlib_shared::control::Reason;
+use connlib_shared::messages::{DnsServer, GatewayResponse, IpDnsServer};
+use connlib_shared::DNS_SENTINEL;
+use std::net::IpAddr;
 use std::path::PathBuf;
 use std::{io, sync::Arc};
 
@@ -44,11 +48,16 @@ fn create_resolver(
         let Ok(Some(dns_servers)) = callbacks.get_system_default_resolvers() else {
             return None;
         };
-        if dns_servers.is_empty() {
+        let mut dns_servers = dns_servers
+            .into_iter()
+            .filter(|ip| ip != &IpAddr::from(DNS_SENTINEL))
+            .peekable();
+        if dns_servers.peek().is_none() {
+            tracing::error!("No system default DNS servers available! Can't initialize resolver. DNS will be broken.");
             return None;
         }
+
         dns_servers
-            .into_iter()
             .map(|ip| {
                 DnsServer::IpPort(IpDnsServer {
                     address: (ip, DNS_PORT).into(),
@@ -86,22 +95,22 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
         {
             let mut init = self.tunnel_init.lock().await;
             if !*init {
-                if let Err(e) = self.tunnel.set_interface(&interface).await {
+                if let Err(e) = self.tunnel.set_interface(&interface) {
                     tracing::error!(error = ?e, "Error initializing interface");
                     return Err(e);
                 } else {
                     *init = true;
                     *self.fallback_resolver.lock() =
                         create_resolver(interface.upstream_dns, self.tunnel.callbacks());
-                    tracing::info!("Firezoned Started!");
+                    tracing::info!("Firezone Started!");
                 }
             } else {
-                tracing::info!("Firezoned reinitializated");
+                tracing::info!("Firezone reinitializated");
             }
         }
 
         for resource_description in resources {
-            self.add_resource(resource_description).await;
+            self.add_resource(resource_description);
         }
         Ok(())
     }
@@ -110,24 +119,37 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
     pub fn connect(
         &mut self,
         Connect {
-            gateway_rtc_session_description,
+            gateway_payload,
             resource_id,
             gateway_public_key,
             ..
         }: Connect,
     ) {
-        if let Err(e) = self.tunnel.received_offer_response(
-            resource_id,
-            gateway_rtc_session_description,
-            gateway_public_key.0.into(),
-        ) {
-            let _ = self.tunnel.callbacks().on_error(&e);
+        match gateway_payload {
+            GatewayResponse::ConnectionAccepted(gateway_payload) => {
+                if let Err(e) = self.tunnel.received_offer_response(
+                    resource_id,
+                    gateway_payload.ice_parameters,
+                    gateway_payload.domain_response,
+                    gateway_public_key.0.into(),
+                ) {
+                    let _ = self.tunnel.callbacks().on_error(&e);
+                }
+            }
+            GatewayResponse::ResourceAccepted(gateway_payload) => {
+                if let Err(e) = self
+                    .tunnel
+                    .received_domain_parameters(resource_id, gateway_payload.domain_response)
+                {
+                    let _ = self.tunnel.callbacks().on_error(&e);
+                }
+            }
         }
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    pub async fn add_resource(&self, resource_description: ResourceDescription) {
-        if let Err(e) = self.tunnel.add_resource(resource_description).await {
+    pub fn add_resource(&self, resource_description: ResourceDescription) {
+        if let Err(e) = self.tunnel.add_resource(resource_description) {
             tracing::error!(message = "Can't add resource", error = ?e);
             let _ = self.tunnel.callbacks().on_error(&e);
         }
@@ -225,7 +247,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                 self.connection_details(connection_details, reference)
             }
             Messages::Connect(connect) => self.connect(connect),
-            Messages::ResourceAdded(resource) => self.add_resource(resource).await,
+            Messages::ResourceAdded(resource) => self.add_resource(resource),
             Messages::ResourceRemoved(resource) => self.remove_resource(resource.id),
             Messages::ResourceUpdated(resource) => self.update_resource(resource),
             Messages::IceCandidates(ice_candidate) => self.add_ice_candidate(ice_candidate).await,
@@ -237,10 +259,6 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                 tokio::spawn(async move {
                     if let Err(e) = upload(path.clone(), url).await {
                         tracing::warn!("Failed to upload log file: {e}");
-                        return;
-                    }
-                    if let Err(e) = tokio::fs::remove_file(&path).await {
-                        tracing::warn!("Failed to upload log file: {e}")
                     }
                 });
             }
@@ -248,35 +266,40 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
         Ok(())
     }
 
+    // Errors here means we need to disconnect
     #[tracing::instrument(level = "trace", skip(self))]
-    pub async fn handle_error(&mut self, reply_error: ErrorReply, reference: Option<Reference>) {
-        if matches!(reply_error.error, ErrorInfo::Offline) {
-            match reference {
-                Some(reference) => {
-                    let Ok(resource_id) = reference.parse::<ResourceId>() else {
-                        tracing::error!(
-                            "An offline error came back with a reference to a non-valid resource id"
-                        );
-                        let _ = self
-                            .tunnel
-                            .callbacks()
-                            .on_error(&Error::ControlProtocolError);
-                        return;
-                    };
-                    // TODO: Rate limit the number of attempts of getting the relays before just trying a local network connection
-                    self.tunnel.cleanup_connection(resource_id);
-                }
-                None => {
+    pub async fn handle_error(
+        &mut self,
+        reply_error: ErrorReply,
+        reference: Option<Reference>,
+        topic: String,
+    ) -> Result<()> {
+        match (reply_error.error, reference) {
+            (ErrorInfo::Offline, Some(reference)) => {
+                let Ok(resource_id) = reference.parse::<ResourceId>() else {
                     tracing::error!(
-                        "An offline portal error came without a reference that originated the error"
+                        "An offline error came back with a reference to a non-valid resource id"
                     );
                     let _ = self
                         .tunnel
                         .callbacks()
                         .on_error(&Error::ControlProtocolError);
+                    return Ok(());
+                };
+                // TODO: Rate limit the number of attempts of getting the relays before just trying a local network connection
+                self.tunnel.cleanup_connection(resource_id);
+            }
+            (ErrorInfo::Reason(Reason::Known(KnownError::UnmatchedTopic)), _) => {
+                if let Err(e) = self.phoenix_channel.get_sender().join_topic(topic).await {
+                    tracing::debug!(err = ?e, "couldn't join topic: {e:#?}");
                 }
             }
+            (ErrorInfo::Reason(Reason::Known(KnownError::TokenExpired)), _) => {
+                return Err(Error::TokenExpired);
+            }
+            _ => {}
         }
+        Ok(())
     }
 
     pub async fn stats_event(&mut self) {
@@ -337,9 +360,9 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                 };
                 let tunnel = self.tunnel.clone();
                 tokio::spawn(async move {
-                    let response = resolver.lookup(query.name, query.record_type).await;
+                    let response = resolver.lookup(&query.name, query.record_type).await;
                     if let Err(err) = tunnel.write_dns_lookup_response(response, query.query) {
-                        tracing::error!(err = ?err, "DNS lookup failed: {err:#}");
+                        tracing::debug!(err = ?err, name = query.name, record_type = ?query.record_type, "DNS lookup failed: {err:#}");
                     }
                 });
             }

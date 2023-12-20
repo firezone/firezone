@@ -17,23 +17,19 @@ import SwiftUINavigationCore
 
     private var cancellables = Set<AnyCancellable>()
 
-    enum Destination {
-      case settings(SettingsViewModel)
-      case undefinedSettingsAlert(AlertState<UndefinedSettingsAlertAction>)
-    }
-
-    enum UndefinedSettingsAlertAction {
-      case confirmDefineSettingsButtonTapped
-    }
-
     enum State {
+      case uninitialized
+      case needsPermission(AskPermissionViewModel)
       case unauthenticated(AuthViewModel)
       case authenticated(MainViewModel)
-    }
 
-    @Published var destination: Destination? {
-      didSet {
-        bindDestination()
+      var shouldDisableSettings: Bool {
+        switch self {
+        case .uninitialized: return true
+        case .needsPermission: return true
+        case .unauthenticated: return false
+        case .authenticated: return false
+        }
       }
     }
 
@@ -45,17 +41,19 @@ import SwiftUINavigationCore
 
     private let appStore: AppStore
 
+    let settingsViewModel: SettingsViewModel
+    @Published var isSettingsSheetPresented = false
+
     init(appStore: AppStore) {
       self.appStore = appStore
+      self.settingsViewModel = appStore.settingsViewModel
 
       appStore.objectWillChange
         .receive(on: mainQueue)
         .sink { [weak self] in self?.objectWillChange.send() }
         .store(in: &cancellables)
 
-      defer { bindDestination() }
-
-      appStore.auth.$loginStatus
+      appStore.authStore.$loginStatus
         .receive(on: mainQueue)
         .sink(receiveValue: { [weak self] loginStatus in
           guard let self else {
@@ -65,45 +63,31 @@ import SwiftUINavigationCore
           switch loginStatus {
           case .signedIn:
             self.state = .authenticated(MainViewModel(appStore: self.appStore))
-          default:
-            self.state = .unauthenticated(AuthViewModel())
+          case .signedOut:
+            self.state = .unauthenticated(AuthViewModel(authStore: self.appStore.authStore))
+          case .needsTunnelCreationPermission:
+            self.state = .needsPermission(
+              AskPermissionViewModel(tunnelStore: self.appStore.tunnelStore)
+            )
+          case .uninitialized:
+            self.state = .uninitialized
           }
         })
         .store(in: &cancellables)
     }
 
     func settingsButtonTapped() {
-      destination = .settings(SettingsViewModel())
-    }
-
-    func handleUndefinedSettingsAlertAction(_ action: UndefinedSettingsAlertAction) {
-      switch action {
-      case .confirmDefineSettingsButtonTapped:
-        destination = .settings(SettingsViewModel())
-      }
-    }
-
-    private func bindDestination() {
-      switch destination {
-      case .settings(let model):
-        model.onSettingsSaved = { [weak self] in
-          self?.destination = nil
-          self?.state = .unauthenticated(AuthViewModel())
-        }
-
-      case .undefinedSettingsAlert, .none:
-        break
-      }
+      isSettingsSheetPresented = true
     }
 
     private func bindState() {
       switch state {
       case .unauthenticated(let model):
         model.settingsUndefined = { [weak self] in
-          self?.destination = .undefinedSettingsAlert(.undefinedSettings)
+          self?.isSettingsSheetPresented = true
         }
 
-      case .authenticated, .none:
+      case .authenticated, .uninitialized, .needsPermission, .none:
         break
       }
     }
@@ -116,6 +100,10 @@ import SwiftUINavigationCore
       NavigationView {
         Group {
           switch model.state {
+          case .uninitialized:
+            Image("LogoText")
+          case .needsPermission(let model):
+            AskPermissionView(model: model)
           case .unauthenticated(let model):
             AuthView(model: model)
           case .authenticated(let model):
@@ -132,26 +120,13 @@ import SwiftUINavigationCore
             } label: {
               Label("Settings", systemImage: "gear")
             }
+            .disabled(model.state?.shouldDisableSettings ?? true)
           }
         }
       }
-      .sheet(unwrapping: $model.destination, case: /WelcomeViewModel.Destination.settings) {
-        $model in
-        SettingsView(model: model)
+      .sheet(isPresented: $model.isSettingsSheetPresented) {
+        SettingsView(model: model.settingsViewModel)
       }
-      .alert(
-        unwrapping: $model.destination,
-        case: /WelcomeViewModel.Destination.undefinedSettingsAlert,
-        action: model.handleUndefinedSettingsAlertAction
-      )
-    }
-  }
-
-  struct WelcomeView_Previews: PreviewProvider {
-    static var previews: some View {
-      WelcomeView(
-        model: WelcomeViewModel(appStore: AppStore(tunnelStore: TunnelStore.shared))
-      )
     }
   }
 #endif

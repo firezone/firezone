@@ -786,7 +786,7 @@ defmodule Domain.GatewaysTest do
       assert {:error, changeset} = update_gateway(gateway, attrs, subject)
 
       assert errors_on(changeset) == %{
-               name: ["should be at most 8 character(s)"]
+               name: ["should be at most 255 character(s)"]
              }
     end
 
@@ -1058,6 +1058,15 @@ defmodule Domain.GatewaysTest do
       assert {:managed, :stun} == relay_strategy([managed_group, stun_only_group])
       assert {:managed, :stun} == relay_strategy([self_hosted_group, stun_only_group])
       assert {:managed, :turn} == relay_strategy([managed_group])
+    end
+  end
+
+  describe "connect_gateway/2" do
+    test "does not allow duplicate presence", %{account: account} do
+      gateway = Fixtures.Gateways.create_gateway(account: account)
+
+      assert connect_gateway(gateway) == :ok
+      assert {:error, {:already_tracked, _pid, _topic, _key}} = connect_gateway(gateway)
     end
   end
 end

@@ -1,7 +1,7 @@
 [package]
 name = "connlib-shared"
 # mark:automatic-version
-version = "1.20231001.0"
+version = "1.0.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -33,13 +33,11 @@ uuid = { version = "1.5", default-features = false, features = ["std", "v4", "se
 webrtc = { workspace = true }
 ring = "0.17"
 hickory-resolver = { workspace = true }
+domain = { workspace = true }
+libc = "0.2"
 
 # Needed for Android logging until tracing is working
 log = "0.4"
-
-# smbios fails to build on iOS and Android
-[target.'cfg(not(any(target_os = "ios", target_os = "android")))'.dependencies]
-smbios-lib = "0.9"
 
 [target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
 swift-bridge = { workspace = true }
@@ -49,3 +47,7 @@ tracing-android = "0.2"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 rtnetlink = { version = "0.13", default-features = false, features = ["tokio_socket"] }
+
+# Windows tunnel dependencies
+[target.'cfg(target_os = "windows")'.dependencies]
+wintun = "0.3.2"

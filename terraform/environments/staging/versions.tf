@@ -1,5 +1,5 @@
 terraform {
-  required_version = "1.6.2"
+  required_version = "1.6.6"
 
   required_providers {
     random = {
@@ -25,6 +25,11 @@ terraform {
     tls = {
       source  = "hashicorp/tls"
       version = "~> 4.0"
+    }
+
+    postgresql = {
+      source  = "cyrilgdn/postgresql"
+      version = "1.21.1-beta.1"
     }
   }
 }

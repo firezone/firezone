@@ -15,7 +15,7 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.Connect do
           ~p"/#{provider.account_id}/settings/identity_providers/google_workspace/#{provider}/handle_callback"
         )
 
-      Web.AuthController.redirect_to_idp(conn, redirect_url, provider)
+      Web.AuthController.redirect_to_idp(conn, redirect_url, provider, %{prompt: "consent"})
     else
       {:error, :not_found} ->
         conn
@@ -47,7 +47,9 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.Connect do
              GoogleWorkspace.verify_and_upsert_identity(subject.actor, provider, payload),
            attrs = %{
              adapter_state: identity.provider_state,
-             disabled_at: nil
+             disabled_at: nil,
+             last_syncs_failed: 0,
+             last_sync_error: nil
            },
            {:ok, _provider} <- Domain.Auth.update_provider(provider, attrs, subject) do
         redirect(conn,

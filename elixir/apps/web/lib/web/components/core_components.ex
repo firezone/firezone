@@ -59,32 +59,30 @@ defmodule Web.CoreComponents do
 
   def code_block(assigns) do
     ~H"""
-    <div id={@id} phx-hook="Copy" class={[~w[
-      text-sm text-left sm:text-base text-white
-      inline-flex items-center
-      space-x-4 p-4 pl-6
-      bg-neutral-800
-      relative
-    ], @class]} {@rest}>
-      <code
-        class="block w-full no-scrollbar whitespace-pre overflow-x-auto rounded-b"
-        data-copy
-        phx-no-format
-      ><%= render_slot(@inner_block) %></code>
+    <div id={@id} phx-hook="Copy" class="relative">
+      <div id={"#{@id}-nested"} class={[~w[
+        text-sm text-left text-neutral-50
+        inline-flex items-center
+        space-x-4 p-4 pl-6
+        bg-neutral-800
+        overflow-x-auto
+      ], @class]} {@rest}>
+        <code class="block w-full no-scrollbar whitespace-pre rounded-b" data-copy phx-no-format><%= render_slot(@inner_block) %></code>
+      </div>
 
-      <span class={~w[
-          absolute bottom-1 right-1
-          text-neutral-400
-          transition
-          cursor-pointer
-          rounded
-          px-2
-          text-white
-          bg-accent-400
-          hover:bg-accent-500
-        ]}>
+      <span title="Click to copy" class={~w[
+            absolute top-1 right-1
+            items-center
+            cursor-pointer
+            rounded
+            p-1
+            text-xs
+            text-neutral-50
+            hover:bg-neutral-50
+            hover:text-neutral-900
+            hover:opacity-50
+          ]}>
         <.icon name="hero-clipboard-document" data-icon class="h-4 w-4" />
-        <span data-content>Copy</span>
       </span>
     </div>
     """
@@ -159,10 +157,11 @@ defmodule Web.CoreComponents do
           <%= for tab <- @tab do %>
             <li class="mr-2" role="presentation">
               <button
-                class={~w[
-                inline-block p-4 border-b-2 border-transparent rounded-t
-                hover:text-neutral-600 hover:border-neutral-300
-              ]}
+                class={[
+                  (Map.get(tab, :selected) && "rounded-t text-accent-600 border-accent-600") ||
+                    "text-neutral-500 hover:border-accent-200 hover:text-accent-600",
+                  "inline-block p-4 border-b-2"
+                ]}
                 id={"#{tab.id}-tab"}
                 data-tabs-target={"##{tab.id}"}
                 type="button"
@@ -216,12 +215,12 @@ defmodule Web.CoreComponents do
 
   def header(assigns) do
     ~H"""
-    <div class="grid grid-cols-1 p-4 xl:grid-cols-3 xl:gap-4">
+    <div class="py-6 px-1 grid grid-cols-1 xl:grid-cols-3 xl:gap-4">
       <div class="col-span-full">
         <div class="flex justify-between items-center">
-          <h1 class="text-xl font-semibold text-neutral-900 sm:text-2xl">
+          <h2 class="text-2xl font-bold leading-none tracking-tight text-neutral-900">
             <%= render_slot(@title) %>
-          </h1>
+          </h2>
           <div class="inline-flex justify-between items-center space-x-2">
             <%= render_slot(@actions) %>
           </div>
@@ -674,16 +673,6 @@ defmodule Web.CoreComponents do
     """
   end
 
-  def status_page_widget(assigns) do
-    ~H"""
-    <div class="absolute bottom-0 left-0 justify-left p-4 space-x-4 w-full lg:flex bg-white z-20">
-      <.link href="https://firezone.statuspage.io" class="text-xs hover:underline">
-        <span id="status-page-widget" phx-update="ignore" phx-hook="StatusPage" />
-      </.link>
-    </div>
-    """
-  end
-
   attr :type, :string, default: "neutral"
   attr :class, :string, default: nil
   attr :rest, :global
@@ -840,11 +829,12 @@ defmodule Web.CoreComponents do
     ~H"""
     <.link
       class={[
-        "mx-4 my-6 h-8",
-        "flex items-center justify-center",
+        "px-4 py-2",
+        "flex items-center",
         "font-medium text-sm text-white",
-        "rounded-full",
-        (@connected? && "bg-green-500") || "bg-orange-400 cursor-progress"
+        "rounded",
+        "transition-colors",
+        (@connected? && "bg-accent-450 hover:bg-accent-700") || "bg-primary-500 cursor-progress"
       ]}
       navigate={@navigate}
       {
@@ -860,7 +850,7 @@ defmodule Web.CoreComponents do
       </span>
 
       <span :if={@connected?}>
-        <.icon name="hero-check" class="h-3.5 w-3.5" /> Connected, click to continue
+        <.icon name="hero-check" class="h-3.5 w-3.5 mr-1" /> Connected, click to continue
       </span>
     </.link>
     """
@@ -882,7 +872,7 @@ defmodule Web.CoreComponents do
     ~H"""
     <.relative_datetime datetime={@schema.inserted_at} /> by
     <.link
-      class="text-accent-600 hover:underline"
+      class="text-accent-500 hover:underline"
       navigate={~p"/#{@schema.account_id}/actors/#{@schema.created_by_identity.actor.id}"}
     >
       <%= assigns.schema.created_by_identity.actor.name %>
@@ -894,7 +884,7 @@ defmodule Web.CoreComponents do
     ~H"""
     synced <.relative_datetime datetime={@schema.inserted_at} /> from
     <.link
-      class="text-accent-600 hover:underline"
+      class="text-accent-500 hover:underline"
       navigate={Web.Settings.IdentityProviders.Components.view_provider(@account, @schema.provider)}
     >
       <%= @schema.provider.name %>
@@ -965,8 +955,8 @@ defmodule Web.CoreComponents do
           "text-xs font-medium",
           "rounded-l",
           "py-0.5 pl-2.5 pr-1.5",
-          "text-accent-800",
-          "bg-accent-100",
+          "text-neutral-800",
+          "bg-neutral-100",
           "whitespace-nowrap"
         ]}
       >
@@ -1099,5 +1089,40 @@ defmodule Web.CoreComponents do
   """
   def translate_errors(errors, field) when is_list(errors) do
     for {^field, {msg, opts}} <- errors, do: translate_error({msg, opts})
+  end
+
+  @doc """
+  This component is meant to be used for step by step instructions
+
+  ex.
+  <.step>
+    <:title>Step 1. Do Something</:title>
+    <:content>
+      Here are instructions for step 1...
+    </:content>
+  </.step>
+
+  <.step>
+    <:title>Step 2. Do Another Thing</:title>
+    <:content>
+      Here are instructions for step 2...
+    </:content>
+  </.step>
+
+  """
+  slot :title, required: true
+  slot :content, required: true
+
+  def step(assigns) do
+    ~H"""
+    <div class="mb-6">
+      <h2 class="mb-2 text-2xl tracking-tight font-bold text-neutral-900">
+        <%= render_slot(@title) %>
+      </h2>
+      <div class="px-4">
+        <%= render_slot(@content) %>
+      </div>
+    </div>
+    """
   end
 end

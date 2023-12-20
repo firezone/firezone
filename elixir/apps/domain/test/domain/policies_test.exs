@@ -248,8 +248,7 @@ defmodule Domain.PoliciesTest do
         resource_id: other_resource.id
       }
 
-      assert {:error, changeset} =
-               create_policy(attrs, subject)
+      assert {:error, changeset} = create_policy(attrs, subject)
 
       assert errors_on(changeset) == %{resource: ["does not exist"]}
     end

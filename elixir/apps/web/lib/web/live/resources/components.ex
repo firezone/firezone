@@ -223,7 +223,7 @@ defmodule Web.Resources.Components do
           <div class="w-64 no-grow text-neutral-500">
             <.link
               navigate={~p"/#{@account}/sites/#{gateway_group}"}
-              class="font-bold text-accent-600 hover:underline"
+              class="font-bold text-accent-500 hover:underline"
               target="_blank"
             >
               <%= gateway_group.name %>

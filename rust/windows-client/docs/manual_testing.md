@@ -12,6 +12,26 @@ If the client is running, the GUI may be in a "signed out", "signed in", or "sig
 
 If the client stops running while signed in, then the token may be stored in Windows' credential manager on disk.
 
+# Device ID
+
+- [ ] Given the AppData dir for the client doesn't exist, when you run the client, then the client will generate a UUIDv4 (random) and store it in AppData
+- [ ] Given the UUID is stored in AppData, when you run the client, then it will load the UUID
+- [ ] Given the client is running, when a session starts, then the UUID will be used as the device ID
+
+# DLL
+
+- [ ] Given wintun.dll does not exist in the same directory as the exe, when you run the exe, then it will create wintun.dll
+- [ ] Given wintun.dll has extra bytes appended to the end, when you run the exe, then it will re-write wintun.dll
+- [ ] Given wintun.dll does not have the expected SHA256, when you run the exe, then it will re-write wintun.dll
+- [ ] Given wintun.dll has the expected SHA256, when you run the exe, then it will not re-write wintun.dll
+
+# Launching
+
+- [ ] Given the client is not running, when you open a deep link, then the client will not start
+- [ ] Given the client is not running, when you run the exe with normal privileges, then the client will unpack wintun.dll next to the exe if needed, try to start a bogus probe tunnel, and re-launch itself with elevated privilege
+- [ ] Given the client is not running, when you run the exe as admin, then the client will unpack wintun.dll next to the exe if needed, try to start a bogus probe tunnel, and keep running
+- [ ] Given the client is running, when you open a deep link as part of sign-in, then the client will sign in without a second UAC prompt
+
 # Permissions
 
 - [ ] Given a production exe, when you run it normally, then it will ask to escalate to Admin privileges ([#2751](https://github.com/firezone/firezone/issues/2751))
@@ -37,6 +57,24 @@ If the client stops running while signed in, then the token may be stored in Win
 - [ ] Given the client is signed in, when the user clicks "Apply", then the client will show a dialog explaining that they will be signed out, and asking for confirmation ([#2668](https://github.com/firezone/firezone/issues/2668))
 - [ ] Given the client is signed in, when the user confirms that they want to apply new settings, then the client will clear their token, and change to signed-out state, and save the settings to disk ([#2668](https://github.com/firezone/firezone/issues/2668))
 
+# Diagnostic logs
+
+- [ ] Given the client was built in release mode, when you first start the client, then it will use the release mode default settings
+- [ ] Given the client app is signed out, when you change the log filter in the Advanced Settings tab, then the log filter for both the GUI and connlib will change immediately
+- [ ] Given the Diagnostic Logs tabs is not displayed, when you open the Diagnostic Logs tab, then the log directory size is computed in a worker task (not blocking the GUI) and displayed
+- [ ] Given the client app is computing the log directory size, when you click "Clear Logs", then the computation will be canceled.
+- [ ] Given the log tab is displayed, when a 1-minute timer ticks, then the log directory size will be re-computed.
+- [ ] Given the log tab is displayed, when you switch to another tab or close the window, then any ongoing computation will be canceled.
+- [ ] Given the log tab is computing log directory size, when the 1-minute refresh timer ticks, then the computation will time out and show an error e.g. "timed out while computing size"
+
+# Resetting state
+
+This is a list of all the on-disk state that you need to reset to test a first-time install / first-time run of the Firezone client.
+
+- `AppData/Local/dev.firezone.client/` (Config, logs, webview cache, etc.)
+- Registry key `Computer\HKEY_CURRENT_USER\Software\Classes\firezone-fd0020211111` (Deep link association)
+- Token, in Windows Credential Manager
+
 # Token storage
 
 ([#2740](https://github.com/firezone/firezone/issues/2740))
@@ -46,4 +84,30 @@ If the client stops running while signed in, then the token may be stored in Win
 
 # Tunneling
 
-TODO
+If you can't test with resources that respond to ping, curl is fine too.
+
+- The tunnel can route public-routable IPs, e.g. 1.1.1.1, for public resources
+- All resources accessed by domain will get a CGNAT network address, e.g. 100.64.96.19, even public resources
+- When the client is signed in, all DNS requests go to Firezone first, so that it can route public resources
+
+## Signed out
+
+Given the client is signed out or not running, when you ping...
+
+1. [ ] a public resource by IP (e.g. 1.1.1.1), it will respond through a physical interface
+2. [ ] a protected resource by IP (e.g. 10.0.14.19), it will not respond
+3. [ ] a non-resource by IP (e.g. a.b.c.d), it will respond through a physical interface
+4. [ ] a public resource by domain (e.g. example.com), the system's DNS will resolve it, and it will respond through a physical interface
+5. [ ] a protected resource by domain (e.g. gitlab.company.com), the system's DNS will fail to resolve it
+6. [ ] a non-resource by domain (e.g. example.com), the system's DNS will resolve it, and it will respond through a physical interface
+
+## Signed in
+
+Given the client is signed in, when you ping...
+
+1. [ ] a public resource by IP (e.g. 1.1.1.1), it will respond through the tunnel
+2. [ ] a protected resource by IP (e.g. 100.64.96.19), it will respond through the tunnel
+3. [ ] a non-resource by IP (e.g. a.b.c.d), it will respond through a physical interface
+4. [ ] a public resource by domain (e.g. example.com), Firezone's DNS will make an IP for it, and it will respond through the tunnel
+5. [ ] a protected resource by domain (e.g. gitlab.company.com), Firezone's DNS will make an IP for it, and it will respond through the tunnel
+6. [ ] a non-resource by domain (e.g. example.com), Firezone's DNS will fall back on the system's DNS, which will find the domain's publicly-routable IP, and it will respond through a physical interface

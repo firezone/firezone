@@ -52,6 +52,44 @@ defmodule Web.Live.Actors.ShowTest do
     assert breadcrumbs =~ actor.name
   end
 
+  test "renders clients table", %{
+    conn: conn
+  } do
+    account = Fixtures.Accounts.create_account()
+    actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+    identity = Fixtures.Auth.create_identity(account: account, actor: actor)
+    client = Fixtures.Clients.create_client(account: account, actor: actor)
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/actors/#{actor}")
+
+    [row] =
+      lv
+      |> element("#clients")
+      |> render()
+      |> table_to_map()
+
+    assert row["name"] == client.name
+    assert row["status"] == "Offline"
+
+    assert Domain.Clients.connect_client(client) == :ok
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/actors/#{actor}")
+
+    [row] =
+      lv
+      |> element("#clients")
+      |> render()
+      |> table_to_map()
+
+    assert row["status"] == "Online"
+  end
+
   test "renders flows table", %{
     conn: conn
   } do
@@ -338,7 +376,7 @@ defmodule Web.Live.Actors.ShowTest do
         |> live(~p"/#{account}/actors/#{actor}")
 
       lv
-      |> element("a", "Create Identity")
+      |> element("a", "Add Identity")
       |> render_click()
 
       assert_redirect(lv, ~p"/#{account}/actors/users/#{actor}/new_identity")
@@ -351,7 +389,7 @@ defmodule Web.Live.Actors.ShowTest do
         |> live(~p"/#{account}/actors/#{actor}")
 
       lv
-      |> element("a", "Create Identity")
+      |> element("a", "Add Identity")
       |> render_click()
 
       assert_redirect(lv, ~p"/#{account}/actors/users/#{actor}/new_identity")

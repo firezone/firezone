@@ -1,30 +1,32 @@
 [package]
 name = "firezone-windows-client"
 # mark:automatic-version
-version = "1.20231001.0"
+version = "1.0.0"
 description = "Firezone Windows Client"
 edition = "2021"
 
 [build-dependencies]
+anyhow = { version = "1.0" }
 tauri-build = { version = "1.5", features = [] }
 
 [dependencies]
+arboard = { version = "3.3.0", default-features = false }
 anyhow = { version = "1.0" }
 clap = { version = "4.4", features = ["derive",  "env"] }
 connlib-client-shared = { workspace = true }
 connlib-shared = { workspace = true }
 firezone-cli-utils = { workspace = true }
-http-body-util = "0.1.0"
-hyper = { version = "1.0.1", features = ["http1", "server"] }
-hyper-util = { version = "0.1.1", features = ["full"] }
+# This is the same crate hickory uses to get system resolvers
+ipconfig = "0.3.2"
 keyring = "2.0.5"
-smbios-lib = "0.9"
+ring = "0.17"
 secrecy.workspace = true
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 thiserror = { version = "1.0", default-features = false }
 tokio = { version = "1.33.0", features = ["time"] }
 tracing = { workspace = true }
+tracing-log = "0.2"
 tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
 url = { version = "2.5.0", features = ["serde"] }
 uuid = { version = "1.5.0", features = ["v4"] }
@@ -35,14 +37,17 @@ zip = "0.6.6"
 [target.'cfg(windows)'.dependencies]
 # Tauri works fine on Linux, but it requires a lot of build-time deps like glib and gdk, so I've blocked it out for now.
 tauri = { version = "1.5", features = [ "dialog", "shell-open-api", "system-tray" ] }
-tauri-plugin-deep-link = "0.1.2"
+tauri-utils = "1.5.1"
+winreg = "0.51.0"
 wintun = "0.3.2"
 
 [target.'cfg(windows)'.dependencies.windows]
 version = "0.52.0"
 features = [
   "Win32_Foundation",
+  "Win32_Security",
   "Win32_System_LibraryLoader",
+  "Win32_System_SystemServices",
   "Win32_UI_Shell",
   "Win32_UI_WindowsAndMessaging",
 ]

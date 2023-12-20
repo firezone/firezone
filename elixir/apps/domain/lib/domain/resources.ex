@@ -143,46 +143,19 @@ defmodule Domain.Resources do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_resources_permission()) do
       changeset = Resource.Changeset.create(subject.account, attrs, subject)
 
-      Ecto.Multi.new()
-      |> Ecto.Multi.insert(:resource, changeset, returning: true)
-      |> resolve_address_multi(:ipv4)
-      |> resolve_address_multi(:ipv6)
-      |> Ecto.Multi.update(:resource_with_address, fn
-        %{resource: %Resource{} = resource, ipv4: ipv4, ipv6: ipv6} ->
-          Resource.Changeset.finalize_create(resource, ipv4, ipv6)
-      end)
-      |> Repo.transaction()
-      |> case do
-        {:ok, %{resource_with_address: resource}} ->
-          # TODO: Add optimistic lock to resource.updated_at to serialize the resource updates
-          # TODO: Broadcast only to actors that have access to the resource
-          # {:ok, actors} = list_authorized_actors(resource)
-          # Phoenix.PubSub.broadcast(
-          #   Domain.PubSub,
-          #   "actor_client:#{subject.actor.id}",
-          #   {:resource_added, resource.id}
-          # )
+      with {:ok, resource} <- Repo.insert(changeset) do
+        # TODO: Add optimistic lock to resource.updated_at to serialize the resource updates
+        # TODO: Broadcast only to actors that have access to the resource
+        # {:ok, actors} = list_authorized_actors(resource)
+        # Phoenix.PubSub.broadcast(
+        #   Domain.PubSub,
+        #   "actor_client:#{subject.actor.id}",
+        #   {:resource_added, resource.id}
+        # )
 
-          {:ok, resource}
-
-        {:error, :resource, changeset, _effects_so_far} ->
-          {:error, changeset}
+        {:ok, resource}
       end
     end
-  end
-
-  defp resolve_address_multi(multi, type) do
-    Ecto.Multi.run(multi, type, fn
-      _repo, %{resource: %Resource{type: :cidr}} ->
-        {:ok, nil}
-
-      _repo, %{resource: %Resource{type: :dns} = resource} ->
-        if address = Map.get(resource, type) do
-          {:ok, address}
-        else
-          {:ok, Domain.Network.fetch_next_available_address!(resource.account_id, type)}
-        end
-    end)
   end
 
   def change_resource(%Resource{} = resource, attrs \\ %{}, %Auth.Subject{} = subject) do

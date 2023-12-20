@@ -46,7 +46,7 @@ android {
         targetSdk = 33
         versionCode = (System.currentTimeMillis() / 1000 / 10).toInt()
         // mark:automatic-version
-        versionName = "1.20231001.0"
+        versionName = "1.0.0"
         multiDexEnabled = true
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -105,7 +105,7 @@ android {
             buildConfigField(
                 "String",
                 "LOG_FILTER",
-                "\"connlib_client_android=info,firezone_tunnel=trace,connlib_shared=info,connlib_client_shared=info,warn\"",
+                "\"connlib_client_android=info,firezone_tunnel=trace,connlib_shared=info,connlib_client_shared=info,webrtc=error,warn\"",
             )
             firebaseAppDistribution {
                 serviceCredentialsFile = System.getenv("FIREBASE_CREDENTIALS_PATH")

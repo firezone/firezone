@@ -12,11 +12,16 @@ import XCTestDynamicOverlay
 
 @MainActor
 final class AuthViewModel: ObservableObject {
-  @Dependency(\.authStore) private var authStore
+
+  let authStore: AuthStore
 
   var settingsUndefined: () -> Void = unimplemented("\(AuthViewModel.self).settingsUndefined")
 
   private var cancellables = Set<AnyCancellable>()
+
+  init(authStore: AuthStore) {
+    self.authStore = authStore
+  }
 
   func signInButtonTapped() async {
     do {
@@ -31,21 +36,20 @@ struct AuthView: View {
   @ObservedObject var model: AuthViewModel
 
   var body: some View {
-    VStack {
-      Text("Welcome to Firezone").font(.largeTitle)
-
-      Button("Sign in") {
-        Task {
-          await model.signInButtonTapped()
+    VStack(
+      alignment: .center,
+      content: {
+        Spacer()
+        Image("LogoText")
+        Spacer()
+        Button("Sign in") {
+          Task {
+            await model.signInButtonTapped()
+          }
         }
-      }
-      .buttonStyle(.borderedProminent)
-    }
-  }
-}
-
-struct AuthView_Previews: PreviewProvider {
-  static var previews: some View {
-    AuthView(model: AuthViewModel())
+        .buttonStyle(.borderedProminent)
+        .controlSize(.large)
+        Spacer()
+      })
   }
 }

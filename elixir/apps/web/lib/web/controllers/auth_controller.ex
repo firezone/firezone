@@ -30,8 +30,7 @@ defmodule Web.AuthController do
           }
         } = params
       ) do
-    redirect_params =
-      take_non_empty_params(params, ["client_platform", "client_csrf_token"])
+    redirect_params = take_non_empty_params(params, ["client_platform", "client_csrf_token"])
 
     with {:ok, provider} <- Domain.Auth.fetch_active_provider_by_id(provider_id),
          {:ok, subject} <-
@@ -206,9 +205,14 @@ defmodule Web.AuthController do
     end
   end
 
-  def redirect_to_idp(%Plug.Conn{} = conn, redirect_url, %Domain.Auth.Provider{} = provider) do
+  def redirect_to_idp(
+        %Plug.Conn{} = conn,
+        redirect_url,
+        %Domain.Auth.Provider{} = provider,
+        params \\ %{}
+      ) do
     {:ok, authorization_url, {state, code_verifier}} =
-      OpenIDConnect.authorization_uri(provider, redirect_url)
+      OpenIDConnect.authorization_uri(provider, redirect_url, params)
 
     key = state_cookie_key(provider.id)
     value = :erlang.term_to_binary({state, code_verifier})

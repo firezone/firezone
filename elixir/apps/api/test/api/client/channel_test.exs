@@ -38,6 +38,14 @@ defmodule API.Client.ChannelTest do
         connections: [%{gateway_group_id: gateway_group.id}]
       )
 
+    ip_resource =
+      Fixtures.Resources.create_resource(
+        type: :ip,
+        address: "192.168.100.1",
+        account: account,
+        connections: [%{gateway_group_id: gateway_group.id}]
+      )
+
     unauthorized_resource =
       Fixtures.Resources.create_resource(
         account: account,
@@ -54,6 +62,12 @@ defmodule API.Client.ChannelTest do
       account: account,
       actor_group: actor_group,
       resource: cidr_resource
+    )
+
+    Fixtures.Policies.create_policy(
+      account: account,
+      actor_group: actor_group,
+      resource: ip_resource
     )
 
     expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
@@ -80,6 +94,7 @@ defmodule API.Client.ChannelTest do
       gateway: gateway,
       dns_resource: dns_resource,
       cidr_resource: cidr_resource,
+      ip_resource: ip_resource,
       unauthorized_resource: unauthorized_resource,
       socket: socket
     }
@@ -119,18 +134,17 @@ defmodule API.Client.ChannelTest do
     test "sends list of resources after join", %{
       client: client,
       dns_resource: dns_resource,
-      cidr_resource: cidr_resource
+      cidr_resource: cidr_resource,
+      ip_resource: ip_resource
     } do
       assert_push "init", %{resources: resources, interface: interface}
-      assert length(resources) == 2
+      assert length(resources) == 3
 
       assert %{
                id: dns_resource.id,
                type: :dns,
                name: dns_resource.name,
-               address: dns_resource.address,
-               ipv4: dns_resource.ipv4,
-               ipv6: dns_resource.ipv6
+               address: dns_resource.address
              } in resources
 
       assert %{
@@ -138,6 +152,13 @@ defmodule API.Client.ChannelTest do
                type: :cidr,
                name: cidr_resource.name,
                address: cidr_resource.address
+             } in resources
+
+      assert %{
+               id: ip_resource.id,
+               type: :cidr,
+               name: ip_resource.name,
+               address: "#{ip_resource.address}/32"
              } in resources
 
       assert interface == %{
@@ -190,6 +211,15 @@ defmodule API.Client.ChannelTest do
       GoogleCloudPlatform.mock_instance_metadata_token_endpoint(bypass)
       GoogleCloudPlatform.mock_sign_blob_endpoint(bypass, "foo")
 
+      {:ok, actor} = Domain.Actors.fetch_actor_by_id(client.actor_id)
+      {:ok, account} = Domain.Accounts.fetch_account_by_id(actor.account_id)
+
+      actor_name =
+        actor.name
+        |> String.downcase()
+        |> String.replace(" ", "_")
+        |> String.replace(~r/[^a-zA-Z0-9_-]/iu, "")
+
       ref = push(socket, "create_log_sink", %{})
       assert_reply ref, :ok, signed_url
 
@@ -197,7 +227,11 @@ defmodule API.Client.ChannelTest do
       assert signed_uri.scheme == "https"
       assert signed_uri.host == "storage.googleapis.com"
 
-      assert String.starts_with?(signed_uri.path, "/logs/clients/#{client.id}/")
+      assert String.starts_with?(
+               signed_uri.path,
+               "/logs/clients/#{account.slug}/#{actor_name}/#{client.id}/"
+             )
+
       assert String.ends_with?(signed_uri.path, ".json")
     end
   end
@@ -487,7 +521,8 @@ defmodule API.Client.ChannelTest do
     test "returns error when resource is not found", %{gateway: gateway, socket: socket} do
       attrs = %{
         "resource_id" => Ecto.UUID.generate(),
-        "gateway_id" => gateway.id
+        "gateway_id" => gateway.id,
+        "payload" => "DNS_Q"
       }
 
       ref = push(socket, "reuse_connection", attrs)
@@ -497,7 +532,8 @@ defmodule API.Client.ChannelTest do
     test "returns error when gateway is not found", %{dns_resource: resource, socket: socket} do
       attrs = %{
         "resource_id" => resource.id,
-        "gateway_id" => Ecto.UUID.generate()
+        "gateway_id" => Ecto.UUID.generate(),
+        "payload" => "DNS_Q"
       }
 
       ref = push(socket, "reuse_connection", attrs)
@@ -514,7 +550,8 @@ defmodule API.Client.ChannelTest do
 
       attrs = %{
         "resource_id" => resource.id,
-        "gateway_id" => gateway.id
+        "gateway_id" => gateway.id,
+        "payload" => "DNS_Q"
       }
 
       ref = push(socket, "reuse_connection", attrs)
@@ -532,7 +569,8 @@ defmodule API.Client.ChannelTest do
 
       attrs = %{
         "resource_id" => resource.id,
-        "gateway_id" => gateway.id
+        "gateway_id" => gateway.id,
+        "payload" => "DNS_Q"
       }
 
       ref = push(socket, "reuse_connection", attrs)
@@ -546,7 +584,8 @@ defmodule API.Client.ChannelTest do
     } do
       attrs = %{
         "resource_id" => resource.id,
-        "gateway_id" => gateway.id
+        "gateway_id" => gateway.id,
+        "payload" => "DNS_Q"
       }
 
       ref = push(socket, "reuse_connection", attrs)
@@ -559,6 +598,7 @@ defmodule API.Client.ChannelTest do
       client: client,
       socket: socket
     } do
+      public_key = gateway.public_key
       resource_id = resource.id
       client_id = client.id
 
@@ -567,20 +607,36 @@ defmodule API.Client.ChannelTest do
 
       attrs = %{
         "resource_id" => resource.id,
-        "gateway_id" => gateway.id
+        "gateway_id" => gateway.id,
+        "payload" => "DNS_Q"
       }
 
-      push(socket, "reuse_connection", attrs)
+      ref = push(socket, "reuse_connection", attrs)
 
-      assert_receive {:allow_access, payload, _opentelemetry_ctx}
+      assert_receive {:allow_access, {channel_pid, socket_ref}, payload, _opentelemetry_ctx}
 
       assert %{
                resource_id: ^resource_id,
                client_id: ^client_id,
-               authorization_expires_at: authorization_expires_at
+               authorization_expires_at: authorization_expires_at,
+               client_payload: "DNS_Q"
              } = payload
 
       assert authorization_expires_at == socket.assigns.subject.expires_at
+
+      otel_ctx = {OpenTelemetry.Ctx.new(), OpenTelemetry.Tracer.start_span("connect")}
+
+      send(
+        channel_pid,
+        {:connect, socket_ref, resource.id, gateway.public_key, "DNS_RPL", otel_ctx}
+      )
+
+      assert_reply ref, :ok, %{
+        resource_id: ^resource_id,
+        persistent_keepalive: 25,
+        gateway_public_key: ^public_key,
+        gateway_payload: "DNS_RPL"
+      }
     end
   end
 
@@ -589,7 +645,7 @@ defmodule API.Client.ChannelTest do
       attrs = %{
         "resource_id" => Ecto.UUID.generate(),
         "gateway_id" => gateway.id,
-        "client_rtc_session_description" => "RTC_SD",
+        "client_payload" => "RTC_SD",
         "client_preshared_key" => "PSK"
       }
 
@@ -601,7 +657,7 @@ defmodule API.Client.ChannelTest do
       attrs = %{
         "resource_id" => resource.id,
         "gateway_id" => Ecto.UUID.generate(),
-        "client_rtc_session_description" => "RTC_SD",
+        "client_payload" => "RTC_SD",
         "client_preshared_key" => "PSK"
       }
 
@@ -620,7 +676,7 @@ defmodule API.Client.ChannelTest do
       attrs = %{
         "resource_id" => resource.id,
         "gateway_id" => gateway.id,
-        "client_rtc_session_description" => "RTC_SD",
+        "client_payload" => "RTC_SD",
         "client_preshared_key" => "PSK"
       }
 
@@ -640,7 +696,7 @@ defmodule API.Client.ChannelTest do
       attrs = %{
         "resource_id" => resource.id,
         "gateway_id" => gateway.id,
-        "client_rtc_session_description" => "RTC_SD",
+        "client_payload" => "RTC_SD",
         "client_preshared_key" => "PSK"
       }
 
@@ -656,7 +712,7 @@ defmodule API.Client.ChannelTest do
       attrs = %{
         "resource_id" => resource.id,
         "gateway_id" => gateway.id,
-        "client_rtc_session_description" => "RTC_SD",
+        "client_payload" => "RTC_SD",
         "client_preshared_key" => "PSK"
       }
 
@@ -680,7 +736,7 @@ defmodule API.Client.ChannelTest do
       attrs = %{
         "resource_id" => resource.id,
         "gateway_id" => gateway.id,
-        "client_rtc_session_description" => "RTC_SD",
+        "client_payload" => "RTC_SD",
         "client_preshared_key" => "PSK"
       }
 
@@ -692,7 +748,7 @@ defmodule API.Client.ChannelTest do
                resource_id: ^resource_id,
                client_id: ^client_id,
                client_preshared_key: "PSK",
-               client_rtc_session_description: "RTC_SD",
+               client_payload: "RTC_SD",
                authorization_expires_at: authorization_expires_at
              } = payload
 
@@ -709,7 +765,7 @@ defmodule API.Client.ChannelTest do
         resource_id: ^resource_id,
         persistent_keepalive: 25,
         gateway_public_key: ^public_key,
-        gateway_rtc_session_description: "FULL_RTC_SD"
+        gateway_payload: "FULL_RTC_SD"
       }
     end
   end

@@ -6,7 +6,7 @@ on:
 
 env:
   # mark:automatic-version
-  VERSION: "1.20231001.0"
+  VERSION: "1.0.0"
 
 jobs:
   ci:
@@ -63,20 +63,6 @@ jobs:
         with:
           run: ${{ steps.apply-run.outputs.run_id }}
           comment: "Apply Run from GitHub Actions CI ${{ github.sha }}"
-      - name: Report Status
-        if: failure()
-        uses: rtCamp/action-slack-notify@v2
-        env:
-          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK_URL }}
-          SLACK_USERNAME: "GitHub Actions"
-          SLACK_COLOR: "#ff0000"
-          MSG_MINIMAL: "ref,actions url"
-          SLACK_TITLE: "Deployment Failed"
-          SLACK_MESSAGE:
-            "Automatic deployment to ${{ env.TF_WORKSPACE }} failed"
-        with:
-          status: ${{ job.status }}
-          notify_when: "failure"
 
   update-release-draft:
     needs: deploy-staging
@@ -276,7 +262,8 @@ jobs:
           cargo tauri build
 
           # Used for release artifact
-          cp target/release/${{ matrix.name.package }}.exe "${{ env.BINARY_DEST_PATH }}-x64.exe"
+          # This should match 'build-tauri' in _rust.yml
+          cp "target/release/Firezone Windows Client.exe" "${{ env.BINARY_DEST_PATH }}-x64.exe"
 
           pwd
           ls *.exe

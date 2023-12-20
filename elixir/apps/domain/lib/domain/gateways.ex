@@ -469,15 +469,12 @@ defmodule Domain.Gateways do
   end
 
   def connect_gateway(%Gateway{} = gateway) do
-    {:ok, _} =
-      Presence.track(self(), "gateways:#{gateway.account_id}", gateway.id, %{
-        online_at: System.system_time(:second)
-      })
+    meta = %{online_at: System.system_time(:second)}
 
-    {:ok, _} =
-      Presence.track(self(), "gateway_groups:#{gateway.group_id}", gateway.id, %{})
-
-    :ok
+    with {:ok, _} <- Presence.track(self(), "gateways:#{gateway.account_id}", gateway.id, meta) do
+      {:ok, _} = Presence.track(self(), "gateway_groups:#{gateway.group_id}", gateway.id, %{})
+      :ok
+    end
   end
 
   def subscribe_for_gateways_presence_in_account(%Accounts.Account{} = account) do

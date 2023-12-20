@@ -41,11 +41,24 @@ defmodule Web.Sites.NewToken do
 
     <.section>
       <:title>
-        Deploy your Gateway
+        Deploy a new Gateway
       </:title>
+      <:help>
+        Gateways require outbound access to <code
+          class="text-sm bg-neutral-600 text-white px-1 py-0.5 rounded"
+          phx-no-format
+        >api.firezone.dev:443</code> only. <strong>No inbound firewall rules</strong>
+        are required or recommended.
+      </:help>
+      <:help>
+        <.link
+          href="http://www.firezone.dev/kb/deploy/gateways?utm_source=product"
+          class="text-accent-500 hover:underline"
+        >Read the gateway deployment guide for more detailed instructions</.link>.
+      </:help>
       <:content>
         <div class="py-8 px-4 mx-auto max-w-2xl lg:py-16">
-          <div class="text-xl mb-2">
+          <div class="text-xl mb-4">
             Select deployment method:
           </div>
 
@@ -56,36 +69,11 @@ defmodule Web.Sites.NewToken do
               phx_click="tab_selected"
               selected={@selected_tab == "docker-instructions"}
             >
-              <p class="pl-4 mb-2">
+              <p class="p-4">
                 Copy-paste this command to your server:
               </p>
 
               <.code_block id="code-sample-docker1" class="w-full" phx-no-format phx-update="ignore"><%= docker_command(@env) %></.code_block>
-
-              <.initial_connection_status
-                :if={@env}
-                type="gateway"
-                navigate={~p"/#{@account}/sites/#{@group}"}
-                connected?={@connected?}
-              />
-
-              <hr />
-
-              <p class="pl-4 mb-2 mt-4 text-xl font-semibold">
-                Troubleshooting
-              </p>
-
-              <p class="pl-4 mb-2 mt-4">
-                Check the container status:
-              </p>
-
-              <.code_block id="code-sample-docker2" class="w-full" phx-no-format>docker ps --filter "name=firezone-gateway"</.code_block>
-
-              <p class="pl-4 mb-2 mt-4">
-                Check the container logs:
-              </p>
-
-              <.code_block id="code-sample-docker3" class="w-full rounded-b" phx-no-format>docker logs firezone-gateway</.code_block>
             </:tab>
             <:tab
               id="systemd-instructions"
@@ -93,14 +81,14 @@ defmodule Web.Sites.NewToken do
               phx_click="tab_selected"
               selected={@selected_tab == "systemd-instructions"}
             >
-              <p class="pl-4 mb-2">
-                1. Create a systemd unit file with the following content:
+              <p class="p-4">
+                1. Create a new systemd unit file:
               </p>
 
               <.code_block id="code-sample-systemd1" class="w-full" phx-no-format>sudo nano /etc/systemd/system/firezone-gateway.service</.code_block>
 
-              <p class="pl-4 mb-2 mt-4">
-                2. Copy-paste the following content into the file:
+              <p class="p-4">
+                2. Copy-paste the following contents into the file:
               </p>
 
               <.code_block
@@ -110,61 +98,51 @@ defmodule Web.Sites.NewToken do
                 phx-update="ignore"
               ><%= systemd_command(@env) %></.code_block>
 
-              <p class="pl-4 mb-2 mt-4">
+              <p class="p-4">
                 3. Save by pressing <kbd>Ctrl</kbd>+<kbd>X</kbd>, then <kbd>Y</kbd>, then <kbd>Enter</kbd>.
               </p>
 
-              <p class="pl-4 mb-2 mt-4">
+              <p class="p-4">
                 4. Reload systemd configuration:
               </p>
 
               <.code_block id="code-sample-systemd4" class="w-full" phx-no-format>sudo systemctl daemon-reload</.code_block>
 
-              <p class="pl-4 mb-2 mt-4">
+              <p class="p-4">
                 5. Start the service:
               </p>
 
               <.code_block id="code-sample-systemd5" class="w-full" phx-no-format>sudo systemctl start firezone-gateway</.code_block>
 
-              <p class="pl-4 mb-2 mt-4">
+              <p class="p-4">
                 6. Enable the service to start on boot:
               </p>
 
               <.code_block id="code-sample-systemd6" class="w-full" phx-no-format>sudo systemctl enable firezone-gateway</.code_block>
-
-              <.initial_connection_status
-                :if={@env}
-                type="gateway"
-                navigate={~p"/#{@account}/sites/#{@group}"}
-                connected?={@connected?}
-              />
-
-              <hr />
-
-              <p class="pl-4 mb-2 mt-4 text-xl font-semibold">
-                Troubleshooting
-              </p>
-
-              <p class="pl-4 mb-2 mt-4">
-                Check the status of the service:
-              </p>
-
-              <.code_block id="code-sample-systemd7" class="w-full rounded-b" phx-no-format>sudo systemctl status firezone-gateway</.code_block>
-
-              <p class="pl-4 mb-2 mt-4">
-                Check the logs:
-              </p>
-
-              <.code_block id="code-sample-systemd8" class="w-full rounded-b" phx-no-format>sudo journalctl -u firezone-gateway.service</.code_block>
             </:tab>
           </.tabs>
+
+          <div id="connection-status" class="flex justify-between items-center">
+            <p class="text-sm">
+              Gateway not connecting? See our <.link
+                class="text-accent-500 hover:underline"
+                href="https://www.firezone.dev/kb/administer/troubleshooting#gateway-not-connecting"
+              >gateway troubleshooting guide</.link>.
+            </p>
+            <.initial_connection_status
+              :if={@env}
+              type="gateway"
+              navigate={~p"/#{@account}/sites/#{@group}"}
+              connected?={@connected?}
+            />
+          </div>
         </div>
       </:content>
     </.section>
     """
   end
 
-  defp version do
+  defp major_minor_version do
     vsn =
       Application.spec(:domain)
       |> Keyword.fetch!(:vsn)
@@ -183,9 +161,20 @@ defmodule Web.Sites.NewToken do
     [
       {"FIREZONE_ID", Ecto.UUID.generate()},
       {"FIREZONE_TOKEN", token},
-      {"FIREZONE_ENABLE_MASQUERADE", "1"},
       api_url_override,
-      {"RUST_LOG", "warn"}
+      {"RUST_LOG",
+       Enum.join(
+         [
+           "firezone_gateway=trace",
+           "firezone_tunnel=trace",
+           "connlib_shared=trace",
+           "tunnel_state=trace",
+           "phoenix_channel=debug",
+           "webrtc=error",
+           "warn"
+         ],
+         ","
+       )}
     ]
     |> Enum.reject(&is_nil/1)
   end
@@ -205,9 +194,11 @@ defmodule Web.Sites.NewToken do
       "--sysctl net.ipv6.conf.all.forwarding=1",
       "--sysctl net.ipv6.conf.default.forwarding=1",
       "--device=\"/dev/net/tun:/dev/net/tun\"",
-      Enum.map(env, fn {key, value} -> "--env #{key}=\"#{value}\"" end),
+      Enum.map(env ++ [{"FIREZONE_ENABLE_MASQUERADE", "1"}], fn {key, value} ->
+        "--env #{key}=\"#{value}\""
+      end),
       "--env FIREZONE_NAME=$(hostname)",
-      "#{Domain.Config.fetch_env!(:domain, :docker_registry)}/gateway:#{version()}"
+      "#{Domain.Config.fetch_env!(:domain, :docker_registry)}/gateway:#{major_minor_version()}"
     ]
     |> List.flatten()
     |> Enum.join(" \\\n  ")
@@ -222,51 +213,47 @@ defmodule Web.Sites.NewToken do
 
     [Service]
     Type=simple
-    ExecStartPre=/bin/sh -c 'id -u firezone &>/dev/null || useradd -r -s /bin/false firezone'
     #{Enum.map_join(env, "\n", fn {key, value} -> "Environment=\"#{key}=#{value}\"" end)}
-    ExecStartPre=/bin/sh -c 'set -xe; \\
-      remote_version=$(curl -Ls \\
-        -H "Accept: application/vnd.github+json" \\
-        -H "X-GitHub-Api-Version: 2022-11-28" \\
-        https://api.github.com/repos/firezone/firezone/releases/latest | \\
-        grep "\\"tag_name\\": " | sed "s/.*\\"tag_name\\": \\"\\\\([^\\\\\\"]*\\\\).*/\\\\1/"); \\
-      if [ -e /usr/local/bin/firezone-gateway ]; then \\
-        current_version=$(/usr/local/bin/firezone-gateway --version | awk '"'"'{print $NF}'"'"'); \\
-      else \\
-        current_version=""; \\
-      fi; \\
-      if [ ! "$current_version" = "${remote_version:-latest}" ]; then \\
-        echo "There is a new version of Firezone Gateway, downloading: ${remote_version:-latest}"; \\
+    ExecStartPre=/bin/sh -c 'set -xue; \\
+      if [ ! -e /usr/local/bin/firezone-gateway ]; then \\
+        FIREZONE_VERSION=$(curl -Ls \\
+          -H "Accept: application/vnd.github+json" \\
+          -H "X-GitHub-Api-Version: 2022-11-28" \\
+          "https://api.github.com/repos/firezone/firezone/releases/latest" | \\
+          grep "\\\\"tag_name\\\\":" | sed "s/.*\\\\"tag_name\\\\": \\\\"\\([^\\\\"\\\\]*\\).*/\\1/" \\
+        ); \\
+        [ "$FIREZONE_VERSION" = "" ] && echo "[Error] Can not fetch latest version, rate limited by GitHub?" && exit 1; \\
+        echo "Downloading Firezone Gateway version $FIREZONE_VERSION"; \\
         arch=$(uname -m); \\
         case $arch in \\
           aarch64) \\
-            bin_url="https://github.com/firezone/firezone/releases/download/latest/gateway-arm64" ;; \\
+            bin_url="https://github.com/firezone/firezone/releases/download/$FIREZONE_VERSION/gateway-arm64" ;; \\
           armv7l) \\
-            bin_url="https://github.com/firezone/firezone/releases/download/latest/gateway-arm" ;; \\
+            bin_url="https://github.com/firezone/firezone/releases/download/$FIREZONE_VERSION/gateway-arm" ;; \\
           x86_64) \\
-            bin_url="https://github.com/firezone/firezone/releases/download/latest/gateway-x64" ;; \\
+            bin_url="https://github.com/firezone/firezone/releases/download/$FIREZONE_VERSION/gateway-x64" ;; \\
           *) \\
             echo "Unsupported architecture"; \\
             exit 1 ;; \\
         esac; \\
         wget -O /usr/local/bin/firezone-gateway $bin_url; \\
         chmod +x /usr/local/bin/firezone-gateway; \\
-      fi \\
+        mkdir -p /etc/firezone; \\
+        chmod 0755 /etc/firezone; \\
+        iptables-nft -A FORWARD -i tun-firezone -j ACCEPT; \\
+        iptables-nft -A FORWARD -o tun-firezone -j ACCEPT; \\
+        iptables-nft -t nat -A POSTROUTING -o e+ -j MASQUERADE; \\
+        ip6tables-nft -A FORWARD -i tun-firezone -j ACCEPT; \\
+        ip6tables-nft -A FORWARD -o tun-firezone -j ACCEPT; \\
+        ip6tables-nft -t nat -A POSTROUTING -o e+ -j MASQUERADE; \\
+      fi; \\
     '
-    ExecStartPre=/bin/sh -c 'mkdir -p /etc/firezone'
-    ExecStartPre=/bin/sh -c 'chown firezone:firezone /etc/firezone'
-    ExecStartPre=/bin/sh -c 'chmod 0755 /etc/firezone'
-    ExecStartPre=/bin/sh -c 'chmod +x /usr/local/bin/firezone-gateway'
     AmbientCapabilities=CAP_NET_ADMIN
-    PrivateTmp=true
-    ProtectSystem=full
-    ReadWritePaths=/etc/firezone
-    NoNewPrivileges=true
-    TimeoutStartSec=15s
+    ExecStart=/bin/sh -c 'FIREZONE_NAME=$(hostname); /usr/local/bin/firezone-gateway'
+    TimeoutStartSec=3s
     TimeoutStopSec=15s
-    ExecStart=/bin/sh -c 'FIREZONE_NAME=$(hostname); sudo -u firezone -g firezone /usr/local/bin/firezone-gateway'
     Restart=always
-    RestartSec=3
+    RestartSec=7
 
     [Install]
     WantedBy=multi-user.target

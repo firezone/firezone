@@ -3,18 +3,10 @@ defmodule Web.Relays.Show do
   alias Domain.{Relays, Config}
 
   def mount(%{"id" => id}, _session, socket) do
-    with true <- Domain.Config.self_hosted_relays_enabled?(),
+    with true <- Config.self_hosted_relays_enabled?(),
          {:ok, relay} <-
            Relays.fetch_relay_by_id(id, socket.assigns.subject, preload: :group) do
       :ok = Relays.subscribe_for_relays_presence_in_group(relay.group)
-
-      socket =
-        assign(
-          socket,
-          relay: relay,
-          todos_enabled?: Config.todos_enabled?()
-        )
-
       {:ok, assign(socket, relay: relay)}
     else
       _other -> raise Web.LiveErrors.NotFoundError
@@ -57,20 +49,22 @@ defmodule Web.Relays.Show do
               <:value><%= @relay.name %></:value>
             </.vertical_table_row>
             <.vertical_table_row>
-              <:label>Remote IPv4</:label>
+              <:label>
+                IPv4
+                <p class="text-xs">Set by <code>PUBLIC_IP4_ADDR</code></p>
+              </:label>
               <:value>
                 <code><%= @relay.ipv4 %></code>
               </:value>
             </.vertical_table_row>
             <.vertical_table_row>
-              <:label>Remote IPv6</:label>
+              <:label>
+                IPv6
+                <p class="text-xs">Set by <code>PUBLIC_IP6_ADDR</code></p>
+              </:label>
               <:value>
                 <code><%= @relay.ipv6 %></code>
               </:value>
-            </.vertical_table_row>
-            <.vertical_table_row>
-              <:label>Name</:label>
-              <:value><%= @relay.name %></:value>
             </.vertical_table_row>
             <.vertical_table_row>
               <:label>Status</:label>
@@ -79,17 +73,17 @@ defmodule Web.Relays.Show do
               </:value>
             </.vertical_table_row>
             <.vertical_table_row>
-              <:label>Location</:label>
-              <:value>
-                <.last_seen schema={@relay} />
-              </:value>
-            </.vertical_table_row>
-            <.vertical_table_row>
               <:label>
                 Last seen
               </:label>
               <:value>
                 <.relative_datetime datetime={@relay.last_seen_at} />
+              </:value>
+            </.vertical_table_row>
+            <.vertical_table_row>
+              <:label>Remote IP</:label>
+              <:value>
+                <.last_seen schema={@relay} />
               </:value>
             </.vertical_table_row>
             <.vertical_table_row>
@@ -103,10 +97,6 @@ defmodule Web.Relays.Show do
               <:value>
                 <%= @relay.last_seen_user_agent %>
               </:value>
-            </.vertical_table_row>
-            <.vertical_table_row :if={@todos_enabled?}>
-              <:label>Deployment Method</:label>
-              <:value>TODO: Docker</:value>
             </.vertical_table_row>
           </.vertical_table>
         </div>
@@ -128,15 +118,21 @@ defmodule Web.Relays.Show do
         %Phoenix.Socket.Broadcast{topic: "relay_groups:" <> _account_id, payload: payload},
         socket
       ) do
-    if Map.has_key?(payload.joins, socket.assigns.relay.id) or
-         Map.has_key?(payload.leaves, socket.assigns.relay.id) do
-      {:ok, relay} =
-        Relays.fetch_relay_by_id(socket.assigns.relay.id, socket.assigns.subject, preload: :group)
+    relay = socket.assigns.relay
 
-      {:noreply, assign(socket, relay: relay)}
-    else
-      {:noreply, socket}
-    end
+    socket =
+      cond do
+        Map.has_key?(payload.joins, relay.id) ->
+          assign(socket, relay: %{relay | online?: true})
+
+        Map.has_key?(payload.leaves, relay.id) ->
+          assign(socket, relay: %{relay | online?: false})
+
+        true ->
+          socket
+      end
+
+    {:noreply, socket}
   end
 
   def handle_event("delete", _params, socket) do
