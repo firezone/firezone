@@ -6,7 +6,10 @@
 use crate::client::{self, deep_link, AppLocalDataDir};
 use anyhow::{anyhow, bail, Context, Result};
 use arc_swap::ArcSwap;
-use client::settings::{self, AdvancedSettings};
+use client::{
+    logging,
+    settings::{self, AdvancedSettings},
+};
 use connlib_client_shared::{file_logger, ResourceDescription};
 use connlib_shared::messages::ResourceId;
 use secrecy::{ExposeSecret, SecretString};
@@ -84,9 +87,10 @@ pub(crate) fn run(params: client::GuiParams) -> Result<()> {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            logging::clear_logs,
+            logging::export_logs,
+            logging::start_stop_log_counting,
             settings::apply_advanced_settings,
-            settings::clear_logs,
-            settings::export_logs,
             settings::get_advanced_settings,
         ])
         .system_tray(tray)
@@ -215,6 +219,7 @@ pub(crate) enum ControllerRequest {
     GetAdvancedSettings(oneshot::Sender<AdvancedSettings>),
     SchemeRequest(url::Url),
     SignIn,
+    StartStopLogCounting(bool),
     SignOut,
 }
 
@@ -418,6 +423,8 @@ async fn run_controller(
     .await
     .context("couldn't create Controller")?;
 
+    let mut log_counting_task = None;
+
     loop {
         tokio::select! {
             () = controller.notify_controller.notified() => {
@@ -465,7 +472,7 @@ async fn run_controller(
                             session.connlib.disconnect(None);
                         }
                     },
-                    Req::ExportLogs(file_path) => settings::export_logs_to(file_path).await?,
+                    Req::ExportLogs(file_path) => logging::export_logs_to(file_path).await?,
                     Req::GetAdvancedSettings(tx) => {
                         tx.send(controller.advanced_settings.clone()).ok();
                     }
@@ -514,6 +521,19 @@ async fn run_controller(
                             tracing::error!("tried to sign out but there's no session");
                         }
                         app.tray_handle().set_menu(system_tray_menu::signed_out())?;
+                    }
+                    Req::StartStopLogCounting(enable) => {
+                        if enable {
+                            if log_counting_task.is_none() {
+                                let app = app.clone();
+                                log_counting_task = Some(tokio::spawn(logging::count_logs(app)));
+                                tracing::debug!("started log counting");
+                            }
+                        } else if let Some(t) = log_counting_task {
+                            t.abort();
+                            log_counting_task = None;
+                            tracing::debug!("cancelled log counting");
+                        }
                     }
                 }
             }
