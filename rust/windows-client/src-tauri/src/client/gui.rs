@@ -8,13 +8,9 @@ use anyhow::{anyhow, bail, Context, Result};
 use arc_swap::ArcSwap;
 use client::settings::{self, AdvancedSettings};
 use connlib_client_shared::{file_logger, ResourceDescription};
+use connlib_shared::messages::ResourceId;
 use secrecy::{ExposeSecret, SecretString};
-use std::{
-    net::{Ipv4Addr, Ipv6Addr},
-    path::PathBuf,
-    str::FromStr,
-    sync::Arc,
-};
+use std::{net::IpAddr, path::PathBuf, str::FromStr, sync::Arc};
 use system_tray_menu::{Event as TrayMenuEvent, Resource as ResourceDisplay};
 use tauri::{Manager, SystemTray, SystemTrayEvent};
 use tokio::{
@@ -172,6 +168,11 @@ async fn accept_deep_links(mut server: deep_link::Server, ctlr_tx: CtlrTx) -> Re
 }
 
 fn handle_system_tray_event(app: &tauri::AppHandle, event: TrayMenuEvent) -> Result<()> {
+    let ctlr_tx = &app
+        .try_state::<Managed>()
+        .ok_or_else(|| anyhow!("can't get Managed struct from Tauri"))?
+        .ctlr_tx;
+
     match event {
         TrayMenuEvent::About => {
             let win = app
@@ -184,7 +185,9 @@ fn handle_system_tray_event(app: &tauri::AppHandle, event: TrayMenuEvent) -> Res
                 win.show()?;
             }
         }
-        TrayMenuEvent::Resource { id } => tracing::warn!("TODO copy {id} to clipboard"),
+        TrayMenuEvent::Resource { id } => {
+            ctlr_tx.blocking_send(ControllerRequest::CopyResource(id))?
+        }
         TrayMenuEvent::Settings => {
             let win = app
                 .get_window("settings")
@@ -197,22 +200,15 @@ fn handle_system_tray_event(app: &tauri::AppHandle, event: TrayMenuEvent) -> Res
                 win.show()?;
             }
         }
-        TrayMenuEvent::SignIn => app
-            .try_state::<Managed>()
-            .ok_or_else(|| anyhow!("couldn't get ctlr_tx state"))?
-            .ctlr_tx
-            .blocking_send(ControllerRequest::SignIn)?,
-        TrayMenuEvent::SignOut => app
-            .try_state::<Managed>()
-            .ok_or_else(|| anyhow!("couldn't get ctlr_tx state"))?
-            .ctlr_tx
-            .blocking_send(ControllerRequest::SignOut)?,
+        TrayMenuEvent::SignIn => ctlr_tx.blocking_send(ControllerRequest::SignIn)?,
+        TrayMenuEvent::SignOut => ctlr_tx.blocking_send(ControllerRequest::SignOut)?,
         TrayMenuEvent::Quit => app.exit(0),
     }
     Ok(())
 }
 
 pub(crate) enum ControllerRequest {
+    CopyResource(String),
     ExportLogs(PathBuf),
     GetAdvancedSettings(oneshot::Sender<AdvancedSettings>),
     SchemeRequest(url::Url),
@@ -239,8 +235,8 @@ struct CallbackHandler {
 
 #[derive(thiserror::Error, Debug)]
 enum CallbackError {
-    #[error("couldn't send message to Controller task: {0}")]
-    MessageSend(#[from] std::sync::mpsc::SendError<ControllerRequest>),
+    #[error("system DNS resolver problem: {0}")]
+    Resolvers(#[from] client::resolvers::Error),
 }
 
 // Callbacks must all be non-blocking
@@ -251,7 +247,8 @@ impl connlib_client_shared::Callbacks for CallbackHandler {
         &self,
         error: Option<&connlib_client_shared::Error>,
     ) -> Result<(), Self::Error> {
-        tracing::warn!("on_disconnect {error:?}");
+        // TODO: implement
+        tracing::debug!("on_disconnect {error:?}");
         Ok(())
     }
 
@@ -260,17 +257,8 @@ impl connlib_client_shared::Callbacks for CallbackHandler {
         Ok(())
     }
 
-    fn on_set_interface_config(
-        &self,
-        tunnel_addr_ipv4: Ipv4Addr,
-        _tunnel_addr_ipv6: Ipv6Addr,
-        _dns_addr: Ipv4Addr,
-    ) -> Result<Option<i32>, Self::Error> {
-        tracing::info!("Tunnel IPv4 = {tunnel_addr_ipv4}");
-        Ok(None)
-    }
-
     fn on_tunnel_ready(&self) -> Result<(), Self::Error> {
+        // TODO: implement
         tracing::info!("on_tunnel_ready");
         Ok(())
     }
@@ -279,6 +267,10 @@ impl connlib_client_shared::Callbacks for CallbackHandler {
         self.resources.store(resources.into());
         self.notify_controller.notify_one();
         Ok(())
+    }
+
+    fn get_system_default_resolvers(&self) -> Result<Option<Vec<IpAddr>>, Self::Error> {
+        Ok(Some(client::resolvers::get()?))
     }
 
     fn roll_log_file(&self) -> Option<PathBuf> {
@@ -437,7 +429,24 @@ async fn run_controller(
                 let Some(req) = req else {
                     break;
                 };
-                 match req {
+                match req {
+                    Req::CopyResource(id) => {
+                        let Some(session) = &controller.session else {
+                            tracing::warn!("got notified to update resources but there is no session");
+                            continue;
+                        };
+                        let resources = session.callback_handler.resources.load();
+                        let id = ResourceId::from_str(&id)?;
+                        let Some(res) = resources.iter().find(|r| r.id() == id) else {
+                            continue;
+                        };
+                        let mut clipboard = arboard::Clipboard::new()?;
+                        // TODO: Make this a method on `ResourceDescription`
+                        match res {
+                            ResourceDescription::Dns(x) => clipboard.set_text(&x.address)?,
+                            ResourceDescription::Cidr(x) => clipboard.set_text(&x.address.to_string())?,
+                        }
+                    }
                     Req::ExportLogs(file_path) => settings::export_logs_to(file_path).await?,
                     Req::GetAdvancedSettings(tx) => {
                         tx.send(controller.advanced_settings.clone()).ok();
@@ -480,7 +489,6 @@ async fn run_controller(
                         // TODO: After we store the actor name on disk, clear the actor name here too.
                         keyring_entry()?.delete_password()?;
                         if let Some(mut session) = controller.session.take() {
-                            // TODO: Needs testing
                             tracing::debug!("disconnecting connlib");
                             session.connlib.disconnect(None);
                         }
