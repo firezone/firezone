@@ -224,13 +224,14 @@ fn handle_system_tray_event(app: &tauri::AppHandle, event: TrayMenuEvent) -> Res
         }
         TrayMenuEvent::SignIn => app
             .try_state::<Managed>()
-            .ok_or_else(|| anyhow!("getting ctlr_tx state"))?
+            .ok_or_else(|| anyhow!("couldn't get ctlr_tx state"))?
             .ctlr_tx
             .blocking_send(ControllerRequest::SignIn)?,
-        TrayMenuEvent::SignOut => {
-            keyring_entry()?.delete_password()?;
-            app.tray_handle().set_menu(signed_out_menu())?;
-        }
+        TrayMenuEvent::SignOut => app
+            .try_state::<Managed>()
+            .ok_or_else(|| anyhow!("couldn't get ctlr_tx state"))?
+            .ctlr_tx
+            .blocking_send(ControllerRequest::SignOut)?,
         TrayMenuEvent::Quit => app.exit(0),
     }
     Ok(())
@@ -242,6 +243,7 @@ pub(crate) enum ControllerRequest {
     SchemeRequest(url::Url),
     SignIn,
     StartStopLogCounting(bool),
+    SignOut,
     UpdateResources(Vec<connlib_client_shared::ResourceDescription>),
 }
 
@@ -483,6 +485,14 @@ async fn run_controller(
                     log_counting_task = None;
                     tracing::debug!("cancelled log counting");
                 }
+            }
+            Req::SignOut => {
+                keyring_entry()?.delete_password()?;
+                if let Some(mut session) = controller.connlib_session.take() {
+                    // TODO: Needs testing
+                    session.disconnect(None);
+                }
+                app.tray_handle().set_menu(signed_out_menu())?;
             }
             Req::UpdateResources(resources) => {
                 tracing::debug!("controller got UpdateResources");
