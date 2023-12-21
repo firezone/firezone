@@ -1327,6 +1327,7 @@ defmodule Domain.ActorsTest do
           identity: nil,
           actor: %{id: Ecto.UUID.generate()},
           account: %{id: Ecto.UUID.generate()},
+          token: nil,
           context: nil,
           expires_at: nil,
           permissions: MapSet.new()

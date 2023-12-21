@@ -46,20 +46,8 @@ defmodule Domain.Tokens do
     Plug.Crypto.sign(key_base, salt <> to_string(type), body)
   end
 
-  def verify_token(account_id, context, encrypted_token, opts \\ []) do
-    user_agents_whitelist = Keyword.get(opts, :user_agents_whitelist, [])
-    remote_ips_whitelist = Keyword.get(opts, :remote_ips_whitelist, [])
-
-    config = fetch_config!()
-    key_base = Keyword.fetch!(config, :key_base)
-    salt = Keyword.fetch!(config, :salt)
-
-    with {:ok, {^account_id, id, secret}} <-
-           Plug.Crypto.verify(key_base, salt <> to_string(context), encrypted_token,
-             max_age: :infinity
-           ),
-  def use_token(account_id, encrypted_token, %Auth.Context{} = context) do
-    with {:ok, {^account_id, id, secret}} <- verify_token(encrypted_token, context),
+  def use_token(encrypted_token, %Auth.Context{} = context) do
+    with {:ok, {account_id, id, secret}} <- verify_token(encrypted_token, context),
          queryable =
            Token.Query.by_id(id)
            |> Token.Query.by_account_id(account_id)

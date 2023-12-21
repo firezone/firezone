@@ -599,9 +599,9 @@ defmodule Domain.Auth do
 
   # Authentication
 
-  def authenticate(account_id, encoded_token, %Context{} = context)
+  def authenticate(encoded_token, %Context{} = context)
       when is_binary(encoded_token) do
-    with {:ok, token} <- Tokens.use_token(account_id, encoded_token, context),
+    with {:ok, token} <- Tokens.use_token(encoded_token, context),
          :ok <- maybe_enforce_token_context(token, context),
   def sign_in(token, %Context{} = context) when is_binary(token) do
     with {:ok, identity, expires_at} <- verify_token(token, context.user_agent, context.remote_ip) do
