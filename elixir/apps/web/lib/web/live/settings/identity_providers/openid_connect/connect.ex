@@ -9,7 +9,7 @@ defmodule Web.Settings.IdentityProviders.OpenIDConnect.Connect do
   def redirect_to_idp(conn, %{"provider_id" => provider_id}) do
     account = conn.assigns.account
 
-    with {:ok, provider} <- Domain.Auth.fetch_provider_by_id(provider_id) do
+    with {:ok, provider} <- Domain.Auth.fetch_provider_by_id(provider_id, conn.assigns.subject) do
       redirect_url =
         url(
           ~p"/#{provider.account_id}/settings/identity_providers/openid_connect/#{provider.id}/handle_callback"
@@ -42,7 +42,7 @@ defmodule Web.Settings.IdentityProviders.OpenIDConnect.Connect do
         code
       }
 
-      with {:ok, provider} <- Domain.Auth.fetch_provider_by_id(provider_id),
+      with {:ok, provider} <- Domain.Auth.fetch_provider_by_id(provider_id, conn.assigns.subject),
            {:ok, _identity} <-
              OpenIDConnect.verify_and_upsert_identity(subject.actor, provider, payload),
            attrs = %{adapter_state: %{status: :connected}, disabled_at: nil},
