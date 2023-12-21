@@ -115,8 +115,7 @@ defmodule Web.Live.Clients.EditTest do
     client: client,
     conn: conn
   } do
-    other_client = Fixtures.Clients.create_client(account: account, actor: actor)
-    attrs = %{name: other_client.name}
+    attrs = %{name: String.duplicate("a", 256)}
 
     {:ok, lv, _html} =
       conn
@@ -127,7 +126,7 @@ defmodule Web.Live.Clients.EditTest do
            |> form("form", client: attrs)
            |> render_submit()
            |> form_validation_errors() == %{
-             "client[name]" => ["has already been taken"]
+             "client[name]" => ["should be at most 255 character(s)"]
            }
   end
 
