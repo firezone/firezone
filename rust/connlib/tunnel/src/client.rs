@@ -296,7 +296,7 @@ impl ClientState {
                 // Note: we don't need to set a timer here because
                 // the FutureMap already expires things, it seems redundant
                 // to also have timer that expires.
-                .try_push(gateway, async {})
+                .try_push(gateway, std::future::pending())
             {
                 Ok(_) => {}
                 Err(PushError::BeyondCapacity(_)) => {
