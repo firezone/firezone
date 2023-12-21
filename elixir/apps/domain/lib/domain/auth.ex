@@ -565,10 +565,9 @@ defmodule Domain.Auth do
   if IdP was used for Sign In, revokes the IdP token too by redirecting user to IdP logout endpoint.
   """
   def sign_out(%Subject{} = subject, redirect_url) do
-    with {:ok, _token} <- Tokens.delete_token(subject.token) do
+    {:ok, _count} = Tokens.delete_token_by_id(subject.token_id)
       identity = Repo.preload(subject.identity, :provider)
       Adapters.sign_out(identity.provider, identity, redirect_url)
-    end
   end
 
   # Tokens
@@ -647,7 +646,7 @@ defmodule Domain.Auth do
       account: identity_with_preloads.account,
       expires_at: token.expires_at,
       context: context,
-      token: token
+      token_id: token.id
     }
   end
 
