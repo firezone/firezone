@@ -700,9 +700,9 @@ dependencies = [
  "nix 0.25.1",
  "parking_lot",
  "rand_core 0.6.4",
- "ring 0.17.7",
+ "ring",
  "tracing",
- "untrusted 0.9.0",
+ "untrusted",
  "x25519-dalek",
 ]
 
@@ -1196,7 +1196,7 @@ dependencies = [
  "parking_lot",
  "rand 0.8.5",
  "rand_core 0.6.4",
- "ring 0.17.7",
+ "ring",
  "rtnetlink",
  "secrecy",
  "serde",
@@ -2032,7 +2032,7 @@ dependencies = [
  "firezone-cli-utils",
  "ipconfig",
  "keyring",
- "ring 0.17.7",
+ "ring",
  "secrecy",
  "serde",
  "serde_json",
@@ -2971,7 +2971,6 @@ dependencies = [
 [[package]]
 name = "interceptor"
 version = "0.10.0"
-source = "git+https://github.com/firezone/webrtc?branch=expose-new-endpoint#4918ae812ab7e45b8ab000efbc316b5850290ddb"
 dependencies = [
  "async-trait",
  "bytes",
@@ -4710,14 +4709,12 @@ checksum = "f2ff9a1f06a88b01621b7ae906ef0211290d1c8a168a15542486a8f61c0833b9"
 
 [[package]]
 name = "rcgen"
-version = "0.11.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "52c4f3084aa3bc7dfbba4eff4fab2a54db4324965d8872ab933565e6fbd83bc6"
+version = "0.12.0"
 dependencies = [
  "pem",
- "ring 0.16.20",
+ "ring",
  "time",
- "x509-parser",
+ "x509-parser 0.15.1",
  "yasna",
 ]
 
@@ -4892,21 +4889,6 @@ dependencies = [
 
 [[package]]
 name = "ring"
-version = "0.16.20"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3053cf52e236a3ed746dfc745aa9cacf1b791d846bdaf412f60a8d7d6e17c8fc"
-dependencies = [
- "cc",
- "libc",
- "once_cell",
- "spin 0.5.2",
- "untrusted 0.7.1",
- "web-sys",
- "winapi",
-]
-
-[[package]]
-name = "ring"
 version = "0.17.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "688c63d65483050968b2a8937f7995f443e27041a0f7700aa59b0822aedebb74"
@@ -4914,15 +4896,14 @@ dependencies = [
  "cc",
  "getrandom 0.2.11",
  "libc",
- "spin 0.9.8",
- "untrusted 0.9.0",
+ "spin",
+ "untrusted",
  "windows-sys 0.48.0",
 ]
 
 [[package]]
 name = "rtcp"
 version = "0.10.0"
-source = "git+https://github.com/firezone/webrtc?branch=expose-new-endpoint#4918ae812ab7e45b8ab000efbc316b5850290ddb"
 dependencies = [
  "bytes",
  "thiserror",
@@ -4950,7 +4931,6 @@ dependencies = [
 [[package]]
 name = "rtp"
 version = "0.9.0"
-source = "git+https://github.com/firezone/webrtc?branch=expose-new-endpoint#4918ae812ab7e45b8ab000efbc316b5850290ddb"
 dependencies = [
  "bytes",
  "rand 0.8.5",
@@ -5023,7 +5003,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f9d5a6813c0759e4609cd494e8e725babae6a2ca7b62a5536a13daaec6fcb7ba"
 dependencies = [
  "log",
- "ring 0.17.7",
+ "ring",
  "rustls-webpki",
  "sct",
 ]
@@ -5055,8 +5035,8 @@ version = "0.101.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8b6275d1ee7a1cd780b64aca7726599a1dbc893b1e64144529e55c3c2f745765"
 dependencies = [
- "ring 0.17.7",
- "untrusted 0.9.0",
+ "ring",
+ "untrusted",
 ]
 
 [[package]]
@@ -5125,14 +5105,13 @@ version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "da046153aa2352493d6cb7da4b6e5c0c057d8a1d0a9aa8560baffdd945acd414"
 dependencies = [
- "ring 0.17.7",
- "untrusted 0.9.0",
+ "ring",
+ "untrusted",
 ]
 
 [[package]]
 name = "sdp"
 version = "0.6.0"
-source = "git+https://github.com/firezone/webrtc?branch=expose-new-endpoint#4918ae812ab7e45b8ab000efbc316b5850290ddb"
 dependencies = [
  "rand 0.8.5",
  "substring",
@@ -5502,12 +5481,6 @@ dependencies = [
 
 [[package]]
 name = "spin"
-version = "0.5.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6e63cff320ae2c57904679ba7cb63280a3dc4613885beafb148ee7bf9aa9042d"
-
-[[package]]
-name = "spin"
 version = "0.9.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6980e8d7511241f8acf4aebddbb1ff938df5eebe98691418c4468d0b72a96a67"
@@ -5607,14 +5580,13 @@ dependencies = [
 [[package]]
 name = "stun"
 version = "0.5.0"
-source = "git+https://github.com/firezone/webrtc?branch=expose-new-endpoint#4918ae812ab7e45b8ab000efbc316b5850290ddb"
 dependencies = [
  "base64 0.21.5",
  "crc",
  "lazy_static",
  "md-5",
  "rand 0.8.5",
- "ring 0.17.7",
+ "ring",
  "subtle",
  "thiserror",
  "tokio",
@@ -6632,7 +6604,6 @@ dependencies = [
 [[package]]
 name = "turn"
 version = "0.7.0"
-source = "git+https://github.com/firezone/webrtc?branch=expose-new-endpoint#4918ae812ab7e45b8ab000efbc316b5850290ddb"
 dependencies = [
  "async-trait",
  "base64 0.21.5",
@@ -6640,7 +6611,7 @@ dependencies = [
  "log",
  "md-5",
  "rand 0.8.5",
- "ring 0.17.7",
+ "ring",
  "stun",
  "thiserror",
  "tokio",
@@ -6712,12 +6683,6 @@ dependencies = [
  "crypto-common",
  "subtle",
 ]
-
-[[package]]
-name = "untrusted"
-version = "0.7.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a156c684c91ea7d62626509bce3cb4e1d9ed5c4d978f7b4352658f96a4c26b4a"
 
 [[package]]
 name = "untrusted"
@@ -7009,7 +6974,6 @@ checksum = "1778a42e8b3b90bff8d0f5032bf22250792889a5cdc752aa0020c84abe3aaf10"
 [[package]]
 name = "webrtc"
 version = "0.9.0"
-source = "git+https://github.com/firezone/webrtc?branch=expose-new-endpoint#4918ae812ab7e45b8ab000efbc316b5850290ddb"
 dependencies = [
  "arc-swap",
  "async-trait",
@@ -7022,7 +6986,7 @@ dependencies = [
  "rand 0.8.5",
  "rcgen",
  "regex",
- "ring 0.17.7",
+ "ring",
  "rtcp",
  "rtp",
  "rustls",
@@ -7051,7 +7015,6 @@ dependencies = [
 [[package]]
 name = "webrtc-data"
 version = "0.8.0"
-source = "git+https://github.com/firezone/webrtc?branch=expose-new-endpoint#4918ae812ab7e45b8ab000efbc316b5850290ddb"
 dependencies = [
  "bytes",
  "log",
@@ -7064,7 +7027,6 @@ dependencies = [
 [[package]]
 name = "webrtc-dtls"
 version = "0.8.0"
-source = "git+https://github.com/firezone/webrtc?branch=expose-new-endpoint#4918ae812ab7e45b8ab000efbc316b5850290ddb"
 dependencies = [
  "aes 0.8.3",
  "aes-gcm",
@@ -7082,7 +7044,7 @@ dependencies = [
  "rand 0.8.5",
  "rand_core 0.6.4",
  "rcgen",
- "ring 0.17.7",
+ "ring",
  "rustls",
  "sec1",
  "serde",
@@ -7093,13 +7055,12 @@ dependencies = [
  "tokio",
  "webrtc-util",
  "x25519-dalek",
- "x509-parser",
+ "x509-parser 0.15.1 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
 name = "webrtc-ice"
 version = "0.10.0"
-source = "git+https://github.com/firezone/webrtc?branch=expose-new-endpoint#4918ae812ab7e45b8ab000efbc316b5850290ddb"
 dependencies = [
  "arc-swap",
  "async-trait",
@@ -7122,7 +7083,6 @@ dependencies = [
 [[package]]
 name = "webrtc-mdns"
 version = "0.6.0"
-source = "git+https://github.com/firezone/webrtc?branch=expose-new-endpoint#4918ae812ab7e45b8ab000efbc316b5850290ddb"
 dependencies = [
  "log",
  "socket2 0.5.5",
@@ -7134,7 +7094,6 @@ dependencies = [
 [[package]]
 name = "webrtc-media"
 version = "0.7.0"
-source = "git+https://github.com/firezone/webrtc?branch=expose-new-endpoint#4918ae812ab7e45b8ab000efbc316b5850290ddb"
 dependencies = [
  "byteorder",
  "bytes",
@@ -7146,7 +7105,6 @@ dependencies = [
 [[package]]
 name = "webrtc-sctp"
 version = "0.9.0"
-source = "git+https://github.com/firezone/webrtc?branch=expose-new-endpoint#4918ae812ab7e45b8ab000efbc316b5850290ddb"
 dependencies = [
  "arc-swap",
  "async-trait",
@@ -7162,7 +7120,6 @@ dependencies = [
 [[package]]
 name = "webrtc-srtp"
 version = "0.11.0"
-source = "git+https://github.com/firezone/webrtc?branch=expose-new-endpoint#4918ae812ab7e45b8ab000efbc316b5850290ddb"
 dependencies = [
  "aead",
  "aes 0.8.3",
@@ -7184,7 +7141,6 @@ dependencies = [
 [[package]]
 name = "webrtc-util"
 version = "0.8.0"
-source = "git+https://github.com/firezone/webrtc?branch=expose-new-endpoint#4918ae812ab7e45b8ab000efbc316b5850290ddb"
 dependencies = [
  "async-trait",
  "bitflags 1.3.2",
@@ -7823,6 +7779,22 @@ dependencies = [
 [[package]]
 name = "x509-parser"
 version = "0.15.1"
+dependencies = [
+ "asn1-rs",
+ "data-encoding",
+ "der-parser",
+ "lazy_static",
+ "nom",
+ "oid-registry",
+ "ring",
+ "rusticata-macros",
+ "thiserror",
+ "time",
+]
+
+[[package]]
+name = "x509-parser"
+version = "0.15.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7069fba5b66b9193bd2c5d3d4ff12b839118f6bcbef5328efafafb5395cf63da"
 dependencies = [
@@ -7832,7 +7804,6 @@ dependencies = [
  "lazy_static",
  "nom",
  "oid-registry",
- "ring 0.16.20",
  "rusticata-macros",
  "thiserror",
  "time",
