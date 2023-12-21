@@ -73,40 +73,43 @@ jobs:
         working-directory: ./rust
     strategy:
       fail-fast: false
-      # The matrix is 1x1 to match the style of build-push-linux-release-artifacts
-      # In the future we could try to cross-compile aarch64-windows here.
       matrix:
+        arch:
+          - target: aarch64-pc-windows-msvc
+            shortname: arm64
+          - target: x86_64-pc-windows-msvc
+            shortname: x64
         name:
           - package: firezone-windows-client
             artifact: windows-client
-    env:
-      BINARY_DEST_PATH: windows-client
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-rust
         with:
-          targets: x86_64-pc-windows-msvc
+          targets: aarch64-pc-windows-msvc x86_64-pc-windows-msvc
       - name: Build release binaries
         run: |
+          # Install clang to cross-compile `ring` for aarch64
+          choco install llvm
+          # Install Tauri build tool
           npm install -g @tauri-apps/cli
 
-          # NPM installs tauri-cli to somewhere in $PATH
-          tauri build
+          tauri build -p ${{ matrix.name.package }} --target ${{ matrix.arch.target }}
 
-          # Used for release artifact
-          # In release mode the name comes from tauri.conf.json
-          cp "target/release/Firezone Windows Client.exe" "windows-client-x64.exe"
-
-      - name: Save Windows client
+          # Rename the portable exe to include architecture.
+          # CI doesn't need this, but CD does, so do the same in both
+          cp "target/${{ matrix.arch.target }}/release/Firezone Windows Client.exe" "firezone-windows-client-${{ matrix.arch.shortname }}.exe"
+      # I think BINARY_DEST_PATH maybe isn't available for these
+      - name: Upload Windows exe
         uses: actions/upload-artifact@v3
         with:
-          name: windows-client-x64
-          path: ${{ github.workspace }}/rust/windows-client-x64.exe
-      - name: Save Windows installer
+          name: windows-client-${{ matrix.arch.shortname }}
+          path: ${{ github.workspace }}/rust/firezone-windows-client-${{ matrix.arch.shortname }}.exe
+      - name: Upload Windows installer
         uses: actions/upload-artifact@v3
         with:
-          name: windows-client-x64-msi
-          path: ${{ github.workspace }}/rust/target/release/bundle/msi
+          name: windows-client-${{ matrix.arch.shortname }}-msi
+          path: ${{ github.workspace }}/rust/target/${{ matrix.arch.target }}/release/bundle/msi
 
   smoke-test-relay:
     runs-on: ubuntu-22.04
