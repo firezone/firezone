@@ -13,7 +13,7 @@ use client::{
 use connlib_client_shared::{file_logger, ResourceDescription};
 use connlib_shared::messages::ResourceId;
 use secrecy::{ExposeSecret, SecretString};
-use std::{net::IpAddr, path::PathBuf, str::FromStr, sync::Arc};
+use std::{net::IpAddr, path::PathBuf, str::FromStr, sync::Arc, time::Duration};
 use system_tray_menu::{Event as TrayMenuEvent, Resource as ResourceDisplay};
 use tauri::{Manager, SystemTray, SystemTrayEvent};
 use tokio::{
@@ -392,6 +392,7 @@ impl Controller {
             auth_info.token.clone(),
             self.device_id.clone(),
             callback_handler.clone(),
+            Duration::from_secs(5 * 60),
         )?;
 
         self.session = Some(Session {

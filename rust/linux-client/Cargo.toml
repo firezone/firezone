@@ -14,3 +14,4 @@ anyhow = { version = "1.0" }
 tracing = { workspace = true }
 clap = { version = "4.4", features = ["derive",  "env"] }
 tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
+humantime = "2.1"
