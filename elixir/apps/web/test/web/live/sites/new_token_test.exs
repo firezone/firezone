@@ -31,8 +31,8 @@ defmodule Web.Live.Sites.NewTokenTest do
     assert html =~ "docker run"
     assert html =~ "Waiting for connection..."
 
-    assert Regex.run(~r/FIREZONE_ID=([^ ]+)/, html) |> List.last()
-    token = Regex.run(~r/FIREZONE_TOKEN=([^ ]+)/, html) |> List.last() |> String.trim("&quot;")
+    assert Regex.run(~r/FIREZONE_ID=([^& ]+)/, html) |> List.last()
+    token = Regex.run(~r/FIREZONE_TOKEN=([^& ]+)/, html) |> List.last() |> String.trim("&quot;")
 
     :ok = Domain.Gateways.subscribe_for_gateways_presence_in_group(group)
     gateway = Fixtures.Gateways.create_gateway(account: account, group: group)
