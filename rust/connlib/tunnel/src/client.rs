@@ -673,11 +673,10 @@ impl RoleState for ClientState {
                 Poll::Pending => {}
             }
 
-            match self.gateway_awaiting_connection_timers.poll_join_next(cx) {
-                Poll::Ready(Some(Ok(gateway_id))) => {
-                    self.gateway_awaiting_connection.remove(&gateway_id);
-                }
-                _ => {}
+            if let Poll::Ready(Some(Ok(gateway_id))) =
+                self.gateway_awaiting_connection_timers.poll_join_next(cx)
+            {
+                self.gateway_awaiting_connection.remove(&gateway_id);
             }
 
             match self.awaiting_connection_timers.poll_next_unpin(cx) {
