@@ -187,7 +187,7 @@ defmodule Web.Actors.Show do
     <.section>
       <:title>Activity</:title>
       <:help>
-        Attempts to access resources by this actor. 
+        Attempts to access resources by this actor.
       </:help>
       <:content>
         <.table id="flows" rows={@flows} row_id={&"flows-#{&1.id}"}>
