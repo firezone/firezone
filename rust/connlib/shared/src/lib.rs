@@ -107,6 +107,7 @@ fn kernel_version() -> Option<String> {
 
 #[cfg(target_family = "unix")]
 fn kernel_version() -> Option<String> {
+    #[cfg(any(target_os = "android", target_os = "linux"))]
     let mut utsname = libc::utsname {
         sysname: [0; 65],
         nodename: [0; 65],
@@ -114,6 +115,15 @@ fn kernel_version() -> Option<String> {
         version: [0; 65],
         machine: [0; 65],
         domainname: [0; 65],
+    };
+
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
+    let mut utsname = libc::utsname {
+        sysname: [0; 256],
+        nodename: [0; 256],
+        release: [0; 256],
+        version: [0; 256],
+        machine: [0; 256],
     };
 
     // SAFETY: we just allocated the pointer
@@ -125,7 +135,7 @@ fn kernel_version() -> Option<String> {
         .release
         .split(|c| *c == 0)
         .next()?
-        .into_iter()
+        .iter()
         .map(|x| *x as u8)
         .collect();
 
