@@ -4,7 +4,8 @@ defmodule Domain.Clients.Client.Changeset do
   alias Domain.Clients
 
   @upsert_fields ~w[external_id name public_key]a
-  @conflict_replace_fields ~w[public_key
+  @conflict_replace_fields ~w[name
+                              public_key
                               last_seen_user_agent
                               last_seen_remote_ip
                               last_seen_remote_ip_location_region
@@ -78,7 +79,6 @@ defmodule Domain.Clients.Client.Changeset do
     |> unique_constraint([:actor_id, :name])
     |> unique_constraint([:actor_id, :public_key])
     |> unique_constraint(:external_id)
-    |> unique_constraint(:name, name: :clients_account_id_actor_id_name_index)
   end
 
   defp put_client_version(changeset) do
