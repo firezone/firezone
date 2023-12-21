@@ -41,7 +41,7 @@ phoenix-channel = { path = "phoenix-channel"}
 
 [patch.crates-io]
 boringtun = { git = "https://github.com/cloudflare/boringtun", branch = "master" } # Contains unreleased patches we need (bump of x25519-dalek)
-webrtc = { path = "../../webrtc/webrtc" }
+webrtc = { git = "https://github.com/firezone/webrtc", branch = "update-ring" } # Patch to use ring 0.17 which cross-compiles for aarch64 Windows
 
 [profile.release]
 strip = true

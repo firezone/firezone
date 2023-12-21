@@ -2971,6 +2971,7 @@ dependencies = [
 [[package]]
 name = "interceptor"
 version = "0.10.0"
+source = "git+https://github.com/firezone/webrtc?branch=update-ring#e262dfba90d050389a39c4d16e039412efba4390"
 dependencies = [
  "async-trait",
  "bytes",
@@ -4710,11 +4711,12 @@ checksum = "f2ff9a1f06a88b01621b7ae906ef0211290d1c8a168a15542486a8f61c0833b9"
 [[package]]
 name = "rcgen"
 version = "0.12.0"
+source = "git+https://github.com/ReactorScram/rcgen?branch=update-ring#2602d35c1bdd8b80b92fa3dd17c2ffbaaef1b5d7"
 dependencies = [
  "pem",
  "ring",
  "time",
- "x509-parser 0.15.1",
+ "x509-parser 0.15.1 (git+https://github.com/ReactorScram/x509-parser?branch=update-ring)",
  "yasna",
 ]
 
@@ -4904,6 +4906,7 @@ dependencies = [
 [[package]]
 name = "rtcp"
 version = "0.10.0"
+source = "git+https://github.com/firezone/webrtc?branch=update-ring#e262dfba90d050389a39c4d16e039412efba4390"
 dependencies = [
  "bytes",
  "thiserror",
@@ -4931,6 +4934,7 @@ dependencies = [
 [[package]]
 name = "rtp"
 version = "0.9.0"
+source = "git+https://github.com/firezone/webrtc?branch=update-ring#e262dfba90d050389a39c4d16e039412efba4390"
 dependencies = [
  "bytes",
  "rand 0.8.5",
@@ -5112,6 +5116,7 @@ dependencies = [
 [[package]]
 name = "sdp"
 version = "0.6.0"
+source = "git+https://github.com/firezone/webrtc?branch=update-ring#e262dfba90d050389a39c4d16e039412efba4390"
 dependencies = [
  "rand 0.8.5",
  "substring",
@@ -5580,6 +5585,7 @@ dependencies = [
 [[package]]
 name = "stun"
 version = "0.5.0"
+source = "git+https://github.com/firezone/webrtc?branch=update-ring#e262dfba90d050389a39c4d16e039412efba4390"
 dependencies = [
  "base64 0.21.5",
  "crc",
@@ -6604,6 +6610,7 @@ dependencies = [
 [[package]]
 name = "turn"
 version = "0.7.0"
+source = "git+https://github.com/firezone/webrtc?branch=update-ring#e262dfba90d050389a39c4d16e039412efba4390"
 dependencies = [
  "async-trait",
  "base64 0.21.5",
@@ -6974,6 +6981,7 @@ checksum = "1778a42e8b3b90bff8d0f5032bf22250792889a5cdc752aa0020c84abe3aaf10"
 [[package]]
 name = "webrtc"
 version = "0.9.0"
+source = "git+https://github.com/firezone/webrtc?branch=update-ring#e262dfba90d050389a39c4d16e039412efba4390"
 dependencies = [
  "arc-swap",
  "async-trait",
@@ -7015,6 +7023,7 @@ dependencies = [
 [[package]]
 name = "webrtc-data"
 version = "0.8.0"
+source = "git+https://github.com/firezone/webrtc?branch=update-ring#e262dfba90d050389a39c4d16e039412efba4390"
 dependencies = [
  "bytes",
  "log",
@@ -7027,6 +7036,7 @@ dependencies = [
 [[package]]
 name = "webrtc-dtls"
 version = "0.8.0"
+source = "git+https://github.com/firezone/webrtc?branch=update-ring#e262dfba90d050389a39c4d16e039412efba4390"
 dependencies = [
  "aes 0.8.3",
  "aes-gcm",
@@ -7061,6 +7071,7 @@ dependencies = [
 [[package]]
 name = "webrtc-ice"
 version = "0.10.0"
+source = "git+https://github.com/firezone/webrtc?branch=update-ring#e262dfba90d050389a39c4d16e039412efba4390"
 dependencies = [
  "arc-swap",
  "async-trait",
@@ -7083,6 +7094,7 @@ dependencies = [
 [[package]]
 name = "webrtc-mdns"
 version = "0.6.0"
+source = "git+https://github.com/firezone/webrtc?branch=update-ring#e262dfba90d050389a39c4d16e039412efba4390"
 dependencies = [
  "log",
  "socket2 0.5.5",
@@ -7094,6 +7106,7 @@ dependencies = [
 [[package]]
 name = "webrtc-media"
 version = "0.7.0"
+source = "git+https://github.com/firezone/webrtc?branch=update-ring#e262dfba90d050389a39c4d16e039412efba4390"
 dependencies = [
  "byteorder",
  "bytes",
@@ -7105,6 +7118,7 @@ dependencies = [
 [[package]]
 name = "webrtc-sctp"
 version = "0.9.0"
+source = "git+https://github.com/firezone/webrtc?branch=update-ring#e262dfba90d050389a39c4d16e039412efba4390"
 dependencies = [
  "arc-swap",
  "async-trait",
@@ -7120,6 +7134,7 @@ dependencies = [
 [[package]]
 name = "webrtc-srtp"
 version = "0.11.0"
+source = "git+https://github.com/firezone/webrtc?branch=update-ring#e262dfba90d050389a39c4d16e039412efba4390"
 dependencies = [
  "aead",
  "aes 0.8.3",
@@ -7141,6 +7156,7 @@ dependencies = [
 [[package]]
 name = "webrtc-util"
 version = "0.8.0"
+source = "git+https://github.com/firezone/webrtc?branch=update-ring#e262dfba90d050389a39c4d16e039412efba4390"
 dependencies = [
  "async-trait",
  "bitflags 1.3.2",
@@ -7779,22 +7795,6 @@ dependencies = [
 [[package]]
 name = "x509-parser"
 version = "0.15.1"
-dependencies = [
- "asn1-rs",
- "data-encoding",
- "der-parser",
- "lazy_static",
- "nom",
- "oid-registry",
- "ring",
- "rusticata-macros",
- "thiserror",
- "time",
-]
-
-[[package]]
-name = "x509-parser"
-version = "0.15.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7069fba5b66b9193bd2c5d3d4ff12b839118f6bcbef5328efafafb5395cf63da"
 dependencies = [
@@ -7804,6 +7804,23 @@ dependencies = [
  "lazy_static",
  "nom",
  "oid-registry",
+ "rusticata-macros",
+ "thiserror",
+ "time",
+]
+
+[[package]]
+name = "x509-parser"
+version = "0.15.1"
+source = "git+https://github.com/ReactorScram/x509-parser?branch=update-ring#f89ea50848975279325a47dd06ed985a94eabd5e"
+dependencies = [
+ "asn1-rs",
+ "data-encoding",
+ "der-parser",
+ "lazy_static",
+ "nom",
+ "oid-registry",
+ "ring",
  "rusticata-macros",
  "thiserror",
  "time",
