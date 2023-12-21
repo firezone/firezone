@@ -10,6 +10,11 @@ use std::{
     task::{ready, Context, Poll},
 };
 use tokio::sync::mpsc;
+use windows::Win32::{
+    Foundation::BOOLEAN,
+    NetworkManagement::IpHelper::{GetIpInterfaceEntry, SetIpInterfaceEntry, MIB_IPINTERFACE_ROW},
+    Networking::WinSock::AF_INET,
+};
 
 // TODO: Double-check that all these get dropped gracefully on disconnect
 pub struct Tun {
@@ -34,6 +39,8 @@ impl Drop for Tun {
 // Hides Powershell's console on Windows
 // <https://stackoverflow.com/questions/59692146/is-it-possible-to-use-the-standard-library-to-spawn-a-process-without-showing-th#60958956>
 const CREATE_NO_WINDOW: u32 = 0x08000000;
+// Copied from tun_linux.rs
+const DEFAULT_MTU: u32 = 1280;
 
 impl Tun {
     pub fn new(config: &InterfaceConfig) -> Result<Self> {
@@ -85,6 +92,8 @@ impl Tun {
             ))
             .stdout(Stdio::null())
             .status()?;
+
+        set_iface_config(iface_idx, DEFAULT_MTU)?;
 
         // Set our DNS IP as the DNS server for our interface
         // TODO: Lots of issues with this. Windows does seem to use it, but I'm not sure why. And there's a delay before some Firefox windows pick it up. Curl might be picking it up faster because its DNS cache starts cold every time.
@@ -197,4 +206,31 @@ fn start_recv_thread(
         }
         tracing::debug!("recv_task exiting gracefully");
     })
+}
+
+/// Sets MTU on the interface
+/// TODO: Set IP and other things in here too, so the code is more organized
+fn set_iface_config(iface_idx: u32, mtu: u32) -> Result<()> {
+    tracing::debug!("set_iface_config...");
+    let mut row = MIB_IPINTERFACE_ROW {
+        InterfaceIndex: iface_idx,
+        ..Default::default()
+    };
+
+    unsafe { GetIpInterfaceEntry(&mut row) }?;
+    row.ManagedAddressConfigurationSupported = BOOLEAN(0);
+    row.OtherStatefulConfigurationSupported = BOOLEAN(0);
+    // We use this to get/set the MTU and metric, family should be irrelevant
+    row.Family = AF_INET;
+    row.NlMtu = mtu;
+
+    // Force lowest possible metric so Windows will always choose us
+    row.UseAutomaticMetric = BOOLEAN(0);
+    row.Metric = 0;
+
+    // Ignore error if we can't set everything
+    unsafe { SetIpInterfaceEntry(&mut row) }?;
+
+    tracing::debug!("set_iface_config success");
+    Ok(())
 }
