@@ -177,6 +177,9 @@ defmodule Web.Resources.Show do
       <:title>
         Activity
       </:title>
+      <:help>
+        Attempts by actors to access this resource.
+      </:help>
       <:content>
         <.table id="flows" rows={@flows} row_id={&"flows-#{&1.id}"}>
           <:col :let={flow} label="AUTHORIZED AT">
@@ -224,7 +227,7 @@ defmodule Web.Resources.Show do
             </.link>
           </:col>
           <:empty>
-            <div class="text-center text-neutral-500 p-4">No activity to display</div>
+            <div class="text-center text-neutral-500 p-4">No activity to display.</div>
           </:empty>
         </.table>
       </:content>

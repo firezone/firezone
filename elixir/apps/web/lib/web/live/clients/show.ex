@@ -101,6 +101,9 @@ defmodule Web.Clients.Show do
 
     <.section>
       <:title>Activity</:title>
+      <:help>
+        Attempts by the actor using this client to access resources.
+      </:help>
       <:content>
         <.table id="flows" rows={@flows} row_id={&"flows-#{&1.id}"}>
           <:col :let={flow} label="AUTHORIZED AT">
@@ -135,7 +138,7 @@ defmodule Web.Clients.Show do
             </.link>
           </:col>
           <:empty>
-            <div class="text-center text-neutral-500 p-4">No activity to display</div>
+            <div class="text-center text-neutral-500 p-4">No activity to display.</div>
           </:empty>
         </.table>
       </:content>
