@@ -9,6 +9,7 @@ use std::{
     os::fd::RawFd,
     path::PathBuf,
     sync::Arc,
+    time::Duration,
 };
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::EnvFilter;
@@ -191,6 +192,7 @@ impl WrappedSession {
                 inner: Arc::new(callback_handler),
                 handle: init_logging(log_dir.into(), log_filter),
             },
+            Duration::from_secs(5 * 60),
         )
         .map_err(|err| err.to_string())?;
 

@@ -16,6 +16,7 @@ fn main() -> Result<()> {
         SecretString::from(cli.common.token),
         cli.firezone_id,
         CallbackHandler { handle },
+        cli.max_partition_time.into(),
     )
     .unwrap();
     tracing::info!("new_session");
@@ -60,4 +61,8 @@ struct Cli {
     /// File logging directory. Should be a path that's writeable by the current user.
     #[arg(short, long, env = "LOG_DIR")]
     log_dir: Option<PathBuf>,
+
+    #[arg(env = "MAX_PARTITION_TIME")]
+    #[clap(default_value = "5m")]
+    max_partition_time: humantime::Duration,
 }

@@ -1934,6 +1934,7 @@ dependencies = [
  "clap",
  "connlib-client-shared",
  "firezone-cli-utils",
+ "humantime",
  "secrecy",
  "tracing",
  "tracing-subscriber",

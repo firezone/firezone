@@ -117,6 +117,7 @@ services:
       RUST_LOG: firezone_linux_client=trace,wire=trace,connlib_client_shared=trace,firezone_tunnel=trace,connlib_shared=trace,warn
       FIREZONE_API_URL: ws://api:8081
       FIREZONE_ID: D0455FDE-8F65-4960-A778-B934E4E85A5F
+      MAX_PARTITION_TIME: 5s
     build:
       target: debug
       context: rust
