@@ -176,7 +176,7 @@ pub struct ClientState {
     // or the response is lost:
     // This would remove the "PendingConnection" message and be able to try the connection again.
     // There are some edge cases that come with this:
-    // * a gateway in a VERY unlikely case could recieve the connection request twice. This will stop any connection attempt and make the whole thing start again.
+    // * a gateway in a VERY unlikely case could receive the connection request twice. This will stop any connection attempt and make the whole thing start again.
     // if this would happen often the UX would be awful but this is only in cases where messages are delayed for more than 10 seconds, it's enough that it doesn't break correctness.
     // * even more unlikely a tunnel could be established in a sort of race condition when this timer goes off. Again a similar behavior to the one above will happen, the webrtc connection will be forcefully terminated from the gateway.
     // then the old peer will expire, this might take ~180 seconds. This is an even worse experience but the likelihood of this happen is infinitesimaly small, again correctness is the only important part.
