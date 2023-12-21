@@ -110,7 +110,6 @@ defmodule Web.Live.Clients.EditTest do
 
   test "renders changeset errors on submit", %{
     account: account,
-    actor: actor,
     identity: identity,
     client: client,
     conn: conn
