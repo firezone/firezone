@@ -28,7 +28,7 @@ defmodule Web.Mailer.AuthEmailTest do
   end
 
   describe "new_user_email/3" do
-    test "Should contain relevant account and user info", %{
+    test "should contain relevant account and user info", %{
       account: account,
       provider: provider,
       admin_actor: admin_actor,
