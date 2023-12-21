@@ -395,7 +395,7 @@ defmodule Domain.ClientsTest do
 
       assert Repo.aggregate(Clients.Client, :count, :id) == 1
 
-      assert updated_client.name
+      assert updated_client.name != client.name
       assert updated_client.last_seen_remote_ip.address == subject.context.remote_ip
       assert updated_client.last_seen_remote_ip != client.last_seen_remote_ip
       assert updated_client.last_seen_user_agent == subject.context.user_agent

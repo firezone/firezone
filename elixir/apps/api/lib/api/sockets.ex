@@ -3,6 +3,7 @@ defmodule API.Sockets do
   This module provides a set of helper function for Phoenix sockets and
   error handling around them.
   """
+  require Logger
 
   def options do
     [
@@ -25,11 +26,27 @@ defmodule API.Sockets do
   def handle_error(conn, :unauthenticated),
     do: Plug.Conn.send_resp(conn, 403, "Forbidden")
 
-  def handle_error(conn, %Ecto.Changeset{}),
-    do: Plug.Conn.send_resp(conn, 422, "Invalid or missing connection parameters")
+  def handle_error(conn, %Ecto.Changeset{} = changeset) do
+    Logger.error("Invalid connection request", changeset: inspect(changeset))
+    errors = changeset_error_to_string(changeset)
+    Plug.Conn.send_resp(conn, 422, "Invalid or missing connection parameters: #{errors}")
+  end
 
   def handle_error(conn, :rate_limit),
     do: Plug.Conn.send_resp(conn, 429, "Too many requests")
+
+  @doc false
+  def changeset_error_to_string(changeset) do
+    Ecto.Changeset.traverse_errors(changeset, fn {msg, opts} ->
+      Enum.reduce(opts, msg, fn {key, value}, acc ->
+        String.replace(acc, "%{#{key}}", to_string(value))
+      end)
+    end)
+    |> Enum.reduce("", fn {k, v}, acc ->
+      joined_errors = Enum.join(v, "; ")
+      "#{acc}#{k}: #{joined_errors}\n"
+    end)
+  end
 
   def real_ip(x_headers, peer_data) do
     real_ip =
