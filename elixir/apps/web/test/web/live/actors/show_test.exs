@@ -338,6 +338,90 @@ defmodule Web.Live.Actors.ShowTest do
       )
     end
 
+    test "allows sending welcome email", %{
+      account: account,
+      actor: actor,
+      identity: admin_identity,
+      conn: conn
+    } do
+      Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
+      email_provider = Fixtures.Auth.create_email_provider(account: account)
+
+      email_identity =
+        Fixtures.Auth.create_identity(account: account, actor: actor, provider: email_provider)
+        |> Ecto.Changeset.change(
+          created_by: :identity,
+          created_by_identity_id: admin_identity.id
+        )
+        |> Repo.update!()
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(admin_identity)
+        |> live(~p"/#{account}/actors/#{actor}")
+
+      assert lv
+             |> element("#identity-#{email_identity.id} button", "Send Welcome Email")
+             |> render_click()
+             |> Floki.find(".flash-info")
+             |> element_to_text() =~ "Welcome email sent to #{email_identity.provider_identifier}"
+
+      assert_email_sent(fn email ->
+        assert email.subject == "Welcome to Firezone"
+        assert email.text_body =~ account.slug
+      end)
+    end
+
+    test "shows email button for identities with email", %{
+      account: account,
+      actor: actor,
+      identity: admin_identity,
+      conn: conn
+    } do
+      Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
+      email_provider = Fixtures.Auth.create_email_provider(account: account)
+
+      {google_provider, _bypass} =
+        Fixtures.Auth.start_and_create_google_workspace_provider(account: account)
+
+      google_identity =
+        Fixtures.Auth.create_identity(
+          account: account,
+          actor: actor,
+          provider: google_provider,
+          provider_state: %{
+            "userinfo" => %{"email" => Fixtures.Auth.email()}
+          }
+        )
+
+      oidc_identity = Fixtures.Auth.create_identity(account: account, actor: actor)
+
+      email_identity =
+        Fixtures.Auth.create_identity(account: account, actor: actor, provider: email_provider)
+        |> Ecto.Changeset.change(
+          created_by: :identity,
+          created_by_identity_id: admin_identity.id
+        )
+        |> Repo.update!()
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(admin_identity)
+        |> live(~p"/#{account}/actors/#{actor}")
+
+      assert lv
+             |> element("#identity-#{email_identity.id} button", "Send Welcome Email")
+             |> has_element?()
+
+      assert lv
+             |> element("#identity-#{google_identity.id} button", "Send Welcome Email")
+             |> has_element?()
+
+      refute lv
+             |> element("#identity-#{oidc_identity.id} button", "Send Welcome Email")
+             |> has_element?()
+    end
+
     test "allows deleting identities", %{
       account: account,
       actor: actor,
