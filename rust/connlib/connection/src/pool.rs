@@ -173,6 +173,7 @@ where
                     TunnResult::Err(e) => Err(Error::Decapsulate(e)),
                     TunnResult::WriteToTunnelV4(packet, ip) => Ok(Some((*id, ip.into(), packet))),
                     TunnResult::WriteToTunnelV6(packet, ip) => Ok(Some((*id, ip.into(), packet))),
+                    // TODO: Document why this is okay!
                     TunnResult::WriteToNetwork(bytes) => {
                         self.buffered_transmits.push_back(Transmit {
                             dst: from,

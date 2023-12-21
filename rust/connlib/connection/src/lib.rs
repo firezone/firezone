@@ -2,5 +2,6 @@ mod index;
 mod pool;
 
 pub use pool::{
-    Answer, ClientConnectionPool, ConnectionPool, Error, Event, Offer, ServerConnectionPool,
+    Answer, ClientConnectionPool, ConnectionPool, Credentials, Error, Event, Offer,
+    ServerConnectionPool,
 };

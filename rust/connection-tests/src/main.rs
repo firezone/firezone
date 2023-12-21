@@ -8,9 +8,13 @@ use std::{
 };
 
 use anyhow::{bail, Context as _, Result};
-use boringtun::x25519::StaticSecret;
-use firezone_connection::{ClientConnectionPool, ConnectionPool, ServerConnectionPool};
+use boringtun::x25519::{PublicKey, StaticSecret};
+use firezone_connection::{
+    Answer, ClientConnectionPool, ConnectionPool, Credentials, Offer, ServerConnectionPool,
+};
 use futures::{future::BoxFuture, FutureExt};
+use redis::AsyncCommands;
+use secrecy::{ExposeSecret as _, Secret};
 use tokio::{io::ReadBuf, net::UdpSocket};
 
 const MAX_UDP_SIZE: usize = (1 << 16) - 1;
@@ -30,6 +34,7 @@ async fn main() -> Result<()> {
     let socket = UdpSocket::bind((listen_addr, 0)).await?;
     let socket_addr = socket.local_addr()?;
     let private_key = StaticSecret::random_from_rng(&mut rand::thread_rng());
+    let public_key = PublicKey::from(&private_key);
 
     match role {
         Role::Dialer => {
@@ -38,7 +43,35 @@ async fn main() -> Result<()> {
 
             let offer = pool.new_connection(1, vec![], vec![]);
 
-            // TODO: Send offer via redis and receive response
+            redis_connection
+                .rpush(
+                    "offers",
+                    serde_json::to_string(&wire::Offer {
+                        session_key: *offer.session_key.expose_secret(),
+                        username: offer.credentials.username,
+                        password: offer.credentials.password,
+                        public_key: public_key.to_bytes(),
+                    })?,
+                )
+                .await?;
+
+            let answer = serde_json::from_str::<wire::Answer>(
+                &redis_connection
+                    .lpop::<_, (String, String)>("answers", None)
+                    .await?
+                    .1,
+            )?;
+
+            pool.accept_answer(
+                1,
+                answer.public_key.into(),
+                Answer {
+                    credentials: Credentials {
+                        username: answer.username,
+                        password: answer.password,
+                    },
+                },
+            );
 
             let mut eventloop = Eventloop::new(socket, pool);
 
@@ -62,7 +95,37 @@ async fn main() -> Result<()> {
             let mut pool = ServerConnectionPool::<u64>::new(private_key);
             pool.add_local_interface(socket_addr);
 
-            // TODO: Handshake via redis here
+            let offer = serde_json::from_str::<wire::Offer>(
+                &redis_connection
+                    .lpop::<_, (String, String)>("offers", None)
+                    .await?
+                    .1,
+            )?;
+
+            let answer = pool.accept_connection(
+                1,
+                Offer {
+                    session_key: Secret::new(offer.session_key),
+                    credentials: Credentials {
+                        username: offer.username,
+                        password: offer.password,
+                    },
+                },
+                offer.public_key.into(),
+                vec![],
+                vec![],
+            );
+
+            redis_connection
+                .rpush(
+                    "answers",
+                    serde_json::to_string(&wire::Answer {
+                        public_key: public_key.to_bytes(),
+                        username: answer.credentials.username,
+                        password: answer.credentials.password,
+                    })?,
+                )
+                .await?;
 
             let mut eventloop = Eventloop::new(socket, pool);
 
@@ -83,6 +146,26 @@ async fn main() -> Result<()> {
     };
 
     Ok(())
+}
+
+mod wire {
+    #[derive(serde::Serialize, serde::Deserialize)]
+    pub struct Offer {
+        #[serde(with = "serde_hex::SerHex::<serde_hex::StrictPfx>")]
+        pub session_key: [u8; 32],
+        #[serde(with = "serde_hex::SerHex::<serde_hex::StrictPfx>")]
+        pub public_key: [u8; 32],
+        pub username: String,
+        pub password: String,
+    }
+
+    #[derive(serde::Serialize, serde::Deserialize)]
+    pub struct Answer {
+        #[serde(with = "serde_hex::SerHex::<serde_hex::StrictPfx>")]
+        pub public_key: [u8; 32],
+        pub username: String,
+        pub password: String,
+    }
 }
 
 enum Role {
