@@ -261,7 +261,8 @@ jobs:
           npm install -g @tauri-apps/cli
 
           # Tauri build already defaults to '--release'
-          tauri build -- -p ${{ matrix.name.package }} --target ${{ matrix.arch.target }}
+          # Tauri installed from npm needs more hyphens here than Tauri from Cargo.
+          tauri build --target ${{ matrix.arch.target }} -- -- -p ${{ matrix.name.package }}
 
           # Rename the portable exe to include architecture.
           # CI doesn't need this, but CD does, so do the same in both
