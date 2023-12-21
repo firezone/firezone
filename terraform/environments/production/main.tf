@@ -520,7 +520,7 @@ locals {
       name = "OUTBOUND_EMAIL_ADAPTER_OPTS"
       value = jsonencode({
         api_key = var.mailgun_server_api_token,
-        domain  = "firezone.dev"
+        domain  = local.tld
       })
     },
     # Feature Flags
