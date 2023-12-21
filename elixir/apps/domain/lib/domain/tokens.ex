@@ -1,24 +1,30 @@
 defmodule Domain.Tokens do
   alias Domain.Repo
+  alias Domain.{Auth, Actors}
+  alias Domain.Tokens.{Token, Authorizer, Jobs}
+  require Ecto.Query
+
   alias Domain.{Auth, Accounts}
   alias Domain.Tokens.Token
 
   def create_token(%Accounts.Account{} = account, attrs) do
     account
     |> Token.Changeset.create(attrs)
+  def create_token(attrs) do
+    Token.Changeset.create(attrs)
     |> Repo.insert()
   end
 
-  def create_token(
-        %Accounts.Account{id: account_id} = account,
-        attrs,
-        %Auth.Subject{account: %{id: account_id}} = subject
-      ) do
-    account
-    |> Token.Changeset.create(attrs, subject)
+  def create_token(attrs, %Auth.Subject{} = subject) do
+    Token.Changeset.create(attrs, subject)
     |> Repo.insert()
   end
 
+  @doc """
+  Update allows to extend the token expiration, which is useful for situations where we can use
+  IdP API to refresh the ID token and don't want users to go through redirects every hour
+  (hardcoded token duration for Okta and Google Workspace).
+  """
   def update_token(%Token{} = token, attrs) do
     Token.Query.by_id(token.id)
     |> Token.Query.not_expired()
@@ -32,12 +38,12 @@ defmodule Domain.Tokens do
   It then additionally signed and encoded using `Plug.Crypto.sign/3` to make sure that
   you can't hit our database with requests using a random token id and secret.
   """
-  def encode_token!(%Token{secret: secret, context: context} = token) when not is_nil(secret) do
+  def encode_token!(%Token{secret: secret, type: type} = token) when not is_nil(secret) do
     body = {token.account_id, token.id, token.secret}
     config = fetch_config!()
     key_base = Keyword.fetch!(config, :key_base)
     salt = Keyword.fetch!(config, :salt)
-    Plug.Crypto.sign(key_base, salt <> to_string(context), body)
+    Plug.Crypto.sign(key_base, salt <> to_string(type), body)
   end
 
   def verify_token(account_id, context, encrypted_token, opts \\ []) do
@@ -52,31 +58,50 @@ defmodule Domain.Tokens do
            Plug.Crypto.verify(key_base, salt <> to_string(context), encrypted_token,
              max_age: :infinity
            ),
+  def use_token(account_id, encrypted_token, %Auth.Context{} = context) do
+    with {:ok, {^account_id, id, secret}} <- verify_token(encrypted_token, context),
          queryable =
            Token.Query.by_id(id)
            |> Token.Query.by_account_id(account_id)
-           |> Token.Query.by_context(context)
+           |> Token.Query.by_type(context.type)
            |> Token.Query.not_expired(),
-         {:ok, token} <- Repo.fetch(queryable) do
-      ip_valid? =
-        remote_ips_whitelist == [] or token.remote_ip in remote_ips_whitelist
-
-      user_agent_valid? =
-        user_agents_whitelist == [] or token.user_agent in user_agents_whitelist
-
-      secret_valid? =
-        Domain.Crypto.equal?(:sha, secret <> token.secret_salt, token.secret_hash)
-
-      if ip_valid? and user_agent_valid? and secret_valid? do
-        :ok
-      else
-        {:error, :invalid_or_expired_token}
-      end
+         {:ok, token} <- Repo.fetch(queryable),
+         true <- Domain.Crypto.equal?(:sha, secret <> token.secret_salt, token.secret_hash) do
+      Token.Changeset.use(token, context)
+      |> Repo.update()
     else
       {:error, :invalid} -> {:error, :invalid_or_expired_token}
       {:ok, _token_payload} -> {:error, :invalid_or_expired_token}
       {:error, :not_found} -> {:error, :invalid_or_expired_token}
+      false -> {:error, :invalid_or_expired_token}
     end
+  end
+
+  defp verify_token(encrypted_token, %Auth.Context{} = context) do
+    config = fetch_config!()
+    key_base = Keyword.fetch!(config, :key_base)
+    shared_salt = Keyword.fetch!(config, :salt)
+    salt = shared_salt <> to_string(context.type)
+
+    Plug.Crypto.verify(key_base, salt, encrypted_token, max_age: :infinity)
+  end
+
+    end
+  end
+
+  def delete_expired_tokens do
+    Token.Query.expired()
+    |> delete_tokens()
+  end
+
+  defp delete_tokens(queryable) do
+    {count, _ids} =
+      queryable
+      |> Ecto.Query.select([tokens: tokens], tokens.id)
+      |> Repo.update_all(set: [deleted_at: DateTime.utc_now()])
+
+
+    {:ok, count}
   end
 
   def delete_token(%Token{} = token) do

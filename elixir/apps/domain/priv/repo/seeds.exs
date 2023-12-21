@@ -599,7 +599,7 @@ IO.puts("Policies Created")
 IO.puts("")
 
 {:ok, unprivileged_subject_client_token} =
-  Auth.create_client_token_from_subject(unprivileged_subject)
+  Auth.create_client_token_for_subject(unprivileged_subject)
 
 IO.puts("Created client tokens:")
 IO.puts("  #{unprivileged_actor_email} token: #{unprivileged_subject_client_token}")

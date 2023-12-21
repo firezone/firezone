@@ -11,6 +11,7 @@ defmodule Domain.Auth.Subject do
           actor: actor(),
           permissions: MapSet.t(permission),
           account: %Domain.Accounts.Account{},
+          token: %Domain.Tokens.Token{},
           expires_at: DateTime.t(),
           context: Context.t()
         }
@@ -20,6 +21,7 @@ defmodule Domain.Auth.Subject do
             actor: nil,
             permissions: MapSet.new(),
             account: nil,
+            token: nil,
             expires_at: nil,
             context: %Context{}
 end

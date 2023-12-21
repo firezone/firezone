@@ -5,15 +5,29 @@ defmodule Domain.Repo.Migrations.AddTokens do
     create table(:tokens, primary_key: false) do
       add(:id, :uuid, primary_key: true)
 
-      add(:context, :string, null: false)
+      add(:type, :string, null: false)
       add(:secret_salt, :string, null: false)
       add(:secret_hash, :string, null: false)
 
-      add(:user_agent, :string, null: false)
-      add(:remote_ip, :inet, null: false)
+      add(
+        :identity_id,
+        references(:auth_identities, type: :binary_id, on_delete: :delete_all)
+        # TODO? null: false
+      )
 
       add(:created_by, :string, null: false)
       add(:created_by_identity_id, references(:auth_identities, type: :binary_id))
+      add(:created_by_user_agent, :string, null: false)
+      add(:created_by_remote_ip, :inet, null: false)
+
+      add(:last_seen_at, :utc_datetime_usec)
+      add(:last_seen_remote_ip, :inet)
+      add(:last_seen_remote_ip_location_region, :text)
+      add(:last_seen_remote_ip_location_city, :text)
+      add(:last_seen_remote_ip_location_lat, :float)
+      add(:last_seen_remote_ip_location_lon, :float)
+      add(:last_seen_user_agent, :string)
+      add(:last_seen_version, :string)
 
       add(:account_id, references(:accounts, type: :binary_id, on_delete: :delete_all),
         null: false
@@ -24,6 +38,6 @@ defmodule Domain.Repo.Migrations.AddTokens do
       timestamps()
     end
 
-    create(index(:tokens, [:account_id, :context], where: "deleted_at IS NULL"))
+    create(index(:tokens, [:account_id, :type], where: "deleted_at IS NULL"))
   end
 end

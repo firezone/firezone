@@ -82,8 +82,6 @@ defmodule Domain.Config.Definitions do
        [
          :tokens_key_base,
          :tokens_salt,
-         :auth_token_key_base,
-         :auth_token_salt,
          :relays_auth_token_key_base,
          :relays_auth_token_salt,
          :gateways_auth_token_key_base,

@@ -6,34 +6,36 @@ defmodule Domain.Fixtures.Tokens do
   def user_agent, do: "iOS/12.5 (iPhone; #{unique_integer()}) connlib/0.7.412"
 
   def token_attrs(attrs \\ %{}) do
-    context = :browser
+    type = :browser
     secret = Domain.Crypto.random_token(32)
     expires_at = DateTime.utc_now() |> DateTime.add(1, :day)
     user_agent = Fixtures.Auth.user_agent()
     remote_ip = Fixtures.Auth.remote_ip()
 
     Enum.into(attrs, %{
-      context: context,
+      type: type,
       secret: secret,
       expires_at: expires_at,
-      user_agent: user_agent,
-      remote_ip: remote_ip
+      created_by_user_agent: user_agent,
+      created_by_remote_ip: remote_ip
     })
   end
 
-  def create_system_token(attrs \\ %{}) do
-    attrs = attrs |> Enum.into(%{context: :email}) |> token_attrs()
+  def create_email_token(attrs \\ %{}) do
+    attrs = attrs |> Enum.into(%{type: :email}) |> token_attrs()
 
     {account, attrs} =
       pop_assoc_fixture(attrs, :account, fn assoc_attrs ->
         Fixtures.Accounts.create_account(assoc_attrs)
       end)
 
-    {:ok, token} = Domain.Tokens.create_token(account, attrs)
+    attrs = Map.put(attrs, :account_id, account.id)
+
+    {:ok, token} = Domain.Tokens.create_token(attrs)
     token
   end
 
-  def create_token(attrs \\ %{}) do
+  def create_service_account_token(attrs \\ %{}) do
     attrs = token_attrs(attrs)
 
     {account, attrs} =
@@ -48,7 +50,21 @@ defmodule Domain.Fixtures.Tokens do
         |> Fixtures.Auth.create_subject()
       end)
 
-    {:ok, token} = Domain.Tokens.create_token(account, attrs, subject)
+    {:ok, token} = Domain.Tokens.create_token(attrs, subject)
+    token
+  end
+
+  def create_token(attrs \\ %{}) do
+    attrs = token_attrs(attrs)
+
+    {account, attrs} =
+      pop_assoc_fixture(attrs, :account, fn assoc_attrs ->
+        Fixtures.Accounts.create_account(assoc_attrs)
+      end)
+
+    attrs = Map.put(attrs, :account_id, account.id)
+
+    {:ok, token} = Domain.Tokens.create_token(attrs)
     token
   end
 

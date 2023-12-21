@@ -69,7 +69,8 @@ defmodule Domain.GatewaysTest do
       assert fetch_group_by_id(Ecto.UUID.generate(), subject) ==
                {:error,
                 {:unauthorized,
-                 [missing_permissions: [Gateways.Authorizer.manage_gateways_permission()]]}}
+                 reason: :missing_permissions,
+                 missing_permissions: [Gateways.Authorizer.manage_gateways_permission()]}}
     end
   end
 
@@ -139,7 +140,8 @@ defmodule Domain.GatewaysTest do
       assert list_groups(subject) ==
                {:error,
                 {:unauthorized,
-                 [missing_permissions: [Gateways.Authorizer.manage_gateways_permission()]]}}
+                 reason: :missing_permissions,
+                 missing_permissions: [Gateways.Authorizer.manage_gateways_permission()]}}
     end
   end
 
@@ -219,7 +221,8 @@ defmodule Domain.GatewaysTest do
       assert create_group(%{}, subject) ==
                {:error,
                 {:unauthorized,
-                 [missing_permissions: [Gateways.Authorizer.manage_gateways_permission()]]}}
+                 reason: :missing_permissions,
+                 missing_permissions: [Gateways.Authorizer.manage_gateways_permission()]}}
     end
   end
 
@@ -294,7 +297,8 @@ defmodule Domain.GatewaysTest do
       assert update_group(group, %{}, subject) ==
                {:error,
                 {:unauthorized,
-                 [missing_permissions: [Gateways.Authorizer.manage_gateways_permission()]]}}
+                 reason: :missing_permissions,
+                 missing_permissions: [Gateways.Authorizer.manage_gateways_permission()]}}
     end
   end
 
@@ -340,7 +344,8 @@ defmodule Domain.GatewaysTest do
       assert delete_group(group, subject) ==
                {:error,
                 {:unauthorized,
-                 [missing_permissions: [Gateways.Authorizer.manage_gateways_permission()]]}}
+                 reason: :missing_permissions,
+                 missing_permissions: [Gateways.Authorizer.manage_gateways_permission()]}}
     end
   end
 
@@ -425,14 +430,13 @@ defmodule Domain.GatewaysTest do
       assert fetch_gateway_by_id(Ecto.UUID.generate(), subject) ==
                {:error,
                 {:unauthorized,
-                 [
-                   missing_permissions: [
-                     {:one_of,
-                      [
-                        Gateways.Authorizer.manage_gateways_permission(),
-                        Gateways.Authorizer.connect_gateways_permission()
-                      ]}
-                   ]
+                 reason: :missing_permissions,
+                 missing_permissions: [
+                   {:one_of,
+                    [
+                      Gateways.Authorizer.manage_gateways_permission(),
+                      Gateways.Authorizer.connect_gateways_permission()
+                    ]}
                  ]}}
     end
 
@@ -489,7 +493,8 @@ defmodule Domain.GatewaysTest do
       assert list_gateways(subject) ==
                {:error,
                 {:unauthorized,
-                 [missing_permissions: [Gateways.Authorizer.manage_gateways_permission()]]}}
+                 reason: :missing_permissions,
+                 missing_permissions: [Gateways.Authorizer.manage_gateways_permission()]}}
     end
 
     # TODO: add a test that soft-deleted assocs are not preloaded
@@ -815,7 +820,8 @@ defmodule Domain.GatewaysTest do
       assert update_gateway(gateway, %{}, subject) ==
                {:error,
                 {:unauthorized,
-                 [missing_permissions: [Gateways.Authorizer.manage_gateways_permission()]]}}
+                 reason: :missing_permissions,
+                 missing_permissions: [Gateways.Authorizer.manage_gateways_permission()]}}
     end
   end
 
@@ -845,7 +851,8 @@ defmodule Domain.GatewaysTest do
       assert delete_gateway(gateway, subject) ==
                {:error,
                 {:unauthorized,
-                 [missing_permissions: [Gateways.Authorizer.manage_gateways_permission()]]}}
+                 reason: :missing_permissions,
+                 missing_permissions: [Gateways.Authorizer.manage_gateways_permission()]}}
     end
   end
 
