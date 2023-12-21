@@ -33,7 +33,7 @@ do
           --health-cmd="ip link | grep tun-firezone" \
           --name="$RUNNING_NAME" \
           --cap-add=NET_ADMIN \
-          --volume /etc/firezone \
+          --volume /var/lib/firezone \
           --env-file variables.env \
           --sysctl net.ipv4.ip_forward=1 \
           --sysctl net.ipv4.conf.all.src_valid_mark=1 \
