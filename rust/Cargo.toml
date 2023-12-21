@@ -42,7 +42,7 @@ phoenix-channel = { path = "phoenix-channel"}
 [patch.crates-io]
 boringtun = { git = "https://github.com/cloudflare/boringtun", branch = "master" } # Contains unreleased patches we need (bump of x25519-dalek)
 webrtc = { git = "https://github.com/firezone/webrtc", branch = "update-ring" }
-x509-parser = { git = "https://github.com/rusticata/x509-parser", rev = "5132fdc51bfe14406ecbfd6f01a9592dad51eca1" }
+x509-parser = { git = "https://github.com/aggstam/x509-parser", rev = "5132fdc51bfe14406ecbfd6f01a9592dad51eca1" }
 
 [profile.release]
 strip = true
