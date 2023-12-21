@@ -193,7 +193,7 @@ where
             }});
 
             tokio::spawn(async move {
-                let mut exponential_backoff = ExponentialBackoffBuilder::default().build();
+                let mut exponential_backoff = ExponentialBackoffBuilder::default().with_max_elapsed_time(Some(Duration::from_secs(5 * 60))).build();
                 loop {
                     // `connection.start` calls the callback only after connecting
                     tracing::debug!("Attempting connection to portal...");
@@ -211,11 +211,8 @@ where
                         tokio::time::sleep(t).await;
                     } else {
                         tracing::error!("Connection to portal failed, giving up");
-                        fatal_error!(
-                            result.and(Err(Error::PortalConnectionError(tokio_tungstenite::tungstenite::Error::ConnectionClosed))),
-                            runtime_stopper,
-                            &callbacks
-                        );
+                        Self::disconnect_inner(runtime_stopper, &callbacks, None);
+                        break;
                     }
                 }
 
