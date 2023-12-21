@@ -254,16 +254,14 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-rust
         with:
-          targets: x86_64-pc-windows-msvc
+          targets: ${{ matrix.arch.target }}
       - name: Build release binaries
         run: |
-          # Install clang to cross-compile `ring` for aarch64
-          choco install llvm
           # Install Tauri build tool
           npm install -g @tauri-apps/cli
 
           # Tauri build already defaults to '--release'
-          tauri build --target ${{ matrix.arch.target }}
+          tauri build -- -p ${{ matrix.name.package }} --target ${{ matrix.arch.target }}
 
           # Rename the portable exe to include architecture.
           # CI doesn't need this, but CD does, so do the same in both
