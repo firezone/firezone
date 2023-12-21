@@ -30,6 +30,19 @@ defmodule API.Client.SocketTest do
       assert connect(Socket, attrs, connect_info: @connect_info) == {:error, :invalid_token}
     end
 
+    test "renders error on invalid attrs" do
+      subject = Fixtures.Auth.create_subject()
+      {:ok, token} = Auth.create_session_token_from_subject(subject)
+
+      attrs = %{token: token}
+
+      assert {:error, changeset} = connect(Socket, attrs, connect_info: connect_info(subject))
+
+      errors = API.Sockets.changeset_error_to_string(changeset)
+      assert errors =~ "public_key: can't be blank"
+      assert errors =~ "external_id: can't be blank"
+    end
+
     test "creates a new client" do
       subject = Fixtures.Auth.create_subject()
       {:ok, token} = Auth.create_session_token_from_subject(subject)
