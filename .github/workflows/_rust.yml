@@ -95,7 +95,8 @@ jobs:
           npm install -g @tauri-apps/cli
 
           # Tauri installed from npm needs more hyphens here than Tauri from Cargo.
-          tauri build --target ${{ matrix.arch.target }} -- -- -p ${{ matrix.name.package }}
+          # TODO: Bundling into MSI is temporarily disabled because it doesn't work for cross-compiling to aarch64
+          tauri build --bundles --target ${{ matrix.arch.target }} -- -- -p ${{ matrix.name.package }}
 
           # Rename the portable exe to include architecture.
           # CI doesn't need this, but CD does, so do the same in both
