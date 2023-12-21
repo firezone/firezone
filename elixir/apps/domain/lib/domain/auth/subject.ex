@@ -16,12 +16,12 @@ defmodule Domain.Auth.Subject do
           context: Context.t()
         }
 
-  @enforce_keys [:identity, :actor, :permissions, :account, :context, :expires_at]
+  @enforce_keys [:identity, :actor, :permissions, :account, :token, :expires_at, :context]
   defstruct identity: nil,
             actor: nil,
             permissions: MapSet.new(),
             account: nil,
             token: nil,
             expires_at: nil,
-            context: %Context{}
+            context: nil
 end

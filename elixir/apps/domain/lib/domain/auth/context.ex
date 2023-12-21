@@ -15,6 +15,7 @@ defmodule Domain.Auth.Context do
           user_agent: String.t()
         }
 
+  @enforce_keys [:type, :remote_ip, :user_agent]
   defstruct type: nil,
             remote_ip: nil,
             remote_ip_location_region: nil,

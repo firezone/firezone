@@ -2,7 +2,6 @@ defmodule API.Client.SocketTest do
   use API.ChannelCase, async: true
   import API.Client.Socket, only: [id: 1]
   alias API.Client.Socket
-  alias Domain.Auth
 
   @geo_headers [
     {"x-geo-location-region", "Ukraine"},
@@ -43,9 +42,18 @@ defmodule API.Client.SocketTest do
       assert errors =~ "external_id: can't be blank"
     end
 
+    test "does not allow to use tokens from other contexts" do
+      subject = Fixtures.Auth.create_subject(context: [type: :browser])
+      token = Domain.Tokens.encode_token!(subject.token)
+
+      attrs = connect_attrs(token: token)
+
+      assert connect(Socket, attrs, connect_info: @connect_info) == {:error, :invalid_token}
+    end
+
     test "creates a new client" do
-      subject = Fixtures.Auth.create_subject()
-      {:ok, token} = Auth.create_session_token_from_subject(subject)
+      subject = Fixtures.Auth.create_subject(context: [type: :client])
+      token = Domain.Tokens.encode_token!(subject.token)
 
       attrs = connect_attrs(token: token)
 
@@ -64,8 +72,8 @@ defmodule API.Client.SocketTest do
     end
 
     test "propagates trace context" do
-      subject = Fixtures.Auth.create_subject()
-      {:ok, token} = Auth.create_session_token_from_subject(subject)
+      subject = Fixtures.Auth.create_subject(context: [type: :client])
+      token = Domain.Tokens.encode_token!(subject.token)
 
       span_ctx = OpenTelemetry.Tracer.start_span("test")
       OpenTelemetry.Tracer.set_current_span(span_ctx)
@@ -83,9 +91,9 @@ defmodule API.Client.SocketTest do
     end
 
     test "updates existing client" do
-      subject = Fixtures.Auth.create_subject()
+      subject = Fixtures.Auth.create_subject(context: [type: :client])
       existing_client = Fixtures.Clients.create_client(subject: subject)
-      {:ok, token} = Auth.create_session_token_from_subject(subject)
+      token = Domain.Tokens.encode_token!(subject.token)
 
       attrs = connect_attrs(token: token, external_id: existing_client.external_id)
 
@@ -99,9 +107,9 @@ defmodule API.Client.SocketTest do
     end
 
     test "uses region code to put default coordinates" do
-      subject = Fixtures.Auth.create_subject()
+      subject = Fixtures.Auth.create_subject(context: [type: :client])
       existing_client = Fixtures.Clients.create_client(subject: subject)
-      {:ok, token} = Auth.create_session_token_from_subject(subject)
+      token = Domain.Tokens.encode_token!(subject.token)
 
       attrs = connect_attrs(token: token, external_id: existing_client.external_id)
 
