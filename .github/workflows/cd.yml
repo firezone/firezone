@@ -257,6 +257,8 @@ jobs:
           targets: ${{ matrix.arch.target }}
       - name: Build release binaries
         run: |
+          # Build Tauri app
+
           # Install Tauri build tool
           npm install -g @tauri-apps/cli
 
