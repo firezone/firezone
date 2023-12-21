@@ -16,7 +16,7 @@ use connlib_shared::{Callbacks, Dname, DNS_SENTINEL};
 use domain::base::Rtype;
 use futures::channel::mpsc::Receiver;
 use futures::stream;
-use futures_bounded::{PushError, StreamMap};
+use futures_bounded::{FuturesMap, PushError, StreamMap};
 use hickory_resolver::lookup::Lookup;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
@@ -29,7 +29,6 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
-use tokio::task::JoinSet;
 use tokio::time::Instant;
 use webrtc::ice_transport::ice_candidate::RTCIceCandidate;
 
@@ -180,7 +179,7 @@ pub struct ClientState {
     // if this would happen often the UX would be awful but this is only in cases where messages are delayed for more than 10 seconds, it's enough that it doesn't break correctness.
     // * even more unlikely a tunnel could be established in a sort of race condition when this timer goes off. Again a similar behavior to the one above will happen, the webrtc connection will be forcefully terminated from the gateway.
     // then the old peer will expire, this might take ~180 seconds. This is an even worse experience but the likelihood of this happen is infinitesimaly small, again correctness is the only important part.
-    gateway_awaiting_connection_timers: JoinSet<GatewayId>,
+    gateway_awaiting_connection_timers: FuturesMap<GatewayId, ()>,
 
     pub gateway_public_keys: HashMap<GatewayId, PublicKey>,
     pub gateway_preshared_keys: HashMap<GatewayId, StaticSecret>,
@@ -292,10 +291,22 @@ impl ClientState {
                 channel: p.channel.clone(),
             })
         }) else {
-            self.gateway_awaiting_connection_timers.spawn(async move {
-                tokio::time::sleep(MAX_CONNECTION_REQUEST_DELAY).await;
-                gateway
-            });
+            match self
+                .gateway_awaiting_connection_timers
+                // Note: we don't need to set a timer here because
+                // the FutureMap already expires things, it seems redundant
+                // to also have timer that expires.
+                .try_push(gateway, std::future::pending())
+            {
+                Ok(_) => {}
+                Err(PushError::BeyondCapacity(_)) => {
+                    tracing::warn!(%gateway, "Too many concurrent connection attempts");
+                    return Err(Error::TooManyConnectionRequests);
+                }
+                Err(PushError::Replaced(_)) => {
+                    // The timers are equivalent for our purpose so we don't really care about this one.
+                }
+            };
             self.gateway_awaiting_connection.insert(gateway);
             return Ok(None);
         };
@@ -329,6 +340,7 @@ impl ClientState {
         };
 
         self.gateway_awaiting_connection.remove(&gateway);
+        self.gateway_awaiting_connection_timers.remove(gateway);
     }
 
     fn is_awaiting_connection_to_dns(&self, resource: &DnsResource) -> bool {
@@ -472,6 +484,7 @@ impl ClientState {
 
         // Tidy up state once everything succeeded.
         self.gateway_awaiting_connection.remove(&gateway);
+        self.gateway_awaiting_connection_timers.remove(gateway);
         self.awaiting_connection.remove(&resource);
 
         Ok(config)
@@ -632,7 +645,7 @@ impl Default for ClientState {
             awaiting_connection_timers: StreamMap::new(Duration::from_secs(60), 100),
 
             gateway_awaiting_connection: Default::default(),
-            gateway_awaiting_connection_timers: Default::default(),
+            gateway_awaiting_connection_timers: FuturesMap::new(MAX_CONNECTION_REQUEST_DELAY, 100),
 
             gateway_public_keys: Default::default(),
             resources_gateways: Default::default(),
@@ -673,8 +686,8 @@ impl RoleState for ClientState {
                 Poll::Pending => {}
             }
 
-            if let Poll::Ready(Some(Ok(gateway_id))) =
-                self.gateway_awaiting_connection_timers.poll_join_next(cx)
+            if let Poll::Ready((gateway_id, _)) =
+                self.gateway_awaiting_connection_timers.poll_unpin(cx)
             {
                 self.gateway_awaiting_connection.remove(&gateway_id);
             }
