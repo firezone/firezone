@@ -66,6 +66,7 @@ where
         token: SecretString,
         device_id: String,
         callbacks: CB,
+        max_partition_time: Duration,
     ) -> Result<Self> {
         // TODO: We could use tokio::runtime::current() to get the current runtime
         // which could work with swift-rust that already runs a runtime. But IDK if that will work
@@ -111,6 +112,7 @@ where
             token,
             device_id,
             this.callbacks.clone(),
+            max_partition_time,
         );
         std::thread::spawn(move || {
             rx.blocking_recv();
@@ -127,6 +129,7 @@ where
         token: SecretString,
         device_id: String,
         callbacks: CallbackErrorFacade<CB>,
+        max_partition_time: Duration,
     ) {
         runtime.spawn(async move {
             let (connect_url, private_key) = fatal_error!(
@@ -193,7 +196,7 @@ where
             }});
 
             tokio::spawn(async move {
-                let mut exponential_backoff = ExponentialBackoffBuilder::default().with_max_elapsed_time(Some(Duration::from_secs(5 * 60))).build();
+                let mut exponential_backoff = ExponentialBackoffBuilder::default().with_max_elapsed_time(Some(max_partition_time)).build();
                 loop {
                     // `connection.start` calls the callback only after connecting
                     tracing::debug!("Attempting connection to portal...");
