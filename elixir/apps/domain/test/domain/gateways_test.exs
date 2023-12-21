@@ -679,7 +679,7 @@ defmodule Domain.GatewaysTest do
 
       assert Repo.aggregate(Gateways.Gateway, :count, :id) == 1
 
-      assert updated_gateway.name
+      assert updated_gateway.name != gateway.name
       assert updated_gateway.last_seen_remote_ip.address == attrs.last_seen_remote_ip
       assert updated_gateway.last_seen_remote_ip != gateway.last_seen_remote_ip
       assert updated_gateway.last_seen_user_agent == attrs.last_seen_user_agent
