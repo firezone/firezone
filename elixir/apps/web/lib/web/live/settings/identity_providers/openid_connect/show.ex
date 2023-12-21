@@ -52,7 +52,7 @@ defmodule Web.Settings.IdentityProviders.OpenIDConnect.Show do
         <.button
           :if={is_nil(@provider.disabled_at)}
           phx-click="disable"
-          data-confirm="Are you sure want to disable this provider? All authorizations will be revoked and actors won't be able to use it to access Firezone."
+          data-confirm="Are you sure want to disable this provider? All users signed into this provider will be immediately signed out."
         >
           Disable
         </.button>
