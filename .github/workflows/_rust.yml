@@ -77,8 +77,10 @@ jobs:
         arch:
           - target: aarch64-pc-windows-msvc
             shortname: arm64
+            bundles: none
           - target: x86_64-pc-windows-msvc
             shortname: x64
+            bundles: msi
         name:
           - package: firezone-windows-client
             artifact: windows-client
@@ -96,7 +98,7 @@ jobs:
 
           # Tauri installed from npm needs more hyphens here than Tauri from Cargo.
           # TODO: Bundling into MSI is temporarily disabled because it doesn't work for cross-compiling to aarch64
-          tauri build --bundles --target ${{ matrix.arch.target }} -- -- -p ${{ matrix.name.package }}
+          tauri build --bundles ${{ matrix.arch.bundles }} --target ${{ matrix.arch.target }} -- -- -p ${{ matrix.name.package }}
 
           # Rename the portable exe to include architecture.
           # CI doesn't need this, but CD does, so do the same in both

@@ -20,6 +20,12 @@ stat ../target/release/bundle/msi/firezone-windows-client_0.0.0_x64_en-US.msi
 stat ../target/release/bundle/nsis/firezone-windows-client_0.0.0_x64-setup.exe
 ```
 
+To cross-compile ring 0.17 for aarch64 Windows (Perl might not be needed since we're using an official crates.io release of ring?)
+
+```
+choco install llvm strawberryperl
+```
+
 ## Running
 
 From this dir:
