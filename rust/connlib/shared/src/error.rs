@@ -148,6 +148,8 @@ pub enum ConnlibError {
     Wintun(#[from] wintun::Error),
     #[error("Token has expired")]
     TokenExpired,
+    #[error("Too many concurrent gateway connection requests")]
+    TooManyConnectionRequests,
 }
 
 impl ConnlibError {

@@ -126,7 +126,7 @@ pub(crate) async fn new_ice_connection(
                 }
 
                 if ice_candidate_tx.send(candidate).await.is_err() {
-                    debug_assert!(false, "receiver was dropped before sender");
+                    tracing::warn!("ice gatherer receiver was dropped before sender");
                 }
             })
         })
@@ -172,6 +172,7 @@ fn start_handlers<TId, TTransform, TRoleState>(
             }
         })
     }));
+
     tokio::spawn({
         async move {
             // If this fails receiver will be dropped and the connection will expire at some point
