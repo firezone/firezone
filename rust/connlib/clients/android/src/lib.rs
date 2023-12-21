@@ -11,13 +11,13 @@ use jni::{
     JNIEnv, JavaVM,
 };
 use secrecy::SecretString;
-use std::sync::OnceLock;
 use std::{net::IpAddr, path::Path};
 use std::{
     net::{Ipv4Addr, Ipv6Addr},
     os::fd::RawFd,
     path::PathBuf,
 };
+use std::{sync::OnceLock, time::Duration};
 use thiserror::Error;
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::EnvFilter;
@@ -405,7 +405,13 @@ fn connect(
         handle,
     };
 
-    let session = Session::connect(api_url.as_str(), secret, device_id, callback_handler)?;
+    let session = Session::connect(
+        api_url.as_str(),
+        secret,
+        device_id,
+        callback_handler,
+        Duration::from_secs(5 * 60),
+    )?;
 
     Ok(session)
 }

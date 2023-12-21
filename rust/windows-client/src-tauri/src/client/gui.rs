@@ -12,7 +12,7 @@ use client::{
 use connlib_client_shared::file_logger;
 use connlib_shared::messages::ResourceId;
 use secrecy::{ExposeSecret, SecretString};
-use std::{net::IpAddr, path::PathBuf, str::FromStr};
+use std::{net::IpAddr, path::PathBuf, str::FromStr, time::Duration};
 use system_tray_menu::{Event as TrayMenuEvent, Resource as ResourceDisplay};
 use tauri::{Manager, SystemTray, SystemTrayEvent};
 use tokio::sync::{mpsc, oneshot};
@@ -386,6 +386,7 @@ impl Controller {
                 ctlr_tx,
                 logger: Some(logger),
             },
+            Duration::from_secs(5 * 60),
         )?)
     }
 }
