@@ -54,9 +54,9 @@ pub struct ConnectionPool<T, TId> {
 pub enum Error {
     #[error("Unknown interface")]
     UnknownInterface,
-    #[error("Failed to decapsualte")]
+    #[error("Failed to decapsulate: {0:?}")] // TODO: Upstream an std::error::Error impl
     Decapsulate(boringtun::noise::errors::WireGuardError),
-    #[error("Failed to encapsulate")]
+    #[error("Failed to encapsulate: {0:?}")]
     Encapsulate(boringtun::noise::errors::WireGuardError),
     #[error("Unmatched packet")]
     UnmatchedPacket,
@@ -146,7 +146,7 @@ where
                 }
             }
 
-            for (id, conn) in self.negotiated_connections.iter_mut() {
+            for (_, conn) in self.negotiated_connections.iter_mut() {
                 // Would the ICE agent of this connection like to handle the packet?
                 if conn.agent.accepts_message(&stun_message) {
                     conn.agent.handle_receive(
@@ -160,40 +160,43 @@ where
                     );
                     return Ok(None);
                 }
+            }
+        }
 
-                // TODO: I think eventually, here is where we'd unwrap a channel data message.
+        for (id, conn) in self.negotiated_connections.iter_mut() {
+            // Is the packet from the remote directly?
 
-                // Is the packet from the remote directly?
-                if !conn.remote_socket.is_some_and(|r| r == from) {
-                    continue;
-                }
+            if !conn.accepts(from) {
+                continue;
+            }
 
-                return match conn.tunnel.decapsulate(None, packet, buffer) {
-                    TunnResult::Done => Ok(None),
-                    TunnResult::Err(e) => Err(Error::Decapsulate(e)),
-                    TunnResult::WriteToTunnelV4(packet, ip) => Ok(Some((*id, ip.into(), packet))),
-                    TunnResult::WriteToTunnelV6(packet, ip) => Ok(Some((*id, ip.into(), packet))),
-                    // TODO: Document why this is okay!
-                    TunnResult::WriteToNetwork(bytes) => {
+            // TODO: I think eventually, here is where we'd unwrap a channel data message.
+
+            return match conn.tunnel.decapsulate(None, packet, buffer) {
+                TunnResult::Done => Ok(None),
+                TunnResult::Err(e) => Err(Error::Decapsulate(e)),
+                TunnResult::WriteToTunnelV4(packet, ip) => Ok(Some((*id, ip.into(), packet))),
+                TunnResult::WriteToTunnelV6(packet, ip) => Ok(Some((*id, ip.into(), packet))),
+                // TODO: Document why this is okay!
+                TunnResult::WriteToNetwork(bytes) => {
+                    self.buffered_transmits.push_back(Transmit {
+                        dst: from,
+                        payload: bytes.to_vec(),
+                    });
+
+                    while let TunnResult::WriteToNetwork(packet) =
+                        conn.tunnel
+                            .decapsulate(None, &[], self.buffer.as_mut_slice())
+                    {
                         self.buffered_transmits.push_back(Transmit {
                             dst: from,
-                            payload: bytes.to_vec(),
+                            payload: packet.to_vec(),
                         });
-
-                        while let TunnResult::WriteToNetwork(packet) =
-                            conn.tunnel
-                                .decapsulate(None, &[], self.buffer.as_mut_slice())
-                        {
-                            self.buffered_transmits.push_back(Transmit {
-                                dst: from,
-                                payload: packet.to_vec(),
-                            });
-                        }
-
-                        Ok(None)
                     }
-                };
-            }
+
+                    Ok(None)
+                }
+            };
         }
 
         Err(Error::UnmatchedPacket)
@@ -229,7 +232,8 @@ where
         for (id, conn) in self.negotiated_connections.iter_mut() {
             while let Some(event) = conn.agent.poll_event() {
                 match event {
-                    IceAgentEvent::DiscoveredRecv { .. } => {
+                    IceAgentEvent::DiscoveredRecv { source, .. } => {
+                        conn.possible_sockets.insert(source);
                         // TODO: Here is where we'd allocate channels.
                     }
                     IceAgentEvent::IceRestart(_) => {}
@@ -404,6 +408,7 @@ where
                 _turn_servers: initial.turn_servers,
                 next_timer_update: None,
                 remote_socket: None,
+                possible_sockets: HashSet::default(),
             },
         );
     }
@@ -467,6 +472,7 @@ where
                 _turn_servers: allowed_turn_servers,
                 next_timer_update: None,
                 remote_socket: None,
+                possible_sockets: HashSet::default(),
             },
         );
 
@@ -522,12 +528,25 @@ struct Connection {
 
     // When this is `Some`, we are connected.
     remote_socket: Option<SocketAddr>,
+    // Socket addresses from which we might receive data (even before we are connected).
+    possible_sockets: HashSet<SocketAddr>,
 
     _stun_servers: Vec<SocketAddr>,
     _turn_servers: Vec<SocketAddr>,
 }
 
 impl Connection {
+    /// Checks if we want to accept a packet from a certain address.
+    ///
+    /// Whilst we establish connections, we may see traffic from a certain address, prior to the negotiation being fully complete.
+    /// We already want to accept that traffic and not throw it away.
+    fn accepts(&self, addr: SocketAddr) -> bool {
+        let from_connected_remote = self.remote_socket.is_some_and(|r| r == addr);
+        let from_possible_remote = self.possible_sockets.contains(&addr);
+
+        from_connected_remote || from_possible_remote
+    }
+
     fn poll_timeout(&mut self) -> Option<Instant> {
         let agent_timeout = self.agent.poll_timeout();
         let next_wg_timer = self.next_timer_update;

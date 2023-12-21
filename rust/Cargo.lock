@@ -1890,6 +1890,8 @@ dependencies = [
  "boringtun",
  "firezone-connection",
  "futures",
+ "hex",
+ "pnet_packet",
  "rand 0.8.5",
  "redis",
  "redis-macros",
@@ -1898,6 +1900,7 @@ dependencies = [
  "serde-hex",
  "serde_json",
  "tokio",
+ "tracing",
  "tracing-subscriber",
 ]
 

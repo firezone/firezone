@@ -1,9 +1,9 @@
 use std::{
     future::poll_fn,
-    net::IpAddr,
+    net::{IpAddr, Ipv4Addr},
     str::FromStr,
     task::{Context, Poll},
-    time::Instant,
+    time::{Duration, Instant},
 };
 
 use anyhow::{bail, Context as _, Result};
@@ -12,6 +12,7 @@ use firezone_connection::{
     Answer, ClientConnectionPool, ConnectionPool, Credentials, Offer, ServerConnectionPool,
 };
 use futures::{future::BoxFuture, FutureExt};
+use pnet_packet::ip::IpNextHeaderProtocols;
 use redis::AsyncCommands;
 use secrecy::{ExposeSecret as _, Secret};
 use tokio::{io::ReadBuf, net::UdpSocket};
@@ -21,8 +22,10 @@ const MAX_UDP_SIZE: usize = (1 << 16) - 1;
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    tokio::time::sleep(Duration::from_secs(1)).await; // Until redis is up.
+
     tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::builder().parse("debug")?)
+        .with_env_filter(EnvFilter::builder().parse("debug,firezone_connection_tests=trace")?)
         .init();
 
     let role = std::env::var("ROLE")
@@ -39,6 +42,10 @@ async fn main() -> Result<()> {
     let socket_addr = socket.local_addr()?;
     let private_key = StaticSecret::random_from_rng(&mut rand::thread_rng());
     let public_key = PublicKey::from(&private_key);
+
+    // The source and dst of our dummy IP packet that we send via the wireguard tunnel.
+    let source = Ipv4Addr::new(172, 16, 0, 1);
+    let dst = Ipv4Addr::new(10, 0, 0, 1);
 
     match role {
         Role::Dialer => {
@@ -57,11 +64,13 @@ async fn main() -> Result<()> {
                         public_key: public_key.to_bytes(),
                     },
                 )
-                .await?;
+                .await
+                .context("Failed to push offer")?;
 
             let answer = redis_connection
                 .blpop::<_, (String, wire::Answer)>("answers", 10)
-                .await?
+                .await
+                .context("Failed to pop answer")?
                 .1;
 
             pool.accept_answer(
@@ -77,7 +86,7 @@ async fn main() -> Result<()> {
 
             let mut eventloop = Eventloop::new(socket, pool);
 
-            let ping = rand::random::<[u8; 32]>();
+            let ping = ip4_udp_ping_packet(source, dst, &rand::random::<[u8; 32]>());
             let mut start = Instant::now();
 
             loop {
@@ -85,21 +94,21 @@ async fn main() -> Result<()> {
                     event = poll_fn(|cx| eventloop.poll(cx)) => {
                         match event? {
                             Event::Incoming { conn, packet, from } => {
-                                println!("Received {} bytes from {from} on connection {conn}", packet.len());
-
                                 anyhow::ensure!(conn == 1);
-                                anyhow::ensure!(packet == &ping);
+                                anyhow::ensure!(from == IpAddr::V4(dst));
+                                anyhow::ensure!(packet == &ip4_udp_ping_packet(dst, source, &packet[28..])); // Expect the listener to flip src and dst
 
                                 let rtt = start.elapsed();
 
-                                println!("RTT is {rtt:?}");
+                                tracing::info!("RTT is {rtt:?}");
 
                                 return Ok(())
                             }
                             Event::SignalIceCandidate { conn, candidate } => {
                                 redis_connection
                                     .rpush("dialer_candidates", wire::Candidate { conn, candidate })
-                                    .await?;
+                                    .await
+                                    .context("Failed to push candidate")?;
                             }
                             Event::ConnectionEstablished { conn } => {
                                 start = Instant::now();
@@ -108,8 +117,10 @@ async fn main() -> Result<()> {
                         }
                     }
 
-                    response = redis_connection.blpop::<_, (String, wire::Candidate)>("listener_candidates", 10) => {
-                        let (_, wire::Candidate { conn, candidate }) = response?;
+                    response = redis_connection.blpop::<_, Option<(String, wire::Candidate)>>("listener_candidates", 1) => {
+                        let Ok(Some((_, wire::Candidate { conn, candidate }))) = response else {
+                            continue;
+                        };
                         eventloop.pool.add_remote_candidate(conn, candidate);
                     }
                 }
@@ -121,7 +132,8 @@ async fn main() -> Result<()> {
 
             let offer = redis_connection
                 .blpop::<_, (String, wire::Offer)>("offers", 10)
-                .await?
+                .await
+                .context("Failed to pop offer")?
                 .1;
 
             let answer = pool.accept_connection(
@@ -147,7 +159,8 @@ async fn main() -> Result<()> {
                         password: answer.credentials.password,
                     },
                 )
-                .await?;
+                .await
+                .context("Failed to push answer")?;
 
             let mut eventloop = Eventloop::new(socket, pool);
 
@@ -156,27 +169,58 @@ async fn main() -> Result<()> {
                     event = poll_fn(|cx| eventloop.poll(cx)) => {
                         match event? {
                             Event::Incoming { conn, packet, from } => {
-                                println!("Received {} bytes from {from} on connection {conn}", packet.len());
+                                anyhow::ensure!(from == IpAddr::V4(source));
 
-                                eventloop.send_to(conn, &packet)?;
+                                eventloop.send_to(conn, &ip4_udp_ping_packet(dst, source, &packet[28..]))?;
                             }
                             Event::SignalIceCandidate { conn, candidate } => {
                                 redis_connection
                                     .rpush("listener_candidates", wire::Candidate { conn, candidate })
-                                    .await?;
+                                    .await
+                                    .context("Failed to push candidate")?;
                             }
                             Event::ConnectionEstablished { .. } => { }
                         }
                     }
 
-                    response = redis_connection.blpop::<_, (String, wire::Candidate)>("dialer_candidates", 10) => {
-                        let (_, wire::Candidate { conn, candidate }) = response?;
+                    response = redis_connection.blpop::<_, Option<(String, wire::Candidate)>>("dialer_candidates", 1) => {
+                        let Ok(Some((_, wire::Candidate { conn, candidate }))) = response else {
+                            continue;
+                        };
                         eventloop.pool.add_remote_candidate(conn, candidate);
                     }
                 }
             }
         }
     };
+}
+
+fn ip4_udp_ping_packet(source: Ipv4Addr, dst: Ipv4Addr, body: &[u8]) -> [u8; 60] {
+    assert_eq!(body.len(), 32);
+
+    let mut packet_buffer = [0u8; 60];
+
+    let mut ip4_header =
+        pnet_packet::ipv4::MutableIpv4Packet::new(&mut packet_buffer[..20]).unwrap();
+    ip4_header.set_version(4);
+    ip4_header.set_source(source);
+    ip4_header.set_destination(dst);
+    ip4_header.set_next_level_protocol(IpNextHeaderProtocols::Udp);
+    ip4_header.set_ttl(10);
+    ip4_header.set_total_length(20 + 8 + 32); // IP4 + UDP + payload.
+    ip4_header.set_header_length(5); // Length is in number of 32bit words, i.e. 5 means 20 bytes.
+    ip4_header.set_checksum(pnet_packet::ipv4::checksum(&ip4_header.to_immutable()));
+
+    let mut udp_header =
+        pnet_packet::udp::MutableUdpPacket::new(&mut packet_buffer[20..28]).unwrap();
+    udp_header.set_source(9999);
+    udp_header.set_destination(9999);
+    udp_header.set_length(8 + 32);
+    udp_header.set_checksum(0); // Not necessary for IPv4, let's keep it simple.
+
+    packet_buffer[28..60].copy_from_slice(&body);
+
+    packet_buffer
 }
 
 mod wire {
@@ -261,23 +305,17 @@ impl<T> Eventloop<T> {
             return Ok(());
         };
 
+        tracing::trace!(target = "wire::out", to = %addr, packet = %hex::encode(msg));
+
         self.socket.try_send_to(msg, addr)?;
 
         Ok(())
     }
 
     fn poll(&mut self, cx: &mut Context<'_>) -> Poll<Result<Event>> {
-        if let Poll::Ready(instant) = self.timeout.poll_unpin(cx) {
-            self.pool.handle_timeout(instant);
-            if let Some(timeout) = self.pool.poll_timeout() {
-                self.timeout = sleep_until(timeout).boxed();
-            }
-
-            cx.waker().wake_by_ref();
-            return Poll::Pending;
-        }
-
         while let Some(transmit) = self.pool.poll_transmit() {
+            tracing::trace!(target = "wire::out", to = %transmit.dst, packet = %hex::encode(&transmit.payload));
+
             self.socket.try_send_to(&transmit.payload, transmit.dst)?;
         }
 
@@ -297,12 +335,26 @@ impl<T> Eventloop<T> {
             None => {}
         }
 
+        if let Poll::Ready(instant) = self.timeout.poll_unpin(cx) {
+            self.pool.handle_timeout(instant);
+            if let Some(timeout) = self.pool.poll_timeout() {
+                self.timeout = sleep_until(timeout).boxed();
+            }
+
+            cx.waker().wake_by_ref();
+            return Poll::Pending;
+        }
+
         let mut read_buf = ReadBuf::new(self.read_buffer.as_mut());
         if let Poll::Ready(from) = self.socket.poll_recv_from(cx, &mut read_buf)? {
+            let packet = read_buf.filled();
+
+            tracing::trace!(target = "wire::in", %from, packet = %hex::encode(packet));
+
             if let Some((conn, ip, packet)) = self.pool.decapsulate(
                 self.socket.local_addr()?,
                 from,
-                read_buf.filled(),
+                packet,
                 Instant::now(),
                 self.write_buffer.as_mut(),
             )? {
@@ -322,7 +374,7 @@ enum Event {
     Incoming {
         conn: u64,
         from: IpAddr,
-        packet: Vec<u8>, // For simplicity, we allocate here
+        packet: Vec<u8>, // For simplicity, we allocate here ...
     },
     SignalIceCandidate {
         conn: u64,

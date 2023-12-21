@@ -87,6 +87,7 @@ COPY . .
 
 ARG TARGET
 ARG PACKAGE
+RUN cargo clean -p boringtun
 RUN cargo build -p ${PACKAGE} $([ -v "${TARGET}" ] && "--target ${TARGET}")
 
 # Image which is used to run the application binary
