@@ -32,7 +32,7 @@ defmodule Web.PageComponents do
       </p>
 
       <section :for={content <- @content} class="section-body">
-        <div :if={Map.get(content, :flash)}>
+        <div :if={Map.get(content, :flash)} class="mb-4">
           <.flash kind={:info} flash={Map.get(content, :flash)} style="wide" />
           <.flash kind={:error} flash={Map.get(content, :flash)} style="wide" />
         </div>

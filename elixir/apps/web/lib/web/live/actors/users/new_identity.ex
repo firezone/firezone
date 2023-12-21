@@ -95,13 +95,22 @@ defmodule Web.Actors.Users.NewIdentity do
   end
 
   def handle_event("submit", %{"identity" => attrs}, socket) do
-    with {:ok, _identity} <-
+    with {:ok, identity} <-
            Auth.create_identity(
              socket.assigns.actor,
              socket.assigns.provider,
              attrs,
              socket.assigns.subject
            ) do
+      if socket.assigns.provider.adapter == :email do
+        Web.Mailer.AuthEmail.new_user_email(
+          socket.assigns.account,
+          identity,
+          socket.assigns.subject
+        )
+        |> Web.Mailer.deliver()
+      end
+
       socket =
         push_navigate(socket, to: ~p"/#{socket.assigns.account}/actors/#{socket.assigns.actor}")
 
