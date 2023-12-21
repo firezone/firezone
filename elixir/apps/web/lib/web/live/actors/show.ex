@@ -223,7 +223,7 @@ defmodule Web.Actors.Show do
             </.link>
           </:col>
           <:empty>
-            <div class="text-center text-neutral-500 p-4">No activity to display</div>
+            <div class="text-center text-neutral-500 p-4">No activity to display. Activities are created when the client attempts to access a resource.</div>
           </:empty>
         </.table>
       </:content>
