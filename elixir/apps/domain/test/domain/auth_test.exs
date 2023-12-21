@@ -2363,7 +2363,7 @@ defmodule Domain.AuthTest do
       assert {:ok, encoded_token} =
                sign_in(provider, identity.provider_identifier, secret, context)
 
-      assert {:ok, subject} = authenticate(account.id, encoded_token, context)
+      assert {:ok, subject} = authenticate(encoded_token, context)
       assert subject.account.id == account.id
       assert subject.actor.id == identity.actor_id
       assert subject.identity.id == identity.id
@@ -2439,7 +2439,7 @@ defmodule Domain.AuthTest do
       assert {:ok, encoded_token} =
                sign_in(provider, identity.provider_identifier, secret, context)
 
-      assert {:ok, subject} = authenticate(account.id, encoded_token, context)
+      assert {:ok, subject} = authenticate(encoded_token, context)
 
       assert_datetime_diff(subject.expires_at, DateTime.utc_now(), ten_hours)
 
@@ -2451,7 +2451,7 @@ defmodule Domain.AuthTest do
       assert {:ok, encoded_token} =
                sign_in(provider, identity.provider_identifier, secret, context)
 
-      assert {:ok, subject} = authenticate(account.id, encoded_token, context)
+      assert {:ok, subject} = authenticate(encoded_token, context)
       assert_datetime_diff(subject.expires_at, DateTime.utc_now(), ten_hours)
 
       # Client session
@@ -2466,7 +2466,7 @@ defmodule Domain.AuthTest do
       assert {:ok, encoded_token} =
                sign_in(provider, identity.provider_identifier, secret, context)
 
-      assert {:ok, subject} = authenticate(account.id, encoded_token, context)
+      assert {:ok, subject} = authenticate(encoded_token, context)
       assert_datetime_diff(subject.expires_at, DateTime.utc_now(), one_week)
 
       ## Regular user
@@ -2477,7 +2477,7 @@ defmodule Domain.AuthTest do
       assert {:ok, encoded_token} =
                sign_in(provider, identity.provider_identifier, secret, context)
 
-      assert {:ok, subject} = authenticate(account.id, encoded_token, context)
+      assert {:ok, subject} = authenticate(encoded_token, context)
       assert_datetime_diff(subject.expires_at, DateTime.utc_now(), one_week)
     end
 
@@ -2661,7 +2661,7 @@ defmodule Domain.AuthTest do
 
       assert {:ok, encoded_token} = sign_in(provider, payload, context)
 
-      assert {:ok, subject} = authenticate(account.id, encoded_token, context)
+      assert {:ok, subject} = authenticate(encoded_token, context)
       assert subject.account.id == account.id
       assert subject.actor.id == identity.actor_id
       assert subject.identity.id == identity.id
@@ -2770,7 +2770,7 @@ defmodule Domain.AuthTest do
 
       assert {:ok, encoded_token} = sign_in(provider, payload, context)
 
-      assert {:ok, subject} = authenticate(account.id, encoded_token, context)
+      assert {:ok, subject} = authenticate(encoded_token, context)
 
       one_week = 7 * 24 * 60 * 60
       assert_datetime_diff(subject.expires_at, DateTime.utc_now(), one_week)
@@ -2804,7 +2804,7 @@ defmodule Domain.AuthTest do
 
       assert {:ok, encoded_token} = sign_in(provider, payload, context)
 
-      assert {:ok, subject} = authenticate(account.id, encoded_token, context)
+      assert {:ok, subject} = authenticate(encoded_token, context)
 
       ten_hours = 10 * 60 * 60
       assert_datetime_diff(subject.expires_at, DateTime.utc_now(), ten_hours)
@@ -2838,7 +2838,7 @@ defmodule Domain.AuthTest do
 
       assert {:ok, encoded_token} = sign_in(provider, payload, context)
 
-      assert {:ok, subject} = authenticate(account.id, encoded_token, context)
+      assert {:ok, subject} = authenticate(encoded_token, context)
 
       one_week = 7 * 24 * 60 * 60
       assert_datetime_diff(subject.expires_at, DateTime.utc_now(), one_week)
@@ -2872,7 +2872,7 @@ defmodule Domain.AuthTest do
 
       assert {:ok, encoded_token} = sign_in(provider, payload, context)
 
-      assert {:ok, subject} = authenticate(account.id, encoded_token, context)
+      assert {:ok, subject} = authenticate(encoded_token, context)
 
       ten_hours = 10 * 60 * 60
       assert_datetime_diff(subject.expires_at, DateTime.utc_now(), ten_hours)
@@ -3099,7 +3099,7 @@ defmodule Domain.AuthTest do
 
       assert {:ok, encoded_token} = create_service_account_token(provider, identity, subject)
 
-      assert {:ok, sa_subject} = authenticate(account.id, encoded_token, context)
+      assert {:ok, sa_subject} = authenticate(encoded_token, context)
       assert sa_subject.account.id == account.id
       assert sa_subject.actor.id == identity.actor_id
       assert sa_subject.identity.id == identity.id
@@ -3118,7 +3118,7 @@ defmodule Domain.AuthTest do
     end
   end
 
-  describe "authenticate" do
+  describe "authenticate/2" do
     setup do
       account = Fixtures.Accounts.create_account()
       Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
@@ -3186,23 +3186,21 @@ defmodule Domain.AuthTest do
     end
 
     test "returns error when token is invalid", %{
-      account: account,
       browser_context: browser_context,
       client_context: client_context
     } do
-      assert authenticate(account.id, "foo", browser_context) == {:error, :unauthorized}
-      assert authenticate(account.id, "foo", client_context) == {:error, :unauthorized}
+      assert authenticate("foo", browser_context) == {:error, :unauthorized}
+      assert authenticate("foo", client_context) == {:error, :unauthorized}
     end
 
     test "returns error when token is issued for a different context type", %{
-      account: account,
       browser_context: browser_context,
       browser_token: browser_token,
       client_context: client_context,
       client_token: client_token
     } do
-      assert authenticate(account.id, client_token, browser_context) == {:error, :unauthorized}
-      assert authenticate(account.id, browser_token, client_context) == {:error, :unauthorized}
+      assert authenticate(client_token, browser_context) == {:error, :unauthorized}
+      assert authenticate(browser_token, client_context) == {:error, :unauthorized}
     end
 
     test "returns subject for browser token", %{
@@ -3213,7 +3211,7 @@ defmodule Domain.AuthTest do
       browser_subject: subject,
       browser_token: token
     } do
-      assert {:ok, reconstructed_subject} = authenticate(account.id, token, context)
+      assert {:ok, reconstructed_subject} = authenticate(token, context)
       assert reconstructed_subject.identity.id == identity.id
       assert reconstructed_subject.actor.id == actor.id
       assert reconstructed_subject.account.id == account.id
@@ -3221,26 +3219,24 @@ defmodule Domain.AuthTest do
       assert reconstructed_subject.context.remote_ip == context.remote_ip
       assert reconstructed_subject.context.user_agent == context.user_agent
 
-      assert DateTime.diff(reconstructed_subject.expires_at, subject.expires_at) <= 1
-      assert DateTime.diff(reconstructed_subject.expires_at, subject.token.expires_at) <= 1
+      assert reconstructed_subject.expires_at == subject.expires_at
+      assert reconstructed_subject.expires_at == subject.token.expires_at
     end
 
     test "returns an error when browser user agent is changed", %{
-      account: account,
       browser_context: context,
       browser_token: token
     } do
       context = %{context | user_agent: context.user_agent <> "+b1"}
-      assert authenticate(account.id, token, context) == {:error, :unauthorized}
+      assert authenticate(token, context) == {:error, :unauthorized}
     end
 
     test "returns an error when browser ip address is changed", %{
-      account: account,
       browser_context: context,
       browser_token: token
     } do
       context = %{context | remote_ip: Domain.Fixture.unique_ipv4()}
-      assert authenticate(account.id, token, context) == {:error, :unauthorized}
+      assert authenticate(token, context) == {:error, :unauthorized}
     end
 
     test "returns subject for client token", %{
@@ -3251,20 +3247,56 @@ defmodule Domain.AuthTest do
       client_token: token,
       client_subject: subject
     } do
-      assert {:ok, reconstructed_subject} = authenticate(account.id, token, context)
+      assert {:ok, reconstructed_subject} = authenticate(token, context)
       assert reconstructed_subject.identity.id == identity.id
       assert reconstructed_subject.actor.id == actor.id
       assert reconstructed_subject.account.id == account.id
       assert reconstructed_subject.permissions == subject.permissions
+      assert reconstructed_subject.permissions == fetch_type_permissions!(:account_admin_user)
       assert reconstructed_subject.context.remote_ip == context.remote_ip
       assert reconstructed_subject.context.user_agent == context.user_agent
 
-      assert DateTime.diff(reconstructed_subject.expires_at, subject.expires_at) <= 1
-      assert DateTime.diff(reconstructed_subject.expires_at, subject.token.expires_at) <= 1
+      assert reconstructed_subject.expires_at == subject.expires_at
+      assert reconstructed_subject.expires_at == subject.token.expires_at
+    end
+
+    test "returns subject for client service account token", %{
+      account: account,
+      client_context: context,
+      client_subject: subject
+    } do
+      one_day = DateTime.utc_now() |> DateTime.add(1, :day)
+      provider = Fixtures.Auth.create_token_provider(account: account)
+
+      actor = Fixtures.Actors.create_actor(type: :service_account, account: account)
+
+      identity =
+        Fixtures.Auth.create_identity(
+          account: account,
+          provider: provider,
+          actor: actor,
+          user_agent: context.user_agent,
+          remote_ip: context.remote_ip,
+          provider_virtual_state: %{
+            "expires_at" => one_day
+          }
+        )
+
+      assert {:ok, encoded_token} = create_service_account_token(provider, identity, subject)
+
+      assert {:ok, reconstructed_subject} = authenticate(encoded_token, context)
+      assert reconstructed_subject.identity.id == identity.id
+      assert reconstructed_subject.actor.id == actor.id
+      assert reconstructed_subject.account.id == account.id
+      assert reconstructed_subject.permissions != subject.permissions
+      assert reconstructed_subject.permissions == fetch_type_permissions!(:service_account)
+      assert reconstructed_subject.context.remote_ip == context.remote_ip
+      assert reconstructed_subject.context.user_agent == context.user_agent
+
+      assert reconstructed_subject.expires_at == one_day
     end
 
     test "client token is not bound to remote ip and user agent", %{
-      account: account,
       client_context: context,
       client_token: token
     } do
@@ -3274,18 +3306,17 @@ defmodule Domain.AuthTest do
           remote_ip: Domain.Fixture.unique_ipv4()
       }
 
-      assert {:ok, subject} = authenticate(account.id, token, context)
+      assert {:ok, subject} = authenticate(token, context)
       assert subject.context.remote_ip == context.remote_ip
       assert subject.context.user_agent == context.user_agent
     end
 
     test "updates last signed in fields for identity on success", %{
-      account: account,
       identity: identity,
       browser_context: context,
       browser_token: token
     } do
-      assert {:ok, subject} = authenticate(account.id, token, context)
+      assert {:ok, subject} = authenticate(token, context)
 
       assert subject.identity.last_seen_at != identity.last_seen_at
       assert subject.identity.last_seen_remote_ip != identity.last_seen_remote_ip
@@ -3306,12 +3337,11 @@ defmodule Domain.AuthTest do
     end
 
     test "updates last signed in fields for token on success", %{
-      account: account,
       identity: identity,
       browser_context: context,
       browser_token: token
     } do
-      assert {:ok, subject} = authenticate(account.id, token, context)
+      assert {:ok, subject} = authenticate(token, context)
 
       assert subject.token.last_seen_at != identity.last_seen_at
       assert subject.token.last_seen_remote_ip != identity.last_seen_remote_ip
@@ -3333,7 +3363,6 @@ defmodule Domain.AuthTest do
     end
 
     test "returns error when token identity is deleted", %{
-      account: account,
       identity: identity,
       browser_context: context,
       browser_token: token,
@@ -3341,51 +3370,47 @@ defmodule Domain.AuthTest do
     } do
       {:ok, _identity} = delete_identity(identity, subject)
 
-      assert authenticate(account.id, token, context) == {:error, :unauthorized}
+      assert authenticate(token, context) == {:error, :unauthorized}
     end
 
     test "returns error when token identity actor is deleted", %{
-      account: account,
       actor: actor,
       browser_context: context,
       browser_token: token
     } do
       Fixtures.Actors.delete(actor)
 
-      assert authenticate(account.id, token, context) == {:error, :unauthorized}
+      assert authenticate(token, context) == {:error, :unauthorized}
     end
 
     test "returns error when token identity actor is disabled", %{
-      account: account,
       actor: actor,
       browser_context: context,
       browser_token: token
     } do
       Fixtures.Actors.disable(actor)
 
-      assert authenticate(account.id, token, context) == {:error, :unauthorized}
+      assert authenticate(token, context) == {:error, :unauthorized}
     end
 
     test "returns error when token identity provider is deleted", %{
-      account: account,
       provider: provider,
       browser_context: context,
       browser_token: token
     } do
       Fixtures.Auth.delete_provider(provider)
 
-      assert authenticate(account.id, token, context) == {:error, :unauthorized}
+      assert authenticate(token, context) == {:error, :unauthorized}
     end
 
     test "returns error when token identity provider is disabled", %{
-      account: account,
       provider: provider,
       browser_context: context,
       browser_token: token
     } do
       Fixtures.Auth.disable_provider(provider)
 
-      assert authenticate(account.id, token, context) == {:error, :unauthorized}
+      assert authenticate(token, context) == {:error, :unauthorized}
     end
   end
 
