@@ -34,6 +34,9 @@ defmodule Web.Groups.Index do
         <.add_button navigate={~p"/#{@account}/groups/new"}>
           Add Group
         </.add_button>
+        <.add_button navigate={~p"/#{@account}/settings/identity_providers"}>
+          Sync Groups from IdP
+        </.add_button>
       </:action>
       <:content>
         <div class="bg-white overflow-hidden">
@@ -84,15 +87,8 @@ defmodule Web.Groups.Index do
               <div class="flex justify-center text-center text-neutral-500 p-4">
                 <div class="w-auto">
                   <div class="pb-4">
-                    No groups to display
+                    No groups to display.
                   </div>
-                  <.add_button navigate={~p"/#{@account}/groups/new"}>
-                    Add Group
-                  </.add_button>
-                  <span class="font-semibold px-2 mb-4">or</span>
-                  <.add_button navigate={~p"/#{@account}/settings/identity_providers"}>
-                    Sync Groups from IdP
-                  </.add_button>
                 </div>
               </div>
             </:empty>

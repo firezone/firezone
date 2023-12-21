@@ -140,20 +140,8 @@ defmodule Web.Actors.Show do
             <div class="flex justify-center text-center text-neutral-500 p-4">
               <div class="w-auto">
                 <div class="pb-4">
-                  No authentication identities to display
+                  No authentication identities to display.
                 </div>
-                <.add_button
-                  :if={is_nil(@actor.deleted_at) and @actor.type == :service_account}
-                  navigate={~p"/#{@account}/actors/service_accounts/#{@actor}/new_identity"}
-                >
-                  Create Token
-                </.add_button>
-                <.add_button
-                  :if={is_nil(@actor.deleted_at) and @actor.type != :service_account}
-                  navigate={~p"/#{@account}/actors/users/#{@actor}/new_identity"}
-                >
-                  Create Identity
-                </.add_button>
               </div>
             </div>
           </:empty>
@@ -178,7 +166,7 @@ defmodule Web.Actors.Show do
             <.connection_status schema={client} />
           </:col>
           <:empty>
-            <div class="text-center text-neutral-500 p-4">No clients to display</div>
+            <div class="text-center text-neutral-500 p-4">No clients to display.</div>
           </:empty>
         </.table>
       </:content>
@@ -223,7 +211,7 @@ defmodule Web.Actors.Show do
             </.link>
           </:col>
           <:empty>
-            <div class="text-center text-neutral-500 p-4">No authorizations to display</div>
+            <div class="text-center text-neutral-500 p-4">No authorizations to display.</div>
           </:empty>
         </.table>
       </:content>

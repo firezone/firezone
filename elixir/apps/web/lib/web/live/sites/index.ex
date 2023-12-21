@@ -109,13 +109,8 @@ defmodule Web.Sites.Index do
 
           <:empty>
             <div class="flex justify-center text-center text-neutral-500 p-4">
-              <div class="w-auto">
-                <div class="pb-4">
-                  No sites to display
-                </div>
-                <.add_button navigate={~p"/#{@account}/sites/new"}>
-                  Add Site
-                </.add_button>
+              <div class="w-auto pb-4">
+                No sites to display.
               </div>
             </div>
           </:empty>
