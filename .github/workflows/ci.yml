@@ -135,7 +135,6 @@ jobs:
           tags: ${{ steps.build_docker_tags.outputs.tags }}
 
   connection-integration-tests:
-    needs: build-images
     runs-on: ubuntu-22.04
     permissions:
       contents: read
