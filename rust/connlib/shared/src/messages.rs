@@ -1,5 +1,8 @@
 //! Message types that are used by both the gateway and client.
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::{
+    borrow::Cow,
+    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
+};
 
 use chrono::{serde::ts_seconds, DateTime, Utc};
 use ip_network::IpNetwork;
@@ -181,6 +184,22 @@ impl ResourceDescription {
         match self {
             ResourceDescription::Dns(r) => r.id,
             ResourceDescription::Cidr(r) => r.id,
+        }
+    }
+
+    /// What the GUI clients should show as the user-friendly display name, e.g. `Firezone GitHub`
+    pub fn name(&self) -> &str {
+        match self {
+            ResourceDescription::Dns(r) => &r.name,
+            ResourceDescription::Cidr(r) => &r.name,
+        }
+    }
+
+    /// What the GUI clients should paste to the clipboard, e.g. `https://github.com/firezone`
+    pub fn pastable(&self) -> Cow<'_, str> {
+        match self {
+            ResourceDescription::Dns(r) => Cow::from(&r.address),
+            ResourceDescription::Cidr(r) => Cow::from(r.address.to_string()),
         }
     }
 }
