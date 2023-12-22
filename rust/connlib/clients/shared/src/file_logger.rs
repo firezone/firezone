@@ -22,7 +22,7 @@ use tracing::Subscriber;
 use tracing_appender::non_blocking::{NonBlocking, WorkerGuard};
 use tracing_subscriber::Layer;
 
-const LOG_FILE_BASE_NAME: &str = "connlib.log";
+const LOG_FILE_BASE_NAME: &str = "connlib";
 
 /// Create a new file logger layer.
 pub fn layer<T>(log_dir: &Path) -> (Box<dyn Layer<T> + Send + Sync + 'static>, Handle)
@@ -121,7 +121,7 @@ impl Inner {
             .format(&format)
             .expect("static format description to be valid");
 
-        let filename = format!("{LOG_FILE_BASE_NAME}.{date}");
+        let filename = format!("{LOG_FILE_BASE_NAME}.{date}.log");
 
         let path = self.directory.join(&filename);
         let mut open_options = fs::OpenOptions::new();
