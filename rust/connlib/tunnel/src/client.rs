@@ -598,29 +598,35 @@ impl ClientState {
             .get(resource)
             .cloned()
             .unwrap_or(Vec::new());
-        let addr_v4 = addrs.iter().copied().filter(IpAddr::is_ipv4);
+        // We collect here to eagerly filter so that `next` is not called more times than needed with the ip_provider
+        // that could cause an ip exhaustion.
+        // This is needed to get the length, since even if zip is run, only until addr_v4 is None, `next` is still being called in both elements
+        // so ip_provider consumes an extra ip and this could in the long-run consume all ips since this function is also called to refresh ip allocations..
+        let addr_v4 = addrs.iter().copied().filter(IpAddr::is_ipv4).collect_vec();
+        let len = addr_v4.len();
         let internal_ips_v4 = internal_ips
             .iter()
             .copied()
             .filter_map(get_v4)
-            // TODO: this "chain" runs more times that we intend
-            // since the addr_v4 zipped below, makes it run as many times
-            // as addrs and it filters after.
             .chain(&mut self.ip_provider.ipv4)
-            .map(|ip| {
-                tracing::warn!("{ip}");
-                ip.into()
-            })
-            .zip(addr_v4.clone());
+            .map(Into::<IpAddr>::into)
+            .zip(addr_v4.clone())
+            .take(len);
 
-        let addr_v6 = addrs.iter().copied().filter(IpAddr::is_ipv6);
+        tracing::warn!("external_ips: {addr_v4:?}");
+        tracing::warn!("internal_ips: {internal_ips:?}");
+
+        // Same note as for ipv4, though an exhaustion is not a realistic scneario.
+        let addr_v6 = addrs.iter().copied().filter(IpAddr::is_ipv6).collect_vec();
+        let len = addr_v6.len();
         let internal_ips_v6 = internal_ips
             .iter()
             .copied()
             .filter_map(get_v6)
             .chain(&mut self.ip_provider.ipv6)
             .map(Into::<IpAddr>::into)
-            .zip(addr_v6);
+            .zip(addr_v6)
+            .take(len);
 
         internal_ips_v4.chain(internal_ips_v6).collect()
     }

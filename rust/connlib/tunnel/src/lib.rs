@@ -9,8 +9,8 @@ use boringtun::{
 
 use bytes::Bytes;
 use connlib_shared::{
-    messages::{Key, ResourceId, ReuseConnection},
-    CallbackErrorFacade, Callbacks, Dname, Error,
+    messages::{Key, ReuseConnection},
+    CallbackErrorFacade, Callbacks, Error,
 };
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
