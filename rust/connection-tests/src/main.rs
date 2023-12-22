@@ -35,8 +35,9 @@ async fn main() -> Result<()> {
     let listen_addr = std::env::var("LISTEN_ADDR")
         .context("Missing LISTEN_ADDR env var")?
         .parse::<IpAddr>()?;
+    let redis_host = std::env::var("REDIS_HOST").context("Missing LISTEN_ADDR env var")?;
 
-    let redis_client = redis::Client::open("redis://redis:6379")?;
+    let redis_client = redis::Client::open(format!("redis://{redis_host}:6379"))?;
     let mut redis_connection = redis_client.get_async_connection().await?;
 
     let socket = UdpSocket::bind((listen_addr, 0)).await?;
