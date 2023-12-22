@@ -44,7 +44,7 @@ services:
     #   relay:
     #     condition: "service_healthy"
     #   redis:
-    #     condition: "service_healthy"  
+    #     condition: "service_healthy"
     networks:
       app:
         ipv4_address: 172.28.0.101
