@@ -648,11 +648,10 @@ impl IpProvider {
 
 impl Default for ClientState {
     fn default() -> Self {
-        // TODO: Before merging change this to 300 seconds!
         // With this single timer this might mean that some DNS are refreshed too often
         // however... this also mean any resource is refresh within a 5 mins interval
         // therefore, only the first time it's added that happens, after that it doesn't matter.
-        let mut interval = tokio::time::interval(Duration::from_secs(1));
+        let mut interval = tokio::time::interval(Duration::from_secs(300));
         interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
         Self {
             active_candidate_receivers: StreamMap::new(
