@@ -11,7 +11,7 @@ use std::{
     time::Duration,
 };
 use tauri::Manager;
-use tokio::fs;
+use tokio::{fs, task::spawn_blocking};
 use tracing::subscriber::set_global_default;
 use tracing_log::LogTracer;
 use tracing_subscriber::{fmt, layer::SubscriberExt, reload, EnvFilter, Layer, Registry};
@@ -70,17 +70,18 @@ pub(crate) async fn clear_logs_inner() -> Result<()> {
 pub(crate) async fn export_logs_inner(ctlr_tx: CtlrTx) -> Result<()> {
     let now = chrono::Local::now();
     let datetime_string = now.format("%Y_%m_%d-%H-%M");
-    let filename = format!("connlib-{datetime_string}.zip");
+    let stem = format!("connlib-{datetime_string}");
+    let filename = format!("{stem}.zip");
 
     tauri::api::dialog::FileDialogBuilder::new()
         .add_filter("Zip", &["zip"])
         .set_file_name(&filename)
         .save_file(move |file_path| match file_path {
             None => {}
-            Some(x) => {
+            Some(path) => {
                 // blocking_send here because we're in a sync callback within Tauri somewhere
                 ctlr_tx
-                    .blocking_send(ControllerRequest::ExportLogs(x))
+                    .blocking_send(ControllerRequest::ExportLogs { path, stem })
                     .unwrap()
             }
         });
@@ -88,15 +89,26 @@ pub(crate) async fn export_logs_inner(ctlr_tx: CtlrTx) -> Result<()> {
 }
 
 /// Exports logs to a zip file
-pub(crate) async fn export_logs_to(file_path: PathBuf) -> Result<()> {
-    tracing::trace!("Exporting logs to {file_path:?}");
+/// To avoid the ["tar bomb"](https://www.linfo.org/tarbomb.html) problem, all files
+/// are put into a subdirectory with the automatically-generated file name of the zip,
+/// even if the user customized the zip's file name.
+pub(crate) async fn export_logs_to(path: PathBuf, stem: String) -> Result<()> {
+    tracing::trace!("Exporting logs to {path:?}");
 
+    let f = spawn_blocking(|| std::fs::File::create(path)).await??;
+    let mut zip = zip::ZipWriter::new(f);
     let mut entries = fs::read_dir("logs").await?;
+    // All files will have the same modified time. Doing otherwise seems to be difficult
+    let options = zip::write::FileOptions::default();
     while let Some(entry) = entries.next_entry().await? {
-        let _path = entry.path();
-        // TODO: Actually add log files to a zip file
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        // TODO: Before merging, don't do sync file I/O in an async fn
+        zip.start_file(format!("{stem}/{name}"), options)?;
+        let mut f = std::fs::File::open(entry.path())?;
+        std::io::copy(&mut f, &mut zip)?;
     }
-    tokio::time::sleep(Duration::from_secs(1)).await;
+    zip.finish()?;
     // TODO: Somehow signal back to the GUI to unlock the log buttons when the export completes, or errors out
     Ok(())
 }
