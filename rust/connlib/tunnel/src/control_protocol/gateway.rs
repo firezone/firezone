@@ -90,10 +90,16 @@ where
         }
 
         let resource_addresses = match &resource {
-            ResourceDescription::Dns(_) => {
+            ResourceDescription::Dns(r) => {
                 let Some(domain) = client_payload.domain.clone() else {
                     return Err(Error::ControlProtocolError);
                 };
+
+                if !domain.iter_suffixes().any(|d| d.to_string() == r.address) {
+                    let _ = ice.stop().await;
+                    return Err(Error::InvalidResource);
+                }
+
                 (domain.to_string(), 0)
                     .to_socket_addrs()?
                     .map(|addrs| addrs.ip().into())
@@ -170,10 +176,14 @@ where
             .find(|(_, p)| p.inner.conn_id == client_id)
         {
             let addresses = match &resource {
-                ResourceDescription::Dns(_) => {
-                    let Some(ref domain) = domain else {
+                ResourceDescription::Dns(r) => {
+                    let Some(domain) = domain.as_ref() else {
                         return None;
                     };
+
+                    if !domain.iter_suffixes().any(|d| d.to_string() == r.address) {
+                        return None;
+                    }
 
                     (domain.to_string(), 0)
                         .to_socket_addrs()
