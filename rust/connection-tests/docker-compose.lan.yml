@@ -7,6 +7,8 @@ services:
       context: ..
       args:
         PACKAGE: firezone-connection-tests
+      cache_from:
+        - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/cache/connection-tests:main
     init: true
     environment:
       ROLE: "dialer"
@@ -29,6 +31,8 @@ services:
       context: ..
       args:
         PACKAGE: firezone-connection-tests
+      cache_from:
+        - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/cache/connection-tests:main
     init: true
     environment:
       ROLE: "listener"

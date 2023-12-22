@@ -63,6 +63,11 @@ jobs:
             context: rust
             build-args: |
               PACKAGE=firezone-linux-client
+          - image_name: connection-tests
+            target: debug
+            context: rust
+            build-args: |
+              PACKAGE=firezone-connection-tests
           - image_name: elixir
             target: compiler
             context: elixir
@@ -135,6 +140,7 @@ jobs:
           tags: ${{ steps.build_docker_tags.outputs.tags }}
 
   connection-integration-tests:
+    needs: build-images
     runs-on: ubuntu-22.04
     permissions:
       contents: read
