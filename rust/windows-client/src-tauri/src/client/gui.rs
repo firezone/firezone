@@ -14,7 +14,7 @@ use connlib_client_shared::{file_logger, ResourceDescription};
 use connlib_shared::messages::ResourceId;
 use secrecy::{ExposeSecret, SecretString};
 use std::{net::IpAddr, path::PathBuf, str::FromStr, sync::Arc, time::Duration};
-use system_tray_menu::{Event as TrayMenuEvent, Resource as ResourceDisplay};
+use system_tray_menu::Event as TrayMenuEvent;
 use tauri::{Manager, SystemTray, SystemTrayEvent};
 use tokio::{
     sync::{mpsc, oneshot, Notify},
@@ -434,7 +434,6 @@ async fn run_controller(
                     continue;
                 };
                 let resources = session.callback_handler.resources.load().as_ref().clone();
-                let resources: Vec<_> = resources.into_iter().map(ResourceDisplay::from).collect();
                 // TODO: Save the user name between runs of the app
                 let actor_name = controller
                     .session
