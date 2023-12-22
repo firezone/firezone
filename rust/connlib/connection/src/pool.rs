@@ -176,28 +176,29 @@ where
             return match conn.tunnel.decapsulate(None, packet, buffer) {
                 TunnResult::Done => Ok(None),
                 TunnResult::Err(e) => Err(Error::Decapsulate(e)),
-                TunnResult::WriteToTunnelV4(packet, ip) => {
-                    let ipv4_packet =
-                        Ipv4Packet::new(packet).expect("boringtun verifies that it is valid");
 
+                // For WriteToTunnel{V4,V6}, boringtun returns the source IP of the packet that was tunneled to us.
+                // I am guessing this was done for convenience reasons.
+                // In our API, we parse the packets directly as an IpPacket.
+                // Thus, the caller can query whatever data they'd like, not just the source IP so we don't return it in addition.
+                TunnResult::WriteToTunnelV4(packet, ip) => {
+                    let ipv4_packet = Ipv4Packet::new(packet).expect("boringtun verifies validity");
                     debug_assert_eq!(ipv4_packet.get_source(), ip);
 
                     Ok(Some((*id, ipv4_packet.into())))
                 }
                 TunnResult::WriteToTunnelV6(packet, ip) => {
-                    let ipv6_packet =
-                        Ipv6Packet::new(packet).expect("boringtun verifies that it is valid");
-
+                    let ipv6_packet = Ipv6Packet::new(packet).expect("boringtun verifies validity");
                     debug_assert_eq!(ipv6_packet.get_source(), ip);
 
                     Ok(Some((*id, ipv6_packet.into())))
                 }
-                TunnResult::WriteToNetwork(bytes) => {
-                    // During normal operation, i.e. when the tunnel is active, decapsulating a packet straight yields the decrypted packet.
-                    // However, in case `Tunn` has buffered packets, they may be returned here instead.
-                    // This should be fairly rare which is why we just allocate these and return them from `poll_transmit` instead.
-                    // Overall, this results in a much nicer API for our caller and should not affect performance.
 
+                // During normal operation, i.e. when the tunnel is active, decapsulating a packet straight yields the decrypted packet.
+                // However, in case `Tunn` has buffered packets, they may be returned here instead.
+                // This should be fairly rare which is why we just allocate these and return them from `poll_transmit` instead.
+                // Overall, this results in a much nicer API for our caller and should not affect performance.
+                TunnResult::WriteToNetwork(bytes) => {
                     self.buffered_transmits.push_back(Transmit {
                         dst: from,
                         payload: bytes.to_vec(),
