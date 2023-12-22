@@ -43,6 +43,8 @@ pub(crate) async fn start_stop_log_counting(
     managed: tauri::State<'_, Managed>,
     enable: bool,
 ) -> StdResult<(), String> {
+    // Delegate this to Controller so that it can decide whether to obey.
+    // e.g. if there's already a count task running, it may refuse to start another.
     managed
         .ctlr_tx
         .send(ControllerRequest::StartStopLogCounting(enable))
@@ -101,24 +103,27 @@ pub(crate) async fn export_logs_to(file_path: PathBuf) -> Result<()> {
     Ok(())
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Default, Serialize)]
 struct FileCount {
-    files: u64,
     bytes: u64,
+    complete: bool,
+    files: u64,
 }
 
 pub(crate) async fn count_logs(app: tauri::AppHandle) -> Result<()> {
     let mut dir = fs::read_dir("logs").await?;
-    let mut files: u64 = 0;
-    let mut bytes: u64 = 0;
+    let mut file_count = FileCount::default();
+    // Zero out the GUI
+    app.emit_all("file_count_progress", &file_count)?;
     while let Some(entry) = dir.next_entry().await? {
-        // TODO: Remove sleep before merging
-        // This is useful for debugging to show how the GUI thinks and make sure nothing else blocks on this
-        tokio::time::sleep(Duration::from_millis(200)).await;
         let md = entry.metadata().await?;
-        files += 1;
-        bytes += md.len();
-        app.emit_all("file_count_progress", FileCount { files, bytes })?;
+        file_count.files += 1;
+        file_count.bytes += md.len();
+        // Update the GUI progress
+        app.emit_all("file_count_progress", &file_count)?;
     }
+    file_count.complete = true;
+    // Mark completion on the GUI
+    app.emit_all("file_count_progress", &file_count)?;
     Ok(())
 }
