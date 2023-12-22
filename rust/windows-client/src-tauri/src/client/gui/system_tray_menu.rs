@@ -49,7 +49,7 @@ pub(crate) fn signed_in(user_name: &str, resources: &[ResourceDescription]) -> S
         let id = res.id();
         let submenu = SystemTrayMenu::new().add_item(CustomMenuItem::new(
             format!("/resource/{id}"),
-            res.pastable().to_string(),
+            res.pastable(),
         ));
         menu = menu.add_submenu(SystemTraySubmenu::new(res.name(), submenu));
     }
