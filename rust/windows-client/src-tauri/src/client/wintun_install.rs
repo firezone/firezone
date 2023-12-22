@@ -89,6 +89,8 @@ fn get_platform_dll_bytes() -> Option<DllBytes> {
 
 #[cfg(target_arch = "aarch64")]
 fn get_platform_dll_bytes() -> Option<DllBytes> {
-    // wintun supports aarch64 but it's not in the Firezone repo yet
-    None
+    Some(DllBytes {
+        bytes: include_bytes!("../../../wintun/bin/arm64/wintun.dll"),
+        expected_sha256: "f7ba89005544be9d85231a9e0d5f23b2d15b3311667e2dad0debd344918a3f80",
+    })
 }
