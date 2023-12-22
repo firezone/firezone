@@ -12,6 +12,7 @@ tauri-build = { version = "1.5", features = [] }
 [dependencies]
 arboard = { version = "3.3.0", default-features = false }
 anyhow = { version = "1.0" }
+arc-swap = "1.6.0"
 chrono = { workspace = true }
 clap = { version = "4.4", features = ["derive",  "env"] }
 connlib-client-shared = { workspace = true }

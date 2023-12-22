@@ -122,6 +122,7 @@ impl Tun {
         })
     }
 
+    // It's okay if this blocks until the route is added in the OS.
     pub fn add_route(&self, route: IpNetwork) -> Result<()> {
         tracing::debug!("add_route {route}");
         let iface_idx = self.iface_idx;
