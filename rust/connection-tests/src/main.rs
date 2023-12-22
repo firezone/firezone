@@ -97,7 +97,7 @@ async fn main() -> Result<()> {
                         match event? {
                             Event::Incoming { conn, packet } => {
                                 anyhow::ensure!(conn == 1);
-                                anyhow::ensure!(packet == IpPacket::Ipv4(ip4_udp_ping_packet(dst, source, &packet.udp_payload()))); // Expect the listener to flip src and dst
+                                anyhow::ensure!(packet == IpPacket::Ipv4(ip4_udp_ping_packet(dst, source, packet.udp_payload()))); // Expect the listener to flip src and dst
 
                                 let rtt = start.elapsed();
 
@@ -217,7 +217,7 @@ fn ip4_udp_ping_packet(source: Ipv4Addr, dst: Ipv4Addr, body: &[u8]) -> Ipv4Pack
     udp_header.set_length(8 + 32);
     udp_header.set_checksum(0); // Not necessary for IPv4, let's keep it simple.
 
-    packet_buffer[28..60].copy_from_slice(&body);
+    packet_buffer[28..60].copy_from_slice(body);
 
     Ipv4Packet::owned(packet_buffer.to_vec()).unwrap()
 }
