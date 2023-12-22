@@ -5,13 +5,14 @@ use anyhow::Result;
 use connlib_client_shared::file_logger;
 use serde::Serialize;
 use std::{
+    fs, io,
     path::{Path, PathBuf},
     result::Result as StdResult,
     str::FromStr,
     time::Duration,
 };
 use tauri::Manager;
-use tokio::{fs, task::spawn_blocking};
+use tokio::task::spawn_blocking;
 use tracing::subscriber::set_global_default;
 use tracing_log::LogTracer;
 use tracing_subscriber::{fmt, layer::SubscriberExt, reload, EnvFilter, Layer, Registry};
@@ -95,20 +96,25 @@ pub(crate) async fn export_logs_inner(ctlr_tx: CtlrTx) -> Result<()> {
 pub(crate) async fn export_logs_to(path: PathBuf, stem: String) -> Result<()> {
     tracing::trace!("Exporting logs to {path:?}");
 
-    let f = spawn_blocking(|| std::fs::File::create(path)).await??;
-    let mut zip = zip::ZipWriter::new(f);
-    let mut entries = fs::read_dir("logs").await?;
-    // All files will have the same modified time. Doing otherwise seems to be difficult
-    let options = zip::write::FileOptions::default();
-    while let Some(entry) = entries.next_entry().await? {
-        let name = entry.file_name();
-        let name = name.to_string_lossy();
-        // TODO: Before merging, don't do sync file I/O in an async fn
-        zip.start_file(format!("{stem}/{name}"), options)?;
-        let mut f = std::fs::File::open(entry.path())?;
-        std::io::copy(&mut f, &mut zip)?;
-    }
-    zip.finish()?;
+    spawn_blocking(move || {
+        let f = fs::File::create(path)?;
+        let mut zip = zip::ZipWriter::new(f);
+        // All files will have the same modified time. Doing otherwise seems to be difficult
+        let options = zip::write::FileOptions::default();
+        for entry in fs::read_dir("logs")? {
+            let entry = entry?;
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            // TODO: Before merging, don't do sync file I/O in an async fn
+            zip.start_file(format!("{stem}/{name}"), options)?;
+            let mut f = fs::File::open(entry.path())?;
+            io::copy(&mut f, &mut zip)?;
+        }
+        zip.finish()?;
+        Ok::<_, anyhow::Error>(())
+    })
+    .await??;
+
     // TODO: Somehow signal back to the GUI to unlock the log buttons when the export completes, or errors out
     Ok(())
 }
@@ -120,7 +126,7 @@ struct FileCount {
 }
 
 pub(crate) async fn count_logs(app: tauri::AppHandle) -> Result<()> {
-    let mut dir = fs::read_dir("logs").await?;
+    let mut dir = tokio::fs::read_dir("logs").await?;
     let mut files: u64 = 0;
     let mut bytes: u64 = 0;
     while let Some(entry) = dir.next_entry().await? {
