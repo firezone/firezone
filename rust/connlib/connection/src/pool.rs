@@ -223,6 +223,10 @@ where
     }
 
     /// Encapsulate an outgoing IP packet.
+    ///
+    /// Wireguard is an IP tunnel, so we "enforce" that only IP packets are sent through it.
+    /// We say "enforce" an [`IpPacket`] can be created from an (almost) arbitrary byte buffer at virtually no cost.
+    /// Nevertheless, using [`IpPacket`] in our API has good documentation value.
     pub fn encapsulate<'s>(
         &'s mut self,
         connection: TId,
@@ -251,6 +255,7 @@ where
         }
     }
 
+    /// Returns a pending [`Event`] from the pool.
     pub fn poll_event(&mut self) -> Option<Event<TId>> {
         for (id, conn) in self.negotiated_connections.iter_mut() {
             while let Some(event) = conn.agent.poll_event() {
@@ -299,6 +304,9 @@ where
         earliest(connection_timeout, self.next_rate_limiter_reset)
     }
 
+    /// Advances time within the [`ConnectionPool`].
+    ///
+    /// This advances time within the ICE agent, updates timers within all wireguard connections as well as resets wireguard's rate limiter (if necessary).
     pub fn handle_timeout(&mut self, now: Instant) {
         for c in self.negotiated_connections.values_mut() {
             self.buffered_transmits.extend(c.handle_timeout(now));
@@ -312,6 +320,7 @@ where
         }
     }
 
+    /// Returns buffered data that needs to be sent on the socket.
     pub fn poll_transmit(&mut self) -> Option<Transmit> {
         for conn in self.initial_connections.values_mut() {
             if let Some(transmit) = conn.agent.poll_transmit() {
