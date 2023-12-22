@@ -616,7 +616,7 @@ impl ClientState {
         tracing::warn!("external_ips: {addr_v4:?}");
         tracing::warn!("internal_ips: {internal_ips:?}");
 
-        // Same note as for ipv4, though an exhaustion is not a realistic scneario.
+        // Same note as for ipv4, though an exhaustion is not a realistic scenario.
         let addr_v6 = addrs.iter().copied().filter(IpAddr::is_ipv6).collect_vec();
         let len = addr_v6.len();
         let internal_ips_v6 = internal_ips
