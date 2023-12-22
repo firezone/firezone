@@ -2,14 +2,26 @@
 
 This crate houses a Windows GUI client.
 
+## Setup
+
+1. Install the latest
+   [Visual Studio Build Tools](https://visualstudio.microsoft.com/downloads/)
+   and ensure C++ support is selected.
+1. Install rustup.
+1. Install the toolchain: `rustup show`
+1. Install Tauri tooling: `cargo install tauri-cli`
+
+### Recommended IDE Setup
+
+(From Tauri's default README)
+
+- [VS Code](https://code.visualstudio.com/)
+- [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode)
+- [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
+
 ## Building
 
-From this dir:
-
-```
-# First-time setup - Install Tauri's dev server / hot-reload tool
-cargo install tauri-cli
-
+```powershell
 # Builds a release exe
 cargo tauri build
 
@@ -24,8 +36,9 @@ stat ../target/release/bundle/nsis/firezone-windows-client_0.0.0_x64-setup.exe
 
 From this dir:
 
-```
-# Tauri has some hot-reloading features. If the Rust code changes it will even recompile and restart the program for you.
+```powershell
+# Tauri has some hot-reloading features. If the Rust code changes it will even recompile
+# and restart the program for you.
 RUST_LOG=info,firezone_windows_client=debug cargo tauri dev
 
 # You can call debug subcommands on the exe from this directory too
@@ -36,47 +49,58 @@ cargo tauri dev -- -- debug
 stat ../target/debug/firezone-windows-client.exe
 ```
 
-The app's config and logs will be stored at `C:\Users\$USER\AppData\Local\dev.firezone.client`.
+The app's config and logs will be stored at
+`C:\Users\$USER\AppData\Local\dev.firezone.client`.
 
 ## Platform support
 
-Tauri says it should work on Windows 10, Version 1803 and up. Older versions may work if you [manually install WebView2](https://tauri.app/v1/guides/getting-started/prerequisites#2-webview2)
-
-## Recommended IDE Setup
-
-(From Tauri's default README)
-
-- [VS Code](https://code.visualstudio.com/) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
+Tauri says it should work on Windows 10, Version 1803 and up. Older versions may
+work if you
+[manually install WebView2](https://tauri.app/v1/guides/getting-started/prerequisites#2-webview2)
 
 ## Threat model
 
-We can split this to its own doc or generalize it to the whole project if needed.
+We can split this to its own doc or generalize it to the whole project if
+needed.
 
 This is prescriptive.
 
 The Windows client app:
 
-- SHOULD protect against the device being stolen or tampered with, if Windows is locked the entire time, and if the incident is reported quick enough that the token can be revoked
+- SHOULD protect against the device being stolen or tampered with, if Windows is
+  locked the entire time, and if the incident is reported quick enough that the
+  token can be revoked
 - Cannot protect against malicious / rogue users signed in to the application
 - Cannot protect against malware running with the same permissions as the user
-- Cannot protect against an attacker who has physical access to a device while Windows is unlocked
+- Cannot protect against an attacker who has physical access to a device while
+  Windows is unlocked
 
 Where the client app does protect against attackers, "protect" is defined as:
 
 - It should be impractical to read or write the token, while Windows is locked
-- It should be impractical to change the advanced settings to point to a malicious server, while Windows is locked
+- It should be impractical to change the advanced settings to point to a
+  malicious server, while Windows is locked
 
 ## Security as implemented
 
-The Windows client's encrypted storage uses the [`keyring` crate](https://crates.io/crates/keyring), which uses Windows' credential management API.
+The Windows client's encrypted storage uses the
+[`keyring` crate](https://crates.io/crates/keyring), which uses Windows'
+credential management API.
 
-It's hard to find good documentation on _how_ Windows encrypts these secrets, but as I understand it:
+It's hard to find good documentation on _how_ Windows encrypts these secrets,
+but as I understand it:
 
-- They are locked by a key derived from the Windows password, so if the password has enough entropy, and Windows is locked or shut down, the passwords are not trivial to exfiltrate
-- They are not readable by other users on the same computer, even when Windows is unlocked
-- They _are_ readable by any process running as the same user, while Windows is unlocked.
+- They are locked by a key derived from the Windows password, so if the password
+  has enough entropy, and Windows is locked or shut down, the passwords are not
+  trivial to exfiltrate
+- They are not readable by other users on the same computer, even when Windows
+  is unlocked
+- They _are_ readable by any process running as the same user, while Windows is
+  unlocked.
 
-To defend against malware running with user permissions, we'd need to somehow identify our app to Windows and tell Windows to store our token in such a way that un-signed apps cannot read it.
+To defend against malware running with user permissions, we'd need to somehow
+identify our app to Windows and tell Windows to store our token in such a way
+that un-signed apps cannot read it.
 
 Here are some sources I found while researching:
 
@@ -84,7 +108,10 @@ Here are some sources I found while researching:
 - https://stackoverflow.com/questions/9221245/how-do-i-store-and-retrieve-credentials-from-the-windows-vault-credential-manage
 - https://security.stackexchange.com/questions/119765/how-secure-is-the-windows-credential-manager
 - https://security.stackexchange.com/questions/93437/how-to-read-password-from-windows-credentials/177686#177686
-https://en.wikipedia.org/wiki/Data_Protection_API
+  https://en.wikipedia.org/wiki/Data_Protection_API
 - https://passcape.com/index.php?section=docsys&cmd=details&id=28
 
-There are at least 2 or 3 different crypto APIs in Windows mentioned in these pages, so not every comment applies to `keyring`. I think DPAPI is a different API from `CredReadW` which keyring uses: https://github.com/hwchen/keyring-rs/blob/1732b79aa31318f6dcbcc9f686ce5f054ffbb509/src/windows.rs#L204
+There are at least 2 or 3 different crypto APIs in Windows mentioned in these
+pages, so not every comment applies to `keyring`. I think DPAPI is a different
+API from `CredReadW` which keyring uses:
+https://github.com/hwchen/keyring-rs/blob/1732b79aa31318f6dcbcc9f686ce5f054ffbb509/src/windows.rs#L204
