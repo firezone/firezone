@@ -260,6 +260,7 @@ where
             // We should never get a domain_response for a CIDR resource!
             return Err(Error::ControlProtocolError);
         };
+
         let resource_description =
             DnsResource::from_description(&resource_description, domain_response.domain.clone());
 
