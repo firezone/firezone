@@ -296,12 +296,14 @@ impl connlib_client_shared::Callbacks for CallbackHandler {
 struct Controller {
     /// Debugging-only settings like API URL, auth URL, log filter
     advanced_settings: AdvancedSettings,
+    app: tauri::AppHandle,
     ctlr_tx: CtlrTx,
     /// Session for the currently signed-in user, if there is one
     session: Option<Session>,
     /// The UUIDv4 device ID persisted to disk
     /// Sent verbatim to Session::connect
     device_id: String,
+    log_counting_task: Option<tokio::task::JoinHandle<Result<()>>>,
     logging_handles: client::logging::Handles,
     /// Tells us when to wake up and look for a new resource list. Tokio docs say that memory reads and writes are synchronized when notifying, so we don't need an extra mutex on the resources.
     notify_controller: Arc<Notify>,
@@ -334,9 +336,11 @@ impl Controller {
 
         let mut this = Self {
             advanced_settings,
+            app,
             ctlr_tx,
             session: None,
             device_id,
+            log_counting_task: None,
             logging_handles,
             notify_controller,
         };
@@ -403,6 +407,71 @@ impl Controller {
 
         Ok(())
     }
+
+    fn copy_resource(&self, id: &str) -> Result<()> {
+        let Some(session) = &self.session else {
+            bail!("app is signed out");
+        };
+        let resources = session.callback_handler.resources.load();
+        let id = ResourceId::from_str(id)?;
+        let Some(res) = resources.iter().find(|r| r.id() == id) else {
+            bail!("resource ID is not in the list");
+        };
+        let mut clipboard = arboard::Clipboard::new()?;
+        // TODO: Make this a method on `ResourceDescription`
+        match res {
+            ResourceDescription::Dns(x) => clipboard.set_text(&x.address)?,
+            ResourceDescription::Cidr(x) => clipboard.set_text(&x.address.to_string())?,
+        }
+        Ok(())
+    }
+
+    async fn handle_deep_link(&mut self, url: &url::Url) -> Result<()> {
+        let Some(auth) = client::deep_link::parse_auth_callback(url) else {
+            // TODO: `bail` is redundant here, just do `.context("")?;` since it's `anyhow`
+            bail!("couldn't parse scheme request");
+        };
+
+        let token = auth.token.clone();
+        // spawn_blocking because keyring access is I/O
+        if let Err(e) = spawn_blocking(move || {
+            let entry = keyring_entry()?;
+            entry.set_password(token.expose_secret())?;
+            Ok::<_, anyhow::Error>(())
+        })
+        .await?
+        {
+            tracing::error!("couldn't save token to keyring: {e:#?}");
+        }
+
+        let auth_info = AuthInfo {
+            actor_name: auth.actor_name,
+            token: auth.token,
+        };
+        if let Err(e) = self.start_session(auth_info) {
+            // TODO: Replace `bail` with `context` here too
+            bail!("couldn't start session: {e:#?}");
+        }
+        Ok(())
+    }
+
+    fn reload_resource_list(&mut self) -> Result<()> {
+        let Some(session) = &self.session else {
+            tracing::warn!("got notified to update resources but there is no session");
+            return Ok(());
+        };
+        let resources = session.callback_handler.resources.load();
+        // TODO: Save the user name between runs of the app
+        let actor_name = self
+            .session
+            .as_ref()
+            .map(|x| x.auth_info.actor_name.as_str())
+            .unwrap_or("TODO");
+        self.app
+            .tray_handle()
+            .set_menu(system_tray_menu::signed_in(actor_name, &resources))?;
+        Ok(())
+    }
 }
 
 // TODO: After PR #2960 lands, move some of this into `impl Controller`
@@ -424,46 +493,18 @@ async fn run_controller(
     .await
     .context("couldn't create Controller")?;
 
-    let mut log_counting_task = None;
-
     loop {
         tokio::select! {
-            () = controller.notify_controller.notified() => {
-                let Some(session) = &controller.session else {
-                    tracing::warn!("got notified to update resources but there is no session");
-                    continue;
-                };
-                let resources = session.callback_handler.resources.load().as_ref().clone();
-                // TODO: Save the user name between runs of the app
-                let actor_name = controller
-                    .session
-                    .as_ref()
-                    .map(|x| x.auth_info.actor_name.as_str())
-                    .unwrap_or("TODO");
-                app.tray_handle()
-                    .set_menu(system_tray_menu::signed_in(actor_name, &resources))?;
-            }
+            () = controller.notify_controller.notified() => if let Err(e) = controller.reload_resource_list() {
+                tracing::error!("couldn't reload resource list: {e:#?}");
+            },
             req = rx.recv() => {
                 let Some(req) = req else {
                     break;
                 };
                 match req {
-                    Req::CopyResource(id) => {
-                        let Some(session) = &controller.session else {
-                            tracing::warn!("got notified to update resources but there is no session");
-                            continue;
-                        };
-                        let resources = session.callback_handler.resources.load();
-                        let id = ResourceId::from_str(&id)?;
-                        let Some(res) = resources.iter().find(|r| r.id() == id) else {
-                            continue;
-                        };
-                        let mut clipboard = arboard::Clipboard::new()?;
-                        // TODO: Make this a method on `ResourceDescription`
-                        match res {
-                            ResourceDescription::Dns(x) => clipboard.set_text(&x.address)?,
-                            ResourceDescription::Cidr(x) => clipboard.set_text(&x.address.to_string())?,
-                        }
+                    Req::CopyResource(id) => if let Err(e) = controller.copy_resource(&id) {
+                        tracing::error!("couldn't copy resource to clipboard: {e:#?}");
                     }
                     Req::Disconnected => {
                         tracing::debug!("connlib disconnected, tearing down Session");
@@ -471,36 +512,13 @@ async fn run_controller(
                             tracing::debug!("disconnecting connlib");
                             session.connlib.disconnect(None);
                         }
-                    },
+                    }
                     Req::ExportLogs(file_path) => logging::export_logs_to(file_path).await?,
                     Req::GetAdvancedSettings(tx) => {
                         tx.send(controller.advanced_settings.clone()).ok();
                     }
-                    Req::SchemeRequest(url) => {
-                        let Some(auth) = client::deep_link::parse_auth_callback(&url) else {
-                            tracing::error!("couldn't parse scheme request");
-                            // TODO: Move `run_controller` inside `Controller` and replace these `continue`s with `?`
-                            continue;
-                        };
-
-                        let token = auth.token.clone();
-                        // spawn_blocking because keyring access is I/O
-                        if let Err(e) = spawn_blocking(move || {
-                            let entry = keyring_entry()?;
-                            entry.set_password(token.expose_secret())?;
-                            Ok::<_, anyhow::Error>(())
-                        }).await? {
-                            tracing::warn!("couldn't save token to keyring: {e:#?}");
-                        }
-
-                        let auth_info = AuthInfo {
-                            actor_name: auth.actor_name,
-                            token: auth.token,
-                        };
-                        if let Err(e) = controller.start_session(auth_info) {
-                            tracing::error!("couldn't start session: {e:#?}");
-                            continue;
-                        }
+                    Req::SchemeRequest(url) => if let Err(e) = controller.handle_deep_link(&url).await {
+                        tracing::error!("couldn't handle deep link: {e:#?}");
                     }
                     Req::SignIn => {
                         // TODO: Put the platform and local server callback in here
@@ -524,14 +542,14 @@ async fn run_controller(
                     }
                     Req::StartStopLogCounting(enable) => {
                         if enable {
-                            if log_counting_task.is_none() {
+                            if controller.log_counting_task.is_none() {
                                 let app = app.clone();
-                                log_counting_task = Some(tokio::spawn(logging::count_logs(app)));
+                                controller.log_counting_task = Some(tokio::spawn(logging::count_logs(app)));
                                 tracing::debug!("started log counting");
                             }
-                        } else if let Some(t) = log_counting_task {
+                        } else if let Some(t) = controller.log_counting_task {
                             t.abort();
-                            log_counting_task = None;
+                            controller.log_counting_task = None;
                             tracing::debug!("cancelled log counting");
                         }
                     }
