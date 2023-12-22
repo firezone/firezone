@@ -1908,7 +1908,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-connection"
-version = "1.20231001.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "boringtun",
@@ -1923,7 +1923,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-connection-tests"
-version = "1.20231001.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "boringtun",
