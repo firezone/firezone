@@ -8,7 +8,10 @@ use boringtun::{
 };
 
 use bytes::Bytes;
-use connlib_shared::{messages::Key, CallbackErrorFacade, Callbacks, Error};
+use connlib_shared::{
+    messages::{Key, ResourceId, ReuseConnection},
+    CallbackErrorFacade, Callbacks, Dname, Error,
+};
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
 use ip_packet::IpPacket;
@@ -446,6 +449,9 @@ pub enum Event<TId> {
         resource: ResourceDescription,
         connected_gateway_ids: HashSet<GatewayId>,
         reference: usize,
+    },
+    RefreshResources {
+        connections: Vec<ReuseConnection>,
     },
     DnsQuery(DnsQuery<'static>),
 }

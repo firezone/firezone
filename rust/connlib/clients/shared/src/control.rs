@@ -366,6 +366,21 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                     }
                 });
             }
+            Ok(firezone_tunnel::Event::RefreshResources { connections }) => {
+                let mut control_signaler = self.phoenix_channel.clone();
+                tokio::spawn(async move {
+                    for connection in connections {
+                        let resource_id = connection.resource_id;
+                        if let Err(err) = control_signaler
+                            // TODO: create a reference number and keep track for the response
+                            .send_with_ref(EgressMessages::ReuseConnection(connection), resource_id)
+                            .await
+                        {
+                            tracing::warn!(%resource_id, ?err, "failed to refresh resource dns: {err:#?}");
+                        }
+                    }
+                });
+            }
             Err(e) => {
                 tracing::error!("Tunnel failed: {e}");
             }
