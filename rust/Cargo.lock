@@ -1875,6 +1875,7 @@ dependencies = [
  "anyhow",
  "boringtun",
  "firezone-relay",
+ "pnet_packet",
  "rand 0.8.5",
  "secrecy",
  "str0m",

@@ -2,11 +2,13 @@ use boringtun::noise::{Tunn, TunnResult};
 use boringtun::x25519::PublicKey;
 use boringtun::{noise::rate_limiter::RateLimiter, x25519::StaticSecret};
 use core::fmt;
+use pnet_packet::ipv4::Ipv4Packet;
+use pnet_packet::ipv6::Ipv6Packet;
+use pnet_packet::Packet;
 use rand::random;
 use secrecy::{ExposeSecret, Secret};
 use std::hash::Hash;
 use std::marker::PhantomData;
-use std::net::IpAddr;
 use std::time::{Duration, Instant};
 use std::{
     collections::{HashMap, HashSet, VecDeque},
@@ -18,6 +20,7 @@ use str0m::net::{Protocol, Receive};
 use str0m::{Candidate, StunMessage};
 
 use crate::index::IndexLfsr;
+use crate::IpPacket;
 
 // Note: Taken from boringtun
 const HANDSHAKE_RATE_LIMIT: u64 = 100;
@@ -111,7 +114,7 @@ where
     ///
     /// - `Ok(None)` if the packet was handled internally, for example, a response from a TURN server.
     /// - `Ok(Some)` if the packet was an encrypted wireguard packet from a peer.
-    ///   The `Option` contains the connection on which the packet was decrypted, plus the destination IP.
+    ///   The `Option` contains the connection on which the packet was decrypted.
     pub fn decapsulate<'s>(
         &mut self,
         local: SocketAddr,
@@ -119,7 +122,7 @@ where
         packet: &[u8],
         now: Instant,
         buffer: &'s mut [u8],
-    ) -> Result<Option<(TId, IpAddr, &'s [u8])>, Error> {
+    ) -> Result<Option<(TId, IpPacket<'s>)>, Error> {
         if !self.local_interfaces.contains(&local) {
             return Err(Error::UnknownInterface);
         }
@@ -175,8 +178,22 @@ where
             return match conn.tunnel.decapsulate(None, packet, buffer) {
                 TunnResult::Done => Ok(None),
                 TunnResult::Err(e) => Err(Error::Decapsulate(e)),
-                TunnResult::WriteToTunnelV4(packet, ip) => Ok(Some((*id, ip.into(), packet))),
-                TunnResult::WriteToTunnelV6(packet, ip) => Ok(Some((*id, ip.into(), packet))),
+                TunnResult::WriteToTunnelV4(packet, ip) => {
+                    let ipv4_packet =
+                        Ipv4Packet::new(packet).expect("boringtun verifies that it is valid");
+
+                    debug_assert_eq!(ipv4_packet.get_source(), ip);
+
+                    Ok(Some((*id, ipv4_packet.into())))
+                }
+                TunnResult::WriteToTunnelV6(packet, ip) => {
+                    let ipv6_packet =
+                        Ipv6Packet::new(packet).expect("boringtun verifies that it is valid");
+
+                    debug_assert_eq!(ipv6_packet.get_source(), ip);
+
+                    Ok(Some((*id, ipv6_packet.into())))
+                }
                 // TODO: Document why this is okay!
                 TunnResult::WriteToNetwork(bytes) => {
                     self.buffered_transmits.push_back(Transmit {
@@ -202,11 +219,11 @@ where
         Err(Error::UnmatchedPacket)
     }
 
-    /// Encapsulate an outgoing packet.
+    /// Encapsulate an outgoing IP packet.
     pub fn encapsulate<'s>(
         &'s mut self,
         connection: TId,
-        packet: &[u8],
+        packet: IpPacket<'_>,
     ) -> Result<Option<(SocketAddr, &'s [u8])>, Error> {
         // TODO: We need to return, which local socket to use to send the data.
         let conn = self
@@ -218,7 +235,10 @@ where
 
         // TODO: If we are connected via TURN, wrap in data channel message here.
 
-        match conn.tunnel.encapsulate(packet, self.buffer.as_mut()) {
+        match conn
+            .tunnel
+            .encapsulate(packet.packet(), self.buffer.as_mut())
+        {
             TunnResult::Done => Ok(None),
             TunnResult::Err(e) => Err(Error::Encapsulate(e)),
             TunnResult::WriteToNetwork(packet) => Ok(Some((remote_socket, packet))),

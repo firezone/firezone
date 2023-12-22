@@ -9,10 +9,11 @@ use std::{
 use anyhow::{bail, Context as _, Result};
 use boringtun::x25519::{PublicKey, StaticSecret};
 use firezone_connection::{
-    Answer, ClientConnectionPool, ConnectionPool, Credentials, Offer, ServerConnectionPool,
+    Answer, ClientConnectionPool, ConnectionPool, Credentials, IpPacket, Offer,
+    ServerConnectionPool,
 };
 use futures::{future::BoxFuture, FutureExt};
-use pnet_packet::ip::IpNextHeaderProtocols;
+use pnet_packet::{ip::IpNextHeaderProtocols, ipv4::Ipv4Packet};
 use redis::AsyncCommands;
 use secrecy::{ExposeSecret as _, Secret};
 use tokio::{io::ReadBuf, net::UdpSocket};
@@ -25,7 +26,7 @@ async fn main() -> Result<()> {
     tokio::time::sleep(Duration::from_secs(1)).await; // Until redis is up.
 
     tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::builder().parse("debug,firezone_connection_tests=trace")?)
+        .with_env_filter(EnvFilter::builder().parse("info,boringtun=debug")?)
         .init();
 
     let role = std::env::var("ROLE")
@@ -86,17 +87,16 @@ async fn main() -> Result<()> {
 
             let mut eventloop = Eventloop::new(socket, pool);
 
-            let ping = ip4_udp_ping_packet(source, dst, &rand::random::<[u8; 32]>());
+            let ping_body = rand::random::<[u8; 32]>();
             let mut start = Instant::now();
 
             loop {
                 tokio::select! {
                     event = poll_fn(|cx| eventloop.poll(cx)) => {
                         match event? {
-                            Event::Incoming { conn, packet, from } => {
+                            Event::Incoming { conn, packet } => {
                                 anyhow::ensure!(conn == 1);
-                                anyhow::ensure!(from == IpAddr::V4(dst));
-                                anyhow::ensure!(packet == &ip4_udp_ping_packet(dst, source, &packet[28..])); // Expect the listener to flip src and dst
+                                anyhow::ensure!(packet == IpPacket::Ipv4(ip4_udp_ping_packet(dst, source, &packet.udp_payload()))); // Expect the listener to flip src and dst
 
                                 let rtt = start.elapsed();
 
@@ -112,7 +112,7 @@ async fn main() -> Result<()> {
                             }
                             Event::ConnectionEstablished { conn } => {
                                 start = Instant::now();
-                                eventloop.send_to(conn, &ping)?;
+                                eventloop.send_to(conn, ip4_udp_ping_packet(source, dst, &ping_body).into())?;
                             }
                         }
                     }
@@ -168,10 +168,8 @@ async fn main() -> Result<()> {
                 tokio::select! {
                     event = poll_fn(|cx| eventloop.poll(cx)) => {
                         match event? {
-                            Event::Incoming { conn, packet, from } => {
-                                anyhow::ensure!(from == IpAddr::V4(source));
-
-                                eventloop.send_to(conn, &ip4_udp_ping_packet(dst, source, &packet[28..]))?;
+                            Event::Incoming { conn, packet } => {
+                                eventloop.send_to(conn, ip4_udp_ping_packet(dst, source, packet.udp_payload()).into())?;
                             }
                             Event::SignalIceCandidate { conn, candidate } => {
                                 redis_connection
@@ -195,7 +193,7 @@ async fn main() -> Result<()> {
     };
 }
 
-fn ip4_udp_ping_packet(source: Ipv4Addr, dst: Ipv4Addr, body: &[u8]) -> [u8; 60] {
+fn ip4_udp_ping_packet(source: Ipv4Addr, dst: Ipv4Addr, body: &[u8]) -> Ipv4Packet<'static> {
     assert_eq!(body.len(), 32);
 
     let mut packet_buffer = [0u8; 60];
@@ -220,7 +218,7 @@ fn ip4_udp_ping_packet(source: Ipv4Addr, dst: Ipv4Addr, body: &[u8]) -> [u8; 60]
 
     packet_buffer[28..60].copy_from_slice(&body);
 
-    packet_buffer
+    Ipv4Packet::owned(packet_buffer.to_vec()).unwrap()
 }
 
 mod wire {
@@ -300,8 +298,8 @@ impl<T> Eventloop<T> {
         }
     }
 
-    fn send_to(&mut self, id: u64, msg: &[u8]) -> Result<()> {
-        let Some((addr, msg)) = self.pool.encapsulate(id, msg)? else {
+    fn send_to(&mut self, id: u64, packet: IpPacket<'_>) -> Result<()> {
+        let Some((addr, msg)) = self.pool.encapsulate(id, packet)? else {
             return Ok(());
         };
 
@@ -351,7 +349,7 @@ impl<T> Eventloop<T> {
 
             tracing::trace!(target = "wire::in", %from, packet = %hex::encode(packet));
 
-            if let Some((conn, ip, packet)) = self.pool.decapsulate(
+            if let Some((conn, packet)) = self.pool.decapsulate(
                 self.socket.local_addr()?,
                 from,
                 packet,
@@ -360,8 +358,7 @@ impl<T> Eventloop<T> {
             )? {
                 return Poll::Ready(Ok(Event::Incoming {
                     conn,
-                    from: ip,
-                    packet: packet.to_vec(),
+                    packet: packet.to_owned(),
                 }));
             }
         }
@@ -373,8 +370,7 @@ impl<T> Eventloop<T> {
 enum Event {
     Incoming {
         conn: u64,
-        from: IpAddr,
-        packet: Vec<u8>, // For simplicity, we allocate here ...
+        packet: IpPacket<'static>,
     },
     SignalIceCandidate {
         conn: u64,
