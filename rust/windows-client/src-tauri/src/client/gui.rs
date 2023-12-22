@@ -14,7 +14,7 @@ use connlib_client_shared::{file_logger, ResourceDescription};
 use connlib_shared::messages::ResourceId;
 use secrecy::{ExposeSecret, SecretString};
 use std::{net::IpAddr, path::PathBuf, str::FromStr, sync::Arc, time::Duration};
-use system_tray_menu::{Event as TrayMenuEvent, Resource as ResourceDisplay};
+use system_tray_menu::Event as TrayMenuEvent;
 use tauri::{Manager, SystemTray, SystemTrayEvent};
 use tokio::{
     sync::{mpsc, oneshot, Notify},
@@ -429,6 +429,7 @@ impl Controller {
 
     async fn handle_deep_link(&mut self, url: &url::Url) -> Result<()> {
         let Some(auth) = client::deep_link::parse_auth_callback(url) else {
+            // TODO: `bail` is redundant here, just do `.context("")?;` since it's `anyhow`
             bail!("couldn't parse scheme request");
         };
 
@@ -449,6 +450,7 @@ impl Controller {
             token: auth.token,
         };
         if let Err(e) = self.start_session(auth_info) {
+            // TODO: Replace `bail` with `context` here too
             bail!("couldn't start session: {e:#?}");
         }
         Ok(())
@@ -459,8 +461,7 @@ impl Controller {
             tracing::warn!("got notified to update resources but there is no session");
             return Ok(());
         };
-        let resources = session.callback_handler.resources.load().as_ref().clone();
-        let resources: Vec<_> = resources.into_iter().map(ResourceDisplay::from).collect();
+        let resources = session.callback_handler.resources.load();
         // TODO: Save the user name between runs of the app
         let actor_name = self
             .session
