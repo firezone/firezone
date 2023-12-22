@@ -5,10 +5,12 @@ This crate houses a Windows GUI client.
 ## Setup
 
 1. Install the latest
-   [Visual Studio Build Tools](https://visualstudio.microsoft.com/downloads/)
-   and ensure C++ support is selected.
+   [Visual Studio Community Edition](https://visualstudio.microsoft.com/downloads/)
+   and ensure **C++ support with Clang** is selected. Note: Visual Studio Code
+   won't have clang -- you need actual Visual Studio.
 1. Install rustup.
 1. Install the toolchain: `rustup show`
+1. Install clang for Windows.
 1. Install Tauri tooling: `cargo install tauri-cli`
 
 ### Recommended IDE Setup
