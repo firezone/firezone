@@ -1,10 +1,9 @@
 //
-//  DnsResolvers.swift
+//  Resolv.swift
 //  Firezone
 //
-//  Created by Jamil Bou Kheir on 12/12/23.
+//  Created by Jamil Bou Kheir on 12/22/23.
 //
-//  Wraps libresolv to return the system's default resolvers
 
 public class Resolv {
   var state = __res_9_state()

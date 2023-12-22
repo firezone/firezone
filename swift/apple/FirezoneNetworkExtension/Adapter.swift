@@ -502,9 +502,10 @@ extension Adapter: CallbackHandlerDelegate {
     }
   }
 
-  public func getSystemDefaultResolvers() {
-    let resolvers = Resolv().getservers().map(Resolv.getnameinfo)
+  public func getSystemDefaultResolvers() -> [String] {
+    let resolvers = DNSResolvers.getDNSResolvers()
     self.logger.info("getSystemDefaultResolvers: \(resolvers)")
+    return resolvers
   }
 
   public func onError(error: String) {

@@ -26,7 +26,7 @@ public protocol CallbackHandlerDelegate: AnyObject {
   func onRemoveRoute(_: String)
   func onUpdateResources(resourceList: String)
   func onDisconnect(error: String?)
-  func getSystemDefaultResolvers()
+  func getSystemDefaultResolvers() -> [String]
   func onError(error: String)
 }
 
@@ -84,7 +84,7 @@ public class CallbackHandler {
   }
 
   func getSystemDefaultResolvers() -> RustString {
-    let resolvers = Resolv().getservers().map(Resolv.getnameinfo)
+    let resolvers = delegate?.getSystemDefaultResolvers() ?? []
     logger.log("CallbackHandler.getSystemDefaultResolvers: \(resolvers, privacy: .public)")
     do {
       return try String(decoding: JSONEncoder().encode(resolvers), as: UTF8.self).intoRustString()
