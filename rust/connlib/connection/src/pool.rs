@@ -167,8 +167,6 @@ where
         }
 
         for (id, conn) in self.negotiated_connections.iter_mut() {
-            // Is the packet from the remote directly?
-
             if !conn.accepts(from) {
                 continue;
             }
