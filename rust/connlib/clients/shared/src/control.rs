@@ -372,7 +372,6 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                     for connection in connections {
                         let resource_id = connection.resource_id;
                         if let Err(err) = control_signaler
-                            // TODO: create a reference number and keep track for the response
                             .send_with_ref(EgressMessages::ReuseConnection(connection), resource_id)
                             .await
                         {
