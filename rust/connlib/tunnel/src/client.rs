@@ -754,7 +754,7 @@ impl RoleState for ClientState {
                 Poll::Pending => {}
             }
 
-            if let Poll::Ready(_) = self.refresh_dns_timer.poll_tick(cx) {
+            if self.refresh_dns_timer.poll_tick(cx).is_ready() {
                 let mut connections = Vec::new();
                 for resource in self.dns_resources_internal_ips.keys() {
                     let Some(gateway_id) = self.resources_gateways.get(&resource.id) else {
