@@ -134,7 +134,7 @@ where
         // Next: If we can parse the message as a STUN message, cycle through all agents to check which one it is for.
         if let Ok(stun_message) = StunMessage::parse(packet) {
             for (_, conn) in self.initial_connections.iter_mut() {
-                // TODO: I believe `accepts_message` is broken for our usecases. It does not support client-side demultiplexing.
+                // TODO: `accepts_message` cannot demultiplexing multiple connections until https://github.com/algesten/str0m/pull/418 is merged.
                 if conn.agent.accepts_message(&stun_message) {
                     conn.agent.handle_receive(
                         now,
