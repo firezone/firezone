@@ -6,11 +6,11 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1"
-secrecy = { workspace = true }
 boringtun = { workspace = true }
 firezone-relay = { workspace = true }
-str0m = { workspace = true }
-rand = "0.8"
-tracing = "0.1"
-thiserror = "1"
 pnet_packet = { version = "0.34" }
+rand = "0.8"
+secrecy = { workspace = true }
+str0m = { workspace = true }
+thiserror = "1"
+tracing = "0.1"
