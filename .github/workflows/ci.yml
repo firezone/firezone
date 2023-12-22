@@ -134,6 +134,28 @@ jobs:
           target: ${{ matrix.target }}
           tags: ${{ steps.build_docker_tags.outputs.tags }}
 
+  connection-integration-tests:
+    needs: build-images
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: write
+    env:
+      VERSION: ${{ github.sha }}
+    strategy:
+      fail-fast: false
+      matrix:
+        file: ['docker-compose.lan.yml']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/gcp-docker-login
+        id: login
+        with:
+          project: firezone-staging
+      - name: Run ${{ matrix.file }} test
+        run: docker compose -f rust/connection-tests/${{ matrix.file }} up --exit-code-from dialer --abort-on-container-exit --build
+
   integration-tests:
     needs: build-images
     runs-on: ubuntu-22.04
