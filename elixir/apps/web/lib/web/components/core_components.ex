@@ -345,7 +345,8 @@ defmodule Web.CoreComponents do
       class={[
         "p-4 text-sm flash-#{@kind}",
         @kind == :success && "text-green-800 bg-green-50",
-        @kind == :info && "text-yellow-800 bg-yellow-50",
+        @kind == :info && "text-blue-800 bg-blue-50",
+        @kind == :warning && "text-yellow-800 bg-yellow-50",
         @kind == :error && "text-red-800 bg-red-50",
         @style != "wide" && "mb-4 rounded"
       ]}
@@ -937,7 +938,15 @@ defmodule Web.CoreComponents do
   end
 
   def get_identity_email(identity) do
-    get_in(identity.provider_state, ["userinfo", "email"]) || identity.provider_identifier
+    provider_email(identity) || identity.provider_identifier
+  end
+
+  def identity_has_email?(identity) do
+    not is_nil(provider_email(identity)) || identity.provider.adapter == :email
+  end
+
+  defp provider_email(identity) do
+    get_in(identity.provider_state, ["userinfo", "email"])
   end
 
   attr :account, :any, required: true

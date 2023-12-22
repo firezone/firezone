@@ -10,6 +10,7 @@ mod device_id;
 mod elevation;
 mod gui;
 mod logging;
+mod resolvers;
 mod settings;
 mod wintun_install;
 
@@ -66,7 +67,6 @@ pub(crate) fn run() -> Result<()> {
             Ok(())
         }
         Some(Cmd::DebugPipeServer) => debug_commands::pipe_server(),
-        Some(Cmd::DebugToken) => debug_commands::token(),
         Some(Cmd::DebugWintun) => debug_commands::wintun(cli),
         // If we already tried to elevate ourselves, don't try again
         Some(Cmd::Elevated) => gui::run(GuiParams {
