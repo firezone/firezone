@@ -194,8 +194,12 @@ where
 
                     Ok(Some((*id, ipv6_packet.into())))
                 }
-                // TODO: Document why this is okay!
                 TunnResult::WriteToNetwork(bytes) => {
+                    // During normal operation, i.e. when the tunnel is active, decapsulating a packet straight yields the decrypted packet.
+                    // However, in case `Tunn` has buffered packets, they may be returned here instead.
+                    // This should be fairly rare which is why we just allocate these and return them from `poll_transmit` instead.
+                    // Overall, this results in a much nicer API for our caller and should not affect performance.
+
                     self.buffered_transmits.push_back(Transmit {
                         dst: from,
                         payload: bytes.to_vec(),
