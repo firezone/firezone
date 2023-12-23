@@ -1,0 +1,23 @@
+[package]
+name = "firezone-connection-tests"
+# mark:automatic-version
+version = "1.0.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1"
+boringtun = { workspace = true }
+firezone-connection = { workspace = true }
+futures = "0.3"
+hex = "0.4"
+pnet_packet = { version = "0.34" }
+rand = "0.8"
+redis = { version = "0.23.3", default-features = false, features = ["tokio-comp"] }
+redis-macros = "0.2.1"
+secrecy = { workspace = true }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde-hex = "0.1.0"
+tokio = { version = "1", features = ["full"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
