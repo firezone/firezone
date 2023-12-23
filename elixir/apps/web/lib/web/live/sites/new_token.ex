@@ -264,6 +264,8 @@ defmodule Web.Sites.NewToken do
             bin_url="https://github.com/firezone/firezone/releases/download/$FIREZONE_VERSION/gateway-arm" ;; \\
           x86_64) \\
             bin_url="https://github.com/firezone/firezone/releases/download/$FIREZONE_VERSION/gateway-x64" ;; \\
+          mips64el) \\
+            bin_url="https://github.com/firezone/firezone/releases/download/$FIREZONE_VERSION/gateway-mips64" ;; \\
           *) \\
             echo "Unsupported architecture"; \\
             exit 1 ;; \\
