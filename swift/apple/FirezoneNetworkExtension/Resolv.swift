@@ -4,6 +4,7 @@
 //
 //  Created by Jamil Bou Kheir on 12/22/23.
 //
+// Reads system resolvers from libresolv, similar to reading /etc/resolv.conf but this also works on iOS
 
 public class Resolv {
   var state = __res_9_state()

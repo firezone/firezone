@@ -250,6 +250,18 @@ extension Adapter {
 // MARK: Responding to path updates
 
 extension Adapter {
+  private func resetToSystemDNS() {
+    // Setting this to anything but an empty string will populate /etc/resolv.conf with
+    // the default interface's DNS servers, which we read later from connlib
+    // during tunnel setup.
+    self.networkSettings?.setMatchDomains(["firezone-fd0020211111"])
+    self.networkSettings?.apply(
+      on: self.packetTunnelProvider,
+      logger: self.logger,
+      completionHandler: nil
+    )
+  }
+
   private func beginPathMonitoring() {
     self.logger.log("Beginning path monitoring")
     let networkMonitor = NWPathMonitor()
@@ -267,6 +279,7 @@ extension Adapter {
       if path.status != .satisfied {
         self.logger.log("Adapter.didReceivePathUpdate: Offline. Shutting down connlib.")
         onStarted?(nil)
+        resetToSystemDNS()
         self.packetTunnelProvider?.reasserting = true
         self.state = .stoppingTunnelTemporarily(session: session, onStopped: nil)
         session.disconnect()
@@ -275,6 +288,7 @@ extension Adapter {
     case .tunnelReady(let session):
       if path.status != .satisfied {
         self.logger.log("Adapter.didReceivePathUpdate: Offline. Shutting down connlib.")
+        resetToSystemDNS()
         self.packetTunnelProvider?.reasserting = true
         self.state = .stoppingTunnelTemporarily(session: session, onStopped: nil)
         session.disconnect()
@@ -367,6 +381,8 @@ extension Adapter: CallbackHandlerDelegate {
         self.logger.error("Adapter.onTunnelReady: No packet tunnel provider")
         return
       }
+      // Connlib's up, set it as the default DNS
+      networkSettings.setMatchDomains([""])
       networkSettings.apply(on: packetTunnelProvider, logger: self.logger) { error in
         if let error = error {
           packetTunnelProvider.handleTunnelShutdown(
@@ -503,7 +519,7 @@ extension Adapter: CallbackHandlerDelegate {
   }
 
   public func getSystemDefaultResolvers() -> [String] {
-    let resolvers = DNSResolvers.getDNSResolvers()
+    let resolvers = Resolv().getservers().map(Resolv.getnameinfo)
     self.logger.info("getSystemDefaultResolvers: \(resolvers)")
     return resolvers
   }

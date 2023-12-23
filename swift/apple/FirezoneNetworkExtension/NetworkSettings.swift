@@ -22,6 +22,7 @@ class NetworkSettings {
   // Modifiable values
   private(set) var routes: [String] = []
   private(set) var resourceDomains: [String] = []
+  private(set) var matchDomains: [String] = [""]
 
   // To keep track of modifications
   private(set) var hasUnappliedChanges: Bool
@@ -57,10 +58,17 @@ class NetworkSettings {
     self.hasUnappliedChanges = true
   }
 
+  func setMatchDomains(_ matchDomains: [String]) {
+    self.matchDomains = matchDomains
+    self.hasUnappliedChanges = true
+  }
+
   func apply(
-    on packetTunnelProvider: NEPacketTunnelProvider, logger: Logger,
+    on packetTunnelProvider: NEPacketTunnelProvider?,
+    logger: Logger,
     completionHandler: ((Error?) -> Void)?
   ) {
+    guard let packetTunnelProvider = packetTunnelProvider else { return }
 
     guard self.hasUnappliedChanges else {
       logger.error("NetworkSettings.apply: No changes to apply")
@@ -141,7 +149,8 @@ class NetworkSettings {
 
     let dnsSettings = NEDNSSettings(servers: [dnsAddress])
     // Intercept all DNS queries; SplitDNS will be handled by connlib
-    dnsSettings.matchDomains = [""]
+    dnsSettings.matchDomains = matchDomains
+    dnsSettings.matchDomainsNoSearch = true
     tunnelNetworkSettings.dnsSettings = dnsSettings
     tunnelNetworkSettings.mtu = mtu
 
