@@ -121,9 +121,9 @@ jobs:
           - target: armv7-unknown-linux-musleabihf # E.g. Raspberry Pi
             platform: linux/arm/v7
             shortname: arm
-          - target: mips64-unknown-linux-muslabi64 # E.g. UniFi Routers
-            platform: linux/mips64le
-            shortname: mips64
+          # Requires ring v0.17 which a number of our dependencies don't yet support
+          # - target: mips64-unknown-linux-muslabi64 # E.g. UniFi Routers
+          #   platform: linux/mips64le
         name:
           - package: firezone-linux-client
             artifact: linux-client
