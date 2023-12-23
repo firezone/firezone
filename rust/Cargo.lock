@@ -197,6 +197,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bddcadddf5e9015d310179a59bb28c4d4b9920ad0f11e8e14dbadf654890c9a6"
 
 [[package]]
+name = "array-init"
+version = "0.0.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "23589ecb866b460d3a0f1278834750268c607e8e28a1b982c907219f3178cd72"
+dependencies = [
+ "nodrop",
+]
+
+[[package]]
 name = "asn1-rs"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -909,7 +918,7 @@ version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3431df59f28accaf4cb4eed4a9acc66bea3f3c3753aa6cdc2f024174ef232af7"
 dependencies = [
- "smallvec",
+ "smallvec 1.11.2",
 ]
 
 [[package]]
@@ -918,7 +927,7 @@ version = "0.15.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "03915af431787e6ffdcc74c645077518c6b6e01f80b761e0fbbfa288536311b3"
 dependencies = [
- "smallvec",
+ "smallvec 1.11.2",
  "target-lexicon",
 ]
 
@@ -1384,7 +1393,7 @@ dependencies = [
  "phf 0.8.0",
  "proc-macro2",
  "quote",
- "smallvec",
+ "smallvec 1.11.2",
  "syn 1.0.109",
 ]
 
@@ -1895,6 +1904,43 @@ dependencies = [
  "tracing-log 0.2.0",
  "tracing-subscriber",
  "url",
+]
+
+[[package]]
+name = "firezone-connection"
+version = "1.0.0"
+dependencies = [
+ "anyhow",
+ "boringtun",
+ "firezone-relay",
+ "pnet_packet",
+ "rand 0.8.5",
+ "secrecy",
+ "str0m",
+ "thiserror",
+ "tracing",
+]
+
+[[package]]
+name = "firezone-connection-tests"
+version = "1.0.0"
+dependencies = [
+ "anyhow",
+ "boringtun",
+ "firezone-connection",
+ "futures",
+ "hex",
+ "pnet_packet",
+ "rand 0.8.5",
+ "redis",
+ "redis-macros",
+ "secrecy",
+ "serde",
+ "serde-hex",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -2450,7 +2496,7 @@ dependencies = [
  "gobject-sys",
  "libc",
  "once_cell",
- "smallvec",
+ "smallvec 1.11.2",
  "thiserror",
 ]
 
@@ -2678,7 +2724,7 @@ dependencies = [
  "parking_lot",
  "rand 0.8.5",
  "resolv-conf",
- "smallvec",
+ "smallvec 1.11.2",
  "thiserror",
  "tokio",
  "tracing",
@@ -3424,6 +3470,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0e7465ac9959cc2b1404e8e2367b43684a6d13790fe23056cc8c6c5a6b7bcb94"
 
 [[package]]
+name = "maybe-uninit"
+version = "2.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "60302e4db3a61da70c0cb7991976248362f30319e88850c487b9b95bbf059e00"
+
+[[package]]
 name = "md-5"
 version = "0.10.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4063,7 +4115,7 @@ dependencies = [
  "cfg-if",
  "libc",
  "redox_syscall",
- "smallvec",
+ "smallvec 1.11.2",
  "windows-targets 0.48.5",
 ]
 
@@ -4737,9 +4789,34 @@ dependencies = [
  "percent-encoding",
  "pin-project-lite",
  "ryu",
+ "sha1_smol",
+ "socket2 0.4.10",
  "tokio",
  "tokio-util",
  "url",
+]
+
+[[package]]
+name = "redis-macros"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "60eb39e2b44d4c0f9c84e7c5fc4fc3adc8dd26ec48f1ac3a160033f7c03b18fd"
+dependencies = [
+ "redis",
+ "redis-macros-derive",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "redis-macros-derive"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "39550b9e94ce430a349c5490ca4efcae90ab8189603320f88c1d69f0326f169e"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 1.0.109",
 ]
 
 [[package]]
@@ -5132,6 +5209,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "sctp-proto"
+version = "0.1.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "514eb06a3f6b1f119b6a00a9a87afac072894817d3283b0d36adc8f8a135886a"
+dependencies = [
+ "bytes",
+ "crc",
+ "fxhash",
+ "log",
+ "rand 0.8.5",
+ "slab",
+ "thiserror",
+]
+
+[[package]]
 name = "sdp"
 version = "0.6.0"
 source = "git+https://github.com/firezone/webrtc?branch=expose-new-endpoint#4918ae812ab7e45b8ab000efbc316b5850290ddb"
@@ -5225,7 +5317,7 @@ dependencies = [
  "phf_codegen 0.8.0",
  "precomputed-hash",
  "servo_arc",
- "smallvec",
+ "smallvec 1.11.2",
  "thin-slice",
 ]
 
@@ -5245,6 +5337,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "25dd9975e68d0cb5aa1120c288333fc98731bd1dd12f561e468ea4728c042b89"
 dependencies = [
  "serde_derive",
+]
+
+[[package]]
+name = "serde-hex"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ca37e3e4d1b39afd7ff11ee4e947efae85adfddf4841787bfa47c470e96dc26d"
+dependencies = [
+ "array-init",
+ "serde",
+ "smallvec 0.6.14",
 ]
 
 [[package]]
@@ -5363,6 +5466,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "sha-1"
+version = "0.10.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f5058ada175748e33390e40e872bd0fe59a19f265d0158daa551c5a88a76009c"
+dependencies = [
+ "cfg-if",
+ "cpufeatures",
+ "digest",
+ "sha1-asm",
+]
+
+[[package]]
 name = "sha1"
 version = "0.10.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5372,6 +5487,21 @@ dependencies = [
  "cpufeatures",
  "digest",
 ]
+
+[[package]]
+name = "sha1-asm"
+version = "0.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2ba6947745e7f86be3b8af00b7355857085dbdf8901393c89514510eb61f4e21"
+dependencies = [
+ "cc",
+]
+
+[[package]]
+name = "sha1_smol"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ae1a47186c03a32177042e55dbc5fd5aee900b8e0069a8d70fba96a9375cd012"
 
 [[package]]
 name = "sha2"
@@ -5437,6 +5567,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8f92a496fb766b417c996b9c5e57daf2f7ad3b0bebe1ccfca4856390e3d3bb67"
 dependencies = [
  "autocfg",
+]
+
+[[package]]
+name = "smallvec"
+version = "0.6.14"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b97fcaeba89edba30f044a10c6a3cc39df9c3f17d7cd829dd1446cab35f890e0"
+dependencies = [
+ "maybe-uninit",
 ]
 
 [[package]]
@@ -5550,6 +5689,23 @@ name = "str-buf"
 version = "1.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9e08d8363704e6c71fc928674353e6b7c23dcea9d82d7012c8faf2a3a025f8d0"
+
+[[package]]
+name = "str0m"
+version = "0.4.1"
+source = "git+https://github.com/thomaseizinger/str0m?branch=main#12575cab1c8c466cbf1e05b0b7459136eeaba8ed"
+dependencies = [
+ "combine",
+ "crc",
+ "hmac",
+ "once_cell",
+ "rand 0.8.5",
+ "sctp-proto",
+ "serde",
+ "sha-1",
+ "thiserror",
+ "tracing",
+]
 
 [[package]]
 name = "string_cache"
@@ -6496,7 +6652,7 @@ dependencies = [
  "once_cell",
  "opentelemetry",
  "opentelemetry_sdk",
- "smallvec",
+ "smallvec 1.11.2",
  "tracing",
  "tracing-core",
  "tracing-log 0.1.4",
@@ -6559,7 +6715,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sharded-slab",
- "smallvec",
+ "smallvec 1.11.2",
  "thread_local",
  "tracing",
  "tracing-core",
