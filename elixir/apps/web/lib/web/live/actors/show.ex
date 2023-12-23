@@ -125,6 +125,18 @@ defmodule Web.Actors.Show do
           </:col>
           <:action :let={identity}>
             <button
+              :if={identity_has_email?(identity)}
+              phx-click="send_welcome_email"
+              phx-value-id={identity.id}
+              class={[
+                "block w-full py-2 px-4 hover:bg-neutral-100"
+              ]}
+            >
+              Send Welcome Email
+            </button>
+          </:action>
+          <:action :let={identity}>
+            <button
               :if={identity.created_by != :provider}
               phx-click="delete_identity"
               data-confirm="Are you sure want to delete this identity?"
@@ -173,7 +185,10 @@ defmodule Web.Actors.Show do
     </.section>
 
     <.section>
-      <:title>Authorizations</:title>
+      <:title>Activity</:title>
+      <:help>
+        Attempts to access resources by this actor.
+      </:help>
       <:content>
         <.table id="flows" rows={@flows} row_id={&"flows-#{&1.id}"}>
           <:col :let={flow} label="AUTHORIZED AT">
@@ -211,7 +226,7 @@ defmodule Web.Actors.Show do
             </.link>
           </:col>
           <:empty>
-            <div class="text-center text-neutral-500 p-4">No authorizations to display.</div>
+            <div class="text-center text-neutral-500 p-4">No activity to display.</div>
           </:empty>
         </.table>
       </:content>
@@ -334,6 +349,24 @@ defmodule Web.Actors.Show do
       socket
       |> put_flash(:info, "Identity was deleted.")
       |> assign(actor: actor)
+
+    {:noreply, socket}
+  end
+
+  def handle_event("send_welcome_email", %{"id" => id}, socket) do
+    {:ok, identity} = Auth.fetch_identity_by_id(id, socket.assigns.subject)
+
+    {:ok, _} =
+      Web.Mailer.AuthEmail.new_user_email(
+        socket.assigns.account,
+        identity,
+        socket.assigns.subject
+      )
+      |> Web.Mailer.deliver()
+
+    socket =
+      socket
+      |> put_flash(:info, "Welcome email sent to #{identity.provider_identifier}")
 
     {:noreply, socket}
   end

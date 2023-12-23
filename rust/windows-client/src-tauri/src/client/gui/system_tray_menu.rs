@@ -2,34 +2,6 @@ use connlib_client_shared::ResourceDescription;
 use std::str::FromStr;
 use tauri::{CustomMenuItem, SystemTrayMenu, SystemTrayMenuItem, SystemTraySubmenu};
 
-/// The information needed for the GUI to display a resource inside the Firezone VPN
-// TODO: Just make these methods on `ResourceDescription`
-pub(crate) struct Resource {
-    pub id: connlib_shared::messages::ResourceId,
-    /// User-friendly name, e.g. "GitLab"
-    pub name: String,
-    /// What will be copied to the clipboard to paste into a web browser
-    pub pastable: String,
-}
-
-impl From<ResourceDescription> for Resource {
-    fn from(x: ResourceDescription) -> Self {
-        match x {
-            ResourceDescription::Dns(x) => Self {
-                id: x.id,
-                name: x.name,
-                pastable: x.address,
-            },
-            ResourceDescription::Cidr(x) => Self {
-                id: x.id,
-                name: x.name,
-                // TODO: CIDRs aren't URLs right?
-                pastable: x.address.to_string(),
-            },
-        }
-    }
-}
-
 #[derive(Debug, PartialEq)]
 pub(crate) enum Event {
     About,
@@ -64,7 +36,7 @@ impl FromStr for Event {
     }
 }
 
-pub(crate) fn signed_in(user_name: &str, resources: &[Resource]) -> SystemTrayMenu {
+pub(crate) fn signed_in(user_name: &str, resources: &[ResourceDescription]) -> SystemTrayMenu {
     let mut menu = SystemTrayMenu::new()
         .add_item(
             CustomMenuItem::new("".to_string(), format!("Signed in as {user_name}")).disabled(),
@@ -73,12 +45,13 @@ pub(crate) fn signed_in(user_name: &str, resources: &[Resource]) -> SystemTrayMe
         .add_native_item(SystemTrayMenuItem::Separator)
         .add_item(CustomMenuItem::new("".to_string(), "Resources").disabled());
 
-    for Resource { id, name, pastable } in resources {
+    for res in resources {
+        let id = res.id();
         let submenu = SystemTrayMenu::new().add_item(CustomMenuItem::new(
             format!("/resource/{id}"),
-            pastable.to_string(),
+            res.pastable(),
         ));
-        menu = menu.add_submenu(SystemTraySubmenu::new(name, submenu));
+        menu = menu.add_submenu(SystemTraySubmenu::new(res.name(), submenu));
     }
 
     menu = menu

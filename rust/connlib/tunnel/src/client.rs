@@ -16,7 +16,7 @@ use connlib_shared::{Callbacks, Dname, DNS_SENTINEL};
 use domain::base::Rtype;
 use futures::channel::mpsc::Receiver;
 use futures::stream;
-use futures_bounded::{PushError, StreamMap};
+use futures_bounded::{FuturesMap, PushError, StreamMap};
 use hickory_resolver::lookup::Lookup;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
@@ -29,12 +29,13 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
-use tokio::time::Instant;
+use tokio::time::{Instant, Interval, MissedTickBehavior};
 use webrtc::ice_transport::ice_candidate::RTCIceCandidate;
 
 // Using str here because Ipv4/6Network doesn't support `const` 🙃
 const IPV4_RESOURCES: &str = "100.96.0.0/11";
 const IPV6_RESOURCES: &str = "fd00:2021:1111:8000::/107";
+const MAX_CONNECTION_REQUEST_DELAY: Duration = Duration::from_secs(10);
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct DnsResource {
@@ -167,9 +168,18 @@ pub struct ClientState {
 
     // TODO: Make private
     pub awaiting_connection: HashMap<ResourceId, AwaitingConnectionDetails>,
-    pub gateway_awaiting_connection: HashSet<GatewayId>,
-
     awaiting_connection_timers: StreamMap<ResourceId, Instant>,
+
+    pub gateway_awaiting_connection: HashSet<GatewayId>,
+    // This timer exist for an unlikely case, on unreliable connections where the RequestConnection message
+    // or the response is lost:
+    // This would remove the "PendingConnection" message and be able to try the connection again.
+    // There are some edge cases that come with this:
+    // * a gateway in a VERY unlikely case could receive the connection request twice. This will stop any connection attempt and make the whole thing start again.
+    // if this would happen often the UX would be awful but this is only in cases where messages are delayed for more than 10 seconds, it's enough that it doesn't break correctness.
+    // * even more unlikely a tunnel could be established in a sort of race condition when this timer goes off. Again a similar behavior to the one above will happen, the webrtc connection will be forcefully terminated from the gateway.
+    // then the old peer will expire, this might take ~180 seconds. This is an even worse experience but the likelihood of this happen is infinitesimaly small, again correctness is the only important part.
+    gateway_awaiting_connection_timers: FuturesMap<GatewayId, ()>,
 
     pub gateway_public_keys: HashMap<GatewayId, PublicKey>,
     pub gateway_preshared_keys: HashMap<GatewayId, StaticSecret>,
@@ -187,6 +197,8 @@ pub struct ClientState {
     forwarded_dns_queries: BoundedQueue<DnsQuery<'static>>,
 
     ip_provider: IpProvider,
+
+    refresh_dns_timer: Interval,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -281,6 +293,22 @@ impl ClientState {
                 channel: p.channel.clone(),
             })
         }) else {
+            match self
+                .gateway_awaiting_connection_timers
+                // Note: we don't need to set a timer here because
+                // the FutureMap already expires things, it seems redundant
+                // to also have timer that expires.
+                .try_push(gateway, std::future::pending())
+            {
+                Ok(_) => {}
+                Err(PushError::BeyondCapacity(_)) => {
+                    tracing::warn!(%gateway, "Too many concurrent connection attempts");
+                    return Err(Error::TooManyConnectionRequests);
+                }
+                Err(PushError::Replaced(_)) => {
+                    // The timers are equivalent for our purpose so we don't really care about this one.
+                }
+            };
             self.gateway_awaiting_connection.insert(gateway);
             return Ok(None);
         };
@@ -314,6 +342,7 @@ impl ClientState {
         };
 
         self.gateway_awaiting_connection.remove(&gateway);
+        self.gateway_awaiting_connection_timers.remove(gateway);
     }
 
     fn is_awaiting_connection_to_dns(&self, resource: &DnsResource) -> bool {
@@ -457,6 +486,7 @@ impl ClientState {
 
         // Tidy up state once everything succeeded.
         self.gateway_awaiting_connection.remove(&gateway);
+        self.gateway_awaiting_connection_timers.remove(gateway);
         self.awaiting_connection.remove(&resource);
 
         Ok(config)
@@ -568,23 +598,35 @@ impl ClientState {
             .get(resource)
             .cloned()
             .unwrap_or(Vec::new());
-        let addr_v4 = addrs.iter().copied().filter(IpAddr::is_ipv4);
+        // We collect here to eagerly filter so that `next` is not called more times than needed with the ip_provider
+        // that could cause an ip exhaustion.
+        // This is needed to get the length, since even if zip is run, only until addr_v4 is None, `next` is still being called in both elements
+        // so ip_provider consumes an extra ip and this could in the long-run consume all ips since this function is also called to refresh ip allocations..
+        let addr_v4 = addrs.iter().copied().filter(IpAddr::is_ipv4).collect_vec();
+        let len = addr_v4.len();
         let internal_ips_v4 = internal_ips
             .iter()
             .copied()
             .filter_map(get_v4)
             .chain(&mut self.ip_provider.ipv4)
             .map(Into::<IpAddr>::into)
-            .zip(addr_v4);
+            .zip(addr_v4.clone())
+            .take(len);
 
-        let addr_v6 = addrs.iter().copied().filter(IpAddr::is_ipv6);
+        tracing::warn!("external_ips: {addr_v4:?}");
+        tracing::warn!("internal_ips: {internal_ips:?}");
+
+        // Same note as for ipv4, though an exhaustion is not a realistic scenario.
+        let addr_v6 = addrs.iter().copied().filter(IpAddr::is_ipv6).collect_vec();
+        let len = addr_v6.len();
         let internal_ips_v6 = internal_ips
             .iter()
             .copied()
             .filter_map(get_v6)
             .chain(&mut self.ip_provider.ipv6)
             .map(Into::<IpAddr>::into)
-            .zip(addr_v6);
+            .zip(addr_v6)
+            .take(len);
 
         internal_ips_v4.chain(internal_ips_v6).collect()
     }
@@ -606,15 +648,24 @@ impl IpProvider {
 
 impl Default for ClientState {
     fn default() -> Self {
+        // With this single timer this might mean that some DNS are refreshed too often
+        // however... this also mean any resource is refresh within a 5 mins interval
+        // therefore, only the first time it's added that happens, after that it doesn't matter.
+        let mut interval = tokio::time::interval(Duration::from_secs(300));
+        interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
         Self {
             active_candidate_receivers: StreamMap::new(
                 Duration::from_secs(ICE_GATHERING_TIMEOUT_SECONDS),
                 MAX_CONCURRENT_ICE_GATHERING,
             ),
             waiting_for_sdp_from_gateway: Default::default(),
+
             awaiting_connection: Default::default(),
-            gateway_awaiting_connection: Default::default(),
             awaiting_connection_timers: StreamMap::new(Duration::from_secs(60), 100),
+
+            gateway_awaiting_connection: Default::default(),
+            gateway_awaiting_connection_timers: FuturesMap::new(MAX_CONNECTION_REQUEST_DELAY, 100),
+
             gateway_public_keys: Default::default(),
             resources_gateways: Default::default(),
             forwarded_dns_queries: BoundedQueue::with_capacity(DNS_QUERIES_QUEUE_SIZE),
@@ -630,6 +681,7 @@ impl Default for ClientState {
             resource_ids: Default::default(),
             peers_by_ip: IpNetworkTable::new(),
             deferred_dns_queries: Default::default(),
+            refresh_dns_timer: interval,
         }
     }
 }
@@ -652,6 +704,12 @@ impl RoleState for ClientState {
                 }
                 Poll::Ready((_, None)) => continue,
                 Poll::Pending => {}
+            }
+
+            if let Poll::Ready((gateway_id, _)) =
+                self.gateway_awaiting_connection_timers.poll_unpin(cx)
+            {
+                self.gateway_awaiting_connection.remove(&gateway_id);
             }
 
             match self.awaiting_connection_timers.poll_next_unpin(cx) {
@@ -693,6 +751,30 @@ impl RoleState for ClientState {
                 }
                 Poll::Ready((_, None)) => continue,
                 Poll::Pending => {}
+            }
+
+            if self.refresh_dns_timer.poll_tick(cx).is_ready() {
+                let mut connections = Vec::new();
+                for resource in self.dns_resources_internal_ips.keys() {
+                    let Some(gateway_id) = self.resources_gateways.get(&resource.id) else {
+                        continue;
+                    };
+                    // filter inactive connections
+                    if !self
+                        .peers_by_ip
+                        .iter()
+                        .any(|(_, p)| &p.inner.conn_id == gateway_id)
+                    {
+                        continue;
+                    }
+
+                    connections.push(ReuseConnection {
+                        resource_id: resource.id,
+                        gateway_id: *gateway_id,
+                        payload: Some(resource.address.clone()),
+                    });
+                }
+                return Poll::Ready(Event::RefreshResources { connections });
             }
 
             return self.forwarded_dns_queries.poll(cx).map(Event::DnsQuery);

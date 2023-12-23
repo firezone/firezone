@@ -4,18 +4,22 @@
 // TODO: `git grep` for unwraps before 1.0, especially this gui module
 
 use crate::client::{self, deep_link, AppLocalDataDir};
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
+use arc_swap::ArcSwap;
 use client::{
     logging,
     settings::{self, AdvancedSettings},
 };
-use connlib_client_shared::file_logger;
+use connlib_client_shared::{file_logger, ResourceDescription};
 use connlib_shared::messages::ResourceId;
 use secrecy::{ExposeSecret, SecretString};
-use std::{net::IpAddr, path::PathBuf, str::FromStr};
-use system_tray_menu::{Event as TrayMenuEvent, Resource as ResourceDisplay};
+use std::{net::IpAddr, path::PathBuf, str::FromStr, sync::Arc, time::Duration};
+use system_tray_menu::Event as TrayMenuEvent;
 use tauri::{Manager, SystemTray, SystemTrayEvent};
-use tokio::sync::{mpsc, oneshot};
+use tokio::{
+    sync::{mpsc, oneshot, Notify},
+    task::spawn_blocking,
+};
 use ControllerRequest as Req;
 
 mod system_tray_menu;
@@ -60,11 +64,12 @@ pub(crate) fn run(params: client::GuiParams) -> Result<()> {
     deep_link::register(TAURI_ID)?;
 
     let (ctlr_tx, ctlr_rx) = mpsc::channel(5);
+    let notify_controller = Arc::new(Notify::new());
 
     tokio::spawn(accept_deep_links(server, ctlr_tx.clone()));
 
     let managed = Managed {
-        ctlr_tx,
+        ctlr_tx: ctlr_tx.clone(),
         inject_faults,
     };
 
@@ -123,10 +128,17 @@ pub(crate) fn run(params: client::GuiParams) -> Result<()> {
 
             let app_handle = app.handle();
             let _ctlr_task = tokio::spawn(async move {
-                if let Err(e) =
-                    run_controller(app_handle, ctlr_rx, logging_handles, advanced_settings).await
+                if let Err(e) = run_controller(
+                    app_handle,
+                    ctlr_tx,
+                    ctlr_rx,
+                    logging_handles,
+                    advanced_settings,
+                    notify_controller,
+                )
+                .await
                 {
-                    tracing::error!("run_controller returned an error: {e}");
+                    tracing::error!("run_controller returned an error: {e:#?}");
                 }
             });
 
@@ -147,10 +159,7 @@ pub(crate) fn run(params: client::GuiParams) -> Result<()> {
 /// Worker task to accept deep links from a named pipe forever
 ///
 /// * `server` An initial named pipe server to consume before making new servers. This lets us also use the named pipe to enforce single-instance
-async fn accept_deep_links(
-    mut server: deep_link::Server,
-    ctlr_tx: mpsc::Sender<ControllerRequest>,
-) -> Result<()> {
+async fn accept_deep_links(mut server: deep_link::Server, ctlr_tx: CtlrTx) -> Result<()> {
     loop {
         if let Ok(url) = server.accept().await {
             ctlr_tx
@@ -205,13 +214,13 @@ fn handle_system_tray_event(app: &tauri::AppHandle, event: TrayMenuEvent) -> Res
 
 pub(crate) enum ControllerRequest {
     CopyResource(String),
+    Disconnected,
     ExportLogs(PathBuf),
     GetAdvancedSettings(oneshot::Sender<AdvancedSettings>),
     SchemeRequest(url::Url),
     SignIn,
     StartStopLogCounting(bool),
     SignOut,
-    UpdateResources(Vec<connlib_client_shared::ResourceDescription>),
 }
 
 // TODO: Should these be keyed to the Google ID or email or something?
@@ -226,18 +235,21 @@ fn keyring_entry() -> Result<keyring::Entry> {
 
 #[derive(Clone)]
 struct CallbackHandler {
+    logger: file_logger::Handle,
+    notify_controller: Arc<Notify>,
     ctlr_tx: CtlrTx,
-    logger: Option<file_logger::Handle>,
+    resources: Arc<ArcSwap<Vec<ResourceDescription>>>,
 }
 
 #[derive(thiserror::Error, Debug)]
 enum CallbackError {
-    #[error(transparent)]
-    ControllerRequest(#[from] tokio::sync::mpsc::error::TrySendError<ControllerRequest>),
     #[error("system DNS resolver problem: {0}")]
     Resolvers(#[from] client::resolvers::Error),
+    #[error("can't send to controller task: {0}")]
+    SendError(#[from] mpsc::error::TrySendError<ControllerRequest>),
 }
 
+// Callbacks must all be non-blocking
 impl connlib_client_shared::Callbacks for CallbackHandler {
     type Error = CallbackError;
 
@@ -245,8 +257,8 @@ impl connlib_client_shared::Callbacks for CallbackHandler {
         &self,
         error: Option<&connlib_client_shared::Error>,
     ) -> Result<(), Self::Error> {
-        // TODO: implement
-        tracing::error!("on_disconnect {error:?}");
+        tracing::debug!("on_disconnect {error:?}");
+        self.ctlr_tx.try_send(ControllerRequest::Disconnected)?;
         Ok(())
     }
 
@@ -261,14 +273,9 @@ impl connlib_client_shared::Callbacks for CallbackHandler {
         Ok(())
     }
 
-    fn on_update_resources(
-        &self,
-        resources: Vec<connlib_client_shared::ResourceDescription>,
-    ) -> Result<(), Self::Error> {
-        tracing::trace!("on_update_resources");
-        // TODO: Better error handling?
-        self.ctlr_tx
-            .try_send(ControllerRequest::UpdateResources(resources))?;
+    fn on_update_resources(&self, resources: Vec<ResourceDescription>) -> Result<(), Self::Error> {
+        self.resources.store(resources.into());
+        self.notify_controller.notify_one();
         Ok(())
     }
 
@@ -277,64 +284,81 @@ impl connlib_client_shared::Callbacks for CallbackHandler {
     }
 
     fn roll_log_file(&self) -> Option<PathBuf> {
-        self.logger
-            .as_ref()?
-            .roll_to_new_file()
-            .unwrap_or_else(|e| {
-                tracing::debug!("Failed to roll over to new file: {e}");
-                let _ = self.on_error(&connlib_client_shared::Error::LogFileRollError(e));
+        self.logger.roll_to_new_file().unwrap_or_else(|e| {
+            tracing::debug!("Failed to roll over to new file: {e}");
+            let _ = self.on_error(&connlib_client_shared::Error::LogFileRollError(e));
 
-                None
-            })
+            None
+        })
     }
 }
 
 struct Controller {
     /// Debugging-only settings like API URL, auth URL, log filter
     advanced_settings: AdvancedSettings,
-    /// mpsc sender to send things to the controller task
+    app: tauri::AppHandle,
     ctlr_tx: CtlrTx,
-    /// connlib / tunnel session
-    connlib_session: Option<connlib_client_shared::Session<CallbackHandler>>,
+    /// Session for the currently signed-in user, if there is one
+    session: Option<Session>,
     /// The UUIDv4 device ID persisted to disk
     /// Sent verbatim to Session::connect
     device_id: String,
+    log_counting_task: Option<tokio::task::JoinHandle<Result<()>>>,
     logging_handles: client::logging::Handles,
-    /// Info about currently signed-in user, if there is one
-    session: Option<Session>,
+    /// Tells us when to wake up and look for a new resource list. Tokio docs say that memory reads and writes are synchronized when notifying, so we don't need an extra mutex on the resources.
+    notify_controller: Arc<Notify>,
 }
 
-/// Information for a signed-in user session
+/// Everything related to a signed-in user session
 struct Session {
+    auth_info: AuthInfo,
+    callback_handler: CallbackHandler,
+    connlib: connlib_client_shared::Session<CallbackHandler>,
+}
+
+/// Auth info that's persisted to disk if a session outlives an app instance
+struct AuthInfo {
     /// User name, e.g. "John Doe", from the sign-in deep link
     actor_name: String,
+    /// Secret token to authenticate with the portal
     token: SecretString,
 }
 
 impl Controller {
     async fn new(
         app: tauri::AppHandle,
+        ctlr_tx: CtlrTx,
         logging_handles: client::logging::Handles,
         advanced_settings: AdvancedSettings,
+        notify_controller: Arc<Notify>,
     ) -> Result<Self> {
-        let ctlr_tx = app
-            .try_state::<Managed>()
-            .ok_or_else(|| anyhow::anyhow!("can't get Managed object from Tauri"))?
-            .ctlr_tx
-            .clone();
+        let device_id = client::device_id::device_id(&app_local_data_dir(&app)?).await?;
+
+        let mut this = Self {
+            advanced_settings,
+            app,
+            ctlr_tx,
+            session: None,
+            device_id,
+            log_counting_task: None,
+            logging_handles,
+            notify_controller,
+        };
 
         tracing::trace!("re-loading token");
-        let session: Option<Session> = tokio::task::spawn_blocking(|| {
+        // spawn_blocking because accessing the keyring is I/O
+        if let Some(auth_info) = spawn_blocking(|| {
             let entry = keyring_entry()?;
             match entry.get_password() {
                 Ok(token) => {
                     let token = SecretString::new(token);
                     tracing::debug!("re-loaded token from Windows credential manager");
-                    let session = Session {
+                    let auth_info = AuthInfo {
+                        // TODO: Reload actor name from disk here
                         actor_name: "TODO".to_string(),
                         token,
                     };
-                    Ok(Some(session))
+                    Ok(Some(auth_info))
                 }
                 Err(keyring::Error::NoEntry) => {
                     tracing::debug!("no token in Windows credential manager");
@@ -343,143 +367,193 @@ impl Controller {
                 Err(e) => Err(anyhow::Error::from(e)),
             }
         })
-        .await??;
+        .await??
+        {
+            // Connect immediately if we reloaded the token
+            if let Err(e) = this.start_session(auth_info) {
+                tracing::error!("couldn't restart session on app start: {e:#?}");
+            }
+        }
 
-        let device_id = client::device_id::device_id(&app_local_data_dir(&app)?).await?;
-
-        // Connect immediately if we reloaded the token
-        let connlib_session = if let Some(session) = session.as_ref() {
-            Some(Self::start_session(
-                &advanced_settings,
-                ctlr_tx.clone(),
-                device_id.clone(),
-                &session.token,
-                logging_handles.logger.clone(),
-            )?)
-        } else {
-            None
-        };
-
-        Ok(Self {
-            advanced_settings,
-            ctlr_tx,
-            connlib_session,
-            device_id,
-            logging_handles,
-            session,
-        })
+        Ok(this)
     }
 
-    fn start_session(
-        advanced_settings: &settings::AdvancedSettings,
-        ctlr_tx: CtlrTx,
-        device_id: String,
-        token: &SecretString,
-        logger: file_logger::Handle,
-    ) -> Result<connlib_client_shared::Session<CallbackHandler>> {
-        tracing::info!("Session::connect");
-        Ok(connlib_client_shared::Session::connect(
-            advanced_settings.api_url.clone(),
-            token.clone(),
-            device_id,
-            CallbackHandler {
-                ctlr_tx,
-                logger: Some(logger),
-            },
-        )?)
+    // TODO: Figure out how re-starting sessions automatically will work
+    fn start_session(&mut self, auth_info: AuthInfo) -> Result<()> {
+        if self.session.is_some() {
+            bail!("can't start session, we're already in a session");
+        }
+
+        let callback_handler = CallbackHandler {
+            ctlr_tx: self.ctlr_tx.clone(),
+            logger: self.logging_handles.logger.clone(),
+            notify_controller: Arc::clone(&self.notify_controller),
+            resources: Default::default(),
+        };
+
+        let connlib = connlib_client_shared::Session::connect(
+            self.advanced_settings.api_url.clone(),
+            auth_info.token.clone(),
+            self.device_id.clone(),
+            callback_handler.clone(),
+            Duration::from_secs(5 * 60),
+        )?;
+
+        self.session = Some(Session {
+            auth_info,
+            callback_handler,
+            connlib,
+        });
+
+        Ok(())
+    }
+
+    fn copy_resource(&self, id: &str) -> Result<()> {
+        let Some(session) = &self.session else {
+            bail!("app is signed out");
+        };
+        let resources = session.callback_handler.resources.load();
+        let id = ResourceId::from_str(id)?;
+        let Some(res) = resources.iter().find(|r| r.id() == id) else {
+            bail!("resource ID is not in the list");
+        };
+        let mut clipboard = arboard::Clipboard::new()?;
+        // TODO: Make this a method on `ResourceDescription`
+        match res {
+            ResourceDescription::Dns(x) => clipboard.set_text(&x.address)?,
+            ResourceDescription::Cidr(x) => clipboard.set_text(&x.address.to_string())?,
+        }
+        Ok(())
+    }
+
+    async fn handle_deep_link(&mut self, url: &url::Url) -> Result<()> {
+        let Some(auth) = client::deep_link::parse_auth_callback(url) else {
+            // TODO: `bail` is redundant here, just do `.context("")?;` since it's `anyhow`
+            bail!("couldn't parse scheme request");
+        };
+
+        let token = auth.token.clone();
+        // spawn_blocking because keyring access is I/O
+        if let Err(e) = spawn_blocking(move || {
+            let entry = keyring_entry()?;
+            entry.set_password(token.expose_secret())?;
+            Ok::<_, anyhow::Error>(())
+        })
+        .await?
+        {
+            tracing::error!("couldn't save token to keyring: {e:#?}");
+        }
+
+        let auth_info = AuthInfo {
+            actor_name: auth.actor_name,
+            token: auth.token,
+        };
+        if let Err(e) = self.start_session(auth_info) {
+            // TODO: Replace `bail` with `context` here too
+            bail!("couldn't start session: {e:#?}");
+        }
+        Ok(())
+    }
+
+    fn reload_resource_list(&mut self) -> Result<()> {
+        let Some(session) = &self.session else {
+            tracing::warn!("got notified to update resources but there is no session");
+            return Ok(());
+        };
+        let resources = session.callback_handler.resources.load();
+        // TODO: Save the user name between runs of the app
+        let actor_name = self
+            .session
+            .as_ref()
+            .map(|x| x.auth_info.actor_name.as_str())
+            .unwrap_or("TODO");
+        self.app
+            .tray_handle()
+            .set_menu(system_tray_menu::signed_in(actor_name, &resources))?;
+        Ok(())
     }
 }
 
+// TODO: After PR #2960 lands, move some of this into `impl Controller`
 async fn run_controller(
     app: tauri::AppHandle,
+    ctlr_tx: CtlrTx,
     mut rx: mpsc::Receiver<ControllerRequest>,
     logging_handles: client::logging::Handles,
     advanced_settings: AdvancedSettings,
+    notify_controller: Arc<Notify>,
 ) -> Result<()> {
-    let mut controller = Controller::new(app.clone(), logging_handles, advanced_settings)
-        .await
-        .context("couldn't create Controller")?;
+    let mut controller = Controller::new(
+        app.clone(),
+        ctlr_tx,
+        logging_handles,
+        advanced_settings,
+        notify_controller,
+    )
+    .await
+    .context("couldn't create Controller")?;
 
-    let mut log_counting_task = None;
-    let mut resources: Vec<ResourceDisplay> = vec![];
-
-    tracing::debug!("GUI controller main loop start");
-
-    while let Some(req) = rx.recv().await {
-        match req {
-            Req::CopyResource(id) => {
-                let id = ResourceId::from_str(&id)?;
-                let Some(res) = resources.iter().find(|r| r.id == id) else {
-                    continue;
+    loop {
+        tokio::select! {
+            () = controller.notify_controller.notified() => if let Err(e) = controller.reload_resource_list() {
+                tracing::error!("couldn't reload resource list: {e:#?}");
+            },
+            req = rx.recv() => {
+                let Some(req) = req else {
+                    break;
                 };
-                let mut clipboard = arboard::Clipboard::new()?;
-                clipboard.set_text(&res.pastable)?;
-            }
-            Req::ExportLogs(file_path) => logging::export_logs_to(file_path).await?,
-            Req::GetAdvancedSettings(tx) => {
-                tx.send(controller.advanced_settings.clone()).ok();
-            }
-            Req::SchemeRequest(url) => {
-                if let Some(auth) = client::deep_link::parse_auth_callback(&url) {
-                    tracing::debug!("setting new token");
-                    let entry = keyring_entry()?;
-                    entry.set_password(auth.token.expose_secret())?;
-                    controller.connlib_session = Some(Controller::start_session(
-                        &controller.advanced_settings,
-                        controller.ctlr_tx.clone(),
-                        controller.device_id.clone(),
-                        &auth.token,
-                        controller.logging_handles.logger.clone(),
-                    )?);
-                    controller.session = Some(Session {
-                        actor_name: auth.actor_name,
-                        token: auth.token,
-                    });
-                } else {
-                    tracing::warn!("couldn't handle scheme request");
-                }
-            }
-            Req::SignIn => {
-                // TODO: Put the platform and local server callback in here
-                tauri::api::shell::open(
-                    &app.shell_scope(),
-                    &controller.advanced_settings.auth_base_url,
-                    None,
-                )?;
-            }
-            Req::StartStopLogCounting(enable) => {
-                if enable {
-                    if log_counting_task.is_none() {
-                        let app = app.clone();
-                        log_counting_task = Some(tokio::spawn(logging::count_logs(app)));
-                        tracing::debug!("started log counting");
+                match req {
+                    Req::CopyResource(id) => if let Err(e) = controller.copy_resource(&id) {
+                        tracing::error!("couldn't copy resource to clipboard: {e:#?}");
                     }
-                } else if let Some(t) = log_counting_task {
-                    t.abort();
-                    log_counting_task = None;
-                    tracing::debug!("cancelled log counting");
+                    Req::Disconnected => {
+                        tracing::debug!("connlib disconnected, tearing down Session");
+                        if let Some(mut session) = controller.session.take() {
+                            tracing::debug!("disconnecting connlib");
+                            session.connlib.disconnect(None);
+                        }
+                    }
+                    Req::ExportLogs(file_path) => logging::export_logs_to(file_path).await?,
+                    Req::GetAdvancedSettings(tx) => {
+                        tx.send(controller.advanced_settings.clone()).ok();
+                    }
+                    Req::SchemeRequest(url) => if let Err(e) = controller.handle_deep_link(&url).await {
+                        tracing::error!("couldn't handle deep link: {e:#?}");
+                    }
+                    Req::SignIn => {
+                        // TODO: Put the platform and local server callback in here
+                        tauri::api::shell::open(
+                            &app.shell_scope(),
+                            &controller.advanced_settings.auth_base_url,
+                            None,
+                        )?;
+                    }
+                    Req::SignOut => {
+                        // TODO: After we store the actor name on disk, clear the actor name here too.
+                        keyring_entry()?.delete_password()?;
+                        if let Some(mut session) = controller.session.take() {
+                            tracing::debug!("disconnecting connlib");
+                            session.connlib.disconnect(None);
+                        }
+                        else {
+                            tracing::error!("tried to sign out but there's no session");
+                        }
+                        app.tray_handle().set_menu(system_tray_menu::signed_out())?;
+                    }
+                    Req::StartStopLogCounting(enable) => {
+                        if enable {
+                            if controller.log_counting_task.is_none() {
+                                let app = app.clone();
+                                controller.log_counting_task = Some(tokio::spawn(logging::count_logs(app)));
+                                tracing::debug!("started log counting");
+                            }
+                        } else if let Some(t) = controller.log_counting_task {
+                            t.abort();
+                            controller.log_counting_task = None;
+                            tracing::debug!("cancelled log counting");
+                        }
+                    }
                 }
-            }
-            Req::SignOut => {
-                keyring_entry()?.delete_password()?;
-                if let Some(mut session) = controller.connlib_session.take() {
-                    // TODO: Needs testing
-                    session.disconnect(None);
-                }
-                app.tray_handle().set_menu(system_tray_menu::signed_out())?;
-            }
-            Req::UpdateResources(r) => {
-                tracing::debug!("controller got UpdateResources");
-                resources = r.into_iter().map(ResourceDisplay::from).collect();
-
-                // TODO: Save the user name between runs of the app
-                let actor_name = controller
-                    .session
-                    .as_ref()
-                    .map(|x| x.actor_name.as_str())
-                    .unwrap_or("TODO");
-                app.tray_handle()
-                    .set_menu(system_tray_menu::signed_in(actor_name, &resources))?;
             }
         }
     }
