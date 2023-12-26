@@ -1,0 +1,232 @@
+# FAQ
+
+Frequently asked questions.
+
+## Glossary of terms
+
+**Site**: [Sites](/kb/deploy/sites) are user-created environments where admins
+can manage Resources and the Gateways that enable access to those Resources
+(e.g. US-West, Chicago-LAN, or Prod). All Gateways and Resources in a Site are
+assumed to be able to reach each other in a shared network context such as a VPC
+or LAN.
+
+**Gateway**: [Gateways](/kb/deploy/gateways) are Firezone servers that run on
+your infrastructure. Gateways must be defined within a Site, and any traffic
+to/from resources associated with a Site will pass through one of that Site’s
+Gateways. We distribute the Gateway as self-contained binaries on our
+[releases page](https://github.com/firezone/firezone/releases), or as a Docker
+image or Systemd unit file with instructions shown when you deploy the Gateway
+from the admin portal. Gateways can run on everything from a Raspberry Pi to
+bare metal servers and everything in between. Gateways are designed to be
+lightweight and don't require persistent storage to function.
+
+**Resource**: A [Resource](/kb/deploy/resources) is any DNS name, IP, or network
+(CIDR range) you wish to manage access for. DNS-based Resources can be used to
+manage access to internal or external applications and automatically match all
+subdomains as well. CIDR-based Resources can be used to manage access for an
+entire subnets, similar to a traditional VPN.
+
+**Policy**: [Policies](/kb/deploy/policies) define a one-to-one mapping between
+a user group and a Resource. Access to Resources is default-deny, which means a
+user can't access a Resource until a Policy permitting access is created.
+
+**Group**: User groups consist of one or more users, usually members of the same
+team or department (e.g. Engineering, DevOps, Sales) and can be used in Policies
+to give all users in that Group access to a Resource. Users and groups can be
+automatically synced from your Identity Provider (Google Workspace only) to
+ensure only active users and groups maintain access to your Resources.
+
+## General
+
+#### What is Firezone?
+
+Firezone lets organizations manage secure remote access to their most sensitive
+Resources. We’re an open source zero trust network access (ZTNA) solution that’s
+built on [WireGuard®](https://wireguard.com), a modern protocol that’s up to
+4-6x faster than OpenVPN.
+
+#### What is zero trust network access?
+
+Zero trust network access (ZTNA) starts with the premise that users who want to
+access a resource on a network are untrusted. This means that any attempt to
+access a resource must be denied until a user 1) verifies their identity
+(authentication), and 2) the platform confirms that the user is allowed to
+access the resource (authorization). Learn more about zero trust network access.
+
+#### How is Firezone different from a VPN?
+
+While Firezone is built on [WireGuard®](https://wireguard.com), a VPN protocol,
+it differs from a traditional VPN by providing access controls that authenticate
+users and verify access before providing access to a specific resource.
+Traditional VPNs usually give users access to the entire network, and do not
+distinguish between different resources.
+
+#### How does Firezone work?
+
+For a complete description of how Firezone works, our architecture, and how it
+can help you manage access to infrastructure or shared services, check out our
+[repository](https://github.com/firezone/firezone).
+
+#### Where does Firezone run?
+
+Firezone runs on your own infrastructure in just about any public, private, or
+cloud network. Most of our customers use Firezone to access resources in public
+cloud providers like AWS, Azure, Google Cloud Platform, and Digital Ocean, or
+on-premise networks. Because Firezone operates at layer 3 of the networking
+stack, it supports all application protocols without modification.
+
+## Deploying Firezone
+
+#### How long does it take to set up Firezone?
+
+Firezone can be set up in less than 10 minutes, and gateways can be added by
+running a simple Docker command. Visit our docs for more information and step by
+step instructions.
+
+#### Do I have to be technical to run Firezone?
+
+No, deploying Firezone doesn’t require any specialized networking expertise. If
+you know how to run a Docker container or Linux-based VM in your network, then
+you should be able to deploy Firezone (check out the
+[Quickstart Guide](/kb/quickstart) for step-by-step instructions).
+
+#### Do I need to make any changes to my infra to run Firezone?
+
+No. While Firezone can be deployed as you build out a network, it’s also an
+overlay network that can provide fine-grained access control to resources in an
+existing network. All you need to start giving users secure access to resources
+in a network, is to install a Firezone [Gateway](/kb/deploy/gateways) on a
+server or VM in that network. Gateways can also be deployed at scale using
+Terraform.
+
+#### Do I need to disable my VPN to use Firezone?
+
+No, you can run Firezone alongside your existing VPN, and switch over whenever
+you’re ready. There’s no need for any downtime or unnecessary disruptions.
+
+#### Can I self-host Firezone?
+
+Firezone uses a split control plane and data plane architecture to allow for
+things like key distribution, user authentication, and policy enforcement to
+happen out-of-band with the hot data paths. The data plane components such as
+the clients and Gateway are specifically designed to be self-hosted, but the
+control plane, due to its complexity, security, and persistence requirements, is
+not.
+
+That said, Firezone's product is 100% open source and can be found at our
+[main repository](https://github.com/firezone/firezone). Our license does not
+prevent self-hosters from using the product as they see fit.
+
+#### How do I get Firezone on an end-user device?
+
+Users can install the Firezone client [here](/kb/deploy/clients). After
+installing the Client, users simply need to enter their account ID and sign in
+using their email or SSO to start accessing the Resources that you (an Admin)
+has given them permission to access in the Firezone admin portal.
+
+#### Can Firezone connect to my identity provider (IdP)?
+
+Yes. Firezone integrates with any [OIDC-compatible](/kb/authenticate/oidc)
+identity provider, including Google Workspace, Azure AD, Okta, and OneLogin.
+Firezone does not store or handle end-user credentials like passwords.
+
+#### Where should I run my Gateway(s)?
+
+Gateways are [released](https://github.com/firezonze/firezone/releases) as
+self-contained binaries for Linux that we package as a Docker image or Systemd
+unit, which you can run on any Linux-based server or VM (e.g. on AWS, GCP,
+Azure, or on-premise). You only need a single Gateway in each Site to provide
+secure remote access to Resources associated with that Site. However, we
+recommend deploying two or more Gateways for load-balancing and automatic
+failover.
+
+#### What is a service account?
+
+Service accounts facilitate secure connections from a server, VM or container to
+a Resource. Because service accounts do not involve a user, they can’t fulfill
+2FA requirements, and use the Firezone client in a non-interactive way (headless
+mode).
+
+## Performance
+
+#### Does all my traffic go through Firezone?
+
+Network traffic is always end-to-end encrypted, and by default, routes directly
+to gateways running on your infrastructure. If you have managed relays enabled,
+encrypted data may pass through our global relay network if a direct connection
+cannot be established. Firezone can never decrypt the contents of your traffic.
+
+#### Can Firezone support more traffic as my company scales up?
+
+Scaling Firezone to support your rapidly growing organization is as simple as
+powering up or deploying additional Gateway servers, or leveraging the Firezone
+API and Terraform to programmatically scale up with your network.
+
+#### What protocol does Firezone use to encrypt traffic?
+
+Firezone uses [WireGuard®](https://wireguard.com) to encrypt all data plane
+traffic and TLS to encrypt all control plane traffic.
+
+#### What happens if I add the same Resource to more than one Site?
+
+The end-user client will automatically select the nearest gateway, and route
+traffic to/from that Resource.
+
+#### What happens if Firezone goes offline?
+
+You will not be able to access the Firezone Admin Console, or make changes to
+your account via the API. Existing connections should remain active for
+approximately 5 minutes before being disconnected.
+
+## Users
+
+#### How do end users get Firezone?
+
+Windows and Linux users can download the client from
+[here](https://github.com/firezone/firezone/releases). MacOS, iOS, iPadOS,
+Android, and ChromeOS users can download the client from their device’s app
+store.
+
+#### Do users need to interact with the Firezone client?
+
+The client app is designed to be unobtrusive, and once a user clicks connect and
+authenticates with their credentials, it should run in the background without
+the need for additional interaction. Users may find it helpful to click on the
+Firezone app to see a list of available resources, but the app is always on and
+doesn’t need to be toggled. Always-on split tunneling means that accessing
+anything other than Firezone resources should be unaffected when using Firezone.
+
+## Admins
+
+#### How can I limit access to resources?
+
+Firezone lets admins set access control using a combination of Policies and User
+Groups. This means that admins can establish role-based, or any other logical
+group at a fine-grained Resource level.
+
+## Billing
+
+#### How do you charge for Firezone?
+
+Firezone charges per seat — visit our [pricing page](/pricing) for more
+information. Accounts are billed when they start service, or at the beginning of
+each billing cycle. Enterprise plans are billed quarterly or annually, and can
+be paid via credit card, ACH, or wire transfer. Firezone does not require a
+credit card to get started.
+
+To cancel or change plans, contact support@firezone.dev.
+
+## Security
+
+#### What firewall ports do I have to open to use Firezone?
+
+None. The Firezone control plane propagates connection information like public
+keys across your network, so Gateways and Resources don’t need to listen for
+inbound connections from the public internet. This means that your network
+remains inaccessible from the internet, with no visible entry points.
+
+#### How can I be sure Firezone is secure?
+
+Firezone helps improve organizations’ cybersecurity posture by offering a modern
+approach to securing access to sensitive Resources in their private network.
+[Read our security disclosure policy](https://github.com/firezone/firezone/blob/main/SECURITY.md)
