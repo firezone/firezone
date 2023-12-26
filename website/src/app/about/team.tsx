@@ -110,13 +110,6 @@ export default function Team() {
       ),
     },
     {
-      name: "Jeff Spencer",
-      title: "Head of Marketing",
-      imgSrc: gravatar("jeff@firezone.dev", 200),
-      githubUrl: new URL("https://github.com/jefferenced"),
-      linkedinUrl: new URL("https://www.linkedin.com/in/jeff393/"),
-    },
-    {
       name: "Trisha",
       title: "Windows Platform Engineer",
       imgSrc: gravatar("trish@firezone.dev", 200),
