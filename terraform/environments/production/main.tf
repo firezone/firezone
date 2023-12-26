@@ -510,15 +510,18 @@ locals {
     # Emails
     {
       name  = "OUTBOUND_EMAIL_ADAPTER"
-      value = "Elixir.Swoosh.Adapters.Postmark"
+      value = "Elixir.Swoosh.Adapters.Mailgun"
     },
     {
       name  = "OUTBOUND_EMAIL_FROM"
-      value = "support@firezone.dev"
+      value = "notifications@firezone.dev"
     },
     {
-      name  = "OUTBOUND_EMAIL_ADAPTER_OPTS"
-      value = "{\"api_key\":\"${var.postmark_server_api_token}\"}"
+      name = "OUTBOUND_EMAIL_ADAPTER_OPTS"
+      value = jsonencode({
+        api_key = var.mailgun_server_api_token,
+        domain  = local.tld
+      })
     },
     # Feature Flags
     {
