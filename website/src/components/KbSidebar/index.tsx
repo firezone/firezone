@@ -148,6 +148,9 @@ export default function KbSidebar() {
               </li>
             </Collapse>
           </li>
+          <li>
+            <Item topLevel href="/kb/faq" label="FAQ" />
+          </li>
         </ul>
       </div>
     </aside>
