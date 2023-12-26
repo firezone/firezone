@@ -1,4 +1,4 @@
-import Content from "./readme.mdx";
+import FAQ from "@/components/FAQ";
 import { Metadata } from "next";
 
 export const metadata: Metadata = {
@@ -7,5 +7,5 @@ export const metadata: Metadata = {
 };
 
 export default function Page() {
-  return <Content />;
+  return <FAQ />;
 }
