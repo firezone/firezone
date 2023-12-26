@@ -33,6 +33,10 @@ variable "postmark_server_api_token" {
   type = string
 }
 
+variable "mailgun_server_api_token" {
+  type = string
+}
+
 variable "pagerduty_auth_token" {
   type = string
 }
