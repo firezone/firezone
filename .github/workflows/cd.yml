@@ -293,7 +293,7 @@ jobs:
         include:
           - image_name: relay
           - image_name: gateway
-          - image_name: client
+          - image_name: linux-client
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/gcp-docker-login
