@@ -126,13 +126,13 @@ jobs:
           #   platform: linux/mips64le
         name:
           - package: firezone-linux-client
-            artifact: linux-client
+            artifact: client
           - package: firezone-relay
             artifact: relay
           - package: firezone-gateway
             artifact: gateway
     env:
-      BINARY_DEST_PATH: ${{ matrix.name.artifact }}-${{ matrix.arch.shortname }}
+      BINARY_DEST_PATH: linux-${{ matrix.name.artifact }}-${{ matrix.arch.shortname }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-rust
@@ -293,7 +293,7 @@ jobs:
         include:
           - image_name: relay
           - image_name: gateway
-          - image_name: linux-client
+          - image_name: client
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/gcp-docker-login
