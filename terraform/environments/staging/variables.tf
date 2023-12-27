@@ -27,3 +27,7 @@ variable "slack_alerts_auth_token" {
 variable "postmark_server_api_token" {
   type = string
 }
+
+variable "mailgun_server_api_token" {
+  type = string
+}
