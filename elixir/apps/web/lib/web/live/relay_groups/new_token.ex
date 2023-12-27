@@ -318,10 +318,9 @@ defmodule Web.RelayGroups.NewToken do
       chmod 0775 /var/lib/firezone; \\
     '
     ExecStart=/usr/bin/sudo \\
-      --preserve-env=FIREZONE_NAME,FIREZONE_ID,FIREZONE_TOKEN,PUBLIC_IP4_ADDR,PUBLIC_IP6_ADDR,RUST_LOG,LOG_FORMAT \\
+      --preserve-env=FIREZONE_ID,FIREZONE_TOKEN,PUBLIC_IP4_ADDR,PUBLIC_IP6_ADDR,RUST_LOG,LOG_FORMAT \\
       -u firezone \\
       -g firezone \\
-      FIREZONE_NAME=$(hostname) \\
       /usr/local/bin/firezone-relay
     TimeoutStartSec=3s
     TimeoutStopSec=15s
