@@ -198,7 +198,7 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images:
-            ${{ steps.login.outputs.registry }}/firezone/${{matrix.name.image }}
+            ${{ steps.login.outputs.registry }}/firezone/${{matrix.name.image_name }}
           tags: |
             type=raw,value=${{ github.sha }}
             type=raw,value=${{ env.VERSION }}
@@ -214,17 +214,17 @@ jobs:
             TARGET=${{ matrix.arch.target }}
           context: rust
           cache-from: |
-            type=registry,ref=${{ steps.login.outputs.registry }}/cache/${{ matrix.name.image }}:main
+            type=registry,ref=${{ steps.login.outputs.registry }}/cache/${{ matrix.name.image_name }}:main
           cache-to: |
-            type=registry,ref=${{ steps.login.outputs.registry }}/cache/${{ matrix.name.image }}:main,mode=max
+            type=registry,ref=${{ steps.login.outputs.registry }}/cache/${{ matrix.name.image_name }}:main,mode=max
           target: release
           outputs:
-            type=image,name=${{ steps.login.outputs.registry }}/firezone/${{ matrix.name.image }},push-by-digest=true,name-canonical=true,push=true
+            type=image,name=${{ steps.login.outputs.registry }}/firezone/${{ matrix.name.image_name }},push-by-digest=true,name-canonical=true,push=true
       - name: Export digest
         run: |
-          mkdir -p /tmp/digests/${{ matrix.name.image }}
+          mkdir -p /tmp/digests/${{ matrix.name.image_name }}
           digest="${{ steps.build.outputs.digest }}"
-          touch "/tmp/digests/${{ matrix.name.image }}/${digest#sha256:}"
+          touch "/tmp/digests/${{ matrix.name.image_name }}/${digest#sha256:}"
       - name: Upload digest
         uses: actions/upload-artifact@v3
         with:
