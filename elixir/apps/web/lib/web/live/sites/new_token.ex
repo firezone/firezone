@@ -284,7 +284,7 @@ defmodule Web.Sites.NewToken do
       ip6tables-nft -t nat -C POSTROUTING -o e+ -j MASQUERADE || ip6tables-nft -t nat -A POSTROUTING -o e+ -j MASQUERADE; \\
     '
     ExecStart=/usr/bin/sudo \\
-      --preserve-env=FIREZONE_ID,FIREZONE_TOKEN,FIREZONE_API_URL,RUST_LOG \\
+      --preserve-env=FIREZONE_NAME,FIREZONE_ID,FIREZONE_TOKEN,FIREZONE_API_URL,RUST_LOG \\
       -u firezone \\
       -g firezone \\
       /usr/local/bin/firezone-gateway
