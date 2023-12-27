@@ -121,7 +121,7 @@ defmodule Domain.FlowsTest do
       assert authorize_flow(client, gateway, resource.id, subject) == {:error, :not_found}
     end
 
-    test "raises on account_id mismatch", %{
+    test "returns error on account_id mismatch", %{
       client: client,
       gateway: gateway,
       resource: resource,
@@ -131,17 +131,14 @@ defmodule Domain.FlowsTest do
       other_client = Fixtures.Clients.create_client()
       other_gateway = Fixtures.Gateways.create_gateway()
 
-      assert_raise FunctionClauseError, fn ->
-        authorize_flow(client, gateway, resource.id, other_subject)
-      end
+      assert authorize_flow(client, gateway, resource.id, other_subject) ==
+               {:error, :internal_error}
 
-      assert_raise FunctionClauseError, fn ->
-        authorize_flow(client, other_gateway, resource.id, subject)
-      end
+      assert authorize_flow(client, other_gateway, resource.id, subject) ==
+               {:error, :internal_error}
 
-      assert_raise FunctionClauseError, fn ->
-        authorize_flow(other_client, gateway, resource.id, subject)
-      end
+      assert authorize_flow(other_client, gateway, resource.id, subject) ==
+               {:error, :internal_error}
     end
 
     test "returns error when subject has no permission to create flows", %{
