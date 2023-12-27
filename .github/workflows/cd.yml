@@ -126,13 +126,16 @@ jobs:
           #   platform: linux/mips64le
         name:
           - package: firezone-linux-client
-            artifact: client
+            artifact: linux-client
+            image_name: client
           - package: firezone-relay
             artifact: relay
+            image_name: relay
           - package: firezone-gateway
             artifact: gateway
+            image_name: gateway
     env:
-      BINARY_DEST_PATH: linux-${{ matrix.name.artifact }}-${{ matrix.arch.shortname }}
+      BINARY_DEST_PATH: ${{ matrix.name.artifact }}-${{ matrix.arch.shortname }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-rust
@@ -195,7 +198,7 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images:
-            ${{ steps.login.outputs.registry }}/firezone/${{matrix.name.artifact }}
+            ${{ steps.login.outputs.registry }}/firezone/${{matrix.name.image }}
           tags: |
             type=raw,value=${{ github.sha }}
             type=raw,value=${{ env.VERSION }}
@@ -211,17 +214,17 @@ jobs:
             TARGET=${{ matrix.arch.target }}
           context: rust
           cache-from: |
-            type=registry,ref=${{ steps.login.outputs.registry }}/cache/${{ matrix.name.artifact }}:main
+            type=registry,ref=${{ steps.login.outputs.registry }}/cache/${{ matrix.name.image }}:main
           cache-to: |
-            type=registry,ref=${{ steps.login.outputs.registry }}/cache/${{ matrix.name.artifact }}:main,mode=max
+            type=registry,ref=${{ steps.login.outputs.registry }}/cache/${{ matrix.name.image }}:main,mode=max
           target: release
           outputs:
-            type=image,name=${{ steps.login.outputs.registry }}/firezone/${{ matrix.name.artifact }},push-by-digest=true,name-canonical=true,push=true
+            type=image,name=${{ steps.login.outputs.registry }}/firezone/${{ matrix.name.image }},push-by-digest=true,name-canonical=true,push=true
       - name: Export digest
         run: |
-          mkdir -p /tmp/digests/${{ matrix.name.artifact }}
+          mkdir -p /tmp/digests/${{ matrix.name.image }}
           digest="${{ steps.build.outputs.digest }}"
-          touch "/tmp/digests/${{ matrix.name.artifact }}/${digest#sha256:}"
+          touch "/tmp/digests/${{ matrix.name.image }}/${digest#sha256:}"
       - name: Upload digest
         uses: actions/upload-artifact@v3
         with:
