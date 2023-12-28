@@ -3,8 +3,8 @@ import { MixpanelProvider } from "react-mixpanel-browser";
 import { HubspotProvider } from "next-hubspot";
 
 export default function Provider({ children }) {
-  const token = process.env.NEXT_PUBLIC_MIXPANEL_TOKEN;
-  const host = process.env.NEXT_PUBLIC_MIXPANEL_HOST;
+  const token = "b0ab1d66424a27555ed45a27a4fd0cd2";
+  const host = "https://t.firez.one";
 
   return (
     <>
