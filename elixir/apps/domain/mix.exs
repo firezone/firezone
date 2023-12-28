@@ -59,9 +59,6 @@ defmodule Domain.MixProject do
       # Erlang Clustering
       {:libcluster, "~> 3.3"},
 
-      # Product Analytics
-      {:posthog, "~> 0.1"},
-
       # Observability and Runtime debugging
       {:telemetry, "~> 1.0"},
       {:logger_json, "~> 5.1"},
