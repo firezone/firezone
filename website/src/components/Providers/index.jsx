@@ -8,11 +8,14 @@ export default function Provider({ children }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const mixpanel = useMixpanel();
+  const token = process.env.NEXT_PUBLIC_MIXPANEL_TOKEN;
+  const host = process.env.NEXT_PUBLIC_MIXPANEL_HOST;
 
   useEffect(() => {
     if (!pathname) return;
     if (!mixpanel) {
       console.log("Mixpanel uninitialized!");
+      console.log("Mixpanel token:", token);
       return;
     }
 
@@ -27,10 +30,7 @@ export default function Provider({ children }) {
 
   return (
     <>
-      <MixpanelProvider
-        token={process.env.NEXT_PUBLIC_MIXPANEL_TOKEN}
-        config={{ api_host: process.env.NEXT_PUBLIC_MIXPANEL_HOST }}
-      >
+      <MixpanelProvider token={token} config={{ api_host: host }}>
         <HubspotProvider>{children}</HubspotProvider>
       </MixpanelProvider>
     </>
