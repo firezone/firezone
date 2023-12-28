@@ -75,7 +75,6 @@ defmodule Domain.MixProject do
       # https://github.com/elixir-lang/elixir/issues/12777
       # Remove Swoosh from Domain once this is fixed.
       {:phoenix_swoosh, "~> 1.0"},
-      {:hackney, "~> 1.9"},
 
       # Test and dev deps
       {:bypass, "~> 2.1", only: :test},

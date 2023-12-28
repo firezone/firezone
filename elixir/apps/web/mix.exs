@@ -64,7 +64,6 @@ defmodule Web.MixProject do
       # Mailer deps
       {:phoenix_swoosh, "~> 1.0"},
       {:gen_smtp, "~> 1.0"},
-      {:hackney, "~> 1.9"},
 
       # Observability
       {:opentelemetry_cowboy, "~> 0.2.1"},
