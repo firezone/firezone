@@ -11,7 +11,10 @@ export default function Provider({ children }) {
 
   useEffect(() => {
     if (!pathname) return;
-    if (!mixpanel) return;
+    if (!mixpanel) {
+      console.log("Mixpanel uninitialized!");
+      return;
+    }
 
     let url = window.origin + pathname;
     if (searchParams.toString()) {
