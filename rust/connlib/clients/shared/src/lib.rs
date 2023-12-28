@@ -126,6 +126,8 @@ where
         Ok(this)
     }
 
+    // TODO: Some of these arguments could be combined into a ConnectInfo struct or something
+    #[allow(clippy::too_many_arguments)]
     fn connect_inner(
         runtime: &Runtime,
         runtime_stopper: tokio::sync::mpsc::Sender<StopRuntime>,

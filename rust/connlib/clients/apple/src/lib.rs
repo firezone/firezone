@@ -176,6 +176,8 @@ fn init_logging(log_dir: PathBuf, log_filter: String) -> file_logger::Handle {
 }
 
 impl WrappedSession {
+    // TODO: Some of these arguments could be combined into a ConnectInfo struct or something
+    #[allow(clippy::too_many_arguments)]
     fn connect(
         api_url: String,
         token: String,
