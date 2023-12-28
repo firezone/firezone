@@ -86,6 +86,9 @@ dependencies:
   react-markdown:
     specifier: ^9.0.1
     version: 9.0.1(@types/react@18.2.30)(react@18.2.0)
+  react-mixpanel-browser:
+    specifier: ^4.1.0
+    version: 4.1.0(react@18.2.0)
   react-syntax-highlighter:
     specifier: ^15.5.0
     version: 15.5.0(react@18.2.0)
@@ -3001,6 +3004,15 @@ packages:
       vfile: 6.0.1
     transitivePeerDependencies:
       - supports-color
+    dev: false
+
+  /react-mixpanel-browser@4.1.0(react@18.2.0):
+    resolution: {integrity: sha512-ShHQQslGi240VTAo685keDtKKe3B3w3yURi/jCwdtCAk6+OQnm1MdhuDC3SFADJ10VvdNb3240t1nKn7uPnTRQ==}
+    peerDependencies:
+      react: '18'
+    dependencies:
+      mixpanel-browser: 2.48.1
+      react: 18.2.0
     dev: false
 
   /react-syntax-highlighter@15.5.0(react@18.2.0):
