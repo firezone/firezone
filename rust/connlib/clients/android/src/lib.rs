@@ -409,6 +409,8 @@ fn connect(
         api_url.as_str(),
         secret,
         device_id,
+        None,
+        None,
         callback_handler,
         Duration::from_secs(5 * 60),
     )?;

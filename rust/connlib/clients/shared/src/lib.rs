@@ -65,6 +65,8 @@ where
         api_url: impl TryInto<Url>,
         token: SecretString,
         device_id: String,
+        device_name_override: Option<String>,
+        os_version_override: Option<String>,
         callbacks: CB,
         max_partition_time: Duration,
     ) -> Result<Self> {
@@ -111,6 +113,8 @@ where
             api_url.try_into().map_err(|_| Error::UriError)?,
             token,
             device_id,
+            device_name_override,
+            os_version_override,
             this.callbacks.clone(),
             max_partition_time,
         );
@@ -128,12 +132,14 @@ where
         api_url: Url,
         token: SecretString,
         device_id: String,
+        device_name_override: Option<String>,
+        os_version_override: Option<String>,
         callbacks: CallbackErrorFacade<CB>,
         max_partition_time: Duration,
     ) {
         runtime.spawn(async move {
             let (connect_url, private_key) = fatal_error!(
-                login_url(Mode::Client, api_url, token, device_id, None),
+                login_url(Mode::Client, api_url, token, device_id, device_name_override),
                 runtime_stopper,
                 &callbacks
             );
@@ -143,7 +149,7 @@ where
             // to force queue ordering.
             let (control_plane_sender, mut control_plane_receiver) = tokio::sync::mpsc::channel(1);
 
-            let mut connection = PhoenixChannel::<_, IngressMessages, ReplyMessages, Messages>::new(Secret::new(SecureUrl::from_url(connect_url)), move |msg, reference, topic| {
+            let mut connection = PhoenixChannel::<_, IngressMessages, ReplyMessages, Messages>::new(Secret::new(SecureUrl::from_url(connect_url)), os_version_override, move |msg, reference, topic| {
                 let control_plane_sender = control_plane_sender.clone();
                 async move {
                     tracing::trace!(?msg);
