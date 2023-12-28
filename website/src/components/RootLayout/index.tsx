@@ -31,7 +31,6 @@ export default function RootLayout({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const mixpanel = useMixpanel();
-  console.log("pathname", pathname);
 
   useEffect(() => {
     if (!pathname) return;
@@ -44,7 +43,6 @@ export default function RootLayout({
     mixpanel.track("$mp_web_page_view", {
       $current_url: url,
     });
-    console.log("tracked page view", url);
   }, [pathname, searchParams, mixpanel]);
   return (
     <html lang="en">
