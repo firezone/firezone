@@ -126,11 +126,14 @@ jobs:
           #   platform: linux/mips64le
         name:
           - package: firezone-linux-client
-            artifact: client
+            artifact: linux-client
+            image_name: client
           - package: firezone-relay
             artifact: relay
+            image_name: relay
           - package: firezone-gateway
             artifact: gateway
+            image_name: gateway
     env:
       BINARY_DEST_PATH: ${{ matrix.name.artifact }}-${{ matrix.arch.shortname }}
     steps:
@@ -157,6 +160,7 @@ jobs:
           ls -la $BINARY_DEST_PATH
           ls -la $BINARY_DEST_PATH.sha256sum.txt
       - name: Upload Release Assets
+        if: ${{ matrix.name.artifact != 'relay' }}  # Hide relay binary from public releases
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -194,7 +198,7 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images:
-            ${{ steps.login.outputs.registry }}/firezone/${{matrix.name.artifact }}
+            ${{ steps.login.outputs.registry }}/firezone/${{matrix.name.image_name }}
           tags: |
             type=raw,value=${{ github.sha }}
             type=raw,value=${{ env.VERSION }}
@@ -210,17 +214,17 @@ jobs:
             TARGET=${{ matrix.arch.target }}
           context: rust
           cache-from: |
-            type=registry,ref=${{ steps.login.outputs.registry }}/cache/${{ matrix.name.artifact }}:main
+            type=registry,ref=${{ steps.login.outputs.registry }}/cache/${{ matrix.name.image_name }}:main
           cache-to: |
-            type=registry,ref=${{ steps.login.outputs.registry }}/cache/${{ matrix.name.artifact }}:main,mode=max
+            type=registry,ref=${{ steps.login.outputs.registry }}/cache/${{ matrix.name.image_name }}:main,mode=max
           target: release
           outputs:
-            type=image,name=${{ steps.login.outputs.registry }}/firezone/${{matrix.name.artifact}},push-by-digest=true,name-canonical=true,push=true
+            type=image,name=${{ steps.login.outputs.registry }}/firezone/${{ matrix.name.image_name }},push-by-digest=true,name-canonical=true,push=true
       - name: Export digest
         run: |
-          mkdir -p /tmp/digests/${{ matrix.name.artifact }}
+          mkdir -p /tmp/digests/${{ matrix.name.image_name }}
           digest="${{ steps.build.outputs.digest }}"
-          touch "/tmp/digests/${{ matrix.name.artifact }}/${digest#sha256:}"
+          touch "/tmp/digests/${{ matrix.name.image_name }}/${digest#sha256:}"
       - name: Upload digest
         uses: actions/upload-artifact@v3
         with:

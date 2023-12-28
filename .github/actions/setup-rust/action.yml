@@ -1,6 +1,5 @@
 name: "Setup Rust"
 description: "Sets up the correct Rust version and caching via sccache and a GCP backend"
-secrets: inherit
 inputs:
   targets:
     description: "Additional targets to install"
