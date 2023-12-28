@@ -36,7 +36,9 @@ locally.
    NDK_HOME=$ANDROID_HOME/ndk-bundle
    PATH=$PATH:$ANDROID_HOME/platform-tools:$ANDROID_HOME/tools:$ANDROID_HOME/tools/bin
    ```
-1. Make sure the following Rust targets are installed:
+
+1. Make sure the following Rust targets are installed in your current 
+   toolchain:
    ```
    aarch64-linux-android
    arm-linux-androideabi
