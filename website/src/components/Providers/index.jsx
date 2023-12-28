@@ -8,8 +8,10 @@ export default function Provider({ children }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const mixpanel = useMixpanel();
-  const token = process.env.NEXT_PUBLIC_MIXPANEL_TOKEN;
-  const host = process.env.NEXT_PUBLIC_MIXPANEL_HOST;
+  // const token = process.env.NEXT_PUBLIC_MIXPANEL_TOKEN;
+  // const host = process.env.NEXT_PUBLIC_MIXPANEL_HOST;
+  const token = "b0ab1d66424a27555ed45a27a4fd0cd2";
+  const host = "t.firez.one";
 
   useEffect(() => {
     if (!pathname) return;
