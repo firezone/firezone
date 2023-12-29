@@ -4,7 +4,9 @@ defmodule Web.Groups.New do
 
   def mount(_params, _session, socket) do
     changeset = Actors.new_group()
-    {:ok, assign(socket, form: to_form(changeset))}
+
+    {:ok, assign(socket, form: to_form(changeset)),
+     temporary_assigns: [form: %Phoenix.HTML.Form{}]}
   end
 
   def render(assigns) do

@@ -62,30 +62,9 @@ defmodule Web.TableComponents do
           not_empty_render?(render)
         end) %>
       <td :if={@actions != [] and show_actions?} class="px-4 py-3 flex items-center justify-end">
-        <button
-          id={"#{@id}-dropdown-button"}
-          data-dropdown-toggle={"#{@id}-dropdown"}
-          class={[
-            "inline-flex items-center p-0.5 text-sm text-center",
-            "text-neutral-500 hover:text-neutral-800 rounded"
-          ]}
-          type="button"
-        >
-          <.icon name="hero-ellipsis-horizontal" class="w-5 h-5" />
-        </button>
-        <div
-          id={"#{@id}-dropdown"}
-          class={[
-            "hidden z-10 w-44 bg-white rounded divide-y divide-neutral-100",
-            "shadow border border-neutral-300"
-          ]}
-        >
-          <ul class="py-1 text-sm text-neutral-700" aria-labelledby={"#{@id}-dropdown-button"}>
-            <li :for={action <- @actions}>
-              <%= render_slot(action, @mapper.(@row)) %>
-            </li>
-          </ul>
-        </div>
+        <span :for={action <- @actions}>
+          <%= render_slot(action, @mapper.(@row)) %>
+        </span>
       </td>
     </tr>
     """

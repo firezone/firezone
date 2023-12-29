@@ -939,7 +939,7 @@ defmodule Web.CoreComponents do
   end
 
   def identity_has_email?(identity) do
-    not is_nil(provider_email(identity)) || identity.provider.adapter == :email
+    not is_nil(provider_email(identity)) or identity.provider.adapter == :email
   end
 
   defp provider_email(identity) do

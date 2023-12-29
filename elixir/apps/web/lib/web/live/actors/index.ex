@@ -8,15 +8,16 @@ defmodule Web.Actors.Index do
     with {:ok, actors} <-
            Actors.list_actors(socket.assigns.subject, preload: [identities: :provider]),
          {:ok, actor_groups} <- Actors.peek_actor_groups(actors, 3, socket.assigns.subject),
-         {:ok, providers} <-
-           Auth.list_providers_for_account(socket.assigns.account, socket.assigns.subject) do
-      {:ok, socket,
-       temporary_assigns: [
-         actors: actors,
-         actor_groups: actor_groups,
-         providers_by_id: Map.new(providers, &{&1.id, &1}),
-         page_title: "Actors"
-       ]}
+         {:ok, providers} <- Auth.list_providers(socket.assigns.subject) do
+      socket =
+        assign(socket,
+          actors: actors,
+          actor_groups: actor_groups,
+          providers_by_id: Map.new(providers, &{&1.id, &1}),
+          page_title: "Actors"
+        )
+
+      {:ok, socket}
     else
       {:error, _reason} -> raise Web.LiveErrors.NotFoundError
     end
