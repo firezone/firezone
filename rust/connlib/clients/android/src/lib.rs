@@ -382,6 +382,8 @@ macro_rules! string_from_jstring {
     };
 }
 
+// TODO: Some of these arguments could be combined into a ConnectInfo struct or something
+#[allow(clippy::too_many_arguments)]
 fn connect(
     env: &mut JNIEnv,
     api_url: JString,
