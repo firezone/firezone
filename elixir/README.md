@@ -209,12 +209,12 @@ user_agent = "User-Agent: iOS/12.7 (iPhone) connlib/0.7.412"
 remote_ip = {127, 0, 0, 1}
 
 # For a client
-{:ok, subject} = Domain.Auth.sign_in(client_token, %Domain.Auth.Context{user_agent: user_agent, remote_ip: remote_ip})
+{:ok, subject} = Domain.Auth.sign_in(client_token, %Domain.Auth.Context{type: :client, user_agent: user_agent, remote_ip: remote_ip})
 
 # For an admin user
 provider = Domain.Repo.get_by(Domain.Auth.Provider, adapter: :userpass)
 identity = Domain.Repo.get_by(Domain.Auth.Identity, provider_id: provider.id, provider_identifier: "firezone@localhost")
-subject = Domain.Auth.build_subject(identity, nil, %Domain.Auth.Context{user_agent: user_agent, remote_ip: remote_ip})
+subject = Domain.Auth.build_subject(identity, nil, %Domain.Auth.Context{type: :browser, user_agent: user_agent, remote_ip: remote_ip})
 ```
 
 Listing connected gateways, relays, clients for an account:
@@ -340,7 +340,7 @@ iex(web@web-2f4j.us-east1-d.c.firezone-staging.internal)1> [actor | _] = Domain.
 iex(web@web-2f4j.us-east1-d.c.firezone-staging.internal)2> [identity | _] = Domain.Auth.Identity.Query.by_actor_id(actor.id) |> Domain.Repo.all()
 ...
 
-iex(web@web-2f4j.us-east1-d.c.firezone-staging.internal)3> subject = Domain.Auth.build_subject(identity, nil, %Domain.Auth.Context{user_agent: "CLI", remote_ip: {127, 0, 0, 1}})
+iex(web@web-2f4j.us-east1-d.c.firezone-staging.internal)3> subject = Domain.Auth.build_subject(identity, nil, %Domain.Auth.Context{type: :browser, user_agent: "CLI", remote_ip: {127, 0, 0, 1}})
 ```
 
 ### Rotate relay token
