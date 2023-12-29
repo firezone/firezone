@@ -5,44 +5,9 @@ including the product, website, and documentation.
 
 Table of Contents:
 
-- [QA Testing](#qa-testing)
-  - [List of Test Cases](#list-of-test-cases)
 - [Releasing](#releasing)
 - [Publishing Clients](#publishing-clients)
   - [Apple Client](#apple-client)
-
-## QA Testing
-
-Unfortunately, due to the nature of a product like Firezone, it's not easy to
-write automated end-to-end tests for every scenario. Some manual QA testing is
-required before publishing a new release. This section aims to provide a QA test
-case checklist for critical workflows that will be used to make a Go or No Go
-decision for whether to ship a release.
-
-Each test case will have the following format:
-
-- **ID**: A short, unique identifier we can use to communicate about this test
-  case internally.
-- **Component Under Test**: The relevant component(s) to be tested by this test
-  case.
-- **Preconditions**: Required state of Firezone and network environment to be in
-  before the test case is run.
-- **Steps**: The actual actions to perform to evaluate the test case.
-- **Expected Outcome**: The result that would make this test PASS
-- **Actual Outcome**: PASS/FAIL status of the test case, with a descriptive log
-  in the case of failure.
-
-### List of Test Cases
-
-Test cases should be executed in the order shown below unless otherwise noted.
-
-- [portal-google-auth](#portal-google-auth)
-- [portal-google-sync](#portal-google-sync)
-- [portal-oidc-auth](#portal-oidc-auth)
-- [portal-email-auth](#portal-google-auth)
-- [client-google-auth](#client-google-auth)
-- [client-oidc-auth](#client-oidc-auth)
-- [client-email-auth](#client-email-auth)
 
 ## Releasing
 
