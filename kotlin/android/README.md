@@ -15,21 +15,26 @@ locally.
    the same JDK on the CLI as Android Studio.
 
 1. Install the Android SDK through Android Studio.
-   * Open Android studio, go to Android Studio > Preferences
-   * Search for `sdk`
-   * Find the `Android SDK` nav item under `System Settings` and select
-   * Click the `Edit` button next to the `Android SDK Location` field
-   * Follow the steps presented to install Android SDK
+
+   - Open Android studio, go to Android Studio > Preferences
+   - Search for `sdk`
+   - Find the `Android SDK` nav item under `System Settings` and select
+   - Click the `Edit` button next to the `Android SDK Location` field
+   - Follow the steps presented to install Android SDK
 
 1. Install `NDK` using Android Studio
 
-   To see which version is installed, make sure to select the `Show Package Details` checkbox in the `Android SDK` settings page in Android Studio
+   To see which version is installed, make sure to select the
+   `Show Package Details` checkbox in the `Android SDK` settings page in Android
+   Studio
 
    ![Android SDK Tools](./images/android-studio-sdk-tools.png)
 
-   Make sure the correct NDK version is installed by looking at: `../../rust/connlib/clients/android/connlib/build.gradle.kts`
+   Make sure the correct NDK version is installed by looking at:
+   `../../rust/connlib/clients/android/connlib/build.gradle.kts`
 
 1. Set the following ENV variables in the start up config for your shell:
+
    ```
    JAVA_HOME=/Applications/Android\ Studio.app/Contents/jbr/Contents/Home
    ANDROID_HOME=/Users/<username>/Library/Android/sdk
@@ -37,8 +42,8 @@ locally.
    PATH=$PATH:$ANDROID_HOME/platform-tools:$ANDROID_HOME/tools:$ANDROID_HOME/tools/bin
    ```
 
-1. Make sure the following Rust targets are installed in your current 
-   toolchain:
+1. Make sure the following Rust targets are installed in your current toolchain:
+
    ```
    aarch64-linux-android
    arm-linux-androideabi
@@ -48,6 +53,7 @@ locally.
    ```
 
    If using `rustup` you can run:
+
    ```
    rustup target add aarch64-linux-android arm-linux-androideabi armv7-linux-androideabi i686-linux-android x86_64-linux-android
    ```
