@@ -31,27 +31,28 @@ Before you run your jobs on these larger runners, please ensure your workload is
 benefit from the extra cores. Many workloads are IO-bound and won't see a marked
 difference using a larger runner.
 
-## Self-hosted runners
+## End to end test architecture
 
-We've also configured a self-hosted M1 runner to run macOS workloads:
+Unfortunately, it's not feasible to write automated end-to-end tests for every
+scenario. Some manual QA testing is required before publishing a new release.
+However, this workflow attempts to automate at least some of it.
 
-- `macos-14`
+The [end-to-end workflow](./workflows/e2e.yml) makes use of the baremetal
+testbed running at the Firezone HQ. The testbed consists of the following
+components:
 
-You can target it with either the `macos-14` label, `self-hosted` label, or a
-combination of the two. It's running at the Firezone HQ and basically costs
-nothing to execute jobs on.
-
-It should have the following software on it:
-
-- Docker Desktop
-- Xcode 15
-- Homebrew
-
-<!-- TODO: Add instructions when Dogfood is working
-You may log into the self-hosted runner remotely via Apple Remote Desktop
-if you need to make any changes to its configuration. To do so, make
-sure your Firezone client is connected to the Dogfood account, then:
-1. Open Screen Sharing.app
-2. Connect to macos-14.firezone.dev
-3. Log in with the "macOS M1 Firezone Builder GitHub Actions self-hosted Runner" credentials in Firezone Engineering 1Password
--->
+- An `ubuntu-22.04` testbed orchestration server with the following specs:
+  - Ryzen 5950x 16-core CPU
+  - 128 GB DDR4 ECC memory
+  - 500 GB NVMe SSD
+  - 10 gbe networking
+- Apple Silicon Macbook Air running macOS 14 with the following specs:
+  - 256 GB SSD
+  - 8 GB memory
+  - 8-core M1
+  - 1 gbe networking
+- Laptop running Windows 11 with the following specs:
+  - Intel i3
+  - 12 GB RAM
+  - 256 GB SSD
+  - 1 gbe networking
