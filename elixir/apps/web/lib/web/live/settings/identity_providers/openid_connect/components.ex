@@ -6,14 +6,21 @@ defmodule Web.Settings.IdentityProviders.OpenIDConnect.Components do
     <div class="max-w-2xl px-4 py-8 mx-auto lg:py-12">
       <.form for={@form} phx-change={:change} phx-submit={:submit}>
         <.step>
-          <:title>Step 1. Create OAuth app in your identity provider</:title>
+          <:title>Step 1. Create OAuth client in your identity provider</:title>
           <:content>
-            Please make sure that following scopes are added to the OAuth application: <.code_block
+            <p class="mb-4">
+              Ensure the following scopes are added to the OAuth client:
+            </p>
+            <.code_block
               :for={scope <- [:openid, :email, :profile]}
               id={"scope-#{scope}"}
-              class="w-full mb-4 whitespace-nowrap rounded"
+              class="w-full text-xs mb-4 whitespace-pre-line rounded"
               phx-no-format
-            ><%= scope %></.code_block> Please make sure that OAuth client has following redirect URL's whitelisted: <.code_block
+            ><%= scope %></.code_block>
+            <p class="mb-4">
+              Ensure the OAuth client has the following redirect URLs whitelisted:
+            </p>
+            <.code_block
               :for={
                 {type, redirect_url} <- [
                   sign_in: url(~p"/#{@account.id}/sign_in/providers/#{@id}/handle_callback"),
@@ -24,14 +31,14 @@ defmodule Web.Settings.IdentityProviders.OpenIDConnect.Components do
                 ]
               }
               id={"redirect_url-#{type}"}
-              class="w-full mb-4 whitespace-nowrap rounded"
+              class="w-full text-xs mb-4 whitespace-pre-line rounded"
               phx-no-format
             ><%= redirect_url %></.code_block>
           </:content>
         </.step>
 
         <.step>
-          <:title>Step 2. Configure client</:title>
+          <:title>Step 2. Configure Firezone</:title>
           <:content>
             <.base_error form={@form} field={:base} />
 
@@ -45,43 +52,21 @@ defmodule Web.Settings.IdentityProviders.OpenIDConnect.Components do
                   required
                 />
                 <p class="mt-2 text-xs text-neutral-500">
-                  A friendly name for this identity provider. This will be displayed to end-users.
+                  A human-friendly name for this identity provider. This will be displayed to end-users.
                 </p>
               </div>
 
               <.inputs_for :let={adapter_config_form} field={@form[:adapter_config]}>
-                <div>
-                  <.input
-                    label="Response Type"
-                    field={adapter_config_form[:response_type]}
-                    placeholder="code"
-                    value="code"
-                    disabled
-                  />
-                  <p class="mt-2 text-xs text-neutral-500">
-                    Firezone currently only supports <code>code</code> flows.
-                  </p>
-                </div>
-
-                <div>
-                  <.input
-                    label="Scopes"
-                    autocomplete="off"
-                    field={adapter_config_form[:scope]}
-                    placeholder="OpenID Connect scopes to request"
-                    required
-                  />
-                  <p class="mt-2 text-xs text-neutral-500">
-                    A space-delimited list of scopes to request from your identity provider. In most cases you shouldn't need to change this.
-                  </p>
-                </div>
+                <%= # TODO: Can these be removed? %>
+                <.input type="hidden" field={adapter_config_form[:response_type]} value="code" />
+                <.input type="hidden" field={adapter_config_form[:scope]} />
 
                 <div>
                   <.input
                     label="Client ID"
                     autocomplete="off"
                     field={adapter_config_form[:client_id]}
-                    placeholder="Client ID from your IdP"
+                    placeholder="Client ID from your identity provider"
                     required
                   />
                 </div>
@@ -91,18 +76,22 @@ defmodule Web.Settings.IdentityProviders.OpenIDConnect.Components do
                     label="Client secret"
                     autocomplete="off"
                     field={adapter_config_form[:client_secret]}
-                    placeholder="Client Secret from your IdP"
+                    placeholder="Client secret from your identity provider"
                     required
                   />
                 </div>
 
                 <div>
                   <.input
-                    label="Discovery URL"
+                    label="Discovery Document URI"
+                    autocomplete="off"
                     field={adapter_config_form[:discovery_document_uri]}
-                    placeholder=".well-known URL for your IdP"
+                    placeholder="https://example.com/.well-known/openid-configuration"
                     required
                   />
+                  <p class="mt-2 text-xs text-neutral-500">
+                    The URI to the OpenID Connect discovery document for your identity provider.
+                  </p>
                 </div>
               </.inputs_for>
             </div>
