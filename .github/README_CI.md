@@ -30,3 +30,9 @@ Before you run your jobs on these larger runners, please ensure your workload is
 **CPU-bound** or **Memory-size-bound** so that your workflow / job will actually
 benefit from the extra cores. Many workloads are IO-bound and won't see a marked
 difference using a larger runner.
+
+## Self-hosted runners
+
+We maintain a baremetal testbed for running our end-to-end test suite. See
+[the `e2e`](../e2e) directory. Please don't target those runners unless you're
+specifically trying to run workflows that require a baremetal runner.
