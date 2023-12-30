@@ -174,12 +174,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # TODO
-          # - Run control plane components as services
-          # - Test clients
-          # - Test with different NAT types
-          # - Test IPv6
-          # - Test end-to-end critical paths
           - test_name: Relayed flow
             artifact_name: relayed
             setup: |

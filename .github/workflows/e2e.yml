@@ -1,9 +1,84 @@
 name: End to end tests
 on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+defaults:
+  working-directory: ./e2e
+
+concurrency:
+  group: "e2e-${{ github.workflow }}-${{ github.ref }}"
+  cancel-in-progress: true
 
 jobs:
-  test-apple:
+  setup-e2e:
+    runs-on: ubuntu-22.04-firezone
+    steps:
+      - uses: actions/checkout@v4
+      - run: echo "Spin up docker test environment"
 
-  test-windows:
+  macos:
+    needs: setup-e2e
+    runs-on: macos-14-firezone
+    steps:
+      - uses: actions/checkout@v4
+      - run: echo 'Noop'
 
-  test
+  windows:
+    needs: setup-e2e
+    runs-on: windows-11-firezone
+    steps:
+      - uses: actions/checkout@v4
+      - run: echo 'Noop'
+
+  linux:
+    needs: setup-e2e
+    runs-on: ubuntu-22.04-firezone
+    steps:
+      - uses: actions/checkout@v4
+      - run: echo 'Noop'
+
+  android:
+    needs: setup-e2e
+    runs-on: ubuntu-22.04-firezone
+    steps:
+      - uses: actions/checkout@v4
+      - run: echo 'Noop'
+
+  chromeos:
+    needs: setup-e2e
+    runs-on: ubuntu-22.04-firezone
+    steps:
+      - uses: actions/checkout@v4
+      - run: echo 'Noop'
+
+  ios:
+    needs: setup-e2e
+    runs-on: macos-14-firezone
+    steps:
+      - uses: actions/checkout@v4
+      - run: echo 'Noop'
+
+  ipados:
+    needs: setup-e2e
+    runs-on: macos-14-firezone
+    steps:
+      - uses: actions/checkout@v4
+      - run: echo 'Noop'
+
+  teardown-e2e:
+    needs:
+      - macos
+      - windows
+      - linux
+      - android
+      - chromeos
+      - ios
+      - ipados
+    if: 'always()'
+    runs-on: ubuntu-22.04-firezone
+    steps:
+      - uses: actions/checkout@v4
+      - run: echo 'Teardown e2e environment'
