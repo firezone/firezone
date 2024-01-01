@@ -46,7 +46,7 @@ dependencies:
     version: 2.2.1
   flowbite-react:
     specifier: ^0.6.4
-    version: 0.6.4(react-dom@18.2.0)(react@18.2.0)(tailwindcss@3.3.5)
+    version: 0.6.4(react-dom@18.2.0)(react@18.2.0)(tailwindcss@3.4.0)
   highlight.js:
     specifier: ^11.9.0
     version: 11.9.0
@@ -105,13 +105,13 @@ dependencies:
     specifier: ^11.0.0
     version: 11.0.0
   tailwindcss:
-    specifier: 3.3.5
-    version: 3.3.5
+    specifier: 3.4.0
+    version: 3.4.0
 
 devDependencies:
   flowbite-typography:
     specifier: ^1.0.3
-    version: 1.0.3(tailwindcss@3.3.5)
+    version: 1.0.3(tailwindcss@3.4.0)
   hastscript:
     specifier: ^8.0.0
     version: 8.0.0
@@ -1297,7 +1297,7 @@ packages:
     dependencies:
       to-regex-range: 5.0.1
 
-  /flowbite-react@0.6.4(react-dom@18.2.0)(react@18.2.0)(tailwindcss@3.3.5):
+  /flowbite-react@0.6.4(react-dom@18.2.0)(react@18.2.0)(tailwindcss@3.4.0):
     resolution: {integrity: sha512-36mhawQRalOyq40ZLXesCTvcidYBO0vRFb672YSfflQHl5mENzB3o1SW6oGPpedmS/rWTlK+VBK7ia+1UYr+6w==}
     peerDependencies:
       react: ^18
@@ -1311,10 +1311,10 @@ packages:
       react-icons: 4.12.0(react@18.2.0)
       react-indiana-drag-scroll: 2.2.0(react-dom@18.2.0)(react@18.2.0)
       tailwind-merge: 1.14.0
-      tailwindcss: 3.3.5
+      tailwindcss: 3.4.0
     dev: false
 
-  /flowbite-typography@1.0.3(tailwindcss@3.3.5):
+  /flowbite-typography@1.0.3(tailwindcss@3.4.0):
     resolution: {integrity: sha512-UbdQFIIOb7xx2TS+QQrqr79B6ZSkSZurxYWzV0npth6Wns3/j7KfeDJoH9QFU+Zs7zjrvejNtyzgzWLWyCrdiA==}
     peerDependencies:
       tailwindcss: '>=3.0.0 || insiders'
@@ -1322,7 +1322,7 @@ packages:
       lodash.castarray: 4.4.0
       lodash.isplainobject: 4.0.6
       lodash.merge: 4.6.2
-      tailwindcss: 3.3.5
+      tailwindcss: 3.4.0
     dev: true
 
   /flowbite@1.8.1:
@@ -3356,8 +3356,8 @@ packages:
     resolution: {integrity: sha512-3mFKyCo/MBcgyOTlrY8T7odzZFx+w+qKSMAmdFzRvqBfLlSigU6TZnlFHK0lkMwj9Bj8OYU+9yW9lmGuS0QEnQ==}
     dev: false
 
-  /tailwindcss@3.3.5:
-    resolution: {integrity: sha512-5SEZU4J7pxZgSkv7FP1zY8i2TIAOooNZ1e/OGtxIEv6GltpoiXUqWvLy89+a10qYTB1N5Ifkuw9lqQkN9sscvA==}
+  /tailwindcss@3.4.0:
+    resolution: {integrity: sha512-VigzymniH77knD1dryXbyxR+ePHihHociZbXnLZHUyzf2MMs2ZVqlUrZ3FvpXP8pno9JzmILt1sZPD19M3IxtA==}
     engines: {node: '>=14.0.0'}
     hasBin: true
     dependencies:
