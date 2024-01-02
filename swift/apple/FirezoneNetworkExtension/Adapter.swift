@@ -250,6 +250,18 @@ extension Adapter {
 // MARK: Responding to path updates
 
 extension Adapter {
+  private func resetToSystemDNS() {
+    // Setting this to anything but an empty string will populate /etc/resolv.conf with
+    // the default interface's DNS servers, which we read later from connlib
+    // during tunnel setup.
+    self.networkSettings?.setMatchDomains(["firezone-fd0020211111"])
+    self.networkSettings?.apply(
+      on: self.packetTunnelProvider,
+      logger: self.logger,
+      completionHandler: nil
+    )
+  }
+
   private func beginPathMonitoring() {
     self.logger.log("Beginning path monitoring")
     let networkMonitor = NWPathMonitor()
@@ -267,6 +279,7 @@ extension Adapter {
       if path.status != .satisfied {
         self.logger.log("Adapter.didReceivePathUpdate: Offline. Shutting down connlib.")
         onStarted?(nil)
+        resetToSystemDNS()
         self.packetTunnelProvider?.reasserting = true
         self.state = .stoppingTunnelTemporarily(session: session, onStopped: nil)
         session.disconnect()
@@ -275,6 +288,7 @@ extension Adapter {
     case .tunnelReady(let session):
       if path.status != .satisfied {
         self.logger.log("Adapter.didReceivePathUpdate: Offline. Shutting down connlib.")
+        resetToSystemDNS()
         self.packetTunnelProvider?.reasserting = true
         self.state = .stoppingTunnelTemporarily(session: session, onStopped: nil)
         session.disconnect()
@@ -336,10 +350,11 @@ extension Adapter: CallbackHandlerDelegate {
           dnsAddress: dnsAddress)
       case .tunnelReady:
         if let networkSettings = self.networkSettings {
-          if let packetTunnelProvider = self.packetTunnelProvider {
-            networkSettings.apply(
-              on: packetTunnelProvider, logger: self.logger, completionHandler: nil)
-          }
+          networkSettings.apply(
+            on: packetTunnelProvider,
+            logger: self.logger,
+            completionHandler: nil
+          )
         }
 
       case .stoppingTunnel, .stoppedTunnel, .stoppingTunnelTemporarily, .stoppedTunnelTemporarily:
@@ -363,13 +378,12 @@ extension Adapter: CallbackHandlerDelegate {
         self.logger.error("Adapter.onTunnelReady: No network settings")
         return
       }
-      guard let packetTunnelProvider = self.packetTunnelProvider else {
-        self.logger.error("Adapter.onTunnelReady: No packet tunnel provider")
-        return
-      }
+
+      // Connlib's up, set it as the default DNS
+      networkSettings.setMatchDomains([""])
       networkSettings.apply(on: packetTunnelProvider, logger: self.logger) { error in
         if let error = error {
-          packetTunnelProvider.handleTunnelShutdown(
+          self.packetTunnelProvider?.handleTunnelShutdown(
             dueTo: .networkSettingsApplyFailure,
             errorMessage: error.localizedDescription)
           onStarted?(AdapterError.setNetworkSettings(error))
@@ -392,10 +406,6 @@ extension Adapter: CallbackHandlerDelegate {
         self.logger.error("Adapter.onAddRoute: No network settings")
         return
       }
-      guard let packetTunnelProvider = self.packetTunnelProvider else {
-        self.logger.error("Adapter.onAddRoute: No packet tunnel provider")
-        return
-      }
 
       networkSettings.addRoute(route)
       if case .tunnelReady = self.state {
@@ -411,10 +421,6 @@ extension Adapter: CallbackHandlerDelegate {
       self.logger.log("Adapter.onRemoveRoute(\(route, privacy: .public))")
       guard let networkSettings = self.networkSettings else {
         self.logger.error("Adapter.onRemoveRoute: No network settings")
-        return
-      }
-      guard let packetTunnelProvider = self.packetTunnelProvider else {
-        self.logger.error("Adapter.onRemoveRoute: No packet tunnel provider")
         return
       }
       networkSettings.removeRoute(route)
@@ -444,10 +450,6 @@ extension Adapter: CallbackHandlerDelegate {
       // Update DNS in case resource domains is changing
       guard let networkSettings = self.networkSettings else {
         self.logger.error("Adapter.onUpdateResources: No network settings")
-        return
-      }
-      guard let packetTunnelProvider = self.packetTunnelProvider else {
-        self.logger.error("Adapter.onUpdateResources: No packet tunnel provider")
         return
       }
       let updatedResourceDomains = networkResources.compactMap { $0.resourceLocation.domain }
@@ -502,9 +504,10 @@ extension Adapter: CallbackHandlerDelegate {
     }
   }
 
-  public func getSystemDefaultResolvers() {
+  public func getSystemDefaultResolvers() -> [String] {
     let resolvers = Resolv().getservers().map(Resolv.getnameinfo)
     self.logger.info("getSystemDefaultResolvers: \(resolvers)")
+    return resolvers
   }
 
   public func onError(error: String) {

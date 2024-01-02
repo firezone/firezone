@@ -120,6 +120,9 @@ export default function KbSidebar() {
               label="User guides"
             >
               <li>
+                <Item href="/kb/user-guides" label="Overview" />
+              </li>
+              <li>
                 <Item
                   href="/kb/user-guides/apple-client"
                   label="macOS / iOS client"
@@ -144,6 +147,9 @@ export default function KbSidebar() {
                 />
               </li>
             </Collapse>
+          </li>
+          <li>
+            <Item topLevel href="/kb/faq" label="FAQ" />
           </li>
         </ul>
       </div>

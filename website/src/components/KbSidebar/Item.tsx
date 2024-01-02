@@ -25,7 +25,13 @@ export default function Item({
       }
     >
       {!topLevel && <HiMinus className="w-2 h-2" />}
-      <span className={(active(href) ? "font-medium " : "") + "ml-2"}>
+      <span
+        className={
+          (active(href) ? "font-medium " : "") +
+          "ml-2" +
+          ((topLevel && " pl-0.5") || "")
+        }
+      >
         {label}
       </span>
     </Link>

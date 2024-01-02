@@ -3,6 +3,9 @@ defmodule Domain.Flows do
   alias Domain.{Auth, Accounts, Actors, Clients, Gateways, Resources, Policies}
   alias Domain.Flows.{Authorizer, Flow, Activity}
   require Ecto.Query
+  require Logger
+
+  def authorize_flow(client, gateway, id, subject, opts \\ [])
 
   def authorize_flow(
         %Clients.Client{
@@ -27,7 +30,7 @@ defmodule Domain.Flows do
             user_agent: client_user_agent
           }
         } = subject,
-        opts \\ []
+        opts
       ) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.create_flows_permission()),
          {:ok, resource} <- Resources.fetch_and_authorize_resource_by_id(id, subject, opts) do
@@ -47,6 +50,29 @@ defmodule Domain.Flows do
 
       {:ok, resource, flow}
     end
+  end
+
+  def authorize_flow(client, gateway, id, subject, _opts) do
+    Logger.error("authorize_flow/4 called with invalid arguments",
+      id: id,
+      client: %{
+        id: client.id,
+        account_id: client.account_id,
+        actor_id: client.actor_id,
+        identity_id: client.identity_id
+      },
+      gateway: %{
+        id: gateway.id,
+        account_id: gateway.account_id
+      },
+      subject: %{
+        account: %{id: subject.account.id, slug: subject.account.slug},
+        actor: %{id: subject.actor.id, type: subject.actor.type},
+        identity: %{id: subject.identity.id}
+      }
+    )
+
+    {:error, :internal_error}
   end
 
   def fetch_flow_by_id(id, %Auth.Subject{} = subject, opts \\ []) do
