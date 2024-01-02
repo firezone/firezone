@@ -6,10 +6,10 @@ defmodule Web.Settings.IdentityProviders.OpenIDConnect.Components do
     <div class="max-w-2xl px-4 py-8 mx-auto lg:py-12">
       <.form for={@form} phx-change={:change} phx-submit={:submit}>
         <.step>
-          <:title>Step 1. Create OAuth client in your identity provider</:title>
+          <:title>Step 1. Create OAuth application in your identity provider</:title>
           <:content>
             <p class="mb-4">
-              Ensure the following scopes are added to the OAuth client:
+              Ensure the following scopes are added to the OAuth application:
             </p>
             <.code_block
               :for={scope <- [:openid, :email, :profile]}
@@ -18,7 +18,7 @@ defmodule Web.Settings.IdentityProviders.OpenIDConnect.Components do
               phx-no-format
             ><%= scope %></.code_block>
             <p class="mb-4">
-              Ensure the OAuth client has the following redirect URLs whitelisted:
+              Ensure the OAuth application has the following redirect URLs whitelisted:
             </p>
             <.code_block
               :for={
