@@ -505,7 +505,7 @@ jobs:
           && always() }}
         uses: actions/upload-artifact@v4
         with:
-          name: screenshots
+          name: screenshots-${{ matrix.MIX_TEST_PARTITION }}
           path: elixir/apps/web/screenshots
       - name: Test Report
         uses: dorny/test-reporter@v1

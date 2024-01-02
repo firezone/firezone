@@ -16,6 +16,14 @@ pub fn crash() -> Result<()> {
     panic!("purposely crashing to see if it shows up in logs");
 }
 
+pub fn hostname() -> Result<()> {
+    println!(
+        "{:?}",
+        hostname::get().ok().and_then(|x| x.into_string().ok())
+    );
+    Ok(())
+}
+
 pub fn open_deep_link(path: &url::Url) -> Result<()> {
     tracing_subscriber::fmt::init();
 

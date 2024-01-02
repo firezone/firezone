@@ -60,6 +60,27 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
                  discovery_document_uri: ["can't be blank"]
                }
              }
+
+      attrs =
+        Fixtures.Auth.provider_attrs(
+          adapter: :openid_connect,
+          adapter_config: %{
+            discovery_document_uri: "https://"
+          }
+        )
+
+      changeset = Ecto.Changeset.change(%Auth.Provider{account_id: account.id}, attrs)
+      assert %Ecto.Changeset{} = changeset = provider_changeset(changeset)
+
+      assert errors_on(changeset) == %{
+               adapter_config: %{
+                 client_id: ["can't be blank"],
+                 client_secret: ["can't be blank"],
+                 discovery_document_uri: [
+                   "is invalid, got {:options, {:server_name_indication, []}}"
+                 ]
+               }
+             }
     end
 
     test "returns changeset on valid adapter config" do
