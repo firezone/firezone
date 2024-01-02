@@ -46,9 +46,8 @@ defmodule Web.Settings.IdentityProviders.Index do
           href="https://www.firezone.dev/kb/authenticate?utm_source=product"
           target="_blank"
         >
-          Read more
+          Read more about how authentication works in Firezone.
         </.link>
-        about how authentication works in Firezone.
       </:help>
       <:content>
         <.flash_group flash={@flash} />
