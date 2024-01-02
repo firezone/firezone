@@ -106,7 +106,6 @@ pub(crate) async fn export_logs_to(file_path: PathBuf) -> Result<()> {
 #[derive(Clone, Default, Serialize)]
 struct FileCount {
     bytes: u64,
-    complete: bool,
     files: u64,
 }
 
@@ -114,16 +113,13 @@ pub(crate) async fn count_logs(app: tauri::AppHandle) -> Result<()> {
     let mut dir = fs::read_dir("logs").await?;
     let mut file_count = FileCount::default();
     // Zero out the GUI
-    app.emit_all("file_count_progress", &file_count)?;
+    app.emit_all("file_count_progress", None::<FileCount>)?;
     while let Some(entry) = dir.next_entry().await? {
         let md = entry.metadata().await?;
         file_count.files += 1;
         file_count.bytes += md.len();
-        // Update the GUI progress
-        app.emit_all("file_count_progress", &file_count)?;
     }
-    file_count.complete = true;
-    // Mark completion on the GUI
-    app.emit_all("file_count_progress", &file_count)?;
+    // Show the result on the GUI
+    app.emit_all("file_count_progress", Some(&file_count))?;
     Ok(())
 }
