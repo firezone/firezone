@@ -135,7 +135,7 @@ export default function Team() {
               see for yourself
             </Link>
             . The team has experience building enterprise networking solutions
-            at companies like Cisco, Marqeta, Tailscale, and more.
+            at companies like Cisco, Marqeta, Instacart, and more.
           </p>
         </div>
         <div className="mt-16 grid sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-8 lg:gap-16">
