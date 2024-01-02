@@ -82,17 +82,19 @@ defmodule Web.Groups.Index do
             </:col>
             <:empty>
               <div class="flex justify-center text-center text-neutral-500 p-4">
-                <div class="w-auto">
-                  <div class="pb-4">
-                    No groups to display
-                  </div>
-                  <.add_button navigate={~p"/#{@account}/groups/new"}>
-                    Add Group
-                  </.add_button>
-                  <span class="font-semibold px-2 mb-4">or</span>
-                  <.add_button navigate={~p"/#{@account}/settings/identity_providers"}>
-                    Sync Groups from IdP
-                  </.add_button>
+                <div class="w-auto pb-4">
+                  No groups to display.
+                  <.link class={["font-medium", link_style()]} navigate={~p"/#{@account}/groups/new"}>
+                    Add a group manually
+                  </.link>
+                  or
+                  <.link
+                    class={["font-medium", link_style()]}
+                    navigate={~p"/#{@account}/settings/identity_providers"}
+                  >
+                    go to settings
+                  </.link>
+                  to sync groups from an identity provider.
                 </div>
               </div>
             </:empty>
