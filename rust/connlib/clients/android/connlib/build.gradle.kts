@@ -47,7 +47,7 @@ dependencies {
     implementation("androidx.test.ext:junit-gtest:1.0.0-alpha01")
     implementation("com.android.ndk.thirdparty:googletest:1.11.0-beta-1")
     implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("*.jar"))))
-    implementation("org.jetbrains.kotlin:kotlin-stdlib:1.9.21")
+    implementation("org.jetbrains.kotlin:kotlin-stdlib:1.9.22")
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.3")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.4.0")
