@@ -153,10 +153,10 @@ fn get_host_name() -> Option<String> {
     String::from_utf8(buf.split(|c| *c == 0).next()?.to_vec()).ok()
 }
 
+/// Returns the hostname, or `None` if it's not valid UTF-8
 #[cfg(target_os = "windows")]
 fn get_host_name() -> Option<String> {
-    // FIXME: windows
-    None
+    hostname::get().ok().and_then(|x| x.into_string().ok())
 }
 
 fn set_ws_scheme(url: &mut Url) -> Result<()> {
