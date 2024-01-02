@@ -75,7 +75,7 @@ private final class WebAuthenticationSession: NSObject,
           return
         }
 
-        guard statePassedToPortal == stateInCallback else {
+        guard Self.areStringsEqualConstantTime(statePassedToPortal, stateInCallback) else {
           continuation.resume(
             throwing: AuthClientError.invalidStateReturnedInCallback(
               expected: statePassedToPortal, got: stateInCallback))
@@ -130,6 +130,23 @@ private final class WebAuthenticationSession: NSObject,
     }
 
     return bytes.map { String(format: "%02hhx", $0) }.joined()
+  }
+
+  static func areStringsEqualConstantTime(_ string1: String, _ string2: String) -> Bool {
+    let charArray1 = string1.utf8CString
+    let charArray2 = string2.utf8CString
+
+    if charArray1.count != charArray2.count {
+      return false
+    }
+
+    var result: CChar = 0
+    for (char1, char2) in zip(charArray1, charArray2) {
+      // Iff all the XORs result in 0, then the strings are equal
+      result |= (char1 ^ char2)
+    }
+
+    return (result == 0)
   }
 
   func presentationAnchor(for _: ASWebAuthenticationSession) -> ASPresentationAnchor {
