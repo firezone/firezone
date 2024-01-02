@@ -47,6 +47,11 @@ updates:
     directory: kotlin/android/app/
     schedule:
       interval: monthly
+    groups:
+      hilt:
+        patterns:
+          - com.google.dagger.hilt.android
+          - com.google.dagger:hilt-android-compiler
   - package-ecosystem: swift
     directory: swift/apple/FirezoneKit/
     schedule:
