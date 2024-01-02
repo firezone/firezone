@@ -91,12 +91,15 @@ pub(crate) async fn export_logs_inner(ctlr_tx: CtlrTx) -> Result<()> {
 }
 
 /// Exports logs to a zip file
-/// To avoid the ["tar bomb"](https://www.linfo.org/tarbomb.html) problem, all files
-/// are put into a subdirectory with the automatically-generated file name of the zip,
-/// even if the user customized the zip's file name.
+///
+/// # Arguments
+///
+/// * `path` - Where the zip archive will be written
+/// * `stem` - A directory containing all the log files inside the zip archive, to avoid creating a ["tar bomb"](https://www.linfo.org/tarbomb.html). This comes from the automatically-generated name of the archive, even if the user changes it to e.g. `logs.zip`
 pub(crate) async fn export_logs_to(path: PathBuf, stem: String) -> Result<()> {
     tracing::trace!("Exporting logs to {path:?}");
 
+    // TODO: Consider https://github.com/Majored/rs-async-zip/issues instead of `spawn_blocking`
     spawn_blocking(move || {
         let f = fs::File::create(path)?;
         let mut zip = zip::ZipWriter::new(f);
@@ -105,8 +108,9 @@ pub(crate) async fn export_logs_to(path: PathBuf, stem: String) -> Result<()> {
         for entry in fs::read_dir("logs")? {
             let entry = entry?;
             let name = entry.file_name();
-            let name = name.to_string_lossy();
-            // TODO: Before merging, don't do sync file I/O in an async fn
+            let Some(name) = name.to_str() else {
+                continue;
+            };
             zip.start_file(format!("{stem}/{name}"), options)?;
             let mut f = fs::File::open(entry.path())?;
             io::copy(&mut f, &mut zip)?;

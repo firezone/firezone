@@ -215,7 +215,6 @@ fn handle_system_tray_event(app: &tauri::AppHandle, event: TrayMenuEvent) -> Res
 pub(crate) enum ControllerRequest {
     CopyResource(String),
     Disconnected,
-    // TODO: Should I break this out to a standalone struct?
     ExportLogs { path: PathBuf, stem: String },
     GetAdvancedSettings(oneshot::Sender<AdvancedSettings>),
     SchemeRequest(url::Url),
