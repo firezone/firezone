@@ -36,7 +36,7 @@ To maximize your chances of getting your pull request approved, please abide by
 the following general guidelines:
 
 1. Please adhere to our [code of conduct](CODE_OF_CONDUCT.md).
-1. Please test with your code and include unit tests when possible.
+1. Please test your code and include unit tests when possible.
 1. It is up to you, the contributor, to make a case for why your change is a
    good idea.
 1. For any security issues, please **do not** open a Github Issue. Please follow
@@ -79,10 +79,10 @@ After this you will have running:
 
 - A portal
 - A gateway connected to the portal
-- A client connected to the portal
+- A headless Linux client connected to the portal
 - A relay connected to the portal
-- A resource on a network only with the gateway
-  - The ip is `172.20.0.100` (And any other dependency for these to run)
+- A resource with IP `172.20.0.100` on a separate network shared with the
+  gateway
 
 ```sh
 # To test that a client can ping the resource
