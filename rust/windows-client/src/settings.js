@@ -155,8 +155,13 @@ async function setup() {
 
     await listen("file_count_progress", (event) => {
         const pl = event.payload;
-        const megabytes = Math.round(pl.bytes / 100000) / 10;
-        log_count_output.innerText = `${pl.files} files, ${megabytes} MB`;
+
+        let s = "Calculating...";
+        if (!! pl) {
+            const megabytes = Math.round(pl.bytes / 100000) / 10;
+            s = `${pl.files} files, ${megabytes} MB`;
+        }
+        log_count_output.innerText = s;
     });
 
     // TODO: Why doesn't this open the Advanced tab by default?
