@@ -8,6 +8,14 @@ use tokio::runtime::Runtime;
 // TODO: In tauri-plugin-deep-link, this is the identifier in tauri.conf.json
 const PIPE_NAME: &str = "dev.firezone.client";
 
+pub fn hostname() -> Result<()> {
+    println!(
+        "{:?}",
+        hostname::get().ok().and_then(|x| x.into_string().ok())
+    );
+    Ok(())
+}
+
 pub fn open_deep_link(path: &url::Url) -> Result<()> {
     tracing_subscriber::fmt::init();
 
