@@ -1,7 +1,7 @@
 //! Everything for logging to files, zipping up the files for export, and counting the files
 
 use crate::client::gui::{ControllerRequest, CtlrTx, Managed};
-use anyhow::Result;
+use anyhow::{bail, Result};
 use connlib_client_shared::file_logger;
 use serde::Serialize;
 use std::{
@@ -72,12 +72,15 @@ pub(crate) async fn clear_logs_inner() -> Result<()> {
 pub(crate) async fn export_logs_inner(ctlr_tx: CtlrTx) -> Result<()> {
     let now = chrono::Local::now();
     let datetime_string = now.format("%Y_%m_%d-%H-%M");
-    let stem = format!("connlib-{datetime_string}");
-    let filename = format!("{stem}.zip");
+    let stem = PathBuf::from(format!("connlib-{datetime_string}"));
+    let filename = stem.with_extension("zip");
+    let Some(filename) = filename.to_str() else {
+        bail!("zip filename isn't valid Unicode");
+    };
 
     tauri::api::dialog::FileDialogBuilder::new()
         .add_filter("Zip", &["zip"])
-        .set_file_name(&filename)
+        .set_file_name(filename)
         .save_file(move |file_path| match file_path {
             None => {}
             Some(path) => {
@@ -96,7 +99,7 @@ pub(crate) async fn export_logs_inner(ctlr_tx: CtlrTx) -> Result<()> {
 ///
 /// * `path` - Where the zip archive will be written
 /// * `stem` - A directory containing all the log files inside the zip archive, to avoid creating a ["tar bomb"](https://www.linfo.org/tarbomb.html). This comes from the automatically-generated name of the archive, even if the user changes it to e.g. `logs.zip`
-pub(crate) async fn export_logs_to(path: PathBuf, stem: String) -> Result<()> {
+pub(crate) async fn export_logs_to(path: PathBuf, stem: PathBuf) -> Result<()> {
     tracing::trace!("Exporting logs to {path:?}");
 
     // TODO: Consider https://github.com/Majored/rs-async-zip/issues instead of `spawn_blocking`
@@ -111,7 +114,11 @@ pub(crate) async fn export_logs_to(path: PathBuf, stem: String) -> Result<()> {
             let Some(name) = name.to_str() else {
                 continue;
             };
-            zip.start_file(format!("{stem}/{name}"), options)?;
+            let path = stem.join(name);
+            let Some(path) = path.to_str() else {
+                bail!("log filename isn't valid Unicode")
+            };
+            zip.start_file(path, options)?;
             let mut f = fs::File::open(entry.path())?;
             io::copy(&mut f, &mut zip)?;
         }

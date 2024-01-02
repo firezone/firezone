@@ -215,7 +215,7 @@ fn handle_system_tray_event(app: &tauri::AppHandle, event: TrayMenuEvent) -> Res
 pub(crate) enum ControllerRequest {
     CopyResource(String),
     Disconnected,
-    ExportLogs { path: PathBuf, stem: String },
+    ExportLogs { path: PathBuf, stem: PathBuf },
     GetAdvancedSettings(oneshot::Sender<AdvancedSettings>),
     SchemeRequest(url::Url),
     SignIn,
