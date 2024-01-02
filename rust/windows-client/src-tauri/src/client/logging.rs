@@ -110,12 +110,7 @@ pub(crate) async fn export_logs_to(path: PathBuf, stem: PathBuf) -> Result<()> {
         let options = zip::write::FileOptions::default();
         for entry in fs::read_dir("logs")? {
             let entry = entry?;
-            let name = entry.file_name();
-            let Some(name) = name.to_str() else {
-                continue;
-            };
-            let path = stem.join(name);
-            let Some(path) = path.to_str() else {
+            let Some(path) = stem.join(entry.file_name()).to_str().map(|x| x.to_owned()) else {
                 bail!("log filename isn't valid Unicode")
             };
             zip.start_file(path, options)?;
