@@ -287,7 +287,6 @@ defmodule Web.Sites.NewToken do
       --preserve-env=FIREZONE_NAME,FIREZONE_ID,FIREZONE_TOKEN,FIREZONE_API_URL,RUST_LOG \\
       -u firezone \\
       -g firezone \\
-      FIREZONE_NAME=$(hostname) \\
       /usr/local/bin/firezone-gateway
     TimeoutStartSec=3s
     TimeoutStopSec=15s

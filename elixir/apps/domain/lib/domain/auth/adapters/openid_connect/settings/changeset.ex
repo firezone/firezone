@@ -25,6 +25,10 @@ defmodule Domain.Auth.Adapters.OpenIDConnect.Settings.Changeset do
         {:ok, _uri} ->
           [{:discovery_document_uri, "is not a valid URL"}]
 
+        {:error, %Mint.TransportError{reason: reason}} ->
+          [{:discovery_document_uri, "is invalid, got #{inspect(reason)}"}]
+
+        # XXX: Do these occur with Mint?
         {:error, {404, _body}} ->
           [{:discovery_document_uri, "does not exist"}]
 
