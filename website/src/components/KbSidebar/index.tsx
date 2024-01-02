@@ -64,13 +64,17 @@ export default function KbSidebar() {
                 <Item href="/kb/authenticate/email" label="Email (OTP)" />
               </li>
               <li>
-                <Item
-                  href="/kb/authenticate/oidc"
-                  label="OpenID Connect (OIDC)"
-                />
+                <Item href="/kb/authenticate/google" label="Google Workspace" />
               </li>
               <li>
-                <Item href="/kb/authenticate/google" label="Google Workspace" />
+                <Item href="/kb/authenticate/oidc" label="Universal OIDC" />
+              </li>
+              <li>
+                <Item
+                  nested
+                  href="/kb/authenticate/oidc/fusion"
+                  label="Fusion Auth (OIDC)"
+                />
               </li>
               <li>
                 <Item
