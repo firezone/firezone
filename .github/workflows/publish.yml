@@ -1,4 +1,5 @@
-name: Publish
+name: Publish artifacts and deploy production
+run-name: Triggered from ${{ github.event_name }} by ${{ github.actor }}
 on:
   release:
     types:
