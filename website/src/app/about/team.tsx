@@ -110,13 +110,6 @@ export default function Team() {
       ),
     },
     {
-      name: "Jeff Spencer",
-      title: "Head of Marketing",
-      imgSrc: gravatar("jeff@firezone.dev", 200),
-      githubUrl: new URL("https://github.com/jefferenced"),
-      linkedinUrl: new URL("https://www.linkedin.com/in/jeff393/"),
-    },
-    {
       name: "Trisha",
       title: "Windows Platform Engineer",
       imgSrc: gravatar("trish@firezone.dev", 200),
@@ -142,7 +135,7 @@ export default function Team() {
               see for yourself
             </Link>
             . The team has experience building enterprise networking solutions
-            at companies like Cisco, Marqeta, Tailscale, and more.
+            at companies like Cisco, Marqeta, Instacart, and more.
           </p>
         </div>
         <div className="mt-16 grid sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-8 lg:gap-16">
