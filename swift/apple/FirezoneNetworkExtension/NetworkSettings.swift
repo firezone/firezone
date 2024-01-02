@@ -68,7 +68,10 @@ class NetworkSettings {
     logger: Logger,
     completionHandler: ((Error?) -> Void)?
   ) {
-    guard let packetTunnelProvider = packetTunnelProvider else { return }
+    guard let packetTunnelProvider = packetTunnelProvider else {
+      logger.error("\(#function): packetTunnelProvider not initialized! This should not happen.")
+      return
+    }
 
     guard self.hasUnappliedChanges else {
       logger.error("NetworkSettings.apply: No changes to apply")
