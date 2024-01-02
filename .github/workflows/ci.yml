@@ -63,6 +63,11 @@ jobs:
             context: rust
             build-args: |
               PACKAGE=firezone-linux-client
+          - image_name: connection-tests
+            target: debug
+            context: rust
+            build-args: |
+              PACKAGE=firezone-connection-tests
           - image_name: elixir
             target: compiler
             context: elixir
@@ -134,6 +139,28 @@ jobs:
           target: ${{ matrix.target }}
           tags: ${{ steps.build_docker_tags.outputs.tags }}
 
+  connection-integration-tests:
+    needs: build-images
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: write
+    env:
+      VERSION: ${{ github.sha }}
+    strategy:
+      fail-fast: false
+      matrix:
+        file: ['docker-compose.lan.yml']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/gcp-docker-login
+        id: login
+        with:
+          project: firezone-staging
+      - name: Run ${{ matrix.file }} test
+        run: docker compose -f rust/connection-tests/${{ matrix.file }} up --exit-code-from dialer --abort-on-container-exit
+
   integration-tests:
     needs: build-images
     runs-on: ubuntu-22.04
@@ -147,12 +174,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # TODO
-          # - Run control plane components as services
-          # - Test clients
-          # - Test with different NAT types
-          # - Test IPv6
-          # - Test end-to-end critical paths
           - test_name: Relayed flow
             artifact_name: relayed
             setup: |
@@ -225,7 +246,7 @@ jobs:
           cat /tmp/iperf3results/udp_client2server.json | jq -r '"udp_client2server_sum_jitter_ms=" + (.end.sum.jitter_ms|tostring)' >> "$GITHUB_OUTPUT"
           cat /tmp/iperf3results/udp_client2server.json | jq -r '"udp_client2server_sum_lost_percent=" + (.end.sum.lost_percent|tostring)' >> "$GITHUB_OUTPUT"
       - name: Save ${{ matrix.test_name }} Perfomance Test Results
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}-iperf3results
           path: /tmp/iperf3results

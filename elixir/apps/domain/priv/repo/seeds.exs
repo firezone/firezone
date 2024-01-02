@@ -2,7 +2,7 @@ alias Domain.{Repo, Accounts, Auth, Actors, Relays, Gateways, Resources, Policie
 
 # Seeds can be run both with MIX_ENV=prod and MIX_ENV=test, for test env we don't have
 # an adapter configured and creation of email provider will fail, so we will override it here.
-System.put_env("OUTBOUND_EMAIL_ADAPTER", "Elixir.Swoosh.Adapters.Postmark")
+System.put_env("OUTBOUND_EMAIL_ADAPTER", "Elixir.Swoosh.Adapters.Mailgun")
 
 # This function is used to update fields if STATIC_SEEDS is set,
 # which helps with static docker-compose environment for local development.
