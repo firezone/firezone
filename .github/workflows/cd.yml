@@ -304,7 +304,7 @@ jobs:
         with:
           project: firezone-staging
       - name: Download digests
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: digests
           path: /tmp/digests
