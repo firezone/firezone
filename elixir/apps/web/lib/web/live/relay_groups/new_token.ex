@@ -321,7 +321,6 @@ defmodule Web.RelayGroups.NewToken do
       --preserve-env=FIREZONE_NAME,FIREZONE_ID,FIREZONE_TOKEN,PUBLIC_IP4_ADDR,PUBLIC_IP6_ADDR,RUST_LOG,LOG_FORMAT \\
       -u firezone \\
       -g firezone \\
-      FIREZONE_NAME=$(hostname) \\
       /usr/local/bin/firezone-relay
     TimeoutStartSec=3s
     TimeoutStopSec=15s
