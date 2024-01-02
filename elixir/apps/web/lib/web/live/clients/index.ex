@@ -44,9 +44,8 @@ defmodule Web.Clients.Index do
               <.connection_status schema={client} />
             </:col>
             <:empty>
-              <div class="text-center text-neutral-500 p-4">No clients to display</div>
-              <div class="text-center text-neutral-500 mb-4">
-                Clients are created automatically when user connects to a resource.
+              <div class="text-center text-neutral-500 p-4">
+                No clients to display. Clients are created automatically when a user connects to a resource.
               </div>
             </:empty>
           </.table>

@@ -80,16 +80,7 @@ defmodule Web.Actors.Index do
             <.relative_datetime datetime={last_seen_at(actor.identities)} />
           </:col>
           <:empty>
-            <div class="flex justify-center text-center text-neutral-500 p-4">
-              <div class="w-auto">
-                <div class="pb-4">
-                  No actors to display
-                </div>
-                <.add_button navigate={~p"/#{@account}/actors/new"}>
-                  Add Actor
-                </.add_button>
-              </div>
-            </div>
+            <%= # Empty state should never be reachable in this view %>
           </:empty>
         </.table>
       </:content>
