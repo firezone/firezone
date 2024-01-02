@@ -198,6 +198,7 @@ public final class AuthStore: ObservableObject {
       }
     } else {
       self.logger.log("\(#function): Tunnel shutdown event not found")
+      self.retryStartTunnel()
     }
   }
 
