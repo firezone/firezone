@@ -62,7 +62,8 @@ defmodule Web.Live.Groups.IndexTest do
 
     assert html =~ "No groups to display"
     assert html =~ "Add Group"
-    assert html =~ "Sync Groups from IdP"
+    assert html =~ "go to settings"
+    assert html =~ "to sync groups from an identity provider"
   end
 
   test "renders groups table", %{
