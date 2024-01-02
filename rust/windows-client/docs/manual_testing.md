@@ -91,6 +91,19 @@ If you can't test with resources that respond to ping, curl is fine too.
 - All resources accessed by domain will get a CGNAT network address, e.g. 100.64.96.19, even public resources
 - When the client is signed in, all DNS requests go to Firezone first, so that it can route public resources
 
+## DNS / routing changes
+
+(Using Cygwin's curl)
+
+Choose a DNS resource, e.g. `https://ifconfig.net`
+
+Prepare a curl command using this resource, e.g. `time curl -v https://ifconfig.net` This command must always succeed.
+
+1. [ ] Given the client is signed out, when you run curl, then it will show the resource's publicly-routable IP address.
+1. [ ] Given the client is signed out, when you sign in, wait 10 seconds, and run curl, then it will show a CGNAT address, e.g. 100.64.96.19
+1. [ ] Given the client is signed in, when you time 3 runs of curl, then the fastest will be under 2 seconds. (i.e. it should not be waiting on any DNS timeouts)
+1. [ ] Given the client is signed in, when you sign out, wait 10 seconds, and run curl, then it will show the resource's publicly-routable IP address.
+
 ## Signed out
 
 Given the client is signed out or not running, when you ping...
