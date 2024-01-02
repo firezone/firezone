@@ -44,7 +44,6 @@ defmodule Web.Settings.DNS do
             target="_blank"
           >
             Read more about configuring DNS in Firezone.
-            <.icon name="hero-arrow-top-right-on-square" class="-ml-1 mb-3 w-3 h-3" />
           </.link>
         </p>
         <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
