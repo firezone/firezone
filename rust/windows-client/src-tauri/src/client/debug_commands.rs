@@ -8,6 +8,14 @@ use tokio::runtime::Runtime;
 // TODO: In tauri-plugin-deep-link, this is the identifier in tauri.conf.json
 const PIPE_NAME: &str = "dev.firezone.client";
 
+pub fn crash() -> Result<()> {
+    // `_` doesn't seem to work here, the log files end up empty
+    let _handles = crate::client::logging::setup("debug")?;
+    tracing::info!("started log (DebugCrash)");
+
+    panic!("purposely crashing to see if it shows up in logs");
+}
+
 pub fn open_deep_link(path: &url::Url) -> Result<()> {
     tracing_subscriber::fmt::init();
 

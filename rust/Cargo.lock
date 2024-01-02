@@ -2091,6 +2091,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-log 0.2.0",
+ "tracing-panic",
  "tracing-subscriber",
  "url",
  "uuid",
@@ -6671,6 +6672,16 @@ dependencies = [
  "once_cell",
  "parking_lot",
  "tracing-core",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "tracing-panic"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "eaf80030ce049691c9922d75be63cadf345110a245cd4581833c66f87c02ad25"
+dependencies = [
+ "tracing",
  "tracing-subscriber",
 ]
 
