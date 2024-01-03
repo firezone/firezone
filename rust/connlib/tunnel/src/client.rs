@@ -185,7 +185,7 @@ pub struct ClientState {
     pub gateway_preshared_keys: HashMap<GatewayId, StaticSecret>,
     resources_gateways: HashMap<ResourceId, GatewayId>,
 
-    pub dns_resources_internal_ips: HashMap<DnsResource, Vec<IpAddr>>,
+    pub dns_resources_internal_ips: HashMap<DnsResource, HashSet<IpAddr>>,
     dns_resources: HashMap<String, ResourceDescriptionDns>,
     cidr_resources: IpNetworkTable<ResourceDescriptionCidr>,
     pub resource_ids: HashMap<ResourceId, ResourceDescription>,
@@ -196,7 +196,7 @@ pub struct ClientState {
 
     forwarded_dns_queries: BoundedQueue<DnsQuery<'static>>,
 
-    ip_provider: IpProvider,
+    pub ip_provider: IpProvider,
 
     refresh_dns_timer: Interval,
 }
@@ -597,7 +597,7 @@ impl ClientState {
             .dns_resources_internal_ips
             .get(resource)
             .cloned()
-            .unwrap_or(Vec::new());
+            .unwrap_or(HashSet::new());
         // We collect here to eagerly filter so that `next` is not called more times than needed with the ip_provider
         // that could cause an ip exhaustion.
         // This is needed to get the length, since even if zip is run, only until addr_v4 is None, `next` is still being called in both elements
@@ -612,9 +612,6 @@ impl ClientState {
             .map(Into::<IpAddr>::into)
             .zip(addr_v4.clone())
             .take(len);
-
-        tracing::warn!("external_ips: {addr_v4:?}");
-        tracing::warn!("internal_ips: {internal_ips:?}");
 
         // Same note as for ipv4, though an exhaustion is not a realistic scenario.
         let addr_v6 = addrs.iter().copied().filter(IpAddr::is_ipv6).collect_vec();
@@ -644,6 +641,21 @@ impl IpProvider {
             ipv6: Box::new(ipv6.subnets_with_prefix(128).map(|ip| ip.network_address())),
         }
     }
+
+    pub fn get_ip_for(&mut self, ip: &IpAddr) -> Option<IpAddr> {
+        let ip = match ip {
+            IpAddr::V4(_) => self.ipv4.next().map(Into::into),
+            IpAddr::V6(_) => self.ipv6.next().map(Into::into),
+        };
+
+        if ip.is_none() {
+            // TODO: we might want to make the iterator cyclic or another strategy to prevent ip exhaustion
+            // this might happen in ipv4 if tokens are too long lived.
+            tracing::error!("IP exhaustion: Please reset your client");
+        }
+
+        ip
+    }
 }
 
 impl Default for ClientState {
@@ -651,7 +663,8 @@ impl Default for ClientState {
         // With this single timer this might mean that some DNS are refreshed too often
         // however... this also mean any resource is refresh within a 5 mins interval
         // therefore, only the first time it's added that happens, after that it doesn't matter.
-        let mut interval = tokio::time::interval(Duration::from_secs(300));
+        // TODO: CHANGEME to 300 again.
+        let mut interval = tokio::time::interval(Duration::from_secs(10));
         interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
         Self {
             active_candidate_receivers: StreamMap::new(
