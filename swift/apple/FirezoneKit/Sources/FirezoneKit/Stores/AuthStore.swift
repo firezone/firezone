@@ -36,6 +36,7 @@ public final class AuthStore: ObservableObject {
 
   @Dependency(\.keychain) private var keychain
   @Dependency(\.auth) private var auth
+  @Dependency(\.mainQueue) private var mainQueue
 
   let tunnelStore: TunnelStore
 
@@ -63,16 +64,11 @@ public final class AuthStore: ObservableObject {
     }
 
     tunnelStore.$tunnelAuthStatus
+      .receive(on: mainQueue)
       .sink { [weak self] tunnelAuthStatus in
         guard let self = self else { return }
         logger.log("Tunnel auth status changed to: \(tunnelAuthStatus)")
-        Task {
-          let loginStatus = await self.getLoginStatus(from: tunnelAuthStatus)
-          if tunnelStore.tunnelAuthStatus == tunnelAuthStatus {
-            // Make sure the tunnelAuthStatus hasn't changed while we were getting the login status
-            self.loginStatus = loginStatus
-          }
-        }
+        self.upateLoginStatus()
       }
       .store(in: &cancellables)
 
@@ -99,6 +95,15 @@ public final class AuthStore: ObservableObject {
       return url
     }
     return URL(string: AdvancedSettings.defaultValue.authBaseURLString)!
+  }
+
+  private func upateLoginStatus() {
+    Task {
+      let loginStatus = await self.getLoginStatus(from: self.tunnelStore.tunnelAuthStatus)
+      await MainActor.run {
+        self.loginStatus = loginStatus
+      }
+    }
   }
 
   private func getLoginStatus(from tunnelAuthStatus: TunnelAuthStatus) async -> LoginStatus {
@@ -198,6 +203,7 @@ public final class AuthStore: ObservableObject {
       }
     } else {
       self.logger.log("\(#function): Tunnel shutdown event not found")
+      self.retryStartTunnel()
     }
   }
 
