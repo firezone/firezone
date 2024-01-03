@@ -295,8 +295,11 @@ jobs:
       matrix:
         include:
           - image_name: relay
+            artifact: relay
           - image_name: gateway
+            artifact: gateway
           - image_name: client
+            artifact: linux-client
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/gcp-docker-login
@@ -308,7 +311,7 @@ jobs:
         with:
           pattern: "*-digests"
           merge-multiple: true
-          path: /tmp/digests
+          path: /tmp/digests/${{ matrix.artifact }}
       - name: Display structure of downloaded artifacts
         run: ls -R /tmp/digests
       - name: Set up Docker Buildx
@@ -333,7 +336,7 @@ jobs:
             type=raw,value=${{ env.MAJOR_VERSION }}
             type=raw,value=${{ env.MAJOR_MINOR_VERSION }}
       - name: Create manifest list and push
-        working-directory: /tmp/digests/${{ matrix.image_name }}
+        working-directory: /tmp/digests/${{ matrix.artifact }}
         run: |
           tags=$(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON")
           sources=$(printf '${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}@sha256:%s ' *)
