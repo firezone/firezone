@@ -382,11 +382,16 @@ macro_rules! string_from_jstring {
     };
 }
 
+// TODO: Refactor this when we refactor PhoenixChannel.
+// See https://github.com/firezone/firezone/issues/2158
+#[allow(clippy::too_many_arguments)]
 fn connect(
     env: &mut JNIEnv,
     api_url: JString,
     token: JString,
     device_id: JString,
+    device_name: JString,
+    os_version: JString,
     log_dir: JString,
     log_filter: JString,
     callback_handler: GlobalRef,
@@ -394,6 +399,8 @@ fn connect(
     let api_url = string_from_jstring!(env, api_url);
     let secret = SecretString::from(string_from_jstring!(env, token));
     let device_id = string_from_jstring!(env, device_id);
+    let device_name = string_from_jstring!(env, device_name);
+    let os_version = string_from_jstring!(env, os_version);
     let log_dir = string_from_jstring!(env, log_dir);
     let log_filter = string_from_jstring!(env, log_filter);
 
@@ -409,6 +416,8 @@ fn connect(
         api_url.as_str(),
         secret,
         device_id,
+        Some(device_name),
+        Some(os_version),
         callback_handler,
         Duration::from_secs(5 * 60),
     )?;
@@ -427,6 +436,8 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_TunnelSession_con
     api_url: JString,
     token: JString,
     device_id: JString,
+    device_name: JString,
+    os_version: JString,
     log_dir: JString,
     log_filter: JString,
     callback_handler: JObject,
@@ -441,6 +452,8 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_TunnelSession_con
             api_url,
             token,
             device_id,
+            device_name,
+            os_version,
             log_dir,
             log_filter,
             callback_handler,

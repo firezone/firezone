@@ -9,6 +9,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.net.VpnService
+import android.os.Build
 import android.system.OsConstants
 import android.util.Log
 import androidx.core.app.NotificationCompat
@@ -185,6 +186,8 @@ class TunnelService : VpnService() {
                         apiUrl = config.apiUrl,
                         token = config.token,
                         deviceId = deviceId(),
+                        deviceName = Build.MODEL,
+                        osVersion = Build.VERSION.RELEASE,
                         logDir = getLogDir(),
                         logFilter = config.logFilter,
                         callback = callback,
