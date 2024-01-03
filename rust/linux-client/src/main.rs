@@ -15,6 +15,8 @@ fn main() -> Result<()> {
         cli.common.api_url,
         SecretString::from(cli.common.token),
         cli.firezone_id,
+        None,
+        None,
         CallbackHandler { handle },
         cli.max_partition_time.into(),
     )
