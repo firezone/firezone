@@ -11,8 +11,10 @@ use std::{
 };
 use tokio::sync::mpsc;
 use windows::Win32::{
-    Foundation::BOOLEAN,
-    NetworkManagement::IpHelper::{GetIpInterfaceEntry, SetIpInterfaceEntry, MIB_IPINTERFACE_ROW},
+    NetworkManagement::{
+        IpHelper::{GetIpInterfaceEntry, SetIpInterfaceEntry, MIB_IPINTERFACE_ROW},
+        Ndis::NET_LUID_LH,
+    },
     Networking::WinSock::AF_INET,
 };
 
@@ -93,7 +95,7 @@ impl Tun {
             .stdout(Stdio::null())
             .status()?;
 
-        set_iface_config(iface_idx, DEFAULT_MTU)?;
+        set_iface_config(adapter.get_luid(), DEFAULT_MTU)?;
 
         // Set our DNS IP as the DNS server for our interface
         // TODO: Lots of issues with this. Windows does seem to use it, but I'm not sure why. And there's a delay before some Firefox windows pick it up. Curl might be picking it up faster because its DNS cache starts cold every time.
@@ -211,27 +213,27 @@ fn start_recv_thread(
 
 /// Sets MTU on the interface
 /// TODO: Set IP and other things in here too, so the code is more organized
-fn set_iface_config(iface_idx: u32, mtu: u32) -> Result<()> {
-    tracing::debug!("set_iface_config...");
+fn set_iface_config(luid: wintun::NET_LUID_LH, mtu: u32) -> Result<()> {
+    // Safety: Both NET_LUID_LH unions should be the same. We're just copying out
+    // the u64 value and re-wrapping it, since wintun doesn't refer to the windows
+    // crate's version of NET_LUID_LH.
+    let luid = NET_LUID_LH {
+        Value: unsafe { luid.Value },
+    };
+
     let mut row = MIB_IPINTERFACE_ROW {
-        InterfaceIndex: iface_idx,
+        Family: AF_INET,
+        InterfaceLuid: luid,
         ..Default::default()
     };
 
     unsafe { GetIpInterfaceEntry(&mut row) }?;
-    row.ManagedAddressConfigurationSupported = BOOLEAN(0);
-    row.OtherStatefulConfigurationSupported = BOOLEAN(0);
-    // We use this to get/set the MTU and metric, family should be irrelevant
-    row.Family = AF_INET;
-    row.NlMtu = mtu;
 
-    // Force lowest possible metric so Windows will always choose us
-    row.UseAutomaticMetric = BOOLEAN(0);
-    row.Metric = 0;
+    row.NlMtu = mtu;
+    // https://stackoverflow.com/questions/54857292/setipinterfaceentry-returns-error-invalid-parameter
+    row.SitePrefixLength = 0;
 
     // Ignore error if we can't set everything
     unsafe { SetIpInterfaceEntry(&mut row) }?;
-
-    tracing::debug!("set_iface_config success");
     Ok(())
 }
