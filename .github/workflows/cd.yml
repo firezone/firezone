@@ -228,7 +228,7 @@ jobs:
       - name: Upload digest
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.BINARY_DEST_PATH }}-digests
+          name: ${{ matrix.name.image_name }}-${{ matrix.arch.shortname }}-digest
           path: /tmp/digests/${{ matrix.name.image_name }}
           if-no-files-found: error
           retention-days: 1
@@ -295,11 +295,8 @@ jobs:
       matrix:
         include:
           - image_name: relay
-            artifact: relay
           - image_name: gateway
-            artifact: gateway
           - image_name: client
-            artifact: linux-client
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/gcp-docker-login
@@ -309,9 +306,9 @@ jobs:
       - name: Download digests
         uses: actions/download-artifact@v4
         with:
-          pattern: "*-digests"
+          pattern: ${{ matrix.image_image }}-*-digest
           merge-multiple: true
-          path: /tmp/digests/${{ matrix.artifact }}
+          path: /tmp/digests/${{ matrix.image_name }}
       - name: Display structure of downloaded artifacts
         run: ls -R /tmp/digests
       - name: Set up Docker Buildx
@@ -336,7 +333,7 @@ jobs:
             type=raw,value=${{ env.MAJOR_VERSION }}
             type=raw,value=${{ env.MAJOR_MINOR_VERSION }}
       - name: Create manifest list and push
-        working-directory: /tmp/digests/${{ matrix.artifact }}
+        working-directory: /tmp/digests/${{ matrix.image_name }}
         run: |
           tags=$(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON")
           sources=$(printf '${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}@sha256:%s ' *)
