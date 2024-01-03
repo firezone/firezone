@@ -1,4 +1,3 @@
-import { Metadata } from "next";
 import CodeBlock from "@/components/CodeBlock";
 import Link from "next/link";
 import Image from "next/image";
@@ -15,11 +14,6 @@ import {
   HiGlobeAlt,
 } from "react-icons/hi2";
 
-export const metadata: Metadata = {
-  title: "WireGuard® for Enterprise • Firezone",
-  description: "Open-source, zero-trust access platform built on WireGuard®",
-};
-
 export default function Page() {
   return (
     <>
@@ -31,7 +25,8 @@ export default function Page() {
           <h2 className="mb-8 text-xl tracking-tight text-neutral-800 sm:px-16 xl:px-48">
             Manage secure remote access to your company’s most valuable services
             and resources with Firezone. We’re open source, and built on
-            WireGuard®, a modern protocol that’s up to 4-6x faster than OpenVPN.
+            WireGuard®, a modern protocol that’s up to 4-6x faster than
+            OpenVPN.
           </h2>
           <div className="flex mb-8 lg:mb-16 flex-row justify-center space-y-0 space-x-4">
             <Link href="/contact/sales">

@@ -1,37 +1,16 @@
 "use client";
-import posthog from "posthog-js";
-import { PostHogProvider } from "posthog-js/react";
+import { MixpanelProvider } from "react-mixpanel-browser";
 import { HubspotProvider } from "next-hubspot";
-import { usePathname, useSearchParams } from "next/navigation";
-import { useEffect } from "react";
-
-if (typeof window !== "undefined") {
-  posthog.init(process.env.NEXT_PUBLIC_POSTHOG_KEY, {
-    api_host: process.env.NEXT_PUBLIC_POSTHOG_HOST,
-  });
-}
 
 export default function Provider({ children }) {
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
-  // Track pageviews
-  useEffect(() => {
-    if (pathname) {
-      let url = window.origin + pathname;
-      if (searchParams.toString()) {
-        url = url + `?${searchParams.toString()}`;
-      }
-      posthog.capture("$pageview", {
-        $current_url: url,
-      });
-    }
-  }, [pathname, searchParams]);
+  const token = "b0ab1d66424a27555ed45a27a4fd0cd2";
+  const host = "https://t.firez.one";
 
   return (
     <>
-      <PostHogProvider client={posthog}>
+      <MixpanelProvider token={token} config={{ api_host: host }}>
         <HubspotProvider>{children}</HubspotProvider>
-      </PostHogProvider>
+      </MixpanelProvider>
     </>
   );
 }

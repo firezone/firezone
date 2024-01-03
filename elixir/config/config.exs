@@ -192,11 +192,6 @@ config :logger, :console,
 # Use Jason for JSON parsing in Phoenix
 config :phoenix, :json_library, Jason
 
-# Public API key for telemetry
-config :posthog,
-  api_url: "https://t.firez.one",
-  api_key: "phc_ubuPhiqqjMdedpmbWpG2Ak3axqv5eMVhFDNBaXl9UZK"
-
 config :web, Web.Mailer,
   adapter: Domain.Mailer.NoopAdapter,
   from_email: "test@firez.one"
