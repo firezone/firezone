@@ -1,15 +1,20 @@
 use connlib_shared::{messages::Interface as InterfaceConfig, Result, DNS_SENTINEL};
+use futures::task::AtomicWaker;
 use ip_network::IpNetwork;
 use std::{
+    ffi::c_void,
     io,
     net::Ipv6Addr,
     os::windows::process::CommandExt,
     process::{Command, Stdio},
     str::FromStr,
     sync::Arc,
-    task::{ready, Context, Poll},
+    task::{Context, Poll},
 };
-use tokio::sync::mpsc;
+use windows::Win32::{
+    Foundation::{BOOLEAN, HANDLE},
+    System::Threading::{RegisterWaitForSingleObject, INFINITE, WT_EXECUTEINWAITTHREAD},
+};
 
 // TODO: Double-check that all these get dropped gracefully on disconnect
 pub struct Tun {
@@ -17,10 +22,8 @@ pub struct Tun {
     /// The index of our network adapter, we can use this when asking Windows to add / remove routes / DNS rules
     /// It's stable across app restarts and I'm assuming across system reboots too.
     iface_idx: u32,
-    // TODO: Get rid of this mutex. It's a hack to deal with `poll_read` taking a `&self` instead of `&mut self`
-    packet_rx: std::sync::Mutex<mpsc::Receiver<wintun::Packet>>,
-    _recv_thread: std::thread::JoinHandle<()>,
     session: Arc<wintun::Session>,
+    waker: Arc<AtomicWaker>,
 }
 
 impl Drop for Tun {
@@ -104,17 +107,11 @@ impl Tun {
 
         let session = Arc::new(adapter.start_session(wintun::MAX_RING_CAPACITY)?);
 
-        let (packet_tx, packet_rx) = mpsc::channel(5);
-
-        let recv_thread = start_recv_thread(packet_tx, Arc::clone(&session));
-        let packet_rx = std::sync::Mutex::new(packet_rx);
-
         Ok(Self {
             _adapter: adapter,
             iface_idx,
-            _recv_thread: recv_thread,
-            packet_rx,
-            session: Arc::clone(&session),
+            session,
+            waker: Arc::new(Default::default()),
         })
     }
 
@@ -134,12 +131,11 @@ impl Tun {
     }
 
     pub fn poll_read(&self, buf: &mut [u8], cx: &mut Context<'_>) -> Poll<io::Result<usize>> {
-        let mut packet_rx = self.packet_rx.try_lock().unwrap();
-
-        let pkt = ready!(packet_rx.poll_recv(cx));
-
-        match pkt {
-            Some(pkt) => {
+        // wintun's API requires us to copy a packet here
+        let recv = self.session.try_receive();
+        match recv {
+            Ok(None) => {} // No packet available yet
+            Ok(Some(pkt)) => {
                 let bytes = pkt.bytes();
                 let len = bytes.len();
                 if len > buf.len() {
@@ -148,13 +144,34 @@ impl Tun {
                     return Poll::Ready(Ok(0));
                 }
                 buf[0..len].copy_from_slice(bytes);
-                Poll::Ready(Ok(len))
+                return Poll::Ready(Ok(len));
             }
-            None => {
-                tracing::error!("error receiving packet from mpsc channel");
-                Poll::Ready(Err(std::io::ErrorKind::Other.into()))
-            }
+            Err(err) => return Poll::Ready(Err(err.into())),
         }
+
+        self.waker.register(cx.waker());
+        let wait_handle = match self.session.get_read_wait_event() {
+            Ok(handle) => handle,
+            Err(err) => return Poll::Ready(Err(err.into())),
+        };
+
+        let mut obj = HANDLE(0isize);
+
+        tracing::debug!("registering wait event");
+
+        unsafe {
+            RegisterWaitForSingleObject(
+                &mut obj,
+                HANDLE(wait_handle.0),
+                Some(callback),
+                Some(Arc::into_raw(self.waker.clone()) as *const _),
+                INFINITE,
+                WT_EXECUTEINWAITTHREAD,
+            )
+        }?;
+
+        // TODO: Cleanup
+        Poll::Pending
     }
 
     pub fn write4(&self, bytes: &[u8]) -> io::Result<usize> {
@@ -178,28 +195,7 @@ impl Tun {
     }
 }
 
-fn start_recv_thread(
-    packet_tx: mpsc::Sender<wintun::Packet>,
-    session: Arc<wintun::Session>,
-) -> std::thread::JoinHandle<()> {
-    std::thread::spawn(move || {
-        loop {
-            match session.receive_blocking() {
-                Ok(pkt) => {
-                    // TODO: Don't allocate here if we can help it
-                    if packet_tx.blocking_send(pkt).is_err() {
-                        // Most likely the receiver was dropped and we're closing down the connlib session.
-                        break;
-                    }
-                }
-                // We get an Error::String when `Session::shutdown` is called
-                Err(wintun::Error::String(_)) => break,
-                Err(e) => {
-                    tracing::error!("wintun::Session::receive_blocking: {e:#?}");
-                    break;
-                }
-            }
-        }
-        tracing::debug!("recv_task exiting gracefully");
-    })
+// Callback function for Windows to wake us up to read a packet
+unsafe extern "system" fn callback(ctx: *mut c_void, _: BOOLEAN) {
+    Arc::from_raw(ctx as *const AtomicWaker).wake()
 }

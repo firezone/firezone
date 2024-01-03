@@ -2064,6 +2064,7 @@ dependencies = [
  "tracing-android",
  "uuid",
  "webrtc",
+ "windows 0.52.0",
  "wintun",
 ]
 
