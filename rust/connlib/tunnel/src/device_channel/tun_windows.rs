@@ -10,6 +10,13 @@ use std::{
     task::{ready, Context, Poll},
 };
 use tokio::sync::mpsc;
+use windows::Win32::{
+    NetworkManagement::{
+        IpHelper::{GetIpInterfaceEntry, SetIpInterfaceEntry, MIB_IPINTERFACE_ROW},
+        Ndis::NET_LUID_LH,
+    },
+    Networking::WinSock::AF_INET,
+};
 
 // TODO: Double-check that all these get dropped gracefully on disconnect
 pub struct Tun {
@@ -34,6 +41,8 @@ impl Drop for Tun {
 // Hides Powershell's console on Windows
 // <https://stackoverflow.com/questions/59692146/is-it-possible-to-use-the-standard-library-to-spawn-a-process-without-showing-th#60958956>
 const CREATE_NO_WINDOW: u32 = 0x08000000;
+// Copied from tun_linux.rs
+const DEFAULT_MTU: u32 = 1280;
 
 impl Tun {
     pub fn new(config: &InterfaceConfig) -> Result<Self> {
@@ -85,6 +94,8 @@ impl Tun {
             ))
             .stdout(Stdio::null())
             .status()?;
+
+        set_iface_config(adapter.get_luid(), DEFAULT_MTU)?;
 
         // Set our DNS IP as the DNS server for our interface
         // TODO: Lots of issues with this. Windows does seem to use it, but I'm not sure why. And there's a delay before some Firefox windows pick it up. Curl might be picking it up faster because its DNS cache starts cold every time.
@@ -198,4 +209,31 @@ fn start_recv_thread(
         }
         tracing::debug!("recv_task exiting gracefully");
     })
+}
+
+/// Sets MTU on the interface
+/// TODO: Set IP and other things in here too, so the code is more organized
+fn set_iface_config(luid: wintun::NET_LUID_LH, mtu: u32) -> Result<()> {
+    // Safety: Both NET_LUID_LH unions should be the same. We're just copying out
+    // the u64 value and re-wrapping it, since wintun doesn't refer to the windows
+    // crate's version of NET_LUID_LH.
+    let luid = NET_LUID_LH {
+        Value: unsafe { luid.Value },
+    };
+
+    let mut row = MIB_IPINTERFACE_ROW {
+        Family: AF_INET,
+        InterfaceLuid: luid,
+        ..Default::default()
+    };
+
+    unsafe { GetIpInterfaceEntry(&mut row) }?;
+
+    row.NlMtu = mtu;
+    // https://stackoverflow.com/questions/54857292/setipinterfaceentry-returns-error-invalid-parameter
+    row.SitePrefixLength = 0;
+
+    // Ignore error if we can't set everything
+    unsafe { SetIpInterfaceEntry(&mut row) }?;
+    Ok(())
 }
