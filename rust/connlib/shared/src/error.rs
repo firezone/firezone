@@ -144,6 +144,9 @@ pub enum ConnlibError {
     #[error(transparent)]
     Uuid(#[from] uuid::Error),
     #[cfg(target_os = "windows")]
+    #[error("Windows error: {0}")]
+    WindowsError(#[from] windows::core::Error),
+    #[cfg(target_os = "windows")]
     #[error(transparent)]
     Wintun(#[from] wintun::Error),
     #[error("Token has expired")]
