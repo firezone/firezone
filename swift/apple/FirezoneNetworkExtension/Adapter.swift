@@ -241,7 +241,7 @@ extension Adapter {
   }
 
   func getOSVersion() -> String? {
-    // Returns a generic device name on iOS 16 and higher
+    // Returns the OS version
     // See https://github.com/firezone/firezone/issues/3034
     #if os(iOS)
       return UIDevice.current.systemVersion
