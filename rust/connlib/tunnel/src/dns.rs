@@ -14,7 +14,7 @@ use hickory_resolver::proto::op::{Message as TrustDnsMessage, MessageType};
 use hickory_resolver::proto::rr::RecordType;
 use itertools::Itertools;
 use pnet_packet::{udp::MutableUdpPacket, MutablePacket, Packet as UdpPacket, PacketSize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
 const DNS_TTL: u32 = 300;
@@ -61,7 +61,7 @@ impl<T, V> ResolveStrategy<T, DnsQueryParams, V> {
 // See: https://stackoverflow.com/a/55093896
 pub(crate) fn parse<'a>(
     dns_resources: &HashMap<String, ResourceDescriptionDns>,
-    dns_resources_internal_ips: &HashMap<DnsResource, Vec<IpAddr>>,
+    dns_resources_internal_ips: &HashMap<DnsResource, HashSet<IpAddr>>,
     packet: IpPacket<'a>,
 ) -> Option<ResolveStrategy<Packet<'static>, DnsQuery<'a>, (DnsResource, Rtype)>> {
     if packet.destination() != IpAddr::from(DNS_SENTINEL) {
@@ -96,7 +96,10 @@ pub(crate) fn parse<'a>(
     )?))
 }
 
-pub(crate) fn create_local_answer<'a>(ips: &[IpAddr], packet: IpPacket<'a>) -> Option<Packet<'a>> {
+pub(crate) fn create_local_answer<'a>(
+    ips: &HashSet<IpAddr>,
+    packet: IpPacket<'a>,
+) -> Option<Packet<'a>> {
     let datagram = packet.as_udp().unwrap();
     let message = to_dns(&datagram).unwrap();
     let question = message.first_question().unwrap();
@@ -242,7 +245,7 @@ enum RecordData<T> {
 
 fn resource_from_question<N: ToDname>(
     dns_resources: &HashMap<String, ResourceDescriptionDns>,
-    dns_resources_internal_ips: &HashMap<DnsResource, Vec<IpAddr>>,
+    dns_resources_internal_ips: &HashMap<DnsResource, HashSet<IpAddr>>,
     question: &Question<N>,
 ) -> Option<ResolveStrategy<RecordData<Dname>, DnsQueryParams, DnsResource>> {
     let name = ToDname::to_vec(question.qname());
