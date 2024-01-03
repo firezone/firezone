@@ -5,6 +5,7 @@ use crate::{get_v4, get_v6, DnsQuery};
 use connlib_shared::error::ConnlibError;
 use connlib_shared::messages::ResourceDescriptionDns;
 use connlib_shared::{Dname, DNS_SENTINEL};
+use domain::base::RelativeDname;
 use domain::base::{
     iana::{Class, Rcode, Rtype},
     Message, MessageBuilder, Question, ToDname,
@@ -243,6 +244,28 @@ enum RecordData<T> {
     Ptr(domain::rdata::Ptr<T>),
 }
 
+fn get_description(
+    name: &Dname,
+    dns_resources: &HashMap<String, ResourceDescriptionDns>,
+) -> Option<ResourceDescriptionDns> {
+    if let Some(resource) = dns_resources.get(&name.to_string()) {
+        return Some(resource.clone());
+    }
+
+    name.iter_suffixes().find_map(|n| {
+        dns_resources
+            .get(
+                &RelativeDname::wildcard_vec()
+                    .chain(n)
+                    .ok()?
+                    .to_dname::<Vec<_>>()
+                    .ok()?
+                    .to_string(),
+            )
+            .cloned()
+    })
+}
+
 fn resource_from_question<N: ToDname>(
     dns_resources: &HashMap<String, ResourceDescriptionDns>,
     dns_resources_internal_ips: &HashMap<DnsResource, HashSet<IpAddr>>,
@@ -253,14 +276,11 @@ fn resource_from_question<N: ToDname>(
 
     match qtype {
         Rtype::A => {
-            let Some(description) = name
-                .iter_suffixes()
-                .find_map(|n| dns_resources.get(&n.to_string()))
-            else {
+            let Some(description) = get_description(&name, dns_resources) else {
                 return Some(ResolveStrategy::forward(name.to_string(), qtype));
             };
 
-            let description = DnsResource::from_description(description, name);
+            let description = DnsResource::from_description(&description, name);
             let Some(ips) = dns_resources_internal_ips.get(&description) else {
                 return Some(ResolveStrategy::DeferredResponse(description));
             };
@@ -273,13 +293,10 @@ fn resource_from_question<N: ToDname>(
             )))
         }
         Rtype::Aaaa => {
-            let Some(description) = name
-                .iter_suffixes()
-                .find_map(|n| dns_resources.get(&n.to_string()))
-            else {
+            let Some(description) = get_description(&name, dns_resources) else {
                 return Some(ResolveStrategy::forward(name.to_string(), qtype));
             };
-            let description = DnsResource::from_description(description, name);
+            let description = DnsResource::from_description(&description, name);
             let Some(ips) = dns_resources_internal_ips.get(&description) else {
                 return Some(ResolveStrategy::DeferredResponse(description));
             };
@@ -307,13 +324,9 @@ fn resource_from_question<N: ToDname>(
             )))
         }
         _ => {
-            if name
-                .iter_suffixes()
-                .any(|n| dns_resources.contains_key(&n.to_string()))
-            {
-                // If it's a resource we manage we don't allow a leak here.
+            let Some(_) = get_description(&name, dns_resources) else {
                 return None;
-            }
+            };
 
             Some(ResolveStrategy::forward(name.to_string(), qtype))
         }
