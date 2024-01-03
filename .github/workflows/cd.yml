@@ -309,6 +309,8 @@ jobs:
           pattern: "*-digests"
           merge-multiple: true
           path: /tmp/digests
+      - name: Display structure of downloaded artifacts
+        run: ls -R /tmp/digests
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
       - name: Build Version Tags
