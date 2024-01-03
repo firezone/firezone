@@ -447,6 +447,11 @@ locals {
       name  = "AUTH_PROVIDER_ADAPTERS"
       value = "email,openid_connect,google_workspace,token"
     },
+    # Registry from which Docker install scripts pull from
+    {
+      name  = "DOCKER_REGISTRY"
+      value = "${module.google-artifact-registry.url}/${module.google-artifact-registry.repo}"
+    },
     # Telemetry
     {
       name  = "TELEMETRY_ENABLED"
