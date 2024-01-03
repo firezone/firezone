@@ -59,9 +59,6 @@ defmodule Domain.MixProject do
       # Erlang Clustering
       {:libcluster, "~> 3.3"},
 
-      # Product Analytics
-      {:posthog, "~> 0.1"},
-
       # Observability and Runtime debugging
       {:telemetry, "~> 1.0"},
       {:logger_json, "~> 5.1"},
@@ -78,6 +75,7 @@ defmodule Domain.MixProject do
       # https://github.com/elixir-lang/elixir/issues/12777
       # Remove Swoosh from Domain once this is fixed.
       {:phoenix_swoosh, "~> 1.0"},
+      {:hackney, "~> 1.9"},
 
       # Test and dev deps
       {:bypass, "~> 2.1", only: :test},
