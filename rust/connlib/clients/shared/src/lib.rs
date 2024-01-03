@@ -126,7 +126,8 @@ where
         Ok(this)
     }
 
-    // TODO: Some of these arguments could be combined into a ConnectInfo struct or something
+    // TODO: Refactor this when we refactor PhoenixChannel.
+    // See https://github.com/firezone/firezone/issues/2158
     #[allow(clippy::too_many_arguments)]
     fn connect_inner(
         runtime: &Runtime,
