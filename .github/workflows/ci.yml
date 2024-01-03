@@ -174,12 +174,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # TODO
-          # - Run control plane components as services
-          # - Test clients
-          # - Test with different NAT types
-          # - Test IPv6
-          # - Test end-to-end critical paths
           - test_name: Relayed flow
             artifact_name: relayed
             setup: |
@@ -252,7 +246,7 @@ jobs:
           cat /tmp/iperf3results/udp_client2server.json | jq -r '"udp_client2server_sum_jitter_ms=" + (.end.sum.jitter_ms|tostring)' >> "$GITHUB_OUTPUT"
           cat /tmp/iperf3results/udp_client2server.json | jq -r '"udp_client2server_sum_lost_percent=" + (.end.sum.lost_percent|tostring)' >> "$GITHUB_OUTPUT"
       - name: Save ${{ matrix.test_name }} Perfomance Test Results
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}-iperf3results
           path: /tmp/iperf3results

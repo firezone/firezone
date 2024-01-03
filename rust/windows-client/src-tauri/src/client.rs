@@ -66,6 +66,7 @@ pub(crate) fn run() -> Result<()> {
             println!("debug");
             Ok(())
         }
+        Some(Cmd::DebugHostname) => debug_commands::hostname(),
         Some(Cmd::DebugPipeServer) => debug_commands::pipe_server(),
         Some(Cmd::DebugWintun) => debug_commands::wintun(cli),
         // If we already tried to elevate ourselves, don't try again

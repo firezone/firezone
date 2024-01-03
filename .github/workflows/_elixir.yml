@@ -334,7 +334,7 @@ jobs:
             --no-owner
       - name: Upload main branch DB dump
         if: contains(github.ref, env.MAIN_BRANCH)
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: db-dump
           path: elixir/apps/domain/priv/repo/structure.sql
@@ -503,9 +503,9 @@ jobs:
         if:
           ${{ github.event.pull_request.head.repo.full_name == github.repository
           && always() }}
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
-          name: screenshots
+          name: screenshots-${{ matrix.MIX_TEST_PARTITION }}
           path: elixir/apps/web/screenshots
       - name: Test Report
         uses: dorny/test-reporter@v1

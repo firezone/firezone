@@ -226,9 +226,9 @@ jobs:
           digest="${{ steps.build.outputs.digest }}"
           touch "/tmp/digests/${{ matrix.name.image_name }}/${digest#sha256:}"
       - name: Upload digest
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
-          name: digests
+          name: ${{ env.BINARY_DEST_PATH }}-digest
           path: /tmp/digests/*
           if-no-files-found: error
           retention-days: 1
@@ -304,9 +304,9 @@ jobs:
         with:
           project: firezone-staging
       - name: Download digests
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
-          name: digests
+          pattern: '*-digest'
           path: /tmp/digests
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
