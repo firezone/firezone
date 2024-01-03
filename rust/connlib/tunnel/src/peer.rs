@@ -199,18 +199,18 @@ pub struct PacketTransformClient {
 impl PacketTransformClient {
     pub fn get_or_assign_translation(
         &self,
-        external_ip: &IpAddr,
+        ip: &IpAddr,
         ip_provider: &mut IpProvider,
     ) -> Option<IpAddr> {
         let mut translations = self.translations.write();
-        if let Some(internal_ip) = translations.get_by_right(external_ip) {
-            return Some(*internal_ip);
+        if let Some(proxy_ip) = translations.get_by_right(ip) {
+            return Some(*proxy_ip);
         }
 
-        let internal_ip = ip_provider.get_ip_for(external_ip)?;
+        let proxy_ip = ip_provider.get_proxy_ip_for(ip)?;
 
-        translations.insert(internal_ip, *external_ip);
-        Some(internal_ip)
+        translations.insert(proxy_ip, *ip);
+        Some(proxy_ip)
     }
 }
 
