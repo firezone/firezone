@@ -6,6 +6,8 @@ object TunnelSession {
         apiUrl: String,
         token: String,
         deviceId: String,
+        deviceName: String,
+        osVersion: String,
         logDir: String,
         logFilter: String,
         callback: Any,

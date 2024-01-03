@@ -64,6 +64,7 @@ impl secrecy::Zeroize for SecureUrl {
 /// `await` it, it will block until you use `close` in a [PhoenixSender], the portal close the connection or something goes wrong.
 pub struct PhoenixChannel<F, I, R, M> {
     secret_url: Secret<SecureUrl>,
+    os_version_override: Option<String>,
     handler: F,
     sender: Sender<Message>,
     receiver: Receiver<Message>,
@@ -71,7 +72,10 @@ pub struct PhoenixChannel<F, I, R, M> {
 }
 
 // This is basically the same as tungstenite does but we add some new headers (namely user-agent)
-fn make_request(secret_url: &Secret<SecureUrl>) -> Result<Request> {
+fn make_request(
+    secret_url: &Secret<SecureUrl>,
+    os_version_override: Option<String>,
+) -> Result<Request> {
     use secrecy::ExposeSecret;
 
     let host = secret_url
@@ -96,7 +100,7 @@ fn make_request(secret_url: &Secret<SecureUrl>) -> Result<Request> {
         .header("Upgrade", "websocket")
         .header("Sec-WebSocket-Version", "13")
         .header("Sec-WebSocket-Key", key)
-        .header("User-Agent", get_user_agent())
+        .header("User-Agent", get_user_agent(os_version_override))
         .uri(secret_url.expose_secret().inner.as_str())
         .body(())?;
     Ok(req)
@@ -127,7 +131,11 @@ where
     ) -> Result<()> {
         tracing::trace!("Trying to connect to portal...");
 
-        let (ws_stream, _) = connect_async(make_request(&self.secret_url)?).await?;
+        let (ws_stream, _) = connect_async(make_request(
+            &self.secret_url,
+            self.os_version_override.clone(),
+        )?)
+        .await?;
 
         tracing::trace!("Successfully connected to portal");
 
@@ -269,13 +277,18 @@ where
     /// - `handler`: The handle that will be called for each received message.
     ///
     /// For more info see [struct-level docs][PhoenixChannel].
-    pub fn new(secret_url: Secret<SecureUrl>, handler: F) -> Self {
+    pub fn new(
+        secret_url: Secret<SecureUrl>,
+        os_version_override: Option<String>,
+        handler: F,
+    ) -> Self {
         let (sender, receiver) = channel(CHANNEL_SIZE);
 
         Self {
             sender,
             receiver,
             secret_url,
+            os_version_override,
             handler,
             _phantom: PhantomData,
         }
