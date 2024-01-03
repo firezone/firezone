@@ -43,8 +43,8 @@ defmodule Web.Actors.Show do
 
     <.section>
       <:title>
-        <%= actor_type(@actor.type) %>: <span class="font-bold"><%= @actor.name %></span>
-        <span :if={@actor.id == @subject.actor.id} class="text-neutral-400">(you)</span>
+        <%= actor_type(@actor.type) %>: <span class="font-medium"><%= @actor.name %></span>
+        <span :if={@actor.id == @subject.actor.id} class="text-sm text-neutral-400">(you)</span>
         <span :if={not is_nil(@actor.deleted_at)} class="text-red-600">(deleted)</span>
       </:title>
       <:action :if={is_nil(@actor.deleted_at)}>
@@ -154,7 +154,7 @@ defmodule Web.Actors.Show do
                 No authentication identities to display.
                 <.link
                   :if={is_nil(@actor.deleted_at) and @actor.type == :service_account}
-                  class={["font-medium", link_style()]}
+                  class={[link_style()]}
                   navigate={~p"/#{@account}/actors/service_accounts/#{@actor}/new_identity"}
                 >
                   Create a token
@@ -162,7 +162,7 @@ defmodule Web.Actors.Show do
                 to authenticate this service account.
                 <.link
                   :if={is_nil(@actor.deleted_at) and @actor.type != :service_account}
-                  class={["font-medium", link_style()]}
+                  class={[link_style()]}
                   navigate={~p"/#{@account}/actors/users/#{@actor}/new_identity"}
                 >
                   Create an identity
@@ -181,10 +181,7 @@ defmodule Web.Actors.Show do
       <:content>
         <.table id="clients" rows={@actor.clients} row_id={&"client-#{&1.id}"}>
           <:col :let={client} label="NAME">
-            <.link
-              navigate={~p"/#{@account}/clients/#{client.id}"}
-              class={["font-medium", link_style()]}
-            >
+            <.link navigate={~p"/#{@account}/clients/#{client.id}"} class={[link_style()]}>
               <%= client.name %>
             </.link>
           </:col>
@@ -212,10 +209,7 @@ defmodule Web.Actors.Show do
             <.relative_datetime datetime={flow.expires_at} />
           </:col>
           <:col :let={flow} label="POLICY">
-            <.link
-              navigate={~p"/#{@account}/policies/#{flow.policy_id}"}
-              class={["font-medium", link_style()]}
-            >
+            <.link navigate={~p"/#{@account}/policies/#{flow.policy_id}"} class={[link_style()]}>
               <Web.Policies.Components.policy_name policy={flow.policy} />
             </.link>
           </:col>
@@ -226,16 +220,13 @@ defmodule Web.Actors.Show do
             (<%= flow.client_remote_ip %>)
           </:col>
           <:col :let={flow} label="GATEWAY (IP)">
-            <.link
-              navigate={~p"/#{@account}/gateways/#{flow.gateway_id}"}
-              class={["font-medium", link_style()]}
-            >
+            <.link navigate={~p"/#{@account}/gateways/#{flow.gateway_id}"} class={[link_style()]}>
               <%= flow.gateway.group.name %>-<%= flow.gateway.name %>
             </.link>
             (<%= flow.gateway_remote_ip %>)
           </:col>
           <:col :let={flow} :if={@flow_activities_enabled?} label="ACTIVITY">
-            <.link navigate={~p"/#{@account}/flows/#{flow.id}"} class={["font-medium", link_style()]}>
+            <.link navigate={~p"/#{@account}/flows/#{flow.id}"} class={[link_style()]}>
               Show
             </.link>
           </:col>

@@ -61,10 +61,7 @@ defmodule Web.Clients.Show do
           <.vertical_table_row>
             <:label>Owner</:label>
             <:value>
-              <.link
-                navigate={~p"/#{@account}/actors/#{@client.actor.id}"}
-                class={["font-medium", link_style()]}
-              >
+              <.link navigate={~p"/#{@account}/actors/#{@client.actor.id}"} class={[link_style()]}>
                 <%= @client.actor.name %>
               </.link>
             </:value>
@@ -116,24 +113,18 @@ defmodule Web.Clients.Show do
             <%= flow.client_remote_ip %>
           </:col>
           <:col :let={flow} label="POLICY">
-            <.link
-              navigate={~p"/#{@account}/policies/#{flow.policy_id}"}
-              class={["font-medium", link_style()]}
-            >
+            <.link navigate={~p"/#{@account}/policies/#{flow.policy_id}"} class={[link_style()]}>
               <.policy_name policy={flow.policy} />
             </.link>
           </:col>
           <:col :let={flow} label="GATEWAY (IP)">
-            <.link
-              navigate={~p"/#{@account}/gateways/#{flow.gateway_id}"}
-              class={["font-medium", link_style()]}
-            >
+            <.link navigate={~p"/#{@account}/gateways/#{flow.gateway_id}"} class={[link_style()]}>
               <%= flow.gateway.group.name %>-<%= flow.gateway.name %>
             </.link>
             (<%= flow.gateway_remote_ip %>)
           </:col>
           <:col :let={flow} :if={@flow_activities_enabled?} label="ACTIVITY">
-            <.link navigate={~p"/#{@account}/flows/#{flow.id}"} class={["font-medium", link_style()]}>
+            <.link navigate={~p"/#{@account}/flows/#{flow.id}"} class={[link_style()]}>
               Show
             </.link>
           </:col>
