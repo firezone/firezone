@@ -25,6 +25,7 @@ pub struct Tun {
 
 impl Drop for Tun {
     fn drop(&mut self) {
+        tracing::debug!("dropping Tun");
         if let Err(e) = self.session.shutdown() {
             tracing::error!("wintun::Session::shutdown: {e:#?}");
         }
@@ -45,17 +46,21 @@ impl Tun {
         // The Windows client, in `wintun_install` hashes the DLL at startup, before calling connlib, so it's unlikely for the DLL to be accidentally corrupted by the time we get here.
         let wintun = unsafe { wintun::load_from_path("./wintun.dll") }?;
         let uuid = uuid::Uuid::from_str(TUNNEL_UUID)?;
-        let adapter =
-            match wintun::Adapter::create(&wintun, "Firezone", TUNNEL_NAME, Some(uuid.as_u128())) {
-                Ok(x) => x,
-                Err(e) => {
-                    tracing::error!(
-                        "wintun::Adapter::create failed, probably need admin powers: {}",
+        let adapter = match wintun::Adapter::create(
+            &wintun,
+            "Firezone",
+            TUNNEL_NAME,
+            Some(uuid.as_u128()),
+        ) {
+            Ok(x) => x,
+            Err(e) => {
+                tracing::error!(
+                        "wintun::Adapter::create failed, probably need admin powers, or the previous interface didn't close: {}",
                         e
                     );
-                    return Err(e.into());
-                }
-            };
+                return Err(e.into());
+            }
+        };
 
         // TODO: I think wintun flashes a couple console windows here when it shells out to netsh. We should upstream the same patch I'm doing for powershell to the wintun project
         // We could also try to get rid of wintun dependency entirely
@@ -115,7 +120,6 @@ impl Tun {
 
     // It's okay if this blocks until the route is added in the OS.
     pub fn add_route(&self, route: IpNetwork) -> Result<()> {
-        tracing::debug!("add_route {route}");
         let iface_idx = self.iface_idx;
         // TODO: Pick a more elegant way to do this
         Command::new("powershell")

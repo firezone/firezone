@@ -2082,6 +2082,7 @@ dependencies = [
  "hostname",
  "ipconfig",
  "keyring",
+ "reqwest",
  "ring 0.17.7",
  "secrecy",
  "serde",

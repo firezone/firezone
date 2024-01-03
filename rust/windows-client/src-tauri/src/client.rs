@@ -66,6 +66,7 @@ pub(crate) fn run() -> Result<()> {
             println!("debug");
             Ok(())
         }
+        Some(Cmd::DebugConnlib) => debug_commands::connlib(),
         Some(Cmd::DebugHostname) => debug_commands::hostname(),
         Some(Cmd::DebugPipeServer) => debug_commands::pipe_server(),
         Some(Cmd::DebugWintun) => debug_commands::wintun(cli),
