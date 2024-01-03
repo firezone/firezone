@@ -228,7 +228,7 @@ jobs:
       - name: Upload digest
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.name.artifact }}-digest
+          name: ${{ env.BINARY_DEST_PATH }}-digest
           path: /tmp/digests/*
           if-no-files-found: error
           retention-days: 1
