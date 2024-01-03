@@ -16,6 +16,7 @@ use parking_lot::{Mutex, RwLock};
 use pnet_packet::Packet;
 use secrecy::ExposeSecret;
 
+use crate::client::IpProvider;
 use crate::MAX_UDP_SIZE;
 use crate::{device_channel, ip_packet::MutableIpPacket, PeerConfig};
 
@@ -192,22 +193,24 @@ impl Default for PacketTransformGateway {
 
 #[derive(Default)]
 pub struct PacketTransformClient {
-    // TODO: we need to refresh the translations ips periodically, just add a timer to resend allow access
     translations: RwLock<BiMap<IpAddr, IpAddr>>,
 }
 
 impl PacketTransformClient {
     pub fn get_or_assign_translation(
         &self,
-        internal_ip: &IpAddr,
         external_ip: &IpAddr,
+        ip_provider: &mut IpProvider,
     ) -> Option<IpAddr> {
         let mut translations = self.translations.write();
         if let Some(internal_ip) = translations.get_by_right(external_ip) {
             return Some(*internal_ip);
         }
-        translations.insert(*internal_ip, *external_ip);
-        Some(*internal_ip)
+
+        let internal_ip = ip_provider.get_ip_for(external_ip)?;
+
+        translations.insert(internal_ip, *external_ip);
+        Some(internal_ip)
     }
 }
 
