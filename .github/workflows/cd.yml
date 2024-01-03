@@ -306,7 +306,7 @@ jobs:
       - name: Download digests
         uses: actions/download-artifact@v4
         with:
-          pattern: ${{ matrix.image_image }}-*-digest
+          pattern: ${{ matrix.image_name }}-*-digest
           merge-multiple: true
           path: /tmp/digests/${{ matrix.image_name }}
       - name: Display structure of downloaded artifacts
