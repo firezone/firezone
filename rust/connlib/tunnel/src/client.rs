@@ -642,19 +642,19 @@ impl IpProvider {
         }
     }
 
-    pub fn get_ip_for(&mut self, ip: &IpAddr) -> Option<IpAddr> {
-        let ip = match ip {
+    pub fn get_proxy_ip_for(&mut self, ip: &IpAddr) -> Option<IpAddr> {
+        let proxy_ip = match ip {
             IpAddr::V4(_) => self.ipv4.next().map(Into::into),
             IpAddr::V6(_) => self.ipv6.next().map(Into::into),
         };
 
-        if ip.is_none() {
+        if proxy_ip.is_none() {
             // TODO: we might want to make the iterator cyclic or another strategy to prevent ip exhaustion
             // this might happen in ipv4 if tokens are too long lived.
             tracing::error!("IP exhaustion: Please reset your client");
         }
 
-        ip
+        proxy_ip
     }
 }
 
