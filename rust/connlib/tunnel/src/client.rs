@@ -663,7 +663,6 @@ impl Default for ClientState {
         // With this single timer this might mean that some DNS are refreshed too often
         // however... this also mean any resource is refresh within a 5 mins interval
         // therefore, only the first time it's added that happens, after that it doesn't matter.
-        // TODO: CHANGEME to 300 again.
         let mut interval = tokio::time::interval(Duration::from_secs(300));
         interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
         Self {
