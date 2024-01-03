@@ -395,6 +395,8 @@ impl Controller {
             self.advanced_settings.api_url.clone(),
             auth_info.token.clone(),
             self.device_id.clone(),
+            None, // TODO: Send device name here (windows computer name)
+            None,
             callback_handler.clone(),
             Duration::from_secs(5 * 60),
         )?;
