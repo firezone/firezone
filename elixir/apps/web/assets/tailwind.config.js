@@ -66,7 +66,7 @@ module.exports = {
   ],
   theme: {
     fontFamily: {
-      sans: ['"Source Sans Pro"', ...defaultTheme.fontFamily.sans],
+      sans: ['"Source Sans 3"', ...defaultTheme.fontFamily.sans],
     },
     extend: {
       colors: {
