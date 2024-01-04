@@ -494,6 +494,11 @@ locals {
       name  = "AUTH_PROVIDER_ADAPTERS"
       value = "email,openid_connect,google_workspace,token"
     },
+    # Registry from which Docker install scripts pull from
+    {
+      name  = "DOCKER_REGISTRY"
+      value = "ghcr.io/firezone"
+    },
     # Telemetry
     {
       name  = "TELEMETRY_ENABLED"
