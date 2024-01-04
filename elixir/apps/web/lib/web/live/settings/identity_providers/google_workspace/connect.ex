@@ -32,8 +32,8 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.Connect do
     account = conn.assigns.account
     subject = conn.assigns.subject
 
-    with {:ok, code_verifier, conn} <-
-           Web.AuthController.verify_state_and_fetch_verifier(conn, provider_id, state) do
+    with {:ok, _redirect_params, code_verifier, conn} <-
+           Web.AuthController.verify_idp_state_and_fetch_verifier(conn, provider_id, state) do
       payload = {
         url(
           ~p"/#{account.id}/settings/identity_providers/google_workspace/#{provider_id}/handle_callback"

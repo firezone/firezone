@@ -2,239 +2,444 @@ defmodule Web.AuthTest do
   use Web.ConnCase, async: true
   import Web.Auth
 
-  setup do
+  setup %{conn: conn} do
     account = Fixtures.Accounts.create_account()
+    conn = assign(conn, :account, account)
+    context = Fixtures.Auth.build_context(type: :browser)
+    nonce = "nonce"
 
+    Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
+    provider = Fixtures.Auth.create_email_provider(account: account)
+
+    # Admin
     admin_actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
-    admin_identity = Fixtures.Auth.create_identity(account: account, actor: admin_actor)
-    admin_subject = Fixtures.Auth.create_subject(identity: admin_identity)
 
+    admin_identity =
+      Fixtures.Auth.create_identity(account: account, provider: provider, actor: admin_actor)
+
+    admin_identity = %{admin_identity | actor: admin_actor}
+
+    {:ok, admin_token} = Domain.Auth.create_token(admin_identity, context, nonce, nil)
+    admin_encoded_fragment = Domain.Tokens.encode_fragment!(admin_token)
+
+    admin_subject =
+      Fixtures.Auth.create_subject(
+        provider: provider,
+        identity: admin_identity,
+        context: context,
+        token: admin_token
+      )
+
+    # User
     user_actor = Fixtures.Actors.create_actor(type: :account_user, account: account)
-    user_identity = Fixtures.Auth.create_identity(account: account, actor: user_actor)
-    user_subject = Fixtures.Auth.create_subject(identity: user_identity)
+
+    user_identity =
+      Fixtures.Auth.create_identity(account: account, provider: provider, actor: user_actor)
+
+    user_identity = %{user_identity | actor: user_actor}
+
+    {:ok, user_token} = Domain.Auth.create_token(admin_identity, context, nonce, nil)
+    user_encoded_fragment = Domain.Tokens.encode_fragment!(user_token)
+
+    user_subject =
+      Fixtures.Auth.create_subject(
+        provider: provider,
+        identity: user_identity,
+        context: context,
+        token: user_token
+      )
 
     %{
+      conn: conn,
       account: account,
+      context: context,
+      provider: provider,
+      nonce: nonce,
       admin_actor: admin_actor,
       admin_identity: admin_identity,
+      admin_token: admin_token,
+      admin_encoded_fragment: admin_encoded_fragment,
       admin_subject: admin_subject,
       user_actor: user_actor,
       user_identity: user_identity,
+      user_token: user_token,
+      user_encoded_fragment: user_encoded_fragment,
       user_subject: user_subject
     }
   end
 
-  describe "signed_in_path/1" do
-    test "redirects to sites page after sign in as account admin", %{admin_subject: subject} do
-      assert signed_in_path(subject) == ~p"/#{subject.account.slug}/sites"
-    end
-  end
-
-  describe "put_subject_in_session/2" do
-    test "persists a new session", %{conn: conn, admin_subject: subject} do
-      conn = put_subject_in_session(conn, subject)
-      assert [{account_id, logged_in_at, token}] = get_session(conn, "sessions")
-
-      assert {:ok, _subject} = Domain.Auth.sign_in(token, subject.context)
-      assert account_id == subject.account.id
-      assert %DateTime{} = logged_in_at
+  describe "put_account_session/4" do
+    test "persists a browser token in session", %{
+      conn: conn,
+      account: account,
+      user_encoded_fragment: encoded_token
+    } do
+      conn = put_account_session(conn, :browser, account.id, encoded_token)
+      assert get_session(conn, "sessions") == [{:browser, account.id, encoded_token}]
     end
 
-    test "updates an existing account_id session", %{conn: conn, admin_subject: subject} do
+    test "persists a client token in session", %{
+      conn: conn,
+      account: account,
+      nonce: nonce,
+      user_encoded_fragment: encoded_fragment
+    } do
+      encoded_token = nonce <> encoded_fragment
+      conn = put_account_session(conn, :client, account.id, encoded_token)
+      assert get_session(conn, "sessions") == [{:client, account.id, encoded_token}]
+    end
+
+    test "updates an existing account_id session", %{
+      conn: conn,
+      account: account,
+      user_encoded_fragment: encoded_token
+    } do
       conn =
         conn
-        |> put_session(:sessions, [{subject.account.id, DateTime.utc_now(), "foo"}])
-        |> put_subject_in_session(subject)
+        |> put_session(:sessions, [])
+        |> put_account_session(:browser, account.id, encoded_token)
 
-      assert [{account_id, logged_in_at, token}] = get_session(conn, "sessions")
-
-      assert {:ok, _subject} = Domain.Auth.sign_in(token, subject.context)
-      assert account_id == subject.account.id
-      assert %DateTime{} = logged_in_at
+      assert get_session(conn, "sessions") == [{:browser, account.id, encoded_token}]
     end
 
-    test "adds a new account session", %{conn: conn, admin_subject: subject} do
-      session = {Ecto.UUID.generate(), DateTime.utc_now(), "foo"}
+    test "appends a new tokens to a session", %{
+      conn: conn,
+      account: account
+    } do
+      session = {:client, Ecto.UUID.generate(), "foo"}
 
       conn =
         conn
         |> put_session(:sessions, [session])
-        |> put_subject_in_session(subject)
+        |> put_account_session(:browser, account.id, "foo")
+        |> put_account_session(:client, account.id, "bar")
 
       assert [
                ^session,
-               {account_id, logged_in_at, token}
+               {:browser, account_id, "foo"},
+               {:client, account_id, "bar"}
              ] = get_session(conn, "sessions")
 
-      assert {:ok, _subject} = Domain.Auth.sign_in(token, subject.context)
-      assert account_id == subject.account.id
-      assert %DateTime{} = logged_in_at
+      assert account_id == account.id
+    end
+
+    test "doesn't store more than 15 last sessions", %{
+      conn: conn,
+      account: account
+    } do
+      sessions =
+        for i <- 1..15 do
+          {:client, Ecto.UUID.generate(), "foo_#{i}"}
+        end
+
+      conn =
+        conn
+        |> put_session(:sessions, sessions)
+        |> put_account_session(:client, account.id, "bar")
+
+      assert get_session(conn, "sessions") ==
+               Enum.take(sessions, -14) ++ [{:client, account.id, "bar"}]
     end
   end
 
-  describe "signed_in_redirect/4" do
-    test "redirects regular users to the platform url", %{conn: conn, user_subject: subject} do
-      redirected_to = conn |> signed_in_redirect(subject, "apple", "foo") |> redirected_to()
-      assert redirected_to =~ "firezone://handle_client_sign_in_callback"
-      assert redirected_to =~ "client_csrf_token=foo"
-
-      redirected_to = conn |> signed_in_redirect(subject, "android", "foo") |> redirected_to()
-      assert redirected_to =~ "/handle_client_sign_in_callback?"
-      assert redirected_to =~ "client_csrf_token=foo"
+  describe "take_sign_in_params/1" do
+    test "takes params used for sign in" do
+      for key <- ["as", "state", "nonce", "redirect_to"] do
+        assert take_sign_in_params(%{key => "foo"}) == %{key => "foo"}
+      end
     end
 
-    test "redirects regular users to sign in if platform url is missing", %{
-      conn: init_conn,
-      user_subject: subject
+    test "ignores other params" do
+      assert take_sign_in_params(%{"foo" => "bar"}) == %{}
+    end
+  end
+
+  describe "fetch_auth_context_type!/1" do
+    test "takes context type from as param" do
+      assert fetch_auth_context_type!(%{"as" => "client"}) == :client
+      assert fetch_auth_context_type!(%{"as" => "browser"}) == :browser
+      assert fetch_auth_context_type!(%{"as" => "other"}) == :browser
+      assert fetch_auth_context_type!(nil) == :browser
+    end
+  end
+
+  describe "fetch_token_nonce!/1" do
+    test "takes nonce from nonce param" do
+      assert fetch_token_nonce!(%{"nonce" => "foo"}) == "foo"
+      assert fetch_token_nonce!(%{"nonce" => ""}) == ""
+      assert fetch_token_nonce!(nil) == nil
+    end
+  end
+
+  describe "signed_in/6" do
+    test "appends the recent account ids", %{
+      conn: conn,
+      context: context,
+      account: account,
+      provider: provider,
+      admin_identity: identity
     } do
-      conn = init_conn |> fetch_flash() |> signed_in_redirect(subject, "", nil)
-      assert redirected_to(conn) == ~p"/#{subject.account.slug}"
-      assert conn.assigns.flash["info"] == "Please use a client application to access Firezone."
+      conn =
+        signed_in(conn, provider, identity, context, "foo", %{})
+        |> fetch_cookies()
 
-      conn = init_conn |> fetch_flash() |> signed_in_redirect(subject, nil, "")
-      assert redirected_to(conn) == ~p"/#{subject.account.slug}"
-      assert conn.assigns.flash["info"] == "Please use a client application to access Firezone."
+      fz_recent_account_ids =
+        conn.cookies["fz_recent_account_ids"]
+        |> :erlang.binary_to_term()
+
+      assert fz_recent_account_ids == [account.id]
     end
 
-    test "redirects admin user to the platform url", %{conn: conn, admin_subject: subject} do
-      redirected_to = conn |> signed_in_redirect(subject, "apple", "foo") |> redirected_to()
-      assert redirected_to =~ "firezone://handle_client_sign_in_callback?"
-      assert redirected_to =~ "client_csrf_token=foo"
+    test "persists the token in session", %{
+      conn: conn,
+      context: context,
+      account: account,
+      provider: provider,
+      nonce: nonce,
+      user_identity: user_identity,
+      user_encoded_fragment: user_encoded_fragment
+    } do
+      user_encoded_token = nonce <> user_encoded_fragment
+      conn = signed_in(conn, provider, user_identity, context, user_encoded_token, %{})
+      assert get_session(conn, "sessions") == [{context.type, account.id, user_encoded_token}]
+    end
 
-      redirected_to = conn |> signed_in_redirect(subject, "android", "foo") |> redirected_to()
+    test "renders error when trying to sign in client without client params", %{
+      conn: init_conn,
+      context: context,
+      account: account,
+      provider: provider,
+      user_identity: user_identity,
+      user_encoded_fragment: user_encoded_fragment
+    } do
+      context = %{context | type: :client}
 
-      assert redirected_to =~ "/handle_client_sign_in_callback?"
-      assert redirected_to =~ "client_auth_token="
-      assert redirected_to =~ "client_csrf_token=foo"
-      assert redirected_to =~ "actor_name=#{URI.encode_www_form(subject.actor.name)}"
-      assert redirected_to =~ "account_name=#{subject.account.name}"
-      assert redirected_to =~ "account_slug=#{subject.account.slug}"
+      conn =
+        %{init_conn | path_params: %{"account_id_or_slug" => account.slug}}
+        |> fetch_flash()
+        |> signed_in(provider, user_identity, context, user_encoded_fragment, %{})
+
+      assert redirected_to(conn) == ~p"/#{account}"
+      assert conn.assigns.flash["error"] == "Please use a client application to access Firezone."
+
+      conn =
+        %{init_conn | path_params: %{"account_id_or_slug" => account.slug}}
+        |> fetch_flash()
+        |> signed_in(provider, user_identity, context, user_encoded_fragment, %{
+          "state" => "STATE"
+        })
+
+      assert redirected_to(conn) == ~p"/#{account}"
+      assert conn.assigns.flash["error"] == "Please use a client application to access Firezone."
+
+      conn =
+        %{init_conn | path_params: %{"account_id_or_slug" => account.slug}}
+        |> fetch_flash()
+        |> signed_in(provider, user_identity, context, user_encoded_fragment, %{
+          "nonce" => "NONCE"
+        })
+
+      assert redirected_to(conn) == ~p"/#{account}"
+      assert conn.assigns.flash["error"] == "Please use a client application to access Firezone."
+    end
+
+    test "redirects regular users to the deep link for client contexts", %{
+      conn: conn,
+      context: context,
+      account: account,
+      provider: provider,
+      nonce: nonce,
+      user_identity: identity,
+      user_encoded_fragment: encoded_fragment
+    } do
+      context = %{context | type: :client}
+
+      redirect_params = %{"state" => "STATE", "nonce" => nonce}
+
+      redirected_to =
+        conn
+        |> signed_in(provider, identity, context, encoded_fragment, redirect_params)
+        |> redirected_to()
+
+      assert redirected_to =~ "firezone-fd0020211111://handle_client_sign_in_callback"
+      assert redirected_to =~ "fragment=#{URI.encode_www_form(encoded_fragment)}"
+      assert redirected_to =~ "state=STATE"
+      assert redirected_to =~ "account_slug=#{account.slug}"
+      assert redirected_to =~ "account_name=#{URI.encode_www_form(account.name)}"
 
       assert redirected_to =~
-               "identity_provider_identifier=#{subject.identity.provider_identifier}"
+               "identity_provider_identifier=#{URI.encode_www_form(identity.provider_identifier)}"
     end
 
-    test "redirects admin user to the post-login path if platform url is missing", %{
+    test "redirects admin users to the deep link for client contexts", %{
       conn: conn,
-      admin_subject: subject
+      context: context,
+      account: account,
+      provider: provider,
+      nonce: nonce,
+      admin_identity: identity,
+      admin_encoded_fragment: encoded_fragment
     } do
-      redirected_to = conn |> signed_in_redirect(subject, "", nil) |> redirected_to()
-      assert redirected_to == ~p"/#{subject.account}/sites"
+      context = %{context | type: :client}
 
-      redirected_to = conn |> signed_in_redirect(subject, nil, "") |> redirected_to()
-      assert redirected_to == ~p"/#{subject.account}/sites"
+      redirect_params = %{"state" => "STATE", "nonce" => nonce}
+
+      redirected_to =
+        conn
+        |> signed_in(provider, identity, context, encoded_fragment, redirect_params)
+        |> redirected_to()
+
+      assert redirected_to =~ "firezone-fd0020211111://handle_client_sign_in_callback"
+      assert redirected_to =~ "fragment=#{URI.encode_www_form(encoded_fragment)}"
+      assert redirected_to =~ "state=STATE"
+      assert redirected_to =~ "account_slug=#{account.slug}"
+      assert redirected_to =~ "account_name=#{URI.encode_www_form(account.name)}"
+
+      assert redirected_to =~
+               "identity_provider_identifier=#{URI.encode_www_form(identity.provider_identifier)}"
     end
 
-    test "redirects users to sign in if subject account doesn't match path param", %{
+    test "redirects admin user to the post-login path for browser contexts", %{
       conn: conn,
-      admin_subject: subject
+      context: context,
+      account: account,
+      provider: provider,
+      admin_identity: identity,
+      admin_encoded_fragment: encoded_fragment
     } do
-      init_conn = %{conn | path_params: %{"account_id_or_slug" => "foo"}}
+      # for browser contexts those params must be ignored
+      redirect_params = %{"state" => "STATE", "nonce" => "NONCE"}
 
-      conn = init_conn |> signed_in_redirect(subject, "apple", nil)
-      assert redirected_to(conn) == ~p"/foo"
+      redirected_to =
+        conn
+        |> signed_in(provider, identity, context, encoded_fragment, redirect_params)
+        |> redirected_to()
 
-      conn = init_conn |> signed_in_redirect(subject, "android", "bar")
-      assert redirected_to(conn) == ~p"/foo"
-
-      conn = init_conn |> signed_in_redirect(subject, "", nil)
-      assert redirected_to(conn) == ~p"/foo"
-
-      conn = init_conn |> signed_in_redirect(subject, nil, "")
-      assert redirected_to(conn) == ~p"/foo"
+      assert redirected_to == ~p"/#{account}/sites"
     end
 
-    test "deletes user_return_to on redirect", %{
+    test "redirects admin user to the return path path for browser contexts", %{
       conn: conn,
-      admin_subject: subject
+      context: context,
+      account: account,
+      provider: provider,
+      admin_identity: identity,
+      admin_encoded_fragment: encoded_fragment
     } do
-      init_conn =
-        %{conn | path_params: %{"account_id_or_slug" => subject.account.slug}}
-        |> put_session(:user_return_to, ~p"/#{subject.account}/relay_groups")
+      assert conn
+             |> signed_in(provider, identity, context, encoded_fragment, %{
+               "redirect_to" => "/#{account.id}/foo"
+             })
+             |> redirected_to() == "/#{account.id}/foo"
 
-      conn = init_conn |> signed_in_redirect(subject, "apple", nil)
-      assert redirected_to(conn) =~ "firezone://handle_client_sign_in_callback"
-      refute get_session(conn, :user_return_to)
+      assert conn
+             |> signed_in(provider, identity, context, encoded_fragment, %{
+               "redirect_to" => "/#{account.slug}/foo"
+             })
+             |> redirected_to() == "/#{account.slug}/foo"
+    end
 
-      conn = init_conn |> signed_in_redirect(subject, "android", "bar")
-      assert redirected_to(conn) =~ "/handle_client_sign_in_callback"
-      refute get_session(conn, :user_return_to)
+    test "return path does not allow to redirect user outside of account", %{
+      conn: conn,
+      context: context,
+      account: account,
+      provider: provider,
+      admin_identity: identity,
+      admin_encoded_fragment: encoded_fragment
+    } do
+      for destination <- [
+            "/foo",
+            "http://example.com/",
+            "/#{Ecto.UUID.generate()}/foo",
+            "/foo/bar",
+            "foo"
+          ] do
+        redirect_params = %{"redirect_to" => destination}
 
-      conn = init_conn |> signed_in_redirect(subject, "", nil)
-      assert redirected_to(conn) == ~p"/#{subject.account}/relay_groups"
-      refute get_session(conn, :user_return_to)
+        assert conn
+               |> signed_in(provider, identity, context, encoded_fragment, redirect_params)
+               |> redirected_to() == ~p"/#{account}/sites"
+      end
+    end
 
-      conn = init_conn |> signed_in_redirect(subject, nil, "")
-      assert redirected_to(conn) == ~p"/#{subject.account}/relay_groups"
-      refute get_session(conn, :user_return_to)
+    test "post-login redirect path ignores url params", %{
+      conn: conn,
+      context: context,
+      account: account,
+      provider: provider,
+      admin_identity: identity,
+      admin_encoded_fragment: encoded_fragment
+    } do
+      redirected_to =
+        %{conn | path_params: %{"account_id_or_slug" => "foo"}}
+        |> signed_in(provider, identity, context, encoded_fragment, %{})
+        |> redirected_to()
+
+      assert redirected_to == ~p"/#{account}/sites"
     end
   end
 
   describe "sign_out/1" do
-    test "erases session, session cookie and redirects to sign in page", %{
+    test "erases session with given account_id and redirects to sign in page", %{
       conn: conn,
-      account: account,
-      admin_subject: subject
+      account: account
     } do
-      {:ok, session_token} = Domain.Auth.create_session_token_from_subject(subject)
+      not_deleted_session = {:browser, Ecto.UUID.generate(), "baz"}
 
       conn =
         conn
         |> assign(:account, account)
-        |> put_session(:sessions, [{account.id, DateTime.utc_now(), session_token}])
+        |> put_session(:sessions, [
+          {:browser, account.id, "foo"},
+          not_deleted_session,
+          {:client, account.id, "bar"}
+        ])
         |> fetch_cookies()
-        |> sign_out(nil)
+        |> sign_out(%{})
 
-      assert get_session(conn, :sessions) == []
-      refute get_session(conn, :live_socket_id)
+      assert get_session(conn, :sessions) == [not_deleted_session]
 
-      assert redirected_to(conn, 302) == "http://localhost:13100/#{subject.account.slug}"
+      assert redirected_to(conn, 302) == "http://localhost:13100/#{account.slug}"
     end
 
     test "redirects to the sign in page even on invalid account ids", %{
       conn: conn,
-      admin_subject: subject
+      account: account,
+      admin_encoded_fragment: encoded_fragment
     } do
       account_slug = "foo"
-      {:ok, session_token} = Domain.Auth.create_session_token_from_subject(subject)
-      session = {subject.account.id, DateTime.utc_now(), session_token}
+      session = {:browser, account.id, encoded_fragment}
 
       conn =
-        %{
-          conn
-          | path_params: %{"account_id_or_slug" => account_slug}
-        }
+        conn
         |> assign(:account, nil)
         |> put_session(:sessions, [session])
         |> fetch_cookies()
-        |> sign_out(nil)
+        |> sign_out(%{"account_id_or_slug" => account_slug})
 
       assert get_session(conn, :sessions) == [session]
-      refute get_session(conn, :live_socket_id)
 
       assert redirected_to(conn, 302) =~ ~p"/#{account_slug}"
     end
 
-    test "redirects to client-specific sign out url", %{
-      conn: init_conn,
+    test "redirects to client sign out deep link", %{
+      conn: conn,
       account: account
     } do
       conn =
-        %{init_conn | path_params: %{"account_id_or_slug" => account.slug}}
-        |> sign_out("apple")
+        sign_out(conn, %{
+          "account_id_or_slug" => account.slug,
+          "as" => "client",
+          "state" => "STATE"
+        })
 
-      assert redirected_to(conn, 302) == "firezone://handle_client_sign_out_callback"
-
-      conn =
-        %{init_conn | path_params: %{"account_id_or_slug" => account.slug}}
-        |> sign_out("android")
-
-      assert redirected_to(conn, 302) == "http://localhost:13100/handle_client_sign_out_callback"
+      assert redirected_to(conn, 302) == "firezone://handle_client_sign_out_callback?state=STATE"
     end
 
     test "erases session, session cookie and redirects to IdP sign out page", %{
       conn: conn,
-      account: account
+      account: account,
+      admin_encoded_fragment: encoded_fragment
     } do
       {provider, _bypass} =
         Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
@@ -242,69 +447,37 @@ defmodule Web.AuthTest do
       identity = Fixtures.Auth.create_identity(account: account, provider: provider)
       subject = Fixtures.Auth.create_subject(identity: identity)
 
-      {:ok, session_token} = Domain.Auth.create_session_token_from_subject(subject)
-
       conn =
         conn
         |> assign(:account, account)
-        |> put_session(:sessions, [{account.id, DateTime.utc_now(), session_token}])
+        |> put_session(:sessions, [{:browser, account.id, encoded_fragment}])
         |> fetch_cookies()
-        |> sign_out(nil)
+        |> sign_out(%{"account_id_or_slug" => account.id})
 
       assert get_session(conn, :sessions) == []
-      refute get_session(conn, :live_socket_id)
 
       assert redirected_to(conn, 302) =~ ~p"/#{subject.account}"
     end
 
-    test "post-redirects from IdP sign out page to Apple client-specific URL", %{
+    test "post-redirects from IdP sign out page to client deep link", %{
       conn: conn,
-      account: account
+      account: account,
+      admin_encoded_fragment: encoded_fragment
     } do
-      {provider, _bypass} =
-        Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
-
-      identity = Fixtures.Auth.create_identity(account: account, provider: provider)
-      subject = Fixtures.Auth.create_subject(identity: identity)
-
-      {:ok, session_token} = Domain.Auth.create_session_token_from_subject(subject)
-
       conn =
         conn
         |> assign(:account, account)
-        |> put_session(:sessions, [{account.id, DateTime.utc_now(), session_token}])
+        |> put_session(:sessions, [{:browser, account.id, encoded_fragment}])
         |> fetch_cookies()
-        |> sign_out("apple")
+        |> sign_out(%{
+          "account_id_or_slug" => account.slug,
+          "as" => "client",
+          "state" => "STATE"
+        })
 
       assert get_session(conn, :sessions) == []
-      refute get_session(conn, :live_socket_id)
 
-      assert redirected_to(conn, 302) == "firezone://handle_client_sign_out_callback"
-    end
-
-    test "post-redirects from IdP sign out page to Android client-specific URL", %{
-      conn: conn,
-      account: account
-    } do
-      {provider, _bypass} =
-        Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
-
-      identity = Fixtures.Auth.create_identity(account: account, provider: provider)
-      subject = Fixtures.Auth.create_subject(identity: identity)
-
-      {:ok, session_token} = Domain.Auth.create_session_token_from_subject(subject)
-
-      conn =
-        conn
-        |> assign(:account, account)
-        |> put_session(:sessions, [{account.id, DateTime.utc_now(), session_token}])
-        |> fetch_cookies()
-        |> sign_out("android")
-
-      assert get_session(conn, :sessions) == []
-      refute get_session(conn, :live_socket_id)
-
-      assert redirected_to(conn, 302) == "http://localhost:13100/handle_client_sign_out_callback"
+      assert redirected_to(conn, 302) == "firezone://handle_client_sign_out_callback?state=STATE"
     end
 
     test "keeps preferred_locale session value", %{account: account, conn: conn} do
@@ -323,14 +496,15 @@ defmodule Web.AuthTest do
       admin_subject: subject,
       conn: conn
     } do
-      live_socket_id = "actors_sessions:#{subject.actor.id}"
+      live_socket_id = "sessions:#{subject.token_id}"
       Web.Endpoint.subscribe(live_socket_id)
 
       conn
       |> assign(:account, account)
+      |> assign(:subject, subject)
       |> put_private(:phoenix_endpoint, @endpoint)
       |> put_session(:live_socket_id, live_socket_id)
-      |> sign_out(nil)
+      |> sign_out(%{})
 
       assert_receive %Phoenix.Socket.Broadcast{event: "disconnect", topic: ^live_socket_id}
     end
@@ -357,16 +531,20 @@ defmodule Web.AuthTest do
       %{conn: assign(context.conn, :user_agent, context.admin_subject.context.user_agent)}
     end
 
-    test "authenticates user from session", %{conn: conn, admin_subject: subject} do
-      {:ok, session_token} = Domain.Auth.create_session_token_from_subject(subject)
-
+    test "authenticates user from session of given type", %{
+      conn: conn,
+      context: context,
+      nonce: nonce,
+      admin_subject: subject,
+      admin_encoded_fragment: encoded_fragment
+    } do
       conn =
         %{
           conn
           | path_params: %{"account_id_or_slug" => subject.account.id},
             remote_ip: {100, 64, 100, 58}
         }
-        |> put_session(:sessions, [{subject.account.id, DateTime.utc_now(), session_token}])
+        |> put_session(:sessions, [{context.type, subject.account.id, nonce <> encoded_fragment}])
         |> assign(:account, subject.account)
         |> fetch_subject([])
 
@@ -374,15 +552,17 @@ defmodule Web.AuthTest do
       assert conn.assigns.subject.actor.id == subject.actor.id
       assert conn.assigns.subject.account.id == subject.account.id
 
-      assert get_session(conn, "live_socket_id") == "actors_sessions:#{subject.actor.id}"
+      assert get_session(conn, "live_socket_id") == "sessions:#{subject.token_id}"
     end
 
     test "puts load balancer GeoIP headers to subject context", %{
       conn: conn,
-      admin_subject: subject
+      context: context,
+      account: account,
+      nonce: nonce,
+      admin_subject: subject,
+      admin_encoded_fragment: encoded_fragment
     } do
-      {:ok, session_token} = Domain.Auth.create_session_token_from_subject(subject)
-
       conn =
         %{
           conn
@@ -392,7 +572,7 @@ defmodule Web.AuthTest do
         |> put_req_header("x-geo-location-region", "Ukraine")
         |> put_req_header("x-geo-location-city", "Kyiv")
         |> put_req_header("x-geo-location-coordinates", "50.4333,30.5167")
-        |> put_session(:sessions, [{subject.account.id, DateTime.utc_now(), session_token}])
+        |> put_session(:sessions, [{context.type, account.id, nonce <> encoded_fragment}])
         |> assign(:account, subject.account)
         |> fetch_subject([])
 
@@ -404,10 +584,12 @@ defmodule Web.AuthTest do
 
     test "puts country coordinates to subject assign", %{
       conn: conn,
-      admin_subject: subject
+      context: context,
+      account: account,
+      nonce: nonce,
+      admin_subject: subject,
+      admin_encoded_fragment: encoded_fragment
     } do
-      {:ok, session_token} = Domain.Auth.create_session_token_from_subject(subject)
-
       conn =
         %{
           conn
@@ -417,7 +599,7 @@ defmodule Web.AuthTest do
         |> put_req_header("x-geo-location-region", "UA")
         |> delete_req_header("x-geo-location-city")
         |> delete_req_header("x-geo-location-coordinates")
-        |> put_session(:sessions, [{subject.account.id, DateTime.utc_now(), session_token}])
+        |> put_session(:sessions, [{context.type, account.id, nonce <> encoded_fragment}])
         |> assign(:account, subject.account)
         |> fetch_subject([])
 
@@ -427,13 +609,17 @@ defmodule Web.AuthTest do
       assert conn.assigns.subject.context.remote_ip_location_lon == 32.0
     end
 
-    test "does not authenticate to an incorrect account", %{conn: conn, admin_subject: subject} do
-      {:ok, session_token} = Domain.Auth.create_session_token_from_subject(subject)
+    test "does not authenticate to an incorrect account", %{
+      conn: conn,
+      context: context,
+      account: account,
+      admin_encoded_fragment: encoded_fragment
+    } do
       other_account = Fixtures.Accounts.create_account()
 
       conn =
         %{conn | remote_ip: {100, 64, 100, 58}}
-        |> put_session(:sessions, [{subject.account.id, DateTime.utc_now(), session_token}])
+        |> put_session(:sessions, [{context.type, account.id, encoded_fragment}])
         |> assign(:account, other_account)
         |> fetch_subject([])
 
@@ -450,6 +636,7 @@ defmodule Web.AuthTest do
   describe "redirect_if_user_is_authenticated/2" do
     test "redirects if user is authenticated to the signed in path", %{
       conn: conn,
+      account: account,
       admin_subject: subject
     } do
       conn =
@@ -459,17 +646,7 @@ defmodule Web.AuthTest do
         |> redirect_if_user_is_authenticated([])
 
       assert conn.halted
-      assert redirected_to(conn) == signed_in_path(subject)
-    end
-
-    test "redirects clients to platform specific urls", %{conn: conn, admin_subject: subject} do
-      conn =
-        %{conn | query_params: %{"client_platform" => "apple"}}
-        |> assign(:subject, subject)
-        |> redirect_if_user_is_authenticated([])
-
-      assert conn.halted
-      assert redirected_to(conn) =~ "firezone://handle_client_sign_in_callback"
+      assert redirected_to(conn) == ~p"/#{account}/sites"
     end
 
     test "does not redirect if user is not authenticated", %{conn: conn} do
@@ -491,20 +668,20 @@ defmodule Web.AuthTest do
         |> ensure_authenticated([])
 
       assert conn.halted
-      assert redirected_to(conn) == ~p"/#{account.slug}"
+      assert redirected_to(conn) =~ ~p"/#{account.slug}?redirect_to="
 
       assert Phoenix.Flash.get(conn.assigns.flash, :error) ==
                "You must log in to access this page."
     end
 
-    test "stores the path to redirect to on GET", %{conn: conn} do
+    test "stores the path to redirect to on GET", %{conn: conn, account: account} do
       halted_conn =
         %{conn | path_info: ["foo"], query_string: ""}
         |> fetch_flash()
         |> ensure_authenticated([])
 
       assert halted_conn.halted
-      assert get_session(halted_conn, :user_return_to) == "/foo"
+      assert redirected_to(halted_conn) == ~p"/#{account}?redirect_to=%2Ffoo"
 
       halted_conn =
         %{conn | path_info: ["foo"], query_string: "bar=baz"}
@@ -512,7 +689,7 @@ defmodule Web.AuthTest do
         |> ensure_authenticated([])
 
       assert halted_conn.halted
-      assert get_session(halted_conn, :user_return_to) == "/foo?bar=baz"
+      assert redirected_to(halted_conn) == ~p"/#{account}?redirect_to=%2Ffoo%3Fbar%3Dbaz"
 
       halted_conn =
         %{conn | path_info: ["foo"], query_string: "bar", method: "POST"}
@@ -520,7 +697,7 @@ defmodule Web.AuthTest do
         |> ensure_authenticated([])
 
       assert halted_conn.halted
-      refute get_session(halted_conn, :user_return_to)
+      assert redirected_to(halted_conn) == ~p"/#{account}"
     end
 
     test "does not redirect if user is authenticated", %{conn: conn, admin_subject: subject} do
@@ -556,14 +733,16 @@ defmodule Web.AuthTest do
     test "assigns subject based on a valid session_token", %{
       conn: conn,
       socket: socket,
-      admin_subject: subject
+      context: context,
+      account: account,
+      nonce: nonce,
+      admin_subject: subject,
+      admin_encoded_fragment: encoded_fragment
     } do
-      {:ok, session_token} = Domain.Auth.create_session_token_from_subject(subject)
-
       session =
         conn
         |> assign(:account, subject.account)
-        |> put_session(:sessions, [{subject.account.id, DateTime.utc_now(), session_token}])
+        |> put_session(:sessions, [{context.type, account.id, nonce <> encoded_fragment}])
         |> get_session()
 
       params = %{"account_id_or_slug" => subject.account.id}
@@ -577,14 +756,16 @@ defmodule Web.AuthTest do
     test "puts load balancer GeoIP information to subject context", %{
       conn: conn,
       socket: socket,
-      admin_subject: subject
+      context: context,
+      account: account,
+      nonce: nonce,
+      admin_subject: subject,
+      admin_encoded_fragment: encoded_fragment
     } do
-      {:ok, session_token} = Domain.Auth.create_session_token_from_subject(subject)
-
       session =
         conn
         |> assign(:account, subject.account)
-        |> put_session(:sessions, [{subject.account.id, DateTime.utc_now(), session_token}])
+        |> put_session(:sessions, [{context.type, account.id, nonce <> encoded_fragment}])
         |> get_session()
 
       params = %{"account_id_or_slug" => subject.account.id}
@@ -599,7 +780,11 @@ defmodule Web.AuthTest do
 
     test "puts country coordinates to subject context", %{
       conn: conn,
-      admin_subject: subject
+      context: context,
+      account: account,
+      nonce: nonce,
+      admin_subject: subject,
+      admin_encoded_fragment: encoded_fragment
     } do
       socket = %Phoenix.LiveView.Socket{
         private: %{
@@ -613,12 +798,10 @@ defmodule Web.AuthTest do
         }
       }
 
-      {:ok, session_token} = Domain.Auth.create_session_token_from_subject(subject)
-
       session =
         conn
         |> assign(:account, subject.account)
-        |> put_session(:sessions, [{subject.account.id, DateTime.utc_now(), session_token}])
+        |> put_session(:sessions, [{context.type, account.id, nonce <> encoded_fragment}])
         |> get_session()
 
       params = %{"account_id_or_slug" => subject.account.id}
@@ -641,7 +824,7 @@ defmodule Web.AuthTest do
       session =
         conn
         |> assign(:account, subject.account)
-        |> put_session(:sessions, [{subject.account.id, DateTime.utc_now(), session_token}])
+        |> put_session(:sessions, [{:client, subject.account.id, session_token}])
         |> get_session()
 
       params = %{"account_id_or_slug" => subject.account.id}
@@ -666,7 +849,11 @@ defmodule Web.AuthTest do
   describe "on_mount: assign_account" do
     test "assigns nil to subject assign if account_id doesn't match token", %{
       conn: conn,
-      admin_subject: subject
+      context: context,
+      account: account,
+      nonce: nonce,
+      admin_subject: subject,
+      admin_encoded_fragment: encoded_fragment
     } do
       socket = %Phoenix.LiveView.Socket{
         assigns: %{
@@ -681,12 +868,10 @@ defmodule Web.AuthTest do
         }
       }
 
-      {:ok, session_token} = Domain.Auth.create_session_token_from_subject(subject)
-
       session =
         conn
         |> assign(:account, subject.account)
-        |> put_session(:sessions, [{subject.account.id, DateTime.utc_now(), session_token}])
+        |> put_session(:sessions, [{context.type, account.id, nonce <> encoded_fragment}])
         |> get_session()
 
       params = %{"account_id_or_slug" => Ecto.UUID.generate()}
@@ -716,14 +901,16 @@ defmodule Web.AuthTest do
     test "authenticates subject based on a valid session_token", %{
       conn: conn,
       socket: socket,
-      admin_subject: subject
+      context: context,
+      account: account,
+      nonce: nonce,
+      admin_subject: subject,
+      admin_encoded_fragment: encoded_fragment
     } do
-      {:ok, session_token} = Domain.Auth.create_session_token_from_subject(subject)
-
       session =
         conn
         |> assign(:account, subject.account)
-        |> put_session(:sessions, [{subject.account.id, DateTime.utc_now(), session_token}])
+        |> put_session(:sessions, [{context.type, account.id, nonce <> encoded_fragment}])
         |> get_session()
 
       params = %{"account_id_or_slug" => subject.account.id}
@@ -737,6 +924,7 @@ defmodule Web.AuthTest do
     test "redirects to login page if there isn't a valid session_token", %{
       conn: conn,
       socket: socket,
+      nonce: nonce,
       admin_subject: subject
     } do
       session_token = "invalid_token"
@@ -744,7 +932,7 @@ defmodule Web.AuthTest do
       session =
         conn
         |> assign(:account, subject.account)
-        |> put_session(:sessions, [{subject.account.id, DateTime.utc_now(), session_token}])
+        |> put_session(:sessions, [{:browser, subject.account.id, nonce <> session_token}])
         |> get_session()
 
       params = %{"account_id_or_slug" => subject.account.slug}
@@ -792,22 +980,22 @@ defmodule Web.AuthTest do
     test "redirects if there is an authenticated user ", %{
       conn: conn,
       socket: socket,
-      admin_subject: subject
+      context: context,
+      account: account,
+      nonce: nonce,
+      admin_encoded_fragment: encoded_fragment
     } do
-      {:ok, session_token} = Domain.Auth.create_session_token_from_subject(subject)
-
       session =
         conn
-        |> put_session(:sessions, [{subject.account.id, DateTime.utc_now(), session_token}])
+        |> put_session(:sessions, [{context.type, account.id, nonce <> encoded_fragment}])
         |> get_session()
 
-      params = %{"account_id_or_slug" => subject.account.id}
+      params = %{"account_id_or_slug" => account.id}
 
       assert {:halt, updated_socket} =
                on_mount(:redirect_if_user_is_authenticated, params, session, socket)
 
-      assert updated_socket.redirected ==
-               {:redirect, %{to: ~p"/#{subject.account.slug}/sites"}}
+      assert updated_socket.redirected == {:redirect, %{to: ~p"/#{account}/sites"}}
     end
 
     test "doesn't redirect if there is no authenticated user", %{

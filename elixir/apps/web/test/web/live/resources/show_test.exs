@@ -34,11 +34,13 @@ defmodule Web.Live.Resources.ShowTest do
     resource: resource,
     conn: conn
   } do
-    assert live(conn, ~p"/#{account}/resources/#{resource}") ==
+    path = ~p"/#{account}/resources/#{resource}"
+
+    assert live(conn, path) ==
              {:error,
               {:redirect,
                %{
-                 to: ~p"/#{account}",
+                 to: ~p"/#{account}?#{%{redirect_to: path}}",
                  flash: %{"error" => "You must log in to access this page."}
                }}}
   end

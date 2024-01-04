@@ -2,40 +2,43 @@ defmodule Web.SignIn do
   use Web, {:live_view, layout: {Web.Layouts, :public}}
   alias Domain.{Auth, Accounts}
 
-  def mount(%{"account_id_or_slug" => account_id_or_slug} = params, session, socket) do
+  @root_adapters_whitelist [:email, :userpass, :openid_connect]
+
+  def mount(%{"account_id_or_slug" => account_id_or_slug} = params, _session, socket) do
     with {:ok, account} <- Accounts.fetch_account_by_id_or_slug(account_id_or_slug),
          {:ok, [_ | _] = providers} <- Auth.list_active_providers_for_account(account) do
       providers_by_adapter =
         providers
-        |> Enum.group_by(fn provider ->
-          parent_adapter =
-            provider
-            |> Auth.fetch_provider_capabilities!()
-            |> Keyword.get(:parent_adapter)
+        |> group_providers_by_root_adapter()
+        |> Map.take(@root_adapters_whitelist)
 
-          parent_adapter || provider.adapter
-        end)
-        |> Map.drop([:token])
+      params = Web.Auth.take_sign_in_params(params)
 
-      query_params = take_non_empty_params(params, ["client_platform", "client_csrf_token"])
-      session_params = take_non_empty_params(session, ["client_platform", "client_csrf_token"])
-      params = Map.merge(session_params, query_params)
+      socket =
+        assign(socket,
+          params: params,
+          account: account,
+          providers_by_adapter: providers_by_adapter,
+          page_title: "Sign in"
+        )
 
-      {:ok, socket,
-       temporary_assigns: [
-         params: params,
-         account: account,
-         providers_by_adapter: providers_by_adapter,
-         page_title: "Sign in"
-       ]}
+      {:ok, socket}
     else
       _other ->
         raise Web.LiveErrors.NotFoundError
     end
   end
 
-  defp take_non_empty_params(map, keys) do
-    map |> Map.take(keys) |> Map.reject(fn {_key, value} -> value in ["", nil] end)
+  defp group_providers_by_root_adapter(providers) do
+    providers
+    |> Enum.group_by(fn provider ->
+      parent_adapter =
+        provider
+        |> Auth.fetch_provider_capabilities!()
+        |> Keyword.get(:parent_adapter)
+
+      parent_adapter || provider.adapter
+    end)
   end
 
   def render(assigns) do
@@ -99,7 +102,7 @@ defmodule Web.SignIn do
             </.intersperse_blocks>
           </div>
         </div>
-        <div :if={is_nil(@params["client_platform"])} class="mx-auto p-6 sm:p-8">
+        <div :if={Web.Auth.fetch_auth_context_type!(@params) == :browser} class="mx-auto p-6 sm:p-8">
           <p class="py-2">
             Meant to sign in from a client instead?
             <a href="https://firezone.dev/kb/user-guides?utm_source=product" class={link_style()}>

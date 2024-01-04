@@ -23,8 +23,12 @@ defmodule Web.SignIn.EmailTest do
   test "renders delivery confirmation page for browser users", %{
     account: account,
     provider: provider,
+    identity: identity,
     conn: conn
   } do
+    {conn, _secret} =
+      put_magic_link_auth_state(conn, account, provider, identity)
+
     {:ok, lv, html} =
       live(conn, ~p"/#{account}/sign_in/providers/email/#{provider}?provider_identifier=foo")
 
@@ -33,107 +37,105 @@ defmodule Web.SignIn.EmailTest do
     assert has_element?(lv, ~s|a[href="https://outlook.live.com/mail/"]|, "Open Outlook")
   end
 
-  test "renders token form for Apple users", %{
+  test "redirects browser after sign in", %{
     account: account,
     provider: provider,
     identity: identity,
     conn: conn
   } do
+    {conn, secret} =
+      put_magic_link_auth_state(conn, account, provider, identity)
+
     {:ok, lv, _html} =
       live(
         conn,
-        ~p"/#{account}/sign_in/providers/email/#{provider}?provider_identifier=foo&client_platform=apple"
+        ~p"/#{account}/sign_in/providers/email/#{provider}?provider_identifier=#{identity.id}&as=client&state=STATE&nonce=NONCE"
       )
 
     assert has_element?(lv, ~s|form#verify-sign-in-token|)
     assert has_element?(lv, "button", "Submit")
 
-    <<secret::binary-size(5), nonce::binary>> = identity.provider_virtual_state.sign_in_token
-
-    conn =
-      conn
-      |> put_session(:sign_in_nonce, nonce)
-      |> put_session(:client_platform, "apple")
-      |> put_session(:client_csrf_token, "foo")
-
     conn =
       lv
       |> form("#verify-sign-in-token", %{
         identity_id: identity.id,
+        as: "client",
+        state: "STATE",
+        nonce: "NONCE",
         secret: secret
       })
       |> submit_form(conn)
 
-    assert redirected_to(conn, 302) =~ "firezone://handle_client_sign_in_callback"
+    assert redirected_to(conn, 302) == ~p"/#{account}/sites"
     refute conn.assigns.flash["error"]
   end
 
-  test "renders token form for Android users", %{
+  test "redirects client after sign in", %{
     account: account,
     provider: provider,
     identity: identity,
     conn: conn
   } do
+    redirect_params = %{
+      "as" => "client",
+      "state" => "STATE",
+      "nonce" => "NONCE",
+      "redirect_to" => "/foo"
+    }
+
+    {conn, secret} =
+      put_magic_link_auth_state(conn, account, provider, identity, redirect_params)
+
+    {:ok, lv, _html} =
+      live(
+        conn,
+        ~p"/#{account}/sign_in/providers/email/#{provider}?provider_identifier=#{identity.id}"
+      )
+
+    assert has_element?(lv, ~s|form#verify-sign-in-token|)
+    assert has_element?(lv, "button", "Submit")
+
+    conn =
+      lv
+      |> form("#verify-sign-in-token", %{
+        identity_id: identity.id,
+        as: "client",
+        state: "STATE",
+        nonce: "NONCE",
+        secret: secret
+      })
+      |> submit_form(conn)
+
+    assert redirected_to(conn, 302) =~ "firezone-fd0020211111://handle_client_sign_in_callback"
+    refute conn.assigns.flash["error"]
+  end
+
+  test "renders error on invalid secret", %{
+    account: account,
+    provider: provider,
+    identity: identity,
+    conn: conn
+  } do
+    {conn, _secret} =
+      put_magic_link_auth_state(conn, account, provider, identity)
+
     {:ok, lv, _html} =
       live(
         conn,
         ~p"/#{account}/sign_in/providers/email/#{provider}?provider_identifier=foo&client_platform=android"
       )
 
-    <<secret::binary-size(5), nonce::binary>> = identity.provider_virtual_state.sign_in_token
-
-    conn =
-      conn
-      |> put_session(:sign_in_nonce, nonce)
-      |> put_session(:client_platform, "android")
-      |> put_session(:client_csrf_token, "foo")
-
     conn =
       lv
       |> form("#verify-sign-in-token", %{
         identity_id: identity.id,
-        secret: secret
-      })
-      |> submit_form(conn)
-
-    assert "/handle_client_sign_in_callback" <> _ = redirected_to(conn, 302)
-    refute conn.assigns.flash["error"]
-  end
-
-  test "renders error on invalid token", %{
-    account: account,
-    provider: provider,
-    identity: identity,
-    conn: conn
-  } do
-    {:ok, lv, _html} =
-      live(
-        conn,
-        ~p"/#{account}/sign_in/providers/email/#{provider}?provider_identifier=foo&client_platform=android"
-      )
-
-    <<_secret::binary-size(5), nonce::binary>> = identity.provider_virtual_state.sign_in_token
-
-    conn =
-      conn
-      |> put_session(:sign_in_nonce, nonce)
-      |> put_session(:client_platform, "android")
-      |> put_session(:client_csrf_token, "foo")
-
-    conn =
-      lv
-      |> form("#verify-sign-in-token", %{
-        identity_id: identity.id,
-        secret: "foo",
-        client_csrf_token: "xxx"
+        secret: "foo"
       })
       |> submit_form(conn)
 
     assert redirected_to(conn, 302) ==
              ~p"/#{account}/sign_in/providers/email/#{provider}" <>
-               "?client_platform=android" <>
-               "&client_csrf_token=foo" <>
-               "&provider_identifier=#{identity.id}"
+               "?provider_identifier=#{identity.id}"
 
     assert conn.assigns.flash["error"] == "The sign in token is invalid or expired."
   end
@@ -162,18 +164,23 @@ defmodule Web.SignIn.EmailTest do
     refute get_session(conn, :client_platform)
   end
 
-  test "does not loose client platform param on email resend", %{
+  test "does not loose redirect params on email resend", %{
     account: account,
     provider: provider,
     identity: identity,
     conn: conn
   } do
-    conn = put_session(conn, :client_platform, "apple")
+    redirect_params = %{
+      "as" => "client",
+      "state" => "STATE",
+      "nonce" => "NONCE",
+      "redirect_to" => "/foo"
+    }
 
     {:ok, lv, _html} =
       live(
         conn,
-        ~p"/#{account}/sign_in/providers/email/#{provider}?provider_identifier=foo&client_platform=apple"
+        ~p"/#{account}/sign_in/providers/email/#{provider}?provider_identifier=foo&#{redirect_params}"
       )
 
     assert has_element?(lv, ~s|button[type="submit"]|, "Resend email")
@@ -182,7 +189,10 @@ defmodule Web.SignIn.EmailTest do
       lv
       |> form("#resend-email", %{
         email: %{provider_identifier: identity.provider_identifier},
-        client_platform: "apple"
+        as: "client",
+        state: "STATE",
+        nonce: "NONCE",
+        redirect_to: "/foo"
       })
       |> submit_form(conn)
 
@@ -191,7 +201,9 @@ defmodule Web.SignIn.EmailTest do
     assert redirected_to = redirected_to(conn, 302)
     assert redirected_to =~ ~p"/#{account}/sign_in/providers/email/#{provider}"
     assert redirected_to =~ "provider_identifier="
-    assert redirected_to =~ "client_platform=apple"
-    assert get_session(conn, :client_platform) == "apple"
+    assert redirected_to =~ "as=client"
+    assert redirected_to =~ "nonce=NONCE"
+    assert redirected_to =~ "state=STATE"
+    assert redirected_to =~ "redirect_to=%2Ffoo"
   end
 end

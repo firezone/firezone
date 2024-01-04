@@ -32,8 +32,8 @@ defmodule Web.Settings.IdentityProviders.OpenIDConnect.Connect do
     account = conn.assigns.account
     subject = conn.assigns.subject
 
-    with {:ok, code_verifier, conn} <-
-           Web.AuthController.verify_state_and_fetch_verifier(conn, provider_id, state) do
+    with {:ok, _redirect_params, code_verifier, conn} <-
+           Web.AuthController.verify_idp_state_and_fetch_verifier(conn, provider_id, state) do
       payload = {
         url(
           ~p"/#{account.id}/settings/identity_providers/openid_connect/#{provider_id}/handle_callback"
@@ -95,8 +95,8 @@ defmodule Web.Settings.IdentityProviders.OpenIDConnect.Connect do
       }) do
     account = conn.assigns.account
 
-    with {:ok, _code_verifier, conn} <-
-           Web.AuthController.verify_state_and_fetch_verifier(conn, provider_id, state) do
+    with {:ok, _redirect_params, _code_verifier, conn} <-
+           Web.AuthController.verify_idp_state_and_fetch_verifier(conn, provider_id, state) do
       conn
       |> put_flash(:error, "Your IdP returned an error (" <> error <> "): " <> error_description)
       |> redirect(to: ~p"/#{account}/settings/identity_providers/openid_connect/#{provider_id}")

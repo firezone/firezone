@@ -33,7 +33,6 @@ defmodule Domain.TokensTest do
                type: ["can't be blank"],
                account_id: ["can't be blank"],
                expires_at: ["can't be blank"],
-               secret_nonce: ["can't be blank"],
                secret_fragment: ["can't be blank"],
                secret_hash: ["can't be blank"],
                created_by_remote_ip: ["can't be blank"],
@@ -106,7 +105,6 @@ defmodule Domain.TokensTest do
       assert errors_on(changeset) == %{
                type: ["can't be blank"],
                expires_at: ["can't be blank"],
-               secret_nonce: ["can't be blank"],
                secret_fragment: ["can't be blank"],
                secret_hash: ["can't be blank"],
                created_by_remote_ip: ["can't be blank"],

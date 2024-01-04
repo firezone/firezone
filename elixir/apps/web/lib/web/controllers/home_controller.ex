@@ -3,8 +3,7 @@ defmodule Web.HomeController do
   alias Domain.Accounts
 
   def home(conn, params) do
-    signed_in_accounts = get_session(conn, "sessions") || []
-    signed_in_account_ids = Enum.map(signed_in_accounts, &elem(&1, 0))
+    signed_in_account_ids = conn |> get_session("sessions", []) |> Enum.map(&elem(&1, 0))
 
     {accounts, conn} =
       with {:ok, recent_account_ids, conn} <- Web.Auth.list_recent_account_ids(conn),
@@ -19,25 +18,20 @@ defmodule Web.HomeController do
         _other -> {[], conn}
       end
 
-    redirect_params = take_non_empty_params(params, ["client_platform", "client_csrf_token"])
+    params = Web.Auth.take_sign_in_params(params)
 
     conn
     |> put_layout(html: {Web.Layouts, :public})
     |> render("home.html",
       accounts: accounts,
       signed_in_account_ids: signed_in_account_ids,
-      redirect_params: redirect_params
+      params: params
     )
   end
 
   def redirect_to_sign_in(conn, %{"account_id_or_slug" => account_id_or_slug} = params) do
     account_id_or_slug = String.downcase(account_id_or_slug)
-    redirect_params = take_non_empty_params(params, ["client_platform", "client_csrf_token"])
-
-    redirect(conn, to: ~p"/#{account_id_or_slug}?#{redirect_params}")
-  end
-
-  defp take_non_empty_params(map, keys) do
-    map |> Map.take(keys) |> Map.reject(fn {_key, value} -> value in ["", nil] end)
+    params = Web.Auth.take_sign_in_params(params)
+    redirect(conn, to: ~p"/#{account_id_or_slug}?#{params}")
   end
 end

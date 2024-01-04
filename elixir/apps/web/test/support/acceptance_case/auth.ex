@@ -37,6 +37,7 @@ defmodule Web.AcceptanceCase.Auth do
     remote_ip = {127, 0, 0, 1}
 
     context = %Domain.Auth.Context{
+      type: :browser,
       user_agent: user_agent,
       remote_ip_location_region: "UA",
       remote_ip_location_city: "Kyiv",
@@ -57,7 +58,7 @@ defmodule Web.AcceptanceCase.Auth do
     signing_salt = Keyword.fetch!(options, :signing_salt)
     secret_key_base = Web.Endpoint.config(:secret_key_base)
 
-    with {:ok, token} <- Domain.Auth.create_session_token_from_subject(subject) do
+    with {:ok, token} <- Domain.Tokens.encode_fragment!(subject) do
       encryption_key = Plug.Crypto.KeyGenerator.generate(secret_key_base, encryption_salt, [])
       signing_key = Plug.Crypto.KeyGenerator.generate(secret_key_base, signing_salt, [])
 
@@ -82,8 +83,14 @@ defmodule Web.AcceptanceCase.Auth do
         [{_, _, token} | _] ->
           user_agent = fetch_session_user_agent!(session)
           remote_ip = {127, 0, 0, 1}
-          context = %Domain.Auth.Context{user_agent: user_agent, remote_ip: remote_ip}
-          assert {:ok, subject} = Domain.Auth.sign_in(token, context)
+
+          context = %Domain.Auth.Context{
+            type: :browser,
+            user_agent: user_agent,
+            remote_ip: remote_ip
+          }
+
+          assert {:ok, subject} = Domain.Auth.authenticate(token, context)
           flunk("User is authenticated, identity: #{inspect(subject.identity)}")
           :ok
 
@@ -98,12 +105,13 @@ defmodule Web.AcceptanceCase.Auth do
   def assert_authenticated(session, identity) do
     with {:ok, cookie} <- fetch_session_cookie(session),
          context = %Domain.Auth.Context{
+           type: :browser,
            user_agent: fetch_session_user_agent!(session),
            remote_ip: {127, 0, 0, 1}
          },
          {_account_id, _logged_in_at, token} <-
            List.keyfind(cookie["sessions"], identity.account_id, 0),
-         {:ok, subject} <- Domain.Auth.sign_in(token, context) do
+         {:ok, subject} <- Domain.Auth.authenticate(token, context) do
       assert subject.identity.id == identity.id,
              "Expected #{inspect(identity)}, got #{inspect(subject.identity)}"
 

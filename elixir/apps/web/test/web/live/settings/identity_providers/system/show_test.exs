@@ -22,21 +22,23 @@ defmodule Web.Live.Settings.IdentityProviders.System.ShowTest do
     provider: provider,
     conn: conn
   } do
-    assert live(conn, ~p"/#{account}/settings/identity_providers/system/#{provider}") ==
+    path = ~p"/#{account}/settings/identity_providers/system/#{provider}"
+
+    assert live(conn, path) ==
              {:error,
               {:redirect,
                %{
-                 to: ~p"/#{account}",
+                 to: ~p"/#{account}?#{%{redirect_to: path}}",
                  flash: %{"error" => "You must log in to access this page."}
                }}}
   end
 
   test "renders deleted provider without action buttons", %{
     account: account,
-    provider: provider,
     identity: identity,
     conn: conn
   } do
+    provider = Fixtures.Auth.create_userpass_provider(account: account)
     provider = Fixtures.Auth.delete_provider(provider)
 
     {:ok, _lv, html} =

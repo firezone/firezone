@@ -24,11 +24,13 @@ defmodule Web.Live.Gateways.ShowTest do
     gateway: gateway,
     conn: conn
   } do
-    assert live(conn, ~p"/#{account}/gateways/#{gateway}") ==
+    path = ~p"/#{account}/gateways/#{gateway}"
+
+    assert live(conn, path) ==
              {:error,
               {:redirect,
                %{
-                 to: ~p"/#{account}",
+                 to: ~p"/#{account}?#{%{redirect_to: path}}",
                  flash: %{"error" => "You must log in to access this page."}
                }}}
   end

@@ -1,7 +1,9 @@
 defmodule Web.ConnCase do
   use ExUnit.CaseTemplate
   use Domain.CaseTemplate
+  use Web, :verified_routes
   import Phoenix.LiveViewTest
+  import Phoenix.ConnTest
 
   using do
     quote do
@@ -35,6 +37,8 @@ defmodule Web.ConnCase do
       |> Plug.Conn.put_req_header("x-geo-location-city", "Kyiv")
       |> Plug.Conn.put_req_header("x-geo-location-coordinates", "50.4333,30.5167")
 
+    conn = %{conn | secret_key_base: Web.Endpoint.config(:secret_key_base)}
+
     {:ok, conn: conn, user_agent: user_agent}
   end
 
@@ -51,6 +55,7 @@ defmodule Web.ConnCase do
     {"user-agent", user_agent} = List.keyfind(conn.req_headers, "user-agent", 0, "FooBar 1.1")
 
     context = %Domain.Auth.Context{
+      type: :browser,
       user_agent: user_agent,
       remote_ip_location_region: "UA",
       remote_ip_location_city: "Kyiv",
@@ -59,12 +64,59 @@ defmodule Web.ConnCase do
       remote_ip: conn.remote_ip
     }
 
-    subject = Domain.Auth.build_subject(identity, expires_in, context)
+    nonce = "nonce"
+    {:ok, token} = Domain.Auth.create_token(identity, context, nonce, expires_in)
+    encoded_fragment = Domain.Tokens.encode_fragment!(token)
+    subject = Domain.Auth.build_subject(token, identity, context)
 
     conn
-    |> Web.Auth.put_subject_in_session(subject)
+    |> Web.Auth.put_account_session(context.type, identity.account_id, nonce <> encoded_fragment)
     |> Plug.Conn.assign(:account, subject.account)
     |> Plug.Conn.assign(:subject, subject)
+  end
+
+  def put_magic_link_auth_state(
+        conn,
+        account,
+        %{adapter: :email} = provider,
+        identity,
+        params \\ %{}
+      ) do
+    params =
+      Map.merge(%{"email" => %{"provider_identifier" => identity.provider_identifier}}, params)
+
+    redirected_conn =
+      post(conn, ~p"/#{account}/sign_in/providers/#{provider.id}/request_magic_link", params)
+
+    assert_received {:email, email}
+    [_match, secret] = Regex.run(~r/secret=([^&\n]*)/, email.text_body)
+
+    cookie_key = "fz_auth_state_#{provider.id}"
+    %{value: signed_state} = redirected_conn.resp_cookies[cookie_key]
+
+    conn_with_cookie =
+      put_req_cookie(conn, "fz_auth_state_#{provider.id}", signed_state)
+
+    {conn_with_cookie, secret}
+  end
+
+  def put_idp_auth_state(conn, account, provider, params \\ %{}) do
+    redirected_conn =
+      get(conn, ~p"/#{account.id}/sign_in/providers/#{provider.id}/redirect", params)
+
+    cookie_key = "fz_auth_state_#{provider.id}"
+    redirected_conn = Plug.Conn.fetch_cookies(redirected_conn, signed: [cookie_key])
+
+    {_params, state, verifier} =
+      redirected_conn.cookies[cookie_key]
+      |> :erlang.binary_to_term([:safe])
+
+    %{value: signed_state} = redirected_conn.resp_cookies[cookie_key]
+
+    conn_with_cookie =
+      put_req_cookie(conn, "fz_auth_state_#{provider.id}", signed_state)
+
+    {conn_with_cookie, state, verifier}
   end
 
   ### Helpers to test LiveView forms

@@ -6,12 +6,12 @@ defmodule Domain.Tokens.Token.Changeset do
   @required_attrs ~w[
     type
     account_id
-    secret_nonce secret_fragment
+    secret_fragment
     created_by_user_agent created_by_remote_ip
     expires_at
   ]a
 
-  @create_attrs ~w[identity_id ]a ++ @required_attrs
+  @create_attrs ~w[identity_id secret_nonce]a ++ @required_attrs
   @update_attrs ~w[expires_at]a
 
   def create(attrs) do
@@ -37,7 +37,7 @@ defmodule Domain.Tokens.Token.Changeset do
   defp changeset(changeset) do
     changeset
     |> put_change(:secret_salt, Domain.Crypto.random_token(16))
-    |> validate_format(:secret_nonce, ~r/^[^\.]+$/)
+    |> validate_format(:secret_nonce, ~r/^[^\.]{0,128}$/)
     |> put_hash(:secret_fragment, :sha,
       with_nonce: :secret_nonce,
       with_salt: :secret_salt,

@@ -32,7 +32,7 @@ defmodule Web.Live.Settings.IdentityProviders.GoogleWorkspace.Connect do
           ~p"/#{account_id}/settings/identity_providers/google_workspace/#{provider_id}/redirect"
         )
 
-      assert redirected_to(conn) == "/#{account_id}"
+      assert redirected_to(conn) =~ ~p"/#{account_id}"
       assert flash(conn, :error) == "You must log in to access this page."
     end
 
@@ -77,7 +77,10 @@ defmodule Web.Live.Settings.IdentityProviders.GoogleWorkspace.Connect do
           ~p"/#{account.id}/settings/identity_providers/google_workspace/#{provider.id}/handle_callback"
         )
 
-      {state, verifier} = conn.cookies["fz_auth_state_#{provider.id}"] |> :erlang.binary_to_term()
+      {_params, state, verifier} =
+        conn.cookies["fz_auth_state_#{provider.id}"]
+        |> :erlang.binary_to_term()
+
       code_challenge = Domain.Auth.Adapters.OpenIDConnect.PKCE.code_challenge(verifier)
 
       assert URI.decode_query(uri.query) == %{
@@ -176,7 +179,11 @@ defmodule Web.Live.Settings.IdentityProviders.GoogleWorkspace.Connect do
 
       cookie_key = "fz_auth_state_#{provider.id}"
       redirected_conn = fetch_cookies(redirected_conn)
-      {state, _verifier} = redirected_conn.cookies[cookie_key] |> :erlang.binary_to_term([:safe])
+
+      {_params, state, _verifier} =
+        redirected_conn.cookies[cookie_key]
+        |> :erlang.binary_to_term([:safe])
+
       %{value: signed_state} = redirected_conn.resp_cookies[cookie_key]
 
       conn =
@@ -227,7 +234,11 @@ defmodule Web.Live.Settings.IdentityProviders.GoogleWorkspace.Connect do
 
       cookie_key = "fz_auth_state_#{provider.id}"
       redirected_conn = fetch_cookies(redirected_conn)
-      {state, _verifier} = redirected_conn.cookies[cookie_key] |> :erlang.binary_to_term([:safe])
+
+      {_params, state, _verifier} =
+        redirected_conn.cookies[cookie_key]
+        |> :erlang.binary_to_term([:safe])
+
       %{value: signed_state} = redirected_conn.resp_cookies[cookie_key]
 
       conn =
@@ -254,18 +265,19 @@ defmodule Web.Live.Settings.IdentityProviders.GoogleWorkspace.Connect do
              } = conn.private.plug_session
 
       context = %Domain.Auth.Context{
+        type: :browser,
         remote_ip: conn.remote_ip,
-        user_agent: "testing",
+        user_agent: conn.assigns.user_agent,
         remote_ip_location_region: "Mexico",
         remote_ip_location_city: "Merida",
         remote_ip_location_lat: 37.7749,
         remote_ip_location_lon: -120.4194
       }
 
-      assert {:ok, subject} = Domain.Auth.sign_in(session_token, context)
+      assert {:ok, subject} = Domain.Auth.authenticate(session_token, context)
       assert subject.identity.id == identity.id
-      assert subject.identity.last_seen_user_agent == "testing"
-      assert subject.identity.last_seen_remote_ip.address == {127, 0, 0, 1}
+      assert subject.identity.last_seen_user_agent == context.user_agent
+      assert subject.identity.last_seen_remote_ip.address == context.remote_ip
       assert subject.identity.last_seen_at
 
       assert provider = Repo.get(Domain.Auth.Provider, provider.id)

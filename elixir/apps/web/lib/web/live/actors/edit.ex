@@ -20,7 +20,7 @@ defmodule Web.Actors.Edit do
           page_title: "Edit actor #{actor.name}"
         )
 
-      {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
+      {:ok, socket}
     else
       _other -> raise Web.LiveErrors.NotFoundError
     end

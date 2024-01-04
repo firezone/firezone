@@ -25,7 +25,7 @@ defmodule Web.HomeHTML do
                 :for={account <- @accounts}
                 account={account}
                 signed_in?={account.id in @signed_in_account_ids}
-                redirect_params={@redirect_params}
+                params={@params}
               />
             </div>
 
@@ -34,7 +34,7 @@ defmodule Web.HomeHTML do
             <.form
               :let={f}
               for={%{}}
-              action={~p"/?#{@redirect_params}"}
+              action={~p"/?#{@params}"}
               class="space-y-4 lg:space-y-6"
             >
               <.input
@@ -52,7 +52,7 @@ defmodule Web.HomeHTML do
               </.button>
             </.form>
             <p
-              :if={Domain.Config.sign_up_enabled?() and is_nil(@redirect_params["client_platform"])}
+              :if={Domain.Config.sign_up_enabled?() and Web.Auth.fetch_auth_context_type!(@params) == :browser}
               class="py-2"
             >
               Don't have an account?
@@ -69,7 +69,7 @@ defmodule Web.HomeHTML do
 
   def account_button(assigns) do
     ~H"""
-    <a href={~p"/#{@account}?#{@redirect_params}"} class={~w[
+    <a href={~p"/#{@account}?#{@params}"} class={~w[
           w-full inline-flex items-center justify-center py-2.5 px-5
           bg-white rounded
           text-sm text-neutral-900

@@ -2379,7 +2379,7 @@ defmodule Domain.AuthTest do
 
       context = %Auth.Context{type: :browser, user_agent: user_agent, remote_ip: remote_ip}
 
-      assert {:ok, fragment} =
+      assert {:ok, token_identity, fragment} =
                sign_in(provider, identity.provider_identifier, nonce, secret, context)
 
       refute fragment =~ nonce
@@ -2388,6 +2388,7 @@ defmodule Domain.AuthTest do
       assert subject.account.id == account.id
       assert subject.actor.id == identity.actor_id
       assert subject.identity.id == identity.id
+      assert subject.identity.id == token_identity.id
       assert subject.expires_at
       assert subject.context.type == context.type
 
@@ -2411,7 +2412,9 @@ defmodule Domain.AuthTest do
       secret = identity.provider_virtual_state.sign_in_token
       nonce = "nonce"
       context = %Auth.Context{type: :browser, user_agent: user_agent, remote_ip: remote_ip}
-      assert {:ok, _fragment} = sign_in(provider, identity.id, nonce, secret, context)
+
+      assert {:ok, _token_identity, _fragment} =
+               sign_in(provider, identity.id, nonce, secret, context)
     end
 
     test "allows using client context", %{
@@ -2424,9 +2427,13 @@ defmodule Domain.AuthTest do
       secret = identity.provider_virtual_state.sign_in_token
       nonce = "nonce"
       context = %Auth.Context{type: :client, user_agent: user_agent, remote_ip: remote_ip}
-      assert {:ok, _fragment} = sign_in(provider, identity.id, nonce, secret, context)
+
+      assert {:ok, token_identity, _fragment} =
+               sign_in(provider, identity.id, nonce, secret, context)
+
       assert token = Repo.one(Domain.Tokens.Token)
       assert token.type == context.type
+      assert token.identity_id == token_identity.id
     end
 
     test "raises when relay, gateway or api_client context is used", %{
@@ -2465,10 +2472,11 @@ defmodule Domain.AuthTest do
       identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
       secret = identity.provider_virtual_state.sign_in_token
 
-      assert {:ok, fragment} =
+      assert {:ok, identity, fragment} =
                sign_in(provider, identity.provider_identifier, nonce, secret, context)
 
       assert {:ok, subject} = authenticate(nonce <> fragment, context)
+      assert subject.identity.id == identity.id
 
       assert_datetime_diff(subject.expires_at, DateTime.utc_now(), ten_hours)
 
@@ -2477,10 +2485,11 @@ defmodule Domain.AuthTest do
       identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
       secret = identity.provider_virtual_state.sign_in_token
 
-      assert {:ok, fragment} =
+      assert {:ok, identity, fragment} =
                sign_in(provider, identity.provider_identifier, nonce, secret, context)
 
       assert {:ok, subject} = authenticate(nonce <> fragment, context)
+      assert subject.identity.id == identity.id
       assert_datetime_diff(subject.expires_at, DateTime.utc_now(), ten_hours)
 
       # Client session
@@ -2492,10 +2501,11 @@ defmodule Domain.AuthTest do
       identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
       secret = identity.provider_virtual_state.sign_in_token
 
-      assert {:ok, fragment} =
+      assert {:ok, identity, fragment} =
                sign_in(provider, identity.provider_identifier, nonce, secret, context)
 
       assert {:ok, subject} = authenticate(nonce <> fragment, context)
+      assert subject.identity.id == identity.id
       assert_datetime_diff(subject.expires_at, DateTime.utc_now(), one_week)
 
       ## Regular user
@@ -2503,10 +2513,11 @@ defmodule Domain.AuthTest do
       identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
       secret = identity.provider_virtual_state.sign_in_token
 
-      assert {:ok, fragment} =
+      assert {:ok, identity, fragment} =
                sign_in(provider, identity.provider_identifier, nonce, secret, context)
 
       assert {:ok, subject} = authenticate(nonce <> fragment, context)
+      assert subject.identity.id == identity.id
       assert_datetime_diff(subject.expires_at, DateTime.utc_now(), one_week)
     end
 
@@ -2696,12 +2707,13 @@ defmodule Domain.AuthTest do
 
       context = %Auth.Context{type: :browser, user_agent: user_agent, remote_ip: remote_ip}
 
-      assert {:ok, fragment} = sign_in(provider, nonce, payload, context)
+      assert {:ok, token_identity, fragment} = sign_in(provider, nonce, payload, context)
 
       assert {:ok, subject} = authenticate(nonce <> fragment, context)
       assert subject.account.id == account.id
       assert subject.actor.id == identity.actor_id
       assert subject.identity.id == identity.id
+      assert subject.identity.id == token_identity.id
       assert subject.context.type == context.type
 
       assert token = Repo.get(Tokens.Token, subject.token_id)
@@ -2743,10 +2755,11 @@ defmodule Domain.AuthTest do
 
       context = %Auth.Context{type: :client, user_agent: user_agent, remote_ip: remote_ip}
 
-      assert {:ok, _fragment} = sign_in(provider, nonce, payload, context)
+      assert {:ok, token_identity, _fragment} = sign_in(provider, nonce, payload, context)
 
       assert token = Repo.one(Domain.Tokens.Token)
       assert token.type == context.type
+      assert token.identity_id == token_identity.id
     end
 
     test "raises when relay, gateway or api_client context is used", %{
@@ -2810,10 +2823,8 @@ defmodule Domain.AuthTest do
 
       context = %Auth.Context{type: :client, user_agent: user_agent, remote_ip: remote_ip}
 
-      assert {:ok, fragment} = sign_in(provider, nonce, payload, context)
-
+      assert {:ok, _token_identity, fragment} = sign_in(provider, nonce, payload, context)
       assert {:ok, subject} = authenticate(nonce <> fragment, context)
-
       one_week = 7 * 24 * 60 * 60
       assert_datetime_diff(subject.expires_at, DateTime.utc_now(), one_week)
     end
@@ -2845,10 +2856,8 @@ defmodule Domain.AuthTest do
 
       context = %Auth.Context{type: :browser, user_agent: user_agent, remote_ip: remote_ip}
 
-      assert {:ok, fragment} = sign_in(provider, nonce, payload, context)
-
+      assert {:ok, _token_identity, fragment} = sign_in(provider, nonce, payload, context)
       assert {:ok, subject} = authenticate(nonce <> fragment, context)
-
       ten_hours = 10 * 60 * 60
       assert_datetime_diff(subject.expires_at, DateTime.utc_now(), ten_hours)
     end
@@ -2877,13 +2886,10 @@ defmodule Domain.AuthTest do
       redirect_uri = "https://example.com/"
       payload = {redirect_uri, code_verifier, "MyFakeCode"}
       nonce = "nonce"
-
       context = %Auth.Context{type: :client, user_agent: user_agent, remote_ip: remote_ip}
 
-      assert {:ok, fragment} = sign_in(provider, nonce, payload, context)
-
+      assert {:ok, _token_identity, fragment} = sign_in(provider, nonce, payload, context)
       assert {:ok, subject} = authenticate(nonce <> fragment, context)
-
       one_week = 7 * 24 * 60 * 60
       assert_datetime_diff(subject.expires_at, DateTime.utc_now(), one_week)
     end
@@ -2915,10 +2921,8 @@ defmodule Domain.AuthTest do
 
       context = %Auth.Context{type: :browser, user_agent: user_agent, remote_ip: remote_ip}
 
-      assert {:ok, fragment} = sign_in(provider, nonce, payload, context)
-
+      assert {:ok, _token_identity, fragment} = sign_in(provider, nonce, payload, context)
       assert {:ok, subject} = authenticate(nonce <> fragment, context)
-
       ten_hours = 10 * 60 * 60
       assert_datetime_diff(subject.expires_at, DateTime.utc_now(), ten_hours)
     end
@@ -2944,7 +2948,7 @@ defmodule Domain.AuthTest do
       nonce = "nonce"
       context = %Auth.Context{type: :browser, user_agent: user_agent, remote_ip: remote_ip}
 
-      assert {:ok, _fragment} = sign_in(provider, nonce, payload, context)
+      assert {:ok, _token_identity, _fragment} = sign_in(provider, nonce, payload, context)
       {:ok, _provider} = disable_provider(provider, subject)
       assert sign_in(provider, nonce, payload, context) == {:error, :unauthorized}
     end
@@ -2970,7 +2974,7 @@ defmodule Domain.AuthTest do
       nonce = "nonce"
       context = %Auth.Context{type: :browser, user_agent: user_agent, remote_ip: remote_ip}
 
-      assert {:ok, _fragment} = sign_in(provider, nonce, payload, context)
+      assert {:ok, _token_identity, _fragment} = sign_in(provider, nonce, payload, context)
       {:ok, _identity} = delete_identity(identity, subject)
       assert sign_in(provider, nonce, payload, context) == {:error, :unauthorized}
     end
@@ -2995,7 +2999,7 @@ defmodule Domain.AuthTest do
       nonce = "nonce"
       context = %Auth.Context{type: :browser, user_agent: user_agent, remote_ip: remote_ip}
 
-      assert {:ok, _fragment} = sign_in(provider, nonce, payload, context)
+      assert {:ok, _token_identity, _fragment} = sign_in(provider, nonce, payload, context)
       Fixtures.Actors.disable(actor)
       assert sign_in(provider, nonce, payload, context) == {:error, :unauthorized}
     end
@@ -3020,7 +3024,7 @@ defmodule Domain.AuthTest do
       nonce = "nonce"
       context = %Auth.Context{type: :browser, user_agent: user_agent, remote_ip: remote_ip}
 
-      assert {:ok, _fragment} = sign_in(provider, nonce, payload, context)
+      assert {:ok, _token_identity, _fragment} = sign_in(provider, nonce, payload, context)
       Fixtures.Actors.delete(actor)
       assert sign_in(provider, nonce, payload, context) == {:error, :unauthorized}
     end
@@ -3046,7 +3050,7 @@ defmodule Domain.AuthTest do
       nonce = "nonce"
       context = %Auth.Context{type: :browser, user_agent: user_agent, remote_ip: remote_ip}
 
-      assert {:ok, _fragment} = sign_in(provider, nonce, payload, context)
+      assert {:ok, _token_identity, _fragment} = sign_in(provider, nonce, payload, context)
       {:ok, _provider} = delete_provider(provider, subject)
       assert sign_in(provider, nonce, payload, context) == {:error, :unauthorized}
     end

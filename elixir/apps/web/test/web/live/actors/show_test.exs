@@ -5,11 +5,13 @@ defmodule Web.Live.Actors.ShowTest do
     account = Fixtures.Accounts.create_account()
     actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
 
-    assert live(conn, ~p"/#{account}/actors/#{actor}") ==
+    path = ~p"/#{account}/actors/#{actor}"
+
+    assert live(conn, path) ==
              {:error,
               {:redirect,
                %{
-                 to: ~p"/#{account}",
+                 to: ~p"/#{account}?#{%{redirect_to: path}}",
                  flash: %{"error" => "You must log in to access this page."}
                }}}
   end
