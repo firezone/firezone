@@ -215,7 +215,7 @@ fn handle_system_tray_event(app: &tauri::AppHandle, event: TrayMenuEvent) -> Res
 pub(crate) enum ControllerRequest {
     CopyResource(String),
     Disconnected,
-    ExportLogs(PathBuf),
+    ExportLogs { path: PathBuf, stem: PathBuf },
     GetAdvancedSettings(oneshot::Sender<AdvancedSettings>),
     SchemeRequest(url::Url),
     SignIn,
@@ -514,8 +514,8 @@ async fn run_controller(
                             tracing::debug!("disconnecting connlib");
                             session.connlib.disconnect(None);
                         }
-                    }
-                    Req::ExportLogs(file_path) => logging::export_logs_to(file_path).await?,
+                    },
+                    Req::ExportLogs{path, stem} => logging::export_logs_to(path, stem).await?,
                     Req::GetAdvancedSettings(tx) => {
                         tx.send(controller.advanced_settings.clone()).ok();
                     }
