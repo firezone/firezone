@@ -53,3 +53,10 @@ rtnetlink = { version = "0.13", default-features = false, features = ["tokio_soc
 # Windows tunnel dependencies
 [target.'cfg(target_os = "windows")'.dependencies]
 wintun = "0.3.2"
+
+# Windows Win32 API
+[target.'cfg(windows)'.dependencies.windows]
+version = "0.52.0"
+features = [
+  "Win32_Foundation",
+]

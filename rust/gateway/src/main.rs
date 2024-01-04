@@ -173,7 +173,7 @@ async fn connect_to_portal(
     loop {
         let result = phoenix_channel::init::<InitGateway, _, _>(
             Secret::new(SecureUrl::from_url(connect_url.clone())),
-            get_user_agent(),
+            get_user_agent(None),
             PHOENIX_TOPIC,
             (),
         )

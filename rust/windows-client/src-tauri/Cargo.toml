@@ -50,11 +50,10 @@ wintun = "0.3.2"
 version = "0.52.0"
 features = [
   "Win32_Foundation",
+  # Needed for deep_link module
   "Win32_Security",
-  "Win32_System_LibraryLoader",
+  # Needed for deep_link module
   "Win32_System_SystemServices",
-  "Win32_UI_Shell",
-  "Win32_UI_WindowsAndMessaging",
 ]
 
 [features]
