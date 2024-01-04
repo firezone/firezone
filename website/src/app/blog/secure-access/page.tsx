@@ -11,7 +11,7 @@ export default function Page() {
   return (
     <Post
       authorName="Jeff Spencer"
-      authorTitle="Head of Marketing"
+      authorTitle=""
       authorEmail="jeff@firezone.dev"
       title="Secure remote access makes remote work a win-win"
       date="November 17, 2023"

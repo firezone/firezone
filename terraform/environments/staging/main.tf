@@ -7,9 +7,7 @@ locals {
     "thomas@firezone.dev"
   ]
 
-  demo_access = [
-    "jeff@firezone.dev"
-  ]
+  demo_access = []
 
   region            = "us-east1"
   availability_zone = "us-east1-d"
