@@ -252,6 +252,32 @@ fn get_description(
         return Some(resource.clone());
     }
 
+    if let Some(resource) = dns_resources.get(
+        &RelativeDname::<Vec<_>>::from_octets(b"\x01?".as_ref().into())
+            .ok()?
+            .chain(name)
+            .ok()?
+            .to_dname::<Vec<_>>()
+            .ok()?
+            .to_string(),
+    ) {
+        return Some(resource.clone());
+    }
+
+    if let Some(parent) = name.parent() {
+        if let Some(resource) = dns_resources.get(
+            &RelativeDname::<Vec<_>>::from_octets(b"\x01?".as_ref().into())
+                .ok()?
+                .chain(parent)
+                .ok()?
+                .to_dname::<Vec<_>>()
+                .ok()?
+                .to_string(),
+        ) {
+            return Some(resource.clone());
+        }
+    }
+
     name.iter_suffixes().find_map(|n| {
         dns_resources
             .get(
