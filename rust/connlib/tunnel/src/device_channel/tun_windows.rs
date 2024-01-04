@@ -2,7 +2,7 @@ use connlib_shared::{messages::Interface as InterfaceConfig, Result, DNS_SENTINE
 use ip_network::IpNetwork;
 use std::{
     io,
-    net::Ipv6Addr,
+    net::{Ipv6Addr, SocketAddrV4, SocketAddrV6},
     os::windows::process::CommandExt,
     process::{Command, Stdio},
     str::FromStr,
@@ -12,7 +12,10 @@ use std::{
 use tokio::sync::mpsc;
 use windows::Win32::{
     NetworkManagement::{
-        IpHelper::{GetIpInterfaceEntry, SetIpInterfaceEntry, MIB_IPINTERFACE_ROW},
+        IpHelper::{
+            CreateIpForwardEntry2, GetIpInterfaceEntry, InitializeIpForwardEntry,
+            SetIpInterfaceEntry, MIB_IPFORWARD_ROW2, MIB_IPINTERFACE_ROW,
+        },
         Ndis::NET_LUID_LH,
     },
     Networking::WinSock::AF_INET,
@@ -127,16 +130,28 @@ impl Tun {
     // It's okay if this blocks until the route is added in the OS.
     pub fn add_route(&self, route: IpNetwork) -> Result<()> {
         tracing::debug!("add_route {route}");
-        let iface_idx = self.iface_idx;
-        // TODO: Pick a more elegant way to do this
-        Command::new("powershell")
-            .creation_flags(CREATE_NO_WINDOW)
-            .arg("-Command")
-            .arg(format!(
-                "New-NetRoute -InterfaceIndex {iface_idx} -DestinationPrefix \"{route}\""
-            ))
-            .stdout(Stdio::null())
-            .status()?;
+        let mut row = MIB_IPFORWARD_ROW2::default();
+        // Safety: Windows shouldn't store the reference anywhere, it's just setting defaults
+        unsafe { InitializeIpForwardEntry(&mut row) };
+
+        let prefix = &mut row.DestinationPrefix;
+        match route {
+            IpNetwork::V4(x) => {
+                prefix.PrefixLength = x.netmask();
+                prefix.Prefix.Ipv4 = SocketAddrV4::new(x.network_address(), 0).into();
+            }
+            IpNetwork::V6(x) => {
+                prefix.PrefixLength = x.netmask();
+                prefix.Prefix.Ipv6 = SocketAddrV6::new(x.network_address(), 0, 0, 0).into();
+                tracing::warn!("ipv6 not implemented right here yet");
+            }
+        }
+
+        row.InterfaceIndex = self.iface_idx;
+        row.Metric = 0;
+
+        // Safety: Windows shouldn't store the reference anywhere, it's just a way to pass lots of arguments at once.
+        unsafe { CreateIpForwardEntry2(&row) }?;
         Ok(())
     }
 
