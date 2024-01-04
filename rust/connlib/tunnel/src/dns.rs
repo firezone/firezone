@@ -5,6 +5,7 @@ use crate::{get_v4, get_v6, DnsQuery};
 use connlib_shared::error::ConnlibError;
 use connlib_shared::messages::ResourceDescriptionDns;
 use connlib_shared::{Dname, DNS_SENTINEL};
+use domain::base::RelativeDname;
 use domain::base::{
     iana::{Class, Rcode, Rtype},
     Message, MessageBuilder, Question, ToDname,
@@ -243,6 +244,54 @@ enum RecordData<T> {
     Ptr(domain::rdata::Ptr<T>),
 }
 
+fn get_description(
+    name: &Dname,
+    dns_resources: &HashMap<String, ResourceDescriptionDns>,
+) -> Option<ResourceDescriptionDns> {
+    if let Some(resource) = dns_resources.get(&name.to_string()) {
+        return Some(resource.clone());
+    }
+
+    if let Some(resource) = dns_resources.get(
+        &RelativeDname::<Vec<_>>::from_octets(b"\x01?".as_ref().into())
+            .ok()?
+            .chain(name)
+            .ok()?
+            .to_dname::<Vec<_>>()
+            .ok()?
+            .to_string(),
+    ) {
+        return Some(resource.clone());
+    }
+
+    if let Some(parent) = name.parent() {
+        if let Some(resource) = dns_resources.get(
+            &RelativeDname::<Vec<_>>::from_octets(b"\x01?".as_ref().into())
+                .ok()?
+                .chain(parent)
+                .ok()?
+                .to_dname::<Vec<_>>()
+                .ok()?
+                .to_string(),
+        ) {
+            return Some(resource.clone());
+        }
+    }
+
+    name.iter_suffixes().find_map(|n| {
+        dns_resources
+            .get(
+                &RelativeDname::wildcard_vec()
+                    .chain(n)
+                    .ok()?
+                    .to_dname::<Vec<_>>()
+                    .ok()?
+                    .to_string(),
+            )
+            .cloned()
+    })
+}
+
 fn resource_from_question<N: ToDname>(
     dns_resources: &HashMap<String, ResourceDescriptionDns>,
     dns_resources_internal_ips: &HashMap<DnsResource, HashSet<IpAddr>>,
@@ -253,14 +302,11 @@ fn resource_from_question<N: ToDname>(
 
     match qtype {
         Rtype::A => {
-            let Some(description) = name
-                .iter_suffixes()
-                .find_map(|n| dns_resources.get(&n.to_string()))
-            else {
+            let Some(description) = get_description(&name, dns_resources) else {
                 return Some(ResolveStrategy::forward(name.to_string(), qtype));
             };
 
-            let description = DnsResource::from_description(description, name);
+            let description = DnsResource::from_description(&description, name);
             let Some(ips) = dns_resources_internal_ips.get(&description) else {
                 return Some(ResolveStrategy::DeferredResponse(description));
             };
@@ -273,13 +319,10 @@ fn resource_from_question<N: ToDname>(
             )))
         }
         Rtype::Aaaa => {
-            let Some(description) = name
-                .iter_suffixes()
-                .find_map(|n| dns_resources.get(&n.to_string()))
-            else {
+            let Some(description) = get_description(&name, dns_resources) else {
                 return Some(ResolveStrategy::forward(name.to_string(), qtype));
             };
-            let description = DnsResource::from_description(description, name);
+            let description = DnsResource::from_description(&description, name);
             let Some(ips) = dns_resources_internal_ips.get(&description) else {
                 return Some(ResolveStrategy::DeferredResponse(description));
             };
@@ -307,13 +350,9 @@ fn resource_from_question<N: ToDname>(
             )))
         }
         _ => {
-            if name
-                .iter_suffixes()
-                .any(|n| dns_resources.contains_key(&n.to_string()))
-            {
-                // If it's a resource we manage we don't allow a leak here.
+            let Some(_) = get_description(&name, dns_resources) else {
                 return None;
-            }
+            };
 
             Some(ResolveStrategy::forward(name.to_string(), qtype))
         }
@@ -360,8 +399,55 @@ fn reverse_dns_addr_v6<'a>(dns_parts: &mut impl Iterator<Item = &'a str>) -> Opt
 
 #[cfg(test)]
 mod test {
-    use super::reverse_dns_addr;
-    use std::net::Ipv4Addr;
+    use connlib_shared::{messages::ResourceDescriptionDns, Dname};
+
+    use super::{get_description, reverse_dns_addr};
+    use std::{collections::HashMap, net::Ipv4Addr};
+
+    fn foo() -> ResourceDescriptionDns {
+        serde_json::from_str(
+            r#"{
+                "id": "c4bb3d79-afa7-4660-8918-06c38fda3a4a",
+                "address": "*.foo.com",
+                "name": "foo.com wildcard"
+            }"#,
+        )
+        .unwrap()
+    }
+
+    fn bar() -> ResourceDescriptionDns {
+        serde_json::from_str(
+            r#"{
+                "id": "c4bb3d79-afa7-4660-8918-06c38fda3a4b",
+                "address": "*.bar.com",
+                "name": "bar.com wildcard"
+            }"#,
+        )
+        .unwrap()
+    }
+
+    fn baz() -> ResourceDescriptionDns {
+        serde_json::from_str(
+            r#"{
+                "id": "c4bb3d79-afa7-4660-8918-06c38fda3a4c",
+                "address": "baz.com",
+                "name": "baz.com"
+            }"#,
+        )
+        .unwrap()
+    }
+
+    fn dns_resource_fixture() -> HashMap<String, ResourceDescriptionDns> {
+        let mut dns_resources_fixture = HashMap::new();
+
+        dns_resources_fixture.insert("*.foo.com".to_string(), foo());
+
+        dns_resources_fixture.insert("?.bar.com".to_string(), bar());
+
+        dns_resources_fixture.insert("baz.com".to_string(), baz());
+
+        dns_resources_fixture
+    }
 
     #[test]
     fn reverse_dns_addr_works_v4() {
@@ -414,5 +500,98 @@ mod test {
             ),
             None
         );
+    }
+
+    #[test]
+    fn wildcard_matching() {
+        let dns_resources_fixture = dns_resource_fixture();
+
+        assert_eq!(
+            get_description(
+                &Dname::vec_from_str("a.foo.com").unwrap(),
+                &dns_resources_fixture,
+            )
+            .unwrap(),
+            foo(),
+        );
+
+        assert_eq!(
+            get_description(
+                &Dname::vec_from_str("foo.com").unwrap(),
+                &dns_resources_fixture,
+            )
+            .unwrap(),
+            foo(),
+        );
+
+        assert_eq!(
+            get_description(
+                &Dname::vec_from_str("a.b.foo.com").unwrap(),
+                &dns_resources_fixture,
+            )
+            .unwrap(),
+            foo(),
+        );
+
+        assert!(get_description(
+            &Dname::vec_from_str("oo.com").unwrap(),
+            &dns_resources_fixture,
+        )
+        .is_none(),);
+    }
+
+    #[test]
+    fn question_mark_matching() {
+        let dns_resources_fixture = dns_resource_fixture();
+
+        assert_eq!(
+            get_description(
+                &Dname::vec_from_str("a.bar.com").unwrap(),
+                &dns_resources_fixture,
+            )
+            .unwrap(),
+            bar(),
+        );
+
+        assert_eq!(
+            get_description(
+                &Dname::vec_from_str("bar.com").unwrap(),
+                &dns_resources_fixture,
+            )
+            .unwrap(),
+            bar(),
+        );
+
+        assert!(get_description(
+            &Dname::vec_from_str("a.b.bar.com").unwrap(),
+            &dns_resources_fixture,
+        )
+        .is_none(),);
+    }
+
+    #[test]
+    fn exact_matching() {
+        let dns_resources_fixture = dns_resource_fixture();
+
+        assert_eq!(
+            get_description(
+                &Dname::vec_from_str("baz.com").unwrap(),
+                &dns_resources_fixture,
+            )
+            .unwrap(),
+            baz(),
+        );
+
+        assert!(get_description(
+            &Dname::vec_from_str("a.baz.com").unwrap(),
+            &dns_resources_fixture,
+        )
+        .is_none());
+
+        assert!(get_description(
+            &Dname::vec_from_str("a.b.baz.com").unwrap(),
+            &dns_resources_fixture,
+        )
+        .is_none(),);
     }
 }
