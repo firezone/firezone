@@ -7,14 +7,16 @@ defmodule Domain.Fixtures.Tokens do
 
   def token_attrs(attrs \\ %{}) do
     type = :browser
-    secret = Domain.Crypto.random_token(32)
+    nonce = Domain.Crypto.random_token(32, encoder: :hex32)
+    fragment = Domain.Crypto.random_token(32)
     expires_at = DateTime.utc_now() |> DateTime.add(1, :day)
     user_agent = Fixtures.Auth.user_agent()
     remote_ip = Fixtures.Auth.remote_ip()
 
     Enum.into(attrs, %{
       type: type,
-      secret: secret,
+      secret_nonce: nonce,
+      secret_fragment: fragment,
       expires_at: expires_at,
       created_by_user_agent: user_agent,
       created_by_remote_ip: remote_ip

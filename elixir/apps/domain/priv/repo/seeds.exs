@@ -185,36 +185,59 @@ other_admin_actor_email = "other@localhost"
     }
   })
 
-unprivileged_actor_token = unprivileged_actor_email_identity.provider_virtual_state.sign_in_token
-admin_actor_token = admin_actor_email_identity.provider_virtual_state.sign_in_token
+unprivileged_actor_email_token =
+  unprivileged_actor_email_identity.provider_virtual_state.sign_in_token
+
+admin_actor_email_token = admin_actor_email_identity.provider_virtual_state.sign_in_token
+
+unprivileged_actor_context = %Auth.Context{
+  type: :browser,
+  user_agent: "Debian/11.0.0 connlib/0.1.0",
+  remote_ip: {172, 28, 0, 100},
+  remote_ip_location_region: "UA",
+  remote_ip_location_city: "Kyiv",
+  remote_ip_location_lat: 50.4333,
+  remote_ip_location_lon: 30.5167
+}
+
+nonce = "n"
+
+{:ok, unprivileged_actor_token} =
+  Auth.create_token(unprivileged_actor_email_identity, unprivileged_actor_context, nonce, nil)
 
 unprivileged_subject =
   Auth.build_subject(
+    unprivileged_actor_token,
     unprivileged_actor_userpass_identity,
-    DateTime.utc_now() |> DateTime.add(365, :day),
-    %Auth.Context{
-      user_agent: "Debian/11.0.0 connlib/0.1.0",
-      remote_ip: {172, 28, 0, 100},
-      remote_ip_location_region: "UA",
-      remote_ip_location_city: "Kyiv",
-      remote_ip_location_lat: 50.4333,
-      remote_ip_location_lon: 30.5167
-    }
+    unprivileged_actor_context
   )
+
+admin_actor_context = %Auth.Context{
+  type: :browser,
+  user_agent: "iOS/12.5 (iPhone) connlib/0.7.412",
+  remote_ip: {100, 64, 100, 58},
+  remote_ip_location_region: "UA",
+  remote_ip_location_city: "Kyiv",
+  remote_ip_location_lat: 50.4333,
+  remote_ip_location_lon: 30.5167
+}
+
+{:ok, admin_actor_token} =
+  Auth.create_token(admin_actor_email_identity, admin_actor_context, nonce, nil)
 
 admin_subject =
   Auth.build_subject(
+    admin_actor_token,
     admin_actor_email_identity,
-    nil,
-    %Auth.Context{user_agent: "iOS/12.5 (iPhone) connlib/0.7.412", remote_ip: {100, 64, 100, 58}}
+    admin_actor_context
   )
 
 IO.puts("Created users: ")
 
 for {type, login, password, email_token} <- [
       {unprivileged_actor.type, unprivileged_actor_email, "Firezone1234",
-       unprivileged_actor_token},
-      {admin_actor.type, admin_actor_email, "Firezone1234", admin_actor_token}
+       unprivileged_actor_email_token},
+      {admin_actor.type, admin_actor_email, "Firezone1234", admin_actor_email_token}
     ] do
   IO.puts("  #{login}, #{type}, password: #{password}, email token: #{email_token} (exp in 15m)")
 end
@@ -599,10 +622,19 @@ IO.puts("Policies Created")
 IO.puts("")
 
 {:ok, unprivileged_subject_client_token} =
-  Auth.create_client_token_for_subject(unprivileged_subject)
+  Auth.create_token(
+    unprivileged_actor_email_identity,
+    %{unprivileged_actor_context | type: :client},
+    nonce,
+    nil
+  )
 
 IO.puts("Created client tokens:")
-IO.puts("  #{unprivileged_actor_email} token: #{unprivileged_subject_client_token}")
+
+IO.puts(
+  "  #{unprivileged_actor_email} token: #{nonce <> Domain.Tokens.encode_fragment!(unprivileged_subject_client_token)}"
+)
+
 IO.puts("")
 
 {:ok, _resource, flow} =

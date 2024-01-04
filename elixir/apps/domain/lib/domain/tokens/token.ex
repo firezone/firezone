@@ -9,9 +9,11 @@ defmodule Domain.Tokens.Token do
     # belongs_to :relay_group, Domain.Relays.Group
     # belongs_to :gateway_group, Domain.Relays.Group
 
-    field :secret, :string, virtual: true, redact: true
-    field :secret_salt, :string
-    field :secret_hash, :string
+    # we store just hash(nonce+fragment+salt)
+    field :secret_nonce, :string, virtual: true, redact: true
+    field :secret_fragment, :string, virtual: true, redact: true
+    field :secret_salt, :string, redact: true
+    field :secret_hash, :string, redact: true
 
     belongs_to :account, Domain.Accounts.Account
 

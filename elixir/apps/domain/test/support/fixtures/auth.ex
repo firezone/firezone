@@ -393,6 +393,7 @@ defmodule Domain.Fixtures.Auth do
         |> Enum.into(%{
           account: account,
           type: context.type,
+          secret_nonce: Domain.Crypto.random_token(32, encoder: :hex32),
           identity_id: identity.id,
           expires_at: expires_at
         })
@@ -400,6 +401,90 @@ defmodule Domain.Fixtures.Auth do
       end)
 
     Auth.build_subject(token, identity, context)
+  end
+
+  def create_and_encode_token(attrs) do
+    attrs = Enum.into(attrs, %{})
+
+    {account, attrs} =
+      pop_assoc_fixture(attrs, :account, fn assoc_attrs ->
+        relation = attrs[:provider] || attrs[:actor] || attrs[:identity]
+
+        if not is_nil(relation) and is_struct(relation) do
+          Repo.get!(Domain.Accounts.Account, relation.account_id)
+        else
+          Fixtures.Accounts.create_account(assoc_attrs)
+        end
+      end)
+
+    {provider, attrs} =
+      pop_assoc_fixture(attrs, :provider, fn assoc_attrs ->
+        relation = attrs[:identity]
+
+        if not is_nil(relation) and is_struct(relation) do
+          Repo.get!(Domain.Auth.Provider, relation.provider_id)
+        else
+          {provider, _bypass} =
+            assoc_attrs
+            |> Enum.into(%{account: account})
+            |> start_and_create_openid_connect_provider()
+
+          provider
+        end
+      end)
+
+    {provider_identifier, attrs} =
+      Map.pop_lazy(attrs, :provider_identifier, fn ->
+        random_provider_identifier(provider)
+      end)
+
+    {actor, attrs} =
+      pop_assoc_fixture(attrs, :actor, fn assoc_attrs ->
+        relation = attrs[:identity]
+
+        if not is_nil(relation) and is_struct(relation) do
+          Repo.get!(Domain.Actors.Actor, relation.actor_id)
+        else
+          assoc_attrs
+          |> Enum.into(%{
+            type: :account_admin_user,
+            account: account,
+            provider: provider,
+            provider_identifier: provider_identifier
+          })
+          |> Fixtures.Actors.create_actor()
+        end
+      end)
+
+    {identity, attrs} =
+      pop_assoc_fixture(attrs, :identity, fn assoc_attrs ->
+        assoc_attrs
+        |> Enum.into(%{
+          actor: actor,
+          account: account,
+          provider: provider,
+          provider_identifier: provider_identifier
+        })
+        |> create_identity()
+      end)
+
+    {expires_at, attrs} =
+      Map.pop_lazy(attrs, :expires_at, fn ->
+        DateTime.utc_now() |> DateTime.add(60, :second)
+      end)
+
+    {context, attrs} =
+      pop_assoc_fixture(attrs, :context, fn assoc_attrs ->
+        build_context(assoc_attrs)
+      end)
+
+    {nonce, _attrs} =
+      Map.pop_lazy(attrs, :nonce, fn ->
+        Domain.Crypto.random_token(32, encoder: :hex32)
+      end)
+
+    {:ok, token} = Auth.create_token(identity, context, nonce, expires_at)
+    {token, nonce <> Domain.Tokens.encode_fragment!(token)}
   end
 
   def remove_permissions(%Auth.Subject{} = subject) do

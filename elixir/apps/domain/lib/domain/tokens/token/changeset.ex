@@ -3,9 +3,16 @@ defmodule Domain.Tokens.Token.Changeset do
   alias Domain.Auth
   alias Domain.Tokens.Token
 
-  @create_attrs ~w[type account_id identity_id secret created_by_user_agent created_by_remote_ip expires_at]a
+  @required_attrs ~w[
+    type
+    account_id
+    secret_nonce secret_fragment
+    created_by_user_agent created_by_remote_ip
+    expires_at
+  ]a
+
+  @create_attrs ~w[identity_id ]a ++ @required_attrs
   @update_attrs ~w[expires_at]a
-  @required_attrs ~w[type account_id secret created_by_user_agent created_by_remote_ip expires_at]a
 
   def create(attrs) do
     %Token{}
@@ -30,7 +37,13 @@ defmodule Domain.Tokens.Token.Changeset do
   defp changeset(changeset) do
     changeset
     |> put_change(:secret_salt, Domain.Crypto.random_token(16))
-    |> put_hash(:secret, :sha, with_salt: :secret_salt, to: :secret_hash)
+    |> validate_format(:secret_nonce, ~r/^[^\.]+$/)
+    |> put_hash(:secret_fragment, :sha,
+      with_nonce: :secret_nonce,
+      with_salt: :secret_salt,
+      to: :secret_hash
+    )
+    |> delete_change(:secret_nonce)
     |> validate_datetime(:expires_at, greater_than: DateTime.utc_now())
     |> validate_required(~w[secret_salt secret_hash]a)
     |> validate_required_assocs()

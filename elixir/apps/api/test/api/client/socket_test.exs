@@ -30,40 +30,74 @@ defmodule API.Client.SocketTest do
     end
 
     test "renders error on invalid attrs" do
-      subject = Fixtures.Auth.create_subject()
-      {:ok, token} = Auth.create_session_token_from_subject(subject)
+      context = Fixtures.Auth.build_context(type: :client)
+      {_token, encoded_token} = Fixtures.Auth.create_and_encode_token(context: context)
 
-      attrs = %{token: token}
+      attrs = %{token: encoded_token}
 
-      assert {:error, changeset} = connect(Socket, attrs, connect_info: connect_info(subject))
+      assert {:error, changeset} = connect(Socket, attrs, connect_info: @connect_info)
 
       errors = API.Sockets.changeset_error_to_string(changeset)
       assert errors =~ "public_key: can't be blank"
       assert errors =~ "external_id: can't be blank"
     end
 
-    test "does not allow to use tokens from other contexts" do
-      subject = Fixtures.Auth.create_subject(context: [type: :browser])
-      token = Domain.Tokens.encode_token!(subject.token)
+    test "returns error when token is created for a different context" do
+      context = Fixtures.Auth.build_context(type: :browser)
+      {_token, encoded_token} = Fixtures.Auth.create_and_encode_token(context: context)
 
-      attrs = connect_attrs(token: token)
+      attrs = connect_attrs(token: encoded_token)
 
       assert connect(Socket, attrs, connect_info: @connect_info) == {:error, :invalid_token}
     end
 
-    test "creates a new client" do
-      subject = Fixtures.Auth.create_subject(context: [type: :client])
-      token = Domain.Tokens.encode_token!(subject.token)
+    test "creates a new client for user identity" do
+      context = Fixtures.Auth.build_context(type: :client)
+      {_token, encoded_token} = Fixtures.Auth.create_and_encode_token(context: context)
 
-      attrs = connect_attrs(token: token)
+      attrs = connect_attrs(token: encoded_token)
 
-      assert {:ok, socket} = connect(Socket, attrs, connect_info: connect_info(subject))
+      assert {:ok, socket} = connect(Socket, attrs, connect_info: connect_info(context))
       assert client = Map.fetch!(socket.assigns, :client)
 
       assert client.external_id == attrs["external_id"]
       assert client.public_key == attrs["public_key"]
-      assert client.last_seen_user_agent == subject.context.user_agent
-      assert client.last_seen_remote_ip.address == subject.context.remote_ip
+      assert client.last_seen_user_agent == context.user_agent
+      assert client.last_seen_remote_ip.address == context.remote_ip
+      assert client.last_seen_remote_ip_location_region == "Ukraine"
+      assert client.last_seen_remote_ip_location_city == "Kyiv"
+      assert client.last_seen_remote_ip_location_lat == 50.4333
+      assert client.last_seen_remote_ip_location_lon == 30.5167
+      assert client.last_seen_version == "0.7.412"
+    end
+
+    test "creates a new client for service account identity" do
+      context = Fixtures.Auth.build_context(type: :client)
+      account = Fixtures.Accounts.create_account()
+      provider = Fixtures.Auth.create_token_provider(account: account)
+
+      identity =
+        Fixtures.Auth.create_identity(
+          account: account,
+          provider: provider,
+          provider_virtual_state: %{
+            "expires_at" => DateTime.utc_now() |> DateTime.add(60, :second)
+          }
+        )
+
+      subject = Fixtures.Auth.create_subject(account: account, actor: [type: :account_admin_user])
+
+      {:ok, encoded_token} = Domain.Auth.create_service_account_token(provider, identity, subject)
+
+      attrs = connect_attrs(token: encoded_token)
+
+      assert {:ok, socket} = connect(Socket, attrs, connect_info: connect_info(context))
+      assert client = Map.fetch!(socket.assigns, :client)
+
+      assert client.external_id == attrs["external_id"]
+      assert client.public_key == attrs["public_key"]
+      assert client.last_seen_user_agent == context.user_agent
+      assert client.last_seen_remote_ip.address == context.remote_ip
       assert client.last_seen_remote_ip_location_region == "Ukraine"
       assert client.last_seen_remote_ip_location_city == "Kyiv"
       assert client.last_seen_remote_ip_location_lat == 50.4333
@@ -72,32 +106,41 @@ defmodule API.Client.SocketTest do
     end
 
     test "propagates trace context" do
-      subject = Fixtures.Auth.create_subject(context: [type: :client])
-      token = Domain.Tokens.encode_token!(subject.token)
+      context = Fixtures.Auth.build_context(type: :client)
+      {_token, encoded_token} = Fixtures.Auth.create_and_encode_token(context: context)
 
       span_ctx = OpenTelemetry.Tracer.start_span("test")
       OpenTelemetry.Tracer.set_current_span(span_ctx)
 
-      attrs = connect_attrs(token: token)
+      attrs = connect_attrs(token: encoded_token)
 
       trace_context_headers = [
         {"traceparent", "00-a1bf53221e0be8000000000000000002-f316927eb144aa62-01"}
       ]
 
-      connect_info = %{connect_info(subject) | trace_context_headers: trace_context_headers}
+      connect_info = %{connect_info(context) | trace_context_headers: trace_context_headers}
 
       assert {:ok, _socket} = connect(Socket, attrs, connect_info: connect_info)
       assert span_ctx != OpenTelemetry.Tracer.current_span_ctx()
     end
 
     test "updates existing client" do
-      subject = Fixtures.Auth.create_subject(context: [type: :client])
-      existing_client = Fixtures.Clients.create_client(subject: subject)
-      token = Domain.Tokens.encode_token!(subject.token)
+      account = Fixtures.Accounts.create_account()
+      context = Fixtures.Auth.build_context(type: :client)
+      identity = Fixtures.Auth.create_identity(account: account)
 
-      attrs = connect_attrs(token: token, external_id: existing_client.external_id)
+      {_token, encoded_token} =
+        Fixtures.Auth.create_and_encode_token(
+          account: account,
+          identity: identity,
+          context: context
+        )
 
-      assert {:ok, socket} = connect(Socket, attrs, connect_info: connect_info(subject))
+      existing_client = Fixtures.Clients.create_client(account: account, identity: identity)
+
+      attrs = connect_attrs(token: encoded_token, external_id: existing_client.external_id)
+
+      assert {:ok, socket} = connect(Socket, attrs, connect_info: connect_info(context))
       assert client = Repo.one(Domain.Clients.Client)
       assert client.id == socket.assigns.client.id
       assert client.last_seen_remote_ip_location_region == "Ukraine"
@@ -107,13 +150,22 @@ defmodule API.Client.SocketTest do
     end
 
     test "uses region code to put default coordinates" do
-      subject = Fixtures.Auth.create_subject(context: [type: :client])
-      existing_client = Fixtures.Clients.create_client(subject: subject)
-      token = Domain.Tokens.encode_token!(subject.token)
+      account = Fixtures.Accounts.create_account()
+      context = Fixtures.Auth.build_context(type: :client)
+      identity = Fixtures.Auth.create_identity(account: account)
 
-      attrs = connect_attrs(token: token, external_id: existing_client.external_id)
+      {_token, encoded_token} =
+        Fixtures.Auth.create_and_encode_token(
+          account: account,
+          identity: identity,
+          context: context
+        )
 
-      connect_info = %{connect_info(subject) | x_headers: [{"x-geo-location-region", "UA"}]}
+      existing_client = Fixtures.Clients.create_client(account: account, identity: identity)
+
+      attrs = connect_attrs(token: encoded_token, external_id: existing_client.external_id)
+
+      connect_info = %{connect_info(context) | x_headers: [{"x-geo-location-region", "UA"}]}
 
       assert {:ok, socket} = connect(Socket, attrs, connect_info: connect_info)
       assert client = Repo.one(Domain.Clients.Client)
@@ -134,10 +186,10 @@ defmodule API.Client.SocketTest do
     end
   end
 
-  defp connect_info(subject) do
+  defp connect_info(context) do
     %{
-      user_agent: subject.context.user_agent,
-      peer_data: %{address: subject.context.remote_ip},
+      user_agent: context.user_agent,
+      peer_data: %{address: context.remote_ip},
       x_headers: @geo_headers,
       trace_context_headers: []
     }

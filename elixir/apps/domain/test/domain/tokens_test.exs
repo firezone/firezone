@@ -9,6 +9,22 @@ defmodule Domain.TokensTest do
     %{account: account, subject: subject}
   end
 
+  # describe "fetch_token_by_id/2" do
+  #   test "returns error when subject does not have permissions", %{account: account, subject: subject} do
+  #     token = Fixtures.Tokens.create_token(account: account)
+  #     assert fetch_token_by_id(token.id, subject) == {:error, :unauthorized}
+  #   end
+
+  #   test "returns error when token is not found", %{subject: subject} do
+  #     assert fetch_token_by_id(Ecto.UUID.generate(), subject) == {:error, :not_found}
+  #   end
+
+  #   test "returns token when subject has permissions", %{account: account, subject: subject} do
+  #     token = Fixtures.Tokens.create_token(account: account)
+  #     assert {:ok, _token} = fetch_token_by_id(token.id, subject)
+  #   end
+  # end
+
   describe "create_token/2" do
     test "returns errors on missing required attrs" do
       assert {:error, changeset} = create_token(%{})
@@ -17,7 +33,8 @@ defmodule Domain.TokensTest do
                type: ["can't be blank"],
                account_id: ["can't be blank"],
                expires_at: ["can't be blank"],
-               secret: ["can't be blank"],
+               secret_nonce: ["can't be blank"],
+               secret_fragment: ["can't be blank"],
                secret_hash: ["can't be blank"],
                created_by_remote_ip: ["can't be blank"],
                created_by_user_agent: ["can't be blank"]
@@ -27,7 +44,8 @@ defmodule Domain.TokensTest do
     test "returns errors on invalid attrs" do
       attrs = %{
         type: :relay,
-        secret: -1,
+        secret_nonce: -1,
+        secret_fragment: -1,
         expires_at: DateTime.utc_now(),
         created_by_user_agent: -1,
         created_by_remote_ip: -1,
@@ -39,7 +57,8 @@ defmodule Domain.TokensTest do
       assert %{
                type: ["is invalid"],
                expires_at: ["must be greater than" <> _],
-               secret: ["is invalid"],
+               secret_nonce: ["is invalid"],
+               secret_fragment: ["is invalid"],
                secret_hash: ["can't be blank"],
                created_by_remote_ip: ["is invalid"],
                created_by_user_agent: ["is invalid"]
@@ -48,7 +67,8 @@ defmodule Domain.TokensTest do
 
     test "inserts a token", %{account: account} do
       type = :email
-      secret = Domain.Crypto.random_token(32)
+      nonce = "nonce"
+      fragment = Domain.Crypto.random_token(32)
       expires_at = DateTime.utc_now() |> DateTime.add(1, :day)
       user_agent = Fixtures.Tokens.user_agent()
       remote_ip = Fixtures.Tokens.remote_ip()
@@ -56,7 +76,8 @@ defmodule Domain.TokensTest do
       attrs = %{
         type: type,
         account_id: account.id,
-        secret: secret,
+        secret_nonce: nonce,
+        secret_fragment: fragment,
         expires_at: expires_at,
         created_by_user_agent: user_agent,
         created_by_remote_ip: remote_ip
@@ -69,7 +90,8 @@ defmodule Domain.TokensTest do
       assert token.created_by_user_agent == user_agent
       assert token.created_by_remote_ip.address == remote_ip
 
-      assert token.secret == secret
+      refute token.secret_nonce
+      assert token.secret_fragment == fragment
       assert token.secret_salt
       assert token.secret_hash
 
@@ -84,7 +106,8 @@ defmodule Domain.TokensTest do
       assert errors_on(changeset) == %{
                type: ["can't be blank"],
                expires_at: ["can't be blank"],
-               secret: ["can't be blank"],
+               secret_nonce: ["can't be blank"],
+               secret_fragment: ["can't be blank"],
                secret_hash: ["can't be blank"],
                created_by_remote_ip: ["can't be blank"],
                created_by_user_agent: ["can't be blank"]
@@ -94,7 +117,8 @@ defmodule Domain.TokensTest do
     test "returns errors on invalid attrs", %{subject: subject} do
       attrs = %{
         type: -1,
-        secret: -1,
+        secret_nonce: "x.o",
+        secret_fragment: -1,
         expires_at: DateTime.utc_now(),
         created_by_user_agent: -1,
         created_by_remote_ip: -1
@@ -105,7 +129,8 @@ defmodule Domain.TokensTest do
       assert %{
                type: ["is invalid"],
                expires_at: ["must be greater than" <> _],
-               secret: ["is invalid"],
+               secret_nonce: ["has invalid format"],
+               secret_fragment: ["is invalid"],
                secret_hash: ["can't be blank"],
                created_by_remote_ip: ["is invalid"],
                created_by_user_agent: ["is invalid"]
@@ -114,14 +139,16 @@ defmodule Domain.TokensTest do
 
     test "inserts a token", %{account: account, subject: subject} do
       type = :client
-      secret = Domain.Crypto.random_token(32)
+      nonce = "nonce"
+      fragment = Domain.Crypto.random_token(32)
       expires_at = DateTime.utc_now() |> DateTime.add(1, :day)
       user_agent = Fixtures.Tokens.user_agent()
       remote_ip = Fixtures.Tokens.remote_ip()
 
       attrs = %{
         type: type,
-        secret: secret,
+        secret_nonce: nonce,
+        secret_fragment: fragment,
         expires_at: expires_at,
         created_by_user_agent: user_agent,
         created_by_remote_ip: remote_ip
@@ -134,31 +161,36 @@ defmodule Domain.TokensTest do
       assert token.created_by_user_agent == user_agent
       assert token.created_by_remote_ip.address == remote_ip
 
-      assert token.secret == secret
+      assert token.secret_fragment == fragment
+      refute token.secret_nonce
       assert token.secret_salt
       assert token.secret_hash
 
-      assert Domain.Crypto.equal?(:sha, secret <> token.secret_salt, token.secret_hash)
+      assert Domain.Crypto.equal?(:sha, nonce <> fragment <> token.secret_salt, token.secret_hash)
 
       assert token.account_id == account.id
     end
   end
 
   describe "use_token/4" do
-    test "returns token when context and secret are valid", %{account: account} do
-      token = Fixtures.Tokens.create_token(account: account)
+    test "returns token when nonce, context and secret are valid", %{account: account} do
+      nonce = "nonce"
+      token = Fixtures.Tokens.create_token(account: account, secret_nonce: nonce)
       context = Fixtures.Auth.build_context(type: token.type)
-      encoded_token = encode_token!(token)
+      encoded_fragment = encode_fragment!(token)
 
-      assert {:ok, _token} = use_token(account.id, encoded_token, context)
+      assert {:ok, used_token} = use_token(nonce <> encoded_fragment, context)
+      assert used_token.account_id == account.id
+      assert used_token.id == token.id
     end
 
     test "updates last seen fields when token is used", %{account: account} do
-      token = Fixtures.Tokens.create_token(account: account)
+      nonce = "nonce"
+      token = Fixtures.Tokens.create_token(account: account, secret_nonce: nonce)
       context = Fixtures.Auth.build_context(type: token.type)
-      encoded_token = encode_token!(token)
+      encoded_fragment = encode_fragment!(token)
 
-      assert {:ok, token} = use_token(account.id, encoded_token, context)
+      assert {:ok, token} = use_token(nonce <> encoded_fragment, context)
 
       assert token.last_seen_user_agent == context.user_agent
       assert token.last_seen_remote_ip.address == context.remote_ip
@@ -170,20 +202,21 @@ defmodule Domain.TokensTest do
     end
 
     test "returns error when secret is invalid", %{account: account} do
-      token = Fixtures.Tokens.create_token(account: account)
+      nonce = "nonce"
+      token = Fixtures.Tokens.create_token(account: account, secret_nonce: nonce)
       context = Fixtures.Auth.build_context(type: token.type)
-      encoded_token = encode_token!(%{token | secret: "bar"})
+      encoded_fragment = encode_fragment!(%{token | secret_fragment: "bar"})
 
-      assert use_token(account.id, encoded_token, context) ==
+      assert use_token(nonce <> encoded_fragment, context) ==
                {:error, :invalid_or_expired_token}
     end
 
-    test "returns error when account_id is invalid", %{account: account} do
+    test "returns error when nonce is invalid", %{account: account} do
       token = Fixtures.Tokens.create_token(account: account)
       context = Fixtures.Auth.build_context(type: token.type)
-      encoded_token = encode_token!(%{token | account_id: Ecto.UUID.generate()})
+      encoded_fragment = encode_fragment!(token)
 
-      assert use_token(account.id, encoded_token, context) ==
+      assert use_token("foo" <> encoded_fragment, context) ==
                {:error, :invalid_or_expired_token}
     end
 
@@ -191,15 +224,18 @@ defmodule Domain.TokensTest do
       token = Fixtures.Tokens.create_token(account: account)
       context = Fixtures.Auth.build_context(type: token.type)
 
-      assert use_token(account.id, "bar", context) == {:error, :invalid_or_expired_token}
+      assert use_token("nonce.bar", context) == {:error, :invalid_or_expired_token}
+      assert use_token("bar", context) == {:error, :invalid_or_expired_token}
+      assert use_token("", context) == {:error, :invalid_or_expired_token}
     end
 
     test "returns error when type is invalid", %{account: account} do
-      token = Fixtures.Tokens.create_token(account: account)
+      nonce = "nonce"
+      token = Fixtures.Tokens.create_token(account: account, secret_nonce: nonce)
       context = Fixtures.Auth.build_context(type: :other)
-      encoded_token = encode_token!(token)
+      encoded_fragment = encode_fragment!(token)
 
-      assert use_token(account.id, encoded_token, context) ==
+      assert use_token(nonce <> encoded_fragment, context) ==
                {:error, :invalid_or_expired_token}
     end
   end
@@ -248,18 +284,21 @@ defmodule Domain.TokensTest do
     end
   end
 
-  describe "delete_token/1" do
+  describe "delete_token_by_id/1" do
     test "marks token as deleted" do
       token = Fixtures.Tokens.create_token()
-      assert {:ok, token} = delete_token(token)
-      assert token.deleted_at
+      assert delete_token_by_id(token.id) == {:ok, 1}
       assert Repo.get(Tokens.Token, token.id).deleted_at
     end
 
     test "returns error when token is already deleted" do
       token = Fixtures.Tokens.create_token()
       token = Fixtures.Tokens.delete_token(token)
-      assert delete_token(token) == {:error, :not_found}
+      assert delete_token_by_id(token.id) == {:ok, 0}
+    end
+
+    test "returns error when token id is invalid" do
+      assert delete_token_by_id("foo") == {:ok, 0}
     end
   end
 end

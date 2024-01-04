@@ -38,23 +38,27 @@ defmodule Domain.Tokens do
   It then additionally signed and encoded using `Plug.Crypto.sign/3` to make sure that
   you can't hit our database with requests using a random token id and secret.
   """
-  def encode_token!(%Token{secret: secret, type: type} = token) when not is_nil(secret) do
-    body = {token.account_id, token.id, token.secret}
+  def encode_fragment!(%Token{secret_fragment: fragment, type: type} = token)
+      when not is_nil(fragment) do
+    body = {token.account_id, token.id, fragment}
     config = fetch_config!()
     key_base = Keyword.fetch!(config, :key_base)
     salt = Keyword.fetch!(config, :salt)
-    Plug.Crypto.sign(key_base, salt <> to_string(type), body)
+    "." <> Plug.Crypto.sign(key_base, salt <> to_string(type), body)
   end
 
-  def use_token(encrypted_token, %Auth.Context{} = context) do
-    with {:ok, {account_id, id, secret}} <- verify_token(encrypted_token, context),
+  # TODO: maybe accept a slug too here and reuse it to preload account?
+  def use_token(encoded_token, %Auth.Context{} = context) do
+    with [nonce, encoded_fragment] <- String.split(encoded_token, ".", parts: 2),
+         {:ok, {account_id, id, secret}} <- verify_token(encoded_fragment, context),
          queryable =
            Token.Query.by_id(id)
            |> Token.Query.by_account_id(account_id)
            |> Token.Query.by_type(context.type)
            |> Token.Query.not_expired(),
          {:ok, token} <- Repo.fetch(queryable),
-         true <- Domain.Crypto.equal?(:sha, secret <> token.secret_salt, token.secret_hash) do
+         true <-
+           Domain.Crypto.equal?(:sha, nonce <> secret <> token.secret_salt, token.secret_hash) do
       Token.Changeset.use(token, context)
       |> Repo.update()
     else
@@ -62,6 +66,7 @@ defmodule Domain.Tokens do
       {:ok, _token_payload} -> {:error, :invalid_or_expired_token}
       {:error, :not_found} -> {:error, :invalid_or_expired_token}
       false -> {:error, :invalid_or_expired_token}
+      _other -> {:error, :invalid_or_expired_token}
     end
   end
 

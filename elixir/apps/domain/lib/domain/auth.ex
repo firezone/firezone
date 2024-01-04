@@ -22,7 +22,7 @@ defmodule Domain.Auth do
 
   Every function directly or indirectly called by the end user MUST have a Subject
   as last or second to last argument, implementation of the functions MUST use
-  it's own context `Authroizer` module (that implements behaviour `Domain.Auth.Authorizer`)
+  it's own context `Authorizer` module (that implements behaviour `Domain.Auth.Authorizer`)
   to filter the data based on the account and permissions of the subject.
 
   As an extra measure, whenever a function performs an action on an object that is not
@@ -36,17 +36,26 @@ defmodule Domain.Auth do
 
   ## Tokens
 
-  The tokens are color coded using `type` field, which means that token issues for browser session
+  ### Color Coding
+
+  The tokens are color coded using `type` field, which means that token issued for a browser session
   can not be used for client calls and vice versa. Type of the token also limits permissions that will
   be later added to the subject.
 
-  Token is additionally signed and encrypted using `Phoenix.Token` to prevent tampering with it
-  and to prevent database lookups for invalid tokens. See `Domain.Tokens.encode_token!/1` for
+  ### Secure client exchange
+
+  The tokens consists of two parts: client-supplied nonce (typically 32-byte hex-encoded string) and
+  server-generated fragment.
+
+  Fragment is additionally signed and encrypted using `Phoenix.Token` to prevent tampering with it
+  and to prevent database lookups for invalid tokens. See `Domain.Tokens.encode_fragment!/1` for
   more details.
+
+  ### Expiration
 
   Token expiration depends on context in which it can be used and is limited by
   `@max_session_duration_hours` to prevent extremely long-lived tokens for
-  `clients` and `browsers`. Fore more details see `Domain.Tokens.token_expires_at/2`.
+  `clients` and `browsers`. Fore more details see `token_expires_at/3`.
   """
   use Supervisor
   alias Domain.{Repo, Validator}
@@ -451,6 +460,7 @@ defmodule Domain.Auth do
   def sign_in(
         %Provider{disabled_at: disabled_at},
         _id_or_provider_identifier,
+        _token_nonce,
         _secret,
         %Context{}
       )
@@ -461,6 +471,7 @@ defmodule Domain.Auth do
   def sign_in(
         %Provider{deleted_at: deleted_at},
         _id_or_provider_identifier,
+        _token_nonce,
         _secret,
         %Context{}
       )
@@ -468,7 +479,13 @@ defmodule Domain.Auth do
     {:error, :unauthorized}
   end
 
-  def sign_in(%Provider{} = provider, id_or_provider_identifier, secret, %Context{} = context) do
+  def sign_in(
+        %Provider{} = provider,
+        id_or_provider_identifier,
+        token_nonce,
+        secret,
+        %Context{} = context
+      ) do
     identity_queryable =
       Identity.Query.not_disabled()
       |> Identity.Query.by_account_id(provider.account_id)
@@ -477,45 +494,50 @@ defmodule Domain.Auth do
 
     with {:ok, identity} <- Repo.fetch(identity_queryable),
          {:ok, identity, expires_at} <- Adapters.verify_secret(provider, identity, secret),
-         {:ok, token} <- create_token(provider, identity, context, expires_at) do
-      {:ok, Tokens.encode_token!(token)}
+         {:ok, token} <- create_token(identity, context, token_nonce, expires_at) do
+      {:ok, Tokens.encode_fragment!(token)}
     else
       {:error, :not_found} -> {:error, :unauthorized}
       {:error, :invalid_secret} -> {:error, :unauthorized}
       {:error, :expired_secret} -> {:error, :unauthorized}
+      {:error, %Ecto.Changeset{}} -> {:error, :malformed_request}
     end
   end
 
-  def sign_in(%Provider{disabled_at: disabled_at}, _payload, %Context{})
+  def sign_in(%Provider{disabled_at: disabled_at}, _token_nonce, _payload, %Context{})
       when not is_nil(disabled_at) do
     {:error, :unauthorized}
   end
 
-  def sign_in(%Provider{deleted_at: deleted_at}, _payload, %Context{})
+  def sign_in(%Provider{deleted_at: deleted_at}, _token_nonce, _payload, %Context{})
       when not is_nil(deleted_at) do
     {:error, :unauthorized}
   end
 
-  def sign_in(%Provider{} = provider, payload, %Context{} = context) do
+  def sign_in(%Provider{} = provider, token_nonce, payload, %Context{} = context) do
     with {:ok, identity, expires_at} <- Adapters.verify_and_update_identity(provider, payload),
-         {:ok, token} <- create_token(provider, identity, context, expires_at) do
-      {:ok, Tokens.encode_token!(token)}
+         {:ok, token} <- create_token(identity, context, token_nonce, expires_at) do
+      {:ok, Tokens.encode_fragment!(token)}
     else
       {:error, :not_found} -> {:error, :unauthorized}
       {:error, :invalid} -> {:error, :unauthorized}
       {:error, :expired} -> {:error, :unauthorized}
+      {:error, %Ecto.Changeset{}} -> {:error, :malformed_request}
     end
   end
 
-  defp create_token(provider, identity, %{type: type} = context, expires_at)
-       when type in [:browser, :client] do
+  # used in tests and seeds
+  @doc false
+  def create_token(identity, %{type: type} = context, nonce, expires_at)
+      when type in [:browser, :client] and is_binary(nonce) do
     identity = Repo.preload(identity, :actor)
     expires_at = token_expires_at(identity.actor, context, expires_at)
 
     Tokens.create_token(%{
-      type: context.type,
-      secret: Domain.Crypto.random_token(32),
-      account_id: provider.account_id,
+      type: type,
+      secret_nonce: nonce,
+      secret_fragment: Domain.Crypto.random_token(32),
+      account_id: identity.account_id,
       identity_id: identity.id,
       expires_at: expires_at,
       created_by_user_agent: context.user_agent,
@@ -578,12 +600,14 @@ defmodule Domain.Auth do
         %Subject{} = subject
       ) do
     {:ok, expires_at, 0} = DateTime.from_iso8601(identity.provider_state["expires_at"])
+    nonce = Domain.Crypto.random_token(32, encoder: :hex32)
 
     {:ok, token} =
       Tokens.create_token(
         %{
           type: :client,
-          secret: Domain.Crypto.random_token(32),
+          secret_nonce: nonce,
+          secret_fragment: Domain.Crypto.random_token(32),
           account_id: provider.account_id,
           identity_id: identity.id,
           expires_at: expires_at,
@@ -593,7 +617,7 @@ defmodule Domain.Auth do
         subject
       )
 
-    {:ok, Tokens.encode_token!(token)}
+    {:ok, nonce <> Tokens.encode_fragment!(token)}
   end
 
   # Authentication

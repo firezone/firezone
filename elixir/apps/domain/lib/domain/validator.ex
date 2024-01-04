@@ -303,10 +303,12 @@ defmodule Domain.Validator do
   def put_hash(%Ecto.Changeset{} = changeset, value_field, type, opts) do
     hash_field = Keyword.fetch!(opts, :to)
     salt_field = Keyword.get(opts, :with_salt)
+    nonce_field = Keyword.get(opts, :with_nonce)
 
     with {:ok, value} <- fetch_value(changeset, value_field),
-         {:ok, salt} <- fetch_salt(changeset, salt_field) do
-      put_change(changeset, hash_field, Domain.Crypto.hash(type, value <> salt))
+         {:ok, nonce} <- fetch_hash_component(changeset, nonce_field),
+         {:ok, salt} <- fetch_hash_component(changeset, salt_field) do
+      put_change(changeset, hash_field, Domain.Crypto.hash(type, nonce <> value <> salt))
     else
       _ -> changeset
     end
@@ -320,11 +322,11 @@ defmodule Domain.Validator do
     end
   end
 
-  defp fetch_salt(_changeset, nil) do
+  defp fetch_hash_component(_changeset, nil) do
     {:ok, ""}
   end
 
-  defp fetch_salt(changeset, salt_field) do
+  defp fetch_hash_component(changeset, salt_field) do
     case fetch_change(changeset, salt_field) do
       {:ok, salt} when is_binary(salt) -> {:ok, salt}
       :error -> {:ok, ""}

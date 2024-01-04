@@ -42,6 +42,10 @@ defmodule Domain.Crypto do
     Base.encode64(binary)
   end
 
+  defp encode_random_token(binary, _length, :hex32) do
+    Base.hex_encode32(binary)
+  end
+
   defp encode_random_token(binary, length, :user_friendly) do
     encode_random_token(binary, length, :url_encode64)
     |> String.downcase()

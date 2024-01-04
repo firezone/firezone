@@ -2329,9 +2329,10 @@ defmodule Domain.AuthTest do
       remote_ip: remote_ip
     } do
       secret = "foo"
+      nonce = "nonce"
       context = %Auth.Context{type: :browser, user_agent: user_agent, remote_ip: remote_ip}
 
-      assert sign_in(provider, Ecto.UUID.generate(), secret, context) ==
+      assert sign_in(provider, Ecto.UUID.generate(), nonce, secret, context) ==
                {:error, :unauthorized}
     end
 
@@ -2343,10 +2344,27 @@ defmodule Domain.AuthTest do
     } do
       identity = Fixtures.Auth.create_identity(account: account, provider: provider)
       secret = "foo"
+      nonce = "nonce"
       context = %Auth.Context{type: :browser, user_agent: user_agent, remote_ip: remote_ip}
 
-      assert sign_in(provider, identity.provider_identifier, secret, context) ==
+      assert sign_in(provider, identity.provider_identifier, nonce, secret, context) ==
                {:error, :unauthorized}
+    end
+
+    test "returns error when nonce is invalid", %{
+      account: account,
+      provider: provider,
+      user_agent: user_agent,
+      remote_ip: remote_ip
+    } do
+      identity = Fixtures.Auth.create_identity(account: account, provider: provider)
+      secret = identity.provider_virtual_state.sign_in_token
+      nonce = "!.="
+
+      context = %Auth.Context{type: :browser, user_agent: user_agent, remote_ip: remote_ip}
+
+      assert sign_in(provider, identity.provider_identifier, nonce, secret, context) ==
+               {:error, :malformed_request}
     end
 
     test "returns encoded token on success using provider identifier", %{
@@ -2357,13 +2375,16 @@ defmodule Domain.AuthTest do
     } do
       identity = Fixtures.Auth.create_identity(account: account, provider: provider)
       secret = identity.provider_virtual_state.sign_in_token
+      nonce = "nonce"
 
       context = %Auth.Context{type: :browser, user_agent: user_agent, remote_ip: remote_ip}
 
-      assert {:ok, encoded_token} =
-               sign_in(provider, identity.provider_identifier, secret, context)
+      assert {:ok, fragment} =
+               sign_in(provider, identity.provider_identifier, nonce, secret, context)
 
-      assert {:ok, subject} = authenticate(encoded_token, context)
+      refute fragment =~ nonce
+
+      assert {:ok, subject} = authenticate(nonce <> fragment, context)
       assert subject.account.id == account.id
       assert subject.actor.id == identity.actor_id
       assert subject.identity.id == identity.id
@@ -2388,8 +2409,9 @@ defmodule Domain.AuthTest do
     } do
       identity = Fixtures.Auth.create_identity(account: account, provider: provider)
       secret = identity.provider_virtual_state.sign_in_token
+      nonce = "nonce"
       context = %Auth.Context{type: :browser, user_agent: user_agent, remote_ip: remote_ip}
-      assert {:ok, _encoded_token} = sign_in(provider, identity.id, secret, context)
+      assert {:ok, _fragment} = sign_in(provider, identity.id, nonce, secret, context)
     end
 
     test "allows using client context", %{
@@ -2400,8 +2422,9 @@ defmodule Domain.AuthTest do
     } do
       identity = Fixtures.Auth.create_identity(account: account, provider: provider)
       secret = identity.provider_virtual_state.sign_in_token
+      nonce = "nonce"
       context = %Auth.Context{type: :client, user_agent: user_agent, remote_ip: remote_ip}
-      assert {:ok, _encoded_token} = sign_in(provider, identity.id, secret, context)
+      assert {:ok, _fragment} = sign_in(provider, identity.id, nonce, secret, context)
       assert token = Repo.one(Domain.Tokens.Token)
       assert token.type == context.type
     end
@@ -2412,13 +2435,15 @@ defmodule Domain.AuthTest do
       user_agent: user_agent,
       remote_ip: remote_ip
     } do
+      nonce = "nonce"
+
       for type <- [:relay, :gateway, :api_client] do
         identity = Fixtures.Auth.create_identity(account: account, provider: provider)
         secret = identity.provider_virtual_state.sign_in_token
         context = %Auth.Context{type: type, user_agent: user_agent, remote_ip: remote_ip}
 
         assert_raise FunctionClauseError, fn ->
-          sign_in(provider, identity.id, secret, context)
+          sign_in(provider, identity.id, nonce, secret, context)
         end
       end
     end
@@ -2429,6 +2454,8 @@ defmodule Domain.AuthTest do
       user_agent: user_agent,
       remote_ip: remote_ip
     } do
+      nonce = "nonce"
+
       # Browser session
       context = %Auth.Context{type: :browser, user_agent: user_agent, remote_ip: remote_ip}
       ten_hours = 10 * 60 * 60
@@ -2438,10 +2465,10 @@ defmodule Domain.AuthTest do
       identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
       secret = identity.provider_virtual_state.sign_in_token
 
-      assert {:ok, encoded_token} =
-               sign_in(provider, identity.provider_identifier, secret, context)
+      assert {:ok, fragment} =
+               sign_in(provider, identity.provider_identifier, nonce, secret, context)
 
-      assert {:ok, subject} = authenticate(encoded_token, context)
+      assert {:ok, subject} = authenticate(nonce <> fragment, context)
 
       assert_datetime_diff(subject.expires_at, DateTime.utc_now(), ten_hours)
 
@@ -2450,10 +2477,10 @@ defmodule Domain.AuthTest do
       identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
       secret = identity.provider_virtual_state.sign_in_token
 
-      assert {:ok, encoded_token} =
-               sign_in(provider, identity.provider_identifier, secret, context)
+      assert {:ok, fragment} =
+               sign_in(provider, identity.provider_identifier, nonce, secret, context)
 
-      assert {:ok, subject} = authenticate(encoded_token, context)
+      assert {:ok, subject} = authenticate(nonce <> fragment, context)
       assert_datetime_diff(subject.expires_at, DateTime.utc_now(), ten_hours)
 
       # Client session
@@ -2465,10 +2492,10 @@ defmodule Domain.AuthTest do
       identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
       secret = identity.provider_virtual_state.sign_in_token
 
-      assert {:ok, encoded_token} =
-               sign_in(provider, identity.provider_identifier, secret, context)
+      assert {:ok, fragment} =
+               sign_in(provider, identity.provider_identifier, nonce, secret, context)
 
-      assert {:ok, subject} = authenticate(encoded_token, context)
+      assert {:ok, subject} = authenticate(nonce <> fragment, context)
       assert_datetime_diff(subject.expires_at, DateTime.utc_now(), one_week)
 
       ## Regular user
@@ -2476,10 +2503,10 @@ defmodule Domain.AuthTest do
       identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
       secret = identity.provider_virtual_state.sign_in_token
 
-      assert {:ok, encoded_token} =
-               sign_in(provider, identity.provider_identifier, secret, context)
+      assert {:ok, fragment} =
+               sign_in(provider, identity.provider_identifier, nonce, secret, context)
 
-      assert {:ok, subject} = authenticate(encoded_token, context)
+      assert {:ok, subject} = authenticate(nonce <> fragment, context)
       assert_datetime_diff(subject.expires_at, DateTime.utc_now(), one_week)
     end
 
@@ -2496,9 +2523,10 @@ defmodule Domain.AuthTest do
 
       identity = Fixtures.Auth.create_identity(account: account, provider: provider)
       secret = identity.provider_virtual_state.sign_in_token
+      nonce = "nonce"
       context = %Auth.Context{type: :browser, user_agent: user_agent, remote_ip: remote_ip}
 
-      assert sign_in(provider, identity.provider_identifier, secret, context) ==
+      assert sign_in(provider, identity.provider_identifier, nonce, secret, context) ==
                {:error, :unauthorized}
     end
 
@@ -2511,11 +2539,12 @@ defmodule Domain.AuthTest do
       actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
       identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
       secret = identity.provider_virtual_state.sign_in_token
+      nonce = "nonce"
       subject = Fixtures.Auth.create_subject(identity: identity)
       {:ok, identity} = delete_identity(identity, subject)
       context = %Auth.Context{type: :browser, user_agent: user_agent, remote_ip: remote_ip}
 
-      assert sign_in(provider, identity.provider_identifier, secret, context) ==
+      assert sign_in(provider, identity.provider_identifier, nonce, secret, context) ==
                {:error, :unauthorized}
     end
 
@@ -2531,9 +2560,10 @@ defmodule Domain.AuthTest do
 
       identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
       secret = identity.provider_virtual_state.sign_in_token
+      nonce = "nonce"
       context = %Auth.Context{type: :browser, user_agent: user_agent, remote_ip: remote_ip}
 
-      assert sign_in(provider, identity.provider_identifier, secret, context) ==
+      assert sign_in(provider, identity.provider_identifier, nonce, secret, context) ==
                {:error, :unauthorized}
     end
 
@@ -2549,9 +2579,10 @@ defmodule Domain.AuthTest do
 
       identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
       secret = identity.provider_virtual_state.sign_in_token
+      nonce = "nonce"
       context = %Auth.Context{type: :browser, user_agent: user_agent, remote_ip: remote_ip}
 
-      assert sign_in(provider, identity.provider_identifier, secret, context) ==
+      assert sign_in(provider, identity.provider_identifier, nonce, secret, context) ==
                {:error, :unauthorized}
     end
 
@@ -2568,9 +2599,10 @@ defmodule Domain.AuthTest do
 
       identity = Fixtures.Auth.create_identity(account: account, provider: provider)
       secret = identity.provider_virtual_state.sign_in_token
+      nonce = "nonce"
       context = %Auth.Context{type: :browser, user_agent: user_agent, remote_ip: remote_ip}
 
-      assert sign_in(provider, identity.provider_identifier, secret, context) ==
+      assert sign_in(provider, identity.provider_identifier, secret, nonce, context) ==
                {:error, :unauthorized}
     end
   end
@@ -2614,9 +2646,10 @@ defmodule Domain.AuthTest do
       code_verifier = Domain.Auth.Adapters.OpenIDConnect.PKCE.code_verifier()
       redirect_uri = "https://example.com/"
       payload = {redirect_uri, code_verifier, "MyFakeCode"}
+      nonce = "nonce"
       context = %Auth.Context{type: :browser, user_agent: user_agent, remote_ip: remote_ip}
 
-      assert sign_in(provider, payload, context) == {:error, :unauthorized}
+      assert sign_in(provider, nonce, payload, context) == {:error, :unauthorized}
     end
 
     test "returns error when payload is invalid", %{
@@ -2630,9 +2663,10 @@ defmodule Domain.AuthTest do
       code_verifier = Domain.Auth.Adapters.OpenIDConnect.PKCE.code_verifier()
       redirect_uri = "https://example.com/"
       payload = {redirect_uri, code_verifier, "MyFakeCode"}
+      nonce = "nonce"
       context = %Auth.Context{type: :browser, user_agent: user_agent, remote_ip: remote_ip}
 
-      assert sign_in(provider, payload, context) == {:error, :unauthorized}
+      assert sign_in(provider, nonce, payload, context) == {:error, :unauthorized}
     end
 
     test "returns encoded token on success", %{
@@ -2658,12 +2692,13 @@ defmodule Domain.AuthTest do
       code_verifier = Domain.Auth.Adapters.OpenIDConnect.PKCE.code_verifier()
       redirect_uri = "https://example.com/"
       payload = {redirect_uri, code_verifier, "MyFakeCode"}
+      nonce = "nonce"
 
       context = %Auth.Context{type: :browser, user_agent: user_agent, remote_ip: remote_ip}
 
-      assert {:ok, encoded_token} = sign_in(provider, payload, context)
+      assert {:ok, fragment} = sign_in(provider, nonce, payload, context)
 
-      assert {:ok, subject} = authenticate(encoded_token, context)
+      assert {:ok, subject} = authenticate(nonce <> fragment, context)
       assert subject.account.id == account.id
       assert subject.actor.id == identity.actor_id
       assert subject.identity.id == identity.id
@@ -2704,10 +2739,11 @@ defmodule Domain.AuthTest do
       code_verifier = Domain.Auth.Adapters.OpenIDConnect.PKCE.code_verifier()
       redirect_uri = "https://example.com/"
       payload = {redirect_uri, code_verifier, "MyFakeCode"}
+      nonce = "nonce"
 
       context = %Auth.Context{type: :client, user_agent: user_agent, remote_ip: remote_ip}
 
-      assert {:ok, _encoded_token} = sign_in(provider, payload, context)
+      assert {:ok, _fragment} = sign_in(provider, nonce, payload, context)
 
       assert token = Repo.one(Domain.Tokens.Token)
       assert token.type == context.type
@@ -2736,12 +2772,13 @@ defmodule Domain.AuthTest do
       code_verifier = Domain.Auth.Adapters.OpenIDConnect.PKCE.code_verifier()
       redirect_uri = "https://example.com/"
       payload = {redirect_uri, code_verifier, "MyFakeCode"}
+      nonce = "nonce"
 
       for type <- [:relay, :gateway, :api_client] do
         context = %Auth.Context{type: type, user_agent: user_agent, remote_ip: remote_ip}
 
         assert_raise FunctionClauseError, fn ->
-          sign_in(provider, payload, context)
+          sign_in(provider, nonce, payload, context)
         end
       end
     end
@@ -2769,12 +2806,13 @@ defmodule Domain.AuthTest do
       code_verifier = Domain.Auth.Adapters.OpenIDConnect.PKCE.code_verifier()
       redirect_uri = "https://example.com/"
       payload = {redirect_uri, code_verifier, "MyFakeCode"}
+      nonce = "nonce"
 
       context = %Auth.Context{type: :client, user_agent: user_agent, remote_ip: remote_ip}
 
-      assert {:ok, encoded_token} = sign_in(provider, payload, context)
+      assert {:ok, fragment} = sign_in(provider, nonce, payload, context)
 
-      assert {:ok, subject} = authenticate(encoded_token, context)
+      assert {:ok, subject} = authenticate(nonce <> fragment, context)
 
       one_week = 7 * 24 * 60 * 60
       assert_datetime_diff(subject.expires_at, DateTime.utc_now(), one_week)
@@ -2803,12 +2841,13 @@ defmodule Domain.AuthTest do
       code_verifier = Domain.Auth.Adapters.OpenIDConnect.PKCE.code_verifier()
       redirect_uri = "https://example.com/"
       payload = {redirect_uri, code_verifier, "MyFakeCode"}
+      nonce = "nonce"
 
       context = %Auth.Context{type: :browser, user_agent: user_agent, remote_ip: remote_ip}
 
-      assert {:ok, encoded_token} = sign_in(provider, payload, context)
+      assert {:ok, fragment} = sign_in(provider, nonce, payload, context)
 
-      assert {:ok, subject} = authenticate(encoded_token, context)
+      assert {:ok, subject} = authenticate(nonce <> fragment, context)
 
       ten_hours = 10 * 60 * 60
       assert_datetime_diff(subject.expires_at, DateTime.utc_now(), ten_hours)
@@ -2837,12 +2876,13 @@ defmodule Domain.AuthTest do
       code_verifier = Domain.Auth.Adapters.OpenIDConnect.PKCE.code_verifier()
       redirect_uri = "https://example.com/"
       payload = {redirect_uri, code_verifier, "MyFakeCode"}
+      nonce = "nonce"
 
       context = %Auth.Context{type: :client, user_agent: user_agent, remote_ip: remote_ip}
 
-      assert {:ok, encoded_token} = sign_in(provider, payload, context)
+      assert {:ok, fragment} = sign_in(provider, nonce, payload, context)
 
-      assert {:ok, subject} = authenticate(encoded_token, context)
+      assert {:ok, subject} = authenticate(nonce <> fragment, context)
 
       one_week = 7 * 24 * 60 * 60
       assert_datetime_diff(subject.expires_at, DateTime.utc_now(), one_week)
@@ -2871,12 +2911,13 @@ defmodule Domain.AuthTest do
       code_verifier = Domain.Auth.Adapters.OpenIDConnect.PKCE.code_verifier()
       redirect_uri = "https://example.com/"
       payload = {redirect_uri, code_verifier, "MyFakeCode"}
+      nonce = "nonce"
 
       context = %Auth.Context{type: :browser, user_agent: user_agent, remote_ip: remote_ip}
 
-      assert {:ok, encoded_token} = sign_in(provider, payload, context)
+      assert {:ok, fragment} = sign_in(provider, nonce, payload, context)
 
-      assert {:ok, subject} = authenticate(encoded_token, context)
+      assert {:ok, subject} = authenticate(nonce <> fragment, context)
 
       ten_hours = 10 * 60 * 60
       assert_datetime_diff(subject.expires_at, DateTime.utc_now(), ten_hours)
@@ -2900,11 +2941,12 @@ defmodule Domain.AuthTest do
       code_verifier = Domain.Auth.Adapters.OpenIDConnect.PKCE.code_verifier()
       redirect_uri = "https://example.com/"
       payload = {redirect_uri, code_verifier, "MyFakeCode"}
+      nonce = "nonce"
       context = %Auth.Context{type: :browser, user_agent: user_agent, remote_ip: remote_ip}
 
-      assert {:ok, _encoded_token} = sign_in(provider, payload, context)
+      assert {:ok, _fragment} = sign_in(provider, nonce, payload, context)
       {:ok, _provider} = disable_provider(provider, subject)
-      assert sign_in(provider, payload, context) == {:error, :unauthorized}
+      assert sign_in(provider, nonce, payload, context) == {:error, :unauthorized}
     end
 
     test "returns error when identity is disabled", %{
@@ -2925,11 +2967,12 @@ defmodule Domain.AuthTest do
       code_verifier = Domain.Auth.Adapters.OpenIDConnect.PKCE.code_verifier()
       redirect_uri = "https://example.com/"
       payload = {redirect_uri, code_verifier, "MyFakeCode"}
+      nonce = "nonce"
       context = %Auth.Context{type: :browser, user_agent: user_agent, remote_ip: remote_ip}
 
-      assert {:ok, _encoded_token} = sign_in(provider, payload, context)
+      assert {:ok, _fragment} = sign_in(provider, nonce, payload, context)
       {:ok, _identity} = delete_identity(identity, subject)
-      assert sign_in(provider, payload, context) == {:error, :unauthorized}
+      assert sign_in(provider, nonce, payload, context) == {:error, :unauthorized}
     end
 
     test "returns error when actor is disabled", %{
@@ -2949,11 +2992,12 @@ defmodule Domain.AuthTest do
       code_verifier = Domain.Auth.Adapters.OpenIDConnect.PKCE.code_verifier()
       redirect_uri = "https://example.com/"
       payload = {redirect_uri, code_verifier, "MyFakeCode"}
+      nonce = "nonce"
       context = %Auth.Context{type: :browser, user_agent: user_agent, remote_ip: remote_ip}
 
-      assert {:ok, _encoded_token} = sign_in(provider, payload, context)
+      assert {:ok, _fragment} = sign_in(provider, nonce, payload, context)
       Fixtures.Actors.disable(actor)
-      assert sign_in(provider, payload, context) == {:error, :unauthorized}
+      assert sign_in(provider, nonce, payload, context) == {:error, :unauthorized}
     end
 
     test "returns error when actor is deleted", %{
@@ -2973,11 +3017,12 @@ defmodule Domain.AuthTest do
       code_verifier = Domain.Auth.Adapters.OpenIDConnect.PKCE.code_verifier()
       redirect_uri = "https://example.com/"
       payload = {redirect_uri, code_verifier, "MyFakeCode"}
+      nonce = "nonce"
       context = %Auth.Context{type: :browser, user_agent: user_agent, remote_ip: remote_ip}
 
-      assert {:ok, _encoded_token} = sign_in(provider, payload, context)
+      assert {:ok, _fragment} = sign_in(provider, nonce, payload, context)
       Fixtures.Actors.delete(actor)
-      assert sign_in(provider, payload, context) == {:error, :unauthorized}
+      assert sign_in(provider, nonce, payload, context) == {:error, :unauthorized}
     end
 
     test "returns error when provider is deleted", %{
@@ -2998,11 +3043,12 @@ defmodule Domain.AuthTest do
       code_verifier = Domain.Auth.Adapters.OpenIDConnect.PKCE.code_verifier()
       redirect_uri = "https://example.com/"
       payload = {redirect_uri, code_verifier, "MyFakeCode"}
+      nonce = "nonce"
       context = %Auth.Context{type: :browser, user_agent: user_agent, remote_ip: remote_ip}
 
-      assert {:ok, _encoded_token} = sign_in(provider, payload, context)
+      assert {:ok, _fragment} = sign_in(provider, nonce, payload, context)
       {:ok, _provider} = delete_provider(provider, subject)
-      assert sign_in(provider, payload, context) == {:error, :unauthorized}
+      assert sign_in(provider, nonce, payload, context) == {:error, :unauthorized}
     end
   end
 
@@ -3157,9 +3203,11 @@ defmodule Domain.AuthTest do
           context: browser_context
         )
 
-      {:ok, browser_token} = create_token(provider, identity, browser_context, nil)
+      nonce = "nonce"
 
-      browser_encoded_token = Tokens.encode_token!(browser_token)
+      {:ok, browser_token} = create_token(identity, browser_context, nonce, nil)
+
+      browser_fragment = Tokens.encode_fragment!(browser_token)
 
       client_context =
         Fixtures.Auth.build_context(
@@ -3175,8 +3223,8 @@ defmodule Domain.AuthTest do
           context: client_context
         )
 
-      {:ok, client_token} = create_token(provider, identity, client_context, nil)
-      client_encoded_token = Tokens.encode_token!(client_token)
+      {:ok, client_token} = create_token(identity, client_context, nonce, nil)
+      client_fragment = Tokens.encode_fragment!(client_token)
 
       %{
         account: account,
@@ -3185,44 +3233,60 @@ defmodule Domain.AuthTest do
         identity: identity,
         user_agent: user_agent,
         remote_ip: remote_ip,
+        nonce: nonce,
         browser_context: browser_context,
         browser_subject: browser_subject,
         browser_token: browser_token,
-        browser_encoded_token: browser_encoded_token,
+        browser_fragment: browser_fragment,
         client_context: client_context,
         client_subject: client_subject,
         client_token: client_token,
-        client_encoded_token: client_encoded_token
+        client_fragment: client_fragment
       }
     end
 
     test "returns error when token is invalid", %{
+      nonce: nonce,
       browser_context: browser_context,
       client_context: client_context
     } do
+      assert authenticate(nonce <> ".foo", browser_context) == {:error, :unauthorized}
       assert authenticate("foo", browser_context) == {:error, :unauthorized}
+      assert authenticate(nonce <> ".foo", client_context) == {:error, :unauthorized}
       assert authenticate("foo", client_context) == {:error, :unauthorized}
     end
 
     test "returns error when token is issued for a different context type", %{
+      nonce: nonce,
       browser_context: browser_context,
-      browser_encoded_token: browser_encoded_token,
+      browser_fragment: browser_fragment,
       client_context: client_context,
-      client_encoded_token: client_encoded_token
+      client_fragment: client_fragment
     } do
-      assert authenticate(client_encoded_token, browser_context) == {:error, :unauthorized}
-      assert authenticate(browser_encoded_token, client_context) == {:error, :unauthorized}
+      assert authenticate(nonce <> client_fragment, browser_context) == {:error, :unauthorized}
+      assert authenticate(nonce <> browser_fragment, client_context) == {:error, :unauthorized}
+    end
+
+    test "returns error when nonce is invalid", %{
+      browser_context: browser_context,
+      browser_fragment: browser_fragment,
+      client_context: client_context,
+      client_fragment: client_fragment
+    } do
+      assert authenticate("foo" <> client_fragment, browser_context) == {:error, :unauthorized}
+      assert authenticate("foo" <> browser_fragment, client_context) == {:error, :unauthorized}
     end
 
     test "returns subject for browser token", %{
       account: account,
       actor: actor,
       identity: identity,
+      nonce: nonce,
       browser_context: context,
       browser_token: token,
-      browser_encoded_token: encoded_token
+      browser_fragment: fragment
     } do
-      assert {:ok, reconstructed_subject} = authenticate(encoded_token, context)
+      assert {:ok, reconstructed_subject} = authenticate(nonce <> fragment, context)
       assert reconstructed_subject.identity.id == identity.id
       assert reconstructed_subject.actor.id == actor.id
       assert reconstructed_subject.account.id == account.id
@@ -3234,30 +3298,33 @@ defmodule Domain.AuthTest do
     end
 
     test "returns an error when browser user agent is changed", %{
+      nonce: nonce,
       browser_context: context,
-      browser_encoded_token: encoded_token
+      browser_fragment: fragment
     } do
       context = %{context | user_agent: context.user_agent <> "+b1"}
-      assert authenticate(encoded_token, context) == {:error, :unauthorized}
+      assert authenticate(nonce <> fragment, context) == {:error, :unauthorized}
     end
 
     test "returns an error when browser ip address is changed", %{
+      nonce: nonce,
       browser_context: context,
-      browser_encoded_token: encoded_token
+      browser_fragment: fragment
     } do
       context = %{context | remote_ip: Domain.Fixture.unique_ipv4()}
-      assert authenticate(encoded_token, context) == {:error, :unauthorized}
+      assert authenticate(nonce <> fragment, context) == {:error, :unauthorized}
     end
 
     test "returns subject for client token", %{
       account: account,
       actor: actor,
       identity: identity,
+      nonce: nonce,
       client_context: context,
       client_token: token,
-      client_encoded_token: encoded_token
+      client_fragment: fragment
     } do
-      assert {:ok, reconstructed_subject} = authenticate(encoded_token, context)
+      assert {:ok, reconstructed_subject} = authenticate(nonce <> fragment, context)
       assert reconstructed_subject.identity.id == identity.id
       assert reconstructed_subject.actor.id == actor.id
       assert reconstructed_subject.account.id == account.id
@@ -3304,8 +3371,9 @@ defmodule Domain.AuthTest do
     end
 
     test "client token is not bound to remote ip and user agent", %{
+      nonce: nonce,
       client_context: context,
-      client_encoded_token: encoded_token
+      client_fragment: fragment
     } do
       context = %{
         context
@@ -3313,17 +3381,18 @@ defmodule Domain.AuthTest do
           remote_ip: Domain.Fixture.unique_ipv4()
       }
 
-      assert {:ok, subject} = authenticate(encoded_token, context)
+      assert {:ok, subject} = authenticate(nonce <> fragment, context)
       assert subject.context.remote_ip == context.remote_ip
       assert subject.context.user_agent == context.user_agent
     end
 
     test "updates last signed in fields for identity on success", %{
       identity: identity,
+      nonce: nonce,
       browser_context: context,
-      browser_encoded_token: encoded_token
+      browser_fragment: fragment
     } do
-      assert {:ok, subject} = authenticate(encoded_token, context)
+      assert {:ok, subject} = authenticate(nonce <> fragment, context)
 
       assert subject.identity.last_seen_at != identity.last_seen_at
       assert subject.identity.last_seen_remote_ip != identity.last_seen_remote_ip
@@ -3345,10 +3414,11 @@ defmodule Domain.AuthTest do
 
     test "updates last signed in fields for token on success", %{
       identity: identity,
+      nonce: nonce,
       browser_context: context,
-      browser_encoded_token: encoded_token
+      browser_fragment: fragment
     } do
-      assert {:ok, subject} = authenticate(encoded_token, context)
+      assert {:ok, subject} = authenticate(nonce <> fragment, context)
 
       assert token = Repo.get(Tokens.Token, subject.token_id)
       assert token.last_seen_at != identity.last_seen_at
@@ -3364,53 +3434,58 @@ defmodule Domain.AuthTest do
 
     test "returns error when token identity is deleted", %{
       identity: identity,
+      nonce: nonce,
       browser_context: context,
-      browser_encoded_token: encoded_token,
+      browser_fragment: fragment,
       browser_subject: subject
     } do
       {:ok, _identity} = delete_identity(identity, subject)
 
-      assert authenticate(encoded_token, context) == {:error, :unauthorized}
+      assert authenticate(nonce <> fragment, context) == {:error, :unauthorized}
     end
 
     test "returns error when token identity actor is deleted", %{
       actor: actor,
+      nonce: nonce,
       browser_context: context,
-      browser_encoded_token: encoded_token
+      browser_fragment: fragment
     } do
       Fixtures.Actors.delete(actor)
 
-      assert authenticate(encoded_token, context) == {:error, :unauthorized}
+      assert authenticate(nonce <> fragment, context) == {:error, :unauthorized}
     end
 
     test "returns error when token identity actor is disabled", %{
       actor: actor,
+      nonce: nonce,
       browser_context: context,
-      browser_encoded_token: encoded_token
+      browser_fragment: fragment
     } do
       Fixtures.Actors.disable(actor)
 
-      assert authenticate(encoded_token, context) == {:error, :unauthorized}
+      assert authenticate(nonce <> fragment, context) == {:error, :unauthorized}
     end
 
     test "returns error when token identity provider is deleted", %{
       provider: provider,
+      nonce: nonce,
       browser_context: context,
-      browser_encoded_token: encoded_token
+      browser_fragment: fragment
     } do
       Fixtures.Auth.delete_provider(provider)
 
-      assert authenticate(encoded_token, context) == {:error, :unauthorized}
+      assert authenticate(nonce <> fragment, context) == {:error, :unauthorized}
     end
 
     test "returns error when token identity provider is disabled", %{
       provider: provider,
+      nonce: nonce,
       browser_context: context,
-      browser_encoded_token: encoded_token
+      browser_fragment: fragment
     } do
       Fixtures.Auth.disable_provider(provider)
 
-      assert authenticate(encoded_token, context) == {:error, :unauthorized}
+      assert authenticate(nonce <> fragment, context) == {:error, :unauthorized}
     end
   end
 
