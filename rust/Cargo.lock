@@ -2059,6 +2059,7 @@ dependencies = [
  "rtnetlink",
  "secrecy",
  "serde",
+ "serde_json",
  "thiserror",
  "tokio",
  "tracing",
