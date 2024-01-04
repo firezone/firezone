@@ -399,8 +399,55 @@ fn reverse_dns_addr_v6<'a>(dns_parts: &mut impl Iterator<Item = &'a str>) -> Opt
 
 #[cfg(test)]
 mod test {
-    use super::reverse_dns_addr;
-    use std::net::Ipv4Addr;
+    use connlib_shared::{messages::ResourceDescriptionDns, Dname};
+
+    use super::{get_description, reverse_dns_addr};
+    use std::{collections::HashMap, net::Ipv4Addr};
+
+    fn foo() -> ResourceDescriptionDns {
+        serde_json::from_str(
+            r#"{
+                "id": "c4bb3d79-afa7-4660-8918-06c38fda3a4a",
+                "address": "*.foo.com",
+                "name": "foo.com wildcard"
+            }"#,
+        )
+        .unwrap()
+    }
+
+    fn bar() -> ResourceDescriptionDns {
+        serde_json::from_str(
+            r#"{
+                "id": "c4bb3d79-afa7-4660-8918-06c38fda3a4b",
+                "address": "*.bar.com",
+                "name": "bar.com wildcard"
+            }"#,
+        )
+        .unwrap()
+    }
+
+    fn baz() -> ResourceDescriptionDns {
+        serde_json::from_str(
+            r#"{
+                "id": "c4bb3d79-afa7-4660-8918-06c38fda3a4c",
+                "address": "baz.com",
+                "name": "baz.com"
+            }"#,
+        )
+        .unwrap()
+    }
+
+    fn dns_resource_fixture() -> HashMap<String, ResourceDescriptionDns> {
+        let mut dns_resources_fixture = HashMap::new();
+
+        dns_resources_fixture.insert("*.foo.com".to_string(), foo());
+
+        dns_resources_fixture.insert("?.bar.com".to_string(), bar());
+
+        dns_resources_fixture.insert("baz.com".to_string(), baz());
+
+        dns_resources_fixture
+    }
 
     #[test]
     fn reverse_dns_addr_works_v4() {
@@ -453,5 +500,98 @@ mod test {
             ),
             None
         );
+    }
+
+    #[test]
+    fn wildcard_matching() {
+        let dns_resources_fixture = dns_resource_fixture();
+
+        assert_eq!(
+            get_description(
+                &Dname::vec_from_str("a.foo.com").unwrap(),
+                &dns_resources_fixture,
+            )
+            .unwrap(),
+            foo(),
+        );
+
+        assert_eq!(
+            get_description(
+                &Dname::vec_from_str("foo.com").unwrap(),
+                &dns_resources_fixture,
+            )
+            .unwrap(),
+            foo(),
+        );
+
+        assert_eq!(
+            get_description(
+                &Dname::vec_from_str("a.b.foo.com").unwrap(),
+                &dns_resources_fixture,
+            )
+            .unwrap(),
+            foo(),
+        );
+
+        assert!(get_description(
+            &Dname::vec_from_str("oo.com").unwrap(),
+            &dns_resources_fixture,
+        )
+        .is_none(),);
+    }
+
+    #[test]
+    fn question_mark_matching() {
+        let dns_resources_fixture = dns_resource_fixture();
+
+        assert_eq!(
+            get_description(
+                &Dname::vec_from_str("a.bar.com").unwrap(),
+                &dns_resources_fixture,
+            )
+            .unwrap(),
+            bar(),
+        );
+
+        assert_eq!(
+            get_description(
+                &Dname::vec_from_str("bar.com").unwrap(),
+                &dns_resources_fixture,
+            )
+            .unwrap(),
+            bar(),
+        );
+
+        assert!(get_description(
+            &Dname::vec_from_str("a.b.bar.com").unwrap(),
+            &dns_resources_fixture,
+        )
+        .is_none(),);
+    }
+
+    #[test]
+    fn exact_matching() {
+        let dns_resources_fixture = dns_resource_fixture();
+
+        assert_eq!(
+            get_description(
+                &Dname::vec_from_str("baz.com").unwrap(),
+                &dns_resources_fixture,
+            )
+            .unwrap(),
+            baz(),
+        );
+
+        assert!(get_description(
+            &Dname::vec_from_str("a.baz.com").unwrap(),
+            &dns_resources_fixture,
+        )
+        .is_none());
+
+        assert!(get_description(
+            &Dname::vec_from_str("a.b.baz.com").unwrap(),
+            &dns_resources_fixture,
+        )
+        .is_none(),);
     }
 }
