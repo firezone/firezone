@@ -494,8 +494,9 @@ defmodule Domain.Auth do
 
     with {:ok, identity} <- Repo.fetch(identity_queryable),
          {:ok, identity, expires_at} <- Adapters.verify_secret(provider, identity, secret),
+         identity = Repo.preload(identity, :actor),
          {:ok, token} <- create_token(identity, context, token_nonce, expires_at) do
-      {:ok, Tokens.encode_fragment!(token)}
+      {:ok, identity, Tokens.encode_fragment!(token)}
     else
       {:error, :not_found} -> {:error, :unauthorized}
       {:error, :invalid_secret} -> {:error, :unauthorized}
@@ -516,8 +517,9 @@ defmodule Domain.Auth do
 
   def sign_in(%Provider{} = provider, token_nonce, payload, %Context{} = context) do
     with {:ok, identity, expires_at} <- Adapters.verify_and_update_identity(provider, payload),
+         identity = Repo.preload(identity, :actor),
          {:ok, token} <- create_token(identity, context, token_nonce, expires_at) do
-      {:ok, Tokens.encode_fragment!(token)}
+      {:ok, identity, Tokens.encode_fragment!(token)}
     else
       {:error, :not_found} -> {:error, :unauthorized}
       {:error, :invalid} -> {:error, :unauthorized}
@@ -529,7 +531,7 @@ defmodule Domain.Auth do
   # used in tests and seeds
   @doc false
   def create_token(identity, %{type: type} = context, nonce, expires_at)
-      when type in [:browser, :client] and is_binary(nonce) do
+      when type in [:browser, :client] do
     identity = Repo.preload(identity, :actor)
     expires_at = token_expires_at(identity.actor, context, expires_at)
 
@@ -600,13 +602,11 @@ defmodule Domain.Auth do
         %Subject{} = subject
       ) do
     {:ok, expires_at, 0} = DateTime.from_iso8601(identity.provider_state["expires_at"])
-    nonce = Domain.Crypto.random_token(32, encoder: :hex32)
 
     {:ok, token} =
       Tokens.create_token(
         %{
           type: :client,
-          secret_nonce: nonce,
           secret_fragment: Domain.Crypto.random_token(32),
           account_id: provider.account_id,
           identity_id: identity.id,
@@ -617,7 +617,7 @@ defmodule Domain.Auth do
         subject
       )
 
-    {:ok, nonce <> Tokens.encode_fragment!(token)}
+    {:ok, Tokens.encode_fragment!(token)}
   end
 
   # Authentication
@@ -626,10 +626,6 @@ defmodule Domain.Auth do
       when is_binary(encoded_token) do
     with {:ok, token} <- Tokens.use_token(encoded_token, context),
          :ok <- maybe_enforce_token_context(token, context),
-  def sign_in(token, %Context{} = context) when is_binary(token) do
-    with {:ok, identity, expires_at} <- verify_token(token, context.user_agent, context.remote_ip) do
-      {:ok, build_subject(identity, expires_at, context)}
-    else
          {:ok, identity} <- fetch_active_identity_by_id(token.identity_id) do
       {:ok, build_subject(token, identity, context)}
     else
