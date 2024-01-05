@@ -31,12 +31,7 @@ defmodule Web.HomeHTML do
 
             <.separator :if={@accounts != []} />
 
-            <.form
-              :let={f}
-              for={%{}}
-              action={~p"/?#{@params}"}
-              class="space-y-4 lg:space-y-6"
-            >
+            <.form :let={f} for={%{}} action={~p"/?#{@params}"} class="space-y-4 lg:space-y-6">
               <.input
                 field={f[:account_id_or_slug]}
                 type="text"
@@ -52,7 +47,10 @@ defmodule Web.HomeHTML do
               </.button>
             </.form>
             <p
-              :if={Domain.Config.sign_up_enabled?() and Web.Auth.fetch_auth_context_type!(@params) == :browser}
+              :if={
+                Domain.Config.sign_up_enabled?() and
+                  Web.Auth.fetch_auth_context_type!(@params) == :browser
+              }
               class="py-2"
             >
               Don't have an account?
