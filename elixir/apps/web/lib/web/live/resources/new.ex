@@ -94,7 +94,7 @@ defmodule Web.Resources.New do
               label="Address"
               placeholder={
                 cond do
-                  @form[:type].value == :dns -> "app.namespace.cluster.local"
+                  @form[:type].value == :dns -> "gitlab.company.com"
                   @form[:type].value == :cidr -> "192.168.1.1/28"
                   @form[:type].value == :ip -> "1.1.1.1"
                   true -> "Please select a Type from the options first"
@@ -103,6 +103,13 @@ defmodule Web.Resources.New do
               disabled={is_nil(@form[:type].value)}
               required
             />
+            <p :if={@form[:type].value == :dns} class="mt-2 text-xs text-neutral-500">
+              To recursively match all subdomains, use a wildcard (e.g. *.company.com).
+              To non-recursively match all subdomains, use a question mark (e.g. ?.company.com).
+            </p>
+            <p :if={@form[:type].value != :dns} class="mt-2 text-xs text-neutral-500">
+              IPv4 and IPv6 addresses and CIDR ranges are supported.
+            </p>
 
             <.filters_form :if={@traffic_filters_enabled?} form={@form[:filters]} />
 
