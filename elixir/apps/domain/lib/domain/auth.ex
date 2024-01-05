@@ -590,8 +590,8 @@ defmodule Domain.Auth do
   """
   def sign_out(%Subject{} = subject, redirect_url) do
     {:ok, _count} = Tokens.delete_token_by_id(subject.token_id)
-      identity = Repo.preload(subject.identity, :provider)
-      Adapters.sign_out(identity.provider, identity, redirect_url)
+    identity = Repo.preload(subject.identity, :provider)
+    Adapters.sign_out(identity.provider, identity, redirect_url)
   end
 
   # Tokens
@@ -683,10 +683,6 @@ defmodule Domain.Auth do
     Enum.any?(required_permissions, fn required_permission ->
       has_permission?(subject, required_permission)
     end)
-  end
-
-  def has_permissions?(%Subject{} = subject, required_permissions) do
-    ensure_has_permissions(subject, required_permissions) == :ok
   end
 
   def fetch_type_permissions!(%Role{} = type),
