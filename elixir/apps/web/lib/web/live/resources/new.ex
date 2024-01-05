@@ -97,7 +97,7 @@ defmodule Web.Resources.New do
                   @form[:type].value == :dns -> "app.namespace.cluster.local"
                   @form[:type].value == :cidr -> "192.168.1.1/28"
                   @form[:type].value == :ip -> "1.1.1.1"
-                  true -> "Please select a Type from the options first"
+                  true -> "Select a Resource type above"
                 end
               }
               disabled={is_nil(@form[:type].value)}
