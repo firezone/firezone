@@ -2,7 +2,6 @@ use connlib_shared::{messages::Interface as InterfaceConfig, Result, DNS_SENTINE
 use ip_network::IpNetwork;
 use std::{
     io,
-    net::Ipv6Addr,
     os::windows::process::CommandExt,
     process::{Command, Stdio},
     str::FromStr,
@@ -66,21 +65,36 @@ impl Tun {
                 }
             };
 
-        // TODO: I think wintun flashes a couple console windows here when it shells out to netsh. We should upstream the same patch I'm doing for powershell to the wintun project
-        // We could also try to get rid of wintun dependency entirely
-        adapter.set_network_addresses_tuple(
-            config.ipv4.into(),
-            [255, 255, 255, 255].into(),
-            None,
-        )?;
-        adapter.set_network_addresses_tuple(
-            config.ipv6.into(),
-            Ipv6Addr::new(
-                0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff,
-            )
-            .into(),
-            None,
-        )?;
+        tracing::debug!("Setting our IPv4 = {}", config.ipv4);
+        tracing::debug!("Setting our IPv6 = {}", config.ipv6);
+
+        // TODO: See if there's a good Win32 API for this
+        // Using netsh directly instead of wintun's `set_network_addresses_tuple` because their code doesn't work for IPv6
+        Command::new("netsh")
+            .creation_flags(CREATE_NO_WINDOW)
+            .arg("interface")
+            .arg("ipv4")
+            .arg("set")
+            .arg("address")
+            .arg(format!("name=\"{TUNNEL_NAME}\""))
+            .arg("source=static")
+            .arg(format!("address={}", config.ipv4))
+            .arg("mask=255.255.255.255")
+            .stdout(Stdio::null())
+            .status()?;
+
+        Command::new("netsh")
+            .creation_flags(CREATE_NO_WINDOW)
+            .arg("interface")
+            .arg("ipv6")
+            .arg("set")
+            .arg("address")
+            .arg(format!("interface=\"{TUNNEL_NAME}\""))
+            .arg(format!("address={}", config.ipv6))
+            .stdout(Stdio::null())
+            .status()?;
+
+        tracing::debug!("Our IPs are {:?}", adapter.get_addresses()?);
 
         let iface_idx = adapter.get_adapter_index()?;
 
