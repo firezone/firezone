@@ -9,6 +9,7 @@ use boringtun::noise::{Tunn, TunnResult};
 use boringtun::x25519::StaticSecret;
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
+use connlib_shared::DNS_SENTINEL;
 use connlib_shared::{messages::ResourceDescription, Error, Result};
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
@@ -17,6 +18,7 @@ use pnet_packet::Packet;
 use secrecy::ExposeSecret;
 
 use crate::client::IpProvider;
+use crate::ip_packet::to_dns;
 use crate::MAX_UDP_SIZE;
 use crate::{device_channel, ip_packet::MutableIpPacket, PeerConfig};
 
@@ -130,6 +132,7 @@ where
         &self,
         src: &[u8],
         dst: &'b mut [u8],
+        upstream_dns: &Option<IpAddr>,
     ) -> Result<Option<WriteTo<'b>>> {
         let mut tunnel = self.tunnel.lock();
 
@@ -150,10 +153,10 @@ where
                 Ok(Some(WriteTo::Network(packets)))
             }
             TunnResult::WriteToTunnelV4(packet, addr) => {
-                self.make_packet_for_resource(addr.into(), packet)
+                self.make_packet_for_resource(addr.into(), packet, upstream_dns)
             }
             TunnResult::WriteToTunnelV6(packet, addr) => {
-                self.make_packet_for_resource(addr.into(), packet)
+                self.make_packet_for_resource(addr.into(), packet, upstream_dns)
             }
         }
     }
@@ -162,8 +165,11 @@ where
         &self,
         addr: IpAddr,
         packet: &'a mut [u8],
+        upstream_dns: &Option<IpAddr>,
     ) -> Result<Option<WriteTo<'a>>> {
-        let (packet, addr) = self.transform.packet_untransform(&addr, packet)?;
+        let (packet, addr) = self
+            .transform
+            .packet_untransform(&addr, packet, upstream_dns)?;
 
         if !self.is_allowed(addr) {
             tracing::warn!("packet not allowed: {addr}");
@@ -238,6 +244,8 @@ pub(crate) trait PacketTransform {
         &self,
         addr: &IpAddr,
         packet: &'a mut [u8],
+        // TODO: this is invading gateway's code, we might want to think of another way to do it
+        upstream_dns: &Option<IpAddr>,
     ) -> Result<(device_channel::Packet<'a>, IpAddr)>;
 
     fn packet_transform<'a>(&self, packet: MutableIpPacket<'a>) -> Option<MutableIpPacket<'a>>;
@@ -248,6 +256,7 @@ impl PacketTransform for PacketTransformGateway {
         &self,
         addr: &IpAddr,
         packet: &'a mut [u8],
+        _: &Option<IpAddr>,
     ) -> Result<(device_channel::Packet<'a>, IpAddr)> {
         let Some(dst) = Tunn::dst_address(packet) else {
             return Err(Error::BadPacket);
@@ -272,18 +281,27 @@ impl PacketTransform for PacketTransformClient {
         &self,
         addr: &IpAddr,
         packet: &'a mut [u8],
+        upstream_dns: &Option<IpAddr>,
     ) -> Result<(device_channel::Packet<'a>, IpAddr)> {
         let translations = self.translations.read();
-        let src = translations.get_by_right(addr).unwrap_or(addr);
+        let mut src = *translations.get_by_right(addr).unwrap_or(addr);
 
         let Some(mut pkt) = MutableIpPacket::new(packet) else {
             return Err(Error::BadPacket);
         };
 
-        pkt.set_src(*src);
+        if Some(src) == *upstream_dns {
+            if let Some(dgm) = pkt.as_udp() {
+                if to_dns(&dgm.to_immutable()).is_some() {
+                    src = DNS_SENTINEL.into();
+                }
+            }
+        }
+
+        pkt.set_src(src);
         pkt.update_checksum();
         let packet = make_packet(packet, addr);
-        Ok((packet, *src))
+        Ok((packet, src))
     }
 
     fn packet_transform<'a>(&self, mut packet: MutableIpPacket<'a>) -> Option<MutableIpPacket<'a>> {
