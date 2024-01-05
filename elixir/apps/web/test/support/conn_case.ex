@@ -225,4 +225,13 @@ defmodule Web.ConnCase do
     |> String.replace(~r|[\n\s ]+|, " ")
     |> String.trim()
   end
+
+  def active_buttons(html) do
+    html
+    |> Floki.find("main button")
+    |> Enum.filter(fn button ->
+      Floki.attribute(button, "disabled") != "disabled"
+    end)
+    |> elements_to_text()
+  end
 end

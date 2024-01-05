@@ -5,25 +5,115 @@ defmodule Domain.TokensTest do
 
   setup do
     account = Fixtures.Accounts.create_account()
-    subject = Fixtures.Auth.create_subject(account: account)
-    %{account: account, subject: subject}
+    actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+    identity = Fixtures.Auth.create_identity(account: account, actor: actor)
+    subject = Fixtures.Auth.create_subject(account: account, actor: actor, identity: identity)
+
+    %{
+      account: account,
+      actor: actor,
+      identity: identity,
+      subject: subject
+    }
   end
 
-  # describe "fetch_token_by_id/2" do
-  #   test "returns error when subject does not have permissions", %{account: account, subject: subject} do
-  #     token = Fixtures.Tokens.create_token(account: account)
-  #     assert fetch_token_by_id(token.id, subject) == {:error, :unauthorized}
-  #   end
+  describe "fetch_token_by_id/2" do
+    test "returns error when subject does not have required permissions", %{
+      subject: subject
+    } do
+      subject = Fixtures.Auth.remove_permissions(subject)
 
-  #   test "returns error when token is not found", %{subject: subject} do
-  #     assert fetch_token_by_id(Ecto.UUID.generate(), subject) == {:error, :not_found}
-  #   end
+      assert fetch_token_by_id(Ecto.UUID.generate(), subject) ==
+               {:error,
+                {:unauthorized,
+                 reason: :missing_permissions,
+                 missing_permissions: [
+                   {:one_of,
+                    [
+                      Tokens.Authorizer.manage_tokens_permission(),
+                      Tokens.Authorizer.manage_own_tokens_permission()
+                    ]}
+                 ]}}
+    end
 
-  #   test "returns token when subject has permissions", %{account: account, subject: subject} do
-  #     token = Fixtures.Tokens.create_token(account: account)
-  #     assert {:ok, _token} = fetch_token_by_id(token.id, subject)
-  #   end
-  # end
+    test "returns error when token is not found", %{subject: subject} do
+      assert fetch_token_by_id(Ecto.UUID.generate(), subject) == {:error, :not_found}
+      assert fetch_token_by_id("foo", subject) == {:error, :not_found}
+    end
+
+    test "returns token for admin user", %{account: account, subject: subject} do
+      token = Fixtures.Tokens.create_token(account: account)
+      assert {:ok, _token} = fetch_token_by_id(token.id, subject)
+    end
+
+    test "does not return other user tokens for non-admin users", %{account: account} do
+      actor = Fixtures.Actors.create_actor(type: :account_user, account: account)
+      subject = Fixtures.Auth.create_subject(account: account, actor: actor)
+
+      token = Fixtures.Tokens.create_token(account: account)
+      assert fetch_token_by_id(token.id, subject) == {:error, :not_found}
+    end
+  end
+
+  describe "list_tokens_for/1" do
+    test "returns current subject's tokens", %{
+      account: account,
+      identity: identity,
+      subject: subject
+    } do
+      token = Fixtures.Tokens.create_token(account: account, identity: identity)
+      Fixtures.Tokens.create_token(account: account)
+      Fixtures.Tokens.create_token()
+
+      assert {:ok, tokens} = list_tokens_for(subject)
+      token_ids = Enum.map(tokens, & &1.id)
+      assert token.id in token_ids
+      assert subject.token_id in token_ids
+      assert length(tokens) == 2
+    end
+
+    test "returns error when subject does not have required permissions", %{
+      subject: subject
+    } do
+      subject = Fixtures.Auth.remove_permissions(subject)
+
+      assert list_tokens_for(subject) ==
+               {:error,
+                {:unauthorized,
+                 reason: :missing_permissions,
+                 missing_permissions: [Tokens.Authorizer.manage_own_tokens_permission()]}}
+    end
+  end
+
+  describe "list_tokens_for/2" do
+    test "returns tokens of a given actor", %{
+      account: account,
+      subject: subject
+    } do
+      actor = Fixtures.Actors.create_actor(account: account)
+      identity = Fixtures.Auth.create_identity(account: account, actor: actor)
+      token = Fixtures.Tokens.create_token(account: account, identity: identity)
+
+      Fixtures.Tokens.create_token(account: account)
+      Fixtures.Tokens.create_token()
+
+      assert {:ok, [fetched_token]} = list_tokens_for(actor, subject)
+      assert fetched_token.id == token.id
+    end
+
+    test "returns error when subject does not have required permissions", %{
+      actor: actor,
+      subject: subject
+    } do
+      subject = Fixtures.Auth.remove_permissions(subject)
+
+      assert list_tokens_for(actor, subject) ==
+               {:error,
+                {:unauthorized,
+                 reason: :missing_permissions,
+                 missing_permissions: [Tokens.Authorizer.manage_tokens_permission()]}}
+    end
+  end
 
   describe "create_token/2" do
     test "returns errors on missing required attrs" do
@@ -64,7 +154,7 @@ defmodule Domain.TokensTest do
              } = errors_on(changeset)
     end
 
-    test "inserts a token", %{account: account} do
+    test "inserts a token", %{account: account, identity: identity} do
       type = :email
       nonce = "nonce"
       fragment = Domain.Crypto.random_token(32)
@@ -75,6 +165,7 @@ defmodule Domain.TokensTest do
       attrs = %{
         type: type,
         account_id: account.id,
+        identity_id: identity.id,
         secret_nonce: nonce,
         secret_fragment: fragment,
         expires_at: expires_at,
@@ -147,6 +238,7 @@ defmodule Domain.TokensTest do
         type: type,
         secret_nonce: nonce,
         secret_fragment: fragment,
+        identity_id: subject.identity.id,
         expires_at: expires_at,
         created_by_user_agent: user_agent,
         created_by_remote_ip: remote_ip
@@ -279,6 +371,166 @@ defmodule Domain.TokensTest do
     test "does not extend expiration of deleted tokens", %{token: token} do
       token = Fixtures.Tokens.delete_token(token)
       assert update_token(token, %{}) == {:error, :not_found}
+    end
+  end
+
+  describe "delete_token/2" do
+    test "admin can delete any account token", %{account: account, subject: subject} do
+      token = Fixtures.Tokens.create_token(account: account)
+      Phoenix.PubSub.subscribe(Domain.PubSub, "sessions:#{token.id}")
+
+      assert {:ok, token} = delete_token(token, subject)
+
+      assert token.deleted_at
+      assert_receive "disconnect"
+    end
+
+    test "user can delete own token", %{account: account, identity: identity, subject: subject} do
+      token = Fixtures.Tokens.create_token(account: account, identity: identity)
+      Phoenix.PubSub.subscribe(Domain.PubSub, "sessions:#{token.id}")
+
+      assert {:ok, token} = delete_token(token, subject)
+
+      assert token.deleted_at
+      assert_receive "disconnect"
+    end
+
+    test "user can not delete other users token", %{
+      account: account
+    } do
+      actor = Fixtures.Actors.create_actor(type: :account_user, account: account)
+      subject = Fixtures.Auth.create_subject(account: account, actor: actor)
+
+      token = Fixtures.Tokens.create_token(account: account)
+      Phoenix.PubSub.subscribe(Domain.PubSub, "sessions:#{token.id}")
+
+      assert delete_token(token, subject) == {:error, :not_found}
+
+      refute Repo.get(Tokens.Token, token.id).deleted_at
+      refute_receive "disconnect"
+    end
+
+    test "does not delete tokens that belong to other accounts", %{
+      subject: subject
+    } do
+      token = Fixtures.Tokens.create_token()
+      Phoenix.PubSub.subscribe(Domain.PubSub, "sessions:#{token.id}")
+
+      assert delete_token(token, subject) == {:error, :not_found}
+
+      refute Repo.get(Tokens.Token, token.id).deleted_at
+      refute_receive "disconnect"
+    end
+
+    test "returns error when subject does not have required permissions", %{
+      account: account,
+      subject: subject
+    } do
+      token = Fixtures.Tokens.create_token(account: account)
+      subject = Fixtures.Auth.remove_permissions(subject)
+
+      assert delete_token(token, subject) ==
+               {:error,
+                {:unauthorized,
+                 reason: :missing_permissions,
+                 missing_permissions: [
+                   {:one_of,
+                    [
+                      Tokens.Authorizer.manage_tokens_permission(),
+                      Tokens.Authorizer.manage_own_tokens_permission()
+                    ]}
+                 ]}}
+    end
+  end
+
+  describe "delete_tokens_for/1" do
+    test "deletes tokens for current subject", %{
+      account: account,
+      identity: identity,
+      subject: subject
+    } do
+      token = Fixtures.Tokens.create_token(account: account, identity: identity)
+      Phoenix.PubSub.subscribe(Domain.PubSub, "sessions:#{token.id}")
+
+      assert delete_tokens_for(subject) == {:ok, 2}
+
+      assert Repo.get(Tokens.Token, token.id).deleted_at
+      assert_receive "disconnect"
+    end
+
+    test "does not delete tokens for other actors", %{account: account, subject: subject} do
+      token = Fixtures.Tokens.create_token(account: account)
+      Phoenix.PubSub.subscribe(Domain.PubSub, "sessions:#{token.id}")
+
+      assert delete_tokens_for(subject) == {:ok, 1}
+
+      refute Repo.get(Tokens.Token, token.id).deleted_at
+      refute_receive "disconnect"
+    end
+
+    test "returns error when subject does not have required permissions", %{
+      subject: subject
+    } do
+      subject = Fixtures.Auth.remove_permissions(subject)
+
+      assert delete_tokens_for(subject) ==
+               {:error,
+                {:unauthorized,
+                 reason: :missing_permissions,
+                 missing_permissions: [Tokens.Authorizer.manage_own_tokens_permission()]}}
+    end
+  end
+
+  describe "delete_tokens_for/2" do
+    test "deletes tokens for given actor", %{account: account, subject: subject} do
+      actor = Fixtures.Actors.create_actor(account: account)
+      identity = Fixtures.Auth.create_identity(account: account, actor: actor)
+      token = Fixtures.Tokens.create_token(account: account, identity: identity)
+      Phoenix.PubSub.subscribe(Domain.PubSub, "sessions:#{token.id}")
+
+      assert delete_tokens_for(actor, subject) == {:ok, 1}
+
+      assert Repo.get(Tokens.Token, token.id).deleted_at
+      assert_receive "disconnect"
+    end
+
+    test "returns error when subject does not have required permissions", %{
+      actor: actor,
+      subject: subject
+    } do
+      subject = Fixtures.Auth.remove_permissions(subject)
+
+      assert delete_tokens_for(actor, subject) ==
+               {:error,
+                {:unauthorized,
+                 reason: :missing_permissions,
+                 missing_permissions: [Tokens.Authorizer.manage_tokens_permission()]}}
+    end
+  end
+
+  describe "delete_expired_tokens/0" do
+    test "deletes expired tokens" do
+      token =
+        Fixtures.Tokens.create_token()
+        |> Fixtures.Tokens.expire_token()
+
+      Phoenix.PubSub.subscribe(Domain.PubSub, "sessions:#{token.id}")
+
+      assert delete_expired_tokens() == {:ok, 1}
+
+      assert Repo.get(Tokens.Token, token.id).deleted_at
+      assert_receive "disconnect"
+    end
+
+    test "does not delete non-expired tokens" do
+      in_one_minute = DateTime.utc_now() |> DateTime.add(1, :minute)
+      token = Fixtures.Tokens.create_token(expires_at: in_one_minute)
+      Phoenix.PubSub.subscribe(Domain.PubSub, "sessions:#{token.id}")
+
+      assert delete_expired_tokens() == {:ok, 0}
+
+      refute Repo.get(Tokens.Token, token.id).deleted_at
+      refute_receive "disconnect"
     end
   end
 

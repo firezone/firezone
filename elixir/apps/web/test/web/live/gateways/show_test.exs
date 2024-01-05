@@ -49,10 +49,7 @@ defmodule Web.Live.Gateways.ShowTest do
       |> live(~p"/#{account}/gateways/#{gateway}")
 
     assert html =~ "(deleted)"
-    refute html =~ "Danger Zone"
-    refute html =~ "Add"
-    refute html =~ "Delete"
-    refute html =~ "Edit"
+    assert active_buttons(html) == []
   end
 
   test "renders breadcrumbs item", %{

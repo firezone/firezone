@@ -50,10 +50,7 @@ defmodule Web.Live.Settings.IdentityProviders.GoogleWorkspace.ShowTest do
       |> live(~p"/#{account}/settings/identity_providers/google_workspace/#{provider}")
 
     assert html =~ "(deleted)"
-    refute html =~ "Danger Zone"
-    refute html =~ "Add"
-    refute html =~ "Edit"
-    refute html =~ "Deploy"
+    assert active_buttons(html) == []
   end
 
   test "renders breadcrumbs item", %{

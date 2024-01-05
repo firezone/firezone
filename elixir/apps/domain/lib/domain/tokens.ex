@@ -1,15 +1,68 @@
 defmodule Domain.Tokens do
-  alias Domain.Repo
+  use Supervisor
+  alias Domain.{Repo, Validator}
   alias Domain.{Auth, Actors}
   alias Domain.Tokens.{Token, Authorizer, Jobs}
   require Ecto.Query
 
-  alias Domain.{Auth, Accounts}
-  alias Domain.Tokens.Token
+  def start_link(_init_arg) do
+    Supervisor.start_link(__MODULE__, nil, name: __MODULE__)
+  end
 
-  def create_token(%Accounts.Account{} = account, attrs) do
-    account
-    |> Token.Changeset.create(attrs)
+  @impl true
+  def init(_init_arg) do
+    children = [
+      {Domain.Jobs, Jobs}
+    ]
+
+    Supervisor.init(children, strategy: :one_for_one)
+  end
+
+  def fetch_token_by_id(id, %Auth.Subject{} = subject) do
+    required_permissions =
+      {:one_of,
+       [
+         Authorizer.manage_tokens_permission(),
+         Authorizer.manage_own_tokens_permission()
+       ]}
+
+    with :ok <- Auth.ensure_has_permissions(subject, required_permissions),
+         true <- Validator.valid_uuid?(id) do
+      Token.Query.by_id(id)
+      |> Authorizer.for_subject(subject)
+      |> Repo.fetch()
+    else
+      false -> {:error, :not_found}
+      other -> other
+    end
+  end
+
+  def list_tokens_for(%Auth.Subject{} = subject) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_own_tokens_permission()) do
+      Token.Query.by_actor_id(subject.actor.id)
+      |> list_tokens(subject, [])
+    end
+  end
+
+  def list_tokens_for(%Actors.Actor{} = actor, %Auth.Subject{} = subject, opts \\ []) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_tokens_permission()) do
+      Token.Query.by_actor_id(actor.id)
+      |> list_tokens(subject, opts)
+    end
+  end
+
+  defp list_tokens(queryable, subject, opts) do
+    {preload, _opts} = Keyword.pop(opts, :preload, [])
+
+    {:ok, tokens} =
+      queryable
+      |> Authorizer.for_subject(subject)
+      |> Ecto.Query.order_by([tokens: tokens], desc: tokens.inserted_at, desc: tokens.id)
+      |> Repo.list()
+
+    {:ok, Repo.preload(tokens, preload)}
+  end
+
   def create_token(attrs) do
     Token.Changeset.create(attrs)
     |> Repo.insert()
@@ -47,7 +100,6 @@ defmodule Domain.Tokens do
     "." <> Plug.Crypto.sign(key_base, salt <> to_string(type), body)
   end
 
-  # TODO: maybe accept a slug too here and reuse it to preload account?
   def use_token(encoded_token, %Auth.Context{} = context) do
     with [nonce, encoded_fragment] <- String.split(encoded_token, ".", parts: 2),
          {:ok, {account_id, id, secret}} <- verify_token(encoded_fragment, context),
@@ -79,6 +131,42 @@ defmodule Domain.Tokens do
     Plug.Crypto.verify(key_base, salt, encrypted_token, max_age: :infinity)
   end
 
+  def delete_token(%Token{} = token, %Auth.Subject{} = subject) do
+    required_permissions =
+      {:one_of,
+       [
+         Authorizer.manage_tokens_permission(),
+         Authorizer.manage_own_tokens_permission()
+       ]}
+
+    with :ok <- Auth.ensure_has_permissions(subject, required_permissions) do
+      Token.Query.by_id(token.id)
+      |> Authorizer.for_subject(subject)
+      |> Repo.fetch_and_update(with: &Token.Changeset.delete/1)
+      |> case do
+        {:ok, token} ->
+          Phoenix.PubSub.broadcast(Domain.PubSub, "sessions:#{token.id}", "disconnect")
+          {:ok, token}
+
+        {:error, reason} ->
+          {:error, reason}
+      end
+    end
+  end
+
+  def delete_tokens_for(%Auth.Subject{} = subject) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_own_tokens_permission()) do
+      Token.Query.by_actor_id(subject.actor.id)
+      |> Authorizer.for_subject(subject)
+      |> delete_tokens()
+    end
+  end
+
+  def delete_tokens_for(%Actors.Actor{} = actor, %Auth.Subject{} = subject) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_tokens_permission()) do
+      Token.Query.by_actor_id(actor.id)
+      |> Authorizer.for_subject(subject)
+      |> delete_tokens()
     end
   end
 
@@ -88,18 +176,27 @@ defmodule Domain.Tokens do
   end
 
   defp delete_tokens(queryable) do
-    {count, _ids} =
+    {count, ids} =
       queryable
       |> Ecto.Query.select([tokens: tokens], tokens.id)
       |> Repo.update_all(set: [deleted_at: DateTime.utc_now()])
 
+    :ok =
+      Enum.each(ids, fn id ->
+        # TODO: use Domain.PubSub once it's in the codebase
+        Phoenix.PubSub.broadcast(Domain.PubSub, "sessions:#{id}", "disconnect")
+      end)
 
     {:ok, count}
   end
 
-  def delete_token(%Token{} = token) do
-    Token.Query.by_id(token.id)
-    |> Repo.fetch_and_update(with: &Token.Changeset.delete/1)
+  def delete_token_by_id(token_id) do
+    if Validator.valid_uuid?(token_id) do
+      Token.Query.by_id(token_id)
+      |> delete_tokens()
+    else
+      {:ok, 0}
+    end
   end
 
   defp fetch_config! do

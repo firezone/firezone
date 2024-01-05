@@ -1,10 +1,10 @@
 defmodule Web.Actors.Show do
   use Web, :live_view
   import Web.Actors.Components
-  alias Domain.{Auth, Flows, Clients}
+  alias Domain.{Auth, Tokens, Flows, Clients}
   alias Domain.Actors
 
-  def mount(%{"id" => id}, _session, socket) do
+  def mount(%{"id" => id}, _token, socket) do
     with {:ok, actor} <-
            Actors.fetch_actor_by_id(id, socket.assigns.subject,
              preload: [
@@ -12,6 +12,10 @@ defmodule Web.Actors.Show do
                groups: [:provider],
                clients: []
              ]
+           ),
+         {:ok, tokens} <-
+           Tokens.list_tokens_for(actor, socket.assigns.subject,
+             preload: [identity: [:provider, created_by_identity: [:actor]]]
            ),
          {:ok, flows} <-
            Flows.list_flows_for(actor, socket.assigns.subject,
@@ -24,6 +28,7 @@ defmodule Web.Actors.Show do
        assign(socket,
          actor: actor,
          flows: flows,
+         tokens: tokens,
          page_title: actor.name,
          flow_activities_enabled?: Domain.Config.flow_activities_enabled?()
        )}
@@ -93,6 +98,7 @@ defmodule Web.Actors.Show do
     </.section>
 
     <.section>
+      <!-- TODO: do we need them for service accounts? -->
       <:title>Authentication Identities</:title>
       <:action :if={is_nil(@actor.deleted_at)}>
         <.add_button
@@ -116,7 +122,6 @@ defmodule Web.Actors.Show do
           <:col :let={identity} label="IDENTITY" sortable="false">
             <.identity_identifier account={@account} identity={identity} />
           </:col>
-
           <:col :let={identity} label="CREATED" sortable="false">
             <.created_by account={@account} schema={identity} />
           </:col>
@@ -124,19 +129,17 @@ defmodule Web.Actors.Show do
             <.relative_datetime datetime={identity.last_seen_at} />
           </:col>
           <:action :let={identity}>
-            <button
+            <.button
               :if={identity_has_email?(identity)}
+              icon="hero-envelope"
               phx-click="send_welcome_email"
               phx-value-id={identity.id}
-              class={[
-                "block w-full py-2 px-4 hover:bg-neutral-100"
-              ]}
             >
               Send Welcome Email
-            </button>
+            </.button>
           </:action>
           <:action :let={identity}>
-            <button
+            <.delete_button
               :if={identity.created_by != :provider}
               phx-click="delete_identity"
               data-confirm="Are you sure want to delete this identity?"
@@ -146,7 +149,7 @@ defmodule Web.Actors.Show do
               ]}
             >
               Delete
-            </button>
+            </.delete_button>
           </:action>
           <:empty>
             <div class="flex justify-center text-center text-neutral-500 p-4">
@@ -170,6 +173,59 @@ defmodule Web.Actors.Show do
                 to authenticate this user.
               </div>
             </div>
+          </:empty>
+        </.table>
+      </:content>
+    </.section>
+
+    <.section>
+      <:title>Authentication Tokens</:title>
+
+      <:action :if={is_nil(@actor.deleted_at)}>
+        <.delete_button
+          phx-click="revoke_all_tokens"
+          data-confirm="Are you sure want to sign out actor from all devices?"
+        >
+          Revoke All
+        </.delete_button>
+      </:action>
+
+      <:content>
+        <.table id="tokens" rows={@tokens} row_id={&"tokens-#{&1.id}"}>
+          <:col :let={token} label="TYPE" sortable="false">
+            <%= token.type %>
+          </:col>
+          <:col :let={token} label="IDENTITY" sortable="false">
+            <.identity_identifier account={@account} identity={token.identity} />
+          </:col>
+          <:col :let={token} label="CREATED">
+            <.created_by account={@account} schema={token} />
+          </:col>
+          <:col :let={token} label="LAST SEEN (IP)">
+            <p>
+              <.relative_datetime datetime={token.last_seen_at} />
+            </p>
+            <p :if={not is_nil(token.last_seen_at)}>
+              <.last_seen schema={token} />
+            </p>
+          </:col>
+          <:col :let={token} label="EXPIRES AT">
+            <.relative_datetime datetime={token.expires_at} />
+          </:col>
+          <:action :let={token}>
+            <.delete_button
+              phx-click="revoke_token"
+              data-confirm="Are you sure want to revoke this token?"
+              phx-value-id={token.id}
+              class={[
+                "block w-full py-2 px-4 hover:bg-gray-100"
+              ]}
+            >
+              Revoke
+            </.delete_button>
+          </:action>
+          <:empty>
+            <div class="text-center text-slate-500 p-4">No authentication tokens to display.</div>
           </:empty>
         </.table>
       </:content>
@@ -372,6 +428,39 @@ defmodule Web.Actors.Show do
     socket =
       socket
       |> put_flash(:info, "Welcome email sent to #{identity.provider_identifier}")
+
+    {:noreply, socket}
+  end
+
+  def handle_event("revoke_all_tokens", _params, socket) do
+    {:ok, deleted_count} = Tokens.delete_tokens_for(socket.assigns.actor, socket.assigns.subject)
+
+    {:ok, tokens} =
+      Tokens.list_tokens_for(socket.assigns.actor, socket.assigns.subject,
+        preload: [identity: [:provider, created_by_identity: [:actor]]]
+      )
+
+    socket =
+      socket
+      |> put_flash(:info, "#{deleted_count} token(s) were revoked.")
+      |> assign(tokens: tokens)
+
+    {:noreply, socket}
+  end
+
+  def handle_event("revoke_token", %{"id" => id}, socket) do
+    {:ok, token} = Tokens.fetch_token_by_id(id, socket.assigns.subject)
+    {:ok, _token} = Tokens.delete_token(token, socket.assigns.subject)
+
+    {:ok, tokens} =
+      Tokens.list_tokens_for(socket.assigns.actor, socket.assigns.subject,
+        preload: [identity: [:provider, created_by_identity: [:actor]]]
+      )
+
+    socket =
+      socket
+      |> put_flash(:info, "Token was revoked.")
+      |> assign(tokens: tokens)
 
     {:noreply, socket}
   end

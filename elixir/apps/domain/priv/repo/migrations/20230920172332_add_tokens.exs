@@ -12,7 +12,7 @@ defmodule Domain.Repo.Migrations.AddTokens do
       add(
         :identity_id,
         references(:auth_identities, type: :binary_id, on_delete: :delete_all)
-        # TODO? null: false
+        # TODO? null: false?
       )
 
       add(:created_by, :string, null: false)
@@ -37,6 +37,16 @@ defmodule Domain.Repo.Migrations.AddTokens do
       add(:deleted_at, :utc_datetime_usec)
       timestamps()
     end
+
+    create(
+      constraint(:tokens, :assoc_not_null,
+        check: """
+        (type = 'browser' AND identity_id IS NOT NULL)
+        OR (type = 'client' AND identity_id IS NOT NULL)
+        OR (type IN ('relay', 'gateway', 'email', 'api_client'))
+        """
+      )
+    )
 
     create(index(:tokens, [:account_id, :type], where: "deleted_at IS NULL"))
   end

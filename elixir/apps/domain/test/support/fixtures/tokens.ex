@@ -31,6 +31,12 @@ defmodule Domain.Fixtures.Tokens do
         Fixtures.Accounts.create_account(assoc_attrs)
       end)
 
+    {identity_id, attrs} =
+      pop_assoc_fixture_id(attrs, :identity, fn ->
+        Fixtures.Auth.create_identity(account: account)
+      end)
+
+    attrs = Map.put(attrs, :identity_id, identity_id)
     attrs = Map.put(attrs, :account_id, account.id)
 
     {:ok, token} = Domain.Tokens.create_token(attrs)
@@ -45,12 +51,19 @@ defmodule Domain.Fixtures.Tokens do
         Fixtures.Accounts.create_account(assoc_attrs)
       end)
 
+    {identity_id, attrs} =
+      pop_assoc_fixture_id(attrs, :identity, fn ->
+        Fixtures.Auth.create_identity(account: account)
+      end)
+
     {subject, attrs} =
       pop_assoc_fixture(attrs, :subject, fn assoc_attrs ->
         assoc_attrs
         |> Enum.into(%{account: account, actor: [type: :account_admin_user]})
         |> Fixtures.Auth.create_subject()
       end)
+
+    attrs = Map.put(attrs, :identity_id, identity_id)
 
     {:ok, token} = Domain.Tokens.create_token(attrs, subject)
     token
@@ -64,6 +77,12 @@ defmodule Domain.Fixtures.Tokens do
         Fixtures.Accounts.create_account(assoc_attrs)
       end)
 
+    {identity_id, attrs} =
+      pop_assoc_fixture_id(attrs, :identity, fn ->
+        Fixtures.Auth.create_identity(account: account)
+      end)
+
+    attrs = Map.put(attrs, :identity_id, identity_id)
     attrs = Map.put(attrs, :account_id, account.id)
 
     {:ok, token} = Domain.Tokens.create_token(attrs)

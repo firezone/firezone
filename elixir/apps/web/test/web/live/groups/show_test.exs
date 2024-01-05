@@ -46,11 +46,7 @@ defmodule Web.Live.Groups.ShowTest do
       |> live(~p"/#{account}/groups/#{group}")
 
     assert html =~ "(deleted)"
-    refute html =~ "Danger Zone"
-    refute html =~ "Add"
-    refute html =~ "Delete"
-    refute html =~ "Edit"
-    refute html =~ "Deploy"
+    assert active_buttons(html) == []
   end
 
   test "renders breadcrumbs item", %{

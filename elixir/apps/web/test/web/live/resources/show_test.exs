@@ -59,10 +59,7 @@ defmodule Web.Live.Resources.ShowTest do
       |> live(~p"/#{account}/resources/#{resource}")
 
     assert html =~ "(deleted)"
-    refute html =~ "Danger Zone"
-    refute html =~ "Delete"
-    refute html =~ "Edit"
-    refute html =~ "Deploy"
+    assert active_buttons(html) == []
   end
 
   test "renders breadcrumbs item", %{

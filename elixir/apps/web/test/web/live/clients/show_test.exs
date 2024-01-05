@@ -48,11 +48,7 @@ defmodule Web.Live.Clients.ShowTest do
       |> live(~p"/#{account}/clients/#{client}")
 
     assert html =~ "(deleted)"
-    refute html =~ "Danger Zone"
-    refute html =~ "Add"
-    refute html =~ "Delete"
-    refute html =~ "Edit"
-    refute html =~ "Deploy"
+    assert active_buttons(html) == []
   end
 
   test "renders breadcrumbs item", %{

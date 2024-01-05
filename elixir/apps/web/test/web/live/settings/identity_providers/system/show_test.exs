@@ -47,10 +47,7 @@ defmodule Web.Live.Settings.IdentityProviders.System.ShowTest do
       |> live(~p"/#{account}/settings/identity_providers/system/#{provider}")
 
     assert html =~ "(deleted)"
-    refute html =~ "Danger Zone"
-    refute html =~ "Add"
-    refute html =~ "Edit"
-    refute html =~ "Deploy"
+    assert active_buttons(html) == []
   end
 
   test "renders breadcrumbs item", %{

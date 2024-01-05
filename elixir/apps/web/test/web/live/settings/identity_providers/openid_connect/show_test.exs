@@ -49,9 +49,7 @@ defmodule Web.Live.Settings.IdentityProviders.OpenIDConnect.ShowTest do
       |> live(~p"/#{account}/settings/identity_providers/openid_connect/#{provider}")
 
     assert html =~ "(deleted)"
-    refute html =~ "Danger Zone"
-    refute html =~ "Edit"
-    refute html =~ "Deploy"
+    assert active_buttons(html) == []
   end
 
   test "renders breadcrumbs item", %{
