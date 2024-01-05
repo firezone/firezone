@@ -15,7 +15,7 @@ use windows::Win32::{
         IpHelper::{GetIpInterfaceEntry, SetIpInterfaceEntry, MIB_IPINTERFACE_ROW},
         Ndis::NET_LUID_LH,
     },
-    Networking::WinSock::AF_INET,
+    Networking::WinSock::{AF_INET, AF_INET6},
 };
 
 // TODO: Double-check that all these get dropped gracefully on disconnect
@@ -221,19 +221,40 @@ fn set_iface_config(luid: wintun::NET_LUID_LH, mtu: u32) -> Result<()> {
         Value: unsafe { luid.Value },
     };
 
-    let mut row = MIB_IPINTERFACE_ROW {
-        Family: AF_INET,
-        InterfaceLuid: luid,
-        ..Default::default()
-    };
+    // Set MTU for IPv4
+    {
+        let mut row = MIB_IPINTERFACE_ROW {
+            Family: AF_INET,
+            InterfaceLuid: luid,
+            ..Default::default()
+        };
 
-    unsafe { GetIpInterfaceEntry(&mut row) }?;
+        unsafe { GetIpInterfaceEntry(&mut row) }?;
 
-    row.NlMtu = mtu;
-    // https://stackoverflow.com/questions/54857292/setipinterfaceentry-returns-error-invalid-parameter
-    row.SitePrefixLength = 0;
+        // https://stackoverflow.com/questions/54857292/setipinterfaceentry-returns-error-invalid-parameter
+        row.SitePrefixLength = 0;
 
-    // Ignore error if we can't set everything
-    unsafe { SetIpInterfaceEntry(&mut row) }?;
+        // Set MTU for IPv4
+        row.NlMtu = mtu;
+        unsafe { SetIpInterfaceEntry(&mut row) }?;
+    }
+
+    // Set MTU for IPv6
+    {
+        let mut row = MIB_IPINTERFACE_ROW {
+            Family: AF_INET6,
+            InterfaceLuid: luid,
+            ..Default::default()
+        };
+
+        unsafe { GetIpInterfaceEntry(&mut row) }?;
+
+        // https://stackoverflow.com/questions/54857292/setipinterfaceentry-returns-error-invalid-parameter
+        row.SitePrefixLength = 0;
+
+        // Set MTU for IPv4
+        row.NlMtu = mtu;
+        unsafe { SetIpInterfaceEntry(&mut row) }?;
+    }
     Ok(())
 }
