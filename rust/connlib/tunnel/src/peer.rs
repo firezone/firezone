@@ -18,7 +18,6 @@ use pnet_packet::Packet;
 use secrecy::ExposeSecret;
 
 use crate::client::IpProvider;
-use crate::ip_packet::to_dns;
 use crate::MAX_UDP_SIZE;
 use crate::{device_channel, ip_packet::MutableIpPacket, PeerConfig};
 
@@ -290,9 +289,10 @@ impl PacketTransform for PacketTransformClient {
             return Err(Error::BadPacket);
         };
 
+        let original_src = src;
         if Some(src) == *upstream_dns {
             if let Some(dgm) = pkt.as_udp() {
-                if to_dns(&dgm.to_immutable()).is_some() {
+                if domain::base::Message::from_slice(dgm.payload()).is_ok() {
                     src = DNS_SENTINEL.into();
                 }
             }
@@ -301,7 +301,7 @@ impl PacketTransform for PacketTransformClient {
         pkt.set_src(src);
         pkt.update_checksum();
         let packet = make_packet(packet, addr);
-        Ok((packet, src))
+        Ok((packet, original_src))
     }
 
     fn packet_transform<'a>(&self, mut packet: MutableIpPacket<'a>) -> Option<MutableIpPacket<'a>> {

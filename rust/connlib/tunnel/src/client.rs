@@ -119,9 +119,9 @@ where
         self.role_state.lock().upstream_dns = config
             .upstream_dns
             .iter()
-            .filter_map(|dns| {
+            .map(|dns| {
                 let DnsServer::IpPort(dns) = dns;
-                return Some(dns.address);
+                dns.address
             })
             .collect();
 
