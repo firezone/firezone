@@ -96,8 +96,11 @@ defmodule Web.Resources.New do
                 required
               />
               <p :if={@form[:type].value == :dns} class="mt-2 text-xs text-neutral-500">
-                To <strong>recursively</strong> match all subdomains, use a wildcard (e.g. *.company.com).<br />
-                To <strong>non-recursively</strong> match all subdomains, use a question mark (e.g. ?.company.com).
+                Wildcards are supported:<br />
+                <code class="ml-2 px-0.5 font-semibold">*.c.com</code>
+                will match recursively (<code class="px-0.5 font-semibold">b.c.com</code> and <code class="px-0.5 font-semibold">a.b.c.com</code>).<br />
+                <code class="ml-2 px-0.5 font-semibold">?.c.com</code>
+                will match top-level subdomains only (<code class="px-0.5 font-semibold">b.c.com</code>).
               </p>
               <p :if={@form[:type].value == :ip} class="mt-2 text-xs text-neutral-500">
                 IPv4 and IPv6 addresses are supported.
@@ -114,7 +117,6 @@ defmodule Web.Resources.New do
               placeholder="Name this resource"
               required
             />
-
 
             <.filters_form :if={@traffic_filters_enabled?} form={@form[:filters]} />
 
