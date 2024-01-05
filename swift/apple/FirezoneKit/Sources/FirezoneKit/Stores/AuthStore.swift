@@ -160,6 +160,10 @@ public final class AuthStore: ObservableObject {
     resetReconnectionAttemptsRemaining()
   }
 
+  public func cancelSignIn() {
+    auth.cancelSignIn()
+  }
+
   func startTunnel() {
     logger.trace("\(#function)")
 
