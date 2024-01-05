@@ -46,11 +46,11 @@ defmodule Web.AcceptanceCase.Auth do
       remote_ip: remote_ip
     }
 
-    subject = Domain.Auth.build_subject(identity, nil, context)
-    authenticate(session, subject)
+    {:ok, token} = Domain.Auth.create_token(identity, context, "", nil)
+    authenticate(session, token)
   end
 
-  def authenticate(session, %Domain.Auth.Subject{} = subject) do
+  def authenticate(session, %Domain.Tokens.Token{} = token) do
     options = Web.Session.options()
 
     key = Keyword.fetch!(options, :key)
@@ -58,23 +58,22 @@ defmodule Web.AcceptanceCase.Auth do
     signing_salt = Keyword.fetch!(options, :signing_salt)
     secret_key_base = Web.Endpoint.config(:secret_key_base)
 
-    with {:ok, token} <- Domain.Tokens.encode_fragment!(subject) do
-      encryption_key = Plug.Crypto.KeyGenerator.generate(secret_key_base, encryption_salt, [])
-      signing_key = Plug.Crypto.KeyGenerator.generate(secret_key_base, signing_salt, [])
+    encoded_token = Domain.Tokens.encode_fragment!(token)
+    encryption_key = Plug.Crypto.KeyGenerator.generate(secret_key_base, encryption_salt, [])
+    signing_key = Plug.Crypto.KeyGenerator.generate(secret_key_base, signing_salt, [])
 
-      cookie =
-        %{"sessions" => [{subject.account.id, DateTime.utc_now(), token}]}
-        |> :erlang.term_to_binary()
+    cookie =
+      %{"sessions" => [{:browser, token.account_id, encoded_token}]}
+      |> :erlang.term_to_binary()
 
-      encrypted =
-        Plug.Crypto.MessageEncryptor.encrypt(
-          cookie,
-          encryption_key,
-          signing_key
-        )
+    encrypted =
+      Plug.Crypto.MessageEncryptor.encrypt(
+        cookie,
+        encryption_key,
+        signing_key
+      )
 
-      Wallaby.Browser.set_cookie(session, key, encrypted)
-    end
+    Wallaby.Browser.set_cookie(session, key, encrypted)
   end
 
   def assert_unauthenticated(session) do
@@ -109,8 +108,8 @@ defmodule Web.AcceptanceCase.Auth do
            user_agent: fetch_session_user_agent!(session),
            remote_ip: {127, 0, 0, 1}
          },
-         {_account_id, _logged_in_at, token} <-
-           List.keyfind(cookie["sessions"], identity.account_id, 0),
+         {:browser, _account_id, token} <-
+           List.keyfind(cookie["sessions"], identity.account_id, 1),
          {:ok, subject} <- Domain.Auth.authenticate(token, context) do
       assert subject.identity.id == identity.id,
              "Expected #{inspect(identity)}, got #{inspect(subject.identity)}"

@@ -426,7 +426,7 @@ defmodule Web.AuthControllerTest do
     setup %{conn: conn} do
       account = Fixtures.Accounts.create_account()
       provider = Fixtures.Auth.create_email_provider(account: account)
-      actor = Fixtures.Actors.create_actor(account: account)
+      actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
       identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
 
       {conn_with_cookie, secret} =

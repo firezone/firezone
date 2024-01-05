@@ -196,12 +196,17 @@ defmodule Web.AuthTest do
       account: account,
       provider: provider,
       nonce: nonce,
-      user_identity: user_identity,
-      user_encoded_fragment: user_encoded_fragment
+      admin_identity: admin_identity,
+      admin_encoded_fragment: admin_encoded_fragment
     } do
-      user_encoded_token = nonce <> user_encoded_fragment
-      conn = signed_in(conn, provider, user_identity, context, user_encoded_token, %{})
-      assert get_session(conn, "sessions") == [{context.type, account.id, user_encoded_token}]
+      admin_encoded_token = nonce <> admin_encoded_fragment
+
+      conn =
+        %{conn | path_params: %{"account_id_or_slug" => account.slug}}
+        |> fetch_flash()
+        |> signed_in(provider, admin_identity, context, admin_encoded_token, %{})
+
+      assert get_session(conn, "sessions") == [{context.type, account.id, admin_encoded_token}]
     end
 
     test "renders error when trying to sign in client without client params", %{
@@ -226,6 +231,7 @@ defmodule Web.AuthTest do
         %{init_conn | path_params: %{"account_id_or_slug" => account.slug}}
         |> fetch_flash()
         |> signed_in(provider, user_identity, context, user_encoded_fragment, %{
+          "as" => "client",
           "state" => "STATE"
         })
 
@@ -236,6 +242,7 @@ defmodule Web.AuthTest do
         %{init_conn | path_params: %{"account_id_or_slug" => account.slug}}
         |> fetch_flash()
         |> signed_in(provider, user_identity, context, user_encoded_fragment, %{
+          "as" => "client",
           "nonce" => "NONCE"
         })
 
@@ -254,10 +261,11 @@ defmodule Web.AuthTest do
     } do
       context = %{context | type: :client}
 
-      redirect_params = %{"state" => "STATE", "nonce" => nonce}
+      redirect_params = %{"as" => "client", "state" => "STATE", "nonce" => nonce}
 
       redirected_to =
-        conn
+        %{conn | path_params: %{"account_id_or_slug" => account.slug}}
+        |> fetch_flash()
         |> signed_in(provider, identity, context, encoded_fragment, redirect_params)
         |> redirected_to()
 
@@ -282,10 +290,11 @@ defmodule Web.AuthTest do
     } do
       context = %{context | type: :client}
 
-      redirect_params = %{"state" => "STATE", "nonce" => nonce}
+      redirect_params = %{"as" => "client", "state" => "STATE", "nonce" => nonce}
 
       redirected_to =
-        conn
+        %{conn | path_params: %{"account_id_or_slug" => account.slug}}
+        |> fetch_flash()
         |> signed_in(provider, identity, context, encoded_fragment, redirect_params)
         |> redirected_to()
 
@@ -316,6 +325,23 @@ defmodule Web.AuthTest do
         |> redirected_to()
 
       assert redirected_to == ~p"/#{account}/sites"
+    end
+
+    test "redirects regular users back to sign in page for browser contexts", %{
+      conn: conn,
+      context: context,
+      account: account,
+      provider: provider,
+      user_identity: identity,
+      user_encoded_fragment: encoded_fragment
+    } do
+      conn =
+        %{conn | path_params: %{"account_id_or_slug" => account.slug}}
+        |> fetch_flash()
+        |> signed_in(provider, identity, context, encoded_fragment, %{})
+
+      assert redirected_to(conn) == ~p"/#{account}"
+      assert conn.assigns.flash["error"] == "Please use a client application to access Firezone."
     end
 
     test "redirects admin user to the return path path for browser contexts", %{

@@ -62,6 +62,7 @@ defmodule Web.Auth do
   The account users are only expected to authenticate using client apps and are redirected
   to the deep link.
   """
+
   def signed_in(
         %Plug.Conn{} = conn,
         %Auth.Provider{} = provider,
@@ -71,14 +72,25 @@ defmodule Web.Auth do
         redirect_params
       ) do
     redirect_params = take_sign_in_params(redirect_params)
+    conn = prepend_recent_account_ids(conn, provider.account_id)
 
-    conn
-    |> prepend_recent_account_ids(provider.account_id)
-    |> put_account_session(context.type, provider.account_id, encoded_fragment)
-    |> signed_in_redirect(identity, context, encoded_fragment, redirect_params)
+    if is_nil(redirect_params["as"]) and identity.actor.type == :account_user do
+      conn
+      |> Phoenix.Controller.put_flash(
+        :error,
+        "Please use a client application to access Firezone."
+      )
+      |> Phoenix.Controller.redirect(to: ~p"/#{conn.path_params["account_id_or_slug"]}")
+      |> Plug.Conn.halt()
+    else
+      conn
+      |> put_account_session(context.type, provider.account_id, encoded_fragment)
+      |> signed_in_redirect(identity, context, encoded_fragment, redirect_params)
+    end
   end
 
   defp signed_in_redirect(conn, identity, %Auth.Context{type: :client}, encoded_fragment, %{
+         "as" => "client",
          "nonce" => _nonce,
          "state" => state
        }) do
