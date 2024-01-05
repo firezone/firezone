@@ -38,14 +38,6 @@ defmodule Web.Resources.New do
         <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
           <h2 class="mb-4 text-xl font-bold text-neutral-900">Resource details</h2>
           <.form for={@form} class="space-y-4 lg:space-y-6" phx-submit="submit" phx-change="change">
-            <.input
-              field={@form[:name]}
-              type="text"
-              label="Name"
-              placeholder="Name this resource"
-              required
-            />
-
             <div>
               <label for="resource_type" class="block mb-2 text-sm font-medium text-neutral-900">
                 Type
@@ -87,29 +79,42 @@ defmodule Web.Resources.New do
               </div>
             </div>
 
+            <div>
+              <.input
+                field={@form[:address]}
+                autocomplete="off"
+                label="Address"
+                placeholder={
+                  cond do
+                    @form[:type].value == :dns -> "gitlab.company.com"
+                    @form[:type].value == :cidr -> "10.0.0.0/24"
+                    @form[:type].value == :ip -> "10.3.2.1"
+                    true -> "Please select a Type from the options first"
+                  end
+                }
+                disabled={is_nil(@form[:type].value)}
+                required
+              />
+              <p :if={@form[:type].value == :dns} class="mt-2 text-xs text-neutral-500">
+                To <strong>recursively</strong> match all subdomains, use a wildcard (e.g. *.company.com).<br />
+                To <strong>non-recursively</strong> match all subdomains, use a question mark (e.g. ?.company.com).
+              </p>
+              <p :if={@form[:type].value == :ip} class="mt-2 text-xs text-neutral-500">
+                IPv4 and IPv6 addresses are supported.
+              </p>
+              <p :if={@form[:type].value == :cidr} class="mt-2 text-xs text-neutral-500">
+                IPv4 and IPv6 CIDR ranges are supported.
+              </p>
+            </div>
+
             <.input
-              field={@form[:address]}
-              autocomplete="off"
+              field={@form[:name]}
               type="text"
-              label="Address"
-              placeholder={
-                cond do
-                  @form[:type].value == :dns -> "gitlab.company.com"
-                  @form[:type].value == :cidr -> "192.168.1.1/28"
-                  @form[:type].value == :ip -> "1.1.1.1"
-                  true -> "Please select a Type from the options first"
-                end
-              }
-              disabled={is_nil(@form[:type].value)}
+              label="Name"
+              placeholder="Name this resource"
               required
             />
-            <p :if={@form[:type].value == :dns} class="mt-2 text-xs text-neutral-500">
-              To recursively match all subdomains, use a wildcard (e.g. *.company.com).
-              To non-recursively match all subdomains, use a question mark (e.g. ?.company.com).
-            </p>
-            <p :if={@form[:type].value != :dns} class="mt-2 text-xs text-neutral-500">
-              IPv4 and IPv6 addresses and CIDR ranges are supported.
-            </p>
+
 
             <.filters_form :if={@traffic_filters_enabled?} form={@form[:filters]} />
 
