@@ -7,8 +7,6 @@ on:
   workflow_dispatch:
   pull_request:
 
-defaults:
-  working-directory: ./e2e
 
 concurrency:
   group: "e2e-${{ github.workflow }}-${{ github.ref }}"
@@ -16,12 +14,16 @@ concurrency:
 
 jobs:
   setup-e2e:
+    defaults:
+      working-directory: ./e2e
     runs-on: ubuntu-22.04-firezone
     steps:
       - uses: actions/checkout@v4
       - run: echo "Spin up docker test environment"
 
   macos:
+    defaults:
+      working-directory: ./e2e
     needs: setup-e2e
     runs-on: macos-14-firezone
     steps:
@@ -29,6 +31,8 @@ jobs:
       - run: echo 'Noop'
 
   windows:
+    defaults:
+      working-directory: ./e2e
     needs: setup-e2e
     runs-on: windows-11-firezone
     steps:
@@ -36,6 +40,8 @@ jobs:
       - run: echo 'Noop'
 
   linux:
+    defaults:
+      working-directory: ./e2e
     needs: setup-e2e
     runs-on: ubuntu-22.04-firezone
     steps:
@@ -43,6 +49,8 @@ jobs:
       - run: echo 'Noop'
 
   android:
+    defaults:
+      working-directory: ./e2e
     needs: setup-e2e
     runs-on: ubuntu-22.04-firezone
     steps:
@@ -50,6 +58,8 @@ jobs:
       - run: echo 'Noop'
 
   chromeos:
+    defaults:
+      working-directory: ./e2e
     needs: setup-e2e
     runs-on: ubuntu-22.04-firezone
     steps:
@@ -57,6 +67,8 @@ jobs:
       - run: echo 'Noop'
 
   ios:
+    defaults:
+      working-directory: ./e2e
     needs: setup-e2e
     runs-on: macos-14-firezone
     steps:
@@ -64,6 +76,8 @@ jobs:
       - run: echo 'Noop'
 
   ipados:
+    defaults:
+      working-directory: ./e2e
     needs: setup-e2e
     runs-on: macos-14-firezone
     steps:
@@ -71,6 +85,8 @@ jobs:
       - run: echo 'Noop'
 
   teardown-e2e:
+    defaults:
+      working-directory: ./e2e
     needs:
       - macos
       - windows
