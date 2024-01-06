@@ -5,6 +5,7 @@ on:
   #   branches:
   #     - main
   workflow_dispatch:
+  pull_request:
 
 defaults:
   working-directory: ./e2e
