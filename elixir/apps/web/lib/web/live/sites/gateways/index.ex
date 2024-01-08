@@ -44,10 +44,7 @@ defmodule Web.Sites.Gateways.Index do
       <:content>
         <.table id="gateways" rows={@gateways}>
           <:col :let={gateway} label="INSTANCE">
-            <.link
-              navigate={~p"/#{@account}/gateways/#{gateway.id}"}
-              class={["font-medium", link_style()]}
-            >
+            <.link navigate={~p"/#{@account}/gateways/#{gateway.id}"} class={[link_style()]}>
               <%= gateway.name %>
             </.link>
           </:col>
@@ -66,10 +63,7 @@ defmodule Web.Sites.Gateways.Index do
             <div class="flex flex-col items-center justify-center text-center text-neutral-500 p-4">
               <div class="pb-4">
                 No gateways to display.
-                <.link
-                  class={["font-medium", link_style()]}
-                  navigate={~p"/#{@account}/sites/#{@group}/new_token"}
-                >
+                <.link class={[link_style()]} navigate={~p"/#{@account}/sites/#{@group}/new_token"}>
                   Deploy a gateway to connect resources.
                 </.link>
               </div>
