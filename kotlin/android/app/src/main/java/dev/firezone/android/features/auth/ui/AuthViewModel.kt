@@ -50,7 +50,7 @@ internal class AuthViewModel
                             ViewAction.LaunchAuthFlow(
                                 url =
                                     "${config.authBaseUrl}" +
-                                        "?state=$state&nonce=$nonce&client_platform=android",
+                                        "?state=$state&nonce=$nonce&as=client",
                             )
                         },
                     )
