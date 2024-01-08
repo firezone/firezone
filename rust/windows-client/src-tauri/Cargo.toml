@@ -52,16 +52,14 @@ features = [
   # For implementing COM interfaces
   "implement",
   "Win32_Foundation",
+  # For listening for network change events
   "Win32_Networking_NetworkListManager",
-  # Needed for deep_link module
+  # For deep_link module
   "Win32_Security",
-  # Needed to listen for network change events
+  # COM is needed to listen for network change events
   "Win32_System_Com",
-  "Win32_System_Ole",
-  # Needed for deep_link module
+  # For deep_link module
   "Win32_System_SystemServices",
-  # Needed for COM
-  "Win32_System_Variant",
 ]
 
 [features]

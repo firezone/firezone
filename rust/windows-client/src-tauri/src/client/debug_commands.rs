@@ -4,19 +4,7 @@
 use crate::client::cli::Cli;
 use anyhow::Result;
 use tokio::runtime::Runtime;
-use windows::{
-    core::{ComInterface, Result as WinResult},
-    Win32::{
-        Networking::NetworkListManager::{
-            INetworkListManager, INetworkListManagerEvents, INetworkListManagerEvents_Impl,
-            NetworkListManager, NLM_CONNECTIVITY,
-        },
-        System::Com::{
-            CoCreateInstance, CoInitializeEx, CoUninitialize, IConnectionPointContainer,
-            CLSCTX_ALL, COINIT_MULTITHREADED,
-        },
-    },
-};
+use windows::Win32::System::Com::{CoInitializeEx, CoUninitialize, COINIT_MULTITHREADED};
 
 // TODO: In tauri-plugin-deep-link, this is the identifier in tauri.conf.json
 const PIPE_NAME: &str = "dev.firezone.client";
@@ -31,35 +19,21 @@ pub fn hostname() -> Result<()> {
 
 /// Listen for network change events from Windows
 pub fn network_changes() -> Result<()> {
-    // https://kennykerr.ca/rust-getting-started/how-to-implement-com-interface.html
-    #[windows_implement::implement(INetworkListManagerEvents)]
-    struct EventListener {}
-    impl INetworkListManagerEvents_Impl for EventListener {
-        fn ConnectivityChanged(&self, newconnectivity: NLM_CONNECTIVITY) -> WinResult<()> {
-            dbg!(newconnectivity);
-            Ok(())
-        }
-    }
+    tracing_subscriber::fmt::init();
 
+    // Must be called for each thread that will do COM stuff
     unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) }?;
 
     {
-        // Safety: Make sure all the COM objects are dropped before we call
-        // CoUninitialize or the program might segfault.
-        let network_list_manager: INetworkListManager =
-            unsafe { CoCreateInstance(&NetworkListManager, None, CLSCTX_ALL) }?;
-        let cpc: IConnectionPointContainer = network_list_manager.cast()?;
-        let cxn_point = unsafe { cpc.FindConnectionPoint(&INetworkListManagerEvents::IID) }?;
-
-        let listener: INetworkListManagerEvents = EventListener {}.into();
-        unsafe { cxn_point.Advise(&listener) }?;
-
+        let _listener = crate::client::network_changes::Listener::new()?;
         println!("Listening for network events for 1 minute");
         std::thread::sleep(std::time::Duration::from_secs(60));
     }
 
-    // Required, per CoInitializeEx docs
     unsafe {
+        // Required, per CoInitializeEx docs
+        // Safety: Make sure all the COM objects are dropped before we call
+        // CoUninitialize or the program might segfault.
         CoUninitialize();
     }
     Ok(())
