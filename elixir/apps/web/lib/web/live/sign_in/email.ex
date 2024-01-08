@@ -37,7 +37,7 @@ defmodule Web.SignIn.Email do
 
         <div class="w-full col-span-6 mx-auto bg-white rounded shadow md:mt-0 sm:max-w-lg xl:p-0">
           <div class="p-6 space-y-4 lg:space-y-6 sm:p-8">
-            <h1 class="text-xl font-bold leading-tight tracking-tight text-neutral-900 sm:text-2xl">
+            <h1 class="text-xl leading-tight tracking-tight text-neutral-900 sm:text-2xl">
               Please check your email
             </h1>
             <.flash flash={@flash} kind={:error} phx-click={JS.hide(transition: "fade-out")} />
@@ -75,7 +75,7 @@ defmodule Web.SignIn.Email do
                   type="submit"
                   class={[
                     "block p-2.5",
-                    "text-sm text-white font-medium",
+                    "text-sm text-white",
                     "items-center text-center",
                     "bg-accent-600 rounded-r",
                     "hover:bg-accent-700"
@@ -91,10 +91,7 @@ defmodule Web.SignIn.Email do
                 client_platform={@client_platform}
                 client_csrf_token={@client_csrf_token}
               /> or
-              <.link
-                navigate={~p"/#{@account_id_or_slug}?#{@redirect_params}"}
-                class={["font-medium", link_style()]}
-              >
+              <.link navigate={~p"/#{@account_id_or_slug}?#{@redirect_params}"} class={[link_style()]}>
                 use a different Sign In method
               </.link>
               .
@@ -152,7 +149,7 @@ defmodule Web.SignIn.Email do
       />
       <span>
         Did not receive it?
-        <button type="submit" class="inline font-medium text-accent-500 hover:underline">
+        <button type="submit" class="inline text-accent-500 hover:underline">
           Resend email
         </button>
       </span>
@@ -166,7 +163,7 @@ defmodule Web.SignIn.Email do
       href={@url}
       class={[
         "w-1/2 m-2 inline-flex items-center justify-center py-2.5 px-5",
-        "text-sm font-medium text-neutral-900 bg-white ",
+        "text-sm text-neutral-900 bg-white ",
         "rounded border border-neutral-200",
         "hover:text-neutral-900 hover:bg-neutral-100"
       ]}

@@ -5,17 +5,17 @@ settings:
   excludeLinksFromLockfile: false
 
 dependencies:
-  '@fontsource/source-sans-pro':
-    specifier: ^5.0.8
-    version: 5.0.8
+  '@fontsource/source-sans-3':
+    specifier: ^5.0.18
+    version: 5.0.18
   flowbite:
     specifier: ^2.2.1
     version: 2.2.1
 
 packages:
 
-  /@fontsource/source-sans-pro@5.0.8:
-    resolution: {integrity: sha512-5U2UvIYRkCMozZ388gCE73PEpa2MFgN/0t9O4a1FF7bGT/MIneQWSL1XpWZ8iMVYdh6ntxRf3iFA6slCIuFgkg==}
+  /@fontsource/source-sans-3@5.0.18:
+    resolution: {integrity: sha512-us4td6UVlZsi6kjPkrCbHLAFNuevxcZu/vIKjw854TAMngYcSY1WuwOldRsfCgnA7COBnRqtWjil7fkNM4nDAA==}
     dev: false
 
   /@popperjs/core@2.11.8:

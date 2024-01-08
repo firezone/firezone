@@ -66,10 +66,7 @@ defmodule Web.RelayGroups.Show do
         <div class="relative overflow-x-auto">
           <.table id="relays" rows={@group.relays}>
             <:col :let={relay} label="INSTANCE">
-              <.link
-                navigate={~p"/#{@account}/relays/#{relay.id}"}
-                class={["font-medium", link_style()]}
-              >
+              <.link navigate={~p"/#{@account}/relays/#{relay.id}"} class={[link_style()]}>
                 <code :if={relay.name} class="block text-xs">
                   <%= relay.name %>
                 </code>

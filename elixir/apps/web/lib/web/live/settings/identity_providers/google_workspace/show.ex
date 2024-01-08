@@ -106,7 +106,7 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.Show do
                   }
                   class="p-3 mt-2 border-l-4 border-red-500 bg-red-100 rounded-md"
                 >
-                  <p class="font-bold text-red-700">
+                  <p class="font-medium text-red-700">
                     IdP provider reported an error during the last sync:
                   </p>
                   <div class="flex items-center mt-1">

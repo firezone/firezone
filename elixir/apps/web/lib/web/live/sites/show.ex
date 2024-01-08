@@ -95,10 +95,7 @@ defmodule Web.Sites.Show do
         <div class="relative overflow-x-auto">
           <.table id="gateways" rows={@gateways}>
             <:col :let={gateway} label="INSTANCE">
-              <.link
-                navigate={~p"/#{@account}/gateways/#{gateway.id}"}
-                class={["font-medium", link_style()]}
-              >
+              <.link navigate={~p"/#{@account}/gateways/#{gateway.id}"} class={[link_style()]}>
                 <%= gateway.name %>
               </.link>
             </:col>
@@ -119,7 +116,7 @@ defmodule Web.Sites.Show do
                   No gateways to display.
                   <span :if={is_nil(@group.deleted_at)}>
                     <.link
-                      class={["font-medium", link_style()]}
+                      class={[link_style()]}
                       navigate={~p"/#{@account}/sites/#{@group}/new_token"}
                     >
                       Deploy a gateway to connect resources.
@@ -155,7 +152,7 @@ defmodule Web.Sites.Show do
             <:col :let={resource} label="NAME">
               <.link
                 navigate={~p"/#{@account}/resources/#{resource}?site_id=#{@group}"}
-                class={["font-medium", link_style()]}
+                class={[link_style()]}
               >
                 <%= resource.name %>
               </.link>

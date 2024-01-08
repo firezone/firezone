@@ -30,7 +30,7 @@ defmodule Web.Actors.Components do
     ~H"""
     <.link
       navigate={~p"/#{@account}/actors/#{@actor}"}
-      class={["font-medium text-accent-500 hover:underline", @class]}
+      class={["text-accent-500 hover:underline", @class]}
     >
       <%= @actor.name %>
     </.link>
@@ -188,7 +188,7 @@ defmodule Web.Actors.Components do
           class={~w[w-4 h-4 border-neutral-300]}
           required
         />
-        <label for={"idp-option-#{@type}"} class="block ml-2 text-lg font-medium text-neutral-900">
+        <label for={"idp-option-#{@type}"} class="block ml-2 text-lg text-neutral-900">
           <%= @name %>
         </label>
       </div>

@@ -33,7 +33,7 @@ defmodule Web.Policies.Edit do
       <:title><%= "#{@page_title}: #{@policy.id}" %></:title>
       <:content>
         <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
-          <h2 class="mb-4 text-xl font-bold text-neutral-900">Edit Policy details</h2>
+          <h2 class="mb-4 text-xl text-neutral-900">Edit Policy details</h2>
           <.simple_form
             for={@form}
             class="space-y-4 lg:space-y-6"

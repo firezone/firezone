@@ -38,10 +38,7 @@ defmodule Web.Resources.Index do
         <div class="bg-white overflow-hidden">
           <.table id="resources" rows={@resources} row_id={&"resource-#{&1.id}"}>
             <:col :let={resource} label="NAME">
-              <.link
-                navigate={~p"/#{@account}/resources/#{resource.id}"}
-                class={["font-medium", link_style()]}
-              >
+              <.link navigate={~p"/#{@account}/resources/#{resource.id}"} class={[link_style()]}>
                 <%= resource.name %>
               </.link>
             </:col>
@@ -54,7 +51,7 @@ defmodule Web.Resources.Index do
               <.link
                 :for={gateway_group <- resource.gateway_groups}
                 navigate={~p"/#{@account}/sites/#{gateway_group}"}
-                class={["font-medium", link_style()]}
+                class={[link_style()]}
               >
                 <.badge type="info">
                   <%= gateway_group.name %>

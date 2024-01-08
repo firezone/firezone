@@ -30,14 +30,14 @@ defmodule Web.Settings.DNS do
         DNS
       </:title>
       <:content>
-        <p class="ml-4 mb-4 font-medium text-neutral-600">
+        <p class="ml-4 mb-4 text-neutral-600">
           Configure the default resolver used by connected Clients in your Firezone account. Queries for
           defined Resources will <strong>always</strong>
           use Firezone's internal DNS. All other queries will
           use the resolver below if configured. If no resolver is configured, the client's default system
           resolver will be used.
         </p>
-        <p class="ml-4 mb-4 font-medium text-neutral-600">
+        <p class="ml-4 mb-4 text-neutral-600">
           <.link
             class={link_style()}
             href="https://www.firezone.dev/kb/administer/dns?utm_source=product"
@@ -48,7 +48,7 @@ defmodule Web.Settings.DNS do
         </p>
         <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
           <.flash kind={:success} flash={@flash} phx-click="lv:clear-flash" />
-          <h2 class="mb-4 text-xl font-bold text-neutral-900">Client DNS</h2>
+          <h2 class="mb-4 text-xl text-neutral-900">Client DNS</h2>
           <p class="mb-4 text-neutral-500">
             DNS servers will be used in the order they are listed below.
           </p>
