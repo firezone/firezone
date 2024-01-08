@@ -16,7 +16,7 @@ defmodule Web.Auth do
 
   # Session is stored as a list in a cookie so we want to limit numbers
   # of items in the list to avoid hitting cookie size limit.
-  @remember_last_sessions 15
+  @remember_last_sessions 10
 
   # Session Management
 
@@ -26,8 +26,11 @@ defmodule Web.Auth do
 
     sessions =
       Plug.Conn.get_session(conn, :sessions, [])
-      |> List.keystore(account_id, 0, session)
-      |> Enum.take(-1 * @remember_last_sessions)
+      |> Enum.reject(fn {session_context_type, session_account_id, _encoded_fragment} ->
+        session_context_type == context_type and session_account_id == account_id
+      end)
+
+    sessions = Enum.take(sessions ++ [session], -1 * @remember_last_sessions)
 
     Plug.Conn.put_session(conn, :sessions, sessions)
   end
@@ -283,16 +286,25 @@ defmodule Web.Auth do
 
     with account when not is_nil(account) <- Map.get(conn.assigns, :account),
          sessions <- Plug.Conn.get_session(conn, :sessions, []),
-         {context_type, _account_id, encoded_fragment} <- List.keyfind(sessions, account.id, 1),
-         true <- context_type == context.type,
+         {:ok, encoded_fragment} <- fetch_token(sessions, account.id, context.type),
          {:ok, subject} <- Auth.authenticate(encoded_fragment, context),
          true <- subject.account.id == account.id do
       conn
       |> Plug.Conn.put_session(:live_socket_id, "sessions:#{subject.token_id}")
       |> Plug.Conn.assign(:subject, subject)
     else
-      _ ->
-        conn
+      {:error, :unauthorized} -> renew_session(conn)
+      _ -> conn
+    end
+  end
+
+  defp fetch_token(sessions, account_id, context_type) do
+    Enum.find(sessions, fn {session_context_type, session_account_id, _encoded_fragment} ->
+      session_context_type == context_type and session_account_id == account_id
+    end)
+    |> case do
+      {_context_type, _account_id, encoded_fragment} -> {:ok, encoded_fragment}
+      _ -> :error
     end
   end
 
@@ -564,8 +576,7 @@ defmodule Web.Auth do
       sessions = session["sessions"] || []
 
       with account when not is_nil(account) <- Map.get(socket.assigns, :account),
-           {context_type, _account_id, encoded_fragment} <- List.keyfind(sessions, account.id, 1),
-           true <- context_type == context.type,
+           {:ok, encoded_fragment} <- fetch_token(sessions, account.id, context.type),
            {:ok, subject} <- Auth.authenticate(encoded_fragment, context),
            true <- subject.account.id == account.id do
         subject

@@ -98,15 +98,16 @@ defmodule Web.AuthTest do
         conn
         |> put_session(:sessions, [])
         |> put_account_session(:browser, account.id, encoded_token)
+        |> put_account_session(:browser, account.id, "foo")
 
-      assert get_session(conn, "sessions") == [{:browser, account.id, encoded_token}]
+      assert get_session(conn, "sessions") == [{:browser, account.id, "foo"}]
     end
 
     test "appends a new tokens to a session", %{
       conn: conn,
       account: account
     } do
-      session = {:client, Ecto.UUID.generate(), "foo"}
+      session = {:client, Ecto.UUID.generate(), "buz"}
 
       conn =
         conn
@@ -138,7 +139,7 @@ defmodule Web.AuthTest do
         |> put_account_session(:client, account.id, "bar")
 
       assert get_session(conn, "sessions") ==
-               Enum.take(sessions, -14) ++ [{:client, account.id, "bar"}]
+               Enum.take(sessions, -9) ++ [{:client, account.id, "bar"}]
     end
   end
 
@@ -656,6 +657,22 @@ defmodule Web.AuthTest do
       conn = conn |> assign(:account, account) |> fetch_subject([])
       refute get_session(conn, :sessions)
       refute Map.has_key?(conn.assigns, :subject)
+    end
+
+    test "renews session when token is invalid", %{
+      conn: conn,
+      account: account,
+      context: context
+    } do
+      conn =
+        %{conn | remote_ip: {100, 64, 100, 58}}
+        |> put_session(:sessions, [{context.type, account.id, "invalid"}])
+        |> assign(:account, account)
+        |> fetch_subject([])
+
+      refute Map.has_key?(conn.assigns, :subject)
+
+      assert get_session(conn, :sessions) == []
     end
   end
 
