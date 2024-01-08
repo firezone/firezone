@@ -207,7 +207,7 @@ defmodule Web.Sites.NewToken do
     [Service]
     Type=simple
     #{Enum.map_join(env, "\n", fn {key, value} -> "Environment=\"#{key}=#{value}\"" end)}
-    ExecStartPre=/usr/local/bin/firezone-gateway-execstartpre.sh
+    ExecStartPre=/usr/local/bin/firezone-gateway-init
     ExecStart=/usr/bin/sudo \\\\
       --preserve-env=FIREZONE_NAME,FIREZONE_ID,FIREZONE_TOKEN,FIREZONE_API_URL,RUST_LOG \\\\
       -u firezone \\\\
@@ -223,13 +223,14 @@ defmodule Web.Sites.NewToken do
     EOF
 
     # Create ExecStartPre script
-    cat << EOF > /usr/local/bin/firezone-gateway-execstartpre.sh
+    cat << EOF > /usr/local/bin/firezone-gateway-init
     #!/bin/sh
 
     set -ue
 
     # Download latest version of the gateway if it doesn't already exist
     if [ ! -e /usr/local/bin/firezone-gateway ]; then
+      echo "/usr/local/bin/firezone-gateway not found. Downloading latest version..."
       FIREZONE_VERSION=\\$(curl -Ls \\\\
         -H "Accept: application/vnd.github+json" \\\\
         -H "X-GitHub-Api-Version: 2022-11-28" \\\\
@@ -253,6 +254,8 @@ defmodule Web.Sites.NewToken do
           exit 1
       esac
       curl -Ls \\$bin_url -o /usr/local/bin/firezone-gateway
+    else
+      echo "/usr/local/bin/firezone-gateway found. Skipping download."
     fi
 
     # Set proper capabilities and permissions on each start
@@ -282,7 +285,7 @@ defmodule Web.Sites.NewToken do
     EOF
 
     # Make ExecStartPre script executable
-    chmod +x /usr/local/bin/firezone-gateway-execstartpre.sh
+    chmod +x /usr/local/bin/firezone-gateway-init
 
     # Reload systemd
     sudo systemctl daemon-reload
