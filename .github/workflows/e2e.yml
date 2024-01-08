@@ -17,55 +17,70 @@ concurrency:
 
 jobs:
   setup-e2e:
+    runs-on: ${{ matrix.runs-on }}
+    strategy:
+      matrix:
+        runs-on:
+          - macos-14-firezone
+          - windows-11-firezone
+          - ubuntu-22.04-firezone
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+      - run: npm i --location=global appium
+
+  docker-up:
+    needs: setup-e2e
     runs-on: ubuntu-22.04-firezone
     steps:
       - uses: actions/checkout@v4
       - run: echo "Spin up docker test environment"
 
   macos:
-    needs: setup-e2e
+    needs: docker-up
     runs-on: macos-14-firezone
     steps:
       - uses: actions/checkout@v4
       - run: echo 'Noop'
 
   windows:
-    needs: setup-e2e
+    needs: docker-up
     runs-on: windows-11-firezone
     steps:
       - uses: actions/checkout@v4
       - run: echo 'Noop'
 
   linux:
-    needs: setup-e2e
+    needs: docker-up
     runs-on: ubuntu-22.04-firezone
     steps:
       - uses: actions/checkout@v4
       - run: echo 'Noop'
 
   android:
-    needs: setup-e2e
+    needs: docker-up
     runs-on: ubuntu-22.04-firezone
     steps:
       - uses: actions/checkout@v4
       - run: echo 'Noop'
 
   chromeos:
-    needs: setup-e2e
+    needs: docker-up
     runs-on: ubuntu-22.04-firezone
     steps:
       - uses: actions/checkout@v4
       - run: echo 'Noop'
 
   ios:
-    needs: setup-e2e
+    needs: docker-up
     runs-on: macos-14-firezone
     steps:
       - uses: actions/checkout@v4
       - run: echo 'Noop'
 
   ipados:
-    needs: setup-e2e
+    needs: docker-up
     runs-on: macos-14-firezone
     steps:
       - uses: actions/checkout@v4
