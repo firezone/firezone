@@ -102,7 +102,7 @@ Now you can verify that it's working by connecting to a websocket:
 
 ```bash
 # Note: The token value below is an example. The token value you will need is generated and printed out when seeding the database, as described earlier in the document.
-❯ export CLIENT_TOKEN_FROM_SEEDS="SFMyNTY.g2gDaAN3CGlkZW50aXR5bQAAACQ3ZGE3ZDFjZC0xMTFjLTQ0YTctYjVhYy00MDI3YjlkMjMwZTV3Bmlnbm9yZW4GAJhGr7WKAWIACTqA.mrPu5eFVwkfRml7zzHb5uYfosLGaYVHq03-wE02xUNc"
+❯ export CLIENT_TOKEN_FROM_SEEDS="n.SFMyNTY.g2gDaANtAAAAJDg0M2RhODYxLTdiM2YtNDdjZS1hNWVlLWNjMGRkN2UzNDc5MG0AAAAkZGIyM2MwNDUtZmM1My00ZjMzLWJmYjYtNzYxNGVmZTdiNGQ2bQAAACtjUkRoU09XOGhmdWVqUmczRXRReGlfeklJTElPVEs0SFB2b0JLUVM1NGxVbgYAMYyr6YwBYgABUYA.hmyJbf-EZzHNbG1bPjY2sEh7c7NQTEk7jxmzKj58gGk"
 
 # Panel will only accept token if it's coming with this User-Agent header and from IP 172.28.0.1
 ❯ export CLIENT_USER_AGENT="iOS/12.5 (iPhone) connlib/0.7.412"

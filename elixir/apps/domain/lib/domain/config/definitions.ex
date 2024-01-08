@@ -373,22 +373,6 @@ defmodule Domain.Config.Definitions do
   )
 
   @doc """
-  Secret which is used to encode and sign auth tokens.
-  """
-  defconfig(:auth_token_key_base, :string,
-    sensitive: true,
-    changeset: &Domain.Validator.validate_base64/2
-  )
-
-  @doc """
-  Salt which is used to encode and sign auth tokens.
-  """
-  defconfig(:auth_token_salt, :string,
-    sensitive: true,
-    changeset: &Domain.Validator.validate_base64/2
-  )
-
-  @doc """
   Secret which is used to encode and sign relays auth tokens.
   """
   defconfig(:relays_auth_token_key_base, :string,
