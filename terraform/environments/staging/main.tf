@@ -7,9 +7,7 @@ locals {
     "thomas@firezone.dev"
   ]
 
-  demo_access = [
-    "jeff@firezone.dev"
-  ]
+  demo_access = []
 
   region            = "us-east1"
   availability_zone = "us-east1-d"
@@ -446,6 +444,11 @@ locals {
     {
       name  = "AUTH_PROVIDER_ADAPTERS"
       value = "email,openid_connect,google_workspace,token"
+    },
+    # Registry from which Docker install scripts pull from
+    {
+      name  = "DOCKER_REGISTRY"
+      value = "${module.google-artifact-registry.url}/${module.google-artifact-registry.repo}"
     },
     # Telemetry
     {

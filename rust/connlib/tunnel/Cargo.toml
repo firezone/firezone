@@ -16,7 +16,7 @@ futures-util =  { version = "0.3", default-features = false, features = ["std", 
 tracing = { workspace = true }
 parking_lot = { version = "0.12", default-features = false }
 bytes = { version = "1.4", default-features = false, features = ["std"] }
-itertools = { version = "0.11", default-features = false, features = ["use_std"] }
+itertools = { version = "0.12", default-features = false, features = ["use_std"] }
 connlib-shared = { workspace = true }
 libc = { version = "0.2", default-features = false, features = ["std", "const-extern-fn", "extra_traits"] }
 ip_network = { version = "0.4", default-features = false }
@@ -35,6 +35,9 @@ webrtc = { workspace = true }
 
 # Needed for Android logging until tracing is fixed
 log = "0.4"
+
+[dev-dependencies]
+serde_json = "1.0"
 
 # Linux tunnel dependencies
 [target.'cfg(target_os = "linux")'.dependencies]

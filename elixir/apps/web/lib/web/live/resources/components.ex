@@ -69,7 +69,7 @@ defmodule Web.Resources.Components do
       <div>
         <.input type="hidden" name={"#{@form.name}[all][protocol]"} value="all" />
 
-        <div class="items-center flex flex-row h-16">
+        <div class="items-center flex flex-row h-12">
           <div class="flex-none w-32">
             <.input
               type="checkbox"
@@ -85,7 +85,7 @@ defmodule Web.Resources.Components do
       <div>
         <.input type="hidden" name={"#{@form.name}[icmp][protocol]"} value="icmp" />
 
-        <div class="items-center flex flex-row h-16">
+        <div class="items-center flex flex-row h-12">
           <div class="flex-none w-32">
             <.input
               type="checkbox"
@@ -102,7 +102,7 @@ defmodule Web.Resources.Components do
       <div>
         <.input type="hidden" name={"#{@form.name}[tcp][protocol]"} value="tcp" />
 
-        <div class="items-center flex flex-row h-16">
+        <div class="items-center flex flex-row h-12">
           <div class="flex-none w-32">
             <.input
               type="checkbox"
@@ -131,7 +131,7 @@ defmodule Web.Resources.Components do
       <div>
         <.input type="hidden" name={"#{@form.name}[udp][protocol]"} value="udp" />
 
-        <div class="items-center flex flex-row h-16">
+        <div class="items-center flex flex-row h-12">
           <div class="flex-none w-32">
             <.input
               type="checkbox"

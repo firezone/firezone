@@ -2,7 +2,7 @@ use connlib_shared::{messages::Interface as InterfaceConfig, Result, DNS_SENTINE
 use ip_network::IpNetwork;
 use std::{
     io,
-    net::Ipv6Addr,
+    net::{SocketAddrV4, SocketAddrV6},
     os::windows::process::CommandExt,
     process::{Command, Stdio},
     str::FromStr,
@@ -12,10 +12,13 @@ use std::{
 use tokio::sync::mpsc;
 use windows::Win32::{
     NetworkManagement::{
-        IpHelper::{GetIpInterfaceEntry, SetIpInterfaceEntry, MIB_IPINTERFACE_ROW},
+        IpHelper::{
+            CreateIpForwardEntry2, GetIpInterfaceEntry, InitializeIpForwardEntry,
+            SetIpInterfaceEntry, MIB_IPFORWARD_ROW2, MIB_IPINTERFACE_ROW,
+        },
         Ndis::NET_LUID_LH,
     },
-    Networking::WinSock::AF_INET,
+    Networking::WinSock::{AF_INET, AF_INET6},
 };
 
 // TODO: Double-check that all these get dropped gracefully on disconnect
@@ -66,21 +69,36 @@ impl Tun {
                 }
             };
 
-        // TODO: I think wintun flashes a couple console windows here when it shells out to netsh. We should upstream the same patch I'm doing for powershell to the wintun project
-        // We could also try to get rid of wintun dependency entirely
-        adapter.set_network_addresses_tuple(
-            config.ipv4.into(),
-            [255, 255, 255, 255].into(),
-            None,
-        )?;
-        adapter.set_network_addresses_tuple(
-            config.ipv6.into(),
-            Ipv6Addr::new(
-                0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff,
-            )
-            .into(),
-            None,
-        )?;
+        tracing::debug!("Setting our IPv4 = {}", config.ipv4);
+        tracing::debug!("Setting our IPv6 = {}", config.ipv6);
+
+        // TODO: See if there's a good Win32 API for this
+        // Using netsh directly instead of wintun's `set_network_addresses_tuple` because their code doesn't work for IPv6
+        Command::new("netsh")
+            .creation_flags(CREATE_NO_WINDOW)
+            .arg("interface")
+            .arg("ipv4")
+            .arg("set")
+            .arg("address")
+            .arg(format!("name=\"{TUNNEL_NAME}\""))
+            .arg("source=static")
+            .arg(format!("address={}", config.ipv4))
+            .arg("mask=255.255.255.255")
+            .stdout(Stdio::null())
+            .status()?;
+
+        Command::new("netsh")
+            .creation_flags(CREATE_NO_WINDOW)
+            .arg("interface")
+            .arg("ipv6")
+            .arg("set")
+            .arg("address")
+            .arg(format!("interface=\"{TUNNEL_NAME}\""))
+            .arg(format!("address={}", config.ipv6))
+            .stdout(Stdio::null())
+            .status()?;
+
+        tracing::debug!("Our IPs are {:?}", adapter.get_addresses()?);
 
         let iface_idx = adapter.get_adapter_index()?;
 
@@ -127,16 +145,37 @@ impl Tun {
     // It's okay if this blocks until the route is added in the OS.
     pub fn add_route(&self, route: IpNetwork) -> Result<()> {
         tracing::debug!("add_route {route}");
-        let iface_idx = self.iface_idx;
-        // TODO: Pick a more elegant way to do this
-        Command::new("powershell")
-            .creation_flags(CREATE_NO_WINDOW)
-            .arg("-Command")
-            .arg(format!(
-                "New-NetRoute -InterfaceIndex {iface_idx} -DestinationPrefix \"{route}\""
-            ))
-            .stdout(Stdio::null())
-            .status()?;
+        let mut row = MIB_IPFORWARD_ROW2::default();
+        // Safety: Windows shouldn't store the reference anywhere, it's just setting defaults
+        unsafe { InitializeIpForwardEntry(&mut row) };
+
+        let prefix = &mut row.DestinationPrefix;
+        match route {
+            IpNetwork::V4(x) => {
+                prefix.PrefixLength = x.netmask();
+                prefix.Prefix.Ipv4 = SocketAddrV4::new(x.network_address(), 0).into();
+            }
+            IpNetwork::V6(x) => {
+                prefix.PrefixLength = x.netmask();
+                prefix.Prefix.Ipv6 = SocketAddrV6::new(x.network_address(), 0, 0, 0).into();
+            }
+        }
+
+        row.InterfaceIndex = self.iface_idx;
+        row.Metric = 0;
+
+        // Safety: Windows shouldn't store the reference anywhere, it's just a way to pass lots of arguments at once.
+        match unsafe { CreateIpForwardEntry2(&row) } {
+            Ok(_) => {}
+            Err(e) => {
+                if e.code().0 as u32 == 0x80071392 {
+                    // "Object already exists" error
+                    tracing::warn!("Failed to add duplicate route, ignoring");
+                } else {
+                    Err(e)?;
+                }
+            }
+        }
         Ok(())
     }
 
@@ -150,7 +189,8 @@ impl Tun {
                 let bytes = pkt.bytes();
                 let len = bytes.len();
                 if len > buf.len() {
-                    // TODO: Need to set MTU on the tunnel interface to prevent this
+                    // This shouldn't happen now that we set IPv4 and IPv6 MTU
+                    // If it does, something is wrong.
                     tracing::warn!("Packet is too long to read ({len} bytes)");
                     return Poll::Ready(Ok(0));
                 }
@@ -221,19 +261,40 @@ fn set_iface_config(luid: wintun::NET_LUID_LH, mtu: u32) -> Result<()> {
         Value: unsafe { luid.Value },
     };
 
-    let mut row = MIB_IPINTERFACE_ROW {
-        Family: AF_INET,
-        InterfaceLuid: luid,
-        ..Default::default()
-    };
+    // Set MTU for IPv4
+    {
+        let mut row = MIB_IPINTERFACE_ROW {
+            Family: AF_INET,
+            InterfaceLuid: luid,
+            ..Default::default()
+        };
 
-    unsafe { GetIpInterfaceEntry(&mut row) }?;
+        unsafe { GetIpInterfaceEntry(&mut row) }?;
 
-    row.NlMtu = mtu;
-    // https://stackoverflow.com/questions/54857292/setipinterfaceentry-returns-error-invalid-parameter
-    row.SitePrefixLength = 0;
+        // https://stackoverflow.com/questions/54857292/setipinterfaceentry-returns-error-invalid-parameter
+        row.SitePrefixLength = 0;
 
-    // Ignore error if we can't set everything
-    unsafe { SetIpInterfaceEntry(&mut row) }?;
+        // Set MTU for IPv4
+        row.NlMtu = mtu;
+        unsafe { SetIpInterfaceEntry(&mut row) }?;
+    }
+
+    // Set MTU for IPv6
+    {
+        let mut row = MIB_IPINTERFACE_ROW {
+            Family: AF_INET6,
+            InterfaceLuid: luid,
+            ..Default::default()
+        };
+
+        unsafe { GetIpInterfaceEntry(&mut row) }?;
+
+        // https://stackoverflow.com/questions/54857292/setipinterfaceentry-returns-error-invalid-parameter
+        row.SitePrefixLength = 0;
+
+        // Set MTU for IPv4
+        row.NlMtu = mtu;
+        unsafe { SetIpInterfaceEntry(&mut row) }?;
+    }
     Ok(())
 }
