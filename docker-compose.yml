@@ -113,7 +113,7 @@ services:
 
   client:
     environment:
-      FIREZONE_TOKEN: "n.SFMyNTY.g2gDaANtAAAAJDg0M2RhODYxLTdiM2YtNDdjZS1hNWVlLWNjMGRkN2UzNDc5MG0AAAAkZGIyM2MwNDUtZmM1My00ZjMzLWJmYjYtNzYxNGVmZTdiNGQ2bQAAACtjUkRoU09XOGhmdWVqUmczRXRReGlfeklJTElPVEs0SFB2b0JLUVM1NGxVbgYAMYyr6YwBYgABUYA.hmyJbf-EZzHNbG1bPjY2sEh7c7NQTEk7jxmzKj58gGk"
+      FIREZONE_TOKEN: "n.SFMyNTY.g2gDaANtAAAAJGM4OWJjYzhjLTkzOTItNGRhZS1hNDBkLTg4OGFlZjZkMjhlMG0AAAAkN2RhN2QxY2QtMTExYy00NGE3LWI1YWMtNDAyN2I5ZDIzMGU1bQAAACtTUy1lQXZZRUtia1VJTVNwQk9kdU5ORnhzV1h1QlM0SHFXV1ZRaHFsVUhzbgYATqrT6YwBYgABUYA.fBiR8jRXPwywki1j4WR4e8s2pZHZfFawKYTxb4Pl-5M"
       RUST_LOG: firezone_linux_client=trace,wire=trace,connlib_client_shared=trace,firezone_tunnel=trace,connlib_shared=trace,warn
       FIREZONE_API_URL: ws://api:8081
       FIREZONE_ID: D0455FDE-8F65-4960-A778-B934E4E85A5F
@@ -223,7 +223,7 @@ services:
     image: us-east1-docker.pkg.dev/firezone-staging/firezone/relay:${VERSION:-main}
     healthcheck:
       test: ["CMD-SHELL", "lsof -i UDP | grep firezone-relay"]
-      start_period: 20s
+      start_period: 3s
       interval: 30s
       retries: 5
       timeout: 5s
@@ -302,7 +302,7 @@ services:
         condition: "service_healthy"
     healthcheck:
       test: ["CMD-SHELL", "curl -f localhost:8081/healthz"]
-      start_period: 20s
+      start_period: 10s
       interval: 30s
       retries: 5
       timeout: 5s
