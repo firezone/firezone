@@ -142,7 +142,7 @@ defmodule Web.Actors.Show do
             <.delete_button
               :if={identity.created_by != :provider}
               phx-click="delete_identity"
-              data-confirm="Are you sure want to delete this identity?"
+              data-confirm="Are you sure you want to delete this identity?"
               phx-value-id={identity.id}
               class={[
                 "block w-full py-2 px-4 hover:bg-neutral-100"
@@ -184,7 +184,7 @@ defmodule Web.Actors.Show do
       <:action :if={is_nil(@actor.deleted_at)}>
         <.delete_button
           phx-click="revoke_all_tokens"
-          data-confirm="Are you sure want to sign out actor from all devices?"
+          data-confirm="Are you sure you want to revoke all tokens? This will immediately sign the actor out of all clients."
         >
           Revoke All
         </.delete_button>
@@ -201,7 +201,7 @@ defmodule Web.Actors.Show do
           <:col :let={token} label="CREATED">
             <.created_by account={@account} schema={token} />
           </:col>
-          <:col :let={token} label="LAST SEEN (IP)">
+          <:col :let={token} label="LAST USED (IP)">
             <p>
               <.relative_datetime datetime={token.last_seen_at} />
             </p>
@@ -209,13 +209,13 @@ defmodule Web.Actors.Show do
               <.last_seen schema={token} />
             </p>
           </:col>
-          <:col :let={token} label="EXPIRES AT">
+          <:col :let={token} label="EXPIRES">
             <.relative_datetime datetime={token.expires_at} />
           </:col>
           <:action :let={token}>
             <.delete_button
               phx-click="revoke_token"
-              data-confirm="Are you sure want to revoke this token?"
+              data-confirm="Are you sure you want to revoke this token?"
               phx-value-id={token.id}
               class={[
                 "block w-full py-2 px-4 hover:bg-gray-100"
@@ -225,7 +225,7 @@ defmodule Web.Actors.Show do
             </.delete_button>
           </:action>
           <:empty>
-            <div class="text-center text-slate-500 p-4">No authentication tokens to display.</div>
+            <div class="text-center text-neutral-500 p-4">No authentication tokens to display.</div>
           </:empty>
         </.table>
       </:content>
