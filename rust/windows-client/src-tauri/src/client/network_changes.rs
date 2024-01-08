@@ -1,9 +1,9 @@
 use windows::{
-    core::{ComInterface, Result as WinResult},
+    core::{ComInterface, Result as WinResult, GUID},
     Win32::{
         Networking::NetworkListManager::{
-            INetworkListManager, INetworkListManagerEvents, INetworkListManagerEvents_Impl,
-            NetworkListManager, NLM_CONNECTIVITY,
+            INetworkEvents, INetworkEvents_Impl, INetworkListManager, NetworkListManager,
+            NLM_CONNECTIVITY, NLM_NETWORK_PROPERTY_CHANGE,
         },
         System::Com::{CoCreateInstance, IConnectionPoint, IConnectionPointContainer, CLSCTX_ALL},
     },
@@ -32,8 +32,8 @@ impl Listener {
         let network_list_manager: INetworkListManager =
             unsafe { CoCreateInstance(&NetworkListManager, None, CLSCTX_ALL) }?;
         let cpc: IConnectionPointContainer = network_list_manager.cast()?;
-        let cxn_point = unsafe { cpc.FindConnectionPoint(&INetworkListManagerEvents::IID) }?;
-        let listener: INetworkListManagerEvents = CallbackHandler {}.into();
+        let cxn_point = unsafe { cpc.FindConnectionPoint(&INetworkEvents::IID) }?;
+        let listener: INetworkEvents = CallbackHandler {}.into();
         // TODO: Make sure to call Unadvise later to avoid leaks
         let advise_cookie = Some(unsafe { cxn_point.Advise(&listener) }?);
 
@@ -56,12 +56,35 @@ impl Listener {
 }
 
 // https://kennykerr.ca/rust-getting-started/how-to-implement-com-interface.html
-#[windows_implement::implement(INetworkListManagerEvents)]
+#[windows_implement::implement(INetworkEvents)]
 struct CallbackHandler {}
-impl INetworkListManagerEvents_Impl for CallbackHandler {
-    fn ConnectivityChanged(&self, newconnectivity: NLM_CONNECTIVITY) -> WinResult<()> {
-        // TODO: Send this over a Tokio mpsc channel or something.
-        dbg!(newconnectivity);
+impl INetworkEvents_Impl for CallbackHandler {
+    fn NetworkAdded(&self, networkid: &GUID) -> WinResult<()> {
+        // TODO: Send these events over a Tokio mpsc channel if we need them in the GUI
+        println!("NetworkAdded {networkid:?}");
+        Ok(())
+    }
+
+    fn NetworkDeleted(&self, networkid: &GUID) -> WinResult<()> {
+        println!("NetworkDeleted {networkid:?}");
+        Ok(())
+    }
+
+    fn NetworkConnectivityChanged(
+        &self,
+        networkid: &GUID,
+        newconnectivity: NLM_CONNECTIVITY,
+    ) -> WinResult<()> {
+        println!("NetworkConnectivityChanged {networkid:?} {newconnectivity:?}");
+        Ok(())
+    }
+
+    fn NetworkPropertyChanged(
+        &self,
+        networkid: &GUID,
+        flags: NLM_NETWORK_PROPERTY_CHANGE,
+    ) -> WinResult<()> {
+        println!("NetworkPropertyChanged {networkid:?} {flags:?}");
         Ok(())
     }
 }
