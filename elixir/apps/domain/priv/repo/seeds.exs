@@ -633,8 +633,8 @@ unprivileged_subject_client_token =
   maybe_repo_update.(unprivileged_subject_client_token,
     id: "7da7d1cd-111c-44a7-b5ac-4027b9d230e5",
     secret_salt: "yl7stpkRXJ-bJBZkcmU6JQ",
-    secret_hash: "eaa1bd5b0b678fec406e307b7e7c95a7cf5cb649",
-    secret_fragment: "SS-eAvYEKbkUIMSpBOduNNFxsWXuBS4HqWWVQhqlUHs"
+    secret_fragment: "SS-eAvYEKbkUIMSpBOduNNFxsWXuBS4HqWWVQhqlUHs",
+    secret_hash: "2734de34f65357024240d185269b44017bd26d8d"
   )
 
 IO.puts("Created client tokens:")
