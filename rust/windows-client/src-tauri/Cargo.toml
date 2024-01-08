@@ -34,6 +34,7 @@ tracing-log = "0.2"
 tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
 url = { version = "2.5.0", features = ["serde"] }
 uuid = { version = "1.5.0", features = ["v4"] }
+tracing-panic = "0.1.1"
 zip = { version = "0.6.6", features = ["deflate", "time"], default-features = false }
 windows-implement = "0.52.0"
 

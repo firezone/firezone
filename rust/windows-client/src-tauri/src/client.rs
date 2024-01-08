@@ -33,6 +33,7 @@ pub(crate) struct AppLocalDataDir(std::path::PathBuf);
 const CREATE_NO_WINDOW: u32 = 0x08000000;
 
 pub(crate) fn run() -> Result<()> {
+    std::panic::set_hook(Box::new(tracing_panic::panic_hook));
     let cli = cli::Cli::parse();
 
     match cli.command {
@@ -67,6 +68,7 @@ pub(crate) fn run() -> Result<()> {
             println!("debug");
             Ok(())
         }
+        Some(Cmd::DebugCrash) => debug_commands::crash(),
         Some(Cmd::DebugHostname) => debug_commands::hostname(),
         Some(Cmd::DebugNetworkChanges) => debug_commands::network_changes(),
         Some(Cmd::DebugPipeServer) => debug_commands::pipe_server(),
