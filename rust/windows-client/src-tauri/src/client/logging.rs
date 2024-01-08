@@ -16,6 +16,9 @@ use tracing::subscriber::set_global_default;
 use tracing_log::LogTracer;
 use tracing_subscriber::{fmt, layer::SubscriberExt, reload, EnvFilter, Layer, Registry};
 
+/// If you don't store `Handles` in a variable, the file logger handle will drop immediately,
+/// resulting in empty log files.
+#[must_use]
 pub(crate) struct Handles {
     pub logger: file_logger::Handle,
     pub _reloader: reload::Handle<EnvFilter, Registry>,
