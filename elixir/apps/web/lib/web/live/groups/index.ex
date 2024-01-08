@@ -40,10 +40,7 @@ defmodule Web.Groups.Index do
           <!--<.resource_filter />-->
           <.table id="groups" rows={@groups} row_id={&"user-#{&1.id}"}>
             <:col :let={group} label="NAME" sortable="false">
-              <.link
-                navigate={~p"/#{@account}/groups/#{group.id}"}
-                class={["font-medium", link_style()]}
-              >
+              <.link navigate={~p"/#{@account}/groups/#{group.id}"} class={[link_style()]}>
                 <%= group.name %>
               </.link>
 
@@ -62,10 +59,7 @@ defmodule Web.Groups.Index do
                 </:separator>
 
                 <:item :let={actor}>
-                  <.link
-                    navigate={~p"/#{@account}/actors/#{actor}"}
-                    class={["font-medium", link_style()]}
-                  >
+                  <.link navigate={~p"/#{@account}/actors/#{actor}"} class={[link_style()]}>
                     <%= actor.name %>
                   </.link>
                 </:item>
@@ -84,12 +78,12 @@ defmodule Web.Groups.Index do
               <div class="flex justify-center text-center text-neutral-500 p-4">
                 <div class="w-auto pb-4">
                   No groups to display.
-                  <.link class={["font-medium", link_style()]} navigate={~p"/#{@account}/groups/new"}>
+                  <.link class={[link_style()]} navigate={~p"/#{@account}/groups/new"}>
                     Add a group manually
                   </.link>
                   or
                   <.link
-                    class={["font-medium", link_style()]}
+                    class={[link_style()]}
                     navigate={~p"/#{@account}/settings/identity_providers"}
                   >
                     go to settings

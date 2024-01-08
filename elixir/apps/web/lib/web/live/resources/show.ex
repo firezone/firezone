@@ -159,10 +159,7 @@ defmodule Web.Resources.Show do
       <:content>
         <.table id="gateway_instance_groups" rows={@resource.gateway_groups}>
           <:col :let={gateway_group} label="NAME">
-            <.link
-              navigate={~p"/#{@account}/sites/#{gateway_group}"}
-              class={["font-medium", link_style()]}
-            >
+            <.link navigate={~p"/#{@account}/sites/#{gateway_group}"} class={[link_style()]}>
               <%= gateway_group.name %>
             </.link>
           </:col>
@@ -189,40 +186,28 @@ defmodule Web.Resources.Show do
             <.relative_datetime datetime={flow.expires_at} />
           </:col>
           <:col :let={flow} label="POLICY">
-            <.link
-              navigate={~p"/#{@account}/policies/#{flow.policy_id}"}
-              class={["font-medium", link_style()]}
-            >
+            <.link navigate={~p"/#{@account}/policies/#{flow.policy_id}"} class={[link_style()]}>
               <.policy_name policy={flow.policy} />
             </.link>
           </:col>
           <:col :let={flow} label="CLIENT, ACTOR (IP)">
-            <.link
-              navigate={~p"/#{@account}/clients/#{flow.client_id}"}
-              class={["font-medium", link_style()]}
-            >
+            <.link navigate={~p"/#{@account}/clients/#{flow.client_id}"} class={[link_style()]}>
               <%= flow.client.name %>
             </.link>
             owned by
-            <.link
-              navigate={~p"/#{@account}/actors/#{flow.client.actor_id}"}
-              class={["font-medium", link_style()]}
-            >
+            <.link navigate={~p"/#{@account}/actors/#{flow.client.actor_id}"} class={[link_style()]}>
               <%= flow.client.actor.name %>
             </.link>
             (<%= flow.client_remote_ip %>)
           </:col>
           <:col :let={flow} label="GATEWAY (IP)">
-            <.link
-              navigate={~p"/#{@account}/gateways/#{flow.gateway_id}"}
-              class={["font-medium", link_style()]}
-            >
+            <.link navigate={~p"/#{@account}/gateways/#{flow.gateway_id}"} class={[link_style()]}>
               <%= flow.gateway.group.name %>-<%= flow.gateway.name %>
             </.link>
             (<%= flow.gateway_remote_ip %>)
           </:col>
           <:col :let={flow} label="ACTIVITY">
-            <.link navigate={~p"/#{@account}/flows/#{flow.id}"} class={["font-medium", link_style()]}>
+            <.link navigate={~p"/#{@account}/flows/#{flow.id}"} class={[link_style()]}>
               Show
             </.link>
           </:col>
