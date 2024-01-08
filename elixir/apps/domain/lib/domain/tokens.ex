@@ -101,8 +101,7 @@ defmodule Domain.Tokens do
   end
 
   def use_token(encoded_token, %Auth.Context{} = context) do
-    with [nonce, encoded_fragment] <- String.split(encoded_token, ".", parts: 2),
-         {:ok, {account_id, id, secret}} <- verify_token(encoded_fragment, context),
+    with {:ok, {account_id, id, nonce, secret}} <- peek_token(encoded_token, context),
          queryable =
            Token.Query.by_id(id)
            |> Token.Query.by_account_id(account_id)
@@ -119,6 +118,13 @@ defmodule Domain.Tokens do
       {:error, :not_found} -> {:error, :invalid_or_expired_token}
       false -> {:error, :invalid_or_expired_token}
       _other -> {:error, :invalid_or_expired_token}
+    end
+  end
+
+  def peek_token(encoded_token, %Auth.Context{} = context) do
+    with [nonce, encoded_fragment] <- String.split(encoded_token, ".", parts: 2),
+         {:ok, {account_id, id, secret}} <- verify_token(encoded_fragment, context) do
+      {:ok, {account_id, id, nonce, secret}}
     end
   end
 
