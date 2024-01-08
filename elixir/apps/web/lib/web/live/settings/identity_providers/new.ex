@@ -35,7 +35,7 @@ defmodule Web.Settings.IdentityProviders.New do
       </:title>
       <:content>
         <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
-          <h2 class="mb-4 text-xl font-bold text-neutral-900">Choose type</h2>
+          <h2 class="mb-4 text-xl text-neutral-900">Choose type</h2>
           <.form id="identity-provider-type-form" for={@form} phx-submit="submit">
             <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
               <fieldset>
@@ -110,7 +110,7 @@ defmodule Web.Settings.IdentityProviders.New do
           class={~w[ w-4 h-4 border-neutral-300 ]}
           required
         />
-        <label for={"idp-option-#{@adapter}"} class="block ml-2 text-lg font-medium text-neutral-900">
+        <label for={"idp-option-#{@adapter}"} class="block ml-2 text-lg text-neutral-900">
           <%= @name %>
         </label>
         <%= if @adapter == :google_workspace do %>

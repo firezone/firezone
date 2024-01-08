@@ -54,10 +54,7 @@ defmodule Web.Settings.IdentityProviders.Index do
         <div class="bg-white overflow-hidden">
           <.table id="providers" rows={@providers} row_id={&"providers-#{&1.id}"}>
             <:col :let={provider} label="Name">
-              <.link
-                navigate={view_provider(@account, provider)}
-                class={["font-medium", link_style()]}
-              >
+              <.link navigate={view_provider(@account, provider)} class={[link_style()]}>
                 <%= provider.name %>
               </.link>
             </:col>
