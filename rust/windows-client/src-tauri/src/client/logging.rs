@@ -1,21 +1,24 @@
 //! Everything for logging to files, zipping up the files for export, and counting the files
 
 use crate::client::gui::{ControllerRequest, CtlrTx, Managed};
-use anyhow::Result;
+use anyhow::{bail, Result};
 use connlib_client_shared::file_logger;
 use serde::Serialize;
 use std::{
+    fs, io,
     path::{Path, PathBuf},
     result::Result as StdResult,
     str::FromStr,
-    time::Duration,
 };
 use tauri::Manager;
-use tokio::fs;
+use tokio::task::spawn_blocking;
 use tracing::subscriber::set_global_default;
 use tracing_log::LogTracer;
 use tracing_subscriber::{fmt, layer::SubscriberExt, reload, EnvFilter, Layer, Registry};
 
+/// If you don't store `Handles` in a variable, the file logger handle will drop immediately,
+/// resulting in empty log files.
+#[must_use]
 pub(crate) struct Handles {
     pub logger: file_logger::Handle,
     pub _reloader: reload::Handle<EnvFilter, Registry>,
@@ -72,17 +75,21 @@ pub(crate) async fn clear_logs_inner() -> Result<()> {
 pub(crate) async fn export_logs_inner(ctlr_tx: CtlrTx) -> Result<()> {
     let now = chrono::Local::now();
     let datetime_string = now.format("%Y_%m_%d-%H-%M");
-    let filename = format!("connlib-{datetime_string}.zip");
+    let stem = PathBuf::from(format!("connlib-{datetime_string}"));
+    let filename = stem.with_extension("zip");
+    let Some(filename) = filename.to_str() else {
+        bail!("zip filename isn't valid Unicode");
+    };
 
     tauri::api::dialog::FileDialogBuilder::new()
         .add_filter("Zip", &["zip"])
-        .set_file_name(&filename)
+        .set_file_name(filename)
         .save_file(move |file_path| match file_path {
             None => {}
-            Some(x) => {
+            Some(path) => {
                 // blocking_send here because we're in a sync callback within Tauri somewhere
                 ctlr_tx
-                    .blocking_send(ControllerRequest::ExportLogs(x))
+                    .blocking_send(ControllerRequest::ExportLogs { path, stem })
                     .unwrap()
             }
         });
@@ -90,15 +97,34 @@ pub(crate) async fn export_logs_inner(ctlr_tx: CtlrTx) -> Result<()> {
 }
 
 /// Exports logs to a zip file
-pub(crate) async fn export_logs_to(file_path: PathBuf) -> Result<()> {
-    tracing::trace!("Exporting logs to {file_path:?}");
+///
+/// # Arguments
+///
+/// * `path` - Where the zip archive will be written
+/// * `stem` - A directory containing all the log files inside the zip archive, to avoid creating a ["tar bomb"](https://www.linfo.org/tarbomb.html). This comes from the automatically-generated name of the archive, even if the user changes it to e.g. `logs.zip`
+pub(crate) async fn export_logs_to(path: PathBuf, stem: PathBuf) -> Result<()> {
+    tracing::trace!("Exporting logs to {path:?}");
 
-    let mut entries = fs::read_dir("logs").await?;
-    while let Some(entry) = entries.next_entry().await? {
-        let _path = entry.path();
-        // TODO: Actually add log files to a zip file
-    }
-    tokio::time::sleep(Duration::from_secs(1)).await;
+    // TODO: Consider https://github.com/Majored/rs-async-zip/issues instead of `spawn_blocking`
+    spawn_blocking(move || {
+        let f = fs::File::create(path)?;
+        let mut zip = zip::ZipWriter::new(f);
+        // All files will have the same modified time. Doing otherwise seems to be difficult
+        let options = zip::write::FileOptions::default();
+        for entry in fs::read_dir("logs")? {
+            let entry = entry?;
+            let Some(path) = stem.join(entry.file_name()).to_str().map(|x| x.to_owned()) else {
+                bail!("log filename isn't valid Unicode")
+            };
+            zip.start_file(path, options)?;
+            let mut f = fs::File::open(entry.path())?;
+            io::copy(&mut f, &mut zip)?;
+        }
+        zip.finish()?;
+        Ok::<_, anyhow::Error>(())
+    })
+    .await??;
+
     // TODO: Somehow signal back to the GUI to unlock the log buttons when the export completes, or errors out
     Ok(())
 }
@@ -110,7 +136,7 @@ struct FileCount {
 }
 
 pub(crate) async fn count_logs(app: tauri::AppHandle) -> Result<()> {
-    let mut dir = fs::read_dir("logs").await?;
+    let mut dir = tokio::fs::read_dir("logs").await?;
     let mut file_count = FileCount::default();
     // Zero out the GUI
     app.emit_all("file_count_progress", None::<FileCount>)?;

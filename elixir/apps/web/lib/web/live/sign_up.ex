@@ -56,9 +56,7 @@ defmodule Web.SignUp do
         actor_name_changed?: false
       )
 
-    {:ok, socket}
-
-    {:ok, assign(socket, form: to_form(changeset), account: nil)}
+    {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
   end
 
   def render(assigns) do
@@ -69,7 +67,7 @@ defmodule Web.SignUp do
 
         <div class="w-full col-span-6 mx-auto bg-white rounded shadow md:mt-0 sm:max-w-lg xl:p-0">
           <div class="p-6 space-y-4 lg:space-y-6 sm:p-8">
-            <h1 class="text-center text-xl font-bold leading-tight tracking-tight text-neutral-900 sm:text-2xl">
+            <h1 class="text-center text-xl leading-tight tracking-tight text-neutral-900 sm:text-2xl">
               Welcome to Firezone
             </h1>
 
@@ -141,7 +139,7 @@ defmodule Web.SignUp do
                   Sign In URL:
                 </td>
                 <td class={~w[border-b border-neutral-100 py-4 text-neutral-900]}>
-                  <.link class={["font-medium", link_style()]} navigate={~p"/#{@account}"}>
+                  <.link class={[link_style()]} navigate={~p"/#{@account}"}>
                     <%= url(~p"/#{@account}") %>
                   </.link>
                 </td>
@@ -175,7 +173,7 @@ defmodule Web.SignUp do
 
   def sign_up_form(assigns) do
     ~H"""
-    <h3 class="text-center text-m font-bold leading-tight tracking-tight text-neutral-900 sm:text-xl">
+    <h3 class="text-center text-m leading-tight tracking-tight text-neutral-900 sm:text-xl">
       Sign Up Now
     </h3>
     <.simple_form for={@form} class="space-y-4 lg:space-y-6" phx-submit="submit" phx-change="validate">

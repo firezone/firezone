@@ -13,7 +13,7 @@ defmodule Web.Actors.Users.New do
           form: to_form(changeset)
         )
 
-      {:ok, socket}
+      {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
     else
       {:error, _reason} -> raise Web.LiveErrors.NotFoundError
     end
@@ -33,7 +33,7 @@ defmodule Web.Actors.Users.New do
       </:title>
       <:content>
         <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
-          <h2 class="mb-4 text-xl font-bold text-neutral-900">Create a User</h2>
+          <h2 class="mb-4 text-xl text-neutral-900">Create a User</h2>
           <.flash kind={:error} flash={@flash} />
           <.form for={@form} phx-change={:change} phx-submit={:submit}>
             <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">

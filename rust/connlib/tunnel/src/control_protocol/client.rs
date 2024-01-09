@@ -1,4 +1,4 @@
-use std::{net::IpAddr, sync::Arc};
+use std::{collections::HashSet, net::IpAddr, sync::Arc};
 
 use boringtun::x25519::PublicKey;
 use connlib_shared::{
@@ -266,12 +266,12 @@ where
 
         let mut role_state = self.role_state.lock();
 
-        let addrs: Vec<_> = role_state
-            .get_or_assign_ip(&resource_description, &domain_response.address)
+        let addrs: HashSet<_> = domain_response
+            .address
             .iter()
-            .filter_map(|(internal_ip, external_ip)| {
+            .filter_map(|external_ip| {
                 peer.transform
-                    .get_or_assign_translation(internal_ip, external_ip)
+                    .get_or_assign_translation(external_ip, &mut role_state.ip_provider)
             })
             .collect();
 
@@ -338,7 +338,7 @@ fn send_dns_answer(
     qtype: Rtype,
     device: &Device,
     resource_description: &DnsResource,
-    addrs: &[IpAddr],
+    addrs: &HashSet<IpAddr>,
 ) {
     let packet = role_state
         .deferred_dns_queries

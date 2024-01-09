@@ -8,7 +8,8 @@ defmodule Web.Groups.Edit do
          nil <- group.deleted_at,
          false <- Actors.group_synced?(group) do
       changeset = Actors.change_group(group)
-      {:ok, assign(socket, group: group, form: to_form(changeset))}
+      socket = assign(socket, group: group, form: to_form(changeset))
+      {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
     else
       _other -> raise Web.LiveErrors.NotFoundError
     end
@@ -31,7 +32,7 @@ defmodule Web.Groups.Edit do
       </:title>
       <:content>
         <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
-          <h2 class="mb-4 text-xl font-bold text-neutral-900">Edit group details</h2>
+          <h2 class="mb-4 text-xl text-neutral-900">Edit group details</h2>
           <.form for={@form} phx-change={:change} phx-submit={:submit}>
             <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
               <div>

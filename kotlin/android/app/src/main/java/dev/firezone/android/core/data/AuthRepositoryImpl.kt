@@ -7,7 +7,6 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import java.security.SecureRandom
-import java.util.Base64
 import javax.inject.Inject
 
 internal class AuthRepositoryImpl
@@ -16,23 +15,22 @@ internal class AuthRepositoryImpl
         private val coroutineDispatcher: CoroutineDispatcher,
         private val sharedPreferences: SharedPreferences,
     ) : AuthRepository {
-        override fun generateCsrfToken(): Flow<String> =
+        override fun generateNonce(key: String): Flow<String> =
             flow {
                 val random = SecureRandom.getInstanceStrong()
-                val bytes = ByteArray(CSRF_LENGTH)
+                val bytes = ByteArray(NONCE_LENGTH)
                 random.nextBytes(bytes)
-                val encodedStr: String = Base64.getEncoder().encodeToString(bytes)
+                val encodedStr: String = bytes.joinToString("") { "%02x".format(it) }
 
                 sharedPreferences
                     .edit()
-                    .putString(CSRF_KEY, encodedStr)
+                    .putString(key, encodedStr)
                     .apply()
 
                 emit(encodedStr)
             }.flowOn(coroutineDispatcher)
 
         companion object {
-            private const val CSRF_KEY = "csrf"
-            private const val CSRF_LENGTH = 24
+            private const val NONCE_LENGTH = 32
         }
     }

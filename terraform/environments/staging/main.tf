@@ -7,9 +7,7 @@ locals {
     "thomas@firezone.dev"
   ]
 
-  demo_access = [
-    "jeff@firezone.dev"
-  ]
+  demo_access = []
 
   region            = "us-east1"
   availability_zone = "us-east1-d"
@@ -151,12 +149,12 @@ resource "random_password" "erlang_cluster_cookie" {
   special = false
 }
 
-resource "random_password" "auth_token_key_base" {
+resource "random_password" "tokens_key_base" {
   length  = 64
   special = false
 }
 
-resource "random_password" "auth_token_salt" {
+resource "random_password" "tokens_salt" {
   length  = 32
   special = false
 }
@@ -374,12 +372,12 @@ locals {
       value = random_password.secret_key_base.result
     },
     {
-      name  = "AUTH_TOKEN_KEY_BASE"
-      value = base64encode(random_password.auth_token_key_base.result)
+      name  = "TOKENS_KEY_BASE"
+      value = base64encode(random_password.tokens_key_base.result)
     },
     {
-      name  = "AUTH_TOKEN_SALT"
-      value = base64encode(random_password.auth_token_salt.result)
+      name  = "TOKENS_SALT"
+      value = base64encode(random_password.tokens_salt.result)
     },
     {
       name  = "RELAYS_AUTH_TOKEN_KEY_BASE"
@@ -446,6 +444,11 @@ locals {
     {
       name  = "AUTH_PROVIDER_ADAPTERS"
       value = "email,openid_connect,google_workspace,token"
+    },
+    # Registry from which Docker install scripts pull from
+    {
+      name  = "DOCKER_REGISTRY"
+      value = "${module.google-artifact-registry.url}/${module.google-artifact-registry.repo}"
     },
     # Telemetry
     {

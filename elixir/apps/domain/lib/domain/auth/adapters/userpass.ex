@@ -103,7 +103,7 @@ defmodule Domain.Auth.Adapters.UserPass do
           is_nil(password_hash) ->
             :invalid_secret
 
-          not Domain.Crypto.equal?(password, password_hash) ->
+          not Domain.Crypto.equal?(:argon2, password, password_hash) ->
             :invalid_secret
 
           true ->

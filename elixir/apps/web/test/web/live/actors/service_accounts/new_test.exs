@@ -20,11 +20,13 @@ defmodule Web.Live.Actors.ServiceAccount.NewTest do
     account: account,
     conn: conn
   } do
-    assert live(conn, ~p"/#{account}/actors/service_accounts/new") ==
+    path = ~p"/#{account}/actors/service_accounts/new"
+
+    assert live(conn, path) ==
              {:error,
               {:redirect,
                %{
-                 to: ~p"/#{account}",
+                 to: ~p"/#{account}?#{%{redirect_to: path}}",
                  flash: %{"error" => "You must log in to access this page."}
                }}}
   end

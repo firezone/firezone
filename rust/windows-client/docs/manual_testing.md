@@ -87,9 +87,10 @@ This is a list of all the on-disk state that you need to reset to test a first-t
 
 If you can't test with resources that respond to ping, curl is fine too.
 
-- The tunnel can route public-routable IPs, e.g. 1.1.1.1, for public resources
-- All resources accessed by domain will get a CGNAT network address, e.g. 100.64.96.19, even public resources
-- When the client is signed in, all DNS requests go to Firezone first, so that it can route public resources
+1. The tunnel can route public-routable IPs, e.g. 1.1.1.1, for public resources
+1. All resources accessed by domain will get a CGNAT network address, e.g. 100.64.96.19, even public resources
+1. When the client is signed in, all DNS requests go to Firezone first, so that it can route public resources
+1. Given `*.test-ipv6.com` is a resource, and the tunnel is up, when you load `test-ipv6.com` in a web browser, then it will show the gateway's IPv6 address and score 10/10
 
 ## DNS / routing changes
 

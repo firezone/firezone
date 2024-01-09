@@ -44,22 +44,28 @@ defmodule Web.SignInTest do
     refute html =~ "Sign in with email"
 
     assert html =~ "Vault"
+    assert html =~ ~s|Meant to sign in from a client instead?|
   end
 
-  test "takes client params from session", %{conn: conn} do
+  test "keeps client auth params", %{conn: conn} do
     Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
     account = Fixtures.Accounts.create_account()
     Fixtures.Auth.create_email_provider(account: account)
 
-    conn =
-      conn
-      |> put_session(:client_platform, "ios")
-      |> put_session(:client_csrf_token, "csrf-token")
+    {:ok, _lv, html} = live(conn, ~p"/#{account}?as=client&nonce=NONCE&state=STATE")
 
-    {:ok, _lv, html} = live(conn, ~p"/#{account}")
+    assert html =~ ~s|value="NONCE"|
+    assert html =~ ~s|value="STATE"|
+    assert html =~ ~s|value="client"|
+  end
 
-    assert html =~ ~s|value="ios"|
-    assert html =~ ~s|value="csrf-token"|
+  test "hides client sign in suggestion when client is used", %{conn: conn} do
+    Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
+    account = Fixtures.Accounts.create_account()
+    Fixtures.Auth.create_email_provider(account: account)
+
+    {:ok, _lv, html} = live(conn, ~p"/#{account}?as=client")
+
     refute html =~ ~s|Meant to sign in from a client instead?|
   end
 end

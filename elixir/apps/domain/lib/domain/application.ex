@@ -32,6 +32,7 @@ defmodule Domain.Application do
       Domain.Cluster,
 
       # Application
+      Domain.Tokens,
       Domain.Auth,
       Domain.Relays,
       Domain.Gateways,

@@ -16,12 +16,9 @@ defmodule Web.CoreComponents do
 
   def logo(assigns) do
     ~H"""
-    <a
-      href="https://www.firezone.dev/?utm_source=product"
-      class="flex items-center mb-6 text-2xl font-semibold"
-    >
+    <a href="https://www.firezone.dev/?utm_source=product" class="flex items-center mb-6 text-2xl">
       <img src={~p"/images/logo.svg"} class="mr-3 h-8" alt="Firezone Logo" />
-      <span class="self-center text-2xl font-semibold whitespace-nowrap">
+      <span class="self-center text-2xl font-medium whitespace-nowrap">
         Firezone
       </span>
     </a>
@@ -149,7 +146,7 @@ defmodule Web.CoreComponents do
         {@rest}
       >
         <ul
-          class="flex flex-wrap text-sm font-medium text-center"
+          class="flex flex-wrap text-sm text-center"
           id={"#{@id}-ul"}
           data-tabs-toggle={"##{@id}"}
           role="tablist"
@@ -218,7 +215,7 @@ defmodule Web.CoreComponents do
     <div class="py-6 px-1 grid grid-cols-1 xl:grid-cols-3 xl:gap-4">
       <div class="col-span-full">
         <div class="flex justify-between items-center">
-          <h2 class="text-2xl font-bold leading-none tracking-tight text-neutral-900">
+          <h2 class="text-2xl leading-none tracking-tight text-neutral-900">
             <%= render_slot(@title) %>
           </h2>
           <div class="inline-flex justify-between items-center space-x-2">
@@ -252,9 +249,9 @@ defmodule Web.CoreComponents do
       class="flex flex-col md:flex-row justify-between items-start md:items-center space-y-3 md:space-y-0 p-4"
       aria-label="Table navigation"
     >
-      <span class="text-sm font-normal text-neutral-500">
-        Showing <span class="font-semibold text-neutral-900">1-10</span>
-        of <span class="font-semibold text-neutral-900">1000</span>
+      <span class="text-sm text-neutral-500">
+        Showing <span class="font-medium text-neutral-900">1-10</span>
+        of <span class="font-medium text-neutral-900">1000</span>
       </span>
       <ul class="inline-flex items-stretch -space-x-px">
         <li>
@@ -415,7 +412,7 @@ defmodule Web.CoreComponents do
 
   def label(assigns) do
     ~H"""
-    <label for={@for} class={["block mb-2 text-sm font-medium text-neutral-900", @class]}>
+    <label for={@for} class={["block mb-2 text-sm text-neutral-900", @class]}>
       <%= render_slot(@inner_block) %>
     </label>
     """
@@ -695,7 +692,7 @@ defmodule Web.CoreComponents do
     ~H"""
     <span
       class={[
-        "text-xs font-medium mr-2 px-2.5 py-0.5 rounded whitespace-nowrap",
+        "text-xs mr-2 px-2.5 py-0.5 rounded whitespace-nowrap",
         @colors[@type],
         @class
       ]}
@@ -748,13 +745,13 @@ defmodule Web.CoreComponents do
     ~H"""
     <span class="flex inline-flex">
       <div class={[
-        "text-xs font-medium rounded-l py-0.5 pl-2.5 pr-1.5",
+        "text-xs rounded-l py-0.5 pl-2.5 pr-1.5",
         @colors[@type]["dark"]
       ]}>
         <%= render_slot(@left) %>
       </div>
       <span class={[
-        "text-xs font-medium",
+        "text-xs",
         "rounded-r",
         "mr-2 py-0.5 pl-1.5 pr-2.5",
         @colors[@type]["light"]
@@ -832,7 +829,7 @@ defmodule Web.CoreComponents do
       class={[
         "px-4 py-2",
         "flex items-center",
-        "font-medium text-sm text-white",
+        "text-sm text-white",
         "rounded",
         "transition-colors",
         (@connected? && "bg-accent-450 hover:bg-accent-700") || "bg-primary-500 cursor-progress"
@@ -906,7 +903,7 @@ defmodule Web.CoreComponents do
         data-provider-id={@identity.provider.id}
         title={@identity.provider.adapter}
         class={~w[
-          text-xs font-medium
+          text-xs
           rounded-l
           py-0.5 pl-2.5 pr-1.5
           text-neutral-800
@@ -916,7 +913,7 @@ defmodule Web.CoreComponents do
         <%= @identity.provider.name %>
       </.link>
       <span class={[
-        "text-xs font-medium",
+        "text-xs",
         "rounded-r",
         "mr-2 py-0.5 pl-1.5 pr-2.5",
         "text-neutral-800",
@@ -942,7 +939,7 @@ defmodule Web.CoreComponents do
   end
 
   def identity_has_email?(identity) do
-    not is_nil(provider_email(identity)) || identity.provider.adapter == :email
+    not is_nil(provider_email(identity)) or identity.provider.adapter == :email
   end
 
   defp provider_email(identity) do
@@ -961,7 +958,7 @@ defmodule Web.CoreComponents do
         data-provider-id={@group.provider_id}
         title={@group.provider.adapter}
         class={[
-          "text-xs font-medium",
+          "text-xs",
           "rounded-l",
           "py-0.5 pl-2.5 pr-1.5",
           "text-neutral-800",
@@ -974,7 +971,7 @@ defmodule Web.CoreComponents do
       <.link
         navigate={~p"/#{@account}/groups/#{@group}"}
         class={[
-          "text-xs font-medium",
+          "text-xs",
           if(Actors.group_synced?(@group), do: "rounded-r pl-1.5 pr-2.5", else: "rounded px-1.5"),
           "py-0.5",
           "text-neutral-800",
@@ -995,10 +992,10 @@ defmodule Web.CoreComponents do
 
   def last_seen(assigns) do
     ~H"""
-    <code>
+    <code class="text-xs -mr-1">
       <%= @schema.last_seen_remote_ip %>
     </code>
-    <span class="text-neutral-500 inline-block">
+    <span class="text-neutral-500 inline-block text-xs">
       <%= [
         @schema.last_seen_remote_ip_location_region,
         @schema.last_seen_remote_ip_location_city
@@ -1007,12 +1004,15 @@ defmodule Web.CoreComponents do
       |> Enum.join(", ") %>
 
       <a
-        :if={not is_nil(@schema.last_seen_remote_ip_location_lat)}
-        class="ml-1 text-accent-800"
+        :if={
+          not is_nil(@schema.last_seen_remote_ip_location_lat) and
+            not is_nil(@schema.last_seen_remote_ip_location_lon)
+        }
+        class="text-accent-800"
         target="_blank"
         href={"http://www.google.com/maps/place/#{@schema.last_seen_remote_ip_location_lat},#{@schema.last_seen_remote_ip_location_lon}"}
       >
-        <.icon name="hero-arrow-top-right-on-square" class="-ml-1 mb-3 w-3 h-3" />
+        <.icon name="hero-arrow-top-right-on-square" class="mb-3 w-3 h-3" />
       </a>
     </span>
     """
@@ -1125,7 +1125,7 @@ defmodule Web.CoreComponents do
   def step(assigns) do
     ~H"""
     <div class="mb-6">
-      <h2 class="mb-2 text-2xl tracking-tight font-bold text-neutral-900">
+      <h2 class="mb-2 text-2xl tracking-tight font-medium text-neutral-900">
         <%= render_slot(@title) %>
       </h2>
       <div class="px-4">

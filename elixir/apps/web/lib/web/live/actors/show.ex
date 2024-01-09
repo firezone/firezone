@@ -1,10 +1,10 @@
 defmodule Web.Actors.Show do
   use Web, :live_view
   import Web.Actors.Components
-  alias Domain.{Auth, Flows, Clients}
+  alias Domain.{Auth, Tokens, Flows, Clients}
   alias Domain.Actors
 
-  def mount(%{"id" => id}, _session, socket) do
+  def mount(%{"id" => id}, _token, socket) do
     with {:ok, actor} <-
            Actors.fetch_actor_by_id(id, socket.assigns.subject,
              preload: [
@@ -12,6 +12,10 @@ defmodule Web.Actors.Show do
                groups: [:provider],
                clients: []
              ]
+           ),
+         {:ok, tokens} <-
+           Tokens.list_tokens_for(actor, socket.assigns.subject,
+             preload: [identity: [:provider, created_by_identity: [:actor]]]
            ),
          {:ok, flows} <-
            Flows.list_flows_for(actor, socket.assigns.subject,
@@ -24,6 +28,7 @@ defmodule Web.Actors.Show do
        assign(socket,
          actor: actor,
          flows: flows,
+         tokens: tokens,
          page_title: actor.name,
          flow_activities_enabled?: Domain.Config.flow_activities_enabled?()
        )}
@@ -43,8 +48,8 @@ defmodule Web.Actors.Show do
 
     <.section>
       <:title>
-        <%= actor_type(@actor.type) %>: <span class="font-bold"><%= @actor.name %></span>
-        <span :if={@actor.id == @subject.actor.id} class="text-neutral-400">(you)</span>
+        <%= actor_type(@actor.type) %>: <span class="font-medium"><%= @actor.name %></span>
+        <span :if={@actor.id == @subject.actor.id} class="text-sm text-neutral-400">(you)</span>
         <span :if={not is_nil(@actor.deleted_at)} class="text-red-600">(deleted)</span>
       </:title>
       <:action :if={is_nil(@actor.deleted_at)}>
@@ -93,6 +98,7 @@ defmodule Web.Actors.Show do
     </.section>
 
     <.section>
+      <!-- TODO: do we need them for service accounts? -->
       <:title>Authentication Identities</:title>
       <:action :if={is_nil(@actor.deleted_at)}>
         <.add_button
@@ -116,7 +122,6 @@ defmodule Web.Actors.Show do
           <:col :let={identity} label="IDENTITY" sortable="false">
             <.identity_identifier account={@account} identity={identity} />
           </:col>
-
           <:col :let={identity} label="CREATED" sortable="false">
             <.created_by account={@account} schema={identity} />
           </:col>
@@ -124,29 +129,27 @@ defmodule Web.Actors.Show do
             <.relative_datetime datetime={identity.last_seen_at} />
           </:col>
           <:action :let={identity}>
-            <button
+            <.button
               :if={identity_has_email?(identity)}
+              icon="hero-envelope"
               phx-click="send_welcome_email"
               phx-value-id={identity.id}
-              class={[
-                "block w-full py-2 px-4 hover:bg-neutral-100"
-              ]}
             >
               Send Welcome Email
-            </button>
+            </.button>
           </:action>
           <:action :let={identity}>
-            <button
+            <.delete_button
               :if={identity.created_by != :provider}
               phx-click="delete_identity"
-              data-confirm="Are you sure want to delete this identity?"
+              data-confirm="Are you sure you want to delete this identity?"
               phx-value-id={identity.id}
               class={[
                 "block w-full py-2 px-4 hover:bg-neutral-100"
               ]}
             >
               Delete
-            </button>
+            </.delete_button>
           </:action>
           <:empty>
             <div class="flex justify-center text-center text-neutral-500 p-4">
@@ -154,7 +157,7 @@ defmodule Web.Actors.Show do
                 No authentication identities to display.
                 <.link
                   :if={is_nil(@actor.deleted_at) and @actor.type == :service_account}
-                  class={["font-medium", link_style()]}
+                  class={[link_style()]}
                   navigate={~p"/#{@account}/actors/service_accounts/#{@actor}/new_identity"}
                 >
                   Create a token
@@ -162,7 +165,7 @@ defmodule Web.Actors.Show do
                 to authenticate this service account.
                 <.link
                   :if={is_nil(@actor.deleted_at) and @actor.type != :service_account}
-                  class={["font-medium", link_style()]}
+                  class={[link_style()]}
                   navigate={~p"/#{@account}/actors/users/#{@actor}/new_identity"}
                 >
                   Create an identity
@@ -176,15 +179,65 @@ defmodule Web.Actors.Show do
     </.section>
 
     <.section>
+      <:title>Authentication Tokens</:title>
+
+      <:action :if={is_nil(@actor.deleted_at)}>
+        <.delete_button
+          phx-click="revoke_all_tokens"
+          data-confirm="Are you sure you want to revoke all tokens? This will immediately sign the actor out of all clients."
+        >
+          Revoke All
+        </.delete_button>
+      </:action>
+
+      <:content>
+        <.table id="tokens" rows={@tokens} row_id={&"tokens-#{&1.id}"}>
+          <:col :let={token} label="TYPE" sortable="false">
+            <%= token.type %>
+          </:col>
+          <:col :let={token} label="IDENTITY" sortable="false">
+            <.identity_identifier account={@account} identity={token.identity} />
+          </:col>
+          <:col :let={token} label="CREATED">
+            <.created_by account={@account} schema={token} />
+          </:col>
+          <:col :let={token} label="LAST USED (IP)">
+            <p>
+              <.relative_datetime datetime={token.last_seen_at} />
+            </p>
+            <p :if={not is_nil(token.last_seen_at)}>
+              <.last_seen schema={token} />
+            </p>
+          </:col>
+          <:col :let={token} label="EXPIRES">
+            <.relative_datetime datetime={token.expires_at} />
+          </:col>
+          <:action :let={token}>
+            <.delete_button
+              phx-click="revoke_token"
+              data-confirm="Are you sure you want to revoke this token?"
+              phx-value-id={token.id}
+              class={[
+                "block w-full py-2 px-4 hover:bg-gray-100"
+              ]}
+            >
+              Revoke
+            </.delete_button>
+          </:action>
+          <:empty>
+            <div class="text-center text-neutral-500 p-4">No authentication tokens to display.</div>
+          </:empty>
+        </.table>
+      </:content>
+    </.section>
+
+    <.section>
       <:title>Clients</:title>
 
       <:content>
         <.table id="clients" rows={@actor.clients} row_id={&"client-#{&1.id}"}>
           <:col :let={client} label="NAME">
-            <.link
-              navigate={~p"/#{@account}/clients/#{client.id}"}
-              class={["font-medium", link_style()]}
-            >
+            <.link navigate={~p"/#{@account}/clients/#{client.id}"} class={[link_style()]}>
               <%= client.name %>
             </.link>
           </:col>
@@ -212,10 +265,7 @@ defmodule Web.Actors.Show do
             <.relative_datetime datetime={flow.expires_at} />
           </:col>
           <:col :let={flow} label="POLICY">
-            <.link
-              navigate={~p"/#{@account}/policies/#{flow.policy_id}"}
-              class={["font-medium", link_style()]}
-            >
+            <.link navigate={~p"/#{@account}/policies/#{flow.policy_id}"} class={[link_style()]}>
               <Web.Policies.Components.policy_name policy={flow.policy} />
             </.link>
           </:col>
@@ -226,16 +276,13 @@ defmodule Web.Actors.Show do
             (<%= flow.client_remote_ip %>)
           </:col>
           <:col :let={flow} label="GATEWAY (IP)">
-            <.link
-              navigate={~p"/#{@account}/gateways/#{flow.gateway_id}"}
-              class={["font-medium", link_style()]}
-            >
+            <.link navigate={~p"/#{@account}/gateways/#{flow.gateway_id}"} class={[link_style()]}>
               <%= flow.gateway.group.name %>-<%= flow.gateway.name %>
             </.link>
             (<%= flow.gateway_remote_ip %>)
           </:col>
           <:col :let={flow} :if={@flow_activities_enabled?} label="ACTIVITY">
-            <.link navigate={~p"/#{@account}/flows/#{flow.id}"} class={["font-medium", link_style()]}>
+            <.link navigate={~p"/#{@account}/flows/#{flow.id}"} class={[link_style()]}>
               Show
             </.link>
           </:col>
@@ -381,6 +428,39 @@ defmodule Web.Actors.Show do
     socket =
       socket
       |> put_flash(:info, "Welcome email sent to #{identity.provider_identifier}")
+
+    {:noreply, socket}
+  end
+
+  def handle_event("revoke_all_tokens", _params, socket) do
+    {:ok, deleted_count} = Tokens.delete_tokens_for(socket.assigns.actor, socket.assigns.subject)
+
+    {:ok, tokens} =
+      Tokens.list_tokens_for(socket.assigns.actor, socket.assigns.subject,
+        preload: [identity: [:provider, created_by_identity: [:actor]]]
+      )
+
+    socket =
+      socket
+      |> put_flash(:info, "#{deleted_count} token(s) were revoked.")
+      |> assign(tokens: tokens)
+
+    {:noreply, socket}
+  end
+
+  def handle_event("revoke_token", %{"id" => id}, socket) do
+    {:ok, token} = Tokens.fetch_token_by_id(id, socket.assigns.subject)
+    {:ok, _token} = Tokens.delete_token(token, socket.assigns.subject)
+
+    {:ok, tokens} =
+      Tokens.list_tokens_for(socket.assigns.actor, socket.assigns.subject,
+        preload: [identity: [:provider, created_by_identity: [:actor]]]
+      )
+
+    socket =
+      socket
+      |> put_flash(:info, "Token was revoked.")
+      |> assign(tokens: tokens)
 
     {:noreply, socket}
   end

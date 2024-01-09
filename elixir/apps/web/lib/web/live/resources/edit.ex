@@ -43,7 +43,7 @@ defmodule Web.Resources.Edit do
       </:title>
       <:content>
         <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
-          <h2 class="mb-4 text-xl font-bold text-neutral-900">Edit Resource details</h2>
+          <h2 class="mb-4 text-xl text-neutral-900">Edit Resource details</h2>
 
           <.form for={@form} phx-change={:change} phx-submit={:submit} class="space-y-4 lg:space-y-6">
             <.input

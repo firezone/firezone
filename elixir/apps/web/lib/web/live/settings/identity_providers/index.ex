@@ -4,21 +4,22 @@ defmodule Web.Settings.IdentityProviders.Index do
   alias Domain.{Auth, Actors}
 
   def mount(_params, _session, socket) do
-    account = socket.assigns.account
     subject = socket.assigns.subject
 
-    with {:ok, providers} <- Auth.list_providers_for_account(account, subject),
+    with {:ok, providers} <- Auth.list_providers(subject),
          {:ok, identities_count_by_provider_id} <-
            Auth.fetch_identities_count_grouped_by_provider_id(subject),
          {:ok, groups_count_by_provider_id} <-
            Actors.fetch_groups_count_grouped_by_provider_id(subject) do
-      {:ok, socket,
-       temporary_assigns: [
-         identities_count_by_provider_id: identities_count_by_provider_id,
-         groups_count_by_provider_id: groups_count_by_provider_id,
-         providers: providers,
-         page_title: "Identity Providers Settings"
-       ]}
+      socket =
+        assign(socket,
+          identities_count_by_provider_id: identities_count_by_provider_id,
+          groups_count_by_provider_id: groups_count_by_provider_id,
+          providers: providers,
+          page_title: "Identity Providers Settings"
+        )
+
+      {:ok, socket}
     else
       _ -> raise Web.LiveErrors.NotFoundError
     end
@@ -54,10 +55,7 @@ defmodule Web.Settings.IdentityProviders.Index do
         <div class="bg-white overflow-hidden">
           <.table id="providers" rows={@providers} row_id={&"providers-#{&1.id}"}>
             <:col :let={provider} label="Name">
-              <.link
-                navigate={view_provider(@account, provider)}
-                class={["font-medium", link_style()]}
-              >
+              <.link navigate={view_provider(@account, provider)} class={[link_style()]}>
                 <%= provider.name %>
               </.link>
             </:col>

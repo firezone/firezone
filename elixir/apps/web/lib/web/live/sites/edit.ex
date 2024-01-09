@@ -7,7 +7,8 @@ defmodule Web.Sites.Edit do
     with {:ok, group} <- Gateways.fetch_group_by_id(id, socket.assigns.subject),
          nil <- group.deleted_at do
       changeset = Gateways.change_group(group)
-      {:ok, assign(socket, group: group, form: to_form(changeset))}
+      socket = assign(socket, group: group, form: to_form(changeset))
+      {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
     else
       _other -> raise Web.LiveErrors.NotFoundError
     end
@@ -53,7 +54,15 @@ defmodule Web.Sites.Edit do
                       label={pretty_print_routing(:managed)}
                       checked={@form[:routing].value == :managed}
                       required
-                    />
+                    >
+                      <.badge
+                        class="ml-2"
+                        type="primary"
+                        title="Feature available on the Enterprise plan"
+                      >
+                        ENTERPRISE
+                      </.badge>
+                    </.input>
                     <p class="ml-6 mb-4 text-sm text-neutral-500">
                       Firezone will route connections through our managed Relays only if a direct connection to a Gateway is not possible.
                       Firezone can never decrypt the contents of your traffic.

@@ -19,11 +19,13 @@ defmodule Web.Live.Settings.IdentityProviders.OpenIDConnect.NewTest do
     account: account,
     conn: conn
   } do
-    assert live(conn, ~p"/#{account}/settings/identity_providers/openid_connect/new") ==
+    path = ~p"/#{account}/settings/identity_providers/openid_connect/new"
+
+    assert live(conn, path) ==
              {:error,
               {:redirect,
                %{
-                 to: ~p"/#{account}",
+                 to: ~p"/#{account}?#{%{redirect_to: path}}",
                  flash: %{"error" => "You must log in to access this page."}
                }}}
   end

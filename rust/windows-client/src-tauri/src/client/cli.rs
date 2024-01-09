@@ -12,7 +12,6 @@ pub struct Cli {
 #[derive(clap::Subcommand)]
 pub enum CliCommands {
     Debug,
-    DebugConnlib,
     DebugHostname,
     DebugPipeServer,
     DebugWintun,
