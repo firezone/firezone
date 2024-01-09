@@ -40,6 +40,9 @@ defmodule Domain.Accounts do
     end
   end
 
+  def fetch_account_by_id_or_slug(nil), do: {:error, :not_found}
+  def fetch_account_by_id_or_slug(""), do: {:error, :not_found}
+
   def fetch_account_by_id_or_slug(id_or_slug) do
     if Validator.valid_uuid?(id_or_slug) do
       Account.Query.by_id(id_or_slug)

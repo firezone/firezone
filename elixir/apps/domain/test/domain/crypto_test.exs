@@ -48,4 +48,62 @@ defmodule Domain.CryptoTest do
       end
     end
   end
+
+  describe "hash/2" do
+    test "raises an error when secret is an empty string" do
+      assert_raise FunctionClauseError, fn ->
+        hash(:argon2, "")
+      end
+
+      assert_raise FunctionClauseError, fn ->
+        hash(:sha, "")
+      end
+    end
+
+    test "raises an error when secret is not a binary" do
+      assert_raise FunctionClauseError, fn ->
+        hash(:argon2, 1)
+      end
+
+      assert_raise FunctionClauseError, fn ->
+        hash(:sha, 1)
+      end
+    end
+  end
+
+  describe "equal?/3" do
+    test "returns false for empty strings" do
+      refute equal?(:argon2, "a", "")
+      refute equal?(:argon2, "", "a")
+      refute equal?(:sha, "a", "")
+      refute equal?(:sha, "", "a")
+      refute equal?(:sha3_256, "a", "")
+      refute equal?(:sha3_256, "", "a")
+    end
+
+    test "returns false for nils" do
+      refute equal?(:argon2, nil, "")
+      refute equal?(:argon2, "", nil)
+      refute equal?(:sha, nil, "")
+      refute equal?(:sha, "", nil)
+      refute equal?(:sha3_256, nil, "")
+      refute equal?(:sha3_256, "", nil)
+    end
+  end
+
+  describe "hash/2 and equal?/3" do
+    test "generates a valid hash of a given value" do
+      for algo <- [:sha, :sha3_256, :argon2, :blake2b], value <- ["foo", random_token()] do
+        hash = hash(algo, value)
+
+        assert is_binary(hash)
+        assert hash != value
+
+        assert equal?(algo, value, hash)
+        refute equal?(algo, random_token(), hash)
+        refute equal?(algo, "", hash)
+        refute equal?(algo, nil, hash)
+      end
+    end
+  end
 end

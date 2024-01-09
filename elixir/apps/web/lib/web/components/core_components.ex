@@ -939,7 +939,7 @@ defmodule Web.CoreComponents do
   end
 
   def identity_has_email?(identity) do
-    not is_nil(provider_email(identity)) || identity.provider.adapter == :email
+    not is_nil(provider_email(identity)) or identity.provider.adapter == :email
   end
 
   defp provider_email(identity) do
@@ -992,10 +992,10 @@ defmodule Web.CoreComponents do
 
   def last_seen(assigns) do
     ~H"""
-    <code>
+    <code class="text-xs -mr-1">
       <%= @schema.last_seen_remote_ip %>
     </code>
-    <span class="text-neutral-500 inline-block">
+    <span class="text-neutral-500 inline-block text-xs">
       <%= [
         @schema.last_seen_remote_ip_location_region,
         @schema.last_seen_remote_ip_location_city
@@ -1004,12 +1004,15 @@ defmodule Web.CoreComponents do
       |> Enum.join(", ") %>
 
       <a
-        :if={not is_nil(@schema.last_seen_remote_ip_location_lat)}
-        class="ml-1 text-accent-800"
+        :if={
+          not is_nil(@schema.last_seen_remote_ip_location_lat) and
+            not is_nil(@schema.last_seen_remote_ip_location_lon)
+        }
+        class="text-accent-800"
         target="_blank"
         href={"http://www.google.com/maps/place/#{@schema.last_seen_remote_ip_location_lat},#{@schema.last_seen_remote_ip_location_lon}"}
       >
-        <.icon name="hero-arrow-top-right-on-square" class="-ml-1 mb-3 w-3 h-3" />
+        <.icon name="hero-arrow-top-right-on-square" class="mb-3 w-3 h-3" />
       </a>
     </span>
     """

@@ -19,11 +19,13 @@ defmodule Web.Live.Settings.IdentityProviders.GoogleWorkspace.NewTest do
     account: account,
     conn: conn
   } do
-    assert live(conn, ~p"/#{account}/settings/identity_providers/google_workspace/new") ==
+    path = ~p"/#{account}/settings/identity_providers/google_workspace/new"
+
+    assert live(conn, path) ==
              {:error,
               {:redirect,
                %{
-                 to: ~p"/#{account}",
+                 to: ~p"/#{account}?#{%{redirect_to: path}}",
                  flash: %{"error" => "You must log in to access this page."}
                }}}
   end

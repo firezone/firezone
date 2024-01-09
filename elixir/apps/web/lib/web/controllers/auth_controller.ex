@@ -4,11 +4,15 @@ defmodule Web.AuthController do
   alias Domain.Auth.Adapters.OpenIDConnect
 
   # This is the cookie which will be used to store the
-  # state and code verifier for OpenID Connect IdP's
+  # state during redirect to third-party website,
+  # eg. state and code verifier for OpenID Connect IdP's
   @state_cookie_key_prefix "fz_auth_state_"
   @state_cookie_options [
     sign: true,
-    max_age: 300,
+    # encrypt: true,
+    max_age: 30 * 60,
+    # If `same_site` is set to `Strict` then the cookie will not be sent on
+    # IdP callback redirects, which will break the auth flow.
     same_site: "Lax",
     secure: true,
     http_only: true
@@ -30,23 +34,15 @@ defmodule Web.AuthController do
           }
         } = params
       ) do
-    redirect_params = take_non_empty_params(params, ["client_platform", "client_csrf_token"])
+    redirect_params = Web.Auth.take_sign_in_params(params)
+    context_type = Web.Auth.fetch_auth_context_type!(redirect_params)
+    context = Web.Auth.get_auth_context(conn, context_type)
+    nonce = Web.Auth.fetch_token_nonce!(redirect_params)
 
     with {:ok, provider} <- Domain.Auth.fetch_active_provider_by_id(provider_id),
-         {:ok, subject} <-
-           Domain.Auth.sign_in(
-             provider,
-             provider_identifier,
-             secret,
-             conn.assigns.user_agent,
-             conn.remote_ip
-           ) do
-      client_platform = params["client_platform"]
-      client_csrf_token = params["client_csrf_token"]
-
-      conn
-      |> persist_recent_account(subject.account)
-      |> Web.Auth.signed_in_redirect(subject, client_platform, client_csrf_token)
+         {:ok, identity, encoded_fragment} <-
+           Domain.Auth.sign_in(provider, provider_identifier, nonce, secret, context) do
+      Web.Auth.signed_in(conn, provider, identity, context, encoded_fragment, redirect_params)
     else
       {:error, :not_found} ->
         conn
@@ -75,46 +71,46 @@ defmodule Web.AuthController do
           }
         } = params
       ) do
-    conn =
-      with {:ok, provider} <- Domain.Auth.fetch_active_provider_by_id(provider_id),
-           {:ok, identity} <-
-             Domain.Auth.fetch_identity_by_provider_and_identifier(provider, provider_identifier,
-               preload: :account
-             ),
-           {:ok, identity} <- Domain.Auth.Adapters.Email.request_sign_in_token(identity) do
-        sign_in_link_params =
-          take_non_empty_params(params, ["client_platform", "client_csrf_token"])
-
-        <<email_secret::binary-size(5), nonce::binary>> =
-          identity.provider_virtual_state.sign_in_token
-
-        {:ok, _} =
-          Web.Mailer.AuthEmail.sign_in_link_email(
-            identity,
-            email_secret,
-            conn.assigns.user_agent,
-            conn.remote_ip,
-            sign_in_link_params
-          )
-          |> Web.Mailer.deliver()
-
-        put_session(conn, :sign_in_nonce, nonce)
-      else
-        _ -> conn
-      end
-
-    redirect_params =
-      params
-      |> take_non_empty_params(["client_platform", "client_csrf_token"])
-      |> Map.put("provider_identifier", provider_identifier)
+    redirect_params = Web.Auth.take_sign_in_params(params)
+    conn = maybe_send_magic_link_email(conn, provider_id, provider_identifier, redirect_params)
+    redirect_params = Map.put(redirect_params, "provider_identifier", provider_identifier)
 
     conn
     |> maybe_put_resent_flash(params)
-    |> put_session(:client_platform, params["client_platform"])
-    |> put_session(:client_csrf_token, params["client_csrf_token"])
     |> redirect(
       to: ~p"/#{account_id_or_slug}/sign_in/providers/email/#{provider_id}?#{redirect_params}"
     )
+  end
+
+  defp maybe_send_magic_link_email(conn, provider_id, provider_identifier, redirect_params) do
+    with {:ok, provider} <- Domain.Auth.fetch_active_provider_by_id(provider_id),
+         {:ok, identity} <-
+           Domain.Auth.fetch_active_identity_by_provider_and_identifier(
+             provider,
+             provider_identifier,
+             preload: :account
+           ),
+         {:ok, identity} <- Domain.Auth.Adapters.Email.request_sign_in_token(identity) do
+      # We split the secret into two components, the first 5 bytes is the code we send to the user
+      # the rest is the secret we store in the cookie. This is to prevent authorization code injection
+      # attacks where you can trick user into logging in into a attacker account.
+      <<email_secret::binary-size(5), nonce::binary>> =
+        identity.provider_virtual_state.sign_in_token
+
+      {:ok, _} =
+        Web.Mailer.AuthEmail.sign_in_link_email(
+          identity,
+          email_secret,
+          conn.assigns.user_agent,
+          conn.remote_ip,
+          redirect_params
+        )
+        |> Web.Mailer.deliver()
+
+      put_auth_state(conn, provider.id, {nonce, redirect_params})
+    else
+      _ -> conn
+    end
   end
 
   defp maybe_put_resent_flash(conn, %{"resend" => "true"}),
@@ -136,43 +132,40 @@ defmodule Web.AuthController do
           "secret" => email_secret
         } = params
       ) do
-    client_platform = get_session(conn, :client_platform) || params["client_platform"]
-    client_csrf_token = get_session(conn, :client_csrf_token) || params["client_csrf_token"]
+    with {:ok, {nonce, redirect_params}, conn} <- fetch_auth_state(conn, provider_id) do
+      conn = delete_auth_state(conn, provider_id)
+      secret = String.downcase(email_secret) <> nonce
+      context_type = Web.Auth.fetch_auth_context_type!(redirect_params)
+      context = Web.Auth.get_auth_context(conn, context_type)
+      nonce = Web.Auth.fetch_token_nonce!(redirect_params)
 
-    redirect_params =
-      put_if_not_empty(:client_platform, client_platform)
-      |> put_if_not_empty(:client_csrf_token, client_csrf_token)
+      with {:ok, provider} <- Domain.Auth.fetch_active_provider_by_id(provider_id),
+           {:ok, identity, encoded_fragment} <-
+             Domain.Auth.sign_in(provider, identity_id, nonce, secret, context) do
+        Web.Auth.signed_in(conn, provider, identity, context, encoded_fragment, redirect_params)
+      else
+        {:error, :not_found} ->
+          conn
+          |> put_flash(:error, "You may not use this method to sign in.")
+          |> redirect(to: ~p"/#{account_id_or_slug}?#{redirect_params}")
 
-    with {:ok, provider} <- Domain.Auth.fetch_active_provider_by_id(provider_id),
-         nonce = get_session(conn, :sign_in_nonce) || "=",
-         {:ok, subject} <-
-           Domain.Auth.sign_in(
-             provider,
-             identity_id,
-             String.downcase(email_secret) <> nonce,
-             conn.assigns.user_agent,
-             conn.remote_ip
-           ) do
-      conn
-      |> delete_session(:client_platform)
-      |> delete_session(:client_csrf_token)
-      |> delete_session(:sign_in_nonce)
-      |> persist_recent_account(subject.account)
-      |> Web.Auth.signed_in_redirect(subject, client_platform, client_csrf_token)
+        {:error, _reason} ->
+          redirect_params = Map.put(redirect_params, "provider_identifier", identity_id)
+
+          conn
+          |> put_flash(:error, "The sign in token is invalid or expired.")
+          |> redirect(
+            to:
+              ~p"/#{account_id_or_slug}/sign_in/providers/email/#{provider_id}?#{redirect_params}"
+          )
+      end
     else
-      {:error, :not_found} ->
-        conn
-        |> put_flash(:error, "You may not use this method to sign in.")
-        |> redirect(to: ~p"/#{account_id_or_slug}?#{redirect_params}")
-
-      {:error, _reason} ->
-        redirect_params = put_if_not_empty(redirect_params, "provider_identifier", identity_id)
+      :error ->
+        params = Web.Auth.take_sign_in_params(params)
 
         conn
-        |> put_flash(:error, "The sign in token is invalid or expired.")
-        |> redirect(
-          to: ~p"/#{account_id_or_slug}/sign_in/providers/email/#{provider_id}?#{redirect_params}"
-        )
+        |> put_flash(:error, "The sign in token is expired.")
+        |> redirect(to: ~p"/#{account_id_or_slug}?#{params}")
     end
   end
 
@@ -188,20 +181,16 @@ defmodule Web.AuthController do
         } = params
       ) do
     with {:ok, provider} <- Domain.Auth.fetch_active_provider_by_id(provider_id) do
-      conn = put_session(conn, :client_platform, params["client_platform"])
-      conn = put_session(conn, :client_csrf_token, params["client_csrf_token"])
-
       redirect_url =
         url(~p"/#{provider.account_id}/sign_in/providers/#{provider.id}/handle_callback")
 
-      redirect_to_idp(conn, redirect_url, provider)
+      redirect_params = Web.Auth.take_sign_in_params(params)
+      redirect_to_idp(conn, redirect_url, provider, %{}, redirect_params)
     else
       {:error, :not_found} ->
-        redirect_params = take_non_empty_params(params, ["client_platform", "client_csrf_token"])
-
         conn
         |> put_flash(:error, "You may not use this method to sign in.")
-        |> redirect(to: ~p"/#{account_id_or_slug}?#{redirect_params}")
+        |> redirect(to: ~p"/#{account_id_or_slug}")
     end
   end
 
@@ -209,16 +198,14 @@ defmodule Web.AuthController do
         %Plug.Conn{} = conn,
         redirect_url,
         %Domain.Auth.Provider{} = provider,
-        params \\ %{}
+        params \\ %{},
+        redirect_params \\ %{}
       ) do
     {:ok, authorization_url, {state, code_verifier}} =
       OpenIDConnect.authorization_uri(provider, redirect_url, params)
 
-    key = state_cookie_key(provider.id)
-    value = :erlang.term_to_binary({state, code_verifier})
-
     conn
-    |> put_resp_cookie(key, value, @state_cookie_options)
+    |> put_auth_state(provider.id, {redirect_params, state, code_verifier})
     |> redirect(external: authorization_url)
   end
 
@@ -231,29 +218,22 @@ defmodule Web.AuthController do
         "state" => state,
         "code" => code
       }) do
-    client_platform = get_session(conn, :client_platform)
-    client_csrf_token = get_session(conn, :client_csrf_token)
-
-    redirect_params =
-      put_if_not_empty(:client_platform, client_platform)
-      |> put_if_not_empty(:client_csrf_token, client_csrf_token)
-
-    with {:ok, code_verifier, conn} <- verify_state_and_fetch_verifier(conn, provider_id, state) do
+    with {:ok, redirect_params, code_verifier, conn} <-
+           verify_idp_state_and_fetch_verifier(conn, provider_id, state) do
       payload = {
         url(~p"/#{account_id}/sign_in/providers/#{provider_id}/handle_callback"),
         code_verifier,
         code
       }
 
+      context_type = Web.Auth.fetch_auth_context_type!(redirect_params)
+      context = Web.Auth.get_auth_context(conn, context_type)
+      nonce = Web.Auth.fetch_token_nonce!(redirect_params)
+
       with {:ok, provider} <- Domain.Auth.fetch_active_provider_by_id(provider_id),
-           {:ok, subject} <-
-             Domain.Auth.sign_in(provider, payload, conn.assigns.user_agent, conn.remote_ip) do
-        conn
-        |> delete_session(:client_platform)
-        |> delete_session(:client_csrf_token)
-        |> delete_session(:sign_in_nonce)
-        |> persist_recent_account(subject.account)
-        |> Web.Auth.signed_in_redirect(subject, client_platform, client_csrf_token)
+           {:ok, identity, encoded_fragment} <-
+             Domain.Auth.sign_in(provider, nonce, payload, context) do
+        Web.Auth.signed_in(conn, provider, identity, context, encoded_fragment, redirect_params)
       else
         {:error, :not_found} ->
           conn
@@ -269,60 +249,46 @@ defmodule Web.AuthController do
       {:error, :invalid_state, conn} ->
         conn
         |> put_flash(:error, "Your session has expired, please try again.")
-        |> redirect(to: ~p"/#{account_id}?#{redirect_params}")
+        |> redirect(to: ~p"/#{account_id}")
     end
   end
 
-  def verify_state_and_fetch_verifier(conn, provider_id, state) do
+  def verify_idp_state_and_fetch_verifier(conn, provider_id, state) do
+    with {:ok, {redirect_params, persisted_state, persisted_verifier}, conn} <-
+           fetch_auth_state(conn, provider_id),
+         :ok <- OpenIDConnect.ensure_states_equal(state, persisted_state) do
+      {:ok, redirect_params, persisted_verifier, delete_auth_state(conn, provider_id)}
+    else
+      _ -> {:error, :invalid_state, delete_auth_state(conn, provider_id)}
+    end
+  end
+
+  def sign_out(conn, params) do
+    Auth.sign_out(conn, params)
+  end
+
+  @doc false
+  def put_auth_state(conn, provider_id, state) do
+    key = state_cookie_key(provider_id)
+    value = :erlang.term_to_binary(state)
+    put_resp_cookie(conn, key, value, @state_cookie_options)
+  end
+
+  defp fetch_auth_state(conn, provider_id) do
     key = state_cookie_key(provider_id)
     conn = fetch_cookies(conn, signed: [key])
 
-    with {:ok, encoded_state} <- Map.fetch(conn.cookies, key),
-         {persisted_state, persisted_verifier} <- :erlang.binary_to_term(encoded_state, [:safe]),
-         :ok <- OpenIDConnect.ensure_states_equal(state, persisted_state) do
-      {:ok, persisted_verifier, delete_resp_cookie(conn, key, @state_cookie_options)}
-    else
-      _ -> {:error, :invalid_state, delete_resp_cookie(conn, key, @state_cookie_options)}
+    with {:ok, encoded_state} <- Map.fetch(conn.cookies, key) do
+      {:ok, :erlang.binary_to_term(encoded_state, [:safe]), conn}
     end
+  end
+
+  defp delete_auth_state(conn, provider_id) do
+    key = state_cookie_key(provider_id)
+    delete_resp_cookie(conn, key, @state_cookie_options)
   end
 
   defp state_cookie_key(provider_id) do
     @state_cookie_key_prefix <> provider_id
   end
-
-  def sign_out(%{assigns: %{subject: subject}} = conn, %{
-        "account_id_or_slug" => account_id_or_slug
-      }) do
-    redirect_params = Map.take(conn.params, ["client_platform"])
-
-    {:ok, _identity, redirect_url} =
-      Domain.Auth.sign_out(subject.identity, url(~p"/#{account_id_or_slug}?#{redirect_params}"))
-
-    conn
-    |> Auth.sign_out()
-    |> redirect(external: redirect_url)
-  end
-
-  def sign_out(conn, %{"account_id_or_slug" => account_id_or_slug}) do
-    redirect_params = Map.take(conn.params, ["client_platform"])
-
-    conn
-    |> Auth.sign_out()
-    |> redirect(to: ~p"/#{account_id_or_slug}?#{redirect_params}")
-  end
-
-  defp persist_recent_account(conn, %Domain.Accounts.Account{} = account) do
-    Auth.update_recent_account_ids(conn, fn recent_account_ids ->
-      [account.id] ++ recent_account_ids
-    end)
-  end
-
-  defp take_non_empty_params(map, keys) do
-    map |> Map.take(keys) |> Map.reject(fn {_key, value} -> value in ["", nil] end)
-  end
-
-  defp put_if_not_empty(map \\ %{}, key, value)
-  defp put_if_not_empty(map, _key, ""), do: map
-  defp put_if_not_empty(map, _key, nil), do: map
-  defp put_if_not_empty(map, key, value), do: Map.put(map, key, value)
 end

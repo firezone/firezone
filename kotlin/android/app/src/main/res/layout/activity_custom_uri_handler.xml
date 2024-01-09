@@ -5,7 +5,7 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    tools:context=".features.applink.ui.AppLinkHandlerActivity">
+    tools:context=".features.customuri.ui.CustomUriHandlerActivity">
 
   <TextView
       android:layout_width="wrap_content"

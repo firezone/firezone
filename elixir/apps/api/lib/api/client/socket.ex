@@ -27,6 +27,7 @@ defmodule API.Client.Socket do
         API.Sockets.load_balancer_ip_location(x_headers)
 
       context = %Auth.Context{
+        type: :client,
         user_agent: user_agent,
         remote_ip: real_ip,
         remote_ip_location_region: location_region,
@@ -35,7 +36,7 @@ defmodule API.Client.Socket do
         remote_ip_location_lon: location_lon
       }
 
-      with {:ok, subject} <- Auth.sign_in(token, context),
+      with {:ok, subject} <- Auth.authenticate(token, context),
            {:ok, client} <- Clients.upsert_client(attrs, subject) do
         OpenTelemetry.Tracer.set_attributes(%{
           client_id: client.id,

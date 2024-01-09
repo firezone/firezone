@@ -34,11 +34,13 @@ defmodule Web.Live.Policies.ShowTest do
     policy: policy,
     conn: conn
   } do
-    assert live(conn, ~p"/#{account}/policies/#{policy}") ==
+    path = ~p"/#{account}/policies/#{policy}"
+
+    assert live(conn, path) ==
              {:error,
               {:redirect,
                %{
-                 to: ~p"/#{account}",
+                 to: ~p"/#{account}?#{%{redirect_to: path}}",
                  flash: %{"error" => "You must log in to access this page."}
                }}}
   end
@@ -57,11 +59,7 @@ defmodule Web.Live.Policies.ShowTest do
       |> live(~p"/#{account}/policies/#{policy}")
 
     assert html =~ "(deleted)"
-    refute html =~ "Danger Zone"
-    refute html =~ "Add"
-    refute html =~ "Delete"
-    refute html =~ "Edit"
-    refute html =~ "Deploy"
+    assert active_buttons(html) == []
   end
 
   test "renders breadcrumbs item", %{
