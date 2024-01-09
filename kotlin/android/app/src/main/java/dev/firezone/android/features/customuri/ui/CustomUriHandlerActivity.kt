@@ -1,5 +1,5 @@
 /* Licensed under Apache 2.0 (C) 2023 Firezone, Inc. */
-package dev.firezone.android.features.applink.ui
+package dev.firezone.android.features.customuri.ui
 
 import android.content.Intent
 import android.os.Bundle
@@ -9,33 +9,33 @@ import androidx.appcompat.app.AppCompatActivity
 import dagger.hilt.android.AndroidEntryPoint
 import dev.firezone.android.R
 import dev.firezone.android.core.presentation.MainActivity
-import dev.firezone.android.databinding.ActivityAppLinkHandlerBinding
+import dev.firezone.android.databinding.ActivityCustomUriHandlerBinding
 
 @AndroidEntryPoint
-class AppLinkHandlerActivity : AppCompatActivity(R.layout.activity_app_link_handler) {
-    private lateinit var binding: ActivityAppLinkHandlerBinding
-    private val viewModel: AppLinkViewModel by viewModels()
+class CustomUriHandlerActivity : AppCompatActivity(R.layout.activity_custom_uri_handler) {
+    private lateinit var binding: ActivityCustomUriHandlerBinding
+    private val viewModel: CustomUriViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        binding = ActivityAppLinkHandlerBinding.inflate(layoutInflater)
+        binding = ActivityCustomUriHandlerBinding.inflate(layoutInflater)
 
         setupActionObservers()
-        viewModel.parseAppLink(intent)
+        viewModel.parseCustomUri(intent)
     }
 
     private fun setupActionObservers() {
         viewModel.actionLiveData.observe(this) { action ->
             when (action) {
-                AppLinkViewModel.ViewAction.AuthFlowComplete -> {
+                CustomUriViewModel.ViewAction.AuthFlowComplete -> {
                     startActivity(
-                        Intent(this@AppLinkHandlerActivity, MainActivity::class.java).apply {
+                        Intent(this@CustomUriHandlerActivity, MainActivity::class.java).apply {
                             flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
                         },
                     )
                     finish()
                 }
-                AppLinkViewModel.ViewAction.ShowError -> showError()
+                CustomUriViewModel.ViewAction.ShowError -> showError()
             }
         }
     }
@@ -47,7 +47,7 @@ class AppLinkHandlerActivity : AppCompatActivity(R.layout.activity_app_link_hand
             .setPositiveButton(
                 R.string.error_dialog_button_text,
             ) { _, _ ->
-                this@AppLinkHandlerActivity.finish()
+                this@CustomUriHandlerActivity.finish()
             }
             .setIcon(R.drawable.ic_firezone_logo)
             .show()
