@@ -3,7 +3,7 @@ version: "3.8"
 services:
   # Dependencies
   postgres:
-    cpuset: 0
+    cpuset: '0'
     image: postgres:15.2
     volumes:
       - postgres-data:/var/lib/postgresql/data
@@ -52,7 +52,7 @@ services:
 
   # Firezone Components
   web:
-    cpuset: 0
+    cpuset: '0'
     build:
       context: ../elixir
       cache_from:
@@ -115,7 +115,7 @@ services:
       - app
 
   client:
-    cpuset: 0
+    cpuset: '0'
     environment:
       FIREZONE_TOKEN: "SFMyNTY.g2gDaAN3CGlkZW50aXR5bQAAACQ3ZGE3ZDFjZC0xMTFjLTQ0YTctYjVhYy00MDI3YjlkMjMwZTVtAAAAIBn8Xu1jtFlxZxp4ZvAz0f0QEN2PZThA-7awHMPxn_tHbgYAbLRvQokBYgHhM38.pM-prhb7uvvCVKf51-tAUMEtMzLPZk1n3nLsY44dGFA"
       RUST_LOG: firezone_linux_client=trace,wire=trace,connlib_client_shared=trace,firezone_tunnel=trace,connlib_shared=trace,warn
@@ -246,7 +246,7 @@ services:
         ipv4_address: 172.28.0.101
 
   api:
-    cpuset: 0
+    cpuset: '0'
     build:
       context: ../elixir
       cache_from:
@@ -317,7 +317,7 @@ services:
   # This is a service container which allows to run mix tasks for local development
   # without having to install Elixir and Erlang on the host machine.
   elixir:
-    cpuset: 0
+    cpuset: '0'
     build:
       context: ../elixir
       target: compiler
