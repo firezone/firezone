@@ -155,6 +155,11 @@ jobs:
       - ios
     if: 'always()'
     runs-on: ubuntu-22.04-firezone
+    defaults:
+      run:
+        working-directory: ./e2e
     steps:
       - uses: actions/checkout@v4
-      - run: echo 'Teardown e2e environment'
+      - run: |
+          docker compose down -v
+          docker system prune --force --all --volumes
