@@ -12,7 +12,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  setup-e2e:
+  setup:
     runs-on: ${{ matrix.runs-on }}
     strategy:
       matrix:
@@ -26,8 +26,8 @@ jobs:
           node-version: '18'
       - run: npm i --location=global appium
 
-  docker-up:
-    needs: setup-e2e
+  docker:
+    needs: setup
     runs-on: ubuntu-22.04-firezone
     defaults:
       run:
@@ -39,7 +39,7 @@ jobs:
           docker compose up -d
 
   macos:
-    needs: docker-up
+    needs: docker
     runs-on: macos-14-firezone
     permissions:
       contents: read
@@ -80,28 +80,28 @@ jobs:
           key: ${{ matrix.runs-on }}-${{ runner.arch }}-swift-${{ hashFiles('swift/*', 'rust/**/*.rs', 'rust/**/*.toml', 'rust/**/*.lock}') }}
 
   windows:
-    needs: docker-up
+    needs: docker
     runs-on: windows-11-firezone
     steps:
       - uses: actions/checkout@v4
       - run: echo 'Noop'
 
   linux:
-    needs: docker-up
+    needs: docker
     runs-on: ubuntu-22.04-firezone
     steps:
       - uses: actions/checkout@v4
       - run: echo 'Noop'
 
   android:
-    needs: docker-up
+    needs: docker
     runs-on: ubuntu-22.04-firezone
     steps:
       - uses: actions/checkout@v4
       - run: echo 'Noop'
 
   chromeos:
-    needs: docker-up
+    needs: docker
     runs-on: ubuntu-22.04-firezone
     steps:
       - uses: actions/checkout@v4
@@ -109,7 +109,7 @@ jobs:
 
   # Also used for iPadOS
   ios:
-    needs: docker-up
+    needs: docker
     runs-on: macos-14-firezone
     steps:
       - uses: actions/checkout@v4
@@ -144,15 +144,13 @@ jobs:
           # on each build on `main` and attempt to restore it in PR builds with broader restore-key.
           key: ${{ matrix.runs-on }}-${{ runner.arch }}-swift-${{ hashFiles('swift/*', 'rust/**/*.rs', 'rust/**/*.toml', 'rust/**/*.lock}') }}
 
-  teardown-e2e:
+  teardown:
     needs:
       - macos
       - windows
       - linux
       - android
-      - chromeos
       - ios
-      - ipados
     if: 'always()'
     runs-on: ubuntu-22.04-firezone
     steps:
