@@ -796,6 +796,11 @@ impl RoleState for ClientState {
 
             if self.refresh_dns_timer.poll_tick(cx).is_ready() {
                 let mut connections = Vec::new();
+
+                self.peers_by_ip
+                    .iter()
+                    .for_each(|p| p.1.inner.transform.expire_dns_track());
+
                 for resource in self.dns_resources_internal_ips.keys() {
                     let Some(gateway_id) = self.resources_gateways.get(&resource.id) else {
                         continue;

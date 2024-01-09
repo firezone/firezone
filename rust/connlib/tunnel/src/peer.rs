@@ -25,6 +25,10 @@ use crate::{device_channel, ip_packet::MutableIpPacket, PeerConfig};
 
 type ExpiryingResource = (ResourceDescription, DateTime<Utc>);
 
+// The max time a dns request can be configured to live in resolvconf
+// is 30 seconds. See resolvconf(5) timeout.
+const IDS_EXPIRE: std::time::Duration = std::time::Duration::from_secs(60);
+
 pub(crate) struct Peer<TId, TTransform> {
     tunnel: Mutex<Tunn>,
     allowed_ips: RwLock<IpNetworkTable<()>>,
@@ -200,8 +204,7 @@ pub struct PacketTransformClient {
     // TODO: we need to update upper layers to handle changing upstream dns
     // TODO: Upstream dns could be not and ip
     upstream_dns: ArcSwapOption<IpAddr>,
-    // TODO: expires these
-    mangled_dns_ids: RwLock<HashMap<u16, std::time::Instant>>,
+    mangled_dns_ids: Mutex<HashMap<u16, std::time::Instant>>,
 }
 
 impl PacketTransformClient {
@@ -219,6 +222,12 @@ impl PacketTransformClient {
 
         translations.insert(proxy_ip, *ip);
         Some(proxy_ip)
+    }
+
+    pub fn expire_dns_track(&self) {
+        self.mangled_dns_ids
+            .lock()
+            .retain(|_, exp| exp.elapsed() < IDS_EXPIRE);
     }
 
     pub fn set_dns(&self, ip_addr: IpAddr) {
@@ -301,12 +310,11 @@ impl PacketTransform for PacketTransformClient {
         {
             if let Some(dgm) = pkt.as_udp() {
                 if let Ok(message) = domain::base::Message::from_slice(dgm.payload()) {
-                    // TODO: consider it might be expired
                     if self
                         .mangled_dns_ids
-                        .read()
-                        .get(&message.header().id())
-                        .is_some()
+                        .lock()
+                        .remove(&message.header().id())
+                        .is_some_and(|exp| exp.elapsed() < IDS_EXPIRE)
                     {
                         src = DNS_SENTINEL.into();
                     }
@@ -328,11 +336,10 @@ impl PacketTransform for PacketTransformClient {
 
         if packet.destination() == DNS_SENTINEL {
             if let Some(ip) = self.upstream_dns.load().as_ref() {
-                // TODO: add is_dns function
                 if let Some(dgm) = packet.as_udp() {
                     if let Ok(message) = domain::base::Message::from_slice(dgm.payload()) {
                         self.mangled_dns_ids
-                            .write()
+                            .lock()
                             .insert(message.header().id(), Instant::now());
                         packet.set_dst(**ip);
                         packet.update_checksum();
