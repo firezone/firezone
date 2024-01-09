@@ -45,7 +45,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Create and seed database
         run:
-          docker compose run elixir /bin/sh -c 'cd apps/domain && mix ecto.create, ecto.seed'
+          docker compose run elixir /bin/sh -c 'cd apps/domain && mix do ecto.create, ecto.seed'
       - name: Build images
         run: |
           docker compose build
