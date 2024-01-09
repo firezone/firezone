@@ -38,14 +38,33 @@ jobs:
   docker:
     needs: setup
     runs-on: ubuntu-22.04-firezone
+    env:
+      # mark:automatic-version
+      VERSION: "1.0.0"
     defaults:
       run:
         working-directory: ./e2e
     steps:
       - uses: actions/checkout@v4
-      - run: |
+      - name: Seed database
+        run:
+          docker compose run elixir /bin/sh -c 'cd apps/domain && mix ecto.seed'
+      - name: Build images
+        run: |
           docker compose build
-          docker compose up -d
+      - name: Start docker compose in the background
+        run: |
+          docker compose up -d \
+            api \
+            web \
+            client \
+            relay \
+            gateway \
+            iperf3
+      - name: Wait for client to ping resource
+        run: |
+          docker compose exec -it client timeout 60 \
+          sh -c 'until ping -W 1 -c 1 172.20.0.100 &>/dev/null; do true; done'
 
   macos:
     needs: docker
