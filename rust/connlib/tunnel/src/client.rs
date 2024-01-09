@@ -247,12 +247,10 @@ impl ClientState {
                         .longest_match(upstream_dns.ip())
                         .is_some()
                     {
-                        // packet.set_dst(upstream_dns.ip());
-                        // packet.update_checksum();
-                        // return Err(packet);
                         return Err((packet, upstream_dns.ip()));
                     }
                 }
+
                 self.add_pending_dns_query(query);
 
                 Ok(None)
