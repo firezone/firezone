@@ -48,24 +48,26 @@ internal class PreferenceRepositoryImpl
 
         override fun saveToken(value: String): Flow<Unit> =
             flow {
+                val nonce = sharedPreferences.getString(NONCE_KEY, "").orEmpty()
                 emit(
                     sharedPreferences
                         .edit()
-                        .putString(TOKEN_KEY, value)
+                        .putString(TOKEN_KEY, nonce.plus(value))
                         .apply(),
                 )
             }.flowOn(coroutineDispatcher)
 
-        override fun validateCsrfToken(value: String): Flow<Boolean> =
+        override fun validateState(value: String): Flow<Boolean> =
             flow {
-                val token = sharedPreferences.getString(CSRF_KEY, "").orEmpty()
-                emit(MessageDigest.isEqual(token.toByteArray(), value.toByteArray()))
+                val state = sharedPreferences.getString(STATE_KEY, "").orEmpty()
+                emit(MessageDigest.isEqual(state.toByteArray(), value.toByteArray()))
             }.flowOn(coroutineDispatcher)
 
         override fun clearToken() {
             sharedPreferences.edit().apply {
-                remove(CSRF_KEY)
+                remove(NONCE_KEY)
                 remove(TOKEN_KEY)
+                remove(STATE_KEY)
                 apply()
             }
         }
@@ -79,6 +81,7 @@ internal class PreferenceRepositoryImpl
             private const val API_URL_KEY = "apiUrl"
             private const val LOG_FILTER_KEY = "logFilter"
             private const val TOKEN_KEY = "token"
-            private const val CSRF_KEY = "csrf"
+            private const val NONCE_KEY = "nonce"
+            private const val STATE_KEY = "state"
         }
     }

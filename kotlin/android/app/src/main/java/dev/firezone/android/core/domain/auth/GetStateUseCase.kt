@@ -5,10 +5,10 @@ import dev.firezone.android.core.data.AuthRepository
 import kotlinx.coroutines.flow.Flow
 import javax.inject.Inject
 
-internal class GetCsrfTokenUseCase
+internal class GetStateUseCase
     @Inject
     constructor(
         private val repository: AuthRepository,
     ) {
-        operator fun invoke(): Flow<String> = repository.generateCsrfToken()
+        operator fun invoke(): Flow<String> = repository.generateNonce("state")
     }

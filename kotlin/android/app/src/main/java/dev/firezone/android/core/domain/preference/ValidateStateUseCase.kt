@@ -5,10 +5,10 @@ import dev.firezone.android.core.data.PreferenceRepository
 import kotlinx.coroutines.flow.Flow
 import javax.inject.Inject
 
-internal class ValidateCsrfTokenUseCase
+internal class ValidateStateUseCase
     @Inject
     constructor(
         private val repository: PreferenceRepository,
     ) {
-        operator fun invoke(value: String): Flow<Boolean> = repository.validateCsrfToken(value)
+        operator fun invoke(value: String): Flow<Boolean> = repository.validateState(value)
     }

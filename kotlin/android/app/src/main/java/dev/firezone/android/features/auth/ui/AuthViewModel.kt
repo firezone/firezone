@@ -6,7 +6,8 @@ import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
-import dev.firezone.android.core.domain.auth.GetCsrfTokenUseCase
+import dev.firezone.android.core.domain.auth.GetNonceUseCase
+import dev.firezone.android.core.domain.auth.GetStateUseCase
 import dev.firezone.android.core.domain.preference.GetConfigUseCase
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
@@ -18,7 +19,8 @@ internal class AuthViewModel
     @Inject
     constructor(
         private val getConfigUseCase: GetConfigUseCase,
-        private val getCsrfTokenUseCase: GetCsrfTokenUseCase,
+        private val getStateUseCase: GetStateUseCase,
+        private val getNonceUseCase: GetNonceUseCase,
     ) : ViewModel() {
         private val actionMutableLiveData = MutableLiveData<ViewAction>()
         val actionLiveData: LiveData<ViewAction> = actionMutableLiveData
@@ -32,9 +34,13 @@ internal class AuthViewModel
                         getConfigUseCase()
                             .firstOrNull() ?: throw Exception("config cannot be null")
 
-                    val csrfToken =
-                        getCsrfTokenUseCase()
-                            .firstOrNull() ?: throw Exception("csrfToken cannot be null")
+                    val state =
+                        getStateUseCase()
+                            .firstOrNull() ?: throw Exception("state cannot be null")
+
+                    val nonce =
+                        getNonceUseCase()
+                            .firstOrNull() ?: throw Exception("nonce cannot be null")
 
                     actionMutableLiveData.postValue(
                         if (authFlowLaunched || config.token != null) {
@@ -44,7 +50,7 @@ internal class AuthViewModel
                             ViewAction.LaunchAuthFlow(
                                 url =
                                     "${config.authBaseUrl}" +
-                                        "?client_csrf_token=$csrfToken&client_platform=android",
+                                        "?state=$state&nonce=$nonce&as=client",
                             )
                         },
                     )

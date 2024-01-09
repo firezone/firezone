@@ -17,7 +17,7 @@ internal interface PreferenceRepository {
 
     fun saveToken(value: String): Flow<Unit>
 
-    fun validateCsrfToken(value: String): Flow<Boolean>
+    fun validateState(value: String): Flow<Boolean>
 
     fun clearToken()
 
