@@ -201,7 +201,7 @@ impl Default for PacketTransformGateway {
 #[derive(Default)]
 pub struct PacketTransformClient {
     translations: RwLock<BiMap<IpAddr, IpAddr>>,
-    // TODO: Upstream dns could be not and ip
+    // TODO: Upstream dns could be something that's not an ip
     upstream_dns: ArcSwapOption<IpAddr>,
     mangled_dns_ids: Mutex<HashMap<u16, std::time::Instant>>,
 }
