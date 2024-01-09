@@ -82,6 +82,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           prerelease: true
+          include-pre-releases: true
           version: ${{ env.VERSION }}
       - name: Delete stale artifacts
         env:
