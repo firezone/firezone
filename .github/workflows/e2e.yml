@@ -132,6 +132,9 @@ jobs:
     permissions:
       contents: read
       id-token: 'write'
+    defaults:
+      run:
+        working-directory: ./swift/apple
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-rust
