@@ -215,6 +215,7 @@ fn handle_system_tray_event(app: &tauri::AppHandle, event: TrayMenuEvent) -> Res
 pub(crate) enum ControllerRequest {
     CopyResource(String),
     Disconnected,
+    DisconnectedTokenExpired,
     ExportLogs { path: PathBuf, stem: PathBuf },
     GetAdvancedSettings(oneshot::Sender<AdvancedSettings>),
     SchemeRequest(url::Url),
@@ -258,7 +259,12 @@ impl connlib_client_shared::Callbacks for CallbackHandler {
         error: Option<&connlib_client_shared::Error>,
     ) -> Result<(), Self::Error> {
         tracing::debug!("on_disconnect {error:?}");
-        self.ctlr_tx.try_send(ControllerRequest::Disconnected)?;
+        self.ctlr_tx.try_send(match error {
+            Some(connlib_client_shared::Error::TokenExpired) => {
+                ControllerRequest::DisconnectedTokenExpired
+            }
+            _ => ControllerRequest::Disconnected,
+        })?;
         Ok(())
     }
 
@@ -512,9 +518,23 @@ async fn run_controller(
                         tracing::debug!("connlib disconnected, tearing down Session");
                         if let Some(mut session) = controller.session.take() {
                             tracing::debug!("disconnecting connlib");
+                            // This is probably redundant since connlib shuts itself down if it's disconnected.
                             session.connlib.disconnect(None);
                         }
-                    },
+                    }
+                    Req::DisconnectedTokenExpired | Req::SignOut => {
+                        tracing::debug!("Token expired or user signed out");
+                        // TODO: After we store the actor name on disk, clear the actor name here too.
+                        keyring_entry()?.delete_password()?;
+                        if let Some(mut session) = controller.session.take() {
+                            tracing::debug!("disconnecting connlib");
+                            session.connlib.disconnect(None);
+                        }
+                        else {
+                            tracing::error!("tried to sign out but there's no session");
+                        }
+                        app.tray_handle().set_menu(system_tray_menu::signed_out())?;
+                    }
                     Req::ExportLogs{path, stem} => logging::export_logs_to(path, stem).await?,
                     Req::GetAdvancedSettings(tx) => {
                         tx.send(controller.advanced_settings.clone()).ok();
@@ -529,18 +549,6 @@ async fn run_controller(
                             &controller.advanced_settings.auth_base_url,
                             None,
                         )?;
-                    }
-                    Req::SignOut => {
-                        // TODO: After we store the actor name on disk, clear the actor name here too.
-                        keyring_entry()?.delete_password()?;
-                        if let Some(mut session) = controller.session.take() {
-                            tracing::debug!("disconnecting connlib");
-                            session.connlib.disconnect(None);
-                        }
-                        else {
-                            tracing::error!("tried to sign out but there's no session");
-                        }
-                        app.tray_handle().set_menu(system_tray_menu::signed_out())?;
                     }
                     Req::StartStopLogCounting(enable) => {
                         if enable {
