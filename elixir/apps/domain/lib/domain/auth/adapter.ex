@@ -7,6 +7,10 @@ defmodule Domain.Auth.Adapter do
   The `:custom` is a special key which means that the IdP adapter implements
   its own provisioning logic (eg. API integration), so it should be rendered
   in the UI on pre-provider basis.
+
+  Setting it to `:custom` will also allow running recurrent jobs for the provider,
+  for more details see `Domain.Auth.list_providers_pending_token_refresh_by_adapter/1`
+  and `Domain.Auth.list_providers_pending_sync_by_adapter/1`.
   """
   @type provisioner :: :manual | :just_in_time | :custom
 

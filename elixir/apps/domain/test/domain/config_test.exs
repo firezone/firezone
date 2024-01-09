@@ -424,7 +424,9 @@ defmodule Domain.ConfigTest do
 
       assert fetch_account_config(subject) ==
                {:error,
-                {:unauthorized, [missing_permissions: [Config.Authorizer.manage_permission()]]}}
+                {:unauthorized,
+                 reason: :missing_permissions,
+                 missing_permissions: [Config.Authorizer.manage_permission()]}}
     end
   end
 
@@ -454,7 +456,9 @@ defmodule Domain.ConfigTest do
 
       assert update_config(config, %{}, subject) ==
                {:error,
-                {:unauthorized, [missing_permissions: [Config.Authorizer.manage_permission()]]}}
+                {:unauthorized,
+                 reason: :missing_permissions,
+                 missing_permissions: [Config.Authorizer.manage_permission()]}}
     end
   end
 

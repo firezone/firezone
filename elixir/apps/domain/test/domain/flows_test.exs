@@ -152,10 +152,9 @@ defmodule Domain.FlowsTest do
       assert authorize_flow(client, gateway, resource.id, subject) ==
                {:error,
                 {:unauthorized,
-                 [
-                   missing_permissions: [
-                     Flows.Authorizer.create_flows_permission()
-                   ]
+                 reason: :missing_permissions,
+                 missing_permissions: [
+                   Flows.Authorizer.create_flows_permission()
                  ]}}
 
       subject = Fixtures.Auth.add_permission(subject, Flows.Authorizer.create_flows_permission())
@@ -163,10 +162,9 @@ defmodule Domain.FlowsTest do
       assert authorize_flow(client, gateway, resource.id, subject) ==
                {:error,
                 {:unauthorized,
-                 [
-                   missing_permissions: [
-                     Domain.Resources.Authorizer.view_available_resources_permission()
-                   ]
+                 reason: :missing_permissions,
+                 missing_permissions: [
+                   Domain.Resources.Authorizer.view_available_resources_permission()
                  ]}}
     end
 
@@ -228,7 +226,9 @@ defmodule Domain.FlowsTest do
 
       assert fetch_flow_by_id(Ecto.UUID.generate(), subject) ==
                {:error,
-                {:unauthorized, [missing_permissions: [Authorizer.view_flows_permission()]]}}
+                {:unauthorized,
+                 reason: :missing_permissions,
+                 missing_permissions: [Authorizer.view_flows_permission()]}}
     end
 
     test "associations are preloaded when opts given", %{
@@ -358,7 +358,9 @@ defmodule Domain.FlowsTest do
 
       expected_error =
         {:error,
-         {:unauthorized, [missing_permissions: [Flows.Authorizer.view_flows_permission()]]}}
+         {:unauthorized,
+          reason: :missing_permissions,
+          missing_permissions: [Flows.Authorizer.view_flows_permission()]}}
 
       assert list_flows_for(policy, subject) == expected_error
       assert list_flows_for(resource, subject) == expected_error
@@ -587,11 +589,15 @@ defmodule Domain.FlowsTest do
 
       assert list_flow_activities_for(account, ended_after, started_before, subject) ==
                {:error,
-                {:unauthorized, [missing_permissions: [Flows.Authorizer.view_flows_permission()]]}}
+                {:unauthorized,
+                 reason: :missing_permissions,
+                 missing_permissions: [Flows.Authorizer.view_flows_permission()]}}
 
       assert list_flow_activities_for(flow, ended_after, started_before, subject) ==
                {:error,
-                {:unauthorized, [missing_permissions: [Flows.Authorizer.view_flows_permission()]]}}
+                {:unauthorized,
+                 reason: :missing_permissions,
+                 missing_permissions: [Flows.Authorizer.view_flows_permission()]}}
     end
   end
 end

@@ -24,18 +24,14 @@ defmodule Web.HomeHTML do
               <.account_button
                 :for={account <- @accounts}
                 account={account}
-                redirect_params={@redirect_params}
+                signed_in?={account.id in @signed_in_account_ids}
+                params={@params}
               />
             </div>
 
             <.separator :if={@accounts != []} />
 
-            <.form
-              :let={f}
-              for={%{}}
-              action={~p"/?#{@redirect_params}"}
-              class="space-y-4 lg:space-y-6"
-            >
+            <.form :let={f} for={%{}} action={~p"/?#{@params}"} class="space-y-4 lg:space-y-6">
               <.input
                 field={f[:account_id_or_slug]}
                 type="text"
@@ -51,7 +47,10 @@ defmodule Web.HomeHTML do
               </.button>
             </.form>
             <p
-              :if={Domain.Config.sign_up_enabled?() and is_nil(@redirect_params["client_platform"])}
+              :if={
+                Domain.Config.sign_up_enabled?() and
+                  Web.Auth.fetch_auth_context_type!(@params) == :browser
+              }
               class="py-2"
             >
               Don't have an account?
@@ -68,7 +67,7 @@ defmodule Web.HomeHTML do
 
   def account_button(assigns) do
     ~H"""
-    <a href={~p"/#{@account}?#{@redirect_params}"} class={~w[
+    <a href={~p"/#{@account}?#{@params}"} class={~w[
           w-full inline-flex items-center justify-center py-2.5 px-5
           bg-white rounded
           text-sm text-neutral-900
@@ -76,6 +75,10 @@ defmodule Web.HomeHTML do
           hover:bg-neutral-100 hover:text-neutral-900
     ]}>
       <%= @account.name %>
+
+      <span :if={@signed_in?} class="text-green-400 pl-1">
+        <.icon name="hero-shield-check" class="w-4 h-4" />
+      </span>
     </a>
     """
   end

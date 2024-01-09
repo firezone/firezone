@@ -19,11 +19,13 @@ defmodule Web.Live.Actors.EditTest do
       actor: actor,
       conn: conn
     } do
-      assert live(conn, ~p"/#{account}/actors/#{actor}/edit") ==
+      path = ~p"/#{account}/actors/#{actor}/edit"
+
+      assert live(conn, path) ==
                {:error,
                 {:redirect,
                  %{
-                   to: ~p"/#{account}",
+                   to: ~p"/#{account}?#{%{redirect_to: path}}",
                    flash: %{"error" => "You must log in to access this page."}
                  }}}
     end
@@ -233,11 +235,13 @@ defmodule Web.Live.Actors.EditTest do
       actor: actor,
       conn: conn
     } do
-      assert live(conn, ~p"/#{account}/actors/#{actor}/edit") ==
+      path = ~p"/#{account}/actors/#{actor}/edit"
+
+      assert live(conn, path) ==
                {:error,
                 {:redirect,
                  %{
-                   to: ~p"/#{account}",
+                   to: ~p"/#{account}?#{%{redirect_to: path}}",
                    flash: %{"error" => "You must log in to access this page."}
                  }}}
     end

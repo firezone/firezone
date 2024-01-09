@@ -33,6 +33,8 @@ defmodule Domain.Accounts.Account do
     has_many :relay_groups, Domain.Relays.Group, where: [deleted_at: nil]
     has_many :relay_tokens, Domain.Relays.Token, where: [deleted_at: nil]
 
+    has_many :tokens, Domain.Tokens.Token, where: [deleted_at: nil]
+
     timestamps()
   end
 end

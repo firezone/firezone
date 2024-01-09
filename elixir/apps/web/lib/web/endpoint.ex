@@ -1,5 +1,6 @@
 defmodule Web.Endpoint do
   use Phoenix.Endpoint, otp_app: :web
+  import Web.Auth
 
   if Application.compile_env(:domain, :sql_sandbox) do
     plug Phoenix.Ecto.SQL.Sandbox
@@ -54,6 +55,8 @@ defmodule Web.Endpoint do
     parsers: [:urlencoded, :multipart, :json],
     pass: ["*/*"],
     json_decoder: Phoenix.json_library()
+
+  plug :fetch_user_agent
 
   plug Web.Session
 

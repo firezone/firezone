@@ -39,7 +39,7 @@ defmodule Domain.Auth.Adapters.Token do
 
   defp put_hash_and_expiration(changeset) do
     secret = Domain.Crypto.random_token(32)
-    secret_hash = Domain.Crypto.hash(secret)
+    secret_hash = Domain.Crypto.hash(:argon2, secret)
 
     data = Map.get(changeset.data, :provider_virtual_state) || %{}
     attrs = Ecto.Changeset.get_change(changeset, :provider_virtual_state) || %{}
@@ -112,7 +112,7 @@ defmodule Domain.Auth.Adapters.Token do
           sign_in_token_expired?(secret_expires_at) ->
             :expired_secret
 
-          not Domain.Crypto.equal?(secret, secret_hash) ->
+          not Domain.Crypto.equal?(:argon2, secret, secret_hash) ->
             :invalid_secret
 
           true ->

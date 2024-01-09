@@ -309,8 +309,8 @@ defmodule Domain.Actors do
       |> Repo.fetch_and_update(
         with: fn actor ->
           if actor.type != :account_admin_user or other_enabled_admins_exist?(actor) do
-            :ok = Auth.delete_actor_identities(actor)
-            :ok = Clients.delete_actor_clients(actor)
+            :ok = Auth.delete_actor_identities(actor, subject)
+            :ok = Clients.delete_actor_clients(actor, subject)
 
             Actor.Changeset.delete_actor(actor)
           else

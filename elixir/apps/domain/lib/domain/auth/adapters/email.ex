@@ -78,7 +78,7 @@ defmodule Domain.Auth.Adapters.Email do
     {
       %{
         "sign_in_token_salt" => salt,
-        "sign_in_token_hash" => Domain.Crypto.hash(sign_in_token <> salt),
+        "sign_in_token_hash" => Domain.Crypto.hash(:argon2, sign_in_token <> salt),
         "sign_in_token_created_at" => DateTime.utc_now()
       },
       %{
@@ -127,7 +127,7 @@ defmodule Domain.Auth.Adapters.Email do
           sign_in_token_expired?(sign_in_token_created_at) ->
             :expired_secret
 
-          not Domain.Crypto.equal?(token <> sign_in_token_salt, sign_in_token_hash) ->
+          not Domain.Crypto.equal?(:argon2, token <> sign_in_token_salt, sign_in_token_hash) ->
             track_failed_attempt!(identity)
 
           true ->

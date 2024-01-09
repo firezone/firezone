@@ -10,6 +10,14 @@ defmodule Domain.Auth.Provider.Query do
     |> where([provider: provider], is_nil(provider.deleted_at))
   end
 
+  def not_disabled(queryable \\ not_deleted()) do
+    where(queryable, [provider: provider], is_nil(provider.disabled_at))
+  end
+
+  def not_exceeded_attempts(queryable \\ not_deleted()) do
+    where(queryable, [provider: provider], provider.last_syncs_failed <= 10)
+  end
+
   def by_id(queryable \\ not_deleted(), id)
 
   def by_id(queryable, {:not, id}) do
@@ -73,14 +81,6 @@ defmodule Domain.Auth.Provider.Query do
 
   def by_account_id(queryable \\ not_deleted(), account_id) do
     where(queryable, [provider: provider], provider.account_id == ^account_id)
-  end
-
-  def not_disabled(queryable \\ not_deleted()) do
-    where(queryable, [provider: provider], is_nil(provider.disabled_at))
-  end
-
-  def not_exceeded_attempts(queryable \\ not_deleted()) do
-    where(queryable, [provider: provider], provider.last_syncs_failed <= 10)
   end
 
   def lock(queryable \\ not_deleted()) do

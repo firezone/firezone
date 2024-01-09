@@ -8,7 +8,7 @@ defmodule Domain.Relays.Token.Changeset do
     %Relays.Token{}
     |> change()
     |> put_change(:value, Domain.Crypto.random_token(64))
-    |> put_hash(:value, to: :hash)
+    |> put_hash(:value, :argon2, to: :hash)
     |> assoc_constraint(:group)
     |> check_constraint(:hash, name: :hash_not_null, message: "can't be blank")
     |> put_change(:created_by, :system)

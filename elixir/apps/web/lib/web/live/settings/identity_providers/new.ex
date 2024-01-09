@@ -4,15 +4,8 @@ defmodule Web.Settings.IdentityProviders.New do
 
   def mount(_params, _session, socket) do
     {:ok, adapters} = Auth.list_provider_adapters()
-
-    socket =
-      socket
-      |> assign(:form, %{})
-
-    {:ok, socket,
-     temporary_assigns: [
-       adapters: adapters
-     ]}
+    socket = assign(socket, form: %{}, adapters: adapters)
+    {:ok, socket}
   end
 
   def handle_event("submit", %{"next" => next}, socket) do

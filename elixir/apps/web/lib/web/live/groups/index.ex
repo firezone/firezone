@@ -9,12 +9,14 @@ defmodule Web.Groups.Index do
              preload: [:provider, created_by_identity: [:actor]]
            ),
          {:ok, group_actors} <- Actors.peek_group_actors(groups, 3, socket.assigns.subject) do
-      {:ok, socket,
-       temporary_assigns: [
-         page_title: "Groups",
-         groups: groups,
-         group_actors: group_actors
-       ]}
+      socket =
+        assign(socket,
+          page_title: "Groups",
+          groups: groups,
+          group_actors: group_actors
+        )
+
+      {:ok, socket}
     else
       {:error, _reason} -> raise Web.LiveErrors.NotFoundError
     end

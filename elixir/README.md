@@ -102,7 +102,7 @@ Now you can verify that it's working by connecting to a websocket:
 
 ```bash
 # Note: The token value below is an example. The token value you will need is generated and printed out when seeding the database, as described earlier in the document.
-❯ export CLIENT_TOKEN_FROM_SEEDS="SFMyNTY.g2gDaAN3CGlkZW50aXR5bQAAACQ3ZGE3ZDFjZC0xMTFjLTQ0YTctYjVhYy00MDI3YjlkMjMwZTV3Bmlnbm9yZW4GAJhGr7WKAWIACTqA.mrPu5eFVwkfRml7zzHb5uYfosLGaYVHq03-wE02xUNc"
+❯ export CLIENT_TOKEN_FROM_SEEDS="n.SFMyNTY.g2gDaANtAAAAJGM4OWJjYzhjLTkzOTItNGRhZS1hNDBkLTg4OGFlZjZkMjhlMG0AAAAkN2RhN2QxY2QtMTExYy00NGE3LWI1YWMtNDAyN2I5ZDIzMGU1bQAAACtBaUl5XzZwQmstV0xlUkFQenprQ0ZYTnFJWktXQnMyRGR3XzJ2Z0lRdkZnbgYAGUmu74wBYgABUYA.UN3vSLLcAMkHeEh5VHumPOutkuue8JA6wlxM9JxJEPE"
 
 # Panel will only accept token if it's coming with this User-Agent header and from IP 172.28.0.1
 ❯ export CLIENT_USER_AGENT="iOS/12.5 (iPhone) connlib/0.7.412"
@@ -209,12 +209,12 @@ user_agent = "User-Agent: iOS/12.7 (iPhone) connlib/0.7.412"
 remote_ip = {127, 0, 0, 1}
 
 # For a client
-{:ok, subject} = Domain.Auth.sign_in(client_token, user_agent, remote_ip)
+{:ok, subject} = Domain.Auth.sign_in(client_token, %Domain.Auth.Context{type: :client, user_agent: user_agent, remote_ip: remote_ip})
 
 # For an admin user
 provider = Domain.Repo.get_by(Domain.Auth.Provider, adapter: :userpass)
 identity = Domain.Repo.get_by(Domain.Auth.Identity, provider_id: provider.id, provider_identifier: "firezone@localhost")
-subject = Domain.Auth.build_subject(identity, nil, %Domain.Auth.Context{user_agent: user_agent, remote_ip: remote_ip})
+subject = Domain.Auth.build_subject(identity, nil, %Domain.Auth.Context{type: :browser, user_agent: user_agent, remote_ip: remote_ip})
 ```
 
 Listing connected gateways, relays, clients for an account:
@@ -340,7 +340,7 @@ iex(web@web-2f4j.us-east1-d.c.firezone-staging.internal)1> [actor | _] = Domain.
 iex(web@web-2f4j.us-east1-d.c.firezone-staging.internal)2> [identity | _] = Domain.Auth.Identity.Query.by_actor_id(actor.id) |> Domain.Repo.all()
 ...
 
-iex(web@web-2f4j.us-east1-d.c.firezone-staging.internal)3> subject = Domain.Auth.build_subject(identity, nil, %Domain.Auth.Context{user_agent: "CLI", remote_ip: {127, 0, 0, 1}})
+iex(web@web-2f4j.us-east1-d.c.firezone-staging.internal)3> subject = Domain.Auth.build_subject(identity, nil, %Domain.Auth.Context{type: :browser, user_agent: "CLI", remote_ip: {127, 0, 0, 1}})
 ```
 
 ### Rotate relay token

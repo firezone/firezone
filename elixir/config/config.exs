@@ -29,6 +29,10 @@ config :domain, Domain.Repo,
   migration_timestamps: [type: :timestamptz],
   start_apps_before_migration: [:ssl, :logger_json]
 
+config :domain, Domain.Tokens,
+  key_base: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S2",
+  salt: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
+
 config :domain, Domain.Clients, upstream_dns: ["1.1.1.1"]
 
 config :domain, Domain.Gateways,
@@ -44,10 +48,6 @@ config :domain, Domain.Relays,
 config :domain, Domain.Telemetry,
   enabled: true,
   id: "firezone-dev"
-
-config :domain, Domain.Auth,
-  key_base: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S1",
-  salt: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej1"
 
 config :domain, Domain.Auth.Adapters.GoogleWorkspace.APIClient,
   endpoint: "https://admin.googleapis.com",
@@ -117,12 +117,6 @@ config :web,
 config :web,
   external_trusted_proxies: [],
   private_clients: [%{__struct__: Postgrex.INET, address: {172, 28, 0, 0}, netmask: 16}]
-
-config :web, Web.Auth,
-  platform_redirects: %{
-    "apple" => [method: :external, dest: "firezone://handle_client_auth_callback"],
-    "android" => [method: :to, dest: "/handle_client_auth_callback"]
-  }
 
 config :web, Web.Plugs.SecureHeaders,
   csp_policy: [

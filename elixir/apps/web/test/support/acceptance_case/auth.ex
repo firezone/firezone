@@ -37,6 +37,7 @@ defmodule Web.AcceptanceCase.Auth do
     remote_ip = {127, 0, 0, 1}
 
     context = %Domain.Auth.Context{
+      type: :browser,
       user_agent: user_agent,
       remote_ip_location_region: "UA",
       remote_ip_location_city: "Kyiv",
@@ -45,11 +46,11 @@ defmodule Web.AcceptanceCase.Auth do
       remote_ip: remote_ip
     }
 
-    subject = Domain.Auth.build_subject(identity, nil, context)
-    authenticate(session, subject)
+    {:ok, token} = Domain.Auth.create_token(identity, context, "", nil)
+    authenticate(session, token)
   end
 
-  def authenticate(session, %Domain.Auth.Subject{} = subject) do
+  def authenticate(session, %Domain.Tokens.Token{} = token) do
     options = Web.Session.options()
 
     key = Keyword.fetch!(options, :key)
@@ -57,42 +58,43 @@ defmodule Web.AcceptanceCase.Auth do
     signing_salt = Keyword.fetch!(options, :signing_salt)
     secret_key_base = Web.Endpoint.config(:secret_key_base)
 
-    with {:ok, token} <- Domain.Auth.create_session_token_from_subject(subject) do
-      encryption_key = Plug.Crypto.KeyGenerator.generate(secret_key_base, encryption_salt, [])
-      signing_key = Plug.Crypto.KeyGenerator.generate(secret_key_base, signing_salt, [])
+    encoded_token = Domain.Tokens.encode_fragment!(token)
+    encryption_key = Plug.Crypto.KeyGenerator.generate(secret_key_base, encryption_salt, [])
+    signing_key = Plug.Crypto.KeyGenerator.generate(secret_key_base, signing_salt, [])
 
-      cookie =
-        %{
-          "session_token" => token,
-          "signed_in_at" => DateTime.utc_now(),
-          "live_socket_id" => "actors_sessions:#{subject.actor.id}"
-        }
-        |> :erlang.term_to_binary()
+    cookie =
+      %{"sessions" => [{:browser, token.account_id, encoded_token}]}
+      |> :erlang.term_to_binary()
 
-      encrypted =
-        Plug.Crypto.MessageEncryptor.encrypt(
-          cookie,
-          encryption_key,
-          signing_key
-        )
+    encrypted =
+      Plug.Crypto.MessageEncryptor.encrypt(
+        cookie,
+        encryption_key,
+        signing_key
+      )
 
-      Wallaby.Browser.set_cookie(session, key, encrypted)
-    end
+    Wallaby.Browser.set_cookie(session, key, encrypted)
   end
-
-  TODO
 
   def assert_unauthenticated(session) do
     with {:ok, cookie} <- fetch_session_cookie(session) do
-      if token = cookie["session_token"] do
-        user_agent = fetch_session_user_agent!(session)
-        remote_ip = {127, 0, 0, 1}
-        context = %Domain.Auth.Context{user_agent: user_agent, remote_ip: remote_ip}
-        assert {:ok, subject} = Domain.Auth.sign_in(token, context)
-        flunk("User is authenticated, identity: #{inspect(subject.identity)}")
-        :ok
-      else
-        session
+      case cookie["sessions"] do
+        [{_, _, token} | _] ->
+          user_agent = fetch_session_user_agent!(session)
+          remote_ip = {127, 0, 0, 1}
+
+          context = %Domain.Auth.Context{
+            type: :browser,
+            user_agent: user_agent,
+            remote_ip: remote_ip
+          }
+
+          assert {:ok, subject} = Domain.Auth.authenticate(token, context)
+          flunk("User is authenticated, identity: #{inspect(subject.identity)}")
+          :ok
+
+        [] ->
+          session
       end
     else
       :error -> session
@@ -102,10 +104,13 @@ defmodule Web.AcceptanceCase.Auth do
   def assert_authenticated(session, identity) do
     with {:ok, cookie} <- fetch_session_cookie(session),
          context = %Domain.Auth.Context{
+           type: :browser,
            user_agent: fetch_session_user_agent!(session),
            remote_ip: {127, 0, 0, 1}
          },
-         {:ok, subject} <- Domain.Auth.sign_in(cookie["session_token"], context) do
+         {:browser, _account_id, token} <-
+           List.keyfind(cookie["sessions"], identity.account_id, 1),
+         {:ok, subject} <- Domain.Auth.authenticate(token, context) do
       assert subject.identity.id == identity.id,
              "Expected #{inspect(identity)}, got #{inspect(subject.identity)}"
 

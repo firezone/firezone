@@ -28,6 +28,10 @@ if config_env() == :prod do
     path: external_url_path
   } = URI.parse(external_url)
 
+  config :domain, Domain.Tokens,
+    key_base: compile_config!(:tokens_key_base),
+    salt: compile_config!(:tokens_salt)
+
   config :domain, Domain.Clients, upstream_dns: compile_config!(:clients_upstream_dns)
 
   config :domain, Domain.Gateways,
@@ -43,10 +47,6 @@ if config_env() == :prod do
   config :domain, Domain.Telemetry,
     enabled: compile_config!(:telemetry_enabled),
     id: compile_config!(:telemetry_id)
-
-  config :domain, Domain.Auth,
-    key_base: compile_config!(:auth_token_key_base),
-    salt: compile_config!(:auth_token_salt)
 
   config :domain, Domain.Auth.Adapters.GoogleWorkspace.APIClient,
     finch_transport_opts: compile_config!(:http_client_ssl_opts)

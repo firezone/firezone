@@ -7,7 +7,8 @@ defmodule Web.RelayGroups.Edit do
          {:ok, group} <- Relays.fetch_group_by_id(id, socket.assigns.subject),
          nil <- group.deleted_at do
       changeset = Relays.change_group(group)
-      {:ok, assign(socket, group: group, form: to_form(changeset))}
+      socket = assign(socket, group: group, form: to_form(changeset))
+      {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
     else
       _other -> raise Web.LiveErrors.NotFoundError
     end

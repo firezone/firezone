@@ -56,9 +56,7 @@ defmodule Web.SignUp do
         actor_name_changed?: false
       )
 
-    {:ok, socket}
-
-    {:ok, assign(socket, form: to_form(changeset), account: nil)}
+    {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
   end
 
   def render(assigns) do

@@ -29,11 +29,13 @@ defmodule Web.Live.Actors.ServiceAccounts.NewIdentityTest do
     actor: actor,
     conn: conn
   } do
-    assert live(conn, ~p"/#{account}/actors/service_accounts/#{actor}/new_identity") ==
+    path = ~p"/#{account}/actors/service_accounts/#{actor}/new_identity"
+
+    assert live(conn, path) ==
              {:error,
               {:redirect,
                %{
-                 to: ~p"/#{account}",
+                 to: ~p"/#{account}?#{%{redirect_to: path}}",
                  flash: %{"error" => "You must log in to access this page."}
                }}}
   end
@@ -147,6 +149,7 @@ defmodule Web.Live.Actors.ServiceAccounts.NewIdentityTest do
       |> render_submit()
 
     context = %Domain.Auth.Context{
+      type: :client,
       remote_ip: Fixtures.Auth.remote_ip(),
       user_agent: Fixtures.Auth.user_agent(),
       remote_ip_location_region: "Mexico",
@@ -158,7 +161,7 @@ defmodule Web.Live.Actors.ServiceAccounts.NewIdentityTest do
     assert {:ok, subject} =
              Floki.find(html, "code")
              |> element_to_text()
-             |> Domain.Auth.sign_in(context)
+             |> Domain.Auth.authenticate(context)
 
     assert subject.actor.id == actor.id
     assert DateTime.to_date(subject.expires_at) == expires_at

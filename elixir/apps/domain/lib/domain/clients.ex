@@ -204,12 +204,16 @@ defmodule Domain.Clients do
     end
   end
 
-  def delete_actor_clients(%Actors.Actor{} = actor) do
-    {_count, nil} =
-      Client.Query.by_actor_id(actor.id)
-      |> Repo.update_all(set: [deleted_at: DateTime.utc_now()])
+  def delete_actor_clients(%Actors.Actor{} = actor, %Auth.Subject{} = subject) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_clients_permission()) do
+      {_count, nil} =
+        Client.Query.by_actor_id(actor.id)
+        |> Client.Query.by_account_id(actor.account_id)
+        |> Authorizer.for_subject(subject)
+        |> Repo.update_all(set: [deleted_at: DateTime.utc_now()])
 
-    :ok
+      :ok
+    end
   end
 
   def authorize_actor_client_management(%Actors.Actor{} = actor, %Auth.Subject{} = subject) do

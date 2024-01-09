@@ -20,7 +20,7 @@ defmodule Web.Actors.ServiceAccounts.NewIdentity do
           form: to_form(changeset)
         )
 
-      {:ok, socket}
+      {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
     else
       _other -> raise Web.LiveErrors.NotFoundError
     end
@@ -103,7 +103,13 @@ defmodule Web.Actors.ServiceAccounts.NewIdentity do
              attrs,
              socket.assigns.subject
            ) do
-      {:ok, encoded_token} = Auth.create_access_token_for_identity(identity)
+      {:ok, encoded_token} =
+        Auth.create_service_account_token(
+          socket.assigns.provider,
+          identity,
+          socket.assigns.subject
+        )
+
       {:noreply, assign(socket, encoded_token: encoded_token)}
     else
       {:error, changeset} ->

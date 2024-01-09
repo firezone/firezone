@@ -28,7 +28,7 @@ defmodule Domain.Auth.Adapters.TokenTest do
 
       assert %{"secret_hash" => secret_hash} = state
       assert %{changes: %{secret: secret}} = virtual_state
-      assert Domain.Crypto.equal?(secret, secret_hash)
+      assert Domain.Crypto.equal?(:argon2, secret, secret_hash)
     end
 
     test "returns error on invalid attrs", %{provider: provider} do
@@ -118,7 +118,7 @@ defmodule Domain.Auth.Adapters.TokenTest do
         |> Ecto.Changeset.change(
           provider_state: %{
             "expires_at" => DateTime.utc_now() |> DateTime.add(-1, :second),
-            "secret_hash" => Domain.Crypto.hash("foo")
+            "secret_hash" => Domain.Crypto.hash(:argon2, "foo")
           }
         )
         |> Repo.update!()

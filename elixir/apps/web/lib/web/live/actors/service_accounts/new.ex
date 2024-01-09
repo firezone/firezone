@@ -17,7 +17,7 @@ defmodule Web.Actors.ServiceAccounts.New do
           form: to_form(changeset)
         )
 
-      {:ok, socket}
+      {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
     else
       {:error, _reason} -> raise Web.LiveErrors.NotFoundError
     end

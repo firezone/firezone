@@ -12,13 +12,15 @@ defmodule Web.Actors.Edit do
 
       groups = Enum.reject(groups, &Actors.group_synced?/1)
 
-      {:ok, socket,
-       temporary_assigns: [
-         actor: actor,
-         groups: groups,
-         form: to_form(changeset),
-         page_title: "Edit actor #{actor.name}"
-       ]}
+      socket =
+        assign(socket,
+          actor: actor,
+          groups: groups,
+          form: to_form(changeset),
+          page_title: "Edit actor #{actor.name}"
+        )
+
+      {:ok, socket}
     else
       _other -> raise Web.LiveErrors.NotFoundError
     end

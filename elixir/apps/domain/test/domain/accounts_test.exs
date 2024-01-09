@@ -37,7 +37,8 @@ defmodule Domain.AccountsTest do
       assert fetch_account_by_id(Ecto.UUID.generate(), subject) ==
                {:error,
                 {:unauthorized,
-                 [missing_permissions: [Accounts.Authorizer.view_accounts_permission()]]}}
+                 reason: :missing_permissions,
+                 missing_permissions: [Accounts.Authorizer.view_accounts_permission()]}}
     end
   end
 
@@ -74,7 +75,8 @@ defmodule Domain.AccountsTest do
       assert fetch_account_by_id_or_slug(Ecto.UUID.generate(), subject) ==
                {:error,
                 {:unauthorized,
-                 [missing_permissions: [Accounts.Authorizer.view_accounts_permission()]]}}
+                 reason: :missing_permissions,
+                 missing_permissions: [Accounts.Authorizer.view_accounts_permission()]}}
     end
   end
 

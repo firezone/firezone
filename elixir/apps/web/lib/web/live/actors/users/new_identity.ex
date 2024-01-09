@@ -30,7 +30,7 @@ defmodule Web.Actors.Users.NewIdentity do
           form: to_form(changeset)
         )
 
-      {:ok, socket}
+      {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
     else
       _other -> raise Web.LiveErrors.NotFoundError
     end

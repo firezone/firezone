@@ -31,11 +31,13 @@ defmodule Web.Live.Policies.EditTest do
     policy: policy,
     conn: conn
   } do
-    assert live(conn, ~p"/#{account}/policies/#{policy}/edit") ==
+    path = ~p"/#{account}/policies/#{policy}/edit"
+
+    assert live(conn, path) ==
              {:error,
               {:redirect,
                %{
-                 to: ~p"/#{account}",
+                 to: ~p"/#{account}?#{%{redirect_to: path}}",
                  flash: %{"error" => "You must log in to access this page."}
                }}}
   end

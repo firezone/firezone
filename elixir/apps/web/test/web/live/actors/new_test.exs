@@ -12,11 +12,13 @@ defmodule Web.Live.Actors.NewTest do
   end
 
   test "redirects to sign in page for unauthorized user", %{account: account, conn: conn} do
-    assert live(conn, ~p"/#{account}/actors/new") ==
+    path = ~p"/#{account}/actors/new"
+
+    assert live(conn, path) ==
              {:error,
               {:redirect,
                %{
-                 to: ~p"/#{account}",
+                 to: ~p"/#{account}?#{%{redirect_to: path}}",
                  flash: %{"error" => "You must log in to access this page."}
                }}}
   end

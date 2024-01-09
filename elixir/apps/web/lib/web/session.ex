@@ -6,7 +6,7 @@ defmodule Web.Session do
   @behaviour Plug
 
   # 4 hours
-  @max_cookie_age 14_400
+  @max_cookie_age 4 * 60 * 60
 
   # The session will be stored in the cookie signed and encrypted for 4 hours
   @session_options [

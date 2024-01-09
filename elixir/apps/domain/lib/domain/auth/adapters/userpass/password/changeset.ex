@@ -23,7 +23,7 @@ defmodule Domain.Auth.Adapters.UserPass.Password.Changeset do
     # |> validate_no_repetitive_characters(:password)
     # |> validate_no_sequential_characters(:password)
     # |> validate_no_public_context(:password)
-    |> put_hash(:password, to: :password_hash)
+    |> put_hash(:password, :argon2, to: :password_hash)
     |> validate_required([:password_hash])
   end
 end

@@ -9,7 +9,7 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.Connect do
   def redirect_to_idp(conn, %{"provider_id" => provider_id}) do
     account = conn.assigns.account
 
-    with {:ok, provider} <- Domain.Auth.fetch_provider_by_id(provider_id) do
+    with {:ok, provider} <- Domain.Auth.fetch_provider_by_id(provider_id, conn.assigns.subject) do
       redirect_url =
         url(
           ~p"/#{provider.account_id}/settings/identity_providers/google_workspace/#{provider}/handle_callback"
@@ -32,8 +32,8 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.Connect do
     account = conn.assigns.account
     subject = conn.assigns.subject
 
-    with {:ok, code_verifier, conn} <-
-           Web.AuthController.verify_state_and_fetch_verifier(conn, provider_id, state) do
+    with {:ok, _redirect_params, code_verifier, conn} <-
+           Web.AuthController.verify_idp_state_and_fetch_verifier(conn, provider_id, state) do
       payload = {
         url(
           ~p"/#{account.id}/settings/identity_providers/google_workspace/#{provider_id}/handle_callback"
@@ -42,7 +42,7 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.Connect do
         code
       }
 
-      with {:ok, provider} <- Domain.Auth.fetch_provider_by_id(provider_id),
+      with {:ok, provider} <- Domain.Auth.fetch_provider_by_id(provider_id, conn.assigns.subject),
            {:ok, identity} <-
              GoogleWorkspace.verify_and_upsert_identity(subject.actor, provider, payload),
            attrs = %{

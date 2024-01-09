@@ -21,11 +21,13 @@ defmodule Web.Live.Groups.EditTest do
     group: group,
     conn: conn
   } do
-    assert live(conn, ~p"/#{account}/groups/#{group}/edit") ==
+    path = ~p"/#{account}/groups/#{group}/edit"
+
+    assert live(conn, path) ==
              {:error,
               {:redirect,
                %{
-                 to: ~p"/#{account}",
+                 to: ~p"/#{account}?#{%{redirect_to: path}}",
                  flash: %{"error" => "You must log in to access this page."}
                }}}
   end

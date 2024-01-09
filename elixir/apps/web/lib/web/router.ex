@@ -8,8 +8,6 @@ defmodule Web.Router do
     plug :protect_from_forgery
     plug :fetch_live_flash
     plug :put_root_layout, {Web.Layouts, :root}
-    plug :fetch_user_agent
-    plug :fetch_subject_and_account
   end
 
   pipeline :api do
@@ -20,6 +18,11 @@ defmodule Web.Router do
 
   pipeline :public do
     plug :accepts, ["html", "xml"]
+  end
+
+  pipeline :account do
+    plug :fetch_account
+    plug :fetch_subject
   end
 
   pipeline :home do
@@ -68,7 +71,7 @@ defmodule Web.Router do
   end
 
   scope "/:account_id_or_slug", Web do
-    pipe_through [:browser, :redirect_if_user_is_authenticated]
+    pipe_through [:browser, :account, :redirect_if_user_is_authenticated]
 
     live_session :redirect_if_user_is_authenticated,
       on_mount: [
@@ -97,13 +100,13 @@ defmodule Web.Router do
   end
 
   scope "/:account_id_or_slug", Web do
-    pipe_through [:browser]
+    pipe_through [:browser, :account]
 
     get "/sign_out", AuthController, :sign_out
   end
 
   scope "/:account_id_or_slug", Web do
-    pipe_through [:browser, :ensure_authenticated_admin]
+    pipe_through [:browser, :account, :ensure_authenticated_admin]
 
     live_session :ensure_authenticated,
       on_mount: [
@@ -201,12 +204,6 @@ defmodule Web.Router do
         scope "/identity_providers", IdentityProviders do
           live "/", Index
           live "/new", New
-
-          scope "/saml", SAML do
-            live "/new", New
-            live "/:provider_id", Show
-            live "/:provider_id/edit", Edit
-          end
 
           scope "/openid_connect", OpenIDConnect do
             live "/new", New

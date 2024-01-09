@@ -135,14 +135,13 @@ defmodule Domain.ClientsTest do
       assert fetch_client_by_id(Ecto.UUID.generate(), subject) ==
                {:error,
                 {:unauthorized,
-                 [
-                   missing_permissions: [
-                     {:one_of,
-                      [
-                        Clients.Authorizer.manage_clients_permission(),
-                        Clients.Authorizer.manage_own_clients_permission()
-                      ]}
-                   ]
+                 reason: :missing_permissions,
+                 missing_permissions: [
+                   {:one_of,
+                    [
+                      Clients.Authorizer.manage_clients_permission(),
+                      Clients.Authorizer.manage_own_clients_permission()
+                    ]}
                  ]}}
     end
   end
@@ -212,14 +211,13 @@ defmodule Domain.ClientsTest do
       assert list_clients(subject) ==
                {:error,
                 {:unauthorized,
-                 [
-                   missing_permissions: [
-                     {:one_of,
-                      [
-                        Clients.Authorizer.manage_clients_permission(),
-                        Clients.Authorizer.manage_own_clients_permission()
-                      ]}
-                   ]
+                 reason: :missing_permissions,
+                 missing_permissions: [
+                   {:one_of,
+                    [
+                      Clients.Authorizer.manage_clients_permission(),
+                      Clients.Authorizer.manage_own_clients_permission()
+                    ]}
                  ]}}
     end
   end
@@ -294,6 +292,7 @@ defmodule Domain.ClientsTest do
                {:error,
                 {:unauthorized,
                  [
+                   reason: :missing_permissions,
                    missing_permissions: [
                      {:one_of,
                       [
@@ -506,7 +505,8 @@ defmodule Domain.ClientsTest do
       assert upsert_client(%{}, subject) ==
                {:error,
                 {:unauthorized,
-                 [missing_permissions: [Clients.Authorizer.manage_own_clients_permission()]]}}
+                 reason: :missing_permissions,
+                 missing_permissions: [Clients.Authorizer.manage_own_clients_permission()]}}
     end
   end
 
@@ -554,7 +554,8 @@ defmodule Domain.ClientsTest do
       assert update_client(client, attrs, subject) ==
                {:error,
                 {:unauthorized,
-                 [missing_permissions: [Clients.Authorizer.manage_clients_permission()]]}}
+                 reason: :missing_permissions,
+                 missing_permissions: [Clients.Authorizer.manage_clients_permission()]}}
     end
 
     test "does not allow admin actor to update clients in other accounts", %{
@@ -618,14 +619,16 @@ defmodule Domain.ClientsTest do
       assert update_client(client, %{}, subject) ==
                {:error,
                 {:unauthorized,
-                 [missing_permissions: [Clients.Authorizer.manage_own_clients_permission()]]}}
+                 reason: :missing_permissions,
+                 missing_permissions: [Clients.Authorizer.manage_own_clients_permission()]}}
 
       client = Fixtures.Clients.create_client()
 
       assert update_client(client, %{}, subject) ==
                {:error,
                 {:unauthorized,
-                 [missing_permissions: [Clients.Authorizer.manage_clients_permission()]]}}
+                 reason: :missing_permissions,
+                 missing_permissions: [Clients.Authorizer.manage_clients_permission()]}}
     end
   end
 
@@ -683,14 +686,16 @@ defmodule Domain.ClientsTest do
       assert delete_client(client, subject) ==
                {:error,
                 {:unauthorized,
-                 [missing_permissions: [Clients.Authorizer.manage_clients_permission()]]}}
+                 reason: :missing_permissions,
+                 missing_permissions: [Clients.Authorizer.manage_clients_permission()]}}
 
       client = Fixtures.Clients.create_client(account: account)
 
       assert delete_client(client, subject) ==
                {:error,
                 {:unauthorized,
-                 [missing_permissions: [Clients.Authorizer.manage_clients_permission()]]}}
+                 reason: :missing_permissions,
+                 missing_permissions: [Clients.Authorizer.manage_clients_permission()]}}
 
       assert Repo.aggregate(Clients.Client, :count) == 2
     end
@@ -706,35 +711,56 @@ defmodule Domain.ClientsTest do
       assert delete_client(client, subject) ==
                {:error,
                 {:unauthorized,
-                 [missing_permissions: [Clients.Authorizer.manage_own_clients_permission()]]}}
+                 reason: :missing_permissions,
+                 missing_permissions: [Clients.Authorizer.manage_own_clients_permission()]}}
 
       client = Fixtures.Clients.create_client()
 
       assert delete_client(client, subject) ==
                {:error,
                 {:unauthorized,
-                 [missing_permissions: [Clients.Authorizer.manage_clients_permission()]]}}
+                 reason: :missing_permissions,
+                 missing_permissions: [Clients.Authorizer.manage_clients_permission()]}}
     end
   end
 
-  describe "delete_actor_clients/1" do
-    test "removes all clients that belong to an actor" do
-      actor = Fixtures.Actors.create_actor()
+  describe "delete_actor_clients/2" do
+    test "removes all clients that belong to an actor", %{
+      account: account,
+      admin_subject: subject
+    } do
+      actor = Fixtures.Actors.create_actor(account: account)
       Fixtures.Clients.create_client(actor: actor)
       Fixtures.Clients.create_client(actor: actor)
       Fixtures.Clients.create_client(actor: actor)
 
-      assert Repo.aggregate(Clients.Client.Query.not_deleted(), :count) == 3
-      assert delete_actor_clients(actor) == :ok
-      assert Repo.aggregate(Clients.Client.Query.not_deleted(), :count) == 0
+      assert Repo.aggregate(Clients.Client.Query.by_actor_id(actor.id), :count) == 3
+      assert delete_actor_clients(actor, subject) == :ok
+      assert Repo.aggregate(Clients.Client.Query.by_actor_id(actor.id), :count) == 0
     end
 
-    test "does not remove clients that belong to another actor" do
-      actor = Fixtures.Actors.create_actor()
+    test "does not remove clients that belong to another actor", %{
+      account: account,
+      admin_subject: subject
+    } do
+      actor = Fixtures.Actors.create_actor(account: account)
       Fixtures.Clients.create_client()
 
-      assert delete_actor_clients(actor) == :ok
+      assert delete_actor_clients(actor, subject) == :ok
       assert Repo.aggregate(Clients.Client.Query.all(), :count) == 1
+    end
+
+    test "doesn't allow regular user to delete other user's clients", %{
+      unprivileged_subject: subject
+    } do
+      actor = Fixtures.Actors.create_actor()
+      Fixtures.Clients.create_client(actor: actor)
+
+      assert delete_actor_clients(actor, subject) ==
+               {:error,
+                {:unauthorized,
+                 reason: :missing_permissions,
+                 missing_permissions: [Clients.Authorizer.manage_clients_permission()]}}
     end
   end
 end

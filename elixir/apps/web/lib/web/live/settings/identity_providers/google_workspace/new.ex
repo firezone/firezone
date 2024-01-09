@@ -19,7 +19,7 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.New do
         form: to_form(changeset)
       )
 
-    {:ok, socket}
+    {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
   end
 
   def render(assigns) do

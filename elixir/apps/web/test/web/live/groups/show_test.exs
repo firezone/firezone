@@ -21,11 +21,13 @@ defmodule Web.Live.Groups.ShowTest do
     group: group,
     conn: conn
   } do
-    assert live(conn, ~p"/#{account}/groups/#{group}") ==
+    path = ~p"/#{account}/groups/#{group}"
+
+    assert live(conn, path) ==
              {:error,
               {:redirect,
                %{
-                 to: ~p"/#{account}",
+                 to: ~p"/#{account}?#{%{redirect_to: path}}",
                  flash: %{"error" => "You must log in to access this page."}
                }}}
   end
@@ -44,11 +46,7 @@ defmodule Web.Live.Groups.ShowTest do
       |> live(~p"/#{account}/groups/#{group}")
 
     assert html =~ "(deleted)"
-    refute html =~ "Danger Zone"
-    refute html =~ "Add"
-    refute html =~ "Delete"
-    refute html =~ "Edit"
-    refute html =~ "Deploy"
+    assert active_buttons(html) == []
   end
 
   test "renders breadcrumbs item", %{
