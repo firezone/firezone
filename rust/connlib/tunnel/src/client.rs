@@ -127,6 +127,7 @@ where
 
         self.device.store(Some(device.clone()));
         self.no_device_waker.wake();
+
         // TODO: the requirement for the DNS_SENTINEL means you NEED ipv4 stack
         // we are trying to support ipv4 and ipv6, so we should have an ipv6 dns sentinel
         // alternative.
