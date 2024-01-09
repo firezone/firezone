@@ -198,7 +198,7 @@ defmodule Web.Sites.NewToken do
     id -u firezone &>/dev/null || sudo useradd -r -g firezone -s /sbin/nologin firezone
 
     # Create systemd unit file
-    cat << EOF > /etc/systemd/system/firezone-gateway.service
+    sudo cat << EOF > /etc/systemd/system/firezone-gateway.service
     [Unit]
     Description=Firezone Gateway
     After=network.target
@@ -223,7 +223,7 @@ defmodule Web.Sites.NewToken do
     EOF
 
     # Create ExecStartPre script
-    cat << EOF > /usr/local/bin/firezone-gateway-init
+    sudo cat << EOF > /usr/local/bin/firezone-gateway-init
     #!/bin/sh
 
     set -ue
@@ -285,7 +285,7 @@ defmodule Web.Sites.NewToken do
     EOF
 
     # Make ExecStartPre script executable
-    chmod +x /usr/local/bin/firezone-gateway-init
+    sudo chmod +x /usr/local/bin/firezone-gateway-init
 
     # Reload systemd
     sudo systemctl daemon-reload
