@@ -21,10 +21,15 @@ jobs:
           - windows-11-firezone
           - ubuntu-22.04-firezone
     steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v2
+        with:
+          version: 8
       - uses: actions/setup-node@v4
         with:
           node-version: '18'
-      - run: npm i --location=global appium
+          cache: 'pnpm'
+      - run: pnpm i --location=global appium
 
   docker:
     needs: setup
