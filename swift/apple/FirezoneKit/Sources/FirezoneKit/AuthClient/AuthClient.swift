@@ -49,6 +49,7 @@ private final class WebAuthenticationSession: NSObject,
       host
       .appendingQueryItem(URLQueryItem(name: "state", value: statePassedToPortal))
       .appendingQueryItem(URLQueryItem(name: "nonce", value: nonce))
+      .appendingQueryItem(URLQueryItem(name: "as", value: "client"))
     return try await withCheckedThrowingContinuation { continuation in
       let callbackURLScheme = "firezone-fd002021111"
       let session = ASWebAuthenticationSession(
