@@ -10,7 +10,6 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: firezone_dev
-    command: -c 'max_connections=1000' -c 'shared_buffers=1024MB'
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -d $${POSTGRES_DB} -U $${POSTGRES_USER}"]
       start_period: 20s
@@ -51,6 +50,7 @@ services:
 
   # Firezone Components
   web:
+    cpu_count: 1
     build:
       context: ../elixir
       cache_from:
@@ -243,6 +243,7 @@ services:
         ipv4_address: 172.28.0.101
 
   api:
+    cpu_count: 1
     build:
       context: ../elixir
       cache_from:
@@ -313,6 +314,7 @@ services:
   # This is a service container which allows to run mix tasks for local development
   # without having to install Elixir and Erlang on the host machine.
   elixir:
+    cpu_count: 1
     build:
       context: ../elixir
       target: compiler
