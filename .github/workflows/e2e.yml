@@ -32,6 +32,7 @@ jobs:
         with:
           node-version: '18'
           cache: 'pnpm'
+          cache-dependency-path: './e2e/pnpm-lock.yaml'
       - run: pnpm i
 
   docker:
