@@ -1,14 +1,17 @@
 use std::borrow::Cow;
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::net::IpAddr;
 use std::sync::Arc;
+use std::time::Instant;
 
+use arc_swap::ArcSwapOption;
 use bimap::BiMap;
 use boringtun::noise::rate_limiter::RateLimiter;
 use boringtun::noise::{Tunn, TunnResult};
 use boringtun::x25519::StaticSecret;
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
+use connlib_shared::DNS_SENTINEL;
 use connlib_shared::{messages::ResourceDescription, Error, Result};
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
@@ -21,6 +24,10 @@ use crate::MAX_UDP_SIZE;
 use crate::{device_channel, ip_packet::MutableIpPacket, PeerConfig};
 
 type ExpiryingResource = (ResourceDescription, DateTime<Utc>);
+
+// The max time a dns request can be configured to live in resolvconf
+// is 30 seconds. See resolvconf(5) timeout.
+const IDS_EXPIRE: std::time::Duration = std::time::Duration::from_secs(60);
 
 pub(crate) struct Peer<TId, TTransform> {
     tunnel: Mutex<Tunn>,
@@ -194,6 +201,9 @@ impl Default for PacketTransformGateway {
 #[derive(Default)]
 pub struct PacketTransformClient {
     translations: RwLock<BiMap<IpAddr, IpAddr>>,
+    // TODO: Upstream dns could be something that's not an ip
+    upstream_dns: ArcSwapOption<IpAddr>,
+    mangled_dns_ids: Mutex<HashMap<u16, std::time::Instant>>,
 }
 
 impl PacketTransformClient {
@@ -211,6 +221,16 @@ impl PacketTransformClient {
 
         translations.insert(proxy_ip, *ip);
         Some(proxy_ip)
+    }
+
+    pub fn expire_dns_track(&self) {
+        self.mangled_dns_ids
+            .lock()
+            .retain(|_, exp| exp.elapsed() < IDS_EXPIRE);
+    }
+
+    pub fn set_dns(&self, ip_addr: IpAddr) {
+        self.upstream_dns.store(Some(Arc::new(ip_addr)));
     }
 }
 
@@ -274,22 +294,57 @@ impl PacketTransform for PacketTransformClient {
         packet: &'a mut [u8],
     ) -> Result<(device_channel::Packet<'a>, IpAddr)> {
         let translations = self.translations.read();
-        let src = translations.get_by_right(addr).unwrap_or(addr);
+        let mut src = *translations.get_by_right(addr).unwrap_or(addr);
 
         let Some(mut pkt) = MutableIpPacket::new(packet) else {
             return Err(Error::BadPacket);
         };
 
-        pkt.set_src(*src);
+        let original_src = src;
+        if self
+            .upstream_dns
+            .load()
+            .as_ref()
+            .is_some_and(|upstream| **upstream == src)
+        {
+            if let Some(dgm) = pkt.as_udp() {
+                if let Ok(message) = domain::base::Message::from_slice(dgm.payload()) {
+                    if self
+                        .mangled_dns_ids
+                        .lock()
+                        .remove(&message.header().id())
+                        .is_some_and(|exp| exp.elapsed() < IDS_EXPIRE)
+                    {
+                        src = DNS_SENTINEL.into();
+                    }
+                }
+            }
+        }
+
+        pkt.set_src(src);
         pkt.update_checksum();
         let packet = make_packet(packet, addr);
-        Ok((packet, *src))
+        Ok((packet, original_src))
     }
 
     fn packet_transform<'a>(&self, mut packet: MutableIpPacket<'a>) -> Option<MutableIpPacket<'a>> {
         if let Some(translated_ip) = self.translations.read().get_by_left(&packet.destination()) {
             packet.set_dst(*translated_ip);
             packet.update_checksum();
+        }
+
+        if packet.destination() == DNS_SENTINEL {
+            if let Some(ip) = self.upstream_dns.load().as_ref() {
+                if let Some(dgm) = packet.as_udp() {
+                    if let Ok(message) = domain::base::Message::from_slice(dgm.payload()) {
+                        self.mangled_dns_ids
+                            .lock()
+                            .insert(message.header().id(), Instant::now());
+                        packet.set_dst(**ip);
+                        packet.update_checksum();
+                    }
+                }
+            }
         }
 
         Some(packet)

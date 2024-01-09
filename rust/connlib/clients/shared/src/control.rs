@@ -100,8 +100,6 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                     return Err(e);
                 } else {
                     *init = true;
-                    *self.fallback_resolver.lock() =
-                        create_resolver(interface.upstream_dns, self.tunnel.callbacks());
                     tracing::info!("Firezone Started!");
                 }
             } else {
@@ -109,6 +107,9 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
             }
         }
 
+        self.tunnel.set_upstream_dns(&interface.upstream_dns);
+        *self.fallback_resolver.lock() =
+            create_resolver(interface.upstream_dns, self.tunnel.callbacks());
         for resource_description in resources {
             self.add_resource(resource_description);
         }
