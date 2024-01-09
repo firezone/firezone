@@ -29,7 +29,7 @@ jobs:
         with:
           node-version: '18'
           cache: 'pnpm'
-      - run: pnpm i --location=global appium
+      - run: pnpm i
 
   docker:
     needs: setup
