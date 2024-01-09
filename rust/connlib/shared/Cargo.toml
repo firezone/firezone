@@ -15,6 +15,8 @@ boringtun = { workspace = true }
 chrono = { workspace = true }
 futures =  { version = "0.3", default-features = false, features = ["std", "async-await", "executor"] }
 futures-util =  { version = "0.3", default-features = false, features = ["std", "async-await", "async-await-macro"] }
+# Hickory already depends on `hostname` so this isn't new
+hostname = "0.3.1"
 ip_network = { version = "0.4", default-features = false, features = ["serde"] }
 os_info = { version = "3", default-features = false }
 parking_lot = "0.12"
@@ -51,3 +53,10 @@ rtnetlink = { version = "0.13", default-features = false, features = ["tokio_soc
 # Windows tunnel dependencies
 [target.'cfg(target_os = "windows")'.dependencies]
 wintun = "0.3.2"
+
+# Windows Win32 API
+[target.'cfg(windows)'.dependencies.windows]
+version = "0.52.0"
+features = [
+  "Win32_Foundation",
+]

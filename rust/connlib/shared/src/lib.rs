@@ -75,15 +75,21 @@ pub enum Mode {
     Gateway,
 }
 
-pub fn get_user_agent() -> String {
+pub fn get_user_agent(os_version_override: Option<String>) -> String {
     // Note: we could switch to sys-info and get the hostname
     // but we lose the arch
     // and neither of the libraries provide the kernel version.
     // so I rather keep os_info which seems like the most popular
     // and keep implementing things that we are missing on top
     let info = os_info::get();
+
+    // iOS returns "Unknown", but we already know we're on iOS here
+    #[cfg(target_os = "ios")]
+    let os_type = "iOS";
+    #[cfg(not(target_os = "ios"))]
     let os_type = info.os_type();
-    let os_version = info.version();
+
+    let os_version = os_version_override.unwrap_or(info.version().to_string());
     let additional_info = additional_info();
     let lib_version = VERSION;
     let lib_name = LIB_NAME;
@@ -153,10 +159,10 @@ fn get_host_name() -> Option<String> {
     String::from_utf8(buf.split(|c| *c == 0).next()?.to_vec()).ok()
 }
 
+/// Returns the hostname, or `None` if it's not valid UTF-8
 #[cfg(target_os = "windows")]
 fn get_host_name() -> Option<String> {
-    // FIXME: windows
-    None
+    hostname::get().ok().and_then(|x| x.into_string().ok())
 }
 
 fn set_ws_scheme(url: &mut Url) -> Result<()> {

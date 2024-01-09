@@ -32,7 +32,7 @@ defmodule Web.Sites.Index do
       <:content>
         <.table id="groups" rows={@groups} row_id={&"group-#{&1.id}"}>
           <:col :let={group} label="site">
-            <.link navigate={~p"/#{@account}/sites/#{group}"} class={["font-medium", link_style()]}>
+            <.link navigate={~p"/#{@account}/sites/#{group}"} class={[link_style()]}>
               <%= group.name %>
             </.link>
           </:col>
@@ -54,7 +54,7 @@ defmodule Web.Sites.Index do
                   navigate={
                     ~p"/#{@account}/resources/#{connection.resource}?site_id=#{connection.gateway_group_id}"
                   }
-                  class={["font-medium inline-block", link_style()]}
+                  class={["inline-block", link_style()]}
                   phx-no-format
                 ><%= connection.resource.name %></.link>
               </:item>
@@ -64,7 +64,7 @@ defmodule Web.Sites.Index do
                   and
                   <.link
                     navigate={~p"/#{@account}/sites/#{group}?#resources"}
-                    class={["font-bold", link_style()]}
+                    class={["font-medium", link_style()]}
                   >
                     <%= count %> more.
                   </.link>
@@ -88,7 +88,7 @@ defmodule Web.Sites.Index do
               <:item :let={gateway}>
                 <.link
                   navigate={~p"/#{@account}/gateways/#{gateway}"}
-                  class={["font-medium inline-block", link_style()]}
+                  class={["inline-block", link_style()]}
                   phx-no-format
                 ><%= gateway.name %></.link>
               </:item>
@@ -98,7 +98,7 @@ defmodule Web.Sites.Index do
                   and
                   <.link
                     navigate={~p"/#{@account}/sites/#{group}?#gateways"}
-                    class={["font-bold", link_style()]}
+                    class={["font-medium", link_style()]}
                   >
                     <%= count %> more.
                   </.link>
@@ -109,13 +109,12 @@ defmodule Web.Sites.Index do
 
           <:empty>
             <div class="flex justify-center text-center text-neutral-500 p-4">
-              <div class="w-auto">
-                <div class="pb-4">
-                  No sites to display
-                </div>
-                <.add_button navigate={~p"/#{@account}/sites/new"}>
-                  Add Site
-                </.add_button>
+              <div class="w-auto pb-4">
+                No sites to display.
+                <.link class={[link_style()]} navigate={~p"/#{@account}/sites/new"}>
+                  Add a site
+                </.link>
+                to start deploying gateways and adding resources.
               </div>
             </div>
           </:empty>

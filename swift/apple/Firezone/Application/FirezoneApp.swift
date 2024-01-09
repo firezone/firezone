@@ -92,6 +92,8 @@ struct FirezoneApp: App {
       _ = AppStore.WindowDefinition.allCases.map { $0.window()?.close() }
     }
 
-    func applicationWillTerminate(_: Notification) {}
+    func applicationWillTerminate(_: Notification) {
+      self.appStore?.authStore.cancelSignIn()
+    }
   }
 #endif

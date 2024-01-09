@@ -84,18 +84,14 @@ defmodule Web.Settings.IdentityProviders.Components do
       <span class="ml-3">
         Provisioning
         <span :if={@provider.adapter_state["status"]}>
-          <.link navigate={
-            ~p"/#{@provider.account_id}/settings/identity_providers/openid_connect/#{@provider}/redirect"
-          }>
-            <button class={~w[
-          text-white bg-primary-600 rounded
-          font-medium text-sm
-          px-2 py-1 text-center
-          hover:bg-primary-700
-          focus:ring-4 focus:outline-none focus:ring-primary-300
-          active:text-white/80
-        ]}>connect IdP</button>
-          </.link>
+          <.button
+            size="xs"
+            navigate={
+              ~p"/#{@provider.account_id}/settings/identity_providers/openid_connect/#{@provider}/redirect"
+            }
+          >
+            Connect IdP
+          </.button>
         </span>
       </span>
     </div>

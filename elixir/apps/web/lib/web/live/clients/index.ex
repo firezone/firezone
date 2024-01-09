@@ -25,18 +25,12 @@ defmodule Web.Clients.Index do
           <!--<.resource_filter />-->
           <.table id="clients" rows={@clients} row_id={&"client-#{&1.id}"}>
             <:col :let={client} label="NAME">
-              <.link
-                navigate={~p"/#{@account}/clients/#{client.id}"}
-                class={["font-medium", link_style()]}
-              >
+              <.link navigate={~p"/#{@account}/clients/#{client.id}"} class={[link_style()]}>
                 <%= client.name %>
               </.link>
             </:col>
             <:col :let={client} label="USER">
-              <.link
-                navigate={~p"/#{@account}/actors/#{client.actor.id}"}
-                class={["font-medium", link_style()]}
-              >
+              <.link navigate={~p"/#{@account}/actors/#{client.actor.id}"} class={[link_style()]}>
                 <%= client.actor.name %>
               </.link>
             </:col>
@@ -44,9 +38,8 @@ defmodule Web.Clients.Index do
               <.connection_status schema={client} />
             </:col>
             <:empty>
-              <div class="text-center text-neutral-500 p-4">No clients to display</div>
-              <div class="text-center text-neutral-500 mb-4">
-                Clients are created automatically when user connects to a resource.
+              <div class="text-center text-neutral-500 p-4">
+                No clients to display. Clients are created automatically when a user connects to a resource.
               </div>
             </:empty>
           </.table>

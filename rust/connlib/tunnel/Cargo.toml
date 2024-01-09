@@ -16,7 +16,7 @@ futures-util =  { version = "0.3", default-features = false, features = ["std", 
 tracing = { workspace = true }
 parking_lot = { version = "0.12", default-features = false }
 bytes = { version = "1.4", default-features = false, features = ["std"] }
-itertools = { version = "0.11", default-features = false, features = ["use_std"] }
+itertools = { version = "0.12", default-features = false, features = ["use_std"] }
 connlib-shared = { workspace = true }
 libc = { version = "0.2", default-features = false, features = ["std", "const-extern-fn", "extra_traits"] }
 ip_network = { version = "0.4", default-features = false }
@@ -36,6 +36,9 @@ webrtc = { workspace = true }
 # Needed for Android logging until tracing is fixed
 log = "0.4"
 
+[dev-dependencies]
+serde_json = "1.0"
+
 # Linux tunnel dependencies
 [target.'cfg(target_os = "linux")'.dependencies]
 netlink-packet-route = { version = "0.17", default-features = false }
@@ -50,3 +53,13 @@ tracing-android = "0.2"
 [target.'cfg(target_os = "windows")'.dependencies]
 uuid = { version = "1.5.0", features = ["v4"] }
 wintun = "0.3.2"
+
+# Windows Win32 API
+[target.'cfg(windows)'.dependencies.windows]
+version = "0.52.0"
+features = [
+  "Win32_Foundation",
+  "Win32_NetworkManagement_IpHelper",
+  "Win32_NetworkManagement_Ndis",
+  "Win32_Networking_WinSock",
+]

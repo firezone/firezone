@@ -36,7 +36,7 @@ defmodule Web.Policies.New do
       </:title>
       <:content>
         <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
-          <h2 class="mb-4 text-xl font-bold text-neutral-900">Policy details</h2>
+          <h2 class="mb-4 text-xl text-neutral-900">Policy details</h2>
           <div
             :if={@actor_groups == []}
             class={[
@@ -45,7 +45,7 @@ defmodule Web.Policies.New do
             ]}
             role="alert"
           >
-            <p class="text-sm font-semibold leading-6">
+            <p class="text-sm leading-6">
               <.icon name="hero-exclamation-circle-mini" class="h-4 w-4" />
               You have no groups to create policies for. You can create a group <.link
                 navigate={~p"/#{@account}/groups/new"}

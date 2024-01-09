@@ -143,8 +143,15 @@ class Adapter {
       do {
         self.state = .startingTunnel(
           session: try WrappedSession.connect(
-            self.controlPlaneURLString, self.token, self.getDeviceId(), self.connlibLogFolderPath,
-            self.logFilter, self.callbackHandler),
+            self.controlPlaneURLString,
+            self.token,
+            self.getDeviceId(),
+            self.getDeviceName(),
+            self.getOSVersion(),
+            self.connlibLogFolderPath,
+            self.logFilter,
+            self.callbackHandler
+          ),
           onStarted: completionHandler
         )
       } catch let error {
@@ -219,9 +226,31 @@ class Adapter {
   }
 }
 
-// MARK: Device unique identifiers
+// MARK: Device metadata
 
 extension Adapter {
+  func getDeviceName() -> String? {
+    // Returns a generic device name on iOS 16 and higher
+    // See https://github.com/firezone/firezone/issues/3034
+    #if os(iOS)
+      return UIDevice.current.name
+    #else
+      // Fallback to connlib's gethostname()
+      return nil
+    #endif
+  }
+
+  func getOSVersion() -> String? {
+    // Returns the OS version
+    // See https://github.com/firezone/firezone/issues/3034
+    #if os(iOS)
+      return UIDevice.current.systemVersion
+    #else
+      // Fallback to connlib's osinfo
+      return nil
+    #endif
+  }
+
   // uuidString and copyMACAddress() *should* reliably return valid Strings, but if
   // for whatever reason they're nil, return a random UUID instead to prevent
   // upsert collisions in the portal.
@@ -305,9 +334,15 @@ extension Adapter {
       do {
         self.state = .startingTunnel(
           session: try WrappedSession.connect(
-            controlPlaneURLString, token, self.getDeviceId(), self.connlibLogFolderPath,
+            controlPlaneURLString,
+            token,
+            self.getDeviceId(),
+            self.getDeviceName(),
+            self.getOSVersion(),
+            self.connlibLogFolderPath,
             self.logFilter,
-            self.callbackHandler),
+            self.callbackHandler
+          ),
           onStarted: { error in
             if let error = error {
               self.logger.error(
@@ -350,10 +385,11 @@ extension Adapter: CallbackHandlerDelegate {
           dnsAddress: dnsAddress)
       case .tunnelReady:
         if let networkSettings = self.networkSettings {
-          if let packetTunnelProvider = self.packetTunnelProvider {
-            networkSettings.apply(
-              on: packetTunnelProvider, logger: self.logger, completionHandler: nil)
-          }
+          networkSettings.apply(
+            on: packetTunnelProvider,
+            logger: self.logger,
+            completionHandler: nil
+          )
         }
 
       case .stoppingTunnel, .stoppedTunnel, .stoppingTunnelTemporarily, .stoppedTunnelTemporarily:
@@ -377,15 +413,12 @@ extension Adapter: CallbackHandlerDelegate {
         self.logger.error("Adapter.onTunnelReady: No network settings")
         return
       }
-      guard let packetTunnelProvider = self.packetTunnelProvider else {
-        self.logger.error("Adapter.onTunnelReady: No packet tunnel provider")
-        return
-      }
+
       // Connlib's up, set it as the default DNS
       networkSettings.setMatchDomains([""])
       networkSettings.apply(on: packetTunnelProvider, logger: self.logger) { error in
         if let error = error {
-          packetTunnelProvider.handleTunnelShutdown(
+          self.packetTunnelProvider?.handleTunnelShutdown(
             dueTo: .networkSettingsApplyFailure,
             errorMessage: error.localizedDescription)
           onStarted?(AdapterError.setNetworkSettings(error))
@@ -408,10 +441,6 @@ extension Adapter: CallbackHandlerDelegate {
         self.logger.error("Adapter.onAddRoute: No network settings")
         return
       }
-      guard let packetTunnelProvider = self.packetTunnelProvider else {
-        self.logger.error("Adapter.onAddRoute: No packet tunnel provider")
-        return
-      }
 
       networkSettings.addRoute(route)
       if case .tunnelReady = self.state {
@@ -427,10 +456,6 @@ extension Adapter: CallbackHandlerDelegate {
       self.logger.log("Adapter.onRemoveRoute(\(route, privacy: .public))")
       guard let networkSettings = self.networkSettings else {
         self.logger.error("Adapter.onRemoveRoute: No network settings")
-        return
-      }
-      guard let packetTunnelProvider = self.packetTunnelProvider else {
-        self.logger.error("Adapter.onRemoveRoute: No packet tunnel provider")
         return
       }
       networkSettings.removeRoute(route)
@@ -460,10 +485,6 @@ extension Adapter: CallbackHandlerDelegate {
       // Update DNS in case resource domains is changing
       guard let networkSettings = self.networkSettings else {
         self.logger.error("Adapter.onUpdateResources: No network settings")
-        return
-      }
-      guard let packetTunnelProvider = self.packetTunnelProvider else {
-        self.logger.error("Adapter.onUpdateResources: No packet tunnel provider")
         return
       }
       let updatedResourceDomains = networkResources.compactMap { $0.resourceLocation.domain }

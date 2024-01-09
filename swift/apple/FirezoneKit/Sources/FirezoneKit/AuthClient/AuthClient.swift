@@ -18,6 +18,7 @@ enum AuthClientError: Error {
 
 struct AuthClient: Sendable {
   var signIn: @Sendable (URL) async throws -> AuthResponse
+  var cancelSignIn: @Sendable () -> Void
 }
 
 extension AuthClient: DependencyKey {
@@ -26,6 +27,9 @@ extension AuthClient: DependencyKey {
     return AuthClient(
       signIn: { host in
         try await session.signIn(host)
+      },
+      cancelSignIn: {
+        session.cancelSignIn()
       }
     )
   }
@@ -41,6 +45,8 @@ extension DependencyValues {
 private final class WebAuthenticationSession: NSObject,
   ASWebAuthenticationPresentationContextProviding
 {
+  var webAuthSession: ASWebAuthenticationSession?
+
   @MainActor
   func signIn(_ host: URL) async throws -> AuthResponse {
     let statePassedToPortal = try Self.createRandomHexString(byteCount: 32)
@@ -115,10 +121,9 @@ private final class WebAuthenticationSession: NSObject,
       // We want to load any SSO cookies that the user may have set in their default browser
       session.prefersEphemeralWebBrowserSession = false
 
-      #if os(macOS)
-        NSApp.activate(ignoringOtherApps: true)
-      #endif
       session.start()
+
+      self.webAuthSession = session
     }
   }
 
@@ -152,6 +157,10 @@ private final class WebAuthenticationSession: NSObject,
 
   func presentationAnchor(for _: ASWebAuthenticationSession) -> ASPresentationAnchor {
     ASPresentationAnchor()
+  }
+
+  func cancelSignIn() {
+    self.webAuthSession?.cancel()
   }
 }
 

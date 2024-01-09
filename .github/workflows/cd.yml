@@ -228,8 +228,8 @@ jobs:
       - name: Upload digest
         uses: actions/upload-artifact@v4
         with:
-          name: digests
-          path: /tmp/digests/*
+          name: ${{ matrix.name.image_name }}-${{ matrix.arch.shortname }}-digest
+          path: /tmp/digests/${{ matrix.name.image_name }}
           if-no-files-found: error
           retention-days: 1
 
@@ -306,8 +306,11 @@ jobs:
       - name: Download digests
         uses: actions/download-artifact@v4
         with:
-          name: digests
-          path: /tmp/digests
+          pattern: ${{ matrix.image_name }}-*-digest
+          merge-multiple: true
+          path: /tmp/digests/${{ matrix.image_name }}
+      - name: Display structure of downloaded artifacts
+        run: ls -R /tmp/digests
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
       - name: Build Version Tags
