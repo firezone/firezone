@@ -6,6 +6,7 @@ services:
     image: postgres:15.2
     volumes:
       - postgres-data:/var/lib/postgresql/data
+    command: -c 'max_connections=500'
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
@@ -50,8 +51,6 @@ services:
 
   # Firezone Components
   web:
-    # Limit to two cores to prevent DB connection issues
-    cpuset_cpus: '0,1'
     build:
       context: ../elixir
       cache_from:
@@ -244,8 +243,6 @@ services:
         ipv4_address: 172.28.0.101
 
   api:
-    # Limit to two cores to prevent DB connection issues
-    cpuset_cpus: '0,1'
     build:
       context: ../elixir
       cache_from:
