@@ -377,11 +377,13 @@ networks:
         - subnet: 172.20.0.0/24
         - subnet: fc00:ff:1::/48
   app:
-    enable_ipv6: true
+    # Currently not working on testbed
+    # enable_ipv6: true
     ipam:
       config:
         - subnet: 172.28.0.0/24
-        - subnet: fc00:ff:2::/48
+    # Currently not working on testbed
+    # - subnet: fc00:ff:2::/48
 
 volumes:
   postgres-data:
