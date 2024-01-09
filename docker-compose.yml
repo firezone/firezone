@@ -6,12 +6,10 @@ services:
     image: postgres:15.2
     volumes:
       - postgres-data:/var/lib/postgresql/data
-    # Set these to something like nproc * 32
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: firezone_dev
-    command: -c "max_connections=1000" -c "shared_buffers=1024MB"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -d $${POSTGRES_DB} -U $${POSTGRES_USER}"]
       start_period: 20s
@@ -373,17 +371,17 @@ services:
 
 networks:
   resources:
-    # enable_ipv6: true
+    enable_ipv6: true
     ipam:
       config:
-        - subnet: 172.20.0.0/16
-          # - subnet: fc00:db8:1::/64
+        - subnet: 172.20.0.0/24
+        - subnet: fc00:ff:ff:1::/64
   app:
-    # enable_ipv6: true
+    enable_ipv6: true
     ipam:
       config:
-        - subnet: 172.28.0.0/16
-          # - subnet: fc00:db8:2::/64
+        - subnet: 172.28.0.0/24
+        - subnet: fc00:ff:ff:2::/64
 
 volumes:
   postgres-data:
