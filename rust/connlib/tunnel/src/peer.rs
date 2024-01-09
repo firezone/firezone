@@ -1,5 +1,5 @@
 use std::borrow::Cow;
-use std::collections::{HashSet, VecDeque};
+use std::collections::{HashMap, VecDeque};
 use std::net::IpAddr;
 use std::sync::Arc;
 use std::time::Instant;
@@ -200,6 +200,8 @@ pub struct PacketTransformClient {
     // TODO: we need to update upper layers to handle changing upstream dns
     // TODO: Upstream dns could be not and ip
     upstream_dns: ArcSwapOption<IpAddr>,
+    // TODO: expires these
+    mangled_dns_ids: RwLock<HashMap<u16, std::time::Instant>>,
 }
 
 impl PacketTransformClient {
@@ -298,8 +300,16 @@ impl PacketTransform for PacketTransformClient {
             .is_some_and(|upstream| **upstream == src)
         {
             if let Some(dgm) = pkt.as_udp() {
-                if domain::base::Message::from_slice(dgm.payload()).is_ok() {
-                    src = DNS_SENTINEL.into();
+                if let Ok(message) = domain::base::Message::from_slice(dgm.payload()) {
+                    // TODO: consider it might be expired
+                    if self
+                        .mangled_dns_ids
+                        .read()
+                        .get(&message.header().id())
+                        .is_some()
+                    {
+                        src = DNS_SENTINEL.into();
+                    }
                 }
             }
         }
@@ -318,14 +328,12 @@ impl PacketTransform for PacketTransformClient {
 
         if packet.destination() == DNS_SENTINEL {
             if let Some(ip) = self.upstream_dns.load().as_ref() {
-                tracing::error!("we have an upstream: {ip:?}");
-                tracing::error!("the packet dest is {:?}", packet.destination());
                 // TODO: add is_dns function
-                tracing::error!("the packet is going there");
                 if let Some(dgm) = packet.as_udp() {
-                    tracing::error!("the packet is udp");
                     if let Ok(message) = domain::base::Message::from_slice(dgm.payload()) {
-                        tracing::error!("setting ip");
+                        self.mangled_dns_ids
+                            .write()
+                            .insert(message.header().id(), Instant::now());
                         packet.set_dst(**ip);
                         packet.update_checksum();
                     }

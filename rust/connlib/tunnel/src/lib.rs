@@ -222,8 +222,6 @@ where
                 Err(non_dns_packet) => non_dns_packet,
             };
 
-            tracing::error!("destination: {dest}");
-
             let Some(peer) = peer_by_ip(&role_state.peers_by_ip, dest) else {
                 role_state.on_connection_intent_ip(dest);
                 continue;
