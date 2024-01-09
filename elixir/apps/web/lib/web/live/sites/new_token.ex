@@ -198,7 +198,7 @@ defmodule Web.Sites.NewToken do
     id -u firezone &>/dev/null || sudo useradd -r -g firezone -s /sbin/nologin firezone
 
     # Create systemd unit file
-    cat << EOF > /etc/systemd/system/firezone-gateway.service
+    sudo cat << EOF > /etc/systemd/system/firezone-gateway.service
     [Unit]
     Description=Firezone Gateway
     After=network.target
@@ -223,7 +223,7 @@ defmodule Web.Sites.NewToken do
     EOF
 
     # Create ExecStartPre script
-    cat << EOF > /usr/local/bin/firezone-gateway-init
+    sudo cat << EOF > /usr/local/bin/firezone-gateway-init
     #!/bin/sh
 
     set -ue
@@ -234,7 +234,7 @@ defmodule Web.Sites.NewToken do
       FIREZONE_VERSION=\\$(curl -Ls \\\\
         -H "Accept: application/vnd.github+json" \\\\
         -H "X-GitHub-Api-Version: 2022-11-28" \\\\
-        "https://api.github.com/repos/firezone/firezone/releases/latest" | grep '"tag_name":' | sed 's/.*"tag_name": "\([^"]*\).*/\1/'
+        "https://api.github.com/repos/firezone/firezone/releases/latest" | grep '"tag_name":' | sed 's/.*"tag_name": "\\([^"]*\\).*/\\1/'
       )
       [ "\\$FIREZONE_VERSION" = "" ] && echo "[Error] Cannot fetch latest version. Rate-limited by GitHub?" && exit 1
       echo "Downloading Firezone Gateway version \\$FIREZONE_VERSION"
@@ -285,7 +285,7 @@ defmodule Web.Sites.NewToken do
     EOF
 
     # Make ExecStartPre script executable
-    chmod +x /usr/local/bin/firezone-gateway-init
+    sudo chmod +x /usr/local/bin/firezone-gateway-init
 
     # Reload systemd
     sudo systemctl daemon-reload
