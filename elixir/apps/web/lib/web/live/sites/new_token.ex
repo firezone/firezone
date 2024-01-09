@@ -234,7 +234,8 @@ defmodule Web.Sites.NewToken do
       FIREZONE_VERSION=\\$(curl -Ls \\\\
         -H "Accept: application/vnd.github+json" \\\\
         -H "X-GitHub-Api-Version: 2022-11-28" \\\\
-        "https://api.github.com/repos/firezone/firezone/releases/latest" | grep '"tag_name":' | sed 's/.*"tag_name": "\([^"]*\).*/\1/'
+        "https://api.github.com/repos/firezone/firezone/releases/latest" | grep '"tag_name":' | sed 's/.*"tag_name": "\\([^"]*\\).*/\\1/'
+        sed 's/.*"\([^"]*\)".*"\([^"]*\)".*/\2/'
       )
       [ "\\$FIREZONE_VERSION" = "" ] && echo "[Error] Cannot fetch latest version. Rate-limited by GitHub?" && exit 1
       echo "Downloading Firezone Gateway version \\$FIREZONE_VERSION"
