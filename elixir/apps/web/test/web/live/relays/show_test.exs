@@ -24,11 +24,13 @@ defmodule Web.Live.Relays.ShowTest do
     relay: relay,
     conn: conn
   } do
-    assert live(conn, ~p"/#{account}/relays/#{relay}") ==
+    path = ~p"/#{account}/relays/#{relay}"
+
+    assert live(conn, path) ==
              {:error,
               {:redirect,
                %{
-                 to: ~p"/#{account}",
+                 to: ~p"/#{account}?#{%{redirect_to: path}}",
                  flash: %{"error" => "You must log in to access this page."}
                }}}
   end
@@ -47,9 +49,7 @@ defmodule Web.Live.Relays.ShowTest do
       |> live(~p"/#{account}/relays/#{relay}")
 
     assert html =~ "(deleted)"
-    refute html =~ "Danger Zone"
-    refute html =~ "Delete"
-    refute html =~ "Edit"
+    assert active_buttons(html) == []
   end
 
   test "renders breadcrumbs item", %{

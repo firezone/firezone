@@ -11,15 +11,17 @@ defmodule Domain.Auth.Subject do
           actor: actor(),
           permissions: MapSet.t(permission),
           account: %Domain.Accounts.Account{},
+          token_id: Ecto.UUID.t(),
           expires_at: DateTime.t(),
           context: Context.t()
         }
 
-  @enforce_keys [:identity, :actor, :permissions, :account, :context, :expires_at]
+  @enforce_keys [:identity, :actor, :permissions, :account, :token_id, :expires_at, :context]
   defstruct identity: nil,
             actor: nil,
             permissions: MapSet.new(),
             account: nil,
+            token_id: nil,
             expires_at: nil,
-            context: %Context{}
+            context: nil
 end

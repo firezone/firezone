@@ -10,7 +10,8 @@ defmodule Domain.Gateways.Gateway.Changeset do
                     last_seen_remote_ip_location_city
                     last_seen_remote_ip_location_lat
                     last_seen_remote_ip_location_lon]a
-  @conflict_replace_fields ~w[public_key
+  @conflict_replace_fields ~w[name
+                              public_key
                               last_seen_user_agent
                               last_seen_remote_ip
                               last_seen_remote_ip_location_region
