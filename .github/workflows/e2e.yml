@@ -90,6 +90,7 @@ jobs:
 
           # Build app bundle
           xcodebuild build \
+            -allowProvisioningUpdates \
             -configuration Release \
             -scheme Firezone \
             -sdk macosx \
@@ -128,6 +129,9 @@ jobs:
   ios:
     needs: docker
     runs-on: macos-14-firezone
+    permissions:
+      contents: read
+      id-token: 'write'
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-rust
@@ -147,6 +151,7 @@ jobs:
 
           # Build archive
           xcodebuild archive \
+            -allowProvisioningUpdates \
             -archivePath $RUNNER_TEMP/Firezone.xcarchive \
             -configuration Release \
             -scheme Firezone \
