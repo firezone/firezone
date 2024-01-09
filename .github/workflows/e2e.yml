@@ -80,9 +80,9 @@ jobs:
         name: Restore Swift DerivedData Cache
         with:
           path: ~/Library/Developer/Xcode/DerivedData
-          key: ${{ matrix.runs-on }}-${{ runner.arch }}-swift-${{ hashFiles('swift/*', 'rust/**/*.rs', 'rust/**/*.toml', 'rust/**/*.lock}') }}
+          key: macos-14-firezone-${{ runner.arch }}-swift-${{ hashFiles('swift/*', 'rust/**/*.rs', 'rust/**/*.toml', 'rust/**/*.lock}') }}
           restore-keys: |
-            ${{ matrix.runs-on }}-${{ runner.arch }}-swift-
+            macos-14-firezone-${{ runner.arch }}-swift-
       - name: build macos app
         run: |
           # Copy xcconfig
@@ -91,7 +91,7 @@ jobs:
           # Build app bundle
           xcodebuild build \
             -allowProvisioningUpdates \
-            -configuration Release \
+            -configuration Debug \
             -scheme Firezone \
             -sdk macosx \
             -destination 'platform=macOS'
@@ -102,7 +102,7 @@ jobs:
           path: ~/Library/Developer/Xcode/DerivedData
           # Swift benefits heavily from build cache, so aggressively write a new one
           # on each build on `main` and attempt to restore it in PR builds with broader restore-key.
-          key: ${{ matrix.runs-on }}-${{ runner.arch }}-swift-${{ hashFiles('swift/*', 'rust/**/*.rs', 'rust/**/*.toml', 'rust/**/*.lock}') }}
+          key: macos-14-firezone-${{ runner.arch }}-swift-${{ hashFiles('swift/*', 'rust/**/*.rs', 'rust/**/*.toml', 'rust/**/*.lock}') }}
 
   windows:
     needs: docker
@@ -125,8 +125,12 @@ jobs:
       - uses: actions/checkout@v4
       - run: echo 'Noop'
 
-  # Also used for iPadOS
   ios:
+    strategy:
+      matrix:
+        destination:
+          - "Jamil's iPhone"
+          - "Jamil's iPad"
     needs: docker
     runs-on: macos-14-firezone
     permissions:
@@ -144,9 +148,9 @@ jobs:
         name: Restore Swift DerivedData Cache
         with:
           path: ~/Library/Developer/Xcode/DerivedData
-          key: ${{ matrix.runs-on }}-${{ runner.arch }}-swift-${{ hashFiles('swift/*', 'rust/**/*.rs', 'rust/**/*.toml', 'rust/**/*.lock}') }}
+          key: macos-14-firezone-${{ runner.arch }}-swift-${{ hashFiles('swift/*', 'rust/**/*.rs', 'rust/**/*.toml', 'rust/**/*.lock}') }}
           restore-keys: |
-            ${{ matrix.runs-on }}-${{ runner.arch }}-swift-
+            macos-14-firezone-${{ runner.arch }}-swift-
       - name: build ios app
         run: |
           # Copy xcconfig
@@ -156,10 +160,10 @@ jobs:
           xcodebuild archive \
             -allowProvisioningUpdates \
             -archivePath $RUNNER_TEMP/Firezone.xcarchive \
-            -configuration Release \
+            -configuration Debug \
             -scheme Firezone \
             -sdk iphoneos \
-            -destination 'platform=generic/iOS'
+            -destination "platform=iOS,name=${{ matrix.destination }}"
       - uses: actions/cache/save@v3
         if: ${{ github.ref == 'refs/heads/main' }}
         name: Save Swift DerivedData Cache
@@ -167,7 +171,7 @@ jobs:
           path: ~/Library/Developer/Xcode/DerivedData
           # Swift benefits heavily from build cache, so aggressively write a new one
           # on each build on `main` and attempt to restore it in PR builds with broader restore-key.
-          key: ${{ matrix.runs-on }}-${{ runner.arch }}-swift-${{ hashFiles('swift/*', 'rust/**/*.rs', 'rust/**/*.toml', 'rust/**/*.lock}') }}
+          key: macos-14-firezone-${{ runner.arch }}-swift-${{ hashFiles('swift/*', 'rust/**/*.rs', 'rust/**/*.toml', 'rust/**/*.lock}') }}
 
   teardown:
     needs:
