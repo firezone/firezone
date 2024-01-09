@@ -169,4 +169,6 @@ jobs:
       - run: docker compose logs api
       - run: |
           docker compose down -v
-          docker system prune --force --all --volumes
+
+          # TODO: Granularly prune to preserve build cache
+          # docker system prune --force --all --volumes
