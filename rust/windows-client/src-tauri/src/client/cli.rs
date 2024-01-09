@@ -14,6 +14,7 @@ pub enum CliCommands {
     Debug,
     DebugCrash,
     DebugHostname,
+    DebugNetworkChanges,
     DebugPipeServer,
     DebugWintun,
     Elevated,
