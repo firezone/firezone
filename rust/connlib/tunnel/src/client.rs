@@ -111,13 +111,26 @@ where
 
     /// Sets the dns server.
     pub fn set_upstream_dns(&self, upstream_dns: &[DnsServer]) {
-        self.role_state.lock().upstream_dns = upstream_dns
+        let upstream_dns: HashSet<_> = upstream_dns
             .iter()
             .map(|dns| {
                 let DnsServer::IpPort(dns) = dns;
                 dns.address
             })
             .collect();
+
+        // TODO: assuming single dns
+        let Some(upstream_dns_srv) = upstream_dns.iter().next().cloned() else {
+            return;
+        };
+
+        self.role_state.lock().upstream_dns = upstream_dns;
+
+        self.role_state
+            .lock()
+            .peers_by_ip
+            .iter()
+            .for_each(|p| p.1.inner.transform.set_dns(upstream_dns_srv.ip()));
     }
 
     /// Sets the interface configuration and starts background tasks.

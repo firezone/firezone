@@ -1,5 +1,4 @@
 use std::fmt;
-use std::net::IpAddr;
 use std::sync::Arc;
 use std::time::Duration;
 

@@ -4,7 +4,7 @@ use futures::channel::mpsc;
 use futures_util::SinkExt;
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
-use std::{fmt, net::IpAddr, sync::Arc};
+use std::{fmt, sync::Arc};
 
 use connlib_shared::{
     messages::{Relay, RequestConnection, ReuseConnection},
