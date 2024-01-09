@@ -7,6 +7,7 @@ services:
     image: postgres:15.2
     volumes:
       - postgres-data:/var/lib/postgresql/data
+    command: -c 'max_connections=1000' -c 'shared_buffers=1024MB'
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
