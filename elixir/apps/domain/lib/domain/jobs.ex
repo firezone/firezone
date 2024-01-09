@@ -6,7 +6,7 @@ defmodule Domain.Jobs do
   use Supervisor
 
   def start_link(module) do
-    Supervisor.start_link(__MODULE__, module, name: __MODULE__)
+    Supervisor.start_link(__MODULE__, module)
   end
 
   def init(module) do

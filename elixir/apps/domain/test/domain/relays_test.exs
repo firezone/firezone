@@ -77,7 +77,8 @@ defmodule Domain.RelaysTest do
       assert fetch_group_by_id(Ecto.UUID.generate(), subject) ==
                {:error,
                 {:unauthorized,
-                 [missing_permissions: [Relays.Authorizer.manage_relays_permission()]]}}
+                 reason: :missing_permissions,
+                 missing_permissions: [Relays.Authorizer.manage_relays_permission()]}}
     end
   end
 
@@ -129,7 +130,8 @@ defmodule Domain.RelaysTest do
       assert list_groups(subject) ==
                {:error,
                 {:unauthorized,
-                 [missing_permissions: [Relays.Authorizer.manage_relays_permission()]]}}
+                 reason: :missing_permissions,
+                 missing_permissions: [Relays.Authorizer.manage_relays_permission()]}}
     end
   end
 
@@ -191,7 +193,8 @@ defmodule Domain.RelaysTest do
       assert create_group(%{}, subject) ==
                {:error,
                 {:unauthorized,
-                 [missing_permissions: [Relays.Authorizer.manage_relays_permission()]]}}
+                 reason: :missing_permissions,
+                 missing_permissions: [Relays.Authorizer.manage_relays_permission()]}}
     end
   end
 
@@ -311,7 +314,8 @@ defmodule Domain.RelaysTest do
       assert update_group(group, %{}, subject) ==
                {:error,
                 {:unauthorized,
-                 [missing_permissions: [Relays.Authorizer.manage_relays_permission()]]}}
+                 reason: :missing_permissions,
+                 missing_permissions: [Relays.Authorizer.manage_relays_permission()]}}
     end
   end
 
@@ -362,7 +366,8 @@ defmodule Domain.RelaysTest do
       assert delete_group(group, subject) ==
                {:error,
                 {:unauthorized,
-                 [missing_permissions: [Relays.Authorizer.manage_relays_permission()]]}}
+                 reason: :missing_permissions,
+                 missing_permissions: [Relays.Authorizer.manage_relays_permission()]}}
     end
   end
 
@@ -447,7 +452,8 @@ defmodule Domain.RelaysTest do
       assert fetch_relay_by_id(Ecto.UUID.generate(), subject) ==
                {:error,
                 {:unauthorized,
-                 [missing_permissions: [Relays.Authorizer.manage_relays_permission()]]}}
+                 reason: :missing_permissions,
+                 missing_permissions: [Relays.Authorizer.manage_relays_permission()]}}
     end
   end
 
@@ -494,7 +500,8 @@ defmodule Domain.RelaysTest do
       assert list_relays(subject) ==
                {:error,
                 {:unauthorized,
-                 [missing_permissions: [Relays.Authorizer.manage_relays_permission()]]}}
+                 reason: :missing_permissions,
+                 missing_permissions: [Relays.Authorizer.manage_relays_permission()]}}
     end
   end
 
@@ -804,7 +811,8 @@ defmodule Domain.RelaysTest do
       assert delete_relay(relay, subject) ==
                {:error,
                 {:unauthorized,
-                 [missing_permissions: [Relays.Authorizer.manage_relays_permission()]]}}
+                 reason: :missing_permissions,
+                 missing_permissions: [Relays.Authorizer.manage_relays_permission()]}}
     end
   end
 

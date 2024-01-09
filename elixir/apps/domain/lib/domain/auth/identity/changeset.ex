@@ -74,7 +74,7 @@ defmodule Domain.Auth.Identity.Changeset do
     |> put_change(:provider_virtual_state, virtual_state)
   end
 
-  def sign_in_identity(identity_or_changeset, context) do
+  def track_identity(identity_or_changeset, context) do
     identity_or_changeset
     |> change()
     |> put_change(:last_seen_user_agent, context.user_agent)

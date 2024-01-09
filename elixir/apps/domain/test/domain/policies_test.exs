@@ -54,14 +54,13 @@ defmodule Domain.PoliciesTest do
       assert fetch_policy_by_id(Ecto.UUID.generate(), subject) ==
                {:error,
                 {:unauthorized,
-                 [
-                   missing_permissions: [
-                     {:one_of,
-                      [
-                        Policies.Authorizer.manage_policies_permission(),
-                        Policies.Authorizer.view_available_policies_permission()
-                      ]}
-                   ]
+                 reason: :missing_permissions,
+                 missing_permissions: [
+                   {:one_of,
+                    [
+                      Policies.Authorizer.manage_policies_permission(),
+                      Policies.Authorizer.view_available_policies_permission()
+                    ]}
                  ]}}
     end
 
@@ -165,14 +164,13 @@ defmodule Domain.PoliciesTest do
       assert list_policies(subject) ==
                {:error,
                 {:unauthorized,
-                 [
-                   missing_permissions: [
-                     {:one_of,
-                      [
-                        Policies.Authorizer.manage_policies_permission(),
-                        Policies.Authorizer.view_available_policies_permission()
-                      ]}
-                   ]
+                 reason: :missing_permissions,
+                 missing_permissions: [
+                   {:one_of,
+                    [
+                      Policies.Authorizer.manage_policies_permission(),
+                      Policies.Authorizer.view_available_policies_permission()
+                    ]}
                  ]}}
     end
   end
@@ -203,10 +201,9 @@ defmodule Domain.PoliciesTest do
       assert create_policy(%{}, subject) ==
                {:error,
                 {:unauthorized,
-                 [
-                   missing_permissions: [
-                     {:one_of, [Policies.Authorizer.manage_policies_permission()]}
-                   ]
+                 reason: :missing_permissions,
+                 missing_permissions: [
+                   {:one_of, [Policies.Authorizer.manage_policies_permission()]}
                  ]}}
     end
 
@@ -319,10 +316,9 @@ defmodule Domain.PoliciesTest do
       assert update_policy(policy, attrs, subject) ==
                {:error,
                 {:unauthorized,
-                 [
-                   missing_permissions: [
-                     {:one_of, [Policies.Authorizer.manage_policies_permission()]}
-                   ]
+                 reason: :missing_permissions,
+                 missing_permissions: [
+                   {:one_of, [Policies.Authorizer.manage_policies_permission()]}
                  ]}}
     end
 
@@ -394,7 +390,8 @@ defmodule Domain.PoliciesTest do
       assert disable_policy(policy, subject) ==
                {:error,
                 {:unauthorized,
-                 [missing_permissions: [Policies.Authorizer.manage_policies_permission()]]}}
+                 reason: :missing_permissions,
+                 missing_permissions: [Policies.Authorizer.manage_policies_permission()]}}
     end
   end
 
@@ -447,7 +444,8 @@ defmodule Domain.PoliciesTest do
       assert enable_policy(policy, subject) ==
                {:error,
                 {:unauthorized,
-                 [missing_permissions: [Policies.Authorizer.manage_policies_permission()]]}}
+                 reason: :missing_permissions,
+                 missing_permissions: [Policies.Authorizer.manage_policies_permission()]}}
     end
   end
 
@@ -476,10 +474,9 @@ defmodule Domain.PoliciesTest do
       assert delete_policy(policy, subject) ==
                {:error,
                 {:unauthorized,
-                 [
-                   missing_permissions: [
-                     {:one_of, [Policies.Authorizer.manage_policies_permission()]}
-                   ]
+                 reason: :missing_permissions,
+                 missing_permissions: [
+                   {:one_of, [Policies.Authorizer.manage_policies_permission()]}
                  ]}}
     end
 

@@ -120,6 +120,7 @@ defmodule Web.Acceptance.Auth.UserPassTest do
     session: session
   } do
     account = Fixtures.Accounts.create_account()
+    actor = Fixtures.Actors.create_actor(type: :account_user, account: account)
     provider = Fixtures.Auth.create_userpass_provider(account: account)
     password = "Firezone1234"
 
@@ -127,13 +128,14 @@ defmodule Web.Acceptance.Auth.UserPassTest do
       Fixtures.Auth.create_identity(
         account: account,
         provider: provider,
-        actor: [type: :account_user],
+        actor: actor,
         provider_virtual_state: %{"password" => password, "password_confirmation" => password}
       )
 
     session
     |> password_login_flow(account, identity.provider_identifier, password)
     |> assert_path(~p"/#{account}")
+    |> assert_error_flash("Please use a client application to access Firezone.")
   end
 
   defp password_login_flow(session, account, username, password) do

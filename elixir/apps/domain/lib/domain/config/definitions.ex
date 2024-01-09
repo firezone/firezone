@@ -80,8 +80,8 @@ defmodule Domain.Config.Definitions do
        All secrets should be a **base64-encoded string**.
        """,
        [
-         :auth_token_key_base,
-         :auth_token_salt,
+         :tokens_key_base,
+         :tokens_salt,
          :relays_auth_token_key_base,
          :relays_auth_token_salt,
          :gateways_auth_token_key_base,
@@ -195,7 +195,7 @@ defmodule Domain.Config.Definitions do
   You can see all supported options at https://ninenines.eu/docs/en/cowboy/2.5/manual/cowboy_http/.
   """
   defconfig(:phoenix_http_protocol_options, :map,
-    default: %{},
+    default: %{max_header_value_length: 8192},
     dump: &Dumper.keyword/1
   )
 
@@ -357,17 +357,17 @@ defmodule Domain.Config.Definitions do
   ##############################################
 
   @doc """
-  Secret which is used to encode and sign auth tokens.
+  Secret which is used to encode and sign tokens.
   """
-  defconfig(:auth_token_key_base, :string,
+  defconfig(:tokens_key_base, :string,
     sensitive: true,
     changeset: &Domain.Validator.validate_base64/2
   )
 
   @doc """
-  Salt which is used to encode and sign auth tokens.
+  Salt which is used to encode and sign tokens.
   """
-  defconfig(:auth_token_salt, :string,
+  defconfig(:tokens_salt, :string,
     sensitive: true,
     changeset: &Domain.Validator.validate_base64/2
   )
