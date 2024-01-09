@@ -77,6 +77,8 @@ defmodule Domain.CryptoTest do
       refute equal?(:argon2, "", "a")
       refute equal?(:sha, "a", "")
       refute equal?(:sha, "", "a")
+      refute equal?(:sha3_256, "a", "")
+      refute equal?(:sha3_256, "", "a")
     end
 
     test "returns false for nils" do
@@ -84,6 +86,8 @@ defmodule Domain.CryptoTest do
       refute equal?(:argon2, "", nil)
       refute equal?(:sha, nil, "")
       refute equal?(:sha, "", nil)
+      refute equal?(:sha3_256, nil, "")
+      refute equal?(:sha3_256, "", nil)
     end
   end
 

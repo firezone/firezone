@@ -109,7 +109,11 @@ defmodule Domain.Tokens do
            |> Token.Query.not_expired(),
          {:ok, token} <- Repo.fetch(queryable),
          true <-
-           Domain.Crypto.equal?(:sha, nonce <> secret <> token.secret_salt, token.secret_hash) do
+           Domain.Crypto.equal?(
+             :sha3_256,
+             nonce <> secret <> token.secret_salt,
+             token.secret_hash
+           ) do
       Token.Changeset.use(token, context)
       |> Repo.update()
     else

@@ -38,7 +38,7 @@ defmodule Domain.Tokens.Token.Changeset do
     changeset
     |> put_change(:secret_salt, Domain.Crypto.random_token(16))
     |> validate_format(:secret_nonce, ~r/^[^\.]{0,128}$/)
-    |> put_hash(:secret_fragment, :sha,
+    |> put_hash(:secret_fragment, :sha3_256,
       with_nonce: :secret_nonce,
       with_salt: :secret_salt,
       to: :secret_hash

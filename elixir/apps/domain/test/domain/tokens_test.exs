@@ -256,7 +256,11 @@ defmodule Domain.TokensTest do
       assert token.secret_salt
       assert token.secret_hash
 
-      assert Domain.Crypto.equal?(:sha, nonce <> fragment <> token.secret_salt, token.secret_hash)
+      assert Domain.Crypto.equal?(
+               :sha3_256,
+               nonce <> fragment <> token.secret_salt,
+               token.secret_hash
+             )
 
       assert token.account_id == account.id
     end
