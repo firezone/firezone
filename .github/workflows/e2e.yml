@@ -43,9 +43,8 @@ jobs:
       VERSION: "1.0.0"
     steps:
       - uses: actions/checkout@v4
-      - name: Create and seed database
-        run:
-          docker compose run elixir /bin/sh -c 'cd apps/domain && mix do ecto.create, ecto.seed'
+      - run: docker compose up -d postgres
+      - run: docker compose run elixir /bin/sh -c 'cd apps/domain && mix do ecto.create, ecto.migrate, ecto.seed'
       - name: Build images
         run: |
           docker compose build
