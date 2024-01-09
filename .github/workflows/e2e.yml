@@ -41,14 +41,11 @@ jobs:
     env:
       # mark:automatic-version
       VERSION: "1.0.0"
-    defaults:
-      run:
-        working-directory: ./e2e
     steps:
       - uses: actions/checkout@v4
-      - name: Seed database
+      - name: Create and seed database
         run:
-          docker compose run elixir /bin/sh -c 'cd apps/domain && mix ecto.seed'
+          docker compose run elixir /bin/sh -c 'cd apps/domain && mix ecto.create, ecto.seed'
       - name: Build images
         run: |
           docker compose build
@@ -174,9 +171,6 @@ jobs:
       - ios
     if: 'always()'
     runs-on: ubuntu-22.04-firezone
-    defaults:
-      run:
-        working-directory: ./e2e
     steps:
       - uses: actions/checkout@v4
       - run: docker compose logs postgres
