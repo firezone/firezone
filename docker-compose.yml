@@ -373,17 +373,17 @@ services:
 
 networks:
   resources:
-    enable_ipv6: true
+    # enable_ipv6: true
     ipam:
       config:
         - subnet: 172.20.0.0/16
-        - subnet: fc00:db8:1::/64
+          # - subnet: fc00:db8:1::/64
   app:
-    enable_ipv6: true
+    # enable_ipv6: true
     ipam:
       config:
         - subnet: 172.28.0.0/16
-        - subnet: fc00:db8:2::/64
+          # - subnet: fc00:db8:2::/64
 
 volumes:
   postgres-data:
