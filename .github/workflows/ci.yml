@@ -159,7 +159,9 @@ jobs:
         with:
           project: firezone-staging
       - name: Run ${{ matrix.file }} test
-        run: docker compose -f rust/connection-tests/${{ matrix.file }} up --exit-code-from dialer --abort-on-container-exit
+        run: |
+          sudo sysctl -w vm.overcommit_memory=1
+          docker compose -f rust/connection-tests/${{ matrix.file }} up --exit-code-from dialer --abort-on-container-exit
 
   integration-tests:
     needs: build-images
