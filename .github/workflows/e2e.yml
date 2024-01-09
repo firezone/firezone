@@ -166,6 +166,7 @@ jobs:
       - run: docker compose logs client
       - run: docker compose logs gateway
       - run: docker compose logs relay
+      - run: docker compose logs elixir
       - run: docker compose logs api
       - run: |
           docker compose down -v
