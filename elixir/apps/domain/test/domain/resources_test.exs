@@ -80,14 +80,13 @@ defmodule Domain.ResourcesTest do
       assert fetch_resource_by_id(Ecto.UUID.generate(), subject) ==
                {:error,
                 {:unauthorized,
-                 [
-                   missing_permissions: [
-                     {:one_of,
-                      [
-                        Resources.Authorizer.manage_resources_permission(),
-                        Resources.Authorizer.view_available_resources_permission()
-                      ]}
-                   ]
+                 reason: :missing_permissions,
+                 missing_permissions: [
+                   {:one_of,
+                    [
+                      Resources.Authorizer.manage_resources_permission(),
+                      Resources.Authorizer.view_available_resources_permission()
+                    ]}
                  ]}}
     end
 
@@ -307,11 +306,8 @@ defmodule Domain.ResourcesTest do
       assert fetch_and_authorize_resource_by_id(Ecto.UUID.generate(), subject) ==
                {:error,
                 {:unauthorized,
-                 [
-                   missing_permissions: [
-                     Resources.Authorizer.view_available_resources_permission()
-                   ]
-                 ]}}
+                 reason: :missing_permissions,
+                 missing_permissions: [Resources.Authorizer.view_available_resources_permission()]}}
     end
 
     test "associations are preloaded when opts given", %{
@@ -483,11 +479,8 @@ defmodule Domain.ResourcesTest do
       assert list_authorized_resources(subject) ==
                {:error,
                 {:unauthorized,
-                 [
-                   missing_permissions: [
-                     Resources.Authorizer.view_available_resources_permission()
-                   ]
-                 ]}}
+                 reason: :missing_permissions,
+                 missing_permissions: [Resources.Authorizer.view_available_resources_permission()]}}
     end
   end
 
@@ -533,10 +526,9 @@ defmodule Domain.ResourcesTest do
       assert list_resources(subject) ==
                {:error,
                 {:unauthorized,
-                 [
-                   missing_permissions: [
-                     Resources.Authorizer.manage_resources_permission()
-                   ]
+                 reason: :missing_permissions,
+                 missing_permissions: [
+                   Resources.Authorizer.manage_resources_permission()
                  ]}}
     end
   end
@@ -617,14 +609,13 @@ defmodule Domain.ResourcesTest do
       assert list_resources_for_gateway(gateway, subject) ==
                {:error,
                 {:unauthorized,
-                 [
-                   missing_permissions: [
-                     {:one_of,
-                      [
-                        Resources.Authorizer.manage_resources_permission(),
-                        Resources.Authorizer.view_available_resources_permission()
-                      ]}
-                   ]
+                 reason: :missing_permissions,
+                 missing_permissions: [
+                   {:one_of,
+                    [
+                      Resources.Authorizer.manage_resources_permission(),
+                      Resources.Authorizer.view_available_resources_permission()
+                    ]}
                  ]}}
     end
   end
@@ -743,7 +734,8 @@ defmodule Domain.ResourcesTest do
       assert peek_resource_actor_groups([], 3, subject) ==
                {:error,
                 {:unauthorized,
-                 [missing_permissions: [Resources.Authorizer.manage_resources_permission()]]}}
+                 reason: :missing_permissions,
+                 missing_permissions: [Resources.Authorizer.manage_resources_permission()]}}
     end
   end
 
@@ -813,14 +805,13 @@ defmodule Domain.ResourcesTest do
       assert count_resources_for_gateway(gateway, subject) ==
                {:error,
                 {:unauthorized,
-                 [
-                   missing_permissions: [
-                     {:one_of,
-                      [
-                        Resources.Authorizer.manage_resources_permission(),
-                        Resources.Authorizer.view_available_resources_permission()
-                      ]}
-                   ]
+                 reason: :missing_permissions,
+                 missing_permissions: [
+                   {:one_of,
+                    [
+                      Resources.Authorizer.manage_resources_permission(),
+                      Resources.Authorizer.view_available_resources_permission()
+                    ]}
                  ]}}
     end
   end
@@ -985,7 +976,8 @@ defmodule Domain.ResourcesTest do
       assert create_resource(%{}, subject) ==
                {:error,
                 {:unauthorized,
-                 [missing_permissions: [Resources.Authorizer.manage_resources_permission()]]}}
+                 reason: :missing_permissions,
+                 missing_permissions: [Resources.Authorizer.manage_resources_permission()]}}
     end
   end
 
@@ -1078,7 +1070,8 @@ defmodule Domain.ResourcesTest do
       assert update_resource(resource, %{}, subject) ==
                {:error,
                 {:unauthorized,
-                 [missing_permissions: [Resources.Authorizer.manage_resources_permission()]]}}
+                 reason: :missing_permissions,
+                 missing_permissions: [Resources.Authorizer.manage_resources_permission()]}}
     end
   end
 
@@ -1116,7 +1109,8 @@ defmodule Domain.ResourcesTest do
       assert delete_resource(resource, subject) ==
                {:error,
                 {:unauthorized,
-                 [missing_permissions: [Resources.Authorizer.manage_resources_permission()]]}}
+                 reason: :missing_permissions,
+                 missing_permissions: [Resources.Authorizer.manage_resources_permission()]}}
     end
   end
 

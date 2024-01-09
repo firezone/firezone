@@ -138,9 +138,6 @@ defmodule Web.Settings.IdentityProviders.Components do
   def view_provider(account, %{adapter: :google_workspace} = provider),
     do: ~p"/#{account}/settings/identity_providers/google_workspace/#{provider}"
 
-  def view_provider(account, %{adapter: :saml} = provider),
-    do: ~p"/#{account}/settings/identity_providers/saml/#{provider}"
-
   def sync_status(%{provider: %{provisioner: :custom}} = assigns) do
     ~H"""
     <div :if={not is_nil(@provider.last_synced_at)} class="flex items-center">

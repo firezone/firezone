@@ -70,7 +70,8 @@ defmodule Domain.ActorsTest do
       assert fetch_group_by_id(Ecto.UUID.generate(), subject) ==
                {:error,
                 {:unauthorized,
-                 [missing_permissions: [Actors.Authorizer.manage_actors_permission()]]}}
+                 reason: :missing_permissions,
+                 missing_permissions: [Actors.Authorizer.manage_actors_permission()]}}
     end
   end
 
@@ -130,7 +131,8 @@ defmodule Domain.ActorsTest do
       assert list_groups(subject) ==
                {:error,
                 {:unauthorized,
-                 [missing_permissions: [Actors.Authorizer.manage_actors_permission()]]}}
+                 reason: :missing_permissions,
+                 missing_permissions: [Actors.Authorizer.manage_actors_permission()]}}
     end
   end
 
@@ -252,7 +254,8 @@ defmodule Domain.ActorsTest do
       assert peek_group_actors([], 3, subject) ==
                {:error,
                 {:unauthorized,
-                 [missing_permissions: [Actors.Authorizer.manage_actors_permission()]]}}
+                 reason: :missing_permissions,
+                 missing_permissions: [Actors.Authorizer.manage_actors_permission()]}}
     end
   end
 
@@ -371,7 +374,8 @@ defmodule Domain.ActorsTest do
       assert peek_actor_groups([], 3, subject) ==
                {:error,
                 {:unauthorized,
-                 [missing_permissions: [Actors.Authorizer.manage_actors_permission()]]}}
+                 reason: :missing_permissions,
+                 missing_permissions: [Actors.Authorizer.manage_actors_permission()]}}
     end
   end
 
@@ -919,7 +923,8 @@ defmodule Domain.ActorsTest do
       assert create_group(%{}, subject) ==
                {:error,
                 {:unauthorized,
-                 [missing_permissions: [Actors.Authorizer.manage_actors_permission()]]}}
+                 reason: :missing_permissions,
+                 missing_permissions: [Actors.Authorizer.manage_actors_permission()]}}
     end
   end
 
@@ -1037,7 +1042,8 @@ defmodule Domain.ActorsTest do
       assert update_group(group, %{}, subject) ==
                {:error,
                 {:unauthorized,
-                 [missing_permissions: [Actors.Authorizer.manage_actors_permission()]]}}
+                 reason: :missing_permissions,
+                 missing_permissions: [Actors.Authorizer.manage_actors_permission()]}}
     end
 
     test "raises if group is synced", %{
@@ -1091,7 +1097,8 @@ defmodule Domain.ActorsTest do
       assert delete_group(group, subject) ==
                {:error,
                 {:unauthorized,
-                 [missing_permissions: [Actors.Authorizer.manage_actors_permission()]]}}
+                 reason: :missing_permissions,
+                 missing_permissions: [Actors.Authorizer.manage_actors_permission()]}}
     end
 
     test "raises if group is synced", %{
@@ -1152,7 +1159,8 @@ defmodule Domain.ActorsTest do
       assert fetch_actors_count_by_type(:foo, subject) ==
                {:error,
                 {:unauthorized,
-                 [missing_permissions: [Actors.Authorizer.manage_actors_permission()]]}}
+                 reason: :missing_permissions,
+                 missing_permissions: [Actors.Authorizer.manage_actors_permission()]}}
     end
   end
 
@@ -1260,7 +1268,8 @@ defmodule Domain.ActorsTest do
       assert fetch_actor_by_id("foo", subject) ==
                {:error,
                 {:unauthorized,
-                 [missing_permissions: [Actors.Authorizer.manage_actors_permission()]]}}
+                 reason: :missing_permissions,
+                 missing_permissions: [Actors.Authorizer.manage_actors_permission()]}}
     end
 
     test "associations are preloaded when opts given" do
@@ -1318,6 +1327,7 @@ defmodule Domain.ActorsTest do
           identity: nil,
           actor: %{id: Ecto.UUID.generate()},
           account: %{id: Ecto.UUID.generate()},
+          token_id: nil,
           context: nil,
           expires_at: nil,
           permissions: MapSet.new()
@@ -1350,7 +1360,8 @@ defmodule Domain.ActorsTest do
       assert list_actors(subject) ==
                {:error,
                 {:unauthorized,
-                 [missing_permissions: [Actors.Authorizer.manage_actors_permission()]]}}
+                 reason: :missing_permissions,
+                 missing_permissions: [Actors.Authorizer.manage_actors_permission()]}}
     end
 
     test "associations are preloaded when opts given" do
@@ -1451,7 +1462,8 @@ defmodule Domain.ActorsTest do
       assert create_actor(account, attrs, subject) ==
                {:error,
                 {:unauthorized,
-                 [missing_permissions: [Actors.Authorizer.manage_actors_permission()]]}}
+                 reason: :missing_permissions,
+                 missing_permissions: [Actors.Authorizer.manage_actors_permission()]}}
     end
 
     test "returns error when subject tries to create an account in another account", %{
@@ -1554,7 +1566,8 @@ defmodule Domain.ActorsTest do
       assert update_actor(actor, %{type: :foo}, subject) ==
                {:error,
                 {:unauthorized,
-                 [missing_permissions: [Actors.Authorizer.manage_actors_permission()]]}}
+                 reason: :missing_permissions,
+                 missing_permissions: [Actors.Authorizer.manage_actors_permission()]}}
     end
 
     test "allows changing not synced memberships", %{account: account, subject: subject} do
@@ -1778,7 +1791,8 @@ defmodule Domain.ActorsTest do
       assert disable_actor(actor, subject) ==
                {:error,
                 {:unauthorized,
-                 [missing_permissions: [Actors.Authorizer.manage_actors_permission()]]}}
+                 reason: :missing_permissions,
+                 missing_permissions: [Actors.Authorizer.manage_actors_permission()]}}
     end
   end
 
@@ -1837,7 +1851,8 @@ defmodule Domain.ActorsTest do
       assert enable_actor(actor, subject) ==
                {:error,
                 {:unauthorized,
-                 [missing_permissions: [Actors.Authorizer.manage_actors_permission()]]}}
+                 reason: :missing_permissions,
+                 missing_permissions: [Actors.Authorizer.manage_actors_permission()]}}
     end
   end
 
@@ -2007,7 +2022,8 @@ defmodule Domain.ActorsTest do
       assert delete_actor(actor, subject) ==
                {:error,
                 {:unauthorized,
-                 [missing_permissions: [Actors.Authorizer.manage_actors_permission()]]}}
+                 reason: :missing_permissions,
+                 missing_permissions: [Actors.Authorizer.manage_actors_permission()]}}
     end
   end
 

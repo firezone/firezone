@@ -239,8 +239,6 @@ defmodule Domain.Fixtures.Auth do
         random_provider_identifier(provider)
       end)
 
-    {provider_state, attrs} = Map.pop(attrs, :provider_state)
-
     {actor, attrs} =
       pop_assoc_fixture(attrs, :actor, fn assoc_attrs ->
         assoc_attrs
@@ -257,17 +255,61 @@ defmodule Domain.Fixtures.Auth do
 
     {:ok, identity} = Auth.upsert_identity(actor, provider, attrs)
 
-    if provider_state do
-      identity
-      |> Ecto.Changeset.change(provider_state: provider_state)
-      |> Repo.update!()
-    else
-      identity
-    end
+    attrs = Map.take(attrs, [:provider_state, :created_by])
+
+    identity
+    |> Ecto.Changeset.change(attrs)
+    |> Repo.update!()
   end
 
   def delete_identity(identity) do
     update!(identity, deleted_at: DateTime.utc_now())
+  end
+
+  def build_context(attrs \\ %{}) do
+    attrs = Enum.into(attrs, %{})
+
+    {type, attrs} = Map.pop(attrs, :type, :browser)
+
+    {user_agent, attrs} =
+      Map.pop_lazy(attrs, :user_agent, fn ->
+        user_agent()
+      end)
+
+    {remote_ip, attrs} =
+      Map.pop_lazy(attrs, :remote_ip, fn ->
+        remote_ip()
+      end)
+
+    {remote_ip_location_region, attrs} =
+      Map.pop_lazy(attrs, :remote_ip_location_region, fn ->
+        Enum.random(["US", "UA"])
+      end)
+
+    {remote_ip_location_city, attrs} =
+      Map.pop_lazy(attrs, :remote_ip_location_city, fn ->
+        Enum.random(["Odessa", "New York"])
+      end)
+
+    {remote_ip_location_lat, attrs} =
+      Map.pop_lazy(attrs, :remote_ip_location_city, fn ->
+        Enum.random([37.7758, 40.7128])
+      end)
+
+    {remote_ip_location_lon, _attrs} =
+      Map.pop_lazy(attrs, :remote_ip_location_city, fn ->
+        Enum.random([-122.4128, -74.0060])
+      end)
+
+    %Auth.Context{
+      type: type,
+      remote_ip: remote_ip,
+      remote_ip_location_region: remote_ip_location_region,
+      remote_ip_location_city: remote_ip_location_city,
+      remote_ip_location_lat: remote_ip_location_lat,
+      remote_ip_location_lon: remote_ip_location_lon,
+      user_agent: user_agent
+    }
   end
 
   def create_subject(attrs \\ %{}) do
@@ -340,46 +382,109 @@ defmodule Domain.Fixtures.Auth do
         DateTime.utc_now() |> DateTime.add(60, :second)
       end)
 
-    {user_agent, attrs} =
-      Map.pop_lazy(attrs, :user_agent, fn ->
-        user_agent()
+    {context, attrs} =
+      pop_assoc_fixture(attrs, :context, fn assoc_attrs ->
+        build_context(assoc_attrs)
       end)
 
-    {remote_ip, attrs} =
-      Map.pop_lazy(attrs, :remote_ip, fn ->
-        remote_ip()
+    {token, _attrs} =
+      pop_assoc_fixture(attrs, :token, fn assoc_attrs ->
+        assoc_attrs
+        |> Enum.into(%{
+          account: account,
+          type: context.type,
+          secret_nonce: Domain.Crypto.random_token(32, encoder: :hex32),
+          identity_id: identity.id,
+          expires_at: expires_at
+        })
+        |> Fixtures.Tokens.create_token()
       end)
 
-    {remote_ip_location_region, attrs} =
-      Map.pop_lazy(attrs, :remote_ip_location_region, fn ->
-        Enum.random(["US", "UA"])
+    Auth.build_subject(token, identity, context)
+  end
+
+  def create_and_encode_token(attrs) do
+    attrs = Enum.into(attrs, %{})
+
+    {account, attrs} =
+      pop_assoc_fixture(attrs, :account, fn assoc_attrs ->
+        relation = attrs[:provider] || attrs[:actor] || attrs[:identity]
+
+        if not is_nil(relation) and is_struct(relation) do
+          Repo.get!(Domain.Accounts.Account, relation.account_id)
+        else
+          Fixtures.Accounts.create_account(assoc_attrs)
+        end
       end)
 
-    {remote_ip_location_city, attrs} =
-      Map.pop_lazy(attrs, :remote_ip_location_city, fn ->
-        Enum.random(["Odessa", "New York"])
+    {provider, attrs} =
+      pop_assoc_fixture(attrs, :provider, fn assoc_attrs ->
+        relation = attrs[:identity]
+
+        if not is_nil(relation) and is_struct(relation) do
+          Repo.get!(Domain.Auth.Provider, relation.provider_id)
+        else
+          {provider, _bypass} =
+            assoc_attrs
+            |> Enum.into(%{account: account})
+            |> start_and_create_openid_connect_provider()
+
+          provider
+        end
       end)
 
-    {remote_ip_location_lat, attrs} =
-      Map.pop_lazy(attrs, :remote_ip_location_city, fn ->
-        Enum.random([37.7758, 40.7128])
+    {provider_identifier, attrs} =
+      Map.pop_lazy(attrs, :provider_identifier, fn ->
+        random_provider_identifier(provider)
       end)
 
-    {remote_ip_location_lon, _attrs} =
-      Map.pop_lazy(attrs, :remote_ip_location_city, fn ->
-        Enum.random([-122.4128, -74.0060])
+    {actor, attrs} =
+      pop_assoc_fixture(attrs, :actor, fn assoc_attrs ->
+        relation = attrs[:identity]
+
+        if not is_nil(relation) and is_struct(relation) do
+          Repo.get!(Domain.Actors.Actor, relation.actor_id)
+        else
+          assoc_attrs
+          |> Enum.into(%{
+            type: :account_admin_user,
+            account: account,
+            provider: provider,
+            provider_identifier: provider_identifier
+          })
+          |> Fixtures.Actors.create_actor()
+        end
       end)
 
-    context = %Auth.Context{
-      remote_ip: remote_ip,
-      remote_ip_location_region: remote_ip_location_region,
-      remote_ip_location_city: remote_ip_location_city,
-      remote_ip_location_lat: remote_ip_location_lat,
-      remote_ip_location_lon: remote_ip_location_lon,
-      user_agent: user_agent
-    }
+    {identity, attrs} =
+      pop_assoc_fixture(attrs, :identity, fn assoc_attrs ->
+        assoc_attrs
+        |> Enum.into(%{
+          actor: actor,
+          account: account,
+          provider: provider,
+          provider_identifier: provider_identifier
+        })
+        |> create_identity()
+      end)
 
-    Auth.build_subject(identity, expires_at, context)
+    {expires_at, attrs} =
+      Map.pop_lazy(attrs, :expires_at, fn ->
+        DateTime.utc_now() |> DateTime.add(60, :second)
+      end)
+
+    {context, attrs} =
+      pop_assoc_fixture(attrs, :context, fn assoc_attrs ->
+        build_context(assoc_attrs)
+      end)
+
+    {nonce, _attrs} =
+      Map.pop_lazy(attrs, :nonce, fn ->
+        Domain.Crypto.random_token(32, encoder: :hex32)
+      end)
+
+    {:ok, token} = Auth.create_token(identity, context, nonce, expires_at)
+    {token, nonce <> Domain.Tokens.encode_fragment!(token)}
   end
 
   def remove_permissions(%Auth.Subject{} = subject) do

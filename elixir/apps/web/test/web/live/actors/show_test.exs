@@ -5,11 +5,13 @@ defmodule Web.Live.Actors.ShowTest do
     account = Fixtures.Accounts.create_account()
     actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
 
-    assert live(conn, ~p"/#{account}/actors/#{actor}") ==
+    path = ~p"/#{account}/actors/#{actor}"
+
+    assert live(conn, path) ==
              {:error,
               {:redirect,
                %{
-                 to: ~p"/#{account}",
+                 to: ~p"/#{account}?#{%{redirect_to: path}}",
                  flash: %{"error" => "You must log in to access this page."}
                }}}
   end
@@ -30,10 +32,7 @@ defmodule Web.Live.Actors.ShowTest do
       |> live(~p"/#{account}/actors/#{actor}")
 
     assert html =~ "(deleted)"
-    refute html =~ "Danger Zone"
-    refute html =~ "Add"
-    refute html =~ "Edit"
-    refute html =~ "Deploy"
+    assert active_buttons(html) == []
   end
 
   test "renders breadcrumbs item", %{conn: conn} do
@@ -213,12 +212,15 @@ defmodule Web.Live.Actors.ShowTest do
   describe "users" do
     setup do
       account = Fixtures.Accounts.create_account()
+      Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
+      provider = Fixtures.Auth.create_email_provider(account: account)
       actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
-      identity = Fixtures.Auth.create_identity(account: account, actor: actor)
+      identity = Fixtures.Auth.create_identity(account: account, actor: actor, provider: provider)
 
       %{
         account: account,
         actor: actor,
+        provider: provider,
         identity: identity
       }
     end
@@ -312,7 +314,7 @@ defmodule Web.Live.Actors.ShowTest do
         "identity",
         "#{admin_identity.provider.name} #{admin_identity.provider_identifier}",
         fn row ->
-          assert row["actions"] == "Delete"
+          assert row["actions"] =~ "Delete"
           assert around_now?(row["last signed in"])
           assert around_now?(row["created"])
         end
@@ -321,7 +323,7 @@ defmodule Web.Live.Actors.ShowTest do
         "identity",
         "#{invited_identity.provider.name} #{invited_identity.provider_identifier}",
         fn row ->
-          assert row["actions"] == "Delete"
+          assert row["actions"] =~ "Delete"
           assert row["created"] =~ "by #{actor.name}"
           assert row["last signed in"] == "never"
         end
@@ -341,14 +343,12 @@ defmodule Web.Live.Actors.ShowTest do
     test "allows sending welcome email", %{
       account: account,
       actor: actor,
+      provider: provider,
       identity: admin_identity,
       conn: conn
     } do
-      Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
-      email_provider = Fixtures.Auth.create_email_provider(account: account)
-
       email_identity =
-        Fixtures.Auth.create_identity(account: account, actor: actor, provider: email_provider)
+        Fixtures.Auth.create_identity(account: account, actor: actor, provider: provider)
         |> Ecto.Changeset.change(
           created_by: :identity,
           created_by_identity_id: admin_identity.id
@@ -375,12 +375,10 @@ defmodule Web.Live.Actors.ShowTest do
     test "shows email button for identities with email", %{
       account: account,
       actor: actor,
+      provider: email_provider,
       identity: admin_identity,
       conn: conn
     } do
-      Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
-      email_provider = Fixtures.Auth.create_email_provider(account: account)
-
       {google_provider, _bypass} =
         Fixtures.Auth.start_and_create_google_workspace_provider(account: account)
 
@@ -477,6 +475,118 @@ defmodule Web.Live.Actors.ShowTest do
       |> render_click()
 
       assert_redirect(lv, ~p"/#{account}/actors/users/#{actor}/new_identity")
+    end
+
+    test "renders actor tokens", %{
+      account: account,
+      provider: provider,
+      identity: admin_identity,
+      conn: conn
+    } do
+      actor = Fixtures.Actors.create_actor(account: account)
+      identity = Fixtures.Auth.create_identity(account: account, actor: actor, provider: provider)
+
+      Fixtures.Tokens.create_token(
+        type: :client,
+        account: account,
+        identity: identity
+      )
+
+      Fixtures.Tokens.create_token(
+        account: account,
+        identity: identity,
+        last_seen_at: DateTime.utc_now(),
+        last_seen_remote_ip: Fixtures.Auth.remote_ip()
+      )
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(admin_identity)
+        |> live(~p"/#{account}/actors/#{actor}")
+
+      [row1, row2] =
+        lv
+        |> element("#tokens")
+        |> render()
+        |> table_to_map()
+
+      assert row1["type"] == "browser"
+      assert row1["expires"] in ["tomorrow", "in 24 hours"]
+      assert row1["last used (ip)"] == "never"
+      assert around_now?(row1["created"])
+      assert row1["actions"] == "Revoke"
+
+      assert row2["type"] == "client"
+      assert row2["expires"] in ["tomorrow", "in 24 hours"]
+      assert row2["last used (ip)"] == "never"
+      assert around_now?(row2["created"])
+      assert row2["actions"] == "Revoke"
+    end
+
+    test "allows revoking tokens", %{
+      account: account,
+      provider: provider,
+      identity: admin_identity,
+      conn: conn
+    } do
+      actor = Fixtures.Actors.create_actor(account: account)
+      identity = Fixtures.Auth.create_identity(account: account, actor: actor, provider: provider)
+
+      token =
+        Fixtures.Tokens.create_token(
+          type: :client,
+          account: account,
+          identity: identity
+        )
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(admin_identity)
+        |> live(~p"/#{account}/actors/#{actor}")
+
+      assert lv
+             |> element("td button", "Revoke")
+             |> render_click()
+
+      assert lv
+             |> element("#tokens")
+             |> render()
+             |> table_to_map() == []
+
+      assert Repo.get_by(Domain.Tokens.Token, id: token.id).deleted_at
+    end
+
+    test "allows revoking all tokens", %{
+      account: account,
+      provider: provider,
+      identity: admin_identity,
+      conn: conn
+    } do
+      actor = Fixtures.Actors.create_actor(account: account)
+      identity = Fixtures.Auth.create_identity(account: account, actor: actor, provider: provider)
+
+      token =
+        Fixtures.Tokens.create_token(
+          type: :client,
+          account: account,
+          identity: identity
+        )
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(admin_identity)
+        |> live(~p"/#{account}/actors/#{actor}")
+
+      assert lv
+             |> element("button", "Revoke All")
+             |> render_click()
+
+      assert lv
+             |> element("#tokens")
+             |> render()
+             |> table_to_map() == []
+
+      assert Repo.get_by(Domain.Tokens.Token, id: token.id).deleted_at
     end
 
     test "allows editing actors", %{
@@ -611,6 +721,9 @@ defmodule Web.Live.Actors.ShowTest do
       account = Fixtures.Accounts.create_account()
       actor = Fixtures.Actors.create_actor(type: :service_account, account: account)
 
+      Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
+      provider = Fixtures.Auth.create_email_provider(account: account)
+
       identity =
         Fixtures.Auth.create_identity(
           actor: [type: :account_admin_user],
@@ -620,6 +733,7 @@ defmodule Web.Live.Actors.ShowTest do
       %{
         account: account,
         actor: actor,
+        provider: provider,
         identity: identity
       }
     end
@@ -657,8 +771,17 @@ defmodule Web.Live.Actors.ShowTest do
       identity: admin_identity,
       conn: conn
     } do
-      identity = Fixtures.Auth.create_identity(account: account, actor: actor)
-      identity = Repo.preload(identity, :provider)
+      provider = Fixtures.Auth.create_token_provider(account: account)
+
+      identity =
+        Fixtures.Auth.create_identity(
+          account: account,
+          provider: provider,
+          actor: actor,
+          provider_virtual_state: %{
+            "expires_at" => DateTime.utc_now() |> DateTime.add(2, :second)
+          }
+        )
 
       {:ok, lv, _html} =
         conn
@@ -669,15 +792,11 @@ defmodule Web.Live.Actors.ShowTest do
       |> element("#actors")
       |> render()
       |> table_to_map()
-      |> with_table_row(
-        "identity",
-        "#{identity.provider.name} #{identity.provider_identifier}",
-        fn row ->
-          assert row["actions"] == "Delete"
-          assert around_now?(row["created"])
-          assert row["last signed in"] == "never"
-        end
-      )
+      |> with_table_row("identity", "#{provider.name} #{identity.provider_identifier}", fn row ->
+        assert row["actions"] == "Delete"
+        assert around_now?(row["created"])
+        assert row["last signed in"] == "never"
+      end)
     end
 
     test "allows deleting identities", %{
@@ -806,6 +925,118 @@ defmodule Web.Live.Actors.ShowTest do
              |> element_to_text() =~ "Actor was enabled."
 
       refute Repo.get(Domain.Actors.Actor, actor.id).disabled_at
+    end
+
+    test "renders actor tokens", %{
+      account: account,
+      provider: provider,
+      identity: admin_identity,
+      conn: conn
+    } do
+      actor = Fixtures.Actors.create_actor(account: account)
+      identity = Fixtures.Auth.create_identity(account: account, actor: actor, provider: provider)
+
+      Fixtures.Tokens.create_token(
+        type: :client,
+        account: account,
+        identity: identity
+      )
+
+      Fixtures.Tokens.create_token(
+        account: account,
+        identity: identity,
+        last_seen_at: DateTime.utc_now(),
+        last_seen_remote_ip: Fixtures.Auth.remote_ip()
+      )
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(admin_identity)
+        |> live(~p"/#{account}/actors/#{actor}")
+
+      [row1, row2] =
+        lv
+        |> element("#tokens")
+        |> render()
+        |> table_to_map()
+
+      assert row1["type"] == "browser"
+      assert row1["expires"] in ["tomorrow", "in 24 hours"]
+      assert row1["last used (ip)"] == "never"
+      assert around_now?(row1["created"])
+      assert row1["actions"] == "Revoke"
+
+      assert row2["type"] == "client"
+      assert row2["expires"] in ["tomorrow", "in 24 hours"]
+      assert row2["last used (ip)"] == "never"
+      assert around_now?(row2["created"])
+      assert row2["actions"] == "Revoke"
+    end
+
+    test "allows revoking tokens", %{
+      account: account,
+      provider: provider,
+      identity: admin_identity,
+      conn: conn
+    } do
+      actor = Fixtures.Actors.create_actor(account: account)
+      identity = Fixtures.Auth.create_identity(account: account, actor: actor, provider: provider)
+
+      token =
+        Fixtures.Tokens.create_token(
+          type: :client,
+          account: account,
+          identity: identity
+        )
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(admin_identity)
+        |> live(~p"/#{account}/actors/#{actor}")
+
+      assert lv
+             |> element("td button", "Revoke")
+             |> render_click()
+
+      assert lv
+             |> element("#tokens")
+             |> render()
+             |> table_to_map() == []
+
+      assert Repo.get_by(Domain.Tokens.Token, id: token.id).deleted_at
+    end
+
+    test "allows revoking all tokens", %{
+      account: account,
+      provider: provider,
+      identity: admin_identity,
+      conn: conn
+    } do
+      actor = Fixtures.Actors.create_actor(account: account)
+      identity = Fixtures.Auth.create_identity(account: account, actor: actor, provider: provider)
+
+      token =
+        Fixtures.Tokens.create_token(
+          type: :client,
+          account: account,
+          identity: identity
+        )
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(admin_identity)
+        |> live(~p"/#{account}/actors/#{actor}")
+
+      assert lv
+             |> element("button", "Revoke All")
+             |> render_click()
+
+      assert lv
+             |> element("#tokens")
+             |> render()
+             |> table_to_map() == []
+
+      assert Repo.get_by(Domain.Tokens.Token, id: token.id).deleted_at
     end
   end
 end

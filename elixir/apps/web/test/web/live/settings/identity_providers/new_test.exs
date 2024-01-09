@@ -21,11 +21,13 @@ defmodule Web.Live.Settings.IdentityProviders.NewTest do
   end
 
   test "redirects to sign in page for unauthorized user", %{account: account, conn: conn} do
-    assert live(conn, ~p"/#{account}/settings/identity_providers/new") ==
+    path = ~p"/#{account}/settings/identity_providers/new"
+
+    assert live(conn, path) ==
              {:error,
               {:redirect,
                %{
-                 to: ~p"/#{account}",
+                 to: ~p"/#{account}?#{%{redirect_to: path}}",
                  flash: %{"error" => "You must log in to access this page."}
                }}}
   end

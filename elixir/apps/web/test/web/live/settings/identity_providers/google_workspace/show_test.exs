@@ -6,11 +6,10 @@ defmodule Web.Live.Settings.IdentityProviders.GoogleWorkspace.ShowTest do
 
     account = Fixtures.Accounts.create_account()
     actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+    identity = Fixtures.Auth.create_identity(account: account, actor: actor)
 
     {provider, bypass} =
       Fixtures.Auth.start_and_create_google_workspace_provider(account: account)
-
-    identity = Fixtures.Auth.create_identity(account: account, actor: actor, provider: provider)
 
     %{
       account: account,
@@ -26,11 +25,13 @@ defmodule Web.Live.Settings.IdentityProviders.GoogleWorkspace.ShowTest do
     provider: provider,
     conn: conn
   } do
-    assert live(conn, ~p"/#{account}/settings/identity_providers/google_workspace/#{provider}") ==
+    path = ~p"/#{account}/settings/identity_providers/google_workspace/#{provider}"
+
+    assert live(conn, path) ==
              {:error,
               {:redirect,
                %{
-                 to: ~p"/#{account}",
+                 to: ~p"/#{account}?#{%{redirect_to: path}}",
                  flash: %{"error" => "You must log in to access this page."}
                }}}
   end
@@ -49,10 +50,7 @@ defmodule Web.Live.Settings.IdentityProviders.GoogleWorkspace.ShowTest do
       |> live(~p"/#{account}/settings/identity_providers/google_workspace/#{provider}")
 
     assert html =~ "(deleted)"
-    refute html =~ "Danger Zone"
-    refute html =~ "Add"
-    refute html =~ "Edit"
-    refute html =~ "Deploy"
+    assert active_buttons(html) == []
   end
 
   test "renders breadcrumbs item", %{
@@ -103,6 +101,7 @@ defmodule Web.Live.Settings.IdentityProviders.GoogleWorkspace.ShowTest do
     conn: conn
   } do
     provider = Fixtures.Auth.fail_provider_sync(provider)
+    Fixtures.Auth.create_identity(account: account, provider: provider)
 
     {:ok, lv, _html} =
       conn

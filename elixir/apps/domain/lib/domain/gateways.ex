@@ -170,7 +170,7 @@ defmodule Domain.Gateways do
       Token.Query.by_id(id)
       |> Repo.fetch_and_update(
         with: fn token ->
-          if Domain.Crypto.equal?(secret, token.hash) do
+          if Domain.Crypto.equal?(:argon2, secret, token.hash) do
             Token.Changeset.use(token)
           else
             :not_found
