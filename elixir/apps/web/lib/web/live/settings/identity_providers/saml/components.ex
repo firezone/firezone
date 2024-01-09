@@ -26,7 +26,7 @@ defmodule Web.Settings.IdentityProviders.SAML.Components do
 
   def provisioning_strategy_form(assigns) do
     ~H"""
-    <h2 class="mb-4 text-xl font-bold text-neutral-900">Provisioning strategy</h2>
+    <h2 class="mb-4 text-xl text-neutral-900">Provisioning strategy</h2>
     <ul class="mb-4 w-full sm:flex border border-neutral-200 rounded">
       <li class="w-full border-b border-neutral-200 sm:border-b-0 sm:border-r">
         <div class="text-lg font-medium p-3">

@@ -287,21 +287,21 @@ defmodule Web.FormComponents do
     ~H"""
     <div class="inline-flex rounded-md shadow-sm" role="group">
       <button type="button" class={~w[
-          px-4 py-2 text-sm font-medium text-neutral-900 bg-white border border-neutral-200
+          px-4 py-2 text-sm text-neutral-900 bg-white border border-neutral-200
           rounded-l hover:bg-neutral-100 hover:text-accent-700
         ]}>
         <%= render_slot(@first) %>
       </button>
       <%= for middle <- @middle do %>
         <button type="button" class={~w[
-            px-4 py-2 text-sm font-medium text-neutral-900 bg-white border-t border-b
+            px-4 py-2 text-sm text-neutral-900 bg-white border-t border-b
             border-neutral-200 hover:bg-neutral-100 hover:text-accent-700
           ]}>
           <%= render_slot(middle) %>
         </button>
       <% end %>
       <button type="button" class={~w[
-          px-4 py-2 text-sm font-medium text-neutral-900 bg-white border border-neutral-200
+          px-4 py-2 text-sm text-neutral-900 bg-white border border-neutral-200
           rounded-r hover:bg-neutral-100 hover:text-accent-700
         ]}>
         <%= render_slot(@last) %>
@@ -449,7 +449,7 @@ defmodule Web.FormComponents do
   defp button_style do
     [
       "flex items-center justify-center",
-      "rounded font-medium",
+      "rounded",
       "phx-submit-loading:opacity-75"
     ]
   end

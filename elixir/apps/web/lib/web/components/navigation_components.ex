@@ -27,7 +27,7 @@ defmodule Web.NavigationComponents do
             class="flex items-center justify-between mr-4"
           >
             <img src={~p"/images/logo.svg"} class="mr-3 h-8" alt="Firezone Logo" />
-            <span class="self-center text-2xl font-semibold whitespace-nowrap">
+            <span class="self-center text-2xl font-medium whitespace-nowrap">
               Firezone
             </span>
           </a>
@@ -53,7 +53,7 @@ defmodule Web.NavigationComponents do
   def subject_dropdown(assigns) do
     ~H"""
     <div class="py-3 px-4">
-      <span class="block text-sm font-semibold text-neutral-900">
+      <span class="block text-sm font-medium text-neutral-900">
         <%= @subject.actor.name %>
       </span>
       <span class="block text-sm text-neutral-900 truncate">
@@ -148,7 +148,7 @@ defmodule Web.NavigationComponents do
     <li>
       <.link navigate={@navigate} class={~w[
       flex items-center p-2
-      text-base font-medium text-neutral-900
+      text-base text-neutral-900
       rounded
       #{sidebar_item_active?(@current_path, @navigate) && @active_class}
       hover:bg-neutral-100
@@ -196,7 +196,7 @@ defmodule Web.NavigationComponents do
         type="button"
         class={~w[
           flex items-center p-2 w-full group rounded
-          text-base font-medium text-neutral-900
+          text-base text-neutral-900
           transition duration-75
           hover:bg-neutral-100]}
         aria-controls={"dropdown-#{@id}"}
@@ -217,7 +217,7 @@ defmodule Web.NavigationComponents do
         <li :for={item <- @item}>
           <.link navigate={item.navigate} class={~w[
               flex items-center p-2 pl-11 w-full group rounded
-              text-base font-medium text-neutral-900
+              text-base text-neutral-900
               #{String.starts_with?(@current_path, item.navigate) && @active_class}
               transition duration-75
               hover:bg-neutral-100]}>
@@ -272,15 +272,12 @@ defmodule Web.NavigationComponents do
         <.link
           :if={not is_nil(@path)}
           navigate={@path}
-          class="ml-1 font-medium text-neutral-700 hover:text-neutral-900 md:ml-2"
+          class="ml-1 text-neutral-700 hover:text-neutral-900 md:ml-2"
         >
           <%= render_slot(@inner_block) %>
         </.link>
 
-        <span
-          :if={is_nil(@path)}
-          class="ml-1 text-sm font-medium text-neutral-700 hover:text-neutral-900 md:ml-2"
-        >
+        <span :if={is_nil(@path)} class="ml-1 text-sm text-neutral-700 hover:text-neutral-900 md:ml-2">
           <%= render_slot(@inner_block) %>
         </span>
       </div>
