@@ -24,7 +24,7 @@ config :domain, Domain.Repo,
   database: "firezone_dev",
   show_sensitive_data_on_connection_error: true,
   pool_size: :erlang.system_info(:logical_processors_available) * 2,
-  queue_target: 5000,
+  queue_target: 500,
   queue_interval: 1000,
   migration_timestamps: [type: :timestamptz],
   start_apps_before_migration: [:ssl, :logger_json]
