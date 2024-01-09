@@ -164,14 +164,10 @@ where
 
         let (peer_sender, peer_receiver) = tokio::sync::mpsc::channel(PEER_QUEUE_SIZE);
 
-        let upstream_dns = self
-            .role_state
-            .lock()
-            .upstream_dns
-            .iter()
-            .next()
-            // TODO: use configured port
-            .map(|a| a.ip());
+        if let Some(upstream_dns) = self.role_state.lock().upstream_dns.iter().next() {
+            peer.transform.set_dns(upstream_dns.ip());
+        }
+
         start_handlers(
             Arc::clone(self),
             Arc::clone(&self.device),
@@ -179,7 +175,6 @@ where
             peer.clone(),
             ice,
             peer_receiver,
-            upstream_dns,
         );
 
         // Partial reads of peers_by_ip can be problematic in the very unlikely case of an expiration

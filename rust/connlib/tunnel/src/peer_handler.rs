@@ -18,7 +18,6 @@ pub(crate) async fn start_peer_handler<TId, TTransform>(
     callbacks: impl Callbacks + 'static,
     peer: Arc<Peer<TId, TTransform>>,
     channel: Arc<Endpoint>,
-    upstream_dns: Option<IpAddr>,
 ) where
     TId: Copy + fmt::Debug + Send + Sync + 'static,
     TTransform: PacketTransform,
@@ -29,7 +28,7 @@ pub(crate) async fn start_peer_handler<TId, TTransform>(
             tokio::time::sleep(Duration::from_millis(100)).await;
             continue;
         };
-        let result = peer_handler(&callbacks, &peer, channel.clone(), &device, upstream_dns).await;
+        let result = peer_handler(&callbacks, &peer, channel.clone(), &device).await;
 
         if matches!(result, Err(ref err) if err.raw_os_error() == Some(9)) {
             tracing::warn!("bad_file_descriptor");
@@ -51,7 +50,6 @@ async fn peer_handler<TId, TTransform>(
     peer: &Arc<Peer<TId, TTransform>>,
     channel: Arc<Endpoint>,
     device: &Device,
-    upstream_dns: Option<IpAddr>,
 ) -> std::io::Result<()>
 where
     TId: Copy,
@@ -72,7 +70,7 @@ where
 
         let src = &src_buf[..size];
 
-        match peer.decapsulate(src, &mut dst_buf, &upstream_dns) {
+        match peer.decapsulate(src, &mut dst_buf) {
             Ok(Some(WriteTo::Network(bytes))) => {
                 for packet in bytes {
                     if let Err(e) = channel.send(&packet).await {

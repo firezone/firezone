@@ -213,7 +213,7 @@ where
 
             tracing::trace!(target: "wire", action = "read", from = "device", dest = %packet.destination());
 
-            let packet = match role_state.handle_dns(packet) {
+            let (packet, dest) = match role_state.handle_dns(packet) {
                 Ok(Some(response)) => {
                     device.write(response)?;
                     continue;
@@ -222,7 +222,7 @@ where
                 Err(non_dns_packet) => non_dns_packet,
             };
 
-            let dest = packet.destination();
+            tracing::error!("destination: {dest}");
 
             let Some(peer) = peer_by_ip(&role_state.peers_by_ip, dest) else {
                 role_state.on_connection_intent_ip(dest);

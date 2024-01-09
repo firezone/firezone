@@ -248,7 +248,6 @@ where
             peer.clone(),
             ice,
             peer_receiver,
-            None,
         );
 
         insert_peers(

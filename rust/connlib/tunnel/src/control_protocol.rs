@@ -158,7 +158,6 @@ fn start_handlers<TId, TTransform, TRoleState>(
     peer: Arc<Peer<TId, TTransform>>,
     ice: Arc<RTCIceTransport>,
     peer_receiver: tokio::sync::mpsc::Receiver<Bytes>,
-    upstream_dns: Option<IpAddr>,
 ) where
     TId: Copy + Send + Sync + fmt::Debug + 'static,
     TTransform: Send + Sync + PacketTransform + 'static,
@@ -186,7 +185,6 @@ fn start_handlers<TId, TTransform, TRoleState>(
                 callbacks,
                 peer,
                 ep.clone(),
-                upstream_dns,
             ));
             tokio::spawn(peer_handler::handle_packet(ep, peer_receiver));
         }

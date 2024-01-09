@@ -1,8 +1,10 @@
 use std::borrow::Cow;
-use std::collections::VecDeque;
+use std::collections::{HashSet, VecDeque};
 use std::net::IpAddr;
 use std::sync::Arc;
+use std::time::Instant;
 
+use arc_swap::ArcSwapOption;
 use bimap::BiMap;
 use boringtun::noise::rate_limiter::RateLimiter;
 use boringtun::noise::{Tunn, TunnResult};
@@ -131,7 +133,6 @@ where
         &self,
         src: &[u8],
         dst: &'b mut [u8],
-        upstream_dns: &Option<IpAddr>,
     ) -> Result<Option<WriteTo<'b>>> {
         let mut tunnel = self.tunnel.lock();
 
@@ -152,10 +153,10 @@ where
                 Ok(Some(WriteTo::Network(packets)))
             }
             TunnResult::WriteToTunnelV4(packet, addr) => {
-                self.make_packet_for_resource(addr.into(), packet, upstream_dns)
+                self.make_packet_for_resource(addr.into(), packet)
             }
             TunnResult::WriteToTunnelV6(packet, addr) => {
-                self.make_packet_for_resource(addr.into(), packet, upstream_dns)
+                self.make_packet_for_resource(addr.into(), packet)
             }
         }
     }
@@ -164,11 +165,8 @@ where
         &self,
         addr: IpAddr,
         packet: &'a mut [u8],
-        upstream_dns: &Option<IpAddr>,
     ) -> Result<Option<WriteTo<'a>>> {
-        let (packet, addr) = self
-            .transform
-            .packet_untransform(&addr, packet, upstream_dns)?;
+        let (packet, addr) = self.transform.packet_untransform(&addr, packet)?;
 
         if !self.is_allowed(addr) {
             tracing::warn!("packet not allowed: {addr}");
@@ -199,6 +197,9 @@ impl Default for PacketTransformGateway {
 #[derive(Default)]
 pub struct PacketTransformClient {
     translations: RwLock<BiMap<IpAddr, IpAddr>>,
+    // TODO: we need to update upper layers to handle changing upstream dns
+    // TODO: Upstream dns could be not and ip
+    upstream_dns: ArcSwapOption<IpAddr>,
 }
 
 impl PacketTransformClient {
@@ -216,6 +217,10 @@ impl PacketTransformClient {
 
         translations.insert(proxy_ip, *ip);
         Some(proxy_ip)
+    }
+
+    pub fn set_dns(&self, ip_addr: IpAddr) {
+        self.upstream_dns.store(Some(Arc::new(ip_addr)));
     }
 }
 
@@ -243,8 +248,6 @@ pub(crate) trait PacketTransform {
         &self,
         addr: &IpAddr,
         packet: &'a mut [u8],
-        // TODO: this is invading gateway's code, we might want to think of another way to do it
-        upstream_dns: &Option<IpAddr>,
     ) -> Result<(device_channel::Packet<'a>, IpAddr)>;
 
     fn packet_transform<'a>(&self, packet: MutableIpPacket<'a>) -> Option<MutableIpPacket<'a>>;
@@ -255,7 +258,6 @@ impl PacketTransform for PacketTransformGateway {
         &self,
         addr: &IpAddr,
         packet: &'a mut [u8],
-        _: &Option<IpAddr>,
     ) -> Result<(device_channel::Packet<'a>, IpAddr)> {
         let Some(dst) = Tunn::dst_address(packet) else {
             return Err(Error::BadPacket);
@@ -280,7 +282,6 @@ impl PacketTransform for PacketTransformClient {
         &self,
         addr: &IpAddr,
         packet: &'a mut [u8],
-        upstream_dns: &Option<IpAddr>,
     ) -> Result<(device_channel::Packet<'a>, IpAddr)> {
         let translations = self.translations.read();
         let mut src = *translations.get_by_right(addr).unwrap_or(addr);
@@ -290,7 +291,12 @@ impl PacketTransform for PacketTransformClient {
         };
 
         let original_src = src;
-        if Some(src) == *upstream_dns {
+        if self
+            .upstream_dns
+            .load()
+            .as_ref()
+            .is_some_and(|upstream| **upstream == src)
+        {
             if let Some(dgm) = pkt.as_udp() {
                 if domain::base::Message::from_slice(dgm.payload()).is_ok() {
                     src = DNS_SENTINEL.into();
@@ -308,6 +314,23 @@ impl PacketTransform for PacketTransformClient {
         if let Some(translated_ip) = self.translations.read().get_by_left(&packet.destination()) {
             packet.set_dst(*translated_ip);
             packet.update_checksum();
+        }
+
+        if packet.destination() == DNS_SENTINEL {
+            if let Some(ip) = self.upstream_dns.load().as_ref() {
+                tracing::error!("we have an upstream: {ip:?}");
+                tracing::error!("the packet dest is {:?}", packet.destination());
+                // TODO: add is_dns function
+                tracing::error!("the packet is going there");
+                if let Some(dgm) = packet.as_udp() {
+                    tracing::error!("the packet is udp");
+                    if let Ok(message) = domain::base::Message::from_slice(dgm.payload()) {
+                        tracing::error!("setting ip");
+                        packet.set_dst(**ip);
+                        packet.update_checksum();
+                    }
+                }
+            }
         }
 
         Some(packet)

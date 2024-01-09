@@ -226,8 +226,8 @@ impl ClientState {
     /// Returns `Err` if the packet is not a DNS query.
     pub(crate) fn handle_dns<'a>(
         &mut self,
-        mut packet: MutableIpPacket<'a>,
-    ) -> Result<Option<Packet<'a>>, MutableIpPacket<'a>> {
+        packet: MutableIpPacket<'a>,
+    ) -> Result<Option<Packet<'a>>, (MutableIpPacket<'a>, IpAddr)> {
         match dns::parse(
             &self.dns_resources,
             &self.dns_resources_internal_ips,
@@ -244,12 +244,12 @@ impl ClientState {
                         .longest_match(upstream_dns.ip())
                         .is_some()
                     {
-                        packet.set_dst(upstream_dns.ip());
-                        packet.update_checksum();
-                        return Err(packet);
+                        // packet.set_dst(upstream_dns.ip());
+                        // packet.update_checksum();
+                        // return Err(packet);
+                        return Err((packet, upstream_dns.ip()));
                     }
                 }
-
                 self.add_pending_dns_query(query);
 
                 Ok(None)
@@ -261,7 +261,10 @@ impl ClientState {
 
                 Ok(None)
             }
-            None => Err(packet),
+            None => {
+                let dest = packet.destination();
+                Err((packet, dest))
+            }
         }
     }
 
