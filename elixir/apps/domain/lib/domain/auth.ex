@@ -38,24 +38,30 @@ defmodule Domain.Auth do
 
   ### Color Coding
 
-  The tokens are color coded using `type` field, which means that token issued for a browser session
+  The tokens are color coded using a `type` field, which means that a token issued for a browser session
   can not be used for client calls and vice versa. Type of the token also limits permissions that will
   be later added to the subject.
+
+  You can find all the token types in enum value of `type` field in `Domain.Tokens.Token` schema.
 
   ### Secure client exchange
 
   The tokens consists of two parts: client-supplied nonce (typically 32-byte hex-encoded string) and
   server-generated fragment.
 
-  Fragment is additionally signed and encrypted using `Phoenix.Token` to prevent tampering with it
-  and to prevent database lookups for invalid tokens. See `Domain.Tokens.encode_fragment!/1` for
+  The server-generated fragment is additionally signed using `Phoenix.Token` to prevent tampering with it
+  and make sure that database lookups won't be made for invalid tokens. See `Domain.Tokens.encode_fragment!/1` for
   more details.
 
   ### Expiration
 
-  Token expiration depends on context in which it can be used and is limited by
+  Token expiration depends on the context in which it can be used and is limited by
   `@max_session_duration_hours` to prevent extremely long-lived tokens for
-  `clients` and `browsers`. Fore more details see `token_expires_at/3`.
+  `clients` and `browsers`. For more details see `token_expires_at/3`.
+
+  ## Identity Providers
+
+  You can find all the IdP adapters in `Domain.Auth.Adapters` module.
   """
   use Supervisor
   alias Domain.{Repo, Validator}
@@ -64,6 +70,8 @@ defmodule Domain.Auth do
   alias Domain.Auth.{Adapters, Provider}
   alias Domain.Auth.Identity
 
+  # This session duration is used when IdP doesn't return the token expiration date,
+  # or no IdP is used (eg. sign in via magic link or userpass).
   @default_session_duration_hours [
     browser: [
       account_admin_user: 10,
@@ -75,6 +83,8 @@ defmodule Domain.Auth do
     ]
   ]
 
+  # We don't want to allow extremely long-lived sessions for clients and browsers
+  # even if IdP returns them.
   @max_session_duration_hours @default_session_duration_hours
 
   def start_link(opts) do
