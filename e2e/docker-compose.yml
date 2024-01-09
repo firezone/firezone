@@ -5,8 +5,8 @@ services:
   postgres:
     image: postgres:15.2
     volumes:
+      - ./increase-max-connections.sh:/docker-entrypoint-initdb.d/increase-max-connections.sh
       - postgres-data:/var/lib/postgresql/data
-    command: -c 'max_connections=200'
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
