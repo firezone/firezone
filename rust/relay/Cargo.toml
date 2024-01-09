@@ -7,7 +7,7 @@ edition = "2021"
 [dependencies]
 secrecy = { workspace = true }
 anyhow = "1.0.75"
-clap = { version = "4.4.7", features = ["derive", "env"] }
+clap = { version = "4.4.13", features = ["derive", "env"] }
 bytecodec = "0.4.15"
 futures = "0.3.29"
 hex = "0.4.3"
