@@ -160,6 +160,11 @@ jobs:
         working-directory: ./e2e
     steps:
       - uses: actions/checkout@v4
+      - run: docker compose logs e2e-client-1
+      - run: docker compose logs e2e-relay-1
+      - run: docker compose logs e2e-gateway-1
+      - run: docker compose logs e2e-api-1
+      - run: docker compose logs e2e-web-1
       - run: |
           docker compose down -v
           docker system prune --force --all --volumes
