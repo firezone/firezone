@@ -109,6 +109,17 @@ where
         Ok(())
     }
 
+    /// Sets the dns server.
+    pub fn set_upstream_dns(&self, upstream_dns: &[DnsServer]) {
+        self.role_state.lock().upstream_dns = upstream_dns
+            .iter()
+            .map(|dns| {
+                let DnsServer::IpPort(dns) = dns;
+                dns.address
+            })
+            .collect();
+    }
+
     /// Sets the interface configuration and starts background tasks.
     #[tracing::instrument(level = "trace", skip(self))]
     pub fn set_interface(&self, config: &InterfaceConfig) -> connlib_shared::Result<()> {
@@ -116,15 +127,6 @@ where
 
         self.device.store(Some(device.clone()));
         self.no_device_waker.wake();
-        self.role_state.lock().upstream_dns = config
-            .upstream_dns
-            .iter()
-            .map(|dns| {
-                let DnsServer::IpPort(dns) = dns;
-                dns.address
-            })
-            .collect();
-
         // TODO: the requirement for the DNS_SENTINEL means you NEED ipv4 stack
         // we are trying to support ipv4 and ipv6, so we should have an ipv6 dns sentinel
         // alternative.
