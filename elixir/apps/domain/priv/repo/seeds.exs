@@ -46,13 +46,6 @@ IO.puts("")
     adapter_config: %{}
   })
 
-{:ok, token_provider} =
-  Auth.create_provider(account, %{
-    name: "Token",
-    adapter: :token,
-    adapter_config: %{}
-  })
-
 {:ok, oidc_provider} =
   Auth.create_provider(account, %{
     name: "OIDC",
@@ -123,7 +116,7 @@ admin_actor_email = "firezone@localhost"
     }
   })
 
-unprivileged_actor_userpass_identity =
+_unprivileged_actor_userpass_identity =
   maybe_repo_update.(unprivileged_actor_userpass_identity,
     id: "7da7d1cd-111c-44a7-b5ac-4027b9d230e5"
   )
@@ -140,14 +133,6 @@ unprivileged_actor_userpass_identity =
     provider_virtual_state: %{
       "password" => "Firezone1234",
       "password_confirmation" => "Firezone1234"
-    }
-  })
-
-{:ok, service_account_actor_token_identity} =
-  Auth.create_identity(service_account_actor, token_provider, %{
-    provider_identifier: "tok-#{Ecto.UUID.generate()}",
-    provider_virtual_state: %{
-      "expires_at" => DateTime.utc_now() |> DateTime.add(365, :day)
     }
   })
 
@@ -205,12 +190,8 @@ nonce = "n"
 {:ok, unprivileged_actor_token} =
   Auth.create_token(unprivileged_actor_email_identity, unprivileged_actor_context, nonce, nil)
 
-unprivileged_subject =
-  Auth.build_subject(
-    unprivileged_actor_token,
-    unprivileged_actor_userpass_identity,
-    unprivileged_actor_context
-  )
+{:ok, unprivileged_subject} =
+  Auth.build_subject(unprivileged_actor_token, unprivileged_actor_context)
 
 admin_actor_context = %Auth.Context{
   type: :browser,
@@ -225,12 +206,14 @@ admin_actor_context = %Auth.Context{
 {:ok, admin_actor_token} =
   Auth.create_token(admin_actor_email_identity, admin_actor_context, nonce, nil)
 
-admin_subject =
-  Auth.build_subject(
-    admin_actor_token,
-    admin_actor_email_identity,
-    admin_actor_context
-  )
+{:ok, admin_subject} =
+  Auth.build_subject(admin_actor_token, admin_actor_context)
+
+{:ok, service_account_actor_encoded_token} =
+  Auth.create_service_account_token(service_account_actor, admin_subject, %{
+    "name" => "tok-#{Ecto.UUID.generate()}",
+    "expires_at" => DateTime.utc_now() |> DateTime.add(365, :day)
+  })
 
 IO.puts("Created users: ")
 
@@ -242,13 +225,7 @@ for {type, login, password, email_token} <- [
   IO.puts("  #{login}, #{type}, password: #{password}, email token: #{email_token} (exp in 15m)")
 end
 
-service_account_token = service_account_actor_token_identity.provider_virtual_state.changes.secret
-
-IO.puts(
-  "  #{service_account_actor_token_identity.provider_identifier}," <>
-    "#{service_account_actor.type}, token: #{service_account_token}"
-)
-
+IO.puts("  #{service_account_actor.name} token: #{service_account_actor_encoded_token}")
 IO.puts("")
 
 {:ok, user_iphone} =

@@ -79,7 +79,34 @@ defmodule Domain.FlowsTest do
       assert fetched_resource.authorized_by_policy.id == policy.id
     end
 
-    test "creates a network flow", %{
+    test "creates a network flow for users", %{
+      account: account,
+      gateway: gateway,
+      resource: resource,
+      policy: policy,
+      actor_group: actor_group
+    } do
+      actor = Fixtures.Actors.create_actor(type: :service_account, account: account)
+      client = Fixtures.Clients.create_client(account: account, actor: actor)
+      subject = Fixtures.Auth.create_subject(account: account, actor: actor)
+
+      Fixtures.Actors.create_membership(account: account, actor: actor, group: actor_group)
+
+      assert {:ok, _fetched_resource, %Flows.Flow{} = flow} =
+               authorize_flow(client, gateway, resource.id, subject)
+
+      assert flow.policy_id == policy.id
+      assert flow.client_id == client.id
+      assert flow.gateway_id == gateway.id
+      assert flow.resource_id == resource.id
+      assert flow.account_id == account.id
+      assert flow.client_remote_ip.address == subject.context.remote_ip
+      assert flow.client_user_agent == subject.context.user_agent
+      assert flow.gateway_remote_ip == gateway.last_seen_remote_ip
+      assert flow.expires_at == subject.expires_at
+    end
+
+    test "creates a network flow for service accounts", %{
       account: account,
       client: client,
       gateway: gateway,

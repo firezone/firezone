@@ -139,7 +139,7 @@ defmodule Web.AuthTest do
         |> put_account_session(:client, account.id, "bar")
 
       assert get_session(conn, "sessions") ==
-               Enum.take(sessions, -9) ++ [{:client, account.id, "bar"}]
+               Enum.take(sessions, -5) ++ [{:client, account.id, "bar"}]
     end
   end
 

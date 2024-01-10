@@ -95,6 +95,7 @@ defmodule Domain.AuthTest do
 
       subject =
         Fixtures.Auth.create_subject(
+          account: account,
           identity: identity,
           actor: [type: :account_admin_user]
         )
@@ -148,7 +149,6 @@ defmodule Domain.AuthTest do
 
     test "returns error when provider does not exist", %{subject: subject} do
       assert fetch_active_provider_by_adapter(:email, subject) == {:error, :not_found}
-      assert fetch_active_provider_by_adapter(:token, subject) == {:error, :not_found}
       assert fetch_active_provider_by_adapter(:userpass, subject) == {:error, :not_found}
     end
 
@@ -161,32 +161,32 @@ defmodule Domain.AuthTest do
     end
 
     test "returns error when provider is disabled", %{account: account, subject: subject} do
-      provider = Fixtures.Auth.create_token_provider(account: account)
+      provider = Fixtures.Auth.create_userpass_provider(account: account)
       {:ok, _provider} = disable_provider(provider, subject)
 
-      assert fetch_active_provider_by_adapter(:token, subject) == {:error, :not_found}
+      assert fetch_active_provider_by_adapter(:userpass, subject) == {:error, :not_found}
     end
 
     test "returns error when provider is deleted", %{account: account, subject: subject} do
-      provider = Fixtures.Auth.create_token_provider(account: account)
+      provider = Fixtures.Auth.create_userpass_provider(account: account)
       {:ok, _provider} = delete_provider(provider, subject)
 
-      assert fetch_active_provider_by_adapter(:token, subject) == {:error, :not_found}
+      assert fetch_active_provider_by_adapter(:userpass, subject) == {:error, :not_found}
     end
 
     test "returns provider and preloads", %{account: account, subject: subject} do
-      provider = Fixtures.Auth.create_token_provider(account: account)
+      provider = Fixtures.Auth.create_userpass_provider(account: account)
 
       assert {:ok, fetched_provider} =
-               fetch_active_provider_by_adapter(:token, subject, preload: [:account])
+               fetch_active_provider_by_adapter(:userpass, subject, preload: [:account])
 
       assert fetched_provider.id == provider.id
       assert Ecto.assoc_loaded?(fetched_provider.account)
     end
 
     test "does not return providers from other account", %{subject: subject} do
-      Fixtures.Auth.create_token_provider()
-      assert fetch_active_provider_by_adapter(:token, subject) == {:error, :not_found}
+      Fixtures.Auth.create_userpass_provider()
+      assert fetch_active_provider_by_adapter(:userpass, subject) == {:error, :not_found}
     end
 
     test "returns error when subject can not view providers", %{
@@ -209,10 +209,11 @@ defmodule Domain.AuthTest do
       Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
       Fixtures.Auth.create_userpass_provider(account: account)
       email_provider = Fixtures.Auth.create_email_provider(account: account)
-      token_provider = Fixtures.Auth.create_token_provider(account: account)
+
+      {oidc_provider, _bypass} =
+        Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
 
       Fixtures.Auth.create_email_provider()
-      Fixtures.Auth.create_token_provider()
 
       identity =
         Fixtures.Auth.create_identity(
@@ -223,7 +224,7 @@ defmodule Domain.AuthTest do
 
       subject = Fixtures.Auth.create_subject(identity: identity)
 
-      {:ok, _provider} = disable_provider(token_provider, subject)
+      {:ok, _provider} = disable_provider(oidc_provider, subject)
       {:ok, _provider} = delete_provider(email_provider, subject)
 
       assert {:ok, providers} = list_providers(subject)
@@ -231,7 +232,6 @@ defmodule Domain.AuthTest do
     end
 
     test "doesn't return providers from other accounts" do
-      Fixtures.Auth.create_token_provider()
       Fixtures.Auth.create_userpass_provider()
 
       subject = Fixtures.Auth.create_subject()
@@ -266,7 +266,9 @@ defmodule Domain.AuthTest do
       Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
       userpass_provider = Fixtures.Auth.create_userpass_provider(account: account)
       email_provider = Fixtures.Auth.create_email_provider(account: account)
-      token_provider = Fixtures.Auth.create_token_provider(account: account)
+
+      {oidc_provider, _bypass} =
+        Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
 
       identity =
         Fixtures.Auth.create_identity(
@@ -277,7 +279,7 @@ defmodule Domain.AuthTest do
 
       subject = Fixtures.Auth.create_subject(identity: identity)
 
-      {:ok, _provider} = disable_provider(token_provider, subject)
+      {:ok, _provider} = disable_provider(oidc_provider, subject)
       {:ok, _provider} = delete_provider(email_provider, subject)
 
       assert {:ok, [provider]} = list_active_providers_for_account(account)
@@ -285,7 +287,6 @@ defmodule Domain.AuthTest do
     end
 
     test "doesn't return providers from other accounts" do
-      Fixtures.Auth.create_token_provider()
       Fixtures.Auth.create_userpass_provider()
 
       account = Fixtures.Accounts.create_account()
@@ -575,16 +576,6 @@ defmodule Domain.AuthTest do
     } do
       Fixtures.Auth.create_userpass_provider(account: account)
       attrs = Fixtures.Auth.provider_attrs(adapter: :userpass)
-      assert {:error, changeset} = create_provider(account, attrs)
-      refute changeset.valid?
-      assert errors_on(changeset) == %{base: ["this provider is already enabled"]}
-    end
-
-    test "returns error if token provider is already enabled", %{
-      account: account
-    } do
-      Fixtures.Auth.create_token_provider(account: account)
-      attrs = Fixtures.Auth.provider_attrs(adapter: :token)
       assert {:error, changeset} = create_provider(account, attrs)
       refute changeset.valid?
       assert errors_on(changeset) == %{base: ["this provider is already enabled"]}
@@ -1067,11 +1058,9 @@ defmodule Domain.AuthTest do
     end
 
     test "returns error when trying to delete the last provider", %{
-      account: account,
       subject: subject,
       provider: provider
     } do
-      Fixtures.Auth.create_token_provider(account: account)
       assert delete_provider(provider, subject) == {:error, :cant_delete_the_last_provider}
     end
 
@@ -3102,6 +3091,7 @@ defmodule Domain.AuthTest do
 
       identity =
         Fixtures.Auth.create_identity(
+          actor: [type: :account_admin_user],
           account: account,
           provider: provider,
           user_agent: user_agent,
@@ -3135,42 +3125,69 @@ defmodule Domain.AuthTest do
       subject: subject
     } do
       one_day = DateTime.utc_now() |> DateTime.add(1, :day) |> DateTime.truncate(:second)
-      provider = Fixtures.Auth.create_token_provider(account: account)
-
       actor = Fixtures.Actors.create_actor(type: :service_account, account: account)
 
-      identity =
-        Fixtures.Auth.create_identity(
-          account: account,
-          provider: provider,
-          actor: actor,
-          user_agent: context.user_agent,
-          remote_ip: context.remote_ip,
-          provider_virtual_state: %{
-            "expires_at" => one_day
-          }
-        )
-
-      assert {:ok, encoded_token} = create_service_account_token(provider, identity, subject)
+      assert {:ok, encoded_token} =
+               create_service_account_token(actor, subject, %{
+                 "name" => "foo",
+                 "expires_at" => one_day
+               })
 
       assert {:ok, sa_subject} = authenticate(encoded_token, context)
       assert sa_subject.account.id == account.id
-      assert sa_subject.actor.id == identity.actor_id
-      assert sa_subject.identity.id == identity.id
+      assert sa_subject.actor.id == actor.id
+      refute sa_subject.identity
       assert sa_subject.context.type == context.type
+      assert sa_subject.permissions == fetch_type_permissions!(:service_account)
 
       assert token = Repo.get(Tokens.Token, sa_subject.token_id)
+      assert token.name == "foo"
       assert token.type == context.type
       assert token.account_id == account.id
-      assert token.identity_id == identity.id
+      refute token.identity_id
+      assert token.actor_id == actor.id
       assert token.created_by == :identity
       assert token.created_by_identity_id == subject.identity.id
       assert token.created_by_user_agent == context.user_agent
       assert token.created_by_remote_ip.address == context.remote_ip
-      assert sa_subject.permissions == fetch_type_permissions!(:service_account)
 
       assert sa_subject.expires_at == token.expires_at
       assert DateTime.truncate(sa_subject.expires_at, :second) == one_day
+    end
+
+    test "raises an error when trying to create a token for a different account", %{
+      subject: subject
+    } do
+      actor = Fixtures.Actors.create_actor(type: :service_account)
+
+      assert_raise FunctionClauseError, fn ->
+        create_service_account_token(actor, subject, %{})
+      end
+    end
+
+    test "raises an error when trying to create a token not for a service account", %{
+      account: account,
+      subject: subject
+    } do
+      actor = Fixtures.Actors.create_actor(type: :account_user, account: account)
+
+      assert_raise FunctionClauseError, fn ->
+        create_service_account_token(actor, subject, %{})
+      end
+    end
+
+    test "returns error on missing permissions", %{
+      account: account,
+      subject: subject
+    } do
+      actor = Fixtures.Actors.create_actor(type: :service_account, account: account)
+      subject = Fixtures.Auth.remove_permissions(subject)
+
+      assert create_service_account_token(actor, subject, %{}) ==
+               {:error,
+                {:unauthorized,
+                 reason: :missing_permissions,
+                 missing_permissions: [Authorizer.manage_service_accounts_permission()]}}
     end
   end
 
@@ -3344,26 +3361,15 @@ defmodule Domain.AuthTest do
       client_subject: subject
     } do
       one_day = DateTime.utc_now() |> DateTime.add(1, :day)
-      provider = Fixtures.Auth.create_token_provider(account: account)
-
       actor = Fixtures.Actors.create_actor(type: :service_account, account: account)
 
-      identity =
-        Fixtures.Auth.create_identity(
-          account: account,
-          provider: provider,
-          actor: actor,
-          user_agent: context.user_agent,
-          remote_ip: context.remote_ip,
-          provider_virtual_state: %{
-            "expires_at" => one_day
-          }
-        )
-
-      assert {:ok, encoded_token} = create_service_account_token(provider, identity, subject)
+      assert {:ok, encoded_token} =
+               create_service_account_token(actor, subject, %{
+                 "expires_at" => one_day
+               })
 
       assert {:ok, reconstructed_subject} = authenticate(encoded_token, context)
-      assert reconstructed_subject.identity.id == identity.id
+      refute reconstructed_subject.identity
       assert reconstructed_subject.actor.id == actor.id
       assert reconstructed_subject.account.id == account.id
       assert reconstructed_subject.permissions != subject.permissions

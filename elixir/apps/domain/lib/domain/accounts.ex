@@ -61,6 +61,11 @@ defmodule Domain.Accounts do
     end
   end
 
+  def fetch_account_by_id!(id) do
+    Account.Query.by_id(id)
+    |> Repo.one!()
+  end
+
   def create_account(attrs) do
     Account.Changeset.create(attrs)
     |> Repo.insert()
