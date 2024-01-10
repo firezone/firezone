@@ -196,7 +196,7 @@ fn generate_nonce() -> SecretString {
 
 /// Checks if two byte strings are equal in constant-time.
 /// May not be constant-time if the lengths differ:
-/// https://docs.rs/subtle/2.5.0/subtle/trait.ConstantTimeEq.html#impl-ConstantTimeEq-for-%5BT%5D
+/// <https://docs.rs/subtle/2.5.0/subtle/trait.ConstantTimeEq.html#impl-ConstantTimeEq-for-%5BT%5D>
 fn secure_equality(a: &SecretString, b: &SecretString) -> bool {
     let a = a.expose_secret().as_bytes();
     let b = b.expose_secret().as_bytes();
