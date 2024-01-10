@@ -164,6 +164,10 @@ where
 
         let (peer_sender, peer_receiver) = tokio::sync::mpsc::channel(PEER_QUEUE_SIZE);
 
+        if let Some(upstream_dns) = self.role_state.lock().upstream_dns.iter().next() {
+            peer.transform.set_dns(upstream_dns.ip());
+        }
+
         start_handlers(
             Arc::clone(self),
             Arc::clone(&self.device),
