@@ -476,43 +476,42 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.JobsTest do
           "Enable it by visiting https://console.developers.google.com/apis/api/admin.googleapis.com/overview?project=XXXX " <>
           "then retry. If you enabled this API recently, wait a few minutes for the action to propagate to our systems and retry."
 
-      response =
-        %{
-          "error" => %{
-            "code" => 403,
-            "message" => error_message,
-            "errors" => [
-              %{
-                "message" => error_message,
-                "domain" => "usageLimits",
-                "reason" => "accessNotConfigured",
-                "extendedHelp" => "https://console.developers.google.com"
-              }
-            ],
-            "status" => "PERMISSION_DENIED",
-            "details" => [
-              %{
-                "@type" => "type.googleapis.com/google.rpc.Help",
-                "links" => [
-                  %{
-                    "description" => "Google developers console API activation",
-                    "url" =>
-                      "https://console.developers.google.com/apis/api/admin.googleapis.com/overview?project=100421656358"
-                  }
-                ]
-              },
-              %{
-                "@type" => "type.googleapis.com/google.rpc.ErrorInfo",
-                "reason" => "SERVICE_DISABLED",
-                "domain" => "googleapis.com",
-                "metadata" => %{
-                  "service" => "admin.googleapis.com",
-                  "consumer" => "projects/100421656358"
+      response = %{
+        "error" => %{
+          "code" => 403,
+          "message" => error_message,
+          "errors" => [
+            %{
+              "message" => error_message,
+              "domain" => "usageLimits",
+              "reason" => "accessNotConfigured",
+              "extendedHelp" => "https://console.developers.google.com"
+            }
+          ],
+          "status" => "PERMISSION_DENIED",
+          "details" => [
+            %{
+              "@type" => "type.googleapis.com/google.rpc.Help",
+              "links" => [
+                %{
+                  "description" => "Google developers console API activation",
+                  "url" =>
+                    "https://console.developers.google.com/apis/api/admin.googleapis.com/overview?project=100421656358"
                 }
+              ]
+            },
+            %{
+              "@type" => "type.googleapis.com/google.rpc.ErrorInfo",
+              "reason" => "SERVICE_DISABLED",
+              "domain" => "googleapis.com",
+              "metadata" => %{
+                "service" => "admin.googleapis.com",
+                "consumer" => "projects/100421656358"
               }
-            ]
-          }
+            }
+          ]
         }
+      }
 
       Bypass.expect_once(bypass, "GET", "/admin/directory/v1/users", fn conn ->
         Plug.Conn.send_resp(conn, 403, Jason.encode!(response))

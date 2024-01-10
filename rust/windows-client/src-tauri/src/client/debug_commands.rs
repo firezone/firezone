@@ -4,6 +4,7 @@
 use crate::client::cli::Cli;
 use anyhow::Result;
 use tokio::runtime::Runtime;
+use windows::Win32::System::Com::{CoInitializeEx, CoUninitialize, COINIT_MULTITHREADED};
 
 // TODO: In tauri-plugin-deep-link, this is the identifier in tauri.conf.json
 const PIPE_NAME: &str = "dev.firezone.client";
@@ -13,6 +14,28 @@ pub fn hostname() -> Result<()> {
         "{:?}",
         hostname::get().ok().and_then(|x| x.into_string().ok())
     );
+    Ok(())
+}
+
+/// Listen for network change events from Windows
+pub fn network_changes() -> Result<()> {
+    tracing_subscriber::fmt::init();
+
+    // Must be called for each thread that will do COM stuff
+    unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) }?;
+
+    {
+        let _listener = crate::client::network_changes::Listener::new()?;
+        println!("Listening for network events for 1 minute");
+        std::thread::sleep(std::time::Duration::from_secs(60));
+    }
+
+    unsafe {
+        // Required, per CoInitializeEx docs
+        // Safety: Make sure all the COM objects are dropped before we call
+        // CoUninitialize or the program might segfault.
+        CoUninitialize();
+    }
     Ok(())
 }
 

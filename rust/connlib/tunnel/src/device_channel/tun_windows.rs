@@ -5,17 +5,15 @@ use std::{
     ffi::c_void,
     io,
     net::{SocketAddrV4, SocketAddrV6},
+    ops::Deref,
     os::windows::process::CommandExt,
     process::{Command, Stdio},
     str::FromStr,
-    sync::Arc,
+    sync::{Arc, Mutex},
     task::{Context, Poll},
 };
 use windows::Win32::{
-    Foundation::{BOOLEAN, HANDLE},
-    System::Threading::{RegisterWaitForSingleObject, INFINITE, WT_EXECUTEINWAITTHREAD},
-};
-use windows::Win32::{
+    self,
     NetworkManagement::{
         IpHelper::{
             CreateIpForwardEntry2, GetIpInterfaceEntry, InitializeIpForwardEntry,
@@ -25,6 +23,12 @@ use windows::Win32::{
     },
     Networking::WinSock::{AF_INET, AF_INET6},
 };
+use windows::Win32::{
+    Foundation::{BOOLEAN, HANDLE},
+    System::Threading::{
+        RegisterWaitForSingleObject, UnregisterWaitEx, INFINITE, WT_EXECUTEINWAITTHREAD,
+    },
+};
 
 // TODO: Double-check that all these get dropped gracefully on disconnect
 pub struct Tun {
@@ -32,16 +36,27 @@ pub struct Tun {
     /// The index of our network adapter, we can use this when asking Windows to add / remove routes / DNS rules
     /// It's stable across app restarts and I'm assuming across system reboots too.
     iface_idx: u32,
+    // Arc because the recv calls are implemented on Arc
     session: Arc<wintun::Session>,
-    waker: Arc<AtomicWaker>,
+    wait_handle: Win32::Foundation::HANDLE,
+    // Pin<Box> needed so that we can pass a pointer to the wait handle callback
+    // and it probably won't move. (I might be mis-understanding Pin here)
+    // Mutex needed because AtomicWaker has a debug assert if you call `register` concurrently
+    waker: Mutex<std::pin::Pin<Box<AtomicWaker>>>,
 }
 
 impl Drop for Tun {
     fn drop(&mut self) {
         tracing::debug!("dropping Tun");
-        if let Err(e) = self.session.shutdown() {
-            tracing::error!("wintun::Session::shutdown: {e:#?}");
-        }
+        // SAFETY: wait_handle should be valid because it's set when the Tun is created,
+        // and never changes after that, and is never used by any other functions.
+        // Rust should only call Drop once, so we shouldn't unregister the same wait twice.
+        // INVALID_HANDLE_VALUE means that we will wait for the callbacks to complete before
+        // returning from UnregisterWaitEx, so we don't drop a waker that's in use
+        // or about to be used.
+        unsafe { UnregisterWaitEx(self.wait_handle, Win32::Foundation::INVALID_HANDLE_VALUE) }
+            .unwrap();
+        self.session.shutdown().unwrap();
     }
 }
 
@@ -135,12 +150,29 @@ impl Tun {
             .status()?;
 
         let session = Arc::new(adapter.start_session(wintun::MAX_RING_CAPACITY)?);
+        let mut wait_handle = HANDLE(0isize);
+        let read_event = session.get_read_wait_event()?;
+        let waker = Box::pin(AtomicWaker::default());
+        let waker_ptr: *const AtomicWaker = waker.deref();
+
+        unsafe {
+            RegisterWaitForSingleObject(
+                &mut wait_handle,
+                HANDLE(read_event.0),
+                Some(callback),
+                Some(waker_ptr as *const _),
+                INFINITE, // Infinite timeout should be okay since we only set up one wait for tunnel instance, and we try to unregister this wait when the tunnel is dropped
+                WT_EXECUTEINWAITTHREAD,
+            )
+        }?;
+        let waker = Mutex::new(waker);
 
         Ok(Self {
             _adapter: adapter,
             iface_idx,
             session,
-            waker: Arc::new(Default::default()),
+            waker,
+            wait_handle,
         })
     }
 
@@ -182,10 +214,36 @@ impl Tun {
     }
 
     pub fn poll_read(&self, buf: &mut [u8], cx: &mut Context<'_>) -> Poll<io::Result<usize>> {
-        // wintun's API requires us to copy a packet here
-        let recv = self.session.try_receive();
-        match recv {
-            Ok(None) => {} // No packet available yet
+        // wintun's blocking receive internally spins 5 times before blocking,
+        // so I'll do the same here
+        for _ in 0..5 {
+            match self.try_receive(buf) {
+                Err(e) => return Poll::Ready(Err(e)),
+                Ok(None) => {}
+                Ok(Some(x)) => return Poll::Ready(Ok(x)),
+            }
+        }
+
+        {
+            let waker = self.waker.lock().unwrap();
+            waker.register(cx.waker());
+        }
+
+        // Must try_receive again in case a packet arrived while we were registering.
+        // https://docs.rs/futures/latest/futures/task/struct.AtomicWaker.html#examples
+        match self.try_receive(buf) {
+            Err(e) => return Poll::Ready(Err(e)),
+            Ok(None) => {}
+            Ok(Some(x)) => return Poll::Ready(Ok(x)),
+        }
+
+        Poll::Pending
+    }
+
+    /// Try to receive a packet without blocking
+    fn try_receive(&self, buf: &mut [u8]) -> io::Result<Option<usize>> {
+        match self.session.try_receive() {
+            Ok(None) => Ok(None), // No packet available yet
             Ok(Some(pkt)) => {
                 let bytes = pkt.bytes();
                 let len = bytes.len();
@@ -193,37 +251,14 @@ impl Tun {
                     // This shouldn't happen now that we set IPv4 and IPv6 MTU
                     // If it does, something is wrong.
                     tracing::warn!("Packet is too long to read ({len} bytes)");
-                    return Poll::Ready(Ok(0));
+                    return Ok(None);
                 }
+                // wintun's API requires this memcpy
                 buf[0..len].copy_from_slice(bytes);
-                return Poll::Ready(Ok(len));
+                Ok(Some(len))
             }
-            Err(err) => return Poll::Ready(Err(err.into())),
+            Err(err) => Err(err.into()),
         }
-
-        self.waker.register(cx.waker());
-        let wait_handle = match self.session.get_read_wait_event() {
-            Ok(handle) => handle,
-            Err(err) => return Poll::Ready(Err(err.into())),
-        };
-
-        let mut obj = HANDLE(0isize);
-
-        tracing::debug!("registering wait event");
-
-        unsafe {
-            RegisterWaitForSingleObject(
-                &mut obj,
-                HANDLE(wait_handle.0),
-                Some(callback),
-                Some(Arc::into_raw(self.waker.clone()) as *const _),
-                INFINITE,
-                WT_EXECUTEINWAITTHREAD,
-            )
-        }?;
-
-        // TODO: Cleanup
-        Poll::Pending
     }
 
     pub fn write4(&self, bytes: &[u8]) -> io::Result<usize> {
@@ -235,21 +270,27 @@ impl Tun {
     }
 
     fn write(&self, bytes: &[u8]) -> io::Result<usize> {
-        // TODO: If the ring buffer is full, don't panic, just return Ok(None) or an error or whatever the Unix impls do
         // Don't block.
-        let mut pkt = self
+        let Ok(mut pkt) = self
             .session
             .allocate_send_packet(bytes.len().try_into().unwrap())
-            .unwrap();
+        else {
+            // Couldn't write any bytes, the send buffer is full.
+            return Ok(0);
+        };
         pkt.bytes_mut().copy_from_slice(bytes);
         self.session.send_packet(pkt);
         Ok(bytes.len())
     }
 }
 
-// Callback function for Windows to wake us up to read a packet
+/// Callback function for Windows to wake us up to read a packet
+// SAFETY: Tun's Drop should unregister this callback before the waker gets dropped
+// Calling UnregisterWaitEx with INVALID_HANDLE_VALUE means that the Drop impl
+// will wait for this callback to complete before the waker is dropped.
 unsafe extern "system" fn callback(ctx: *mut c_void, _: BOOLEAN) {
-    Arc::from_raw(ctx as *const AtomicWaker).wake()
+    let waker = &*(ctx as *const AtomicWaker);
+    waker.wake()
 }
 
 /// Sets MTU on the interface

@@ -515,6 +515,46 @@ defmodule API.Client.ChannelTest do
                }
              ] = relays
     end
+
+    test "works with service accounts", %{
+      account: account,
+      dns_resource: resource,
+      gateway: gateway,
+      actor_group: actor_group
+    } do
+      actor = Fixtures.Actors.create_actor(type: :service_account, account: account)
+      client = Fixtures.Clients.create_client(account: account, actor: actor)
+      Fixtures.Actors.create_membership(account: account, actor: actor, group: actor_group)
+
+      identity = Fixtures.Auth.create_identity(account: account, actor: actor)
+      subject = Fixtures.Auth.create_subject(account: account, actor: actor, identity: identity)
+
+      {:ok, _reply, socket} =
+        API.Client.Socket
+        |> socket("client:#{client.id}", %{
+          opentelemetry_ctx: OpenTelemetry.Ctx.new(),
+          opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test"),
+          client: client,
+          subject: subject
+        })
+        |> subscribe_and_join(API.Client.Channel, "client")
+
+      global_relay_group = Fixtures.Relays.create_global_group()
+
+      :ok =
+        Fixtures.Relays.create_relay(
+          group: global_relay_group,
+          last_seen_remote_ip_location_lat: 37,
+          last_seen_remote_ip_location_lon: -120
+        )
+        |> Domain.Relays.connect_relay(Ecto.UUID.generate())
+
+      :ok = Domain.Gateways.connect_gateway(gateway)
+
+      ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
+
+      assert_reply ref, :ok, %{}
+    end
   end
 
   describe "handle_in/3 reuse_connection" do
@@ -637,6 +677,41 @@ defmodule API.Client.ChannelTest do
         gateway_public_key: ^public_key,
         gateway_payload: "DNS_RPL"
       }
+    end
+
+    test "works with service accounts", %{
+      account: account,
+      dns_resource: resource,
+      gateway: gateway,
+      actor_group: actor_group
+    } do
+      actor = Fixtures.Actors.create_actor(type: :service_account, account: account)
+      client = Fixtures.Clients.create_client(account: account, actor: actor)
+      Fixtures.Actors.create_membership(account: account, actor: actor, group: actor_group)
+
+      identity = Fixtures.Auth.create_identity(account: account, actor: actor)
+      subject = Fixtures.Auth.create_subject(account: account, actor: actor, identity: identity)
+
+      {:ok, _reply, socket} =
+        API.Client.Socket
+        |> socket("client:#{client.id}", %{
+          opentelemetry_ctx: OpenTelemetry.Ctx.new(),
+          opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test"),
+          client: client,
+          subject: subject
+        })
+        |> subscribe_and_join(API.Client.Channel, "client")
+
+      :ok = Domain.Gateways.connect_gateway(gateway)
+      Phoenix.PubSub.subscribe(Domain.PubSub, API.Gateway.Socket.id(gateway))
+
+      push(socket, "reuse_connection", %{
+        "resource_id" => resource.id,
+        "gateway_id" => gateway.id,
+        "payload" => "DNS_Q"
+      })
+
+      assert_receive {:allow_access, _refs, _payload, _opentelemetry_ctx}
     end
   end
 
@@ -767,6 +842,42 @@ defmodule API.Client.ChannelTest do
         gateway_public_key: ^public_key,
         gateway_payload: "FULL_RTC_SD"
       }
+    end
+
+    test "works with service accounts", %{
+      account: account,
+      dns_resource: resource,
+      gateway: gateway,
+      actor_group: actor_group
+    } do
+      actor = Fixtures.Actors.create_actor(type: :service_account, account: account)
+      client = Fixtures.Clients.create_client(account: account, actor: actor)
+      Fixtures.Actors.create_membership(account: account, actor: actor, group: actor_group)
+
+      identity = Fixtures.Auth.create_identity(account: account, actor: actor)
+      subject = Fixtures.Auth.create_subject(account: account, actor: actor, identity: identity)
+
+      {:ok, _reply, socket} =
+        API.Client.Socket
+        |> socket("client:#{client.id}", %{
+          opentelemetry_ctx: OpenTelemetry.Ctx.new(),
+          opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test"),
+          client: client,
+          subject: subject
+        })
+        |> subscribe_and_join(API.Client.Channel, "client")
+
+      :ok = Domain.Gateways.connect_gateway(gateway)
+      Phoenix.PubSub.subscribe(Domain.PubSub, API.Gateway.Socket.id(gateway))
+
+      push(socket, "request_connection", %{
+        "resource_id" => resource.id,
+        "gateway_id" => gateway.id,
+        "client_payload" => "RTC_SD",
+        "client_preshared_key" => "PSK"
+      })
+
+      assert_receive {:request_connection, _refs, _payload, _opentelemetry_ctx}
     end
   end
 

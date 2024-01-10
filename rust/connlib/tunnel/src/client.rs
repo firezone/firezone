@@ -9,8 +9,8 @@ use crate::{
 use boringtun::x25519::{PublicKey, StaticSecret};
 use connlib_shared::error::{ConnlibError as Error, ConnlibError};
 use connlib_shared::messages::{
-    GatewayId, Interface as InterfaceConfig, Key, ResourceDescription, ResourceDescriptionCidr,
-    ResourceDescriptionDns, ResourceId, ReuseConnection, SecretKey,
+    DnsServer, GatewayId, Interface as InterfaceConfig, Key, ResourceDescription,
+    ResourceDescriptionCidr, ResourceDescriptionDns, ResourceId, ReuseConnection, SecretKey,
 };
 use connlib_shared::{Callbacks, Dname, DNS_SENTINEL};
 use domain::base::Rtype;
@@ -25,7 +25,7 @@ use itertools::Itertools;
 use rand_core::OsRng;
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
@@ -107,6 +107,30 @@ where
         }
 
         Ok(())
+    }
+
+    /// Sets the dns server.
+    pub fn set_upstream_dns(&self, upstream_dns: &[DnsServer]) {
+        let upstream_dns: HashSet<_> = upstream_dns
+            .iter()
+            .map(|dns| {
+                let DnsServer::IpPort(dns) = dns;
+                dns.address
+            })
+            .collect();
+
+        // TODO: assuming single dns
+        let Some(upstream_dns_srv) = upstream_dns.iter().next().cloned() else {
+            return;
+        };
+
+        self.role_state.lock().upstream_dns = upstream_dns;
+
+        self.role_state
+            .lock()
+            .peers_by_ip
+            .iter()
+            .for_each(|p| p.1.inner.transform.set_dns(upstream_dns_srv.ip()));
     }
 
     /// Sets the interface configuration and starts background tasks.
@@ -199,6 +223,8 @@ pub struct ClientState {
     pub ip_provider: IpProvider,
 
     refresh_dns_timer: Interval,
+
+    pub upstream_dns: HashSet<SocketAddr>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -217,7 +243,7 @@ impl ClientState {
     pub(crate) fn handle_dns<'a>(
         &mut self,
         packet: MutableIpPacket<'a>,
-    ) -> Result<Option<Packet<'a>>, MutableIpPacket<'a>> {
+    ) -> Result<Option<Packet<'a>>, (MutableIpPacket<'a>, IpAddr)> {
         match dns::parse(
             &self.dns_resources,
             &self.dns_resources_internal_ips,
@@ -225,6 +251,19 @@ impl ClientState {
         ) {
             Some(dns::ResolveStrategy::LocalResponse(query)) => Ok(Some(query)),
             Some(dns::ResolveStrategy::ForwardQuery(query)) => {
+                // There's an edge case here, where the resolver's ip has been resolved before as
+                // a dns resource... we will ignore that weird case for now.
+                // Assuming a single upstream dns until #3123 lands
+                if let Some(upstream_dns) = self.upstream_dns.iter().next() {
+                    if self
+                        .cidr_resources
+                        .longest_match(upstream_dns.ip())
+                        .is_some()
+                    {
+                        return Err((packet, upstream_dns.ip()));
+                    }
+                }
+
                 self.add_pending_dns_query(query);
 
                 Ok(None)
@@ -236,7 +275,10 @@ impl ClientState {
 
                 Ok(None)
             }
-            None => Err(packet),
+            None => {
+                let dest = packet.destination();
+                Err((packet, dest))
+            }
         }
     }
 
@@ -694,6 +736,7 @@ impl Default for ClientState {
             peers_by_ip: IpNetworkTable::new(),
             deferred_dns_queries: Default::default(),
             refresh_dns_timer: interval,
+            upstream_dns: Default::default(),
         }
     }
 }
@@ -767,6 +810,11 @@ impl RoleState for ClientState {
 
             if self.refresh_dns_timer.poll_tick(cx).is_ready() {
                 let mut connections = Vec::new();
+
+                self.peers_by_ip
+                    .iter()
+                    .for_each(|p| p.1.inner.transform.expire_dns_track());
+
                 for resource in self.dns_resources_internal_ips.keys() {
                     let Some(gateway_id) = self.resources_gateways.get(&resource.id) else {
                         continue;

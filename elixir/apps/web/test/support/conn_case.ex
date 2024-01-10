@@ -67,7 +67,7 @@ defmodule Web.ConnCase do
     nonce = "nonce"
     {:ok, token} = Domain.Auth.create_token(identity, context, nonce, expires_in)
     encoded_fragment = Domain.Tokens.encode_fragment!(token)
-    subject = Domain.Auth.build_subject(token, identity, context)
+    {:ok, subject} = Domain.Auth.build_subject(token, context)
 
     conn
     |> Web.Auth.put_account_session(context.type, identity.account_id, nonce <> encoded_fragment)
@@ -94,8 +94,7 @@ defmodule Web.ConnCase do
     cookie_key = "fz_auth_state_#{provider.id}"
     %{value: signed_state} = redirected_conn.resp_cookies[cookie_key]
 
-    conn_with_cookie =
-      put_req_cookie(conn, "fz_auth_state_#{provider.id}", signed_state)
+    conn_with_cookie = put_req_cookie(conn, "fz_auth_state_#{provider.id}", signed_state)
 
     {conn_with_cookie, secret}
   end
@@ -113,8 +112,7 @@ defmodule Web.ConnCase do
 
     %{value: signed_state} = redirected_conn.resp_cookies[cookie_key]
 
-    conn_with_cookie =
-      put_req_cookie(conn, "fz_auth_state_#{provider.id}", signed_state)
+    conn_with_cookie = put_req_cookie(conn, "fz_auth_state_#{provider.id}", signed_state)
 
     {conn_with_cookie, state, verifier}
   end

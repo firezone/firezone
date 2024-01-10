@@ -13,6 +13,7 @@ pub struct Cli {
 pub enum CliCommands {
     Debug,
     DebugHostname,
+    DebugNetworkChanges,
     DebugPipeServer,
     DebugWintun,
     Elevated,

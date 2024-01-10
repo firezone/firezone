@@ -19,6 +19,12 @@ defmodule Domain.Flows.Authorizer do
     ]
   end
 
+  def list_permissions_for_role(:service_account) do
+    [
+      create_flows_permission()
+    ]
+  end
+
   def list_permissions_for_role(_) do
     []
   end
