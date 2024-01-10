@@ -105,8 +105,6 @@ where
             .get_awaiting_connection_domain(&resource_id)?
             .clone();
 
-        tracing::trace!(%gateway_id, %resource_id, ?domain, "initiating_connection");
-
         let IceConnection {
             ice_parameters,
             ice_transport,
