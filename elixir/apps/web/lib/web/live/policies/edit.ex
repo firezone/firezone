@@ -14,7 +14,6 @@ defmodule Web.Policies.Edit do
       socket =
         assign(socket,
           policy: policy,
-          page_title: "Edit Policy",
           form: form,
           page_title: "Policies"
         )
