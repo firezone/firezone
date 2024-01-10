@@ -31,20 +31,12 @@ defmodule Domain.Tokens.Token.Query do
   end
 
   def by_actor_id(queryable \\ not_deleted(), actor_id) do
-    queryable
-    |> with_joined_identity()
-    |> where([identity: identity], identity.actor_id == ^actor_id)
+    where(queryable, [tokens: tokens], tokens.actor_id == ^actor_id)
   end
 
   def with_joined_account(queryable \\ not_deleted()) do
     with_named_binding(queryable, :account, fn queryable, binding ->
       join(queryable, :inner, [tokens: tokens], account in assoc(tokens, ^binding), as: ^binding)
-    end)
-  end
-
-  def with_joined_identity(queryable \\ not_deleted()) do
-    with_named_binding(queryable, :identity, fn queryable, binding ->
-      join(queryable, :inner, [tokens: tokens], identity in assoc(tokens, ^binding), as: ^binding)
     end)
   end
 end

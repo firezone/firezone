@@ -147,9 +147,10 @@ defmodule Domain.Clients do
     Client.Changeset.update(client, attrs)
   end
 
-  def upsert_client(attrs \\ %{}, %Auth.Subject{identity: %Auth.Identity{} = identity} = subject) do
+  def upsert_client(attrs \\ %{}, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_own_clients_permission()) do
-      changeset = Client.Changeset.upsert(identity, subject.context, attrs)
+      assoc = subject.identity || subject.actor
+      changeset = Client.Changeset.upsert(assoc, subject.context, attrs)
 
       Ecto.Multi.new()
       |> Ecto.Multi.insert(:client, changeset,
