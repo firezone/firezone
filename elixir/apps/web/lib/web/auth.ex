@@ -288,7 +288,7 @@ defmodule Web.Auth do
     context = get_auth_context(conn, :browser)
 
     with account when not is_nil(account) <- Map.get(conn.assigns, :account),
-         sessions <- Plug.Conn.get_session(conn, :sessions, []),
+         sessions = Plug.Conn.get_session(conn, :sessions, []),
          {:ok, encoded_fragment} <- fetch_token(sessions, account.id, context.type),
          {:ok, subject} <- Auth.authenticate(encoded_fragment, context),
          true <- subject.account.id == account.id do
@@ -410,14 +410,22 @@ defmodule Web.Auth do
   """
   def redirect_if_user_is_authenticated(%Plug.Conn{} = conn, _opts) do
     if subject = conn.assigns[:subject] do
-      redirect_to = signed_in_path(subject.account)
+      redirect_params = take_sign_in_params(conn.query_params)
+      encoded_fragment = fetch_subject_token!(conn, subject)
+      identity = %{subject.identity | actor: subject.actor}
 
       conn
-      |> Phoenix.Controller.redirect(to: redirect_to)
+      |> signed_in_redirect(identity, subject.context, encoded_fragment, redirect_params)
       |> Plug.Conn.halt()
     else
       conn
     end
+  end
+
+  defp fetch_subject_token!(conn, %Auth.Subject{} = subject) do
+    sessions = Plug.Conn.get_session(conn, :sessions, [])
+    {:ok, encoded_fragment} = fetch_token(sessions, subject.account.id, subject.context.type)
+    encoded_fragment
   end
 
   @doc """
