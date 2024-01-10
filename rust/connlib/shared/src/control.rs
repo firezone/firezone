@@ -34,7 +34,7 @@ pub type Reference = String;
 // TODO: Refactor this PhoenixChannel to use the top-level phoenix-channel crate instead.
 // See https://github.com/firezone/firezone/issues/2158
 pub struct SecureUrl {
-    inner: Url,
+    pub inner: Url,
 }
 impl SecureUrl {
     pub fn from_url(url: Url) -> Self {

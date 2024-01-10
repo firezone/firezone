@@ -3,6 +3,7 @@ use clap::Parser;
 use cli::CliCommands as Cmd;
 use std::{os::windows::process::CommandExt, process::Command};
 
+mod auth;
 mod cli;
 mod debug_commands;
 mod deep_link;

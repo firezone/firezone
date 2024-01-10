@@ -1,6 +1,7 @@
 //! A module for registering, catching, and parsing deep links that are sent over to the app's already-running instance
 //! Based on reading some of the Windows code from <https://github.com/FabianLars/tauri-plugin-deep-link>, which is licensed "MIT OR Apache-2.0"
 
+use crate::client::auth::Response as AuthResponse;
 use secrecy::SecretString;
 use std::{ffi::c_void, io, path::Path};
 use tokio::{io::AsyncReadExt, io::AsyncWriteExt, net::windows::named_pipe};
@@ -34,15 +35,9 @@ pub enum Error {
     WindowsRegistry(io::Error),
 }
 
-pub(crate) struct AuthCallback {
-    pub actor_name: String,
-    pub token: SecretString,
-    pub _identifier: SecretString,
-}
-
-pub(crate) fn parse_auth_callback(url: &url::Url) -> Option<AuthCallback> {
+pub(crate) fn parse_auth_callback(url: &url::Url) -> Option<AuthResponse> {
     match url.host() {
-        Some(url::Host::Domain("handle_client_auth_callback")) => {}
+        Some(url::Host::Domain("handle_client_sign_in_callback")) => {}
         _ => return None,
     }
     if url.path() != "/" {
@@ -50,8 +45,8 @@ pub(crate) fn parse_auth_callback(url: &url::Url) -> Option<AuthCallback> {
     }
 
     let mut actor_name = None;
-    let mut token = None;
-    let mut identifier = None;
+    let mut fragment = None;
+    let mut state = None;
 
     for (key, value) in url.query_pairs() {
         match key.as_ref() {
@@ -62,28 +57,28 @@ pub(crate) fn parse_auth_callback(url: &url::Url) -> Option<AuthCallback> {
                 }
                 actor_name = Some(value.to_string());
             }
-            "client_auth_token" => {
-                if token.is_some() {
-                    // client_auth_token must appear exactly once
+            "fragment" => {
+                if fragment.is_some() {
+                    // must appear exactly once
                     return None;
                 }
-                token = Some(SecretString::new(value.to_string()));
+                fragment = Some(SecretString::new(value.to_string()));
             }
-            "identity_provider_identifier" => {
-                if identifier.is_some() {
-                    // identity_provider_identifier must appear exactly once
+            "state" => {
+                if state.is_some() {
+                    // must appear exactly once
                     return None;
                 }
-                identifier = Some(SecretString::new(value.to_string()));
+                state = Some(SecretString::new(value.to_string()));
             }
             _ => {}
         }
     }
 
-    Some(AuthCallback {
+    Some(AuthResponse {
         actor_name: actor_name?,
-        token: token?,
-        _identifier: identifier?,
+        fragment: fragment?,
+        state: state?,
     })
 }
 
@@ -235,15 +230,16 @@ mod tests {
 
     #[test]
     fn parse_auth_callback() -> Result<()> {
-        let input = "firezone://handle_client_auth_callback/?actor_name=Reactor+Scram&client_auth_token=a_very_secret_string&identity_provider_identifier=12345";
+        let input = "firezone://handle_client_sign_in_callback/?actor_name=Reactor+Scram&fragment=a_very_secret_string&state=a_less_secret_string&identity_provider_identifier=12345";
         let input = url::Url::parse(input)?;
         dbg!(&input);
         let actual = super::parse_auth_callback(&input).unwrap();
 
         assert_eq!(actual.actor_name, "Reactor Scram");
-        assert_eq!(actual.token.expose_secret(), "a_very_secret_string");
+        assert_eq!(actual.fragment.expose_secret(), "a_very_secret_string");
+        assert_eq!(actual.state.expose_secret(), "a_less_secret_string");
 
-        let input = "firezone://not_handle_client_auth_callback/?actor_name=Reactor+Scram&client_auth_token=a_very_secret_string&identity_provider_identifier=12345";
+        let input = "firezone://not_handle_client_sign_in_callback/?actor_name=Reactor+Scram&fragment=a_very_secret_string&state=a_less_secret_string&identity_provider_identifier=12345";
         let actual = super::parse_auth_callback(&url::Url::parse(input)?);
         assert!(actual.is_none());
 
