@@ -36,6 +36,7 @@ url = { version = "2.5.0", features = ["serde"] }
 uuid = { version = "1.5.0", features = ["v4"] }
 tracing-panic = "0.1.1"
 zip = { version = "0.6.6", features = ["deflate", "time"], default-features = false }
+windows-implement = "0.52.0"
 
 # These dependencies are locked behind `cfg(windows)` because they either can't compile at all on Linux, or they need native dependencies like glib that are difficult to get. Try not to add more here.
 
@@ -49,10 +50,16 @@ wintun = "0.3.2"
 [target.'cfg(windows)'.dependencies.windows]
 version = "0.52.0"
 features = [
+  # For implementing COM interfaces
+  "implement",
   "Win32_Foundation",
-  # Needed for deep_link module
+  # For listening for network change events
+  "Win32_Networking_NetworkListManager",
+  # For deep_link module
   "Win32_Security",
-  # Needed for deep_link module
+  # COM is needed to listen for network change events
+  "Win32_System_Com",
+  # For deep_link module
   "Win32_System_SystemServices",
 ]
 
