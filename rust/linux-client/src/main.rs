@@ -1,6 +1,6 @@
 use anyhow::Result;
 use clap::Parser;
-use connlib_client_shared::{file_logger, Callbacks, Error, Session};
+use connlib_client_shared::{file_logger, Callbacks, Session};
 use firezone_cli_utils::{block_on_ctrl_c, setup_global_subscriber, CommonArgs};
 use secrecy::SecretString;
 use std::path::PathBuf;
