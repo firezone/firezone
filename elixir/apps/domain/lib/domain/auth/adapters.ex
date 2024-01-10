@@ -6,8 +6,7 @@ defmodule Domain.Auth.Adapters do
     email: Domain.Auth.Adapters.Email,
     openid_connect: Domain.Auth.Adapters.OpenIDConnect,
     google_workspace: Domain.Auth.Adapters.GoogleWorkspace,
-    userpass: Domain.Auth.Adapters.UserPass,
-    token: Domain.Auth.Adapters.Token
+    userpass: Domain.Auth.Adapters.UserPass
   }
 
   @adapter_names Map.keys(@adapters)
@@ -23,7 +22,7 @@ defmodule Domain.Auth.Adapters do
 
   def list_adapters do
     enabled_adapters = Domain.Config.compile_config!(:auth_provider_adapters)
-    enabled_idp_adapters = enabled_adapters -- ~w[token email userpass]a
+    enabled_idp_adapters = enabled_adapters -- ~w[email userpass]a
     {:ok, Map.take(@adapters, enabled_idp_adapters)}
   end
 

@@ -5,7 +5,12 @@ defmodule Domain.Tokens.Token do
   schema "tokens" do
     field :type, Ecto.Enum, values: [:browser, :client, :relay, :gateway, :email, :api_client]
 
+    field :name, :string
+
+    # set for browser and client tokens, empty for service account tokens
     belongs_to :identity, Domain.Auth.Identity
+    # set for browser and client tokens
+    belongs_to :actor, Domain.Actors.Actor
     # belongs_to :relay_group, Domain.Relays.Group
     # belongs_to :gateway_group, Domain.Relays.Group
 
