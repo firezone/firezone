@@ -3,6 +3,7 @@
 //  (c) 2023 Firezone, Inc.
 //  LICENSE: Apache-2.0
 
+import FirezoneKit
 import Foundation
 import NetworkExtension
 import os.log
@@ -65,7 +66,7 @@ class NetworkSettings {
 
   func apply(
     on packetTunnelProvider: NEPacketTunnelProvider?,
-    logger: Logger,
+    logger: AppLogger,
     completionHandler: ((Error?) -> Void)?
   ) {
     guard let packetTunnelProvider = packetTunnelProvider else {
@@ -103,10 +104,8 @@ class NetworkSettings {
             fromString: networkPrefixLengthString, maximumValue: 32)
           let ipv4SubnetMask = Self.ipv4SubnetMask(networkPrefixLength: validNetworkPrefixLength)
           logger.log(
-            """
-            NetworkSettings.apply:
-              Adding IPv4 route: \(address) (subnet mask: \(ipv4SubnetMask)
-            """)
+            "NetworkSettings.apply: Adding IPv4 route: \(address) (subnet mask: \(ipv4SubnetMask))"
+          )
           tunnelIPv4Routes.append(
             NEIPv4Route(destinationAddress: address, subnetMask: ipv4SubnetMask))
         }
@@ -119,10 +118,8 @@ class NetworkSettings {
           let validNetworkPrefixLength = Self.validNetworkPrefixLength(
             fromString: networkPrefixLengthString, maximumValue: 128)
           logger.log(
-            """
-            NetworkSettings.apply:
-              Adding IPv6 route: \(address) (prefix length: \(validNetworkPrefixLength)
-            """)
+            "NetworkSettings.apply: Adding IPv6 route: \(address) (prefix length: \(validNetworkPrefixLength))"
+          )
 
           tunnelIPv6Routes.append(
             NEIPv6Route(

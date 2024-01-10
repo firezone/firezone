@@ -16,7 +16,7 @@ enum PacketTunnelProviderError: Error {
 }
 
 class PacketTunnelProvider: NEPacketTunnelProvider {
-  static let logger = Logger(subsystem: "dev.firezone.firezone", category: "packet-tunnel")
+  let logger = AppLogger(process: .tunnel)
 
   private var adapter: Adapter?
 
@@ -24,10 +24,10 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     options _: [String: NSObject]? = nil,
     completionHandler: @escaping (Error?) -> Void
   ) {
-    Self.logger.trace("\(#function)")
+    logger.log("\(#function)")
 
     guard let controlPlaneURLString = protocolConfiguration.serverAddress else {
-      Self.logger.error("serverAddress is missing")
+      logger.error("serverAddress is missing")
       self.handleTunnelShutdown(
         dueTo: .badTunnelConfiguration,
         errorMessage: "serverAddress is missing")
@@ -37,7 +37,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     }
 
     guard let tokenRef = protocolConfiguration.passwordReference else {
-      Self.logger.error("passwordReference is missing")
+      logger.error("passwordReference is missing")
       self.handleTunnelShutdown(
         dueTo: .badTunnelConfiguration,
         errorMessage: "passwordReference is missing")
@@ -50,7 +50,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
     guard let connlibLogFilter = providerConfig?[TunnelProviderKeys.keyConnlibLogFilter] as? String
     else {
-      Self.logger.error("connlibLogFilter is missing")
+      logger.error("connlibLogFilter is missing")
       self.handleTunnelShutdown(
         dueTo: .badTunnelConfiguration,
         errorMessage: "connlibLogFilter is missing")
@@ -76,7 +76,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       do {
         try adapter.start { error in
           if let error {
-            Self.logger.error("Error in adapter.start: \(error)")
+            self.logger.error("Error in adapter.start: \(error)")
           }
           completionHandler(error)
         }
@@ -89,7 +89,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
   override func stopTunnel(
     with reason: NEProviderStopReason, completionHandler: @escaping () -> Void
   ) {
-    Self.logger.log("stopTunnel: Reason: \(reason)")
+    logger.log("stopTunnel: Reason: \(reason)")
     adapter?.stop(reason: reason) {
       completionHandler()
       #if os(macOS)
@@ -108,7 +108,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
   }
 
   func handleTunnelShutdown(dueTo reason: TunnelShutdownEvent.Reason, errorMessage: String) {
-    TunnelShutdownEvent.saveToDisk(reason: reason, errorMessage: errorMessage)
+    TunnelShutdownEvent.saveToDisk(reason: reason, errorMessage: errorMessage, logger: self.logger)
   }
 }
 

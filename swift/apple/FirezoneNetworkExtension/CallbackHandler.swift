@@ -2,6 +2,7 @@
 //  CallbackHandler.swift
 //
 
+import FirezoneKit
 import NetworkExtension
 import OSLog
 
@@ -31,8 +32,11 @@ public protocol CallbackHandlerDelegate: AnyObject {
 public class CallbackHandler {
   public weak var delegate: CallbackHandlerDelegate?
   private var systemDefaultResolvers: [String] = []
-  private let logger = Logger.make(for: CallbackHandler.self)
+  private let logger: AppLogger
 
+  init(logger: AppLogger) {
+    self.logger = logger
+  }
   func onSetInterfaceConfig(
     tunnelAddressIPv4: RustString,
     tunnelAddressIPv6: RustString,

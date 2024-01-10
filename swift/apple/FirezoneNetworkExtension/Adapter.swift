@@ -59,7 +59,7 @@ class Adapter {
   typealias StartTunnelCompletionHandler = ((AdapterError?) -> Void)
   typealias StopTunnelCompletionHandler = (() -> Void)
 
-  private let logger = Logger.make(category: "packet-tunnel")
+  private let logger: AppLogger
 
   private var callbackHandler: CallbackHandler
 
@@ -100,11 +100,12 @@ class Adapter {
     self.controlPlaneURLString = controlPlaneURLString
     self.token = token
     self.packetTunnelProvider = packetTunnelProvider
-    self.callbackHandler = CallbackHandler()
+    self.callbackHandler = CallbackHandler(logger: packetTunnelProvider.logger)
     self.state = .stoppedTunnel
     self.logFilter = logFilter
     self.connlibLogFolderPath = SharedAccess.connlibLogFolderURL?.path ?? ""
     self.firezoneIdFileURL = SharedAccess.baseFolderURL.appendingPathComponent("firezone-id")
+    self.logger = packetTunnelProvider.logger
   }
 
   deinit {

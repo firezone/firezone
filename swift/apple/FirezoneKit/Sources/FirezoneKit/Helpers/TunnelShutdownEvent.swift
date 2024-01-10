@@ -14,8 +14,6 @@ enum TunnelShutdownEventError: Error {
 }
 
 public struct TunnelShutdownEvent: Codable, CustomStringConvertible {
-  private static let logger = Logger.make(for: TunnelShutdownEvent.self)
-
   public enum Reason: Codable, CustomStringConvertible {
     case stopped(NEProviderStopReason)
     case connlibConnectFailure
@@ -76,7 +74,7 @@ public struct TunnelShutdownEvent: Codable, CustomStringConvertible {
     self.date = Date()
   }
 
-  public static func loadFromDisk() -> TunnelShutdownEvent? {
+  public static func loadFromDisk(logger: AppLogger) -> TunnelShutdownEvent? {
     let fileURL = SharedAccess.tunnelShutdownEventFileURL
     let fileManager = FileManager.default
 
@@ -85,34 +83,36 @@ public struct TunnelShutdownEvent: Codable, CustomStringConvertible {
     }
 
     guard let jsonData = try? Data(contentsOf: fileURL) else {
-      Self.logger.error("Could not read tunnel shutdown event from disk at: \(fileURL)")
+      logger.error("Could not read tunnel shutdown event from disk at: \(fileURL)")
       return nil
     }
 
     guard let reason = try? JSONDecoder().decode(TunnelShutdownEvent.self, from: jsonData) else {
-      Self.logger.error("Error decoding tunnel shutdown event from disk at: \(fileURL)")
+      logger.error("Error decoding tunnel shutdown event from disk at: \(fileURL)")
       return nil
     }
 
     do {
       try fileManager.removeItem(atPath: fileURL.path)
     } catch {
-      Self.logger.error("Cannot remove tunnel shutdown event file at \(fileURL.path)")
+      logger.error("Cannot remove tunnel shutdown event file at \(fileURL.path)")
     }
 
     return reason
   }
 
-  public static func saveToDisk(reason: TunnelShutdownEvent.Reason, errorMessage: String) {
+  public static func saveToDisk(
+    reason: TunnelShutdownEvent.Reason, errorMessage: String, logger: AppLogger
+  ) {
     let fileURL = SharedAccess.tunnelShutdownEventFileURL
-    Self.logger.error("Saving tunnel shutdown event data to \(fileURL)")
+    logger.error("Saving tunnel shutdown event data to \(fileURL)")
     let tsEvent = TunnelShutdownEvent(
       reason: reason,
       errorMessage: errorMessage)
     do {
       try JSONEncoder().encode(tsEvent).write(to: fileURL)
     } catch {
-      Self.logger.error(
+      logger.error(
         "Error writing tunnel shutdown event data to disk to: \(fileURL): \(error)"
       )
     }
