@@ -74,20 +74,14 @@ defmodule API.Client.SocketTest do
     test "creates a new client for service account identity" do
       context = Fixtures.Auth.build_context(type: :client)
       account = Fixtures.Accounts.create_account()
-      provider = Fixtures.Auth.create_token_provider(account: account)
-
-      identity =
-        Fixtures.Auth.create_identity(
-          account: account,
-          provider: provider,
-          provider_virtual_state: %{
-            "expires_at" => DateTime.utc_now() |> DateTime.add(60, :second)
-          }
-        )
+      actor = Fixtures.Actors.create_actor(type: :service_account, account: account)
 
       subject = Fixtures.Auth.create_subject(account: account, actor: [type: :account_admin_user])
 
-      {:ok, encoded_token} = Domain.Auth.create_service_account_token(provider, identity, subject)
+      {:ok, encoded_token} =
+        Domain.Auth.create_service_account_token(actor, subject, %{
+          "expires_at" => DateTime.utc_now() |> DateTime.add(60, :second)
+        })
 
       attrs = connect_attrs(token: encoded_token)
 

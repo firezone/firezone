@@ -74,19 +74,6 @@ defmodule Domain.Auth.Identity.Changeset do
     |> put_change(:provider_virtual_state, virtual_state)
   end
 
-  def track_identity(identity_or_changeset, context) do
-    identity_or_changeset
-    |> change()
-    |> put_change(:last_seen_user_agent, context.user_agent)
-    |> put_change(:last_seen_remote_ip, %Postgrex.INET{address: context.remote_ip})
-    |> put_change(:last_seen_remote_ip_location_region, context.remote_ip_location_region)
-    |> put_change(:last_seen_remote_ip_location_city, context.remote_ip_location_city)
-    |> put_change(:last_seen_remote_ip_location_lat, context.remote_ip_location_lat)
-    |> put_change(:last_seen_remote_ip_location_lon, context.remote_ip_location_lon)
-    |> put_change(:last_seen_at, DateTime.utc_now())
-    |> validate_required(~w[last_seen_user_agent last_seen_remote_ip]a)
-  end
-
   def delete_identity(%Identity{} = identity) do
     identity
     |> change()

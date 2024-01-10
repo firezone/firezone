@@ -209,12 +209,16 @@ user_agent = "User-Agent: iOS/12.7 (iPhone) connlib/0.7.412"
 remote_ip = {127, 0, 0, 1}
 
 # For a client
-{:ok, subject} = Domain.Auth.sign_in(client_token, %Domain.Auth.Context{type: :client, user_agent: user_agent, remote_ip: remote_ip})
+context = %Domain.Auth.Context{type: :client, user_agent: user_agent, remote_ip: remote_ip}
+{:ok, subject} = Domain.Auth.authenticate(client_token, context)
 
-# For an admin user
+# For an admin user, imitating the browser session
+context = %Domain.Auth.Context{type: :browser, user_agent: user_agent, remote_ip: remote_ip}
 provider = Domain.Repo.get_by(Domain.Auth.Provider, adapter: :userpass)
 identity = Domain.Repo.get_by(Domain.Auth.Identity, provider_id: provider.id, provider_identifier: "firezone@localhost")
-subject = Domain.Auth.build_subject(identity, nil, %Domain.Auth.Context{type: :browser, user_agent: user_agent, remote_ip: remote_ip})
+token = Domain.Auth.create_token(identity, context, "", nil)
+browser_token = Domain.Tokens.encode_fragment!(token)
+{:ok, subject} = Domain.Auth.authenticate(browser_token, context)
 ```
 
 Listing connected gateways, relays, clients for an account:
@@ -290,7 +294,12 @@ Useful for onboarding beta customers. See the `Domain.Ops.provision_account/1`
 function:
 
 ```elixir
-iex> Domain.Ops.provision_account(%{account_name: "Customer Account", account_slug: "customer_account", account_admin_name: "Test User", account_admin_email: "test@firezone.localhost"})
+iex> Domain.Ops.provision_account(%{
+  account_name: "Customer Account",
+  account_slug: "customer_account",
+  account_admin_name: "Test User",
+  account_admin_email: "test@firezone.localhost"
+})
 ```
 
 ### Creating an account on staging instance using CLI
@@ -334,13 +343,25 @@ Erlang/OTP 26 [erts-14.0.2] [source] [64-bit] [smp:1:1] [ds:1:1:20] [async-threa
 
 Interactive Elixir (1.15.2) - press Ctrl+C to exit (type h() ENTER for help)
 
-iex(web@web-2f4j.us-east1-d.c.firezone-staging.internal)1> [actor | _] = Domain.Actors.Actor.Query.by_type(:account_admin_user) |> Domain.Actors.Actor.Query.by_account_id("ACCOUNT_ID") |> Domain.Repo.all()
+iex(web@web-2f4j.us-east1-d.c.firezone-staging.internal)1> account_id = "REPLACE_ME"
 ...
 
-iex(web@web-2f4j.us-east1-d.c.firezone-staging.internal)2> [identity | _] = Domain.Auth.Identity.Query.by_actor_id(actor.id) |> Domain.Repo.all()
+iex(web@web-2f4j.us-east1-d.c.firezone-staging.internal)2> context = %Domain.Auth.Context{type: :browser, user_agent: "User-Agent: iOS/12.7 (iPhone) connlib/0.7.412", remote_ip: {127, 0, 0, 1}}
 ...
 
-iex(web@web-2f4j.us-east1-d.c.firezone-staging.internal)3> subject = Domain.Auth.build_subject(identity, nil, %Domain.Auth.Context{type: :browser, user_agent: "CLI", remote_ip: {127, 0, 0, 1}})
+iex(web@web-2f4j.us-east1-d.c.firezone-staging.internal)3> [actor | _] = Domain.Actors.Actor.Query.by_type(:account_admin_user) |> Domain.Actors.Actor.Query.by_account_id(account_id) |> Domain.Repo.all()
+...
+
+iex(web@web-2f4j.us-east1-d.c.firezone-staging.internal)4> [identity | _] = Domain.Auth.Identity.Query.by_actor_id(actor.id) |> Domain.Repo.all()
+...
+
+iex(web@web-2f4j.us-east1-d.c.firezone-staging.internal)5> token = Domain.Auth.create_token(identity, context, "", nil)
+...
+
+iex(web@web-2f4j.us-east1-d.c.firezone-staging.internal)6> browser_token = Domain.Tokens.encode_fragment!(token)
+...
+
+iex(web@web-2f4j.us-east1-d.c.firezone-staging.internal)7> {:ok, subject} = Domain.Auth.authenticate(browser_token, context)
 ```
 
 ### Rotate relay token

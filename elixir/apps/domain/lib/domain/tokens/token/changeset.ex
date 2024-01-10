@@ -6,13 +6,12 @@ defmodule Domain.Tokens.Token.Changeset do
   @required_attrs ~w[
     type
     account_id
-    secret_fragment
     created_by_user_agent created_by_remote_ip
     expires_at
   ]a
 
-  @create_attrs ~w[identity_id secret_nonce]a ++ @required_attrs
-  @update_attrs ~w[expires_at]a
+  @create_attrs ~w[name identity_id actor_id secret_fragment secret_nonce]a ++ @required_attrs
+  @update_attrs ~w[name expires_at]a
 
   def create(attrs) do
     %Token{}
@@ -38,6 +37,7 @@ defmodule Domain.Tokens.Token.Changeset do
     changeset
     |> put_change(:secret_salt, Domain.Crypto.random_token(16))
     |> validate_format(:secret_nonce, ~r/^[^\.]{0,128}$/)
+    |> validate_required(:secret_fragment)
     |> put_hash(:secret_fragment, :sha3_256,
       with_nonce: :secret_nonce,
       with_salt: :secret_salt,
@@ -48,6 +48,8 @@ defmodule Domain.Tokens.Token.Changeset do
     |> validate_required(~w[secret_salt secret_hash]a)
     |> validate_required_assocs()
     |> assoc_constraint(:account)
+    |> assoc_constraint(:identity)
+    |> assoc_constraint(:actor)
   end
 
   defp validate_required_assocs(changeset) do
@@ -72,7 +74,7 @@ defmodule Domain.Tokens.Token.Changeset do
   def update(%Token{} = token, attrs) do
     token
     |> cast(attrs, @update_attrs)
-    |> validate_required(@update_attrs)
+    |> validate_required(@required_attrs)
     |> validate_datetime(:expires_at, greater_than: DateTime.utc_now())
   end
 

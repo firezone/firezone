@@ -31,7 +31,7 @@ defmodule Domain.Fixtures.Clients do
     {actor, attrs} =
       pop_assoc_fixture(attrs, :actor, fn assoc_attrs ->
         assoc_attrs
-        |> Enum.into(%{type: :account_admin_user, account: account})
+        |> Enum.into(%{type: :service_account, account: account})
         |> Fixtures.Actors.create_actor()
       end)
 

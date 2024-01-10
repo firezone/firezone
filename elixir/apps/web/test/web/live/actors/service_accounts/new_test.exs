@@ -31,25 +31,11 @@ defmodule Web.Live.Actors.ServiceAccount.NewTest do
                }}}
   end
 
-  test "renders not found error when token provider is disabled", %{
-    account: account,
-    identity: identity,
-    conn: conn
-  } do
-    assert_raise Web.LiveErrors.NotFoundError, fn ->
-      conn
-      |> authorize_conn(identity)
-      |> live(~p"/#{account}/actors/service_accounts/new")
-    end
-  end
-
   test "renders breadcrumbs item", %{
     account: account,
     identity: identity,
     conn: conn
   } do
-    Fixtures.Auth.create_token_provider(account: account)
-
     {:ok, _lv, html} =
       conn
       |> authorize_conn(identity)
@@ -67,8 +53,6 @@ defmodule Web.Live.Actors.ServiceAccount.NewTest do
     identity: identity,
     conn: conn
   } do
-    Fixtures.Auth.create_token_provider(account: account)
-
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
@@ -100,8 +84,6 @@ defmodule Web.Live.Actors.ServiceAccount.NewTest do
     identity: identity,
     conn: conn
   } do
-    Fixtures.Auth.create_token_provider(account: account)
-
     attrs = Fixtures.Actors.actor_attrs() |> Map.take([:name])
 
     {:ok, lv, _html} =
@@ -123,8 +105,6 @@ defmodule Web.Live.Actors.ServiceAccount.NewTest do
     identity: identity,
     conn: conn
   } do
-    Fixtures.Auth.create_token_provider(account: account)
-
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
@@ -144,8 +124,6 @@ defmodule Web.Live.Actors.ServiceAccount.NewTest do
     identity: identity,
     conn: conn
   } do
-    Fixtures.Auth.create_token_provider(account: account)
-
     group1 = Fixtures.Actors.create_group(account: account)
     Fixtures.Actors.create_membership(actor: actor, group: group1)
 

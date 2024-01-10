@@ -1,6 +1,6 @@
 defmodule Domain.Clients.Client.Changeset do
   use Domain, :changeset
-  alias Domain.{Version, Auth}
+  alias Domain.{Version, Auth, Actors}
   alias Domain.Clients
 
   @upsert_fields ~w[external_id name public_key]a
@@ -26,13 +26,11 @@ defmodule Domain.Clients.Client.Changeset do
 
   def upsert_on_conflict, do: {:replace, @conflict_replace_fields}
 
-  def upsert(%Auth.Identity{} = identity, %Auth.Context{} = context, attrs) do
+  def upsert(actor_or_identity, %Auth.Context{} = context, attrs) do
     %Clients.Client{}
     |> cast(attrs, @upsert_fields)
     |> put_default_value(:name, &generate_name/0)
-    |> put_change(:identity_id, identity.id)
-    |> put_change(:actor_id, identity.actor_id)
-    |> put_change(:account_id, identity.account_id)
+    |> put_assocs(actor_or_identity)
     |> put_change(:last_seen_user_agent, context.user_agent)
     |> put_change(:last_seen_remote_ip, %Postgrex.INET{address: context.remote_ip})
     |> put_change(:last_seen_remote_ip_location_region, context.remote_ip_location_region)
@@ -47,6 +45,19 @@ defmodule Domain.Clients.Client.Changeset do
     |> unique_constraint(:ipv6, name: :clients_account_id_ipv6_index)
     |> put_change(:last_seen_at, DateTime.utc_now())
     |> put_client_version()
+  end
+
+  defp put_assocs(changeset, %Auth.Identity{} = identity) do
+    changeset
+    |> put_change(:identity_id, identity.id)
+    |> put_change(:actor_id, identity.actor_id)
+    |> put_change(:account_id, identity.account_id)
+  end
+
+  defp put_assocs(changeset, %Actors.Actor{} = actor) do
+    changeset
+    |> put_change(:actor_id, actor.id)
+    |> put_change(:account_id, actor.account_id)
   end
 
   def finalize_upsert(%Clients.Client{} = client, ipv4, ipv6) do

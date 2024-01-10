@@ -8,7 +8,7 @@ defmodule Domain.Fixtures.Tokens do
   def token_attrs(attrs \\ %{}) do
     type = :browser
     nonce = Domain.Crypto.random_token(32, encoder: :hex32)
-    fragment = Domain.Crypto.random_token(32)
+    fragment = Domain.Crypto.random_token(32, encoder: :hex32)
     expires_at = DateTime.utc_now() |> DateTime.add(1, :day)
     user_agent = Fixtures.Auth.user_agent()
     remote_ip = Fixtures.Auth.remote_ip()
@@ -77,13 +77,29 @@ defmodule Domain.Fixtures.Tokens do
         Fixtures.Accounts.create_account(assoc_attrs)
       end)
 
-    {identity_id, attrs} =
-      pop_assoc_fixture_id(attrs, :identity, fn ->
-        Fixtures.Auth.create_identity(account: account)
+    {actor, attrs} =
+      pop_assoc_fixture(attrs, :actor, fn assoc_attrs ->
+        relation = attrs[:identity]
+
+        if not is_nil(relation) and is_struct(relation) do
+          Repo.get!(Domain.Actors.Actor, relation.actor_id)
+        else
+          assoc_attrs
+          |> Enum.into(%{account: account})
+          |> Fixtures.Actors.create_actor()
+        end
       end)
 
-    attrs = Map.put(attrs, :identity_id, identity_id)
+    {identity, attrs} =
+      pop_assoc_fixture(attrs, :identity, fn assoc_attrs ->
+        assoc_attrs
+        |> Enum.into(%{account: account, actor: actor})
+        |> Fixtures.Auth.create_identity()
+      end)
+
     attrs = Map.put(attrs, :account_id, account.id)
+    attrs = Map.put(attrs, :actor_id, actor.id)
+    attrs = Map.put(attrs, :identity_id, identity.id)
 
     {:ok, token} = Domain.Tokens.create_token(attrs)
     token

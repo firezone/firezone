@@ -35,11 +35,13 @@ defmodule Domain.Auth.Authorizer do
   # TODO: is this the best place for this?
   def manage_providers_permission, do: build(Auth.Provider, :manage)
   def manage_identities_permission, do: build(Auth.Identity, :manage)
+  def manage_service_accounts_permission, do: build(Auth, :manage_service_accounts)
   def manage_own_identities_permission, do: build(Auth.Identity, :manage_own)
 
   def list_permissions_for_role(:account_admin_user) do
     [
       manage_providers_permission(),
+      manage_service_accounts_permission(),
       manage_own_identities_permission(),
       manage_identities_permission()
     ]

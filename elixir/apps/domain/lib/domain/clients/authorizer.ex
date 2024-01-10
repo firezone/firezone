@@ -20,6 +20,12 @@ defmodule Domain.Clients.Authorizer do
     ]
   end
 
+  def list_permissions_for_role(:service_account) do
+    [
+      manage_own_clients_permission()
+    ]
+  end
+
   def list_permissions_for_role(_) do
     []
   end

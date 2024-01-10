@@ -459,6 +459,16 @@ defmodule Domain.ClientsTest do
       assert {:ok, _client} = upsert_client(attrs, subject)
     end
 
+    test "allows service account to create a client for self", %{account: account} do
+      subject = Fixtures.Auth.create_subject(account: account, actor: [type: :service_account])
+      attrs = Fixtures.Clients.client_attrs()
+
+      assert {:ok, client} = upsert_client(attrs, subject)
+      assert client.actor_id == subject.actor.id
+      assert client.account_id == account.id
+      refute client.identity_id
+    end
+
     test "does not allow to reuse IP addresses", %{
       account: account,
       admin_subject: subject

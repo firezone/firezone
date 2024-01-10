@@ -15,6 +15,13 @@ defmodule Domain.Policies.Authorizer do
 
   def list_permissions_for_role(:account_user) do
     [
+      # TODO: view_assigned_policies_permission()
+      view_available_policies_permission()
+    ]
+  end
+
+  def list_permissions_for_role(:service_account) do
+    [
       view_available_policies_permission()
     ]
   end

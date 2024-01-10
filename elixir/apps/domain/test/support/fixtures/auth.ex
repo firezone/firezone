@@ -19,10 +19,6 @@ defmodule Domain.Fixtures.Auth do
     Ecto.UUID.generate()
   end
 
-  def random_provider_identifier(%Domain.Auth.Provider{adapter: :token}) do
-    Ecto.UUID.generate()
-  end
-
   def random_provider_identifier(%Domain.Auth.Provider{adapter: :userpass, name: name}) do
     "user-#{unique_integer()}@#{String.downcase(name)}.com"
   end
@@ -155,21 +151,6 @@ defmodule Domain.Fixtures.Auth do
     attrs =
       attrs
       |> Enum.into(%{adapter: :userpass})
-      |> provider_attrs()
-
-    {account, attrs} =
-      pop_assoc_fixture(attrs, :account, fn assoc_attrs ->
-        Fixtures.Accounts.create_account(assoc_attrs)
-      end)
-
-    {:ok, provider} = Auth.create_provider(account, attrs)
-    provider
-  end
-
-  def create_token_provider(attrs \\ %{}) do
-    attrs =
-      attrs
-      |> Enum.into(%{adapter: :token})
       |> provider_attrs()
 
     {account, attrs} =
@@ -394,13 +375,15 @@ defmodule Domain.Fixtures.Auth do
           account: account,
           type: context.type,
           secret_nonce: Domain.Crypto.random_token(32, encoder: :hex32),
-          identity_id: identity.id,
+          actor: actor,
+          identity: identity,
           expires_at: expires_at
         })
         |> Fixtures.Tokens.create_token()
       end)
 
-    Auth.build_subject(token, identity, context)
+    {:ok, subject} = Auth.build_subject(token, context)
+    subject
   end
 
   def create_and_encode_token(attrs) do

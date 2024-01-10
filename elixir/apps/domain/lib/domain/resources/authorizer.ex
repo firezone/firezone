@@ -19,6 +19,12 @@ defmodule Domain.Resources.Authorizer do
     ]
   end
 
+  def list_permissions_for_role(:service_account) do
+    [
+      view_available_resources_permission()
+    ]
+  end
+
   def list_permissions_for_role(_) do
     []
   end

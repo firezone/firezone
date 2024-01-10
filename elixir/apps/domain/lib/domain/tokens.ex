@@ -125,6 +125,7 @@ defmodule Domain.Tokens do
     end
   end
 
+  @doc false
   def peek_token(encoded_token, %Auth.Context{} = context) do
     with [nonce, encoded_fragment] <- String.split(encoded_token, ".", parts: 2),
          {:ok, {account_id, id, secret}} <- verify_token(encoded_fragment, context) do

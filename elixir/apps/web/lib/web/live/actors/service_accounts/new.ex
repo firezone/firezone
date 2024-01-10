@@ -1,12 +1,10 @@
 defmodule Web.Actors.ServiceAccounts.New do
   use Web, :live_view
   import Web.Actors.Components
-  alias Domain.{Auth, Actors}
+  alias Domain.Actors
 
   def mount(_params, _session, socket) do
-    with {:ok, _provider} <-
-           Auth.fetch_active_provider_by_adapter(:token, socket.assigns.subject),
-         {:ok, groups} <- Actors.list_groups(socket.assigns.subject) do
+    with {:ok, groups} <- Actors.list_groups(socket.assigns.subject) do
       changeset = Actors.new_actor(%{type: :service_account})
 
       groups = Enum.reject(groups, &Actors.group_synced?/1)

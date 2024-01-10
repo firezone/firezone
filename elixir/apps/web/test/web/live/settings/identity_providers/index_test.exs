@@ -222,7 +222,7 @@ defmodule Web.Live.Settings.IdentityProviders.IndexTest do
     identity: identity,
     conn: conn
   } do
-    provider = Fixtures.Auth.create_token_provider(account: account)
+    provider = Fixtures.Auth.create_email_provider(account: account)
 
     conn = authorize_conn(conn, identity)
 
@@ -233,7 +233,7 @@ defmodule Web.Live.Settings.IdentityProviders.IndexTest do
     |> render()
     |> table_to_map()
     |> with_table_row("name", provider.name, fn row ->
-      assert row["type"] == "API Access Token"
+      assert row["type"] == "Email"
       assert row["status"] == "Active"
       assert row["sync status"] == "Created 0 identities and 0 groups"
     end)

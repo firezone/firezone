@@ -11,8 +11,7 @@ defmodule Domain.Flows do
         %Clients.Client{
           id: client_id,
           account_id: account_id,
-          actor_id: actor_id,
-          identity_id: identity_id
+          actor_id: actor_id
         },
         %Gateways.Gateway{
           id: gateway_id,
@@ -23,7 +22,6 @@ defmodule Domain.Flows do
         %Auth.Subject{
           account: %{id: account_id},
           actor: %{id: actor_id},
-          identity: %{id: identity_id},
           expires_at: expires_at,
           context: %Auth.Context{
             remote_ip: client_remote_ip,

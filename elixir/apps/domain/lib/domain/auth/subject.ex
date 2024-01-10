@@ -7,7 +7,7 @@ defmodule Domain.Auth.Subject do
   @type permission :: Permission.t()
 
   @type t :: %__MODULE__{
-          identity: identity(),
+          identity: identity() | nil,
           actor: actor(),
           permissions: MapSet.t(permission),
           account: %Domain.Accounts.Account{},

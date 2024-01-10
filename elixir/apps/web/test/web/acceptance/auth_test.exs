@@ -8,7 +8,6 @@ defmodule Web.Acceptance.AuthTest do
 
     Fixtures.Auth.create_userpass_provider(account: account)
     Fixtures.Auth.create_email_provider(account: account)
-    Fixtures.Auth.create_token_provider(account: account)
 
     {openid_connect_provider, _bypass} =
       Fixtures.Auth.start_and_create_openid_connect_provider(account: account)

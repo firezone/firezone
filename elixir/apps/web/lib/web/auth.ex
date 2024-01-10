@@ -16,7 +16,10 @@ defmodule Web.Auth do
 
   # Session is stored as a list in a cookie so we want to limit numbers
   # of items in the list to avoid hitting cookie size limit.
-  @remember_last_sessions 10
+  #
+  # Max cookie size is 4kb. One session is ~460 bytes.
+  # We also leave space for other cookies.
+  @remember_last_sessions 6
 
   # Session Management
 

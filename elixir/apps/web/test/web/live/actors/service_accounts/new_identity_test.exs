@@ -15,8 +15,6 @@ defmodule Web.Live.Actors.ServiceAccounts.NewIdentityTest do
         actor: [type: :account_admin_user]
       )
 
-    Fixtures.Auth.create_token_provider(account: account)
-
     %{
       account: account,
       actor: actor,
@@ -72,57 +70,56 @@ defmodule Web.Live.Actors.ServiceAccounts.NewIdentityTest do
     assert lv
            |> form("form")
            |> find_inputs() == [
-             "identity[provider_identifier]",
-             "identity[provider_virtual_state][_persistent_id]",
-             "identity[provider_virtual_state][expires_at]"
+             "token[expires_at]",
+             "token[name]"
            ]
   end
 
-  # TODO: LiveView to_form doesn't read the changeset errors when we inject a dynamic changeset in an adapter,
-  # will need to find a workaround later
-  # test "renders changeset errors on input change", %{
-  #   account: account,
-  #   actor: actor,
-  #   identity: identity,
-  #   conn: conn
-  # } do
-  #   {:ok, lv, _html} =
-  #     conn
-  #     |> authorize_conn(identity)
-  #     |> live(~p"/#{account}/actors/service_accounts/#{actor}/new_identity")
+  test "renders changeset errors on input change", %{
+    account: account,
+    actor: actor,
+    identity: identity,
+    conn: conn
+  } do
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/actors/service_accounts/#{actor}/new_identity")
 
-  #   lv
-  #   |> form("form", identity: %{})
-  #   |> validate_change(
-  #     %{identity: %{provider_virtual_state: %{expires_at: "1991-01-01"}}},
-  #     fn form, _html ->
-  #       assert form_validation_errors(form) == %{
-  #                "identity[provider_virtual_state][expires_at]" => ["can't be blank"]
-  #              }
-  #     end
-  #   )
-  # end
+    lv
+    |> form("form", identity: %{})
+    |> validate_change(
+      %{token: %{expires_at: "1991-01-01"}},
+      fn form, _html ->
+        assert %{
+                 "token[expires_at]" => ["must be greater than" <> _]
+               } = form_validation_errors(form)
+      end
+    )
+  end
 
-  # test "renders changeset errors on submit", %{
-  #   account: account,
-  #   actor: actor,
-  #   identity: identity,
-  #   conn: conn
-  # } do
-  #   attrs = %{provider_virtual_state: %{expires_at: "1991-01-01"}}
+  test "renders changeset errors on submit", %{
+    account: account,
+    actor: actor,
+    identity: identity,
+    conn: conn
+  } do
+    attrs = %{expires_at: "1991-01-01"}
 
-  #   {:ok, lv, _html} =
-  #     conn
-  #     |> authorize_conn(identity)
-  #     |> live(~p"/#{account}/actors/service_accounts/#{actor}/new_identity")
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/actors/service_accounts/#{actor}/new_identity")
 
-  #   assert lv
-  #          |> form("form", identity: attrs)
-  #          |> render_submit()
-  #          |> form_validation_errors() == %{
-  #            "identity[provider_virtual_state][expires_at]" => ["can't be blank"]
-  #          }
-  # end
+    html =
+      lv
+      |> form("form", token: attrs)
+      |> render_submit()
+
+    assert %{
+             "token[expires_at]" => ["must be greater than" <> _]
+           } = form_validation_errors(html)
+  end
 
   test "creates a new actor on valid attrs", %{
     account: account,
@@ -133,9 +130,7 @@ defmodule Web.Live.Actors.ServiceAccounts.NewIdentityTest do
     expires_at = Date.utc_today() |> Date.add(3)
 
     attrs = %{
-      provider_virtual_state: %{
-        expires_at: Date.to_iso8601(expires_at)
-      }
+      expires_at: Date.to_iso8601(expires_at)
     }
 
     {:ok, lv, _html} =
@@ -145,7 +140,7 @@ defmodule Web.Live.Actors.ServiceAccounts.NewIdentityTest do
 
     html =
       lv
-      |> form("form", identity: attrs)
+      |> form("form", token: attrs)
       |> render_submit()
 
     context = %Domain.Auth.Context{

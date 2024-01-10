@@ -140,7 +140,7 @@ defmodule Domain.PoliciesTest do
       unprivileged_actor = Fixtures.Actors.create_actor(type: :account_user, account: account)
 
       unprivileged_subject =
-        Fixtures.Auth.create_subject(account: account, identity: [actor: unprivileged_actor])
+        Fixtures.Auth.create_subject(account: account, actor: unprivileged_actor)
 
       actor_group = Fixtures.Actors.create_group(account: account, subject: subject)
 

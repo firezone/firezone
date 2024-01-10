@@ -30,12 +30,12 @@ defmodule Web.Live.Actors.EditTest do
                  }}}
     end
 
-    test "renders not found error when gateway is deleted", %{
+    test "renders not found error when actor is deleted", %{
       account: account,
-      actor: actor,
       identity: identity,
       conn: conn
     } do
+      actor = Fixtures.Actors.create_actor(type: :service_account, account: account)
       actor = Fixtures.Actors.delete(actor)
 
       assert_raise Web.LiveErrors.NotFoundError, fn ->

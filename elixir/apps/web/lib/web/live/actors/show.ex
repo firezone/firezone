@@ -15,7 +15,7 @@ defmodule Web.Actors.Show do
            ),
          {:ok, tokens} <-
            Tokens.list_tokens_for(actor, socket.assigns.subject,
-             preload: [identity: [:provider, created_by_identity: [:actor]]]
+             preload: [identity: [:provider], created_by_identity: [:actor]]
            ),
          {:ok, flows} <-
            Flows.list_flows_for(actor, socket.assigns.subject,
@@ -97,17 +97,9 @@ defmodule Web.Actors.Show do
       </:content>
     </.section>
 
-    <.section>
-      <!-- TODO: do we need them for service accounts? -->
+    <.section :if={@actor.type != :service_account}>
       <:title>Authentication Identities</:title>
-      <:action :if={is_nil(@actor.deleted_at)}>
-        <.add_button
-          :if={@actor.type == :service_account}
-          navigate={~p"/#{@account}/actors/service_accounts/#{@actor}/new_identity"}
-        >
-          Create Token
-        </.add_button>
-      </:action>
+
       <:action :if={is_nil(@actor.deleted_at)}>
         <.add_button
           :if={@actor.type != :service_account}
@@ -181,6 +173,15 @@ defmodule Web.Actors.Show do
     <.section>
       <:title>Authentication Tokens</:title>
 
+      <:action :if={is_nil(@actor.deleted_at) and @actor.type == :service_account}>
+        <.add_button
+          :if={@actor.type == :service_account}
+          navigate={~p"/#{@account}/actors/service_accounts/#{@actor}/new_identity"}
+        >
+          Create Token
+        </.add_button>
+      </:action>
+
       <:action :if={is_nil(@actor.deleted_at)}>
         <.delete_button
           phx-click="revoke_all_tokens"
@@ -195,8 +196,11 @@ defmodule Web.Actors.Show do
           <:col :let={token} label="TYPE" sortable="false">
             <%= token.type %>
           </:col>
-          <:col :let={token} label="IDENTITY" sortable="false">
+          <:col :let={token} :if={@actor.type != :service_account} label="IDENTITY" sortable="false">
             <.identity_identifier account={@account} identity={token.identity} />
+          </:col>
+          <:col :let={token} :if={@actor.type == :service_account} label="NAME" sortable="false">
+            <%= token.name %>
           </:col>
           <:col :let={token} label="CREATED">
             <.created_by account={@account} schema={token} />
@@ -437,7 +441,7 @@ defmodule Web.Actors.Show do
 
     {:ok, tokens} =
       Tokens.list_tokens_for(socket.assigns.actor, socket.assigns.subject,
-        preload: [identity: [:provider, created_by_identity: [:actor]]]
+        preload: [identity: [:provider], created_by_identity: [:actor]]
       )
 
     socket =
@@ -454,7 +458,7 @@ defmodule Web.Actors.Show do
 
     {:ok, tokens} =
       Tokens.list_tokens_for(socket.assigns.actor, socket.assigns.subject,
-        preload: [identity: [:provider, created_by_identity: [:actor]]]
+        preload: [identity: [:provider], created_by_identity: [:actor]]
       )
 
     socket =
