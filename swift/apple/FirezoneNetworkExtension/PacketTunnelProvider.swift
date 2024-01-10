@@ -16,7 +16,7 @@ enum PacketTunnelProviderError: Error {
 }
 
 class PacketTunnelProvider: NEPacketTunnelProvider {
-  let logger = AppLogger(process: .tunnel)
+  let logger = AppLogger(process: .tunnel, folderURL: SharedAccess.tunnelLogFolderURL)
 
   private var adapter: Adapter?
 

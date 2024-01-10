@@ -69,7 +69,7 @@ public final class AppStore: ObservableObject {
   let logger: AppLogger
 
   public init() {
-    let logger = AppLogger(process: .app)
+    let logger = AppLogger(process: .app, folderURL: SharedAccess.appLogFolderURL)
     let tunnelStore = TunnelStore(logger: logger)
     let authStore = AuthStore(tunnelStore: tunnelStore, logger: logger)
     let settingsViewModel = SettingsViewModel(authStore: authStore, logger: logger)
