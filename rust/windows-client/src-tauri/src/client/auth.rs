@@ -1,8 +1,8 @@
 //! Fulfills <https://github.com/firezone/firezone/issues/2823>
 
+use connlib_shared::control::SecureUrl;
 use rand::{thread_rng, RngCore};
-use secrecy::{ExposeSecret, SecretString};
-// use std::time::{Duration, Instant};
+use secrecy::{ExposeSecret, Secret, SecretString};
 use subtle::ConstantTimeEq;
 use url::Url;
 
@@ -40,13 +40,13 @@ pub(crate) struct Request {
 }
 
 impl Request {
-    pub fn to_url(&self, auth_base_url: &Url) -> Url {
+    pub fn to_url(&self, auth_base_url: &Url) -> Secret<SecureUrl> {
         let mut url = auth_base_url.clone();
         url.query_pairs_mut()
             .append_pair("as", "client")
             .append_pair("nonce", self.nonce.expose_secret())
             .append_pair("state", self.state.expose_secret());
-        url
+        Secret::from(SecureUrl::from_url(url))
     }
 }
 
@@ -196,7 +196,8 @@ fn generate_nonce() -> SecretString {
 }
 
 /// Checks if two byte strings are equal in constant-time.
-/// May not be constant-time if the lengths differ.
+/// May not be constant-time if the lengths differ:
+/// <https://docs.rs/subtle/2.5.0/subtle/trait.ConstantTimeEq.html#impl-ConstantTimeEq-for-%5BT%5D>
 fn secure_equality(a: &SecretString, b: &SecretString) -> bool {
     let a = a.expose_secret().as_bytes();
     let b = b.expose_secret().as_bytes();
@@ -232,7 +233,7 @@ mod tests {
             state: bogus_secret("some_state"),
         };
         assert_eq!(
-            req.to_url(&auth_base_url),
+            req.to_url(&auth_base_url).expose_secret().inner,
             Url::parse("https://app.firez.one?as=client&nonce=some_nonce&state=some_state")
                 .unwrap()
         );

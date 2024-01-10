@@ -12,7 +12,7 @@ use client::{
 };
 use connlib_client_shared::{file_logger, ResourceDescription};
 use connlib_shared::messages::ResourceId;
-use secrecy::SecretString;
+use secrecy::{ExposeSecret, SecretString};
 use std::{net::IpAddr, path::PathBuf, str::FromStr, sync::Arc, time::Duration};
 use system_tray_menu::Event as TrayMenuEvent;
 use tauri::{Manager, SystemTray, SystemTrayEvent};
@@ -489,7 +489,7 @@ async fn run_controller(
                             controller.refresh_system_tray_menu()?;
                             tauri::api::shell::open(
                                 &app.shell_scope(),
-                                &url,
+                                &url.expose_secret().inner,
                                 None,
                             )?;
                         }
