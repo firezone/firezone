@@ -4,7 +4,6 @@ use std::time::Duration;
 
 use arc_swap::ArcSwapOption;
 use bytes::Bytes;
-use connlib_shared::Callbacks;
 use webrtc::mux::endpoint::Endpoint;
 use webrtc::util::Conn;
 
@@ -14,7 +13,6 @@ use crate::{peer::Peer, MAX_UDP_SIZE};
 
 pub(crate) async fn start_peer_handler<TId, TTransform>(
     device: Arc<ArcSwapOption<Device>>,
-    callbacks: impl Callbacks + 'static,
     peer: Arc<Peer<TId, TTransform>>,
     channel: Arc<Endpoint>,
 ) where
@@ -27,7 +25,7 @@ pub(crate) async fn start_peer_handler<TId, TTransform>(
             tokio::time::sleep(Duration::from_millis(100)).await;
             continue;
         };
-        let result = peer_handler(&callbacks, &peer, channel.clone(), &device).await;
+        let result = peer_handler(&peer, channel.clone(), &device).await;
 
         if matches!(result, Err(ref err) if err.raw_os_error() == Some(9)) {
             tracing::warn!("bad_file_descriptor");
@@ -45,7 +43,6 @@ pub(crate) async fn start_peer_handler<TId, TTransform>(
 }
 
 async fn peer_handler<TId, TTransform>(
-    callbacks: &impl Callbacks,
     peer: &Arc<Peer<TId, TTransform>>,
     channel: Arc<Endpoint>,
     device: &Device,
@@ -83,7 +80,6 @@ where
             Ok(None) => {}
             Err(other) => {
                 tracing::error!(error = ?other, "failed to handle peer packet");
-                let _ = callbacks.on_error(&other);
             }
         }
     }
