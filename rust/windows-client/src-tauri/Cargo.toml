@@ -19,6 +19,7 @@ connlib-client-shared = { workspace = true }
 connlib-shared = { workspace = true }
 firezone-cli-utils = { workspace = true }
 hex = "0.4.3"
+git-version = "0.3.9"
 # Same crate Hickory uses
 hostname = "0.3.1"
 # This is the same crate hickory uses to get system resolvers
