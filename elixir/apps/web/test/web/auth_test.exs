@@ -695,7 +695,7 @@ defmodule Web.AuthTest do
       assert redirected_to(conn) == ~p"/#{account}/sites"
     end
 
-    test "redirects if user is authenticated to the client deep link", %{
+    test "redirects if client is authenticated to the deep link", %{
       conn: conn,
       account: account,
       nonce: nonce,
