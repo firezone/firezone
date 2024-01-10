@@ -31,14 +31,14 @@ struct AdvancedSettings: Equatable {
         authBaseURLString: "https://app.firez.one/",
         apiURLString: "wss://api.firez.one/",
         connlibLogFilterString:
-          "connlib_client_apple=debug,firezone_tunnel=trace,connlib_shared=debug,connlib_client_shared=debug,warn"
+          "connlib_client_apple=debug,webrtc_mdns=error,firezone_tunnel=trace,connlib_shared=debug,connlib_client_shared=debug,warn"
       )
     #else
       AdvancedSettings(
         authBaseURLString: "https://app.firezone.dev/",
         apiURLString: "wss://api.firezone.dev/",
         connlibLogFilterString:
-          "connlib_client_apple=info,firezone_tunnel=trace,"
+          "connlib_client_apple=info,webrtc_mdns=error,firezone_tunnel=trace,"
           + "connlib_shared=info,connlib_client_shared=info,webrtc=error,warn"
       )
     #endif

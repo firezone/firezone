@@ -114,7 +114,7 @@ services:
   client:
     environment:
       FIREZONE_TOKEN: "n.SFMyNTY.g2gDaANtAAAAJGM4OWJjYzhjLTkzOTItNGRhZS1hNDBkLTg4OGFlZjZkMjhlMG0AAAAkN2RhN2QxY2QtMTExYy00NGE3LWI1YWMtNDAyN2I5ZDIzMGU1bQAAACtBaUl5XzZwQmstV0xlUkFQenprQ0ZYTnFJWktXQnMyRGR3XzJ2Z0lRdkZnbgYAGUmu74wBYgABUYA.UN3vSLLcAMkHeEh5VHumPOutkuue8JA6wlxM9JxJEPE"
-      RUST_LOG: firezone_linux_client=trace,wire=trace,connlib_client_shared=trace,firezone_tunnel=trace,connlib_shared=trace,warn
+      RUST_LOG: firezone_linux_client=trace,wire=trace,connlib_client_shared=trace,firezone_tunnel=trace,webrtc_mdns=error,connlib_shared=trace,warn
       FIREZONE_API_URL: ws://api:8081
       FIREZONE_ID: D0455FDE-8F65-4960-A778-B934E4E85A5F
       MAX_PARTITION_TIME: 5s
@@ -151,7 +151,7 @@ services:
       test: ["CMD-SHELL", "ip link | grep tun-firezone"]
     environment:
       FIREZONE_TOKEN: "SFMyNTY.g2gDaAJtAAAAJDNjZWYwNTY2LWFkZmQtNDhmZS1hMGYxLTU4MDY3OTYwOGY2Zm0AAABAamp0enhSRkpQWkdCYy1vQ1o5RHkyRndqd2FIWE1BVWRwenVScjJzUnJvcHg3NS16bmhfeHBfNWJUNU9uby1yYm4GAEC0b0KJAWIAAVGA.9Oirn9t8rvQpfOhW7hwGBFVzeMm9di0xYGTlwf9cFFk"
-      RUST_LOG: firezone_gateway=trace,wire=trace,connlib_gateway_shared=trace,firezone_tunnel=trace,connlib_shared=trace,warn
+      RUST_LOG: firezone_gateway=trace,wire=trace,connlib_gateway_shared=trace,webrtc_mdns=error,firezone_tunnel=trace,connlib_shared=trace,warn
       FIREZONE_ENABLE_MASQUERADE: 1
       FIREZONE_API_URL: ws://api:8081
       FIREZONE_ID: 4694E56C-7643-4A15-9DF3-638E5B05F570

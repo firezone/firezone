@@ -152,6 +152,7 @@ defmodule Web.Sites.NewToken do
          [
            "firezone_gateway=trace",
            "firezone_tunnel=trace",
+           "webrtc_mdns=error",
            "connlib_shared=trace",
            "tunnel_state=trace",
            "phoenix_channel=debug",
