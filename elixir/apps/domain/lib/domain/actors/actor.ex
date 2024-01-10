@@ -2,7 +2,8 @@ defmodule Domain.Actors.Actor do
   use Domain, :schema
 
   schema "actors" do
-    field :type, Ecto.Enum, values: [:account_user, :account_admin_user, :service_account]
+    field :type, Ecto.Enum,
+      values: [:account_user, :account_admin_user, :service_account, :api_client]
 
     field :name, :string
 

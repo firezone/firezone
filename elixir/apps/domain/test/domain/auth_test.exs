@@ -3191,6 +3191,116 @@ defmodule Domain.AuthTest do
     end
   end
 
+  describe "create_api_client_token/3" do
+    setup do
+      account = Fixtures.Accounts.create_account()
+      Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
+      provider = Fixtures.Auth.create_email_provider(account: account)
+      user_agent = Fixtures.Auth.user_agent()
+      remote_ip = Fixtures.Auth.remote_ip()
+
+      identity =
+        Fixtures.Auth.create_identity(
+          actor: [type: :account_admin_user],
+          account: account,
+          provider: provider,
+          user_agent: user_agent,
+          remote_ip: remote_ip
+        )
+
+      subject = Fixtures.Auth.create_subject(identity: identity)
+
+      %{
+        account: account,
+        provider: provider,
+        identity: identity,
+        subject: subject,
+        user_agent: user_agent,
+        remote_ip: remote_ip,
+        context: %Auth.Context{
+          type: :api_client,
+          remote_ip: remote_ip,
+          remote_ip_location_region: "UA",
+          remote_ip_location_city: "Kyiv",
+          remote_ip_location_lat: 50.4501,
+          remote_ip_location_lon: 30.5234,
+          user_agent: user_agent
+        }
+      }
+    end
+
+    test "returns valid client token for a given service account identity", %{
+      account: account,
+      context: context,
+      subject: subject
+    } do
+      one_day = DateTime.utc_now() |> DateTime.add(1, :day) |> DateTime.truncate(:second)
+      actor = Fixtures.Actors.create_actor(type: :api_client, account: account)
+
+      assert {:ok, encoded_token} =
+               create_api_client_token(actor, subject, %{
+                 "name" => "foo",
+                 "expires_at" => one_day
+               })
+
+      assert {:ok, api_subject} = authenticate(encoded_token, context)
+      assert api_subject.account.id == account.id
+      assert api_subject.actor.id == actor.id
+      refute api_subject.identity
+      assert api_subject.context.type == context.type
+      assert api_subject.permissions == fetch_type_permissions!(:api_client)
+
+      assert token = Repo.get(Tokens.Token, api_subject.token_id)
+      assert token.name == "foo"
+      assert token.type == context.type
+      assert token.account_id == account.id
+      refute token.identity_id
+      assert token.actor_id == actor.id
+      assert token.created_by == :identity
+      assert token.created_by_identity_id == subject.identity.id
+      assert token.created_by_user_agent == context.user_agent
+      assert token.created_by_remote_ip.address == context.remote_ip
+
+      assert api_subject.expires_at == token.expires_at
+      assert DateTime.truncate(api_subject.expires_at, :second) == one_day
+    end
+
+    test "raises an error when trying to create a token for a different account", %{
+      subject: subject
+    } do
+      actor = Fixtures.Actors.create_actor(type: :api_client)
+
+      assert_raise FunctionClauseError, fn ->
+        create_api_client_token(actor, subject, %{})
+      end
+    end
+
+    test "raises an error when trying to create a token not for a service account", %{
+      account: account,
+      subject: subject
+    } do
+      actor = Fixtures.Actors.create_actor(type: :account_user, account: account)
+
+      assert_raise FunctionClauseError, fn ->
+        create_api_client_token(actor, subject, %{})
+      end
+    end
+
+    test "returns error on missing permissions", %{
+      account: account,
+      subject: subject
+    } do
+      actor = Fixtures.Actors.create_actor(type: :api_client, account: account)
+      subject = Fixtures.Auth.remove_permissions(subject)
+
+      assert create_api_client_token(actor, subject, %{}) ==
+               {:error,
+                {:unauthorized,
+                 reason: :missing_permissions,
+                 missing_permissions: [Authorizer.manage_api_clients_permission()]}}
+    end
+  end
+
   describe "authenticate/2" do
     setup do
       account = Fixtures.Accounts.create_account()

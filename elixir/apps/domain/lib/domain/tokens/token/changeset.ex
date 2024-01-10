@@ -56,13 +56,16 @@ defmodule Domain.Tokens.Token.Changeset do
     case fetch_field(changeset, :context) do
       {_data_or_changes, :browser} ->
         changeset
+        |> validate_required(:actor_id)
         |> validate_required(:identity_id)
-        |> assoc_constraint(:identity)
 
       {_data_or_changes, :client} ->
         changeset
-        |> validate_required(:identity_id)
-        |> assoc_constraint(:identity)
+        |> validate_required(:actor_id)
+
+      {_data_or_changes, :api_client} ->
+        changeset
+        |> validate_required(:actor_id)
 
       # TODO: relay, gateway, api_client
 
