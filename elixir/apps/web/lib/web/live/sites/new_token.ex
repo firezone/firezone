@@ -267,14 +267,14 @@ defmodule Web.Sites.NewToken do
     chmod 0775 /var/lib/firezone
 
     # Enable masquerading for ethernet and wireless interfaces
-    iptables -C FORWARD -i tun-firezone -j ACCEPT 2&>1 > /dev/null || iptables -A FORWARD -i tun-firezone -j ACCEPT
-    iptables -C FORWARD -o tun-firezone -j ACCEPT 2&>1 > /dev/null || iptables -A FORWARD -o tun-firezone -j ACCEPT
-    iptables -t nat -C POSTROUTING -o e+ -j MASQUERADE 2&>1 > /dev/null || iptables -t nat -A POSTROUTING -o e+ -j MASQUERADE
-    iptables -t nat -C POSTROUTING -o w+ -j MASQUERADE 2&>1 > /dev/null || iptables -t nat -A POSTROUTING -o w+ -j MASQUERADE
-    ip6tables -C FORWARD -i tun-firezone -j ACCEPT 2&>1 > /dev/null || ip6tables -A FORWARD -i tun-firezone -j ACCEPT
-    ip6tables -C FORWARD -o tun-firezone -j ACCEPT 2&>1 > /dev/null || ip6tables -A FORWARD -o tun-firezone -j ACCEPT
-    ip6tables -t nat -C POSTROUTING -o e+ -j MASQUERADE 2&>1 > /dev/null || ip6tables -t nat -A POSTROUTING -o e+ -j MASQUERADE
-    ip6tables -t nat -C POSTROUTING -o w+ -j MASQUERADE 2&>1 > /dev/null || ip6tables -t nat -A POSTROUTING -o w+ -j MASQUERADE
+    iptables -C FORWARD -i tun-firezone -j ACCEPT > /dev/null 2>&1 || iptables -A FORWARD -i tun-firezone -j ACCEPT
+    iptables -C FORWARD -o tun-firezone -j ACCEPT > /dev/null 2>&1 || iptables -A FORWARD -o tun-firezone -j ACCEPT
+    iptables -t nat -C POSTROUTING -o e+ -j MASQUERADE > /dev/null 2>&1 || iptables -t nat -A POSTROUTING -o e+ -j MASQUERADE
+    iptables -t nat -C POSTROUTING -o w+ -j MASQUERADE > /dev/null 2>&1 || iptables -t nat -A POSTROUTING -o w+ -j MASQUERADE
+    ip6tables -C FORWARD -i tun-firezone -j ACCEPT > /dev/null 2>&1 || ip6tables -A FORWARD -i tun-firezone -j ACCEPT
+    ip6tables -C FORWARD -o tun-firezone -j ACCEPT > /dev/null 2>&1 || ip6tables -A FORWARD -o tun-firezone -j ACCEPT
+    ip6tables -t nat -C POSTROUTING -o e+ -j MASQUERADE > /dev/null 2>&1 || ip6tables -t nat -A POSTROUTING -o e+ -j MASQUERADE
+    ip6tables -t nat -C POSTROUTING -o w+ -j MASQUERADE > /dev/null 2>&1 || ip6tables -t nat -A POSTROUTING -o w+ -j MASQUERADE
 
     # Enable packet forwarding
     sysctl -w net.ipv4.ip_forward=1
