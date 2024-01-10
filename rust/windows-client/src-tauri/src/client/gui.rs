@@ -12,7 +12,7 @@ use client::{
 };
 use connlib_client_shared::{file_logger, ResourceDescription};
 use connlib_shared::messages::ResourceId;
-use secrecy::SecretString;
+use secrecy::{ExposeSecret, SecretString};
 use std::{net::IpAddr, path::PathBuf, str::FromStr, sync::Arc, time::Duration};
 use system_tray_menu::Event as TrayMenuEvent;
 use tauri::{api::notification::Notification, Manager, SystemTray, SystemTrayEvent};
@@ -472,7 +472,7 @@ async fn run_controller(
                             let url = req.to_url(&controller.advanced_settings.auth_base_url);
                             tauri::api::shell::open(
                                 &app.shell_scope(),
-                                &url,
+                                &url.expose_secret().inner,
                                 None,
                             )?;
                         }
