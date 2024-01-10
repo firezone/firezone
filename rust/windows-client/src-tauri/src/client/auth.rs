@@ -1,4 +1,4 @@
-//! Fulfills https://github.com/firezone/firezone/issues/2823
+//! Fulfills <https://github.com/firezone/firezone/issues/2823>
 
 use rand::{thread_rng, RngCore};
 use secrecy::{ExposeSecret, SecretString};
@@ -29,6 +29,7 @@ pub(crate) struct Auth {
 
 pub(crate) enum State {
     SignedOut,
+    // TODO: Need a way to time out this state if the server never signs us in
     NeedResponse(Request),
     SignedIn(Session),
 }
@@ -110,6 +111,7 @@ impl Auth {
     /// Returns parameters used to make a URL for the web browser to open
     /// May return Ok(None) if we're already signed in
     pub fn start_sign_in(&mut self) -> Result<Option<&Request>> {
+        self.sign_out()?;
         self.state = State::NeedResponse(Request {
             nonce: generate_nonce(),
             state: generate_nonce(),
@@ -259,9 +261,11 @@ mod tests {
         state.handle_response(resp).unwrap();
         assert!(state.token().unwrap().is_some());
 
-        // Accidentally sign in again, this can happen if the user holds the systray menu open while a sign in is succeeding
-        assert!(state.start_sign_in().unwrap().is_none());
-        assert!(state.token().unwrap().is_some());
+        // Accidentally sign in again, this can happen if the user holds the systray menu open while a sign in is succeeding.
+        // For now, we treat that like signing out and back in immediately, so it wipes the old token.
+        // TODO: That sounds wrong.
+        assert!(state.start_sign_in().unwrap().is_some());
+        assert!(state.token().unwrap().is_none());
 
         // Sign out again, now the token is gone
         state.sign_out().unwrap();
