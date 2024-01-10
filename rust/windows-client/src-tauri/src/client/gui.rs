@@ -256,8 +256,7 @@ impl connlib_client_shared::Callbacks for CallbackHandler {
     }
 
     fn on_tunnel_ready(&self) -> Result<(), Self::Error> {
-        // TODO: implement
-        tracing::info!("on_tunnel_ready");
+        // TODO: Mark the tunnel as ready here so the system tray menu can be accurate
         Ok(())
     }
 
@@ -285,7 +284,7 @@ struct Controller {
     /// Debugging-only settings like API URL, auth URL, log filter
     advanced_settings: AdvancedSettings,
     app: tauri::AppHandle,
-    // Sign-in state
+    // Sign-in state with the portal / deep links
     auth: client::auth::Auth,
     ctlr_tx: CtlrTx,
     /// connlib session for the currently signed-in user, if there is one
@@ -401,20 +400,39 @@ impl Controller {
         Ok(())
     }
 
-    fn reload_resource_list(&mut self) -> Result<()> {
-        let Some(session) = &self.session else {
-            tracing::warn!("got notified to update resources but there is no session");
-            return Ok(());
-        };
-        let resources = session.callback_handler.resources.load();
-        let actor_name = &self
-            .auth
-            .session()
-            .ok_or_else(|| anyhow!("connlib is signed in but auth module isn't"))?
-            .actor_name;
-        self.app
-            .tray_handle()
-            .set_menu(system_tray_menu::signed_in(actor_name, &resources))?;
+    /// Returns a new system tray menu
+    fn build_system_tray_menu(&self) -> Result<tauri::SystemTrayMenu> {
+        Ok(if let Some(auth_session) = self.auth.session() {
+            if let Some(connlib_session) = &self.session {
+                // TODO: Modify CallbackHandler so it can tell us whether the tunnel is really ready.
+                let tunnel_ready = true;
+                if tunnel_ready {
+                    // Signed in, tunnel ready
+                    let resources = connlib_session.callback_handler.resources.load();
+                    system_tray_menu::signed_in(&auth_session.actor_name, &resources)
+                } else {
+                    // Signed in, raising tunnel
+                    system_tray_menu::signing_in()
+                }
+            } else {
+                bail!("We have an auth session but no connlib session");
+            }
+        } else if self.auth.ongoing_request().is_ok() {
+            // Signing in, waiting on deep link callback
+            system_tray_menu::signing_in()
+        } else {
+            system_tray_menu::signed_out()
+        })
+    }
+
+    /// Builds a new system tray menu and applies it to the app
+    fn refresh_system_tray_menu(&self) -> Result<()> {
+        let menu = self.build_system_tray_menu().unwrap_or_else(|error| {
+            tracing::error!(?error, "couldn't build system tray menu");
+            // If there's an error, show the signed-out menu as a default.
+            system_tray_menu::signed_out()
+        });
+        self.app.tray_handle().set_menu(menu)?;
         Ok(())
     }
 }
@@ -440,7 +458,7 @@ async fn run_controller(
 
     loop {
         tokio::select! {
-            () = controller.notify_controller.notified() => if let Err(e) = controller.reload_resource_list() {
+            () = controller.notify_controller.notified() => if let Err(e) = controller.refresh_system_tray_menu() {
                 tracing::error!("couldn't reload resource list: {e:#?}");
             },
             req = rx.recv() => {
@@ -468,6 +486,7 @@ async fn run_controller(
                     Req::SignIn => {
                         if let Some(req) = controller.auth.start_sign_in()? {
                             let url = req.to_url(&controller.advanced_settings.auth_base_url);
+                            controller.refresh_system_tray_menu()?;
                             tauri::api::shell::open(
                                 &app.shell_scope(),
                                 &url,
@@ -484,7 +503,7 @@ async fn run_controller(
                         else {
                             tracing::error!("tried to sign out but there's no session");
                         }
-                        app.tray_handle().set_menu(system_tray_menu::signed_out())?;
+                        controller.refresh_system_tray_menu()?;
                     }
                     Req::StartStopLogCounting(enable) => {
                         if enable {
