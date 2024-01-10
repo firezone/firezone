@@ -84,7 +84,7 @@ where
         relays: Vec<Relay>,
         reference: Option<Reference>,
     ) -> Result<Request> {
-        tracing::trace!("request_connection");
+        tracing::trace!(%gateway_id, %resource_id, "request_connection");
 
         let reference: usize = reference
             .ok_or(Error::InvalidReference)?

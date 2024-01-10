@@ -244,6 +244,28 @@ enum RecordData<T> {
     Ptr(domain::rdata::Ptr<T>),
 }
 
+pub fn is_subdomain(name: &Dname, resource: &str) -> bool {
+    let question_mark = RelativeDname::<Vec<_>>::from_octets(b"\x01?".as_ref().into()).unwrap();
+    let Ok(resource) = Dname::vec_from_str(resource) else {
+        return false;
+    };
+
+    if resource.starts_with(&question_mark) {
+        return resource
+            .parent()
+            .is_some_and(|r| r == name || name.parent().is_some_and(|n| r == n));
+    }
+
+    if resource.starts_with(&RelativeDname::wildcard_vec()) {
+        let Some(resource) = resource.parent() else {
+            return false;
+        };
+        return name.iter_suffixes().any(|n| n == resource);
+    }
+
+    name == &resource
+}
+
 fn get_description(
     name: &Dname,
     dns_resources: &HashMap<String, ResourceDescriptionDns>,
@@ -400,6 +422,8 @@ fn reverse_dns_addr_v6<'a>(dns_parts: &mut impl Iterator<Item = &'a str>) -> Opt
 #[cfg(test)]
 mod test {
     use connlib_shared::{messages::ResourceDescriptionDns, Dname};
+
+    use crate::dns::is_subdomain;
 
     use super::{get_description, reverse_dns_addr};
     use std::{collections::HashMap, net::Ipv4Addr};
@@ -593,5 +617,109 @@ mod test {
             &dns_resources_fixture,
         )
         .is_none(),);
+    }
+
+    #[test]
+    fn exact_subdomain_match() {
+        assert!(is_subdomain(
+            &Dname::vec_from_str("foo.com").unwrap(),
+            "foo.com"
+        ));
+
+        assert!(!is_subdomain(
+            &Dname::vec_from_str("a.foo.com").unwrap(),
+            "foo.com"
+        ));
+
+        assert!(!is_subdomain(
+            &Dname::vec_from_str("a.b.foo.com").unwrap(),
+            "foo.com"
+        ));
+
+        assert!(!is_subdomain(
+            &Dname::vec_from_str("foo.com").unwrap(),
+            "a.foo.com"
+        ));
+    }
+
+    #[test]
+    fn wildcard_subdomain_match() {
+        assert!(is_subdomain(
+            &Dname::vec_from_str("foo.com").unwrap(),
+            "*.foo.com"
+        ));
+
+        assert!(is_subdomain(
+            &Dname::vec_from_str("a.foo.com").unwrap(),
+            "*.foo.com"
+        ));
+
+        assert!(is_subdomain(
+            &Dname::vec_from_str("a.foo.com").unwrap(),
+            "*.a.foo.com"
+        ));
+
+        assert!(is_subdomain(
+            &Dname::vec_from_str("b.a.foo.com").unwrap(),
+            "*.a.foo.com"
+        ));
+
+        assert!(is_subdomain(
+            &Dname::vec_from_str("a.b.foo.com").unwrap(),
+            "*.foo.com"
+        ));
+
+        assert!(!is_subdomain(
+            &Dname::vec_from_str("afoo.com").unwrap(),
+            "*.foo.com"
+        ));
+
+        assert!(!is_subdomain(
+            &Dname::vec_from_str("b.afoo.com").unwrap(),
+            "*.foo.com"
+        ));
+
+        assert!(!is_subdomain(
+            &Dname::vec_from_str("bar.com").unwrap(),
+            "*.foo.com"
+        ));
+
+        assert!(!is_subdomain(
+            &Dname::vec_from_str("foo.com").unwrap(),
+            "*.a.foo.com"
+        ));
+    }
+
+    #[test]
+    fn question_mark_subdomain_match() {
+        assert!(is_subdomain(
+            &Dname::vec_from_str("foo.com").unwrap(),
+            "?.foo.com"
+        ));
+
+        assert!(is_subdomain(
+            &Dname::vec_from_str("a.foo.com").unwrap(),
+            "?.foo.com"
+        ));
+
+        assert!(!is_subdomain(
+            &Dname::vec_from_str("a.b.foo.com").unwrap(),
+            "?.foo.com"
+        ));
+
+        assert!(!is_subdomain(
+            &Dname::vec_from_str("bar.com").unwrap(),
+            "?.foo.com"
+        ));
+
+        assert!(!is_subdomain(
+            &Dname::vec_from_str("foo.com").unwrap(),
+            "?.a.foo.com"
+        ));
+
+        assert!(!is_subdomain(
+            &Dname::vec_from_str("afoo.com").unwrap(),
+            "?.foo.com"
+        ));
     }
 }

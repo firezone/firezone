@@ -429,8 +429,7 @@ defmodule Web.AuthControllerTest do
       actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
       identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
 
-      {conn_with_cookie, secret} =
-        put_magic_link_auth_state(conn, account, provider, identity)
+      {conn_with_cookie, secret} = put_magic_link_auth_state(conn, account, provider, identity)
 
       %{
         account: account,
@@ -877,8 +876,7 @@ defmodule Web.AuthControllerTest do
         nonce: "NONCE"
       }
 
-      {conn, state, _verifier} =
-        put_idp_auth_state(conn, account, provider, redirect_params)
+      {conn, state, _verifier} = put_idp_auth_state(conn, account, provider, redirect_params)
 
       Mocks.OpenIDConnect.expect_refresh_token(bypass, %{"id_token" => "foo"})
 
@@ -1146,8 +1144,7 @@ defmodule Web.AuthControllerTest do
             provider: provider
           )
 
-        {conn, secret} =
-          put_magic_link_auth_state(conn, account, provider, identity)
+        {conn, secret} = put_magic_link_auth_state(conn, account, provider, identity)
 
         authorized_conn =
           conn

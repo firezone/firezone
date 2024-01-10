@@ -94,8 +94,7 @@ defmodule Web.ConnCase do
     cookie_key = "fz_auth_state_#{provider.id}"
     %{value: signed_state} = redirected_conn.resp_cookies[cookie_key]
 
-    conn_with_cookie =
-      put_req_cookie(conn, "fz_auth_state_#{provider.id}", signed_state)
+    conn_with_cookie = put_req_cookie(conn, "fz_auth_state_#{provider.id}", signed_state)
 
     {conn_with_cookie, secret}
   end
@@ -113,8 +112,7 @@ defmodule Web.ConnCase do
 
     %{value: signed_state} = redirected_conn.resp_cookies[cookie_key]
 
-    conn_with_cookie =
-      put_req_cookie(conn, "fz_auth_state_#{provider.id}", signed_state)
+    conn_with_cookie = put_req_cookie(conn, "fz_auth_state_#{provider.id}", signed_state)
 
     {conn_with_cookie, state, verifier}
   end
