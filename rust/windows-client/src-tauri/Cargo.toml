@@ -18,6 +18,7 @@ clap = { version = "4.4", features = ["derive",  "env"] }
 connlib-client-shared = { workspace = true }
 connlib-shared = { workspace = true }
 firezone-cli-utils = { workspace = true }
+hex = "0.4.3"
 # Same crate Hickory uses
 hostname = "0.3.1"
 # This is the same crate hickory uses to get system resolvers
@@ -27,6 +28,7 @@ ring = "0.17"
 secrecy = { workspace = true }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+subtle = "2.5.0"
 thiserror = { version = "1.0", default-features = false }
 tokio = { version = "1.33.0", features = ["time"] }
 tracing = { workspace = true }
@@ -36,6 +38,7 @@ url = { version = "2.5.0", features = ["serde"] }
 uuid = { version = "1.5.0", features = ["v4"] }
 tracing-panic = "0.1.1"
 zip = { version = "0.6.6", features = ["deflate", "time"], default-features = false }
+rand = "0.8.5"
 
 # These dependencies are locked behind `cfg(windows)` because they either can't compile at all on Linux, or they need native dependencies like glib that are difficult to get. Try not to add more here.
 
