@@ -13,7 +13,8 @@ defmodule Web.Flows.Show do
                resource: []
              ]
            ) do
-      {:ok, assign(socket, flow: flow)}
+      socket = assign(socket, flow: flow, page_title: "Flows")
+      {:ok, socket}
     else
       {:error, _reason} -> raise Web.LiveErrors.NotFoundError
     end

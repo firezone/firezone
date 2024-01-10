@@ -5,7 +5,14 @@ defmodule Web.Clients.Index do
   def mount(_params, _session, socket) do
     with {:ok, clients} <- Clients.list_clients(socket.assigns.subject, preload: :actor) do
       :ok = Clients.subscribe_for_clients_presence_in_account(socket.assigns.subject.account)
-      {:ok, assign(socket, clients: clients)}
+
+      socket =
+        assign(socket,
+          clients: clients,
+          page_title: "Clients"
+        )
+
+      {:ok, socket}
     else
       {:error, _reason} -> raise Web.LiveErrors.NotFoundError
     end

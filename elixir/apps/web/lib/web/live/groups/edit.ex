@@ -8,7 +8,7 @@ defmodule Web.Groups.Edit do
          nil <- group.deleted_at,
          false <- Actors.group_synced?(group) do
       changeset = Actors.change_group(group)
-      socket = assign(socket, group: group, form: to_form(changeset))
+      socket = assign(socket, group: group, form: to_form(changeset), page_title: "Groups")
       {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
     else
       _other -> raise Web.LiveErrors.NotFoundError

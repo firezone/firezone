@@ -17,7 +17,7 @@ defmodule Web.Actors.Edit do
           actor: actor,
           groups: groups,
           form: to_form(changeset),
-          page_title: "Edit actor #{actor.name}"
+          page_title: "Actors"
         )
 
       {:ok, socket}

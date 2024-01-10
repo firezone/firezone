@@ -27,7 +27,8 @@ defmodule Web.Sites.Show do
        assign(socket,
          group: group,
          gateways: gateways,
-         resource_actor_groups_peek: resource_actor_groups_peek
+         resource_actor_groups_peek: resource_actor_groups_peek,
+         page_title: "Sites"
        )}
     else
       {:error, _reason} -> raise Web.LiveErrors.NotFoundError

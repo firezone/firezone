@@ -16,7 +16,7 @@ defmodule Web.Settings.IdentityProviders.Index do
           identities_count_by_provider_id: identities_count_by_provider_id,
           groups_count_by_provider_id: groups_count_by_provider_id,
           providers: providers,
-          page_title: "Identity Providers Settings"
+          page_title: "Identity Providers"
         )
 
       {:ok, socket}

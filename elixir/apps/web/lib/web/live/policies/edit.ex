@@ -10,7 +10,15 @@ defmodule Web.Policies.Edit do
            ),
          nil <- policy.deleted_at do
       form = to_form(Policies.Policy.Changeset.update(policy, %{}))
-      socket = assign(socket, policy: policy, page_title: "Edit Policy", form: form)
+
+      socket =
+        assign(socket,
+          policy: policy,
+          page_title: "Edit Policy",
+          form: form,
+          page_title: "Policies"
+        )
+
       {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
     else
       _other -> raise Web.LiveErrors.NotFoundError
@@ -25,7 +33,7 @@ defmodule Web.Policies.Edit do
         <.policy_name policy={@policy} />
       </.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/policies/#{@policy}/edit"}>
-        <%= @page_title %>
+        Edit
       </.breadcrumb>
     </.breadcrumbs>
 

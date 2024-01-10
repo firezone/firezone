@@ -6,7 +6,7 @@ defmodule Web.RelayGroups.New do
     with true <- Domain.Config.self_hosted_relays_enabled?() do
       changeset = Relays.new_group()
 
-      {:ok, assign(socket, form: to_form(changeset)),
+      {:ok, assign(socket, form: to_form(changeset, page_title: "Relays")),
        temporary_assigns: [form: %Phoenix.HTML.Form{}]}
     else
       _other -> raise Web.LiveErrors.NotFoundError
@@ -21,7 +21,7 @@ defmodule Web.RelayGroups.New do
     </.breadcrumbs>
     <.section>
       <:title>
-        Add a new Relay Instance Group
+        Add Relay Instance Group
       </:title>
       <:content>
         <div class="py-8 px-4 mx-auto max-w-2xl lg:py-16">

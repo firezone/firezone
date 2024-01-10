@@ -6,7 +6,7 @@ defmodule Web.Clients.Edit do
     with {:ok, client} <- Clients.fetch_client_by_id(id, socket.assigns.subject),
          nil <- client.deleted_at do
       changeset = Clients.change_client(client)
-      socket = assign(socket, client: client, form: to_form(changeset))
+      socket = assign(socket, client: client, form: to_form(changeset), page_title: "Clients")
       {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
     else
       _other -> raise Web.LiveErrors.NotFoundError

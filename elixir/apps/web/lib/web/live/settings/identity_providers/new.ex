@@ -4,7 +4,7 @@ defmodule Web.Settings.IdentityProviders.New do
 
   def mount(_params, _session, socket) do
     {:ok, adapters} = Auth.list_provider_adapters()
-    socket = assign(socket, form: %{}, adapters: adapters)
+    socket = assign(socket, form: %{}, adapters: adapters, page_title: "Identity Providers")
     {:ok, socket}
   end
 

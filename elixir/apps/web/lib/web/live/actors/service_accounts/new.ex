@@ -12,7 +12,8 @@ defmodule Web.Actors.ServiceAccounts.New do
       socket =
         assign(socket,
           groups: groups,
-          form: to_form(changeset)
+          form: to_form(changeset),
+          page_title: "Actors"
         )
 
       {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}

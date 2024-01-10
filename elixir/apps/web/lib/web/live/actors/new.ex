@@ -4,8 +4,10 @@ defmodule Web.Actors.New do
 
   def mount(_params, _session, socket) do
     socket =
-      socket
-      |> assign(:form, %{})
+      assign(socket,
+        form: %{},
+        page_title: "Actors"
+      )
 
     {:ok, socket}
   end
