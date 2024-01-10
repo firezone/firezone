@@ -15,7 +15,7 @@ use connlib_shared::messages::ResourceId;
 use secrecy::SecretString;
 use std::{net::IpAddr, path::PathBuf, str::FromStr, sync::Arc, time::Duration};
 use system_tray_menu::Event as TrayMenuEvent;
-use tauri::{Manager, SystemTray, SystemTrayEvent};
+use tauri::{api::notification::Notification, Manager, SystemTray, SystemTrayEvent};
 use tokio::sync::{mpsc, oneshot, Notify};
 use ControllerRequest as Req;
 
@@ -219,6 +219,7 @@ pub(crate) enum ControllerRequest {
     SignIn,
     StartStopLogCounting(bool),
     SignOut,
+    TunnelReady,
 }
 
 #[derive(Clone)]
@@ -256,12 +257,13 @@ impl connlib_client_shared::Callbacks for CallbackHandler {
     }
 
     fn on_tunnel_ready(&self) -> Result<(), Self::Error> {
-        // TODO: implement
         tracing::info!("on_tunnel_ready");
+        self.ctlr_tx.try_send(ControllerRequest::TunnelReady)?;
         Ok(())
     }
 
     fn on_update_resources(&self, resources: Vec<ResourceDescription>) -> Result<(), Self::Error> {
+        tracing::info!("on_update_resources");
         self.resources.store(resources.into());
         self.notify_controller.notify_one();
         Ok(())
@@ -499,6 +501,14 @@ async fn run_controller(
                             tracing::debug!("cancelled log counting");
                         }
                     }
+                    Req::TunnelReady => {
+                        // May say "Windows Powershell" in dev mode
+                        // See https://github.com/tauri-apps/tauri/issues/3700
+                        Notification::new(&controller.app.config().tauri.bundle.identifier)
+                            .title("Firezone ready")
+                            .body("The Firezone tunnel is ready for use.")
+                            .show()?;
+                    },
                 }
             }
         }
