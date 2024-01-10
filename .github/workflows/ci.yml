@@ -191,6 +191,36 @@ jobs:
             execute: |
               docker compose exec -it client timeout 60 \
               sh -c 'until ping -W 1 -c 1 172.20.0.100 &>/dev/null; do true; done'
+          - test_name: Basic DNS flow
+            artifact_name: direct
+            setup: echo 'Noop'
+            execute: |
+              docker compose exec -it client timeout 60 \
+              sh -c 'until ping -W 1 -c 1 firez.one &>/dev/null; do true; done'
+          - test_name: Wildcard DNS flow 1
+            artifact_name: direct
+            setup: echo 'Noop'
+            execute: |
+              docker compose exec -it client timeout 60 \
+              sh -c 'until ping -W 1 -c 1 t.firez.one &>/dev/null; do true; done'
+          - test_name: Wildcard DNS flow 2
+            artifact_name: direct
+            setup: echo 'Noop'
+            execute: |
+              docker compose exec -it client timeout 60 \
+              sh -c 'until ping -W 1 -c 1 ping.firez.one &>/dev/null; do true; done'
+          - test_name: Question mark DNS flow 1
+            artifact_name: direct
+            setup: echo 'Noop'
+            execute: |
+              docker compose exec -it client timeout 60 \
+              sh -c 'until ping -W 1 -c 1 firezone.dev &>/dev/null; do true; done'
+          - test_name: Question mark DNS flow 2
+            artifact_name: direct
+            setup: echo 'Noop'
+            execute: |
+              docker compose exec -it client timeout 60 \
+              sh -c 'until ping -W 1 -c 1 www.firezone.dev &>/dev/null; do true; done'
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/gcp-docker-login

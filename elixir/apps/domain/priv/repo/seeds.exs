@@ -488,29 +488,42 @@ IO.puts("")
     admin_subject
   )
 
-{:ok, t_firez_one} =
+{:ok, firez_one} =
   Resources.create_resource(
     %{
       type: :dns,
-      name: "t.firez.one",
-      address: "t.firez.one",
+      name: "*.firez.one",
+      address: "*.firez.one",
       connections: [%{gateway_group_id: gateway_group.id}],
       filters: [%{protocol: :all}]
     },
     admin_subject
   )
 
-{:ok, ping_firez_one} =
+{:ok, firezone_dev} =
   Resources.create_resource(
     %{
       type: :dns,
-      name: "ping.firez.one",
-      address: "ping.firez.one",
+      name: "?.firezone.dev",
+      address: "?.firezone.dev",
       connections: [%{gateway_group_id: gateway_group.id}],
       filters: [%{protocol: :all}]
     },
     admin_subject
   )
+
+{:ok, example_dns} =
+  Resources.create_resource(
+    %{
+      type: :dns,
+      name: "example.com",
+      address: "example.com",
+      connections: [%{gateway_group_id: gateway_group.id}],
+      filters: [%{protocol: :all}]
+    },
+    admin_subject
+  )
+
 
 {:ok, ip6only} =
   Resources.create_resource(
@@ -555,6 +568,9 @@ IO.puts("")
 IO.puts("Created resources:")
 IO.puts("  #{dns_google_resource.address} - DNS - gateways: #{gateway_name}")
 IO.puts("  #{dns_gitlab_resource.address} - DNS - gateways: #{gateway_name}")
+IO.puts("  #{firez_one.address} - DNS - gateways: #{gateway_name}")
+IO.puts("  #{firezone_dev.address} - DNS - gateways: #{gateway_name}")
+IO.puts("  #{example_dns.address} - DNS - gateways: #{gateway_name}")
 IO.puts("  #{cidr_resource.address} - CIDR - gateways: #{gateway_name}")
 IO.puts("")
 
@@ -571,9 +587,9 @@ IO.puts("")
 {:ok, _} =
   Policies.create_policy(
     %{
-      name: "All Access To t.firez.one",
+      name: "All Access To firez.one",
       actor_group_id: all_group.id,
-      resource_id: t_firez_one.id
+      resource_id: firez_one.id
     },
     admin_subject
   )
@@ -581,9 +597,19 @@ IO.puts("")
 {:ok, _} =
   Policies.create_policy(
     %{
-      name: "All Access To ping.firez.one",
+      name: "All Access To firez.one",
       actor_group_id: all_group.id,
-      resource_id: ping_firez_one.id
+      resource_id: example_dns.id
+    },
+    admin_subject
+  )
+
+{:ok, _} =
+  Policies.create_policy(
+    %{
+      name: "All Access To firezone.dev",
+      actor_group_id: all_group.id,
+      resource_id: firezone_dev.id
     },
     admin_subject
   )
