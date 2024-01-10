@@ -524,7 +524,6 @@ IO.puts("")
     admin_subject
   )
 
-
 {:ok, ip6only} =
   Resources.create_resource(
     %{
