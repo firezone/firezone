@@ -604,7 +604,7 @@ defmodule Domain.Auth do
   def create_service_account_token(
         %Actors.Actor{type: :service_account, account_id: account_id} = actor,
         %Subject{account: %{id: account_id}} = subject,
-        attrs \\ %{}
+        attrs
       ) do
     attrs =
       Map.merge(attrs, %{
