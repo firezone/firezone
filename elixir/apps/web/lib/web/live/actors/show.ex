@@ -59,7 +59,7 @@ defmodule Web.Actors.Show do
       </:action>
       <:content flash={@flash}>
         <.vertical_table id="actor">
-          <.vertical_table_row label_class="w-1/5">
+          <.vertical_table_row>
             <:label>Name</:label>
             <:value><%= @actor.name %>
               <.actor_status actor={@actor} /></:value>
