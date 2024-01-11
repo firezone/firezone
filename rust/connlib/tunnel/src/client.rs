@@ -748,10 +748,12 @@ impl RoleState for ClientState {
         loop {
             match self.active_candidate_receivers.poll_next_unpin(cx) {
                 Poll::Ready((conn_id, Some(Ok(c)))) => {
-                    return Poll::Ready(Event::SignalIceCandidate {
-                        conn_id,
-                        candidate: c,
-                    })
+                    if self.filter_candidate(&c) {
+                        return Poll::Ready(Event::SignalIceCandidate {
+                            conn_id,
+                            candidate: c,
+                        });
+                    }
                 }
                 Poll::Ready((id, Some(Err(e)))) => {
                     tracing::warn!(gateway_id = %id, "ICE gathering timed out: {e}");
@@ -873,5 +875,19 @@ impl RoleState for ClientState {
         }
 
         peers_to_stop
+    }
+
+    fn filter_candidate(&self, candidate: &RTCIceCandidate) -> bool {
+        // This doesn't prevent all edge cases for routing loops but prevents some
+        // see firezone/firezone#3050
+        let Ok(addr) = candidate.address.parse::<IpAddr>() else {
+            return true;
+        };
+
+        if self.cidr_resources.longest_match(addr).is_some() {
+            return false;
+        }
+
+        self.peers_by_ip.longest_match(addr).is_none()
     }
 }

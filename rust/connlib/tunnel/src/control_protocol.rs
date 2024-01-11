@@ -49,6 +49,10 @@ where
         conn_id: TRoleState::Id,
         ice_candidate: RTCIceCandidate,
     ) -> Result<()> {
+        if !self.role_state.lock().filter_candidate(&ice_candidate) {
+            return Ok(());
+        }
+
         tracing::info!(%ice_candidate, %conn_id, "adding new remote candidate");
         let peer_connection = self
             .peer_connections

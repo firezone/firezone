@@ -11,6 +11,7 @@ use futures_bounded::{PushError, StreamMap};
 use ip_network_table::IpNetworkTable;
 use itertools::Itertools;
 use std::collections::VecDeque;
+use std::net::IpAddr;
 use std::sync::Arc;
 use std::task::{ready, Context, Poll};
 use std::time::Duration;
@@ -142,5 +143,14 @@ impl RoleState for GatewayState {
         }
 
         peers_to_stop
+    }
+
+    fn filter_candidate(&self, candidate: &RTCIceCandidate) -> bool {
+        // We don't really need to also filter in gateway side but no harm done
+        let Ok(addr) = candidate.address.parse::<IpAddr>() else {
+            return true;
+        };
+
+        self.peers_by_ip.longest_match(addr).is_none()
     }
 }
