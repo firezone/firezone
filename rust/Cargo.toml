@@ -55,5 +55,5 @@ debug = "full"
 # Split out debug info from the exe
 # https://doc.rust-lang.org/rustc/codegen-options/index.html#split-debuginfo
 split-debuginfo = "packed"
-# Don't strip debuginfo, we're going to put it in a separate file anyway
-strip = "none"
+# Still strip debuginfo, we're going to put it in a separate file anyway
+strip = true
