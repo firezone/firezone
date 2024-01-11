@@ -21,7 +21,8 @@ defmodule Web.SignIn.Email do
         account_id_or_slug: account_id_or_slug,
         provider_id: provider_id,
         resent: params["resent"],
-        params: params
+        params: params,
+        page_title: "Sign In"
       )
 
     {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}

@@ -328,11 +328,9 @@ where
 
                 if let Some(conn) = self.peer_connections.lock().remove(&conn_id) {
                     tokio::spawn({
-                        let callbacks = self.callbacks.clone();
                         async move {
                             if let Err(e) = conn.stop().await {
                                 tracing::warn!(%conn_id, error = ?e, "Can't close peer");
-                                let _ = callbacks.on_error(&e.into());
                             }
                         }
                     });
@@ -364,7 +362,6 @@ where
 
                 if let Err(e) = device.refresh_mtu() {
                     tracing::error!(error = ?e, "refresh_mtu");
-                    let _ = self.callbacks.on_error(&e);
                 }
             }
 

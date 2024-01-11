@@ -14,7 +14,8 @@ defmodule Web.Sites.Gateways.Index do
            ) do
       gateways = Enum.sort_by(gateways, & &1.online?, :desc)
       :ok = Gateways.subscribe_for_gateways_presence_in_group(group)
-      {:ok, assign(socket, group: group, gateways: gateways)}
+      socket = assign(socket, group: group, gateways: gateways, page_title: "Site Gateways")
+      {:ok, socket}
     else
       {:error, _reason} -> raise Web.LiveErrors.NotFoundError
     end

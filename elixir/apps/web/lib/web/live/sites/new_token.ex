@@ -22,7 +22,8 @@ defmodule Web.Sites.NewToken do
          group: group,
          env: env,
          connected?: false,
-         selected_tab: "systemd-instructions"
+         selected_tab: "systemd-instructions",
+         page_title: "New Site Gateway"
        )}
     else
       {:error, _reason} -> raise Web.LiveErrors.NotFoundError
