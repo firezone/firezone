@@ -16,7 +16,7 @@ defmodule Web.Policies.Show do
         assign(socket,
           policy: policy,
           flows: flows,
-          page_title: "Policy",
+          page_title: "Policy #{policy.id}",
           flow_activities_enabled?: Config.flow_activities_enabled?()
         )
 
@@ -37,7 +37,7 @@ defmodule Web.Policies.Show do
 
     <.section>
       <:title>
-        <%= @page_title %>: <code><%= @policy.id %></code>
+        Policy: <code><%= @policy.id %></code>
         <span :if={not is_nil(@policy.disabled_at)} class="text-primary-600">(disabled)</span>
         <span :if={not is_nil(@policy.deleted_at)} class="text-red-600">(deleted)</span>
       </:title>
