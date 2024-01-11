@@ -505,8 +505,8 @@ async fn run_controller(
                         // May say "Windows Powershell" in dev mode
                         // See https://github.com/tauri-apps/tauri/issues/3700
                         Notification::new(&controller.app.config().tauri.bundle.identifier)
-                            .title("Firezone ready")
-                            .body("The Firezone tunnel is ready for use.")
+                            .title("Firezone connected")
+                            .body("You are now signed in and able to access resources.")
                             .show()?;
                     },
                 }
