@@ -16,7 +16,7 @@
     "@next/mdx": "~14.0.4",
     "@types/mdx": "^2.0.10",
     "@types/mixpanel-browser": "^2.48.1",
-    "@types/node": "20.10.6",
+    "@types/node": "20.11.0",
     "@types/react": "18.2.46",
     "@types/react-dom": "18.2.18",
     "@types/react-syntax-highlighter": "^15.5.11",
