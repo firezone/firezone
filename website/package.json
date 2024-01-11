@@ -22,7 +22,7 @@
     "@types/react-syntax-highlighter": "^15.5.11",
     "asciinema-player": "^3.6.3",
     "autoprefixer": "10.4.16",
-    "fast-xml-parser": "^4.3.2",
+    "fast-xml-parser": "^4.3.3",
     "flowbite": "^2.2.1",
     "flowbite-react": "^0.6.4",
     "highlight.js": "^11.9.0",
