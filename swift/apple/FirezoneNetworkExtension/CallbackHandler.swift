@@ -43,7 +43,7 @@ public class CallbackHandler {
         CallbackHandler.onSetInterfaceConfig:
           IPv4: \(tunnelAddressIPv4.toString(), privacy: .public)
           IPv6: \(tunnelAddressIPv6.toString(), privacy: .public)
-          DNS: \(dnsAddress.toString(), privacy: .public)
+          DNS: \(dnsAddresses.toString(), privacy: .public)
       """)
 
     guard let dnsData = dnsAddresses.toString().data(using: .utf8) else {
@@ -57,7 +57,7 @@ public class CallbackHandler {
     delegate?.onSetInterfaceConfig(
       tunnelAddressIPv4: tunnelAddressIPv4.toString(),
       tunnelAddressIPv6: tunnelAddressIPv6.toString(),
-      dnsAddress: dnsAddress.toString()
+      dnsAddresses: dnsArray
     )
   }
 

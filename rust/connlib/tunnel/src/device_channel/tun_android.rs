@@ -50,7 +50,7 @@ impl Tun {
         callbacks: &impl Callbacks<Error = Error>,
     ) -> Result<Self> {
         let fd = callbacks
-            .on_set_interface_config(config.ipv4, config.ipv6, vec![DNS_SENTINEL])?
+            .on_set_interface_config(config.ipv4, config.ipv6, vec![DNS_SENTINEL.into()])?
             .ok_or(Error::NoFd)?;
         // Safety: File descriptor is open.
         let name = unsafe { interface_name(fd)? };

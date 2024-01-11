@@ -66,7 +66,7 @@ class TunnelService : VpnService() {
             override fun onSetInterfaceConfig(
                 tunnelAddressIPv4: String,
                 tunnelAddressIPv6: String,
-                dnsAddress: String,
+                dnsAddresses: String,
             ): Int {
                 Log.d(
                     TAG,
@@ -74,15 +74,19 @@ class TunnelService : VpnService() {
                     onSetInterfaceConfig:
                     [IPv4:$tunnelAddressIPv4]
                     [IPv6:$tunnelAddressIPv6]
-                    [dns:$dnsAddress]
+                    [dns:$dnsAddresses]
                     """.trimIndent(),
                 )
+
+                // moshi.adapter<List<Resource>>().fromJson(resourceListJSON)?.let { resources ->
+                //     tunnelRepository.setResources(resources)
+                // }
 
                 tunnelRepository.setConfig(
                     TunnelConfig(
                         tunnelAddressIPv4,
                         tunnelAddressIPv6,
-                        dnsAddress,
+                        dnsAddresses,
                     ),
                 )
 
@@ -253,7 +257,9 @@ class TunnelService : VpnService() {
                 addAddress(tunnel.config.tunnelAddressIPv4, 32)
                 addAddress(tunnel.config.tunnelAddressIPv6, 128)
 
-                addDnsServer(tunnel.config.dnsAddress)
+                tunnel.config.dnsAddresses.forEach { dns ->
+                    addDnsServer(dns)
+                }
 
                 tunnel.routes.forEach {
                     addRoute(it.address, it.prefix)

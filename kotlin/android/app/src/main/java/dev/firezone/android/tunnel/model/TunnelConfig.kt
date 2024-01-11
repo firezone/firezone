@@ -8,6 +8,6 @@ import kotlinx.parcelize.Parcelize
 data class TunnelConfig(
     val tunnelAddressIPv4: String = "",
     val tunnelAddressIPv6: String = "",
-    val dnsAddress: String = "",
+    val dnsAddresses: String = "",
     val dnsFallbackStrategy: String = "",
 ) : Parcelable

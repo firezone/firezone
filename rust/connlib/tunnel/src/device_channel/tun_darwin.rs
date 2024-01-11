@@ -129,7 +129,11 @@ impl Tun {
             }
 
             if addr.sc_id == info.ctl_id {
-                callbacks.on_set_interface_config(config.ipv4, config.ipv6, vec![DNS_SENTINEL])?;
+                callbacks.on_set_interface_config(
+                    config.ipv4,
+                    config.ipv6,
+                    vec![DNS_SENTINEL.into()],
+                )?;
 
                 set_non_blocking(fd)?;
 

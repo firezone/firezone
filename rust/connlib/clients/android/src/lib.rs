@@ -151,12 +151,12 @@ impl Callbacks for CallbackHandler {
                         name: "tunnel_address_v6",
                         source,
                     })?;
-            let dns_address = env.new_string(dns_address.to_string()).map_err(|source| {
-                CallbackError::NewStringFailed {
-                    name: "dns_address",
+            let dns_addresses = env
+                .new_string(serde_json::to_string(&dns_addresses)?)
+                .map_err(|source| CallbackError::NewStringFailed {
+                    name: "dns_addresses",
                     source,
-                }
-            })?;
+                })?;
             let name = "onSetInterfaceConfig";
             env.call_method(
                 &self.callback_handler,
@@ -165,7 +165,7 @@ impl Callbacks for CallbackHandler {
                 &[
                     JValue::from(&tunnel_address_v4),
                     JValue::from(&tunnel_address_v6),
-                    JValue::from(&dns_address),
+                    JValue::from(&dns_addresses),
                 ],
             )
             .and_then(|val| val.i())
