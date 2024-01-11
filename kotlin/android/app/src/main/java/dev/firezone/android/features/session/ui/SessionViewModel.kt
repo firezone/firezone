@@ -58,11 +58,6 @@ internal class SessionViewModel
                             resources = resources,
                         )
                 }
-
-                override fun onError(error: String): Boolean {
-                    // TODO("Not yet implemented")
-                    return true
-                }
             }
 
         fun connect(context: Context) {

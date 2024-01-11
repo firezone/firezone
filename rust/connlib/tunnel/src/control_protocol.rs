@@ -154,7 +154,6 @@ fn insert_peers<TId: Copy, TTransform>(
 fn start_handlers<TId, TTransform, TRoleState>(
     tunnel: Arc<Tunnel<impl Callbacks + 'static, TRoleState>>,
     device: Arc<ArcSwapOption<Device>>,
-    callbacks: impl Callbacks + 'static,
     peer: Arc<Peer<TId, TTransform>>,
     ice: Arc<RTCIceTransport>,
     peer_receiver: tokio::sync::mpsc::Receiver<Bytes>,
@@ -180,12 +179,7 @@ fn start_handlers<TId, TTransform, TRoleState>(
             let Some(ep) = ice.new_endpoint(Box::new(|_| true)).await else {
                 return;
             };
-            tokio::spawn(peer_handler::start_peer_handler(
-                device,
-                callbacks,
-                peer,
-                ep.clone(),
-            ));
+            tokio::spawn(peer_handler::start_peer_handler(device, peer, ep.clone()));
             tokio::spawn(peer_handler::handle_packet(ep, peer_receiver));
         }
     });

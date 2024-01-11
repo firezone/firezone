@@ -544,8 +544,4 @@ extension Adapter: CallbackHandlerDelegate {
     self.logger.info("getSystemDefaultResolvers: \(resolvers)")
     return resolvers
   }
-
-  public func onError(error: String) {
-    self.logger.error("Internal connlib error: \(error, privacy: .public)")
-  }
 }

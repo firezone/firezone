@@ -8,6 +8,4 @@ interface TunnelListener {
     fun onTunnelStateUpdate(state: Tunnel.State)
 
     fun onResourcesUpdate(resources: List<Resource>)
-
-    fun onError(error: String): Boolean
 }

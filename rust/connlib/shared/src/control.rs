@@ -227,7 +227,7 @@ where
                         ReplyMessage::PhxReply(phx_reply) => match phx_reply {
                             // TODO: Here we should pass error info to a subscriber
                             PhxReply::Error(info) => {
-                                tracing::warn!("Portal error: {info:?}");
+                                tracing::debug!("Portal error: {info:?}");
                                 handler(Err(ErrorReply { error: info }), m.reference, m.topic).await
                             }
                             PhxReply::Ok(reply) => match reply {

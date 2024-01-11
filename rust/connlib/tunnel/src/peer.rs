@@ -173,7 +173,7 @@ where
         let (packet, addr) = self.transform.packet_untransform(&addr, packet)?;
 
         if !self.is_allowed(addr) {
-            tracing::warn!("packet not allowed: {addr}");
+            tracing::debug!("A packet was seen from the tunnel with a destination address we didn't expect: {addr}");
             return Ok(None);
         }
 

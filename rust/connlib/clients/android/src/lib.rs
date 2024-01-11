@@ -269,28 +269,9 @@ impl Callbacks for CallbackHandler {
         })
     }
 
-    fn on_error(&self, error: &Error) -> Result<(), Self::Error> {
-        self.env(|mut env| {
-            let error = env.new_string(error.to_string()).map_err(|source| {
-                CallbackError::NewStringFailed {
-                    name: "error",
-                    source,
-                }
-            })?;
-            call_method(
-                &mut env,
-                &self.callback_handler,
-                "onError",
-                "(Ljava/lang/String;)Z",
-                &[JValue::from(&error)],
-            )
-        })
-    }
-
     fn roll_log_file(&self) -> Option<PathBuf> {
         self.handle.roll_to_new_file().unwrap_or_else(|e| {
             tracing::debug!("Failed to roll over to new file: {e}");
-            let _ = self.on_error(&Error::LogFileRollError(e));
 
             None
         })
