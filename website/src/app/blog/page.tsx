@@ -24,6 +24,24 @@ export default function Page() {
         </div>
         <div className="grid divide-y">
           <SummaryCard
+            title="Jaunary 2024 Product Update"
+            date="January 1, 2024"
+            href="/blog/jan-2024-product-update"
+            authorName="Jamil Bou Kheir"
+            authorAvatarSrc={gravatar("jamil@firezone.dev")}
+            type="Announcement"
+          >
+            <p>Happy new year from the Firezone team!</p>
+
+            <p>
+              After a long year of building, we're incredibly excited to
+              announce 1.0 beta testing for Apple and Android platforms.
+              Firezone 1.0 is an entirely new product with a brand new
+              architecture that includes many of the features you've been asking
+              for. To summarize just a few:
+            </p>
+          </SummaryCard>
+          <SummaryCard
             title="Enterprises choose open source"
             date="December 6, 2023"
             href="/blog/enterprises-choose-open-source"

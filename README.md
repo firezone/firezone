@@ -34,7 +34,6 @@
 ---
 
 **Note**: 🚧 The `main` branch is undergoing major restructuring in preparation
-
 for the release of Firezone 1.0 🚧.
 
 See the [`legacy` branch](https://github.com/firezone/firezone/tree/legacy) if
