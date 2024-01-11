@@ -2053,6 +2053,7 @@ dependencies = [
  "hostname",
  "ipconfig",
  "keyring",
+ "known-folders",
  "rand 0.8.5",
  "ring 0.17.7",
  "secrecy",
@@ -3229,6 +3230,15 @@ dependencies = [
  "linux-keyutils",
  "secret-service",
  "security-framework",
+ "windows-sys 0.52.0",
+]
+
+[[package]]
+name = "known-folders"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4397c789f2709d23cfcb703b316e0766a8d4b17db2d47b0ab096ef6047cae1d8"
+dependencies = [
  "windows-sys 0.52.0",
 ]
 
