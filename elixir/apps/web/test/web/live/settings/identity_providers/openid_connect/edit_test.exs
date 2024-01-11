@@ -149,9 +149,17 @@ defmodule Web.Live.Settings.IdentityProviders.OpenIDConnect.EditTest do
         }
       )
 
-    validate_change(form, %{provider: %{name: String.duplicate("a", 256)}}, fn form, _html ->
+    changed_values = %{
+      provider: %{
+        name: String.duplicate("a", 256),
+        adapter_config: %{provider_attrs.adapter_config | "client_id" => ""}
+      }
+    }
+
+    validate_change(form, changed_values, fn form, _html ->
       assert form_validation_errors(form) == %{
-               "provider[name]" => ["should be at most 255 character(s)"]
+               "provider[name]" => ["should be at most 255 character(s)"],
+               "provider[adapter_config][client_id]" => ["can't be blank"]
              }
     end)
   end
