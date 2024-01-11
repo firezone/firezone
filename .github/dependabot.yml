@@ -22,6 +22,10 @@ updates:
     schedule:
       interval: weekly
     groups:
+      netlink:
+        patterns:
+          - rtnetlink
+          - netlink-packet-*
       otel:
         patterns:
           - opentelemetry
