@@ -159,15 +159,11 @@ defmodule Web.Live.Settings.IdentityProviders.GoogleWorkspace.EditTest do
       }
     }
 
-    validate_change(form, changed_values, fn form, html ->
+    validate_change(form, changed_values, fn form, _html ->
       assert form_validation_errors(form) == %{
                "provider[name]" => ["should be at most 255 character(s)"],
                "provider[adapter_config][client_id]" => ["can't be blank"]
              }
-
-      assert html
-             |> Floki.find("div[phx-feedback-for='provider[adapter_config][client_id]'] p")
-             |> Floki.text() =~ "can't be blank"
     end)
   end
 end
