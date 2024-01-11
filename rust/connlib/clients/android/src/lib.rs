@@ -136,7 +136,7 @@ impl Callbacks for CallbackHandler {
         &self,
         tunnel_address_v4: Ipv4Addr,
         tunnel_address_v6: Ipv6Addr,
-        dns_address: Ipv4Addr,
+        dns_addresses: Vec<IpAddr>,
     ) -> Result<Option<RawFd>, Self::Error> {
         self.env(|mut env| {
             let tunnel_address_v4 =
