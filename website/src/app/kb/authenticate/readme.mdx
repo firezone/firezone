@@ -5,3 +5,17 @@ Firezone supports the following authentication methods:
 1. [Email (OTP)](/kb/authenticate/email)
 1. [OpenID Connect (OIDC)](/kb/authenticate/oidc)
 1. [Google Workspace](/kb/authenticate/google)
+
+## Session lifetime
+
+The below session lifetimes apply to all identity providers:
+
+- Admin portal: **4 hours**
+- Client application: **7 days**
+- Service account: **365 days** (by default, configurable)
+
+When a client application or service account token expires, the client is
+disconnected immediately and must reauthenticate to regain access to resources.
+
+When the admin portal session expires, the admin is logged out immediately and
+must reauthenticate to regain access to the portal.
