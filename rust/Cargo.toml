@@ -50,4 +50,10 @@ webrtc = { git = "https://github.com/firezone/webrtc", branch = "expose-new-endp
 str0m = { git = "https://github.com/thomaseizinger/str0m", branch = "main" }
 
 [profile.release]
-strip = true
+# Generate debug symbols for the crash handler to use, even if the exe itself is optimized
+debug = "full"
+# Split out debug info from the exe
+# https://doc.rust-lang.org/rustc/codegen-options/index.html#split-debuginfo
+split-debuginfo = "packed"
+# Don't strip debuginfo, we're going to put it in a separate file anyway
+strip = "none"

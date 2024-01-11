@@ -38,7 +38,7 @@ pub(crate) struct Managed {
 }
 
 // TODO: We're supposed to get this from Tauri, but I'd need to move some things around first
-const TAURI_ID: &str = "dev.firezone.client";
+pub const TAURI_ID: &str = "dev.firezone.client";
 
 /// Runs the Tauri GUI and returns on exit or unrecoverable error
 pub(crate) fn run(params: client::GuiParams) -> Result<()> {
@@ -47,9 +47,26 @@ pub(crate) fn run(params: client::GuiParams) -> Result<()> {
         inject_faults,
     } = params;
 
+    // Need to keep this alive so crashes will be handled. Dropping detaches it.
+    let _crash_handler = match client::crash_handling::attach_handler() {
+        Ok(x) => Some(x),
+        Err(error) => {
+            tracing::warn!(?error, "Did not set up crash handler");
+            None
+        }
+    };
+
     // Needed for the deep link server
     let rt = tokio::runtime::Runtime::new()?;
     let _guard = rt.enter();
+
+    // If enabled, segfaults the program after 10 seconds to test crash dumps
+    if false {
+        tokio::spawn(async {
+            tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+            unsafe { sadness_generator::raise_segfault() }
+        });
+    }
 
     // Make sure we're single-instance
     // We register our deep links to call the `open-deep-link` subcommand,

@@ -5,6 +5,7 @@ use std::{os::windows::process::CommandExt, process::Command};
 
 mod auth;
 mod cli;
+mod crash_handling;
 mod debug_commands;
 mod deep_link;
 mod device_id;
@@ -76,6 +77,7 @@ pub(crate) fn run() -> Result<()> {
                 Ok(())
             }
         }
+        Some(Cmd::CrashHandlerServer) => crash_handling::server(),
         Some(Cmd::Debug) => {
             println!("debug");
             Ok(())
