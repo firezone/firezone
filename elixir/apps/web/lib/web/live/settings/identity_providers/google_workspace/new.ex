@@ -16,7 +16,8 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.New do
     socket =
       assign(socket,
         id: id,
-        form: to_form(changeset)
+        form: to_form(changeset),
+        page_title: "New Identity Provider"
       )
 
     {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}

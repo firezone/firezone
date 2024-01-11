@@ -29,7 +29,7 @@ defmodule Web.Actors.Show do
          actor: actor,
          flows: flows,
          tokens: tokens,
-         page_title: actor.name,
+         page_title: "Actor #{actor.name}",
          flow_activities_enabled?: Domain.Config.flow_activities_enabled?()
        )}
     else
@@ -59,7 +59,7 @@ defmodule Web.Actors.Show do
       </:action>
       <:content flash={@flash}>
         <.vertical_table id="actor">
-          <.vertical_table_row label_class="w-1/5">
+          <.vertical_table_row>
             <:label>Name</:label>
             <:value><%= @actor.name %>
               <.actor_status actor={@actor} /></:value>
