@@ -62,9 +62,6 @@ mod ffi {
 
         #[swift_bridge(swift_name = "getSystemDefaultResolvers")]
         fn get_system_default_resolvers(&self) -> String;
-
-        #[swift_bridge(swift_name = "onError")]
-        fn on_error(&self, error: String);
     }
 }
 
@@ -146,16 +143,9 @@ impl Callbacks for CallbackHandler {
         Ok(Some(resolvers))
     }
 
-    fn on_error(&self, error: &Error) -> Result<(), Self::Error> {
-        self.inner.on_error(error.to_string());
-        Ok(())
-    }
-
     fn roll_log_file(&self) -> Option<PathBuf> {
         self.handle.roll_to_new_file().unwrap_or_else(|e| {
-            tracing::debug!("Failed to roll over to new file: {e}");
-            let _ = self.on_error(&Error::LogFileRollError(e));
-
+            tracing::error!("Failed to roll over to new log file: {e}");
             None
         })
     }
