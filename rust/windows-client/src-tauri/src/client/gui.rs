@@ -313,7 +313,7 @@ impl Controller {
         advanced_settings: AdvancedSettings,
         notify_controller: Arc<Notify>,
     ) -> Result<Self> {
-        let device_id = client::device_id::device_id(&app_local_data_dir(&app)?).await?;
+        let device_id = client::device_id::device_id(&app.config().tauri.bundle.identifier).await?;
 
         let mut this = Self {
             advanced_settings,
