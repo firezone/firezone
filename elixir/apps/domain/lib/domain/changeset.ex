@@ -69,6 +69,8 @@ defmodule Domain.Changeset do
          unique: true
        }}
 
+    nested_changeset = %{nested_changeset | action: changeset.action || :update}
+
     changeset = %{
       changeset
       | types: Map.put(changeset.types, field, embedded_type),
