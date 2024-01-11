@@ -11,7 +11,7 @@ defmodule Web.Settings.DNS do
       |> add_new_server()
       |> to_form()
 
-    socket = assign(socket, config: config, form: form)
+    socket = assign(socket, config: config, form: form, page_title: "DNS")
 
     {:ok, socket}
   end

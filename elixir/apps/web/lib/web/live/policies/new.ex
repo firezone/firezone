@@ -14,7 +14,7 @@ defmodule Web.Policies.New do
           actor_groups: actor_groups,
           params: Map.take(params, ["site_id"]),
           resource_id: params["resource_id"],
-          page_title: "Add Policy",
+          page_title: "New Policy",
           form: form
         )
 
@@ -28,11 +28,11 @@ defmodule Web.Policies.New do
     ~H"""
     <.breadcrumbs account={@account}>
       <.breadcrumb path={~p"/#{@account}/policies"}>Policies</.breadcrumb>
-      <.breadcrumb path={~p"/#{@account}/policies/new"}><%= @page_title %></.breadcrumb>
+      <.breadcrumb path={~p"/#{@account}/policies/new"}>Add Policy</.breadcrumb>
     </.breadcrumbs>
     <.section>
       <:title>
-        <%= @page_title %>
+        Add Policy
       </:title>
       <:content>
         <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">

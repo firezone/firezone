@@ -8,7 +8,14 @@ defmodule Web.RelayGroups.Index do
     with true <- Domain.Config.self_hosted_relays_enabled?(),
          {:ok, groups} <- Relays.list_groups(subject, preload: [:relays]) do
       :ok = Relays.subscribe_for_relays_presence_in_account(socket.assigns.account)
-      {:ok, assign(socket, groups: groups)}
+
+      socket =
+        assign(socket,
+          groups: groups,
+          page_title: "Relays"
+        )
+
+      {:ok, socket}
     else
       _other -> raise Web.LiveErrors.NotFoundError
     end

@@ -9,11 +9,14 @@ defmodule Web.Resources.Index do
            ),
          {:ok, resource_actor_groups_peek} <-
            Resources.peek_resource_actor_groups(resources, 3, socket.assigns.subject) do
-      {:ok,
-       assign(socket,
-         resources: resources,
-         resource_actor_groups_peek: resource_actor_groups_peek
-       )}
+      socket =
+        assign(socket,
+          resources: resources,
+          resource_actor_groups_peek: resource_actor_groups_peek,
+          page_title: "Resources"
+        )
+
+      {:ok, socket}
     else
       {:error, _reason} -> raise Web.LiveErrors.NotFoundError
     end

@@ -289,7 +289,7 @@ defmodule Web.TableComponents do
         scope="row"
         class={[
           "text-right px-6 py-4 font-medium text-neutral-900 whitespace-nowrap",
-          "bg-neutral-50",
+          "bg-neutral-50 w-1/5",
           @label_class
         ]}
       >

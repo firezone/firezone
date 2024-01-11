@@ -12,7 +12,8 @@ defmodule Web.Actors.ServiceAccounts.NewIdentity do
         assign(socket,
           actor: actor,
           encoded_token: nil,
-          form: to_form(changeset)
+          form: to_form(changeset),
+          page_title: "New Service Account Token"
         )
 
       {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}

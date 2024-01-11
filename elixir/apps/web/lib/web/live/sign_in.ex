@@ -19,7 +19,7 @@ defmodule Web.SignIn do
           params: params,
           account: account,
           providers_by_adapter: providers_by_adapter,
-          page_title: "Sign in"
+          page_title: "Sign In"
         )
 
       {:ok, socket}

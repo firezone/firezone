@@ -17,7 +17,8 @@ defmodule Web.Resources.Edit do
           gateway_groups: gateway_groups,
           form: form,
           params: Map.take(params, ["site_id"]),
-          traffic_filters_enabled?: Config.traffic_filters_enabled?()
+          traffic_filters_enabled?: Config.traffic_filters_enabled?(),
+          page_title: "Edit #{resource.name}"
         )
 
       {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}

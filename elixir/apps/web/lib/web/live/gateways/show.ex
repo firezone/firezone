@@ -10,7 +10,8 @@ defmodule Web.Gateways.Show do
       socket =
         assign(
           socket,
-          gateway: gateway
+          gateway: gateway,
+          page_title: "Gateway #{gateway.name}"
         )
 
       {:ok, socket}

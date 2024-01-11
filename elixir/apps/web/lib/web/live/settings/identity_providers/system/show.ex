@@ -8,7 +8,10 @@ defmodule Web.Settings.IdentityProviders.System.Show do
            Auth.fetch_provider_by_id(provider_id, socket.assigns.subject,
              preload: [created_by_identity: [:actor]]
            ) do
-      {:ok, assign(socket, provider: provider)}
+      socket =
+        assign(socket, provider: provider, page_title: "Identity Provider #{provider.name}")
+
+      {:ok, socket}
     else
       _ -> raise Web.LiveErrors.NotFoundError
     end
