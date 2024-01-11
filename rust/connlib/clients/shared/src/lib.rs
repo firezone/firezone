@@ -172,6 +172,7 @@ where
                 tunnel: Arc::new(tunnel),
                 phoenix_channel: connection.sender_with_topic("client".to_owned()),
                 tunnel_init: Mutex::new(false),
+                system_dns_servers: callbacks.get_system_default_resolvers().ok().flatten(),
                 fallback_resolver: parking_lot::Mutex::new(None),
             };
 
