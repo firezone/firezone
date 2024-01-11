@@ -250,11 +250,6 @@ impl connlib_client_shared::Callbacks for CallbackHandler {
         Ok(())
     }
 
-    fn on_error(&self, error: &connlib_client_shared::Error) -> Result<(), Self::Error> {
-        tracing::error!("on_error not implemented. Error: {error:?}");
-        Ok(())
-    }
-
     fn on_tunnel_ready(&self) -> Result<(), Self::Error> {
         // TODO: implement
         tracing::info!("on_tunnel_ready");
@@ -274,7 +269,6 @@ impl connlib_client_shared::Callbacks for CallbackHandler {
     fn roll_log_file(&self) -> Option<PathBuf> {
         self.logger.roll_to_new_file().unwrap_or_else(|e| {
             tracing::debug!("Failed to roll over to new file: {e}");
-            let _ = self.on_error(&connlib_client_shared::Error::LogFileRollError(e));
 
             None
         })

@@ -27,7 +27,6 @@ public protocol CallbackHandlerDelegate: AnyObject {
   func onUpdateResources(resourceList: String)
   func onDisconnect(error: String?)
   func getSystemDefaultResolvers() -> [String]
-  func onError(error: String)
 }
 
 public class CallbackHandler {
@@ -91,10 +90,5 @@ public class CallbackHandler {
     } catch {
       return "[]".intoRustString()
     }
-  }
-
-  func onError(error: RustString) {
-    logger.log("CallbackHandler.onError: \(error.toString(), privacy: .public)")
-    delegate?.onError(error: error.toString())
   }
 }
