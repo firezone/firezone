@@ -7,7 +7,7 @@ defmodule Web.Relays.Show do
          {:ok, relay} <-
            Relays.fetch_relay_by_id(id, socket.assigns.subject, preload: :group) do
       :ok = Relays.subscribe_for_relays_presence_in_group(relay.group)
-      socket = assign(socket, relay: relay, page_title: "Relays")
+      socket = assign(socket, relay: relay, page_title: "Relay #{relay.name}")
       {:ok, socket}
     else
       _other -> raise Web.LiveErrors.NotFoundError

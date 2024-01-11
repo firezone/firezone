@@ -28,7 +28,7 @@ defmodule Web.Sites.Show do
          group: group,
          gateways: gateways,
          resource_actor_groups_peek: resource_actor_groups_peek,
-         page_title: "Sites"
+         page_title: "Site #{group.name}"
        )}
     else
       {:error, _reason} -> raise Web.LiveErrors.NotFoundError

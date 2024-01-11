@@ -24,7 +24,7 @@ defmodule Web.RelayGroups.NewToken do
          env: env,
          connected?: false,
          selected_tab: "systemd-instructions",
-         page_title: "Relays"
+         page_title: "New Relay"
        )}
     else
       _other -> raise Web.LiveErrors.NotFoundError

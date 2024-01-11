@@ -13,7 +13,7 @@ defmodule Web.Groups.Show do
                created_by_identity: [:actor]
              ]
            ) do
-      socket = assign(socket, group: group, page_title: "Groups")
+      socket = assign(socket, group: group, page_title: "Group #{group.name}")
       {:ok, socket}
     else
       {:error, _reason} -> raise Web.LiveErrors.NotFoundError

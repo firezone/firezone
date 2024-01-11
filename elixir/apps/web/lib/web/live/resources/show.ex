@@ -22,7 +22,7 @@ defmodule Web.Resources.Show do
           flows: flows,
           params: Map.take(params, ["site_id"]),
           traffic_filters_enabled?: Config.traffic_filters_enabled?(),
-          page_title: "Resources"
+          page_title: "Resource #{resource.name}"
         )
 
       {:ok, socket}

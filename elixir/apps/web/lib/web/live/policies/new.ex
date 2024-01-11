@@ -14,7 +14,7 @@ defmodule Web.Policies.New do
           actor_groups: actor_groups,
           params: Map.take(params, ["site_id"]),
           resource_id: params["resource_id"],
-          page_title: "Policies",
+          page_title: "New Policy",
           form: form
         )
 

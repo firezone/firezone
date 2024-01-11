@@ -15,7 +15,7 @@ defmodule Web.Resources.New do
           form: to_form(changeset),
           params: Map.take(params, ["site_id"]),
           traffic_filters_enabled?: Config.traffic_filters_enabled?(),
-          page_title: "Resources"
+          page_title: "New Resource"
         )
 
       {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}

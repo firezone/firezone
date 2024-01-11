@@ -18,7 +18,7 @@ defmodule Web.Resources.Edit do
           form: form,
           params: Map.take(params, ["site_id"]),
           traffic_filters_enabled?: Config.traffic_filters_enabled?(),
-          page_title: "Resources"
+          page_title: "Edit #{resource.name}"
         )
 
       {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}

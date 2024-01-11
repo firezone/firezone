@@ -11,7 +11,7 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.Edit do
         assign(socket,
           provider: provider,
           form: to_form(changeset),
-          page_title: "Identity Providers"
+          page_title: "Edit #{provider.name}"
         )
 
       {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}

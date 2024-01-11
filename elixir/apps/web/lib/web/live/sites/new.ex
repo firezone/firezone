@@ -6,7 +6,7 @@ defmodule Web.Sites.New do
   def mount(_params, _session, socket) do
     changeset = Gateways.new_group()
 
-    socket = assign(socket, form: to_form(changeset), page_title: "Sites")
+    socket = assign(socket, form: to_form(changeset), page_title: "New Site")
     {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
   end
 

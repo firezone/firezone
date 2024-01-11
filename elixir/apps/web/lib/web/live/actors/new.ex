@@ -6,7 +6,7 @@ defmodule Web.Actors.New do
     socket =
       assign(socket,
         form: %{},
-        page_title: "Actors"
+        page_title: "New Actor"
       )
 
     {:ok, socket}

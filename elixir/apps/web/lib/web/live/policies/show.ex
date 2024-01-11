@@ -16,7 +16,7 @@ defmodule Web.Policies.Show do
         assign(socket,
           policy: policy,
           flows: flows,
-          page_title: "Policies",
+          page_title: "Policy #{policy.id}",
           flow_activities_enabled?: Config.flow_activities_enabled?()
         )
 

@@ -7,7 +7,10 @@ defmodule Web.Sites.Edit do
     with {:ok, group} <- Gateways.fetch_group_by_id(id, socket.assigns.subject),
          nil <- group.deleted_at do
       changeset = Gateways.change_group(group)
-      socket = assign(socket, group: group, form: to_form(changeset), page_title: "Sites")
+
+      socket =
+        assign(socket, group: group, form: to_form(changeset), page_title: "Edit #{group.name}")
+
       {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
     else
       _other -> raise Web.LiveErrors.NotFoundError

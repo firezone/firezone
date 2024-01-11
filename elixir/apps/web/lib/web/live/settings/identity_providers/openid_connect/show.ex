@@ -11,7 +11,7 @@ defmodule Web.Settings.IdentityProviders.OpenIDConnect.Show do
       socket =
         assign(socket,
           provider: provider,
-          page_title: "Identity Providers"
+          page_title: "Identity Provider #{provider.name}"
         )
 
       {:ok, socket}

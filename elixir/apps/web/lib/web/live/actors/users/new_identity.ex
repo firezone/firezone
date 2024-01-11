@@ -25,7 +25,7 @@ defmodule Web.Actors.Users.NewIdentity do
           providers: providers,
           provider: provider,
           form: to_form(changeset),
-          page_title: "Actors"
+          page_title: "New User Identity"
         )
 
       {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}

@@ -17,7 +17,7 @@ defmodule Web.Clients.Show do
           client: client,
           flows: flows,
           flow_activities_enabled?: Config.flow_activities_enabled?(),
-          page_title: "Clients"
+          page_title: "Client #{client.name}"
         )
 
       {:ok, socket}

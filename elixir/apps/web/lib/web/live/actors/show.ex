@@ -29,7 +29,7 @@ defmodule Web.Actors.Show do
          actor: actor,
          flows: flows,
          tokens: tokens,
-         page_title: "Actors",
+         page_title: "Actor #{actor.name}",
          flow_activities_enabled?: Domain.Config.flow_activities_enabled?()
        )}
     else

@@ -15,7 +15,7 @@ defmodule Web.Policies.Edit do
         assign(socket,
           policy: policy,
           form: form,
-          page_title: "Policies"
+          page_title: "Edit #{policy.id}"
         )
 
       {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}

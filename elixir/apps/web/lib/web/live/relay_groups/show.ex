@@ -12,7 +12,7 @@ defmodule Web.RelayGroups.Show do
              ]
            ) do
       :ok = Relays.subscribe_for_relays_presence_in_group(group)
-      socket = assign(socket, group: group, page_title: "Relays")
+      socket = assign(socket, group: group, page_title: "Relay Group #{group.name}")
       {:ok, socket}
     else
       _other -> raise Web.LiveErrors.NotFoundError

@@ -19,7 +19,7 @@ defmodule Web.Groups.EditActors do
          actors: actors,
          added_ids: [],
          removed_ids: [],
-         page_title: "Groups"
+         page_title: "Edit Actors in #{group.name}"
        )}
     else
       _other -> raise Web.LiveErrors.NotFoundError
