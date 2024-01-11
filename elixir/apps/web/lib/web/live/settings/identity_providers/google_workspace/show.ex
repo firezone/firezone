@@ -16,7 +16,8 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.Show do
        assign(socket,
          provider: provider,
          identities_count_by_provider_id: identities_count_by_provider_id,
-         groups_count_by_provider_id: groups_count_by_provider_id
+         groups_count_by_provider_id: groups_count_by_provider_id,
+         page_title: "Identity Provider #{provider.name}"
        )}
     else
       _ -> raise Web.LiveErrors.NotFoundError

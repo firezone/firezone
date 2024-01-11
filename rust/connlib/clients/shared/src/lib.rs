@@ -212,17 +212,16 @@ where
                     let result = connection.start(vec!["client".to_owned()], || exponential_backoff.reset()).await;
                     tracing::warn!("Disconnected from the portal");
                     if let Err(e) = &result {
-                        tracing::warn!(error = ?e, "Portal connection error");
+                        tracing::error!(error = ?e, "Connection to portal failed. Starting retries with exponential backoff timer.");
                         if e.is_http_client_error() {
                             fatal_error!(result, runtime_stopper, &callbacks);
                         }
                     }
                     if let Some(t) = exponential_backoff.next_backoff() {
-                        tracing::warn!("Error connecting to portal, retrying in {} seconds", t.as_secs());
-                        let _ = callbacks.on_error(&result.err().unwrap_or(Error::PortalConnectionError(tokio_tungstenite::tungstenite::Error::ConnectionClosed)));
+                        tracing::error!("Connection to portal failed. Retrying connection to portal in {} seconds", t.as_secs());
                         tokio::time::sleep(t).await;
                     } else {
-                        tracing::error!("Connection to portal failed, giving up");
+                        tracing::error!("Connection to portal failed, giving up!");
                         Self::disconnect_inner(runtime_stopper, &callbacks, None);
                         break;
                     }
