@@ -81,6 +81,9 @@ jobs:
           # Copy xcconfig
           cp Firezone/xcconfig/debug.xcconfig Firezone/xcconfig/config.xcconfig
 
+          # Always clean build folder to prevent other builds from affecting this one
+          xcodebuild clean -alltargets
+
           # Build app bundle
           xcodebuild build \
             -allowProvisioningUpdates \
@@ -133,6 +136,9 @@ jobs:
         run: |
           # Copy xcconfig
           cp Firezone/xcconfig/debug.xcconfig Firezone/xcconfig/config.xcconfig
+
+          # Always clean build folder to prevent other builds from affecting this one
+          xcodebuild clean -alltargets
 
           # Build archive
           xcodebuild archive \
