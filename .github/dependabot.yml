@@ -43,6 +43,10 @@ updates:
     directory: kotlin/android/
     schedule:
       interval: monthly
+    groups:
+      com.android:
+        patters:
+          - com.android.*
     ignore:
       # Depends on JDK version which is bundled with Android Studio (JDK 17)
       - dependency-name: org.jetbrains.kotlin:kotlin-gradle-plugin
