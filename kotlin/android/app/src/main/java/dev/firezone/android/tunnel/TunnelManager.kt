@@ -92,11 +92,5 @@ internal class TunnelManager
 
         internal companion object {
             private const val TAG: String = "TunnelManager"
-
-            init {
-                Log.d(TAG, "Attempting to load library from main app...")
-                System.loadLibrary("connlib")
-                Log.d(TAG, "Library loaded from main app!")
-            }
         }
     }

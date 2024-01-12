@@ -1,5 +1,6 @@
 plugins {
     id("com.android.application")
+    id("org.mozilla.rust-android-gradle.rust-android")
     id("com.google.dagger.hilt.android")
     id("com.google.gms.google-services")
     id("com.google.firebase.crashlytics")
@@ -32,6 +33,9 @@ spotless {
     }
 }
 
+apply(plugin = "com.android.application")
+apply(plugin = "org.mozilla.rust-android-gradle.rust-android")
+
 android {
     buildFeatures {
         buildConfig = true
@@ -39,7 +43,10 @@ android {
 
     namespace = "dev.firezone.android"
     compileSdk = 34
-
+    ndkVersion = "25.2.9519653"
+    sourceSets["main"].jniLibs {
+      srcDir("jniLibs")
+    }
     defaultConfig {
         applicationId = "dev.firezone.android"
         minSdk = 30
@@ -135,9 +142,6 @@ dependencies {
     val coreVersion = "1.12.0"
     val navVersion = "2.7.4"
 
-    // Connlib
-    implementation(project(":connlib"))
-
     // AndroidX
     implementation("androidx.core:core-ktx:$coreVersion")
     implementation("androidx.appcompat:appcompat:1.6.1")
@@ -198,4 +202,23 @@ dependencies {
     implementation("com.google.firebase:firebase-crashlytics-ktx")
     implementation("com.google.firebase:firebase-analytics-ktx")
     implementation("com.google.firebase:firebase-installations-ktx")
+}
+
+cargo {
+    if (gradle.startParameter.taskNames.any{it.lowercase().contains("release")}) {
+        profile = "release"
+    } else {
+        profile = "debug"
+    }
+    prebuiltToolchains = true
+    verbose = true
+    module = "../../../rust/connlib/clients/android"
+    libname = "connlib"
+    targets = listOf("arm", "arm64", "x86_64", "x86")
+    targetDirectory = "../../../rust/target"
+}
+
+tasks.matching { it.name.matches(Regex("merge.*JniLibFolders")) }.configureEach {
+    inputs.dir(File(buildDir, "rustJniLibs/android"))
+    dependsOn("cargoBuild")
 }
