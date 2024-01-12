@@ -161,8 +161,8 @@ jobs:
         uses: gradle/gradle-build-action@v2
         with:
           build-root-directory: ./kotlin/android
-      - run: touch local.properties
       - run: |
+          echo 'sdk.dir=/home/firezone/Android/Sdk' > local.properties
           ./gradlew --info bundleDebug
 
   ios:
