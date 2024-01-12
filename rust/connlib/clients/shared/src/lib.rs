@@ -213,9 +213,11 @@ where
                     let result = connection.start(vec!["client".to_owned()], || exponential_backoff.reset()).await;
                     tracing::warn!("Disconnected from the portal");
                     if let Err(e) = &result {
-                        tracing::error!(error = ?e, "Connection to portal failed. Starting retries with exponential backoff timer.");
                         if e.is_http_client_error() {
+                            tracing::error!(error = ?e, "Connection to portal failed. Is your token valid?");
                             fatal_error!(result, runtime_stopper, &callbacks);
+                        } else {
+                            tracing::error!(error = ?e, "Connection to portal failed. Starting retries with backoff timer.");
                         }
                     }
                     if let Some(t) = exponential_backoff.next_backoff() {
