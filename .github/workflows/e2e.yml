@@ -163,9 +163,6 @@ jobs:
           build-root-directory: ./kotlin/android
       - run: |
           echo 'sdk.dir=/home/firezone/Android/Sdk' > local.properties
-
-          # Needed on Ubuntu 22.04
-          alias python=python3
           ./gradlew --info assembleDebug bundleDebug
 
   ios:
