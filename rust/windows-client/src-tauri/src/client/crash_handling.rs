@@ -116,7 +116,7 @@ pub(crate) fn server() -> anyhow::Result<()> {
         fn create_minidump_file(&self) -> Result<(File, PathBuf), std::io::Error> {
             let dump_path = get_known_folder_path(KnownFolder::ProgramData)
                 .expect("should be able to find C:/ProgramData")
-                .join(crate::client::gui::TAURI_ID)
+                .join(crate::client::gui::BUNDLE_ID)
                 .join("dumps")
                 .join("last_crash.dmp");
 
