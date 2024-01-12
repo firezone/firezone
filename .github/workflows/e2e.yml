@@ -165,11 +165,7 @@ jobs:
           echo 'sdk.dir=/home/firezone/Android/Sdk' > local.properties
 
           # Needed on Ubuntu 22.04
-          if ! type python > /dev/null; then
-            echo "'python' not found, aliasing python3"
-            alias python="python3"
-          fi
-
+          alias python=python3
           ./gradlew --info assembleDebug bundleDebug
 
   ios:
