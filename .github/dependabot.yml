@@ -72,7 +72,15 @@ updates:
     directory: terraform/environments/staging/
     schedule:
       interval: monthly
+    groups:
+      google:
+        patterns:
+          - hashicorp/google*
   - package-ecosystem: terraform
     directory: terraform/environments/production/
     schedule:
       interval: monthly
+    groups:
+      google:
+        patterns:
+          - hashicorp/google*
