@@ -1,6 +1,8 @@
 //! A module for handling crashes and writing minidump files
 //!
 //! Mostly copied from <https://github.com/EmbarkStudios/crash-handling/blob/main/minidumper/examples/diskwrite.rs>
+//!
+//! TODO: Capture crash dumps on panic.
 
 use anyhow::{anyhow, bail, Context};
 use known_folders::{get_known_folder_path, KnownFolder};
@@ -154,6 +156,14 @@ pub(crate) fn server() -> anyhow::Result<()> {
                 "kind: {kind}, message: {}",
                 String::from_utf8(buffer).expect("message should be valid UTF-8")
             );
+        }
+
+        fn on_client_disconnected(&self, num_clients: usize) -> minidumper::LoopAction {
+            if num_clients == 0 {
+                minidumper::LoopAction::Exit
+            } else {
+                minidumper::LoopAction::Continue
+            }
         }
     }
 
