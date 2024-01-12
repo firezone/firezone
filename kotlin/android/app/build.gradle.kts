@@ -33,7 +33,6 @@ spotless {
     }
 }
 
-apply(plugin = "com.android.application")
 apply(plugin = "org.mozilla.rust-android-gradle.rust-android")
 
 android {
@@ -44,9 +43,7 @@ android {
     namespace = "dev.firezone.android"
     compileSdk = 34
     ndkVersion = "25.2.9519653"
-    sourceSets["main"].jniLibs {
-      srcDir("jniLibs")
-    }
+
     defaultConfig {
         applicationId = "dev.firezone.android"
         minSdk = 30
