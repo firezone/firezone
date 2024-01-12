@@ -33,6 +33,7 @@ pub struct ControlPlane<CB: Callbacks> {
     pub tunnel: Arc<Tunnel<CB, ClientState>>,
     pub phoenix_channel: PhoenixSenderWithTopic,
     pub tunnel_init: Mutex<bool>,
+    pub system_dns_servers: Option<Vec<IpAddr>>,
     // It's a Mutex<Option<_>> because we need the init message to initialize the resolver
     // also, in platforms with split DNS and no configured upstream dns this will be None.
     //
@@ -41,16 +42,16 @@ pub struct ControlPlane<CB: Callbacks> {
 }
 
 fn create_resolver(
+    system_dns_servers: &Option<Vec<IpAddr>>,
     upstream_dns: Vec<DnsServer>,
-    callbacks: &impl Callbacks,
 ) -> Option<TokioAsyncResolver> {
     let dns_servers = if upstream_dns.is_empty() {
-        let Ok(Some(dns_servers)) = callbacks.get_system_default_resolvers() else {
+        let Some(dns_servers) = system_dns_servers else {
             return None;
         };
         let mut dns_servers = dns_servers
-            .into_iter()
-            .filter(|ip| ip != &IpAddr::from(DNS_SENTINEL))
+            .iter()
+            .filter(|ip| ip != &&IpAddr::from(DNS_SENTINEL))
             .peekable();
         if dns_servers.peek().is_none() {
             tracing::error!("No system default DNS servers available! Can't initialize resolver. DNS will be broken.");
@@ -60,7 +61,7 @@ fn create_resolver(
         dns_servers
             .map(|ip| {
                 DnsServer::IpPort(IpDnsServer {
-                    address: (ip, DNS_PORT).into(),
+                    address: (*ip, DNS_PORT).into(),
                 })
             })
             .collect()
@@ -100,8 +101,6 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                     return Err(e);
                 } else {
                     *init = true;
-                    *self.fallback_resolver.lock() =
-                        create_resolver(interface.upstream_dns, self.tunnel.callbacks());
                     tracing::info!("Firezone Started!");
                 }
             } else {
@@ -109,6 +108,9 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
             }
         }
 
+        self.tunnel.set_upstream_dns(&interface.upstream_dns);
+        *self.fallback_resolver.lock() =
+            create_resolver(&self.system_dns_servers, interface.upstream_dns);
         for resource_description in resources {
             self.add_resource(resource_description);
         }
@@ -133,7 +135,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                     gateway_payload.domain_response,
                     gateway_public_key.0.into(),
                 ) {
-                    let _ = self.tunnel.callbacks().on_error(&e);
+                    tracing::debug!(error = ?e, "Error accepting connection: {e:#?}");
                 }
             }
             GatewayResponse::ResourceAccepted(gateway_payload) => {
@@ -141,7 +143,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                     .tunnel
                     .received_domain_parameters(resource_id, gateway_payload.domain_response)
                 {
-                    let _ = self.tunnel.callbacks().on_error(&e);
+                    tracing::debug!(error = ?e, "Error accepting resource: {e:#?}");
                 }
             }
         }
@@ -151,7 +153,6 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
     pub fn add_resource(&self, resource_description: ResourceDescription) {
         if let Err(e) = self.tunnel.add_resource(resource_description) {
             tracing::error!(message = "Can't add resource", error = ?e);
-            let _ = self.tunnel.callbacks().on_error(&e);
         }
     }
 
@@ -216,7 +217,6 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
 
             tunnel.cleanup_connection(resource_id);
             tracing::error!("Error request connection details: {err}");
-            let _ = tunnel.callbacks().on_error(&err);
         });
     }
 
@@ -230,7 +230,6 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
         for candidate in candidates {
             if let Err(e) = self.tunnel.add_ice_candidate(gateway_id, candidate).await {
                 tracing::error!(err = ?e,"add_ice_candidate");
-                let _ = self.tunnel.callbacks().on_error(&e);
             }
         }
     }
@@ -258,7 +257,10 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
 
                 tokio::spawn(async move {
                     if let Err(e) = upload(path.clone(), url).await {
-                        tracing::warn!("Failed to upload log file: {e}");
+                        tracing::warn!(
+                            "Failed to upload log file at path {path_display}: {e}. Not retrying.",
+                            path_display = path.display()
+                        );
                     }
                 });
             }
@@ -277,13 +279,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
         match (reply_error.error, reference) {
             (ErrorInfo::Offline, Some(reference)) => {
                 let Ok(resource_id) = reference.parse::<ResourceId>() else {
-                    tracing::error!(
-                        "An offline error came back with a reference to a non-valid resource id"
-                    );
-                    let _ = self
-                        .tunnel
-                        .callbacks()
-                        .on_error(&Error::ControlProtocolError);
+                    tracing::warn!("The portal responded with an Offline error. Is the Resource associated with any online Gateways? Reference: {reference}");
                     return Ok(());
                 };
                 // TODO: Rate limit the number of attempts of getting the relays before just trying a local network connection

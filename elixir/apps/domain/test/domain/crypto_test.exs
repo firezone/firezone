@@ -56,7 +56,7 @@ defmodule Domain.CryptoTest do
       end
 
       assert_raise FunctionClauseError, fn ->
-        hash(:sha, "")
+        hash(:sha256, "")
       end
     end
 
@@ -66,7 +66,7 @@ defmodule Domain.CryptoTest do
       end
 
       assert_raise FunctionClauseError, fn ->
-        hash(:sha, 1)
+        hash(:sha256, 1)
       end
     end
   end

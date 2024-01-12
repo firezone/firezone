@@ -10,12 +10,9 @@ defmodule Web.Actors.Users.NewIdentity do
          {:ok, providers} <- Auth.list_active_providers_for_account(socket.assigns.account) do
       providers =
         Enum.filter(providers, fn provider ->
-          manual_provisioner_enabled? =
-            Auth.fetch_provider_capabilities!(provider)
-            |> Keyword.fetch!(:provisioners)
-            |> Enum.member?(:manual)
-
-          provider.adapter != :token and manual_provisioner_enabled?
+          Auth.fetch_provider_capabilities!(provider)
+          |> Keyword.fetch!(:provisioners)
+          |> Enum.member?(:manual)
         end)
 
       provider = List.first(providers)
@@ -27,7 +24,8 @@ defmodule Web.Actors.Users.NewIdentity do
           actor: actor,
           providers: providers,
           provider: provider,
-          form: to_form(changeset)
+          form: to_form(changeset),
+          page_title: "New User Identity"
         )
 
       {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}

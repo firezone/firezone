@@ -26,8 +26,7 @@ defmodule Web.SignIn.EmailTest do
     identity: identity,
     conn: conn
   } do
-    {conn, _secret} =
-      put_magic_link_auth_state(conn, account, provider, identity)
+    {conn, _secret} = put_magic_link_auth_state(conn, account, provider, identity)
 
     {:ok, lv, html} =
       live(conn, ~p"/#{account}/sign_in/providers/email/#{provider}?provider_identifier=foo")
@@ -43,8 +42,7 @@ defmodule Web.SignIn.EmailTest do
     identity: identity,
     conn: conn
   } do
-    {conn, secret} =
-      put_magic_link_auth_state(conn, account, provider, identity)
+    {conn, secret} = put_magic_link_auth_state(conn, account, provider, identity)
 
     {:ok, lv, _html} =
       live(
@@ -83,8 +81,7 @@ defmodule Web.SignIn.EmailTest do
       "redirect_to" => "/foo"
     }
 
-    {conn, secret} =
-      put_magic_link_auth_state(conn, account, provider, identity, redirect_params)
+    {conn, secret} = put_magic_link_auth_state(conn, account, provider, identity, redirect_params)
 
     {:ok, lv, _html} =
       live(
@@ -116,8 +113,7 @@ defmodule Web.SignIn.EmailTest do
     identity: identity,
     conn: conn
   } do
-    {conn, _secret} =
-      put_magic_link_auth_state(conn, account, provider, identity)
+    {conn, _secret} = put_magic_link_auth_state(conn, account, provider, identity)
 
     {:ok, lv, _html} =
       live(

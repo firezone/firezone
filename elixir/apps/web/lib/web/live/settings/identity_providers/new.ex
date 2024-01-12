@@ -4,7 +4,7 @@ defmodule Web.Settings.IdentityProviders.New do
 
   def mount(_params, _session, socket) do
     {:ok, adapters} = Auth.list_provider_adapters()
-    socket = assign(socket, form: %{}, adapters: adapters)
+    socket = assign(socket, form: %{}, adapters: adapters, page_title: "New Identity Provider")
     {:ok, socket}
   end
 
@@ -44,17 +44,6 @@ defmodule Web.Settings.IdentityProviders.New do
         </div>
       </:content>
     </.section>
-    """
-  end
-
-  def adapter(%{adapter: :workos} = assigns) do
-    ~H"""
-    <.adapter_item
-      adapter={@adapter}
-      account={@account}
-      name="WorkOS"
-      description="Authenticate users and synchronize users and groups using SCIM and 12+ other directory services."
-    />
     """
   end
 
@@ -126,8 +115,4 @@ defmodule Web.Settings.IdentityProviders.New do
   def next_step_path(:google_workspace, account) do
     ~p"/#{account}/settings/identity_providers/google_workspace/new"
   end
-
-  # def next_step_path(:workos, account) do
-  #   ~p"/#{account}/settings/identity_providers/workos/new"
-  # end
 end

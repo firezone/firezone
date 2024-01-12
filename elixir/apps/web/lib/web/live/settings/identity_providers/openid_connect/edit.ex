@@ -10,7 +10,8 @@ defmodule Web.Settings.IdentityProviders.OpenIDConnect.Edit do
       socket =
         assign(socket,
           provider: provider,
-          form: to_form(changeset)
+          form: to_form(changeset),
+          page_title: "Edit #{provider.name}"
         )
 
       {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}

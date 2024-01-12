@@ -154,7 +154,7 @@ defmodule Domain.TokensTest do
              } = errors_on(changeset)
     end
 
-    test "inserts a token", %{account: account, identity: identity} do
+    test "inserts a token", %{account: account, actor: actor, identity: identity} do
       type = :email
       nonce = "nonce"
       fragment = Domain.Crypto.random_token(32)
@@ -165,6 +165,7 @@ defmodule Domain.TokensTest do
       attrs = %{
         type: type,
         account_id: account.id,
+        actor_id: actor.id,
         identity_id: identity.id,
         secret_nonce: nonce,
         secret_fragment: fragment,
@@ -186,6 +187,8 @@ defmodule Domain.TokensTest do
       assert token.secret_hash
 
       assert token.account_id == account.id
+      assert token.actor_id == actor.id
+      assert token.identity_id == identity.id
     end
   end
 
@@ -226,7 +229,12 @@ defmodule Domain.TokensTest do
              } = errors_on(changeset)
     end
 
-    test "inserts a token", %{account: account, subject: subject} do
+    test "inserts a token", %{
+      account: account,
+      actor: actor,
+      identity: identity,
+      subject: subject
+    } do
       type = :client
       nonce = "nonce"
       fragment = Domain.Crypto.random_token(32)
@@ -238,7 +246,8 @@ defmodule Domain.TokensTest do
         type: type,
         secret_nonce: nonce,
         secret_fragment: fragment,
-        identity_id: subject.identity.id,
+        actor_id: actor.id,
+        identity_id: identity.id,
         expires_at: expires_at,
         created_by_user_agent: user_agent,
         created_by_remote_ip: remote_ip
@@ -263,6 +272,8 @@ defmodule Domain.TokensTest do
              )
 
       assert token.account_id == account.id
+      assert token.actor_id == actor.id
+      assert token.identity_id == identity.id
     end
   end
 

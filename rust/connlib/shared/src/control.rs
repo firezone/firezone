@@ -34,7 +34,7 @@ pub type Reference = String;
 // TODO: Refactor this PhoenixChannel to use the top-level phoenix-channel crate instead.
 // See https://github.com/firezone/firezone/issues/2158
 pub struct SecureUrl {
-    inner: Url,
+    pub inner: Url,
 }
 impl SecureUrl {
     pub fn from_url(url: Url) -> Self {
@@ -227,7 +227,7 @@ where
                         ReplyMessage::PhxReply(phx_reply) => match phx_reply {
                             // TODO: Here we should pass error info to a subscriber
                             PhxReply::Error(info) => {
-                                tracing::warn!("Portal error: {info:?}");
+                                tracing::debug!("Portal error: {info:?}");
                                 handler(Err(ErrorReply { error: info }), m.reference, m.topic).await
                             }
                             PhxReply::Ok(reply) => match reply {

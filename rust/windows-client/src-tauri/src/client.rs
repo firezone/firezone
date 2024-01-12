@@ -3,6 +3,7 @@ use clap::Parser;
 use cli::CliCommands as Cmd;
 use std::{os::windows::process::CommandExt, process::Command};
 
+mod auth;
 mod cli;
 mod debug_commands;
 mod deep_link;
@@ -10,9 +11,21 @@ mod device_id;
 mod elevation;
 mod gui;
 mod logging;
+mod network_changes;
 mod resolvers;
 mod settings;
 mod wintun_install;
+
+/// Output of `git describe` at compile time
+/// e.g. `1.0.0-pre.4-20-ged5437c88-modified` where:
+///
+/// * `1.0.0-pre.4` is the most recent ancestor tag
+/// * `20` is the number of commits since then
+/// * `g` doesn't mean anything
+/// * `ed5437c88` is the Git commit hash
+/// * `-modified` is present if the working dir has any changes from that commit number
+const GIT_VERSION: &str =
+    git_version::git_version!(args = ["--always", "--dirty=-modified", "--tags"]);
 
 /// Prevents a problem where changing the args to `gui::run` breaks static analysis on non-Windows targets, where the gui is stubbed out
 #[allow(dead_code)]
@@ -69,6 +82,7 @@ pub(crate) fn run() -> Result<()> {
         }
         Some(Cmd::DebugCrash) => debug_commands::crash(),
         Some(Cmd::DebugHostname) => debug_commands::hostname(),
+        Some(Cmd::DebugNetworkChanges) => debug_commands::network_changes(),
         Some(Cmd::DebugPipeServer) => debug_commands::pipe_server(),
         Some(Cmd::DebugWintun) => debug_commands::wintun(cli),
         // If we already tried to elevate ourselves, don't try again

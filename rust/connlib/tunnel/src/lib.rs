@@ -213,7 +213,7 @@ where
 
             tracing::trace!(target: "wire", action = "read", from = "device", dest = %packet.destination());
 
-            let packet = match role_state.handle_dns(packet) {
+            let (packet, dest) = match role_state.handle_dns(packet) {
                 Ok(Some(response)) => {
                     device.write(response)?;
                     continue;
@@ -221,8 +221,6 @@ where
                 Ok(None) => continue,
                 Err(non_dns_packet) => non_dns_packet,
             };
-
-            let dest = packet.destination();
 
             let Some(peer) = peer_by_ip(&role_state.peers_by_ip, dest) else {
                 role_state.on_connection_intent_ip(dest);
@@ -330,11 +328,9 @@ where
 
                 if let Some(conn) = self.peer_connections.lock().remove(&conn_id) {
                     tokio::spawn({
-                        let callbacks = self.callbacks.clone();
                         async move {
                             if let Err(e) = conn.stop().await {
                                 tracing::warn!(%conn_id, error = ?e, "Can't close peer");
-                                let _ = callbacks.on_error(&e.into());
                             }
                         }
                     });
@@ -366,7 +362,6 @@ where
 
                 if let Err(e) = device.refresh_mtu() {
                     tracing::error!(error = ?e, "refresh_mtu");
-                    let _ = self.callbacks.on_error(&e);
                 }
             }
 

@@ -1,5 +1,6 @@
 use crate::{
     control_protocol::{insert_peers, start_handlers},
+    dns::is_subdomain,
     peer::{PacketTransformGateway, Peer},
     ConnectedPeer, GatewayState, PeerConfig, Tunnel, PEER_QUEUE_SIZE,
 };
@@ -95,7 +96,7 @@ where
                     return Err(Error::ControlProtocolError);
                 };
 
-                if !domain.iter_suffixes().any(|d| d.to_string() == r.address) {
+                if !is_subdomain(&domain, &r.address) {
                     let _ = ice.stop().await;
                     return Err(Error::InvalidResource);
                 }
@@ -181,7 +182,7 @@ where
                         return None;
                     };
 
-                    if !domain.iter_suffixes().any(|d| d.to_string() == r.address) {
+                    if !is_subdomain(domain, &r.address) {
                         return None;
                     }
 
@@ -244,7 +245,6 @@ where
         start_handlers(
             Arc::clone(self),
             Arc::clone(&self.device),
-            self.callbacks.clone(),
             peer.clone(),
             ice,
             peer_receiver,
