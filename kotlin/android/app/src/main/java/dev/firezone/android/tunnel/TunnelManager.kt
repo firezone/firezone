@@ -4,7 +4,6 @@ package dev.firezone.android.tunnel
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
-import android.util.Log
 import dev.firezone.android.core.data.PreferenceRepository
 import dev.firezone.android.tunnel.callback.TunnelListener
 import dev.firezone.android.tunnel.data.TunnelRepository

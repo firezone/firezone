@@ -202,7 +202,7 @@ dependencies {
 }
 
 cargo {
-    if (gradle.startParameter.taskNames.any{it.lowercase().contains("release")}) {
+    if (gradle.startParameter.taskNames.any { it.lowercase().contains("release") }) {
         profile = "release"
     } else {
         profile = "debug"

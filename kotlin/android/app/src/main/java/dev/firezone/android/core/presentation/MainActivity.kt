@@ -14,6 +14,7 @@ internal class MainActivity : AppCompatActivity(R.layout.activity_main) {
             System.loadLibrary("connlib")
         }
     }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
     }
