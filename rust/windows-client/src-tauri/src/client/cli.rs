@@ -6,6 +6,8 @@ pub struct Cli {
     #[command(subcommand)]
     pub command: Option<CliCommands>,
     #[arg(long, hide = true)]
+    pub crash_on_purpose: bool,
+    #[arg(long, hide = true)]
     pub inject_faults: bool,
 }
 

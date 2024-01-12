@@ -51,6 +51,7 @@ pub const BUNDLE_ID: &str = "dev.firezone.client";
 /// Runs the Tauri GUI and returns on exit or unrecoverable error
 pub(crate) fn run(params: client::GuiParams) -> Result<()> {
     let client::GuiParams {
+        crash_on_purpose,
         flag_elevated,
         inject_faults,
     } = params;
@@ -59,6 +60,8 @@ pub(crate) fn run(params: client::GuiParams) -> Result<()> {
     let _crash_handler = match client::crash_handling::attach_handler() {
         Ok(x) => Some(x),
         Err(error) => {
+            // TODO: None of these logs are actually written yet
+            // <https://github.com/firezone/firezone/issues/3211>
             tracing::warn!(?error, "Did not set up crash handler");
             None
         }
@@ -68,10 +71,12 @@ pub(crate) fn run(params: client::GuiParams) -> Result<()> {
     let rt = tokio::runtime::Runtime::new()?;
     let _guard = rt.enter();
 
-    // If enabled, segfaults the program after 10 seconds to test crash dumps
-    if false {
+    if crash_on_purpose {
         tokio::spawn(async {
-            tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+            let delay = 10;
+            tracing::info!("Will crash on purpose in {delay} seconds to test crash handling.");
+            tokio::time::sleep(std::time::Duration::from_secs(delay)).await;
+            tracing::info!("Crashing on purpose because of `--crash-on-purpose` flag");
             unsafe { sadness_generator::raise_segfault() }
         });
     }
