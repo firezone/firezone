@@ -39,7 +39,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-rust
         with:
-          targets: armv7-linux-androideabi aarch64-linux-android x86_64-linux-android
+          targets: armv7-linux-androideabi aarch64-linux-android x86_64-linux-android i686-linux-android
       - uses: actions/setup-java@v4
         with:
           distribution: oracle
@@ -60,7 +60,7 @@ jobs:
         run: |
           KEYSTORE_PATH=$(pwd)/app/keystore.jks
           echo -n "$KEYSTORE_BASE64" | base64 --decode > $KEYSTORE_PATH
-          ./gradlew --info assembleRelease bundleRelease
+          ./gradlew --info bundleRelease
       - name: Run Test
         run: |
           # TODO: See https://github.com/firezone/firezone/issues/2311
