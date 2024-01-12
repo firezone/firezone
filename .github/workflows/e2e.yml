@@ -1,3 +1,9 @@
+# This workflow file contains end-to-end tests for running client apps on
+# our baremetal testbed. Artifacts are intentionally built in debug mode
+# so that debug assert and other test-related macros can be triggered.
+#
+# This workflow does not replace the need to sanity check the QA builds manually,
+# but should reduce (and some day) eliminate the need for a full manual QA runbook.
 name: End to end tests
 on:
   # TODO
@@ -95,23 +101,69 @@ jobs:
   windows:
     needs: docker
     runs-on: windows-11-firezone
+    permissions:
+      contents: read
+      id-token: 'write'
+    defaults:
+      run:
+        working-directory: ./rust
     steps:
       - uses: actions/checkout@v4
-      - run: echo 'Noop'
+      - uses: ./.github/actions/setup-rust
+        with:
+          targets: x86_64-pc-windows-msvc
+      - name: Build release binaries
+        run: |
+          pnpm add -g @tauri-apps/cli
+          pnpm tauri build
+
+          # Used for release artifact
+          # In release mode the name comes from tauri.conf.json
+          cp "target/release/Firezone Windows Client.exe" "windows-client-x64.exe"
 
   linux:
     needs: docker
     runs-on: ubuntu-22.04-firezone
+    permissions:
+      contents: read
+      id-token: 'write'
+    defaults:
+      run:
+        working-directory: ./rust
     steps:
       - uses: actions/checkout@v4
-      - run: echo 'Noop'
+      - uses: ./.github/actions/setup-rust
+        with:
+          targets: x86_64-unknown-linux-musl
+      - run: |
+          cargo build --package firezone-linux-client
+          ./target/debug/firezone-linux-client
 
   android:
     needs: docker
     runs-on: ubuntu-22.04-firezone
+    permissions:
+      contents: read
+      id-token: 'write'
+    defaults:
+      run:
+        working-directory: ./kotlin/android
     steps:
       - uses: actions/checkout@v4
-      - run: echo 'Noop'
+      - uses: ./.github/actions/setup-rust
+        with:
+          targets: armv7-linux-androideabi aarch64-linux-android x86_64-linux-android i686-linux-android
+      - uses: actions/setup-java@v4
+        with:
+          distribution: oracle
+          java-version: 17
+      - name: Setup Gradle
+        uses: gradle/gradle-build-action@v2
+        with:
+          build-root-directory: ./kotlin/android
+      - run: touch local.properties
+      - run: |
+          ./gradlew --info bundleDebug
 
   ios:
     strategy:
