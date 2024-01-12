@@ -35,6 +35,7 @@ pub struct Tun {
 
 impl Drop for Tun {
     fn drop(&mut self) {
+        tracing::info!("Dropping Tun");
         if let Err(e) = self.session.shutdown() {
             tracing::error!("wintun::Session::shutdown: {e:#?}");
         }
