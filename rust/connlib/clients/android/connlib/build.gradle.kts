@@ -98,7 +98,7 @@ cargo {
     verbose = true
     module = "../"
     libname = "connlib"
-    targets = listOf("arm", "arm64", "x86_64")
+    targets = listOf("arm", "arm64", "x86_64", "x86")
     targetDirectory = "../../../../target"
     targetIncludes = arrayOf("connlib.dylib")
 }

@@ -163,7 +163,7 @@ jobs:
           build-root-directory: ./kotlin/android
       - run: |
           echo 'sdk.dir=/home/firezone/Android/Sdk' > local.properties
-          ./gradlew --info bundleDebug
+          ./gradlew --info assembleDebug bundleDebug
 
   ios:
     strategy:
