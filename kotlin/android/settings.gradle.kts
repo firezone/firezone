@@ -16,8 +16,6 @@ dependencyResolutionManagement {
 
 rootProject.name = "Firezone App"
 include(":app")
-include(":connlib")
-project(":connlib").projectDir = file("../../rust/connlib/clients/android/connlib")
 
 buildCache {
     local {

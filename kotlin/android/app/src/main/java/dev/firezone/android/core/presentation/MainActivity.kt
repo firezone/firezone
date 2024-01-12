@@ -8,6 +8,13 @@ import dev.firezone.android.R
 
 @AndroidEntryPoint
 internal class MainActivity : AppCompatActivity(R.layout.activity_main) {
+    // fail fast if the native library is not loaded
+    companion object {
+        init {
+            System.loadLibrary("connlib")
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
     }
