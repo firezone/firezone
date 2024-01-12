@@ -82,13 +82,15 @@ class TunnelService : VpnService() {
                 //     tunnelRepository.setResources(resources)
                 // }
 
-                tunnelRepository.setConfig(
-                    TunnelConfig(
-                        tunnelAddressIPv4,
-                        tunnelAddressIPv6,
-                        dnsAddresses,
-                    ),
-                )
+                moshi.adapter<List<String>>().fromJson(dnsAddresses)?.let {dns ->
+                    tunnelRepository.setConfig(
+                        TunnelConfig(
+                            tunnelAddressIPv4,
+                            tunnelAddressIPv6,
+                            dns,
+                        ),
+                    )
+                }
 
                 // TODO: throw error if failed to establish VpnService
                 val fd = buildVpnService().establish()?.detachFd() ?: -1

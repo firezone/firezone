@@ -41,10 +41,6 @@ impl Tun {
             .with(|fd| utils::poll_raw_fd(&fd, |fd| read(fd, buf), cx))?
     }
 
-    pub fn close(&self) {
-        self.fd.close();
-    }
-
     pub fn new(
         config: &InterfaceConfig,
         callbacks: &impl Callbacks<Error = Error>,
