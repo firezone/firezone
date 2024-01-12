@@ -64,8 +64,7 @@ jobs:
       - uses: ./.github/actions/setup-rust
       - run: cargo test --all-features ${{ matrix.packages }}
 
-  # This should be identical to `build-push-windows-release-artifacts` in `cd.yml` except for the permissions, needs, and uploading step
-  # TODO: Get rid of "temp" and figure out what to do with this
+  # This should be identical to `build-push-windows-release-artifacts` in `cd.yml` except for the Github permissions, needs tag, and uploading step
   build-tauri:
     runs-on: windows-2019
     defaults:
@@ -80,7 +79,7 @@ jobs:
           - package: firezone-windows-client
             artifact: windows-client
     env:
-      BINARY_DEST_PATH: windows-client
+      BINARY_DEST_PATH: ${{ matrix.name.artifact }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-rust
@@ -95,18 +94,25 @@ jobs:
 
           # Used for release artifact
           # In release mode the name comes from tauri.conf.json
-          cp "target/release/Firezone Windows Client.exe" "windows-client-x64.exe"
+          cp "target/release/Firezone Windows Client.exe" "${{ env.BINARY_DEST_PATH }}-x64.exe"
+          cp "target/release/bundle/msi/*.msi" "${{ env.BINARY_DEST_PATH }}-x64.msi"
 
+          Get-FileHash ${{ env.BINARY_DEST_PATH }}-x64.exe -Algorithm SHA256 | Select-Object Hash > ${{ env.BINARY_DEST_PATH }}-x64.exe.sha256sum.txt
+          Get-FileHash ${{ env.BINARY_DEST_PATH }}-x64.msi -Algorithm SHA256 | Select-Object Hash > ${{ env.BINARY_DEST_PATH }}-x64.msi.sha256sum.txt
       - name: Save Windows client
         uses: actions/upload-artifact@v4
         with:
           name: windows-client-x64
-          path: ${{ github.workspace }}/rust/windows-client-x64.exe
+          path: |
+            ${{ github.workspace }}/rust/windows-client-x64.exe
+            ${{ github.workspace }}/rust/windows-client-x64.exe.sha256sum.txt
       - name: Save Windows installer
         uses: actions/upload-artifact@v4
         with:
           name: windows-client-x64-msi
-          path: ${{ github.workspace }}/rust/target/release/bundle/msi
+          path: |
+            ${{ github.workspace }}/rust/windows-client-x64.msi
+            ${{ github.workspace }}/rust/windows-client-x64.msi.sha256sum.txt
 
   smoke-test-relay:
     runs-on: ubuntu-22.04
