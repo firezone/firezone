@@ -4,8 +4,7 @@ defmodule Domain.Fixtures.Relays do
 
   def group_attrs(attrs \\ %{}) do
     Enum.into(attrs, %{
-      name: "group-#{unique_integer()}",
-      tokens: [%{}]
+      name: "group-#{unique_integer()}"
     })
   end
 
@@ -69,9 +68,10 @@ defmodule Domain.Fixtures.Relays do
         |> Fixtures.Auth.create_subject()
       end)
 
-    Relays.Token.Changeset.create(account, subject)
-    |> Ecto.Changeset.put_change(:group_id, group.id)
-    |> Repo.insert!()
+    {:ok, encoded_token} = Relays.create_token(group, attrs, subject)
+    context = Fixtures.Auth.build_context(type: :relay_group)
+    {:ok, {_account_id, id, nonce, secret}} = Domain.Tokens.peek_token(encoded_token, context)
+    %{Repo.get(Domain.Tokens.Token, id) | secret_nonce: nonce, secret_fragment: secret}
   end
 
   def relay_attrs(attrs \\ %{}) do
@@ -79,13 +79,7 @@ defmodule Domain.Fixtures.Relays do
 
     Enum.into(attrs, %{
       ipv4: ipv4,
-      ipv6: unique_ipv6(),
-      last_seen_user_agent: "iOS/12.7 (iPhone) connlib/0.7.412",
-      last_seen_remote_ip: ipv4,
-      last_seen_remote_ip_location_region: "Mexico",
-      last_seen_remote_ip_location_city: "Merida",
-      last_seen_remote_ip_location_lat: 37.7749,
-      last_seen_remote_ip_location_lon: -120.4194
+      ipv6: unique_ipv6()
     })
   end
 
@@ -104,12 +98,14 @@ defmodule Domain.Fixtures.Relays do
         |> create_group()
       end)
 
-    {token, attrs} =
-      Map.pop_lazy(attrs, :token, fn ->
-        hd(group.tokens)
+    {context, attrs} =
+      pop_assoc_fixture(attrs, :context, fn assoc_attrs ->
+        assoc_attrs
+        |> Enum.into(%{type: :relay_group})
+        |> Fixtures.Auth.build_context()
       end)
 
-    {:ok, relay} = Relays.upsert_relay(token, attrs)
+    {:ok, relay} = Relays.upsert_relay(group, attrs, context)
     %{relay | online?: false}
   end
 

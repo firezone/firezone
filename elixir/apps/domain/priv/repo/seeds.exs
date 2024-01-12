@@ -210,10 +210,14 @@ admin_actor_context = %Auth.Context{
   Auth.build_subject(admin_actor_token, admin_actor_context)
 
 {:ok, service_account_actor_encoded_token} =
-  Auth.create_service_account_token(service_account_actor, admin_subject, %{
-    "name" => "tok-#{Ecto.UUID.generate()}",
-    "expires_at" => DateTime.utc_now() |> DateTime.add(365, :day)
-  })
+  Auth.create_service_account_token(
+    service_account_actor,
+    %{
+      "name" => "tok-#{Ecto.UUID.generate()}",
+      "expires_at" => DateTime.utc_now() |> DateTime.add(365, :day)
+    },
+    admin_subject
+  )
 
 IO.puts("Created users: ")
 
@@ -297,10 +301,7 @@ all_group
 IO.puts("")
 
 {:ok, global_relay_group} =
-  Relays.create_global_group(%{
-    name: "fz-global-relays",
-    tokens: [%{}]
-  })
+  Relays.create_global_group(%{name: "fz-global-relays"})
 
 global_relay_group_token = hd(global_relay_group.tokens)
 
@@ -318,22 +319,32 @@ IO.puts("  #{global_relay_group.name} token: #{Relays.encode_token!(global_relay
 
 IO.puts("")
 
+relay_context = %Auth.Context{
+  type: :relay_group,
+  user_agent: "Ubuntu/14.04 connlib/0.7.412",
+  remote_ip: {100, 64, 100, 58}
+}
+
 {:ok, global_relay} =
-  Relays.upsert_relay(global_relay_group_token, %{
-    ipv4: {189, 172, 72, 111},
-    ipv6: {0, 0, 0, 0, 0, 0, 0, 1},
-    last_seen_user_agent: "iOS/12.7 (iPhone) connlib/0.7.412",
-    last_seen_remote_ip: %Postgrex.INET{address: {189, 172, 72, 111}}
-  })
+  Relays.upsert_relay(
+    global_relay_group,
+    %{
+      ipv4: {189, 172, 72, 111},
+      ipv6: {0, 0, 0, 0, 0, 0, 0, 1}
+    },
+    relay_context
+  )
 
 for i <- 1..5 do
   {:ok, _global_relay} =
-    Relays.upsert_relay(global_relay_group_token, %{
-      ipv4: {189, 172, 72, 111 + i},
-      ipv6: {0, 0, 0, 0, 0, 0, 0, i},
-      last_seen_user_agent: "iOS/12.7 (iPhone) connlib/0.7.412",
-      last_seen_remote_ip: %Postgrex.INET{address: {189, 172, 72, 111 + i}}
-    })
+    Relays.upsert_relay(
+      global_relay_group_token,
+      %{
+        ipv4: {189, 172, 72, 111 + i},
+        ipv6: {0, 0, 0, 0, 0, 0, 0, i}
+      },
+      %{relay_context | remote_ip: %Postgrex.INET{address: {189, 172, 72, 111 + i}}}
+    )
 end
 
 IO.puts("Created global relays:")
@@ -343,24 +354,23 @@ IO.puts("")
 
 relay_group =
   account
-  |> Relays.Group.Changeset.create(
-    %{name: "mycorp-aws-relays", tokens: [%{}]},
-    admin_subject
-  )
+  |> Relays.Group.Changeset.create(%{name: "mycorp-aws-relays"}, admin_subject)
   |> Repo.insert!()
 
-relay_group_token = hd(relay_group.tokens)
+{:ok, relay_group_encoded_token} = Relays.create_token(relay_group, %{}, admin_subject)
+
+relay_group_token = Repo.one(Tokens.Token, where: [relay_group_id: relay_group_token.id])
 
 relay_group_token =
   maybe_repo_update.(relay_group_token,
-    id: "7286b53d-073e-4c41-9ff1-cc8451dad299",
-    hash:
-      "$argon2id$v=19$m=131072,t=8,p=4$aSw/NA3z0vGJjvF3ukOcyg$5MPWPXLETM3iZ19LTihItdVGb7ou/i4/zhpozMrpCFg",
-    value: "EX77Ga0HKJUVLgcpMrN6HatdGnfvADYQrRjUWWyTqqt7BaUdEU3o9-FbBlRdINIK"
+    id: "7da7d1cd-111c-44a7-b5ac-4027b9d230e5",
+    secret_salt: "kKKA7dtf3TJk0-1O2D9N1w",
+    secret_fragment: "AiIy_6pBk-WLeRAPzzkCFXNqIZKWBs2Ddw_2vgIQvFg",
+    secret_hash: "5c1d6795ea1dd08b6f4fd331eeaffc12032ba171d227f328446f2d26b96437e5"
   )
 
 IO.puts("Created relay groups:")
-IO.puts("  #{relay_group.name} token: #{Relays.encode_token!(relay_group_token)}")
+IO.puts("  #{relay_group.name} token: #{relay_group_encoded_token}")
 IO.puts("")
 
 {:ok, relay} =

@@ -9,9 +9,7 @@ defmodule Web.Sites.Gateways.Index do
            Gateways.fetch_group_by_id(id, socket.assigns.subject),
          # TODO: add LIMIT 100 ORDER BY last_seen_at DESC once we support filters
          {:ok, gateways} <-
-           Gateways.list_gateways_for_group(group, subject,
-             preload: [token: [created_by_identity: [:actor]]]
-           ) do
+           Gateways.list_gateways_for_group(group, subject) do
       gateways = Enum.sort_by(gateways, & &1.online?, :desc)
       :ok = Gateways.subscribe_for_gateways_presence_in_group(group)
       socket = assign(socket, group: group, gateways: gateways, page_title: "Site Gateways")
@@ -53,9 +51,6 @@ defmodule Web.Sites.Gateways.Index do
             <code>
               <%= gateway.last_seen_remote_ip %>
             </code>
-          </:col>
-          <:col :let={gateway} label="TOKEN CREATED AT">
-            <.created_by account={@account} schema={gateway.token} />
           </:col>
           <:col :let={gateway} label="STATUS">
             <.connection_status schema={gateway} />

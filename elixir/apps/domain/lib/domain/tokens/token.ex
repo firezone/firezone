@@ -1,9 +1,17 @@
-# TODO: service accounts auth as clients and as API clients?
 defmodule Domain.Tokens.Token do
   use Domain, :schema
 
   schema "tokens" do
-    field :type, Ecto.Enum, values: [:browser, :client, :relay, :gateway, :email, :api_client]
+    # TODO: email token
+    field :type, Ecto.Enum,
+      values: [
+        :browser,
+        :client,
+        :api_client,
+        :relay_group,
+        :gateway_group,
+        :email
+      ]
 
     field :name, :string
 
@@ -11,8 +19,10 @@ defmodule Domain.Tokens.Token do
     belongs_to :identity, Domain.Auth.Identity
     # set for browser and client tokens
     belongs_to :actor, Domain.Actors.Actor
-    # belongs_to :relay_group, Domain.Relays.Group
-    # belongs_to :gateway_group, Domain.Relays.Group
+    # set for relay tokens
+    belongs_to :relay_group, Domain.Relays.Group
+    # set for gateway tokens
+    belongs_to :gateway_group, Domain.Gateways.Group
 
     # we store just hash(nonce+fragment+salt)
     field :secret_nonce, :string, virtual: true, redact: true

@@ -1,8 +1,8 @@
 defmodule Domain.Relays do
   use Supervisor
   alias Domain.{Repo, Auth, Validator, Geo}
-  alias Domain.{Accounts, Resources}
-  alias Domain.Relays.{Authorizer, Relay, Group, Token, Presence}
+  alias Domain.{Accounts, Resources, Tokens}
+  alias Domain.Relays.{Authorizer, Relay, Group, Presence}
 
   def start_link(opts) do
     Supervisor.start_link(__MODULE__, opts, name: __MODULE__)
@@ -150,35 +150,55 @@ defmodule Domain.Relays do
       |> Group.Query.by_account_id(subject.account.id)
       |> Repo.fetch_and_update(
         with: fn group ->
-          :ok =
-            Token.Query.by_group_id(group.id)
-            |> Repo.all()
-            |> Enum.each(fn token ->
-              Token.Changeset.delete(token)
-              |> Repo.update!()
-            end)
-
-          group
-          |> Group.Changeset.delete()
+          {:ok, _count} = Tokens.delete_tokens_for(group, subject)
+          Group.Changeset.delete(group)
         end
       )
     end
   end
 
-  def use_token_by_id_and_secret(id, secret) do
-    if Validator.valid_uuid?(id) do
-      Token.Query.by_id(id)
-      |> Repo.fetch_and_update(
-        with: fn token ->
-          if Domain.Crypto.equal?(:argon2, secret, token.hash) do
-            Token.Changeset.use(token)
-          else
-            :not_found
-          end
-        end
-      )
+  def create_token(%Group{account_id: nil} = group, attrs) do
+    attrs =
+      Map.merge(attrs, %{
+        "type" => :relay_group,
+        "secret_fragment" => Domain.Crypto.random_token(32, encoder: :hex32),
+        "relay_group_id" => group.id
+      })
+
+    with {:ok, token} <- Tokens.create_token(attrs) do
+      {:ok, Tokens.encode_fragment!(token)}
+    end
+  end
+
+  def create_token(
+        %Group{account_id: account_id} = group,
+        attrs,
+        %Auth.Subject{account: %{id: account_id}} = subject
+      ) do
+    attrs =
+      Map.merge(attrs, %{
+        "type" => :relay_group,
+        "secret_fragment" => Domain.Crypto.random_token(32, encoder: :hex32),
+        "account_id" => group.account_id,
+        "relay_group_id" => group.id,
+        "created_by_user_agent" => subject.context.user_agent,
+        "created_by_remote_ip" => subject.context.remote_ip
+      })
+
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_relays_permission()),
+         {:ok, token} <- Tokens.create_token(attrs, subject) do
+      {:ok, Tokens.encode_fragment!(token)}
+    end
+  end
+
+  def authenticate(encoded_token, %Auth.Context{} = context) when is_binary(encoded_token) do
+    with {:ok, token} <- Tokens.use_token(encoded_token, context),
+         queryable = Group.Query.by_id(token.relay_group_id),
+         {:ok, group} <- Repo.fetch(queryable) do
+      {:ok, group}
     else
-      {:error, :not_found}
+      {:error, :invalid_or_expired_token} -> {:error, :unauthorized}
+      {:error, :not_found} -> {:error, :unauthorized}
     end
   end
 
@@ -303,12 +323,12 @@ defmodule Domain.Relays do
     |> Base.encode64(padding: false)
   end
 
-  def upsert_relay(%Token{} = token, attrs) do
-    changeset = Relay.Changeset.upsert(token, attrs)
+  def upsert_relay(%Group{} = group, attrs, %Auth.Context{} = context) do
+    changeset = Relay.Changeset.upsert(group, attrs, context)
 
     Ecto.Multi.new()
     |> Ecto.Multi.insert(:relay, changeset,
-      conflict_target: Relay.Changeset.upsert_conflict_target(token),
+      conflict_target: Relay.Changeset.upsert_conflict_target(group),
       on_conflict: Relay.Changeset.upsert_on_conflict(),
       returning: true
     )
@@ -356,29 +376,6 @@ defmodule Domain.Relays do
     |> Enum.map(&Enum.random(elem(&1, 1)))
   end
 
-  def encode_token!(%Token{value: value} = token) when not is_nil(value) do
-    body = {token.id, token.value}
-    config = fetch_config!()
-    key_base = Keyword.fetch!(config, :key_base)
-    salt = Keyword.fetch!(config, :salt)
-    Plug.Crypto.sign(key_base, salt, body)
-  end
-
-  def authorize_relay(encrypted_secret) do
-    config = fetch_config!()
-    key_base = Keyword.fetch!(config, :key_base)
-    salt = Keyword.fetch!(config, :salt)
-
-    with {:ok, {id, secret}} <-
-           Plug.Crypto.verify(key_base, salt, encrypted_secret, max_age: :infinity),
-         {:ok, token} <- use_token_by_id_and_secret(id, secret) do
-      {:ok, token}
-    else
-      {:error, :invalid} -> {:error, :invalid_token}
-      {:error, :not_found} -> {:error, :invalid_token}
-    end
-  end
-
   def connect_relay(%Relay{} = relay, secret) do
     scope =
       if relay.account_id do
@@ -405,9 +402,5 @@ defmodule Domain.Relays do
 
   def subscribe_for_relays_presence_in_group(%Group{} = group) do
     Phoenix.PubSub.subscribe(Domain.PubSub, "relay_groups:#{group.id}")
-  end
-
-  defp fetch_config! do
-    Domain.Config.fetch_env!(:domain, __MODULE__)
   end
 end

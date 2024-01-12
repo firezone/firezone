@@ -191,26 +191,6 @@ resource "random_password" "tokens_salt" {
   special = false
 }
 
-resource "random_password" "relays_auth_token_key_base" {
-  length  = 64
-  special = false
-}
-
-resource "random_password" "relays_auth_token_salt" {
-  length  = 32
-  special = false
-}
-
-resource "random_password" "gateways_auth_token_key_base" {
-  length  = 64
-  special = false
-}
-
-resource "random_password" "gateways_auth_token_salt" {
-  length  = 32
-  special = false
-}
-
 resource "random_password" "secret_key_base" {
   length  = 64
   special = false
@@ -427,14 +407,6 @@ locals {
     {
       name  = "TOKENS_SALT"
       value = base64encode(random_password.tokens_salt.result)
-    },
-    {
-      name  = "RELAYS_AUTH_TOKEN_KEY_BASE"
-      value = base64encode(random_password.relays_auth_token_key_base.result)
-    },
-    {
-      name  = "RELAYS_AUTH_TOKEN_SALT"
-      value = base64encode(random_password.relays_auth_token_salt.result)
     },
     {
       name  = "GATEWAYS_AUTH_TOKEN_KEY_BASE"

@@ -121,18 +121,14 @@ defmodule Domain.TokensTest do
 
       assert errors_on(changeset) == %{
                type: ["can't be blank"],
-               account_id: ["can't be blank"],
-               expires_at: ["can't be blank"],
                secret_fragment: ["can't be blank"],
-               secret_hash: ["can't be blank"],
-               created_by_remote_ip: ["can't be blank"],
-               created_by_user_agent: ["can't be blank"]
+               secret_hash: ["can't be blank"]
              }
     end
 
     test "returns errors on invalid attrs" do
       attrs = %{
-        type: :relay,
+        type: :foo,
         secret_nonce: -1,
         secret_fragment: -1,
         expires_at: DateTime.utc_now(),
@@ -198,7 +194,6 @@ defmodule Domain.TokensTest do
 
       assert errors_on(changeset) == %{
                type: ["can't be blank"],
-               expires_at: ["can't be blank"],
                secret_fragment: ["can't be blank"],
                secret_hash: ["can't be blank"],
                created_by_remote_ip: ["can't be blank"],
@@ -497,13 +492,47 @@ defmodule Domain.TokensTest do
   end
 
   describe "delete_tokens_for/2" do
-    test "deletes tokens for given actor", %{account: account, subject: subject} do
+    test "deletes browser tokens for given actor", %{account: account, subject: subject} do
       actor = Fixtures.Actors.create_actor(account: account)
       identity = Fixtures.Auth.create_identity(account: account, actor: actor)
-      token = Fixtures.Tokens.create_token(account: account, identity: identity)
+      token = Fixtures.Tokens.create_token(type: :browser, account: account, identity: identity)
       Phoenix.PubSub.subscribe(Domain.PubSub, "sessions:#{token.id}")
 
       assert delete_tokens_for(actor, subject) == {:ok, 1}
+
+      assert Repo.get(Tokens.Token, token.id).deleted_at
+      assert_receive "disconnect"
+    end
+
+    test "deletes client tokens for given actor", %{account: account, subject: subject} do
+      actor = Fixtures.Actors.create_actor(account: account)
+      identity = Fixtures.Auth.create_identity(account: account, actor: actor)
+      token = Fixtures.Tokens.create_token(type: :client, account: account, identity: identity)
+      Phoenix.PubSub.subscribe(Domain.PubSub, "sessions:#{token.id}")
+
+      assert delete_tokens_for(actor, subject) == {:ok, 1}
+
+      assert Repo.get(Tokens.Token, token.id).deleted_at
+      assert_receive "disconnect"
+    end
+
+    test "deletes gateway group tokens", %{account: account, subject: subject} do
+      group = Fixtures.Gateways.create_group(account: account)
+      token = Fixtures.Gateways.create_token(account: account, group: group)
+      Phoenix.PubSub.subscribe(Domain.PubSub, "gateway_groups:#{group.id}")
+
+      assert delete_tokens_for(group, subject) == {:ok, 1}
+
+      assert Repo.get(Tokens.Token, token.id).deleted_at
+      assert_receive "disconnect"
+    end
+
+    test "deletes relay group tokens", %{account: account, subject: subject} do
+      group = Fixtures.Relays.create_group(account: account)
+      token = Fixtures.Relays.create_token(account: account, group: group)
+      Phoenix.PubSub.subscribe(Domain.PubSub, "relay_groups:#{group.id}")
+
+      assert delete_tokens_for(group, subject) == {:ok, 1}
 
       assert Repo.get(Tokens.Token, token.id).deleted_at
       assert_receive "disconnect"

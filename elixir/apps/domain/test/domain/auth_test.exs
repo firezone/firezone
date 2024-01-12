@@ -3128,10 +3128,14 @@ defmodule Domain.AuthTest do
       actor = Fixtures.Actors.create_actor(type: :service_account, account: account)
 
       assert {:ok, encoded_token} =
-               create_service_account_token(actor, subject, %{
-                 "name" => "foo",
-                 "expires_at" => one_day
-               })
+               create_service_account_token(
+                 actor,
+                 %{
+                   "name" => "foo",
+                   "expires_at" => one_day
+                 },
+                 subject
+               )
 
       assert {:ok, sa_subject} = authenticate(encoded_token, context)
       assert sa_subject.account.id == account.id
@@ -3161,7 +3165,7 @@ defmodule Domain.AuthTest do
       actor = Fixtures.Actors.create_actor(type: :service_account)
 
       assert_raise FunctionClauseError, fn ->
-        create_service_account_token(actor, subject, %{})
+        create_service_account_token(actor, %{}, subject)
       end
     end
 
@@ -3172,7 +3176,7 @@ defmodule Domain.AuthTest do
       actor = Fixtures.Actors.create_actor(type: :account_user, account: account)
 
       assert_raise FunctionClauseError, fn ->
-        create_service_account_token(actor, subject, %{})
+        create_service_account_token(actor, %{}, subject)
       end
     end
 
@@ -3183,7 +3187,7 @@ defmodule Domain.AuthTest do
       actor = Fixtures.Actors.create_actor(type: :service_account, account: account)
       subject = Fixtures.Auth.remove_permissions(subject)
 
-      assert create_service_account_token(actor, subject, %{}) ==
+      assert create_service_account_token(actor, %{}, subject) ==
                {:error,
                 {:unauthorized,
                  reason: :missing_permissions,
@@ -3238,10 +3242,14 @@ defmodule Domain.AuthTest do
       actor = Fixtures.Actors.create_actor(type: :api_client, account: account)
 
       assert {:ok, encoded_token} =
-               create_api_client_token(actor, subject, %{
-                 "name" => "foo",
-                 "expires_at" => one_day
-               })
+               create_api_client_token(
+                 actor,
+                 %{
+                   "name" => "foo",
+                   "expires_at" => one_day
+                 },
+                 subject
+               )
 
       assert {:ok, api_subject} = authenticate(encoded_token, context)
       assert api_subject.account.id == account.id
@@ -3271,7 +3279,7 @@ defmodule Domain.AuthTest do
       actor = Fixtures.Actors.create_actor(type: :api_client)
 
       assert_raise FunctionClauseError, fn ->
-        create_api_client_token(actor, subject, %{})
+        create_api_client_token(actor, %{}, subject)
       end
     end
 
@@ -3282,7 +3290,7 @@ defmodule Domain.AuthTest do
       actor = Fixtures.Actors.create_actor(type: :account_user, account: account)
 
       assert_raise FunctionClauseError, fn ->
-        create_api_client_token(actor, subject, %{})
+        create_api_client_token(actor, %{}, subject)
       end
     end
 
@@ -3293,7 +3301,7 @@ defmodule Domain.AuthTest do
       actor = Fixtures.Actors.create_actor(type: :api_client, account: account)
       subject = Fixtures.Auth.remove_permissions(subject)
 
-      assert create_api_client_token(actor, subject, %{}) ==
+      assert create_api_client_token(actor, %{}, subject) ==
                {:error,
                 {:unauthorized,
                  reason: :missing_permissions,
@@ -3470,13 +3478,9 @@ defmodule Domain.AuthTest do
       client_context: context,
       client_subject: subject
     } do
-      one_day = DateTime.utc_now() |> DateTime.add(1, :day)
       actor = Fixtures.Actors.create_actor(type: :service_account, account: account)
 
-      assert {:ok, encoded_token} =
-               create_service_account_token(actor, subject, %{
-                 "expires_at" => one_day
-               })
+      assert {:ok, encoded_token} = create_service_account_token(actor, %{}, subject)
 
       assert {:ok, reconstructed_subject} = authenticate(encoded_token, context)
       refute reconstructed_subject.identity
@@ -3486,8 +3490,7 @@ defmodule Domain.AuthTest do
       assert reconstructed_subject.permissions == fetch_type_permissions!(:service_account)
       assert reconstructed_subject.context.remote_ip == context.remote_ip
       assert reconstructed_subject.context.user_agent == context.user_agent
-
-      assert reconstructed_subject.expires_at == one_day
+      refute reconstructed_subject.expires_at
     end
 
     test "client token is not bound to remote ip and user agent", %{

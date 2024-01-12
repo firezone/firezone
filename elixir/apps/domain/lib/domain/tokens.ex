@@ -1,7 +1,7 @@
 defmodule Domain.Tokens do
   use Supervisor
   alias Domain.{Repo, Validator}
-  alias Domain.{Auth, Actors}
+  alias Domain.{Auth, Actors, Relays, Gateways}
   alias Domain.Tokens.{Token, Authorizer, Jobs}
   require Ecto.Query
 
@@ -102,12 +102,7 @@ defmodule Domain.Tokens do
 
   def use_token(encoded_token, %Auth.Context{} = context) do
     with {:ok, {account_id, id, nonce, secret}} <- peek_token(encoded_token, context),
-         queryable =
-           Token.Query.by_id(id)
-           |> Token.Query.by_account_id(account_id)
-           |> Token.Query.by_type(context.type)
-           |> Token.Query.not_expired(),
-         {:ok, token} <- Repo.fetch(queryable),
+         {:ok, token} <- fetch_token_for_use(id, account_id, context.type),
          true <-
            Domain.Crypto.equal?(
              :sha3_256,
@@ -125,6 +120,14 @@ defmodule Domain.Tokens do
     end
   end
 
+  defp fetch_token_for_use(id, account_id, context_type) do
+    Token.Query.by_id(id)
+    |> Token.Query.by_account_id(account_id)
+    |> Token.Query.by_type(context_type)
+    |> Token.Query.not_expired()
+    |> Repo.fetch()
+  end
+
   @doc false
   def peek_token(encoded_token, %Auth.Context{} = context) do
     with [nonce, encoded_fragment] <- String.split(encoded_token, ".", parts: 2),
@@ -133,13 +136,12 @@ defmodule Domain.Tokens do
     end
   end
 
-  defp verify_token(encrypted_token, %Auth.Context{} = context) do
+  defp verify_token(encoded_fragment, %Auth.Context{} = context) do
     config = fetch_config!()
     key_base = Keyword.fetch!(config, :key_base)
     shared_salt = Keyword.fetch!(config, :salt)
     salt = shared_salt <> to_string(context.type)
-
-    Plug.Crypto.verify(key_base, salt, encrypted_token, max_age: :infinity)
+    Plug.Crypto.verify(key_base, salt, encoded_fragment, max_age: :infinity)
   end
 
   def delete_token(%Token{} = token, %Auth.Subject{} = subject) do
@@ -181,24 +183,54 @@ defmodule Domain.Tokens do
     end
   end
 
+  def delete_tokens_for(%Relays.Group{} = group, %Auth.Subject{} = subject) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_tokens_permission()) do
+      Token.Query.by_relay_group_id(group.id)
+      |> Authorizer.for_subject(subject)
+      |> delete_tokens()
+    end
+  end
+
+  def delete_tokens_for(%Gateways.Group{} = group, %Auth.Subject{} = subject) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_tokens_permission()) do
+      Token.Query.by_gateway_group_id(group.id)
+      |> Authorizer.for_subject(subject)
+      |> delete_tokens()
+    end
+  end
+
   def delete_expired_tokens do
     Token.Query.expired()
     |> delete_tokens()
   end
 
   defp delete_tokens(queryable) do
-    {count, ids} =
+    {count, tokens} =
       queryable
-      |> Ecto.Query.select([tokens: tokens], tokens.id)
+      |> Ecto.Query.select([tokens: tokens], tokens)
       |> Repo.update_all(set: [deleted_at: DateTime.utc_now()])
 
-    :ok =
-      Enum.each(ids, fn id ->
-        # TODO: use Domain.PubSub once it's in the codebase
-        Phoenix.PubSub.broadcast(Domain.PubSub, "sessions:#{id}", "disconnect")
-      end)
+    :ok = Enum.each(tokens, &broadcast_disconnect_message/1)
 
     {:ok, count}
+  end
+
+  defp broadcast_disconnect_message(%{type: :gateway_group, gateway_group_id: id}) do
+    Phoenix.PubSub.broadcast(Domain.PubSub, "gateway_groups:#{id}", "disconnect")
+  end
+
+  defp broadcast_disconnect_message(%{type: :relay_group, relay_group_id: id}) do
+    Phoenix.PubSub.broadcast(Domain.PubSub, "relay_groups:#{id}", "disconnect")
+  end
+
+  defp broadcast_disconnect_message(%{type: :client, id: id}) do
+    # TODO: use Domain.PubSub once it's in the codebase
+    Phoenix.PubSub.broadcast(Domain.PubSub, "client:#{id}", "disconnect")
+    Phoenix.PubSub.broadcast(Domain.PubSub, "sessions:#{id}", "disconnect")
+  end
+
+  defp broadcast_disconnect_message(%{type: :browser, id: id}) do
+    Phoenix.PubSub.broadcast(Domain.PubSub, "sessions:#{id}", "disconnect")
   end
 
   def delete_token_by_id(token_id) do

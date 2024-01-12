@@ -324,6 +324,7 @@ defmodule Domain.Auth do
     end
   end
 
+  # TODO: can be replaced with peek for consistency
   def fetch_identities_count_grouped_by_provider_id(%Subject{} = subject) do
     with :ok <- ensure_has_permissions(subject, Authorizer.manage_identities_permission()) do
       {:ok, identities} =
@@ -603,13 +604,13 @@ defmodule Domain.Auth do
 
   def create_service_account_token(
         %Actors.Actor{type: :service_account, account_id: account_id} = actor,
-        %Subject{account: %{id: account_id}} = subject,
-        attrs
+        attrs,
+        %Subject{account: %{id: account_id}} = subject
       ) do
     attrs =
       Map.merge(attrs, %{
         "type" => :client,
-        "secret_fragment" => Domain.Crypto.random_token(32),
+        "secret_fragment" => Domain.Crypto.random_token(32, encoder: :hex32),
         "account_id" => actor.account_id,
         "actor_id" => actor.id,
         "created_by_user_agent" => subject.context.user_agent,
@@ -624,13 +625,13 @@ defmodule Domain.Auth do
 
   def create_api_client_token(
         %Actors.Actor{type: :api_client, account_id: account_id} = actor,
-        %Subject{account: %{id: account_id}} = subject,
-        attrs \\ %{}
+        attrs,
+        %Subject{account: %{id: account_id}} = subject
       ) do
     attrs =
       Map.merge(attrs, %{
         "type" => :api_client,
-        "secret_fragment" => Domain.Crypto.random_token(32),
+        "secret_fragment" => Domain.Crypto.random_token(32, encoder: :hex32),
         "account_id" => actor.account_id,
         "actor_id" => actor.id,
         "created_by_user_agent" => subject.context.user_agent,

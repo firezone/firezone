@@ -371,9 +371,7 @@ iex(web@web-2f4j.us-east1-d.c.firezone-staging.internal)7> {:ok, subject} = Doma
 iex(web@web-xxxx.us-east1-d.c.firezone-staging.internal)1> # select group to update
 ...
 
-iex(web@web-xxxx.us-east1-d.c.firezone-staging.internal)2> {:ok, %{tokens: [token]}} = %{group | tokens: []} |> Domain.Repo.preload(:account) |> Domain.Relays.Group.Changeset.update(%{tokens: [%{}]}) |> Domain.Repo.update()
-
-iex(web@web-xxxx.us-east1-d.c.firezone-staging.internal)3> Domain.Relays.encode_token!(token)
+iex(web@web-xxxx.us-east1-d.c.firezone-staging.internal)2> {:ok, token} = Domain.Relays.create_token(group, %{}, subject)
 ...
 ```
 
