@@ -60,7 +60,7 @@ jobs:
         run: |
           KEYSTORE_PATH=$(pwd)/app/keystore.jks
           echo -n "$KEYSTORE_BASE64" | base64 --decode > $KEYSTORE_PATH
-          ./gradlew --info bundleRelease
+          ./gradlew --info assembleRelease bundleRelease
       - name: Run Test
         run: |
           # TODO: See https://github.com/firezone/firezone/issues/2311
