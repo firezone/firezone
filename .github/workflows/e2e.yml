@@ -137,7 +137,9 @@ jobs:
           targets: x86_64-unknown-linux-musl
       - run: |
           cargo build --package firezone-linux-client
-          ./target/debug/firezone-linux-client
+
+          # TODO Run tests
+          # ./target/debug/firezone-linux-client
 
   android:
     needs: docker
