@@ -124,15 +124,15 @@ jobs:
         working-directory: ./rust
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node
       - uses: ./.github/actions/setup-rust
         with:
           sccache_enabled: false
           targets: x86_64-pc-windows-msvc
-      - uses: ./.github/actions/setup-node
       - name: Build release binaries
         run: |
           pnpm add -g @tauri-apps/cli
-          pnpm tauri build
+          tauri build --debug
           Get-ChildItem -Recurse target/
 
   linux:
