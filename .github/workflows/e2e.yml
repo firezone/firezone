@@ -81,6 +81,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-rust
         with:
+          sccache_enabled: false
           targets: aarch64-apple-darwin
       - name: build macos app
         run: |
@@ -118,6 +119,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-rust
         with:
+          sccache_enabled: false
           targets: aarch64-apple-ios
       - name: build ios app
         run: |
@@ -148,6 +150,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-rust
         with:
+          sccache_enabled: false
           targets: x86_64-pc-windows-msvc
       - name: Build release binaries
         run: |
@@ -171,6 +174,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-rust
         with:
+          sccache_enabled: false
           targets: x86_64-unknown-linux-musl
       - run: |
           cargo build --package firezone-linux-client
@@ -191,6 +195,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-rust
         with:
+          sccache_enabled: false
           targets: armv7-linux-androideabi aarch64-linux-android x86_64-linux-android i686-linux-android
       - uses: actions/setup-java@v4
         with:
