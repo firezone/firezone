@@ -152,10 +152,10 @@ jobs:
       - run: |
           echo $env:PATH
           rustup show
-
-      # - uses: ./.github/actions/setup-rust
-      #   with:
-      #     targets: x86_64-pc-windows-msvc
+      - uses: ./.github/actions/setup-rust
+        with:
+          targets: x86_64-pc-windows-msvc
+      - run: rustup show
       - name: Build release binaries
         run: |
           pnpm add -g @tauri-apps/cli
