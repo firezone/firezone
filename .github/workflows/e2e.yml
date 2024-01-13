@@ -81,7 +81,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-rust
         with:
-          targets: aarch64-apple-darwin aarch64-apple-ios
+          targets: aarch64-apple-darwin
       - name: build macos app
         run: |
           # Copy xcconfig
@@ -100,6 +100,41 @@ jobs:
             -sdk macosx \
             -destination 'platform=macOS'
 
+  ios:
+    strategy:
+      matrix:
+        destination:
+          - "Jamil's iPhone"
+          - "Jamil's iPad"
+    needs: docker
+    runs-on: macos-14-firezone
+    permissions:
+      contents: read
+      id-token: 'write'
+    defaults:
+      run:
+        working-directory: ./swift/apple
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-rust
+        with:
+          targets: aarch64-apple-ios
+      - name: build ios app
+        run: |
+          # Copy xcconfig
+          cp Firezone/xcconfig/debug.xcconfig Firezone/xcconfig/config.xcconfig
+
+          # Unlock keychain; simulates a user logged into the GUI
+          security unlock-keychain -p '${{ secrets.MACOS_SELF_HOSTED_USER_PASSWORD }}'
+
+          # Build archive
+          xcodebuild build \
+            -allowProvisioningUpdates \
+            -configuration Debug \
+            -scheme Firezone \
+            -sdk iphoneos \
+            -destination "platform=iOS,name=${{ matrix.destination }}"
+
   windows:
     needs: docker
     runs-on: windows-11-firezone
@@ -114,9 +149,13 @@ jobs:
       - name: Fix path
         run: |
           echo "C:\Windows\System32\.cargo\bin" >> $GITHUB_PATH
-      - uses: ./.github/actions/setup-rust
-        with:
-          targets: x86_64-pc-windows-msvc
+      - run: |
+          echo $env:PATH
+          rustup show
+
+      # - uses: ./.github/actions/setup-rust
+      #   with:
+      #     targets: x86_64-pc-windows-msvc
       - name: Build release binaries
         run: |
           pnpm add -g @tauri-apps/cli
@@ -171,42 +210,6 @@ jobs:
       - run: |
           echo 'sdk.dir=/home/firezone/Android/Sdk' > local.properties
           ./gradlew --info assembleDebug bundleDebug
-
-  ios:
-    strategy:
-      matrix:
-        destination:
-          - "Jamil's iPhone"
-          - "Jamil's iPad"
-    needs: docker
-    runs-on: macos-14-firezone
-    permissions:
-      contents: read
-      id-token: 'write'
-    defaults:
-      run:
-        working-directory: ./swift/apple
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/setup-rust
-        with:
-          targets: aarch64-apple-darwin aarch64-apple-ios
-      - name: build ios app
-        run: |
-          # Copy xcconfig
-          cp Firezone/xcconfig/debug.xcconfig Firezone/xcconfig/config.xcconfig
-
-          # Unlock keychain; simulates a user logged into the GUI
-          security unlock-keychain -p '${{ secrets.MACOS_SELF_HOSTED_USER_PASSWORD }}'
-
-          # Build archive
-          xcodebuild archive \
-            -allowProvisioningUpdates \
-            -archivePath $RUNNER_TEMP/Firezone.xcarchive \
-            -configuration Debug \
-            -scheme Firezone \
-            -sdk iphoneos \
-            -destination "platform=iOS,name=${{ matrix.destination }}"
 
   teardown:
     needs:
