@@ -87,10 +87,12 @@ jobs:
           # Copy xcconfig
           cp Firezone/xcconfig/debug.xcconfig Firezone/xcconfig/config.xcconfig
 
-          # Always clean build folder to prevent other builds from affecting this one
-          xcodebuild clean -alltargets
+          # Unlock keychain; simulates a user logged into the GUI
+          security unlock-keychain -p '${{ secrets.MACOS_SELF_HOSTED_USER_PASSWORD }}'
 
           # Build app bundle
+          # If this results in codesign errors saying errSecInternalComponent, see
+          # https://forums.developer.apple.com/forums/thread/712005
           xcodebuild build \
             -allowProvisioningUpdates \
             -configuration Debug \
@@ -109,12 +111,12 @@ jobs:
         working-directory: ./rust
     steps:
       - uses: actions/checkout@v4
-      # Fails on self-hosted Windows runner :-( with path issues finding rustup
-      # - uses: ./.github/actions/setup-rust
-      #   with:
-      #     targets: x86_64-pc-windows-msvc
-      - name: Install toolchain
-        run: rustup show
+      - name: Fix path
+        run: |
+          echo "C:\Windows\System32\.cargo\bin" >> $GITHUB_PATH
+      - uses: ./.github/actions/setup-rust
+        with:
+          targets: x86_64-pc-windows-msvc
       - name: Build release binaries
         run: |
           pnpm add -g @tauri-apps/cli
@@ -194,8 +196,8 @@ jobs:
           # Copy xcconfig
           cp Firezone/xcconfig/debug.xcconfig Firezone/xcconfig/config.xcconfig
 
-          # Always clean build folder to prevent other builds from affecting this one
-          xcodebuild clean -alltargets
+          # Unlock keychain; simulates a user logged into the GUI
+          security unlock-keychain -p '${{ secrets.MACOS_SELF_HOSTED_USER_PASSWORD }}'
 
           # Build archive
           xcodebuild archive \
