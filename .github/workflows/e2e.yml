@@ -136,6 +136,10 @@ jobs:
           pnpm add -g @tauri-apps/cli
           pnpm tauri build
           Get-ChildItem -Recurse
+      - name: Smoke test
+        run:
+          pnpm add -g appium
+          appium driver install
 
   linux:
     needs: setup
