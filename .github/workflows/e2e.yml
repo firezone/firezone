@@ -152,6 +152,10 @@ jobs:
         with:
           sccache_enabled: false
           targets: x86_64-pc-windows-msvc
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'pnpm'
       - name: Build release binaries
         run: |
           pnpm add -g @tauri-apps/cli
