@@ -135,10 +135,7 @@ jobs:
         run: |
           pnpm add -g @tauri-apps/cli
           pnpm tauri build
-
-          # Used for release artifact
-          # In release mode the name comes from tauri.conf.json
-          cp "target/release/Firezone Windows Client.exe" "windows-client-x64.exe"
+          Get-ChildItem -Recurse
 
   linux:
     needs: setup
