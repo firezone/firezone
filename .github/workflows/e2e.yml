@@ -109,9 +109,12 @@ jobs:
         working-directory: ./rust
     steps:
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/setup-rust
-        with:
-          targets: x86_64-pc-windows-msvc
+      # Fails on self-hosted Windows runner :-( with path issues finding rustup
+      # - uses: ./.github/actions/setup-rust
+      #   with:
+      #     targets: x86_64-pc-windows-msvc
+      - name: Install toolchain
+        run: rustup show
       - name: Build release binaries
         run: |
           pnpm add -g @tauri-apps/cli
