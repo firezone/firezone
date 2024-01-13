@@ -393,7 +393,6 @@ jobs:
           elixir-version: ${{ steps.versions.outputs.elixir }}
       - uses: ./.github/actions/setup-node
         with:
-          lockfile: ./elixir/apps/web/assets/pnpm-lock.yaml
           node-version: ${{ steps.versions.outputs.nodejs }}
       # Elixir cache
       - uses: actions/cache/restore@v3

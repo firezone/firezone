@@ -129,17 +129,11 @@ jobs:
           sccache_enabled: false
           targets: x86_64-pc-windows-msvc
       - uses: ./.github/actions/setup-node
-        with:
-          lockfile: ./e2e/pnpm-lock.yaml
       - name: Build release binaries
         run: |
           pnpm add -g @tauri-apps/cli
           pnpm tauri build
-          Get-ChildItem -Recurse
-      - name: Smoke test
-        run:
-          pnpm add -g appium
-          appium driver install
+          Get-ChildItem -Recurse target/
 
   linux:
     needs: setup

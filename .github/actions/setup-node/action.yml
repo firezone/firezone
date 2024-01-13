@@ -5,9 +5,6 @@ inputs:
     description: "Version of nodejs to install"
     required: false
     default: '18'
-  lockfile:
-    description: "Path to the pnpm-lock.yaml file"
-    required: false
 runs:
   using: "composite"
   steps:
@@ -17,5 +14,3 @@ runs:
     - uses: actions/setup-node@v4
       with:
         node-version: ${{ inputs.node-version }}
-        cache: 'pnpm'
-        cache-dependency-path: ${{ inputs.lockfile }}
