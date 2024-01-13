@@ -104,8 +104,8 @@ jobs:
     strategy:
       matrix:
         destination:
-          - "Jamil's iPhone"
-          - "Jamil's iPad"
+          - iphone
+          - ipad
     needs: docker
     runs-on: macos-14-firezone
     permissions:
