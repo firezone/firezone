@@ -391,12 +391,10 @@ jobs:
         with:
           otp-version: ${{ steps.versions.outputs.erlang }}
           elixir-version: ${{ steps.versions.outputs.elixir }}
-      - uses: actions/setup-node@v4
+      - uses: ./.github/actions/setup-node
         with:
+          lockfile: ./elixir/apps/web/assets/pnpm-lock.yaml
           node-version: ${{ steps.versions.outputs.nodejs }}
-      - uses: pnpm/action-setup@v2
-        with:
-          version: 8
       # Elixir cache
       - uses: actions/cache/restore@v3
         name: Restore Elixir Deps Cache

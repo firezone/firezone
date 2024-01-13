@@ -19,30 +19,6 @@ concurrency:
 
 jobs:
   setup:
-    runs-on: ${{ matrix.runs-on }}
-    strategy:
-      matrix:
-        runs-on:
-          - macos-14-firezone
-          - windows-11-firezone
-          - ubuntu-22.04-firezone
-    defaults:
-      run:
-        working-directory: ./e2e
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v2
-        with:
-          version: 8
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-          cache: 'pnpm'
-          cache-dependency-path: './e2e/pnpm-lock.yaml'
-      - run: pnpm i
-
-  docker:
-    needs: setup
     runs-on: ubuntu-22.04-firezone
     env:
       # mark:automatic-version
@@ -69,7 +45,7 @@ jobs:
           sh -c 'until ping -W 1 -c 1 172.20.0.100 &>/dev/null; do true; done'
 
   macos:
-    needs: docker
+    needs: setup
     runs-on: macos-14-firezone
     permissions:
       contents: read
@@ -107,7 +83,7 @@ jobs:
         destination:
           - iphone
           - ipad
-    needs: docker
+    needs: setup
     runs-on: macos-14-firezone
     permissions:
       contents: read
@@ -138,7 +114,7 @@ jobs:
             -destination "platform=iOS,name=${{ matrix.destination }}"
 
   windows:
-    needs: docker
+    needs: setup
     runs-on: windows-11-firezone
     permissions:
       contents: read
@@ -152,11 +128,9 @@ jobs:
         with:
           sccache_enabled: false
           targets: x86_64-pc-windows-msvc
-      - uses: actions/setup-node@v4
+      - uses: ./.github/actions/setup-node
         with:
-          node-version: '18'
-          cache: 'pnpm'
-          cache-dependency-path: './e2e/pnpm-lock.yaml'
+          lockfile: ./e2e/pnpm-lock.yaml
       - name: Build release binaries
         run: |
           pnpm add -g @tauri-apps/cli
@@ -167,7 +141,7 @@ jobs:
           cp "target/release/Firezone Windows Client.exe" "windows-client-x64.exe"
 
   linux:
-    needs: docker
+    needs: setup
     runs-on: ubuntu-22.04-firezone
     permissions:
       contents: read
@@ -188,7 +162,7 @@ jobs:
           # ./target/debug/firezone-linux-client
 
   android:
-    needs: docker
+    needs: setup
     runs-on: ubuntu-22.04-firezone
     permissions:
       contents: read
