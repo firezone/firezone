@@ -17,9 +17,9 @@ export default function Post({
   children: React.ReactNode;
 }) {
   return (
-    <main className="py-14 lg:pb-24 bg-neutral-100 border border-b-1 ">
+    <main className="py-14 lg:pb-24 border border-b-1 ">
       <div className="flex justify-between px-4 mx-auto max-w-screen-xl">
-        <article className="mx-auto w-full max-w-2xl format format-sm sm:format-base lg:format-lg ">
+        <article className="mx-auto w-full max-w-2xl format format-lg text-neutral-900">
           <header className="mb-4 lg:mb-6 not-format">
             <address className="flex items-center mb-6 not-italic">
               <div className="inline-flex items-center mr-3 text-sm text-neutral-900 ">
@@ -34,7 +34,7 @@ export default function Post({
                   <a
                     href="#"
                     rel="author"
-                    className="text-xl font-bold text-neutral-900 "
+                    className="text-xl font-bold text-neutral-900"
                   >
                     {authorName}
                   </a>
@@ -45,7 +45,7 @@ export default function Post({
                 </div>
               </div>
             </address>
-            <h1 className="mb-4 text-3xl font-extrabold leading-tight text-neutral-900 lg:mb-6 lg:text-5xl ">
+            <h1 className="mb-4 text-3xl font-bold leading-none tracking-tight text-neutral-900 lg:mb-6 lg:text-5xl ">
               {title}
             </h1>
           </header>
