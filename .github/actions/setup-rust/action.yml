@@ -4,7 +4,7 @@ inputs:
   sccache_enabled:
     description: "Enable or disable the sccache service"
     required: false
-    default: true
+    default: 'true'
   targets:
     description: "Additional targets to install"
     required: false
@@ -12,7 +12,7 @@ inputs:
 runs:
   using: "composite"
   steps:
-    - if: ${{ inputs.sccache_enabled }}
+    - if: ${{ inputs.sccache_enabled == 'true' }}
       id: auth
       uses: google-github-actions/auth@v1
 
@@ -21,12 +21,12 @@ runs:
         service_account: "github-actions@github-iam-387915.iam.gserviceaccount.com"
         export_environment_variables: true
         create_credentials_file: true
-    - if: ${{ inputs.sccache_enabled }}
+    - if: ${{ inputs.sccache_enabled == 'true' }}
       run: |
         echo "SCCACHE_GCS_BUCKET=firezone-staging-sccache" >> $GITHUB_ENV
         echo "SCCACHE_GCS_RW_MODE=READ_WRITE" >> $GITHUB_ENV
       shell: bash
-    - if: ${{ inputs.sccache_enabled }}
+    - if: ${{ inputs.sccache_enabled == 'true' }}
       uses: mozilla-actions/sccache-action@v0.0.3
     - if: ${{ inputs.sccache_enabled }}
       run: echo "RUSTC_WRAPPER=$SCCACHE_PATH" >> $GITHUB_ENV
@@ -44,7 +44,7 @@ runs:
     - if: inputs.targets != ''
       run: rustup target add ${{ inputs.targets }}
       shell: bash
-    - if: ${{ inputs.sccache_enabled }}
+    - if: ${{ inputs.sccache_enabled == 'true' }}
       name: Start sccache
       run: $SCCACHE_PATH --start-server
       shell: bash
