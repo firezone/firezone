@@ -156,6 +156,7 @@ jobs:
         with:
           node-version: '18'
           cache: 'pnpm'
+          cache-dependency-path: './e2e/pnpm-lock.yaml'
       - name: Build release binaries
         run: |
           pnpm add -g @tauri-apps/cli
