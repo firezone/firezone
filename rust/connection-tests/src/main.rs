@@ -42,7 +42,7 @@ async fn main() -> Result<()> {
 
     let socket = UdpSocket::bind((listen_addr, 0)).await?;
     let socket_addr = socket.local_addr()?;
-    let private_key = StaticSecret::random_from_rng(&mut rand::thread_rng());
+    let private_key = StaticSecret::random_from_rng(rand::thread_rng());
     let public_key = PublicKey::from(&private_key);
 
     // The source and dst of our dummy IP packet that we send via the wireguard tunnel.
