@@ -66,7 +66,7 @@ export default function Page() {
               <li className="flex space-x-2.5">
                 <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
                 <span className="leading-tight text-neutral-900 ">
-                  Linux, macOS, iOS, ChromeOS, Android
+                  Windows, Linux, macOS, iOS, ChromeOS, Android
                 </span>
               </li>
               <li className="flex space-x-2.5">
