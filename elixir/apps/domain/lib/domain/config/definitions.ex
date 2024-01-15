@@ -330,6 +330,7 @@ defmodule Domain.Config.Definitions do
          Elixir.Cluster.Strategy.LocalEpmd,
          Elixir.Cluster.Strategy.Epmd,
          Elixir.Cluster.Strategy.Gossip,
+         Elixir.Cluster.Strategy.Kubernetes,
          Elixir.Domain.Cluster.GoogleComputeLabelsStrategy
        ]
      )},
@@ -344,10 +345,18 @@ defmodule Domain.Config.Definitions do
     dump: fn map ->
       keyword = Dumper.keyword(map)
 
-      if compile_config!(:erlang_cluster_adapter) == Elixir.Cluster.Strategy.Epmd do
-        Keyword.update!(keyword, :hosts, fn hosts -> Enum.map(hosts, &String.to_atom/1) end)
-      else
-        keyword
+      cond do
+        compile_config!(:erlang_cluster_adapter) == Elixir.Cluster.Strategy.Epmd ->
+          Keyword.update!(keyword, :hosts, fn hosts -> Enum.map(hosts, &String.to_atom/1) end)
+
+        compile_config!(:erlang_cluster_adapter) == Elixir.Cluster.Strategy.Kubernetes ->
+          Keyword.new(keyword, fn
+            {k, v} when k in [:mode, :kubernetes_ip_lookup_mode] -> {k, String.to_atom(v)}
+            {k, v} -> {k, v}
+          end)
+
+        true ->
+          keyword
       end
     end
   )
