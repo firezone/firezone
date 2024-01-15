@@ -10,9 +10,12 @@ Firezone supports the following authentication methods:
 
 The below session lifetimes apply to all identity providers:
 
-- Admin portal: **4 hours**
+- Admin portal:
+  - Email providers: **10 hours**
+  - OIDC and other providers: Same as the OIDC application's access token
+    lifetime up to a maximum of **10 hours**.
 - Client application: **7 days**
-- Service account: **365 days** (by default, configurable)
+- Service account: **365 days** (by default, configurable per token)
 
 When a client application or service account token expires, the client is
 disconnected immediately and must reauthenticate to regain access to resources.
