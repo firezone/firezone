@@ -1,6 +1,6 @@
 use anyhow::Result;
 use axum::routing::get;
-use axum::{Router, Server};
+use axum::Router;
 use std::net::SocketAddr;
 
 pub async fn serve(addr: impl Into<SocketAddr>) -> Result<()> {
@@ -10,7 +10,7 @@ pub async fn serve(addr: impl Into<SocketAddr>) -> Result<()> {
         .route("/healthz", get(|| async { "" }))
         .into_make_service();
 
-    Server::try_bind(&addr)?.serve(service).await?;
+    axum::serve(tokio::net::TcpListener::bind(addr).await?, service).await?;
 
     Ok(())
 }
