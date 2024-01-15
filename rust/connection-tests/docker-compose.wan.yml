@@ -1,0 +1,150 @@
+version: "3.8"
+name: wan-hp-integration-test
+
+services:
+  dialer:
+    build:
+      target: debug
+      context: ..
+      args:
+        PACKAGE: firezone-connection-tests
+      cache_from:
+        - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/cache/connection-tests:main
+    image: us-east1-docker.pkg.dev/firezone-staging/firezone/connection-tests:${VERSION:-main}
+    environment:
+      ROLE: "dialer"
+    cap_add:
+      - NET_ADMIN
+    entrypoint: /bin/sh
+    command:
+      - -c
+      - |
+        set -ex
+
+        ROUTER_IP=$$(dig +short dialer_router)
+        INTERNET_SUBNET=$$(curl --fail --silent --unix-socket /var/run/docker.sock http://localhost/networks/wan-hp-integration-test_wan | jq -r '.IPAM.Config[0].Subnet')
+
+        ip route add $$INTERNET_SUBNET via $$ROUTER_IP dev eth0
+
+        export STUN_SERVER=$$(curl --fail --silent --unix-socket /var/run/docker.sock http://localhost/containers/wan-hp-integration-test-relay-1/json | jq -r '.NetworkSettings.Networks."wan-hp-integration-test_wan".IPAddress')
+        export REDIS_HOST=$$(curl --fail --silent --unix-socket /var/run/docker.sock http://localhost/containers/wan-hp-integration-test-redis-1/json | jq -r '.NetworkSettings.Networks."wan-hp-integration-test_wan".IPAddress')
+
+        firezone-connection-tests
+    depends_on:
+      - dialer_router
+      - redis
+    networks:
+      - lan1
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+
+  dialer_router:
+    init: true
+    build:
+      context: ./router
+    environment:
+      DELAY_MS: 100
+    cap_add:
+      - NET_ADMIN
+    networks:
+      - lan1
+      - wan
+
+  listener:
+    build:
+      target: debug
+      context: ..
+      args:
+        PACKAGE: firezone-connection-tests
+      cache_from:
+        - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/cache/connection-tests:main
+    image: us-east1-docker.pkg.dev/firezone-staging/firezone/connection-tests:${VERSION:-main}
+    init: true
+    environment:
+      ROLE: "listener"
+    entrypoint: /bin/sh
+    command:
+      - -c
+      - |
+        set -ex
+
+        ROUTER_IP=$$(dig +short listener_router)
+        INTERNET_SUBNET=$$(curl --fail --silent --unix-socket /var/run/docker.sock http://localhost/networks/wan-hp-integration-test_wan | jq -r '.IPAM.Config[0].Subnet')
+
+        ip route add $$INTERNET_SUBNET via $$ROUTER_IP dev eth0
+
+        export STUN_SERVER=$$(curl --fail --silent --unix-socket /var/run/docker.sock http://localhost/containers/wan-hp-integration-test-relay-1/json | jq -r '.NetworkSettings.Networks."wan-hp-integration-test_wan".IPAddress')
+        export REDIS_HOST=$$(curl --fail --silent --unix-socket /var/run/docker.sock http://localhost/containers/wan-hp-integration-test-redis-1/json | jq -r '.NetworkSettings.Networks."wan-hp-integration-test_wan".IPAddress')
+
+        firezone-connection-tests
+    cap_add:
+      - NET_ADMIN
+    depends_on:
+      - listener_router
+      - redis
+    networks:
+      - lan2
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+
+  listener_router:
+    init: true
+    build:
+      context: ./router
+    environment:
+      DELAY_MS: 100
+    cap_add:
+      - NET_ADMIN
+    networks:
+      - lan2
+      - wan
+
+  relay:
+    environment:
+      LOWEST_PORT: 55555
+      HIGHEST_PORT: 55666
+      RUST_LOG: "debug"
+      RUST_BACKTRACE: 1
+    build:
+      target: debug
+      context: ..
+      cache_from:
+        - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/cache/relay:main
+      args:
+        PACKAGE: firezone-relay
+    image: us-east1-docker.pkg.dev/firezone-staging/firezone/relay:${VERSION:-main}
+    healthcheck:
+      test: ["CMD-SHELL", "lsof -i UDP | grep firezone-relay"]
+      start_period: 20s
+      interval: 30s
+      retries: 5
+      timeout: 5s
+    entrypoint: /bin/sh
+    command:
+      - -c
+      - |
+        set -ex;
+        export PUBLIC_IP4_ADDR=$(ip -json addr show eth0 | jq '.[0].addr_info[0].local' -r)
+
+        firezone-relay
+    ports:
+      # XXX: Only 111 ports are used for local dev / testing because Docker Desktop
+      # allocates a userland proxy process for each forwarded port X_X.
+      #
+      # Large ranges here will bring your machine to its knees.
+      - "55555-55666:55555-55666/udp"
+      - 3478:3478/udp
+    networks:
+      - wan
+
+  redis:
+    image: "redis:7-alpine"
+    healthcheck:
+      test: ["CMD-SHELL", "echo 'ready';"]
+    networks:
+      - wan
+
+networks:
+  lan1:
+  lan2:
+  wan:
