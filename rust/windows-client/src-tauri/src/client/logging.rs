@@ -12,9 +12,9 @@ use std::{
 };
 use tauri::Manager;
 use tokio::task::spawn_blocking;
-use tracing::subscriber::set_global_default;
-use tracing_log::LogTracer;
-use tracing_subscriber::{fmt, layer::SubscriberExt, reload, EnvFilter, Layer, Registry};
+use tracing_subscriber::{
+    fmt, layer::SubscriberExt, reload, util::SubscriberInitExt, EnvFilter, Layer, Registry,
+};
 
 /// If you don't store `Handles` in a variable, the file logger handle will drop immediately,
 /// resulting in empty log files.
@@ -30,11 +30,15 @@ pub(crate) fn setup(log_filter: &str) -> Result<Handles> {
     let (layer, logger) = file_logger::layer(Path::new("logs"));
     let filter = EnvFilter::from_str(log_filter)?;
     let (filter, reloader) = reload::Layer::new(filter);
-    let subscriber = Registry::default()
+    let _subscriber = Registry::default()
         .with(layer.with_filter(filter))
         .with(fmt::layer().with_filter(EnvFilter::from_str(log_filter)?));
-    set_global_default(subscriber)?;
-    LogTracer::init()?;
+    tracing_subscriber::registry()
+        .with(console_subscriber::spawn())
+        .init();
+    // TODO: If we're going to support Tokio Console, revert changes to this file
+    // that broke the connlib log files.
+    // LogTracer::init()?;
     Ok(Handles {
         logger,
         _reloader: reloader,

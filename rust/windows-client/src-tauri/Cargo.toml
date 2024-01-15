@@ -17,6 +17,7 @@ chrono = { workspace = true }
 clap = { version = "4.4", features = ["derive",  "env"] }
 connlib-client-shared = { workspace = true }
 connlib-shared = { workspace = true }
+console-subscriber = "0.2.0"
 firezone-cli-utils = { workspace = true }
 hex = "0.4.3"
 git-version = "0.3.9"
@@ -31,7 +32,7 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 subtle = "2.5.0"
 thiserror = { version = "1.0", default-features = false }
-tokio = { version = "1.33.0", features = ["time"] }
+tokio = { version = "1.33.0", features = ["time", "tracing"] }
 tracing = { workspace = true }
 tracing-log = "0.2"
 tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
