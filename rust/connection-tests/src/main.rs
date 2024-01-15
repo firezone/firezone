@@ -1,6 +1,6 @@
 use std::{
     future::poll_fn,
-    net::Ipv4Addr,
+    net::{IpAddr, Ipv4Addr, SocketAddr},
     str::FromStr,
     task::{Context, Poll},
     time::Instant,
@@ -42,6 +42,13 @@ async fn main() -> Result<()> {
         .ip
         .to_std();
 
+    let stun_server = std::env::var("STUN_SERVER")
+        .ok()
+        .map(|a| a.parse::<IpAddr>())
+        .transpose()
+        .context("Failed to parse `STUN_SERVER`")?
+        .map(|ip| SocketAddr::new(ip, 3478));
+
     tracing::info!(%listen_addr);
 
     let redis_host = std::env::var("REDIS_HOST").context("Missing REDIS_HOST env var")?;
@@ -63,7 +70,7 @@ async fn main() -> Result<()> {
             let mut pool = ClientConnectionPool::<u64>::new(private_key);
             pool.add_local_interface(socket_addr);
 
-            let offer = pool.new_connection(1, vec![], vec![]);
+            let offer = pool.new_connection(1, stun_server.into_iter().collect(), vec![]);
 
             redis_connection
                 .rpush(
@@ -156,7 +163,7 @@ async fn main() -> Result<()> {
                     },
                 },
                 offer.public_key.into(),
-                vec![],
+                stun_server.into_iter().collect(),
                 vec![],
             );
 
