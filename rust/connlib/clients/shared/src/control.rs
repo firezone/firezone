@@ -33,7 +33,6 @@ pub struct ControlPlane<CB: Callbacks> {
     pub tunnel: Arc<Tunnel<CB, ClientState>>,
     pub phoenix_channel: PhoenixSenderWithTopic,
     pub tunnel_init: Mutex<bool>,
-    pub system_dns_servers: Option<Vec<IpAddr>>,
     // It's a Mutex<Option<_>> because we need the init message to initialize the resolver
     // also, in platforms with split DNS and no configured upstream dns this will be None.
     //
@@ -42,16 +41,16 @@ pub struct ControlPlane<CB: Callbacks> {
 }
 
 fn create_resolver(
-    system_dns_servers: &Option<Vec<IpAddr>>,
     upstream_dns: Vec<DnsServer>,
+    callbacks: &impl Callbacks,
 ) -> Option<TokioAsyncResolver> {
     let dns_servers = if upstream_dns.is_empty() {
-        let Some(dns_servers) = system_dns_servers else {
+        let Ok(Some(dns_servers)) = callbacks.get_system_default_resolvers() else {
             return None;
         };
         let mut dns_servers = dns_servers
-            .iter()
-            .filter(|ip| ip != &&IpAddr::from(DNS_SENTINEL))
+            .into_iter()
+            .filter(|ip| ip != &IpAddr::from(DNS_SENTINEL))
             .peekable();
         if dns_servers.peek().is_none() {
             tracing::error!("No system default DNS servers available! Can't initialize resolver. DNS will be broken.");
@@ -61,7 +60,7 @@ fn create_resolver(
         dns_servers
             .map(|ip| {
                 DnsServer::IpPort(IpDnsServer {
-                    address: (*ip, DNS_PORT).into(),
+                    address: (ip, DNS_PORT).into(),
                 })
             })
             .collect()
@@ -110,7 +109,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
 
         self.tunnel.set_upstream_dns(&interface.upstream_dns);
         *self.fallback_resolver.lock() =
-            create_resolver(&self.system_dns_servers, interface.upstream_dns);
+            create_resolver(interface.upstream_dns, self.tunnel.callbacks());
         for resource_description in resources {
             self.add_resource(resource_description);
         }
