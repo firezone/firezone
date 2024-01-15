@@ -141,6 +141,12 @@ class Adapter {
 
       self.logger.log("Adapter.start: Starting connlib")
       do {
+        // We can only the system's default resolvers before connlib starts, and then they'll
+        // be overwritten from the ones from connlib. So cache them here for getSystemDefaultResolvers
+        // retrieve them later.
+        self.callbackHandler.setSystemDefaultResolvers(
+          resolvers: Resolv().getservers().map(Resolv.getnameinfo)
+        )
         self.state = .startingTunnel(
           session: try WrappedSession.connect(
             self.controlPlaneURLString,
@@ -332,6 +338,12 @@ extension Adapter {
       self.logger.log("Adapter.didReceivePathUpdate: Back online. Starting connlib.")
 
       do {
+        // We can only the system's default resolvers before connlib starts, and then they'll
+        // be overwritten from the ones from connlib. So cache them here for getSystemDefaultResolvers
+        // retrieve them later.
+        self.callbackHandler.setSystemDefaultResolvers(
+          resolvers: Resolv().getservers().map(Resolv.getnameinfo)
+        )
         self.state = .startingTunnel(
           session: try WrappedSession.connect(
             controlPlaneURLString,
@@ -537,11 +549,5 @@ extension Adapter: CallbackHandlerDelegate {
         }
       }
     }
-  }
-
-  public func getSystemDefaultResolvers() -> [String] {
-    let resolvers = Resolv().getservers().map(Resolv.getnameinfo)
-    self.logger.info("getSystemDefaultResolvers: \(resolvers)")
-    return resolvers
   }
 }
