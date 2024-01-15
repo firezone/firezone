@@ -129,10 +129,10 @@ jobs:
         with:
           sccache_enabled: false
           targets: x86_64-pc-windows-msvc
-      - name: Build release binaries
+      - name: Build binaries
         run: |
           pnpm add -g @tauri-apps/cli
-          tauri build --verbose
+          tauri build --verbose --release
 
   linux:
     needs: setup
