@@ -79,6 +79,7 @@ jobs:
 
   ios:
     strategy:
+      fail-fast: false
       matrix:
         destination:
           - iphone
@@ -132,7 +133,7 @@ jobs:
       - name: Build binaries
         run: |
           pnpm add -g @tauri-apps/cli
-          tauri build --verbose --release
+          tauri build --verbose
 
   linux:
     needs: setup
