@@ -1,4 +1,5 @@
 use std::{
+    collections::HashSet,
     future::poll_fn,
     net::{IpAddr, Ipv4Addr, SocketAddr},
     str::FromStr,
@@ -70,7 +71,8 @@ async fn main() -> Result<()> {
             let mut pool = ClientConnectionPool::<u64>::new(private_key);
             pool.add_local_interface(socket_addr);
 
-            let offer = pool.new_connection(1, stun_server.into_iter().collect(), vec![]);
+            let offer =
+                pool.new_connection(1, stun_server.into_iter().collect(), HashSet::default());
 
             redis_connection
                 .rpush(
@@ -164,7 +166,7 @@ async fn main() -> Result<()> {
                 },
                 offer.public_key.into(),
                 stun_server.into_iter().collect(),
-                vec![],
+                HashSet::default(),
             );
 
             redis_connection

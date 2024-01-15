@@ -369,8 +369,8 @@ where
     pub fn new_connection(
         &mut self,
         id: TId,
-        allowed_stun_servers: Vec<SocketAddr>,
-        allowed_turn_servers: Vec<SocketAddr>,
+        allowed_stun_servers: HashSet<SocketAddr>,
+        allowed_turn_servers: HashSet<SocketAddr>,
     ) -> Offer {
         let mut agent = IceAgent::new();
         agent.set_controlling(true);
@@ -459,8 +459,8 @@ where
         id: TId,
         offer: Offer,
         remote: PublicKey,
-        allowed_stun_servers: Vec<SocketAddr>,
-        allowed_turn_servers: Vec<SocketAddr>,
+        allowed_stun_servers: HashSet<SocketAddr>,
+        allowed_turn_servers: HashSet<SocketAddr>,
     ) -> Answer {
         let mut agent = IceAgent::new();
         agent.set_controlling(false);
@@ -552,8 +552,8 @@ pub struct Transmit {
 pub struct InitialConnection {
     agent: IceAgent,
     session_key: Secret<[u8; 32]>,
-    stun_servers: Vec<SocketAddr>,
-    turn_servers: Vec<SocketAddr>,
+    stun_servers: HashSet<SocketAddr>,
+    turn_servers: HashSet<SocketAddr>,
 }
 
 struct Connection {
@@ -567,8 +567,8 @@ struct Connection {
     // Socket addresses from which we might receive data (even before we are connected).
     possible_sockets: HashSet<SocketAddr>,
 
-    _stun_servers: Vec<SocketAddr>,
-    _turn_servers: Vec<SocketAddr>,
+    _stun_servers: HashSet<SocketAddr>,
+    _turn_servers: HashSet<SocketAddr>,
 }
 
 impl Connection {
