@@ -48,6 +48,7 @@ impl fmt::Debug for Tun {
 
 impl Drop for Tun {
     fn drop(&mut self) {
+        tracing::info!("Dropping Tun");
         unsafe { close(self.fd.as_raw_fd()) };
         self.connection.abort();
     }

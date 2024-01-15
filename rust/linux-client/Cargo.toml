@@ -9,6 +9,7 @@ edition = "2021"
 [dependencies]
 secrecy = { workspace = true }
 connlib-client-shared = { workspace = true }
+connlib-shared = { workspace = true }
 firezone-cli-utils = { workspace = true }
 anyhow = { version = "1.0" }
 tracing = { workspace = true }

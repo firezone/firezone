@@ -3,7 +3,7 @@ use clap::Parser;
 use connlib_client_shared::{file_logger, Callbacks, Session};
 use firezone_cli_utils::{block_on_ctrl_c, setup_global_subscriber, CommonArgs};
 use secrecy::SecretString;
-use std::path::PathBuf;
+use std::{path::PathBuf, thread::sleep, time::Duration};
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -12,16 +12,36 @@ fn main() -> Result<()> {
     setup_global_subscriber(layer);
 
     let mut session = Session::connect(
-        cli.common.api_url,
-        SecretString::from(cli.common.token),
-        cli.firezone_id,
+        cli.common.api_url.clone(),
+        SecretString::from(cli.common.token.clone()),
+        cli.firezone_id.clone(),
         None,
         None,
-        CallbackHandler { handle },
+        CallbackHandler {
+            handle: handle.clone(),
+        },
         cli.max_partition_time.into(),
     )
     .unwrap();
     tracing::info!("new_session");
+
+    sleep(Duration::from_secs(20));
+
+    tracing::info!("disconnecting session");
+    session.disconnect(None);
+
+    let mut session = Session::connect(
+        cli.common.api_url.clone(),
+        SecretString::from(cli.common.token.clone()),
+        cli.firezone_id.clone(),
+        None,
+        None,
+        CallbackHandler {
+            handle: handle.clone(),
+        },
+        cli.max_partition_time.into(),
+    )
+    .unwrap();
 
     block_on_ctrl_c();
 
@@ -36,6 +56,11 @@ struct CallbackHandler {
 
 impl Callbacks for CallbackHandler {
     type Error = std::convert::Infallible;
+
+    fn on_disconnect(&self, _error: Option<&connlib_shared::Error>) -> Result<(), Self::Error> {
+        // Override the default process exit code
+        Ok(())
+    }
 
     fn roll_log_file(&self) -> Option<PathBuf> {
         self.handle

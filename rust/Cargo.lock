@@ -1996,6 +1996,7 @@ dependencies = [
  "anyhow",
  "clap",
  "connlib-client-shared",
+ "connlib-shared",
  "firezone-cli-utils",
  "humantime",
  "secrecy",
