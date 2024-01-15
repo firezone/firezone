@@ -48,6 +48,20 @@ pub(crate) struct Managed {
 /// getting the Tauri app handle would be awkward.
 pub const BUNDLE_ID: &str = "dev.firezone.client";
 
+impl Managed {
+    #[cfg(debug_assertions)]
+    /// In debug mode, if `--inject-faults` is passed, sleep for `millis` milliseconds
+    pub async fn fault_msleep(&self, millis: u64) {
+        if self.inject_faults {
+            tokio::time::sleep(std::time::Duration::from_millis(millis)).await;
+        }
+    }
+
+    #[cfg(not(debug_assertions))]
+    /// Does nothing in release mode
+    pub async fn fault_msleep(&self, _millis: u64) {}
+}
+
 /// Runs the Tauri GUI and returns on exit or unrecoverable error
 pub(crate) fn run(params: client::GuiParams) -> Result<()> {
     let client::GuiParams {
