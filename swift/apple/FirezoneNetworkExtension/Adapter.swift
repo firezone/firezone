@@ -141,9 +141,9 @@ class Adapter {
 
       self.logger.log("Adapter.start: Starting connlib")
       do {
-        // We can only the system's default resolvers before connlib starts, and then they'll
-        // be overwritten from the ones from connlib. So cache them here for getSystemDefaultResolvers
-        // retrieve them later.
+        // We can only get the system's default resolvers before connlib starts, and then they'll
+        // be overwritten by the ones from connlib. So cache them here for getSystemDefaultResolvers
+        // to retrieve them later.
         self.callbackHandler.setSystemDefaultResolvers(
           resolvers: Resolv().getservers().map(Resolv.getnameinfo)
         )
