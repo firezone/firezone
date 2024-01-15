@@ -132,7 +132,7 @@ jobs:
       - name: Build release binaries
         run: |
           pnpm add -g @tauri-apps/cli
-          tauri build --debug --verbose
+          tauri build --verbose
 
   linux:
     needs: setup
