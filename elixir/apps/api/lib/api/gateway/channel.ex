@@ -50,7 +50,7 @@ defmodule API.Gateway.Channel do
 
       push(socket, "init", %{
         interface: Views.Interface.render(socket.assigns.gateway),
-        # TODO: move to settings: %{}
+        # TODO: move to settings
         ipv4_masquerade_enabled: ipv4_masquerade_enabled,
         ipv6_masquerade_enabled: ipv6_masquerade_enabled
       })
