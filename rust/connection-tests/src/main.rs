@@ -1,6 +1,6 @@
 use std::{
     future::poll_fn,
-    net::{IpAddr, Ipv4Addr},
+    net::Ipv4Addr,
     str::FromStr,
     task::{Context, Poll},
     time::{Duration, Instant},
