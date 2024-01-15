@@ -15,7 +15,7 @@ use connlib_shared::messages::ResourceId;
 use secrecy::{ExposeSecret, SecretString};
 use std::{net::IpAddr, path::PathBuf, str::FromStr, sync::Arc, time::Duration};
 use system_tray_menu::Event as TrayMenuEvent;
-use tauri::{Manager, SystemTray, SystemTrayEvent};
+use tauri::{api::notification::Notification, Manager, SystemTray, SystemTrayEvent};
 use tokio::sync::{mpsc, oneshot, Notify};
 use ControllerRequest as Req;
 
@@ -219,6 +219,7 @@ pub(crate) enum ControllerRequest {
     SignIn,
     StartStopLogCounting(bool),
     SignOut,
+    TunnelReady,
 }
 
 #[derive(Clone)]
@@ -250,18 +251,14 @@ impl connlib_client_shared::Callbacks for CallbackHandler {
         Ok(())
     }
 
-    fn on_error(&self, error: &connlib_client_shared::Error) -> Result<(), Self::Error> {
-        tracing::error!("on_error not implemented. Error: {error:?}");
-        Ok(())
-    }
-
     fn on_tunnel_ready(&self) -> Result<(), Self::Error> {
-        // TODO: implement
         tracing::info!("on_tunnel_ready");
+        self.ctlr_tx.try_send(ControllerRequest::TunnelReady)?;
         Ok(())
     }
 
     fn on_update_resources(&self, resources: Vec<ResourceDescription>) -> Result<(), Self::Error> {
+        tracing::info!("on_update_resources");
         self.resources.store(resources.into());
         self.notify_controller.notify_one();
         Ok(())
@@ -274,7 +271,6 @@ impl connlib_client_shared::Callbacks for CallbackHandler {
     fn roll_log_file(&self) -> Option<PathBuf> {
         self.logger.roll_to_new_file().unwrap_or_else(|e| {
             tracing::debug!("Failed to roll over to new file: {e}");
-            let _ = self.on_error(&connlib_client_shared::Error::LogFileRollError(e));
 
             None
         })
@@ -313,7 +309,7 @@ impl Controller {
         advanced_settings: AdvancedSettings,
         notify_controller: Arc<Notify>,
     ) -> Result<Self> {
-        let device_id = client::device_id::device_id(&app_local_data_dir(&app)?).await?;
+        let device_id = client::device_id::device_id(&app.config().tauri.bundle.identifier).await?;
 
         let mut this = Self {
             advanced_settings,
@@ -499,6 +495,14 @@ async fn run_controller(
                             tracing::debug!("cancelled log counting");
                         }
                     }
+                    Req::TunnelReady => {
+                        // May say "Windows Powershell" in dev mode
+                        // See https://github.com/tauri-apps/tauri/issues/3700
+                        Notification::new(&controller.app.config().tauri.bundle.identifier)
+                            .title("Firezone connected")
+                            .body("You are now signed in and able to access resources.")
+                            .show()?;
+                    },
                 }
             }
         }

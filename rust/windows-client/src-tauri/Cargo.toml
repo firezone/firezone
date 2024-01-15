@@ -41,12 +41,13 @@ tracing-panic = "0.1.1"
 zip = { version = "0.6.6", features = ["deflate", "time"], default-features = false }
 rand = "0.8.5"
 windows-implement = "0.52.0"
+known-folders = "1.1.0"
 
 # These dependencies are locked behind `cfg(windows)` because they either can't compile at all on Linux, or they need native dependencies like glib that are difficult to get. Try not to add more here.
 
 [target.'cfg(windows)'.dependencies]
 # Tauri works fine on Linux, but it requires a lot of build-time deps like glib and gdk, so I've blocked it out for now.
-tauri = { version = "1.5", features = [ "dialog", "shell-open-api", "system-tray" ] }
+tauri = { version = "1.5", features = [ "dialog", "notification", "shell-open-api", "system-tray" ] }
 tauri-utils = "1.5.1"
 winreg = "0.51.0"
 wintun = "0.3.2"

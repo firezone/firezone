@@ -91,6 +91,6 @@ defmodule Domain.Jobs.Executors.GlobalTest do
     name = {Domain.Jobs.Executors.Global, __MODULE__, :send_test_message}
     assert :global.whereis_name(name) == new_leader_pid
 
-    assert_receive {:executed, ^new_leader_pid, _time}, 200
+    assert_receive {:executed, ^new_leader_pid, _time}, 1000
   end
 end

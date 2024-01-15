@@ -53,7 +53,8 @@ defmodule Web.SignUp do
         real_ip: real_ip,
         sign_up_enabled?: Config.sign_up_enabled?(),
         account_name_changed?: false,
-        actor_name_changed?: false
+        actor_name_changed?: false,
+        page_title: "Sign Up"
       )
 
     {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}

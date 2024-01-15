@@ -245,7 +245,6 @@ where
         start_handlers(
             Arc::clone(self),
             Arc::clone(&self.device),
-            self.callbacks.clone(),
             peer.clone(),
             ice,
             peer_receiver,

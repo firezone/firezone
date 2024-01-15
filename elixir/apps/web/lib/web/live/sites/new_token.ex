@@ -22,7 +22,8 @@ defmodule Web.Sites.NewToken do
          group: group,
          env: env,
          connected?: false,
-         selected_tab: "systemd-instructions"
+         selected_tab: "systemd-instructions",
+         page_title: "New Site Gateway"
        )}
     else
       {:error, _reason} -> raise Web.LiveErrors.NotFoundError
@@ -198,7 +199,7 @@ defmodule Web.Sites.NewToken do
     id -u firezone &>/dev/null || sudo useradd -r -g firezone -s /sbin/nologin firezone
 
     # Create systemd unit file
-    sudo cat << EOF > /etc/systemd/system/firezone-gateway.service
+    cat << EOF | sudo tee /etc/systemd/system/firezone-gateway.service
     [Unit]
     Description=Firezone Gateway
     After=network.target
@@ -223,7 +224,7 @@ defmodule Web.Sites.NewToken do
     EOF
 
     # Create ExecStartPre script
-    sudo cat << EOF > /usr/local/bin/firezone-gateway-init
+    cat << EOF | sudo tee /usr/local/bin/firezone-gateway-init
     #!/bin/sh
 
     set -ue
