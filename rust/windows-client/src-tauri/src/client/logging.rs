@@ -56,8 +56,13 @@ pub(crate) async fn start_stop_log_counting(
 }
 
 #[tauri::command]
-pub(crate) async fn clear_logs() -> StdResult<(), String> {
-    clear_logs_inner().await.map_err(|e| e.to_string())
+pub(crate) async fn clear_logs(
+    app: tauri::AppHandle,
+    managed: tauri::State<'_, Managed>,
+) -> StdResult<(), String> {
+    clear_logs_inner(app, &managed)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -67,8 +72,20 @@ pub(crate) async fn export_logs(managed: tauri::State<'_, Managed>) -> StdResult
         .map_err(|e| e.to_string())
 }
 
-pub(crate) async fn clear_logs_inner() -> Result<()> {
-    todo!()
+/// Delete all files in the logs directory.
+///
+/// This includes the current log file, so we won't write any more logs to disk
+/// until the file rolls over or the app restarts.
+pub(crate) async fn clear_logs_inner(app: tauri::AppHandle, managed: &Managed) -> Result<()> {
+    let mut dir = tokio::fs::read_dir("logs").await?;
+    while let Some(entry) = dir.next_entry().await? {
+        tokio::fs::remove_file(entry.path()).await?;
+    }
+
+    count_logs(app).await?;
+
+    managed.fault_msleep(5000).await;
+    Ok(())
 }
 
 /// Pops up the "Save File" dialog

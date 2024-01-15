@@ -37,6 +37,20 @@ pub(crate) struct Managed {
     pub inject_faults: bool,
 }
 
+impl Managed {
+    #[cfg(debug_assertions)]
+    /// In debug mode, if `--inject-faults` is passed, sleep for `millis` milliseconds
+    pub async fn fault_msleep(&self, millis: u64) {
+        if self.inject_faults {
+            tokio::time::sleep(std::time::Duration::from_millis(millis)).await;
+        }
+    }
+
+    #[cfg(not(debug_assertions))]
+    /// Does nothing in release mode
+    pub async fn fault_msleep(&self, _millis: u64) {}
+}
+
 // TODO: We're supposed to get this from Tauri, but I'd need to move some things around first
 const TAURI_ID: &str = "dev.firezone.client";
 
