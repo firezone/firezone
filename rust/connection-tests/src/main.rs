@@ -26,7 +26,7 @@ async fn main() -> Result<()> {
     tokio::time::sleep(Duration::from_secs(1)).await; // Until redis is up.
 
     tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::builder().parse("info,boringtun=debug")?)
+        .with_env_filter(EnvFilter::builder().parse("info,boringtun=debug,str0m=debug")?)
         .init();
 
     let role = std::env::var("ROLE")
@@ -42,7 +42,7 @@ async fn main() -> Result<()> {
 
     let socket = UdpSocket::bind((listen_addr, 0)).await?;
     let socket_addr = socket.local_addr()?;
-    let private_key = StaticSecret::random_from_rng(&mut rand::thread_rng());
+    let private_key = StaticSecret::random_from_rng(rand::thread_rng());
     let public_key = PublicKey::from(&private_key);
 
     // The source and dst of our dummy IP packet that we send via the wireguard tunnel.

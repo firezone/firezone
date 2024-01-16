@@ -23,7 +23,8 @@ defmodule Web.RelayGroups.NewToken do
          group: group,
          env: env,
          connected?: false,
-         selected_tab: "systemd-instructions"
+         selected_tab: "systemd-instructions",
+         page_title: "New Relay"
        )}
     else
       _other -> raise Web.LiveErrors.NotFoundError
@@ -42,7 +43,7 @@ defmodule Web.RelayGroups.NewToken do
 
     <.section>
       <:title>
-        Deploy a new Relay
+        Deploy Relay
       </:title>
       <:content>
         <div class="py-8 px-4 mx-auto max-w-2xl lg:py-16">
@@ -259,7 +260,7 @@ defmodule Web.RelayGroups.NewToken do
       "docker run -d",
       "--restart=unless-stopped",
       "--pull=always",
-      "--health-cmd=\"lsof -i UDP | grep firezone-relay\"",
+      "--health-cmd=\"cat /proc/net/udp | grep D96\"",
       "--name=firezone-relay",
       "--cap-add=NET_ADMIN",
       "--volume /var/lib/firezone",

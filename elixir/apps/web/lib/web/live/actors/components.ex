@@ -104,24 +104,6 @@ defmodule Web.Actors.Components do
   attr :form, :any, required: true
   attr :provider, :map, required: true
 
-  def provider_form(%{provider: %{adapter: :token}} = assigns) do
-    ~H"""
-    <.inputs_for :let={form} field={@form[:provider_virtual_state]}>
-      <div>
-        <.input
-          label="Token Expires At"
-          type="date"
-          field={form[:expires_at]}
-          min={Date.utc_today()}
-          value={Date.utc_today() |> Date.add(365)}
-          placeholder="When the token should auto-expire"
-          required
-        />
-      </div>
-    </.inputs_for>
-    """
-  end
-
   def provider_form(%{provider: %{adapter: :email}} = assigns) do
     ~H"""
     <div>

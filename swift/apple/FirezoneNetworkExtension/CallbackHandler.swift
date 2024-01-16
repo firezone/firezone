@@ -26,12 +26,11 @@ public protocol CallbackHandlerDelegate: AnyObject {
   func onRemoveRoute(_: String)
   func onUpdateResources(resourceList: String)
   func onDisconnect(error: String?)
-  func getSystemDefaultResolvers() -> [String]
-  func onError(error: String)
 }
 
 public class CallbackHandler {
   public weak var delegate: CallbackHandlerDelegate?
+  private var systemDefaultResolvers: RustString = "[]".intoRustString()
   private let logger = Logger.make(for: CallbackHandler.self)
 
   func onSetInterfaceConfig(
@@ -83,18 +82,25 @@ public class CallbackHandler {
     delegate?.onDisconnect(error: optionalError)
   }
 
-  func getSystemDefaultResolvers() -> RustString {
-    let resolvers = delegate?.getSystemDefaultResolvers() ?? []
-    logger.log("CallbackHandler.getSystemDefaultResolvers: \(resolvers, privacy: .public)")
+  func setSystemDefaultResolvers(resolvers: [String]) {
+    logger.log(
+      "CallbackHandler.setSystemDefaultResolvers: \(resolvers, privacy: .public)")
     do {
-      return try String(decoding: JSONEncoder().encode(resolvers), as: UTF8.self).intoRustString()
+      self.systemDefaultResolvers = try String(
+        decoding: JSONEncoder().encode(resolvers), as: UTF8.self
+      )
+      .intoRustString()
     } catch {
-      return "[]".intoRustString()
+      logger.log("CallbackHandler.setSystemDefaultResolvers: \(error, privacy: .public)")
+      self.systemDefaultResolvers = "[]".intoRustString()
     }
   }
 
-  func onError(error: RustString) {
-    logger.log("CallbackHandler.onError: \(error.toString(), privacy: .public)")
-    delegate?.onError(error: error.toString())
+  func getSystemDefaultResolvers() -> RustString {
+    logger.log(
+      "CallbackHandler.getSystemDefaultResolvers: \(self.systemDefaultResolvers, privacy: .public)"
+    )
+
+    return systemDefaultResolvers
   }
 }

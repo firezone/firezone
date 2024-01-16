@@ -22,7 +22,8 @@ defmodule Web.Sites.NewToken do
          group: group,
          env: env,
          connected?: false,
-         selected_tab: "systemd-instructions"
+         selected_tab: "systemd-instructions",
+         page_title: "New Site Gateway"
        )}
     else
       {:error, _reason} -> raise Web.LiveErrors.NotFoundError
@@ -169,7 +170,7 @@ defmodule Web.Sites.NewToken do
       "docker run -d",
       "--restart=unless-stopped",
       "--pull=always",
-      "--health-cmd=\"ip link | grep tun-firezone\"",
+      "--health-cmd=\"cat /proc/net/dev | grep tun-firezone\"",
       "--name=firezone-gateway",
       "--cap-add=NET_ADMIN",
       "--volume /var/lib/firezone",
@@ -198,7 +199,7 @@ defmodule Web.Sites.NewToken do
     id -u firezone &>/dev/null || sudo useradd -r -g firezone -s /sbin/nologin firezone
 
     # Create systemd unit file
-    sudo cat << EOF > /etc/systemd/system/firezone-gateway.service
+    cat << EOF | sudo tee /etc/systemd/system/firezone-gateway.service
     [Unit]
     Description=Firezone Gateway
     After=network.target
@@ -223,7 +224,7 @@ defmodule Web.Sites.NewToken do
     EOF
 
     # Create ExecStartPre script
-    sudo cat << EOF > /usr/local/bin/firezone-gateway-init
+    cat << EOF | sudo tee /usr/local/bin/firezone-gateway-init
     #!/bin/sh
 
     set -ue
@@ -267,14 +268,14 @@ defmodule Web.Sites.NewToken do
     chmod 0775 /var/lib/firezone
 
     # Enable masquerading for ethernet and wireless interfaces
-    iptables -C FORWARD -i tun-firezone -j ACCEPT 2&>1 > /dev/null || iptables -A FORWARD -i tun-firezone -j ACCEPT
-    iptables -C FORWARD -o tun-firezone -j ACCEPT 2&>1 > /dev/null || iptables -A FORWARD -o tun-firezone -j ACCEPT
-    iptables -t nat -C POSTROUTING -o e+ -j MASQUERADE 2&>1 > /dev/null || iptables -t nat -A POSTROUTING -o e+ -j MASQUERADE
-    iptables -t nat -C POSTROUTING -o w+ -j MASQUERADE 2&>1 > /dev/null || iptables -t nat -A POSTROUTING -o w+ -j MASQUERADE
-    ip6tables -C FORWARD -i tun-firezone -j ACCEPT 2&>1 > /dev/null || ip6tables -A FORWARD -i tun-firezone -j ACCEPT
-    ip6tables -C FORWARD -o tun-firezone -j ACCEPT 2&>1 > /dev/null || ip6tables -A FORWARD -o tun-firezone -j ACCEPT
-    ip6tables -t nat -C POSTROUTING -o e+ -j MASQUERADE 2&>1 > /dev/null || ip6tables -t nat -A POSTROUTING -o e+ -j MASQUERADE
-    ip6tables -t nat -C POSTROUTING -o w+ -j MASQUERADE 2&>1 > /dev/null || ip6tables -t nat -A POSTROUTING -o w+ -j MASQUERADE
+    iptables -C FORWARD -i tun-firezone -j ACCEPT > /dev/null 2>&1 || iptables -A FORWARD -i tun-firezone -j ACCEPT
+    iptables -C FORWARD -o tun-firezone -j ACCEPT > /dev/null 2>&1 || iptables -A FORWARD -o tun-firezone -j ACCEPT
+    iptables -t nat -C POSTROUTING -o e+ -j MASQUERADE > /dev/null 2>&1 || iptables -t nat -A POSTROUTING -o e+ -j MASQUERADE
+    iptables -t nat -C POSTROUTING -o w+ -j MASQUERADE > /dev/null 2>&1 || iptables -t nat -A POSTROUTING -o w+ -j MASQUERADE
+    ip6tables -C FORWARD -i tun-firezone -j ACCEPT > /dev/null 2>&1 || ip6tables -A FORWARD -i tun-firezone -j ACCEPT
+    ip6tables -C FORWARD -o tun-firezone -j ACCEPT > /dev/null 2>&1 || ip6tables -A FORWARD -o tun-firezone -j ACCEPT
+    ip6tables -t nat -C POSTROUTING -o e+ -j MASQUERADE > /dev/null 2>&1 || ip6tables -t nat -A POSTROUTING -o e+ -j MASQUERADE
+    ip6tables -t nat -C POSTROUTING -o w+ -j MASQUERADE > /dev/null 2>&1 || ip6tables -t nat -A POSTROUTING -o w+ -j MASQUERADE
 
     # Enable packet forwarding
     sysctl -w net.ipv4.ip_forward=1

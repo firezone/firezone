@@ -1454,7 +1454,7 @@ defmodule Domain.ActorsTest do
       actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
 
       subject =
-        Fixtures.Auth.create_subject(account: account, identity: [actor: actor])
+        Fixtures.Auth.create_subject(account: account, actor: actor)
         |> Fixtures.Auth.remove_permissions()
 
       attrs = %{}
@@ -1479,7 +1479,7 @@ defmodule Domain.ActorsTest do
     } do
       actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
 
-      subject = Fixtures.Auth.create_subject(account: account, identity: [actor: actor])
+      subject = Fixtures.Auth.create_subject(account: account, actor: actor)
 
       required_permissions = [Actors.Authorizer.manage_actors_permission()]
 
@@ -1560,7 +1560,7 @@ defmodule Domain.ActorsTest do
       actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
 
       subject =
-        Fixtures.Auth.create_subject(account: account, identity: [actor: actor])
+        Fixtures.Auth.create_subject(account: account, actor: actor)
         |> Fixtures.Auth.remove_permissions()
 
       assert update_actor(actor, %{type: :foo}, subject) ==
@@ -1785,7 +1785,7 @@ defmodule Domain.ActorsTest do
       actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
 
       subject =
-        Fixtures.Auth.create_subject(account: account, identity: [actor: actor])
+        Fixtures.Auth.create_subject(account: account, actor: actor)
         |> Fixtures.Auth.remove_permissions()
 
       assert disable_actor(actor, subject) ==
@@ -1845,7 +1845,7 @@ defmodule Domain.ActorsTest do
       actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
 
       subject =
-        Fixtures.Auth.create_subject(account: account, identity: [actor: actor])
+        Fixtures.Auth.create_subject(account: account, actor: actor)
         |> Fixtures.Auth.remove_permissions()
 
       assert enable_actor(actor, subject) ==
@@ -2016,7 +2016,7 @@ defmodule Domain.ActorsTest do
       actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
 
       subject =
-        Fixtures.Auth.create_subject(account: account, identity: [actor: actor])
+        Fixtures.Auth.create_subject(account: account, actor: actor)
         |> Fixtures.Auth.remove_permissions()
 
       assert delete_actor(actor, subject) ==

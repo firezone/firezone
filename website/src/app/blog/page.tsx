@@ -12,7 +12,7 @@ export const metadata: Metadata = {
 
 export default function Page() {
   return (
-    <section className="bg-neutral-100">
+    <section>
       <div className="py-8 px-4 mx-auto max-w-md md:max-w-screen-md lg:py-16 lg:px-6">
         <div className="mx-auto max-w-screen-sm text-center lg:mb-16 mb-8">
           <h1 className="justify-center mb-4 text-3xl lg:text-6xl tracking-tight font-extrabold text-neutral-900 ">
@@ -23,6 +23,24 @@ export default function Page() {
           </p>
         </div>
         <div className="grid divide-y">
+          <SummaryCard
+            title="Jaunary 2024 Product Update"
+            date="January 1, 2024"
+            href="/blog/jan-2024-product-update"
+            authorName="Jamil Bou Kheir"
+            authorAvatarSrc={gravatar("jamil@firezone.dev")}
+            type="Announcement"
+          >
+            <p>Happy new year from the Firezone team!</p>
+
+            <p>
+              After a long year of building, we're incredibly excited to
+              announce 1.0 beta testing for Apple and Android platforms.
+              Firezone 1.0 is an entirely new product with a brand new
+              architecture that includes many of the features you've been asking
+              for. To summarize just a few:
+            </p>
+          </SummaryCard>
           <SummaryCard
             title="Enterprises choose open source"
             date="December 6, 2023"

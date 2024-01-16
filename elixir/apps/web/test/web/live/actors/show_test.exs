@@ -765,67 +765,21 @@ defmodule Web.Live.Actors.ShowTest do
              }
     end
 
-    test "renders actor identities", %{
+    test "does not render actor identities", %{
       account: account,
       actor: actor,
       identity: admin_identity,
       conn: conn
     } do
-      provider = Fixtures.Auth.create_token_provider(account: account)
-
-      identity =
-        Fixtures.Auth.create_identity(
-          account: account,
-          provider: provider,
-          actor: actor,
-          provider_virtual_state: %{
-            "expires_at" => DateTime.utc_now() |> DateTime.add(2, :second)
-          }
-        )
-
       {:ok, lv, _html} =
         conn
         |> authorize_conn(admin_identity)
         |> live(~p"/#{account}/actors/#{actor}")
 
-      lv
-      |> element("#actors")
-      |> render()
-      |> table_to_map()
-      |> with_table_row("identity", "#{provider.name} #{identity.provider_identifier}", fn row ->
-        assert row["actions"] == "Delete"
-        assert around_now?(row["created"])
-        assert row["last signed in"] == "never"
-      end)
+      refute has_element?(lv, "#identities")
     end
 
-    test "allows deleting identities", %{
-      account: account,
-      actor: actor,
-      identity: admin_identity,
-      conn: conn
-    } do
-      other_identity =
-        Fixtures.Auth.create_identity(account: account, actor: actor)
-        |> Ecto.Changeset.change(
-          created_by: :identity,
-          created_by_identity_id: admin_identity.id
-        )
-        |> Repo.update!()
-
-      {:ok, lv, _html} =
-        conn
-        |> authorize_conn(admin_identity)
-        |> live(~p"/#{account}/actors/#{actor}")
-
-      assert lv
-             |> element("#identity-#{other_identity.id} button", "Delete")
-             |> render_click()
-             |> Floki.find(".flash-info")
-             |> element_to_text() =~ "Identity was deleted."
-    end
-
-    test "allows creating identities", %{
+    test "allows creating tokens", %{
       account: account,
       actor: actor,
       identity: identity,

@@ -15,11 +15,8 @@ use connlib_shared::messages::ResourceId;
 use secrecy::{ExposeSecret, SecretString};
 use std::{net::IpAddr, path::PathBuf, str::FromStr, sync::Arc, time::Duration};
 use system_tray_menu::Event as TrayMenuEvent;
-use tauri::{Manager, SystemTray, SystemTrayEvent};
-use tokio::{
-    sync::{mpsc, oneshot, Notify},
-    task::spawn_blocking,
-};
+use tauri::{api::notification::Notification, Manager, SystemTray, SystemTrayEvent};
+use tokio::sync::{mpsc, oneshot, Notify};
 use ControllerRequest as Req;
 
 mod system_tray_menu;
@@ -38,6 +35,20 @@ pub(crate) fn app_local_data_dir(app: &tauri::AppHandle) -> Result<AppLocalDataD
 pub(crate) struct Managed {
     pub ctlr_tx: CtlrTx,
     pub inject_faults: bool,
+}
+
+impl Managed {
+    #[cfg(debug_assertions)]
+    /// In debug mode, if `--inject-faults` is passed, sleep for `millis` milliseconds
+    pub async fn fault_msleep(&self, millis: u64) {
+        if self.inject_faults {
+            tokio::time::sleep(std::time::Duration::from_millis(millis)).await;
+        }
+    }
+
+    #[cfg(not(debug_assertions))]
+    /// Does nothing in release mode
+    pub async fn fault_msleep(&self, _millis: u64) {}
 }
 
 // TODO: We're supposed to get this from Tauri, but I'd need to move some things around first
@@ -123,6 +134,7 @@ pub(crate) fn run(params: client::GuiParams) -> Result<()> {
             // It's hard to set it up before Tauri's setup, because Tauri knows where all the config and data go in AppData and I don't want to replicate their logic.
             let logging_handles = client::logging::setup(&advanced_settings.log_filter)?;
             tracing::info!("started log");
+            tracing::info!("GIT_VERSION = {}", crate::client::GIT_VERSION);
             // I checked this on my dev system to make sure Powershell is doing what I expect and passing the argument back to us after relaunch
             tracing::debug!("flag_elevated: {flag_elevated}");
 
@@ -222,16 +234,7 @@ pub(crate) enum ControllerRequest {
     SignIn,
     StartStopLogCounting(bool),
     SignOut,
-}
-
-// TODO: Should these be keyed to the Google ID or email or something?
-// The callback returns a human-readable name but those aren't good keys.
-fn keyring_entry() -> Result<keyring::Entry> {
-    Ok(keyring::Entry::new_with_target(
-        "dev.firezone.client/token",
-        "",
-        "",
-    )?)
+    TunnelReady,
 }
 
 #[derive(Clone)]
@@ -268,18 +271,14 @@ impl connlib_client_shared::Callbacks for CallbackHandler {
         Ok(())
     }
 
-    fn on_error(&self, error: &connlib_client_shared::Error) -> Result<(), Self::Error> {
-        tracing::error!("on_error not implemented. Error: {error:?}");
-        Ok(())
-    }
-
     fn on_tunnel_ready(&self) -> Result<(), Self::Error> {
-        // TODO: implement
         tracing::info!("on_tunnel_ready");
+        self.ctlr_tx.try_send(ControllerRequest::TunnelReady)?;
         Ok(())
     }
 
     fn on_update_resources(&self, resources: Vec<ResourceDescription>) -> Result<(), Self::Error> {
+        tracing::info!("on_update_resources");
         self.resources.store(resources.into());
         self.notify_controller.notify_one();
         Ok(())
@@ -292,7 +291,6 @@ impl connlib_client_shared::Callbacks for CallbackHandler {
     fn roll_log_file(&self) -> Option<PathBuf> {
         self.logger.roll_to_new_file().unwrap_or_else(|e| {
             tracing::debug!("Failed to roll over to new file: {e}");
-            let _ = self.on_error(&connlib_client_shared::Error::LogFileRollError(e));
 
             None
         })
@@ -303,8 +301,10 @@ struct Controller {
     /// Debugging-only settings like API URL, auth URL, log filter
     advanced_settings: AdvancedSettings,
     app: tauri::AppHandle,
+    // Sign-in state with the portal / deep links
+    auth: client::auth::Auth,
     ctlr_tx: CtlrTx,
-    /// Session for the currently signed-in user, if there is one
+    /// connlib session for the currently signed-in user, if there is one
     session: Option<Session>,
     /// The UUIDv4 device ID persisted to disk
     /// Sent verbatim to Session::connect
@@ -313,21 +313,13 @@ struct Controller {
     logging_handles: client::logging::Handles,
     /// Tells us when to wake up and look for a new resource list. Tokio docs say that memory reads and writes are synchronized when notifying, so we don't need an extra mutex on the resources.
     notify_controller: Arc<Notify>,
+    tunnel_ready: bool,
 }
 
 /// Everything related to a signed-in user session
 struct Session {
-    auth_info: AuthInfo,
     callback_handler: CallbackHandler,
     connlib: connlib_client_shared::Session<CallbackHandler>,
-}
-
-/// Auth info that's persisted to disk if a session outlives an app instance
-struct AuthInfo {
-    /// User name, e.g. "John Doe", from the sign-in deep link
-    actor_name: String,
-    /// Secret token to authenticate with the portal
-    token: SecretString,
 }
 
 impl Controller {
@@ -338,45 +330,24 @@ impl Controller {
         advanced_settings: AdvancedSettings,
         notify_controller: Arc<Notify>,
     ) -> Result<Self> {
-        let device_id = client::device_id::device_id(&app_local_data_dir(&app)?).await?;
+        let device_id = client::device_id::device_id(&app.config().tauri.bundle.identifier).await?;
 
         let mut this = Self {
             advanced_settings,
             app,
+            auth: client::auth::Auth::new()?,
             ctlr_tx,
             session: None,
             device_id,
             log_counting_task: None,
             logging_handles,
             notify_controller,
+            tunnel_ready: false,
         };
 
-        tracing::trace!("re-loading token");
-        // spawn_blocking because accessing the keyring is I/O
-        if let Some(auth_info) = spawn_blocking(|| {
-            let entry = keyring_entry()?;
-            match entry.get_password() {
-                Ok(token) => {
-                    let token = SecretString::new(token);
-                    tracing::debug!("re-loaded token from Windows credential manager");
-                    let auth_info = AuthInfo {
-                        // TODO: Reload actor name from disk here
-                        actor_name: "TODO".to_string(),
-                        token,
-                    };
-                    Ok(Some(auth_info))
-                }
-                Err(keyring::Error::NoEntry) => {
-                    tracing::debug!("no token in Windows credential manager");
-                    Ok(None)
-                }
-                Err(e) => Err(anyhow::Error::from(e)),
-            }
-        })
-        .await??
-        {
+        if let Some(token) = this.auth.token()? {
             // Connect immediately if we reloaded the token
-            if let Err(e) = this.start_session(auth_info) {
+            if let Err(e) = this.start_session(token) {
                 tracing::error!("couldn't restart session on app start: {e:#?}");
             }
         }
@@ -385,7 +356,8 @@ impl Controller {
     }
 
     // TODO: Figure out how re-starting sessions automatically will work
-    fn start_session(&mut self, auth_info: AuthInfo) -> Result<()> {
+    /// Pre-req: the auth module must be signed in
+    fn start_session(&mut self, token: SecretString) -> Result<()> {
         if self.session.is_some() {
             bail!("can't start session, we're already in a session");
         }
@@ -399,7 +371,7 @@ impl Controller {
 
         let connlib = connlib_client_shared::Session::connect(
             self.advanced_settings.api_url.clone(),
-            auth_info.token.clone(),
+            token,
             self.device_id.clone(),
             None, // TODO: Send device name here (windows computer name)
             None,
@@ -408,7 +380,6 @@ impl Controller {
         )?;
 
         self.session = Some(Session {
-            auth_info,
             callback_handler,
             connlib,
         });
@@ -435,50 +406,51 @@ impl Controller {
     }
 
     async fn handle_deep_link(&mut self, url: &url::Url) -> Result<()> {
-        let Some(auth) = client::deep_link::parse_auth_callback(url) else {
+        let Some(auth_response) = client::deep_link::parse_auth_callback(url) else {
             // TODO: `bail` is redundant here, just do `.context("")?;` since it's `anyhow`
             bail!("couldn't parse scheme request");
         };
 
-        let token = auth.token.clone();
-        // spawn_blocking because keyring access is I/O
-        if let Err(e) = spawn_blocking(move || {
-            let entry = keyring_entry()?;
-            entry.set_password(token.expose_secret())?;
-            Ok::<_, anyhow::Error>(())
-        })
-        .await?
-        {
-            tracing::error!("couldn't save token to keyring: {e:#?}");
-        }
-
-        let auth_info = AuthInfo {
-            actor_name: auth.actor_name,
-            token: auth.token,
-        };
-        if let Err(e) = self.start_session(auth_info) {
+        let token = self.auth.handle_response(auth_response)?;
+        if let Err(e) = self.start_session(token) {
             // TODO: Replace `bail` with `context` here too
             bail!("couldn't start session: {e:#?}");
         }
         Ok(())
     }
 
-    fn reload_resource_list(&mut self) -> Result<()> {
-        let Some(session) = &self.session else {
-            tracing::warn!("got notified to update resources but there is no session");
-            return Ok(());
-        };
-        let resources = session.callback_handler.resources.load();
-        // TODO: Save the user name between runs of the app
-        let actor_name = self
-            .session
-            .as_ref()
-            .map(|x| x.auth_info.actor_name.as_str())
-            .unwrap_or("TODO");
-        self.app
+    /// Returns a new system tray menu
+    fn build_system_tray_menu(&self) -> tauri::SystemTrayMenu {
+        // TODO: Refactor this and the auth module so that "Are we logged in"
+        // doesn't require such complicated control flow to answer.
+        if let Some(auth_session) = self.auth.session() {
+            if let Some(connlib_session) = &self.session {
+                if self.tunnel_ready {
+                    // Signed in, tunnel ready
+                    let resources = connlib_session.callback_handler.resources.load();
+                    system_tray_menu::signed_in(&auth_session.actor_name, &resources)
+                } else {
+                    // Signed in, raising tunnel
+                    system_tray_menu::signing_in()
+                }
+            } else {
+                tracing::error!("We have an auth session but no connlib session");
+                system_tray_menu::signed_out()
+            }
+        } else if self.auth.ongoing_request().is_ok() {
+            // Signing in, waiting on deep link callback
+            system_tray_menu::signing_in()
+        } else {
+            system_tray_menu::signed_out()
+        }
+    }
+
+    /// Builds a new system tray menu and applies it to the app
+    fn refresh_system_tray_menu(&self) -> Result<()> {
+        Ok(self
+            .app
             .tray_handle()
-            .set_menu(system_tray_menu::signed_in(actor_name, &resources))?;
-        Ok(())
+            .set_menu(self.build_system_tray_menu())?)
     }
 }
 
@@ -503,7 +475,7 @@ async fn run_controller(
 
     loop {
         tokio::select! {
-            () = controller.notify_controller.notified() => if let Err(e) = controller.reload_resource_list() {
+            () = controller.notify_controller.notified() => if let Err(e) = controller.refresh_system_tray_menu() {
                 tracing::error!("couldn't reload resource list: {e:#?}");
             },
             req = rx.recv() => {
@@ -516,6 +488,7 @@ async fn run_controller(
                     }
                     Req::Disconnected => {
                         tracing::debug!("connlib disconnected, tearing down Session");
+                        controller.tunnel_ready = false;
                         if let Some(mut session) = controller.session.take() {
                             tracing::debug!("disconnecting connlib");
                             // This is probably redundant since connlib shuts itself down if it's disconnected.
@@ -524,8 +497,8 @@ async fn run_controller(
                     }
                     Req::DisconnectedTokenExpired | Req::SignOut => {
                         tracing::debug!("Token expired or user signed out");
-                        // TODO: After we store the actor name on disk, clear the actor name here too.
-                        keyring_entry()?.delete_password()?;
+                        controller.auth.sign_out()?;
+                        controller.tunnel_ready = false;
                         if let Some(mut session) = controller.session.take() {
                             tracing::debug!("disconnecting connlib");
                             session.connlib.disconnect(None);
@@ -543,12 +516,15 @@ async fn run_controller(
                         tracing::error!("couldn't handle deep link: {e:#?}");
                     }
                     Req::SignIn => {
-                        // TODO: Put the platform and local server callback in here
-                        tauri::api::shell::open(
-                            &app.shell_scope(),
-                            &controller.advanced_settings.auth_base_url,
-                            None,
-                        )?;
+                        if let Some(req) = controller.auth.start_sign_in()? {
+                            let url = req.to_url(&controller.advanced_settings.auth_base_url);
+                            controller.refresh_system_tray_menu()?;
+                            tauri::api::shell::open(
+                                &app.shell_scope(),
+                                &url.expose_secret().inner,
+                                None,
+                            )?;
+                        }
                     }
                     Req::StartStopLogCounting(enable) => {
                         if enable {
@@ -563,35 +539,20 @@ async fn run_controller(
                             tracing::debug!("cancelled log counting");
                         }
                     }
+                    Req::TunnelReady => {
+                        controller.tunnel_ready = true;
+
+                        // May say "Windows Powershell" in dev mode
+                        // See https://github.com/tauri-apps/tauri/issues/3700
+                        Notification::new(&controller.app.config().tauri.bundle.identifier)
+                            .title("Firezone connected")
+                            .body("You are now signed in and able to access resources.")
+                            .show()?;
+                    },
                 }
             }
         }
     }
     tracing::debug!("GUI controller task exiting cleanly");
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn test_keyring() -> anyhow::Result<()> {
-        // I used this test to find that `service` is not used - We have to namespace on our own.
-
-        let name_1 = "dev.firezone.client/test_1/token";
-        let name_2 = "dev.firezone.client/test_2/token";
-
-        keyring::Entry::new_with_target(name_1, "", "")?.set_password("test_password_1")?;
-
-        keyring::Entry::new_with_target(name_2, "", "")?.set_password("test_password_2")?;
-
-        let actual = keyring::Entry::new_with_target(name_1, "", "")?.get_password()?;
-        let expected = "test_password_1";
-
-        assert_eq!(actual, expected);
-
-        keyring::Entry::new_with_target(name_1, "", "")?.delete_password()?;
-        keyring::Entry::new_with_target(name_2, "", "")?.delete_password()?;
-
-        Ok(())
-    }
 }

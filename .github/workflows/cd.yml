@@ -113,17 +113,17 @@ jobs:
       fail-fast: false
       matrix:
         arch:
-          - target: x86_64-unknown-linux-musl
+          - target: x86_64-unknown-linux-gnu
             shortname: x64
             platform: linux/amd64
-          - target: aarch64-unknown-linux-musl # E.g. AWS Graviton
+          - target: aarch64-unknown-linux-gnu # E.g. AWS Graviton
             shortname: arm64
             platform: linux/arm64
-          - target: armv7-unknown-linux-musleabihf # E.g. Raspberry Pi
+          - target: armv7-unknown-linux-gnueabihf # E.g. Raspberry Pi
             platform: linux/arm/v7
             shortname: arm
           # Requires ring v0.17 which a number of our dependencies don't yet support
-          # - target: mips64-unknown-linux-muslabi64 # E.g. UniFi Routers
+          # - target: mips64-unknown-linux-gnuabi64 # E.g. UniFi Routers
           #   platform: linux/mips64le
         name:
           - package: firezone-linux-client
@@ -141,11 +141,14 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-rust
         with:
-          targets: aarch64-unknown-linux-musl armv7-unknown-linux-musleabihf
+          targets: aarch64-unknown-linux-gnu armv7-unknown-linux-gnueabihf x86_64-unknown-linux-gnu
       - uses: taiki-e/install-action@v2
         with:
           tool: cross
       - name: Build release binaries
+        env:
+          # Enable statically-linked libc runtime
+          RUSTFLAGS: "-C target-feature=+crt-static"
         run: |
           set -xe
 
@@ -261,28 +264,28 @@ jobs:
           targets: x86_64-pc-windows-msvc
       - name: Build release binaries
         run: |
-          cargo install tauri-cli
+          npm install -g @tauri-apps/cli
 
-          # Tauri build already defaults to '--release'
-          cargo tauri build
+          # NPM installs tauri-cli to somewhere in $PATH
+          # Tauri build already defaults to release profile
+          tauri build
 
           # Used for release artifact
           # This should match 'build-tauri' in _rust.yml
           cp "target/release/Firezone Windows Client.exe" "${{ env.BINARY_DEST_PATH }}-x64.exe"
+          cp "target/release/bundle/msi/*.msi" "${{ env.BINARY_DEST_PATH }}-x64.msi"
 
-          pwd
-          ls *.exe
-
-          # There's an MSI and NSIS installer here but their names include the version so I'll try those later.
-
-
+          Get-FileHash ${{ env.BINARY_DEST_PATH }}-x64.exe -Algorithm SHA256 | Select-Object Hash > ${{ env.BINARY_DEST_PATH }}-x64.exe.sha256sum.txt
+          Get-FileHash ${{ env.BINARY_DEST_PATH }}-x64.msi -Algorithm SHA256 | Select-Object Hash > ${{ env.BINARY_DEST_PATH }}-x64.msi.sha256sum.txt
       - name: Upload Release Assets
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # TODO: Calculate sha256sum for this binary and attach to release
           gh release upload ${{ needs.update-release-draft.outputs.tag_name }} `
             ${{ env.BINARY_DEST_PATH }}-x64.exe `
+            ${{ env.BINARY_DEST_PATH }}-x64.exe.sha256sum.txt `
+            ${{ env.BINARY_DEST_PATH }}-x64.msi `
+            ${{ env.BINARY_DEST_PATH }}-x64.msi.sha256sum.txt `
             --clobber `
             --repo ${{ github.repository }}
 

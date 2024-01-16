@@ -1,5 +1,6 @@
 plugins {
     id("com.android.application")
+    id("org.mozilla.rust-android-gradle.rust-android")
     id("com.google.dagger.hilt.android")
     id("com.google.gms.google-services")
     id("com.google.firebase.crashlytics")
@@ -32,6 +33,8 @@ spotless {
     }
 }
 
+apply(plugin = "org.mozilla.rust-android-gradle.rust-android")
+
 android {
     buildFeatures {
         buildConfig = true
@@ -39,6 +42,7 @@ android {
 
     namespace = "dev.firezone.android"
     compileSdk = 34
+    ndkVersion = "25.2.9519653"
 
     defaultConfig {
         applicationId = "dev.firezone.android"
@@ -83,11 +87,12 @@ android {
             // Enables code shrinking, obfuscation, and optimization for only
             // your project's release build type. Make sure to use a build
             // variant with `isDebuggable=false`.
-            isMinifyEnabled = true
+            // Not compatible with Rust
+            isMinifyEnabled = false
 
             // Enables resource shrinking, which is performed by the
             // Android Gradle plugin.
-            isShrinkResources = true
+            isShrinkResources = false
 
             // Includes the default ProGuard rules files that are packaged with
             // the Android Gradle plugin. To learn more, go to the section about
@@ -111,7 +116,7 @@ android {
                 serviceCredentialsFile = System.getenv("FIREBASE_CREDENTIALS_PATH")
                 artifactType = "AAB"
                 releaseNotes = "https://github.com/firezone/firezone/releases"
-                groups = "firezone-engineering, firezone-go-to-market"
+                groups = "firezone-engineering"
                 artifactPath = "app/build/outputs/bundle/release/app-release.aab"
             }
         }
@@ -134,9 +139,6 @@ android {
 dependencies {
     val coreVersion = "1.12.0"
     val navVersion = "2.7.4"
-
-    // Connlib
-    implementation(project(":connlib"))
 
     // AndroidX
     implementation("androidx.core:core-ktx:$coreVersion")
@@ -198,4 +200,25 @@ dependencies {
     implementation("com.google.firebase:firebase-crashlytics-ktx")
     implementation("com.google.firebase:firebase-analytics-ktx")
     implementation("com.google.firebase:firebase-installations-ktx")
+}
+
+cargo {
+    if (gradle.startParameter.taskNames.any { it.lowercase().contains("release") }) {
+        profile = "release"
+    } else {
+        profile = "debug"
+    }
+    // Needed for Ubuntu 22.04
+    pythonCommand = "python3"
+    prebuiltToolchains = true
+    verbose = true
+    module = "../../../rust/connlib/clients/android"
+    libname = "connlib"
+    targets = listOf("arm", "arm64", "x86_64", "x86")
+    targetDirectory = "../../../rust/target"
+}
+
+tasks.matching { it.name.matches(Regex("merge.*JniLibFolders")) }.configureEach {
+    inputs.dir(File(buildDir, "rustJniLibs/android"))
+    dependsOn("cargoBuild")
 }

@@ -22,6 +22,10 @@ updates:
     schedule:
       interval: weekly
     groups:
+      netlink:
+        patterns:
+          - rtnetlink
+          - netlink-packet-*
       otel:
         patterns:
           - opentelemetry
@@ -39,6 +43,10 @@ updates:
     directory: kotlin/android/
     schedule:
       interval: monthly
+    groups:
+      com.android:
+        patters:
+          - com.android.*
     ignore:
       # Depends on JDK version which is bundled with Android Studio (JDK 17)
       - dependency-name: org.jetbrains.kotlin:kotlin-gradle-plugin
@@ -68,7 +76,15 @@ updates:
     directory: terraform/environments/staging/
     schedule:
       interval: monthly
+    groups:
+      google:
+        patterns:
+          - hashicorp/google*
   - package-ecosystem: terraform
     directory: terraform/environments/production/
     schedule:
       interval: monthly
+    groups:
+      google:
+        patterns:
+          - hashicorp/google*

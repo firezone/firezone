@@ -1,23 +1,19 @@
 defmodule Web.Actors.ServiceAccounts.NewIdentity do
   use Web, :live_view
   import Web.Actors.Components
-  alias Domain.{Auth, Actors}
+  alias Domain.{Auth, Actors, Tokens}
 
   def mount(%{"id" => id}, _session, socket) do
     with {:ok, %{type: :service_account} = actor} <-
-           Actors.fetch_actor_by_id(id, socket.assigns.subject),
-         {:ok, provider} <- Auth.fetch_active_provider_by_adapter(:token, socket.assigns.subject) do
-      changeset =
-        Auth.new_identity(actor, provider, %{
-          provider_identifier: "tok-" <> Ecto.UUID.generate()
-        })
+           Actors.fetch_actor_by_id(id, socket.assigns.subject) do
+      changeset = Tokens.Token.Changeset.create(%{})
 
       socket =
         assign(socket,
           actor: actor,
-          provider: provider,
           encoded_token: nil,
-          form: to_form(changeset)
+          form: to_form(changeset),
+          page_title: "New Service Account Token"
         )
 
       {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
@@ -49,15 +45,20 @@ defmodule Web.Actors.ServiceAccounts.NewIdentity do
           <.form for={@form} phx-change={:change} phx-submit={:submit}>
             <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
               <div>
+                <.input label="Name" field={@form[:name]} placeholder="Name for this token" required />
+              </div>
+
+              <div>
                 <.input
-                  label="Name"
-                  field={@form[:provider_identifier]}
-                  placeholder="Name for this token"
+                  label="Expires At"
+                  type="date"
+                  field={@form[:expires_at]}
+                  min={Date.utc_today()}
+                  value={Date.utc_today() |> Date.add(365)}
+                  placeholder="When the token should auto-expire"
                   required
                 />
               </div>
-
-              <.provider_form :if={@provider} form={@form} provider={@provider} />
             </div>
             <.submit_button>
               Save
@@ -83,33 +84,25 @@ defmodule Web.Actors.ServiceAccounts.NewIdentity do
     """
   end
 
-  def handle_event("change", %{"identity" => attrs}, socket) do
+  def handle_event("change", %{"token" => attrs}, socket) do
     attrs = map_expires_at(attrs)
 
     changeset =
-      Auth.new_identity(socket.assigns.actor, socket.assigns.provider, attrs)
+      Tokens.Token.Changeset.create(attrs)
       |> Map.put(:action, :insert)
 
     {:noreply, assign(socket, form: to_form(changeset))}
   end
 
-  def handle_event("submit", %{"identity" => attrs}, socket) do
+  def handle_event("submit", %{"token" => attrs}, socket) do
     attrs = map_expires_at(attrs)
 
-    with {:ok, identity} <-
-           Auth.create_identity(
+    with {:ok, encoded_token} <-
+           Auth.create_service_account_token(
              socket.assigns.actor,
-             socket.assigns.provider,
-             attrs,
-             socket.assigns.subject
+             socket.assigns.subject,
+             attrs
            ) do
-      {:ok, encoded_token} =
-        Auth.create_service_account_token(
-          socket.assigns.provider,
-          identity,
-          socket.assigns.subject
-        )
-
       {:noreply, assign(socket, encoded_token: encoded_token)}
     else
       {:error, changeset} ->
@@ -118,12 +111,10 @@ defmodule Web.Actors.ServiceAccounts.NewIdentity do
   end
 
   defp map_expires_at(attrs) do
-    Map.update(attrs, "provider_virtual_state", %{}, fn virtual_state ->
-      Map.update(virtual_state, "expires_at", nil, fn
-        nil -> nil
-        "" -> ""
-        value -> "#{value}T00:00:00.000000Z"
-      end)
+    Map.update(attrs, "expires_at", nil, fn
+      nil -> nil
+      "" -> ""
+      value -> "#{value}T00:00:00.000000Z"
     end)
   end
 end

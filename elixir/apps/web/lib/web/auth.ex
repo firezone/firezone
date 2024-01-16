@@ -16,7 +16,10 @@ defmodule Web.Auth do
 
   # Session is stored as a list in a cookie so we want to limit numbers
   # of items in the list to avoid hitting cookie size limit.
-  @remember_last_sessions 10
+  #
+  # Max cookie size is 4kb. One session is ~460 bytes.
+  # We also leave space for other cookies.
+  @remember_last_sessions 6
 
   # Session Management
 
@@ -282,10 +285,12 @@ defmodule Web.Auth do
   Fetches the session token from the session and assigns the subject to the connection.
   """
   def fetch_subject(%Plug.Conn{} = conn, _opts) do
-    context = get_auth_context(conn, :browser)
+    params = take_sign_in_params(conn.query_params)
+    context_type = fetch_auth_context_type!(params)
+    context = get_auth_context(conn, context_type)
 
     with account when not is_nil(account) <- Map.get(conn.assigns, :account),
-         sessions <- Plug.Conn.get_session(conn, :sessions, []),
+         sessions = Plug.Conn.get_session(conn, :sessions, []),
          {:ok, encoded_fragment} <- fetch_token(sessions, account.id, context.type),
          {:ok, subject} <- Auth.authenticate(encoded_fragment, context),
          true <- subject.account.id == account.id do
@@ -299,7 +304,8 @@ defmodule Web.Auth do
   end
 
   defp fetch_token(sessions, account_id, context_type) do
-    Enum.find(sessions, fn {session_context_type, session_account_id, _encoded_fragment} ->
+    sessions
+    |> Enum.find(fn {session_context_type, session_account_id, _encoded_fragment} ->
       session_context_type == context_type and session_account_id == account_id
     end)
     |> case do
@@ -407,14 +413,22 @@ defmodule Web.Auth do
   """
   def redirect_if_user_is_authenticated(%Plug.Conn{} = conn, _opts) do
     if subject = conn.assigns[:subject] do
-      redirect_to = signed_in_path(subject.account)
+      redirect_params = take_sign_in_params(conn.query_params)
+      encoded_fragment = fetch_subject_token!(conn, subject)
+      identity = %{subject.identity | actor: subject.actor}
 
       conn
-      |> Phoenix.Controller.redirect(to: redirect_to)
+      |> signed_in_redirect(identity, subject.context, encoded_fragment, redirect_params)
       |> Plug.Conn.halt()
     else
       conn
     end
+  end
+
+  defp fetch_subject_token!(conn, %Auth.Subject{} = subject) do
+    sessions = Plug.Conn.get_session(conn, :sessions, [])
+    {:ok, encoded_fragment} = fetch_token(sessions, subject.account.id, subject.context.type)
+    encoded_fragment
   end
 
   @doc """
@@ -554,8 +568,10 @@ defmodule Web.Auth do
   # TODO: we need to schedule socket expiration for this subject, so that when it expires
   # LiveView socket will be disconnected. Otherwise, you can keep using the system as long as
   # socket is active extending the session.
-  defp mount_subject(socket, _params, session) do
+  defp mount_subject(socket, params, session) do
     Phoenix.Component.assign_new(socket, :subject, fn ->
+      params = take_sign_in_params(params)
+      context_type = fetch_auth_context_type!(params)
       user_agent = Phoenix.LiveView.get_connect_info(socket, :user_agent)
       real_ip = real_ip(socket)
       x_headers = Phoenix.LiveView.get_connect_info(socket, :x_headers) || []
@@ -564,7 +580,7 @@ defmodule Web.Auth do
         get_load_balancer_ip_location(x_headers)
 
       context = %Auth.Context{
-        type: :browser,
+        type: context_type,
         user_agent: user_agent,
         remote_ip: real_ip,
         remote_ip_location_region: location_region,

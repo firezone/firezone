@@ -38,7 +38,7 @@ defmodule Web.AuthTest do
 
     user_identity = %{user_identity | actor: user_actor}
 
-    {:ok, user_token} = Domain.Auth.create_token(admin_identity, context, nonce, nil)
+    {:ok, user_token} = Domain.Auth.create_token(user_identity, context, nonce, nil)
     user_encoded_fragment = Domain.Tokens.encode_fragment!(user_token)
 
     user_subject =
@@ -75,7 +75,7 @@ defmodule Web.AuthTest do
       user_encoded_fragment: encoded_token
     } do
       conn = put_account_session(conn, :browser, account.id, encoded_token)
-      assert get_session(conn, "sessions") == [{:browser, account.id, encoded_token}]
+      assert get_session(conn, :sessions) == [{:browser, account.id, encoded_token}]
     end
 
     test "persists a client token in session", %{
@@ -104,42 +104,42 @@ defmodule Web.AuthTest do
     end
 
     test "appends a new tokens to a session", %{
-      conn: conn,
-      account: account
+      conn: conn
     } do
-      session = {:client, Ecto.UUID.generate(), "buz"}
+      account_id1 = Ecto.UUID.generate()
+      account_id2 = Ecto.UUID.generate()
+
+      session = {:client, account_id1, "buz"}
 
       conn =
         conn
         |> put_session(:sessions, [session])
-        |> put_account_session(:browser, account.id, "foo")
-        |> put_account_session(:client, account.id, "bar")
+        |> put_account_session(:browser, account_id1, "foo")
+        |> put_account_session(:browser, account_id2, "bar")
 
-      assert [
-               ^session,
-               {:browser, account_id, "foo"},
-               {:client, account_id, "bar"}
-             ] = get_session(conn, "sessions")
-
-      assert account_id == account.id
+      assert get_session(conn, "sessions") == [
+               session,
+               {:browser, account_id1, "foo"},
+               {:browser, account_id2, "bar"}
+             ]
     end
 
-    test "doesn't store more than 15 last sessions", %{
+    test "doesn't store more than 6 last sessions", %{
       conn: conn,
       account: account
     } do
       sessions =
         for i <- 1..15 do
-          {:client, Ecto.UUID.generate(), "foo_#{i}"}
+          {:browser, Ecto.UUID.generate(), "foo_#{i}"}
         end
 
       conn =
         conn
         |> put_session(:sessions, sessions)
-        |> put_account_session(:client, account.id, "bar")
+        |> put_account_session(:browser, account.id, "bar")
 
       assert get_session(conn, "sessions") ==
-               Enum.take(sessions, -9) ++ [{:client, account.id, "bar"}]
+               Enum.take(sessions, -5) ++ [{:browser, account.id, "bar"}]
     end
   end
 
@@ -558,7 +558,7 @@ defmodule Web.AuthTest do
       %{conn: assign(context.conn, :user_agent, context.admin_subject.context.user_agent)}
     end
 
-    test "authenticates user from session of given type", %{
+    test "authenticates user from session of browser type by default", %{
       conn: conn,
       context: context,
       nonce: nonce,
@@ -580,6 +580,61 @@ defmodule Web.AuthTest do
       assert conn.assigns.subject.account.id == subject.account.id
 
       assert get_session(conn, "live_socket_id") == "sessions:#{subject.token_id}"
+    end
+
+    test "authenticates user from session of client type when it's set in query param", %{
+      conn: conn,
+      context: context,
+      nonce: nonce,
+      account: account,
+      admin_actor: admin_actor,
+      admin_identity: admin_identity
+    } do
+      context = %{context | type: :client}
+      {:ok, client_token} = Domain.Auth.create_token(admin_identity, context, nonce, nil)
+      encoded_fragment = Domain.Tokens.encode_fragment!(client_token)
+
+      conn =
+        %{
+          conn
+          | path_params: %{"account_id_or_slug" => account.id},
+            query_params: %{"as" => "client"},
+            remote_ip: {100, 64, 100, 58}
+        }
+        |> put_session(:sessions, [{context.type, account.id, nonce <> encoded_fragment}])
+        |> assign(:account, account)
+        |> fetch_subject([])
+
+      assert conn.assigns.subject.identity.id == admin_identity.id
+      assert conn.assigns.subject.actor.id == admin_actor.id
+      assert conn.assigns.subject.account.id == account.id
+
+      assert get_session(conn, "live_socket_id") == "sessions:#{conn.assigns.subject.token_id}"
+    end
+
+    test "does not try to authenticate user of a different context type", %{
+      conn: conn,
+      context: context,
+      nonce: nonce,
+      account: account,
+      admin_identity: admin_identity
+    } do
+      context = %{context | type: :client}
+      {:ok, client_token} = Domain.Auth.create_token(admin_identity, context, nonce, nil)
+      encoded_fragment = Domain.Tokens.encode_fragment!(client_token)
+
+      conn =
+        %{
+          conn
+          | path_params: %{"account_id_or_slug" => account.id},
+            query_params: %{"as" => "browser"},
+            remote_ip: {100, 64, 100, 58}
+        }
+        |> put_session(:sessions, [{context.type, account.id, nonce <> encoded_fragment}])
+        |> assign(:account, account)
+        |> fetch_subject([])
+
+      refute Map.has_key?(conn.assigns, :subject)
     end
 
     test "puts load balancer GeoIP headers to subject context", %{
@@ -680,16 +735,57 @@ defmodule Web.AuthTest do
     test "redirects if user is authenticated to the signed in path", %{
       conn: conn,
       account: account,
+      context: context,
+      admin_encoded_fragment: encoded_fragment,
       admin_subject: subject
     } do
       conn =
         conn
+        |> put_account_session(context.type, account.id, encoded_fragment)
         |> assign(:subject, subject)
         |> fetch_query_params()
         |> redirect_if_user_is_authenticated([])
 
       assert conn.halted
       assert redirected_to(conn) == ~p"/#{account}/sites"
+    end
+
+    test "redirects if client is authenticated to the deep link", %{
+      conn: conn,
+      account: account,
+      nonce: nonce,
+      context: context,
+      admin_identity: admin_identity
+    } do
+      context = %{context | type: :client}
+
+      {:ok, client_token} = Domain.Auth.create_token(admin_identity, context, nonce, nil)
+      encoded_fragment = Domain.Tokens.encode_fragment!(client_token)
+      {:ok, client_subject} = Domain.Auth.authenticate(nonce <> encoded_fragment, context)
+
+      redirect_params = %{"as" => "client", "state" => "STATE", "nonce" => nonce}
+
+      conn =
+        %{
+          conn
+          | path_params: %{"account_id_or_slug" => account.slug},
+            query_params: redirect_params
+        }
+        |> put_account_session(context.type, account.id, encoded_fragment)
+        |> assign(:subject, client_subject)
+        |> redirect_if_user_is_authenticated([])
+
+      assert conn.halted
+
+      assert redirected_to = redirected_to(conn)
+      assert redirected_to =~ "firezone-fd0020211111://handle_client_sign_in_callback"
+      assert redirected_to =~ "fragment=#{URI.encode_www_form(encoded_fragment)}"
+      assert redirected_to =~ "state=STATE"
+      assert redirected_to =~ "account_slug=#{account.slug}"
+      assert redirected_to =~ "account_name=#{URI.encode_www_form(account.name)}"
+
+      assert redirected_to =~
+               "identity_provider_identifier=#{URI.encode_www_form(admin_identity.provider_identifier)}"
     end
 
     test "does not redirect if user is not authenticated", %{conn: conn} do
@@ -773,7 +869,7 @@ defmodule Web.AuthTest do
       %{socket: socket}
     end
 
-    test "assigns subject based on a valid session_token", %{
+    test "assigns subject based on a valid browser session token", %{
       conn: conn,
       socket: socket,
       context: context,
@@ -794,6 +890,34 @@ defmodule Web.AuthTest do
       assert updated_socket.assigns.subject.identity.id == subject.identity.id
       assert updated_socket.assigns.subject.context.user_agent == subject.context.user_agent
       assert updated_socket.assigns.subject.context.remote_ip == subject.context.remote_ip
+    end
+
+    test "assigns subject based on a valid client session token", %{
+      conn: conn,
+      socket: socket,
+      context: context,
+      account: account,
+      nonce: nonce,
+      admin_actor: admin_actor,
+      admin_identity: admin_identity
+    } do
+      context = %{context | type: :client}
+      {:ok, client_token} = Domain.Auth.create_token(admin_identity, context, nonce, nil)
+      encoded_fragment = Domain.Tokens.encode_fragment!(client_token)
+
+      session =
+        conn
+        |> assign(:account, account)
+        |> put_session(:sessions, [{context.type, account.id, nonce <> encoded_fragment}])
+        |> get_session()
+
+      params = %{"account_id_or_slug" => account.id, "as" => "client"}
+
+      assert {:cont, updated_socket} = on_mount(:mount_subject, params, session, socket)
+
+      assert updated_socket.assigns.subject.identity.id == admin_identity.id
+      assert updated_socket.assigns.subject.actor.id == admin_actor.id
+      assert updated_socket.assigns.subject.account.id == account.id
     end
 
     test "puts load balancer GeoIP information to subject context", %{
