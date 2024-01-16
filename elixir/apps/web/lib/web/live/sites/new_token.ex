@@ -170,7 +170,7 @@ defmodule Web.Sites.NewToken do
       "docker run -d",
       "--restart=unless-stopped",
       "--pull=always",
-      "--health-cmd=\"ip link | grep tun-firezone\"",
+      "--health-cmd=\"cat /proc/net/dev | grep tun-firezone\"",
       "--name=firezone-gateway",
       "--cap-add=NET_ADMIN",
       "--volume /var/lib/firezone",
