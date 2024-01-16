@@ -138,7 +138,10 @@ services:
     depends_on:
       gateway:
         condition: "service_healthy"
-      httpbin:
+      # Doesn't work on aarch64 Macs
+      # httpbin:
+      #   condition: "service_healthy"
+      iperf3:
         condition: "service_healthy"
       api:
         condition: "service_healthy"
@@ -150,7 +153,7 @@ services:
     healthcheck:
       test: ["CMD-SHELL", "cat /proc/net/dev | grep tun-firezone"]
     environment:
-      FIREZONE_TOKEN: "SFMyNTY.g2gDaAJtAAAAJDNjZWYwNTY2LWFkZmQtNDhmZS1hMGYxLTU4MDY3OTYwOGY2Zm0AAABAamp0enhSRkpQWkdCYy1vQ1o5RHkyRndqd2FIWE1BVWRwenVScjJzUnJvcHg3NS16bmhfeHBfNWJUNU9uby1yYm4GAEC0b0KJAWIAAVGA.9Oirn9t8rvQpfOhW7hwGBFVzeMm9di0xYGTlwf9cFFk"
+      FIREZONE_TOKEN: "SFMyNTY.g2gDaAJtAAAAJDNjZWYwNTY2LWFkZmQtNDhmZS1hMGYxLTU4MDY3OTYwOGY2Zm0AAABAamp0enhSRkpQWkdCYy1vQ1o5RHkyRndqd2FIWE1BVWRwenVScjJzUnJvcHg3NS16bmhfeHBfNWJUNU9uby1yYm4GAIC98hKNAWIAAVGA.-0Shqu5DAwS2pN9EZ5aIcMK08vSVFqA_kuXsLWxJ__o"
       RUST_LOG: firezone_gateway=trace,wire=trace,connlib_gateway_shared=trace,firezone_tunnel=trace,connlib_shared=trace,warn
       FIREZONE_ENABLE_MASQUERADE: 1
       FIREZONE_API_URL: ws://api:8081
@@ -222,7 +225,8 @@ services:
         PACKAGE: firezone-relay
     image: us-east1-docker.pkg.dev/firezone-staging/firezone/relay:${VERSION:-main}
     healthcheck:
-      test: ["CMD-SHELL", "lsof -i UDP | grep firezone-relay"]
+      # Poor man's netstat -- Check for listening on 3478 (D96 in hex)
+      test: ["CMD-SHELL", "cat /proc/net/udp | grep D96"]
       start_period: 3s
       interval: 30s
       retries: 5

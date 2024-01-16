@@ -68,7 +68,8 @@ services:
   #       PACKAGE: firezone-relay
   #   init: true
   #   healthcheck:
-  #     test: ["CMD-SHELL", "lsof -i UDP | grep firezone-relay"]
+  #     Poor man's netstat -- Check for listening on 3478 (D96 in hex)
+  #     test: ["CMD-SHELL", "cat /proc/net/udp | grep D96"]
   #     start_period: 20s
   #     interval: 30s
   #     retries: 5

@@ -59,3 +59,15 @@ difference using a larger runner.
 We maintain a baremetal testbed for running our end-to-end test suite. See
 [the `e2e`](../e2e) directory. Please don't target those runners unless you're
 specifically trying to run workflows that require a baremetal runner.
+
+## Busting the GCP Docker layer cache
+
+If you find yourself hitting strange Docker image issues like Rust binaries
+failing to start inside Docker images, you may need to bust the GCP layer cache.
+
+To do so:
+
+- Login to [GCP](console.cloud.google.com)
+- Ensure `firezone-staging` project is selected
+- Navigate to the artifact registry service
+- Delete all image versions for the appropriate `cache/` image repository

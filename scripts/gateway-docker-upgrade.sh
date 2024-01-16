@@ -30,7 +30,7 @@ do
         docker run -d \
           --restart=unless-stopped \
           --pull=always \
-          --health-cmd="ip link | grep tun-firezone" \
+          --health-cmd="cat /proc/net/dev | grep tun-firezone" \
           --name="$RUNNING_NAME" \
           --cap-add=NET_ADMIN \
           --volume /var/lib/firezone \

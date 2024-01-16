@@ -278,7 +278,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
         match (reply_error.error, reference) {
             (ErrorInfo::Offline, Some(reference)) => {
                 let Ok(resource_id) = reference.parse::<ResourceId>() else {
-                    tracing::warn!("The portal responded with an Offline error. Is the Resource associated with any online Gateways? Reference: {reference}");
+                    tracing::warn!("The portal responded with an Offline error. Is the Resource associated with any online Gateways or Relays?");
                     return Ok(());
                 };
                 // TODO: Rate limit the number of attempts of getting the relays before just trying a local network connection
