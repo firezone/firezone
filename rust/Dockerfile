@@ -118,7 +118,7 @@ ARG PACKAGE
 RUN set -xe \
   && \[ "${PACKAGE}" = "firezone-gateway" ] \
   && apt-get update -qq \
-  && apt-get install -y --no-install-recommends iptables ip6tables || true
+  && apt-get install -y --no-install-recommends iptables || true
 
 ENTRYPOINT ["docker-init.sh"]
 
