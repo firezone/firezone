@@ -1,13 +1,6 @@
 defmodule Domain.Auth.Roles do
   alias Domain.Auth.Role
 
-  def list_roles do
-    [
-      build(:account_admin_user),
-      build(:account_user)
-    ]
-  end
-
   defp list_authorizers do
     [
       Domain.Accounts.Authorizer,

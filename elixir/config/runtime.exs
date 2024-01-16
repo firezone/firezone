@@ -36,13 +36,7 @@ if config_env() == :prod do
 
   config :domain, Domain.Gateways,
     gateway_ipv4_masquerade: compile_config!(:gateway_ipv4_masquerade),
-    gateway_ipv6_masquerade: compile_config!(:gateway_ipv6_masquerade),
-    key_base: compile_config!(:gateways_auth_token_key_base),
-    salt: compile_config!(:gateways_auth_token_salt)
-
-  config :domain, Domain.Relays,
-    key_base: compile_config!(:relays_auth_token_key_base),
-    salt: compile_config!(:relays_auth_token_salt)
+    gateway_ipv6_masquerade: compile_config!(:gateway_ipv6_masquerade)
 
   config :domain, Domain.Telemetry,
     enabled: compile_config!(:telemetry_enabled),

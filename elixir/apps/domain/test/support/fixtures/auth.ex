@@ -273,12 +273,12 @@ defmodule Domain.Fixtures.Auth do
       end)
 
     {remote_ip_location_lat, attrs} =
-      Map.pop_lazy(attrs, :remote_ip_location_city, fn ->
+      Map.pop_lazy(attrs, :remote_ip_location_lat, fn ->
         Enum.random([37.7758, 40.7128])
       end)
 
     {remote_ip_location_lon, _attrs} =
-      Map.pop_lazy(attrs, :remote_ip_location_city, fn ->
+      Map.pop_lazy(attrs, :remote_ip_location_lon, fn ->
         Enum.random([-122.4128, -74.0060])
       end)
 
@@ -348,14 +348,18 @@ defmodule Domain.Fixtures.Auth do
 
     {identity, attrs} =
       pop_assoc_fixture(attrs, :identity, fn assoc_attrs ->
-        assoc_attrs
-        |> Enum.into(%{
-          actor: actor,
-          account: account,
-          provider: provider,
-          provider_identifier: provider_identifier
-        })
-        |> create_identity()
+        if actor.type == :service_account do
+          nil
+        else
+          assoc_attrs
+          |> Enum.into(%{
+            actor: actor,
+            account: account,
+            provider: provider,
+            provider_identifier: provider_identifier
+          })
+          |> create_identity()
+        end
       end)
 
     {expires_at, attrs} =
@@ -365,7 +369,9 @@ defmodule Domain.Fixtures.Auth do
 
     {context, attrs} =
       pop_assoc_fixture(attrs, :context, fn assoc_attrs ->
-        build_context(assoc_attrs)
+        assoc_attrs
+        |> Enum.into(%{type: if(actor.type == :service_account, do: :client, else: :browser)})
+        |> build_context()
       end)
 
     {token, _attrs} =
