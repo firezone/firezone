@@ -42,7 +42,8 @@ locally.
    PATH=$PATH:$ANDROID_HOME/platform-tools:$ANDROID_HOME/tools:$ANDROID_HOME/tools/bin
    ```
 
-1. Make sure the following Rust targets are installed in your current toolchain:
+1. Make sure the following Rust targets are installed into the correct
+   toolchain.
 
    ```
    aarch64-linux-android
@@ -52,13 +53,15 @@ locally.
    x86_64-linux-android
    ```
 
-   If using `rustup` you can run:
+   Ensure you've activated the correct toolchain version for your local
+   environment with `rustup default <toolchain>` (find this from the root
+   `/rust/rust-toolchain.toml` file), then run:
 
    ```
    rustup target add aarch64-linux-android arm-linux-androideabi armv7-linux-androideabi i686-linux-android x86_64-linux-android
    ```
 
-1. Perform a test build: `./gradlew assembleDebug`
+1. Perform a test build: `./gradlew assembleDebug`.
 
 1. Add your debug signing key's SHA256 fingerprint to the portal's
    [`assetlinks.json`](../../elixir/apps/web/priv/static/.well-known/assetlinks.json)

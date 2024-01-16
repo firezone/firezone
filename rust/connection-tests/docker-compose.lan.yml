@@ -97,5 +97,5 @@ networks:
     enable_ipv6: true
     ipam:
       config:
-        - subnet: 172.28.0.0/16
-        - subnet: 2001:db8:2::/64
+        - subnet: 172.28.0.0/24
+        - subnet: fc00:ff:2::/48
