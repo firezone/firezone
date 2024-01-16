@@ -502,6 +502,8 @@ async fn run_controller(
                         controller.tunnel_ready = false;
                         if let Some(mut session) = controller.session.take() {
                             tracing::debug!("disconnecting connlib");
+                            // This is redundant if the token is expired, in that case
+                            // connlib already disconnected itself.
                             session.connlib.disconnect(None);
                         }
                         else {
