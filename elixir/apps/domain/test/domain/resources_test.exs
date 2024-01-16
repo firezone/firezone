@@ -744,7 +744,20 @@ defmodule Domain.ResourcesTest do
       assert Enum.empty?(peek[resource.id].items)
     end
 
-    test "ignores other policies", %{
+    test "ignores disabled policies", %{
+      account: account,
+      subject: subject
+    } do
+      resource = Fixtures.Resources.create_resource(account: account)
+      policy = Fixtures.Policies.create_policy(account: account, resource: resource)
+      Fixtures.Policies.disable_policy(policy)
+
+      assert {:ok, peek} = peek_resource_actor_groups([resource], 3, subject)
+      assert peek[resource.id].count == 0
+      assert Enum.empty?(peek[resource.id].items)
+    end
+
+    test "ignores not linked policies", %{
       account: account,
       subject: subject
     } do

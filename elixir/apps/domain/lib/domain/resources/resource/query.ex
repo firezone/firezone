@@ -66,7 +66,7 @@ defmodule Domain.Resources.Resource.Query do
 
   def with_joined_actor_groups(queryable, limit) do
     policies_subquery =
-      Domain.Policies.Policy.Query.not_deleted()
+      Domain.Policies.Policy.Query.not_disabled()
       |> where([policies: policies], policies.resource_id == parent_as(:resources).id)
       |> select([policies: policies], policies.actor_group_id)
       |> limit(^limit)
@@ -86,7 +86,8 @@ defmodule Domain.Resources.Resource.Query do
 
   def with_joined_policies_counts(queryable) do
     subquery =
-      Domain.Policies.Policy.Query.count_by_resource_id()
+      Domain.Policies.Policy.Query.not_disabled()
+      |> Domain.Policies.Policy.Query.count_by_resource_id()
       |> where([policies: policies], policies.resource_id == parent_as(:resources).id)
 
     join(queryable, :cross_lateral, [resources: resources], policies_counts in subquery(subquery),
