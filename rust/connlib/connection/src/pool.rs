@@ -544,6 +544,7 @@ pub enum Event<TId> {
     ConnectionEstablished(TId),
 }
 
+#[derive(Debug)]
 pub struct Transmit {
     pub dst: SocketAddr,
     pub payload: Vec<u8>,

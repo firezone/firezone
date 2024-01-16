@@ -1975,11 +1975,13 @@ version = "1.0.0"
 dependencies = [
  "anyhow",
  "boringtun",
+ "bytecodec",
  "firezone-relay",
  "pnet_packet",
  "rand 0.8.5",
  "secrecy",
  "str0m",
+ "stun_codec",
  "thiserror",
  "tracing",
 ]
