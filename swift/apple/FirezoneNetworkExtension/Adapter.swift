@@ -7,6 +7,10 @@ import Foundation
 import NetworkExtension
 import OSLog
 
+#if os(iOS)
+  import UIKit.UIDevice
+#endif
+
 public enum AdapterError: Error {
   /// Failure to perform an operation in such state.
   case invalidState
