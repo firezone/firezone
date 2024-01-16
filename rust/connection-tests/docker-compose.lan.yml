@@ -56,4 +56,4 @@ services:
 
 networks:
   app:
-    enable_ipv6: true
+    # enable_ipv6: true Disable until we find a workaround for https://github.com/moby/moby/issues/41438.
