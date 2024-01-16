@@ -97,6 +97,22 @@ defmodule Web.Live.Resources.ShowTest do
               {:live_redirect, %{to: ~p"/#{account}/resources/#{resource}/edit", kind: :push}}}
   end
 
+  test "hides edit resource button when feature is disabled", %{
+    account: account,
+    resource: resource,
+    identity: identity,
+    conn: conn
+  } do
+    Domain.Config.feature_flag_override(:multi_site_resources, false)
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/resources/#{resource}")
+
+    refute has_element?(lv, "a", "Edit Resource")
+  end
+
   test "renders resource details", %{
     account: account,
     actor: actor,

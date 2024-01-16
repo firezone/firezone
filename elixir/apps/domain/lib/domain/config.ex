@@ -128,6 +128,10 @@ defmodule Domain.Config do
     feature_enabled?(:flow_activities)
   end
 
+  def multi_site_resources_enabled? do
+    feature_enabled?(:multi_site_resources)
+  end
+
   def traffic_filters_enabled? do
     feature_enabled?(:traffic_filters)
   end

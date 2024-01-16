@@ -45,7 +45,10 @@ defmodule Web.Resources.Show do
         <span :if={not is_nil(@resource.deleted_at)} class="text-red-600">(deleted)</span>
       </:title>
       <:action :if={is_nil(@resource.deleted_at)}>
-        <.edit_button navigate={~p"/#{@account}/resources/#{@resource.id}/edit?#{@params}"}>
+        <.edit_button
+          :if={Domain.Config.multi_site_resources_enabled?()}
+          navigate={~p"/#{@account}/resources/#{@resource.id}/edit?#{@params}"}
+        >
           Edit Resource
         </.edit_button>
       </:action>
