@@ -494,6 +494,7 @@ async fn run_controller(
                             // This is probably redundant since connlib shuts itself down if it's disconnected.
                             session.connlib.disconnect(None);
                         }
+                        controller.refresh_system_tray_menu()?;
                     }
                     Req::DisconnectedTokenExpired | Req::SignOut => {
                         tracing::debug!("Token expired or user signed out");
@@ -506,7 +507,7 @@ async fn run_controller(
                         else {
                             tracing::error!("tried to sign out but there's no session");
                         }
-                        app.tray_handle().set_menu(system_tray_menu::signed_out())?;
+                        controller.refresh_system_tray_menu()?;
                     }
                     Req::ExportLogs{path, stem} => logging::export_logs_to(path, stem).await?,
                     Req::GetAdvancedSettings(tx) => {
@@ -541,6 +542,7 @@ async fn run_controller(
                     }
                     Req::TunnelReady => {
                         controller.tunnel_ready = true;
+                        controller.refresh_system_tray_menu()?;
 
                         // May say "Windows Powershell" in dev mode
                         // See https://github.com/tauri-apps/tauri/issues/3700
