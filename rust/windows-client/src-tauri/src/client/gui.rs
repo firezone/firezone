@@ -37,6 +37,20 @@ pub(crate) struct Managed {
     pub inject_faults: bool,
 }
 
+impl Managed {
+    #[cfg(debug_assertions)]
+    /// In debug mode, if `--inject-faults` is passed, sleep for `millis` milliseconds
+    pub async fn fault_msleep(&self, millis: u64) {
+        if self.inject_faults {
+            tokio::time::sleep(std::time::Duration::from_millis(millis)).await;
+        }
+    }
+
+    #[cfg(not(debug_assertions))]
+    /// Does nothing in release mode
+    pub async fn fault_msleep(&self, _millis: u64) {}
+}
+
 // TODO: We're supposed to get this from Tauri, but I'd need to move some things around first
 const TAURI_ID: &str = "dev.firezone.client";
 
@@ -213,6 +227,7 @@ fn handle_system_tray_event(app: &tauri::AppHandle, event: TrayMenuEvent) -> Res
 pub(crate) enum ControllerRequest {
     CopyResource(String),
     Disconnected,
+    DisconnectedTokenExpired,
     ExportLogs { path: PathBuf, stem: PathBuf },
     GetAdvancedSettings(oneshot::Sender<AdvancedSettings>),
     SchemeRequest(url::Url),
@@ -247,7 +262,12 @@ impl connlib_client_shared::Callbacks for CallbackHandler {
         error: Option<&connlib_client_shared::Error>,
     ) -> Result<(), Self::Error> {
         tracing::debug!("on_disconnect {error:?}");
-        self.ctlr_tx.try_send(ControllerRequest::Disconnected)?;
+        self.ctlr_tx.try_send(match error {
+            Some(connlib_client_shared::Error::TokenExpired) => {
+                ControllerRequest::DisconnectedTokenExpired
+            }
+            _ => ControllerRequest::Disconnected,
+        })?;
         Ok(())
     }
 
@@ -281,7 +301,7 @@ struct Controller {
     /// Debugging-only settings like API URL, auth URL, log filter
     advanced_settings: AdvancedSettings,
     app: tauri::AppHandle,
-    // Sign-in state
+    // Sign-in state with the portal / deep links
     auth: client::auth::Auth,
     ctlr_tx: CtlrTx,
     /// connlib session for the currently signed-in user, if there is one
@@ -293,6 +313,7 @@ struct Controller {
     logging_handles: client::logging::Handles,
     /// Tells us when to wake up and look for a new resource list. Tokio docs say that memory reads and writes are synchronized when notifying, so we don't need an extra mutex on the resources.
     notify_controller: Arc<Notify>,
+    tunnel_ready: bool,
 }
 
 /// Everything related to a signed-in user session
@@ -321,6 +342,7 @@ impl Controller {
             log_counting_task: None,
             logging_handles,
             notify_controller,
+            tunnel_ready: false,
         };
 
         if let Some(token) = this.auth.token()? {
@@ -397,21 +419,38 @@ impl Controller {
         Ok(())
     }
 
-    fn reload_resource_list(&mut self) -> Result<()> {
-        let Some(session) = &self.session else {
-            tracing::warn!("got notified to update resources but there is no session");
-            return Ok(());
-        };
-        let resources = session.callback_handler.resources.load();
-        let actor_name = &self
-            .auth
-            .session()
-            .ok_or_else(|| anyhow!("connlib is signed in but auth module isn't"))?
-            .actor_name;
-        self.app
+    /// Returns a new system tray menu
+    fn build_system_tray_menu(&self) -> tauri::SystemTrayMenu {
+        // TODO: Refactor this and the auth module so that "Are we logged in"
+        // doesn't require such complicated control flow to answer.
+        if let Some(auth_session) = self.auth.session() {
+            if let Some(connlib_session) = &self.session {
+                if self.tunnel_ready {
+                    // Signed in, tunnel ready
+                    let resources = connlib_session.callback_handler.resources.load();
+                    system_tray_menu::signed_in(&auth_session.actor_name, &resources)
+                } else {
+                    // Signed in, raising tunnel
+                    system_tray_menu::signing_in()
+                }
+            } else {
+                tracing::error!("We have an auth session but no connlib session");
+                system_tray_menu::signed_out()
+            }
+        } else if self.auth.ongoing_request().is_ok() {
+            // Signing in, waiting on deep link callback
+            system_tray_menu::signing_in()
+        } else {
+            system_tray_menu::signed_out()
+        }
+    }
+
+    /// Builds a new system tray menu and applies it to the app
+    fn refresh_system_tray_menu(&self) -> Result<()> {
+        Ok(self
+            .app
             .tray_handle()
-            .set_menu(system_tray_menu::signed_in(actor_name, &resources))?;
-        Ok(())
+            .set_menu(self.build_system_tray_menu())?)
     }
 }
 
@@ -436,7 +475,7 @@ async fn run_controller(
 
     loop {
         tokio::select! {
-            () = controller.notify_controller.notified() => if let Err(e) = controller.reload_resource_list() {
+            () = controller.notify_controller.notified() => if let Err(e) = controller.refresh_system_tray_menu() {
                 tracing::error!("couldn't reload resource list: {e:#?}");
             },
             req = rx.recv() => {
@@ -449,11 +488,29 @@ async fn run_controller(
                     }
                     Req::Disconnected => {
                         tracing::debug!("connlib disconnected, tearing down Session");
+                        controller.tunnel_ready = false;
                         if let Some(mut session) = controller.session.take() {
                             tracing::debug!("disconnecting connlib");
+                            // This is probably redundant since connlib shuts itself down if it's disconnected.
                             session.connlib.disconnect(None);
                         }
-                    },
+                        controller.refresh_system_tray_menu()?;
+                    }
+                    Req::DisconnectedTokenExpired | Req::SignOut => {
+                        tracing::debug!("Token expired or user signed out");
+                        controller.auth.sign_out()?;
+                        controller.tunnel_ready = false;
+                        if let Some(mut session) = controller.session.take() {
+                            tracing::debug!("disconnecting connlib");
+                            // This is redundant if the token is expired, in that case
+                            // connlib already disconnected itself.
+                            session.connlib.disconnect(None);
+                        }
+                        else {
+                            tracing::error!("tried to sign out but there's no session");
+                        }
+                        controller.refresh_system_tray_menu()?;
+                    }
                     Req::ExportLogs{path, stem} => logging::export_logs_to(path, stem).await?,
                     Req::GetAdvancedSettings(tx) => {
                         tx.send(controller.advanced_settings.clone()).ok();
@@ -464,23 +521,13 @@ async fn run_controller(
                     Req::SignIn => {
                         if let Some(req) = controller.auth.start_sign_in()? {
                             let url = req.to_url(&controller.advanced_settings.auth_base_url);
+                            controller.refresh_system_tray_menu()?;
                             tauri::api::shell::open(
                                 &app.shell_scope(),
                                 &url.expose_secret().inner,
                                 None,
                             )?;
                         }
-                    }
-                    Req::SignOut => {
-                        controller.auth.sign_out()?;
-                        if let Some(mut session) = controller.session.take() {
-                            tracing::debug!("disconnecting connlib");
-                            session.connlib.disconnect(None);
-                        }
-                        else {
-                            tracing::error!("tried to sign out but there's no session");
-                        }
-                        app.tray_handle().set_menu(system_tray_menu::signed_out())?;
                     }
                     Req::StartStopLogCounting(enable) => {
                         if enable {
@@ -496,6 +543,9 @@ async fn run_controller(
                         }
                     }
                     Req::TunnelReady => {
+                        controller.tunnel_ready = true;
+                        controller.refresh_system_tray_menu()?;
+
                         // May say "Windows Powershell" in dev mode
                         // See https://github.com/tauri-apps/tauri/issues/3700
                         Notification::new(&controller.app.config().tauri.bundle.identifier)

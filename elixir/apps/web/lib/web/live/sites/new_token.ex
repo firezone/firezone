@@ -6,13 +6,9 @@ defmodule Web.Sites.NewToken do
     with {:ok, group} <- Gateways.fetch_group_by_id(id, socket.assigns.subject) do
       {group, env} =
         if connected?(socket) do
-          {:ok, group} =
-            Gateways.update_group(%{group | tokens: []}, %{tokens: [%{}]}, socket.assigns.subject)
-
+          {:ok, encoded_token} = Gateways.create_token(group, %{}, socket.assigns.subject)
           :ok = Gateways.subscribe_for_gateways_presence_in_group(group)
-
-          token = Gateways.encode_token!(hd(group.tokens))
-          {group, env(token)}
+          {group, env(encoded_token)}
         else
           {group, nil}
         end
@@ -138,7 +134,7 @@ defmodule Web.Sites.NewToken do
     "#{vsn.major}.#{vsn.minor}"
   end
 
-  defp env(token) do
+  defp env(encoded_token) do
     api_url_override =
       if api_url = Domain.Config.get_env(:web, :api_url_override) do
         {"FIREZONE_API_URL", api_url}
@@ -146,7 +142,7 @@ defmodule Web.Sites.NewToken do
 
     [
       {"FIREZONE_ID", Ecto.UUID.generate()},
-      {"FIREZONE_TOKEN", token},
+      {"FIREZONE_TOKEN", encoded_token},
       api_url_override,
       {"RUST_LOG",
        Enum.join(
@@ -170,7 +166,7 @@ defmodule Web.Sites.NewToken do
       "docker run -d",
       "--restart=unless-stopped",
       "--pull=always",
-      "--health-cmd=\"ip link | grep tun-firezone\"",
+      "--health-cmd=\"cat /proc/net/dev | grep tun-firezone\"",
       "--name=firezone-gateway",
       "--cap-add=NET_ADMIN",
       "--volume /var/lib/firezone",

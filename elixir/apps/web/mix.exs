@@ -38,7 +38,7 @@ defmodule Web.MixProject do
 
       # Phoenix/Plug deps
       {:phoenix, "~> 1.7.0"},
-      {:phoenix_html, "~> 3.3"},
+      {:phoenix_html, "~> 4.0"},
       {:phoenix_ecto, "~> 4.4"},
       {:phoenix_live_reload, "~> 1.2", only: :dev},
       {:phoenix_live_view, "~> 0.20.1"},

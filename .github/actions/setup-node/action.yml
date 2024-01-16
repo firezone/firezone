@@ -1,0 +1,16 @@
+name: "Setup Node"
+description: "Sets up the correct Node version and installs pnpm"
+inputs:
+  node-version:
+    description: "Version of nodejs to install"
+    required: false
+    default: '18'
+runs:
+  using: "composite"
+  steps:
+    - uses: pnpm/action-setup@v2
+      with:
+        version: 8
+    - uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node-version }}

@@ -83,6 +83,9 @@ defmodule Web.AuthController do
   end
 
   defp maybe_send_magic_link_email(conn, provider_id, provider_identifier, redirect_params) do
+    context_type = Web.Auth.fetch_auth_context_type!(redirect_params)
+    context = Web.Auth.get_auth_context(conn, context_type)
+
     with {:ok, provider} <- Domain.Auth.fetch_active_provider_by_id(provider_id),
          {:ok, identity} <-
            Domain.Auth.fetch_active_identity_by_provider_and_identifier(
@@ -90,24 +93,25 @@ defmodule Web.AuthController do
              provider_identifier,
              preload: :account
            ),
-         {:ok, identity} <- Domain.Auth.Adapters.Email.request_sign_in_token(identity) do
-      # We split the secret into two components, the first 5 bytes is the code we send to the user
-      # the rest is the secret we store in the cookie. This is to prevent authorization code injection
+         {:ok, identity} <- Domain.Auth.Adapters.Email.request_sign_in_token(identity, context) do
+      # Nonce is the short part that is sent to the user in the email
+      nonce = identity.provider_virtual_state.nonce
+
+      # Fragment is stored in the browser to prevent authorization code injection
       # attacks where you can trick user into logging in into a attacker account.
-      <<email_secret::binary-size(5), nonce::binary>> =
-        identity.provider_virtual_state.sign_in_token
+      fragment = identity.provider_virtual_state.fragment
 
       {:ok, _} =
         Web.Mailer.AuthEmail.sign_in_link_email(
           identity,
-          email_secret,
+          nonce,
           conn.assigns.user_agent,
           conn.remote_ip,
           redirect_params
         )
         |> Web.Mailer.deliver()
 
-      put_auth_state(conn, provider.id, {nonce, redirect_params})
+      put_auth_state(conn, provider.id, {fragment, redirect_params})
     else
       _ -> conn
     end
@@ -129,12 +133,12 @@ defmodule Web.AuthController do
           "account_id_or_slug" => account_id_or_slug,
           "provider_id" => provider_id,
           "identity_id" => identity_id,
-          "secret" => email_secret
+          "secret" => nonce
         } = params
       ) do
-    with {:ok, {nonce, redirect_params}, conn} <- fetch_auth_state(conn, provider_id) do
+    with {:ok, {fragment, redirect_params}, conn} <- fetch_auth_state(conn, provider_id) do
       conn = delete_auth_state(conn, provider_id)
-      secret = String.downcase(email_secret) <> nonce
+      secret = String.downcase(nonce) <> fragment
       context_type = Web.Auth.fetch_auth_context_type!(redirect_params)
       context = Web.Auth.get_auth_context(conn, context_type)
       nonce = Web.Auth.fetch_token_nonce!(redirect_params)

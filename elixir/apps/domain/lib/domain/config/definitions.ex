@@ -82,10 +82,6 @@ defmodule Domain.Config.Definitions do
        [
          :tokens_key_base,
          :tokens_salt,
-         :relays_auth_token_key_base,
-         :relays_auth_token_salt,
-         :gateways_auth_token_key_base,
-         :gateways_auth_token_salt,
          :secret_key_base,
          :live_view_signing_salt,
          :cookie_signing_salt,
@@ -382,38 +378,6 @@ defmodule Domain.Config.Definitions do
   )
 
   @doc """
-  Secret which is used to encode and sign relays auth tokens.
-  """
-  defconfig(:relays_auth_token_key_base, :string,
-    sensitive: true,
-    changeset: &Domain.Validator.validate_base64/2
-  )
-
-  @doc """
-  Salt which is used to encode and sign relays auth tokens.
-  """
-  defconfig(:relays_auth_token_salt, :string,
-    sensitive: true,
-    changeset: &Domain.Validator.validate_base64/2
-  )
-
-  @doc """
-  Secret which is used to encode and sign gateways auth tokens.
-  """
-  defconfig(:gateways_auth_token_key_base, :string,
-    sensitive: true,
-    changeset: &Domain.Validator.validate_base64/2
-  )
-
-  @doc """
-  Salt which is used to encode and sign gateways auth tokens.
-  """
-  defconfig(:gateways_auth_token_salt, :string,
-    sensitive: true,
-    changeset: &Domain.Validator.validate_base64/2
-  )
-
-  @doc """
   Primary secret key base for the Phoenix application.
   """
   defconfig(:secret_key_base, :string,
@@ -596,10 +560,12 @@ defmodule Domain.Config.Definitions do
   Adapter configuration, for list of options see [Swoosh Adapters](https://github.com/swoosh/swoosh#adapters).
   """
   defconfig(:outbound_email_adapter_opts, :map,
-    # TODO: validate opts are present if adapter is not NOOP one
     default: %{},
     sensitive: true,
-    dump: &Dumper.keyword/1
+    dump: fn map ->
+      Dumper.keyword(map)
+      |> Keyword.update(:tls_options, nil, &Dumper.dump_ssl_opts/1)
+    end
   )
 
   ##############################################

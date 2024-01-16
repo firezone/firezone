@@ -100,8 +100,8 @@ defmodule Web.Actors.ServiceAccounts.NewIdentity do
     with {:ok, encoded_token} <-
            Auth.create_service_account_token(
              socket.assigns.actor,
-             socket.assigns.subject,
-             attrs
+             attrs,
+             socket.assigns.subject
            ) do
       {:noreply, assign(socket, encoded_token: encoded_token)}
     else

@@ -7,10 +7,11 @@ defmodule Web.SignIn.EmailTest do
     account = Fixtures.Accounts.create_account()
     provider = Fixtures.Auth.create_email_provider(account: account)
     actor = Fixtures.Actors.create_actor(account: account, type: :account_admin_user)
+    context = Fixtures.Auth.build_context()
 
     {:ok, identity} =
       Fixtures.Auth.create_identity(account: account, actor: actor, provider: provider)
-      |> Domain.Auth.Adapters.Email.request_sign_in_token()
+      |> Domain.Auth.Adapters.Email.request_sign_in_token(context)
 
     %{
       account: account,

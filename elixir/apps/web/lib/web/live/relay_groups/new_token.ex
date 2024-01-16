@@ -7,13 +7,9 @@ defmodule Web.RelayGroups.NewToken do
          {:ok, group} <- Relays.fetch_group_by_id(id, socket.assigns.subject) do
       {group, env} =
         if connected?(socket) do
-          {:ok, group} =
-            Relays.update_group(%{group | tokens: []}, %{tokens: [%{}]}, socket.assigns.subject)
-
+          {:ok, encoded_token} = Relays.create_token(group, %{}, socket.assigns.subject)
           :ok = Relays.subscribe_for_relays_presence_in_group(group)
-
-          token = Relays.encode_token!(hd(group.tokens))
-          {group, env(token)}
+          {group, env(encoded_token)}
         else
           {group, nil}
         end
@@ -226,7 +222,7 @@ defmodule Web.RelayGroups.NewToken do
     "#{vsn.major}.#{vsn.minor}"
   end
 
-  defp env(token) do
+  defp env(encoded_token) do
     api_url_override =
       if api_url = Domain.Config.get_env(:web, :api_url_override) do
         {"FIREZONE_API_URL", api_url}
@@ -234,7 +230,7 @@ defmodule Web.RelayGroups.NewToken do
 
     [
       {"FIREZONE_ID", Ecto.UUID.generate()},
-      {"FIREZONE_TOKEN", token},
+      {"FIREZONE_TOKEN", encoded_token},
       {"PUBLIC_IP4_ADDR", "YOU_MUST_SET_THIS_VALUE"},
       {"PUBLIC_IP6_ADDR", "YOU_MUST_SET_THIS_VALUE"},
       api_url_override,
@@ -260,7 +256,7 @@ defmodule Web.RelayGroups.NewToken do
       "docker run -d",
       "--restart=unless-stopped",
       "--pull=always",
-      "--health-cmd=\"lsof -i UDP | grep firezone-relay\"",
+      "--health-cmd=\"cat /proc/net/udp | grep D96\"",
       "--name=firezone-relay",
       "--cap-add=NET_ADMIN",
       "--volume /var/lib/firezone",

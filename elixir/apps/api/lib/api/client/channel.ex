@@ -24,23 +24,31 @@ defmodule API.Client.Channel do
       opentelemetry_ctx = OpenTelemetry.Ctx.get_current()
       opentelemetry_span_ctx = OpenTelemetry.Tracer.current_span_ctx()
 
-      expires_in =
-        DateTime.diff(socket.assigns.subject.expires_at, DateTime.utc_now(), :millisecond)
+      socket =
+        assign(socket,
+          opentelemetry_ctx: opentelemetry_ctx,
+          opentelemetry_span_ctx: opentelemetry_span_ctx
+        )
 
-      if expires_in > 0 do
-        Process.send_after(self(), :token_expired, expires_in)
+      with {:ok, socket} <- schedule_expiration(socket) do
         send(self(), {:after_join, {opentelemetry_ctx, opentelemetry_span_ctx}})
-
-        socket =
-          assign(socket,
-            opentelemetry_ctx: opentelemetry_ctx,
-            opentelemetry_span_ctx: opentelemetry_span_ctx
-          )
-
         {:ok, socket}
-      else
-        {:error, %{"reason" => "token_expired"}}
       end
+    end
+  end
+
+  defp schedule_expiration(%{assigns: %{subject: %{expires_at: nil}}} = socket) do
+    {:ok, socket}
+  end
+
+  defp schedule_expiration(%{assigns: %{subject: %{expires_at: expires_at}}} = socket) do
+    expires_in = DateTime.diff(expires_at, DateTime.utc_now(), :millisecond)
+
+    if expires_in > 0 do
+      Process.send_after(self(), :token_expired, expires_in)
+      {:ok, socket}
+    else
+      {:error, %{"reason" => "token_expired"}}
     end
   end
 

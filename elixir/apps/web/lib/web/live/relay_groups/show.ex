@@ -1,13 +1,13 @@
 defmodule Web.RelayGroups.Show do
   use Web, :live_view
-  alias Domain.Relays
+  alias Domain.{Relays, Tokens}
 
   def mount(%{"id" => id}, _session, socket) do
     with true <- Domain.Config.self_hosted_relays_enabled?(),
          {:ok, group} <-
            Relays.fetch_group_by_id(id, socket.assigns.subject,
              preload: [
-               relays: [token: [created_by_identity: [:actor]]],
+               relays: [],
                created_by_identity: [:actor]
              ]
            ) do
@@ -63,7 +63,15 @@ defmodule Web.RelayGroups.Show do
           Deploy
         </.add_button>
       </:action>
-      <:content>
+      <:action :if={is_nil(@group.deleted_at)}>
+        <.delete_button
+          phx-click="revoke_all_tokens"
+          data-confirm="Are you sure you want to revoke all tokens? This will immediately sign the actor out of all clients."
+        >
+          Revoke All Tokens
+        </.delete_button>
+      </:action>
+      <:content flash={@flash}>
         <div class="relative overflow-x-auto">
           <.table id="relays" rows={@group.relays}>
             <:col :let={relay} label="INSTANCE">
@@ -78,9 +86,6 @@ defmodule Web.RelayGroups.Show do
                   <%= relay.ipv6 %>
                 </code>
               </.link>
-            </:col>
-            <:col :let={relay} label="TOKEN CREATED AT">
-              <.created_by account={@account} schema={relay.token} />
             </:col>
             <:col :let={relay} label="STATUS">
               <.connection_status schema={relay} />
@@ -111,7 +116,7 @@ defmodule Web.RelayGroups.Show do
     {:ok, group} =
       Relays.fetch_group_by_id(socket.assigns.group.id, socket.assigns.subject,
         preload: [
-          relays: [token: [created_by_identity: [:actor]]],
+          relays: [],
           created_by_identity: [:actor]
         ]
       )
@@ -119,8 +124,18 @@ defmodule Web.RelayGroups.Show do
     {:noreply, assign(socket, group: group)}
   end
 
+  def handle_event("revoke_all_tokens", _params, socket) do
+    group = socket.assigns.group
+    {:ok, deleted_count} = Tokens.delete_tokens_for(group, socket.assigns.subject)
+
+    socket =
+      socket
+      |> put_flash(:info, "#{deleted_count} token(s) were revoked.")
+
+    {:noreply, socket}
+  end
+
   def handle_event("delete", _params, socket) do
-    # TODO: make sure tokens are all deleted too!
     {:ok, _group} = Relays.delete_group(socket.assigns.group, socket.assigns.subject)
     {:noreply, push_navigate(socket, to: ~p"/#{socket.assigns.account}/relay_groups")}
   end

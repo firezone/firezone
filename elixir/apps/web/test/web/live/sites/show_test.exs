@@ -112,7 +112,6 @@ defmodule Web.Live.Sites.ShowTest do
 
   test "renders online gateways table", %{
     account: account,
-    actor: actor,
     identity: identity,
     group: group,
     gateway: gateway,
@@ -136,7 +135,6 @@ defmodule Web.Live.Sites.ShowTest do
 
     rows
     |> with_table_row("instance", gateway.name, fn row ->
-      assert row["token created at"] =~ actor.name
       assert row["status"] =~ "Online"
     end)
   end
@@ -163,8 +161,27 @@ defmodule Web.Live.Sites.ShowTest do
       assert gateway.last_seen_remote_ip
       assert row["remote ip"] =~ to_string(gateway.last_seen_remote_ip)
       assert row["status"] =~ "Online"
-      assert row["token created at"]
     end)
+  end
+
+  test "allows revoking all tokens", %{
+    account: account,
+    group: group,
+    identity: identity,
+    conn: conn
+  } do
+    token = Fixtures.Gateways.create_token(account: account, group: group)
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/sites/#{group}")
+
+    assert lv
+           |> element("button", "Revoke All")
+           |> render_click() =~ "1 token(s) were revoked."
+
+    assert Repo.get_by(Domain.Tokens.Token, id: token.id).deleted_at
   end
 
   test "renders resources table", %{
