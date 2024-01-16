@@ -11,49 +11,33 @@ defmodule API.Gateway.Socket do
   ## Authentication
 
   @impl true
-  def connect(%{"token" => encrypted_secret} = attrs, socket, connect_info) do
+  def connect(%{"token" => encoded_token} = attrs, socket, connect_info) do
     :otel_propagator_text_map.extract(connect_info.trace_context_headers)
 
     OpenTelemetry.Tracer.with_span "gateway.connect" do
-      %{
-        user_agent: user_agent,
-        x_headers: x_headers,
-        peer_data: peer_data
-      } = connect_info
+      context = API.Sockets.auth_context(connect_info, :gateway_group)
+      attrs = Map.take(attrs, ~w[external_id name public_key])
 
-      real_ip = API.Sockets.real_ip(x_headers, peer_data)
+      with {:ok, group} <- Gateways.authenticate(encoded_token, context),
+           {:ok, gateway} <- Gateways.upsert_gateway(group, attrs, context) do
+        :ok = API.Endpoint.subscribe("gateway_group_sessions:#{group.id}")
 
-      {location_region, location_city, {location_lat, location_lon}} =
-        API.Sockets.load_balancer_ip_location(x_headers)
-
-      attrs =
-        attrs
-        |> Map.take(~w[external_id name public_key])
-        |> Map.put("last_seen_user_agent", user_agent)
-        |> Map.put("last_seen_remote_ip", real_ip)
-        |> Map.put("last_seen_remote_ip_location_region", location_region)
-        |> Map.put("last_seen_remote_ip_location_city", location_city)
-        |> Map.put("last_seen_remote_ip_location_lat", location_lat)
-        |> Map.put("last_seen_remote_ip_location_lon", location_lon)
-
-      with {:ok, token} <- Gateways.authorize_gateway(encrypted_secret),
-           {:ok, gateway} <- Gateways.upsert_gateway(token, attrs),
-           {:ok, gateway_group} <- Gateways.fetch_group_by_id(gateway.group_id) do
         OpenTelemetry.Tracer.set_attributes(%{
           gateway_id: gateway.id,
-          account_id: gateway.account_id
+          account_id: gateway.account_id,
+          version: gateway.last_seen_version
         })
 
         socket =
           socket
+          |> assign(:gateway_group, group)
           |> assign(:gateway, gateway)
-          |> assign(:gateway_group, gateway_group)
           |> assign(:opentelemetry_span_ctx, OpenTelemetry.Tracer.current_span_ctx())
           |> assign(:opentelemetry_ctx, OpenTelemetry.Ctx.get_current())
 
         {:ok, socket}
       else
-        {:error, :invalid_token} ->
+        {:error, :unauthorized} ->
           OpenTelemetry.Tracer.set_status(:error, "invalid_token")
           {:error, :invalid_token}
 

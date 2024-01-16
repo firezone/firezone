@@ -15,33 +15,17 @@ defmodule API.Client.Socket do
     :otel_propagator_text_map.extract(connect_info.trace_context_headers)
 
     OpenTelemetry.Tracer.with_span "client.connect" do
-      %{
-        user_agent: user_agent,
-        x_headers: x_headers,
-        peer_data: peer_data
-      } = connect_info
-
-      real_ip = API.Sockets.real_ip(x_headers, peer_data)
-
-      {location_region, location_city, {location_lat, location_lon}} =
-        API.Sockets.load_balancer_ip_location(x_headers)
-
-      context = %Auth.Context{
-        type: :client,
-        user_agent: user_agent,
-        remote_ip: real_ip,
-        remote_ip_location_region: location_region,
-        remote_ip_location_city: location_city,
-        remote_ip_location_lat: location_lat,
-        remote_ip_location_lon: location_lon
-      }
+      context = API.Sockets.auth_context(connect_info, :client)
 
       with {:ok, subject} <- Auth.authenticate(token, context),
            {:ok, client} <- Clients.upsert_client(attrs, subject) do
+        :ok = API.Endpoint.subscribe("sessions:#{subject.token_id}")
+
         OpenTelemetry.Tracer.set_attributes(%{
           client_id: client.id,
           lat: client.last_seen_remote_ip_location_lat,
           lon: client.last_seen_remote_ip_location_lon,
+          version: client.last_seen_version,
           account_id: subject.account.id
         })
 

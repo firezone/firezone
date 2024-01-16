@@ -5,8 +5,7 @@ defmodule Domain.Fixtures.Gateways do
   def group_attrs(attrs \\ %{}) do
     Enum.into(attrs, %{
       name: "group-#{unique_integer()}",
-      routing: "managed",
-      tokens: [%{}]
+      routing: "managed"
     })
   end
 
@@ -64,22 +63,17 @@ defmodule Domain.Fixtures.Gateways do
         |> Fixtures.Auth.create_subject()
       end)
 
-    Gateways.Token.Changeset.create(account, subject)
-    |> Ecto.Changeset.put_change(:group_id, group.id)
-    |> Repo.insert!()
+    {:ok, encoded_token} = Gateways.create_token(group, attrs, subject)
+    context = Fixtures.Auth.build_context(type: :gateway_group)
+    {:ok, {_account_id, id, nonce, secret}} = Domain.Tokens.peek_token(encoded_token, context)
+    %{Repo.get(Domain.Tokens.Token, id) | secret_nonce: nonce, secret_fragment: secret}
   end
 
   def gateway_attrs(attrs \\ %{}) do
     Enum.into(attrs, %{
       external_id: Ecto.UUID.generate(),
       name: "gw-#{Domain.Crypto.random_token(5, encoder: :user_friendly)}",
-      public_key: unique_public_key(),
-      last_seen_user_agent: "iOS/12.7 (iPhone) connlib/0.7.412",
-      last_seen_remote_ip: %Postgrex.INET{address: {189, 172, 73, 153}},
-      last_seen_remote_ip_location_region: "US",
-      last_seen_remote_ip_location_city: "San Francisco",
-      last_seen_remote_ip_location_lat: 37.7758,
-      last_seen_remote_ip_location_lon: -122.4128
+      public_key: unique_public_key()
     })
   end
 
@@ -98,12 +92,14 @@ defmodule Domain.Fixtures.Gateways do
         |> create_group()
       end)
 
-    {token, attrs} =
-      Map.pop_lazy(attrs, :token, fn ->
-        hd(group.tokens)
+    {context, attrs} =
+      pop_assoc_fixture(attrs, :context, fn assoc_attrs ->
+        assoc_attrs
+        |> Enum.into(%{type: :gateway_group})
+        |> Fixtures.Auth.build_context()
       end)
 
-    {:ok, gateway} = Gateways.upsert_gateway(token, attrs)
+    {:ok, gateway} = Gateways.upsert_gateway(group, attrs, context)
     %{gateway | online?: false}
   end
 

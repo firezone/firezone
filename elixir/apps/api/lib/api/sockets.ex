@@ -99,4 +99,27 @@ defmodule API.Sockets do
   def get_header(x_headers, key) do
     List.keyfind(x_headers, key, 0)
   end
+
+  def auth_context(connect_info, type) do
+    %{
+      user_agent: user_agent,
+      x_headers: x_headers,
+      peer_data: peer_data
+    } = connect_info
+
+    real_ip = API.Sockets.real_ip(x_headers, peer_data)
+
+    {location_region, location_city, {location_lat, location_lon}} =
+      API.Sockets.load_balancer_ip_location(x_headers)
+
+    %Domain.Auth.Context{
+      type: type,
+      user_agent: user_agent,
+      remote_ip: real_ip,
+      remote_ip_location_region: location_region,
+      remote_ip_location_city: location_city,
+      remote_ip_location_lat: location_lat,
+      remote_ip_location_lon: location_lon
+    }
+  end
 end

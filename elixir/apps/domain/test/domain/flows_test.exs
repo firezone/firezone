@@ -108,12 +108,19 @@ defmodule Domain.FlowsTest do
 
     test "creates a network flow for service accounts", %{
       account: account,
-      client: client,
+      actor_group: actor_group,
       gateway: gateway,
       resource: resource,
-      policy: policy,
-      subject: subject
+      policy: policy
     } do
+      actor = Fixtures.Actors.create_actor(type: :service_account, account: account)
+      Fixtures.Actors.create_membership(account: account, actor: actor, group: actor_group)
+
+      identity = Fixtures.Auth.create_identity(account: account, actor: actor)
+      subject = Fixtures.Auth.create_subject(identity: identity)
+
+      client = Fixtures.Clients.create_client(account: account, actor: actor, identity: identity)
+
       assert {:ok, _fetched_resource, %Flows.Flow{} = flow} =
                authorize_flow(client, gateway, resource.id, subject)
 

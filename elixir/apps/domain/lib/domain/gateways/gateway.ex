@@ -24,7 +24,6 @@ defmodule Domain.Gateways.Gateway do
 
     belongs_to :account, Domain.Accounts.Account
     belongs_to :group, Domain.Gateways.Group
-    belongs_to :token, Domain.Gateways.Token
 
     field :deleted_at, :utc_datetime_usec
     timestamps()

@@ -7,7 +7,10 @@ defmodule Domain.Gateways.Group do
 
     belongs_to :account, Domain.Accounts.Account
     has_many :gateways, Domain.Gateways.Gateway, foreign_key: :group_id, where: [deleted_at: nil]
-    has_many :tokens, Domain.Gateways.Token, foreign_key: :group_id, where: [deleted_at: nil]
+
+    has_many :tokens, Domain.Tokens.Token,
+      foreign_key: :gateway_group_id,
+      where: [deleted_at: nil]
 
     has_many :connections, Domain.Resources.Connection, foreign_key: :gateway_group_id
 

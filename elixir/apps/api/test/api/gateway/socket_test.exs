@@ -2,7 +2,6 @@ defmodule API.Gateway.SocketTest do
   use API.ChannelCase, async: true
   import API.Gateway.Socket, except: [connect: 3]
   alias API.Gateway.Socket
-  alias Domain.Gateways
 
   @connlib_version "0.1.1"
 
@@ -25,7 +24,7 @@ defmodule API.Gateway.SocketTest do
 
     test "creates a new gateway" do
       token = Fixtures.Gateways.create_token()
-      encrypted_secret = Gateways.encode_token!(token)
+      encrypted_secret = Domain.Tokens.encode_fragment!(token)
 
       attrs = connect_attrs(token: encrypted_secret)
 
@@ -45,7 +44,7 @@ defmodule API.Gateway.SocketTest do
 
     test "uses region code to put default coordinates" do
       token = Fixtures.Gateways.create_token()
-      encrypted_secret = Gateways.encode_token!(token)
+      encrypted_secret = Domain.Tokens.encode_fragment!(token)
 
       attrs = connect_attrs(token: encrypted_secret)
 
@@ -61,7 +60,7 @@ defmodule API.Gateway.SocketTest do
 
     test "propagates trace context" do
       token = Fixtures.Gateways.create_token()
-      encrypted_secret = Gateways.encode_token!(token)
+      encrypted_secret = Domain.Tokens.encode_fragment!(token)
       attrs = connect_attrs(token: encrypted_secret)
 
       span_ctx = OpenTelemetry.Tracer.start_span("test")
@@ -78,11 +77,13 @@ defmodule API.Gateway.SocketTest do
     end
 
     test "updates existing gateway" do
-      token = Fixtures.Gateways.create_token()
-      existing_gateway = Fixtures.Gateways.create_gateway(token: token)
-      encrypted_secret = Gateways.encode_token!(token)
+      account = Fixtures.Accounts.create_account()
+      group = Fixtures.Gateways.create_group(account: account)
+      gateway = Fixtures.Gateways.create_gateway(account: account, group: group)
+      token = Fixtures.Gateways.create_token(account: account, group: group)
+      encrypted_secret = Domain.Tokens.encode_fragment!(token)
 
-      attrs = connect_attrs(token: encrypted_secret, external_id: existing_gateway.external_id)
+      attrs = connect_attrs(token: encrypted_secret, external_id: gateway.external_id)
 
       assert {:ok, socket} = connect(Socket, attrs, connect_info: @connect_info)
       assert gateway = Repo.one(Domain.Gateways.Gateway)

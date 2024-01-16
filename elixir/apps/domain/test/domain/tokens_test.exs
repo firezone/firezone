@@ -121,18 +121,14 @@ defmodule Domain.TokensTest do
 
       assert errors_on(changeset) == %{
                type: ["can't be blank"],
-               account_id: ["can't be blank"],
-               expires_at: ["can't be blank"],
                secret_fragment: ["can't be blank"],
-               secret_hash: ["can't be blank"],
-               created_by_remote_ip: ["can't be blank"],
-               created_by_user_agent: ["can't be blank"]
+               secret_hash: ["can't be blank"]
              }
     end
 
     test "returns errors on invalid attrs" do
       attrs = %{
-        type: :relay,
+        type: :foo,
         secret_nonce: -1,
         secret_fragment: -1,
         expires_at: DateTime.utc_now(),
@@ -198,11 +194,8 @@ defmodule Domain.TokensTest do
 
       assert errors_on(changeset) == %{
                type: ["can't be blank"],
-               expires_at: ["can't be blank"],
                secret_fragment: ["can't be blank"],
-               secret_hash: ["can't be blank"],
-               created_by_remote_ip: ["can't be blank"],
-               created_by_user_agent: ["can't be blank"]
+               secret_hash: ["can't be blank"]
              }
     end
 
@@ -239,8 +232,6 @@ defmodule Domain.TokensTest do
       nonce = "nonce"
       fragment = Domain.Crypto.random_token(32)
       expires_at = DateTime.utc_now() |> DateTime.add(1, :day)
-      user_agent = Fixtures.Tokens.user_agent()
-      remote_ip = Fixtures.Tokens.remote_ip()
 
       attrs = %{
         type: type,
@@ -248,17 +239,15 @@ defmodule Domain.TokensTest do
         secret_fragment: fragment,
         actor_id: actor.id,
         identity_id: identity.id,
-        expires_at: expires_at,
-        created_by_user_agent: user_agent,
-        created_by_remote_ip: remote_ip
+        expires_at: expires_at
       }
 
       assert {:ok, %Tokens.Token{} = token} = create_token(attrs, subject)
 
       assert token.type == type
       assert token.expires_at == expires_at
-      assert token.created_by_user_agent == user_agent
-      assert token.created_by_remote_ip.address == remote_ip
+      assert token.created_by_user_agent == subject.context.user_agent
+      assert token.created_by_remote_ip == subject.context.remote_ip
 
       assert token.secret_fragment == fragment
       refute token.secret_nonce
@@ -304,6 +293,7 @@ defmodule Domain.TokensTest do
       assert token.last_seen_remote_ip_location_lat == context.remote_ip_location_lat
       assert token.last_seen_remote_ip_location_lon == context.remote_ip_location_lon
       assert token.last_seen_at
+      refute token.remaining_attempts
     end
 
     test "returns error when secret is invalid", %{account: account} do
@@ -314,6 +304,50 @@ defmodule Domain.TokensTest do
 
       assert use_token(nonce <> encoded_fragment, context) ==
                {:error, :invalid_or_expired_token}
+    end
+
+    test "reduces attempts count when secret is invalid", %{account: account} do
+      nonce = "nonce"
+
+      token =
+        Fixtures.Tokens.create_token(
+          remaining_attempts: 3,
+          expires_at: nil,
+          account: account,
+          secret_nonce: nonce
+        )
+
+      context = Fixtures.Auth.build_context(type: token.type)
+      encoded_fragment = encode_fragment!(%{token | secret_fragment: "bar"})
+
+      assert use_token(nonce <> encoded_fragment, context) ==
+               {:error, :invalid_or_expired_token}
+
+      token = Repo.get(Tokens.Token, token.id)
+      assert token.remaining_attempts == 2
+      refute token.expires_at
+    end
+
+    test "expires token when attempts limit is exceeded", %{account: account} do
+      nonce = "nonce"
+
+      token =
+        Fixtures.Tokens.create_token(
+          remaining_attempts: 1,
+          expires_at: nil,
+          account: account,
+          secret_nonce: nonce
+        )
+
+      context = Fixtures.Auth.build_context(type: token.type)
+      encoded_fragment = encode_fragment!(%{token | secret_fragment: "bar"})
+
+      assert use_token(nonce <> encoded_fragment, context) ==
+               {:error, :invalid_or_expired_token}
+
+      token = Repo.get(Tokens.Token, token.id)
+      assert token.remaining_attempts == 0
+      assert token.expires_at
     end
 
     test "returns error when nonce is invalid", %{account: account} do
@@ -497,13 +531,47 @@ defmodule Domain.TokensTest do
   end
 
   describe "delete_tokens_for/2" do
-    test "deletes tokens for given actor", %{account: account, subject: subject} do
+    test "deletes browser tokens for given actor", %{account: account, subject: subject} do
       actor = Fixtures.Actors.create_actor(account: account)
       identity = Fixtures.Auth.create_identity(account: account, actor: actor)
-      token = Fixtures.Tokens.create_token(account: account, identity: identity)
+      token = Fixtures.Tokens.create_token(type: :browser, account: account, identity: identity)
       Phoenix.PubSub.subscribe(Domain.PubSub, "sessions:#{token.id}")
 
       assert delete_tokens_for(actor, subject) == {:ok, 1}
+
+      assert Repo.get(Tokens.Token, token.id).deleted_at
+      assert_receive "disconnect"
+    end
+
+    test "deletes client tokens for given actor", %{account: account, subject: subject} do
+      actor = Fixtures.Actors.create_actor(account: account)
+      identity = Fixtures.Auth.create_identity(account: account, actor: actor)
+      token = Fixtures.Tokens.create_token(type: :client, account: account, identity: identity)
+      Phoenix.PubSub.subscribe(Domain.PubSub, "sessions:#{token.id}")
+
+      assert delete_tokens_for(actor, subject) == {:ok, 1}
+
+      assert Repo.get(Tokens.Token, token.id).deleted_at
+      assert_receive "disconnect"
+    end
+
+    test "deletes gateway group tokens", %{account: account, subject: subject} do
+      group = Fixtures.Gateways.create_group(account: account)
+      token = Fixtures.Gateways.create_token(account: account, group: group)
+      Phoenix.PubSub.subscribe(Domain.PubSub, "gateway_groups:#{group.id}")
+
+      assert delete_tokens_for(group, subject) == {:ok, 1}
+
+      assert Repo.get(Tokens.Token, token.id).deleted_at
+      assert_receive "disconnect"
+    end
+
+    test "deletes relay group tokens", %{account: account, subject: subject} do
+      group = Fixtures.Relays.create_group(account: account)
+      token = Fixtures.Relays.create_token(account: account, group: group)
+      Phoenix.PubSub.subscribe(Domain.PubSub, "relay_groups:#{group.id}")
+
+      assert delete_tokens_for(group, subject) == {:ok, 1}
 
       assert Repo.get(Tokens.Token, token.id).deleted_at
       assert_receive "disconnect"

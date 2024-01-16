@@ -460,7 +460,8 @@ defmodule Domain.ClientsTest do
     end
 
     test "allows service account to create a client for self", %{account: account} do
-      subject = Fixtures.Auth.create_subject(account: account, actor: [type: :service_account])
+      actor = Fixtures.Actors.create_actor(type: :service_account, account: account)
+      subject = Fixtures.Auth.create_subject(account: account, actor: actor)
       attrs = Fixtures.Clients.client_attrs()
 
       assert {:ok, client} = upsert_client(attrs, subject)

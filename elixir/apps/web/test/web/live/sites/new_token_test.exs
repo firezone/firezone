@@ -36,7 +36,8 @@ defmodule Web.Live.Sites.NewTokenTest do
 
     :ok = Domain.Gateways.subscribe_for_gateways_presence_in_group(group)
     gateway = Fixtures.Gateways.create_gateway(account: account, group: group)
-    assert {:ok, _token} = Domain.Gateways.authorize_gateway(token)
+    context = Fixtures.Auth.build_context(type: :gateway_group)
+    assert {:ok, _group} = Domain.Gateways.authenticate(token, context)
     Domain.Gateways.connect_gateway(gateway)
 
     assert_receive %Phoenix.Socket.Broadcast{topic: "gateway_groups:" <> _group_id}

@@ -113,7 +113,6 @@ defmodule Web.Live.RelayGroups.ShowTest do
 
   test "renders relays table", %{
     account: account,
-    actor: actor,
     identity: identity,
     group: group,
     relay: relay,
@@ -129,7 +128,6 @@ defmodule Web.Live.RelayGroups.ShowTest do
     |> render()
     |> table_to_map()
     |> with_table_row("instance", "#{relay.ipv4} #{relay.ipv6}", fn row ->
-      assert row["token created at"] =~ actor.name
       assert row["status"] =~ "Offline"
     end)
   end
@@ -175,6 +173,26 @@ defmodule Web.Live.RelayGroups.ShowTest do
     assert_redirected(lv, ~p"/#{account}/relay_groups")
 
     assert Repo.get(Domain.Relays.Group, group.id).deleted_at
+  end
+
+  test "allows revoking all tokens", %{
+    account: account,
+    group: group,
+    identity: identity,
+    conn: conn
+  } do
+    token = Fixtures.Relays.create_token(account: account, group: group)
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/relay_groups/#{group}")
+
+    assert lv
+           |> element("button", "Revoke All")
+           |> render_click() =~ "1 token(s) were revoked."
+
+    assert Repo.get_by(Domain.Tokens.Token, id: token.id).deleted_at
   end
 
   test "renders not found error when self_hosted_relays feature flag is false", %{

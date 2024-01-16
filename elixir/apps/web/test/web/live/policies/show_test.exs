@@ -161,7 +161,7 @@ defmodule Web.Live.Policies.ShowTest do
     assert row["client, actor (ip)"] =~ to_string(flow.client_remote_ip)
 
     assert row["gateway (ip)"] =~
-             "#{flow.gateway.group.name}-#{flow.gateway.name} (189.172.73.153)"
+             "#{flow.gateway.group.name}-#{flow.gateway.name} (#{flow.gateway.last_seen_remote_ip})"
   end
 
   test "allows deleting policy", %{

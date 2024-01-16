@@ -27,6 +27,8 @@ defmodule Domain.Types.IP do
   def cast(_), do: :error
 
   def dump(%Postgrex.INET{} = inet), do: {:ok, inet}
+  def dump(tuple) when tuple_size(tuple) == 4, do: {:ok, %Postgrex.INET{address: tuple}}
+  def dump(tuple) when tuple_size(tuple) == 8, do: {:ok, %Postgrex.INET{address: tuple}}
   def dump(_), do: :error
 
   def load(%Postgrex.INET{} = inet), do: {:ok, inet}

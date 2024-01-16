@@ -1,5 +1,5 @@
 defmodule Domain.Auth.Adapter do
-  alias Domain.Auth.{Provider, Identity}
+  alias Domain.Auth.{Provider, Identity, Context}
 
   @typedoc """
   This type defines which kind of provisioners are enabled for IdP adapter.
@@ -74,7 +74,7 @@ defmodule Domain.Auth.Adapter do
 
     Used by secret-based providers, eg.: UserPass, Email.
     """
-    @callback verify_secret(%Identity{}, secret :: term()) ::
+    @callback verify_secret(%Identity{}, %Context{}, secret :: term()) ::
                 {:ok, %Identity{}, expires_at :: %DateTime{} | nil}
                 | {:error, :invalid_secret}
                 | {:error, :expired_secret}

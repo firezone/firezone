@@ -1,6 +1,6 @@
 defmodule Domain.Gateways.Gateway.Changeset do
   use Domain, :changeset
-  alias Domain.Version
+  alias Domain.{Version, Auth}
   alias Domain.Gateways
 
   @upsert_fields ~w[external_id name public_key
@@ -22,8 +22,7 @@ defmodule Domain.Gateways.Gateway.Changeset do
                               last_seen_at
                               updated_at]a
   @update_fields ~w[name]a
-  @required_fields ~w[external_id name public_key
-                    last_seen_user_agent last_seen_remote_ip]a
+  @required_fields ~w[external_id name public_key]a
 
   # WireGuard base64-encoded string length
   @key_length 44
@@ -33,7 +32,7 @@ defmodule Domain.Gateways.Gateway.Changeset do
 
   def upsert_on_conflict, do: {:replace, @conflict_replace_fields}
 
-  def upsert(%Gateways.Token{} = token, attrs) do
+  def upsert(%Gateways.Group{} = group, attrs, %Auth.Context{} = context) do
     %Gateways.Gateway{}
     |> cast(attrs, @upsert_fields)
     |> put_default_value(:name, fn ->
@@ -47,11 +46,15 @@ defmodule Domain.Gateways.Gateway.Changeset do
     |> unique_constraint(:ipv4)
     |> unique_constraint(:ipv6)
     |> put_change(:last_seen_at, DateTime.utc_now())
+    |> put_change(:last_seen_user_agent, context.user_agent)
+    |> put_change(:last_seen_remote_ip, context.remote_ip)
+    |> put_change(:last_seen_remote_ip_location_region, context.remote_ip_location_region)
+    |> put_change(:last_seen_remote_ip_location_city, context.remote_ip_location_city)
+    |> put_change(:last_seen_remote_ip_location_lat, context.remote_ip_location_lat)
+    |> put_change(:last_seen_remote_ip_location_lon, context.remote_ip_location_lon)
     |> put_gateway_version()
-    |> put_change(:account_id, token.account_id)
-    |> put_change(:group_id, token.group_id)
-    |> put_change(:token_id, token.id)
-    |> assoc_constraint(:token)
+    |> put_change(:account_id, group.account_id)
+    |> put_change(:group_id, group.id)
   end
 
   def finalize_upsert(%Gateways.Gateway{} = gateway, ipv4, ipv6) do

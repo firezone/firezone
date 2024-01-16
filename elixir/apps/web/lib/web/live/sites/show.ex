@@ -1,7 +1,7 @@
 defmodule Web.Sites.Show do
   use Web, :live_view
   import Web.Sites.Components
-  alias Domain.{Gateways, Resources}
+  alias Domain.{Gateways, Resources, Tokens}
 
   def mount(%{"id" => id}, _session, socket) do
     with {:ok, group} <-
@@ -12,9 +12,7 @@ defmodule Web.Sites.Show do
              ]
            ),
          {:ok, gateways} <-
-           Gateways.list_connected_gateways_for_group(group, socket.assigns.subject,
-             preload: [token: [created_by_identity: [:actor]]]
-           ),
+           Gateways.list_connected_gateways_for_group(group, socket.assigns.subject),
          resources =
            group.connections
            |> Enum.reject(&is_nil(&1.resource))
@@ -87,12 +85,20 @@ defmodule Web.Sites.Show do
           Deploy Gateway
         </.add_button>
       </:action>
+      <:action :if={is_nil(@group.deleted_at)}>
+        <.delete_button
+          phx-click="revoke_all_tokens"
+          data-confirm="Are you sure you want to revoke all tokens? This will immediately sign the actor out of all clients."
+        >
+          Revoke All Tokens
+        </.delete_button>
+      </:action>
       <:help :if={is_nil(@group.deleted_at)}>
         Deploy gateways to terminate connections to your site's resources. All
         gateways deployed within a site must be able to reach all
         its resources.
       </:help>
-      <:content>
+      <:content flash={@flash}>
         <div class="relative overflow-x-auto">
           <.table id="gateways" rows={@gateways}>
             <:col :let={gateway} label="INSTANCE">
@@ -104,9 +110,6 @@ defmodule Web.Sites.Show do
               <code>
                 <%= gateway.last_seen_remote_ip %>
               </code>
-            </:col>
-            <:col :let={gateway} label="TOKEN CREATED AT">
-              <.created_by account={@account} schema={gateway.token} />
             </:col>
             <:col :let={gateway} label="STATUS">
               <.connection_status schema={gateway} />
@@ -218,15 +221,25 @@ defmodule Web.Sites.Show do
     """
   end
 
-  def handle_info(%Phoenix.Socket.Broadcast{topic: "gateway_groups:" <> _account_id}, socket) do
+  def handle_info(%Phoenix.Socket.Broadcast{topic: "gateway_groups:" <> _group_id}, socket) do
+    {:ok, gateways} =
+      Gateways.list_connected_gateways_for_group(socket.assigns.group, socket.assigns.subject)
+
+    {:noreply, assign(socket, gateways: gateways)}
+  end
+
+  def handle_event("revoke_all_tokens", _params, socket) do
+    group = socket.assigns.group
+    {:ok, deleted_count} = Tokens.delete_tokens_for(group, socket.assigns.subject)
+
     socket =
-      push_navigate(socket, to: ~p"/#{socket.assigns.account}/sites/#{socket.assigns.group}")
+      socket
+      |> put_flash(:info, "#{deleted_count} token(s) were revoked.")
 
     {:noreply, socket}
   end
 
   def handle_event("delete", _params, socket) do
-    # TODO: make sure tokens are all deleted too!
     {:ok, _group} = Gateways.delete_group(socket.assigns.group, socket.assigns.subject)
     {:noreply, push_navigate(socket, to: ~p"/#{socket.assigns.account}/sites")}
   end

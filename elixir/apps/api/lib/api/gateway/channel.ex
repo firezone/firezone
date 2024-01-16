@@ -44,11 +44,15 @@ defmodule API.Gateway.Channel do
       :ok = Gateways.connect_gateway(socket.assigns.gateway)
       :ok = API.Endpoint.subscribe("gateway:#{socket.assigns.gateway.id}")
 
+      config = Domain.Config.fetch_env!(:domain, Domain.Gateways)
+      ipv4_masquerade_enabled = Keyword.fetch!(config, :gateway_ipv4_masquerade)
+      ipv6_masquerade_enabled = Keyword.fetch!(config, :gateway_ipv6_masquerade)
+
       push(socket, "init", %{
         interface: Views.Interface.render(socket.assigns.gateway),
         # TODO: move to settings
-        ipv4_masquerade_enabled: true,
-        ipv6_masquerade_enabled: true
+        ipv4_masquerade_enabled: ipv4_masquerade_enabled,
+        ipv6_masquerade_enabled: ipv6_masquerade_enabled
       })
 
       {:noreply, socket}

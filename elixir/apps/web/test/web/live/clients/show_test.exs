@@ -149,7 +149,7 @@ defmodule Web.Live.Clients.ShowTest do
     assert row["policy"] =~ flow.policy.resource.name
 
     assert row["gateway (ip)"] ==
-             "#{flow.gateway.group.name}-#{flow.gateway.name} (189.172.73.153)"
+             "#{flow.gateway.group.name}-#{flow.gateway.name} (#{flow.gateway.last_seen_remote_ip})"
   end
 
   test "renders flows even for deleted policies", %{
@@ -185,7 +185,7 @@ defmodule Web.Live.Clients.ShowTest do
     assert row["policy"] =~ flow.policy.resource.name
 
     assert row["gateway (ip)"] ==
-             "#{flow.gateway.group.name}-#{flow.gateway.name} (189.172.73.153)"
+             "#{flow.gateway.group.name}-#{flow.gateway.name} (#{flow.gateway.last_seen_remote_ip})"
   end
 
   test "renders flows even for deleted policy assocs", %{
@@ -222,7 +222,7 @@ defmodule Web.Live.Clients.ShowTest do
     assert row["policy"] =~ flow.policy.resource.name
 
     assert row["gateway (ip)"] ==
-             "#{flow.gateway.group.name}-#{flow.gateway.name} (189.172.73.153)"
+             "#{flow.gateway.group.name}-#{flow.gateway.name} (#{flow.gateway.last_seen_remote_ip})"
   end
 
   test "allows editing clients", %{

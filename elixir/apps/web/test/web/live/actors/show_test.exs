@@ -125,7 +125,7 @@ defmodule Web.Live.Actors.ShowTest do
              "#{flow.client.name} (#{client.last_seen_remote_ip})"
 
     assert row["gateway (ip)"] ==
-             "#{flow.gateway.group.name}-#{flow.gateway.name} (189.172.73.153)"
+             "#{flow.gateway.group.name}-#{flow.gateway.name} (#{flow.gateway.last_seen_remote_ip})"
   end
 
   test "renders flows even for deleted policies", %{
@@ -165,7 +165,7 @@ defmodule Web.Live.Actors.ShowTest do
              "#{flow.client.name} (#{client.last_seen_remote_ip})"
 
     assert row["gateway (ip)"] ==
-             "#{flow.gateway.group.name}-#{flow.gateway.name} (189.172.73.153)"
+             "#{flow.gateway.group.name}-#{flow.gateway.name} (#{flow.gateway.last_seen_remote_ip})"
   end
 
   test "renders flows even for deleted policy assocs", %{
@@ -206,7 +206,7 @@ defmodule Web.Live.Actors.ShowTest do
              "#{flow.client.name} (#{client.last_seen_remote_ip})"
 
     assert row["gateway (ip)"] ==
-             "#{flow.gateway.group.name}-#{flow.gateway.name} (189.172.73.153)"
+             "#{flow.gateway.group.name}-#{flow.gateway.name} (#{flow.gateway.last_seen_remote_ip})"
   end
 
   describe "users" do

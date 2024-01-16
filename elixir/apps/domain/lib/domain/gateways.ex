@@ -1,8 +1,8 @@
 defmodule Domain.Gateways do
   use Supervisor
   alias Domain.{Repo, Auth, Validator, Geo}
-  alias Domain.{Accounts, Resources}
-  alias Domain.Gateways.{Authorizer, Gateway, Group, Token, Presence}
+  alias Domain.{Accounts, Resources, Tokens}
+  alias Domain.Gateways.{Authorizer, Gateway, Group, Presence}
 
   def start_link(opts) do
     Supervisor.start_link(__MODULE__, opts, name: __MODULE__)
@@ -150,35 +150,42 @@ defmodule Domain.Gateways do
       |> Authorizer.for_subject(subject)
       |> Repo.fetch_and_update(
         with: fn group ->
-          :ok =
-            Token.Query.by_group_id(group.id)
-            |> Repo.all()
-            |> Enum.each(fn token ->
-              Token.Changeset.delete(token)
-              |> Repo.update!()
-            end)
-
-          group
-          |> Group.Changeset.delete()
+          {:ok, _count} = Tokens.delete_tokens_for(group, subject)
+          Group.Changeset.delete(group)
         end
       )
     end
   end
 
-  def use_token_by_id_and_secret(id, secret) do
-    if Validator.valid_uuid?(id) do
-      Token.Query.by_id(id)
-      |> Repo.fetch_and_update(
-        with: fn token ->
-          if Domain.Crypto.equal?(:argon2, secret, token.hash) do
-            Token.Changeset.use(token)
-          else
-            :not_found
-          end
-        end
-      )
+  def create_token(
+        %Group{account_id: account_id} = group,
+        attrs,
+        %Auth.Subject{account: %{id: account_id}} = subject
+      ) do
+    attrs =
+      Map.merge(attrs, %{
+        "type" => :gateway_group,
+        "secret_fragment" => Domain.Crypto.random_token(32, encoder: :hex32),
+        "account_id" => group.account_id,
+        "gateway_group_id" => group.id,
+        "created_by_user_agent" => subject.context.user_agent,
+        "created_by_remote_ip" => subject.context.remote_ip
+      })
+
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_gateways_permission()),
+         {:ok, token} <- Tokens.create_token(attrs, subject) do
+      {:ok, Tokens.encode_fragment!(token)}
+    end
+  end
+
+  def authenticate(encoded_token, %Auth.Context{} = context) when is_binary(encoded_token) do
+    with {:ok, token} <- Tokens.use_token(encoded_token, context),
+         queryable = Group.Query.by_id(token.gateway_group_id),
+         {:ok, group} <- Repo.fetch(queryable) do
+      {:ok, group}
     else
-      {:error, :not_found}
+      {:error, :invalid_or_expired_token} -> {:error, :unauthorized}
+      {:error, :not_found} -> {:error, :unauthorized}
     end
   end
 
@@ -341,8 +348,8 @@ defmodule Domain.Gateways do
     Gateway.Changeset.update(gateway, attrs)
   end
 
-  def upsert_gateway(%Token{} = token, attrs) do
-    changeset = Gateway.Changeset.upsert(token, attrs)
+  def upsert_gateway(%Group{} = group, attrs, %Auth.Context{} = context) do
+    changeset = Gateway.Changeset.upsert(group, attrs, context)
 
     Ecto.Multi.new()
     |> Ecto.Multi.insert(:gateway, changeset,
@@ -445,29 +452,6 @@ defmodule Domain.Gateways do
     end
   end
 
-  def encode_token!(%Token{value: value} = token) when not is_nil(value) do
-    body = {token.id, token.value}
-    config = fetch_config!()
-    key_base = Keyword.fetch!(config, :key_base)
-    salt = Keyword.fetch!(config, :salt)
-    Plug.Crypto.sign(key_base, salt, body)
-  end
-
-  def authorize_gateway(encrypted_secret) do
-    config = fetch_config!()
-    key_base = Keyword.fetch!(config, :key_base)
-    salt = Keyword.fetch!(config, :salt)
-
-    with {:ok, {id, secret}} <-
-           Plug.Crypto.verify(key_base, salt, encrypted_secret, max_age: :infinity),
-         {:ok, token} <- use_token_by_id_and_secret(id, secret) do
-      {:ok, token}
-    else
-      {:error, :invalid} -> {:error, :invalid_token}
-      {:error, :not_found} -> {:error, :invalid_token}
-    end
-  end
-
   def connect_gateway(%Gateway{} = gateway) do
     meta = %{online_at: System.system_time(:second)}
 
@@ -483,10 +467,6 @@ defmodule Domain.Gateways do
 
   def subscribe_for_gateways_presence_in_group(%Group{} = group) do
     Phoenix.PubSub.subscribe(Domain.PubSub, "gateway_groups:#{group.id}")
-  end
-
-  defp fetch_config! do
-    Domain.Config.fetch_env!(:domain, __MODULE__)
   end
 
   # Finds the most strict routing strategy for a given list of gateway groups.

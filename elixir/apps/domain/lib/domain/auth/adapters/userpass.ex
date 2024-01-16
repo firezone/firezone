@@ -5,7 +5,7 @@ defmodule Domain.Auth.Adapters.UserPass do
   """
   use Supervisor
   alias Domain.Repo
-  alias Domain.Auth.{Identity, Provider, Adapter}
+  alias Domain.Auth.{Identity, Provider, Adapter, Context}
   alias Domain.Auth.Adapters.UserPass.Password
 
   @behaviour Adapter
@@ -93,7 +93,8 @@ defmodule Domain.Auth.Adapters.UserPass do
   end
 
   @impl true
-  def verify_secret(%Identity{} = identity, password) when is_binary(password) do
+  def verify_secret(%Identity{} = identity, %Context{} = _context, password)
+      when is_binary(password) do
     Identity.Query.by_id(identity.id)
     |> Repo.fetch_and_update(
       with: fn identity ->

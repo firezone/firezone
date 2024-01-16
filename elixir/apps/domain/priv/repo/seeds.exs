@@ -1,4 +1,4 @@
-alias Domain.{Repo, Accounts, Auth, Actors, Relays, Gateways, Resources, Policies, Flows}
+alias Domain.{Repo, Accounts, Auth, Actors, Relays, Gateways, Resources, Policies, Flows, Tokens}
 
 # Seeds can be run both with MIX_ENV=prod and MIX_ENV=test, for test env we don't have
 # an adapter configured and creation of email provider will fail, so we will override it here.
@@ -170,11 +170,6 @@ other_admin_actor_email = "other@localhost"
     }
   })
 
-unprivileged_actor_email_token =
-  unprivileged_actor_email_identity.provider_virtual_state.sign_in_token
-
-admin_actor_email_token = admin_actor_email_identity.provider_virtual_state.sign_in_token
-
 unprivileged_actor_context = %Auth.Context{
   type: :browser,
   user_agent: "Debian/11.0.0 connlib/0.1.0",
@@ -210,10 +205,34 @@ admin_actor_context = %Auth.Context{
   Auth.build_subject(admin_actor_token, admin_actor_context)
 
 {:ok, service_account_actor_encoded_token} =
-  Auth.create_service_account_token(service_account_actor, admin_subject, %{
-    "name" => "tok-#{Ecto.UUID.generate()}",
-    "expires_at" => DateTime.utc_now() |> DateTime.add(365, :day)
-  })
+  Auth.create_service_account_token(
+    service_account_actor,
+    %{
+      "name" => "tok-#{Ecto.UUID.generate()}",
+      "expires_at" => DateTime.utc_now() |> DateTime.add(365, :day)
+    },
+    admin_subject
+  )
+
+{:ok, unprivileged_actor_email_identity} =
+  Domain.Auth.Adapters.Email.request_sign_in_token(
+    unprivileged_actor_email_identity,
+    unprivileged_actor_context
+  )
+
+unprivileged_actor_email_token =
+  unprivileged_actor_email_identity.provider_virtual_state.nonce <>
+    unprivileged_actor_email_identity.provider_virtual_state.fragment
+
+{:ok, admin_actor_email_identity} =
+  Domain.Auth.Adapters.Email.request_sign_in_token(
+    admin_actor_email_identity,
+    admin_actor_context
+  )
+
+admin_actor_email_token =
+  admin_actor_email_identity.provider_virtual_state.nonce <>
+    admin_actor_email_identity.provider_virtual_state.fragment
 
 IO.puts("Created users: ")
 
@@ -297,43 +316,57 @@ all_group
 IO.puts("")
 
 {:ok, global_relay_group} =
-  Relays.create_global_group(%{
-    name: "fz-global-relays",
-    tokens: [%{}]
+  Relays.create_global_group(%{name: "fz-global-relays"})
+
+{:ok, global_relay_group_token} =
+  Tokens.create_token(%{
+    "type" => :relay_group,
+    "secret_fragment" => Domain.Crypto.random_token(32, encoder: :hex32),
+    "relay_group_id" => global_relay_group.id
   })
 
-global_relay_group_token = hd(global_relay_group.tokens)
-
 global_relay_group_token =
-  maybe_repo_update.(global_relay_group_token,
-    id: "c1038e22-0215-4977-9f6c-f65621e0008f",
-    hash:
-      "$argon2id$v=19$m=65536,t=3,p=4$XBzQrgdRFH5XhiTfWFcGWA$PTTy4D7xtahPbvGTgZLgGS8qHnfd8LJKWAnTdhB4yww",
-    value:
-      "Obnnb37dBtNQccCU-fBYu1h8NafAp0KyoOwlo2TTIy60ofokIlV60spa12G5pIG-RVKj5qwHVEh1k9n8xBcf9A"
+  global_relay_group_token
+  |> maybe_repo_update.(
+    id: "e82fcdc1-057a-4015-b90b-3b18f0f28053",
+    secret_salt: "lZWUdgh-syLGVDsZEu_29A",
+    secret_fragment: "C14NGA87EJRR03G4QPR07A9C6G784TSSTHSF4TI5T0GD8D6L0VRG====",
+    secret_hash: "c3c9a031ae98f111ada642fddae546de4e16ceb85214ab4f1c9d0de1fc472797"
   )
 
+global_relay_group_encoded_token = Tokens.encode_fragment!(global_relay_group_token)
+
 IO.puts("Created global relay groups:")
-IO.puts("  #{global_relay_group.name} token: #{Relays.encode_token!(global_relay_group_token)}")
+IO.puts("  #{global_relay_group.name} token: #{global_relay_group_encoded_token}")
 
 IO.puts("")
 
+relay_context = %Auth.Context{
+  type: :relay_group,
+  user_agent: "Ubuntu/14.04 connlib/0.7.412",
+  remote_ip: {100, 64, 100, 58}
+}
+
 {:ok, global_relay} =
-  Relays.upsert_relay(global_relay_group_token, %{
-    ipv4: {189, 172, 72, 111},
-    ipv6: {0, 0, 0, 0, 0, 0, 0, 1},
-    last_seen_user_agent: "iOS/12.7 (iPhone) connlib/0.7.412",
-    last_seen_remote_ip: %Postgrex.INET{address: {189, 172, 72, 111}}
-  })
+  Relays.upsert_relay(
+    global_relay_group,
+    %{
+      ipv4: {189, 172, 72, 111},
+      ipv6: {0, 0, 0, 0, 0, 0, 0, 1}
+    },
+    relay_context
+  )
 
 for i <- 1..5 do
   {:ok, _global_relay} =
-    Relays.upsert_relay(global_relay_group_token, %{
-      ipv4: {189, 172, 72, 111 + i},
-      ipv6: {0, 0, 0, 0, 0, 0, 0, i},
-      last_seen_user_agent: "iOS/12.7 (iPhone) connlib/0.7.412",
-      last_seen_remote_ip: %Postgrex.INET{address: {189, 172, 72, 111 + i}}
-    })
+    Relays.upsert_relay(
+      global_relay_group,
+      %{
+        ipv4: {189, 172, 72, 111 + i},
+        ipv6: {0, 0, 0, 0, 0, 0, 0, i}
+      },
+      %{relay_context | remote_ip: %Postgrex.INET{address: {189, 172, 72, 111 + i}}}
+    )
 end
 
 IO.puts("Created global relays:")
@@ -343,42 +376,60 @@ IO.puts("")
 
 relay_group =
   account
-  |> Relays.Group.Changeset.create(
-    %{name: "mycorp-aws-relays", tokens: [%{}]},
-    admin_subject
-  )
+  |> Relays.Group.Changeset.create(%{name: "mycorp-aws-relays"}, admin_subject)
   |> Repo.insert!()
 
-relay_group_token = hd(relay_group.tokens)
+{:ok, relay_group_token} =
+  Tokens.create_token(%{
+    "type" => :relay_group,
+    "secret_fragment" => Domain.Crypto.random_token(32, encoder: :hex32),
+    "account_id" => admin_subject.account.id,
+    "relay_group_id" => global_relay_group.id
+  })
 
 relay_group_token =
-  maybe_repo_update.(relay_group_token,
-    id: "7286b53d-073e-4c41-9ff1-cc8451dad299",
-    hash:
-      "$argon2id$v=19$m=131072,t=8,p=4$aSw/NA3z0vGJjvF3ukOcyg$5MPWPXLETM3iZ19LTihItdVGb7ou/i4/zhpozMrpCFg",
-    value: "EX77Ga0HKJUVLgcpMrN6HatdGnfvADYQrRjUWWyTqqt7BaUdEU3o9-FbBlRdINIK"
+  relay_group_token
+  |> maybe_repo_update.(
+    id: "549c4107-1492-4f8f-a4ec-a9d2a66d8aa9",
+    secret_salt: "jaJwcwTRhzQr15SgzTB2LA",
+    secret_fragment: "PU5AITE1O8VDVNMHMOAC77DIKMOGTDIA672S6G1AB02OS34H5ME0====",
+    secret_hash: "af133f7efe751ca978ec3e5fadf081ce9ab50138ff52862395858c3d2c11c0c5"
   )
 
+relay_group_encoded_token = Tokens.encode_fragment!(relay_group_token)
+
 IO.puts("Created relay groups:")
-IO.puts("  #{relay_group.name} token: #{Relays.encode_token!(relay_group_token)}")
+IO.puts("  #{relay_group.name} token: #{relay_group_encoded_token}")
 IO.puts("")
 
 {:ok, relay} =
-  Relays.upsert_relay(relay_group_token, %{
-    ipv4: {189, 172, 73, 111},
-    ipv6: {0, 0, 0, 0, 0, 0, 0, 1},
-    last_seen_user_agent: "iOS/12.7 (iPhone) connlib/0.7.412",
-    last_seen_remote_ip: %Postgrex.INET{address: {189, 172, 73, 111}}
-  })
+  Relays.upsert_relay(
+    relay_group,
+    %{
+      ipv4: {189, 172, 73, 111},
+      ipv6: {0, 0, 0, 0, 0, 0, 0, 1}
+    },
+    %Auth.Context{
+      type: :relay_group,
+      user_agent: "iOS/12.7 (iPhone) connlib/0.7.412",
+      remote_ip: %Postgrex.INET{address: {189, 172, 73, 111}}
+    }
+  )
 
 for i <- 1..5 do
   {:ok, _relay} =
-    Relays.upsert_relay(relay_group_token, %{
-      ipv4: {189, 172, 73, 111 + i},
-      ipv6: {0, 0, 0, 0, 0, 0, 0, i},
-      last_seen_user_agent: "iOS/12.7 (iPhone) connlib/0.7.412",
-      last_seen_remote_ip: %Postgrex.INET{address: {189, 172, 73, 111}}
-    })
+    Relays.upsert_relay(
+      relay_group,
+      %{
+        ipv4: {189, 172, 73, 111 + i},
+        ipv6: {0, 0, 0, 0, 0, 0, 0, i}
+      },
+      %Auth.Context{
+        type: :relay_group,
+        user_agent: "iOS/12.7 (iPhone) connlib/0.7.412",
+        remote_ip: %Postgrex.INET{address: {189, 172, 73, 111}}
+      }
+    )
 end
 
 IO.puts("Created relays:")
@@ -394,48 +445,77 @@ gateway_group =
   )
   |> Repo.insert!()
 
-gateway_group_token = hd(gateway_group.tokens)
-
-gateway_group_token =
-  maybe_repo_update.(
-    gateway_group_token,
-    id: "3cef0566-adfd-48fe-a0f1-580679608f6f",
-    hash:
-      "$argon2id$v=19$m=131072,t=8,p=4$w0aXBd0iv/OTizWGBRTKiw$m6J0YXRsFCO95Q8LeVvH+CxFTy0Li7Lrcs3NDJRykCA",
-    value: "jjtzxRFJPZGBc-oCZ9Dy2FwjwaHXMAUdpzuRr2sRropx75-znh_xp_5bT5Ono-rb"
+{:ok, gateway_group_token} =
+  Tokens.create_token(
+    %{
+      "type" => :gateway_group,
+      "secret_fragment" => Domain.Crypto.random_token(32, encoder: :hex32),
+      "account_id" => admin_subject.account.id,
+      "gateway_group_id" => gateway_group.id
+    },
+    admin_subject
   )
 
+gateway_group_token =
+  gateway_group_token
+  |> maybe_repo_update.(
+    id: "2274560b-e97b-45e4-8b34-679c7617e98d",
+    secret_salt: "uQyisyqrvYIIitMXnSJFKQ",
+    secret_fragment: "O02L7US2J3VINOMPR9J6IL88QIQP6UO8AQVO6U5IPL0VJC22JGH0====",
+    secret_hash: "876f20e8d4de25d5ffac40733f280782a7d8097347d77415ab6e4e548f13d2ee"
+  )
+
+gateway_group_encoded_token = Tokens.encode_fragment!(gateway_group_token)
+
 IO.puts("Created gateway groups:")
-IO.puts("  #{gateway_group.name} token: #{Gateways.encode_token!(gateway_group_token)}")
+IO.puts("  #{gateway_group.name} token: #{gateway_group_encoded_token}")
 IO.puts("")
 
 {:ok, gateway1} =
-  Gateways.upsert_gateway(gateway_group_token, %{
-    external_id: Ecto.UUID.generate(),
-    name: "gw-#{Domain.Crypto.random_token(5, encoder: :user_friendly)}",
-    public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
-    last_seen_user_agent: "iOS/12.7 (iPhone) connlib/0.7.412",
-    last_seen_remote_ip: %Postgrex.INET{address: {189, 172, 73, 153}}
-  })
+  Gateways.upsert_gateway(
+    gateway_group,
+    %{
+      external_id: Ecto.UUID.generate(),
+      name: "gw-#{Domain.Crypto.random_token(5, encoder: :user_friendly)}",
+      public_key: :crypto.strong_rand_bytes(32) |> Base.encode64()
+    },
+    %Auth.Context{
+      type: :gateway_group,
+      user_agent: "iOS/12.7 (iPhone) connlib/0.7.412",
+      remote_ip: %Postgrex.INET{address: {189, 172, 73, 153}}
+    }
+  )
 
 {:ok, gateway2} =
-  Gateways.upsert_gateway(gateway_group_token, %{
-    external_id: Ecto.UUID.generate(),
-    name: "gw-#{Domain.Crypto.random_token(5, encoder: :user_friendly)}",
-    public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
-    last_seen_user_agent: "iOS/12.7 (iPhone) connlib/0.7.412",
-    last_seen_remote_ip: %Postgrex.INET{address: {164, 112, 78, 62}}
-  })
+  Gateways.upsert_gateway(
+    gateway_group,
+    %{
+      external_id: Ecto.UUID.generate(),
+      name: "gw-#{Domain.Crypto.random_token(5, encoder: :user_friendly)}",
+      public_key: :crypto.strong_rand_bytes(32) |> Base.encode64()
+    },
+    %Auth.Context{
+      type: :gateway_group,
+      user_agent: "iOS/12.7 (iPhone) connlib/0.7.412",
+      remote_ip: %Postgrex.INET{address: {164, 112, 78, 62}}
+    }
+  )
 
 for i <- 1..10 do
   {:ok, _gateway} =
-    Gateways.upsert_gateway(gateway_group_token, %{
-      external_id: Ecto.UUID.generate(),
-      name: "gw-#{Domain.Crypto.random_token(5, encoder: :user_friendly)}",
-      public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
-      last_seen_user_agent: "iOS/12.7 (iPhone) connlib/0.7.412",
-      last_seen_remote_ip: %Postgrex.INET{address: {164, 112, 78, 62 + i}}
-    })
+    Gateways.upsert_gateway(
+      gateway_group,
+      %{
+        external_id: Ecto.UUID.generate(),
+        name: "gw-#{Domain.Crypto.random_token(5, encoder: :user_friendly)}",
+        public_key: :crypto.strong_rand_bytes(32) |> Base.encode64()
+      },
+      %Auth.Context{
+        type: :gateway_group,
+        user_agent: "iOS/12.7 (iPhone) connlib/0.7.412",
+        remote_ip: %Postgrex.INET{address: {164, 112, 78, 62 + i}}
+      }
+    )
 end
 
 IO.puts("Created gateways:")

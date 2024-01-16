@@ -2,7 +2,8 @@ defmodule Domain.Actors.Actor do
   use Domain, :schema
 
   schema "actors" do
-    field :type, Ecto.Enum, values: [:account_user, :account_admin_user, :service_account]
+    field :type, Ecto.Enum,
+      values: [:account_user, :account_admin_user, :service_account, :api_client]
 
     field :name, :string
 
@@ -11,6 +12,8 @@ defmodule Domain.Actors.Actor do
     has_many :clients, Domain.Clients.Client,
       where: [deleted_at: nil],
       preload_order: [desc: :last_seen_at]
+
+    has_many :tokens, Domain.Tokens.Token, where: [deleted_at: nil]
 
     has_many :memberships, Domain.Actors.Membership, on_replace: :delete
     # TODO: where doesn't work on join tables so soft-deleted records will be preloaded,

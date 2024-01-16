@@ -77,11 +77,10 @@ defmodule API.Client.SocketTest do
       actor = Fixtures.Actors.create_actor(type: :service_account, account: account)
 
       subject = Fixtures.Auth.create_subject(account: account, actor: [type: :account_admin_user])
+      in_one_minute = DateTime.utc_now() |> DateTime.add(60, :second)
 
       {:ok, encoded_token} =
-        Domain.Auth.create_service_account_token(actor, subject, %{
-          "expires_at" => DateTime.utc_now() |> DateTime.add(60, :second)
-        })
+        Domain.Auth.create_service_account_token(actor, %{"expires_at" => in_one_minute}, subject)
 
       attrs = connect_attrs(token: encoded_token)
 

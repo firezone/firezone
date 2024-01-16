@@ -1,7 +1,8 @@
 defmodule Domain.Auth.Adapters.Email do
   use Supervisor
   alias Domain.Repo
-  alias Domain.Auth.{Identity, Provider, Adapter}
+  alias Domain.Tokens
+  alias Domain.Auth.{Identity, Provider, Adapter, Context}
 
   @behaviour Adapter
   @behaviour Adapter.Local
@@ -30,9 +31,7 @@ defmodule Domain.Auth.Adapters.Email do
   end
 
   @impl true
-  def identity_changeset(%Provider{} = provider, %Ecto.Changeset{} = changeset) do
-    {state, virtual_state} = identity_create_state(provider)
-
+  def identity_changeset(%Provider{}, %Ecto.Changeset{} = changeset) do
     changeset
     |> Domain.Validator.trim_change(:provider_identifier)
     |> Domain.Validator.validate_email(:provider_identifier)
@@ -40,8 +39,8 @@ defmodule Domain.Auth.Adapters.Email do
       required: true,
       message: "email does not match"
     )
-    |> Ecto.Changeset.put_change(:provider_state, state)
-    |> Ecto.Changeset.put_change(:provider_virtual_state, virtual_state)
+    |> Ecto.Changeset.put_change(:provider_state, %{})
+    |> Ecto.Changeset.put_change(:provider_virtual_state, %{})
   end
 
   @impl true
@@ -68,111 +67,51 @@ defmodule Domain.Auth.Adapters.Email do
     {:ok, identity, redirect_url}
   end
 
-  defp identity_create_state(%Provider{} = _provider) do
-    email_token = Domain.Crypto.random_token(5, encoder: :user_friendly)
-    nonce = Domain.Crypto.random_token(27)
-    sign_in_token = String.downcase(email_token) <> nonce
+  def request_sign_in_token(%Identity{} = identity, %Context{} = context) do
+    nonce = String.downcase(Domain.Crypto.random_token(5, encoder: :user_friendly))
+    expires_at = DateTime.utc_now() |> DateTime.add(@sign_in_token_expiration_seconds, :second)
 
-    salt = Domain.Crypto.random_token(16)
+    {:ok, _count} = Tokens.delete_all_tokens_by_type_and_assoc(:email, identity)
 
-    {
-      %{
-        "sign_in_token_salt" => salt,
-        "sign_in_token_hash" => Domain.Crypto.hash(:argon2, sign_in_token <> salt),
-        "sign_in_token_created_at" => DateTime.utc_now()
-      },
-      %{
-        sign_in_token: sign_in_token
-      }
+    {:ok, token} =
+      Tokens.create_token(%{
+        type: :email,
+        secret_fragment: Domain.Crypto.random_token(27),
+        secret_nonce: nonce,
+        account_id: identity.account_id,
+        actor_id: identity.actor_id,
+        identity_id: identity.id,
+        remaining_attempts: @sign_in_token_max_attempts,
+        expires_at: expires_at,
+        created_by_user_agent: context.user_agent,
+        created_by_remote_ip: context.remote_ip
+      })
+
+    fragment = Tokens.encode_fragment!(token)
+
+    state = %{
+      "last_created_token_id" => token.id,
+      "token_created_at" => token.inserted_at
     }
-  end
 
-  def request_sign_in_token(%Identity{} = identity) do
-    identity = Repo.preload(identity, :provider)
-    {state, virtual_state} = identity_create_state(identity.provider)
+    virtual_state = %{nonce: nonce, fragment: fragment}
     Identity.Mutator.update_provider_state(identity, state, virtual_state)
   end
 
   @impl true
-  def verify_secret(%Identity{} = identity, token) do
-    consume_sign_in_token(identity, token)
-  end
+  def verify_secret(%Identity{} = identity, %Context{} = context, encoded_token) do
+    with {:ok, token} <- Tokens.use_token(encoded_token, %{context | type: :email}) do
+      {:ok, identity} =
+        Identity.Changeset.update_identity_provider_state(identity, %{
+          last_used_token_id: token.id
+        })
+        |> Repo.update()
 
-  defp consume_sign_in_token(%Identity{} = identity, token) when is_binary(token) do
-    Identity.Query.by_id(identity.id)
-    |> Repo.fetch_and_update(
-      with: fn identity ->
-        sign_in_token_hash =
-          identity.provider_state["sign_in_token_hash"] ||
-            identity.provider_state[:sign_in_token_hash]
+      {:ok, _count} = Tokens.delete_all_tokens_by_type_and_assoc(:email, identity)
 
-        sign_in_token_created_at =
-          identity.provider_state["sign_in_token_created_at"] ||
-            identity.provider_state[:sign_in_token_created_at]
-
-        sign_in_token_salt =
-          identity.provider_state["sign_in_token_salt"] ||
-            identity.provider_state[:sign_in_token_salt]
-
-        cond do
-          is_nil(sign_in_token_hash) ->
-            :invalid_secret
-
-          is_nil(sign_in_token_salt) ->
-            :invalid_secret
-
-          is_nil(sign_in_token_created_at) ->
-            :invalid_secret
-
-          sign_in_token_expired?(sign_in_token_created_at) ->
-            :expired_secret
-
-          not Domain.Crypto.equal?(:argon2, token <> sign_in_token_salt, sign_in_token_hash) ->
-            track_failed_attempt!(identity)
-
-          true ->
-            Identity.Changeset.update_identity_provider_state(identity, %{}, %{})
-        end
-      end
-    )
-    |> case do
-      {:ok, identity} -> {:ok, identity, nil}
-      {:error, reason} -> {:error, reason}
-    end
-  end
-
-  defp track_failed_attempt!(%Identity{} = identity) do
-    attempts = identity.provider_state["sign_in_failed_attempts"] || 0
-    attempt = attempts + 1
-
-    {error, provider_state} =
-      if attempt > @sign_in_token_max_attempts do
-        {:invalid_secret, %{}}
-      else
-        provider_state = Map.put(identity.provider_state, "sign_in_failed_attempts", attempts + 1)
-        {:invalid_secret, provider_state}
-      end
-
-    Identity.Changeset.update_identity_provider_state(identity, provider_state, %{})
-    |> Repo.update!()
-
-    error
-  end
-
-  defp sign_in_token_expired?(%DateTime{} = sign_in_token_created_at) do
-    now = DateTime.utc_now()
-    DateTime.diff(now, sign_in_token_created_at, :second) > @sign_in_token_expiration_seconds
-  end
-
-  defp sign_in_token_expired?(sign_in_token_created_at) do
-    now = DateTime.utc_now()
-
-    case DateTime.from_iso8601(sign_in_token_created_at) do
-      {:ok, sign_in_token_created_at, 0} ->
-        DateTime.diff(now, sign_in_token_created_at, :second) > @sign_in_token_expiration_seconds
-
-      {:error, _reason} ->
-        true
+      {:ok, identity, nil}
+    else
+      {:error, :invalid_or_expired_token} -> {:error, :invalid_secret}
     end
   end
 end

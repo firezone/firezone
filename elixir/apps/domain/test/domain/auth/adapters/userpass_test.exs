@@ -109,7 +109,7 @@ defmodule Domain.Auth.Adapters.UserPassTest do
     end
   end
 
-  describe "verify_secret/2" do
+  describe "verify_secret/3" do
     setup do
       account = Fixtures.Accounts.create_account()
       provider = Fixtures.Auth.create_userpass_provider(account: account)
@@ -124,19 +124,22 @@ defmodule Domain.Auth.Adapters.UserPassTest do
           }
         )
 
+      context = Fixtures.Auth.build_context()
+
       %{
         account: account,
         provider: provider,
-        identity: identity
+        identity: identity,
+        context: context
       }
     end
 
-    test "returns :invalid_secret on invalid password", %{identity: identity} do
-      assert verify_secret(identity, "FirezoneInvalid") == {:error, :invalid_secret}
+    test "returns :invalid_secret on invalid password", %{identity: identity, context: context} do
+      assert verify_secret(identity, context, "FirezoneInvalid") == {:error, :invalid_secret}
     end
 
-    test "returns :ok on valid password", %{identity: identity} do
-      assert {:ok, verified_identity, nil} = verify_secret(identity, "Firezone1234")
+    test "returns :ok on valid password", %{identity: identity, context: context} do
+      assert {:ok, verified_identity, nil} = verify_secret(identity, context, "Firezone1234")
 
       assert verified_identity.provider_state["password_hash"] ==
                identity.provider_state["password_hash"]

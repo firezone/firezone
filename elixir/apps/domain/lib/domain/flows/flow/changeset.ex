@@ -7,7 +7,7 @@ defmodule Domain.Flows.Flow.Changeset do
              client_remote_ip client_user_agent
              gateway_remote_ip
              expires_at]a
-  @required_fields @fields
+  @required_fields @fields -- ~w[expires_at]a
 
   def create(attrs) do
     %Flow{}
