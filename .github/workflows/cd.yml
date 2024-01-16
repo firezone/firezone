@@ -211,7 +211,6 @@ jobs:
       - name: Build and push release Docker images by digest
         id: build
         uses: docker/build-push-action@v5
-        target: release
         with:
           platforms: ${{ matrix.arch.platform }}
           build-args: |
