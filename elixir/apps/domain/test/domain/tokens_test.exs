@@ -195,9 +195,7 @@ defmodule Domain.TokensTest do
       assert errors_on(changeset) == %{
                type: ["can't be blank"],
                secret_fragment: ["can't be blank"],
-               secret_hash: ["can't be blank"],
-               created_by_remote_ip: ["can't be blank"],
-               created_by_user_agent: ["can't be blank"]
+               secret_hash: ["can't be blank"]
              }
     end
 
@@ -234,8 +232,6 @@ defmodule Domain.TokensTest do
       nonce = "nonce"
       fragment = Domain.Crypto.random_token(32)
       expires_at = DateTime.utc_now() |> DateTime.add(1, :day)
-      user_agent = Fixtures.Tokens.user_agent()
-      remote_ip = Fixtures.Tokens.remote_ip()
 
       attrs = %{
         type: type,
@@ -243,17 +239,15 @@ defmodule Domain.TokensTest do
         secret_fragment: fragment,
         actor_id: actor.id,
         identity_id: identity.id,
-        expires_at: expires_at,
-        created_by_user_agent: user_agent,
-        created_by_remote_ip: remote_ip
+        expires_at: expires_at
       }
 
       assert {:ok, %Tokens.Token{} = token} = create_token(attrs, subject)
 
       assert token.type == type
       assert token.expires_at == expires_at
-      assert token.created_by_user_agent == user_agent
-      assert token.created_by_remote_ip.address == remote_ip
+      assert token.created_by_user_agent == subject.context.user_agent
+      assert token.created_by_remote_ip == subject.context.remote_ip
 
       assert token.secret_fragment == fragment
       refute token.secret_nonce

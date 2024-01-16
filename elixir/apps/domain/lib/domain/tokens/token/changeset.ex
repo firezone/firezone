@@ -34,6 +34,8 @@ defmodule Domain.Tokens.Token.Changeset do
     |> cast(attrs, @create_attrs)
     |> put_change(:account_id, subject.account.id)
     |> validate_required(@required_attrs)
+    |> put_change(:created_by_user_agent, subject.context.user_agent)
+    |> put_change(:created_by_remote_ip, subject.context.remote_ip)
     |> validate_required([:created_by_user_agent, :created_by_remote_ip])
     |> validate_inclusion(:type, [
       :client,
