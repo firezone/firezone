@@ -13,7 +13,6 @@ services:
     init: true
     environment:
       ROLE: "dialer"
-      LISTEN_ADDR: 172.28.0.100
       REDIS_HOST: redis # All services share the `app` network.
     cap_add:
       - NET_ADMIN
@@ -23,8 +22,7 @@ services:
     #   redis:
     #     condition: "service_healthy"
     networks:
-      app:
-        ipv4_address: 172.28.0.100
+      - app
 
   listener:
     build:
@@ -38,7 +36,6 @@ services:
     init: true
     environment:
       ROLE: "listener"
-      LISTEN_ADDR: 172.28.0.101
       REDIS_HOST: redis # All services share the `app` network.
     cap_add:
       - NET_ADMIN
@@ -90,13 +87,11 @@ services:
     # healthcheck:
     #   test: ["CMD-SHELL", "echo 'ready';"]
     networks:
-      app:
-        ipv4_address: 172.28.0.103
+      - app
 
 networks:
   app:
-    enable_ipv6: true
-    ipam:
+   # enable_ipv6: true Disable until we find a workaround for https://github.com/moby/moby/issues/41438.
+     ipam:
       config:
         - subnet: 172.28.0.0/24
-        - subnet: fc00:ff:2::/48

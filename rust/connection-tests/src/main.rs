@@ -1,6 +1,6 @@
 use std::{
     future::poll_fn,
-    net::{IpAddr, Ipv4Addr},
+    net::Ipv4Addr,
     str::FromStr,
     task::{Context, Poll},
     time::{Duration, Instant},
@@ -32,9 +32,17 @@ async fn main() -> Result<()> {
     let role = std::env::var("ROLE")
         .context("Missing ROLE env variable")?
         .parse::<Role>()?;
-    let listen_addr = std::env::var("LISTEN_ADDR")
-        .context("Missing LISTEN_ADDR env var")?
-        .parse::<IpAddr>()?;
+
+    let listen_addr = system_info::NetworkInterfaces::new()
+        .context("Failed to get network interfaces")?
+        .iter()
+        .find_map(|i| i.addresses().find(|a| !a.ip.is_loopback()))
+        .context("Failed to find interface with non-loopback address")?
+        .ip
+        .to_std();
+
+    tracing::info!(%listen_addr);
+
     let redis_host = std::env::var("REDIS_HOST").context("Missing LISTEN_ADDR env var")?;
 
     let redis_client = redis::Client::open(format!("redis://{redis_host}:6379"))?;
