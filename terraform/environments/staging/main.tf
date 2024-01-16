@@ -360,14 +360,6 @@ locals {
       value = base64encode(random_password.tokens_salt.result)
     },
     {
-      name  = "GATEWAYS_AUTH_TOKEN_KEY_BASE"
-      value = base64encode(random_password.gateways_auth_token_key_base.result)
-    },
-    {
-      name  = "GATEWAYS_AUTH_TOKEN_SALT"
-      value = base64encode(random_password.gateways_auth_token_salt.result)
-    },
-    {
       name  = "SECRET_KEY_BASE"
       value = base64encode(random_password.secret_key_base.result)
     },
