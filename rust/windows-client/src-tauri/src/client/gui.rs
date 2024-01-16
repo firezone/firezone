@@ -307,6 +307,7 @@ struct Controller {
     logging_handles: client::logging::Handles,
     /// Tells us when to wake up and look for a new resource list. Tokio docs say that memory reads and writes are synchronized when notifying, so we don't need an extra mutex on the resources.
     notify_controller: Arc<Notify>,
+    tunnel_ready: bool,
 }
 
 /// Everything related to a signed-in user session
@@ -335,6 +336,7 @@ impl Controller {
             log_counting_task: None,
             logging_handles,
             notify_controller,
+            tunnel_ready: false,
         };
 
         if let Some(token) = this.auth.token()? {
@@ -412,12 +414,12 @@ impl Controller {
     }
 
     /// Returns a new system tray menu
-    fn build_system_tray_menu(&self) -> Result<tauri::SystemTrayMenu> {
-        Ok(if let Some(auth_session) = self.auth.session() {
+    fn build_system_tray_menu(&self) -> tauri::SystemTrayMenu {
+        // TODO: Refactor this and the auth module so that "Are we logged in"
+        // doesn't require such complicated control flow to answer.
+        if let Some(auth_session) = self.auth.session() {
             if let Some(connlib_session) = &self.session {
-                // TODO: Modify CallbackHandler so it can tell us whether the tunnel is really ready.
-                let tunnel_ready = true;
-                if tunnel_ready {
+                if self.tunnel_ready {
                     // Signed in, tunnel ready
                     let resources = connlib_session.callback_handler.resources.load();
                     system_tray_menu::signed_in(&auth_session.actor_name, &resources)
@@ -426,25 +428,23 @@ impl Controller {
                     system_tray_menu::signing_in()
                 }
             } else {
-                bail!("We have an auth session but no connlib session");
+                tracing::error!("We have an auth session but no connlib session");
+                system_tray_menu::signed_out()
             }
         } else if self.auth.ongoing_request().is_ok() {
             // Signing in, waiting on deep link callback
             system_tray_menu::signing_in()
         } else {
             system_tray_menu::signed_out()
-        })
+        }
     }
 
     /// Builds a new system tray menu and applies it to the app
     fn refresh_system_tray_menu(&self) -> Result<()> {
-        let menu = self.build_system_tray_menu().unwrap_or_else(|error| {
-            tracing::error!(?error, "couldn't build system tray menu");
-            // If there's an error, show the signed-out menu as a default.
-            system_tray_menu::signed_out()
-        });
-        self.app.tray_handle().set_menu(menu)?;
-        Ok(())
+        Ok(self
+            .app
+            .tray_handle()
+            .set_menu(self.build_system_tray_menu())?)
     }
 }
 
@@ -482,6 +482,7 @@ async fn run_controller(
                     }
                     Req::Disconnected => {
                         tracing::debug!("connlib disconnected, tearing down Session");
+                        controller.tunnel_ready = false;
                         if let Some(mut session) = controller.session.take() {
                             tracing::debug!("disconnecting connlib");
                             session.connlib.disconnect(None);
@@ -507,6 +508,7 @@ async fn run_controller(
                     }
                     Req::SignOut => {
                         controller.auth.sign_out()?;
+                        controller.tunnel_ready = false;
                         if let Some(mut session) = controller.session.take() {
                             tracing::debug!("disconnecting connlib");
                             session.connlib.disconnect(None);
@@ -530,7 +532,8 @@ async fn run_controller(
                         }
                     }
                     Req::TunnelReady => {
-                        // TODO: Also use this as a signal for the system tray menu state
+                        controller.tunnel_ready = true;
+
                         // May say "Windows Powershell" in dev mode
                         // See https://github.com/tauri-apps/tauri/issues/3700
                         Notification::new(&controller.app.config().tauri.bundle.identifier)
