@@ -218,8 +218,6 @@ jobs:
             PACKAGE=${{ matrix.name.package }}
             TARGET=${{ matrix.arch.target }}
           context: rust
-          cache-from: |
-            type=registry,ref=${{ steps.login.outputs.registry }}/cache/${{ matrix.name.image_name }}:main
           cache-to: |
             type=registry,ref=${{ steps.login.outputs.registry }}/cache/${{ matrix.name.image_name }}:main,mode=max
           target: release
