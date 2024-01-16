@@ -150,7 +150,7 @@ services:
     healthcheck:
       test: ["CMD-SHELL", "cat /proc/net/dev | grep tun-firezone"]
     environment:
-      FIREZONE_TOKEN: "SFMyNTY.g2gDaAJtAAAAJDNjZWYwNTY2LWFkZmQtNDhmZS1hMGYxLTU4MDY3OTYwOGY2Zm0AAABAamp0enhSRkpQWkdCYy1vQ1o5RHkyRndqd2FIWE1BVWRwenVScjJzUnJvcHg3NS16bmhfeHBfNWJUNU9uby1yYm4GAEC0b0KJAWIAAVGA.9Oirn9t8rvQpfOhW7hwGBFVzeMm9di0xYGTlwf9cFFk"
+      FIREZONE_TOKEN: "SFMyNTY.g2gDaAJtAAAAJDNjZWYwNTY2LWFkZmQtNDhmZS1hMGYxLTU4MDY3OTYwOGY2Zm0AAABAamp0enhSRkpQWkdCYy1vQ1o5RHkyRndqd2FIWE1BVWRwenVScjJzUnJvcHg3NS16bmhfeHBfNWJUNU9uby1yYm4GAMY5URKNAWIAAVGA.8t4Dh0F7WNQw0kr7cOvXrO_n-VS1Tdv6zHSGvn8VDbM"
       RUST_LOG: firezone_gateway=trace,wire=trace,connlib_gateway_shared=trace,firezone_tunnel=trace,connlib_shared=trace,warn
       FIREZONE_ENABLE_MASQUERADE: 1
       FIREZONE_API_URL: ws://api:8081
@@ -208,7 +208,7 @@ services:
       # Token for self-hosted Relay
       #FIREZONE_TOKEN: "SFMyNTY.g2gDaAJtAAAAJDcyODZiNTNkLTA3M2UtNGM0MS05ZmYxLWNjODQ1MWRhZDI5OW0AAABARVg3N0dhMEhLSlVWTGdjcE1yTjZIYXRkR25mdkFEWVFyUmpVV1d5VHFxdDdCYVVkRVUzbzktRmJCbFJkSU5JS24GAFSzb0KJAWIAAVGA.waeGE26tbgkgIcMrWyck0ysv9SHIoHr0zqoM3wao84M"
       # Token for global Relay
-      FIREZONE_TOKEN: "SFMyNTY.g2gDaAJtAAAAJGMxMDM4ZTIyLTAyMTUtNDk3Ny05ZjZjLWY2NTYyMWUwMDA4Zm0AAABWT2JubmIzN2RCdE5RY2NDVS1mQll1MWg4TmFmQXAwS3lvT3dsbzJUVEl5NjBvZm9rSWxWNjBzcGExMkc1cElHLVJWS2o1cXdIVkVoMWs5bjh4QmNmOUFuBgAqiFHuiwFiAAFRgA.VyV9cW06PCZyxTefBwIlSCFTDBFEOSRQ2gfJXtMplVE"
+      FIREZONE_TOKEN: "SFMyNTY.g2gDaAJtAAAAJDcyODZiNTNkLTA3M2UtNGM0MS05ZmYxLWNjODQ1MWRhZDI5OW0AAABARVg3N0dhMEhLSlVWTGdjcE1yTjZIYXRkR25mdkFEWVFyUmpVV1d5VHFxdDdCYVVkRVUzbzktRmJCbFJkSU5JS24GAHc5URKNAWIAAVGA.EZ0UbCb99RnMt7hGzN8u8tF6Jddzk_spJ3wNiWLaugE"
       RUST_LOG: "debug"
       RUST_BACKTRACE: 1
       FIREZONE_API_URL: ws://api:8081
@@ -222,7 +222,8 @@ services:
         PACKAGE: firezone-relay
     image: us-east1-docker.pkg.dev/firezone-staging/firezone/relay:${VERSION:-main}
     healthcheck:
-      test: ["CMD-SHELL", "lsof -i UDP | grep firezone-relay"]
+      # Poor man's netstat -- Check for listening on 3478 (0D96 in hex)
+      test: ["CMD-SHELL", "cat /proc/net/udp | grep 0D96"]
       start_period: 3s
       interval: 30s
       retries: 5
