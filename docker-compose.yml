@@ -148,7 +148,7 @@ services:
 
   gateway:
     healthcheck:
-      test: ["CMD-SHELL", "ip link | grep tun-firezone"]
+      test: ["CMD-SHELL", "cat /proc/net/dev | grep tun-firezone"]
     environment:
       FIREZONE_TOKEN: "SFMyNTY.g2gDaAJtAAAAJDNjZWYwNTY2LWFkZmQtNDhmZS1hMGYxLTU4MDY3OTYwOGY2Zm0AAABAamp0enhSRkpQWkdCYy1vQ1o5RHkyRndqd2FIWE1BVWRwenVScjJzUnJvcHg3NS16bmhfeHBfNWJUNU9uby1yYm4GAEC0b0KJAWIAAVGA.9Oirn9t8rvQpfOhW7hwGBFVzeMm9di0xYGTlwf9cFFk"
       RUST_LOG: firezone_gateway=trace,wire=trace,connlib_gateway_shared=trace,firezone_tunnel=trace,connlib_shared=trace,warn
@@ -374,14 +374,16 @@ networks:
     enable_ipv6: true
     ipam:
       config:
-        - subnet: 172.20.0.0/16
-        - subnet: 2001:db8:1::/64
+        - subnet: 172.20.0.0/24
+        - subnet: fc00:ff:1::/48
   app:
-    enable_ipv6: true
+    # Currently not working on testbed
+    # enable_ipv6: true
     ipam:
       config:
-        - subnet: 172.28.0.0/16
-        - subnet: 2001:db8:2::/64
+        - subnet: 172.28.0.0/24
+    # Currently not working on testbed
+    # - subnet: fc00:ff:2::/48
 
 volumes:
   postgres-data:

@@ -1,3 +1,9 @@
+# This workflow file contains end-to-end tests for running client apps on
+# our baremetal testbed. Artifacts are intentionally built in debug mode
+# so that debug assert and other test-related macros can be triggered.
+#
+# This workflow does not replace the need to sanity check the QA builds manually,
+# but should reduce (and some day) eliminate the need for a full manual QA runbook.
 name: End to end tests
 on:
   # TODO
@@ -5,81 +11,199 @@ on:
   #   branches:
   #     - main
   workflow_dispatch:
-
-defaults:
-  working-directory: ./e2e
+  pull_request:
 
 concurrency:
   group: "e2e-${{ github.workflow }}-${{ github.ref }}"
   cancel-in-progress: true
 
 jobs:
-  setup-e2e:
+  setup:
     runs-on: ubuntu-22.04-firezone
+    env:
+      # mark:automatic-version
+      VERSION: "1.0.0"
     steps:
       - uses: actions/checkout@v4
-      - run: echo "Spin up docker test environment"
+      - run: docker compose up -d postgres
+      - run: docker compose run elixir /bin/sh -c 'cd apps/domain && mix do ecto.create, ecto.migrate, ecto.seed'
+      - name: Build images
+        run: |
+          docker compose build
+      - name: Start docker compose in the background
+        run: |
+          docker compose up -d \
+            api \
+            web \
+            client \
+            relay \
+            gateway \
+            iperf3
+      - name: Wait for client to ping resource
+        run: |
+          docker compose exec -it client timeout 60 \
+          sh -c 'until ping -W 1 -c 1 172.20.0.100 &>/dev/null; do true; done'
 
   macos:
-    needs: setup-e2e
+    needs: setup
     runs-on: macos-14-firezone
+    permissions:
+      contents: read
+      id-token: 'write'
+    defaults:
+      run:
+        working-directory: ./swift/apple
     steps:
       - uses: actions/checkout@v4
-      - run: echo 'Noop'
+      - uses: ./.github/actions/setup-rust
+        with:
+          sccache_enabled: false
+          targets: aarch64-apple-darwin
+      - name: build macos app
+        run: |
+          # Copy xcconfig
+          cp Firezone/xcconfig/debug.xcconfig Firezone/xcconfig/config.xcconfig
 
-  windows:
-    needs: setup-e2e
-    runs-on: windows-11-firezone
-    steps:
-      - uses: actions/checkout@v4
-      - run: echo 'Noop'
+          # Unlock keychain; simulates a user logged into the GUI
+          security unlock-keychain -p '${{ secrets.MACOS_SELF_HOSTED_USER_PASSWORD }}'
 
-  linux:
-    needs: setup-e2e
-    runs-on: ubuntu-22.04-firezone
-    steps:
-      - uses: actions/checkout@v4
-      - run: echo 'Noop'
-
-  android:
-    needs: setup-e2e
-    runs-on: ubuntu-22.04-firezone
-    steps:
-      - uses: actions/checkout@v4
-      - run: echo 'Noop'
-
-  chromeos:
-    needs: setup-e2e
-    runs-on: ubuntu-22.04-firezone
-    steps:
-      - uses: actions/checkout@v4
-      - run: echo 'Noop'
+          # Build app bundle
+          # If this results in codesign errors saying errSecInternalComponent, see
+          # https://forums.developer.apple.com/forums/thread/712005
+          xcodebuild build \
+            -allowProvisioningUpdates \
+            -configuration Debug \
+            -scheme Firezone \
+            -sdk macosx \
+            -destination 'platform=macOS'
 
   ios:
-    needs: setup-e2e
+    strategy:
+      fail-fast: false
+      matrix:
+        destination:
+          - iphone
+          - ipad
+    needs: setup
     runs-on: macos-14-firezone
+    permissions:
+      contents: read
+      id-token: 'write'
+    defaults:
+      run:
+        working-directory: ./swift/apple
     steps:
       - uses: actions/checkout@v4
-      - run: echo 'Noop'
+      - uses: ./.github/actions/setup-rust
+        with:
+          sccache_enabled: false
+          targets: aarch64-apple-ios
+      - name: build ios app
+        run: |
+          # Copy xcconfig
+          cp Firezone/xcconfig/debug.xcconfig Firezone/xcconfig/config.xcconfig
 
-  ipados:
-    needs: setup-e2e
-    runs-on: macos-14-firezone
+          # Unlock keychain; simulates a user logged into the GUI
+          security unlock-keychain -p '${{ secrets.MACOS_SELF_HOSTED_USER_PASSWORD }}'
+
+          # Build archive
+          xcodebuild build \
+            -allowProvisioningUpdates \
+            -configuration Debug \
+            -scheme Firezone \
+            -sdk iphoneos \
+            -destination "platform=iOS,name=${{ matrix.destination }}"
+
+  windows:
+    needs: setup
+    runs-on: windows-11-firezone
+    permissions:
+      contents: read
+      id-token: 'write'
+    defaults:
+      run:
+        working-directory: ./rust
     steps:
       - uses: actions/checkout@v4
-      - run: echo 'Noop'
+      - uses: ./.github/actions/setup-node
+      - uses: ./.github/actions/setup-rust
+        with:
+          sccache_enabled: false
+          targets: x86_64-pc-windows-msvc
+      - name: Build binaries
+        run: |
+          pnpm add -g @tauri-apps/cli
+          tauri build --verbose --debug
 
-  teardown-e2e:
+  linux:
+    needs: setup
+    runs-on: ubuntu-22.04-firezone
+    permissions:
+      contents: read
+      id-token: 'write'
+    defaults:
+      run:
+        working-directory: ./rust
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-rust
+        with:
+          sccache_enabled: false
+          targets: x86_64-unknown-linux-musl
+      - run: |
+          cargo build --package firezone-linux-client
+
+          # TODO Run tests
+          # ./target/debug/firezone-linux-client
+
+  android:
+    needs: setup
+    runs-on: ubuntu-22.04-firezone
+    permissions:
+      contents: read
+      id-token: 'write'
+    defaults:
+      run:
+        working-directory: ./kotlin/android
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-rust
+        with:
+          sccache_enabled: false
+          targets: armv7-linux-androideabi aarch64-linux-android x86_64-linux-android i686-linux-android
+      - uses: actions/setup-java@v4
+        with:
+          distribution: oracle
+          java-version: 17
+      - name: Setup Gradle
+        uses: gradle/gradle-build-action@v2
+        with:
+          build-root-directory: ./kotlin/android
+      - run: |
+          echo 'sdk.dir=/home/firezone/Android/Sdk' > local.properties
+          ./gradlew --info bundleDebug
+
+  teardown:
     needs:
       - macos
       - windows
       - linux
       - android
-      - chromeos
       - ios
-      - ipados
     if: 'always()'
     runs-on: ubuntu-22.04-firezone
     steps:
       - uses: actions/checkout@v4
-      - run: echo 'Teardown e2e environment'
+      - run: docker compose logs postgres
+      - run: docker compose logs vault
+      - run: docker compose logs web
+      - run: docker compose logs client
+      - run: docker compose logs gateway
+      - run: docker compose logs relay
+      - run: docker compose logs elixir
+      - run: docker compose logs api
+      - run: |
+          docker compose down -v
+
+          # TODO: Granularly prune to preserve build cache
+          # docker system prune --force --all --volumes
