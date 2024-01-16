@@ -11,15 +11,14 @@ use boringtun::noise::{Tunn, TunnResult};
 use boringtun::x25519::StaticSecret;
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
-use connlib_shared::DNS_SENTINEL;
 use connlib_shared::{messages::ResourceDescription, Error, Result};
+use connlib_shared::{IpProvider, DNS_SENTINEL};
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
 use parking_lot::{Mutex, RwLock};
 use pnet_packet::Packet;
 use secrecy::ExposeSecret;
 
-use crate::client::IpProvider;
 use crate::MAX_UDP_SIZE;
 use crate::{device_channel, ip_packet::MutableIpPacket, PeerConfig};
 

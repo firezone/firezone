@@ -12,20 +12,20 @@ use connlib_shared::messages::{
     DnsServer, GatewayId, Interface as InterfaceConfig, Key, ResourceDescription,
     ResourceDescriptionCidr, ResourceDescriptionDns, ResourceId, ReuseConnection, SecretKey,
 };
-use connlib_shared::{Callbacks, Dname, DNS_SENTINEL};
+use connlib_shared::{Callbacks, Dname, IpProvider, DNS_SENTINEL};
 use domain::base::Rtype;
 use futures::channel::mpsc::Receiver;
 use futures::stream;
 use futures_bounded::{FuturesMap, PushError, StreamMap};
 use hickory_resolver::lookup::Lookup;
-use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
+use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
 use itertools::Itertools;
 
 use rand_core::OsRng;
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
@@ -628,75 +628,6 @@ impl ClientState {
         {
             tracing::warn!("Too many DNS queries, dropping new ones");
         }
-    }
-
-    pub fn get_or_assign_ip(
-        &mut self,
-        resource: &DnsResource,
-        addrs: &[IpAddr],
-    ) -> Vec<(IpAddr, IpAddr)> {
-        let internal_ips = self
-            .dns_resources_internal_ips
-            .get(resource)
-            .cloned()
-            .unwrap_or(HashSet::new());
-        // We collect here to eagerly filter so that `next` is not called more times than needed with the ip_provider
-        // that could cause an ip exhaustion.
-        // This is needed to get the length, since even if zip is run, only until addr_v4 is None, `next` is still being called in both elements
-        // so ip_provider consumes an extra ip and this could in the long-run consume all ips since this function is also called to refresh ip allocations..
-        let addr_v4 = addrs.iter().copied().filter(IpAddr::is_ipv4).collect_vec();
-        let len = addr_v4.len();
-        let internal_ips_v4 = internal_ips
-            .iter()
-            .copied()
-            .filter_map(get_v4)
-            .chain(&mut self.ip_provider.ipv4)
-            .map(Into::<IpAddr>::into)
-            .zip(addr_v4.clone())
-            .take(len);
-
-        // Same note as for ipv4, though an exhaustion is not a realistic scenario.
-        let addr_v6 = addrs.iter().copied().filter(IpAddr::is_ipv6).collect_vec();
-        let len = addr_v6.len();
-        let internal_ips_v6 = internal_ips
-            .iter()
-            .copied()
-            .filter_map(get_v6)
-            .chain(&mut self.ip_provider.ipv6)
-            .map(Into::<IpAddr>::into)
-            .zip(addr_v6)
-            .take(len);
-
-        internal_ips_v4.chain(internal_ips_v6).collect()
-    }
-}
-
-pub struct IpProvider {
-    ipv4: Box<dyn Iterator<Item = Ipv4Addr> + Send + Sync>,
-    ipv6: Box<dyn Iterator<Item = Ipv6Addr> + Send + Sync>,
-}
-
-impl IpProvider {
-    fn new(ipv4: Ipv4Network, ipv6: Ipv6Network) -> Self {
-        Self {
-            ipv4: Box::new(ipv4.hosts()),
-            ipv6: Box::new(ipv6.subnets_with_prefix(128).map(|ip| ip.network_address())),
-        }
-    }
-
-    pub fn get_proxy_ip_for(&mut self, ip: &IpAddr) -> Option<IpAddr> {
-        let proxy_ip = match ip {
-            IpAddr::V4(_) => self.ipv4.next().map(Into::into),
-            IpAddr::V6(_) => self.ipv6.next().map(Into::into),
-        };
-
-        if proxy_ip.is_none() {
-            // TODO: we might want to make the iterator cyclic or another strategy to prevent ip exhaustion
-            // this might happen in ipv4 if tokens are too long lived.
-            tracing::error!("IP exhaustion: Please reset your client");
-        }
-
-        proxy_ip
     }
 }
 
