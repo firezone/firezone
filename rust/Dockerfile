@@ -117,7 +117,9 @@ COPY ./docker-init.sh .
 ## iptables are needed only by gateway for masquerading
 ARG PACKAGE
 RUN set -xe \
-  && \[ "${PACKAGE}" = "firezone-gateway" ] && apk add --no-cache iptables ip6tables || true
+  && \[ "${PACKAGE}" = "firezone-gateway" ] \
+  && apt-get update \
+  && apt-get install -y --no-install-recommends iptables ip6tables || true
 
 ENTRYPOINT ["docker-init.sh"]
 
@@ -129,6 +131,7 @@ CMD $PACKAGE
 FROM runtime AS debug
 
 RUN set -xe \
+  && apt-get update \
   && apt-get install -y --no-install-recommends iperf3
 
 ARG TARGET
