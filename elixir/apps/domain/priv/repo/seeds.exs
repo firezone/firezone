@@ -170,11 +170,6 @@ other_admin_actor_email = "other@localhost"
     }
   })
 
-unprivileged_actor_email_token =
-  unprivileged_actor_email_identity.provider_virtual_state.sign_in_token
-
-admin_actor_email_token = admin_actor_email_identity.provider_virtual_state.sign_in_token
-
 unprivileged_actor_context = %Auth.Context{
   type: :browser,
   user_agent: "Debian/11.0.0 connlib/0.1.0",
@@ -218,6 +213,26 @@ admin_actor_context = %Auth.Context{
     },
     admin_subject
   )
+
+{:ok, unprivileged_actor_email_identity} =
+  Domain.Auth.Adapters.Email.request_sign_in_token(
+    unprivileged_actor_email_identity,
+    unprivileged_actor_context
+  )
+
+unprivileged_actor_email_token =
+  unprivileged_actor_email_identity.provider_virtual_state.nonce <>
+    unprivileged_actor_email_identity.provider_virtual_state.fragment
+
+{:ok, admin_actor_email_identity} =
+  Domain.Auth.Adapters.Email.request_sign_in_token(
+    admin_actor_email_identity,
+    admin_actor_context
+  )
+
+admin_actor_email_token =
+  admin_actor_email_identity.provider_virtual_state.nonce <>
+    admin_actor_email_identity.provider_virtual_state.fragment
 
 IO.puts("Created users: ")
 
