@@ -212,7 +212,6 @@ jobs:
         id: build
         uses: docker/build-push-action@v5
         with:
-          target: release
           platforms: ${{ matrix.arch.platform }}
           build-args: |
             PACKAGE=${{ matrix.name.package }}
