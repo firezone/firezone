@@ -149,7 +149,7 @@ jobs:
       - uses: ./.github/actions/setup-rust
         with:
           sccache_enabled: false
-          targets: x86_64-unknown-linux-musl
+          targets: x86_64-unknown-linux-gnu
       - run: |
           cargo build --package firezone-linux-client
 
