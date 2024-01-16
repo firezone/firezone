@@ -599,7 +599,10 @@ defmodule Domain.Config.Definitions do
     # TODO: validate opts are present if adapter is not NOOP one
     default: %{},
     sensitive: true,
-    dump: &Dumper.keyword/1
+    dump: fn map ->
+      Dumper.keyword(map)
+      |> Keyword.update(:tls_options, nil, &Dumper.dump_ssl_opts/1)
+    end
   )
 
   ##############################################
