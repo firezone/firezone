@@ -227,6 +227,7 @@ fn handle_system_tray_event(app: &tauri::AppHandle, event: TrayMenuEvent) -> Res
 pub(crate) enum ControllerRequest {
     CopyResource(String),
     Disconnected,
+    DisconnectedTokenExpired,
     ExportLogs { path: PathBuf, stem: PathBuf },
     GetAdvancedSettings(oneshot::Sender<AdvancedSettings>),
     SchemeRequest(url::Url),
@@ -261,7 +262,12 @@ impl connlib_client_shared::Callbacks for CallbackHandler {
         error: Option<&connlib_client_shared::Error>,
     ) -> Result<(), Self::Error> {
         tracing::debug!("on_disconnect {error:?}");
-        self.ctlr_tx.try_send(ControllerRequest::Disconnected)?;
+        self.ctlr_tx.try_send(match error {
+            Some(connlib_client_shared::Error::TokenExpired) => {
+                ControllerRequest::DisconnectedTokenExpired
+            }
+            _ => ControllerRequest::Disconnected,
+        })?;
         Ok(())
     }
 
@@ -485,9 +491,26 @@ async fn run_controller(
                         controller.tunnel_ready = false;
                         if let Some(mut session) = controller.session.take() {
                             tracing::debug!("disconnecting connlib");
+                            // This is probably redundant since connlib shuts itself down if it's disconnected.
                             session.connlib.disconnect(None);
                         }
-                    },
+                        controller.refresh_system_tray_menu()?;
+                    }
+                    Req::DisconnectedTokenExpired | Req::SignOut => {
+                        tracing::debug!("Token expired or user signed out");
+                        controller.auth.sign_out()?;
+                        controller.tunnel_ready = false;
+                        if let Some(mut session) = controller.session.take() {
+                            tracing::debug!("disconnecting connlib");
+                            // This is redundant if the token is expired, in that case
+                            // connlib already disconnected itself.
+                            session.connlib.disconnect(None);
+                        }
+                        else {
+                            tracing::error!("tried to sign out but there's no session");
+                        }
+                        controller.refresh_system_tray_menu()?;
+                    }
                     Req::ExportLogs{path, stem} => logging::export_logs_to(path, stem).await?,
                     Req::GetAdvancedSettings(tx) => {
                         tx.send(controller.advanced_settings.clone()).ok();
@@ -506,18 +529,6 @@ async fn run_controller(
                             )?;
                         }
                     }
-                    Req::SignOut => {
-                        controller.auth.sign_out()?;
-                        controller.tunnel_ready = false;
-                        if let Some(mut session) = controller.session.take() {
-                            tracing::debug!("disconnecting connlib");
-                            session.connlib.disconnect(None);
-                        }
-                        else {
-                            tracing::error!("tried to sign out but there's no session");
-                        }
-                        controller.refresh_system_tray_menu()?;
-                    }
                     Req::StartStopLogCounting(enable) => {
                         if enable {
                             if controller.log_counting_task.is_none() {
@@ -533,6 +544,7 @@ async fn run_controller(
                     }
                     Req::TunnelReady => {
                         controller.tunnel_ready = true;
+                        controller.refresh_system_tray_menu()?;
 
                         // May say "Windows Powershell" in dev mode
                         // See https://github.com/tauri-apps/tauri/issues/3700
