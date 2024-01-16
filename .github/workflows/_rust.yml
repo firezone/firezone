@@ -82,14 +82,15 @@ jobs:
       BINARY_DEST_PATH: ${{ matrix.name.artifact }}
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node
       - uses: ./.github/actions/setup-rust
         with:
           targets: x86_64-pc-windows-msvc
       - name: Build release binaries
         run: |
-          npm install -g @tauri-apps/cli
+          pnpm install -g @tauri-apps/cli
 
-          # NPM installs tauri-cli to somewhere in $PATH
+          # PNPM installs tauri-cli to somewhere in $PATH
           tauri build
 
           # Used for release artifact

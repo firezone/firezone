@@ -50,16 +50,16 @@ access.
 
 ### Addressing
 
-| Host                    | Interface        | IPv4 Address    | IPv6 Address |
-| ----------------------- | ---------------- | --------------- | ------------ |
-| `linux.firezone.test`   | egress           | `192.168.1.222` | TODO         |
-| `linux.firezone.test`   | testnet ethernet | `10.0.0.1`      | TODO         |
-| `gateway.firezone.test` | testnet ethernet | `10.0.0.254`    | TODO         |
-| `linux.firezone.test`   | testnet WiFi     | `10.0.1.1`      | TODO         |
-| `macos.firezone.test`   | testnet ethernet | `10.0.0.2`      | TODO         |
-| `windows.firezone.test` | testnet ethernet | `10.0.0.3`      | TODO         |
-| `macos.firezone.test`   | testnet WiFi     | `10.0.1.2`      | TODO         |
-| `windows.firezone.test` | testnet WiFi     | `10.0.1.3`      | TODO         |
-| `ios.firezone.test`     | testnet WiFi     | `10.0.1.4`      | TODO         |
-| `ipados.firezone.test`  | testnet WiFi     | `10.0.1.5`      | TODO         |
-| `android.firezone.test` | testnet WiFi     | `10.0.1.6`      | TODO         |
+| Host                    | Interface        | IPv4 Address    | IPv6 Address                              |
+| ----------------------- | ---------------- | --------------- | ----------------------------------------- |
+| `linux.firezone.test`   | egress           | `192.168.1.249` | `2600:1700:3ecb:2410::/64` (DHCP address) |
+| `linux.firezone.test`   | testnet ethernet | `10.0.0.1`      | `fc01:2345:6789:abcd::/64` (DHCP address) |
+| `macos.firezone.test`   | testnet ethernet | `10.0.0.2`      | `fc01:2345:6789:abcd::/64` (DHCP address) |
+| `windows.firezone.test` | testnet ethernet | `10.0.0.3`      | `fc01:2345:6789:abcd::/64` (DHCP address) |
+| `linux.firezone.test`   | testnet WiFi     | `10.0.1.1`      | `fc01:2345:6789:abce::/64` (DHCP address) |
+| `macos.firezone.test`   | testnet WiFi     | `10.0.1.2`      | `fc01:2345:6789:abce::/64` (DHCP address) |
+| `windows.firezone.test` | testnet WiFi     | `10.0.1.3`      | `fc01:2345:6789:abce::/64` (DHCP address) |
+| `ios.firezone.test`     | testnet WiFi     | `10.0.1.4`      | `fc01:2345:6789:abce::/64` (DHCP address) |
+| `ipados.firezone.test`  | testnet WiFi     | `10.0.1.5`      | `fc01:2345:6789:abce::/64` (DHCP address) |
+| `android.firezone.test` | testnet WiFi     | `10.0.1.6`      | `fc01:2345:6789:abce::/64` (DHCP address) |
+| `gateway.firezone.test` | testnet ethernet | `10.0.0.254`    | `fc01:2345:6789:abcd::/64` (DHCP address) |

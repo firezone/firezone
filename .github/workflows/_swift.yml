@@ -20,18 +20,6 @@ jobs:
             platform: iOS
             destination: generic/platform=iOS
             xcode: "15.0"
-          # TODO: Enable when GH Actions has macos-14 runners. Until this, this depends
-          # on self-hosted runners which can be less reliable and have issues with things
-          # like sccache.
-          # See https://github.com/firezone/firezone/actions/runs/6608338431/job/17946908445
-          # - sdk: macosx
-          #   runs-on: macos-14
-          #   platform: macOS
-          #   destination: platform=macOS
-          # - sdk: iphoneos
-          #   runs-on: macos-14
-          #   platform: iOS
-          #   destination: generic/platform=iOS
     permissions:
       contents: read
       id-token: 'write'
