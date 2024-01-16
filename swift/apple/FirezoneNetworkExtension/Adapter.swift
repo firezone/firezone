@@ -78,7 +78,7 @@ class Adapter {
   /// Adapter state.
   private var state: AdapterState {
     didSet {
-      logger.log("Adapter state changed to: \(self.state, privacy: .public)")
+      logger.log("Adapter state changed to: \(self.state)")
     }
   }
 
@@ -163,7 +163,7 @@ class Adapter {
           onStarted: completionHandler
         )
       } catch let error {
-        self.logger.error("Adapter.start: Error: \(error, privacy: .public)")
+        self.logger.error("Adapter.start: Error: \(error)")
         packetTunnelProvider?.handleTunnelShutdown(
           dueTo: .connlibConnectFailure,
           errorMessage: error.localizedDescription)
@@ -274,7 +274,7 @@ extension Adapter {
         try newUUIDString.write(to: fileURL, atomically: true, encoding: .utf8)
       } catch {
         self.logger.error(
-          "Adapter.getOrCreateFirezoneId: Could not save \(fileURL, privacy: .public)! Error: \(error, privacy: .public)"
+          "Adapter.getOrCreateFirezoneId: Could not save \(fileURL)! Error: \(error)"
         )
       }
 
@@ -359,7 +359,7 @@ extension Adapter {
           onStarted: { error in
             if let error = error {
               self.logger.error(
-                "Adapter.didReceivePathUpdate: Error starting connlib: \(error, privacy: .public)")
+                "Adapter.didReceivePathUpdate: Error starting connlib: \(error)")
               self.packetTunnelProvider?.cancelTunnelWithError(error)
             } else {
               self.packetTunnelProvider?.reasserting = false
@@ -367,10 +367,10 @@ extension Adapter {
           }
         )
       } catch let error as AdapterError {
-        self.logger.error("Adapter.didReceivePathUpdate: Error: \(error, privacy: .public)")
+        self.logger.error("Adapter.didReceivePathUpdate: Error: \(error)")
       } catch {
         self.logger.error(
-          "Adapter.didReceivePathUpdate: Unknown error: \(error, privacy: .public) (fatal)")
+          "Adapter.didReceivePathUpdate: Unknown error: \(error) (fatal)")
       }
 
     case .stoppingTunnel, .stoppedTunnel:
@@ -419,7 +419,7 @@ extension Adapter: CallbackHandlerDelegate {
       self.logger.log("Adapter.onTunnelReady")
       guard case .startingTunnel(let session, let onStarted) = self.state else {
         self.logger.error(
-          "Adapter.onTunnelReady: Unexpected state: \(self.state, privacy: .public)")
+          "Adapter.onTunnelReady: Unexpected state: \(self.state)")
         return
       }
       guard let networkSettings = self.networkSettings else {
@@ -449,7 +449,7 @@ extension Adapter: CallbackHandlerDelegate {
     workQueue.async { [weak self] in
       guard let self = self else { return }
 
-      self.logger.log("Adapter.onAddRoute(\(route, privacy: .public))")
+      self.logger.log("Adapter.onAddRoute(\(route))")
       guard let networkSettings = self.networkSettings else {
         self.logger.error("Adapter.onAddRoute: No network settings")
         return
@@ -466,7 +466,7 @@ extension Adapter: CallbackHandlerDelegate {
     workQueue.async { [weak self] in
       guard let self = self else { return }
 
-      self.logger.log("Adapter.onRemoveRoute(\(route, privacy: .public))")
+      self.logger.log("Adapter.onRemoveRoute(\(route))")
       guard let networkSettings = self.networkSettings else {
         self.logger.error("Adapter.onRemoveRoute: No network settings")
         return
@@ -512,10 +512,10 @@ extension Adapter: CallbackHandlerDelegate {
     workQueue.async { [weak self] in
       guard let self = self else { return }
 
-      self.logger.log("Adapter.onDisconnect: \(error ?? "No error", privacy: .public)")
+      self.logger.log("Adapter.onDisconnect: \(error ?? "No error")")
       if let errorMessage = error {
         self.logger.error(
-          "Connlib disconnected with unrecoverable error: \(errorMessage, privacy: .public)")
+          "Connlib disconnected with unrecoverable error: \(errorMessage)")
         switch self.state {
         case .stoppingTunnel(session: _, let onStopped):
           onStopped?()

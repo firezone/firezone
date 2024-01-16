@@ -154,7 +154,7 @@ public final class AuthStore: ObservableObject {
         try await keychain.delete(tokenRef)
       }
     } catch {
-      logger.error("\(#function): Error signing out: \(error, privacy: .public)")
+      logger.error("\(#function): Error signing out: \(error)")
     }
 
     resetReconnectionAttemptsRemaining()
@@ -193,7 +193,7 @@ public final class AuthStore: ObservableObject {
     logger.log("\(#function)")
     if let tsEvent = TunnelShutdownEvent.loadFromDisk() {
       self.logger.log(
-        "\(#function): Tunnel shutdown event: \(tsEvent, privacy: .public)"
+        "\(#function): Tunnel shutdown event: \(tsEvent)"
       )
       switch tsEvent.action {
       case .signoutImmediately:

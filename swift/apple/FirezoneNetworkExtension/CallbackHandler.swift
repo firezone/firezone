@@ -41,9 +41,9 @@ public class CallbackHandler {
     logger.log(
       """
         CallbackHandler.onSetInterfaceConfig:
-          IPv4: \(tunnelAddressIPv4.toString(), privacy: .public)
-          IPv6: \(tunnelAddressIPv6.toString(), privacy: .public)
-          DNS: \(dnsAddresses.toString(), privacy: .public)
+          IPv4: \(tunnelAddressIPv4.toString())
+          IPv6: \(tunnelAddressIPv6.toString())
+          DNS: \(dnsAddresses.toString())
       """)
 
     guard let dnsData = dnsAddresses.toString().data(using: .utf8) else {
@@ -67,22 +67,22 @@ public class CallbackHandler {
   }
 
   func onAddRoute(route: RustString) {
-    logger.log("CallbackHandler.onAddRoute: \(route.toString(), privacy: .public)")
+    logger.log("CallbackHandler.onAddRoute: \(route.toString())")
     delegate?.onAddRoute(route.toString())
   }
 
   func onRemoveRoute(route: RustString) {
-    logger.log("CallbackHandler.onRemoveRoute: \(route.toString(), privacy: .public)")
+    logger.log("CallbackHandler.onRemoveRoute: \(route.toString())")
     delegate?.onRemoveRoute(route.toString())
   }
 
   func onUpdateResources(resourceList: RustString) {
-    logger.log("CallbackHandler.onUpdateResources: \(resourceList.toString(), privacy: .public)")
+    logger.log("CallbackHandler.onUpdateResources: \(resourceList.toString())")
     delegate?.onUpdateResources(resourceList: resourceList.toString())
   }
 
   func onDisconnect(error: RustString) {
-    logger.log("CallbackHandler.onDisconnect: \(error.toString(), privacy: .public)")
+    logger.log("CallbackHandler.onDisconnect: \(error.toString())")
     let error = error.toString()
     var optionalError = Optional.some(error)
     if error.isEmpty {
@@ -93,13 +93,13 @@ public class CallbackHandler {
 
   func setSystemDefaultResolvers(resolvers: [String]) {
     logger.log(
-      "CallbackHandler.setSystemDefaultResolvers: \(resolvers, privacy: .public)")
+      "CallbackHandler.setSystemDefaultResolvers: \(resolvers)")
     self.systemDefaultResolvers = resolvers
   }
 
   func getSystemDefaultResolvers() -> RustString {
     logger.log(
-      "CallbackHandler.getSystemDefaultResolvers: \(self.systemDefaultResolvers, privacy: .public)"
+      "CallbackHandler.getSystemDefaultResolvers: \(self.systemDefaultResolvers)"
     )
 
     return try! String(

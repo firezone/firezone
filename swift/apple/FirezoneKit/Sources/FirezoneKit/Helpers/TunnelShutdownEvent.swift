@@ -105,7 +105,7 @@ public struct TunnelShutdownEvent: Codable, CustomStringConvertible {
 
   public static func saveToDisk(reason: TunnelShutdownEvent.Reason, errorMessage: String) {
     let fileURL = SharedAccess.tunnelShutdownEventFileURL
-    Self.logger.error("Saving tunnel shutdown event data to \(fileURL, privacy: .public)")
+    Self.logger.error("Saving tunnel shutdown event data to \(fileURL)")
     let tsEvent = TunnelShutdownEvent(
       reason: reason,
       errorMessage: errorMessage)
@@ -113,7 +113,7 @@ public struct TunnelShutdownEvent: Codable, CustomStringConvertible {
       try JSONEncoder().encode(tsEvent).write(to: fileURL)
     } catch {
       Self.logger.error(
-        "Error writing tunnel shutdown event data to disk to: \(fileURL, privacy: .public): \(error, privacy: .public)"
+        "Error writing tunnel shutdown event data to disk to: \(fileURL): \(error)"
       )
     }
   }

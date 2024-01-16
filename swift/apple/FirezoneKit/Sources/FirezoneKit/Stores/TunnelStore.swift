@@ -98,7 +98,7 @@ public final class TunnelStore: ObservableObject {
   }
 
   func saveAuthStatus(_ tunnelAuthStatus: TunnelAuthStatus) async throws {
-    Self.logger.log("TunnelStore.\(#function) \(tunnelAuthStatus, privacy: .public)")
+    Self.logger.log("TunnelStore.\(#function) \(tunnelAuthStatus)")
     guard let tunnel = tunnel else {
       fatalError("No tunnel yet. Can't save auth status.")
     }
@@ -114,7 +114,7 @@ public final class TunnelStore: ObservableObject {
   }
 
   func saveAdvancedSettings(_ advancedSettings: AdvancedSettings) async throws {
-    Self.logger.log("TunnelStore.\(#function) \(advancedSettings, privacy: .public)")
+    Self.logger.log("TunnelStore.\(#function) \(advancedSettings)")
     guard let tunnel = tunnel else {
       fatalError("No tunnel yet. Can't save advanced settings.")
     }

@@ -62,14 +62,14 @@ public final class SettingsViewModel: ObservableObject {
       let authBaseURLString = advancedSettings.authBaseURLString
       guard URL(string: authBaseURLString) != nil else {
         logger.error(
-          "Not saving advanced settings because authBaseURL '\(authBaseURLString, privacy: .public)' is invalid"
+          "Not saving advanced settings because authBaseURL '\(authBaseURLString)' is invalid"
         )
         return
       }
       do {
         try await authStore.tunnelStore.saveAdvancedSettings(advancedSettings)
       } catch {
-        logger.error("Error saving advanced settings to tunnel store: \(error, privacy: .public)")
+        logger.error("Error saving advanced settings to tunnel store: \(error)")
       }
       await MainActor.run {
         advancedSettings.isSavedToDisk = true
