@@ -45,6 +45,11 @@ defmodule Domain.Resources.Resource.Query do
     |> select_merge([authorized_by_policies: policies], %{authorized_by_policy: policies})
   end
 
+  def with_at_least_one_gateway_group(queryable \\ not_deleted()) do
+    queryable
+    |> with_joined_connection_gateway_group()
+  end
+
   def preload_few_actor_groups_for_each_resource(queryable \\ not_deleted(), limit) do
     queryable
     |> with_joined_actor_groups(limit)
@@ -103,6 +108,21 @@ defmodule Domain.Resources.Resource.Query do
         [resources: resources],
         connections in ^Domain.Resources.Connection.Query.all(),
         on: connections.resource_id == resources.id,
+        as: ^binding
+      )
+    end)
+  end
+
+  def with_joined_connection_gateway_group(queryable \\ not_deleted()) do
+    queryable
+    |> with_joined_connections()
+    |> with_named_binding(:gateway_group, fn queryable, binding ->
+      queryable
+      |> join(
+        :inner,
+        [connections: connections],
+        gateway_group in ^Domain.Gateways.Group.Query.not_deleted(),
+        on: gateway_group.id == connections.gateway_group_id,
         as: ^binding
       )
     end)
