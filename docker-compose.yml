@@ -222,8 +222,8 @@ services:
         PACKAGE: firezone-relay
     image: us-east1-docker.pkg.dev/firezone-staging/firezone/relay:${VERSION:-main}
     healthcheck:
-      # Poor man's netstat -- Check for listening on 3478 (0D96 in hex)
-      test: ["CMD-SHELL", "cat /proc/net/udp | grep 0D96"]
+      # Poor man's netstat -- Check for listening on 3478 (D96 in hex)
+      test: ["CMD-SHELL", "cat /proc/net/udp | grep D96"]
       start_period: 3s
       interval: 30s
       retries: 5
