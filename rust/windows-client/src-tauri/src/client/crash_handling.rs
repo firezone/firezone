@@ -28,6 +28,21 @@ pub(crate) fn attach_handler() -> anyhow::Result<crash_handler::CrashHandler> {
     bail!("crash handling is disabled in release builds for now");
 }
 
+/// Main function for the server process, for out-of-process crash handling.
+///
+/// The server process seems to be the preferred method,
+/// since it's hard to run complex code in a process
+/// that's already crashed and likely suffered memory corruption.
+///
+/// <https://jake-shadle.github.io/crash-reporting/#implementation>
+/// <https://chromium.googlesource.com/breakpad/breakpad/+/master/docs/getting_started_with_breakpad.md#terminology>
+pub(crate) fn server() -> anyhow::Result<()> {
+    let mut server = minidumper::Server::with_name(SOCKET_NAME)?;
+    let ab = std::sync::atomic::AtomicBool::new(false);
+    server.run(Box::new(Handler), &ab, None)?;
+    Ok(())
+}
+
 #[cfg(target_os = "windows")]
 fn attach_handler_inner() -> anyhow::Result<crash_handler::CrashHandler> {
     // Attempt to connect to the server
@@ -88,76 +103,63 @@ fn start_server_and_connect() -> anyhow::Result<(minidumper::Client, std::proces
     bail!("Couldn't set up crash handler server")
 }
 
-/// Main function for the server process, for out-of-process crash handling.
+/// Crash handler that runs inside the crash handler process.
 ///
-/// The server process seems to be the preferred method,
-/// since it's hard to run complex code in a process
-/// that's already crashed and likely suffered memory corruption.
-///
-/// <https://jake-shadle.github.io/crash-reporting/#implementation>
-/// <https://chromium.googlesource.com/breakpad/breakpad/+/master/docs/getting_started_with_breakpad.md#terminology>
-pub(crate) fn server() -> anyhow::Result<()> {
-    let mut server = minidumper::Server::with_name(SOCKET_NAME)?;
+/// The minidumper docs call this the "server" process because it's an IPC server,
+/// not to be confused with network servers for Firezone itself.
+struct Handler;
 
-    let ab = std::sync::atomic::AtomicBool::new(false);
+impl minidumper::ServerHandler for Handler {
+    /// Called when a crash has been received and a backing file needs to be
+    /// created to store it.
+    fn create_minidump_file(&self) -> Result<(File, PathBuf), std::io::Error> {
+        let dump_path = get_known_folder_path(KnownFolder::ProgramData)
+            .expect("should be able to find C:/ProgramData")
+            .join(crate::client::gui::BUNDLE_ID)
+            .join("dumps")
+            .join("last_crash.dmp");
 
-    struct Handler;
-
-    impl minidumper::ServerHandler for Handler {
-        /// Called when a crash has been received and a backing file needs to be
-        /// created to store it.
-        fn create_minidump_file(&self) -> Result<(File, PathBuf), std::io::Error> {
-            let dump_path = get_known_folder_path(KnownFolder::ProgramData)
-                .expect("should be able to find C:/ProgramData")
-                .join(crate::client::gui::BUNDLE_ID)
-                .join("dumps")
-                .join("last_crash.dmp");
-
-            if let Some(dir) = dump_path.parent() {
-                if !dir.try_exists()? {
-                    std::fs::create_dir_all(dir)?;
-                }
-            }
-            let file = File::create(&dump_path)?;
-            Ok((file, dump_path))
-        }
-
-        /// Called when a crash has been fully written as a minidump to the provided
-        /// file. Also returns the full heap buffer as well.
-        fn on_minidump_created(
-            &self,
-            result: Result<minidumper::MinidumpBinary, minidumper::Error>,
-        ) -> minidumper::LoopAction {
-            match result {
-                Ok(mut md_bin) => {
-                    let _ = md_bin.file.flush();
-                    tracing::info!("wrote minidump to disk");
-                }
-                Err(e) => {
-                    tracing::error!("failed to write minidump: {:#}", e);
-                }
-            }
-
-            // Tells the server to exit, which will in turn exit the process
-            minidumper::LoopAction::Exit
-        }
-
-        fn on_message(&self, kind: u32, buffer: Vec<u8>) {
-            tracing::info!(
-                "kind: {kind}, message: {}",
-                String::from_utf8(buffer).expect("message should be valid UTF-8")
-            );
-        }
-
-        fn on_client_disconnected(&self, num_clients: usize) -> minidumper::LoopAction {
-            if num_clients == 0 {
-                minidumper::LoopAction::Exit
-            } else {
-                minidumper::LoopAction::Continue
+        if let Some(dir) = dump_path.parent() {
+            if !dir.try_exists()? {
+                std::fs::create_dir_all(dir)?;
             }
         }
+        let file = File::create(&dump_path)?;
+        Ok((file, dump_path))
     }
 
-    server.run(Box::new(Handler), &ab, None)?;
-    Ok(())
+    /// Called when a crash has been fully written as a minidump to the provided
+    /// file. Also returns the full heap buffer as well.
+    fn on_minidump_created(
+        &self,
+        result: Result<minidumper::MinidumpBinary, minidumper::Error>,
+    ) -> minidumper::LoopAction {
+        match result {
+            Ok(mut md_bin) => {
+                let _ = md_bin.file.flush();
+                tracing::info!("wrote minidump to disk");
+            }
+            Err(e) => {
+                tracing::error!("failed to write minidump: {:#}", e);
+            }
+        }
+
+        // Tells the server to exit, which will in turn exit the process
+        minidumper::LoopAction::Exit
+    }
+
+    fn on_message(&self, kind: u32, buffer: Vec<u8>) {
+        tracing::info!(
+            "kind: {kind}, message: {}",
+            String::from_utf8(buffer).expect("message should be valid UTF-8")
+        );
+    }
+
+    fn on_client_disconnected(&self, num_clients: usize) -> minidumper::LoopAction {
+        if num_clients == 0 {
+            minidumper::LoopAction::Exit
+        } else {
+            minidumper::LoopAction::Continue
+        }
+    }
 }
