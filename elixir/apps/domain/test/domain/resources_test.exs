@@ -499,7 +499,7 @@ defmodule Domain.ResourcesTest do
       assert length(resources) == 2
     end
 
-    test "does not authorized resources for deleted gateway groups", %{
+    test "does not authorize resources for deleted gateway groups", %{
       account: account
     } do
       actor_group = Fixtures.Actors.create_group(account: account)
