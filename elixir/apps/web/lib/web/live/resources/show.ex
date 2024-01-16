@@ -70,6 +70,26 @@ defmodule Web.Resources.Show do
             </.vertical_table_row>
             <.vertical_table_row>
               <:label>
+                Connected Sites
+              </:label>
+              <:value>
+                <.link
+                  :for={gateway_group <- @resource.gateway_groups}
+                  :if={@resource.gateway_groups != []}
+                  navigate={~p"/#{@account}/sites/#{gateway_group}"}
+                  class={[link_style()]}
+                >
+                  <.badge type="info">
+                    <%= gateway_group.name %>
+                  </.badge>
+                </.link>
+                <span :if={@resource.gateway_groups == []}>
+                  No linked gateways to display
+                </span>
+              </:value>
+            </.vertical_table_row>
+            <.vertical_table_row>
+              <:label>
                 Authorized groups
               </:label>
               <:value>
@@ -150,24 +170,6 @@ defmodule Web.Resources.Show do
             </.vertical_table_row>
           </.vertical_table>
         </div>
-      </:content>
-    </.section>
-
-    <.section>
-      <:title>
-        Sites
-      </:title>
-      <:content>
-        <.table id="gateway_instance_groups" rows={@resource.gateway_groups}>
-          <:col :let={gateway_group} label="NAME">
-            <.link navigate={~p"/#{@account}/sites/#{gateway_group}"} class={[link_style()]}>
-              <%= gateway_group.name %>
-            </.link>
-          </:col>
-          <:empty>
-            <div class="text-center text-neutral-500 p-4">No linked gateways to display</div>
-          </:empty>
-        </.table>
       </:content>
     </.section>
 

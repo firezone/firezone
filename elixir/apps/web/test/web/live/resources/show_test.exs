@@ -182,7 +182,7 @@ defmodule Web.Live.Resources.ShowTest do
     assert table["authorized groups"] =~ "and 1 more"
   end
 
-  test "renders gateways table", %{
+  test "renders gateway groups row", %{
     account: account,
     identity: identity,
     group: group,
@@ -194,16 +194,13 @@ defmodule Web.Live.Resources.ShowTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/resources/#{resource}")
 
-    gateway_groups =
+    table =
       lv
-      |> element("#gateway_instance_groups")
+      |> element("#resource")
       |> render()
-      |> table_to_map()
+      |> vertical_table_to_map()
 
-    for gateway_group <- gateway_groups do
-      assert gateway_group["name"] =~ group.name
-      # TODO: check that status is being rendered
-    end
+    assert table["connected sites"] =~ group.name
   end
 
   test "renders logs table", %{
