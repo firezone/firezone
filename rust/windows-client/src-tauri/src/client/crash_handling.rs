@@ -10,8 +10,6 @@ use std::{fs::File, io::Write, path::PathBuf};
 
 const SOCKET_NAME: &str = "dev.firezone.client.crash_handler";
 
-use minidumper::{Client, Server};
-
 /// Attaches a crash handler to the client process
 ///
 /// Returns a CrashHandler that must be kept alive until the program exits.
@@ -30,49 +28,42 @@ pub(crate) fn attach_handler() -> anyhow::Result<crash_handler::CrashHandler> {
     bail!("crash handling is disabled in release builds for now");
 }
 
+#[cfg(target_os = "windows")]
 fn attach_handler_inner() -> anyhow::Result<crash_handler::CrashHandler> {
     // Attempt to connect to the server
-    let (client, _server) = connect()?;
+    let (client, _server) = start_server_and_connect()?;
 
-    // Not sure what this does, but the sample code has it.
-    client.send_message(1, "mistakes will be made")?;
-
-    #[allow(unsafe_code)]
+    // SAFETY: Unsafe is required here because this will run after the program
+    // has crashed. We should try to do as little as possible, basically just
+    // tell the crash handler process to get our minidump and then return.
+    // https://docs.rs/crash-handler/0.6.0/crash_handler/trait.CrashEvent.html#safety
     let handler = crash_handler::CrashHandler::attach(unsafe {
-        crash_handler::make_crash_event(move |crash_context: &crash_handler::CrashContext| {
-            // Before we request the crash, send a message to the server
-            client.send_message(2, "mistakes were made").unwrap();
-
-            // Send a ping to the server, this ensures that all messages that have been sent
-            // are "flushed" before the crash event is sent. This is only really useful
-            // on macos where messages and crash events are sent via different, unsynchronized,
-            // methods which can result in the crash event closing the server before
-            // the non-crash messages are received/processed
-            client.ping().unwrap();
-
+        crash_handler::make_crash_event(move |crash_context| {
             crash_handler::CrashEventResult::Handled(client.request_dump(crash_context).is_ok())
         })
     })
     .context("failed to attach signal handler")?;
 
-    // On linux we can explicitly allow only the server process to inspect the
-    // process we are monitoring (this one) for crashes
-    #[cfg(any(target_os = "linux", target_os = "android"))]
-    {
-        handler.set_ptracer(Some(_server.id()));
-    }
-
     Ok(handler)
 }
 
-fn connect() -> anyhow::Result<(Client, std::process::Child)> {
+#[cfg(not(target_os = "windows"))]
+fn attach_handler_inner() -> anyhow::Result<crash_handler::CrashHandler> {
+    // If you need this on non-Windows, re-visit
+    // <https://github.com/EmbarkStudios/crash-handling/blob/main/minidumper/examples/diskwrite.rs>
+    // Linux has a special `set_ptracer` call that is handy
+    // MacOS needs a special `ping` call to flush messages inside the crash handler
+    unimplemented!()
+}
+
+fn start_server_and_connect() -> anyhow::Result<(minidumper::Client, std::process::Child)> {
     let exe = std::env::current_exe().context("unable to find our own exe path")?;
     let mut server = None;
 
     for _ in 0..10 {
         // Create the crash client first so we can error out if another instance of
         // the Firezone client is already using this socket for crash handling.
-        if let Ok(client) = Client::with_name(SOCKET_NAME) {
+        if let Ok(client) = minidumper::Client::with_name(SOCKET_NAME) {
             return Ok((
                 client,
                 server.ok_or_else(|| {
@@ -106,7 +97,7 @@ fn connect() -> anyhow::Result<(Client, std::process::Child)> {
 /// <https://jake-shadle.github.io/crash-reporting/#implementation>
 /// <https://chromium.googlesource.com/breakpad/breakpad/+/master/docs/getting_started_with_breakpad.md#terminology>
 pub(crate) fn server() -> anyhow::Result<()> {
-    let mut server = Server::with_name(SOCKET_NAME)?;
+    let mut server = minidumper::Server::with_name(SOCKET_NAME)?;
 
     let ab = std::sync::atomic::AtomicBool::new(false);
 
