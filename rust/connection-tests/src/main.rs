@@ -70,7 +70,7 @@ async fn main() -> Result<()> {
                 .context("Failed to push offer")?;
 
             let answer = redis_connection
-                .blpop::<_, (String, wire::Answer)>("answers", 10)
+                .blpop::<_, (String, wire::Answer)>("answers", 10.0)
                 .await
                 .context("Failed to pop answer")?
                 .1;
@@ -118,7 +118,7 @@ async fn main() -> Result<()> {
                         }
                     }
 
-                    response = redis_connection.blpop::<_, Option<(String, wire::Candidate)>>("listener_candidates", 1) => {
+                    response = redis_connection.blpop::<_, Option<(String, wire::Candidate)>>("listener_candidates", 1.0) => {
                         let Ok(Some((_, wire::Candidate { conn, candidate }))) = response else {
                             continue;
                         };
@@ -132,7 +132,7 @@ async fn main() -> Result<()> {
             pool.add_local_interface(socket_addr);
 
             let offer = redis_connection
-                .blpop::<_, (String, wire::Offer)>("offers", 10)
+                .blpop::<_, (String, wire::Offer)>("offers", 10.0)
                 .await
                 .context("Failed to pop offer")?
                 .1;
@@ -182,7 +182,7 @@ async fn main() -> Result<()> {
                         }
                     }
 
-                    response = redis_connection.blpop::<_, Option<(String, wire::Candidate)>>("dialer_candidates", 1) => {
+                    response = redis_connection.blpop::<_, Option<(String, wire::Candidate)>>("dialer_candidates", 1.0) => {
                         let Ok(Some((_, wire::Candidate { conn, candidate }))) = response else {
                             continue;
                         };
