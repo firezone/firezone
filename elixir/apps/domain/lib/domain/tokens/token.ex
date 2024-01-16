@@ -2,7 +2,6 @@ defmodule Domain.Tokens.Token do
   use Domain, :schema
 
   schema "tokens" do
-    # TODO: email token
     field :type, Ecto.Enum,
       values: [
         :browser,
@@ -29,6 +28,9 @@ defmodule Domain.Tokens.Token do
     field :secret_fragment, :string, virtual: true, redact: true
     field :secret_salt, :string, redact: true
     field :secret_hash, :string, redact: true
+
+    # Limits how many times invalid secret can be used for a token
+    field :remaining_attempts, :integer
 
     belongs_to :account, Domain.Accounts.Account
 

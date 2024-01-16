@@ -44,6 +44,10 @@ defmodule Domain.Tokens.Token.Query do
     where(queryable, [tokens: tokens], tokens.actor_id == ^actor_id)
   end
 
+  def by_identity_id(queryable \\ not_deleted(), identity_id) do
+    where(queryable, [tokens: tokens], tokens.identity_id == ^identity_id)
+  end
+
   def by_relay_group_id(queryable \\ not_deleted(), relay_group_id) do
     where(queryable, [tokens: tokens], tokens.relay_group_id == ^relay_group_id)
   end

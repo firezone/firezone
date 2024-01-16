@@ -29,6 +29,8 @@ defmodule Domain.Repo.Migrations.UseTokensForRelayAndGatewayGroups do
         :gateway_group_id,
         references(:gateway_groups, type: :binary_id, on_delete: :delete_all)
       )
+
+      add(:remaining_attempts, :integer)
     end
 
     drop(

@@ -125,7 +125,29 @@ defmodule Domain.Tokens do
     |> Token.Query.by_account_id(account_id)
     |> Token.Query.by_type(context_type)
     |> Token.Query.not_expired()
-    |> Repo.fetch()
+    |> Ecto.Query.update([tokens: tokens],
+      set: [
+        remaining_attempts:
+          fragment(
+            "CASE WHEN ? IS NOT NULL THEN ? - 1 ELSE NULL END",
+            tokens.remaining_attempts,
+            tokens.remaining_attempts
+          ),
+        expires_at:
+          fragment(
+            "CASE WHEN ? - 1 = 0 THEN COALESCE(?, NOW()) ELSE ? END",
+            tokens.remaining_attempts,
+            tokens.expires_at,
+            tokens.expires_at
+          )
+      ]
+    )
+    |> Ecto.Query.select([tokens: tokens], tokens)
+    |> Repo.update_all([])
+    |> case do
+      {1, [token]} -> {:ok, token}
+      {0, []} -> {:error, :not_found}
+    end
   end
 
   @doc false
@@ -199,6 +221,13 @@ defmodule Domain.Tokens do
     end
   end
 
+  def delete_all_tokens_by_type_and_assoc(:email, %Auth.Identity{} = identity) do
+    Token.Query.by_type(:email)
+    |> Token.Query.by_account_id(identity.account_id)
+    |> Token.Query.by_identity_id(identity.id)
+    |> delete_tokens()
+  end
+
   def delete_expired_tokens do
     Token.Query.expired()
     |> delete_tokens()
@@ -231,6 +260,10 @@ defmodule Domain.Tokens do
 
   defp broadcast_disconnect_message(%{type: :browser, id: id}) do
     Phoenix.PubSub.broadcast(Domain.PubSub, "sessions:#{id}", "disconnect")
+  end
+
+  defp broadcast_disconnect_message(%{type: :email}) do
+    :ok
   end
 
   def delete_token_by_id(token_id) do

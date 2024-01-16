@@ -293,6 +293,7 @@ defmodule Domain.TokensTest do
       assert token.last_seen_remote_ip_location_lat == context.remote_ip_location_lat
       assert token.last_seen_remote_ip_location_lon == context.remote_ip_location_lon
       assert token.last_seen_at
+      refute token.remaining_attempts
     end
 
     test "returns error when secret is invalid", %{account: account} do
@@ -303,6 +304,50 @@ defmodule Domain.TokensTest do
 
       assert use_token(nonce <> encoded_fragment, context) ==
                {:error, :invalid_or_expired_token}
+    end
+
+    test "reduces attempts count when secret is invalid", %{account: account} do
+      nonce = "nonce"
+
+      token =
+        Fixtures.Tokens.create_token(
+          remaining_attempts: 3,
+          expires_at: nil,
+          account: account,
+          secret_nonce: nonce
+        )
+
+      context = Fixtures.Auth.build_context(type: token.type)
+      encoded_fragment = encode_fragment!(%{token | secret_fragment: "bar"})
+
+      assert use_token(nonce <> encoded_fragment, context) ==
+               {:error, :invalid_or_expired_token}
+
+      token = Repo.get(Tokens.Token, token.id)
+      assert token.remaining_attempts == 2
+      refute token.expires_at
+    end
+
+    test "expires token when attempts limit is exceeded", %{account: account} do
+      nonce = "nonce"
+
+      token =
+        Fixtures.Tokens.create_token(
+          remaining_attempts: 1,
+          expires_at: nil,
+          account: account,
+          secret_nonce: nonce
+        )
+
+      context = Fixtures.Auth.build_context(type: token.type)
+      encoded_fragment = encode_fragment!(%{token | secret_fragment: "bar"})
+
+      assert use_token(nonce <> encoded_fragment, context) ==
+               {:error, :invalid_or_expired_token}
+
+      token = Repo.get(Tokens.Token, token.id)
+      assert token.remaining_attempts == 0
+      assert token.expires_at
     end
 
     test "returns error when nonce is invalid", %{account: account} do

@@ -11,6 +11,7 @@ defmodule Domain.Tokens.Token.Changeset do
     name
     account_id identity_id actor_id relay_group_id gateway_group_id
     secret_fragment secret_nonce
+    remaining_attempts
     created_by_user_agent created_by_remote_ip
     expires_at
   ]a ++ @required_attrs
@@ -98,6 +99,7 @@ defmodule Domain.Tokens.Token.Changeset do
         |> validate_required(:actor_id)
         |> validate_required(:identity_id)
         |> validate_required(:expires_at)
+        |> validate_required(:remaining_attempts)
 
       :error ->
         changeset

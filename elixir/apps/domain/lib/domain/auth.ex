@@ -498,7 +498,8 @@ defmodule Domain.Auth do
       |> Identity.Query.by_id_or_provider_identifier(id_or_provider_identifier)
 
     with {:ok, identity} <- Repo.fetch(identity_queryable),
-         {:ok, identity, expires_at} <- Adapters.verify_secret(provider, identity, secret),
+         {:ok, identity, expires_at} <-
+           Adapters.verify_secret(provider, identity, context, secret),
          identity = Repo.preload(identity, :actor),
          {:ok, token} <- create_token(identity, context, token_nonce, expires_at) do
       {:ok, identity, Tokens.encode_fragment!(token)}

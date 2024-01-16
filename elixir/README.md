@@ -327,10 +327,12 @@ iex(web@web-3vmw.us-east1-d.c.firezone-staging.internal)3> {:ok, actor} = Domain
 iex(web@web-3vmw.us-east1-d.c.firezone-staging.internal)4> {:ok, identity} = Domain.Auth.upsert_identity(actor, magic_link_provider, %{provider_identifier: "a@firezone.dev", provider_identifier_confirmation: "a@firezone.dev"})
 ...
 
-iex(web@web-3vmw.us-east1-d.c.firezone-staging.internal)5> {:ok, identity} = Domain.Auth.Adapters.Email.request_sign_in_token(identity)
+iex(web@web-3vmw.us-east1-d.c.firezone-staging.internal)5> context = %Domain.Auth.Context{type: :browser, user_agent: "User-Agent: iOS/12.7 (iPhone) connlib/0.7.412", remote_ip: {127, 0, 0, 1}}
+
+iex(web@web-3vmw.us-east1-d.c.firezone-staging.internal)6> {:ok, identity} = Domain.Auth.Adapters.Email.request_sign_in_token(identity, context)
 {:ok, ...}
 
-iex(web@web-3vmw.us-east1-d.c.firezone-staging.internal)6> Web.Mailer.AuthEmail.sign_in_link_email(identity) |> Web.Mailer.deliver()
+iex(web@web-3vmw.us-east1-d.c.firezone-staging.internal)7> Web.Mailer.AuthEmail.sign_in_link_email(identity) |> Web.Mailer.deliver()
 {:ok, %{id: "d24dbe9a-d0f5-4049-ac0d-0df793725a80"}}
 ```
 

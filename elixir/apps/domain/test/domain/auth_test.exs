@@ -1656,10 +1656,8 @@ defmodule Domain.AuthTest do
       assert identity.provider_identifier == provider_identifier
       assert identity.actor_id == actor.id
 
-      assert %{"sign_in_token_created_at" => _, "sign_in_token_hash" => _} =
-               identity.provider_state
-
-      assert %{sign_in_token: _} = identity.provider_virtual_state
+      assert identity.provider_state == %{}
+      assert identity.provider_virtual_state == %{}
       assert identity.account_id == provider.account_id
       assert is_nil(identity.deleted_at)
     end
@@ -1671,14 +1669,13 @@ defmodule Domain.AuthTest do
     } do
       provider_identifier = Fixtures.Auth.random_provider_identifier(provider)
 
-      identity =
-        Fixtures.Auth.create_identity(
-          account: account,
-          provider: provider,
-          provider_identifier: provider_identifier,
-          actor: actor,
-          provider_virtual_state: %{"foo" => "bar"}
-        )
+      Fixtures.Auth.create_identity(
+        account: account,
+        provider: provider,
+        provider_identifier: provider_identifier,
+        actor: actor,
+        provider_virtual_state: %{"foo" => "bar"}
+      )
 
       attrs = %{
         provider_identifier: provider_identifier,
@@ -1689,8 +1686,8 @@ defmodule Domain.AuthTest do
 
       assert Repo.one(Auth.Identity).id == updated_identity.id
 
-      assert updated_identity.provider_virtual_state != identity.provider_virtual_state
-      assert updated_identity.provider_state != identity.provider_state
+      assert updated_identity.provider_virtual_state == %{}
+      assert updated_identity.provider_state == %{}
     end
 
     test "returns error when identifier is invalid", %{
@@ -1818,10 +1815,8 @@ defmodule Domain.AuthTest do
       assert identity.provider_identifier == provider_identifier
       assert identity.actor_id == actor.id
 
-      assert %{"sign_in_token_created_at" => _, "sign_in_token_hash" => _} =
-               identity.provider_state
-
-      assert %{sign_in_token: _} = identity.provider_virtual_state
+      assert identity.provider_state == %{}
+      assert identity.provider_virtual_state == %{}
       assert identity.account_id == provider.account_id
       assert is_nil(identity.deleted_at)
     end
@@ -2054,10 +2049,8 @@ defmodule Domain.AuthTest do
       assert new_identity.provider_id == identity.provider_id
       assert new_identity.actor_id == identity.actor_id
 
-      assert %{"sign_in_token_created_at" => _, "sign_in_token_hash" => _} =
-               new_identity.provider_state
-
-      assert %{sign_in_token: _} = new_identity.provider_virtual_state
+      assert new_identity.provider_state == %{}
+      assert new_identity.provider_virtual_state == %{}
       assert new_identity.account_id == identity.account_id
       assert is_nil(new_identity.deleted_at)
 
@@ -2331,12 +2324,13 @@ defmodule Domain.AuthTest do
       user_agent: user_agent,
       remote_ip: remote_ip
     } do
-      identity = Fixtures.Auth.create_identity(account: account, provider: provider)
-      secret = "foo"
-      nonce = "nonce"
+      nonce = "foo"
       context = %Auth.Context{type: :browser, user_agent: user_agent, remote_ip: remote_ip}
 
-      assert sign_in(provider, identity.provider_identifier, nonce, secret, context) ==
+      identity = Fixtures.Auth.create_identity(account: account, provider: provider)
+      {:ok, identity} = Domain.Auth.Adapters.Email.request_sign_in_token(identity, context)
+
+      assert sign_in(provider, identity.provider_identifier, nonce, "foo", context) ==
                {:error, :unauthorized}
     end
 
@@ -2346,11 +2340,13 @@ defmodule Domain.AuthTest do
       user_agent: user_agent,
       remote_ip: remote_ip
     } do
-      identity = Fixtures.Auth.create_identity(account: account, provider: provider)
-      secret = identity.provider_virtual_state.sign_in_token
-      nonce = "!.="
-
       context = %Auth.Context{type: :browser, user_agent: user_agent, remote_ip: remote_ip}
+
+      identity = Fixtures.Auth.create_identity(account: account, provider: provider)
+      {:ok, identity} = Domain.Auth.Adapters.Email.request_sign_in_token(identity, context)
+
+      secret = identity.provider_virtual_state.nonce <> identity.provider_virtual_state.fragment
+      nonce = "!.="
 
       assert sign_in(provider, identity.provider_identifier, nonce, secret, context) ==
                {:error, :malformed_request}
@@ -2362,11 +2358,12 @@ defmodule Domain.AuthTest do
       user_agent: user_agent,
       remote_ip: remote_ip
     } do
-      identity = Fixtures.Auth.create_identity(account: account, provider: provider)
-      secret = identity.provider_virtual_state.sign_in_token
-      nonce = "nonce"
-
+      nonce = "foo"
       context = %Auth.Context{type: :browser, user_agent: user_agent, remote_ip: remote_ip}
+
+      identity = Fixtures.Auth.create_identity(account: account, provider: provider)
+      {:ok, identity} = Domain.Auth.Adapters.Email.request_sign_in_token(identity, context)
+      secret = identity.provider_virtual_state.nonce <> identity.provider_virtual_state.fragment
 
       assert {:ok, token_identity, fragment} =
                sign_in(provider, identity.provider_identifier, nonce, secret, context)
@@ -2397,10 +2394,12 @@ defmodule Domain.AuthTest do
       user_agent: user_agent,
       remote_ip: remote_ip
     } do
-      identity = Fixtures.Auth.create_identity(account: account, provider: provider)
-      secret = identity.provider_virtual_state.sign_in_token
-      nonce = "nonce"
+      nonce = "foo"
       context = %Auth.Context{type: :browser, user_agent: user_agent, remote_ip: remote_ip}
+
+      identity = Fixtures.Auth.create_identity(account: account, provider: provider)
+      {:ok, identity} = Domain.Auth.Adapters.Email.request_sign_in_token(identity, context)
+      secret = identity.provider_virtual_state.nonce <> identity.provider_virtual_state.fragment
 
       assert {:ok, _token_identity, _fragment} =
                sign_in(provider, identity.id, nonce, secret, context)
@@ -2412,15 +2411,18 @@ defmodule Domain.AuthTest do
       user_agent: user_agent,
       remote_ip: remote_ip
     } do
-      identity = Fixtures.Auth.create_identity(account: account, provider: provider)
-      secret = identity.provider_virtual_state.sign_in_token
-      nonce = "nonce"
+      nonce = "foo"
       context = %Auth.Context{type: :client, user_agent: user_agent, remote_ip: remote_ip}
 
-      assert {:ok, token_identity, _fragment} =
+      identity = Fixtures.Auth.create_identity(account: account, provider: provider)
+      {:ok, identity} = Domain.Auth.Adapters.Email.request_sign_in_token(identity, context)
+      secret = identity.provider_virtual_state.nonce <> identity.provider_virtual_state.fragment
+
+      assert {:ok, token_identity, fragment} =
                sign_in(provider, identity.id, nonce, secret, context)
 
-      assert token = Repo.one(Domain.Tokens.Token)
+      {:ok, {_account_id, id, _nonce, _secret}} = Tokens.peek_token(fragment, context)
+      assert token = Repo.get(Domain.Tokens.Token, id)
       assert token.type == context.type
       assert token.identity_id == token_identity.id
     end
@@ -2431,12 +2433,14 @@ defmodule Domain.AuthTest do
       user_agent: user_agent,
       remote_ip: remote_ip
     } do
-      nonce = "nonce"
+      nonce = "foo"
 
-      for type <- [:relay, :gateway, :api_client] do
-        identity = Fixtures.Auth.create_identity(account: account, provider: provider)
-        secret = identity.provider_virtual_state.sign_in_token
+      for type <- [:relay, :gateway, :api_client, :email] do
         context = %Auth.Context{type: type, user_agent: user_agent, remote_ip: remote_ip}
+
+        identity = Fixtures.Auth.create_identity(account: account, provider: provider)
+        {:ok, identity} = Domain.Auth.Adapters.Email.request_sign_in_token(identity, context)
+        secret = identity.provider_virtual_state.nonce <> identity.provider_virtual_state.fragment
 
         assert_raise FunctionClauseError, fn ->
           sign_in(provider, identity.id, nonce, secret, context)
@@ -2450,7 +2454,7 @@ defmodule Domain.AuthTest do
       user_agent: user_agent,
       remote_ip: remote_ip
     } do
-      nonce = "nonce"
+      nonce = "foo"
 
       # Browser session
       context = %Auth.Context{type: :browser, user_agent: user_agent, remote_ip: remote_ip}
@@ -2459,7 +2463,8 @@ defmodule Domain.AuthTest do
       ## Admin
       actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
       identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
-      secret = identity.provider_virtual_state.sign_in_token
+      {:ok, identity} = Domain.Auth.Adapters.Email.request_sign_in_token(identity, context)
+      secret = identity.provider_virtual_state.nonce <> identity.provider_virtual_state.fragment
 
       assert {:ok, identity, fragment} =
                sign_in(provider, identity.provider_identifier, nonce, secret, context)
@@ -2472,7 +2477,8 @@ defmodule Domain.AuthTest do
       ## Regular user
       actor = Fixtures.Actors.create_actor(type: :account_user, account: account)
       identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
-      secret = identity.provider_virtual_state.sign_in_token
+      {:ok, identity} = Domain.Auth.Adapters.Email.request_sign_in_token(identity, context)
+      secret = identity.provider_virtual_state.nonce <> identity.provider_virtual_state.fragment
 
       assert {:ok, identity, fragment} =
                sign_in(provider, identity.provider_identifier, nonce, secret, context)
@@ -2488,7 +2494,8 @@ defmodule Domain.AuthTest do
       ## Admin
       actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
       identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
-      secret = identity.provider_virtual_state.sign_in_token
+      {:ok, identity} = Domain.Auth.Adapters.Email.request_sign_in_token(identity, context)
+      secret = identity.provider_virtual_state.nonce <> identity.provider_virtual_state.fragment
 
       assert {:ok, identity, fragment} =
                sign_in(provider, identity.provider_identifier, nonce, secret, context)
@@ -2500,7 +2507,8 @@ defmodule Domain.AuthTest do
       ## Regular user
       actor = Fixtures.Actors.create_actor(type: :account_user, account: account)
       identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
-      secret = identity.provider_virtual_state.sign_in_token
+      {:ok, identity} = Domain.Auth.Adapters.Email.request_sign_in_token(identity, context)
+      secret = identity.provider_virtual_state.nonce <> identity.provider_virtual_state.fragment
 
       assert {:ok, identity, fragment} =
                sign_in(provider, identity.provider_identifier, nonce, secret, context)
@@ -2516,15 +2524,17 @@ defmodule Domain.AuthTest do
       user_agent: user_agent,
       remote_ip: remote_ip
     } do
+      nonce = "foo"
       actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
       identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
       subject = Fixtures.Auth.create_subject(identity: identity)
       {:ok, _provider} = disable_provider(provider, subject)
 
       identity = Fixtures.Auth.create_identity(account: account, provider: provider)
-      secret = identity.provider_virtual_state.sign_in_token
-      nonce = "nonce"
       context = %Auth.Context{type: :browser, user_agent: user_agent, remote_ip: remote_ip}
+      {:ok, identity} = Domain.Auth.Adapters.Email.request_sign_in_token(identity, context)
+
+      secret = identity.provider_virtual_state.nonce <> identity.provider_virtual_state.fragment
 
       assert sign_in(provider, identity.provider_identifier, nonce, secret, context) ==
                {:error, :unauthorized}
@@ -2536,13 +2546,16 @@ defmodule Domain.AuthTest do
       user_agent: user_agent,
       remote_ip: remote_ip
     } do
+      nonce = "foo"
       actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
       identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
-      secret = identity.provider_virtual_state.sign_in_token
-      nonce = "nonce"
-      subject = Fixtures.Auth.create_subject(identity: identity)
-      {:ok, identity} = delete_identity(identity, subject)
+
       context = %Auth.Context{type: :browser, user_agent: user_agent, remote_ip: remote_ip}
+      {:ok, identity} = Domain.Auth.Adapters.Email.request_sign_in_token(identity, context)
+      secret = identity.provider_virtual_state.nonce <> identity.provider_virtual_state.fragment
+
+      subject = Fixtures.Auth.create_subject(identity: identity)
+      {:ok, _identity} = delete_identity(identity, subject)
 
       assert sign_in(provider, identity.provider_identifier, nonce, secret, context) ==
                {:error, :unauthorized}
@@ -2554,14 +2567,17 @@ defmodule Domain.AuthTest do
       user_agent: user_agent,
       remote_ip: remote_ip
     } do
+      nonce = "foo"
+
       actor =
         Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
         |> Fixtures.Actors.disable()
 
       identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
-      secret = identity.provider_virtual_state.sign_in_token
-      nonce = "nonce"
       context = %Auth.Context{type: :browser, user_agent: user_agent, remote_ip: remote_ip}
+      {:ok, identity} = Domain.Auth.Adapters.Email.request_sign_in_token(identity, context)
+
+      secret = identity.provider_virtual_state.nonce <> identity.provider_virtual_state.fragment
 
       assert sign_in(provider, identity.provider_identifier, nonce, secret, context) ==
                {:error, :unauthorized}
@@ -2573,14 +2589,17 @@ defmodule Domain.AuthTest do
       user_agent: user_agent,
       remote_ip: remote_ip
     } do
+      nonce = "foo"
+
       actor =
         Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
         |> Fixtures.Actors.delete()
 
       identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
-      secret = identity.provider_virtual_state.sign_in_token
-      nonce = "nonce"
       context = %Auth.Context{type: :browser, user_agent: user_agent, remote_ip: remote_ip}
+      {:ok, identity} = Domain.Auth.Adapters.Email.request_sign_in_token(identity, context)
+
+      secret = identity.provider_virtual_state.nonce <> identity.provider_virtual_state.fragment
 
       assert sign_in(provider, identity.provider_identifier, nonce, secret, context) ==
                {:error, :unauthorized}
@@ -2592,17 +2611,18 @@ defmodule Domain.AuthTest do
       user_agent: user_agent,
       remote_ip: remote_ip
     } do
+      nonce = "foo"
+
       actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
       identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
       subject = Fixtures.Auth.create_subject(identity: identity)
       {:ok, _provider} = delete_provider(provider, subject)
 
-      identity = Fixtures.Auth.create_identity(account: account, provider: provider)
-      secret = identity.provider_virtual_state.sign_in_token
-      nonce = "nonce"
       context = %Auth.Context{type: :browser, user_agent: user_agent, remote_ip: remote_ip}
+      {:ok, identity} = Domain.Auth.Adapters.Email.request_sign_in_token(identity, context)
+      secret = identity.provider_virtual_state.nonce <> identity.provider_virtual_state.fragment
 
-      assert sign_in(provider, identity.provider_identifier, secret, nonce, context) ==
+      assert sign_in(provider, identity.provider_identifier, nonce, secret, context) ==
                {:error, :unauthorized}
     end
   end
@@ -2744,9 +2764,10 @@ defmodule Domain.AuthTest do
 
       context = %Auth.Context{type: :client, user_agent: user_agent, remote_ip: remote_ip}
 
-      assert {:ok, token_identity, _fragment} = sign_in(provider, nonce, payload, context)
+      assert {:ok, token_identity, fragment} = sign_in(provider, nonce, payload, context)
 
-      assert token = Repo.one(Domain.Tokens.Token)
+      {:ok, {_account_id, id, _nonce, _secret}} = Tokens.peek_token(fragment, context)
+      assert token = Repo.get(Domain.Tokens.Token, id)
       assert token.type == context.type
       assert token.identity_id == token_identity.id
     end
