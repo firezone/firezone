@@ -182,12 +182,16 @@ where
                 // In our API, we parse the packets directly as an IpPacket.
                 // Thus, the caller can query whatever data they'd like, not just the source IP so we don't return it in addition.
                 TunnResult::WriteToTunnelV4(packet, ip) => {
+                    conn.set_remote_from_wg_activity(from);
+
                     let ipv4_packet = Ipv4Packet::new(packet).expect("boringtun verifies validity");
                     debug_assert_eq!(ipv4_packet.get_source(), ip);
 
                     Ok(Some((*id, ipv4_packet.into())))
                 }
                 TunnResult::WriteToTunnelV6(packet, ip) => {
+                    conn.set_remote_from_wg_activity(from);
+
                     let ipv6_packet = Ipv6Packet::new(packet).expect("boringtun verifies validity");
                     debug_assert_eq!(ipv6_packet.get_source(), ip);
 
@@ -199,6 +203,8 @@ where
                 // This should be fairly rare which is why we just allocate these and return them from `poll_transmit` instead.
                 // Overall, this results in a much nicer API for our caller and should not affect performance.
                 TunnResult::WriteToNetwork(bytes) => {
+                    conn.set_remote_from_wg_activity(from);
+
                     self.buffered_transmits.push_back(Transmit {
                         dst: from,
                         payload: bytes.to_vec(),
@@ -577,6 +583,20 @@ impl Connection {
         let from_possible_remote = self.possible_sockets.contains(&addr);
 
         from_connected_remote || from_possible_remote
+    }
+
+    fn set_remote_from_wg_activity(&mut self, remote: SocketAddr) {
+        match self.remote_socket {
+            Some(current) if current != remote => {
+                tracing::info!(%current, new = %remote, "Setting new remote socket from WG activity");
+                self.remote_socket = Some(remote);
+            }
+            None => {
+                tracing::info!(new = %remote, "Setting remote socket from WG activity");
+                self.remote_socket = Some(remote);
+            }
+            _ => {}
+        }
     }
 
     fn poll_timeout(&mut self) -> Option<Instant> {
