@@ -188,11 +188,11 @@ defmodule Web.Sites.NewToken do
 
   defp systemd_command(env) do
     """
-    ( function install-firezone {
+    ( install_firezone() {
 
     # Create firezone user and group
     sudo groupadd -f firezone
-    id -u firezone &>/dev/null || sudo useradd -r -g firezone -s /sbin/nologin firezone
+    id -u firezone > /dev/null 2>&1 || sudo useradd -r -g firezone -s /sbin/nologin firezone
 
     # Create systemd unit file
     cat << EOF | sudo tee /etc/systemd/system/firezone-gateway.service
@@ -294,7 +294,7 @@ defmodule Web.Sites.NewToken do
     sudo systemctl start firezone-gateway
 
     }
-    install-firezone )
+    install_firezone )
     """
   end
 
