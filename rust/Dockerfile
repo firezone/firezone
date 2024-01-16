@@ -19,9 +19,8 @@ ENV REFRESHED_AT=2023-12-11 \
 
 RUN set -xe \
   # Upgrade Debian and base packages
-  && apt-get update \
+  && apt-get update -qq \
   # Install required deps
-  && apt-get update \
   && apt-get install -y --no-install-recommends \
   ca-certificates \
   curl \
@@ -109,7 +108,7 @@ WORKDIR /bin
 
 ## curl is needed by the entrypoint script
 RUN set -xe \
-  && apt-get update \
+  && apt-get update -qq \
   && apt-get install -y --no-install-recommends curl
 
 COPY ./docker-init.sh .
@@ -118,7 +117,7 @@ COPY ./docker-init.sh .
 ARG PACKAGE
 RUN set -xe \
   && \[ "${PACKAGE}" = "firezone-gateway" ] \
-  && apt-get update \
+  && apt-get update -qq \
   && apt-get install -y --no-install-recommends iptables ip6tables || true
 
 ENTRYPOINT ["docker-init.sh"]
@@ -131,7 +130,7 @@ CMD $PACKAGE
 FROM runtime AS debug
 
 RUN set -xe \
-  && apt-get update \
+  && apt-get update -qq \
   && apt-get install -y --no-install-recommends iperf3
 
 ARG TARGET
