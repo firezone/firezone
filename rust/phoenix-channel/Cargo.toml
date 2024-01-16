@@ -8,7 +8,7 @@ edition = "2021"
 
 [dependencies]
 secrecy = { workspace = true }
-tokio-tungstenite = { version = "0.20.1", features = ["rustls-tls-native-roots"] }
+tokio-tungstenite = { version = "0.21.0", features = ["rustls-tls-webpki-roots"] }
 futures = "0.3.29"
 base64 = "0.21.7"
 serde = { version = "1.0.190", features = ["derive"] }

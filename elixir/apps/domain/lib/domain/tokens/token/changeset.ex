@@ -5,19 +5,27 @@ defmodule Domain.Tokens.Token.Changeset do
 
   @required_attrs ~w[
     type
-    account_id
-    created_by_user_agent created_by_remote_ip
-    expires_at
   ]a
 
-  @create_attrs ~w[name identity_id actor_id secret_fragment secret_nonce]a ++ @required_attrs
-  @update_attrs ~w[name expires_at]a
+  @create_attrs ~w[
+    name
+    account_id identity_id actor_id relay_group_id gateway_group_id
+    secret_fragment secret_nonce
+    remaining_attempts
+    created_by_user_agent created_by_remote_ip
+    expires_at
+  ]a ++ @required_attrs
+
+  @update_attrs ~w[
+    name
+    expires_at
+  ]a
 
   def create(attrs) do
     %Token{}
     |> cast(attrs, @create_attrs)
     |> validate_required(@required_attrs)
-    |> validate_inclusion(:type, [:email, :browser, :client])
+    |> validate_inclusion(:type, [:email, :browser, :client, :relay_group])
     |> changeset()
     |> put_change(:created_by, :system)
   end
@@ -27,7 +35,16 @@ defmodule Domain.Tokens.Token.Changeset do
     |> cast(attrs, @create_attrs)
     |> put_change(:account_id, subject.account.id)
     |> validate_required(@required_attrs)
-    |> validate_inclusion(:type, [:client, :relay, :gateway, :api_client])
+    |> put_change(:created_by_user_agent, subject.context.user_agent)
+    |> put_change(:created_by_remote_ip, subject.context.remote_ip)
+    |> validate_required([:created_by_user_agent, :created_by_remote_ip])
+    |> validate_inclusion(:type, [
+      :client,
+      :relay_group,
+      :gateway_group,
+      :api_client,
+      :service_account_client
+    ])
     |> changeset()
     |> put_change(:created_by, :identity)
     |> put_change(:created_by_identity_id, subject.identity.id)
@@ -56,17 +73,35 @@ defmodule Domain.Tokens.Token.Changeset do
     case fetch_field(changeset, :context) do
       {_data_or_changes, :browser} ->
         changeset
+        |> validate_required(:actor_id)
         |> validate_required(:identity_id)
-        |> assoc_constraint(:identity)
+        |> validate_required(:expires_at)
 
       {_data_or_changes, :client} ->
         changeset
+        |> validate_required(:actor_id)
+
+      {_data_or_changes, :api_client} ->
+        changeset
+        |> validate_required(:actor_id)
+        |> validate_required(:name)
+
+      {_data_or_changes, :relay_group} ->
+        changeset
+        |> validate_required(:relay_group_id)
+
+      {_data_or_changes, :gateway_group} ->
+        changeset
+        |> validate_required(:gateway_group_id)
+
+      {_data_or_changes, :email} ->
+        changeset
+        |> validate_required(:actor_id)
         |> validate_required(:identity_id)
-        |> assoc_constraint(:identity)
+        |> validate_required(:expires_at)
+        |> validate_required(:remaining_attempts)
 
-      # TODO: relay, gateway, api_client
-
-      _ ->
+      :error ->
         changeset
     end
   end

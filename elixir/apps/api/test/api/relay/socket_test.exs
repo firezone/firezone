@@ -2,7 +2,6 @@ defmodule API.Relay.SocketTest do
   use API.ChannelCase, async: true
   import API.Relay.Socket, except: [connect: 3]
   alias API.Relay.Socket
-  alias Domain.Relays
 
   @connlib_version "0.1.1"
 
@@ -25,7 +24,7 @@ defmodule API.Relay.SocketTest do
 
     test "creates a new relay" do
       token = Fixtures.Relays.create_token()
-      encrypted_secret = Relays.encode_token!(token)
+      encrypted_secret = Domain.Tokens.encode_fragment!(token)
 
       attrs = connect_attrs(token: encrypted_secret)
 
@@ -45,7 +44,7 @@ defmodule API.Relay.SocketTest do
 
     test "creates a new named relay" do
       token = Fixtures.Relays.create_token()
-      encrypted_secret = Relays.encode_token!(token)
+      encrypted_secret = Domain.Tokens.encode_fragment!(token)
 
       attrs =
         connect_attrs(token: encrypted_secret)
@@ -58,7 +57,7 @@ defmodule API.Relay.SocketTest do
 
     test "uses region code to put default coordinates" do
       token = Fixtures.Relays.create_token()
-      encrypted_secret = Relays.encode_token!(token)
+      encrypted_secret = Domain.Tokens.encode_fragment!(token)
 
       attrs = connect_attrs(token: encrypted_secret)
 
@@ -74,7 +73,7 @@ defmodule API.Relay.SocketTest do
 
     test "propagates trace context" do
       token = Fixtures.Relays.create_token()
-      encrypted_secret = Relays.encode_token!(token)
+      encrypted_secret = Domain.Tokens.encode_fragment!(token)
       attrs = connect_attrs(token: encrypted_secret)
 
       span_ctx = OpenTelemetry.Tracer.start_span("test")
@@ -91,11 +90,13 @@ defmodule API.Relay.SocketTest do
     end
 
     test "updates existing relay" do
-      token = Fixtures.Relays.create_token()
-      existing_relay = Fixtures.Relays.create_relay(token: token)
-      encrypted_secret = Relays.encode_token!(token)
+      account = Fixtures.Accounts.create_account()
+      group = Fixtures.Relays.create_group(account: account)
+      relay = Fixtures.Relays.create_relay(account: account, group: group)
+      token = Fixtures.Relays.create_token(account: account, group: group)
+      encrypted_secret = Domain.Tokens.encode_fragment!(token)
 
-      attrs = connect_attrs(token: encrypted_secret, ipv4: existing_relay.ipv4)
+      attrs = connect_attrs(token: encrypted_secret, ipv4: relay.ipv4)
 
       assert {:ok, socket} = connect(Socket, attrs, connect_info: @connect_info)
       assert relay = Repo.one(Domain.Relays.Relay)
