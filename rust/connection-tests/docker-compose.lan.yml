@@ -91,4 +91,7 @@ services:
 
 networks:
   app:
-    # enable_ipv6: true Disable until we find a workaround for https://github.com/moby/moby/issues/41438.
+   # enable_ipv6: true Disable until we find a workaround for https://github.com/moby/moby/issues/41438.
+     ipam:
+      config:
+        - subnet: 172.28.0.0/24
