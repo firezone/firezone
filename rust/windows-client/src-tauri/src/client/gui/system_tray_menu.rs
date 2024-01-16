@@ -66,6 +66,16 @@ pub(crate) fn signed_in(user_name: &str, resources: &[ResourceDescription]) -> S
     menu
 }
 
+pub(crate) fn signing_in() -> SystemTrayMenu {
+    // TODO: Check this layout with Jamil, I lost track of the Figma for it.
+    SystemTrayMenu::new()
+        .add_item(CustomMenuItem::new("".to_string(), "Signing In...").disabled())
+        .add_native_item(SystemTrayMenuItem::Separator)
+        .add_item(CustomMenuItem::new("/about".to_string(), "About"))
+        .add_item(CustomMenuItem::new("/settings".to_string(), "Settings"))
+        .add_item(CustomMenuItem::new("/quit".to_string(), "Quit Firezone").accelerator("Ctrl+Q"))
+}
+
 pub(crate) fn signed_out() -> SystemTrayMenu {
     SystemTrayMenu::new()
         .add_item(CustomMenuItem::new("/sign_in".to_string(), "Sign In"))

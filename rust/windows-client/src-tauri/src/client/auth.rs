@@ -86,6 +86,7 @@ impl Auth {
         Ok(this)
     }
 
+    /// Returns the session iff we are signed in.
     pub fn session(&self) -> Option<&Session> {
         match &self.state {
             State::SignedIn(x) => Some(x),
@@ -175,7 +176,7 @@ impl Auth {
         Ok(keyring::Entry::new_with_target(self.keyring_key, "", "")?)
     }
 
-    fn ongoing_request(&self) -> Result<&Request> {
+    pub fn ongoing_request(&self) -> Result<&Request> {
         match &self.state {
             State::NeedResponse(x) => Ok(x),
             _ => Err(Error::NoInflightRequest),
