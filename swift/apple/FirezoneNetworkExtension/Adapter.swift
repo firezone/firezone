@@ -7,10 +7,6 @@ import Foundation
 import NetworkExtension
 import OSLog
 
-#if os(iOS)
-  import UIKit.UIDevice
-#endif
-
 public enum AdapterError: Error {
   /// Failure to perform an operation in such state.
   case invalidState
@@ -91,6 +87,7 @@ class Adapter {
 
   private let logFilter: String
   private let connlibLogFolderPath: String
+  private let firezoneIdFileURL: URL
 
   init(
     controlPlaneURLString: String, token: String,
@@ -103,6 +100,7 @@ class Adapter {
     self.state = .stoppedTunnel
     self.logFilter = logFilter
     self.connlibLogFolderPath = SharedAccess.connlibLogFolderURL?.path ?? ""
+    self.firezoneIdFileURL = SharedAccess.baseFolderURL.appendingPathComponent("firezone-id")
   }
 
   deinit {
@@ -151,7 +149,7 @@ class Adapter {
           session: try WrappedSession.connect(
             self.controlPlaneURLString,
             self.token,
-            self.getDeviceId(),
+            self.getOrCreateFirezoneId(from: self.firezoneIdFileURL),
             self.getDeviceName(),
             self.getOSVersion(),
             self.connlibLogFolderPath,
@@ -257,28 +255,27 @@ extension Adapter {
     #endif
   }
 
-  // uuidString and copyMACAddress() *should* reliably return valid Strings, but if
-  // for whatever reason they're nil, return a random UUID instead to prevent
-  // upsert collisions in the portal.
-  func getDeviceId() -> String {
-    #if os(iOS)
-      guard let extId = UIDevice.current.identifierForVendor?.uuidString else {
-        // FIXME: We should store this random deviceID fallback in the AppStore
-        // to use for upsert instead of generating a random UUID each time.
-        return UUID().uuidString
+  // Returns the Firezone ID as cached by the application or generates and persists a new one
+  // if that doesn't exist. The Firezone ID is a UUIDv4 that is used to dedup this device
+  // for upsert and identification in the admin portal.
+  func getOrCreateFirezoneId(from fileURL: URL) -> String {
+    do {
+      return try String(contentsOf: fileURL, encoding: .utf8)
+    } catch {
+      // Handle the error if the file doesn't exist or isn't readable
+      // Recreate the file, save a new UUIDv4, and return it
+      let newUUIDString = UUID().uuidString
+
+      do {
+        try newUUIDString.write(to: fileURL, atomically: true, encoding: .utf8)
+      } catch {
+        self.logger.error(
+          "Adapter.getOrCreateFirezoneId: Could not save \(fileURL, privacy: .public)! Error: \(error, privacy: .public)"
+        )
       }
 
-    #elseif os(macOS)
-      guard let extId = PrimaryMacAddress.copyMACAddress() as? String else {
-        // FIXME: We should store this random deviceID fallback in the AppStore
-        // to use for upsert instead of generating a random UUID each time.
-        return UUID().uuidString
-      }
-    #else
-      #error("Unsupported platform")
-    #endif
-
-    return extId
+      return newUUIDString
+    }
   }
 }
 
@@ -348,7 +345,7 @@ extension Adapter {
           session: try WrappedSession.connect(
             controlPlaneURLString,
             token,
-            self.getDeviceId(),
+            self.getOrCreateFirezoneId(from: self.firezoneIdFileURL),
             self.getDeviceName(),
             self.getOSVersion(),
             self.connlibLogFolderPath,
