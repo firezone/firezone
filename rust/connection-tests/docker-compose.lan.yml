@@ -68,7 +68,8 @@ services:
   #       PACKAGE: firezone-relay
   #   init: true
   #   healthcheck:
-  #     test: ["CMD-SHELL", "lsof -i UDP | grep firezone-relay"]
+  #     Poor man's netstat -- Check for listening on 3478 (D96 in hex)
+  #     test: ["CMD-SHELL", "cat /proc/net/udp | grep D96"]
   #     start_period: 20s
   #     interval: 30s
   #     retries: 5
@@ -97,5 +98,5 @@ networks:
     enable_ipv6: true
     ipam:
       config:
-        - subnet: 172.28.0.0/16
-        - subnet: 2001:db8:2::/64
+        - subnet: 172.28.0.0/24
+        - subnet: fc00:ff:2::/48

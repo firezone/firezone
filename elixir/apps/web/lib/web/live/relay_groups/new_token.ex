@@ -260,7 +260,7 @@ defmodule Web.RelayGroups.NewToken do
       "docker run -d",
       "--restart=unless-stopped",
       "--pull=always",
-      "--health-cmd=\"lsof -i UDP | grep firezone-relay\"",
+      "--health-cmd=\"cat /proc/net/udp | grep D96\"",
       "--name=firezone-relay",
       "--cap-add=NET_ADMIN",
       "--volume /var/lib/firezone",
