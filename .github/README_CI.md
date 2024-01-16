@@ -62,9 +62,8 @@ specifically trying to run workflows that require a baremetal runner.
 
 ## Busting the GCP Docker layer cache
 
-If you find yourself hitting strange Docker image issues like tokens not working
-in integration tests or Rust binaries failing to start inside Docker images, you
-may need to bust the GCP layer cache.
+If you find yourself hitting strange Docker image issues like Rust binaries
+failing to start inside Docker images, you may need to bust the GCP layer cache.
 
 To do so:
 
