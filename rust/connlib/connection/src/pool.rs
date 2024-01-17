@@ -272,21 +272,19 @@ where
                     }
                     IceAgentEvent::IceRestart(_) => {}
                     IceAgentEvent::IceConnectionStateChange(_) => {}
-                    IceAgentEvent::NominatedSend { destination, .. } => {
-                        let old = conn.remote_socket;
-
-                        conn.remote_socket = Some(destination);
-
-                        match old {
-                            Some(old) => {
-                                tracing::info!(%id, new = %destination, %old, "Migrating connection to peer")
-                            }
-                            None => {
-                                tracing::info!(%id, %destination, "Connected to peer");
-                                return Some(Event::ConnectionEstablished(*id));
-                            }
+                    IceAgentEvent::NominatedSend { destination, .. } => match conn.remote_socket {
+                        Some(old) if old != destination => {
+                            tracing::info!(%id, new = %destination, %old, "Migrating connection to peer");
+                            conn.remote_socket = Some(destination);
                         }
-                    }
+                        None => {
+                            tracing::info!(%id, %destination, "Connected to peer");
+                            conn.remote_socket = Some(destination);
+
+                            return Some(Event::ConnectionEstablished(*id));
+                        }
+                        _ => {}
+                    },
                 }
             }
         }
