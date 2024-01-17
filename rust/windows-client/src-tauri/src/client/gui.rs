@@ -33,6 +33,9 @@ pub(crate) fn app_local_data_dir(app: &tauri::AppHandle) -> Result<AppLocalDataD
 }
 
 /// All managed state that we might need to access from odd places like Tauri commands.
+///
+/// Note that this never gets Dropped because of
+/// <https://github.com/tauri-apps/tauri/issues/8631>
 pub(crate) struct Managed {
     pub ctlr_tx: CtlrTx,
     pub inject_faults: bool,
@@ -172,8 +175,8 @@ pub(crate) fn run(params: client::GuiParams) -> Result<()> {
 
             let app_handle = app.handle();
             let _ctlr_task = tokio::spawn(async move {
-                if let Err(e) = run_controller(
-                    app_handle,
+                let result = run_controller(
+                    app_handle.clone(),
                     ctlr_tx,
                     ctlr_rx,
                     logging_handles,
@@ -181,9 +184,21 @@ pub(crate) fn run(params: client::GuiParams) -> Result<()> {
                     notify_controller,
                     notify_network_changes,
                 )
-                .await
-                {
+                .await;
+
+                // See <https://github.com/tauri-apps/tauri/issues/8631>
+                // This should be the ONLY place we call `app.exit` or `app_handle.exit`,
+                // because it exits the entire process without dropping anything.
+                //
+                // This seems to be a platform limitation that Tauri is unable to hide
+                // from us. It was the source of much consternation at time of writing.
+
+                if let Err(e) = result {
                     tracing::error!("run_controller returned an error: {e:#?}");
+                    app_handle.exit(1);
+                } else {
+                    tracing::debug!("GUI controller task exited cleanly");
+                    app_handle.exit(0);
                 }
             });
 
@@ -271,7 +286,7 @@ fn handle_system_tray_event(app: &tauri::AppHandle, event: TrayMenuEvent) -> Res
         }
         TrayMenuEvent::SignIn => ctlr_tx.blocking_send(ControllerRequest::SignIn)?,
         TrayMenuEvent::SignOut => ctlr_tx.blocking_send(ControllerRequest::SignOut)?,
-        TrayMenuEvent::Quit => app.exit(0),
+        TrayMenuEvent::Quit => ctlr_tx.blocking_send(ControllerRequest::Quit)?,
     }
     Ok(())
 }
@@ -282,6 +297,7 @@ pub(crate) enum ControllerRequest {
     DisconnectedTokenExpired,
     ExportLogs { path: PathBuf, stem: PathBuf },
     GetAdvancedSettings(oneshot::Sender<AdvancedSettings>),
+    Quit,
     SchemeRequest(url::Url),
     SignIn,
     StartStopLogCounting(bool),
@@ -579,6 +595,7 @@ async fn run_controller(
                     Req::GetAdvancedSettings(tx) => {
                         tx.send(controller.advanced_settings.clone()).ok();
                     }
+                    Req::Quit => break,
                     Req::SchemeRequest(url) => if let Err(e) = controller.handle_deep_link(&url).await {
                         tracing::error!("couldn't handle deep link: {e:#?}");
                     }
@@ -621,6 +638,8 @@ async fn run_controller(
             }
         }
     }
-    tracing::debug!("GUI controller task exiting cleanly");
+
+    // Last chance to do any drops / cleanup before the process crashes.
+
     Ok(())
 }
