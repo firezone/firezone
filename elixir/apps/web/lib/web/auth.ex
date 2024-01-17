@@ -112,8 +112,11 @@ defmodule Web.Auth do
       |> Enum.reject(&is_nil(elem(&1, 1)))
       |> URI.encode_query()
 
+    client_handler =
+      Domain.Config.fetch_env!(:web, :client_handler)
+
     Phoenix.Controller.redirect(conn,
-      external: "firezone-fd0020211111://handle_client_sign_in_callback?#{query}"
+      external: "#{client_handler}handle_client_sign_in_callback?#{query}"
     )
   end
 
@@ -285,7 +288,7 @@ defmodule Web.Auth do
   Fetches the session token from the session and assigns the subject to the connection.
   """
   def fetch_subject(%Plug.Conn{} = conn, _opts) do
-    params = take_sign_in_params(conn.query_params)
+    params = take_sign_in_params(conn.params)
     context_type = fetch_auth_context_type!(params)
     context = get_auth_context(conn, context_type)
 
@@ -413,7 +416,7 @@ defmodule Web.Auth do
   """
   def redirect_if_user_is_authenticated(%Plug.Conn{} = conn, _opts) do
     if subject = conn.assigns[:subject] do
-      redirect_params = take_sign_in_params(conn.query_params)
+      redirect_params = take_sign_in_params(conn.params)
       encoded_fragment = fetch_subject_token!(conn, subject)
       identity = %{subject.identity | actor: subject.actor}
 
