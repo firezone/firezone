@@ -459,7 +459,7 @@ defmodule Domain.ClientsTest do
       assert {:ok, _client} = upsert_client(attrs, subject)
     end
 
-    test "allows actors to have devices with the same names", %{
+    test "allows an actor to have multiple devices with the same name", %{
       admin_subject: subject
     } do
       name = Ecto.UUID.generate()
