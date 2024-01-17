@@ -147,7 +147,7 @@ services:
 
   gateway:
     healthcheck:
-      test: ["CMD-SHELL", "cat /proc/net/dev | grep tun-firezone"]
+      test: ["CMD-SHELL", "ip link | grep tun-firezone"]
     environment:
       FIREZONE_TOKEN: ".SFMyNTY.g2gDaANtAAAAJGM4OWJjYzhjLTkzOTItNGRhZS1hNDBkLTg4OGFlZjZkMjhlMG0AAAAkMjI3NDU2MGItZTk3Yi00NWU0LThiMzQtNjc5Yzc2MTdlOThkbQAAADhPMDJMN1VTMkozVklOT01QUjlKNklMODhRSVFQNlVPOEFRVk82VTVJUEwwVkpDMjJKR0gwPT09PW4GAF3gLBONAWIAAVGA.DCT0Qv80qzF5OQ6CccLKXPLgzC3Rzx5DqzDAh9mWAww"
       RUST_LOG: firezone_gateway=trace,wire=trace,connlib_gateway_shared=trace,firezone_tunnel=trace,connlib_shared=trace,warn
@@ -221,9 +221,8 @@ services:
         PACKAGE: firezone-relay
     image: us-east1-docker.pkg.dev/firezone-staging/firezone/relay:${VERSION:-main}
     healthcheck:
-      # Poor man's netstat -- Check for listening on 3478 (D96 in hex)
-      test: ["CMD-SHELL", "cat /proc/net/udp | grep D96"]
-      start_period: 3s
+      test: ["CMD-SHELL", "lsof -i UDP | grep firezone-relay"]
+      start_period: 10s
       interval: 30s
       retries: 5
       timeout: 5s
