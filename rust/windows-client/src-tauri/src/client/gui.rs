@@ -3,7 +3,7 @@
 
 // TODO: `git grep` for unwraps before 1.0, especially this gui module
 
-use crate::client::{self, deep_link, AppLocalDataDir};
+use crate::client::{self, deep_link, network_changes, AppLocalDataDir};
 use anyhow::{anyhow, bail, Context, Result};
 use arc_swap::ArcSwap;
 use client::{
@@ -17,6 +17,8 @@ use std::{net::IpAddr, path::PathBuf, str::FromStr, sync::Arc, time::Duration};
 use system_tray_menu::Event as TrayMenuEvent;
 use tauri::{api::notification::Notification, Manager, SystemTray, SystemTrayEvent};
 use tokio::sync::{mpsc, oneshot, Notify};
+use windows::Win32::System::Com;
+
 use ControllerRequest as Req;
 
 mod system_tray_menu;
@@ -61,7 +63,6 @@ pub(crate) fn run(params: client::GuiParams) -> Result<()> {
         inject_faults,
     } = params;
 
-    // Needed for the deep link server
     let rt = tokio::runtime::Runtime::new()?;
     let _guard = rt.enter();
 
@@ -85,6 +86,25 @@ pub(crate) fn run(params: client::GuiParams) -> Result<()> {
     };
 
     let tray = SystemTray::new().with_menu(system_tray_menu::signed_out());
+
+    let notify_network_changes = Arc::new(Notify::new());
+
+    {
+        let notify_network_changes = Arc::clone(&notify_network_changes);
+        // TODO: Name thread, don't leak it, etc.
+        std::thread::spawn(move || {
+            // SAFETY: TODO
+            unsafe { Com::CoInitializeEx(None, Com::COINIT_MULTITHREADED) }?;
+
+            let _network_change_listener = network_changes::Listener::new(notify_network_changes)?;
+
+            for _ in 0.. {
+                println!("Parking worker thread");
+                std::thread::park();
+            }
+            Ok::<_, anyhow::Error>(())
+        });
+    }
 
     tauri::Builder::default()
         .manage(managed)
@@ -121,6 +141,8 @@ pub(crate) fn run(params: client::GuiParams) -> Result<()> {
             }
         })
         .setup(move |app| {
+            println!("Reached Tauri setup");
+
             // Change to data dir so the file logger will write there and not in System32 if we're launching from an app link
             let cwd = app_local_data_dir(&app.handle())?.0.join("data");
             std::fs::create_dir_all(&cwd)?;
@@ -138,6 +160,9 @@ pub(crate) fn run(params: client::GuiParams) -> Result<()> {
             // I checked this on my dev system to make sure Powershell is doing what I expect and passing the argument back to us after relaunch
             tracing::debug!("flag_elevated: {flag_elevated}");
 
+            // SAFETY: TODO
+            // unsafe { Com::CoUninitialize(); }
+
             let app_handle = app.handle();
             let _ctlr_task = tokio::spawn(async move {
                 if let Err(e) = run_controller(
@@ -147,6 +172,7 @@ pub(crate) fn run(params: client::GuiParams) -> Result<()> {
                     logging_handles,
                     advanced_settings,
                     notify_controller,
+                    notify_network_changes,
                 )
                 .await
                 {
@@ -165,6 +191,7 @@ pub(crate) fn run(params: client::GuiParams) -> Result<()> {
                 api.prevent_exit();
             }
         });
+
     Ok(())
 }
 
@@ -456,6 +483,7 @@ async fn run_controller(
     logging_handles: client::logging::Handles,
     advanced_settings: AdvancedSettings,
     notify_controller: Arc<Notify>,
+    notify_network_changes: Arc<Notify>,
 ) -> Result<()> {
     let mut controller = Controller::new(
         app.clone(),
@@ -467,10 +495,21 @@ async fn run_controller(
     .await
     .context("couldn't create Controller")?;
 
+    let mut have_internet = network_changes::Listener::check_internet()?;
+    tracing::debug!(?have_internet);
+
     loop {
         tokio::select! {
             () = controller.notify_controller.notified() => if let Err(e) = controller.refresh_system_tray_menu() {
                 tracing::error!("couldn't reload resource list: {e:#?}");
+            },
+            () = notify_network_changes.notified() => {
+                let new_have_internet = network_changes::Listener::check_internet()?;
+                if new_have_internet != have_internet {
+                    have_internet = new_have_internet;
+                    // TODO: Stop / start / restart connlib as needed here
+                    tracing::debug!(?have_internet);
+                }
             },
             req = rx.recv() => {
                 let Some(req) = req else {
