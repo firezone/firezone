@@ -3,14 +3,12 @@
 if [ "${FIREZONE_ENABLE_MASQUERADE}" = "1" ]; then
   IFACE="tun-firezone"
   # Enable masquerading for ethernet and wireless interfaces
-  iptables -C FORWARD -i $IFACE -j ACCEPT > /dev/null 2>&1 || iptables -A FORWARD -i $IFACE -j ACCEPT
-  iptables -C FORWARD -o $IFACE -j ACCEPT > /dev/null 2>&1 || iptables -A FORWARD -o $IFACE -j ACCEPT
-  iptables -t nat -C POSTROUTING -o e+ -j MASQUERADE > /dev/null 2>&1 || iptables -t nat -A POSTROUTING -o e+ -j MASQUERADE
-  iptables -t nat -C POSTROUTING -o w+ -j MASQUERADE > /dev/null 2>&1 || iptables -t nat -A POSTROUTING -o w+ -j MASQUERADE
-  ip6tables -C FORWARD -i $IFACE -j ACCEPT > /dev/null 2>&1 || ip6tables -A FORWARD -i $IFACE -j ACCEPT
-  ip6tables -C FORWARD -o $IFACE -j ACCEPT > /dev/null 2>&1 || ip6tables -A FORWARD -o $IFACE -j ACCEPT
-  ip6tables -t nat -C POSTROUTING -o e+ -j MASQUERADE > /dev/null 2>&1 || ip6tables -t nat -A POSTROUTING -o e+ -j MASQUERADE
-  ip6tables -t nat -C POSTROUTING -o w+ -j MASQUERADE > /dev/null 2>&1 || ip6tables -t nat -A POSTROUTING -o w+ -j MASQUERADE
+  iptables-nft -A FORWARD -i $IFACE -j ACCEPT
+  iptables-nft -A FORWARD -o $IFACE -j ACCEPT
+  iptables-nft -t nat -A POSTROUTING -o eth+ -j MASQUERADE
+  ip6tables-nft -A FORWARD -i $IFACE -j ACCEPT
+  ip6tables-nft -A FORWARD -o $IFACE -j ACCEPT
+  ip6tables-nft -t nat -A POSTROUTING -o eth+ -j MASQUERADE
 fi
 
 if [ "${LISTEN_ADDRESS_DISCOVERY_METHOD}" = "gce_metadata" ]; then

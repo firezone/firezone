@@ -87,7 +87,7 @@ COPY . .
 
 ARG TARGET
 ARG PACKAGE
-RUN cargo build -p ${PACKAGE} $([ -n "${TARGET}" ] && "--target ${TARGET}")
+RUN cargo build -p ${PACKAGE} $([ -v "${TARGET}" ] && "--target ${TARGET}")
 
 # Image which is used to run the application binary
 FROM alpine:${ALPINE_VERSION} AS runtime
