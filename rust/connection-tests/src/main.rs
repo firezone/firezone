@@ -3,7 +3,7 @@ use std::{
     net::Ipv4Addr,
     str::FromStr,
     task::{Context, Poll},
-    time::{Duration, Instant},
+    time::Instant,
 };
 
 use anyhow::{bail, Context as _, Result};
@@ -23,8 +23,6 @@ const MAX_UDP_SIZE: usize = (1 << 16) - 1;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    tokio::time::sleep(Duration::from_secs(1)).await; // Until redis is up.
-
     tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::builder().parse("info,boringtun=debug,str0m=debug")?)
         .init();
