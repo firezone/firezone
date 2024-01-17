@@ -134,9 +134,8 @@ services:
     depends_on:
       gateway:
         condition: "service_healthy"
-      # Doesn't work on aarch64 Macs
-      # httpbin:
-      #   condition: "service_healthy"
+      httpbin:
+        condition: "service_healthy"
       iperf3:
         condition: "service_healthy"
       api:
