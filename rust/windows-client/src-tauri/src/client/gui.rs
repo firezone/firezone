@@ -32,21 +32,13 @@ pub(crate) fn app_local_data_dir(app: &tauri::AppHandle) -> Result<AppLocalDataD
 }
 
 /// All managed state that we might need to access from odd places like Tauri commands.
+///
+/// Note that this never gets Dropped because of
+/// <https://github.com/tauri-apps/tauri/issues/8631>
 pub(crate) struct Managed {
     pub ctlr_tx: CtlrTx,
     pub inject_faults: bool,
 }
-
-/// Bundle ID / App ID that we use to distinguish ourself from other programs on the system
-///
-/// e.g. In ProgramData and AppData we use this to name our subdirectories for configs and data,
-/// and Windows may use it to track things like the MSI installer, notification titles,
-/// deep link registration, etc.
-///
-/// This should be identical to the `tauri.bundle.identifier` over in `tauri.conf.json`,
-/// but sometimes I need to use this before Tauri has booted up, or in a place where
-/// getting the Tauri app handle would be awkward.
-pub const BUNDLE_ID: &str = "dev.firezone.client";
 
 impl Managed {
     #[cfg(debug_assertions)]
@@ -61,6 +53,17 @@ impl Managed {
     /// Does nothing in release mode
     pub async fn fault_msleep(&self, _millis: u64) {}
 }
+
+/// Bundle ID / App ID that we use to distinguish ourself from other programs on the system
+///
+/// e.g. In ProgramData and AppData we use this to name our subdirectories for configs and data,
+/// and Windows may use it to track things like the MSI installer, notification titles,
+/// deep link registration, etc.
+///
+/// This should be identical to the `tauri.bundle.identifier` over in `tauri.conf.json`,
+/// but sometimes I need to use this before Tauri has booted up, or in a place where
+/// getting the Tauri app handle would be awkward.
+pub const BUNDLE_ID: &str = "dev.firezone.client";
 
 /// Runs the Tauri GUI and returns on exit or unrecoverable error
 pub(crate) fn run(params: client::GuiParams) -> Result<()> {
@@ -151,6 +154,12 @@ pub(crate) fn run(params: client::GuiParams) -> Result<()> {
             }
         })
         .setup(move |app| {
+            assert_eq!(
+                BUNDLE_ID,
+                app.handle().config().tauri.bundle.identifier,
+                "BUNDLE_ID should match bundle ID in tauri.conf.json"
+            );
+
             // Change to data dir so the file logger will write there and not in System32 if we're launching from an app link
             let cwd = app_local_data_dir(&app.handle())?.0.join("data");
             std::fs::create_dir_all(&cwd)?;
@@ -175,17 +184,29 @@ pub(crate) fn run(params: client::GuiParams) -> Result<()> {
 
             let app_handle = app.handle();
             let _ctlr_task = tokio::spawn(async move {
-                if let Err(e) = run_controller(
-                    app_handle,
+                let result = run_controller(
+                    app_handle.clone(),
                     ctlr_tx,
                     ctlr_rx,
                     logging_handles,
                     advanced_settings,
                     notify_controller,
                 )
-                .await
-                {
+                .await;
+
+                // See <https://github.com/tauri-apps/tauri/issues/8631>
+                // This should be the ONLY place we call `app.exit` or `app_handle.exit`,
+                // because it exits the entire process without dropping anything.
+                //
+                // This seems to be a platform limitation that Tauri is unable to hide
+                // from us. It was the source of much consternation at time of writing.
+
+                if let Err(e) = result {
                     tracing::error!("run_controller returned an error: {e:#?}");
+                    app_handle.exit(1);
+                } else {
+                    tracing::debug!("GUI controller task exited cleanly");
+                    app_handle.exit(0);
                 }
             });
 
@@ -254,7 +275,7 @@ fn handle_system_tray_event(app: &tauri::AppHandle, event: TrayMenuEvent) -> Res
         }
         TrayMenuEvent::SignIn => ctlr_tx.blocking_send(ControllerRequest::SignIn)?,
         TrayMenuEvent::SignOut => ctlr_tx.blocking_send(ControllerRequest::SignOut)?,
-        TrayMenuEvent::Quit => app.exit(0),
+        TrayMenuEvent::Quit => ctlr_tx.blocking_send(ControllerRequest::Quit)?,
     }
     Ok(())
 }
@@ -265,6 +286,7 @@ pub(crate) enum ControllerRequest {
     DisconnectedTokenExpired,
     ExportLogs { path: PathBuf, stem: PathBuf },
     GetAdvancedSettings(oneshot::Sender<AdvancedSettings>),
+    Quit,
     SchemeRequest(url::Url),
     SignIn,
     StartStopLogCounting(bool),
@@ -550,6 +572,7 @@ async fn run_controller(
                     Req::GetAdvancedSettings(tx) => {
                         tx.send(controller.advanced_settings.clone()).ok();
                     }
+                    Req::Quit => break,
                     Req::SchemeRequest(url) => if let Err(e) = controller.handle_deep_link(&url).await {
                         tracing::error!("couldn't handle deep link: {e:#?}");
                     }
@@ -592,6 +615,8 @@ async fn run_controller(
             }
         }
     }
-    tracing::debug!("GUI controller task exiting cleanly");
+
+    // Last chance to do any drops / cleanup before the process crashes.
+
     Ok(())
 }

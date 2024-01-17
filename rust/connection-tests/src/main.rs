@@ -3,7 +3,7 @@ use std::{
     net::Ipv4Addr,
     str::FromStr,
     task::{Context, Poll},
-    time::{Duration, Instant},
+    time::Instant,
 };
 
 use anyhow::{bail, Context as _, Result};
@@ -23,10 +23,11 @@ const MAX_UDP_SIZE: usize = (1 << 16) - 1;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    tokio::time::sleep(Duration::from_secs(1)).await; // Until redis is up.
-
     tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::builder().parse("info,boringtun=debug,str0m=debug")?)
+        .with_env_filter(
+            EnvFilter::builder()
+                .parse("info,boringtun=debug,str0m=debug,firezone_connection=debug")?,
+        )
         .init();
 
     let role = std::env::var("ROLE")
@@ -43,7 +44,7 @@ async fn main() -> Result<()> {
 
     tracing::info!(%listen_addr);
 
-    let redis_host = std::env::var("REDIS_HOST").context("Missing LISTEN_ADDR env var")?;
+    let redis_host = std::env::var("REDIS_HOST").context("Missing REDIS_HOST env var")?;
 
     let redis_client = redis::Client::open(format!("redis://{redis_host}:6379"))?;
     let mut redis_connection = redis_client.get_async_connection().await?;
