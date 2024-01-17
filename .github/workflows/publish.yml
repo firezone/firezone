@@ -62,7 +62,7 @@ jobs:
 
           for image in "${IMAGES[@]}"; do
             SOURCE_TAG=${{ steps.login-staging.outputs.registry }}/firezone/${image}:${{ inputs.tag || github.sha }}
-            docker pull ${SOURCE_TAG}
+            docker pull --platform linux/amd64 ${SOURCE_TAG}
 
             echo "Retagging ${image} from ${SOURCE_TAG}"
 
@@ -156,7 +156,7 @@ jobs:
 
           for image in "${IMAGES[@]}"; do
             SOURCE_TAG=${{ steps.login.outputs.registry }}/firezone/${image}:${{ inputs.tag || github.sha }}
-            docker pull ${SOURCE_TAG}
+            docker pull --all-tags ${SOURCE_TAG}
 
             echo "Retagging ${image} from ${SOURCE_TAG}"
 
