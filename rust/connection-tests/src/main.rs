@@ -26,7 +26,10 @@ async fn main() -> Result<()> {
     tokio::time::sleep(Duration::from_secs(1)).await; // Until redis is up.
 
     tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::builder().parse("info,boringtun=debug,str0m=debug")?)
+        .with_env_filter(
+            EnvFilter::builder()
+                .parse("info,boringtun=debug,str0m=debug,firezone_connection=debug")?,
+        )
         .init();
 
     let role = std::env::var("ROLE")
