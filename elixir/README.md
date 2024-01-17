@@ -370,10 +370,10 @@ iex(web@web-2f4j.us-east1-d.c.firezone-staging.internal)7> {:ok, subject} = Doma
 
 ```elixir
 
-iex(web@web-xxxx.us-east1-d.c.firezone-staging.internal)1> # select group to update
+iex(web@web-xxxx.us-east1-d.c.firezone-staging.internal)1> group = Domain.Repo.one!(Domain.Relays.Group.Query.global())
 ...
 
-iex(web@web-xxxx.us-east1-d.c.firezone-staging.internal)2> {:ok, token} = Domain.Relays.create_token(group, %{}, subject)
+iex(web@web-xxxx.us-east1-d.c.firezone-staging.internal)2> {:ok, token} = Domain.Relays.create_token(group, %{})
 ...
 ```
 
