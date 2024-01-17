@@ -43,7 +43,7 @@ async fn main() -> Result<()> {
 
     tracing::info!(%listen_addr);
 
-    let redis_host = std::env::var("REDIS_HOST").context("Missing LISTEN_ADDR env var")?;
+    let redis_host = std::env::var("REDIS_HOST").context("Missing REDIS_HOST env var")?;
 
     let redis_client = redis::Client::open(format!("redis://{redis_host}:6379"))?;
     let mut redis_connection = redis_client.get_async_connection().await?;
