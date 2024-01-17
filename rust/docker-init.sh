@@ -29,4 +29,4 @@ if [ "${LISTEN_ADDRESS_DISCOVERY_METHOD}" = "gce_metadata" ]; then
   fi
 fi
 
-exec "$@"
+exec $@
