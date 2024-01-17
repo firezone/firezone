@@ -359,15 +359,16 @@ services:
     networks:
       - app
 
+# IPv6 is currently causing flakiness with GH actions and on our testbed.
+# Disabling until there's more time to debug.
 networks:
   resources:
-    enable_ipv6: true
+    # enable_ipv6: true
     ipam:
       config:
         - subnet: 172.20.0.0/24
-        - subnet: fc00:ff:1::/48
+          # - subnet: fc00:ff:1::/48
   app:
-    # Currently not working on testbed
     # enable_ipv6: true
     ipam:
       config:
