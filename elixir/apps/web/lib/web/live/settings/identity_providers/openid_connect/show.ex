@@ -44,23 +44,24 @@ defmodule Web.Settings.IdentityProviders.OpenIDConnect.Show do
           Edit
         </.edit_button>
       </:action>
-      <!-- Wondering if these next two buttons can be combined? -->
-      <:action :if={is_nil(@provider.deleted_at)}>
-        <.button
-          :if={not is_nil(@provider.disabled_at)}
-          phx-click="enable"
-          data-confirm="Are you sure want to enable this provider?"
-        >
-          Enable
-        </.button>
-      </:action>
       <:action :if={is_nil(@provider.deleted_at)}>
         <.button
           :if={is_nil(@provider.disabled_at)}
           phx-click="disable"
+          style="warning"
+          icon="hero-lock-closed"
           data-confirm="Are you sure want to disable this provider? All users signed into this provider will be immediately signed out."
         >
           Disable
+        </.button>
+        <.button
+          :if={not is_nil(@provider.disabled_at)}
+          phx-click="enable"
+          style="warning"
+          icon="hero-lock-open"
+          data-confirm="Are you sure want to enable this provider?"
+        >
+          Enable
         </.button>
       </:action>
       <:action :if={is_nil(@provider.deleted_at)}>

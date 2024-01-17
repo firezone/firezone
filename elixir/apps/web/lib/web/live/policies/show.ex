@@ -48,11 +48,22 @@ defmodule Web.Policies.Show do
       </:action>
       <:action :if={is_nil(@policy.deleted_at)}>
         <.button
+          :if={is_nil(@policy.disabled_at)}
+          phx-click="disable"
+          style="warning"
+          icon="hero-lock-closed"
+          data-confirm="Are you sure? Access granted by this policy will be revoked immediately."
+        >
+          Disable
+        </.button>
+        <.button
           :if={not is_nil(@policy.disabled_at)}
           phx-click="enable"
+          style="warning"
+          icon="hero-lock-open"
           data-confirm="Are you sure want to enable this policy?"
         >
-          Enable Policy
+          Enable
         </.button>
       </:action>
       <:content>
@@ -162,15 +173,6 @@ defmodule Web.Policies.Show do
 
     <.danger_zone :if={is_nil(@policy.deleted_at)}>
       <:action>
-        <.button
-          :if={is_nil(@policy.disabled_at)}
-          phx-click="disable"
-          style="warning"
-          icon="hero-no-symbol"
-          data-confirm="Are you sure? Access granted by this policy will be revoked immediately."
-        >
-          Disable Policy
-        </.button>
         <.delete_button
           phx-click="delete"
           phx-value-id={@policy.id}

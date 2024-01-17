@@ -607,7 +607,12 @@ defmodule Domain.Config.Definitions do
   defconfig(:feature_traffic_filters_enabled, :boolean, default: false)
 
   @doc """
-  Boolean flag to turn Relay Admin functionality on/off.
+  Boolean flag to turn Account relays admin functionality on/off.
   """
   defconfig(:feature_self_hosted_relays_enabled, :boolean, default: false)
+
+  @doc """
+  Boolean flag to turn Multi-Site resources functionality on/off.
+  """
+  defconfig(:feature_multi_site_resources_enabled, :boolean, default: false)
 end

@@ -67,6 +67,7 @@ defmodule Domain.Resources do
         Resource.Query.all()
         |> Resource.Query.by_account_id(subject.account.id)
         |> Resource.Query.by_authorized_actor_id(subject.actor.id)
+        |> Resource.Query.with_at_least_one_gateway_group()
         |> Repo.list()
 
       {:ok, Repo.preload(resources, preload)}
