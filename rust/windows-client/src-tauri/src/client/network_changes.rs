@@ -103,8 +103,67 @@ pub(crate) fn run_debug() -> WinResult<()> {
     })
 }
 
+/// Worker thread that can be joined explicitly, and joins on Drop
+pub(crate) struct Worker {
+    inner: Option<WorkerInner>,
+    notify: Arc<Notify>,
+}
+
+/// Needed so that `Drop` can consume the oneshot Sender and the thread's JoinHandle
+struct WorkerInner {
+    thread: std::thread::JoinHandle<WinResult<()>>,
+    stopper: tokio::sync::oneshot::Sender<()>,
+}
+
+impl Worker {
+    pub fn new() -> anyhow::Result<Self> {
+        let notify = Arc::new(Notify::new());
+
+        let (stopper, rx) = tokio::sync::oneshot::channel();
+        let thread = {
+            let notify = Arc::clone(&notify);
+            std::thread::Builder::new()
+                .name("Firezone COM worker".into())
+                .spawn(move || -> windows::core::Result<()> {
+                    {
+                        let com = ComGuard::new()?;
+                        let _network_change_listener = Listener::new(&com, notify)?;
+                        rx.blocking_recv().ok();
+                    }
+                    tracing::debug!("COM worker thread shut down gracefully");
+                    Ok(())
+                })?
+        };
+
+        Ok(Self {
+            inner: Some(WorkerInner { thread, stopper }),
+            notify,
+        })
+    }
+
+    pub async fn notified(&self) {
+        self.notify.notified().await;
+    }
+}
+
+impl Drop for Worker {
+    fn drop(&mut self) {
+        if let Some(inner) = self.inner.take() {
+            inner
+                .stopper
+                .send(())
+                .expect("should be able to stop the worker thread");
+            inner
+                .thread
+                .join()
+                .expect("should be able to join the worker thread")
+                .expect("worker thread should not have returned an error");
+        }
+    }
+}
+
 /// Enforces the initialize-use-uninitialize order for `Listener` and COM
-pub(crate) struct ComGuard {
+struct ComGuard {
     dropped: bool,
 }
 
@@ -172,23 +231,16 @@ impl<'a> Drop for Listener<'a> {
     }
 }
 
-impl Drop for ListenerInner {
-    fn drop(&mut self) {
-        tracing::debug!("Dropped ListenerInner");
-    }
-}
-
 impl<'a> Listener<'a> {
     /// Creates a new Listener
     ///
-    /// Pre-req: CoInitializeEx must have been called on the calling thread
-    /// with COINIT_MULTITHREADED to set up multi-threaded COM.
-    ///
     /// # Arguments
     ///
+    /// * `com` - Makes sure that CoInitializeEx was called. Must have been created
+    ///   on the same thread as `new` is called on.
     /// * `notify` - A Tokio `Notify` that will be notified when Windows detects
     ///   connectivity changes. Some notifications may be spurious.
-    pub fn new(com: &'a ComGuard, notify: Arc<Notify>) -> WinResult<Self> {
+    fn new(com: &'a ComGuard, notify: Arc<Notify>) -> WinResult<Self> {
         // `windows-rs` automatically releases (de-refs) COM objects on Drop:
         // https://github.com/microsoft/windows-rs/issues/2123#issuecomment-1293194755
         // https://github.com/microsoft/windows-rs/blob/cefdabd15e4a7a7f71b7a2d8b12d5dc148c99adb/crates/samples/windows/wmi/src/main.rs#L22

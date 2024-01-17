@@ -55,12 +55,6 @@ impl Managed {
     pub async fn fault_msleep(&self, _millis: u64) {}
 }
 
-impl Drop for Managed {
-    fn drop(&mut self) {
-        tracing::debug!("Dropping Managed");
-    }
-}
-
 // TODO: We're supposed to get this from Tauri, but I'd need to move some things around first
 const TAURI_ID: &str = "dev.firezone.client";
 
@@ -95,28 +89,7 @@ pub(crate) fn run(params: client::GuiParams) -> Result<()> {
 
     let tray = SystemTray::new().with_menu(system_tray_menu::signed_out());
 
-    let notify_network_changes = Arc::new(Notify::new());
-
-    let (stop_com_worker_tx, mut rx) = tokio::sync::mpsc::channel(1);
-    let com_worker_thread = {
-        let notify_network_changes = Arc::clone(&notify_network_changes);
-        std::thread::Builder::new()
-            .name("Firezone COM worker".into())
-            .spawn(move || -> windows::core::Result<()> {
-                {
-                    let com = network_changes::ComGuard::new()?;
-
-                    let _network_change_listener =
-                        network_changes::Listener::new(&com, notify_network_changes)?;
-
-                    rx.blocking_recv();
-                }
-                tracing::debug!("COM worker thread shut down gracefully");
-                Ok(())
-            })?
-    };
-
-    let app = tauri::Builder::default()
+    tauri::Builder::default()
         .manage(managed)
         .on_window_event(|event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event.event() {
@@ -151,8 +124,6 @@ pub(crate) fn run(params: client::GuiParams) -> Result<()> {
             }
         })
         .setup(move |app| {
-            println!("Reached Tauri setup");
-
             // Change to data dir so the file logger will write there and not in System32 if we're launching from an app link
             let cwd = app_local_data_dir(&app.handle())?.0.join("data");
             std::fs::create_dir_all(&cwd)?;
@@ -170,9 +141,6 @@ pub(crate) fn run(params: client::GuiParams) -> Result<()> {
             // I checked this on my dev system to make sure Powershell is doing what I expect and passing the argument back to us after relaunch
             tracing::debug!("flag_elevated: {flag_elevated}");
 
-            // SAFETY: TODO
-            // unsafe { Com::CoUninitialize(); }
-
             let app_handle = app.handle();
             let _ctlr_task = tokio::spawn(async move {
                 let result = run_controller(
@@ -182,7 +150,6 @@ pub(crate) fn run(params: client::GuiParams) -> Result<()> {
                     logging_handles,
                     advanced_settings,
                     notify_controller,
-                    notify_network_changes,
                 )
                 .await;
 
@@ -204,34 +171,16 @@ pub(crate) fn run(params: client::GuiParams) -> Result<()> {
 
             Ok(())
         })
-        .build(tauri::generate_context!())?;
-
-    app.run(|_app_handle, event| {
-        tracing::debug!(?event);
-        match event {
-            tauri::RunEvent::ExitRequested { api, .. } => {
+        .build(tauri::generate_context!())?
+        .run(|_app_handle, event| {
+            if let tauri::RunEvent::ExitRequested { api, .. } = event {
                 // Don't exit if we close our main window
                 // https://tauri.app/v1/guides/features/system-tray/#preventing-the-app-from-closing
 
                 api.prevent_exit();
             }
-            tauri::RunEvent::Exit => {
-                // Tauri doesn't have a strong concept of "graceful shutdown".
-                // <https://github.com/tauri-apps/tauri/issues/7358>
-                // Its default is to exit the entire process. There isn't a clean way
-                // to pump the event loop yourself and then exit when you like.
-                // So anything that needs cleanup has to end up in here.
-            }
-            _ => {}
-        }
-    });
+        });
 
-    tracing::debug!("Tauri exited gracefully");
-
-    stop_com_worker_tx.blocking_send(())?;
-    com_worker_thread
-        .join()
-        .expect("should be able to join the COM worker thread")?;
     Ok(())
 }
 
@@ -530,7 +479,6 @@ async fn run_controller(
     logging_handles: client::logging::Handles,
     advanced_settings: AdvancedSettings,
     notify_controller: Arc<Notify>,
-    notify_network_changes: Arc<Notify>,
 ) -> Result<()> {
     let mut controller = Controller::new(
         app.clone(),
@@ -545,12 +493,14 @@ async fn run_controller(
     let mut have_internet = network_changes::Listener::check_internet()?;
     tracing::debug!(?have_internet);
 
+    let com_worker = network_changes::Worker::new()?;
+
     loop {
         tokio::select! {
             () = controller.notify_controller.notified() => if let Err(e) = controller.refresh_system_tray_menu() {
                 tracing::error!("couldn't reload resource list: {e:#?}");
             },
-            () = notify_network_changes.notified() => {
+            () = com_worker.notified() => {
                 let new_have_internet = network_changes::Listener::check_internet()?;
                 if new_have_internet != have_internet {
                     have_internet = new_have_internet;

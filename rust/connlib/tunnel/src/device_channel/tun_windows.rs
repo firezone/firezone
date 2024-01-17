@@ -35,7 +35,6 @@ pub struct Tun {
 
 impl Drop for Tun {
     fn drop(&mut self) {
-        tracing::info!("Dropping Tun");
         if let Err(e) = self.session.shutdown() {
             tracing::error!("wintun::Session::shutdown: {e:#?}");
         }
@@ -131,7 +130,7 @@ impl Tun {
 
         let (packet_tx, packet_rx) = mpsc::channel(5);
 
-        let recv_thread = start_recv_thread(packet_tx, Arc::clone(&session))?;
+        let recv_thread = start_recv_thread(packet_tx, Arc::clone(&session));
         let packet_rx = std::sync::Mutex::new(packet_rx);
 
         Ok(Self {
@@ -229,29 +228,27 @@ impl Tun {
 fn start_recv_thread(
     packet_tx: mpsc::Sender<wintun::Packet>,
     session: Arc<wintun::Session>,
-) -> std::io::Result<std::thread::JoinHandle<()>> {
-    std::thread::Builder::new()
-        .name("Firezone wintun worker".into())
-        .spawn(move || {
-            loop {
-                match session.receive_blocking() {
-                    Ok(pkt) => {
-                        // TODO: Don't allocate here if we can help it
-                        if packet_tx.blocking_send(pkt).is_err() {
-                            // Most likely the receiver was dropped and we're closing down the connlib session.
-                            break;
-                        }
-                    }
-                    // We get an Error::String when `Session::shutdown` is called
-                    Err(wintun::Error::String(_)) => break,
-                    Err(e) => {
-                        tracing::error!("wintun::Session::receive_blocking: {e:#?}");
+) -> std::thread::JoinHandle<()> {
+    std::thread::spawn(move || {
+        loop {
+            match session.receive_blocking() {
+                Ok(pkt) => {
+                    // TODO: Don't allocate here if we can help it
+                    if packet_tx.blocking_send(pkt).is_err() {
+                        // Most likely the receiver was dropped and we're closing down the connlib session.
                         break;
                     }
                 }
+                // We get an Error::String when `Session::shutdown` is called
+                Err(wintun::Error::String(_)) => break,
+                Err(e) => {
+                    tracing::error!("wintun::Session::receive_blocking: {e:#?}");
+                    break;
+                }
             }
-            tracing::debug!("recv_task exiting gracefully");
-        })
+        }
+        tracing::debug!("recv_task exiting gracefully");
+    })
 }
 
 /// Sets MTU on the interface
