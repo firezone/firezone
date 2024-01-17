@@ -78,20 +78,23 @@ pub(crate) fn run_debug() -> anyhow::Result<()> {
                 (Com::APTTYPE_MTA, Com::APTTYPEQUALIFIER_NONE)
             );
 
-            tracing::info!(have_internet = %Listener::check_internet()?);
+            tracing::info!(have_internet = %check_internet()?);
         }
     })
 }
 
-/// Checks what COM apartment the current thread is in. For debugging only.
-fn get_apartment_type() -> WinResult<(Com::APTTYPE, Com::APTTYPEQUALIFIER)> {
-    let mut apt_type = Com::APTTYPE_CURRENT;
-    let mut apt_qualifier = Com::APTTYPEQUALIFIER_NONE;
+/// Returns true if Windows thinks we have Internet access per [IsConnectedToInternet](https://learn.microsoft.com/en-us/windows/win32/api/netlistmgr/nf-netlistmgr-inetworklistmanager-get_isconnectedtointernet)
+///
+/// Call this when `Listener` notifies you.
+pub fn check_internet() -> WinResult<bool> {
+    // Retrieving the INetworkListManager takes less than half a millisecond, and this
+    // makes the lifetimes and Send+Sync much simpler for callers, so just retrieve it
+    // every single time.
+    let network_list_manager: INetworkListManager =
+        unsafe { Com::CoCreateInstance(&NetworkListManager, None, Com::CLSCTX_ALL) }?;
+    let have_internet = unsafe { network_list_manager.IsConnectedToInternet() }?.as_bool();
 
-    // SAFETY: We just created the variables, and they're out parameters,
-    // so Windows shouldn't store the pointers.
-    unsafe { Com::CoGetApartmentType(&mut apt_type, &mut apt_qualifier) }?;
-    Ok((apt_type, apt_qualifier))
+    Ok(have_internet)
 }
 
 /// Worker thread that can be joined explicitly, and joins on Drop
@@ -266,20 +269,6 @@ impl<'a> Listener<'a> {
         }
         Ok(())
     }
-
-    /// Returns true if Windows thinks we have Internet access per [IsConnectedToInternet](https://learn.microsoft.com/en-us/windows/win32/api/netlistmgr/nf-netlistmgr-inetworklistmanager-get_isconnectedtointernet)
-    ///
-    /// Call this when `Listener` notifies you.
-    pub fn check_internet() -> WinResult<bool> {
-        // Retrieving the INetworkListManager takes less than half a millisecond, and this
-        // makes the lifetimes and Send+Sync much simpler for callers, so just retrieve it
-        // every single time.
-        let network_list_manager: INetworkListManager =
-            unsafe { Com::CoCreateInstance(&NetworkListManager, None, Com::CLSCTX_ALL) }?;
-        let have_internet = unsafe { network_list_manager.IsConnectedToInternet() }?.as_bool();
-
-        Ok(have_internet)
-    }
 }
 
 impl INetworkEvents_Impl for ListenerInner {
@@ -307,4 +296,15 @@ impl INetworkEvents_Impl for ListenerInner {
     ) -> WinResult<()> {
         Ok(())
     }
+}
+
+/// Checks what COM apartment the current thread is in. For debugging only.
+fn get_apartment_type() -> WinResult<(Com::APTTYPE, Com::APTTYPEQUALIFIER)> {
+    let mut apt_type = Com::APTTYPE_CURRENT;
+    let mut apt_qualifier = Com::APTTYPEQUALIFIER_NONE;
+
+    // SAFETY: We just created the variables, and they're out parameters,
+    // so Windows shouldn't store the pointers.
+    unsafe { Com::CoGetApartmentType(&mut apt_type, &mut apt_qualifier) }?;
+    Ok((apt_type, apt_qualifier))
 }
