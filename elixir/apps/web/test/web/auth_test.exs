@@ -78,7 +78,7 @@ defmodule Web.AuthTest do
       assert get_session(conn, :sessions) == [{:browser, account.id, encoded_token}]
     end
 
-    test "persists a client token in session", %{
+    test "does not persist a client token in session", %{
       conn: conn,
       account: account,
       nonce: nonce,
@@ -86,7 +86,7 @@ defmodule Web.AuthTest do
     } do
       encoded_token = nonce <> encoded_fragment
       conn = put_account_session(conn, :client, account.id, encoded_token)
-      assert get_session(conn, "sessions") == [{:client, account.id, encoded_token}]
+      assert get_session(conn, "sessions", []) == []
     end
 
     test "updates an existing account_id session", %{
@@ -598,7 +598,7 @@ defmodule Web.AuthTest do
         %{
           conn
           | path_params: %{"account_id_or_slug" => account.id},
-            query_params: %{"as" => "client"},
+            params: %{"as" => "client"},
             remote_ip: {100, 64, 100, 58}
         }
         |> put_session(:sessions, [{context.type, account.id, nonce <> encoded_fragment}])
@@ -714,20 +714,22 @@ defmodule Web.AuthTest do
       refute Map.has_key?(conn.assigns, :subject)
     end
 
-    test "renews session when token is invalid", %{
+    test "removes invalid tokens from session", %{
       conn: conn,
-      account: account,
-      context: context
+      account: account
     } do
       conn =
         %{conn | remote_ip: {100, 64, 100, 58}}
-        |> put_session(:sessions, [{context.type, account.id, "invalid"}])
+        |> put_session(:sessions, [
+          {:client, account.id, "valid"},
+          {:browser, account.id, "invalid"}
+        ])
         |> assign(:account, account)
         |> fetch_subject([])
 
       refute Map.has_key?(conn.assigns, :subject)
 
-      assert get_session(conn, :sessions) == []
+      assert get_session(conn, :sessions) == [{:client, account.id, "valid"}]
     end
   end
 
@@ -769,9 +771,9 @@ defmodule Web.AuthTest do
         %{
           conn
           | path_params: %{"account_id_or_slug" => account.slug},
-            query_params: redirect_params
+            params: redirect_params
         }
-        |> put_account_session(context.type, account.id, encoded_fragment)
+        |> put_session(:sessions, [{context.type, account.id, encoded_fragment}])
         |> assign(:subject, client_subject)
         |> redirect_if_user_is_authenticated([])
 

@@ -18,23 +18,13 @@ defmodule Domain.Auth.Adapters.EmailTest do
       }
     end
 
-    test "puts default provider state", %{provider: provider, changeset: changeset} do
+    test "puts empty provider state by default", %{provider: provider, changeset: changeset} do
       assert %Ecto.Changeset{} = changeset = identity_changeset(provider, changeset)
 
-      assert %{
-               provider_state: %{
-                 "sign_in_token_created_at" => %DateTime{},
-                 "sign_in_token_hash" => sign_in_token_hash,
-                 "sign_in_token_salt" => sign_in_token_salt
-               },
-               provider_virtual_state: %{sign_in_token: sign_in_token}
-             } = changeset.changes
-
-      assert Domain.Crypto.equal?(
-               :argon2,
-               sign_in_token <> sign_in_token_salt,
-               sign_in_token_hash
-             )
+      assert changeset.changes == %{
+               provider_state: %{},
+               provider_virtual_state: %{}
+             }
     end
 
     test "trims provider identifier", %{provider: provider, changeset: changeset} do
@@ -97,89 +87,111 @@ defmodule Domain.Auth.Adapters.EmailTest do
   end
 
   describe "request_sign_in_token/1" do
-    test "returns identity with updated sign-in token" do
+    test "returns identity with valid token components" do
       identity = Fixtures.Auth.create_identity()
+      context = Fixtures.Auth.build_context(type: :email)
 
-      assert {:ok, identity} = request_sign_in_token(identity)
+      assert {:ok, identity} = request_sign_in_token(identity, context)
 
       assert %{
-               "sign_in_token_created_at" => sign_in_token_created_at,
-               "sign_in_token_hash" => sign_in_token_hash,
-               "sign_in_token_salt" => sign_in_token_salt
+               "last_created_token_id" => token_id
              } = identity.provider_state
 
       assert %{
-               sign_in_token: sign_in_token
+               nonce: nonce,
+               fragment: fragment
              } = identity.provider_virtual_state
 
-      assert Domain.Crypto.equal?(
-               :argon2,
-               sign_in_token <> sign_in_token_salt,
-               sign_in_token_hash
-             )
+      token = Repo.get(Domain.Tokens.Token, token_id)
+      assert token.type == :email
+      assert token.account_id == identity.account_id
+      assert token.actor_id == identity.actor_id
+      assert token.identity_id == identity.id
+      assert token.remaining_attempts == 5
 
-      assert %DateTime{} = sign_in_token_created_at
+      assert {:ok, token} = Domain.Tokens.use_token(nonce <> fragment, context)
+      assert token.id == token_id
+      assert token.remaining_attempts == 4
+    end
+
+    test "deletes previous sign in tokens" do
+      identity = Fixtures.Auth.create_identity()
+      context = Fixtures.Auth.build_context(type: :email)
+
+      assert {:ok, identity} = request_sign_in_token(identity, context)
+      assert %{"last_created_token_id" => first_token_id} = identity.provider_state
+
+      assert {:ok, identity} = request_sign_in_token(identity, context)
+      assert %{"last_created_token_id" => second_token_id} = identity.provider_state
+
+      assert Repo.get(Domain.Tokens.Token, first_token_id).deleted_at
+      refute Repo.get(Domain.Tokens.Token, second_token_id).deleted_at
     end
   end
 
-  describe "verify_secret/2" do
+  describe "verify_secret/3" do
     setup do
+      context = Fixtures.Auth.build_context(type: :email)
       Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
 
       account = Fixtures.Accounts.create_account()
       provider = Fixtures.Auth.create_email_provider(account: account)
       identity = Fixtures.Auth.create_identity(account: account, provider: provider)
-      token = identity.provider_virtual_state.sign_in_token
+      {:ok, identity} = request_sign_in_token(identity, context)
 
-      %{account: account, provider: provider, identity: identity, token: token}
+      nonce = identity.provider_virtual_state.nonce
+      fragment = identity.provider_virtual_state.fragment
+
+      %{
+        account: account,
+        provider: provider,
+        identity: identity,
+        token: nonce <> fragment,
+        context: context
+      }
     end
 
-    test "removes token after it's used", %{
+    test "removes all pending tokens after one is used", %{
+      account: account,
       identity: identity,
+      context: context,
       token: token
     } do
-      assert {:ok, identity, nil} = verify_secret(identity, token)
+      other_token =
+        Fixtures.Tokens.create_token(
+          type: :email,
+          account: account,
+          identity: identity
+        )
 
-      assert identity.provider_state == %{}
+      assert {:ok, identity, nil} = verify_secret(identity, context, token)
+
+      assert %{last_used_token_id: token_id} = identity.provider_state
       assert identity.provider_virtual_state == %{}
-    end
 
-    test "removes token after 5 failed attempts", %{
-      identity: identity
-    } do
-      for i <- 1..5 do
-        assert verify_secret(identity, "foo") == {:error, :invalid_secret}
-        assert %{"sign_in_failed_attempts" => ^i} = Repo.one(Auth.Identity).provider_state
-      end
+      token = Repo.get(Domain.Tokens.Token, token_id)
+      assert token.deleted_at
 
-      assert verify_secret(identity, "foo") == {:error, :invalid_secret}
-      assert Repo.one(Auth.Identity).provider_state == %{}
+      token = Repo.get(Domain.Tokens.Token, other_token.id)
+      assert token.deleted_at
     end
 
     test "returns error when token is expired", %{
-      account: account,
-      provider: provider
+      context: context,
+      identity: identity,
+      token: token
     } do
-      forty_seconds_ago = DateTime.utc_now() |> DateTime.add(-1 * 15 * 60 - 1, :second)
+      Repo.get(Domain.Tokens.Token, identity.provider_state["last_created_token_id"])
+      |> Fixtures.Tokens.expire_token()
 
-      identity =
-        Fixtures.Auth.create_identity(
-          account: account,
-          provider: provider,
-          provider_state: %{
-            "sign_in_token_hash" => Domain.Crypto.hash(:argon2, "dummy_token" <> "salty"),
-            "sign_in_token_created_at" => DateTime.to_iso8601(forty_seconds_ago),
-            "sign_in_token_salt" => "salty"
-          }
-        )
-
-      assert verify_secret(identity, "dummy_token") == {:error, :expired_secret}
+      assert verify_secret(identity, context, token) == {:error, :invalid_secret}
     end
 
     test "returns error when token is invalid", %{
+      context: context,
       identity: identity
     } do
-      assert verify_secret(identity, "foo") == {:error, :invalid_secret}
+      assert verify_secret(identity, context, "foo") == {:error, :invalid_secret}
     end
   end
 end

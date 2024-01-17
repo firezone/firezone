@@ -1,6 +1,6 @@
 defmodule Domain.Auth.Adapters do
   use Supervisor
-  alias Domain.Auth.{Provider, Identity}
+  alias Domain.Auth.{Provider, Identity, Context}
 
   @adapters %{
     email: Domain.Auth.Adapters.Email,
@@ -79,10 +79,10 @@ defmodule Domain.Auth.Adapters do
     adapter.sign_out(provider, identity, redirect_url)
   end
 
-  def verify_secret(%Provider{} = provider, %Identity{} = identity, secret) do
+  def verify_secret(%Provider{} = provider, %Identity{} = identity, %Context{} = context, secret) do
     adapter = fetch_provider_adapter!(provider)
 
-    case adapter.verify_secret(identity, secret) do
+    case adapter.verify_secret(identity, context, secret) do
       {:ok, %Identity{} = identity, expires_at} -> {:ok, identity, expires_at}
       {:error, :invalid_secret} -> {:error, :invalid_secret}
       {:error, :expired_secret} -> {:error, :expired_secret}

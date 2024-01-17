@@ -24,6 +24,8 @@ defmodule Domain.Auth.Identity do
 
     has_many :clients, Domain.Clients.Client, where: [deleted_at: nil]
 
+    has_many :tokens, Domain.Tokens.Token, foreign_key: :identity_id, where: [deleted_at: nil]
+
     field :deleted_at, :utc_datetime_usec
     timestamps(updated_at: false)
   end

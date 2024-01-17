@@ -36,13 +36,7 @@ if config_env() == :prod do
 
   config :domain, Domain.Gateways,
     gateway_ipv4_masquerade: compile_config!(:gateway_ipv4_masquerade),
-    gateway_ipv6_masquerade: compile_config!(:gateway_ipv6_masquerade),
-    key_base: compile_config!(:gateways_auth_token_key_base),
-    salt: compile_config!(:gateways_auth_token_salt)
-
-  config :domain, Domain.Relays,
-    key_base: compile_config!(:relays_auth_token_key_base),
-    salt: compile_config!(:relays_auth_token_salt)
+    gateway_ipv6_masquerade: compile_config!(:gateway_ipv6_masquerade)
 
   config :domain, Domain.Telemetry,
     enabled: compile_config!(:telemetry_enabled),
@@ -69,7 +63,8 @@ if config_env() == :prod do
     traffic_filters: compile_config!(:feature_traffic_filters_enabled),
     sign_up: compile_config!(:feature_sign_up_enabled),
     flow_activities: compile_config!(:feature_flow_activities_enabled),
-    self_hosted_relays: compile_config!(:feature_self_hosted_relays_enabled)
+    self_hosted_relays: compile_config!(:feature_self_hosted_relays_enabled),
+    multi_site_resources: compile_config!(:feature_multi_site_resources_enabled)
 
   config :domain, docker_registry: compile_config!(:docker_registry)
 

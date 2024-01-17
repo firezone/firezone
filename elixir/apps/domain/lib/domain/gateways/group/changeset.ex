@@ -11,21 +11,10 @@ defmodule Domain.Gateways.Group.Changeset do
     |> put_change(:account_id, account.id)
     |> put_change(:created_by, :identity)
     |> put_change(:created_by_identity_id, subject.identity.id)
-    |> cast_assoc(:tokens,
-      with: fn _token, _attrs ->
-        Gateways.Token.Changeset.create(account, subject)
-      end,
-      required: true
-    )
   end
 
-  def update(%Gateways.Group{} = group, attrs, %Auth.Subject{} = subject) do
+  def update(%Gateways.Group{} = group, attrs, %Auth.Subject{}) do
     changeset(group, attrs)
-    |> cast_assoc(:tokens,
-      with: fn _token, _attrs ->
-        Gateways.Token.Changeset.create(group.account, subject)
-      end
-    )
   end
 
   def update(%Gateways.Group{} = group, attrs) do

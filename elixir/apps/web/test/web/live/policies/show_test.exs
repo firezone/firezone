@@ -161,7 +161,7 @@ defmodule Web.Live.Policies.ShowTest do
     assert row["client, actor (ip)"] =~ to_string(flow.client_remote_ip)
 
     assert row["gateway (ip)"] =~
-             "#{flow.gateway.group.name}-#{flow.gateway.name} (189.172.73.153)"
+             "#{flow.gateway.group.name}-#{flow.gateway.name} (#{flow.gateway.last_seen_remote_ip})"
   end
 
   test "allows deleting policy", %{
@@ -202,13 +202,13 @@ defmodule Web.Live.Policies.ShowTest do
       |> live(~p"/#{account}/policies/#{policy}")
 
     assert lv
-           |> element("button", "Disable Policy")
+           |> element("button", "Disable")
            |> render_click() =~ "(disabled)"
 
     assert Repo.get(Domain.Policies.Policy, policy.id).disabled_at
 
     refute lv
-           |> element("button", "Enable Policy")
+           |> element("button", "Enable")
            |> render_click() =~ "(disabled)"
 
     refute Repo.get(Domain.Policies.Policy, policy.id).disabled_at

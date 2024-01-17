@@ -60,7 +60,6 @@ defmodule Web.Resources.Edit do
             <.connections_form
               :if={is_nil(@params["site_id"])}
               id="connections_form"
-              phx-update="ignore"
               form={@form[:connections]}
               account={@account}
               resource={@resource}

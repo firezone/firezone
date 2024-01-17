@@ -177,9 +177,32 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
         end
       )
     else
-      {:error, :expired_token} -> {:error, :expired}
-      {:error, :invalid_token} -> {:error, :invalid}
-      {:error, :internal_error} -> {:error, :internal_error}
+      {:error, :expired_token} ->
+        Provider.Query.by_id(provider.id)
+        |> Repo.fetch_and_update(
+          with: fn provider ->
+            Provider.Changeset.update(provider, %{
+              adapter_state: Map.delete(provider.adapter_state, "refresh_token")
+            })
+          end
+        )
+
+        {:error, :expired}
+
+      {:error, :invalid_token} ->
+        Provider.Query.by_id(provider.id)
+        |> Repo.fetch_and_update(
+          with: fn provider ->
+            Provider.Changeset.update(provider, %{
+              adapter_state: Map.delete(provider.adapter_state, "refresh_token")
+            })
+          end
+        )
+
+        {:error, :invalid}
+
+      {:error, :internal_error} ->
+        {:error, :internal_error}
     end
   end
 
@@ -216,6 +239,9 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
         {:error, :expired_token}
 
       {:error, {:invalid_jwt, _reason}} ->
+        {:error, :invalid_token}
+
+      {:error, {400, _reason}} ->
         {:error, :invalid_token}
 
       {:error, other} ->

@@ -11,36 +11,21 @@ defmodule API.Relay.Socket do
   ## Authentication
 
   @impl true
-  def connect(%{"token" => encrypted_secret} = attrs, socket, connect_info) do
+  def connect(%{"token" => encoded_token} = attrs, socket, connect_info) do
     :otel_propagator_text_map.extract(connect_info.trace_context_headers)
 
     OpenTelemetry.Tracer.with_span "relay.connect" do
-      %{
-        user_agent: user_agent,
-        x_headers: x_headers,
-        peer_data: peer_data
-      } = connect_info
+      context = API.Sockets.auth_context(connect_info, :relay_group)
+      attrs = Map.take(attrs, ~w[ipv4 ipv6 name])
 
-      real_ip = API.Sockets.real_ip(x_headers, peer_data)
+      with {:ok, group} <- Relays.authenticate(encoded_token, context),
+           {:ok, relay} <- Relays.upsert_relay(group, attrs, context) do
+        :ok = API.Endpoint.subscribe("relay_group_sessions:#{group.id}")
 
-      {location_region, location_city, {location_lat, location_lon}} =
-        API.Sockets.load_balancer_ip_location(x_headers)
-
-      attrs =
-        attrs
-        |> Map.take(~w[ipv4 ipv6 name])
-        |> Map.put("last_seen_user_agent", user_agent)
-        |> Map.put("last_seen_remote_ip", real_ip)
-        |> Map.put("last_seen_remote_ip_location_region", location_region)
-        |> Map.put("last_seen_remote_ip_location_city", location_city)
-        |> Map.put("last_seen_remote_ip_location_lat", location_lat)
-        |> Map.put("last_seen_remote_ip_location_lon", location_lon)
-
-      with {:ok, token} <- Relays.authorize_relay(encrypted_secret),
-           {:ok, relay} <- Relays.upsert_relay(token, attrs) do
         OpenTelemetry.Tracer.set_attributes(%{
-          gateway_id: relay.id,
-          account_id: relay.account_id
+          relay_id: relay.id,
+          account_id: relay.account_id,
+          version: relay.last_seen_version
         })
 
         socket =
@@ -51,7 +36,7 @@ defmodule API.Relay.Socket do
 
         {:ok, socket}
       else
-        {:error, :invalid_token} ->
+        {:error, :unauthorized} ->
           OpenTelemetry.Tracer.set_status(:error, "invalid_token")
           {:error, :invalid_token}
 
