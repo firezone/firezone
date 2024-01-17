@@ -81,6 +81,7 @@ config :domain, outbound_email_adapter_configured?: false
 
 config :web, ecto_repos: [Domain.Repo]
 config :web, generators: [binary_id: true, context_app: :domain]
+config :web, client_handler: "firezone-fd0020211111://"
 
 config :web, Web.Endpoint,
   url: [

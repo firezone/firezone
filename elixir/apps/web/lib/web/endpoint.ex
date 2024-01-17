@@ -4,6 +4,7 @@ defmodule Web.Endpoint do
 
   if Application.compile_env(:domain, :sql_sandbox) do
     plug Phoenix.Ecto.SQL.Sandbox
+    plug Web.Sandbox
   end
 
   plug Plug.RewriteOn, [:x_forwarded_host, :x_forwarded_port, :x_forwarded_proto]

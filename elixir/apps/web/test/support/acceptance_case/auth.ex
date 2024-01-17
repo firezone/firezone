@@ -101,6 +101,20 @@ defmodule Web.AcceptanceCase.Auth do
     end
   end
 
+  def mock_client_sign_in_callback do
+    test_pid = self()
+    bypass = Bypass.open()
+    Domain.Config.put_env_override(:web, :client_handler, "http://localhost:#{bypass.port()}/")
+
+    Bypass.expect_once(bypass, "GET", "/handle_client_sign_in_callback", fn conn ->
+      conn = Plug.Conn.fetch_query_params(conn)
+      send(test_pid, {:handle_client_sign_in_callback, conn.query_params})
+      Plug.Conn.send_resp(conn, 200, "Client redirected")
+    end)
+
+    bypass
+  end
+
   def assert_authenticated(session, identity) do
     with {:ok, cookie} <- fetch_session_cookie(session),
          context = %Domain.Auth.Context{

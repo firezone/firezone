@@ -598,7 +598,7 @@ defmodule Web.AuthTest do
         %{
           conn
           | path_params: %{"account_id_or_slug" => account.id},
-            query_params: %{"as" => "client"},
+            params: %{"as" => "client"},
             remote_ip: {100, 64, 100, 58}
         }
         |> put_session(:sessions, [{context.type, account.id, nonce <> encoded_fragment}])
@@ -769,7 +769,7 @@ defmodule Web.AuthTest do
         %{
           conn
           | path_params: %{"account_id_or_slug" => account.slug},
-            query_params: redirect_params
+            params: redirect_params
         }
         |> put_account_session(context.type, account.id, encoded_fragment)
         |> assign(:subject, client_subject)
