@@ -86,6 +86,7 @@ defmodule Web.Acceptance.SignIn.EmailTest do
   feature "allows to log in using email link to the client even with active browser session", %{
     session: session
   } do
+    Auth.mock_client_sign_in_callback()
     Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
     redirect_params = %{"as" => "client", "state" => "STATE", "nonce" => "NONCE"}
 
@@ -109,6 +110,7 @@ defmodule Web.Acceptance.SignIn.EmailTest do
     # And then to a client
     session
     |> email_login_flow(account, identity.provider_identifier, redirect_params)
+    |> assert_el(Query.text("Client redirected"))
     |> assert_path(~p"/handle_client_sign_in_callback")
   end
 
@@ -123,10 +125,7 @@ defmodule Web.Acceptance.SignIn.EmailTest do
     |> assert_el(Query.text("Please check your email"))
 
     link = fetch_sign_in_link!(email)
-
-    session
-    |> visit(~p"/?foo=bar")
-    |> visit(link)
+    visit(session, link)
   end
 
   defp fetch_sign_in_link!(email) do
