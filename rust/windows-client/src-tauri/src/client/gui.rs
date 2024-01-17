@@ -23,11 +23,10 @@ mod system_tray_menu;
 
 pub(crate) type CtlrTx = mpsc::Sender<ControllerRequest>;
 
-pub(crate) fn app_local_data_dir(app: &tauri::AppHandle) -> Result<AppLocalDataDir> {
-    let path = app
-        .path_resolver()
-        .app_local_data_dir()
-        .ok_or_else(|| anyhow!("getting app_local_data_dir"))?;
+pub(crate) fn app_local_data_dir() -> Result<AppLocalDataDir> {
+    let path = known_folders::get_known_folder_path(known_folders::KnownFolder::LocalAppData)
+        .context("should be able to ask Windows where AppData/Local is")?
+        .join(TAURI_ID);
     Ok(AppLocalDataDir(path))
 }
 
@@ -59,10 +58,26 @@ const TAURI_ID: &str = "dev.firezone.client";
 
 /// Runs the Tauri GUI and returns on exit or unrecoverable error
 pub(crate) fn run(params: client::GuiParams) -> Result<()> {
+    // Change to data dir so the file logger will write there and not in System32 if we're launching from an app link
+    let cwd = app_local_data_dir()?.0.join("data");
+    std::fs::create_dir_all(&cwd)?;
+    std::env::set_current_dir(&cwd)?;
+
+    let advanced_settings = settings::load_advanced_settings().unwrap_or_default();
+
+    // Set up logger
+    // It's hard to set it up before Tauri's setup, because Tauri knows where all the config and data go in AppData and I don't want to replicate their logic.
+    let logging_handles = client::logging::setup(&advanced_settings.log_filter)?;
+    tracing::info!("started log");
+    tracing::info!("GIT_VERSION = {}", crate::client::GIT_VERSION);
+
     let client::GuiParams {
         flag_elevated,
         inject_faults,
     } = params;
+
+    // I checked this on my dev system to make sure Powershell is doing what I expect and passing the argument back to us after relaunch
+    tracing::debug!("flag_elevated: {flag_elevated}");
 
     // Needed for the deep link server
     let rt = tokio::runtime::Runtime::new()?;
@@ -124,22 +139,6 @@ pub(crate) fn run(params: client::GuiParams) -> Result<()> {
             }
         })
         .setup(move |app| {
-            // Change to data dir so the file logger will write there and not in System32 if we're launching from an app link
-            let cwd = app_local_data_dir(&app.handle())?.0.join("data");
-            std::fs::create_dir_all(&cwd)?;
-            std::env::set_current_dir(&cwd)?;
-
-            let advanced_settings =
-                settings::load_advanced_settings(&app.handle()).unwrap_or_default();
-
-            // Set up logger
-            // It's hard to set it up before Tauri's setup, because Tauri knows where all the config and data go in AppData and I don't want to replicate their logic.
-            let logging_handles = client::logging::setup(&advanced_settings.log_filter)?;
-            tracing::info!("started log");
-            tracing::info!("GIT_VERSION = {}", crate::client::GIT_VERSION);
-            // I checked this on my dev system to make sure Powershell is doing what I expect and passing the argument back to us after relaunch
-            tracing::debug!("flag_elevated: {flag_elevated}");
-
             let app_handle = app.handle();
             let _ctlr_task = tokio::spawn(async move {
                 let result = run_controller(
