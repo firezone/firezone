@@ -112,6 +112,16 @@ defmodule Web.Acceptance.SignIn.EmailTest do
     |> email_login_flow(account, identity.provider_identifier, redirect_params)
     |> assert_el(Query.text("Client redirected"))
     |> assert_path(~p"/handle_client_sign_in_callback")
+
+    # The browser sessions stays active
+    session
+    |> visit(~p"/#{account}/sites")
+    |> assert_el(Query.css("#user-menu-button"))
+
+    # Browser is stored correctly
+    {:ok, cookie} = Auth.fetch_session_cookie(session)
+    assert [{:browser, account_id, _fragment}] = cookie["sessions"]
+    assert account_id == account.id
   end
 
   defp email_login_flow(session, account, email, redirect_params \\ %{}) do

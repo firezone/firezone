@@ -23,14 +23,17 @@ defmodule Web.Auth do
 
   # Session Management
 
-  def put_account_session(%Plug.Conn{} = conn, context_type, account_id, encoded_fragment)
-      when context_type in [:browser, :client] do
-    session = {context_type, account_id, encoded_fragment}
+  def put_account_session(%Plug.Conn{} = conn, :client, _account_id, _encoded_fragment) do
+    conn
+  end
+
+  def put_account_session(%Plug.Conn{} = conn, :browser, account_id, encoded_fragment) do
+    session = {:browser, account_id, encoded_fragment}
 
     sessions =
       Plug.Conn.get_session(conn, :sessions, [])
       |> Enum.reject(fn {session_context_type, session_account_id, _encoded_fragment} ->
-        session_context_type == context_type and session_account_id == account_id
+        session_context_type == :browser and session_account_id == account_id
       end)
 
     sessions = Enum.take(sessions ++ [session], -1 * @remember_last_sessions)

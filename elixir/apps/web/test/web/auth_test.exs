@@ -78,7 +78,7 @@ defmodule Web.AuthTest do
       assert get_session(conn, :sessions) == [{:browser, account.id, encoded_token}]
     end
 
-    test "persists a client token in session", %{
+    test "does not persist a client token in session", %{
       conn: conn,
       account: account,
       nonce: nonce,
@@ -86,7 +86,7 @@ defmodule Web.AuthTest do
     } do
       encoded_token = nonce <> encoded_fragment
       conn = put_account_session(conn, :client, account.id, encoded_token)
-      assert get_session(conn, "sessions") == [{:client, account.id, encoded_token}]
+      assert get_session(conn, "sessions", []) == []
     end
 
     test "updates an existing account_id session", %{
@@ -771,7 +771,7 @@ defmodule Web.AuthTest do
           | path_params: %{"account_id_or_slug" => account.slug},
             params: redirect_params
         }
-        |> put_account_session(context.type, account.id, encoded_fragment)
+        |> put_session(:sessions, [{context.type, account.id, encoded_fragment}])
         |> assign(:subject, client_subject)
         |> redirect_if_user_is_authenticated([])
 
