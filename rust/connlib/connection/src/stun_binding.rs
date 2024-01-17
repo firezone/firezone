@@ -96,18 +96,6 @@ impl StunBinding {
         true
     }
 
-    pub fn poll_candidate(&mut self) -> Option<Candidate> {
-        self.new_candidates.pop_front()
-    }
-
-    pub fn poll_timeout(&mut self) -> Option<Instant> {
-        match self.state {
-            State::Initial => None,
-            State::SentRequest { at, .. } => Some(at + STUN_TIMEOUT),
-            State::ReceivedResponse { at } => Some(at + STUN_REFRESH),
-        }
-    }
-
     pub fn handle_timeout(&mut self, now: Instant) {
         self.last_now = Some(now);
 
@@ -135,6 +123,18 @@ impl StunBinding {
             dst: self.server,
             payload: encode(request),
         });
+    }
+
+    pub fn poll_candidate(&mut self) -> Option<Candidate> {
+        self.new_candidates.pop_front()
+    }
+
+    pub fn poll_timeout(&mut self) -> Option<Instant> {
+        match self.state {
+            State::Initial => None,
+            State::SentRequest { at, .. } => Some(at + STUN_TIMEOUT),
+            State::ReceivedResponse { at } => Some(at + STUN_REFRESH),
+        }
     }
 
     pub fn poll_transmit(&mut self) -> Option<Transmit> {
