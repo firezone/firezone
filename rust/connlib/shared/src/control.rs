@@ -592,7 +592,7 @@ mod tests {
           "ref": null,
           "topic": "client",
           "payload": {}
-        }        
+        }
         "#;
         let actual_reply: Payload<(), ()> = serde_json::from_str(actual_reply).unwrap();
         let expected_reply =
