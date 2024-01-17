@@ -1,26 +1,5 @@
 //! A module for getting callbacks from Windows when we gain / lose Internet connectivity
 //!
-//! # Example
-//!
-//! ```rust
-//! use crate::network_changes::Listener;
-//!
-//! // Run all this in a worker thread if anything else in the process needs COM
-//! unsafe { Com::CoInitializeEx(None, Com::COINIT_MULTITHREADED) }?;
-//!
-//! let notify = Arc::new(Notify::new());
-//! let _listener = Listener::new(notify)?;
-//!
-//! loop {
-//!     dbg!(Listener::check_internet()?);
-//!     notify.notified().await;
-//! }
-//!
-//! // Safety: Make sure all the COM objects are dropped before we call
-//! // CoUninitialize or the program might segfault.
-//! unsafe { Com::CoUninitialize() };
-//! ```
-//!
 //! # Latency
 //!
 //! 2 or 3 seconds for the user clicking "Connect" or "Disconnect" on Wi-Fi,

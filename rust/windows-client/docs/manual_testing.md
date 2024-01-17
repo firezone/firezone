@@ -134,6 +134,8 @@ Given the client is signed in, when you ping...
 
 ## Ethernet cycle with Wi-Fi
 
+(This trips up Firezone on the Windows dev laptop)
+
 9. FZ up, Eth up, Wi-Fi down (skip, same as 5)
 10. FZ up, Eth disconnecting, Wi-Fi connecting (unplugging Ethernet)
 11. FZ up, Eth down, Wi-Fi up (skip, same as 1)
