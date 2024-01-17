@@ -6,6 +6,7 @@ use crate::{
     dns, ConnectedPeer, DnsQuery, Event, PeerConfig, RoleState, Tunnel, DNS_QUERIES_QUEUE_SIZE,
     ICE_GATHERING_TIMEOUT_SECONDS, MAX_CONCURRENT_ICE_GATHERING,
 };
+use bimap::BiMap;
 use boringtun::x25519::{PublicKey, StaticSecret};
 use connlib_shared::error::{ConnlibError as Error, ConnlibError};
 use connlib_shared::messages::{
@@ -135,8 +136,19 @@ where
 
     /// Sets the interface configuration and starts background tasks.
     #[tracing::instrument(level = "trace", skip(self))]
-    pub fn set_interface(&self, config: &InterfaceConfig) -> connlib_shared::Result<()> {
-        let device = Arc::new(Device::new(config, self.callbacks())?);
+    pub fn set_interface(
+        &self,
+        config: &InterfaceConfig,
+        dns_mapping: BiMap<IpAddr, DnsServer>,
+    ) -> connlib_shared::Result<()> {
+        let device = Arc::new(Device::new(
+            config,
+            // TODO: this isn't guaranteed to mantain order, we need to do it differently
+            dns_mapping.left_values().copied().collect(),
+            self.callbacks(),
+        )?);
+
+        self.role_state.lock().dns_mapping = dns_mapping;
 
         self.device.store(Some(device.clone()));
         self.no_device_waker.wake();
@@ -225,6 +237,7 @@ pub struct ClientState {
     refresh_dns_timer: Interval,
 
     pub upstream_dns: HashSet<SocketAddr>,
+    dns_mapping: BiMap<IpAddr, DnsServer>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -247,6 +260,7 @@ impl ClientState {
         match dns::parse(
             &self.dns_resources,
             &self.dns_resources_internal_ips,
+            &self.dns_mapping,
             packet.as_immutable(),
         ) {
             Some(dns::ResolveStrategy::LocalResponse(query)) => Ok(Some(query)),
@@ -668,6 +682,7 @@ impl Default for ClientState {
             deferred_dns_queries: Default::default(),
             refresh_dns_timer: interval,
             upstream_dns: Default::default(),
+            dns_mapping: Default::default(),
         }
     }
 }

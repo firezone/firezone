@@ -25,6 +25,7 @@ use connlib_shared::{Callbacks, Error};
 use ip_network::IpNetwork;
 use std::borrow::Cow;
 use std::io;
+use std::net::IpAddr;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::task::{Context, Poll};
 use tun::Tun;
@@ -38,9 +39,10 @@ impl Device {
     #[cfg(target_family = "unix")]
     pub(crate) fn new(
         config: &Interface,
+        dns_config: Vec<IpAddr>,
         callbacks: &impl Callbacks<Error = Error>,
     ) -> Result<Device, ConnlibError> {
-        let tun = Tun::new(config, callbacks)?;
+        let tun = Tun::new(config, dns_config, callbacks)?;
         let mtu = AtomicUsize::new(ioctl::interface_mtu_by_name(tun.name())?);
 
         Ok(Device { mtu, tun })
@@ -49,6 +51,7 @@ impl Device {
     #[cfg(target_family = "windows")]
     pub(crate) fn new(
         config: &Interface,
+        _: Vec<IpAddr>,
         _: &impl Callbacks<Error = Error>,
     ) -> Result<Device, ConnlibError> {
         Ok(Device {

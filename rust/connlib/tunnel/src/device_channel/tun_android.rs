@@ -3,6 +3,7 @@ use connlib_shared::{
     messages::Interface as InterfaceConfig, Callbacks, Error, Result, DNS_SENTINEL,
 };
 use ip_network::IpNetwork;
+use std::net::IpAddr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::task::{Context, Poll};
 use std::{
@@ -43,10 +44,11 @@ impl Tun {
 
     pub fn new(
         config: &InterfaceConfig,
+        dns_config: Vec<IpAddr>,
         callbacks: &impl Callbacks<Error = Error>,
     ) -> Result<Self> {
         let fd = callbacks
-            .on_set_interface_config(config.ipv4, config.ipv6, vec![DNS_SENTINEL.into()])?
+            .on_set_interface_config(config.ipv4, config.ipv6, dns_config)?
             .ok_or(Error::NoFd)?;
         // Safety: File descriptor is open.
         let name = unsafe { interface_name(fd)? };

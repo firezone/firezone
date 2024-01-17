@@ -1,12 +1,11 @@
-use connlib_shared::{
-    messages::Interface as InterfaceConfig, Callbacks, Error, Result, DNS_SENTINEL,
-};
+use connlib_shared::{messages::Interface as InterfaceConfig, Callbacks, Error, Result};
 use ip_network::IpNetwork;
 use libc::{
     ctl_info, fcntl, getpeername, getsockopt, ioctl, iovec, msghdr, recvmsg, sendmsg, sockaddr_ctl,
     socklen_t, AF_INET, AF_INET6, AF_SYSTEM, CTLIOCGINFO, F_GETFL, F_SETFL, IF_NAMESIZE,
     O_NONBLOCK, SYSPROTO_CONTROL, UTUN_OPT_IFNAME,
 };
+use std::net::IpAddr;
 use std::task::{Context, Poll};
 use std::{
     io,
@@ -71,6 +70,7 @@ impl Tun {
 
     pub fn new(
         config: &InterfaceConfig,
+        dns_config: Vec<IpAddr>,
         callbacks: &impl Callbacks<Error = Error>,
     ) -> Result<Self> {
         let mut info = ctl_info {
@@ -129,11 +129,7 @@ impl Tun {
             }
 
             if addr.sc_id == info.ctl_id {
-                callbacks.on_set_interface_config(
-                    config.ipv4,
-                    config.ipv6,
-                    vec![DNS_SENTINEL.into()],
-                )?;
+                callbacks.on_set_interface_config(config.ipv4, config.ipv6, dns_config)?;
 
                 set_non_blocking(fd)?;
 

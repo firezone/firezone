@@ -54,6 +54,7 @@ fn effective_dns_servers(
 
     let mut dns_servers = default_resolvers
         .into_iter()
+        // TODO: This filter should be any ip in the dns sentinel range
         .filter(|ip| ip != &IpAddr::from(DNS_SENTINEL))
         .peekable();
 
@@ -115,10 +116,24 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
             resources,
         }: InitClient,
     ) -> Result<()> {
+        let effective_dns_servers = effective_dns_servers(
+            interface.upstream_dns.clone(),
+            self.tunnel
+                .callbacks()
+                .get_system_default_resolvers()
+                .ok()
+                .flatten()
+                .unwrap_or_default(),
+        );
+        let sentinel_mapping = sentinel_dns_mapping(&effective_dns_servers);
+
+        self.tunnel.set_upstream_dns(&interface.upstream_dns);
+        *self.fallback_resolver.lock() = create_resolvers(sentinel_mapping.clone());
+
         {
             let mut init = self.tunnel_init.lock().await;
             if !*init {
-                if let Err(e) = self.tunnel.set_interface(&interface) {
+                if let Err(e) = self.tunnel.set_interface(&interface, sentinel_mapping) {
                     tracing::error!(error = ?e, "Error initializing interface");
                     return Err(e);
                 } else {
@@ -130,20 +145,6 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
             }
         }
 
-        let effective_dns_servers = effective_dns_servers(
-            interface.upstream_dns.clone(),
-            self.tunnel
-                .callbacks()
-                .get_system_default_resolvers()
-                .ok()
-                .flatten()
-                .unwrap_or_default(),
-        );
-
-        let sentinel_mapping = sentinel_dns_mapping(&effective_dns_servers);
-
-        self.tunnel.set_upstream_dns(&interface.upstream_dns);
-        *self.fallback_resolver.lock() = create_resolvers(sentinel_mapping);
         for resource_description in resources {
             self.add_resource(resource_description);
         }
@@ -403,6 +404,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                 else {
                     return;
                 };
+
                 let tunnel = self.tunnel.clone();
                 tokio::spawn(async move {
                     let response = resolver.lookup(&query.name, query.record_type).await;
