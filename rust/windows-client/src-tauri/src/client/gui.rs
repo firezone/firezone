@@ -17,7 +17,6 @@ use std::{net::IpAddr, path::PathBuf, str::FromStr, sync::Arc, time::Duration};
 use system_tray_menu::Event as TrayMenuEvent;
 use tauri::{api::notification::Notification, Manager, SystemTray, SystemTrayEvent};
 use tokio::sync::{mpsc, oneshot, Notify};
-use windows::Win32::System::Com;
 
 use ControllerRequest as Req;
 
@@ -51,6 +50,12 @@ impl Managed {
     #[cfg(not(debug_assertions))]
     /// Does nothing in release mode
     pub async fn fault_msleep(&self, _millis: u64) {}
+}
+
+impl Drop for Managed {
+    fn drop(&mut self) {
+        tracing::debug!("Dropping Managed");
+    }
 }
 
 // TODO: We're supposed to get this from Tauri, but I'd need to move some things around first
@@ -89,24 +94,26 @@ pub(crate) fn run(params: client::GuiParams) -> Result<()> {
 
     let notify_network_changes = Arc::new(Notify::new());
 
-    {
+    let (stop_com_worker_tx, mut rx) = tokio::sync::mpsc::channel(1);
+    let com_worker_thread = {
         let notify_network_changes = Arc::clone(&notify_network_changes);
-        // TODO: Name thread, don't leak it, etc.
-        std::thread::spawn(move || {
-            // SAFETY: TODO
-            unsafe { Com::CoInitializeEx(None, Com::COINIT_MULTITHREADED) }?;
+        std::thread::Builder::new()
+            .name("Firezone COM worker".into())
+            .spawn(move || -> windows::core::Result<()> {
+                {
+                    let com = network_changes::ComGuard::new()?;
 
-            let _network_change_listener = network_changes::Listener::new(notify_network_changes)?;
+                    let _network_change_listener =
+                        network_changes::Listener::new(&com, notify_network_changes)?;
 
-            for _ in 0.. {
-                println!("Parking worker thread");
-                std::thread::park();
-            }
-            Ok::<_, anyhow::Error>(())
-        });
-    }
+                    rx.blocking_recv();
+                }
+                tracing::debug!("COM worker thread shut down gracefully");
+                Ok(())
+            })?
+    };
 
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         .manage(managed)
         .on_window_event(|event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event.event() {
@@ -182,16 +189,34 @@ pub(crate) fn run(params: client::GuiParams) -> Result<()> {
 
             Ok(())
         })
-        .build(tauri::generate_context!())?
-        .run(|_app_handle, event| {
-            if let tauri::RunEvent::ExitRequested { api, .. } = event {
+        .build(tauri::generate_context!())?;
+
+    app.run(|_app_handle, event| {
+        tracing::debug!(?event);
+        match event {
+            tauri::RunEvent::ExitRequested { api, .. } => {
                 // Don't exit if we close our main window
                 // https://tauri.app/v1/guides/features/system-tray/#preventing-the-app-from-closing
 
                 api.prevent_exit();
             }
-        });
+            tauri::RunEvent::Exit => {
+                // Tauri doesn't have a strong concept of "graceful shutdown".
+                // <https://github.com/tauri-apps/tauri/issues/7358>
+                // Its default is to exit the entire process. There isn't a clean way
+                // to pump the event loop yourself and then exit when you like.
+                // So anything that needs cleanup has to end up in here.
+            }
+            _ => {}
+        }
+    });
 
+    tracing::debug!("Tauri exited gracefully");
+
+    stop_com_worker_tx.blocking_send(())?;
+    com_worker_thread
+        .join()
+        .expect("should be able to join the COM worker thread")?;
     Ok(())
 }
 

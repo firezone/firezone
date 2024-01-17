@@ -5,6 +5,7 @@
 //! ```rust
 //! use crate::network_changes::Listener;
 //!
+//! // Run all this in a worker thread if anything else in the process needs COM
 //! unsafe { Com::CoInitializeEx(None, Com::COINIT_MULTITHREADED) }?;
 //!
 //! let notify = Arc::new(Notify::new());
@@ -53,7 +54,6 @@
 //!
 //! Raymond Chen also explains it on his blog: <https://devblogs.microsoft.com/oldnewthing/20191125-00/?p=103135>
 
-use anyhow::Result;
 use std::sync::Arc;
 use tokio::{runtime::Runtime, sync::Notify};
 use windows::{
@@ -68,15 +68,13 @@ use windows::{
 };
 
 /// Debug subcommand to test network connectivity events
-pub(crate) fn run_debug() -> Result<()> {
+pub(crate) fn run_debug() -> WinResult<()> {
     tracing_subscriber::fmt::init();
 
     // Returns Err before COM is initialized
     assert!(get_apartment_type().is_err());
 
-    // Initialize a "Multi-threaded apartment" so that Windows COM stuff
-    // can be called, and COM callbacks can work.
-    unsafe { Com::CoInitializeEx(None, Com::COINIT_MULTITHREADED) }?;
+    let com = ComGuard::new()?;
 
     // We just initialized COM on the main thread, so we should be in an MTA
     assert_eq!(
@@ -84,40 +82,57 @@ pub(crate) fn run_debug() -> Result<()> {
         (Com::APTTYPE_MTA, Com::APTTYPEQUALIFIER_NONE)
     );
 
-    {
-        let rt = Runtime::new().unwrap();
+    let rt = Runtime::new().unwrap();
 
-        let notify = Arc::new(Notify::new());
-        let _listener = Listener::new(Arc::clone(&notify))?;
-        println!("Listening for network events...");
+    let notify = Arc::new(Notify::new());
+    let _listener = Listener::new(&com, Arc::clone(&notify))?;
+    println!("Listening for network events...");
 
-        rt.block_on(async move {
-            // If I used `loop` then Clippy would complain that `Ok(())` is unreachable
-            // TODO: More idiomatic way to write that?
-            for _ in 0.. {
-                // Make sure whatever Tokio thread we're on is associated with COM
-                // somehow.
-                assert_eq!(
-                    get_apartment_type()?,
-                    (Com::APTTYPE_MTA, Com::APTTYPEQUALIFIER_NONE)
-                );
+    rt.block_on(async move {
+        loop {
+            // Make sure whatever Tokio thread we're on is associated with COM
+            // somehow.
+            assert_eq!(
+                get_apartment_type()?,
+                (Com::APTTYPE_MTA, Com::APTTYPEQUALIFIER_NONE)
+            );
 
-                println!("check_internet() = {}", Listener::check_internet()?);
-                notify.notified().await;
-            }
-            Ok::<_, anyhow::Error>(())
-        })?;
+            println!("check_internet() = {}", Listener::check_internet()?);
+            notify.notified().await;
+        }
+    })
+}
+
+/// Enforces the initialize-use-uninitialize order for `Listener` and COM
+pub(crate) struct ComGuard {
+    dropped: bool,
+}
+
+impl ComGuard {
+    /// Initialize a "Multi-threaded apartment" so that Windows COM stuff
+    /// can be called, and COM callbacks can work.
+    pub fn new() -> WinResult<Self> {
+        // SAFETY: TODO, not sure if anything can go wrong here
+        unsafe { Com::CoInitializeEx(None, Com::COINIT_MULTITHREADED) }?;
+        Ok(Self { dropped: false })
     }
+}
 
-    // Required, per [CoInitializeEx docs](https://learn.microsoft.com/en-us/windows/win32/api/combaseapi/nf-combaseapi-coinitializeex#remarks)
-    // Safety: Make sure all the COM objects are dropped before we call
-    // CoUninitialize or the program might segfault.
-    unsafe { Com::CoUninitialize() };
-    Ok(())
+impl Drop for ComGuard {
+    fn drop(&mut self) {
+        if !self.dropped {
+            self.dropped = true;
+            // Required, per [CoInitializeEx docs](https://learn.microsoft.com/en-us/windows/win32/api/combaseapi/nf-combaseapi-coinitializeex#remarks)
+            // Safety: Make sure all the COM objects are dropped before we call
+            // CoUninitialize or the program might segfault.
+            unsafe { Com::CoUninitialize() };
+            tracing::debug!("Uninitialized COM");
+        }
+    }
 }
 
 /// Checks what COM apartment the current thread is in. For debugging only.
-fn get_apartment_type() -> Result<(Com::APTTYPE, Com::APTTYPEQUALIFIER)> {
+fn get_apartment_type() -> WinResult<(Com::APTTYPE, Com::APTTYPEQUALIFIER)> {
     let mut apt_type = Com::APTTYPE_CURRENT;
     let mut apt_qualifier = Com::APTTYPEQUALIFIER_NONE;
 
@@ -128,7 +143,7 @@ fn get_apartment_type() -> Result<(Com::APTTYPE, Com::APTTYPEQUALIFIER)> {
 }
 
 /// Listens to network connectivity change eents
-pub(crate) struct Listener {
+pub(crate) struct Listener<'a> {
     /// The cookies we get back from `Advise`. Can be None if the owner called `close`
     ///
     /// This has to be mutable because we have to hook up the callbacks during
@@ -137,6 +152,9 @@ pub(crate) struct Listener {
     cxn_point_net: Com::IConnectionPoint,
 
     inner: ListenerInner,
+
+    /// Hold a reference to a `ComGuard` to enforce the right init-use-uninit order
+    _com: &'a ComGuard,
 }
 
 /// This must be separate because we need to `Clone` that `Notify` and we can't
@@ -148,7 +166,7 @@ struct ListenerInner {
     notify: Arc<Notify>,
 }
 
-impl Drop for Listener {
+impl<'a> Drop for Listener<'a> {
     fn drop(&mut self) {
         self.close().unwrap();
     }
@@ -160,7 +178,7 @@ impl Drop for ListenerInner {
     }
 }
 
-impl Listener {
+impl<'a> Listener<'a> {
     /// Creates a new Listener
     ///
     /// Pre-req: CoInitializeEx must have been called on the calling thread
@@ -170,7 +188,7 @@ impl Listener {
     ///
     /// * `notify` - A Tokio `Notify` that will be notified when Windows detects
     ///   connectivity changes. Some notifications may be spurious.
-    pub fn new(notify: Arc<Notify>) -> Result<Self> {
+    pub fn new(com: &'a ComGuard, notify: Arc<Notify>) -> WinResult<Self> {
         // `windows-rs` automatically releases (de-refs) COM objects on Drop:
         // https://github.com/microsoft/windows-rs/issues/2123#issuecomment-1293194755
         // https://github.com/microsoft/windows-rs/blob/cefdabd15e4a7a7f71b7a2d8b12d5dc148c99adb/crates/samples/windows/wmi/src/main.rs#L22
@@ -183,6 +201,7 @@ impl Listener {
             advise_cookie_net: None,
             cxn_point_net,
             inner: ListenerInner { notify },
+            _com: com,
         };
 
         let callbacks: INetworkEvents = this.inner.clone().into();
@@ -192,6 +211,14 @@ impl Listener {
         // Is it safe to Advise on `this` and then immediately move it?
         this.advise_cookie_net = Some(unsafe { this.cxn_point_net.Advise(&callbacks) }?);
 
+        // After we call `Advise`, notify. This should avoid a problem if this happens:
+        //
+        // 1. Caller spawns a worker thread for Listener, but the worker thread isn't scheduled
+        // 2. Caller continues setup, checks Internet is connected
+        // 3. Internet gets disconnected but caller isn't notified
+        // 4. Worker thread finally gets scheduled, but we never notify that the Internet was lost during setup. Caller is now out of sync with ground truth.
+        this.inner.notify.notify_one();
+
         Ok(this)
     }
 
@@ -199,7 +226,7 @@ impl Listener {
     /// Calling this multiple times is idempotent
     ///
     /// Unregisters the network change callbacks
-    pub fn close(&mut self) -> anyhow::Result<()> {
+    pub fn close(&mut self) -> WinResult<()> {
         if let Some(cookie) = self.advise_cookie_net.take() {
             // SAFETY: I don't see any memory safety issues.
             unsafe { self.cxn_point_net.Unadvise(cookie) }?;

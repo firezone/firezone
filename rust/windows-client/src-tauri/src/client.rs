@@ -48,7 +48,7 @@ pub(crate) fn run() -> Result<()> {
     std::panic::set_hook(Box::new(tracing_panic::panic_hook));
     let cli = cli::Cli::parse();
 
-    match cli.command {
+    let output = match cli.command {
         None => {
             if elevation::check()? {
                 // We're already elevated, just run the GUI
@@ -82,7 +82,7 @@ pub(crate) fn run() -> Result<()> {
         }
         Some(Cmd::DebugCrash) => debug_commands::crash(),
         Some(Cmd::DebugHostname) => debug_commands::hostname(),
-        Some(Cmd::DebugNetworkChanges) => network_changes::run_debug(),
+        Some(Cmd::DebugNetworkChanges) => Ok(network_changes::run_debug()?),
         Some(Cmd::DebugPipeServer) => debug_commands::pipe_server(),
         Some(Cmd::DebugWintun) => debug_commands::wintun(cli),
         // If we already tried to elevate ourselves, don't try again
@@ -92,7 +92,9 @@ pub(crate) fn run() -> Result<()> {
         }),
         Some(Cmd::OpenDeepLink(deep_link)) => debug_commands::open_deep_link(&deep_link.url),
         Some(Cmd::RegisterDeepLink) => debug_commands::register_deep_link(),
-    }
+    };
+    tracing::debug!("Main thread exiting gracefully");
+    output
 }
 
 #[cfg(test)]
