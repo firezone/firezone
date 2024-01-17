@@ -154,12 +154,6 @@ pub(crate) fn run(params: client::GuiParams) -> Result<()> {
             }
         })
         .setup(move |app| {
-            assert_eq!(
-                BUNDLE_ID,
-                app.handle().config().tauri.bundle.identifier,
-                "BUNDLE_ID should match bundle ID in tauri.conf.json"
-            );
-
             // Change to data dir so the file logger will write there and not in System32 if we're launching from an app link
             let cwd = app_local_data_dir(&app.handle())?.0.join("data");
             std::fs::create_dir_all(&cwd)?;
