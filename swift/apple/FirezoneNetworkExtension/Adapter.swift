@@ -294,8 +294,14 @@ extension Adapter {
     self.networkSettings?.apply(
       on: self.packetTunnelProvider,
       logger: self.logger,
-      completionHandler: nil
-    )
+      completionHandler: { _ in
+        // We can only get the system's default resolvers before connlib starts, and then they'll
+        // be overwritten by the ones from connlib. So cache them here for getSystemDefaultResolvers
+        // to retrieve them later.
+        self.callbackHandler.setSystemDefaultResolvers(
+          resolvers: Resolv().getservers().map(Resolv.getnameinfo)
+        )
+      })
   }
 
   private func beginPathMonitoring() {
@@ -339,12 +345,6 @@ extension Adapter {
       self.logger.log("Adapter.didReceivePathUpdate: Back online. Starting connlib.")
 
       do {
-        // We can only get the system's default resolvers before connlib starts, and then they'll
-        // be overwritten by the ones from connlib. So cache them here for getSystemDefaultResolvers
-        // to retrieve them later.
-        self.callbackHandler.setSystemDefaultResolvers(
-          resolvers: Resolv().getservers().map(Resolv.getnameinfo)
-        )
         self.state = .startingTunnel(
           session: try WrappedSession.connect(
             controlPlaneURLString,
