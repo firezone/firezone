@@ -185,10 +185,11 @@ defmodule Web.AuthController do
         } = params
       ) do
     with {:ok, provider} <- Domain.Auth.fetch_active_provider_by_id(provider_id) do
+      redirect_params = Web.Auth.take_sign_in_params(params)
+
       redirect_url =
         url(~p"/#{provider.account_id}/sign_in/providers/#{provider.id}/handle_callback")
 
-      redirect_params = Web.Auth.take_sign_in_params(params)
       redirect_to_idp(conn, redirect_url, provider, %{}, redirect_params)
     else
       {:error, :not_found} ->

@@ -118,7 +118,7 @@ defmodule Web.Acceptance.SignIn.EmailTest do
     |> visit(~p"/#{account}/sites")
     |> assert_el(Query.css("#user-menu-button"))
 
-    # Browser is stored correctly
+    # Browser session is stored correctly
     {:ok, cookie} = Auth.fetch_session_cookie(session)
     assert [{:browser, account_id, _fragment}] = cookie["sessions"]
     assert account_id == account.id

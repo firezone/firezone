@@ -714,20 +714,22 @@ defmodule Web.AuthTest do
       refute Map.has_key?(conn.assigns, :subject)
     end
 
-    test "renews session when token is invalid", %{
+    test "removes invalid tokens from session", %{
       conn: conn,
-      account: account,
-      context: context
+      account: account
     } do
       conn =
         %{conn | remote_ip: {100, 64, 100, 58}}
-        |> put_session(:sessions, [{context.type, account.id, "invalid"}])
+        |> put_session(:sessions, [
+          {:client, account.id, "valid"},
+          {:browser, account.id, "invalid"}
+        ])
         |> assign(:account, account)
         |> fetch_subject([])
 
       refute Map.has_key?(conn.assigns, :subject)
 
-      assert get_session(conn, :sessions) == []
+      assert get_session(conn, :sessions) == [{:client, account.id, "valid"}]
     end
   end
 

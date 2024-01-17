@@ -759,11 +759,32 @@ defmodule Web.AuthControllerTest do
       conn =
         get(conn, ~p"/#{account.id}/sign_in/providers/#{provider.id}/redirect", redirect_params)
 
-      {params, _state, _verifier} =
+      assert to = redirected_to(conn)
+      uri = URI.parse(to)
+      assert uri.host == "localhost"
+      assert uri.path == "/authorize"
+
+      callback_url =
+        url(~p"/#{account.id}/sign_in/providers/#{provider.id}/handle_callback")
+
+      {params, state, verifier} =
         conn.cookies["fz_auth_state_#{provider.id}"]
         |> :erlang.binary_to_term([:safe])
 
       assert params == redirect_params
+
+      code_challenge = Domain.Auth.Adapters.OpenIDConnect.PKCE.code_challenge(verifier)
+
+      assert URI.decode_query(uri.query) == %{
+               "access_type" => "offline",
+               "client_id" => provider.adapter_config["client_id"],
+               "code_challenge" => code_challenge,
+               "code_challenge_method" => "S256",
+               "redirect_uri" => callback_url,
+               "response_type" => "code",
+               "scope" => "openid email profile",
+               "state" => state
+             }
     end
   end
 

@@ -41,6 +41,16 @@ defmodule Web.Auth do
     Plug.Conn.put_session(conn, :sessions, sessions)
   end
 
+  defp delete_account_session(conn, context_type, account_id) do
+    sessions =
+      Plug.Conn.get_session(conn, :sessions, [])
+      |> Enum.reject(fn {session_context_type, session_account_id, _encoded_fragment} ->
+        session_context_type == context_type and session_account_id == account_id
+      end)
+
+    Plug.Conn.put_session(conn, :sessions, sessions)
+  end
+
   # Signing In and Out
 
   @doc """
@@ -295,17 +305,24 @@ defmodule Web.Auth do
     context_type = fetch_auth_context_type!(params)
     context = get_auth_context(conn, context_type)
 
-    with account when not is_nil(account) <- Map.get(conn.assigns, :account),
-         sessions = Plug.Conn.get_session(conn, :sessions, []),
-         {:ok, encoded_fragment} <- fetch_token(sessions, account.id, context.type),
-         {:ok, subject} <- Auth.authenticate(encoded_fragment, context),
-         true <- subject.account.id == account.id do
-      conn
-      |> Plug.Conn.put_session(:live_socket_id, "sessions:#{subject.token_id}")
-      |> Plug.Conn.assign(:subject, subject)
+    if account = Map.get(conn.assigns, :account) do
+      sessions = Plug.Conn.get_session(conn, :sessions, [])
+
+      with {:ok, encoded_fragment} <- fetch_token(sessions, account.id, context.type),
+           {:ok, subject} <- Auth.authenticate(encoded_fragment, context),
+           true <- subject.account.id == account.id do
+        conn
+        |> Plug.Conn.put_session(:live_socket_id, "sessions:#{subject.token_id}")
+        |> Plug.Conn.assign(:subject, subject)
+      else
+        {:error, :unauthorized} ->
+          delete_account_session(conn, context.type, account.id)
+
+        _ ->
+          conn
+      end
     else
-      {:error, :unauthorized} -> renew_session(conn)
-      _ -> conn
+      conn
     end
   end
 

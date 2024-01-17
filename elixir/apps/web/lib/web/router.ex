@@ -84,6 +84,10 @@ defmodule Web.Router do
       ## Email
       live "/sign_in/providers/email/:provider_id", SignIn.Email
     end
+  end
+
+  scope "/:account_id_or_slug", Web do
+    pipe_through [:browser, :account]
 
     scope "/sign_in/providers/:provider_id" do
       # UserPass
