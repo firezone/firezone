@@ -192,8 +192,8 @@ defmodule Web.Resources.Components do
     <fieldset class="flex flex-col gap-2" {@rest}>
       <legend class="mb-2">Sites</legend>
 
-      <.error :for={msg <- @errors} data-validation-error-for="connections">
-        <%= msg %>
+      <.error :for={error <- @errors} data-validation-error-for="connections">
+        <%= error %>
       </.error>
       <div :for={gateway_group <- @gateway_groups}>
         <% connected_gateway_group_ids = connected_gateway_group_ids(@form) %>

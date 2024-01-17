@@ -40,7 +40,7 @@ defmodule Domain.Policies.Policy.Query do
     |> where([memberships: memberships], memberships.actor_id == ^actor_id)
   end
 
-  def count_by_resource_id(queryable \\ not_deleted()) do
+  def count_by_resource_id(queryable \\ not_disabled()) do
     queryable
     |> group_by([policies: policies], policies.resource_id)
     |> select([policies: policies], %{

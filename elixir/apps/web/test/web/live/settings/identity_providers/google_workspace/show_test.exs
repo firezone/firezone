@@ -232,14 +232,14 @@ defmodule Web.Live.Settings.IdentityProviders.GoogleWorkspace.ShowTest do
       |> live(~p"/#{account}/settings/identity_providers/google_workspace/#{provider}")
 
     assert lv
-           |> element("button", "Disable Identity Provider")
+           |> element("button", "Disable")
            |> render_click()
            |> Floki.find("#provider")
            |> vertical_table_to_map()
            |> Map.fetch!("status") == "Disabled"
 
     assert lv
-           |> element("button", "Enable Identity Provider")
+           |> element("button", "Enable")
            |> render_click()
            |> Floki.find("#provider")
            |> vertical_table_to_map()

@@ -45,6 +45,11 @@ defmodule Domain.Resources.Resource.Query do
     |> select_merge([authorized_by_policies: policies], %{authorized_by_policy: policies})
   end
 
+  def with_at_least_one_gateway_group(queryable \\ not_deleted()) do
+    queryable
+    |> with_joined_connection_gateway_group()
+  end
+
   def preload_few_actor_groups_for_each_resource(queryable \\ not_deleted(), limit) do
     queryable
     |> with_joined_actor_groups(limit)
@@ -61,7 +66,7 @@ defmodule Domain.Resources.Resource.Query do
 
   def with_joined_actor_groups(queryable, limit) do
     policies_subquery =
-      Domain.Policies.Policy.Query.not_deleted()
+      Domain.Policies.Policy.Query.not_disabled()
       |> where([policies: policies], policies.resource_id == parent_as(:resources).id)
       |> select([policies: policies], policies.actor_group_id)
       |> limit(^limit)
@@ -81,7 +86,8 @@ defmodule Domain.Resources.Resource.Query do
 
   def with_joined_policies_counts(queryable) do
     subquery =
-      Domain.Policies.Policy.Query.count_by_resource_id()
+      Domain.Policies.Policy.Query.not_disabled()
+      |> Domain.Policies.Policy.Query.count_by_resource_id()
       |> where([policies: policies], policies.resource_id == parent_as(:resources).id)
 
     join(queryable, :cross_lateral, [resources: resources], policies_counts in subquery(subquery),
@@ -103,6 +109,21 @@ defmodule Domain.Resources.Resource.Query do
         [resources: resources],
         connections in ^Domain.Resources.Connection.Query.all(),
         on: connections.resource_id == resources.id,
+        as: ^binding
+      )
+    end)
+  end
+
+  def with_joined_connection_gateway_group(queryable \\ not_deleted()) do
+    queryable
+    |> with_joined_connections()
+    |> with_named_binding(:gateway_group, fn queryable, binding ->
+      queryable
+      |> join(
+        :inner,
+        [connections: connections],
+        gateway_group in ^Domain.Gateways.Group.Query.not_deleted(),
+        on: gateway_group.id == connections.gateway_group_id,
         as: ^binding
       )
     end)

@@ -49,7 +49,23 @@ defmodule Web.Live.Resources.IndexTest do
       |> live(~p"/#{account}/resources")
 
     assert button = Floki.find(html, "a[href='/#{account.slug}/resources/new']")
-    assert Floki.text(button) =~ "Add Resource"
+    assert Floki.text(button) =~ "Add Multi-Site Resource"
+  end
+
+  test "hides resource button when feature is disabled", %{
+    account: account,
+    identity: identity,
+    conn: conn
+  } do
+    Domain.Config.feature_flag_override(:multi_site_resources, false)
+
+    {:ok, _lv, html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/resources")
+
+    assert button = Floki.find(html, "a[href='/#{account.slug}/resources/new']")
+    refute Floki.text(button) =~ "Add Multi-Site Resource"
   end
 
   test "renders resources table", %{

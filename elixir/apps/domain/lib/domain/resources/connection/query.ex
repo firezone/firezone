@@ -20,4 +20,12 @@ defmodule Domain.Resources.Connection.Query do
       connections.gateway_group_id == ^gateway_group_id
     )
   end
+
+  def with_assoc(queryable \\ all(), qual \\ :left, assoc) do
+    with_named_binding(queryable, assoc, fn query, binding ->
+      join(query, qual, [connections: connections], a in assoc(connections, ^binding),
+        as: ^binding
+      )
+    end)
+  end
 end

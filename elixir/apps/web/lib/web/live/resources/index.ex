@@ -33,8 +33,11 @@ defmodule Web.Resources.Index do
         Resources
       </:title>
       <:action>
-        <.add_button navigate={~p"/#{@account}/resources/new"}>
-          Add Resource
+        <.add_button
+          :if={Domain.Config.multi_site_resources_enabled?()}
+          navigate={~p"/#{@account}/resources/new"}
+        >
+          Add Multi-Site Resource
         </.add_button>
       </:action>
       <:content>

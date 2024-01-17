@@ -57,6 +57,26 @@ defmodule Web.Actors.Show do
           Edit <%= actor_type(@actor.type) %>
         </.edit_button>
       </:action>
+      <:action :if={is_nil(@actor.deleted_at) and not Actors.actor_disabled?(@actor)}>
+        <.button
+          style="warning"
+          icon="hero-lock-closed"
+          phx-click="disable"
+          data-confirm={"Are you sure want to disable this #{actor_type(@actor.type)}?"}
+        >
+          Disable <%= actor_type(@actor.type) %>
+        </.button>
+      </:action>
+      <:action :if={is_nil(@actor.deleted_at) and Actors.actor_disabled?(@actor)}>
+        <.button
+          style="warning"
+          icon="hero-lock-open"
+          phx-click="enable"
+          data-confirm={"Are you sure want to enable this #{actor_type(@actor.type)}?"}
+        >
+          Enable <%= actor_type(@actor.type) %>
+        </.button>
+      </:action>
       <:content flash={@flash}>
         <.vertical_table id="actor">
           <.vertical_table_row>
@@ -298,31 +318,8 @@ defmodule Web.Actors.Show do
     </.section>
 
     <.danger_zone :if={is_nil(@actor.deleted_at)}>
-      <:action>
-        <.button
-          :if={not Actors.actor_disabled?(@actor)}
-          style="warning"
-          icon="hero-lock-closed"
-          phx-click="disable"
-          data-confirm={"Are you sure want to disable this #{actor_type(@actor.type)}?"}
-        >
-          Disable <%= actor_type(@actor.type) %>
-        </.button>
-      </:action>
-      <:action>
-        <.button
-          :if={Actors.actor_disabled?(@actor)}
-          style="warning"
-          icon="hero-lock-open"
-          phx-click="enable"
-          data-confirm={"Are you sure want to enable this #{actor_type(@actor.type)}?"}
-        >
-          Enable <%= actor_type(@actor.type) %>
-        </.button>
-      </:action>
-      <:action>
+      <:action :if={not Actors.actor_synced?(@actor)}>
         <.delete_button
-          :if={not Actors.actor_synced?(@actor)}
           phx-click="delete"
           data-confirm={"Are you sure want to delete this #{actor_type(@actor.type)} and all associated identities?"}
         >

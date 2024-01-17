@@ -401,8 +401,22 @@ defmodule Domain.ResourcesTest do
       identity = Fixtures.Auth.create_identity(account: account, actor: actor)
       subject = Fixtures.Auth.create_subject(identity: identity)
 
-      resource1 = Fixtures.Resources.create_resource(account: account)
-      resource2 = Fixtures.Resources.create_resource(account: account)
+      gateway_group1 = Fixtures.Gateways.create_group(account: account)
+      gateway_group2 = Fixtures.Gateways.create_group(account: account)
+
+      resource1 =
+        Fixtures.Resources.create_resource(
+          account: account,
+          connections: [%{gateway_group_id: gateway_group1.id}]
+        )
+
+      resource2 =
+        Fixtures.Resources.create_resource(
+          account: account,
+          connections: [%{gateway_group_id: gateway_group2.id}]
+        )
+
+      Fixtures.Resources.create_resource(account: account)
       Fixtures.Resources.create_resource()
 
       assert {:ok, []} = list_authorized_resources(subject)
@@ -441,8 +455,22 @@ defmodule Domain.ResourcesTest do
       identity = Fixtures.Auth.create_identity(account: account, actor: actor)
       subject = Fixtures.Auth.create_subject(identity: identity)
 
-      resource1 = Fixtures.Resources.create_resource(account: account)
-      resource2 = Fixtures.Resources.create_resource(account: account)
+      gateway_group1 = Fixtures.Gateways.create_group(account: account)
+      gateway_group2 = Fixtures.Gateways.create_group(account: account)
+
+      resource1 =
+        Fixtures.Resources.create_resource(
+          account: account,
+          connections: [%{gateway_group_id: gateway_group1.id}]
+        )
+
+      resource2 =
+        Fixtures.Resources.create_resource(
+          account: account,
+          connections: [%{gateway_group_id: gateway_group2.id}]
+        )
+
+      Fixtures.Resources.create_resource(account: account)
       Fixtures.Resources.create_resource()
 
       assert {:ok, []} = list_authorized_resources(subject)
@@ -469,6 +497,35 @@ defmodule Domain.ResourcesTest do
 
       assert {:ok, resources} = list_authorized_resources(subject)
       assert length(resources) == 2
+    end
+
+    test "does not authorize resources for deleted gateway groups", %{
+      account: account
+    } do
+      actor_group = Fixtures.Actors.create_group(account: account)
+      actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+      Fixtures.Actors.create_membership(account: account, actor: actor, group: actor_group)
+      identity = Fixtures.Auth.create_identity(account: account, actor: actor)
+      subject = Fixtures.Auth.create_subject(identity: identity)
+
+      gateway_group = Fixtures.Gateways.create_group(account: account)
+
+      resource =
+        Fixtures.Resources.create_resource(
+          account: account,
+          connections: [%{gateway_group_id: gateway_group.id}]
+        )
+
+      Fixtures.Policies.create_policy(
+        account: account,
+        actor_group: actor_group,
+        resource: resource
+      )
+
+      assert {:ok, [_resource]} = list_authorized_resources(subject)
+
+      Fixtures.Gateways.delete_group(gateway_group)
+      assert list_authorized_resources(subject) == {:ok, []}
     end
 
     test "returns error when subject has no permission to manage resources", %{
@@ -687,7 +744,20 @@ defmodule Domain.ResourcesTest do
       assert Enum.empty?(peek[resource.id].items)
     end
 
-    test "ignores other policies", %{
+    test "ignores disabled policies", %{
+      account: account,
+      subject: subject
+    } do
+      resource = Fixtures.Resources.create_resource(account: account)
+      policy = Fixtures.Policies.create_policy(account: account, resource: resource)
+      Fixtures.Policies.disable_policy(policy)
+
+      assert {:ok, peek} = peek_resource_actor_groups([resource], 3, subject)
+      assert peek[resource.id].count == 0
+      assert Enum.empty?(peek[resource.id].items)
+    end
+
+    test "ignores not linked policies", %{
       account: account,
       subject: subject
     } do

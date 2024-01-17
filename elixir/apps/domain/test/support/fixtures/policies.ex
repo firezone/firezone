@@ -44,6 +44,19 @@ defmodule Domain.Fixtures.Policies do
     policy
   end
 
+  def disable_policy(policy) do
+    policy = Repo.preload(policy, :account)
+
+    subject =
+      Fixtures.Auth.create_subject(
+        account: policy.account,
+        actor: [type: :account_admin_user]
+      )
+
+    {:ok, policy} = Policies.disable_policy(policy, subject)
+    policy
+  end
+
   def delete_policy(policy) do
     policy = Repo.preload(policy, :account)
 

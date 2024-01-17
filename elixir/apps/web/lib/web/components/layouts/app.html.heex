@@ -42,6 +42,14 @@
   </.sidebar_item>
 
   <.sidebar_item
+    current_path={@current_path}
+    navigate={~p"/#{@account}/resources"}
+    icon="hero-server-stack-solid"
+  >
+    Resources
+  </.sidebar_item>
+
+  <.sidebar_item
     :if={Domain.Config.self_hosted_relays_enabled?()}
     current_path={@current_path}
     navigate={~p"/#{@account}/relay_groups"}

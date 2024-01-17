@@ -50,13 +50,25 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.Show do
         </.edit_button>
       </:action>
       <:action :if={is_nil(@provider.deleted_at)}>
+        <.button
+          :if={is_nil(@provider.disabled_at)}
+          phx-click="disable"
+          style="warning"
+          icon="hero-lock-closed"
+          data-confirm="Are you sure want to disable this provider? Users will no longer be able to sign in with this provider and user / group sync will be paused."
+        >
+          Disable
+        </.button>
+
         <%= if @provider.adapter_state["status"] != "pending_access_token" do %>
           <.button
             :if={not is_nil(@provider.disabled_at)}
             phx-click="enable"
+            style="warning"
+            icon="hero-lock-open"
             data-confirm="Are you sure want to enable this provider?"
           >
-            Enable Identity Provider
+            Enable
           </.button>
         <% end %>
       </:action>
@@ -134,15 +146,6 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.Show do
 
     <.danger_zone :if={is_nil(@provider.deleted_at)}>
       <:action>
-        <.button
-          :if={is_nil(@provider.disabled_at)}
-          style="warning"
-          phx-click="disable"
-          icon="hero-no-symbol"
-          data-confirm="Are you sure want to disable this provider? Users will no longer be able to sign in with this provider and user / group sync will be paused."
-        >
-          Disable Identity Provider
-        </.button>
         <.delete_button
           data-confirm="Are you sure want to delete this provider along with all related data?"
           phx-click="delete"
