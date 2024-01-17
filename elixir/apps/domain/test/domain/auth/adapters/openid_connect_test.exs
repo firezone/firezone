@@ -364,7 +364,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
     end
   end
 
-  describe "refresh_token/1" do
+  describe "refresh_access_token/1" do
     setup do
       account = Fixtures.Accounts.create_account()
 
@@ -410,6 +410,33 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
                  "sub" => "353690423699814251281"
                }
              } = provider.adapter_state
+    end
+
+    test "removes refresh token if it's invalid", %{
+      provider: provider,
+      identity: identity,
+      bypass: bypass
+    } do
+      forty_seconds_ago = DateTime.utc_now() |> DateTime.add(-40, :second) |> DateTime.to_unix()
+
+      {token, _claims} =
+        Mocks.OpenIDConnect.generate_openid_connect_token(provider, identity, %{
+          "exp" => forty_seconds_ago
+        })
+
+      Mocks.OpenIDConnect.expect_refresh_token(bypass, %{"id_token" => token})
+
+      provider =
+        Repo.get(Domain.Auth.Provider, provider.id)
+        |> Ecto.Changeset.change(
+          adapter_state: %{"refresh_token" => "foo", "access_token" => "bar"}
+        )
+        |> Repo.update!()
+
+      assert refresh_access_token(provider) == {:error, :expired}
+
+      provider = Repo.get(Domain.Auth.Provider, provider.id)
+      assert provider.adapter_state == %{"access_token" => "bar"}
     end
   end
 end
