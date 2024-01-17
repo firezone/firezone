@@ -1,4 +1,4 @@
-use chrono::{serde::ts_seconds, DateTime, Utc};
+use chrono::{serde::ts_seconds_option, DateTime, Utc};
 use connlib_shared::{
     messages::{
         ActorId, ClientId, ClientPayload, GatewayResponse, Interface, Peer, Relay,
@@ -48,8 +48,8 @@ pub struct RequestConnection {
     pub client: Client,
     #[serde(rename = "ref")]
     pub reference: String,
-    #[serde(with = "ts_seconds")]
-    pub expires_at: DateTime<Utc>,
+    #[serde(with = "ts_seconds_option")]
+    pub expires_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
@@ -80,8 +80,8 @@ pub struct RemoveResource {
 pub struct AllowAccess {
     pub client_id: ClientId,
     pub resource: ResourceDescription,
-    #[serde(with = "ts_seconds")]
-    pub expires_at: DateTime<Utc>,
+    #[serde(with = "ts_seconds_option")]
+    pub expires_at: Option<DateTime<Utc>>,
     pub payload: Option<Dname>,
     #[serde(rename = "ref")]
     pub reference: String,

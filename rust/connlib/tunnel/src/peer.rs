@@ -23,7 +23,7 @@ use crate::client::IpProvider;
 use crate::MAX_UDP_SIZE;
 use crate::{device_channel, ip_packet::MutableIpPacket, PeerConfig};
 
-type ExpiryingResource = (ResourceDescription, DateTime<Utc>);
+type ExpiryingResource = (ResourceDescription, Option<DateTime<Utc>>);
 
 // The max time a dns request can be configured to live in resolvconf
 // is 30 seconds. See resolvconf(5) timeout.
@@ -240,14 +240,16 @@ impl PacketTransformGateway {
     }
 
     pub(crate) fn expire_resources(&self) {
-        self.resources.write().retain(|_, (_, e)| *e > Utc::now());
+        self.resources
+            .write()
+            .retain(|_, (_, e)| !e.is_some_and(|e| e <= Utc::now()));
     }
 
     pub(crate) fn add_resource(
         &self,
         ip: IpNetwork,
         resource: ResourceDescription,
-        expires_at: DateTime<Utc>,
+        expires_at: Option<DateTime<Utc>>,
     ) {
         self.resources.write().insert(ip, (resource, expires_at));
     }
