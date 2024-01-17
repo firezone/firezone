@@ -2,8 +2,8 @@
 ARG DEBIAN_VERSION="12-slim"
 ARG CARGO_CHEF_VERSION="0.1.62"
 ARG RUSTUP_VERSION="1.26.0"
-ARG RUSTUP_x86_DOWNLOAD_SHA256="0b2f6c8f85a3d02fde2efc0ced4657869d73fccfce59defb4e8d29233116e6db"
-ARG RUSTUP_aarch64_DOWNLOAD_SHA256="673e336c81c65e6b16dcdede33f4cc9ed0f08bde1dbe7a935f113605292dc800"
+ARG RUSTUP_x86_DOWNLOAD_SHA256="7aa9e2a380a9958fc1fc426a3323209b2c86181c6816640979580f62ff7d48d4"
+ARG RUSTUP_aarch64_DOWNLOAD_SHA256="b1962dfc18e1fd47d01341e6897cace67cddfabf547ef394e8883939bd6e002e"
 ARG RUST_VERSION="1.74.1"
 
 FROM debian:${DEBIAN_VERSION} as rust
@@ -38,8 +38,8 @@ ARG RUST_VERSION
 RUN set -eux; \
   arch="$(uname -m)"; \
   case "$arch" in \
-  x86_64) rustTarget='x86_64-unknown-linux-gnu'; rustupSha256=${RUSTUP_x86_DOWNLOAD_SHA256} ;; \
-  aarch64) rustTarget='aarch64-unknown-linux-gnu'; rustupSha256=${RUSTUP_aarch64_DOWNLOAD_SHA256} ;; \
+  x86_64) rustTarget='x86_64-unknown-linux-musl'; rustupSha256=${RUSTUP_x86_DOWNLOAD_SHA256} ;; \
+  aarch64) rustTarget='aarch64-unknown-linux-musl'; rustupSha256=${RUSTUP_aarch64_DOWNLOAD_SHA256} ;; \
   *) echo >&2 "unsupported architecture: $arch"; exit 1 ;; \
   esac; \
   url="https://static.rust-lang.org/rustup/archive/${RUSTUP_VERSION}/${rustTarget}/rustup-init"; \
