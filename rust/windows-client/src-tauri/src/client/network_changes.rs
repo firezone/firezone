@@ -47,28 +47,30 @@ use windows::{
 };
 
 /// Debug subcommand to test network connectivity events
-pub(crate) fn run_debug() -> WinResult<()> {
+pub(crate) fn run_debug() -> anyhow::Result<()> {
     tracing_subscriber::fmt::init();
 
     // Returns Err before COM is initialized
     assert!(get_apartment_type().is_err());
 
-    let com = ComGuard::new()?;
+    let com_worker = Worker::new()?;
 
-    // We just initialized COM on the main thread, so we should be in an MTA
+    // We have to initialize COM again for the main thread. This doesn't
+    // seem to be a problem in the main app since Tauri initializes COM for itself.
+    let _guard = ComGuard::new();
+
     assert_eq!(
-        get_apartment_type()?,
-        (Com::APTTYPE_MTA, Com::APTTYPEQUALIFIER_NONE)
+        get_apartment_type(),
+        Ok((Com::APTTYPE_MTA, Com::APTTYPEQUALIFIER_NONE))
     );
 
     let rt = Runtime::new().unwrap();
 
-    let notify = Arc::new(Notify::new());
-    let _listener = Listener::new(&com, Arc::clone(&notify))?;
-    println!("Listening for network events...");
+    tracing::info!("Listening for network events...");
 
     rt.block_on(async move {
         loop {
+            com_worker.notified().await;
             // Make sure whatever Tokio thread we're on is associated with COM
             // somehow.
             assert_eq!(
@@ -76,10 +78,20 @@ pub(crate) fn run_debug() -> WinResult<()> {
                 (Com::APTTYPE_MTA, Com::APTTYPEQUALIFIER_NONE)
             );
 
-            println!("check_internet() = {}", Listener::check_internet()?);
-            notify.notified().await;
+            tracing::info!(have_internet = %Listener::check_internet()?);
         }
     })
+}
+
+/// Checks what COM apartment the current thread is in. For debugging only.
+fn get_apartment_type() -> WinResult<(Com::APTTYPE, Com::APTTYPEQUALIFIER)> {
+    let mut apt_type = Com::APTTYPE_CURRENT;
+    let mut apt_qualifier = Com::APTTYPEQUALIFIER_NONE;
+
+    // SAFETY: We just created the variables, and they're out parameters,
+    // so Windows shouldn't store the pointers.
+    unsafe { Com::CoGetApartmentType(&mut apt_type, &mut apt_qualifier) }?;
+    Ok((apt_type, apt_qualifier))
 }
 
 /// Worker thread that can be joined explicitly, and joins on Drop
@@ -95,7 +107,7 @@ struct WorkerInner {
 }
 
 impl Worker {
-    pub fn new() -> anyhow::Result<Self> {
+    pub fn new() -> std::io::Result<Self> {
         let notify = Arc::new(Notify::new());
 
         let (stopper, rx) = tokio::sync::oneshot::channel();
@@ -169,17 +181,6 @@ impl Drop for ComGuard {
     }
 }
 
-/// Checks what COM apartment the current thread is in. For debugging only.
-fn get_apartment_type() -> WinResult<(Com::APTTYPE, Com::APTTYPEQUALIFIER)> {
-    let mut apt_type = Com::APTTYPE_CURRENT;
-    let mut apt_qualifier = Com::APTTYPEQUALIFIER_NONE;
-
-    // SAFETY: We just created the variables, and they're out parameters,
-    // so Windows shouldn't store the pointers.
-    unsafe { Com::CoGetApartmentType(&mut apt_type, &mut apt_qualifier) }?;
-    Ok((apt_type, apt_qualifier))
-}
-
 /// Listens to network connectivity change eents
 pub(crate) struct Listener<'a> {
     /// The cookies we get back from `Advise`. Can be None if the owner called `close`
@@ -215,7 +216,7 @@ impl<'a> Listener<'a> {
     ///
     /// # Arguments
     ///
-    /// * `com` - Makes sure that CoInitializeEx was called. Must have been created
+    /// * `com` - Makes sure that CoInitializeEx was called. `com` have been created
     ///   on the same thread as `new` is called on.
     /// * `notify` - A Tokio `Notify` that will be notified when Windows detects
     ///   connectivity changes. Some notifications may be spurious.

@@ -3,7 +3,7 @@
 
 // TODO: `git grep` for unwraps before 1.0, especially this gui module
 
-use crate::client::{self, deep_link, network_changes, AppLocalDataDir};
+use crate::client::{self, deep_link, AppLocalDataDir};
 use anyhow::{anyhow, bail, Context, Result};
 use arc_swap::ArcSwap;
 use client::{
@@ -17,7 +17,6 @@ use std::{net::IpAddr, path::PathBuf, str::FromStr, sync::Arc, time::Duration};
 use system_tray_menu::Event as TrayMenuEvent;
 use tauri::{api::notification::Notification, Manager, SystemTray, SystemTrayEvent};
 use tokio::sync::{mpsc, oneshot, Notify};
-
 use ControllerRequest as Req;
 
 mod system_tray_menu;
@@ -65,6 +64,7 @@ pub(crate) fn run(params: client::GuiParams) -> Result<()> {
         inject_faults,
     } = params;
 
+    // Needed for the deep link server
     let rt = tokio::runtime::Runtime::new()?;
     let _guard = rt.enter();
 
@@ -180,7 +180,6 @@ pub(crate) fn run(params: client::GuiParams) -> Result<()> {
                 api.prevent_exit();
             }
         });
-
     Ok(())
 }
 
@@ -490,23 +489,10 @@ async fn run_controller(
     .await
     .context("couldn't create Controller")?;
 
-    let mut have_internet = network_changes::Listener::check_internet()?;
-    tracing::debug!(?have_internet);
-
-    let com_worker = network_changes::Worker::new()?;
-
     loop {
         tokio::select! {
             () = controller.notify_controller.notified() => if let Err(e) = controller.refresh_system_tray_menu() {
                 tracing::error!("couldn't reload resource list: {e:#?}");
-            },
-            () = com_worker.notified() => {
-                let new_have_internet = network_changes::Listener::check_internet()?;
-                if new_have_internet != have_internet {
-                    have_internet = new_have_internet;
-                    // TODO: Stop / start / restart connlib as needed here
-                    tracing::debug!(?have_internet);
-                }
             },
             req = rx.recv() => {
                 let Some(req) = req else {
