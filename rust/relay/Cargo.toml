@@ -41,7 +41,7 @@ axum = { version = "0.7.3", default-features = false, features = ["http1", "toki
 
 [dev-dependencies]
 webrtc = { workspace = true }
-redis = { version = "0.23.3", default-features = false, features = ["tokio-comp"] }
+redis = { version = "0.24.0", default-features = false, features = ["tokio-comp"] }
 difference = "2.0.0"
 
 [[test]]

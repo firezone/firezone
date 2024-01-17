@@ -4,6 +4,19 @@ defmodule Web.Sandbox do
   """
   alias Domain.Sandbox
 
+  def init(opts), do: opts
+
+  def call(conn, _opts) do
+    with [user_agent] <- Plug.Conn.get_req_header(conn, "user-agent"),
+         %{owner: test_pid} <-
+           Phoenix.Ecto.SQL.Sandbox.decode_metadata(user_agent) do
+      Process.put(:last_caller_pid, test_pid)
+      conn
+    else
+      _ -> conn
+    end
+  end
+
   def on_mount(:default, _params, _session, socket) do
     socket = allow_live_ecto_sandbox(socket)
     {:cont, socket}

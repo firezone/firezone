@@ -6,5 +6,7 @@ Bureaucrat.start(
   default_path: "../../www/docs/reference/rest-api"
 )
 
+Finch.start_link(name: TestPool)
+
 Ecto.Adapters.SQL.Sandbox.mode(Domain.Repo, :manual)
 ExUnit.start(formatters: [ExUnit.CLIFormatter, JUnitFormatter, Bureaucrat.Formatter])

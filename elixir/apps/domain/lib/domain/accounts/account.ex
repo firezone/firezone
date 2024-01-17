@@ -27,11 +27,9 @@ defmodule Domain.Accounts.Account do
 
     has_many :gateways, Domain.Gateways.Gateway, where: [deleted_at: nil]
     has_many :gateway_groups, Domain.Gateways.Group, where: [deleted_at: nil]
-    has_many :gateway_tokens, Domain.Gateways.Token, where: [deleted_at: nil]
 
     has_many :relays, Domain.Relays.Relay, where: [deleted_at: nil]
     has_many :relay_groups, Domain.Relays.Group, where: [deleted_at: nil]
-    has_many :relay_tokens, Domain.Relays.Token, where: [deleted_at: nil]
 
     has_many :tokens, Domain.Tokens.Token, where: [deleted_at: nil]
 

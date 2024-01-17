@@ -92,9 +92,13 @@ defmodule Domain.Fixtures.Tokens do
 
     {identity, attrs} =
       pop_assoc_fixture(attrs, :identity, fn assoc_attrs ->
-        assoc_attrs
-        |> Enum.into(%{account: account, actor: actor})
-        |> Fixtures.Auth.create_identity()
+        if actor.type == :service_account do
+          %{id: nil}
+        else
+          assoc_attrs
+          |> Enum.into(%{account: account, actor: actor})
+          |> Fixtures.Auth.create_identity()
+        end
       end)
 
     attrs = Map.put(attrs, :account_id, account.id)

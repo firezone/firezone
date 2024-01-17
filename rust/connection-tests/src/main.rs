@@ -1,6 +1,6 @@
 use std::{
     future::poll_fn,
-    net::{IpAddr, Ipv4Addr},
+    net::Ipv4Addr,
     str::FromStr,
     task::{Context, Poll},
     time::{Duration, Instant},
@@ -32,9 +32,17 @@ async fn main() -> Result<()> {
     let role = std::env::var("ROLE")
         .context("Missing ROLE env variable")?
         .parse::<Role>()?;
-    let listen_addr = std::env::var("LISTEN_ADDR")
-        .context("Missing LISTEN_ADDR env var")?
-        .parse::<IpAddr>()?;
+
+    let listen_addr = system_info::NetworkInterfaces::new()
+        .context("Failed to get network interfaces")?
+        .iter()
+        .find_map(|i| i.addresses().find(|a| !a.ip.is_loopback()))
+        .context("Failed to find interface with non-loopback address")?
+        .ip
+        .to_std();
+
+    tracing::info!(%listen_addr);
+
     let redis_host = std::env::var("REDIS_HOST").context("Missing LISTEN_ADDR env var")?;
 
     let redis_client = redis::Client::open(format!("redis://{redis_host}:6379"))?;
@@ -70,7 +78,7 @@ async fn main() -> Result<()> {
                 .context("Failed to push offer")?;
 
             let answer = redis_connection
-                .blpop::<_, (String, wire::Answer)>("answers", 10)
+                .blpop::<_, (String, wire::Answer)>("answers", 10.0)
                 .await
                 .context("Failed to pop answer")?
                 .1;
@@ -118,7 +126,7 @@ async fn main() -> Result<()> {
                         }
                     }
 
-                    response = redis_connection.blpop::<_, Option<(String, wire::Candidate)>>("listener_candidates", 1) => {
+                    response = redis_connection.blpop::<_, Option<(String, wire::Candidate)>>("listener_candidates", 1.0) => {
                         let Ok(Some((_, wire::Candidate { conn, candidate }))) = response else {
                             continue;
                         };
@@ -132,7 +140,7 @@ async fn main() -> Result<()> {
             pool.add_local_interface(socket_addr);
 
             let offer = redis_connection
-                .blpop::<_, (String, wire::Offer)>("offers", 10)
+                .blpop::<_, (String, wire::Offer)>("offers", 10.0)
                 .await
                 .context("Failed to pop offer")?
                 .1;
@@ -182,7 +190,7 @@ async fn main() -> Result<()> {
                         }
                     }
 
-                    response = redis_connection.blpop::<_, Option<(String, wire::Candidate)>>("dialer_candidates", 1) => {
+                    response = redis_connection.blpop::<_, Option<(String, wire::Candidate)>>("dialer_candidates", 1.0) => {
                         let Ok(Some((_, wire::Candidate { conn, candidate }))) = response else {
                             continue;
                         };

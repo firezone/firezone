@@ -37,13 +37,7 @@ config :domain, Domain.Clients, upstream_dns: ["1.1.1.1"]
 
 config :domain, Domain.Gateways,
   gateway_ipv4_masquerade: true,
-  gateway_ipv6_masquerade: true,
-  key_base: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S3",
-  salt: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej3"
-
-config :domain, Domain.Relays,
-  key_base: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S2",
-  salt: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
+  gateway_ipv6_masquerade: true
 
 config :domain, Domain.Telemetry,
   enabled: true,
@@ -75,7 +69,8 @@ config :domain, :enabled_features,
   traffic_filters: true,
   sign_up: true,
   flow_activities: true,
-  self_hosted_relays: true
+  self_hosted_relays: true,
+  multi_site_resources: true
 
 config :domain, docker_registry: "us-east1-docker.pkg.dev/firezone-staging/firezone"
 
@@ -87,6 +82,7 @@ config :domain, outbound_email_adapter_configured?: false
 
 config :web, ecto_repos: [Domain.Repo]
 config :web, generators: [binary_id: true, context_app: :domain]
+config :web, client_handler: "firezone-fd0020211111://"
 
 config :web, Web.Endpoint,
   url: [

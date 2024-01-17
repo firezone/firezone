@@ -23,17 +23,30 @@ defmodule Web.Auth do
 
   # Session Management
 
-  def put_account_session(%Plug.Conn{} = conn, context_type, account_id, encoded_fragment)
-      when context_type in [:browser, :client] do
-    session = {context_type, account_id, encoded_fragment}
+  def put_account_session(%Plug.Conn{} = conn, :client, _account_id, _encoded_fragment) do
+    conn
+  end
 
+  def put_account_session(%Plug.Conn{} = conn, :browser, account_id, encoded_fragment) do
+    session = {:browser, account_id, encoded_fragment}
+
+    sessions =
+      Plug.Conn.get_session(conn, :sessions, [])
+      |> Enum.reject(fn {session_context_type, session_account_id, _encoded_fragment} ->
+        session_context_type == :browser and session_account_id == account_id
+      end)
+
+    sessions = Enum.take(sessions ++ [session], -1 * @remember_last_sessions)
+
+    Plug.Conn.put_session(conn, :sessions, sessions)
+  end
+
+  defp delete_account_session(conn, context_type, account_id) do
     sessions =
       Plug.Conn.get_session(conn, :sessions, [])
       |> Enum.reject(fn {session_context_type, session_account_id, _encoded_fragment} ->
         session_context_type == context_type and session_account_id == account_id
       end)
-
-    sessions = Enum.take(sessions ++ [session], -1 * @remember_last_sessions)
 
     Plug.Conn.put_session(conn, :sessions, sessions)
   end
@@ -112,8 +125,11 @@ defmodule Web.Auth do
       |> Enum.reject(&is_nil(elem(&1, 1)))
       |> URI.encode_query()
 
+    client_handler =
+      Domain.Config.fetch_env!(:web, :client_handler)
+
     Phoenix.Controller.redirect(conn,
-      external: "firezone-fd0020211111://handle_client_sign_in_callback?#{query}"
+      external: "#{client_handler}handle_client_sign_in_callback?#{query}"
     )
   end
 
@@ -285,21 +301,28 @@ defmodule Web.Auth do
   Fetches the session token from the session and assigns the subject to the connection.
   """
   def fetch_subject(%Plug.Conn{} = conn, _opts) do
-    params = take_sign_in_params(conn.query_params)
+    params = take_sign_in_params(conn.params)
     context_type = fetch_auth_context_type!(params)
     context = get_auth_context(conn, context_type)
 
-    with account when not is_nil(account) <- Map.get(conn.assigns, :account),
-         sessions = Plug.Conn.get_session(conn, :sessions, []),
-         {:ok, encoded_fragment} <- fetch_token(sessions, account.id, context.type),
-         {:ok, subject} <- Auth.authenticate(encoded_fragment, context),
-         true <- subject.account.id == account.id do
-      conn
-      |> Plug.Conn.put_session(:live_socket_id, "sessions:#{subject.token_id}")
-      |> Plug.Conn.assign(:subject, subject)
+    if account = Map.get(conn.assigns, :account) do
+      sessions = Plug.Conn.get_session(conn, :sessions, [])
+
+      with {:ok, encoded_fragment} <- fetch_token(sessions, account.id, context.type),
+           {:ok, subject} <- Auth.authenticate(encoded_fragment, context),
+           true <- subject.account.id == account.id do
+        conn
+        |> Plug.Conn.put_session(:live_socket_id, "sessions:#{subject.token_id}")
+        |> Plug.Conn.assign(:subject, subject)
+      else
+        {:error, :unauthorized} ->
+          delete_account_session(conn, context.type, account.id)
+
+        _ ->
+          conn
+      end
     else
-      {:error, :unauthorized} -> renew_session(conn)
-      _ -> conn
+      conn
     end
   end
 
@@ -413,7 +436,7 @@ defmodule Web.Auth do
   """
   def redirect_if_user_is_authenticated(%Plug.Conn{} = conn, _opts) do
     if subject = conn.assigns[:subject] do
-      redirect_params = take_sign_in_params(conn.query_params)
+      redirect_params = take_sign_in_params(conn.params)
       encoded_fragment = fetch_subject_token!(conn, subject)
       identity = %{subject.identity | actor: subject.actor}
 

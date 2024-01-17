@@ -1,7 +1,7 @@
 defmodule Domain.RelaysTest do
   use Domain.DataCase, async: true
   import Domain.Relays
-  alias Domain.Relays
+  alias Domain.{Relays, Tokens}
 
   setup do
     account = Fixtures.Accounts.create_account()
@@ -144,9 +144,8 @@ defmodule Domain.RelaysTest do
   end
 
   describe "create_group/2" do
-    test "returns error on empty attrs", %{subject: subject} do
-      assert {:error, changeset} = create_group(%{}, subject)
-      assert errors_on(changeset) == %{tokens: ["can't be blank"]}
+    test "returns group on empty attrs", %{subject: subject} do
+      assert {:ok, _group} = create_group(%{}, subject)
     end
 
     test "returns error on invalid attrs", %{account: account, subject: subject} do
@@ -157,32 +156,24 @@ defmodule Domain.RelaysTest do
       assert {:error, changeset} = create_group(attrs, subject)
 
       assert errors_on(changeset) == %{
-               tokens: ["can't be blank"],
                name: ["should be at most 64 character(s)"]
              }
 
       Fixtures.Relays.create_group(account: account, name: "foo")
-      attrs = %{name: "foo", tokens: [%{}]}
+      attrs = %{name: "foo"}
       assert {:error, changeset} = create_group(attrs, subject)
       assert "has already been taken" in errors_on(changeset).name
     end
 
     test "creates a group", %{subject: subject} do
-      attrs = %{
-        name: "foo",
-        tokens: [%{}]
-      }
+      attrs = %{name: Ecto.UUID.generate()}
 
       assert {:ok, group} = create_group(attrs, subject)
       assert group.id
-      assert group.name == "foo"
+      assert group.name == attrs.name
 
       assert group.created_by == :identity
       assert group.created_by_identity_id == subject.identity.id
-
-      assert [%Relays.Token{} = token] = group.tokens
-      assert token.created_by == :identity
-      assert token.created_by_identity_id == subject.identity.id
     end
 
     test "returns error when subject has no permission to manage groups", %{
@@ -199,9 +190,8 @@ defmodule Domain.RelaysTest do
   end
 
   describe "create_global_group/1" do
-    test "returns error on empty attrs" do
-      assert {:error, changeset} = create_global_group(%{})
-      assert errors_on(changeset) == %{tokens: ["can't be blank"]}
+    test "returns group on empty attrs" do
+      assert {:ok, _group} = create_global_group(%{})
     end
 
     test "returns error on invalid attrs" do
@@ -212,32 +202,25 @@ defmodule Domain.RelaysTest do
       assert {:error, changeset} = create_global_group(attrs)
 
       assert errors_on(changeset) == %{
-               tokens: ["can't be blank"],
                name: ["should be at most 64 character(s)"]
              }
 
-      Fixtures.Relays.create_global_group(name: "foo")
-      attrs = %{name: "foo", tokens: [%{}]}
+      name = Ecto.UUID.generate()
+      Fixtures.Relays.create_global_group(name: name)
+      attrs = %{name: name}
       assert {:error, changeset} = create_global_group(attrs)
       assert "has already been taken" in errors_on(changeset).name
     end
 
     test "creates a group" do
-      attrs = %{
-        name: "foo",
-        tokens: [%{}]
-      }
+      attrs = %{name: Ecto.UUID.generate()}
 
       assert {:ok, group} = create_global_group(attrs)
       assert group.id
-      assert group.name == "foo"
+      assert group.name == attrs.name
 
       assert group.created_by == :system
       assert is_nil(group.created_by_identity_id)
-
-      assert [%Relays.Token{} = token] = group.tokens
-      assert token.created_by == :system
-      assert is_nil(token.created_by_identity_id)
     end
   end
 
@@ -342,17 +325,18 @@ defmodule Domain.RelaysTest do
 
     test "deletes all tokens when group is deleted", %{account: account, subject: subject} do
       group = Fixtures.Relays.create_group(account: account)
-      Fixtures.Relays.create_token(group: group)
-      Fixtures.Relays.create_token(group: [account: account])
+      Fixtures.Relays.create_token(account: account, group: group)
+      Fixtures.Relays.create_token(account: account, group: [account: account])
 
       assert {:ok, deleted} = delete_group(group, subject)
       assert deleted.deleted_at
 
       tokens =
-        Relays.Token
+        Domain.Tokens.Token.Query.all()
+        |> Domain.Tokens.Token.Query.by_relay_group_id(group.id)
         |> Repo.all()
-        |> Enum.filter(fn token -> token.group_id == group.id end)
 
+      assert length(tokens) > 0
       assert Enum.all?(tokens, & &1.deleted_at)
     end
 
@@ -371,35 +355,182 @@ defmodule Domain.RelaysTest do
     end
   end
 
-  describe "use_token_by_id_and_secret/2" do
-    test "returns token when secret is valid" do
-      token = Fixtures.Relays.create_token()
-      assert {:ok, token} = use_token_by_id_and_secret(token.id, token.value)
-      assert is_nil(token.value)
-      # TODO: While we don't have token rotation implemented, the tokens are all multi-use
-      # assert is_nil(token.hash)
-      # refute is_nil(token.deleted_at)
+  describe "create_token/2" do
+    setup do
+      user_agent = Fixtures.Auth.user_agent()
+      remote_ip = Fixtures.Auth.remote_ip()
+
+      %{
+        context: %Domain.Auth.Context{
+          type: :relay_group,
+          remote_ip: remote_ip,
+          remote_ip_location_region: "UA",
+          remote_ip_location_city: "Kyiv",
+          remote_ip_location_lat: 50.4501,
+          remote_ip_location_lon: 30.5234,
+          user_agent: user_agent
+        }
+      }
     end
 
-    # TODO: While we don't have token rotation implemented, the tokens are all multi-use
-    # test "returns error when secret was already used" do
-    #   token = Fixtures.Relays.create_token()
+    test "returns valid token for a relay group", %{
+      account: account,
+      context: context,
+      subject: subject
+    } do
+      group = Fixtures.Relays.create_group(account: account)
 
-    #   assert {:ok, _token} = use_token_by_id_and_secret(token.id, token.value)
-    #   assert use_token_by_id_and_secret(token.id, token.value) == {:error, :not_found}
-    # end
+      assert {:ok, encoded_token} = create_token(group, %{}, subject)
 
-    test "returns error when id is invalid" do
-      assert use_token_by_id_and_secret("foo", "bar") == {:error, :not_found}
+      assert {:ok, fetched_group} = authenticate(encoded_token, context)
+      assert fetched_group.id == group.id
+
+      assert token = Repo.get_by(Tokens.Token, relay_group_id: fetched_group.id)
+      assert token.type == :relay_group
+      assert token.account_id == account.id
+      assert token.relay_group_id == group.id
+      assert token.created_by == :identity
+      assert token.created_by_identity_id == subject.identity.id
+      assert token.created_by_user_agent == subject.context.user_agent
+      assert token.created_by_remote_ip.address == subject.context.remote_ip
+      refute token.expires_at
     end
 
-    test "returns error when id is not found" do
-      assert use_token_by_id_and_secret(Ecto.UUID.generate(), "bar") == {:error, :not_found}
+    test "returns valid token for a global relay group", %{
+      context: context
+    } do
+      group = Fixtures.Relays.create_global_group()
+
+      assert {:ok, encoded_token} = create_token(group, %{})
+
+      assert {:ok, fetched_group} = authenticate(encoded_token, context)
+      assert fetched_group.id == group.id
+
+      assert token = Repo.get_by(Tokens.Token, relay_group_id: fetched_group.id)
+      assert token.type == :relay_group
+      refute token.account_id
+      assert token.relay_group_id == group.id
+      assert token.created_by == :system
+      refute token.created_by_identity_id
+      refute token.created_by_user_agent
+      refute token.created_by_remote_ip
+      refute token.expires_at
+    end
+  end
+
+  describe "create_token/3" do
+    setup do
+      user_agent = Fixtures.Auth.user_agent()
+      remote_ip = Fixtures.Auth.remote_ip()
+
+      %{
+        context: %Domain.Auth.Context{
+          type: :relay_group,
+          remote_ip: remote_ip,
+          remote_ip_location_region: "UA",
+          remote_ip_location_city: "Kyiv",
+          remote_ip_location_lat: 50.4501,
+          remote_ip_location_lon: 30.5234,
+          user_agent: user_agent
+        }
+      }
     end
 
-    test "returns error when secret is invalid" do
-      token = Fixtures.Relays.create_token()
-      assert use_token_by_id_and_secret(token.id, "bar") == {:error, :not_found}
+    test "returns valid token for a given relay group", %{
+      account: account,
+      context: context,
+      subject: subject
+    } do
+      group = Fixtures.Relays.create_group(account: account)
+
+      assert {:ok, encoded_token} = create_token(group, %{}, subject)
+
+      assert {:ok, fetched_group} = authenticate(encoded_token, context)
+      assert fetched_group.id == group.id
+
+      assert token = Repo.get_by(Tokens.Token, relay_group_id: fetched_group.id)
+      assert token.type == :relay_group
+      assert token.account_id == account.id
+      assert token.relay_group_id == group.id
+      assert token.created_by == :identity
+      assert token.created_by_identity_id == subject.identity.id
+      assert token.created_by_user_agent == context.user_agent
+      assert token.created_by_remote_ip.address == context.remote_ip
+      refute token.expires_at
+    end
+
+    test "returns error on missing permissions", %{
+      account: account,
+      subject: subject
+    } do
+      group = Fixtures.Relays.create_group(account: account)
+      subject = Fixtures.Auth.remove_permissions(subject)
+
+      assert create_token(group, %{}, subject) ==
+               {:error,
+                {:unauthorized,
+                 reason: :missing_permissions,
+                 missing_permissions: [Relays.Authorizer.manage_relays_permission()]}}
+    end
+  end
+
+  describe "authenticate/2" do
+    setup do
+      user_agent = Fixtures.Auth.user_agent()
+      remote_ip = Fixtures.Auth.remote_ip()
+
+      %{
+        context: %Domain.Auth.Context{
+          type: :relay_group,
+          remote_ip: remote_ip,
+          remote_ip_location_region: "UA",
+          remote_ip_location_city: "Kyiv",
+          remote_ip_location_lat: 50.4501,
+          remote_ip_location_lon: 30.5234,
+          user_agent: user_agent
+        }
+      }
+    end
+
+    test "returns error when token is invalid", %{
+      context: context
+    } do
+      assert authenticate(".foo", context) == {:error, :unauthorized}
+      assert authenticate("foo", context) == {:error, :unauthorized}
+    end
+
+    test "returns error when context is invalid", %{
+      context: context
+    } do
+      group = Fixtures.Relays.create_global_group()
+      assert {:ok, encoded_token} = create_token(group, %{})
+      context = %{context | type: :client}
+
+      assert authenticate(encoded_token, context) == {:error, :unauthorized}
+    end
+
+    test "returns global group when token is valid", %{
+      context: context
+    } do
+      group = Fixtures.Relays.create_global_group()
+      assert {:ok, encoded_token} = create_token(group, %{})
+
+      assert {:ok, fetched_group} = authenticate(encoded_token, context)
+      assert fetched_group.id == group.id
+      refute fetched_group.account_id
+    end
+
+    test "returns group when token is valid", %{
+      account: account,
+      context: context,
+      subject: subject
+    } do
+      group = Fixtures.Relays.create_group(account: account)
+      assert {:ok, encoded_token} = create_token(group, %{}, subject)
+
+      assert {:ok, fetched_group} = authenticate(encoded_token, context)
+      assert fetched_group.id == group.id
+      assert fetched_group.account_id == account.id
     end
   end
 
@@ -579,73 +710,70 @@ defmodule Domain.RelaysTest do
   end
 
   describe "upsert_relay/3" do
-    setup context do
-      token = Fixtures.Relays.create_token(account: context.account)
+    setup %{account: account} do
+      group = Fixtures.Relays.create_group(account: account)
 
-      context
-      |> Map.put(:token, token)
-      |> Map.put(:group, token.group)
+      user_agent = Fixtures.Auth.user_agent()
+      remote_ip = Fixtures.Auth.remote_ip()
+
+      %{
+        group: group,
+        context: %Domain.Auth.Context{
+          type: :relay_group,
+          remote_ip: remote_ip,
+          remote_ip_location_region: "UA",
+          remote_ip_location_city: "Kyiv",
+          remote_ip_location_lat: 50.4501,
+          remote_ip_location_lon: 30.5234,
+          user_agent: user_agent
+        }
+      }
     end
 
     test "returns errors on invalid attrs", %{
-      token: token
+      context: context,
+      group: group
     } do
       attrs = %{
         ipv4: "1.1.1.256",
         ipv6: "fd01::10000",
-        last_seen_user_agent: "foo",
-        last_seen_remote_ip: -1,
-        last_seen_remote_ip_location_region: -1,
-        last_seen_remote_ip_location_city: -1,
-        last_seen_remote_ip_location_lat: :x,
-        last_seen_remote_ip_location_lon: :x,
         port: -1
       }
 
-      assert {:error, changeset} = upsert_relay(token, attrs)
+      assert {:error, changeset} = upsert_relay(group, attrs, context)
 
       assert errors_on(changeset) == %{
                ipv4: ["one of these fields must be present: ipv4, ipv6", "is invalid"],
                ipv6: ["one of these fields must be present: ipv4, ipv6", "is invalid"],
-               last_seen_user_agent: ["is invalid"],
-               last_seen_remote_ip: ["is invalid"],
-               last_seen_remote_ip_location_region: ["is invalid"],
-               last_seen_remote_ip_location_city: ["is invalid"],
-               last_seen_remote_ip_location_lat: ["is invalid"],
-               last_seen_remote_ip_location_lon: ["is invalid"],
                port: ["must be greater than or equal to 1"]
              }
 
       attrs = %{port: 100_000}
-      assert {:error, changeset} = upsert_relay(token, attrs)
+      assert {:error, changeset} = upsert_relay(group, attrs, context)
       assert "must be less than or equal to 65535" in errors_on(changeset).port
     end
 
     test "allows creating relay with just required attributes", %{
-      token: token
+      context: context,
+      group: group
     } do
       attrs =
         Fixtures.Relays.relay_attrs()
         |> Map.delete(:name)
 
-      assert {:ok, relay} = upsert_relay(token, attrs)
+      assert {:ok, relay} = upsert_relay(group, attrs, context)
 
-      assert relay.token_id == token.id
-      assert relay.group_id == token.group_id
+      assert relay.group_id == group.id
 
       assert relay.ipv4.address == attrs.ipv4
       assert relay.ipv6.address == attrs.ipv6
 
-      assert relay.last_seen_remote_ip.address == attrs.last_seen_remote_ip
-
-      assert relay.last_seen_remote_ip_location_region ==
-               attrs.last_seen_remote_ip_location_region
-
-      assert relay.last_seen_remote_ip_location_city == attrs.last_seen_remote_ip_location_city
-      assert relay.last_seen_remote_ip_location_lat == attrs.last_seen_remote_ip_location_lat
-      assert relay.last_seen_remote_ip_location_lon == attrs.last_seen_remote_ip_location_lon
-
-      assert relay.last_seen_user_agent == attrs.last_seen_user_agent
+      assert relay.last_seen_remote_ip.address == context.remote_ip
+      assert relay.last_seen_remote_ip_location_region == context.remote_ip_location_region
+      assert relay.last_seen_remote_ip_location_city == context.remote_ip_location_city
+      assert relay.last_seen_remote_ip_location_lat == context.remote_ip_location_lat
+      assert relay.last_seen_remote_ip_location_lon == context.remote_ip_location_lon
+      assert relay.last_seen_user_agent == context.user_agent
       assert relay.last_seen_version == "0.7.412"
       assert relay.last_seen_at
       assert relay.port == 3478
@@ -654,47 +782,39 @@ defmodule Domain.RelaysTest do
     end
 
     test "allows creating ipv6-only relays", %{
-      token: token
+      context: context,
+      group: group
     } do
       attrs =
         Fixtures.Relays.relay_attrs()
         |> Map.drop([:name, :ipv4])
 
-      assert {:ok, _relay} = upsert_relay(token, attrs)
-      assert {:ok, _relay} = upsert_relay(token, attrs)
+      assert {:ok, _relay} = upsert_relay(group, attrs, context)
+      assert {:ok, _relay} = upsert_relay(group, attrs, context)
 
       assert Repo.one(Relays.Relay)
     end
 
     test "updates ipv4 relay when it already exists", %{
-      token: token
+      group: group,
+      context: context
     } do
-      relay = Fixtures.Relays.create_relay(token: token)
+      relay = Fixtures.Relays.create_relay(group: group)
+      attrs = Fixtures.Relays.relay_attrs(ipv4: relay.ipv4)
+      context = %{context | user_agent: "iOS/12.5 (iPhone) connlib/0.7.411"}
 
-      attrs =
-        Fixtures.Relays.relay_attrs(
-          ipv4: relay.ipv4,
-          last_seen_remote_ip: relay.ipv4,
-          last_seen_user_agent: "iOS/12.5 (iPhone) connlib/0.7.411",
-          last_seen_remote_ip_location_region: "Mexico",
-          last_seen_remote_ip_location_city: "Merida",
-          last_seen_remote_ip_location_lat: 7.7758,
-          last_seen_remote_ip_location_lon: -2.4128
-        )
-
-      assert {:ok, updated_relay} = upsert_relay(token, attrs)
+      assert {:ok, updated_relay} = upsert_relay(group, attrs, context)
 
       assert Repo.aggregate(Relays.Relay, :count, :id) == 1
 
-      assert updated_relay.last_seen_remote_ip.address == attrs.last_seen_remote_ip.address
-      assert updated_relay.last_seen_user_agent == attrs.last_seen_user_agent
+      assert updated_relay.last_seen_remote_ip.address == context.remote_ip
+      assert updated_relay.last_seen_user_agent == context.user_agent
       assert updated_relay.last_seen_user_agent != relay.last_seen_user_agent
       assert updated_relay.last_seen_version == "0.7.411"
       assert updated_relay.last_seen_at
       assert updated_relay.last_seen_at != relay.last_seen_at
 
-      assert updated_relay.token_id == token.id
-      assert updated_relay.group_id == token.group_id
+      assert updated_relay.group_id == group.id
 
       assert updated_relay.ipv4 == relay.ipv4
       assert updated_relay.ipv6.address == attrs.ipv6
@@ -702,46 +822,38 @@ defmodule Domain.RelaysTest do
       assert updated_relay.port == 3478
 
       assert updated_relay.last_seen_remote_ip_location_region ==
-               attrs.last_seen_remote_ip_location_region
+               context.remote_ip_location_region
 
-      assert updated_relay.last_seen_remote_ip_location_city ==
-               attrs.last_seen_remote_ip_location_city
-
-      assert updated_relay.last_seen_remote_ip_location_lat ==
-               attrs.last_seen_remote_ip_location_lat
-
-      assert updated_relay.last_seen_remote_ip_location_lon ==
-               attrs.last_seen_remote_ip_location_lon
+      assert updated_relay.last_seen_remote_ip_location_city == context.remote_ip_location_city
+      assert updated_relay.last_seen_remote_ip_location_lat == context.remote_ip_location_lat
+      assert updated_relay.last_seen_remote_ip_location_lon == context.remote_ip_location_lon
 
       assert Repo.aggregate(Domain.Network.Address, :count) == 0
     end
 
     test "updates ipv6 relay when it already exists", %{
-      token: token
+      context: context,
+      group: group
     } do
-      relay = Fixtures.Relays.create_relay(ipv4: nil, token: token)
+      relay = Fixtures.Relays.create_relay(ipv4: nil, group: group)
 
       attrs =
         Fixtures.Relays.relay_attrs(
           ipv4: nil,
-          ipv6: relay.ipv6,
-          last_seen_remote_ip: relay.ipv6,
-          last_seen_user_agent: "iOS/12.5 (iPhone) connlib/0.7.411"
+          ipv6: relay.ipv6
         )
 
-      assert {:ok, updated_relay} = upsert_relay(token, attrs)
+      assert {:ok, updated_relay} = upsert_relay(group, attrs, context)
 
       assert Repo.aggregate(Relays.Relay, :count, :id) == 1
 
-      assert updated_relay.last_seen_remote_ip.address == attrs.last_seen_remote_ip.address
-      assert updated_relay.last_seen_user_agent == attrs.last_seen_user_agent
-      assert updated_relay.last_seen_user_agent != relay.last_seen_user_agent
-      assert updated_relay.last_seen_version == "0.7.411"
+      assert updated_relay.last_seen_remote_ip.address == context.remote_ip
+      assert updated_relay.last_seen_user_agent == context.user_agent
+      assert updated_relay.last_seen_version == "0.7.412"
       assert updated_relay.last_seen_at
       assert updated_relay.last_seen_at != relay.last_seen_at
 
-      assert updated_relay.token_id == token.id
-      assert updated_relay.group_id == token.group_id
+      assert updated_relay.group_id == group.id
 
       assert updated_relay.ipv4 == nil
       assert updated_relay.ipv6.address == attrs.ipv6.address
@@ -750,31 +862,24 @@ defmodule Domain.RelaysTest do
       assert Repo.aggregate(Domain.Network.Address, :count) == 0
     end
 
-    test "updates global relay when it already exists" do
+    test "updates global relay when it already exists", %{context: context} do
       group = Fixtures.Relays.create_global_group()
-      token = hd(group.tokens)
-      relay = Fixtures.Relays.create_relay(group: group, token: token)
+      relay = Fixtures.Relays.create_relay(group: group)
+      context = %{context | user_agent: "iOS/12.5 (iPhone) connlib/0.7.411"}
+      attrs = Fixtures.Relays.relay_attrs(ipv4: relay.ipv4)
 
-      attrs =
-        Fixtures.Relays.relay_attrs(
-          ipv4: relay.ipv4,
-          last_seen_remote_ip: relay.ipv4,
-          last_seen_user_agent: "iOS/12.5 (iPhone) connlib/0.7.411"
-        )
-
-      assert {:ok, updated_relay} = upsert_relay(token, attrs)
+      assert {:ok, updated_relay} = upsert_relay(group, attrs, context)
 
       assert Repo.aggregate(Relays.Relay, :count, :id) == 1
 
-      assert updated_relay.last_seen_remote_ip.address == attrs.last_seen_remote_ip.address
-      assert updated_relay.last_seen_user_agent == attrs.last_seen_user_agent
+      assert updated_relay.last_seen_remote_ip.address == context.remote_ip
+      assert updated_relay.last_seen_user_agent == context.user_agent
       assert updated_relay.last_seen_user_agent != relay.last_seen_user_agent
       assert updated_relay.last_seen_version == "0.7.411"
       assert updated_relay.last_seen_at
       assert updated_relay.last_seen_at != relay.last_seen_at
 
-      assert updated_relay.token_id == token.id
-      assert updated_relay.group_id == token.group_id
+      assert updated_relay.group_id == group.id
 
       assert updated_relay.ipv4 == relay.ipv4
       assert updated_relay.ipv6.address == attrs.ipv6
@@ -834,14 +939,18 @@ defmodule Domain.RelaysTest do
     test "prioritizes relays with known location" do
       relay_1 =
         Fixtures.Relays.create_relay(
-          last_seen_remote_ip_location_lat: 33.2029,
-          last_seen_remote_ip_location_lon: -80.0131
+          context: [
+            remote_ip_location_lat: 33.2029,
+            remote_ip_location_lon: -80.0131
+          ]
         )
 
       relay_2 =
         Fixtures.Relays.create_relay(
-          last_seen_remote_ip_location_lat: nil,
-          last_seen_remote_ip_location_lon: nil
+          context: [
+            remote_ip_location_lat: nil,
+            remote_ip_location_lon: nil
+          ]
         )
 
       relays = [
@@ -858,14 +967,18 @@ defmodule Domain.RelaysTest do
       # Moncks Corner, South Carolina
       relay_us_east_1 =
         Fixtures.Relays.create_relay(
-          last_seen_remote_ip_location_lat: 33.2029,
-          last_seen_remote_ip_location_lon: -80.0131
+          context: [
+            remote_ip_location_lat: 33.2029,
+            remote_ip_location_lon: -80.0131
+          ]
         )
 
       relay_us_east_2 =
         Fixtures.Relays.create_relay(
-          last_seen_remote_ip_location_lat: 33.2029,
-          last_seen_remote_ip_location_lon: -80.0131
+          context: [
+            remote_ip_location_lat: 33.2029,
+            remote_ip_location_lon: -80.0131
+          ]
         )
 
       relays = [
@@ -881,40 +994,52 @@ defmodule Domain.RelaysTest do
       # Moncks Corner, South Carolina
       relay_us_east_1 =
         Fixtures.Relays.create_relay(
-          last_seen_remote_ip_location_lat: 33.2029,
-          last_seen_remote_ip_location_lon: -80.0131
+          context: [
+            remote_ip_location_lat: 33.2029,
+            remote_ip_location_lon: -80.0131
+          ]
         )
 
       relay_us_east_2 =
         Fixtures.Relays.create_relay(
-          last_seen_remote_ip_location_lat: 33.2029,
-          last_seen_remote_ip_location_lon: -80.0131
+          context: [
+            remote_ip_location_lat: 33.2029,
+            remote_ip_location_lon: -80.0131
+          ]
         )
 
       relay_us_east_3 =
         Fixtures.Relays.create_relay(
-          last_seen_remote_ip_location_lat: 33.2029,
-          last_seen_remote_ip_location_lon: -80.0131
+          context: [
+            remote_ip_location_lat: 33.2029,
+            remote_ip_location_lon: -80.0131
+          ]
         )
 
       # The Dalles, Oregon
       relay_us_west_1 =
         Fixtures.Relays.create_relay(
-          last_seen_remote_ip_location_lat: 45.5946,
-          last_seen_remote_ip_location_lon: -121.1787
+          context: [
+            remote_ip_location_lat: 45.5946,
+            remote_ip_location_lon: -121.1787
+          ]
         )
 
       relay_us_west_2 =
         Fixtures.Relays.create_relay(
-          last_seen_remote_ip_location_lat: 45.5946,
-          last_seen_remote_ip_location_lon: -121.1787
+          context: [
+            remote_ip_location_lat: 45.5946,
+            remote_ip_location_lon: -121.1787
+          ]
         )
 
       # Council Bluffs, Iowa
       relay_us_central_1 =
         Fixtures.Relays.create_relay(
-          last_seen_remote_ip_location_lat: 41.2619,
-          last_seen_remote_ip_location_lon: -95.8608
+          context: [
+            remote_ip_location_lat: 41.2619,
+            remote_ip_location_lon: -95.8608
+          ]
         )
 
       relays = [
@@ -941,34 +1066,6 @@ defmodule Domain.RelaysTest do
 
       assert [relay1, _relay2] = load_balance_relays({42.2619, -96.8608}, relays)
       assert relay1.id == relay_us_central_1.id
-    end
-  end
-
-  describe "encode_token!/1" do
-    test "returns encoded token" do
-      token = Fixtures.Relays.create_token()
-      assert encrypted_secret = encode_token!(token)
-
-      config = Application.fetch_env!(:domain, Domain.Relays)
-      key_base = Keyword.fetch!(config, :key_base)
-      salt = Keyword.fetch!(config, :salt)
-
-      assert Plug.Crypto.verify(key_base, salt, encrypted_secret) ==
-               {:ok, {token.id, token.value}}
-    end
-  end
-
-  describe "authorize_relay/1" do
-    test "returns token when encoded secret is valid" do
-      token = Fixtures.Relays.create_token()
-      encoded_token = encode_token!(token)
-      assert {:ok, fetched_token} = authorize_relay(encoded_token)
-      assert fetched_token.id == token.id
-      assert is_nil(fetched_token.value)
-    end
-
-    test "returns error when secret is invalid" do
-      assert authorize_relay(Ecto.UUID.generate()) == {:error, :invalid_token}
     end
   end
 

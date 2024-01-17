@@ -83,10 +83,6 @@ services:
       # Secrets
       TOKENS_KEY_BASE: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S2"
       TOKENS_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
-      RELAYS_AUTH_TOKEN_KEY_BASE: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S2"
-      RELAYS_AUTH_TOKEN_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
-      GATEWAYS_AUTH_TOKEN_KEY_BASE: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S2"
-      GATEWAYS_AUTH_TOKEN_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
       SECRET_KEY_BASE: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S2"
       LIVE_VIEW_SIGNING_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
       COOKIE_SIGNING_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
@@ -138,9 +134,8 @@ services:
     depends_on:
       gateway:
         condition: "service_healthy"
-      # Doesn't work on aarch64 Macs
-      # httpbin:
-      #   condition: "service_healthy"
+      httpbin:
+        condition: "service_healthy"
       iperf3:
         condition: "service_healthy"
       api:
@@ -151,9 +146,9 @@ services:
 
   gateway:
     healthcheck:
-      test: ["CMD-SHELL", "cat /proc/net/dev | grep tun-firezone"]
+      test: ["CMD-SHELL", "ip link | grep tun-firezone"]
     environment:
-      FIREZONE_TOKEN: "SFMyNTY.g2gDaAJtAAAAJDNjZWYwNTY2LWFkZmQtNDhmZS1hMGYxLTU4MDY3OTYwOGY2Zm0AAABAamp0enhSRkpQWkdCYy1vQ1o5RHkyRndqd2FIWE1BVWRwenVScjJzUnJvcHg3NS16bmhfeHBfNWJUNU9uby1yYm4GAIC98hKNAWIAAVGA.-0Shqu5DAwS2pN9EZ5aIcMK08vSVFqA_kuXsLWxJ__o"
+      FIREZONE_TOKEN: ".SFMyNTY.g2gDaANtAAAAJGM4OWJjYzhjLTkzOTItNGRhZS1hNDBkLTg4OGFlZjZkMjhlMG0AAAAkMjI3NDU2MGItZTk3Yi00NWU0LThiMzQtNjc5Yzc2MTdlOThkbQAAADhPMDJMN1VTMkozVklOT01QUjlKNklMODhRSVFQNlVPOEFRVk82VTVJUEwwVkpDMjJKR0gwPT09PW4GAF3gLBONAWIAAVGA.DCT0Qv80qzF5OQ6CccLKXPLgzC3Rzx5DqzDAh9mWAww"
       RUST_LOG: firezone_gateway=trace,wire=trace,connlib_gateway_shared=trace,firezone_tunnel=trace,connlib_shared=trace,warn
       FIREZONE_ENABLE_MASQUERADE: 1
       FIREZONE_API_URL: ws://api:8081
@@ -209,9 +204,9 @@ services:
       LOWEST_PORT: 55555
       HIGHEST_PORT: 55666
       # Token for self-hosted Relay
-      #FIREZONE_TOKEN: "SFMyNTY.g2gDaAJtAAAAJDcyODZiNTNkLTA3M2UtNGM0MS05ZmYxLWNjODQ1MWRhZDI5OW0AAABARVg3N0dhMEhLSlVWTGdjcE1yTjZIYXRkR25mdkFEWVFyUmpVV1d5VHFxdDdCYVVkRVUzbzktRmJCbFJkSU5JS24GAFSzb0KJAWIAAVGA.waeGE26tbgkgIcMrWyck0ysv9SHIoHr0zqoM3wao84M"
+      # FIREZONE_TOKEN: ".SFMyNTY.g2gDaANtAAAAJGM4OWJjYzhjLTkzOTItNGRhZS1hNDBkLTg4OGFlZjZkMjhlMG0AAAAkNTQ5YzQxMDctMTQ5Mi00ZjhmLWE0ZWMtYTlkMmE2NmQ4YWE5bQAAADhQVTVBSVRFMU84VkRWTk1ITU9BQzc3RElLTU9HVERJQTY3MlM2RzFBQjAyT1MzNEg1TUUwPT09PW4GAEngLBONAWIAAVGA.E-f2MFdGMX7JTL2jwoHBdWcUd2G3UNz2JRZLbQrlf0k"
       # Token for global Relay
-      FIREZONE_TOKEN: "SFMyNTY.g2gDaAJtAAAAJGMxMDM4ZTIyLTAyMTUtNDk3Ny05ZjZjLWY2NTYyMWUwMDA4Zm0AAABWT2JubmIzN2RCdE5RY2NDVS1mQll1MWg4TmFmQXAwS3lvT3dsbzJUVEl5NjBvZm9rSWxWNjBzcGExMkc1cElHLVJWS2o1cXdIVkVoMWs5bjh4QmNmOUFuBgAqiFHuiwFiAAFRgA.VyV9cW06PCZyxTefBwIlSCFTDBFEOSRQ2gfJXtMplVE"
+      FIREZONE_TOKEN: ".SFMyNTY.g2gDaAN3A25pbG0AAAAkZTgyZmNkYzEtMDU3YS00MDE1LWI5MGItM2IxOGYwZjI4MDUzbQAAADhDMTROR0E4N0VKUlIwM0c0UVBSMDdBOUM2Rzc4NFRTU1RIU0Y0VEk1VDBHRDhENkwwVlJHPT09PW4GADXgLBONAWIAAVGA.dShU17FgnvO2GLcTSnBBTDoqQ2tScuG7qjiyKhhlq8s"
       RUST_LOG: "debug"
       RUST_BACKTRACE: 1
       FIREZONE_API_URL: ws://api:8081
@@ -225,9 +220,8 @@ services:
         PACKAGE: firezone-relay
     image: us-east1-docker.pkg.dev/firezone-staging/firezone/relay:${VERSION:-main}
     healthcheck:
-      # Poor man's netstat -- Check for listening on 3478 (D96 in hex)
-      test: ["CMD-SHELL", "cat /proc/net/udp | grep D96"]
-      start_period: 3s
+      test: ["CMD-SHELL", "lsof -i UDP | grep firezone-relay"]
+      start_period: 10s
       interval: 30s
       retries: 5
       timeout: 5s
@@ -279,10 +273,6 @@ services:
       # Secrets
       TOKENS_KEY_BASE: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S2"
       TOKENS_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
-      RELAYS_AUTH_TOKEN_KEY_BASE: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S2"
-      RELAYS_AUTH_TOKEN_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
-      GATEWAYS_AUTH_TOKEN_KEY_BASE: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S2"
-      GATEWAYS_AUTH_TOKEN_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
       SECRET_KEY_BASE: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S2"
       LIVE_VIEW_SIGNING_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
       COOKIE_SIGNING_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
@@ -344,10 +334,6 @@ services:
       # Secrets
       TOKENS_KEY_BASE: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S2"
       TOKENS_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
-      RELAYS_AUTH_TOKEN_KEY_BASE: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S2"
-      RELAYS_AUTH_TOKEN_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
-      GATEWAYS_AUTH_TOKEN_KEY_BASE: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S2"
-      GATEWAYS_AUTH_TOKEN_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
       SECRET_KEY_BASE: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S2"
       LIVE_VIEW_SIGNING_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
       COOKIE_SIGNING_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"

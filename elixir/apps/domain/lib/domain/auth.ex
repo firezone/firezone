@@ -324,6 +324,7 @@ defmodule Domain.Auth do
     end
   end
 
+  # TODO: can be replaced with peek for consistency
   def fetch_identities_count_grouped_by_provider_id(%Subject{} = subject) do
     with :ok <- ensure_has_permissions(subject, Authorizer.manage_identities_permission()) do
       {:ok, identities} =
@@ -497,7 +498,8 @@ defmodule Domain.Auth do
       |> Identity.Query.by_id_or_provider_identifier(id_or_provider_identifier)
 
     with {:ok, identity} <- Repo.fetch(identity_queryable),
-         {:ok, identity, expires_at} <- Adapters.verify_secret(provider, identity, secret),
+         {:ok, identity, expires_at} <-
+           Adapters.verify_secret(provider, identity, context, secret),
          identity = Repo.preload(identity, :actor),
          {:ok, token} <- create_token(identity, context, token_nonce, expires_at) do
       {:ok, identity, Tokens.encode_fragment!(token)}
@@ -603,13 +605,13 @@ defmodule Domain.Auth do
 
   def create_service_account_token(
         %Actors.Actor{type: :service_account, account_id: account_id} = actor,
-        %Subject{account: %{id: account_id}} = subject,
-        attrs
+        attrs,
+        %Subject{account: %{id: account_id}} = subject
       ) do
     attrs =
       Map.merge(attrs, %{
         "type" => :client,
-        "secret_fragment" => Domain.Crypto.random_token(32),
+        "secret_fragment" => Domain.Crypto.random_token(32, encoder: :hex32),
         "account_id" => actor.account_id,
         "actor_id" => actor.id,
         "created_by_user_agent" => subject.context.user_agent,
@@ -617,6 +619,27 @@ defmodule Domain.Auth do
       })
 
     with :ok <- ensure_has_permissions(subject, Authorizer.manage_service_accounts_permission()),
+         {:ok, token} <- Tokens.create_token(attrs, subject) do
+      {:ok, Tokens.encode_fragment!(token)}
+    end
+  end
+
+  def create_api_client_token(
+        %Actors.Actor{type: :api_client, account_id: account_id} = actor,
+        attrs,
+        %Subject{account: %{id: account_id}} = subject
+      ) do
+    attrs =
+      Map.merge(attrs, %{
+        "type" => :api_client,
+        "secret_fragment" => Domain.Crypto.random_token(32, encoder: :hex32),
+        "account_id" => actor.account_id,
+        "actor_id" => actor.id,
+        "created_by_user_agent" => subject.context.user_agent,
+        "created_by_remote_ip" => subject.context.remote_ip
+      })
+
+    with :ok <- ensure_has_permissions(subject, Authorizer.manage_api_clients_permission()),
          {:ok, token} <- Tokens.create_token(attrs, subject) do
       {:ok, Tokens.encode_fragment!(token)}
     end
@@ -657,7 +680,7 @@ defmodule Domain.Auth do
   # used in tests and seeds
   @doc false
   def build_subject(%Tokens.Token{type: type} = token, %Context{} = context)
-      when type in [:browser, :client] do
+      when type in [:browser, :client, :api_client] do
     account = Accounts.fetch_account_by_id!(token.account_id)
 
     with {:ok, actor} <- Actors.fetch_actor_by_id(token.actor_id) do
@@ -677,6 +700,10 @@ defmodule Domain.Auth do
   end
 
   defp maybe_fetch_subject_identity(%{actor: %{type: :service_account}} = subject, _token) do
+    {:ok, subject}
+  end
+
+  defp maybe_fetch_subject_identity(%{actor: %{type: :api_client}} = subject, _token) do
     {:ok, subject}
   end
 
