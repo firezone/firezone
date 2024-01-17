@@ -23,7 +23,7 @@ async fn main() -> Result<()> {
     println!("Allocated relay address: {relay_addr}");
 
     let gateway_addr = redis_connection
-        .blpop::<_, (String, String)>("gateway_addr", 10)
+        .blpop::<_, (String, String)>("gateway_addr", 10.0)
         .await?
         .1
         .parse::<SocketAddr>()?;

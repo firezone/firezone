@@ -21,7 +21,7 @@ async fn main() -> Result<()> {
         .rpush("gateway_addr", listening_addr.to_string())
         .await?;
     let relay_addr = redis_connection
-        .blpop::<_, (String, String)>("client_relay_addr", 10)
+        .blpop::<_, (String, String)>("client_relay_addr", 10.0)
         .await?
         .1
         .parse::<SocketAddr>()?;
