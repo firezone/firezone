@@ -23,7 +23,7 @@ pub struct StunBinding {
     last_now: Option<Instant>,
 
     buffered_transmits: VecDeque<Transmit>,
-    buffered_events: VecDeque<Event>,
+    new_candidates: VecDeque<Candidate>,
 }
 
 impl StunBinding {
@@ -34,7 +34,7 @@ impl StunBinding {
             state: State::Initial,
             last_now: None,
             buffered_transmits: Default::default(),
-            buffered_events: Default::default(),
+            new_candidates: Default::default(),
         }
     }
 
@@ -91,16 +91,13 @@ impl StunBinding {
         }
 
         self.last_candidate = Some(new_candidate.clone());
-        self.buffered_events
-            .push_back(Event::NewServerReflexiveCandidate {
-                candidate: new_candidate,
-            });
+        self.new_candidates.push_back(new_candidate);
 
         true
     }
 
-    pub fn poll_event(&mut self) -> Option<Event> {
-        self.buffered_events.pop_front()
+    pub fn poll_candidate(&mut self) -> Option<Candidate> {
+        self.new_candidates.pop_front()
     }
 
     pub fn poll_timeout(&mut self) -> Option<Instant> {
@@ -150,11 +147,6 @@ impl StunBinding {
         self.last_candidate = Some(Candidate::server_reflexive(address, Protocol::Udp).unwrap());
         self.state = State::ReceivedResponse { at: now };
     }
-}
-
-#[derive(Debug)]
-pub enum Event {
-    NewServerReflexiveCandidate { candidate: Candidate },
 }
 
 fn new_stun_request() -> Message<rfc5389::Attribute> {
@@ -262,7 +254,7 @@ mod tests {
             stun_binding.handle_input(SERVER1, &response, start + Duration::from_millis(200));
         assert!(handled);
 
-        let Event::NewServerReflexiveCandidate { candidate } = stun_binding.poll_event().unwrap();
+        let candidate = stun_binding.poll_candidate().unwrap();
 
         assert_eq!(candidate.addr(), MAPPED_ADDRESS);
     }
@@ -294,7 +286,7 @@ mod tests {
             stun_binding.handle_input(SERVER2, &response, start + Duration::from_millis(200));
 
         assert!(!handled);
-        assert!(stun_binding.poll_event().is_none());
+        assert!(stun_binding.poll_candidate().is_none());
     }
 
     fn generate_stun_response(request: Transmit, mapped_address: SocketAddr) -> Vec<u8> {

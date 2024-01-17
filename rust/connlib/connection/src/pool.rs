@@ -578,27 +578,23 @@ fn drain_binding_events<TId>(
 ) where
     TId: Copy,
 {
-    while let Some(event) = binding.poll_event() {
-        match event {
-            crate::stun_binding::Event::NewServerReflexiveCandidate { candidate } => {
-                // TODO: Reduce duplication between initial and negotiated connections
-                for (id, c) in initial_connections.iter_mut() {
-                    if !c.stun_servers.contains(&server) {
-                        continue;
-                    }
-
-                    add_local_candidate(*id, &mut c.agent, candidate.clone(), pending_events);
-                }
-
-                for (id, c) in negotiated_connections.iter_mut() {
-                    if !c.stun_servers.contains(&server) {
-                        continue;
-                    }
-
-                    add_local_candidate(*id, &mut c.agent, candidate.clone(), pending_events);
-                }
+    while let Some(candidate) = binding.poll_candidate() {
+        // TODO: Reduce duplication between initial and negotiated connections
+        for (id, c) in initial_connections.iter_mut() {
+            if !c.stun_servers.contains(&server) {
+                continue;
             }
-        };
+
+            add_local_candidate(*id, &mut c.agent, candidate.clone(), pending_events);
+        }
+
+        for (id, c) in negotiated_connections.iter_mut() {
+            if !c.stun_servers.contains(&server) {
+                continue;
+            }
+
+            add_local_candidate(*id, &mut c.agent, candidate.clone(), pending_events);
+        }
     }
 }
 
