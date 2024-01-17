@@ -418,6 +418,6 @@ jobs:
       - name: Show API logs
         if: "!cancelled()"
         run: docker compose logs api
-      - name: Show httpbin logs
+      - name: Show iperf3 logs
         if: "!cancelled()"
-        run: docker compose logs httpbin
+        run: docker compose logs iperf3
