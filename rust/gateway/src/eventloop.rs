@@ -167,7 +167,7 @@ impl Eventloop {
                     payload,
                     reference,
                 }))) => {
-                    tracing::debug!(client = %client_id, resource = %resource.id(), expires = %expires_at.to_rfc3339() ,"Allowing access to resource");
+                    tracing::debug!(client = %client_id, resource = %resource.id(), expires = ?expires_at.map(|e| e.to_rfc3339()), "Allowing access to resource");
 
                     if let Some(res) = self
                         .tunnel

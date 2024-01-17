@@ -63,7 +63,7 @@ where
         peer: PeerConfig,
         relays: Vec<Relay>,
         client_id: ClientId,
-        expires_at: DateTime<Utc>,
+        expires_at: Option<DateTime<Utc>>,
         resource: ResourceDescription,
     ) -> Result<ConnectionAccepted> {
         let IceConnection {
@@ -166,7 +166,7 @@ where
         &self,
         resource: ResourceDescription,
         client_id: ClientId,
-        expires_at: DateTime<Utc>,
+        expires_at: Option<DateTime<Utc>>,
         domain: Option<Dname>,
     ) -> Option<ResourceAccepted> {
         if let Some((_, peer)) = self
@@ -220,7 +220,7 @@ where
         peer_config: PeerConfig,
         client_id: ClientId,
         resource: ResourceDescription,
-        expires_at: DateTime<Utc>,
+        expires_at: Option<DateTime<Utc>>,
         ice: Arc<RTCIceTransport>,
         resource_addresses: Vec<IpNetwork>,
     ) -> Result<()> {
