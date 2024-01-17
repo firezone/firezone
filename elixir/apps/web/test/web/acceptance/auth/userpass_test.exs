@@ -193,6 +193,57 @@ defmodule Web.Acceptance.Auth.UserPassTest do
     assert {:ok, _subject} = Domain.Auth.authenticate(token, context)
   end
 
+  feature "allows to log in using email link to the client even with active browser session", %{
+    session: session
+  } do
+    nonce = Ecto.UUID.generate()
+    state = Ecto.UUID.generate()
+
+    Auth.mock_client_sign_in_callback()
+
+    redirect_params = %{
+      "as" => "client",
+      "state" => "state_#{state}",
+      "nonce" => "nonce_#{nonce}"
+    }
+
+    account = Fixtures.Accounts.create_account()
+    actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+    provider = Fixtures.Auth.create_userpass_provider(account: account)
+    password = "Firezone1234"
+
+    identity =
+      Fixtures.Auth.create_identity(
+        account: account,
+        provider: provider,
+        actor: actor,
+        provider_virtual_state: %{"password" => password, "password_confirmation" => password}
+      )
+
+    # Sign In as an portal user
+    session
+    |> password_login_flow(account, identity.provider_identifier, password)
+    |> assert_el(Query.css("#user-menu-button"))
+    |> assert_path(~p"/#{account.slug}/sites")
+    |> Auth.assert_authenticated(identity)
+
+    # And then to a client
+    session
+    |> password_login_flow(account, identity.provider_identifier, password, redirect_params)
+    |> assert_el(Query.text("Client redirected"))
+    |> assert_path(~p"/handle_client_sign_in_callback")
+
+    # The browser sessions stays active
+    session
+    |> visit(~p"/#{account}/sites")
+    |> assert_el(Query.css("#user-menu-button"))
+
+    # Browser session is stored correctly
+    {:ok, cookie} = Auth.fetch_session_cookie(session)
+    assert [{:browser, account_id, _fragment}] = cookie["sessions"]
+    assert account_id == account.id
+  end
+
   defp password_login_flow(session, account, username, password, redirect_params \\ %{}) do
     session
     |> visit(~p"/#{account}?#{redirect_params}")
