@@ -29,6 +29,7 @@ tokio-tungstenite = { version = "0.21", default-features = false, features = ["c
 async-compression = { version = "0.4.3", features = ["tokio", "gzip"] }
 hickory-resolver = { workspace = true, features = ["tokio-runtime"] }
 parking_lot = "0.12"
+bimap = "0.6"
 
 [target.'cfg(target_os = "android")'.dependencies]
 tracing = { workspace = true, features = ["std", "attributes"] }

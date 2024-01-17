@@ -217,13 +217,27 @@ pub struct ResourceDescriptionCidr {
     pub name: String,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, Hash)]
 #[serde(tag = "protocol", rename_all = "snake_case")]
 pub enum DnsServer {
     IpPort(IpDnsServer),
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+impl DnsServer {
+    pub fn ip(&self) -> IpAddr {
+        match self {
+            DnsServer::IpPort(s) => s.address.ip(),
+        }
+    }
+
+    pub fn address(&self) -> SocketAddr {
+        match self {
+            DnsServer::IpPort(s) => s.address,
+        }
+    }
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, Hash)]
 pub struct IpDnsServer {
     pub address: SocketAddr,
 }
