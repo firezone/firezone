@@ -264,6 +264,12 @@ where
     }
 }
 
+#[cfg(target_os = "windows")]
+fn resolve_addresses(_: &str) -> std::io::Result<Vec<IpNetwork>> {
+    unimplemented!()
+}
+
+#[cfg(not(target_os = "windows"))]
 fn resolve_addresses(addr: &str) -> std::io::Result<Vec<IpNetwork>> {
     let addr_v4: std::io::Result<Vec<_>> = resolve_address_family(addr, AF_INET)
         .map_err(|e| e.into())
