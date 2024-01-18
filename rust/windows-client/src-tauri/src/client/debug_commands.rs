@@ -77,6 +77,12 @@ pub fn register_deep_link() -> Result<()> {
     Ok(())
 }
 
+pub fn self_test() -> Result<()> {
+    // TODO: Add tests here that are difficult to write with `cargo test`,
+    // such as multi-process tests for the IPC module.
+    Ok(())
+}
+
 pub fn wintun(_: Cli) -> Result<()> {
     tracing_subscriber::fmt::init();
 

@@ -23,6 +23,7 @@ pub enum CliCommands {
     Elevated,
     OpenDeepLink(DeepLink),
     RegisterDeepLink,
+    SelfTest,
 }
 
 #[derive(Args)]

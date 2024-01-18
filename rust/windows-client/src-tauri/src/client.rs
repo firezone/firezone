@@ -117,8 +117,10 @@ pub(crate) fn run() -> Result<()> {
             flag_elevated: true,
             inject_faults: cli.inject_faults,
         }),
+        // TODO: `open_deep_link` shouldn't be under `debug_commands`
         Some(Cmd::OpenDeepLink(deep_link)) => debug_commands::open_deep_link(&deep_link.url),
         Some(Cmd::RegisterDeepLink) => debug_commands::register_deep_link(),
+        Some(Cmd::SelfTest) => debug_commands::self_test(),
     }
 }
 
