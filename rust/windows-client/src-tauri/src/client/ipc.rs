@@ -8,6 +8,7 @@ use tokio::{
     },
     net::windows::named_pipe,
     runtime::Runtime,
+    sync::mpsc,
 };
 
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
@@ -32,6 +33,8 @@ pub(crate) enum Callback {
 
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 enum SerializedError {
+    AlreadyConnected,
+    AlreadyDisconnected,
     CouldntConnect,
     NotConnected,
 }
@@ -41,15 +44,15 @@ pub(crate) struct Subprocess {
 }
 
 impl Subprocess {
-    pub(crate) fn new(pipe_id: &str) -> Self {
+    pub fn new(pipe_id: &str) -> Self {
         todo!();
     }
 
-    pub(crate) fn close(self) -> anyhow::Result<()> {
+    pub fn close(self) -> anyhow::Result<()> {
         todo!();
     }
 
-    pub(crate) async fn request(&mut self, req: Request) -> anyhow::Result<Response> {
+    pub async fn request(&mut self, req: Request) -> anyhow::Result<Response> {
         todo!();
     }
 }
@@ -59,11 +62,16 @@ pub(crate) struct Client {
 }
 
 impl Client {
-    pub(crate) fn new(pipe_id: &str) -> Self {
+    pub fn new(pipe_id: &str) -> Self {
         todo!();
     }
 
-    pub(crate) async next_request(&mut self) -> anyhow::Result<Request> {
+    pub async fn next_request(&mut self) -> anyhow::Result<Request> {
+        todo!();
+    }
+
+    /// Only valid if we're responding to a request
+    pub async fn respond(&mut self, response: Response) -> anyhow::Result<()> {
         todo!();
     }
 }
@@ -87,20 +95,67 @@ impl MockCallbacks for CallbackHandler {
     }
 }
 
-pub(crate) async fn connlib_client(pipe_id: &str) -> anyhow::Result<()> {
-    let mut client = Client::new(pipe_id);
-    let mut connlib_session = None;
+struct MockConnlib {}
 
-    loop {
-        match client.next_request().await? {
-            Request::AwaitCallback => {
-                if let Some(connlib_session) = connlib_session.as_mut() {
+impl MockConnlib {
+    fn connect() -> MockConnlib {
+        todo!()
+    }
 
-                } else {
-                    client.respond(Response::Callback(Err(SerializedError::NotConnected))).await?;
-                };
-            }
+    fn disconnect(self) {
+        todo!()
+    }
+}
+
+struct ConnlibProxy {
+    client: Client,
+    connlib_session: Option<MockConnlib>,
+}
+
+impl ConnlibProxy {
+    pub(crate) fn new(pipe_id: &str) -> Self {
+        let client = Client::new(pipe_id);
+        Self {
+            client,
+            connlib_session: None,
         }
+    }
+
+    pub(crate) async fn run(&mut self, pipe_id: &str) -> anyhow::Result<()> {
+        loop {
+            let req = self.client.next_request().await?;
+            let resp = self.handle_request(req).await?;
+            self.client.respond(resp).await?;
+        }
+    }
+
+    async fn handle_request(&mut self, request: Request) -> anyhow::Result<Response> {
+        let resp = match request {
+            Request::AwaitCallback => {
+                if let Some(connlib_session) = self.connlib_session.as_mut() {
+                    todo!()
+                } else {
+                    Response::Callback(Err(SerializedError::NotConnected))
+                }
+            }
+            Request::Connect => {
+                if self.connlib_session.is_some() {
+                    Response::Connect(Err(SerializedError::AlreadyConnected))
+                } else {
+                    self.connlib_session = Some(MockConnlib::connect());
+                    Response::Connect(Ok(()))
+                }
+            }
+            Request::Disconnect => {
+                if let Some(connlib_session) = self.connlib_session.take() {
+                    connlib_session.disconnect();
+                    Response::Disconnect(Ok(()))
+                } else {
+                    Response::Disconnect(Err(SerializedError::AlreadyDisconnected))
+                }
+            }
+        };
+        Ok(resp)
     }
 }
 
@@ -118,7 +173,7 @@ mod tests {
             assert_eq!(resp, Response::Connect(Ok(())));
 
             let resp = subprocess.request(Request::AwaitCallback).await?;
-            assert_eq!(resp, Response::Callback(Callback::TunnelReady));
+            assert_eq!(resp, Response::Callback(Ok(Callback::TunnelReady)));
 
             let resp = subprocess.request(Request::Disconnect).await?;
             assert_eq!(resp, Response::Disconnect(Ok(())));
