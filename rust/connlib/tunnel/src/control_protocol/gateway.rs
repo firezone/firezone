@@ -15,7 +15,6 @@ use connlib_shared::{
 };
 use dns_lookup::{AddrInfoHints, AddrInfoIter, LookupError};
 use ip_network::IpNetwork;
-use libc::{AF_INET, AF_INET6, SOCK_STREAM};
 use std::{net::ToSocketAddrs, sync::Arc};
 use webrtc::ice_transport::{
     ice_role::RTCIceRole, ice_transport_state::RTCIceTransportState, RTCIceTransport,
@@ -271,6 +270,7 @@ fn resolve_addresses(_: &str) -> std::io::Result<Vec<IpNetwork>> {
 
 #[cfg(not(target_os = "windows"))]
 fn resolve_addresses(addr: &str) -> std::io::Result<Vec<IpNetwork>> {
+    use libc::{AF_INET, AF_INET6};
     let addr_v4: std::io::Result<Vec<_>> = resolve_address_family(addr, AF_INET)
         .map_err(|e| e.into())
         .and_then(|a| a.collect());
@@ -289,10 +289,13 @@ fn resolve_addresses(addr: &str) -> std::io::Result<Vec<IpNetwork>> {
     }
 }
 
+#[cfg(not(target_os = "windows"))]
 fn resolve_address_family(
     addr: &str,
     family: i32,
 ) -> std::result::Result<AddrInfoIter, LookupError> {
+    use libc::SOCK_STREAM;
+
     dns_lookup::getaddrinfo(
         Some(addr),
         None,
