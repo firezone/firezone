@@ -87,7 +87,6 @@ defmodule Domain.Clients.Client.Changeset do
     |> trim_change(:name)
     |> validate_length(:name, min: 1, max: 255)
     |> assoc_constraint(:actor)
-    |> unique_constraint([:actor_id, :name])
     |> unique_constraint([:actor_id, :public_key])
     |> unique_constraint(:external_id)
   end
