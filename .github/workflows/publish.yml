@@ -156,16 +156,14 @@ jobs:
 
           for image in "${IMAGES[@]}"; do
             SOURCE_TAG=${{ steps.login.outputs.registry }}/firezone/${image}:${{ inputs.tag || github.sha }}
-            docker pull --all-tags ${SOURCE_TAG}
 
-            echo "Retagging ${image} from ${SOURCE_TAG}"
-
-            docker tag ${SOURCE_TAG} ghcr.io/firezone/${image}:${{ inputs.tag || github.sha }}
-            docker tag ${SOURCE_TAG} ghcr.io/firezone/${image}:${{ env.VERSION }}
-            docker tag ${SOURCE_TAG} ghcr.io/firezone/${image}:${{ env.VERSION }}-${{ inputs.tag || github.sha }}
-            docker tag ${SOURCE_TAG} ghcr.io/firezone/${image}:latest
-            docker tag ${SOURCE_TAG} ghcr.io/firezone/${image}:${MAJOR_VERSION}
-            docker tag ${SOURCE_TAG} ghcr.io/firezone/${image}:${MAJOR_MINOR_VERSION}
-
-            docker push --all-tags ghcr.io/firezone/${image}
+            docker buildx imagetools create \
+              -t ghcr.io/firezone/${image}:${{ inputs.tag || github.sha }} \
+              -t ghcr.io/firezone/${image}:${{ env.VERSION }} \
+              -t ghcr.io/firezone/${image}:${{ env.VERSION }} \
+              -t ghcr.io/firezone/${image}:${{ env.VERSION }}-${{ inputs.tag || github.sha }} \
+              -t ghcr.io/firezone/${image}:latest \
+              -t ghcr.io/firezone/${image}:${MAJOR_VERSION} \
+              -t ghcr.io/firezone/${image}:${MAJOR_MINOR_VERSION} \
+              $SOURCE_TAG
           done
