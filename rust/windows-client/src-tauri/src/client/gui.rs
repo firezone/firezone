@@ -54,8 +54,16 @@ impl Managed {
     pub async fn fault_msleep(&self, _millis: u64) {}
 }
 
-// TODO: We're supposed to get this from Tauri, but I'd need to move some things around first
-const TAURI_ID: &str = "dev.firezone.client";
+/// Bundle ID / App ID that we use to distinguish ourself from other programs on the system
+///
+/// e.g. In ProgramData and AppData we use this to name our subdirectories for configs and data,
+/// and Windows may use it to track things like the MSI installer, notification titles,
+/// deep link registration, etc.
+///
+/// This should be identical to the `tauri.bundle.identifier` over in `tauri.conf.json`,
+/// but sometimes I need to use this before Tauri has booted up, or in a place where
+/// getting the Tauri app handle would be awkward.
+const BUNDLE_ID: &str = "dev.firezone.client";
 
 /// Runs the Tauri GUI and returns on exit or unrecoverable error
 pub(crate) fn run(params: client::GuiParams) -> Result<()> {
@@ -71,11 +79,11 @@ pub(crate) fn run(params: client::GuiParams) -> Result<()> {
     // Make sure we're single-instance
     // We register our deep links to call the `open-deep-link` subcommand,
     // so if we're at this point, we know we've been launched manually
-    let server = deep_link::Server::new(TAURI_ID)?;
+    let server = deep_link::Server::new(BUNDLE_ID)?;
 
     // We know now we're the only instance on the computer, so register our exe
     // to handle deep links
-    deep_link::register(TAURI_ID)?;
+    deep_link::register(BUNDLE_ID)?;
 
     let (ctlr_tx, ctlr_rx) = mpsc::channel(5);
     let notify_controller = Arc::new(Notify::new());
@@ -137,6 +145,11 @@ pub(crate) fn run(params: client::GuiParams) -> Result<()> {
             // It's hard to set it up before Tauri's setup, because Tauri knows where all the config and data go in AppData and I don't want to replicate their logic.
             let logging_handles = client::logging::setup(&advanced_settings.log_filter)?;
             tracing::info!("started log");
+            assert_eq!(
+                BUNDLE_ID,
+                app.handle().config().tauri.bundle.identifier,
+                "BUNDLE_ID should match bundle ID in tauri.conf.json"
+            );
             tracing::info!("GIT_VERSION = {}", crate::client::GIT_VERSION);
             // I checked this on my dev system to make sure Powershell is doing what I expect and passing the argument back to us after relaunch
             tracing::debug!("flag_elevated: {flag_elevated}");
@@ -195,7 +208,7 @@ async fn accept_deep_links(mut server: deep_link::Server, ctlr_tx: CtlrTx) -> Re
                 .ok();
         }
         // We re-create the named pipe server every time we get a link, because of an oddity in the Windows API.
-        server = deep_link::Server::new(TAURI_ID)?;
+        server = deep_link::Server::new(BUNDLE_ID)?;
     }
 }
 
