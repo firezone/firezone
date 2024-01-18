@@ -36,7 +36,6 @@ resource "aws_instance" "this" {
   private_ip                  = var.private_ip
   key_name                    = var.key_name
 
-  #user_data = file("${path.module}/scripts/setup.sh")
   user_data = templatefile("${path.module}/templates/cloud-init.yaml", {
     container_name        = local.application_name != null ? local.application_name : var.image
     container_image       = "${var.container_registry}/${var.image_repo}/${var.image}:${var.image_tag}"
