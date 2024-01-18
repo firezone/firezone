@@ -99,7 +99,9 @@ public final class AuthStore: ObservableObject {
 
   private func upateLoginStatus() {
     Task {
+      logger.log("\(#function): Tunnel auth status is \(self.tunnelStore.tunnelAuthStatus)")
       let loginStatus = await self.getLoginStatus(from: self.tunnelStore.tunnelAuthStatus)
+      logger.log("\(#function): Corresponding login status is \(loginStatus)")
       await MainActor.run {
         self.loginStatus = loginStatus
       }
