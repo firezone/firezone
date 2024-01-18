@@ -29,7 +29,7 @@ services:
 
         ip route add $$INTERNET_SUBNET via $$ROUTER_IP dev eth0
 
-        export STUN_SERVER=$$(curl --fail --silent --unix-socket /var/run/docker.sock http://localhost/containers/wan-relay-integration-test-relay-1/json | jq -r '.NetworkSettings.Networks."wan-relay-integration-test_wan".IPAddress')
+        export TURN_SERVER=$$(curl --fail --silent --unix-socket /var/run/docker.sock http://localhost/containers/wan-relay-integration-test-relay-1/json | jq -r '.NetworkSettings.Networks."wan-relay-integration-test_wan".IPAddress')
         export REDIS_HOST=$$(curl --fail --silent --unix-socket /var/run/docker.sock http://localhost/containers/wan-relay-integration-test-redis-1/json | jq -r '.NetworkSettings.Networks."wan-relay-integration-test_wan".IPAddress')
 
         firezone-connection-tests
@@ -76,7 +76,7 @@ services:
 
         ip route add $$INTERNET_SUBNET via $$ROUTER_IP dev eth0
 
-        export STUN_SERVER=$$(curl --fail --silent --unix-socket /var/run/docker.sock http://localhost/containers/wan-relay-integration-test-relay-1/json | jq -r '.NetworkSettings.Networks."wan-relay-integration-test_wan".IPAddress')
+        export TURN_SERVER=$$(curl --fail --silent --unix-socket /var/run/docker.sock http://localhost/containers/wan-relay-integration-test-relay-1/json | jq -r '.NetworkSettings.Networks."wan-relay-integration-test_wan".IPAddress')
         export REDIS_HOST=$$(curl --fail --silent --unix-socket /var/run/docker.sock http://localhost/containers/wan-relay-integration-test-redis-1/json | jq -r '.NetworkSettings.Networks."wan-relay-integration-test_wan".IPAddress')
 
         firezone-connection-tests
@@ -108,6 +108,7 @@ services:
       HIGHEST_PORT: 55666
       RUST_LOG: "debug"
       RUST_BACKTRACE: 1
+      RNG_SEED: 0
     build:
       target: debug
       context: ..

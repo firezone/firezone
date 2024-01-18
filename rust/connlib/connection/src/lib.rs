@@ -1,3 +1,5 @@
+mod allocation;
+mod channel_data;
 mod index;
 mod ip_packet;
 mod pool;

@@ -1,7 +1,7 @@
 use boringtun::noise::{Tunn, TunnResult};
 use boringtun::x25519::PublicKey;
 use boringtun::{noise::rate_limiter::RateLimiter, x25519::StaticSecret};
-use core::fmt;
+use core::{fmt, slice};
 use pnet_packet::ipv4::Ipv4Packet;
 use pnet_packet::ipv6::Ipv6Packet;
 use pnet_packet::Packet;
@@ -17,11 +17,13 @@ use std::{
 };
 use str0m::ice::{IceAgent, IceAgentEvent, IceCreds, StunMessage, StunPacket};
 use str0m::net::Protocol;
-use str0m::{Candidate, IceConnectionState};
+use str0m::{Candidate, CandidateKind, IceConnectionState};
 
+use crate::allocation::Allocation;
 use crate::index::IndexLfsr;
 use crate::stun_binding::StunBinding;
 use crate::IpPacket;
+use stun_codec::rfc5389::attributes::{Realm, Username};
 
 // Note: Taken from boringtun
 const HANDSHAKE_RATE_LIMIT: u64 = 100;
@@ -45,11 +47,14 @@ pub struct ConnectionPool<T, TId> {
 
     next_rate_limiter_reset: Option<Instant>,
 
-    stun_servers: HashMap<SocketAddr, StunBinding>,
+    bindings: HashMap<SocketAddr, StunBinding>,
+    allocations: HashMap<SocketAddr, Allocation>,
 
     initial_connections: HashMap<TId, InitialConnection>,
     negotiated_connections: HashMap<TId, Connection>,
     pending_events: VecDeque<Event<TId>>,
+
+    last_now: Option<Instant>,
 
     buffer: Box<[u8; MAX_UDP_SIZE]>,
 
@@ -88,7 +93,9 @@ where
             pending_events: VecDeque::default(),
             initial_connections: HashMap::default(),
             buffer: Box::new([0u8; MAX_UDP_SIZE]),
-            stun_servers: HashMap::default(),
+            bindings: HashMap::default(),
+            allocations: HashMap::default(),
+            last_now: None,
         }
     }
 
@@ -108,7 +115,22 @@ where
         };
 
         if let Some(agent) = self.agent_mut(id) {
-            agent.add_remote_candidate(candidate);
+            agent.add_remote_candidate(candidate.clone());
+        }
+
+        // Each remote candidate might be source of traffic: Bind a channel for each.
+        // TODO: How soon will we run out of channels if we do this?
+        if let Some(conn) = self.negotiated_connections.get_mut(&id) {
+            for relay in &conn.turn_servers {
+                let Some(allocation) = self.allocations.get_mut(relay) else {
+                    continue;
+                };
+
+                allocation.bind_channel(
+                    candidate.addr(),
+                    self.last_now.expect("to have a `last_now` timestamp"),
+                );
+            }
         }
     }
 
@@ -132,12 +154,12 @@ where
         }
 
         // First, check if a `StunBinding` wants the packet
-        if let Some(binding) = self.stun_servers.get_mut(&from) {
+        if let Some(binding) = self.bindings.get_mut(&from) {
             if binding.handle_input(from, packet, now) {
                 // If it handled the packet, drain its events to ensure we update the candidates of all connections.
-                drain_binding_events(
+                drain_and_add_candidates(
                     from,
-                    binding,
+                    || binding.poll_candidate(),
                     &mut self.initial_connections,
                     &mut self.negotiated_connections,
                     &mut self.pending_events,
@@ -145,6 +167,32 @@ where
                 return Ok(None);
             }
         }
+
+        // Next, check if an `Allocation` wants the packet
+        if let Some(allocation) = self.allocations.get_mut(&from) {
+            if allocation.handle_input(from, packet, now) {
+                // If it handled the packet, drain its events to ensure we update the candidates of all connections.
+                drain_and_add_candidates(
+                    from,
+                    || allocation.poll_candidate(),
+                    &mut self.initial_connections,
+                    &mut self.negotiated_connections,
+                    &mut self.pending_events,
+                );
+                return Ok(None);
+            };
+        }
+
+        // Next, the packet could be a channel-data message, unwrap if that is the case.
+        let (from, packet, remote_socket) = self
+            .allocations
+            .get(&from)
+            .and_then(|a| {
+                let (from, packet, remote_socket) = a.decapsulate(from, packet)?;
+
+                Some((from, packet, Some(remote_socket)))
+            })
+            .unwrap_or((from, packet, None));
 
         // Next: If we can parse the message as a STUN message, cycle through all agents to check which one it is for.
         if let Ok(message) = StunMessage::parse(packet) {
@@ -156,7 +204,7 @@ where
                         StunPacket {
                             proto: Protocol::Udp,
                             source: from,
-                            destination: local,
+                            destination: remote_socket.unwrap_or(local),
                             message,
                         },
                     );
@@ -172,7 +220,7 @@ where
                         StunPacket {
                             proto: Protocol::Udp,
                             source: from,
-                            destination: local,
+                            destination: remote_socket.unwrap_or(local),
                             message,
                         },
                     );
@@ -186,8 +234,6 @@ where
                 continue;
             }
 
-            // TODO: I think eventually, here is where we'd unwrap a channel data message.
-
             return match conn.tunnel.decapsulate(None, packet, buffer) {
                 TunnResult::Done => Ok(None),
                 TunnResult::Err(e) => Err(Error::Decapsulate(e)),
@@ -197,7 +243,7 @@ where
                 // In our API, we parse the packets directly as an IpPacket.
                 // Thus, the caller can query whatever data they'd like, not just the source IP so we don't return it in addition.
                 TunnResult::WriteToTunnelV4(packet, ip) => {
-                    conn.set_remote_from_wg_activity(from);
+                    conn.set_remote_from_wg_activity(from, remote_socket);
 
                     let ipv4_packet = Ipv4Packet::new(packet).expect("boringtun verifies validity");
                     debug_assert_eq!(ipv4_packet.get_source(), ip);
@@ -205,7 +251,7 @@ where
                     Ok(Some((*id, ipv4_packet.into())))
                 }
                 TunnResult::WriteToTunnelV6(packet, ip) => {
-                    conn.set_remote_from_wg_activity(from);
+                    conn.set_remote_from_wg_activity(from, remote_socket);
 
                     let ipv6_packet = Ipv6Packet::new(packet).expect("boringtun verifies validity");
                     debug_assert_eq!(ipv6_packet.get_source(), ip);
@@ -218,21 +264,17 @@ where
                 // This should be fairly rare which is why we just allocate these and return them from `poll_transmit` instead.
                 // Overall, this results in a much nicer API for our caller and should not affect performance.
                 TunnResult::WriteToNetwork(bytes) => {
-                    conn.set_remote_from_wg_activity(from);
+                    conn.set_remote_from_wg_activity(from, remote_socket);
 
-                    self.buffered_transmits.push_back(Transmit {
-                        dst: from,
-                        payload: bytes.to_vec(),
-                    });
+                    self.buffered_transmits
+                        .extend(conn.encapsulate(bytes, &self.allocations));
 
                     while let TunnResult::WriteToNetwork(packet) =
                         conn.tunnel
                             .decapsulate(None, &[], self.buffer.as_mut_slice())
                     {
-                        self.buffered_transmits.push_back(Transmit {
-                            dst: from,
-                            payload: packet.to_vec(),
-                        });
+                        self.buffered_transmits
+                            .extend(conn.encapsulate(packet, &self.allocations));
                     }
 
                     Ok(None)
@@ -259,19 +301,39 @@ where
             .get_mut(&connection)
             .ok_or(Error::NotConnected)?;
 
-        let remote_socket = conn.remote_socket.ok_or(Error::NotConnected)?;
+        let (header, payload) = self.buffer.as_mut().split_at_mut(4);
 
-        // TODO: If we are connected via TURN, wrap in data channel message here.
-
-        match conn
-            .tunnel
-            .encapsulate(packet.packet(), self.buffer.as_mut())
-        {
-            TunnResult::Done => Ok(None),
-            TunnResult::Err(e) => Err(Error::Encapsulate(e)),
-            TunnResult::WriteToNetwork(packet) => Ok(Some((remote_socket, packet))),
+        let packet_len = match conn.tunnel.encapsulate(packet.packet(), payload) {
+            TunnResult::Done => return Ok(None),
+            TunnResult::Err(e) => return Err(Error::Encapsulate(e)),
+            TunnResult::WriteToNetwork(packet) => packet.len(),
             TunnResult::WriteToTunnelV4(_, _) | TunnResult::WriteToTunnelV6(_, _) => {
                 unreachable!("never returned from encapsulate")
+            }
+        };
+
+        let packet = &payload[..packet_len];
+
+        match conn.remote_socket.ok_or(Error::NotConnected)? {
+            RemoteSocket::Direct(remote) => Ok(Some((remote, packet))),
+            RemoteSocket::Relay { relay, dest: peer } => {
+                let Some(allocation) = self.allocations.get(&relay) else {
+                    tracing::warn!(%relay, "No allocation");
+                    return Ok(None);
+                };
+                let Some(channel) = allocation.channel_to_peer(peer) else {
+                    tracing::warn!(%peer, "No channel");
+                    return Ok(None);
+                };
+
+                let total_length =
+                    crate::channel_data::encode_header_to_slice(channel, packet, header);
+
+                // Safety: We split the slice before, but the borrow-checker doesn't allow us to re-borrow `self.buffer`.
+                let channel_data_packet =
+                    unsafe { slice::from_raw_parts(header.as_ptr(), total_length) };
+
+                Ok(Some((relay, channel_data_packet)))
             }
         }
     }
@@ -283,24 +345,46 @@ where
                 match event {
                     IceAgentEvent::DiscoveredRecv { source, .. } => {
                         conn.possible_sockets.insert(source);
-                        // TODO: Here is where we'd allocate channels.
                     }
                     IceAgentEvent::IceConnectionStateChange(IceConnectionState::Disconnected) => {
                         return Some(Event::ConnectionFailed(*id));
                     }
-                    IceAgentEvent::NominatedSend { destination, .. } => match conn.remote_socket {
-                        Some(old) if old != destination => {
-                            tracing::info!(%id, new = %destination, %old, "Migrating connection to peer");
-                            conn.remote_socket = Some(destination);
-                        }
-                        None => {
-                            tracing::info!(%id, %destination, "Connected to peer");
-                            conn.remote_socket = Some(destination);
+                    IceAgentEvent::NominatedSend {
+                        destination,
+                        source,
+                        ..
+                    } => {
+                        let candidate = conn
+                            .agent
+                            .local_candidates()
+                            .iter()
+                            .find(|c| c.addr() == source)
+                            .expect("to only nominate existing candidates");
 
+                        let remote_socket = match candidate.kind() {
+                            CandidateKind::Relayed => {
+                                let relay = SocketAddr::new(source.ip(), 3478); // FIXME: Don't hardcode 3478 here.
+                                debug_assert!(self.allocations.contains_key(&relay));
+
+                                RemoteSocket::Relay {
+                                    relay,
+                                    dest: destination,
+                                }
+                            }
+                            CandidateKind::ServerReflexive | CandidateKind::Host => {
+                                RemoteSocket::Direct(destination)
+                            }
+                            CandidateKind::PeerReflexive => {
+                                unreachable!("local candidate is never `PeerReflexive`")
+                            }
+                        };
+
+                        if conn.remote_socket != Some(remote_socket) {
+                            tracing::debug!(old = ?conn.remote_socket, new = ?remote_socket, "Updating remote socket");
+                            conn.remote_socket = Some(remote_socket);
                             return Some(Event::ConnectionEstablished(*id));
                         }
-                        _ => {}
-                    },
+                    }
                     _ => {}
                 }
             }
@@ -321,7 +405,7 @@ where
         for c in self.negotiated_connections.values_mut() {
             connection_timeout = earliest(connection_timeout, c.poll_timeout());
         }
-        for b in self.stun_servers.values_mut() {
+        for b in self.bindings.values_mut() {
             connection_timeout = earliest(connection_timeout, b.poll_timeout());
         }
 
@@ -332,12 +416,19 @@ where
     ///
     /// This advances time within the ICE agent, updates timers within all wireguard connections as well as resets wireguard's rate limiter (if necessary).
     pub fn handle_timeout(&mut self, now: Instant) {
+        self.last_now = Some(now);
+
         for c in self.negotiated_connections.values_mut() {
-            self.buffered_transmits.extend(c.handle_timeout(now));
+            self.buffered_transmits
+                .extend(c.handle_timeout(now, &self.allocations));
         }
 
-        for binding in self.stun_servers.values_mut() {
+        for binding in self.bindings.values_mut() {
             binding.handle_timeout(now);
+        }
+
+        for allocation in self.allocations.values_mut() {
+            allocation.handle_timeout(now);
         }
 
         let next_reset = *self.next_rate_limiter_reset.get_or_insert(now);
@@ -352,25 +443,43 @@ where
     pub fn poll_transmit(&mut self) -> Option<Transmit> {
         for conn in self.initial_connections.values_mut() {
             if let Some(transmit) = conn.agent.poll_transmit() {
-                return Some(Transmit {
-                    dst: transmit.destination,
-                    payload: transmit.contents.into(),
-                });
-            }
-        }
+                let relay = SocketAddr::new(transmit.source.ip(), 3478); // TODO: Don't hardcode this, we should work with relays that don't run on 3478.
 
-        for binding in self.stun_servers.values_mut() {
-            if let Some(transmit) = binding.poll_transmit() {
-                return Some(transmit);
+                if let Some(transmit) = maybe_send_via_channel(
+                    relay,
+                    transmit.destination,
+                    &transmit.contents,
+                    &self.allocations,
+                ) {
+                    return Some(transmit);
+                }
             }
         }
 
         for conn in self.negotiated_connections.values_mut() {
             if let Some(transmit) = conn.agent.poll_transmit() {
-                return Some(Transmit {
-                    dst: transmit.destination,
-                    payload: transmit.contents.into(),
-                });
+                let relay = SocketAddr::new(transmit.source.ip(), 3478);
+
+                if let Some(transmit) = maybe_send_via_channel(
+                    relay,
+                    transmit.destination,
+                    &transmit.contents,
+                    &self.allocations,
+                ) {
+                    return Some(transmit);
+                }
+            }
+        }
+
+        for binding in self.bindings.values_mut() {
+            if let Some(transmit) = binding.poll_transmit() {
+                return Some(transmit);
+            }
+        }
+
+        for allocation in self.allocations.values_mut() {
+            if let Some(transmit) = allocation.poll_transmit() {
+                return Some(transmit);
             }
         }
 
@@ -389,10 +498,38 @@ where
 
     fn upsert_stun_servers(&mut self, servers: &HashSet<SocketAddr>) {
         for server in servers {
-            if !self.stun_servers.contains_key(server) {
+            if !self.bindings.contains_key(server) {
                 tracing::debug!(address = %server, "Adding new STUN server");
 
-                self.stun_servers.insert(*server, StunBinding::new(*server));
+                self.bindings.insert(*server, StunBinding::new(*server));
+            }
+        }
+    }
+
+    fn upsert_turn_servers(&mut self, servers: &HashSet<(SocketAddr, String, String, String)>) {
+        for (server, username, password, realm) in servers {
+            debug_assert_eq!(
+                server.port(),
+                3478,
+                "We rely on TURN servers running on port 3478"
+            );
+
+            let Ok(username) = Username::new(username.to_owned()) else {
+                tracing::debug!(%username, "Invalid TURN username");
+                continue;
+            };
+            let Ok(realm) = Realm::new(realm.to_owned()) else {
+                tracing::debug!(%realm, "Invalid TURN realm");
+                continue;
+            };
+
+            if !self.allocations.contains_key(server) {
+                tracing::debug!(address = %server, "Adding new TURN server");
+
+                self.allocations.insert(
+                    *server,
+                    Allocation::new(*server, username, password.clone(), realm),
+                );
             }
         }
     }
@@ -402,6 +539,7 @@ where
         connection: TId,
         agent: &mut IceAgent,
         allowed_stun_servers: &HashSet<SocketAddr>,
+        allowed_turn_servers: &HashSet<SocketAddr>,
     ) {
         for local in self.local_interfaces.iter().copied() {
             let candidate = match Candidate::host(local, Protocol::Udp) {
@@ -420,7 +558,7 @@ where
             );
         }
 
-        for candidate in self.stun_servers.iter().filter_map(|(server, binding)| {
+        for candidate in self.bindings.iter().filter_map(|(server, binding)| {
             let candidate = allowed_stun_servers
                 .contains(server)
                 .then(|| binding.candidate())??;
@@ -434,6 +572,46 @@ where
                 &mut self.pending_events,
             );
         }
+
+        for candidate in self
+            .allocations
+            .iter()
+            .flat_map(|(server, allocation)| {
+                allowed_turn_servers
+                    .contains(server)
+                    .then(|| allocation.current_candidates())
+            })
+            .flatten()
+        {
+            add_local_candidate(
+                connection,
+                agent,
+                candidate.clone(),
+                &mut self.pending_events,
+            );
+        }
+    }
+}
+
+fn maybe_send_via_channel(
+    maybe_relay: SocketAddr,
+    dest: SocketAddr,
+    contents: &[u8],
+    allocations: &HashMap<SocketAddr, Allocation>,
+) -> Option<Transmit> {
+    match allocations.get(&maybe_relay) {
+        Some(allocation) => {
+            let c = allocation.channel_to_peer(dest)?;
+
+            Some(Transmit {
+                dst: maybe_relay,
+                payload: crate::channel_data::encode(c, contents),
+            })
+        }
+        None => Some(Transmit {
+            dst: dest,
+            payload: contents.into(),
+        }),
     }
 }
 
@@ -449,14 +627,26 @@ where
         &mut self,
         id: TId,
         allowed_stun_servers: HashSet<SocketAddr>,
-        allowed_turn_servers: HashSet<SocketAddr>,
+        allowed_turn_servers: HashSet<(SocketAddr, String, String, String)>,
     ) -> Offer {
         self.upsert_stun_servers(&allowed_stun_servers);
+        self.upsert_turn_servers(&allowed_turn_servers);
+
+        let allowed_turn_servers = allowed_turn_servers
+            .iter()
+            .map(|(server, _, _, _)| server)
+            .copied()
+            .collect();
 
         let mut agent = IceAgent::new();
         agent.set_controlling(true);
 
-        self.seed_agent_with_local_candidates(id, &mut agent, &allowed_stun_servers);
+        self.seed_agent_with_local_candidates(
+            id,
+            &mut agent,
+            &allowed_stun_servers,
+            &allowed_turn_servers,
+        );
 
         let session_key = Secret::new(random());
         let ice_creds = agent.local_credentials();
@@ -507,7 +697,7 @@ where
                     Some(self.rate_limiter.clone()),
                 ),
                 stun_servers: initial.stun_servers,
-                _turn_servers: initial.turn_servers,
+                turn_servers: initial.turn_servers,
                 next_timer_update: None,
                 remote_socket: None,
                 possible_sockets: HashSet::default(),
@@ -526,9 +716,16 @@ where
         offer: Offer,
         remote: PublicKey,
         allowed_stun_servers: HashSet<SocketAddr>,
-        allowed_turn_servers: HashSet<SocketAddr>,
+        allowed_turn_servers: HashSet<(SocketAddr, String, String, String)>,
     ) -> Answer {
         self.upsert_stun_servers(&allowed_stun_servers);
+        self.upsert_turn_servers(&allowed_turn_servers);
+
+        let allowed_turn_servers = allowed_turn_servers
+            .iter()
+            .map(|(server, _, _, _)| server)
+            .copied()
+            .collect();
 
         let mut agent = IceAgent::new();
         agent.set_controlling(false);
@@ -543,7 +740,12 @@ where
             },
         };
 
-        self.seed_agent_with_local_candidates(id, &mut agent, &allowed_stun_servers);
+        self.seed_agent_with_local_candidates(
+            id,
+            &mut agent,
+            &allowed_stun_servers,
+            &allowed_turn_servers,
+        );
 
         self.negotiated_connections.insert(
             id,
@@ -558,7 +760,7 @@ where
                     Some(self.rate_limiter.clone()),
                 ),
                 stun_servers: allowed_stun_servers,
-                _turn_servers: allowed_turn_servers,
+                turn_servers: allowed_turn_servers,
                 next_timer_update: None,
                 remote_socket: None,
                 possible_sockets: HashSet::default(),
@@ -569,28 +771,55 @@ where
     }
 }
 
-fn drain_binding_events<TId>(
+fn drain_and_add_candidates<TId>(
     server: SocketAddr,
-    binding: &mut StunBinding,
+    mut next_candidate: impl FnMut() -> Option<Candidate>,
     initial_connections: &mut HashMap<TId, InitialConnection>,
     negotiated_connections: &mut HashMap<TId, Connection>,
     pending_events: &mut VecDeque<Event<TId>>,
 ) where
-    TId: Copy,
+    TId: Copy + fmt::Display,
 {
-    while let Some(candidate) = binding.poll_candidate() {
-        // TODO: Reduce duplication between initial and negotiated connections
+    // TODO: Reduce duplication between initial and negotiated connections
+
+    while let Some(candidate) = next_candidate() {
         for (id, c) in initial_connections.iter_mut() {
-            if !c.stun_servers.contains(&server) {
-                continue;
+            match candidate.kind() {
+                CandidateKind::ServerReflexive => {
+                    if (!c.stun_servers.contains(&server)) && (!c.turn_servers.contains(&server)) {
+                        tracing::debug!(%id, %server, allowed_stun = ?c.stun_servers, allowed_turn = ?c.turn_servers, "Not adding srflx candidate");
+                        continue;
+                    }
+                }
+                CandidateKind::Relayed => {
+                    if !c.turn_servers.contains(&server) {
+                        tracing::debug!(%id, %server, allowed_turn = ?c.turn_servers, "Not adding relay candidate");
+
+                        continue;
+                    }
+                }
+                CandidateKind::PeerReflexive | CandidateKind::Host => continue,
             }
 
             add_local_candidate(*id, &mut c.agent, candidate.clone(), pending_events);
         }
 
         for (id, c) in negotiated_connections.iter_mut() {
-            if !c.stun_servers.contains(&server) {
-                continue;
+            match candidate.kind() {
+                CandidateKind::ServerReflexive => {
+                    if (!c.stun_servers.contains(&server)) && (!c.turn_servers.contains(&server)) {
+                        tracing::debug!(%id, %server, allowed_stun = ?c.stun_servers, allowed_turn = ?c.turn_servers, "Not adding srflx candidate");
+                        continue;
+                    }
+                }
+                CandidateKind::Relayed => {
+                    if !c.turn_servers.contains(&server) {
+                        tracing::debug!(%id, %server, allowed_turn = ?c.turn_servers, "Not adding relay candidate");
+
+                        continue;
+                    }
+                }
+                CandidateKind::PeerReflexive | CandidateKind::Host => continue,
             }
 
             add_local_candidate(*id, &mut c.agent, candidate.clone(), pending_events);
@@ -667,12 +896,18 @@ struct Connection {
     next_timer_update: Option<Instant>,
 
     // When this is `Some`, we are connected.
-    remote_socket: Option<SocketAddr>,
+    remote_socket: Option<RemoteSocket>,
     // Socket addresses from which we might receive data (even before we are connected).
     possible_sockets: HashSet<SocketAddr>,
 
     stun_servers: HashSet<SocketAddr>,
-    _turn_servers: HashSet<SocketAddr>,
+    turn_servers: HashSet<SocketAddr>,
+}
+
+#[derive(Debug, PartialEq, Clone, Copy)]
+enum RemoteSocket {
+    Direct(SocketAddr),
+    Relay { relay: SocketAddr, dest: SocketAddr },
 }
 
 impl Connection {
@@ -681,23 +916,27 @@ impl Connection {
     /// Whilst we establish connections, we may see traffic from a certain address, prior to the negotiation being fully complete.
     /// We already want to accept that traffic and not throw it away.
     fn accepts(&self, addr: SocketAddr) -> bool {
-        let from_connected_remote = self.remote_socket.is_some_and(|r| r == addr);
+        let from_connected_remote = self.remote_socket.is_some_and(|r| match r {
+            RemoteSocket::Direct(direct) => direct == addr,
+            RemoteSocket::Relay { dest, .. } => dest == addr,
+        });
         let from_possible_remote = self.possible_sockets.contains(&addr);
 
         from_connected_remote || from_possible_remote
     }
 
-    fn set_remote_from_wg_activity(&mut self, remote: SocketAddr) {
-        match self.remote_socket {
-            Some(current) if current != remote => {
-                tracing::info!(%current, new = %remote, "Setting new remote socket from WG activity");
-                self.remote_socket = Some(remote);
-            }
-            None => {
-                tracing::info!(new = %remote, "Setting remote socket from WG activity");
-                self.remote_socket = Some(remote);
-            }
-            _ => {}
+    fn set_remote_from_wg_activity(&mut self, dest: SocketAddr, relay_socket: Option<SocketAddr>) {
+        let remote_socket = match relay_socket {
+            Some(relay_socket) => RemoteSocket::Relay {
+                relay: SocketAddr::new(relay_socket.ip(), 3478),
+                dest,
+            },
+            None => RemoteSocket::Direct(dest),
+        };
+
+        if self.remote_socket != Some(remote_socket) {
+            tracing::debug!(old = ?self.remote_socket, new = ?remote_socket, "Updating remote socket from WG activity");
+            self.remote_socket = Some(remote_socket);
         }
     }
 
@@ -708,10 +947,13 @@ impl Connection {
         earliest(agent_timeout, next_wg_timer)
     }
 
-    fn handle_timeout(&mut self, now: Instant) -> Option<Transmit> {
+    fn handle_timeout(
+        &mut self,
+        now: Instant,
+        allocations: &HashMap<SocketAddr, Allocation>,
+    ) -> Option<Transmit> {
         self.agent.handle_timeout(now);
 
-        let remote = self.remote_socket?;
         let next_timer_update = self.next_timer_update?;
 
         if now >= next_timer_update {
@@ -731,16 +973,45 @@ impl Connection {
                     panic!("{e:?}")
                 }
                 TunnResult::WriteToNetwork(b) => {
-                    return Some(Transmit {
-                        dst: remote,
-                        payload: b.to_vec(),
-                    });
+                    let transmit = self.encapsulate(b, allocations)?;
+
+                    return Some(transmit);
                 }
                 _ => panic!("Unexpected result from update_timers"),
             };
         }
 
         None
+    }
+
+    fn encapsulate(
+        &self,
+        message: &[u8],
+        allocations: &HashMap<SocketAddr, Allocation>,
+    ) -> Option<Transmit> {
+        match self.remote_socket? {
+            RemoteSocket::Direct(remote) => Some(Transmit {
+                dst: remote,
+                payload: message.to_vec(),
+            }),
+            RemoteSocket::Relay { relay, dest: peer } => {
+                let Some(allocation) = allocations.get(&relay) else {
+                    tracing::warn!(%relay, "No allocation");
+                    return None;
+                };
+                let Some(channel) = allocation.channel_to_peer(peer) else {
+                    tracing::warn!(%peer, "No channel");
+                    return None;
+                };
+
+                let payload = crate::channel_data::encode(channel, message);
+
+                Some(Transmit {
+                    dst: relay,
+                    payload,
+                })
+            }
+        }
     }
 }
 
