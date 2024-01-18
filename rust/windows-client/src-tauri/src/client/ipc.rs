@@ -2,22 +2,14 @@
 
 #[cfg(test)]
 mod tests {
-    use serde::{Deserialize, Serialize};
+    use connlib_client_shared::ResourceDescription;
+    use serde::{de::DeserializeOwned, Deserialize, Serialize};
+    use std::marker::Unpin;
     use tokio::{
-        io::{AsyncReadExt, AsyncWriteExt},
+        io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt},
         net::windows::named_pipe,
         runtime::Runtime,
     };
-
-    #[derive(Debug, Deserialize, PartialEq, Serialize)]
-    enum Message {
-        AwaitCallback,
-        Callback,
-        Connect,
-        Connected,
-        Disconnect,
-        Disconnected,
-    }
 
     /// Returns a random valid named pipe ID based on a UUIDv4
     ///
@@ -41,8 +33,19 @@ mod tests {
         pipe: named_pipe::NamedPipeClient,
     }
 
-    struct Request(u8);
-    struct Response(u8);
+    #[derive(Deserialize, Serialize)]
+    enum Request {
+        AwaitCallback,
+        Connect,
+        Disconnect,
+    }
+
+    #[derive(Debug, Deserialize, PartialEq, Serialize)]
+    enum Response {
+        CallbackOnUpdateResources(Vec<ResourceDescription>),
+        Connected,
+        Disconnected,
+    }
 
     #[must_use]
     struct Responder<'a> {
@@ -66,13 +69,35 @@ mod tests {
         }
     }
 
+    /// Reads a message from an async reader, with a 32-bit little-endian length prefix
+    async fn read_bincode<R: AsyncRead + Unpin, T: DeserializeOwned>(
+        reader: &mut R,
+    ) -> anyhow::Result<T> {
+        let mut len_buf = [0u8; 4];
+        reader.read_exact(&mut len_buf).await?;
+        let len = u32::from_le_bytes(len_buf);
+        let mut buf = vec![0u8; usize::try_from(len)?];
+        reader.read_exact(&mut buf).await?;
+        let msg = bincode::deserialize(&buf)?;
+        Ok(msg)
+    }
+
+    /// Writes a message to an async writer, with a 32-bit little-endian length prefix
+    async fn write_bincode<W: AsyncWrite + Unpin, T: Serialize>(
+        writer: &mut W,
+        msg: &T,
+    ) -> anyhow::Result<()> {
+        let buf = bincode::serialize(msg)?;
+        let len = u32::try_from(buf.len())?.to_le_bytes();
+        writer.write_all(&len).await?;
+        writer.write_all(&buf).await?;
+        Ok(())
+    }
+
     impl Server {
         pub async fn request(&mut self, req: Request) -> anyhow::Result<Response> {
-            let buf = [req.0];
-            self.pipe.write_all(&buf).await?;
-            let mut buf = [0];
-            self.pipe.read_exact(&mut buf).await?;
-            Ok(Response(buf[0]))
+            write_bincode(&mut self.pipe, &req).await?;
+            read_bincode(&mut self.pipe).await
         }
     }
 
@@ -83,24 +108,27 @@ mod tests {
         }
 
         pub async fn next_request(&mut self) -> anyhow::Result<(Request, Responder)> {
-            let mut buf = [0];
-            self.pipe.read_exact(&mut buf).await?;
-            let req = Request(buf[0]);
+            let req = read_bincode(&mut self.pipe).await?;
             let responder = Responder { client: self };
             Ok((req, responder))
         }
     }
 
     impl<'a> Responder<'a> {
-        pub async fn respond(self, response: Response) -> anyhow::Result<()> {
-            let buf = [response.0];
-            self.client.pipe.write_all(&buf).await?;
+        pub async fn respond(self, resp: Response) -> anyhow::Result<()> {
+            write_bincode(&mut self.client.pipe, &resp).await?;
             Ok(())
         }
     }
 
+    /// Test just the happy path
+    /// It's hard to simulate a process crash because:
+    /// - If I Drop anything, Tokio will clean it up
+    /// - If I `std::mem::forget` anything, the test process is still runnig, so Windows will not clean it up
+    ///
+    /// TODO: Simulate crashes of processes involved in IPC using our own test framework
     #[test]
-    fn ipc() -> anyhow::Result<()> {
+    fn happy_path() -> anyhow::Result<()> {
         let rt = Runtime::new()?;
         rt.block_on(async move {
             // Pretend we're in the main process
@@ -113,9 +141,14 @@ mod tests {
                 // Handle requests from the main process
                 loop {
                     let (req, responder) = client.next_request().await?;
-                    responder.respond(Response(req.0 + 128)).await?;
+                    let resp = match &req {
+                        Request::AwaitCallback => Response::CallbackOnUpdateResources(vec![]),
+                        Request::Connect => Response::Connected,
+                        Request::Disconnect => Response::Disconnected,
+                    };
+                    responder.respond(resp).await?;
 
-                    if req.0 == 0 {
+                    if let Request::Disconnect = req {
                         break;
                     }
                 }
@@ -125,12 +158,19 @@ mod tests {
             let mut server = server.connect().await?;
 
             let start_time = std::time::Instant::now();
-            assert_eq!(server.request(Request(1)).await?.0, 129);
-            assert_eq!(server.request(Request(10)).await?.0, 138);
-            assert_eq!(server.request(Request(0)).await?.0, 128);
+            assert_eq!(server.request(Request::Connect).await?, Response::Connected);
+            assert_eq!(
+                server.request(Request::AwaitCallback).await?,
+                Response::CallbackOnUpdateResources(vec![])
+            );
+            assert_eq!(
+                server.request(Request::Disconnect).await?,
+                Response::Disconnected
+            );
+
             let elapsed = start_time.elapsed();
             assert!(
-                elapsed < std::time::Duration::from_millis(3),
+                elapsed < std::time::Duration::from_millis(6),
                 "{:?}",
                 elapsed
             );
