@@ -124,7 +124,7 @@ mod tests {
     /// Test just the happy path
     /// It's hard to simulate a process crash because:
     /// - If I Drop anything, Tokio will clean it up
-    /// - If I `std::mem::forget` anything, the test process is still runnig, so Windows will not clean it up
+    /// - If I `std::mem::forget` anything, the test process is still running, so Windows will not clean it up
     ///
     /// TODO: Simulate crashes of processes involved in IPC using our own test framework
     #[test]
