@@ -4,6 +4,7 @@
 mod tests {
     use ipc_channel::ipc;
     use serde::{Deserialize, Serialize};
+    use std::time::Duration;
     use tokio::runtime::Runtime;
 
     #[derive(Debug, Deserialize, PartialEq, Serialize)]
@@ -20,12 +21,16 @@ mod tests {
     fn ipc() -> anyhow::Result<()> {
         let rt = Runtime::new()?;
         rt.block_on(async move {
+            let timeout = Duration::from_millis(3000);
+
             // Pretend we're in the main process
             let (server, server_name) =
                 ipc::IpcOneShotServer::<ipc::IpcSender<(Message, ipc::IpcSender<Message>)>>::new()
                     .unwrap();
 
-            let worker_task = tokio::spawn(async move {
+            // `spawn_blocking` because this would probably deadlock if both tasks ran
+            // on a single executor thread
+            let worker_task = tokio::task::spawn_blocking(move || {
                 // Pretend we're in a worker process
                 let (tx, rx) = ipc::channel::<(Message, ipc::IpcSender<Message>)>().unwrap();
                 ipc::IpcSender::connect(server_name)
@@ -35,10 +40,10 @@ mod tests {
 
                 // Handle requests from the main process
                 loop {
-                    let (req, response_tx) = rx.recv().unwrap();
+                    let (req, response_tx) = rx.try_recv_timeout(timeout).unwrap();
                     match req {
                         Message::AwaitCallback => {
-                            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                            std::thread::sleep(Duration::from_secs(2));
                             response_tx.send(Message::Callback).unwrap();
                         }
                         Message::Connect => response_tx.send(Message::Connected).unwrap(),
@@ -67,15 +72,24 @@ mod tests {
 
             let (response_tx, response_rx) = ipc::channel::<Message>().unwrap();
             tx.send((Message::Connect, response_tx)).unwrap();
-            assert_eq!(response_rx.recv().unwrap(), Message::Connected);
+            assert_eq!(
+                response_rx.try_recv_timeout(timeout).unwrap(),
+                Message::Connected
+            );
 
             let (response_tx, response_rx) = ipc::channel().unwrap();
             tx.send((Message::AwaitCallback, response_tx)).unwrap();
-            assert_eq!(response_rx.recv().unwrap(), Message::Callback);
+            assert_eq!(
+                response_rx.try_recv_timeout(timeout).unwrap(),
+                Message::Callback
+            );
 
             let (response_tx, response_rx) = ipc::channel().unwrap();
             tx.send((Message::Disconnect, response_tx)).unwrap();
-            assert_eq!(response_rx.recv().unwrap(), Message::Disconnected);
+            assert_eq!(
+                response_rx.try_recv_timeout(timeout).unwrap(),
+                Message::Disconnected
+            );
 
             // Make sure the worker 'process' exited
             worker_task.await.unwrap();
@@ -88,7 +102,7 @@ mod tests {
             // Give the IPC stuff up to X ms of overhead to complete 3 requests
             let slack_ms = 100;
             assert!(
-                elapsed <= std::time::Duration::from_millis(required_ms + slack_ms),
+                elapsed <= Duration::from_millis(required_ms + slack_ms),
                 "{:?}",
                 elapsed
             );
