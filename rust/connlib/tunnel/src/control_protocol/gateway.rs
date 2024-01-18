@@ -103,6 +103,8 @@ where
                     return Err(Error::InvalidResource);
                 }
 
+                // TODO: we should make this async, this is acceptable for now though
+                // in the future we will use hickory-resolver for this anyways.
                 resolve_addresses(&domain.to_string())?
             }
             ResourceDescription::Cidr(ref cidr) => vec![cidr.address],
