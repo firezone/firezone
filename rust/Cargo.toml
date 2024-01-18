@@ -30,6 +30,7 @@ webrtc = "0.9"
 str0m = "0.4"
 futures-bounded = "0.2.1"
 domain = { version = "0.9", features = ["serde"] }
+dns-lookup = "2.0"
 
 connlib-client-android = { path = "connlib/clients/android"}
 connlib-client-apple = { path = "connlib/clients/apple"}

@@ -1221,6 +1221,7 @@ dependencies = [
  "base64 0.21.7",
  "boringtun",
  "chrono",
+ "dns-lookup",
  "domain",
  "futures",
  "futures-util",
@@ -1632,6 +1633,18 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.48",
+]
+
+[[package]]
+name = "dns-lookup"
+version = "2.0.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e5766087c2235fec47fafa4cfecc81e494ee679d0fd4a59887ea0919bfb0e4fc"
+dependencies = [
+ "cfg-if",
+ "libc",
+ "socket2 0.5.5",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]
@@ -2057,6 +2070,7 @@ dependencies = [
  "bytes",
  "chrono",
  "connlib-shared",
+ "dns-lookup",
  "domain",
  "futures",
  "futures-bounded",
