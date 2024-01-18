@@ -52,3 +52,11 @@ str0m = { git = "https://github.com/thomaseizinger/str0m", branch = "main" }
 
 [profile.release]
 strip = true
+
+# Override build settings just for the Windows client, so we get a pdb
+[profile.release.package.firezone-windows-client]
+# Generate debug symbols for the crash handler to use, even if the exe itself is optimized
+debug = "full"
+# Split out debug info from the exe. This is already default on Windows.
+# https://doc.rust-lang.org/rustc/codegen-options/index.html#split-debuginfo
+split-debuginfo = "packed"
