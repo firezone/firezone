@@ -133,6 +133,9 @@ async fn main() -> Result<()> {
                                 start = Instant::now();
                                 eventloop.send_to(conn, ip4_udp_ping_packet(source, dst, &ping_body).into())?;
                             }
+                            Event::ConnectionFailed { conn } => {
+                                anyhow::bail!("Failed to establish connection: {conn}");
+                            }
                         }
                     }
 
@@ -197,6 +200,9 @@ async fn main() -> Result<()> {
                                     .context("Failed to push candidate")?;
                             }
                             Event::ConnectionEstablished { .. } => { }
+                            Event::ConnectionFailed { conn } => {
+                                anyhow::bail!("Failed to establish connection: {conn}");
+                            }
                         }
                     }
 
@@ -349,6 +355,9 @@ impl<T> Eventloop<T> {
             Some(firezone_connection::Event::ConnectionEstablished(conn)) => {
                 return Poll::Ready(Ok(Event::ConnectionEstablished { conn }))
             }
+            Some(firezone_connection::Event::ConnectionFailed(conn)) => {
+                return Poll::Ready(Ok(Event::ConnectionFailed { conn }))
+            }
             None => {}
         }
 
@@ -396,6 +405,9 @@ enum Event {
         candidate: String,
     },
     ConnectionEstablished {
+        conn: u64,
+    },
+    ConnectionFailed {
         conn: u64,
     },
 }

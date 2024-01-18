@@ -17,7 +17,7 @@ use std::{
 };
 use str0m::ice::{IceAgent, IceAgentEvent, IceCreds};
 use str0m::net::{Protocol, Receive};
-use str0m::{Candidate, StunMessage};
+use str0m::{Candidate, IceConnectionState, StunMessage};
 
 use crate::index::IndexLfsr;
 use crate::stun_binding::StunBinding;
@@ -285,8 +285,9 @@ where
                         conn.possible_sockets.insert(source);
                         // TODO: Here is where we'd allocate channels.
                     }
-                    IceAgentEvent::IceRestart(_) => {}
-                    IceAgentEvent::IceConnectionStateChange(_) => {}
+                    IceAgentEvent::IceConnectionStateChange(IceConnectionState::Disconnected) => {
+                        return Some(Event::ConnectionFailed(*id));
+                    }
                     IceAgentEvent::NominatedSend { destination, .. } => match conn.remote_socket {
                         Some(old) if old != destination => {
                             tracing::info!(%id, new = %destination, %old, "Migrating connection to peer");
@@ -300,6 +301,7 @@ where
                         }
                         _ => {}
                     },
+                    _ => {}
                 }
             }
         }
@@ -642,6 +644,11 @@ pub enum Event<TId> {
         candidate: String,
     },
     ConnectionEstablished(TId),
+
+    /// We tested all candidates and failed to establish a connection.
+    ///
+    /// This condition will not resolve unless more candidates are added or the network conditions change.
+    ConnectionFailed(TId),
 }
 
 #[derive(Debug)]
