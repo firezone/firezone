@@ -1,11 +1,27 @@
 //! CLI subcommands used to test features / dependencies before integrating
 //! them with the GUI, or to exercise features programmatically.
 
-use crate::client::Cli;
 use anyhow::Result;
 use windows::Win32::System::Com::{CoInitializeEx, CoUninitialize, COINIT_MULTITHREADED};
 
-pub fn crash() -> Result<()> {
+#[derive(clap::Subcommand)]
+pub enum Cmd {
+    Crash,
+    Hostname,
+    NetworkChanges,
+    Wintun,
+}
+
+pub fn run(cmd: Cmd) -> Result<()> {
+    match cmd {
+        Cmd::Crash => crash(),
+        Cmd::Hostname => hostname(),
+        Cmd::NetworkChanges => network_changes(),
+        Cmd::Wintun => wintun(),
+    }
+}
+
+fn crash() -> Result<()> {
     // `_` doesn't seem to work here, the log files end up empty
     let _handles = crate::client::logging::setup("debug")?;
     tracing::info!("started log (DebugCrash)");
@@ -13,7 +29,7 @@ pub fn crash() -> Result<()> {
     panic!("purposely crashing to see if it shows up in logs");
 }
 
-pub fn hostname() -> Result<()> {
+fn hostname() -> Result<()> {
     println!(
         "{:?}",
         hostname::get().ok().and_then(|x| x.into_string().ok())
@@ -22,7 +38,7 @@ pub fn hostname() -> Result<()> {
 }
 
 /// Listen for network change events from Windows
-pub fn network_changes() -> Result<()> {
+fn network_changes() -> Result<()> {
     tracing_subscriber::fmt::init();
 
     // Must be called for each thread that will do COM stuff
@@ -43,7 +59,7 @@ pub fn network_changes() -> Result<()> {
     Ok(())
 }
 
-pub fn wintun(_: Cli) -> Result<()> {
+fn wintun() -> Result<()> {
     tracing_subscriber::fmt::init();
 
     if crate::client::elevation::check()? {

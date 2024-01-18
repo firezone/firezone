@@ -110,14 +110,7 @@ pub(crate) fn run() -> Result<()> {
             }
         }
         Some(Cmd::CrashHandlerServer) => crash_handling::server(),
-        Some(Cmd::Debug) => {
-            println!("debug");
-            Ok(())
-        }
-        Some(Cmd::DebugCrash) => debug_commands::crash(),
-        Some(Cmd::DebugHostname) => debug_commands::hostname(),
-        Some(Cmd::DebugNetworkChanges) => debug_commands::network_changes(),
-        Some(Cmd::DebugWintun) => debug_commands::wintun(cli),
+        Some(Cmd::Debug { command }) => debug_commands::run(command),
         // If we already tried to elevate ourselves, don't try again
         Some(Cmd::Elevated) => gui::run(GuiParams {
             crash_on_purpose: cli.crash_on_purpose,
@@ -134,23 +127,22 @@ pub(crate) fn run() -> Result<()> {
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
-pub struct Cli {
+struct Cli {
     #[command(subcommand)]
-    pub command: Option<Cmd>,
+    command: Option<Cmd>,
     #[arg(long, hide = true)]
-    pub crash_on_purpose: bool,
+    crash_on_purpose: bool,
     #[arg(long, hide = true)]
-    pub inject_faults: bool,
+    inject_faults: bool,
 }
 
 #[derive(clap::Subcommand)]
 pub enum Cmd {
     CrashHandlerServer,
-    Debug,
-    DebugCrash,
-    DebugHostname,
-    DebugNetworkChanges,
-    DebugWintun,
+    Debug {
+        #[command(subcommand)]
+        command: debug_commands::Cmd,
+    },
     Elevated,
     OpenDeepLink(DeepLink),
 }
