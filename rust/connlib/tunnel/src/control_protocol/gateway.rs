@@ -13,7 +13,6 @@ use connlib_shared::{
     },
     Callbacks, Dname, Error, Result,
 };
-use dns_lookup::{AddrInfoHints, AddrInfoIter, LookupError};
 use ip_network::IpNetwork;
 use std::{net::ToSocketAddrs, sync::Arc};
 use webrtc::ice_transport::{
@@ -288,6 +287,9 @@ fn resolve_addresses(addr: &str) -> std::io::Result<Vec<IpNetwork>> {
         (Err(e), Err(_)) => Err(e),
     }
 }
+
+#[cfg(not(target_os = "windows"))]
+use dns_lookup::{AddrInfoHints, AddrInfoIter, LookupError};
 
 #[cfg(not(target_os = "windows"))]
 fn resolve_address_family(
