@@ -492,7 +492,7 @@ async fn run_controller(
     let mut have_internet = network_changes::check_internet()?;
     tracing::debug!(?have_internet);
 
-    let com_worker = network_changes::Worker::new()?;
+    let mut com_worker = network_changes::Worker::new()?;
 
     loop {
         tokio::select! {
@@ -586,6 +586,10 @@ async fn run_controller(
                 }
             }
         }
+    }
+
+    if let Err(error) = com_worker.close() {
+        tracing::error!(?error, "com_worker");
     }
 
     // Last chance to do any drops / cleanup before the process crashes.
