@@ -62,6 +62,9 @@ fn start_server_and_connect() -> anyhow::Result<(minidumper::Client, std::proces
     let exe = std::env::current_exe().context("unable to find our own exe path")?;
     let mut server = None;
 
+    // I don't understand why there's a loop here. The original was an infinite loop,
+    // so I reduced it to 10 and it still worked.
+    // <https://github.com/EmbarkStudios/crash-handling/blob/16c2545f2a46b6b21d1e401cfeaf0d5b9a130b08/minidumper/examples/diskwrite.rs#L72>
     for _ in 0..10 {
         // Create the crash client first so we can error out if another instance of
         // the Firezone client is already using this socket for crash handling.
