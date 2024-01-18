@@ -13,7 +13,7 @@ sudo apt-get install -y docker-ce
 sudo usermod -aG docker ubuntu
 
 docker run \
-	--restart=unless-stopped \
+  --restart=unless-stopped \
   --name=httpbin \
   -p "80:80" \
   kong/httpbin
