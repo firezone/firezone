@@ -14,37 +14,13 @@ const SOCKET_NAME: &str = "dev.firezone.client.crash_handler";
 ///
 /// Returns a CrashHandler that must be kept alive until the program exits.
 /// Dropping the handler will detach it.
-#[cfg(debug_assertions)]
-pub(crate) fn attach_handler() -> anyhow::Result<crash_handler::CrashHandler> {
-    attach_handler_inner()
-}
-
-#[cfg(not(debug_assertions))]
-pub(crate) fn attach_handler() -> anyhow::Result<crash_handler::CrashHandler> {
-    // Prevent cargo from complaining
-    if false {
-        return attach_handler_inner();
-    }
-    bail!("crash handling is disabled in release builds for now");
-}
-
-/// Main function for the server process, for out-of-process crash handling.
 ///
-/// The server process seems to be the preferred method,
-/// since it's hard to run complex code in a process
-/// that's already crashed and likely suffered memory corruption.
-///
-/// <https://jake-shadle.github.io/crash-reporting/#implementation>
-/// <https://chromium.googlesource.com/breakpad/breakpad/+/master/docs/getting_started_with_breakpad.md#terminology>
-pub(crate) fn server() -> anyhow::Result<()> {
-    let mut server = minidumper::Server::with_name(SOCKET_NAME)?;
-    let ab = std::sync::atomic::AtomicBool::new(false);
-    server.run(Box::new(Handler), &ab, None)?;
-    Ok(())
-}
-
-#[cfg(target_os = "windows")]
-fn attach_handler_inner() -> anyhow::Result<crash_handler::CrashHandler> {
+/// If you need this on non-Windows, re-visit
+/// <https://github.com/EmbarkStudios/crash-handling/blob/main/minidumper/examples/diskwrite.rs>
+/// Linux has a special `set_ptracer` call that is handy
+/// MacOS needs a special `ping` call to flush messages inside the crash handler
+#[cfg(all(debug_assertions, target_os = "windows"))]
+pub(crate) fn attach_handler() -> anyhow::Result<crash_handler::CrashHandler> {
     // Attempt to connect to the server
     let (client, _server) = start_server_and_connect()?;
 
@@ -62,13 +38,24 @@ fn attach_handler_inner() -> anyhow::Result<crash_handler::CrashHandler> {
     Ok(handler)
 }
 
-#[cfg(not(target_os = "windows"))]
-fn attach_handler_inner() -> anyhow::Result<crash_handler::CrashHandler> {
-    // If you need this on non-Windows, re-visit
-    // <https://github.com/EmbarkStudios/crash-handling/blob/main/minidumper/examples/diskwrite.rs>
-    // Linux has a special `set_ptracer` call that is handy
-    // MacOS needs a special `ping` call to flush messages inside the crash handler
-    unimplemented!()
+#[cfg(not(debug_assertions))]
+pub(crate) fn attach_handler() -> anyhow::Result<crash_handler::CrashHandler> {
+    bail!("crash handling is disabled in release builds for now");
+}
+
+/// Main function for the server process, for out-of-process crash handling.
+///
+/// The server process seems to be the preferred method,
+/// since it's hard to run complex code in a process
+/// that's already crashed and likely suffered memory corruption.
+///
+/// <https://jake-shadle.github.io/crash-reporting/#implementation>
+/// <https://chromium.googlesource.com/breakpad/breakpad/+/master/docs/getting_started_with_breakpad.md#terminology>
+pub(crate) fn server() -> anyhow::Result<()> {
+    let mut server = minidumper::Server::with_name(SOCKET_NAME)?;
+    let ab = std::sync::atomic::AtomicBool::new(false);
+    server.run(Box::new(Handler), &ab, None)?;
+    Ok(())
 }
 
 fn start_server_and_connect() -> anyhow::Result<(minidumper::Client, std::process::Child)> {
