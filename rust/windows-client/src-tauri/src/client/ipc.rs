@@ -2,10 +2,12 @@
 
 #[cfg(test)]
 mod tests {
-    use ipc_channel::ipc;
     use serde::{Deserialize, Serialize};
-    use std::time::Duration;
-    use tokio::runtime::Runtime;
+    use tokio::{
+        io::{AsyncReadExt, AsyncWriteExt},
+        net::windows::named_pipe,
+        runtime::Runtime,
+    };
 
     #[derive(Debug, Deserialize, PartialEq, Serialize)]
     enum Message {
@@ -17,97 +19,124 @@ mod tests {
         Disconnected,
     }
 
+    /// Returns a random valid named pipe ID based on a UUIDv4
+    ///
+    /// e.g. "\\.\pipe\dev.firezone.client\9508e87c-1c92-4630-bb20-839325d169bd"
+    fn random_pipe_id() -> String {
+        format!(r"\\.\pipe\dev.firezone.client\{}", uuid::Uuid::new_v4())
+    }
+
+    /// A server that accepts only one client
+    struct UnconnectedServer {
+        pipe: named_pipe::NamedPipeServer,
+    }
+
+    /// A server that's connected to a client
+    struct Server {
+        pipe: named_pipe::NamedPipeServer,
+    }
+
+    /// A client that's connected to a server
+    struct Client {
+        pipe: named_pipe::NamedPipeClient,
+    }
+
+    struct Request(u8);
+    struct Response(u8);
+
+    #[must_use]
+    struct Responder<'a> {
+        client: &'a mut Client,
+    }
+
+    impl UnconnectedServer {
+        pub fn new() -> anyhow::Result<(Self, String)> {
+            let id = random_pipe_id();
+            let pipe = named_pipe::ServerOptions::new()
+                .first_pipe_instance(true)
+                .create(&id)?;
+
+            let this = Self { pipe };
+            Ok((this, id))
+        }
+
+        pub async fn connect(self) -> anyhow::Result<Server> {
+            self.pipe.connect().await?;
+            Ok(Server { pipe: self.pipe })
+        }
+    }
+
+    impl Server {
+        pub async fn request(&mut self, req: Request) -> anyhow::Result<Response> {
+            let buf = [req.0];
+            self.pipe.write_all(&buf).await?;
+            let mut buf = [0];
+            self.pipe.read_exact(&mut buf).await?;
+            Ok(Response(buf[0]))
+        }
+    }
+
+    impl Client {
+        pub fn new(server_id: &str) -> anyhow::Result<Self> {
+            let pipe = named_pipe::ClientOptions::new().open(server_id)?;
+            Ok(Self { pipe })
+        }
+
+        pub async fn next_request(&mut self) -> anyhow::Result<(Request, Responder)> {
+            let mut buf = [0];
+            self.pipe.read_exact(&mut buf).await?;
+            let req = Request(buf[0]);
+            let responder = Responder { client: self };
+            Ok((req, responder))
+        }
+    }
+
+    impl<'a> Responder<'a> {
+        pub async fn respond(self, response: Response) -> anyhow::Result<()> {
+            let buf = [response.0];
+            self.client.pipe.write_all(&buf).await?;
+            Ok(())
+        }
+    }
+
     #[test]
     fn ipc() -> anyhow::Result<()> {
         let rt = Runtime::new()?;
         rt.block_on(async move {
-            let timeout = Duration::from_millis(3000);
-
             // Pretend we're in the main process
-            let (server, server_name) =
-                ipc::IpcOneShotServer::<ipc::IpcSender<(Message, ipc::IpcSender<Message>)>>::new()
-                    .unwrap();
+            let (server, server_id) = UnconnectedServer::new()?;
 
-            // `spawn_blocking` because this would probably deadlock if both tasks ran
-            // on a single executor thread
-            let worker_task = tokio::task::spawn_blocking(move || {
+            let worker_task = tokio::spawn(async move {
                 // Pretend we're in a worker process
-                let (tx, rx) = ipc::channel::<(Message, ipc::IpcSender<Message>)>().unwrap();
-                ipc::IpcSender::connect(server_name)
-                    .unwrap()
-                    .send(tx)
-                    .unwrap();
+                let mut client = Client::new(&server_id)?;
 
                 // Handle requests from the main process
                 loop {
-                    let (req, response_tx) = rx.try_recv_timeout(timeout).unwrap();
-                    match req {
-                        Message::AwaitCallback => {
-                            std::thread::sleep(Duration::from_secs(2));
-                            response_tx.send(Message::Callback).unwrap();
-                        }
-                        Message::Connect => response_tx.send(Message::Connected).unwrap(),
-                        Message::Disconnect => {
-                            response_tx.send(Message::Disconnected).unwrap();
-                            break;
-                        }
-                        _ => panic!("protocol error"),
+                    let (req, responder) = client.next_request().await?;
+                    responder.respond(Response(req.0 + 128)).await?;
+
+                    if req.0 == 0 {
+                        break;
                     }
                 }
+                Ok::<_, anyhow::Error>(())
             });
 
-            let (_, tx) = server.accept().unwrap();
+            let mut server = server.connect().await?;
 
             let start_time = std::time::Instant::now();
-
-            // Pretend we're making some requests to the worker process
-
-            // This is very wasteful - Every request creates a new IPC client-server
-            // pair. It's possible to do it more efficiently than this, but the code is simple
-            // and it allows `Message` to impl `PartialEq` since `Message` never contains
-            // any IPC objects.
-            //
-            // It also theoretically allows multiple requests to work in parallel,
-            // but I won't implement that right away.
-
-            let (response_tx, response_rx) = ipc::channel::<Message>().unwrap();
-            tx.send((Message::Connect, response_tx)).unwrap();
-            assert_eq!(
-                response_rx.try_recv_timeout(timeout).unwrap(),
-                Message::Connected
-            );
-
-            let (response_tx, response_rx) = ipc::channel().unwrap();
-            tx.send((Message::AwaitCallback, response_tx)).unwrap();
-            assert_eq!(
-                response_rx.try_recv_timeout(timeout).unwrap(),
-                Message::Callback
-            );
-
-            let (response_tx, response_rx) = ipc::channel().unwrap();
-            tx.send((Message::Disconnect, response_tx)).unwrap();
-            assert_eq!(
-                response_rx.try_recv_timeout(timeout).unwrap(),
-                Message::Disconnected
-            );
-
-            // Make sure the worker 'process' exited
-            worker_task.await.unwrap();
-
+            assert_eq!(server.request(Request(1)).await?.0, 129);
+            assert_eq!(server.request(Request(10)).await?.0, 138);
+            assert_eq!(server.request(Request(0)).await?.0, 128);
             let elapsed = start_time.elapsed();
-
-            // We sleep for 2 seconds in AwaitCallback, so this is expected
-            let required_ms = 2000;
-
-            // Give the IPC stuff up to X ms of overhead to complete 3 requests
-            let slack_ms = 100;
             assert!(
-                elapsed <= Duration::from_millis(required_ms + slack_ms),
+                elapsed < std::time::Duration::from_millis(3),
                 "{:?}",
                 elapsed
             );
 
-            // TODO: Test that killing the worker process wakes up `recv` calls
+            // Make sure the worker 'process' exited
+            worker_task.await??;
 
             Ok::<_, anyhow::Error>(())
         })?;
