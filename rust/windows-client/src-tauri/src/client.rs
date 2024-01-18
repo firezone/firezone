@@ -5,6 +5,7 @@ use std::{os::windows::process::CommandExt, process::Command};
 
 mod auth;
 mod cli;
+mod crash_handling;
 mod debug_commands;
 mod deep_link;
 mod device_id;
@@ -27,12 +28,14 @@ mod wintun_install;
 const GIT_VERSION: &str =
     git_version::git_version!(args = ["--always", "--dirty=-modified", "--tags"]);
 
-/// Prevents a problem where changing the args to `gui::run` breaks static analysis on non-Windows targets, where the gui is stubbed out
+/// GuiParams prevents a problem where changing the args to `gui::run` breaks static analysis on non-Windows targets, where the gui is stubbed out
 #[allow(dead_code)]
 pub(crate) struct GuiParams {
-    /// True if we were re-launched with elevated permissions. If the user launched us directly with elevated permissions, this is false.
+    /// If true, purposely crash the program to test the crash handler
+    crash_on_purpose: bool,
+    /// If true, we were re-launched with elevated permissions. If the user launched us directly with elevated permissions, this is false.
     flag_elevated: bool,
-    /// True if we should slow down I/O operations to test how the GUI handles slow I/O
+    /// If true, slow down I/O operations to test how the GUI handles slow I/O
     inject_faults: bool,
 }
 
@@ -73,6 +76,7 @@ pub(crate) fn run() -> Result<()> {
             if elevation::check()? {
                 // We're already elevated, just run the GUI
                 gui::run(GuiParams {
+                    crash_on_purpose: cli.crash_on_purpose,
                     flag_elevated: false,
                     inject_faults: cli.inject_faults,
                 })
@@ -96,6 +100,7 @@ pub(crate) fn run() -> Result<()> {
                 Ok(())
             }
         }
+        Some(Cmd::CrashHandlerServer) => crash_handling::server(),
         Some(Cmd::Debug) => {
             println!("debug");
             Ok(())
@@ -107,6 +112,7 @@ pub(crate) fn run() -> Result<()> {
         Some(Cmd::DebugWintun) => debug_commands::wintun(cli),
         // If we already tried to elevate ourselves, don't try again
         Some(Cmd::Elevated) => gui::run(GuiParams {
+            crash_on_purpose: cli.crash_on_purpose,
             flag_elevated: true,
             inject_faults: cli.inject_faults,
         }),
