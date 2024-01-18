@@ -46,6 +46,16 @@ use windows::{
     },
 };
 
+#[derive(thiserror::Error, Debug)]
+pub(crate) enum Error {
+    #[error(transparent)]
+    Windows(#[from] windows::core::Error),
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
+    #[error("couldn't stop worker thread")]
+    CouldntStopWorkerThread,
+}
+
 /// Debug subcommand to test network connectivity events
 pub(crate) fn run_debug() -> anyhow::Result<()> {
     tracing_subscriber::fmt::init();
@@ -118,7 +128,7 @@ impl Worker {
             let notify = Arc::clone(&notify);
             std::thread::Builder::new()
                 .name("Firezone COM worker".into())
-                .spawn(move || -> windows::core::Result<()> {
+                .spawn(move || {
                     {
                         let com = ComGuard::new()?;
                         let _network_change_listener = Listener::new(&com, notify)?;
@@ -135,6 +145,21 @@ impl Worker {
         })
     }
 
+    /// Same as `drop`, but you can catch errors
+    pub fn close(&mut self) -> Result<(), Error> {
+        if let Some(inner) = self.inner.take() {
+            inner
+                .stopper
+                .send(())
+                .map_err(|_| Error::CouldntStopWorkerThread)?;
+            match inner.thread.join() {
+                Err(e) => std::panic::resume_unwind(e),
+                Ok(x) => x?,
+            }
+        }
+        Ok(())
+    }
+
     pub async fn notified(&self) {
         self.notify.notified().await;
     }
@@ -142,17 +167,8 @@ impl Worker {
 
 impl Drop for Worker {
     fn drop(&mut self) {
-        if let Some(inner) = self.inner.take() {
-            inner
-                .stopper
-                .send(())
-                .expect("should be able to stop the worker thread");
-            inner
-                .thread
-                .join()
-                .expect("should be able to join the worker thread")
-                .expect("worker thread should not have returned an error");
-        }
+        self.close()
+            .expect("should be able to close Worker cleanly");
     }
 }
 
@@ -257,8 +273,7 @@ impl<'a> Listener<'a> {
         Ok(this)
     }
 
-    /// This is the same as Drop, but you can catch errors from it
-    /// Calling this multiple times is idempotent
+    /// Like `drop` but you can catch errors
     ///
     /// Unregisters the network change callbacks
     pub fn close(&mut self) -> WinResult<()> {
