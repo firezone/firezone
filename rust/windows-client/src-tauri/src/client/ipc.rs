@@ -1,182 +1,99 @@
 //! Inter-process communication for the connlib subprocess
 
-use serde::{Deserialize, Serialize};
-use tokio::{
-    io::{
-        AsyncReadExt,
-        AsyncWriteExt,
-    },
-    net::windows::named_pipe,
-    runtime::Runtime,
-    sync::mpsc,
-};
-
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-pub(crate) enum Request {
-    AwaitCallback,
-    Connect,
-    Disconnect,
-}
-
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-pub(crate) enum Response {
-    Callback(Result<Callback, SerializedError>),
-    Connect(Result<(), SerializedError>),
-    Disconnect(Result<(), SerializedError>),
-}
-
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-pub(crate) enum Callback {
-    Disconnected,
-    TunnelReady,
-}
-
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-enum SerializedError {
-    AlreadyConnected,
-    AlreadyDisconnected,
-    CouldntConnect,
-    NotConnected,
-}
-
-pub(crate) struct Subprocess {
-
-}
-
-impl Subprocess {
-    pub fn new(pipe_id: &str) -> Self {
-        todo!();
-    }
-
-    pub fn close(self) -> anyhow::Result<()> {
-        todo!();
-    }
-
-    pub async fn request(&mut self, req: Request) -> anyhow::Result<Response> {
-        todo!();
-    }
-}
-
-pub(crate) struct Client {
-
-}
-
-impl Client {
-    pub fn new(pipe_id: &str) -> Self {
-        todo!();
-    }
-
-    pub async fn next_request(&mut self) -> anyhow::Result<Request> {
-        todo!();
-    }
-
-    /// Only valid if we're responding to a request
-    pub async fn respond(&mut self, response: Response) -> anyhow::Result<()> {
-        todo!();
-    }
-}
-
-trait MockCallbacks {
-    fn on_disconnect(&self);
-    fn on_tunnel_ready(&self);
-}
-
-struct CallbackHandler {
-    tx: mpsc::Sender<Callback>,
-}
-
-impl MockCallbacks for CallbackHandler {
-    fn on_disconnect(&self) {
-        self.tx.blocking_send(Callback::Disconnected).unwrap();
-    }
-
-    fn on_tunnel_ready(&self) {
-        self.tx.blocking_send(Callback::TunnelReady).unwrap();
-    }
-}
-
-struct MockConnlib {}
-
-impl MockConnlib {
-    fn connect() -> MockConnlib {
-        todo!()
-    }
-
-    fn disconnect(self) {
-        todo!()
-    }
-}
-
-struct ConnlibProxy {
-    client: Client,
-    connlib_session: Option<MockConnlib>,
-}
-
-impl ConnlibProxy {
-    pub(crate) fn new(pipe_id: &str) -> Self {
-        let client = Client::new(pipe_id);
-        Self {
-            client,
-            connlib_session: None,
-        }
-    }
-
-    pub(crate) async fn run(&mut self, pipe_id: &str) -> anyhow::Result<()> {
-        loop {
-            let req = self.client.next_request().await?;
-            let resp = self.handle_request(req).await?;
-            self.client.respond(resp).await?;
-        }
-    }
-
-    async fn handle_request(&mut self, request: Request) -> anyhow::Result<Response> {
-        let resp = match request {
-            Request::AwaitCallback => {
-                if let Some(connlib_session) = self.connlib_session.as_mut() {
-                    todo!()
-                } else {
-                    Response::Callback(Err(SerializedError::NotConnected))
-                }
-            }
-            Request::Connect => {
-                if self.connlib_session.is_some() {
-                    Response::Connect(Err(SerializedError::AlreadyConnected))
-                } else {
-                    self.connlib_session = Some(MockConnlib::connect());
-                    Response::Connect(Ok(()))
-                }
-            }
-            Request::Disconnect => {
-                if let Some(connlib_session) = self.connlib_session.take() {
-                    connlib_session.disconnect();
-                    Response::Disconnect(Ok(()))
-                } else {
-                    Response::Disconnect(Err(SerializedError::AlreadyDisconnected))
-                }
-            }
-        };
-        Ok(resp)
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use ipc_channel::ipc;
+    use serde::{Deserialize, Serialize};
+    use tokio::runtime::Runtime;
+
+    #[derive(Debug, Deserialize, PartialEq, Serialize)]
+    enum Message {
+        AwaitCallback,
+        Callback,
+        Connect,
+        Connected,
+        Disconnect,
+        Disconnected,
+    }
 
     #[test]
     fn ipc() -> anyhow::Result<()> {
         let rt = Runtime::new()?;
         rt.block_on(async move {
-            let mut subprocess = Subprocess::new("debug-subprocess-CJKCN43B");
+            // Pretend we're in the main process
+            let (server, server_name) =
+                ipc::IpcOneShotServer::<ipc::IpcSender<(Message, ipc::IpcSender<Message>)>>::new()
+                    .unwrap();
 
-            let resp = subprocess.request(Request::Connect).await?;
-            assert_eq!(resp, Response::Connect(Ok(())));
+            let worker_task = tokio::spawn(async move {
+                // Pretend we're in a worker process
+                let (tx, rx) = ipc::channel::<(Message, ipc::IpcSender<Message>)>().unwrap();
+                ipc::IpcSender::connect(server_name)
+                    .unwrap()
+                    .send(tx)
+                    .unwrap();
 
-            let resp = subprocess.request(Request::AwaitCallback).await?;
-            assert_eq!(resp, Response::Callback(Ok(Callback::TunnelReady)));
+                // Handle requests from the main process
+                loop {
+                    let (req, response_tx) = rx.recv().unwrap();
+                    match req {
+                        Message::AwaitCallback => {
+                            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                            response_tx.send(Message::Callback).unwrap();
+                        }
+                        Message::Connect => response_tx.send(Message::Connected).unwrap(),
+                        Message::Disconnect => {
+                            response_tx.send(Message::Disconnected).unwrap();
+                            break;
+                        }
+                        _ => panic!("protocol error"),
+                    }
+                }
+            });
 
-            let resp = subprocess.request(Request::Disconnect).await?;
-            assert_eq!(resp, Response::Disconnect(Ok(())));
+            let (_, tx) = server.accept().unwrap();
+
+            let start_time = std::time::Instant::now();
+
+            // Pretend we're making some requests to the worker process
+
+            // This is very wasteful - Every request creates a new IPC client-server
+            // pair. It's possible to do it more efficiently than this, but the code is simple
+            // and it allows `Message` to impl `PartialEq` since `Message` never contains
+            // any IPC objects.
+            //
+            // It also theoretically allows multiple requests to work in parallel,
+            // but I won't implement that right away.
+
+            let (response_tx, response_rx) = ipc::channel::<Message>().unwrap();
+            tx.send((Message::Connect, response_tx)).unwrap();
+            assert_eq!(response_rx.recv().unwrap(), Message::Connected);
+
+            let (response_tx, response_rx) = ipc::channel().unwrap();
+            tx.send((Message::AwaitCallback, response_tx)).unwrap();
+            assert_eq!(response_rx.recv().unwrap(), Message::Callback);
+
+            let (response_tx, response_rx) = ipc::channel().unwrap();
+            tx.send((Message::Disconnect, response_tx)).unwrap();
+            assert_eq!(response_rx.recv().unwrap(), Message::Disconnected);
+
+            // Make sure the worker 'process' exited
+            worker_task.await.unwrap();
+
+            let elapsed = start_time.elapsed();
+
+            // We sleep for 2 seconds in AwaitCallback, so this is expected
+            let required_ms = 2000;
+
+            // Give the IPC stuff up to X ms of overhead to complete 3 requests
+            let slack_ms = 100;
+            assert!(
+                elapsed <= std::time::Duration::from_millis(required_ms + slack_ms),
+                "{:?}",
+                elapsed
+            );
+
+            // TODO: Test that killing the worker process wakes up `recv` calls
 
             Ok::<_, anyhow::Error>(())
         })?;
