@@ -1,3 +1,9 @@
+variable "aws_gateway_token" {
+  type        = string
+  description = "Firezone Gateway token for AWS gateway"
+  default     = null
+}
+
 variable "image_tag" {
   type        = string
   description = "Image tag for all services. Notice: we assume all services are deployed with the same version"
