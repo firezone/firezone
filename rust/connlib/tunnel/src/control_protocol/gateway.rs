@@ -13,7 +13,9 @@ use connlib_shared::{
     },
     Callbacks, Dname, Error, Result,
 };
+use dns_lookup::{AddrInfoHints, AddrInfoIter, LookupError};
 use ip_network::IpNetwork;
+use libc::{AF_INET, AF_INET6, SOCK_STREAM};
 use std::{net::ToSocketAddrs, sync::Arc};
 use webrtc::ice_transport::{
     ice_role::RTCIceRole, ice_transport_state::RTCIceTransportState, RTCIceTransport,
@@ -101,10 +103,7 @@ where
                     return Err(Error::InvalidResource);
                 }
 
-                (domain.to_string(), 0)
-                    .to_socket_addrs()?
-                    .map(|addrs| addrs.ip().into())
-                    .collect()
+                resolve_addresses(&domain.to_string())?
             }
             ResourceDescription::Cidr(ref cidr) => vec![cidr.address],
         };
@@ -261,4 +260,38 @@ where
 
         Ok(())
     }
+}
+
+fn resolve_addresses(addr: &str) -> std::io::Result<Vec<IpNetwork>> {
+    let addr_v4: std::io::Result<Vec<_>> = resolve_address_family(addr, AF_INET)
+        .map_err(|e| e.into())
+        .and_then(|a| a.collect());
+    let addr_v6: std::io::Result<Vec<_>> = resolve_address_family(addr, AF_INET6)
+        .map_err(|e| e.into())
+        .and_then(|a| a.collect());
+    match (addr_v4, addr_v6) {
+        (Ok(v4), Ok(v6)) => Ok(v6
+            .iter()
+            .map(|a| a.sockaddr.ip().into())
+            .chain(v4.iter().map(|a| a.sockaddr.ip().into()))
+            .collect()),
+        (Ok(v4), Err(_)) => Ok(v4.iter().map(|a| a.sockaddr.ip().into()).collect()),
+        (Err(_), Ok(v6)) => Ok(v6.iter().map(|a| a.sockaddr.ip().into()).collect()),
+        (Err(e), Err(_)) => Err(e),
+    }
+}
+
+fn resolve_address_family(
+    addr: &str,
+    family: i32,
+) -> std::result::Result<AddrInfoIter, LookupError> {
+    dns_lookup::getaddrinfo(
+        Some(addr),
+        None,
+        Some(AddrInfoHints {
+            socktype: SOCK_STREAM,
+            address: family,
+            ..Default::default()
+        }),
+    )
 }
