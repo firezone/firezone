@@ -5,10 +5,11 @@ use connlib_shared::control::KnownError;
 use connlib_shared::control::Reason;
 use connlib_shared::messages::{DnsServer, GatewayResponse, IpDnsServer};
 use connlib_shared::IpProvider;
-use connlib_shared::DNS_SENTINEL;
+use ip_network::IpNetwork;
 use std::collections::HashMap;
 use std::net::IpAddr;
 use std::path::PathBuf;
+use std::str::FromStr;
 use std::{io, sync::Arc};
 
 use crate::messages::{
@@ -33,6 +34,9 @@ use tokio_util::codec::{BytesCodec, FramedRead};
 use url::Url;
 
 const DNS_PORT: u16 = 53;
+const DNS_SENTINELS_V4: &str = "100.100.111.0/24";
+const DNS_SENTINELS_V6: &str = "fd00:2021:1111:8000:100:100:111:0/120";
+
 pub struct ControlPlane<CB: Callbacks> {
     pub tunnel: Arc<Tunnel<CB, ClientState>>,
     pub phoenix_channel: PhoenixSenderWithTopic,
@@ -55,7 +59,8 @@ fn effective_dns_servers(
     let mut dns_servers = default_resolvers
         .into_iter()
         // TODO: This filter should be any ip in the dns sentinel range
-        .filter(|ip| ip != &IpAddr::from(DNS_SENTINEL))
+        .filter(|ip| !IpNetwork::from_str(DNS_SENTINELS_V4).unwrap().contains(*ip))
+        .filter(|ip| !IpNetwork::from_str(DNS_SENTINELS_V6).unwrap().contains(*ip))
         .peekable();
 
     if dns_servers.peek().is_none() {
@@ -90,8 +95,8 @@ fn create_resolvers(
 
 fn sentinel_dns_mapping(dns: &[DnsServer]) -> BiMap<IpAddr, DnsServer> {
     let mut ip_provider = IpProvider::new(
-        "100.100.11.0/24".parse().unwrap(),
-        "fd00:2021:1111:8000:100:100:111:0/120".parse().unwrap(),
+        DNS_SENTINELS_V4.parse().unwrap(),
+        DNS_SENTINELS_V6.parse().unwrap(),
     );
 
     dns.iter()
@@ -125,28 +130,32 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                 .flatten()
                 .unwrap_or_default(),
         );
-        let sentinel_mapping = sentinel_dns_mapping(&effective_dns_servers);
 
-        self.tunnel.set_upstream_dns(&interface.upstream_dns);
-        *self.fallback_resolver.lock() = create_resolvers(sentinel_mapping.clone());
+        let sentinel_mapping = sentinel_dns_mapping(&effective_dns_servers);
 
         {
             let mut init = self.tunnel_init.lock().await;
             if !*init {
-                if let Err(e) = self.tunnel.set_interface(&interface, sentinel_mapping) {
+                if let Err(e) = self
+                    .tunnel
+                    .set_interface(&interface, sentinel_mapping.clone())
+                {
                     tracing::error!(error = ?e, "Error initializing interface");
                     return Err(e);
                 } else {
                     *init = true;
                     tracing::info!("Firezone Started!");
                 }
+
+                for resource_description in resources {
+                    self.add_resource(resource_description);
+                }
+
+                // Note: watch out here we're holding 2 mutexes
+                *self.fallback_resolver.lock() = create_resolvers(sentinel_mapping);
             } else {
                 tracing::info!("Firezone reinitializated");
             }
-        }
-
-        for resource_description in resources {
-            self.add_resource(resource_description);
         }
         Ok(())
     }

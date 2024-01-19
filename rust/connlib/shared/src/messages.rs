@@ -237,6 +237,17 @@ impl DnsServer {
     }
 }
 
+impl<T> From<T> for DnsServer
+where
+    T: Into<SocketAddr>,
+{
+    fn from(addr: T) -> Self {
+        Self::IpPort(IpDnsServer {
+            address: addr.into(),
+        })
+    }
+}
+
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, Hash)]
 pub struct IpDnsServer {
     pub address: SocketAddr,

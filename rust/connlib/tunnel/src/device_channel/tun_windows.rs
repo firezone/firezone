@@ -48,7 +48,7 @@ const CREATE_NO_WINDOW: u32 = 0x08000000;
 const DEFAULT_MTU: u32 = 1280;
 
 impl Tun {
-    pub fn new(config: &InterfaceConfig) -> Result<Self> {
+    pub fn new(config: &InterfaceConfig, dns_config: Vec<IpAddr>) -> Result<Self> {
         const TUNNEL_UUID: &str = "e9245bc1-b8c1-44ca-ab1d-c6aad4f13b9c";
         // wintun automatically appends " Tunnel" to this
         const TUNNEL_NAME: &str = "Firezone";
@@ -121,7 +121,8 @@ impl Tun {
             .creation_flags(CREATE_NO_WINDOW)
             .arg("-Command")
             .arg(format!(
-                "Set-DnsClientServerAddress -InterfaceIndex {iface_idx} -ServerAddresses(\"{DNS_SENTINEL}\")"
+                r#"Set-DnsClientServerAddress -InterfaceIndex {iface_idx} -ServerAddresses("{}")"#,
+                dns_config.iter().map(String::from).join(",")
             ))
             .stdout(Stdio::null())
             .status()?;

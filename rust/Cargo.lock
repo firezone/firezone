@@ -1197,6 +1197,7 @@ dependencies = [
  "connlib-shared",
  "firezone-tunnel",
  "hickory-resolver",
+ "ip_network",
  "parking_lot",
  "reqwest",
  "secrecy",

@@ -13,7 +13,7 @@ use connlib_shared::messages::{
     DnsServer, GatewayId, Interface as InterfaceConfig, Key, ResourceDescription,
     ResourceDescriptionCidr, ResourceDescriptionDns, ResourceId, ReuseConnection, SecretKey,
 };
-use connlib_shared::{Callbacks, Dname, IpProvider, DNS_SENTINEL};
+use connlib_shared::{Callbacks, Dname, IpProvider};
 use domain::base::Rtype;
 use futures::channel::mpsc::Receiver;
 use futures::stream;
@@ -26,7 +26,7 @@ use itertools::Itertools;
 use rand_core::OsRng;
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::net::{IpAddr, SocketAddr};
+use std::net::IpAddr;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
@@ -110,30 +110,6 @@ where
         Ok(())
     }
 
-    /// Sets the dns server.
-    pub fn set_upstream_dns(&self, upstream_dns: &[DnsServer]) {
-        let upstream_dns: HashSet<_> = upstream_dns
-            .iter()
-            .map(|dns| {
-                let DnsServer::IpPort(dns) = dns;
-                dns.address
-            })
-            .collect();
-
-        // TODO: assuming single dns
-        let Some(upstream_dns_srv) = upstream_dns.iter().next().cloned() else {
-            return;
-        };
-
-        self.role_state.lock().upstream_dns = upstream_dns;
-
-        self.role_state
-            .lock()
-            .peers_by_ip
-            .iter()
-            .for_each(|p| p.1.inner.transform.set_dns(upstream_dns_srv.ip()));
-    }
-
     /// Sets the interface configuration and starts background tasks.
     #[tracing::instrument(level = "trace", skip(self))]
     pub fn set_interface(
@@ -148,22 +124,27 @@ where
             self.callbacks(),
         )?);
 
-        self.role_state.lock().dns_mapping = dns_mapping;
-
         self.device.store(Some(device.clone()));
         self.no_device_waker.wake();
 
-        // TODO: the requirement for the DNS_SENTINEL means you NEED ipv4 stack
-        // we are trying to support ipv4 and ipv6, so we should have an ipv6 dns sentinel
-        // alternative.
-        self.add_route(DNS_SENTINEL.into())?;
-        // Note: I'm just assuming this needs to succeed since we already require ipv4 stack due to the dns sentinel
-        // TODO: change me when we don't require ipv4
-        self.add_route(IPV4_RESOURCES.parse().unwrap())?;
-
-        if let Err(e) = self.add_route(IPV6_RESOURCES.parse().unwrap()) {
-            tracing::warn!(err = ?e, "ipv6 not supported");
+        let mut errs = Vec::new();
+        for sentinel in dns_mapping.left_values() {
+            if let Err(e) = self.add_route((*sentinel).into()) {
+                tracing::warn!(err = ?e, %sentinel , "couldn't add route for sentinel");
+                errs.push(e);
+            }
         }
+
+        if errs.len() == dns_mapping.left_values().len() {
+            // We can unwrap because there should always be at least 1 dns server
+            return Err(errs.pop().unwrap());
+        }
+
+        self.role_state.lock().dns_mapping = dns_mapping;
+
+        let res_v4 = self.add_route(IPV4_RESOURCES.parse().unwrap());
+        let res_v6 = self.add_route(IPV6_RESOURCES.parse().unwrap());
+        res_v4.or(res_v6)?;
 
         self.callbacks.on_tunnel_ready()?;
 
@@ -236,8 +217,7 @@ pub struct ClientState {
 
     refresh_dns_timer: Interval,
 
-    pub upstream_dns: HashSet<SocketAddr>,
-    dns_mapping: BiMap<IpAddr, DnsServer>,
+    pub dns_mapping: BiMap<IpAddr, DnsServer>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -268,7 +248,8 @@ impl ClientState {
                 // There's an edge case here, where the resolver's ip has been resolved before as
                 // a dns resource... we will ignore that weird case for now.
                 // Assuming a single upstream dns until #3123 lands
-                if let Some(upstream_dns) = self.upstream_dns.iter().next() {
+                if let Some(upstream_dns) = self.dns_mapping.get_by_left(&query.query.destination())
+                {
                     if self
                         .cidr_resources
                         .longest_match(upstream_dns.ip())
@@ -681,7 +662,6 @@ impl Default for ClientState {
             peers_by_ip: IpNetworkTable::new(),
             deferred_dns_queries: Default::default(),
             refresh_dns_timer: interval,
-            upstream_dns: Default::default(),
             dns_mapping: Default::default(),
         }
     }

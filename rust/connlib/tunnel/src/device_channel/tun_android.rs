@@ -1,7 +1,5 @@
 use crate::device_channel::ioctl;
-use connlib_shared::{
-    messages::Interface as InterfaceConfig, Callbacks, Error, Result, DNS_SENTINEL,
-};
+use connlib_shared::{messages::Interface as InterfaceConfig, Callbacks, Error, Result};
 use ip_network::IpNetwork;
 use std::net::IpAddr;
 use std::sync::atomic::{AtomicBool, Ordering};

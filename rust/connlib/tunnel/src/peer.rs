@@ -4,15 +4,16 @@ use std::net::IpAddr;
 use std::sync::Arc;
 use std::time::Instant;
 
-use arc_swap::ArcSwapOption;
+use arc_swap::ArcSwap;
 use bimap::BiMap;
 use boringtun::noise::rate_limiter::RateLimiter;
 use boringtun::noise::{Tunn, TunnResult};
 use boringtun::x25519::StaticSecret;
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
+use connlib_shared::messages::DnsServer;
+use connlib_shared::IpProvider;
 use connlib_shared::{messages::ResourceDescription, Error, Result};
-use connlib_shared::{IpProvider, DNS_SENTINEL};
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
 use parking_lot::{Mutex, RwLock};
@@ -201,7 +202,7 @@ impl Default for PacketTransformGateway {
 pub struct PacketTransformClient {
     translations: RwLock<BiMap<IpAddr, IpAddr>>,
     // TODO: Upstream dns could be something that's not an ip
-    upstream_dns: ArcSwapOption<IpAddr>,
+    dns_mapping: ArcSwap<BiMap<IpAddr, DnsServer>>,
     mangled_dns_ids: Mutex<HashMap<u16, std::time::Instant>>,
 }
 
@@ -228,8 +229,8 @@ impl PacketTransformClient {
             .retain(|_, exp| exp.elapsed() < IDS_EXPIRE);
     }
 
-    pub fn set_dns(&self, ip_addr: IpAddr) {
-        self.upstream_dns.store(Some(Arc::new(ip_addr)));
+    pub fn set_dns(&self, mapping: BiMap<IpAddr, DnsServer>) {
+        self.dns_mapping.store(Arc::new(mapping));
     }
 }
 
@@ -302,13 +303,13 @@ impl PacketTransform for PacketTransformClient {
         };
 
         let original_src = src;
-        if self
-            .upstream_dns
-            .load()
-            .as_ref()
-            .is_some_and(|upstream| **upstream == src)
-        {
-            if let Some(dgm) = pkt.as_udp() {
+        if let Some(dgm) = pkt.as_udp() {
+            if let Some(sentinel) = self
+                .dns_mapping
+                .load()
+                .as_ref()
+                .get_by_right(&(src, dgm.get_source()).into())
+            {
                 if let Ok(message) = domain::base::Message::from_slice(dgm.payload()) {
                     if self
                         .mangled_dns_ids
@@ -316,7 +317,7 @@ impl PacketTransform for PacketTransformClient {
                         .remove(&message.header().id())
                         .is_some_and(|exp| exp.elapsed() < IDS_EXPIRE)
                     {
-                        src = DNS_SENTINEL.into();
+                        src = *sentinel;
                     }
                 }
             }
@@ -334,16 +335,19 @@ impl PacketTransform for PacketTransformClient {
             packet.update_checksum();
         }
 
-        if packet.destination() == DNS_SENTINEL {
-            if let Some(ip) = self.upstream_dns.load().as_ref() {
-                if let Some(dgm) = packet.as_udp() {
-                    if let Ok(message) = domain::base::Message::from_slice(dgm.payload()) {
-                        self.mangled_dns_ids
-                            .lock()
-                            .insert(message.header().id(), Instant::now());
-                        packet.set_dst(**ip);
-                        packet.update_checksum();
-                    }
+        if let Some(srv) = self
+            .dns_mapping
+            .load()
+            .as_ref()
+            .get_by_left(&packet.destination())
+        {
+            if let Some(dgm) = packet.as_udp() {
+                if let Ok(message) = domain::base::Message::from_slice(dgm.payload()) {
+                    self.mangled_dns_ids
+                        .lock()
+                        .insert(message.header().id(), Instant::now());
+                    packet.set_dst(srv.ip());
+                    packet.update_checksum();
                 }
             }
         }

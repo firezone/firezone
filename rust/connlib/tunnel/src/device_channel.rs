@@ -51,11 +51,11 @@ impl Device {
     #[cfg(target_family = "windows")]
     pub(crate) fn new(
         config: &Interface,
-        _: Vec<IpAddr>,
+        dns_config: Vec<IpAddr>,
         _: &impl Callbacks<Error = Error>,
     ) -> Result<Device, ConnlibError> {
         Ok(Device {
-            tun: Tun::new(config)?,
+            tun: Tun::new(config, dns_config)?,
             mtu: AtomicUsize::new(1_280),
         })
     }
