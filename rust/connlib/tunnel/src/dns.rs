@@ -371,7 +371,7 @@ fn resource_from_question<N: ToDname>(
             )))
         }
         _ => {
-            let Some(_) = get_description(&name, dns_resources) else {
+            if get_description(&name, dns_resources).is_some() {
                 return None;
             };
 
