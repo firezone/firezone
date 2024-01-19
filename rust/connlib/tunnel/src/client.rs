@@ -119,8 +119,8 @@ where
     ) -> connlib_shared::Result<()> {
         let device = Arc::new(Device::new(
             config,
-            // TODO: this isn't guaranteed to mantain order, we need to do it differently
-            dns_mapping.left_values().copied().collect(),
+            // We can just sort in here because sentinel ips are created in order
+            dns_mapping.left_values().copied().sorted().collect(),
             self.callbacks(),
         )?);
 
