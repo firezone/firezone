@@ -42,7 +42,7 @@ mod ffi {
             &self,
             tunnelAddressIPv4: String,
             tunnelAddressIPv6: String,
-            dnsAddress: String,
+            dnsAddresses: String,
         );
 
         #[swift_bridge(swift_name = "onTunnelReady")]
@@ -89,12 +89,13 @@ impl Callbacks for CallbackHandler {
         &self,
         tunnel_address_v4: Ipv4Addr,
         tunnel_address_v6: Ipv6Addr,
-        dns_address: Ipv4Addr,
+        dns_addresses: Vec<IpAddr>,
     ) -> Result<Option<RawFd>, Self::Error> {
         self.inner.on_set_interface_config(
             tunnel_address_v4.to_string(),
             tunnel_address_v6.to_string(),
-            dns_address.to_string(),
+            serde_json::to_string(&dns_addresses)
+                .expect("developer error: a list of ips should always be serializable"),
         );
         Ok(None)
     }

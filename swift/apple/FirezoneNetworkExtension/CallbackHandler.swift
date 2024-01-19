@@ -19,7 +19,7 @@ public protocol CallbackHandlerDelegate: AnyObject {
   func onSetInterfaceConfig(
     tunnelAddressIPv4: String,
     tunnelAddressIPv6: String,
-    dnsAddress: String
+    dnsAddresses: [String]
   )
   func onTunnelReady()
   func onAddRoute(_: String)
@@ -36,19 +36,28 @@ public class CallbackHandler {
   func onSetInterfaceConfig(
     tunnelAddressIPv4: RustString,
     tunnelAddressIPv6: RustString,
-    dnsAddress: RustString
+    dnsAddresses: RustString
   ) {
     logger.log(
       """
         CallbackHandler.onSetInterfaceConfig:
           IPv4: \(tunnelAddressIPv4.toString(), privacy: .public)
           IPv6: \(tunnelAddressIPv6.toString(), privacy: .public)
-          DNS: \(dnsAddress.toString(), privacy: .public)
+          DNS: \(dnsAddresses.toString(), privacy: .public)
       """)
+
+    guard let dnsData = dnsAddresses.toString().data(using: .utf8) else {
+      return
+    }
+    guard let dnsArray = try? JSONDecoder().decode([String].self, from: dnsData)
+    else {
+      return
+    }
+
     delegate?.onSetInterfaceConfig(
       tunnelAddressIPv4: tunnelAddressIPv4.toString(),
       tunnelAddressIPv6: tunnelAddressIPv6.toString(),
-      dnsAddress: dnsAddress.toString()
+      dnsAddresses: dnsArray
     )
   }
 
