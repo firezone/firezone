@@ -78,7 +78,7 @@ class TunnelService : VpnService() {
                     """.trimIndent(),
                 )
 
-                moshi.adapter<List<String>>().fromJson(dnsAddresses)?.let {dns ->
+                moshi.adapter<List<String>>().fromJson(dnsAddresses)?.let { dns ->
                     tunnelRepository.setConfig(
                         TunnelConfig(
                             tunnelAddressIPv4,
@@ -127,7 +127,8 @@ class TunnelService : VpnService() {
             }
 
             override fun getSystemDefaultResolvers(): Array<ByteArray> {
-                return DnsServersDetector(this@TunnelService).servers.map { it.address }.toTypedArray()
+                return DnsServersDetector(this@TunnelService).servers.map { it.address }
+                    .toTypedArray()
             }
 
             override fun onDisconnect(error: String?): Boolean {
