@@ -1,0 +1,40 @@
+#cloud-config
+
+write_files:
+  - path: /etc/firezone-gateway/env
+    permissions: "0644"
+    owner: root
+    content: |
+      %{ for env in container_environment ~}
+      ${env.name}=${env.value}
+      %{ endfor ~}
+
+  - path: /etc/systemd/system/gateway.service
+    permissions: "0644"
+    owner: root
+    content: |
+      [Unit]
+      Description=Start an Firezone Gateway container
+
+      [Service]
+      TimeoutStartSec=0
+      Restart=always
+      ExecStartPre=/usr/bin/docker pull ${container_image}
+      ExecStart=/bin/sh -c 'docker run --rm --name=${container_name} --cap-add=NET_ADMIN --volume /etc/firezone --device="/dev/net/tun:/dev/net/tun" --env FIREZONE_NAME=$(hostname) --env FIREZONE_ID=$(echo $RANDOM$(hostname) | md5sum | head -c 20; echo;) --env-file="/etc/firezone-gateway/env" ${container_image}'
+      ExecStop=/usr/bin/docker stop gateway
+      ExecStopPost=/usr/bin/docker rm gateway
+
+runcmd:
+  - sudo apt-get update
+  - sudo apt-get install -y apt-transport-https ca-certificates curl software-properties-common
+  - curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+  - echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+  - sudo apt-get update
+  - sudo apt-get install -y docker-ce docker-ce-cli containerd.io
+  - echo '{"experimental":true,"ip6tables":true,"ipv6":true,"fixed-cidr-v6":"fd00::/80"}' | sudo tee -a /etc/docker/daemon.json
+  - sudo usermod -aG docker ubuntu
+  - sudo systemctl enable docker
+  - sudo systemctl stop docker
+  - sudo systemctl start docker
+  - sudo systemctl daemon-reload
+  - sudo systemctl start gateway.service
