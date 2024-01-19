@@ -126,6 +126,8 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
       |> Repo.fetch_and_update(
         with: fn identity ->
           Identity.Changeset.update_identity_provider_state(identity, identity_state)
+          # if an email was used in provider identifier and it's replaced by sub claim
+          # later, we want to use the ID from sub claim as provider_identifier
           |> Ecto.Changeset.put_change(:provider_identifier, provider_identifier)
         end
       )
