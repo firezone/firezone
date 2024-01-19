@@ -384,7 +384,7 @@ extension Adapter {
 
 extension Adapter: CallbackHandlerDelegate {
   public func onSetInterfaceConfig(
-    tunnelAddressIPv4: String, tunnelAddressIPv6: String, dnsAddress: String
+    tunnelAddressIPv4: String, tunnelAddressIPv6: String, dnsAddresses: [String]
   ) {
     workQueue.async { [weak self] in
       guard let self = self else { return }
@@ -395,7 +395,7 @@ extension Adapter: CallbackHandlerDelegate {
       case .startingTunnel:
         self.networkSettings = NetworkSettings(
           tunnelAddressIPv4: tunnelAddressIPv4, tunnelAddressIPv6: tunnelAddressIPv6,
-          dnsAddress: dnsAddress)
+          dnsAddresses: dnsAddresses)
       case .tunnelReady:
         if let networkSettings = self.networkSettings {
           networkSettings.apply(
