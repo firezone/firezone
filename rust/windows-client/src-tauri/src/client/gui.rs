@@ -159,9 +159,8 @@ pub(crate) fn run(params: client::GuiParams) -> Result<()> {
             std::fs::create_dir_all(&cwd)?;
             std::env::set_current_dir(&cwd)?;
 
-            let advanced_settings = tokio::runtime::Handle::current()
-                .block_on(settings::load_advanced_settings(&app.handle()))
-                .unwrap_or_default();
+            let advanced_settings =
+                settings::load_advanced_settings(&app.handle()).unwrap_or_default();
 
             // Set up logger
             // It's hard to set it up before Tauri's setup, because Tauri knows where all the config and data go in AppData and I don't want to replicate their logic.
