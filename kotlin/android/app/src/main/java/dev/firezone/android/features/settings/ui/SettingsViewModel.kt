@@ -98,6 +98,20 @@ internal class SettingsViewModel
             onFieldUpdated()
         }
 
+        fun deleteLogDirectory(context: Context) {
+            viewModelScope.launch {
+                val logDir = context.cacheDir.absolutePath + "/logs"
+                val directory = File(logDir)
+                directory.walkTopDown().forEach { file ->
+                    file.delete()
+                }
+                _uiState.value =
+                    _uiState.value.copy(
+                        logSize = 0,
+                    )
+            }
+        }
+
         fun createLogZip(context: Context) {
             viewModelScope.launch {
                 val logDir = context.cacheDir.absolutePath + "/logs"

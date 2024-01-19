@@ -137,6 +137,7 @@ android {
 }
 
 dependencies {
+    implementation("androidx.preference:preference:1.2.0")
     val coreVersion = "1.12.0"
     val navVersion = "2.7.4"
 
