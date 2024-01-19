@@ -205,7 +205,7 @@ internal class SettingsViewModel
 
         internal data class UiState(
             val isSaveButtonEnabled: Boolean = false,
-            val logSize: Long = 0,
+            val logSize: Long = 0, // Size in Bytes
         )
 
         internal sealed class ViewAction {

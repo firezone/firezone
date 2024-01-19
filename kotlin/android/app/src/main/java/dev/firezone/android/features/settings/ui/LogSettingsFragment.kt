@@ -45,7 +45,7 @@ class LogSettingsFragment : Fragment(R.layout.fragment_settings_logs) {
                         val hasLogs = uiState.logSize > 0
                         btShareLog.isEnabled = hasLogs
                         btClearLog.isEnabled = hasLogs
-                        val logSize = "${uiState.logSize} KB"
+                        val logSize = "${uiState.logSize / 1000L} KB"
                         tvLogDirectorySize.text = getString(R.string.log_directory_size, logSize)
                     }
                 }
