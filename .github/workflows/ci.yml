@@ -151,7 +151,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        file: ['docker-compose.lan.yml']
+        file: [
+          'docker-compose.lan.yml',
+          'docker-compose.wan.yml'
+        ]
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/gcp-docker-login
@@ -161,7 +164,7 @@ jobs:
       - name: Run ${{ matrix.file }} test
         run: |
           sudo sysctl -w vm.overcommit_memory=1
-          docker compose -f rust/connection-tests/${{ matrix.file }} up --exit-code-from dialer --abort-on-container-exit
+          timeout 600 docker compose -f rust/connection-tests/${{ matrix.file }} up --exit-code-from dialer --abort-on-container-exit
 
   integration-tests:
     needs: build-images
@@ -226,24 +229,30 @@ jobs:
           docker compose up -d client gateway relay
 
           mkdir -p /tmp/iperf3results
-          docker compose exec --env RUST_LOG=info -it client /bin/sh -c 'iperf3 -R -c 172.20.0.110 --json' >> /tmp/iperf3results/tcp_server2client.json
+          docker compose exec --env RUST_LOG=info -it client /bin/sh -c 'iperf3 -O 1 -R -c 172.20.0.110 --json' >> /tmp/iperf3results/tcp_server2client.json
           cat /tmp/iperf3results/tcp_server2client.json | jq -r '"tcp_server2client_sum_received_bits_per_second=" + (.end.sum_received.bits_per_second|tostring)' >> "$GITHUB_OUTPUT"
           cat /tmp/iperf3results/tcp_server2client.json | jq -r '"tcp_server2client_sum_sent_bits_per_second=" + (.end.sum_sent.bits_per_second|tostring)' >> "$GITHUB_OUTPUT"
           cat /tmp/iperf3results/tcp_server2client.json | jq -r '"tcp_server2client_sum_sent_retransmits=" + (.end.sum_sent.retransmits|tostring)' >> "$GITHUB_OUTPUT"
 
-          docker compose exec --env RUST_LOG=info -it client /bin/sh -c 'iperf3 -c 172.20.0.110 --json' >> /tmp/iperf3results/tcp_client2server.json
+          docker compose restart iperf3
+
+          docker compose exec --env RUST_LOG=info -it client /bin/sh -c 'iperf3 -O 1 -c 172.20.0.110 --json' >> /tmp/iperf3results/tcp_client2server.json
           cat /tmp/iperf3results/tcp_client2server.json | jq -r '"tcp_client2server_sum_received_bits_per_second=" + (.end.sum_received.bits_per_second|tostring)' >> "$GITHUB_OUTPUT"
           cat /tmp/iperf3results/tcp_client2server.json | jq -r '"tcp_client2server_sum_sent_bits_per_second=" + (.end.sum_sent.bits_per_second|tostring)' >> "$GITHUB_OUTPUT"
           cat /tmp/iperf3results/tcp_client2server.json | jq -r '"tcp_client2server_sum_sent_retransmits=" + (.end.sum_sent.retransmits|tostring)' >> "$GITHUB_OUTPUT"
 
+          docker compose restart iperf3
+
           # Note: birtate is reduced to be 250M but what we actually want to test for is 1G once we flesh out some bugs
-          docker compose exec --env RUST_LOG=info -it client /bin/sh -c 'iperf3 -u -b 250M -R -c 172.20.0.110 --json' >> /tmp/iperf3results/udp_server2client.json
+          docker compose exec --env RUST_LOG=info -it client /bin/sh -c 'iperf3 -O 1 -u -b 250M -R -c 172.20.0.110 --json' >> /tmp/iperf3results/udp_server2client.json
           cat /tmp/iperf3results/udp_server2client.json | jq -r '"udp_server2client_sum_bits_per_second=" + (.end.sum.bits_per_second|tostring)' >> "$GITHUB_OUTPUT"
           cat /tmp/iperf3results/udp_server2client.json | jq -r '"udp_server2client_sum_jitter_ms=" + (.end.sum.jitter_ms|tostring)' >> "$GITHUB_OUTPUT"
           cat /tmp/iperf3results/udp_server2client.json | jq -r '"udp_server2client_sum_lost_percent=" + (.end.sum.lost_percent|tostring)' >> "$GITHUB_OUTPUT"
 
+          docker compose restart iperf3
+
           # Note: birtate is reduced to be 250M but what we actually want to test for is 1G once we flesh out some bugs
-          docker compose exec --env RUST_LOG=info -it client /bin/sh -c 'iperf3 -u -b 250M -c 172.20.0.110 --json' >> /tmp/iperf3results/udp_client2server.json
+          docker compose exec --env RUST_LOG=info -it client /bin/sh -c 'iperf3 -O 1 -u -b 250M -c 172.20.0.110 --json' >> /tmp/iperf3results/udp_client2server.json
           cat /tmp/iperf3results/udp_client2server.json | jq -r '"udp_client2server_sum_bits_per_second=" + (.end.sum.bits_per_second|tostring)' >> "$GITHUB_OUTPUT"
           cat /tmp/iperf3results/udp_client2server.json | jq -r '"udp_client2server_sum_jitter_ms=" + (.end.sum.jitter_ms|tostring)' >> "$GITHUB_OUTPUT"
           cat /tmp/iperf3results/udp_client2server.json | jq -r '"udp_client2server_sum_lost_percent=" + (.end.sum.lost_percent|tostring)' >> "$GITHUB_OUTPUT"

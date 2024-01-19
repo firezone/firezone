@@ -153,6 +153,8 @@ pub enum ConnlibError {
     TokenExpired,
     #[error("Too many concurrent gateway connection requests")]
     TooManyConnectionRequests,
+    #[error("Channel connection closed by portal")]
+    ClosedByPortal,
 }
 
 impl ConnlibError {
