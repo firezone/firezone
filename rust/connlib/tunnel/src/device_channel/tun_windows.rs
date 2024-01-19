@@ -120,10 +120,10 @@ impl Tun {
         Command::new("powershell")
             .creation_flags(CREATE_NO_WINDOW)
             .arg("-Command")
-            .arg(dbg!(format!(
+            .arg(format!(
                 "Set-DnsClientServerAddress -InterfaceIndex {iface_idx} -ServerAddresses({})",
                 dns_config.iter().map(|ip| format!("\"{ip}\"")).collect::<Vec<_>>().join(",")
-            )))
+            ))
             .stdout(Stdio::null())
             .status()?;
 
