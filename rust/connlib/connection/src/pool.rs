@@ -196,26 +196,10 @@ where
 
         // Next: If we can parse the message as a STUN message, cycle through all agents to check which one it is for.
         if let Ok(message) = StunMessage::parse(packet) {
-            for (_, conn) in self.initial_connections.iter_mut() {
+            for agent in self.agents_mut() {
                 // TODO: `accepts_message` cannot demultiplexing multiple connections until https://github.com/algesten/str0m/pull/418 is merged.
-                if conn.agent.accepts_message(&message) {
-                    conn.agent.handle_packet(
-                        now,
-                        StunPacket {
-                            proto: Protocol::Udp,
-                            source: from,
-                            destination: remote_socket.unwrap_or(local),
-                            message,
-                        },
-                    );
-                    return Ok(None);
-                }
-            }
-
-            for (_, conn) in self.negotiated_connections.iter_mut() {
-                // Would the ICE agent of this connection like to handle the packet?
-                if conn.agent.accepts_message(&message) {
-                    conn.agent.handle_packet(
+                if agent.accepts_message(&message) {
+                    agent.handle_packet(
                         now,
                         StunPacket {
                             proto: Protocol::Udp,
@@ -400,8 +384,6 @@ where
     pub fn poll_timeout(&mut self) -> Option<Instant> {
         let mut connection_timeout = None;
 
-        // TODO: Do we need to poll ice agents of initial connections??
-
         for c in self.negotiated_connections.values_mut() {
             connection_timeout = earliest(connection_timeout, c.poll_timeout());
         }
@@ -441,24 +423,9 @@ where
 
     /// Returns buffered data that needs to be sent on the socket.
     pub fn poll_transmit(&mut self) -> Option<Transmit> {
-        for conn in self.initial_connections.values_mut() {
-            if let Some(transmit) = conn.agent.poll_transmit() {
-                let relay = SocketAddr::new(transmit.source.ip(), 3478); // TODO: Don't hardcode this, we should work with relays that don't run on 3478.
-
-                if let Some(transmit) = maybe_send_via_channel(
-                    relay,
-                    transmit.destination,
-                    &transmit.contents,
-                    &self.allocations,
-                ) {
-                    return Some(transmit);
-                }
-            }
-        }
-
         for conn in self.negotiated_connections.values_mut() {
             if let Some(transmit) = conn.agent.poll_transmit() {
-                let relay = SocketAddr::new(transmit.source.ip(), 3478);
+                let relay = SocketAddr::new(transmit.source.ip(), 3478); // TODO: Don't hardcode this.
 
                 if let Some(transmit) = maybe_send_via_channel(
                     relay,
@@ -494,6 +461,16 @@ where
             .map(|c| &mut c.agent);
 
         maybe_initial_connection.or(maybe_established_connection)
+    }
+
+    fn agents_mut(&mut self) -> impl Iterator<Item = &mut IceAgent> {
+        let initial_agents = self.initial_connections.values_mut().map(|c| &mut c.agent);
+        let negotiated_agents = self
+            .negotiated_connections
+            .values_mut()
+            .map(|c| &mut c.agent);
+
+        initial_agents.chain(negotiated_agents)
     }
 
     fn upsert_stun_servers(&mut self, servers: &HashSet<SocketAddr>) {
