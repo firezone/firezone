@@ -15,6 +15,17 @@ mod resolvers;
 mod settings;
 mod wintun_install;
 
+/// Bundle ID / App ID that we use to distinguish ourself from other programs on the system
+///
+/// e.g. In ProgramData and AppData we use this to name our subdirectories for configs and data,
+/// and Windows may use it to track things like the MSI installer, notification titles,
+/// deep link registration, etc.
+///
+/// This should be identical to the `tauri.bundle.identifier` over in `tauri.conf.json`,
+/// but sometimes I need to use this before Tauri has booted up, or in a place where
+/// getting the Tauri app handle would be awkward.
+pub const BUNDLE_ID: &str = "dev.firezone.client";
+
 /// Output of `git describe` at compile time
 /// e.g. `1.0.0-pre.4-20-ged5437c88-modified` where:
 ///
@@ -106,7 +117,6 @@ pub(crate) fn run() -> Result<()> {
         Some(Cmd::DebugCrash) => debug_commands::crash(),
         Some(Cmd::DebugHostname) => debug_commands::hostname(),
         Some(Cmd::DebugNetworkChanges) => network_changes::run_debug(),
-        Some(Cmd::DebugPipeServer) => debug_commands::pipe_server(),
         Some(Cmd::DebugWintun) => debug_commands::wintun(cli),
         // If we already tried to elevate ourselves, don't try again
         Some(Cmd::Elevated) => gui::run(GuiParams {
@@ -114,8 +124,11 @@ pub(crate) fn run() -> Result<()> {
             flag_elevated: true,
             inject_faults: cli.inject_faults,
         }),
-        Some(Cmd::OpenDeepLink(deep_link)) => debug_commands::open_deep_link(&deep_link.url),
-        Some(Cmd::RegisterDeepLink) => debug_commands::register_deep_link(),
+        Some(Cmd::OpenDeepLink(deep_link)) => {
+            let rt = tokio::runtime::Runtime::new()?;
+            rt.block_on(deep_link::open(&deep_link.url))?;
+            Ok(())
+        }
     }
 }
 
@@ -137,11 +150,9 @@ pub enum Cmd {
     DebugCrash,
     DebugHostname,
     DebugNetworkChanges,
-    DebugPipeServer,
     DebugWintun,
     Elevated,
     OpenDeepLink(DeepLink),
-    RegisterDeepLink,
 }
 
 #[derive(Args)]
