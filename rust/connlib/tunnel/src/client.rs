@@ -135,8 +135,7 @@ where
             }
         }
 
-        if errs.len() == dns_mapping.left_values().len() {
-            // We can unwrap because there should always be at least 1 dns server
+        if errs.len() == dns_mapping.left_values().len() && dns_mapping.left_values().len() > 0 {
             return Err(errs.pop().unwrap());
         }
 
