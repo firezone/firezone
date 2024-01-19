@@ -124,7 +124,7 @@ CMD $PACKAGE
 FROM runtime AS debug
 
 RUN set -xe \
-  && apk add --no-cache iperf3 jq
+  && apk add --no-cache iperf3 bind-tools iproute2 jq
 
 ARG TARGET
 COPY --from=builder /build/target/${TARGET}/debug/${PACKAGE} .

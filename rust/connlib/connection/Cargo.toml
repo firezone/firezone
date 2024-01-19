@@ -14,3 +14,5 @@ secrecy = { workspace = true }
 str0m = { workspace = true }
 thiserror = "1"
 tracing = "0.1"
+stun_codec = "0.3.4"
+bytecodec = "0.4.15"

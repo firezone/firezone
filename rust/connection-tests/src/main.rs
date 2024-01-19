@@ -1,6 +1,7 @@
 use std::{
+    collections::HashSet,
     future::poll_fn,
-    net::Ipv4Addr,
+    net::{IpAddr, Ipv4Addr, SocketAddr},
     str::FromStr,
     task::{Context, Poll},
     time::Instant,
@@ -42,6 +43,13 @@ async fn main() -> Result<()> {
         .ip
         .to_std();
 
+    let stun_server = std::env::var("STUN_SERVER")
+        .ok()
+        .map(|a| a.parse::<IpAddr>())
+        .transpose()
+        .context("Failed to parse `STUN_SERVER`")?
+        .map(|ip| SocketAddr::new(ip, 3478));
+
     tracing::info!(%listen_addr);
 
     let redis_host = std::env::var("REDIS_HOST").context("Missing REDIS_HOST env var")?;
@@ -63,7 +71,8 @@ async fn main() -> Result<()> {
             let mut pool = ClientConnectionPool::<u64>::new(private_key);
             pool.add_local_interface(socket_addr);
 
-            let offer = pool.new_connection(1, vec![], vec![]);
+            let offer =
+                pool.new_connection(1, stun_server.into_iter().collect(), HashSet::default());
 
             redis_connection
                 .rpush(
@@ -124,6 +133,9 @@ async fn main() -> Result<()> {
                                 start = Instant::now();
                                 eventloop.send_to(conn, ip4_udp_ping_packet(source, dst, &ping_body).into())?;
                             }
+                            Event::ConnectionFailed { conn } => {
+                                anyhow::bail!("Failed to establish connection: {conn}");
+                            }
                         }
                     }
 
@@ -156,8 +168,8 @@ async fn main() -> Result<()> {
                     },
                 },
                 offer.public_key.into(),
-                vec![],
-                vec![],
+                stun_server.into_iter().collect(),
+                HashSet::default(),
             );
 
             redis_connection
@@ -188,6 +200,9 @@ async fn main() -> Result<()> {
                                     .context("Failed to push candidate")?;
                             }
                             Event::ConnectionEstablished { .. } => { }
+                            Event::ConnectionFailed { conn } => {
+                                anyhow::bail!("Failed to establish connection: {conn}");
+                            }
                         }
                     }
 
@@ -340,6 +355,9 @@ impl<T> Eventloop<T> {
             Some(firezone_connection::Event::ConnectionEstablished(conn)) => {
                 return Poll::Ready(Ok(Event::ConnectionEstablished { conn }))
             }
+            Some(firezone_connection::Event::ConnectionFailed(conn)) => {
+                return Poll::Ready(Ok(Event::ConnectionFailed { conn }))
+            }
             None => {}
         }
 
@@ -387,6 +405,9 @@ enum Event {
         candidate: String,
     },
     ConnectionEstablished {
+        conn: u64,
+    },
+    ConnectionFailed {
         conn: u64,
     },
 }

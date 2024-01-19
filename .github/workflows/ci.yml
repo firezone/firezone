@@ -151,7 +151,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        file: ['docker-compose.lan.yml']
+        file: [
+          'docker-compose.lan.yml',
+          'docker-compose.wan.yml'
+        ]
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/gcp-docker-login
@@ -161,7 +164,7 @@ jobs:
       - name: Run ${{ matrix.file }} test
         run: |
           sudo sysctl -w vm.overcommit_memory=1
-          docker compose -f rust/connection-tests/${{ matrix.file }} up --exit-code-from dialer --abort-on-container-exit
+          timeout 600 docker compose -f rust/connection-tests/${{ matrix.file }} up --exit-code-from dialer --abort-on-container-exit
 
   integration-tests:
     needs: build-images
