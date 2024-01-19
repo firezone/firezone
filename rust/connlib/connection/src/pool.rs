@@ -427,14 +427,18 @@ where
             if let Some(transmit) = conn.agent.poll_transmit() {
                 let relay = SocketAddr::new(transmit.source.ip(), 3478); // TODO: Don't hardcode this.
 
-                if let Some(transmit) = maybe_send_via_channel(
+                let transmit = encode_as_channel_data(
                     relay,
                     transmit.destination,
                     &transmit.contents,
                     &self.allocations,
-                ) {
-                    return Some(transmit);
-                }
+                )
+                .unwrap_or(Transmit {
+                    dst: transmit.destination,
+                    payload: transmit.contents.into(),
+                });
+
+                return Some(transmit);
             }
         }
 
@@ -570,26 +574,24 @@ where
     }
 }
 
-fn maybe_send_via_channel(
-    maybe_relay: SocketAddr,
+/// Wraps the message as a channel data message via the relay, iff:
+///
+/// - `relay` is in fact a relay
+/// - We have an allocation on the relay
+/// - There is a channel bound to the provided peer
+fn encode_as_channel_data(
+    relay: SocketAddr,
     dest: SocketAddr,
     contents: &[u8],
     allocations: &HashMap<SocketAddr, Allocation>,
 ) -> Option<Transmit> {
-    match allocations.get(&maybe_relay) {
-        Some(allocation) => {
-            let c = allocation.channel_to_peer(dest)?;
+    let allocation = allocations.get(&relay)?;
+    let c = allocation.channel_to_peer(dest)?;
 
-            Some(Transmit {
-                dst: maybe_relay,
-                payload: crate::channel_data::encode(c, contents),
-            })
-        }
-        None => Some(Transmit {
-            dst: dest,
-            payload: contents.into(),
-        }),
-    }
+    Some(Transmit {
+        dst: relay,
+        payload: crate::channel_data::encode(c, contents),
+    })
 }
 
 impl<TId> ConnectionPool<Client, TId>
@@ -972,21 +974,7 @@ impl Connection {
                 payload: message.to_vec(),
             }),
             RemoteSocket::Relay { relay, dest: peer } => {
-                let Some(allocation) = allocations.get(&relay) else {
-                    tracing::warn!(%relay, "No allocation");
-                    return None;
-                };
-                let Some(channel) = allocation.channel_to_peer(peer) else {
-                    tracing::warn!(%peer, "No channel");
-                    return None;
-                };
-
-                let payload = crate::channel_data::encode(channel, message);
-
-                Some(Transmit {
-                    dst: relay,
-                    payload,
-                })
+                encode_as_channel_data(relay, peer, message, allocations)
             }
         }
     }
