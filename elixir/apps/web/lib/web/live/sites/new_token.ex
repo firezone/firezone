@@ -41,11 +41,10 @@ defmodule Web.Sites.NewToken do
         Deploy a new Gateway
       </:title>
       <:help>
-        Gateways require outbound access to <code
-          class="text-sm bg-neutral-600 text-white px-1 py-0.5 rounded"
-          phx-no-format
-        >api.firezone.dev:443</code> only. <strong>No inbound firewall rules</strong>
-        are required or recommended.
+        Gateways require egress connectivity to the control plane API and relay servers.
+        <strong>No ingress firewall rules</strong> are required or recommended. See our <.link
+          href="https://www.firezone.dev/kb/deploy/gateways#firewall-considerations?utm_source=product"
+        class=[link_style()]>deploy guide</.link> for more information.
       </:help>
       <:help>
         <.link
