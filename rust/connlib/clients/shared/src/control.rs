@@ -58,7 +58,6 @@ fn effective_dns_servers(
 
     let mut dns_servers = default_resolvers
         .into_iter()
-        // TODO: This filter should be any ip in the dns sentinel range
         .filter(|ip| !IpNetwork::from_str(DNS_SENTINELS_V4).unwrap().contains(*ip))
         .filter(|ip| !IpNetwork::from_str(DNS_SENTINELS_V6).unwrap().contains(*ip))
         .peekable();
