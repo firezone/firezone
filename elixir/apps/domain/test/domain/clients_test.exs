@@ -459,6 +459,21 @@ defmodule Domain.ClientsTest do
       assert {:ok, _client} = upsert_client(attrs, subject)
     end
 
+    test "allows an actor to have multiple devices with the same name", %{
+      admin_subject: subject
+    } do
+      name = Ecto.UUID.generate()
+
+      attrs = Fixtures.Clients.client_attrs(name: name)
+      assert {:ok, client1} = upsert_client(attrs, subject)
+
+      attrs = Fixtures.Clients.client_attrs(name: name)
+      assert {:ok, client2} = upsert_client(attrs, subject)
+
+      assert client1.name == client2.name
+      assert client1.id != client2.id
+    end
+
     test "allows service account to create a client for self", %{account: account} do
       actor = Fixtures.Actors.create_actor(type: :service_account, account: account)
       subject = Fixtures.Auth.create_subject(account: account, actor: actor)
