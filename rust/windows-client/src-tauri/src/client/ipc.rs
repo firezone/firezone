@@ -26,11 +26,21 @@ use windows::Win32::{
 
 #[derive(clap::Subcommand)]
 pub enum Subcommand {
-    Manager { pipe_id: String },
-    Worker { pipe_id: String },
+    Manager {
+        pipe_id: String,
+    },
+    Worker {
+        pipe_id: String,
+    },
 
-    LeakManager { pipe_id: String },
-    LeakWorker { pipe_id: String },
+    LeakManager {
+        #[arg(long, action = clap::ArgAction::Set)]
+        enable_protection: bool,
+        pipe_id: String,
+    },
+    LeakWorker {
+        pipe_id: String,
+    },
 }
 
 pub fn test_subcommand(cmd: Option<Subcommand>) -> Result<()> {
@@ -40,12 +50,16 @@ pub fn test_subcommand(cmd: Option<Subcommand>) -> Result<()> {
         match cmd {
             None => {
                 test_happy_path().await?;
-                test_leak().await?;
+                test_leak(true).await?;
+                test_leak(false).await?;
                 Ok(())
             }
             Some(Subcommand::Manager { pipe_id }) => test_manager_process(pipe_id).await,
             Some(Subcommand::Worker { pipe_id }) => test_worker_process(pipe_id).await,
-            Some(Subcommand::LeakManager { pipe_id }) => leak_manager(pipe_id),
+            Some(Subcommand::LeakManager {
+                enable_protection,
+                pipe_id,
+            }) => leak_manager(pipe_id, enable_protection),
             Some(Subcommand::LeakWorker { pipe_id }) => leak_worker(pipe_id).await,
         }
     })?;
@@ -129,9 +143,17 @@ async fn test_worker_process(pipe_id: String) -> Result<()> {
 /// - [Chromium example](https://source.chromium.org/chromium/chromium/src/+/main:base/process/launch_win.cc;l=421;drc=b7d560c40ceb5283dba3e3d305abd9e2e7e926cd)
 /// - [MSDN docs](https://learn.microsoft.com/en-us/windows/win32/api/jobapi2/nf-jobapi2-assignprocesstojobobject)
 /// - [windows-rs docs](https://microsoft.github.io/windows-docs-rs/doc/windows/Win32/System/JobObjects/fn.AssignProcessToJobObject.html)
-async fn test_leak() -> Result<()> {
+async fn test_leak(enable_protection: bool) -> Result<()> {
     let (server, pipe_id) = UnconnectedServer::new()?;
-    let mut manager = SubcommandChild::new(&["debug", "test-ipc", "leak-manager", &pipe_id])?;
+    let args = [
+        "debug",
+        "test-ipc",
+        "leak-manager",
+        "--enable-protection",
+        &enable_protection.to_string(),
+        &pipe_id,
+    ];
+    let mut manager = SubcommandChild::new(&args)?;
     let mut server = timeout(Duration::from_secs(5), server.accept()).await??;
     tracing::debug!("Harness accepted connection from Worker");
 
@@ -155,19 +177,31 @@ async fn test_leak() -> Result<()> {
         }
     }
 
-    assert!(
-        server.request(Request::AwaitCallback).await.is_err(),
-        "worker shouldn't be able to respond here"
-    );
+    if enable_protection {
+        assert!(
+            server.request(Request::AwaitCallback).await.is_err(),
+            "worker shouldn't be able to respond here, it should have stopped when the manager stopped"
+        );
+        tracing::info!("enabling leak protection worked");
+    } else {
+        assert!(
+            server.request(Request::AwaitCallback).await.is_ok(),
+            "worker shouldn still respond here, this failure means the test is invalid"
+        );
+        tracing::info!("not enabling leak protection worked");
+    }
     Ok(())
 }
 
-fn leak_manager(pipe_id: String) -> Result<()> {
+fn leak_manager(pipe_id: String, enable_protection: bool) -> Result<()> {
     let leak_guard = LeakGuard::new()?;
 
     let worker = SubcommandChild::new(&["debug", "test-ipc", "leak-worker", &pipe_id])?;
-    // If you comment out this line the test should fail since the worker will keep running.
-    leak_guard.add_process(&worker.process)?;
+
+    if enable_protection {
+        leak_guard.add_process(&worker.process)?;
+    }
+
     tracing::debug!("Manager set up leak protection, waiting for SIGKILL");
     loop {
         std::thread::park();
