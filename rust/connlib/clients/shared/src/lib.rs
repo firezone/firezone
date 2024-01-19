@@ -12,6 +12,7 @@ use messages::IngressMessages;
 use messages::Messages;
 use messages::ReplyMessages;
 use secrecy::{Secret, SecretString};
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::{Interval, MissedTickBehavior};
@@ -172,7 +173,7 @@ where
                 tunnel: Arc::new(tunnel),
                 phoenix_channel: connection.sender_with_topic("client".to_owned()),
                 tunnel_init: Mutex::new(false),
-                fallback_resolver: parking_lot::Mutex::new(None),
+                fallback_resolver: parking_lot::Mutex::new(HashMap::new()),
             };
 
             tokio::spawn({

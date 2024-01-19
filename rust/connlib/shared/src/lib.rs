@@ -15,13 +15,15 @@ pub use error::ConnlibError as Error;
 pub use error::Result;
 
 use boringtun::x25519::{PublicKey, StaticSecret};
+use ip_network::Ipv4Network;
+use ip_network::Ipv6Network;
 use messages::Key;
 use ring::digest::{Context, SHA256};
 use secrecy::{ExposeSecret, SecretString};
+use std::net::IpAddr;
 use std::net::Ipv4Addr;
+use std::net::Ipv6Addr;
 use url::Url;
-
-pub const DNS_SENTINEL: Ipv4Addr = Ipv4Addr::new(100, 100, 111, 1);
 
 pub type Dname = domain::base::Dname<Vec<u8>>;
 
@@ -73,6 +75,35 @@ pub fn login_url(
 pub enum Mode {
     Client,
     Gateway,
+}
+
+pub struct IpProvider {
+    ipv4: Box<dyn Iterator<Item = Ipv4Addr> + Send + Sync>,
+    ipv6: Box<dyn Iterator<Item = Ipv6Addr> + Send + Sync>,
+}
+
+impl IpProvider {
+    pub fn new(ipv4: Ipv4Network, ipv6: Ipv6Network) -> Self {
+        Self {
+            ipv4: Box::new(ipv4.hosts()),
+            ipv6: Box::new(ipv6.subnets_with_prefix(128).map(|ip| ip.network_address())),
+        }
+    }
+
+    pub fn get_proxy_ip_for(&mut self, ip: &IpAddr) -> Option<IpAddr> {
+        let proxy_ip = match ip {
+            IpAddr::V4(_) => self.ipv4.next().map(Into::into),
+            IpAddr::V6(_) => self.ipv6.next().map(Into::into),
+        };
+
+        if proxy_ip.is_none() {
+            // TODO: we might want to make the iterator cyclic or another strategy to prevent ip exhaustion
+            // this might happen in ipv4 if tokens are too long lived.
+            tracing::error!("IP exhaustion: Please reset your client");
+        }
+
+        proxy_ip
+    }
 }
 
 pub fn get_user_agent(os_version_override: Option<String>) -> String {

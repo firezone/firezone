@@ -5,7 +5,7 @@ interface ConnlibCallback {
     fun onSetInterfaceConfig(
         tunnelAddressIPv4: String,
         tunnelAddressIPv6: String,
-        dnsAddress: String,
+        dnsAddresses: String,
     ): Int
 
     fun onTunnelReady(): Boolean

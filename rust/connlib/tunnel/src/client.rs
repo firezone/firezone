@@ -3,29 +3,30 @@ use crate::device_channel::{Device, Packet};
 use crate::ip_packet::{IpPacket, MutableIpPacket};
 use crate::peer::PacketTransformClient;
 use crate::{
-    dns, get_v4, get_v6, ConnectedPeer, DnsQuery, Event, PeerConfig, RoleState, Tunnel,
-    DNS_QUERIES_QUEUE_SIZE, ICE_GATHERING_TIMEOUT_SECONDS, MAX_CONCURRENT_ICE_GATHERING,
+    dns, ConnectedPeer, DnsQuery, Event, PeerConfig, RoleState, Tunnel, DNS_QUERIES_QUEUE_SIZE,
+    ICE_GATHERING_TIMEOUT_SECONDS, MAX_CONCURRENT_ICE_GATHERING,
 };
+use bimap::BiMap;
 use boringtun::x25519::{PublicKey, StaticSecret};
 use connlib_shared::error::{ConnlibError as Error, ConnlibError};
 use connlib_shared::messages::{
     DnsServer, GatewayId, Interface as InterfaceConfig, Key, ResourceDescription,
     ResourceDescriptionCidr, ResourceDescriptionDns, ResourceId, ReuseConnection, SecretKey,
 };
-use connlib_shared::{Callbacks, Dname, DNS_SENTINEL};
+use connlib_shared::{Callbacks, Dname, IpProvider};
 use domain::base::Rtype;
 use futures::channel::mpsc::Receiver;
 use futures::stream;
 use futures_bounded::{FuturesMap, PushError, StreamMap};
 use hickory_resolver::lookup::Lookup;
-use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
+use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
 use itertools::Itertools;
 
 use rand_core::OsRng;
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::net::IpAddr;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
@@ -109,49 +110,40 @@ where
         Ok(())
     }
 
-    /// Sets the dns server.
-    pub fn set_upstream_dns(&self, upstream_dns: &[DnsServer]) {
-        let upstream_dns: HashSet<_> = upstream_dns
-            .iter()
-            .map(|dns| {
-                let DnsServer::IpPort(dns) = dns;
-                dns.address
-            })
-            .collect();
-
-        // TODO: assuming single dns
-        let Some(upstream_dns_srv) = upstream_dns.iter().next().cloned() else {
-            return;
-        };
-
-        self.role_state.lock().upstream_dns = upstream_dns;
-
-        self.role_state
-            .lock()
-            .peers_by_ip
-            .iter()
-            .for_each(|p| p.1.inner.transform.set_dns(upstream_dns_srv.ip()));
-    }
-
     /// Sets the interface configuration and starts background tasks.
     #[tracing::instrument(level = "trace", skip(self))]
-    pub fn set_interface(&self, config: &InterfaceConfig) -> connlib_shared::Result<()> {
-        let device = Arc::new(Device::new(config, self.callbacks())?);
+    pub fn set_interface(
+        &self,
+        config: &InterfaceConfig,
+        dns_mapping: BiMap<IpAddr, DnsServer>,
+    ) -> connlib_shared::Result<()> {
+        let device = Arc::new(Device::new(
+            config,
+            // We can just sort in here because sentinel ips are created in order
+            dns_mapping.left_values().copied().sorted().collect(),
+            self.callbacks(),
+        )?);
 
         self.device.store(Some(device.clone()));
         self.no_device_waker.wake();
 
-        // TODO: the requirement for the DNS_SENTINEL means you NEED ipv4 stack
-        // we are trying to support ipv4 and ipv6, so we should have an ipv6 dns sentinel
-        // alternative.
-        self.add_route(DNS_SENTINEL.into())?;
-        // Note: I'm just assuming this needs to succeed since we already require ipv4 stack due to the dns sentinel
-        // TODO: change me when we don't require ipv4
-        self.add_route(IPV4_RESOURCES.parse().unwrap())?;
-
-        if let Err(e) = self.add_route(IPV6_RESOURCES.parse().unwrap()) {
-            tracing::warn!(err = ?e, "ipv6 not supported");
+        let mut errs = Vec::new();
+        for sentinel in dns_mapping.left_values() {
+            if let Err(e) = self.add_route((*sentinel).into()) {
+                tracing::warn!(err = ?e, %sentinel , "couldn't add route for sentinel");
+                errs.push(e);
+            }
         }
+
+        if errs.len() == dns_mapping.left_values().len() && dns_mapping.left_values().len() > 0 {
+            return Err(errs.pop().unwrap());
+        }
+
+        self.role_state.lock().dns_mapping = dns_mapping;
+
+        let res_v4 = self.add_route(IPV4_RESOURCES.parse().unwrap());
+        let res_v6 = self.add_route(IPV6_RESOURCES.parse().unwrap());
+        res_v4.or(res_v6)?;
 
         self.callbacks.on_tunnel_ready()?;
 
@@ -224,7 +216,7 @@ pub struct ClientState {
 
     refresh_dns_timer: Interval,
 
-    pub upstream_dns: HashSet<SocketAddr>,
+    pub dns_mapping: BiMap<IpAddr, DnsServer>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -247,6 +239,7 @@ impl ClientState {
         match dns::parse(
             &self.dns_resources,
             &self.dns_resources_internal_ips,
+            &self.dns_mapping,
             packet.as_immutable(),
         ) {
             Some(dns::ResolveStrategy::LocalResponse(query)) => Ok(Some(query)),
@@ -254,7 +247,8 @@ impl ClientState {
                 // There's an edge case here, where the resolver's ip has been resolved before as
                 // a dns resource... we will ignore that weird case for now.
                 // Assuming a single upstream dns until #3123 lands
-                if let Some(upstream_dns) = self.upstream_dns.iter().next() {
+                if let Some(upstream_dns) = self.dns_mapping.get_by_left(&query.query.destination())
+                {
                     if self
                         .cidr_resources
                         .longest_match(upstream_dns.ip())
@@ -629,75 +623,6 @@ impl ClientState {
             tracing::warn!("Too many DNS queries, dropping new ones");
         }
     }
-
-    pub fn get_or_assign_ip(
-        &mut self,
-        resource: &DnsResource,
-        addrs: &[IpAddr],
-    ) -> Vec<(IpAddr, IpAddr)> {
-        let internal_ips = self
-            .dns_resources_internal_ips
-            .get(resource)
-            .cloned()
-            .unwrap_or(HashSet::new());
-        // We collect here to eagerly filter so that `next` is not called more times than needed with the ip_provider
-        // that could cause an ip exhaustion.
-        // This is needed to get the length, since even if zip is run, only until addr_v4 is None, `next` is still being called in both elements
-        // so ip_provider consumes an extra ip and this could in the long-run consume all ips since this function is also called to refresh ip allocations..
-        let addr_v4 = addrs.iter().copied().filter(IpAddr::is_ipv4).collect_vec();
-        let len = addr_v4.len();
-        let internal_ips_v4 = internal_ips
-            .iter()
-            .copied()
-            .filter_map(get_v4)
-            .chain(&mut self.ip_provider.ipv4)
-            .map(Into::<IpAddr>::into)
-            .zip(addr_v4.clone())
-            .take(len);
-
-        // Same note as for ipv4, though an exhaustion is not a realistic scenario.
-        let addr_v6 = addrs.iter().copied().filter(IpAddr::is_ipv6).collect_vec();
-        let len = addr_v6.len();
-        let internal_ips_v6 = internal_ips
-            .iter()
-            .copied()
-            .filter_map(get_v6)
-            .chain(&mut self.ip_provider.ipv6)
-            .map(Into::<IpAddr>::into)
-            .zip(addr_v6)
-            .take(len);
-
-        internal_ips_v4.chain(internal_ips_v6).collect()
-    }
-}
-
-pub struct IpProvider {
-    ipv4: Box<dyn Iterator<Item = Ipv4Addr> + Send + Sync>,
-    ipv6: Box<dyn Iterator<Item = Ipv6Addr> + Send + Sync>,
-}
-
-impl IpProvider {
-    fn new(ipv4: Ipv4Network, ipv6: Ipv6Network) -> Self {
-        Self {
-            ipv4: Box::new(ipv4.hosts()),
-            ipv6: Box::new(ipv6.subnets_with_prefix(128).map(|ip| ip.network_address())),
-        }
-    }
-
-    pub fn get_proxy_ip_for(&mut self, ip: &IpAddr) -> Option<IpAddr> {
-        let proxy_ip = match ip {
-            IpAddr::V4(_) => self.ipv4.next().map(Into::into),
-            IpAddr::V6(_) => self.ipv6.next().map(Into::into),
-        };
-
-        if proxy_ip.is_none() {
-            // TODO: we might want to make the iterator cyclic or another strategy to prevent ip exhaustion
-            // this might happen in ipv4 if tokens are too long lived.
-            tracing::error!("IP exhaustion: Please reset your client");
-        }
-
-        proxy_ip
-    }
 }
 
 impl Default for ClientState {
@@ -736,7 +661,7 @@ impl Default for ClientState {
             peers_by_ip: IpNetworkTable::new(),
             deferred_dns_queries: Default::default(),
             refresh_dns_timer: interval,
-            upstream_dns: Default::default(),
+            dns_mapping: Default::default(),
         }
     }
 }

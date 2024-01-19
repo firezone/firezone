@@ -10,6 +10,7 @@ use libc::{
 use netlink_packet_route::RT_SCOPE_UNIVERSE;
 use parking_lot::Mutex;
 use rtnetlink::{new_connection, Error::NetlinkError, Handle};
+use std::net::IpAddr;
 use std::task::{Context, Poll};
 use std::{
     fmt, io,
@@ -80,7 +81,7 @@ impl Tun {
         utils::poll_raw_fd(&self.fd, |fd| read(fd, buf), cx)
     }
 
-    pub fn new(config: &InterfaceConfig, _: &impl Callbacks) -> Result<Self> {
+    pub fn new(config: &InterfaceConfig, _: Vec<IpAddr>, _: &impl Callbacks) -> Result<Self> {
         let fd = match unsafe { open(TUN_FILE.as_ptr() as _, O_RDWR) } {
             -1 => return Err(get_last_error()),
             fd => fd,
