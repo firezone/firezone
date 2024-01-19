@@ -66,7 +66,7 @@ class TunnelService : VpnService() {
             override fun onSetInterfaceConfig(
                 tunnelAddressIPv4: String,
                 tunnelAddressIPv6: String,
-                dnsAddress: String,
+                dnsAddresses: String,
             ): Int {
                 Log.d(
                     TAG,
@@ -74,17 +74,19 @@ class TunnelService : VpnService() {
                     onSetInterfaceConfig:
                     [IPv4:$tunnelAddressIPv4]
                     [IPv6:$tunnelAddressIPv6]
-                    [dns:$dnsAddress]
+                    [dns:$dnsAddresses]
                     """.trimIndent(),
                 )
 
-                tunnelRepository.setConfig(
-                    TunnelConfig(
-                        tunnelAddressIPv4,
-                        tunnelAddressIPv6,
-                        dnsAddress,
-                    ),
-                )
+                moshi.adapter<List<String>>().fromJson(dnsAddresses)?.let { dns ->
+                    tunnelRepository.setConfig(
+                        TunnelConfig(
+                            tunnelAddressIPv4,
+                            tunnelAddressIPv6,
+                            dns,
+                        ),
+                    )
+                }
 
                 // TODO: throw error if failed to establish VpnService
                 val fd = buildVpnService().establish()?.detachFd() ?: -1
@@ -125,7 +127,8 @@ class TunnelService : VpnService() {
             }
 
             override fun getSystemDefaultResolvers(): Array<ByteArray> {
-                return DnsServersDetector(this@TunnelService).servers.map { it.address }.toTypedArray()
+                return DnsServersDetector(this@TunnelService).servers.map { it.address }
+                    .toTypedArray()
             }
 
             override fun onDisconnect(error: String?): Boolean {
@@ -253,7 +256,9 @@ class TunnelService : VpnService() {
                 addAddress(tunnel.config.tunnelAddressIPv4, 32)
                 addAddress(tunnel.config.tunnelAddressIPv6, 128)
 
-                addDnsServer(tunnel.config.dnsAddress)
+                tunnel.config.dnsAddresses.forEach { dns ->
+                    addDnsServer(dns)
+                }
 
                 tunnel.routes.forEach {
                     addRoute(it.address, it.prefix)
