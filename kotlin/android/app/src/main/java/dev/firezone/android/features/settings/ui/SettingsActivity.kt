@@ -39,11 +39,6 @@ internal class SettingsActivity : AppCompatActivity() {
             viewPager.adapter = adapter
 
             TabLayoutMediator(tabLayout, viewPager) { tab, position ->
-                tab.text = when (position) {
-                    0 -> "Advanced"
-                    1 -> "Logs"
-                    else -> throw IllegalArgumentException("Invalid tab position: $position")
-                }
                 when (position) {
                     0 -> {
                         tab.setIcon(R.drawable.rounded_discover_tune_black_24dp)
@@ -54,9 +49,10 @@ internal class SettingsActivity : AppCompatActivity() {
                         tab.setIcon(R.drawable.rounded_description_black_24dp)
                         tab.setText("Logs")
                     }
+
+                    else -> throw IllegalArgumentException("Invalid tab position: $position")
                 }
             }.attach()
-
 
             btSaveSettings.setOnClickListener {
                 viewModel.onSaveSettingsCompleted()
