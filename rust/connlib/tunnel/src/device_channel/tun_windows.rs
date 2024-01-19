@@ -1,8 +1,8 @@
-use connlib_shared::{messages::Interface as InterfaceConfig, Result, DNS_SENTINEL};
+use connlib_shared::{messages::Interface as InterfaceConfig, Result};
 use ip_network::IpNetwork;
 use std::{
     io,
-    net::{SocketAddrV4, SocketAddrV6},
+    net::{SocketAddrV4, SocketAddrV6, IpAddr},
     os::windows::process::CommandExt,
     process::{Command, Stdio},
     str::FromStr,
@@ -120,10 +120,10 @@ impl Tun {
         Command::new("powershell")
             .creation_flags(CREATE_NO_WINDOW)
             .arg("-Command")
-            .arg(format!(
-                r#"Set-DnsClientServerAddress -InterfaceIndex {iface_idx} -ServerAddresses("{}")"#,
-                dns_config.iter().map(String::from).join(",")
-            ))
+            .arg(dbg!(format!(
+                "Set-DnsClientServerAddress -InterfaceIndex {iface_idx} -ServerAddresses({})",
+                dns_config.iter().map(|ip| format!("\"{ip}\"")).collect::<Vec<_>>().join(",")
+            )))
             .stdout(Stdio::null())
             .status()?;
 
