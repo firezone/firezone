@@ -1,6 +1,6 @@
 use async_compression::tokio::bufread::GzipEncoder;
-use connlib_shared::control::ChannelError;
 use bimap::BiMap;
+use connlib_shared::control::ChannelError;
 use connlib_shared::control::KnownError;
 use connlib_shared::control::Reason;
 use connlib_shared::messages::{DnsServer, GatewayResponse, IpDnsServer};

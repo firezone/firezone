@@ -2,7 +2,7 @@ use connlib_shared::{messages::Interface as InterfaceConfig, Result};
 use ip_network::IpNetwork;
 use std::{
     io,
-    net::{SocketAddrV4, SocketAddrV6, IpAddr},
+    net::{IpAddr, SocketAddrV4, SocketAddrV6},
     os::windows::process::CommandExt,
     process::{Command, Stdio},
     str::FromStr,
@@ -122,7 +122,11 @@ impl Tun {
             .arg("-Command")
             .arg(format!(
                 "Set-DnsClientServerAddress -InterfaceIndex {iface_idx} -ServerAddresses({})",
-                dns_config.iter().map(|ip| format!("\"{ip}\"")).collect::<Vec<_>>().join(",")
+                dns_config
+                    .iter()
+                    .map(|ip| format!("\"{ip}\""))
+                    .collect::<Vec<_>>()
+                    .join(",")
             ))
             .stdout(Stdio::null())
             .status()?;
