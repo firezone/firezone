@@ -78,10 +78,6 @@ class TunnelService : VpnService() {
                     """.trimIndent(),
                 )
 
-                // moshi.adapter<List<Resource>>().fromJson(resourceListJSON)?.let { resources ->
-                //     tunnelRepository.setResources(resources)
-                // }
-
                 moshi.adapter<List<String>>().fromJson(dnsAddresses)?.let {dns ->
                     tunnelRepository.setConfig(
                         TunnelConfig(
