@@ -3,7 +3,7 @@
 
 // TODO: `git grep` for unwraps before 1.0, especially this gui module
 
-use crate::client::{self, deep_link, AppLocalDataDir};
+use crate::client::{self, deep_link, AppLocalDataDir, BUNDLE_ID};
 use anyhow::{anyhow, bail, Context, Result};
 use arc_swap::ArcSwap;
 use client::{
@@ -54,17 +54,6 @@ impl Managed {
     pub async fn fault_msleep(&self, _millis: u64) {}
 }
 
-/// Bundle ID / App ID that we use to distinguish ourself from other programs on the system
-///
-/// e.g. In ProgramData and AppData we use this to name our subdirectories for configs and data,
-/// and Windows may use it to track things like the MSI installer, notification titles,
-/// deep link registration, etc.
-///
-/// This should be identical to the `tauri.bundle.identifier` over in `tauri.conf.json`,
-/// but sometimes I need to use this before Tauri has booted up, or in a place where
-/// getting the Tauri app handle would be awkward.
-pub const BUNDLE_ID: &str = "dev.firezone.client";
-
 /// Runs the Tauri GUI and returns on exit or unrecoverable error
 pub(crate) fn run(params: client::GuiParams) -> Result<()> {
     // Change to data dir so the file logger will write there and not in System32 if we're launching from an app link
@@ -110,18 +99,17 @@ pub(crate) fn run(params: client::GuiParams) -> Result<()> {
         });
     }
 
-    // Make sure we're single-instance
-    // We register our deep links to call the `open-deep-link` subcommand,
-    // so if we're at this point, we know we've been launched manually
-    let server = deep_link::Server::new(BUNDLE_ID)?;
-
-    // We know now we're the only instance on the computer, so register our exe
-    // to handle deep links
-    deep_link::register(BUNDLE_ID)?;
-
     let (ctlr_tx, ctlr_rx) = mpsc::channel(5);
     let notify_controller = Arc::new(Notify::new());
 
+    // Make sure we're single-instance
+    // We register our deep links to call the `open-deep-link` subcommand,
+    // so if we're at this point, we know we've been launched manually
+    let server = deep_link::Server::new()?;
+
+    // We know now we're the only instance on the computer, so register our exe
+    // to handle deep links
+    deep_link::register()?;
     tokio::spawn(accept_deep_links(server, ctlr_tx.clone()));
 
     let managed = Managed {
@@ -226,7 +214,7 @@ async fn accept_deep_links(mut server: deep_link::Server, ctlr_tx: CtlrTx) -> Re
                 .ok();
         }
         // We re-create the named pipe server every time we get a link, because of an oddity in the Windows API.
-        server = deep_link::Server::new(BUNDLE_ID)?;
+        server = deep_link::Server::new()?;
     }
 }
 

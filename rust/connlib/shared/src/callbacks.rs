@@ -21,7 +21,7 @@ pub trait Callbacks: Clone + Send + Sync {
         &self,
         _: Ipv4Addr,
         _: Ipv6Addr,
-        _: Ipv4Addr,
+        _: Vec<IpAddr>,
     ) -> Result<Option<RawFd>, Self::Error> {
         Ok(None)
     }

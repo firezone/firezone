@@ -1,11 +1,15 @@
 use async_compression::tokio::bufread::GzipEncoder;
+use bimap::BiMap;
 use connlib_shared::control::ChannelError;
 use connlib_shared::control::KnownError;
 use connlib_shared::control::Reason;
 use connlib_shared::messages::{DnsServer, GatewayResponse, IpDnsServer};
-use connlib_shared::DNS_SENTINEL;
+use connlib_shared::IpProvider;
+use ip_network::IpNetwork;
+use std::collections::HashMap;
 use std::net::IpAddr;
 use std::path::PathBuf;
+use std::str::FromStr;
 use std::{io, sync::Arc};
 
 use crate::messages::{
@@ -30,6 +34,9 @@ use tokio_util::codec::{BytesCodec, FramedRead};
 use url::Url;
 
 const DNS_PORT: u16 = 53;
+const DNS_SENTINELS_V4: &str = "100.100.111.0/24";
+const DNS_SENTINELS_V6: &str = "fd00:2021:1111:8000:100:100:111:0/120";
+
 pub struct ControlPlane<CB: Callbacks> {
     pub tunnel: Arc<Tunnel<CB, ClientState>>,
     pub phoenix_channel: PhoenixSenderWithTopic,
@@ -38,50 +45,70 @@ pub struct ControlPlane<CB: Callbacks> {
     // also, in platforms with split DNS and no configured upstream dns this will be None.
     //
     // We could still initialize the resolver with no nameservers in those platforms...
-    pub fallback_resolver: parking_lot::Mutex<Option<TokioAsyncResolver>>,
+    pub fallback_resolver: parking_lot::Mutex<HashMap<IpAddr, TokioAsyncResolver>>,
 }
 
-fn create_resolver(
+fn effective_dns_servers(
     upstream_dns: Vec<DnsServer>,
-    callbacks: &impl Callbacks,
-) -> Option<TokioAsyncResolver> {
-    let dns_servers = if upstream_dns.is_empty() {
-        let Ok(Some(dns_servers)) = callbacks.get_system_default_resolvers() else {
-            return None;
-        };
-        let mut dns_servers = dns_servers
-            .into_iter()
-            .filter(|ip| ip != &IpAddr::from(DNS_SENTINEL))
-            .peekable();
-        if dns_servers.peek().is_none() {
-            tracing::error!("No system default DNS servers available! Can't initialize resolver. DNS will be broken.");
-            return None;
-        }
-
-        dns_servers
-            .map(|ip| {
-                DnsServer::IpPort(IpDnsServer {
-                    address: (ip, DNS_PORT).into(),
-                })
-            })
-            .collect()
-    } else {
-        upstream_dns
-    };
-
-    let mut resolver_config = ResolverConfig::new();
-    for srv in dns_servers.iter() {
-        let name_server = match srv {
-            DnsServer::IpPort(srv) => NameServerConfig::new(srv.address, Protocol::Udp),
-        };
-
-        resolver_config.add_name_server(name_server);
+    default_resolvers: Vec<IpAddr>,
+) -> Vec<DnsServer> {
+    if !upstream_dns.is_empty() {
+        return upstream_dns;
     }
 
-    Some(TokioAsyncResolver::tokio(
-        resolver_config,
-        Default::default(),
-    ))
+    let mut dns_servers = default_resolvers
+        .into_iter()
+        .filter(|ip| !IpNetwork::from_str(DNS_SENTINELS_V4).unwrap().contains(*ip))
+        .filter(|ip| !IpNetwork::from_str(DNS_SENTINELS_V6).unwrap().contains(*ip))
+        .peekable();
+
+    if dns_servers.peek().is_none() {
+        tracing::error!("No system default DNS servers available! Can't initialize resolver. DNS will be broken.");
+        return Vec::new();
+    }
+
+    dns_servers
+        .map(|ip| {
+            DnsServer::IpPort(IpDnsServer {
+                address: (ip, DNS_PORT).into(),
+            })
+        })
+        .collect()
+}
+
+fn create_resolvers(
+    sentinel_mapping: BiMap<IpAddr, DnsServer>,
+) -> HashMap<IpAddr, TokioAsyncResolver> {
+    sentinel_mapping
+        .iter()
+        .map(|(sentinel, srv)| {
+            let mut resolver_config = ResolverConfig::new();
+            resolver_config.add_name_server(NameServerConfig::new(srv.address(), Protocol::Udp));
+            (
+                *sentinel,
+                TokioAsyncResolver::tokio(resolver_config, Default::default()),
+            )
+        })
+        .collect()
+}
+
+fn sentinel_dns_mapping(dns: &[DnsServer]) -> BiMap<IpAddr, DnsServer> {
+    let mut ip_provider = IpProvider::new(
+        DNS_SENTINELS_V4.parse().unwrap(),
+        DNS_SENTINELS_V6.parse().unwrap(),
+    );
+
+    dns.iter()
+        .cloned()
+        .map(|i| {
+            (
+                ip_provider
+                    .get_proxy_ip_for(&i.ip())
+                    .expect("We only support up to 256 IpV4 DNS servers and 256 IpV6 DNS servers"),
+                i,
+            )
+        })
+        .collect()
 }
 
 impl<CB: Callbacks + 'static> ControlPlane<CB> {
@@ -93,26 +120,41 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
             resources,
         }: InitClient,
     ) -> Result<()> {
+        let effective_dns_servers = effective_dns_servers(
+            interface.upstream_dns.clone(),
+            self.tunnel
+                .callbacks()
+                .get_system_default_resolvers()
+                .ok()
+                .flatten()
+                .unwrap_or_default(),
+        );
+
+        let sentinel_mapping = sentinel_dns_mapping(&effective_dns_servers);
+
         {
             let mut init = self.tunnel_init.lock().await;
             if !*init {
-                if let Err(e) = self.tunnel.set_interface(&interface) {
+                if let Err(e) = self
+                    .tunnel
+                    .set_interface(&interface, sentinel_mapping.clone())
+                {
                     tracing::error!(error = ?e, "Error initializing interface");
                     return Err(e);
                 } else {
                     *init = true;
                     tracing::info!("Firezone Started!");
                 }
+
+                for resource_description in resources {
+                    self.add_resource(resource_description);
+                }
+
+                // Note: watch out here we're holding 2 mutexes
+                *self.fallback_resolver.lock() = create_resolvers(sentinel_mapping);
             } else {
                 tracing::info!("Firezone reinitializated");
             }
-        }
-
-        self.tunnel.set_upstream_dns(&interface.upstream_dns);
-        *self.fallback_resolver.lock() =
-            create_resolver(interface.upstream_dns, self.tunnel.callbacks());
-        for resource_description in resources {
-            self.add_resource(resource_description);
         }
         Ok(())
     }
@@ -362,9 +404,15 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
             }
             Ok(firezone_tunnel::Event::DnsQuery(query)) => {
                 // Until we handle it better on a gateway-like eventloop, making sure not to block the loop
-                let Some(resolver) = self.fallback_resolver.lock().clone() else {
+                let Some(resolver) = self
+                    .fallback_resolver
+                    .lock()
+                    .get(&query.query.destination())
+                    .cloned()
+                else {
                     return;
                 };
+
                 let tunnel = self.tunnel.clone();
                 tokio::spawn(async move {
                     let response = resolver.lookup(&query.name, query.record_type).await;

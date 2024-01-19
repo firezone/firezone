@@ -14,5 +14,8 @@ mod client {
     }
 }
 
+/// Everything is hidden inside the `client` module so that we can exempt the
+/// Windows client from static analysis on other platforms where it would throw
+/// compile errors.
 #[cfg(target_os = "windows")]
 mod client;
