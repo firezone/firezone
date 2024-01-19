@@ -13,7 +13,6 @@
 	<string name="log_directory_size">Log directory size: %1$s</string>
 	<string name="clear_log_directory">Clear Log Directory</string>
 
-
 	<!-- Sign In -->
 	<string name="sign_in">Sign In</string>
 	<string name="settings">Settings</string>

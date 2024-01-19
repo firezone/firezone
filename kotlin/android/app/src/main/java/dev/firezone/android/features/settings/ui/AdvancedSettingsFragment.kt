@@ -6,20 +6,16 @@ import android.view.inputmethod.EditorInfo
 import androidx.core.widget.doOnTextChanged
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
-import androidx.fragment.app.viewModels
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.lifecycleScope
-import androidx.lifecycle.repeatOnLifecycle
 import dev.firezone.android.R
 import dev.firezone.android.databinding.FragmentSettingsAdvancedBinding
-import kotlinx.coroutines.launch
 
 class AdvancedSettingsFragment : Fragment(R.layout.fragment_settings_advanced) {
 
     private var _binding: FragmentSettingsAdvancedBinding? = null
-    private val binding get() = _binding!!
-    private val viewModel: SettingsViewModel by activityViewModels()
 
+    private val binding get() = _binding!!
+
+    private val viewModel: SettingsViewModel by activityViewModels()
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)

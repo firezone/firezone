@@ -2,22 +2,19 @@
 package dev.firezone.android.features.settings.ui
 
 import android.os.Bundle
-import android.view.inputmethod.EditorInfo
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.view.isVisible
-import androidx.core.widget.doOnTextChanged
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.viewpager2.adapter.FragmentStateAdapter
+import com.google.android.material.tabs.TabLayoutMediator
 import dagger.hilt.android.AndroidEntryPoint
+import dev.firezone.android.R
 import dev.firezone.android.databinding.ActivitySettingsBinding
 import kotlinx.coroutines.launch
-import com.google.android.material.tabs.TabLayoutMediator
-import dev.firezone.android.R
 
 @AndroidEntryPoint
 internal class SettingsActivity : AppCompatActivity() {
@@ -35,11 +32,10 @@ internal class SettingsActivity : AppCompatActivity() {
         viewModel.populateFieldsFromConfig()
     }
 
-    private fun setupViews()
-    {
+    private fun setupViews() {
         val adapter = SettingsPagerAdapter(this)
 
-        with (binding) {
+        with(binding) {
             viewPager.adapter = adapter
 
             TabLayoutMediator(tabLayout, viewPager) { tab, position ->
@@ -53,6 +49,7 @@ internal class SettingsActivity : AppCompatActivity() {
                         tab.setIcon(R.drawable.rounded_discover_tune_black_24dp)
                         tab.setText("Advanced")
                     }
+
                     1 -> {
                         tab.setIcon(R.drawable.rounded_description_black_24dp)
                         tab.setText("Logs")
@@ -88,7 +85,8 @@ internal class SettingsActivity : AppCompatActivity() {
         viewModel.onViewResume(this@SettingsActivity)
     }
 
-    private inner class SettingsPagerAdapter(activity: FragmentActivity) : FragmentStateAdapter(activity) {
+    private inner class SettingsPagerAdapter(activity: FragmentActivity) :
+        FragmentStateAdapter(activity) {
         override fun getItemCount(): Int = 2 // Two tabs
 
         override fun createFragment(position: Int): Fragment {
