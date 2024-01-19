@@ -42,9 +42,15 @@ defmodule Web.Sites.NewToken do
       </:title>
       <:help>
         Gateways require egress connectivity to the control plane API and relay servers.
-        <strong>No ingress firewall rules</strong> are required or recommended. See our <.link
+        <strong>No ingress firewall rules</strong>
+        are required or recommended. See our
+        <.link
           href="https://www.firezone.dev/kb/deploy/gateways#firewall-considerations?utm_source=product"
-        class=[link_style()]>deploy guide</.link> for more information.
+          class={link_style()}
+        >
+          deploy guide
+        </.link>
+        for more information.
       </:help>
       <:help>
         <.link
