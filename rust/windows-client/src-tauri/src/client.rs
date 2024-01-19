@@ -1,10 +1,8 @@
 use anyhow::Result;
-use clap::Parser;
-use cli::CliCommands as Cmd;
+use clap::{Args, Parser};
 use std::{os::windows::process::CommandExt, process::Command};
 
 mod auth;
-mod cli;
 mod crash_handling;
 mod debug_commands;
 mod deep_link;
@@ -69,7 +67,7 @@ const CREATE_NO_WINDOW: u32 = 0x08000000;
 /// In steady state, the only processes running will be the GUI and the crash handler.
 pub(crate) fn run() -> Result<()> {
     std::panic::set_hook(Box::new(tracing_panic::panic_hook));
-    let cli = cli::Cli::parse();
+    let cli = Cli::parse();
 
     match cli.command {
         None => {
@@ -119,6 +117,36 @@ pub(crate) fn run() -> Result<()> {
         Some(Cmd::OpenDeepLink(deep_link)) => debug_commands::open_deep_link(&deep_link.url),
         Some(Cmd::RegisterDeepLink) => debug_commands::register_deep_link(),
     }
+}
+
+#[derive(Parser)]
+#[command(author, version, about, long_about = None)]
+pub struct Cli {
+    #[command(subcommand)]
+    pub command: Option<Cmd>,
+    #[arg(long, hide = true)]
+    pub crash_on_purpose: bool,
+    #[arg(long, hide = true)]
+    pub inject_faults: bool,
+}
+
+#[derive(clap::Subcommand)]
+pub enum Cmd {
+    CrashHandlerServer,
+    Debug,
+    DebugCrash,
+    DebugHostname,
+    DebugNetworkChanges,
+    DebugPipeServer,
+    DebugWintun,
+    Elevated,
+    OpenDeepLink(DeepLink),
+    RegisterDeepLink,
+}
+
+#[derive(Args)]
+pub struct DeepLink {
+    pub url: url::Url,
 }
 
 #[cfg(test)]
