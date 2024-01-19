@@ -22,6 +22,7 @@ use windows::Win32::{
         SetInformationJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
         JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
     },
+    System::Pipes::GetNamedPipeClientProcessId,
 };
 
 #[derive(clap::Subcommand)]
@@ -155,6 +156,16 @@ async fn test_leak(enable_protection: bool) -> Result<()> {
     ];
     let mut manager = SubcommandChild::new(&args)?;
     let mut server = timeout(Duration::from_secs(5), server.accept()).await??;
+
+    {
+        let server_handle = server.pipe.as_handle();
+        let server_handle =
+            HANDLE(unsafe { server_handle.as_raw_handle().offset_from(std::ptr::null()) });
+        let mut client_pid = 0;
+        unsafe { GetNamedPipeClientProcessId(server_handle, &mut client_pid) }?;
+        tracing::info!("Actual pipe client PID = {client_pid}");
+    }
+
     tracing::debug!("Harness accepted connection from Worker");
 
     // Send a few requests to make sure the worker is connected and good
@@ -197,6 +208,7 @@ fn leak_manager(pipe_id: String, enable_protection: bool) -> Result<()> {
     let leak_guard = LeakGuard::new()?;
 
     let worker = SubcommandChild::new(&["debug", "test-ipc", "leak-worker", &pipe_id])?;
+    tracing::info!("Expected worker PID = {}", worker.process.id());
 
     if enable_protection {
         leak_guard.add_process(&worker.process)?;
@@ -421,7 +433,7 @@ impl LeakGuard {
     }
 
     pub fn add_process(&self, process: &std::process::Child) -> Result<()> {
-        // Process IDs are not the same as handles, so get a handle to the process.
+        // Process IDs are not the same as handles, so get our handle to the process.
         let process_handle = process.as_handle();
         // SAFETY: The docs say this is UB since the null pointer doesn't belong to the same allocated object as the handle.
         // I couldn't get `OpenProcess` to work, and I don't have any other way to convert the process ID to a handle safely.
