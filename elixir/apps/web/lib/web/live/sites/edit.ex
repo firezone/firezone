@@ -55,7 +55,9 @@ defmodule Web.Sites.Edit do
                       field={@form[:routing]}
                       value="managed"
                       label={pretty_print_routing(:managed)}
-                      checked={@form[:routing].value == :managed}
+                      checked={
+                        @form[:routing].value == :managed || @form[:routing].value == "managed"
+                      }
                       required
                     >
                       <.badge
@@ -78,7 +80,9 @@ defmodule Web.Sites.Edit do
                       field={@form[:routing]}
                       value="stun_only"
                       label={pretty_print_routing(:stun_only)}
-                      checked={@form[:routing].value == :stun_only}
+                      checked={
+                        @form[:routing].value == :stun_only || @form[:routing].value == "stun_only"
+                      }
                       required
                     />
                     <p class="ml-6 mb-4 text-sm text-neutral-500">

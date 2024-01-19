@@ -1,7 +1,7 @@
 //! CLI subcommands used to test features / dependencies before integrating
 //! them with the GUI, or to exercise features programmatically.
 
-use crate::client::cli::Cli;
+use crate::client::Cli;
 use anyhow::Result;
 use tokio::runtime::Runtime;
 use windows::Win32::System::Com::{CoInitializeEx, CoUninitialize, COINIT_MULTITHREADED};

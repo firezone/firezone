@@ -87,7 +87,7 @@ COPY . .
 
 ARG TARGET
 ARG PACKAGE
-RUN cargo build -p ${PACKAGE} $([ -v "${TARGET}" ] && "--target ${TARGET}")
+RUN cargo build -p ${PACKAGE} $([ -n "${TARGET}" ] && "--target ${TARGET}")
 
 # Image which is used to run the application binary
 FROM alpine:${ALPINE_VERSION} AS runtime
@@ -124,7 +124,7 @@ CMD $PACKAGE
 FROM runtime AS debug
 
 RUN set -xe \
-  && apk add --no-cache iperf3 jq
+  && apk add --no-cache iperf3 bind-tools iproute2 jq
 
 ARG TARGET
 COPY --from=builder /build/target/${TARGET}/debug/${PACKAGE} .

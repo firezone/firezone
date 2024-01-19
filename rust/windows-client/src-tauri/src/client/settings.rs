@@ -37,11 +37,15 @@ impl Default for AdvancedSettings {
     }
 }
 
-/// Returns the dir and path for storing advanced settings
-fn advanced_settings_path() -> Result<(PathBuf, PathBuf)> {
+struct DirAndPath {
+    dir: PathBuf,
+    path: PathBuf,
+}
+
+fn advanced_settings_path() -> Result<DirAndPath> {
     let dir = gui::app_local_data_dir()?.0.join("config");
     let path = dir.join("advanced_settings.json");
-    Ok((dir, path))
+    Ok(DirAndPath { dir, path })
 }
 
 #[tauri::command]
@@ -73,7 +77,7 @@ pub(crate) async fn apply_advanced_settings_inner(
     managed: &Managed,
     settings: AdvancedSettings,
 ) -> Result<()> {
-    let (dir, path) = advanced_settings_path()?;
+    let DirAndPath { dir, path } = advanced_settings_path()?;
     tokio::fs::create_dir_all(&dir).await?;
     tokio::fs::write(path, serde_json::to_string(&settings)?).await?;
 
@@ -87,7 +91,7 @@ pub(crate) async fn apply_advanced_settings_inner(
 ///
 /// Uses std::fs, so stick it in `spawn_blocking` for async contexts
 pub(crate) fn load_advanced_settings() -> Result<AdvancedSettings> {
-    let (_, path) = advanced_settings_path()?;
+    let DirAndPath { dir: _, path } = advanced_settings_path()?;
     let text = std::fs::read_to_string(path)?;
     let settings = serde_json::from_str(&text)?;
     Ok(settings)

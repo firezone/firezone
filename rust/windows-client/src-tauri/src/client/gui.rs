@@ -23,10 +23,11 @@ mod system_tray_menu;
 
 pub(crate) type CtlrTx = mpsc::Sender<ControllerRequest>;
 
+// TODO: Move out of GUI module, shouldn't be here
 pub(crate) fn app_local_data_dir() -> Result<AppLocalDataDir> {
     let path = known_folders::get_known_folder_path(known_folders::KnownFolder::LocalAppData)
         .context("should be able to ask Windows where AppData/Local is")?
-        .join(TAURI_ID);
+        .join(BUNDLE_ID);
     Ok(AppLocalDataDir(path))
 }
 
@@ -53,8 +54,16 @@ impl Managed {
     pub async fn fault_msleep(&self, _millis: u64) {}
 }
 
-// TODO: We're supposed to get this from Tauri, but I'd need to move some things around first
-const TAURI_ID: &str = "dev.firezone.client";
+/// Bundle ID / App ID that we use to distinguish ourself from other programs on the system
+///
+/// e.g. In ProgramData and AppData we use this to name our subdirectories for configs and data,
+/// and Windows may use it to track things like the MSI installer, notification titles,
+/// deep link registration, etc.
+///
+/// This should be identical to the `tauri.bundle.identifier` over in `tauri.conf.json`,
+/// but sometimes I need to use this before Tauri has booted up, or in a place where
+/// getting the Tauri app handle would be awkward.
+pub const BUNDLE_ID: &str = "dev.firezone.client";
 
 /// Runs the Tauri GUI and returns on exit or unrecoverable error
 pub(crate) fn run(params: client::GuiParams) -> Result<()> {
@@ -65,32 +74,50 @@ pub(crate) fn run(params: client::GuiParams) -> Result<()> {
 
     let advanced_settings = settings::load_advanced_settings().unwrap_or_default();
 
-    // Set up logger
-    // It's hard to set it up before Tauri's setup, because Tauri knows where all the config and data go in AppData and I don't want to replicate their logic.
+    // Start logging
     let logging_handles = client::logging::setup(&advanced_settings.log_filter)?;
     tracing::info!("started log");
     tracing::info!("GIT_VERSION = {}", crate::client::GIT_VERSION);
 
     let client::GuiParams {
-        flag_elevated,
+        crash_on_purpose,
+        flag_elevated: _,
         inject_faults,
     } = params;
 
-    // I checked this on my dev system to make sure Powershell is doing what I expect and passing the argument back to us after relaunch
-    tracing::debug!("flag_elevated: {flag_elevated}");
+    // Need to keep this alive so crashes will be handled. Dropping detaches it.
+    let _crash_handler = match client::crash_handling::attach_handler() {
+        Ok(x) => Some(x),
+        Err(error) => {
+            // TODO: None of these logs are actually written yet
+            // <https://github.com/firezone/firezone/issues/3211>
+            tracing::warn!(?error, "Did not set up crash handler");
+            None
+        }
+    };
 
     // Needed for the deep link server
     let rt = tokio::runtime::Runtime::new()?;
     let _guard = rt.enter();
 
+    if crash_on_purpose {
+        tokio::spawn(async {
+            let delay = 10;
+            tracing::info!("Will crash on purpose in {delay} seconds to test crash handling.");
+            tokio::time::sleep(std::time::Duration::from_secs(delay)).await;
+            tracing::info!("Crashing on purpose because of `--crash-on-purpose` flag");
+            unsafe { sadness_generator::raise_segfault() }
+        });
+    }
+
     // Make sure we're single-instance
     // We register our deep links to call the `open-deep-link` subcommand,
     // so if we're at this point, we know we've been launched manually
-    let server = deep_link::Server::new(TAURI_ID)?;
+    let server = deep_link::Server::new(BUNDLE_ID)?;
 
     // We know now we're the only instance on the computer, so register our exe
     // to handle deep links
-    deep_link::register(TAURI_ID)?;
+    deep_link::register(BUNDLE_ID)?;
 
     let (ctlr_tx, ctlr_rx) = mpsc::channel(5);
     let notify_controller = Arc::new(Notify::new());
@@ -139,6 +166,12 @@ pub(crate) fn run(params: client::GuiParams) -> Result<()> {
             }
         })
         .setup(move |app| {
+            assert_eq!(
+                BUNDLE_ID,
+                app.handle().config().tauri.bundle.identifier,
+                "BUNDLE_ID should match bundle ID in tauri.conf.json"
+            );
+
             let app_handle = app.handle();
             let _ctlr_task = tokio::spawn(async move {
                 let result = run_controller(
@@ -193,7 +226,7 @@ async fn accept_deep_links(mut server: deep_link::Server, ctlr_tx: CtlrTx) -> Re
                 .ok();
         }
         // We re-create the named pipe server every time we get a link, because of an oddity in the Windows API.
-        server = deep_link::Server::new(TAURI_ID)?;
+        server = deep_link::Server::new(BUNDLE_ID)?;
     }
 }
 

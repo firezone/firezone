@@ -50,7 +50,7 @@ defmodule Web.PageComponents do
 
   def danger_zone(assigns) do
     ~H"""
-    <.section>
+    <.section :if={length(@action) > 0}>
       <:title>Danger Zone</:title>
 
       <:action :for={action <- @action} :if={not Enum.empty?(@action)}>
