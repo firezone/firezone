@@ -6,11 +6,62 @@
 use anyhow::{Context, Result};
 use connlib_client_shared::ResourceDescription;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use std::marker::Unpin;
+use std::{
+    ffi::c_void,
+    marker::Unpin,
+    os::windows::io::{AsHandle, AsRawHandle},
+};
 use tokio::{
     io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt},
     net::windows::named_pipe,
 };
+use windows::Win32::{
+    Foundation::HANDLE,
+    System::JobObjects::{
+        AssignProcessToJobObject, CreateJobObjectA, JobObjectExtendedLimitInformation,
+        SetInformationJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
+        JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+    },
+};
+
+/// Uses a Windows job object to kill child processes when the parent exits
+pub(crate) struct LeakGuard {
+    job_object: HANDLE,
+}
+
+impl LeakGuard {
+    pub fn new() -> Result<Self> {
+        let job_object = unsafe { CreateJobObjectA(None, None) }?;
+
+        let mut jeli = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
+        jeli.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+        // SAFETY: Windows shouldn't hang on to `jeli`. I'm not sure why this is unsafe.
+        unsafe {
+            SetInformationJobObject(
+                job_object,
+                JobObjectExtendedLimitInformation,
+                &jeli as *const JOBOBJECT_EXTENDED_LIMIT_INFORMATION as *const c_void,
+                u32::try_from(std::mem::size_of_val(&jeli))?,
+            )
+        }?;
+
+        Ok(Self { job_object })
+    }
+
+    pub fn add_process(&self, process: &std::process::Child) -> Result<()> {
+        // Process IDs are not the same as handles, so get a handle to the process.
+        let process_handle = process.as_handle();
+        // SAFETY: The docs say this is UB since the null pointer doesn't belong to the same allocated object as the handle.
+        // I couldn't get `OpenProcess` to work, and I don't have any other way to convert the process ID to a handle safely.
+        // Since the handles aren't pointers per se, maybe it'll work?
+        let process_handle =
+            HANDLE(unsafe { process_handle.as_raw_handle().offset_from(std::ptr::null()) });
+        // SAFETY: TODO
+        unsafe { AssignProcessToJobObject(self.job_object, process_handle) }
+            .context("AssignProcessToJobObject")?;
+        Ok(())
+    }
+}
 
 /// Returns a random valid named pipe ID based on a UUIDv4
 ///
@@ -26,7 +77,7 @@ pub(crate) struct UnconnectedServer {
 
 impl UnconnectedServer {
     // Will be used for production code soon
-    pub fn _new() -> anyhow::Result<(Self, String)> {
+    pub fn new() -> anyhow::Result<(Self, String)> {
         let id = random_pipe_id();
         let this = Self::new_with_id(&id)?;
         Ok((this, id))
@@ -66,6 +117,7 @@ pub(crate) enum Request {
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 pub(crate) enum Response {
     CallbackOnUpdateResources(Vec<ResourceDescription>),
+    CallbackTunnelReady,
     Connected,
     Disconnected,
 }
@@ -142,7 +194,7 @@ mod tests {
         let rt = Runtime::new()?;
         rt.block_on(async move {
             // Pretend we're in the main process
-            let (server, server_id) = UnconnectedServer::_new()?;
+            let (server, server_id) = UnconnectedServer::new()?;
 
             let worker_task = tokio::spawn(async move {
                 // Pretend we're in a worker process

@@ -86,6 +86,9 @@ pub enum Test {
     Ipc,
     IpcManager { pipe_id: String },
     IpcWorker { pipe_id: String },
+    LeakProcess,
+    LeakManager { pipe_id: String },
+    LeakWorker { pipe_id: String },
 }
 
 fn run_test(cmd: Test) -> Result<()> {
@@ -93,8 +96,11 @@ fn run_test(cmd: Test) -> Result<()> {
     rt.block_on(async move {
         match cmd {
             Test::Ipc => test_ipc(),
-            Test::IpcManager { pipe_id } => test_ipc_manager(pipe_id).await,
-            Test::IpcWorker { pipe_id } => test_ipc_worker(pipe_id).await,
+            Test::IpcManager { pipe_id } => ipc_manager(pipe_id).await,
+            Test::IpcWorker { pipe_id } => ipc_worker(pipe_id).await,
+            Test::LeakProcess => test_leak().await,
+            Test::LeakManager { pipe_id } => leak_manager(pipe_id),
+            Test::LeakWorker { pipe_id } => leak_worker(pipe_id).await,
         }
     })?;
     Ok(())
@@ -143,7 +149,7 @@ fn test_ipc() -> Result<()> {
     Ok(())
 }
 
-async fn test_ipc_manager(pipe_id: String) -> Result<()> {
+async fn ipc_manager(pipe_id: String) -> Result<()> {
     tracing_subscriber::fmt::init();
     let server = ipc::UnconnectedServer::new_with_id(&pipe_id)?;
 
@@ -176,7 +182,7 @@ async fn test_ipc_manager(pipe_id: String) -> Result<()> {
     Ok(())
 }
 
-async fn test_ipc_worker(pipe_id: String) -> Result<()> {
+async fn ipc_worker(pipe_id: String) -> Result<()> {
     tracing_subscriber::fmt::init();
     let mut client = ipc::Client::new(&pipe_id)?;
     // panic!("Pretending the worker crashed right after connecting");
@@ -197,4 +203,78 @@ async fn test_ipc_worker(pipe_id: String) -> Result<()> {
     }
 
     Ok(())
+}
+
+/// Top-level function to test whether the process leak protection works.
+///
+/// 1. Open a named pipe server
+/// 2. Spawn a manager process, passing the pipe name to it
+/// 3. The manager process spawns a worker process, passing the pipe name to it
+/// 4. The manager process sets up leak protection on the worker process
+/// 5. The worker process connects to our pipe server to confirm that it's up
+/// 6. We SIGKILL the manager process
+/// 7. Reading from the named pipe server should return an EOF since the worker process was killed by leak protection.
+///
+/// # Research
+/// - [Stack Overflow example](https://stackoverflow.com/questions/53208/how-do-i-automatically-destroy-child-processes-in-windows)
+/// - [Chromium example](https://source.chromium.org/chromium/chromium/src/+/main:base/process/launch_win.cc;l=421;drc=b7d560c40ceb5283dba3e3d305abd9e2e7e926cd)
+/// - [MSDN docs](https://learn.microsoft.com/en-us/windows/win32/api/jobapi2/nf-jobapi2-assignprocesstojobobject)
+/// - [windows-rs docs](https://microsoft.github.io/windows-docs-rs/doc/windows/Win32/System/JobObjects/fn.AssignProcessToJobObject.html)
+async fn test_leak() -> Result<()> {
+    tracing_subscriber::fmt::init();
+
+    let (server, pipe_id) = ipc::UnconnectedServer::new()?;
+    let mut manager = SubcommandChild::new(&["debug", "test", "leak-manager", &pipe_id])?;
+    let mut server = server.connect().await?;
+    tracing::debug!("Harness accepted connection from Worker");
+
+    // Send a few requests to make sure the worker is connected and good
+    for _ in 0..3 {
+        server.request(ipc::Request::AwaitCallback).await?;
+    }
+
+    tokio::time::sleep(std::time::Duration::from_secs(15)).await;
+
+    manager.process.kill()?;
+    tracing::debug!("Harness killed manager");
+
+    // I can't think of a good way to synchronize with the worker process stopping,
+    // so just give it 10 seconds for Windows to stop it.
+    for _ in 0..10 {
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        if server.request(ipc::Request::AwaitCallback).await.is_err() {
+            tracing::info!("confirmed worker stopped responding");
+            break;
+        }
+    }
+
+    assert!(
+        server.request(ipc::Request::AwaitCallback).await.is_err(),
+        "worker shouldn't be able to respond here"
+    );
+    Ok(())
+}
+
+fn leak_manager(pipe_id: String) -> Result<()> {
+    let leak_guard = ipc::LeakGuard::new()?;
+
+    let worker = SubcommandChild::new(&["debug", "test", "leak-worker", &pipe_id])?;
+    // If you comment out this line the test should fail since the worker will keep running.
+    leak_guard.add_process(&worker.process)?;
+    tracing::debug!("Manager set up leak protection, waiting for SIGKILL");
+    loop {
+        std::thread::park();
+    }
+}
+
+async fn leak_worker(pipe_id: String) -> Result<()> {
+    tracing_subscriber::fmt::init();
+    let mut client = ipc::Client::new(&pipe_id)?;
+    tracing::debug!("Worker connected to named pipe");
+    loop {
+        let (_, responder) = client.next_request().await?;
+        responder
+            .respond(ipc::Response::CallbackTunnelReady)
+            .await?;
+    }
 }
