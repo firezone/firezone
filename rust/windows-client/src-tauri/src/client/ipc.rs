@@ -13,6 +13,7 @@ use std::{
 use tokio::{
     io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt},
     net::windows::named_pipe,
+    time::timeout,
 };
 use windows::Win32::{
     Foundation::HANDLE,
@@ -68,7 +69,7 @@ async fn test_manager_process(pipe_id: String) -> Result<()> {
     // TODO: The real manager would spawn the worker subprocess here, but
     // for this case, the test harness spawns it for us.
 
-    let mut server = server.connect().await?;
+    let mut server = timeout(Duration::from_secs(5), server.accept()).await??;
 
     let start_time = std::time::Instant::now();
     assert_eq!(server.request(Request::Connect).await?, Response::Connected);
@@ -130,8 +131,8 @@ async fn test_worker_process(pipe_id: String) -> Result<()> {
 /// - [windows-rs docs](https://microsoft.github.io/windows-docs-rs/doc/windows/Win32/System/JobObjects/fn.AssignProcessToJobObject.html)
 async fn test_leak() -> Result<()> {
     let (server, pipe_id) = UnconnectedServer::new()?;
-    let mut manager = SubcommandChild::new(&["debug", "test", "leak-manager", &pipe_id])?;
-    let mut server = server.connect().await?;
+    let mut manager = SubcommandChild::new(&["debug", "test-ipc", "leak-manager", &pipe_id])?;
+    let mut server = timeout(Duration::from_secs(5), server.accept()).await??;
     tracing::debug!("Harness accepted connection from Worker");
 
     // Send a few requests to make sure the worker is connected and good
@@ -164,7 +165,7 @@ async fn test_leak() -> Result<()> {
 fn leak_manager(pipe_id: String) -> Result<()> {
     let leak_guard = LeakGuard::new()?;
 
-    let worker = SubcommandChild::new(&["debug", "test", "leak-worker", &pipe_id])?;
+    let worker = SubcommandChild::new(&["debug", "test-ipc", "leak-worker", &pipe_id])?;
     // If you comment out this line the test should fail since the worker will keep running.
     leak_guard.add_process(&worker.process)?;
     tracing::debug!("Manager set up leak protection, waiting for SIGKILL");
@@ -213,7 +214,11 @@ impl UnconnectedServer {
         Ok(Self { pipe })
     }
 
-    pub async fn connect(self) -> anyhow::Result<Server> {
+    /// Accept an incoming connection
+    ///
+    /// This will wait forever if the client never shows up.
+    /// Try pairing it with `tokio::time:timeout`
+    pub async fn accept(self) -> anyhow::Result<Server> {
         self.pipe.connect().await?;
         Ok(Server { pipe: self.pipe })
     }
@@ -268,6 +273,8 @@ impl Server {
 
 impl Client {
     /// Creates a `Client`. Requires a Tokio context
+    ///
+    /// Doesn't block, will fail instantly if the server isn't ready
     pub fn new(server_id: &str) -> Result<Self> {
         let pipe = named_pipe::ClientOptions::new().open(server_id)?;
         Ok(Self { pipe })
@@ -433,7 +440,7 @@ mod tests {
                 Ok::<_, anyhow::Error>(())
             });
 
-            let mut server = server.connect().await?;
+            let mut server = server.accept().await?;
 
             let start_time = std::time::Instant::now();
             assert_eq!(server.request(Request::Connect).await?, Response::Connected);
