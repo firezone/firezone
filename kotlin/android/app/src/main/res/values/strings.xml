@@ -33,18 +33,4 @@
 	<string name="vpn_permission_description">Firezone requires the VPN permission in order to route packets from your device to protected resources in a secure manner. All communication is end-to-end encrypted; we can never decrypt or otherwise monitor your communication. Please grant the VPN permission by tapping the button below.</string>
 	<string name="request_permission">Request Permission</string>
 	<string name="signing_in_requires_chrome_browser">Signing in requires Chrome browser</string>
-    <!-- Preference Titles -->
-    <string name="messages_header">Messages</string>
-    <string name="sync_header">Sync</string>
-
-    <!-- Messages Preferences -->
-    <string name="signature_title">Your signature</string>
-    <string name="reply_title">Default reply action</string>
-
-    <!-- Sync Preferences -->
-    <string name="sync_title">Sync email periodically</string>
-    <string name="attachment_title">Download incoming attachments</string>
-    <string name="attachment_summary_on">Automatically download attachments for incoming emails
-    </string>
-    <string name="attachment_summary_off">Only download attachments when manually requested</string>
 </resources>
