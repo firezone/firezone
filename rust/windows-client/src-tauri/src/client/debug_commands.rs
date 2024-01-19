@@ -2,7 +2,6 @@
 //! them with the GUI, or to exercise features programmatically.
 
 use anyhow::Result;
-use windows::Win32::System::Com::{CoInitializeEx, CoUninitialize, COINIT_MULTITHREADED};
 
 #[derive(clap::Subcommand)]
 pub enum Cmd {
@@ -16,7 +15,7 @@ pub fn run(cmd: Cmd) -> Result<()> {
     match cmd {
         Cmd::Crash => crash(),
         Cmd::Hostname => hostname(),
-        Cmd::NetworkChanges => network_changes(),
+        Cmd::NetworkChanges => crate::client::network_changes::run_debug(),
         Cmd::Wintun => wintun(),
     }
 }
@@ -34,28 +33,6 @@ fn hostname() -> Result<()> {
         "{:?}",
         hostname::get().ok().and_then(|x| x.into_string().ok())
     );
-    Ok(())
-}
-
-/// Listen for network change events from Windows
-fn network_changes() -> Result<()> {
-    tracing_subscriber::fmt::init();
-
-    // Must be called for each thread that will do COM stuff
-    unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) }?;
-
-    {
-        let _listener = crate::client::network_changes::Listener::new()?;
-        println!("Listening for network events for 1 minute");
-        std::thread::sleep(std::time::Duration::from_secs(60));
-    }
-
-    unsafe {
-        // Required, per CoInitializeEx docs
-        // Safety: Make sure all the COM objects are dropped before we call
-        // CoUninitialize or the program might segfault.
-        CoUninitialize();
-    }
     Ok(())
 }
 

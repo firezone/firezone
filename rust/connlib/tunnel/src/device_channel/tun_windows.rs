@@ -1,8 +1,8 @@
-use connlib_shared::{messages::Interface as InterfaceConfig, Result, DNS_SENTINEL};
+use connlib_shared::{messages::Interface as InterfaceConfig, Result};
 use ip_network::IpNetwork;
 use std::{
     io,
-    net::{SocketAddrV4, SocketAddrV6},
+    net::{IpAddr, SocketAddrV4, SocketAddrV6},
     os::windows::process::CommandExt,
     process::{Command, Stdio},
     str::FromStr,
@@ -48,7 +48,7 @@ const CREATE_NO_WINDOW: u32 = 0x08000000;
 const DEFAULT_MTU: u32 = 1280;
 
 impl Tun {
-    pub fn new(config: &InterfaceConfig) -> Result<Self> {
+    pub fn new(config: &InterfaceConfig, dns_config: Vec<IpAddr>) -> Result<Self> {
         const TUNNEL_UUID: &str = "e9245bc1-b8c1-44ca-ab1d-c6aad4f13b9c";
         // wintun automatically appends " Tunnel" to this
         const TUNNEL_NAME: &str = "Firezone";
@@ -121,7 +121,12 @@ impl Tun {
             .creation_flags(CREATE_NO_WINDOW)
             .arg("-Command")
             .arg(format!(
-                "Set-DnsClientServerAddress -InterfaceIndex {iface_idx} -ServerAddresses(\"{DNS_SENTINEL}\")"
+                "Set-DnsClientServerAddress -InterfaceIndex {iface_idx} -ServerAddresses({})",
+                dns_config
+                    .iter()
+                    .map(|ip| format!("\"{ip}\""))
+                    .collect::<Vec<_>>()
+                    .join(",")
             ))
             .stdout(Stdio::null())
             .status()?;
