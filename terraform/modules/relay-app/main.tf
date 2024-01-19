@@ -131,14 +131,6 @@ resource "google_compute_network" "network" {
   ]
 }
 
-resource "google_compute_address" "static_ip" {
-  for_each = var.instances
-
-  project = var.project_id
-
-  name = "relays-${each.key}"
-}
-
 resource "google_compute_subnetwork" "subnetwork" {
   for_each = var.instances
 
@@ -195,11 +187,12 @@ resource "google_compute_instance_template" "application" {
 
     ipv6_access_config {
       network_tier = "PREMIUM"
+      # Ephimerical IP address
     }
 
     access_config {
       network_tier = "PREMIUM"
-      nat_ip       = google_compute_address.static_ip[each.key].address
+      # Ephimerical IP address
     }
   }
 
