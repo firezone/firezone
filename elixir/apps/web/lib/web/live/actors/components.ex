@@ -125,6 +125,27 @@ defmodule Web.Actors.Components do
     """
   end
 
+  def provider_form(%{provider: %{adapter: :openid_connect}} = assigns) do
+    ~H"""
+    <div>
+      <.input
+        label="Email or Sub claim"
+        placeholder="Email or Sub claim"
+        field={@form[:provider_identifier]}
+        autocomplete="off"
+      />
+    </div>
+    <div>
+      <.input
+        label="Email or Sub claim Confirmation"
+        placeholder="Email or Sub claim Confirmation"
+        field={@form[:provider_identifier_confirmation]}
+        autocomplete="off"
+      />
+    </div>
+    """
+  end
+
   def provider_form(%{provider: %{adapter: :userpass}} = assigns) do
     ~H"""
     <div>

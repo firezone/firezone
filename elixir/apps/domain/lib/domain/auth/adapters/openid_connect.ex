@@ -23,7 +23,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
   @impl true
   def capabilities do
     [
-      provisioners: [:just_in_time],
+      provisioners: [:just_in_time, :manual],
       default_provisioner: :just_in_time,
       parent_adapter: :openid_connect
     ]
@@ -119,10 +119,14 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
            fetch_state(provider, token_params) do
       Identity.Query.not_disabled()
       |> Identity.Query.by_provider_id(provider.id)
-      |> Identity.Query.by_provider_identifier(provider_identifier)
+      |> Identity.Query.by_provider_claims(
+        provider_identifier,
+        identity_state["claims"]["email"] || identity_state["userinfo"]["email"]
+      )
       |> Repo.fetch_and_update(
         with: fn identity ->
           Identity.Changeset.update_identity_provider_state(identity, identity_state)
+          |> Ecto.Changeset.put_change(:provider_identifier, provider_identifier)
         end
       )
       |> case do
