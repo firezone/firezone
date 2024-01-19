@@ -1,7 +1,4 @@
 //! Inter-process communication for the connlib subprocess
-//!
-//! Everything in here that constructs or uses a `Client` or `Server`,
-//! requires a Tokio reactor context.
 
 use anyhow::{Context, Result};
 use connlib_client_shared::ResourceDescription;
@@ -10,6 +7,8 @@ use std::{
     ffi::c_void,
     marker::Unpin,
     os::windows::io::{AsHandle, AsRawHandle},
+    process::{self, Child},
+    time::Duration,
 };
 use tokio::{
     io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt},
@@ -23,6 +22,338 @@ use windows::Win32::{
         JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
     },
 };
+
+#[derive(clap::Subcommand)]
+pub enum Subcommand {
+    Manager { pipe_id: String },
+    Worker { pipe_id: String },
+
+    LeakManager { pipe_id: String },
+    LeakWorker { pipe_id: String },
+}
+
+pub fn test_subcommand(cmd: Option<Subcommand>) -> Result<()> {
+    tracing_subscriber::fmt::init();
+    let rt = tokio::runtime::Runtime::new()?;
+    rt.block_on(async move {
+        match cmd {
+            None => {
+                test_happy_path().await?;
+                test_leak().await?;
+                Ok(())
+            }
+            Some(Subcommand::Manager { pipe_id }) => test_manager_process(pipe_id).await,
+            Some(Subcommand::Worker { pipe_id }) => test_worker_process(pipe_id).await,
+            Some(Subcommand::LeakManager { pipe_id }) => leak_manager(pipe_id),
+            Some(Subcommand::LeakWorker { pipe_id }) => leak_worker(pipe_id).await,
+        }
+    })?;
+    Ok(())
+}
+
+async fn test_happy_path() -> Result<()> {
+    // Test normal IPC
+    let id = random_pipe_id();
+
+    let _manager = SubcommandChild::new(&["debug", "test-ipc", "manager", &id]);
+    let _worker = SubcommandChild::new(&["debug", "test-ipc", "worker", &id]);
+
+    tokio::time::sleep(Duration::from_secs(10)).await;
+    Ok(())
+}
+
+async fn test_manager_process(pipe_id: String) -> Result<()> {
+    let server = UnconnectedServer::new_with_id(&pipe_id)?;
+
+    // TODO: The real manager would spawn the worker subprocess here, but
+    // for this case, the test harness spawns it for us.
+
+    let mut server = server.connect().await?;
+
+    let start_time = std::time::Instant::now();
+    assert_eq!(server.request(Request::Connect).await?, Response::Connected);
+    assert_eq!(
+        server.request(Request::AwaitCallback).await?,
+        Response::CallbackOnUpdateResources(vec![])
+    );
+    assert_eq!(
+        server.request(Request::Disconnect).await?,
+        Response::Disconnected
+    );
+
+    let elapsed = start_time.elapsed();
+    assert!(
+        elapsed < std::time::Duration::from_millis(6),
+        "{:?}",
+        elapsed
+    );
+    tracing::info!(?elapsed, "made 3 IPC requests");
+
+    Ok(())
+}
+
+async fn test_worker_process(pipe_id: String) -> Result<()> {
+    let mut client = Client::new(&pipe_id)?;
+
+    // Handle requests from the main process
+    loop {
+        let (req, responder) = client.next_request().await?;
+        let resp = match &req {
+            Request::AwaitCallback => Response::CallbackOnUpdateResources(vec![]),
+            Request::Connect => Response::Connected,
+            Request::Disconnect => Response::Disconnected,
+        };
+        responder.respond(resp).await?;
+
+        if let Request::Disconnect = req {
+            break;
+        }
+    }
+
+    Ok(())
+}
+
+/// Top-level function to test whether the process leak protection works.
+///
+/// 1. Open a named pipe server
+/// 2. Spawn a manager process, passing the pipe name to it
+/// 3. The manager process spawns a worker process, passing the pipe name to it
+/// 4. The manager process sets up leak protection on the worker process
+/// 5. The worker process connects to our pipe server to confirm that it's up
+/// 6. We SIGKILL the manager process
+/// 7. Reading from the named pipe server should return an EOF since the worker process was killed by leak protection.
+///
+/// # Research
+/// - [Stack Overflow example](https://stackoverflow.com/questions/53208/how-do-i-automatically-destroy-child-processes-in-windows)
+/// - [Chromium example](https://source.chromium.org/chromium/chromium/src/+/main:base/process/launch_win.cc;l=421;drc=b7d560c40ceb5283dba3e3d305abd9e2e7e926cd)
+/// - [MSDN docs](https://learn.microsoft.com/en-us/windows/win32/api/jobapi2/nf-jobapi2-assignprocesstojobobject)
+/// - [windows-rs docs](https://microsoft.github.io/windows-docs-rs/doc/windows/Win32/System/JobObjects/fn.AssignProcessToJobObject.html)
+async fn test_leak() -> Result<()> {
+    let (server, pipe_id) = UnconnectedServer::new()?;
+    let mut manager = SubcommandChild::new(&["debug", "test", "leak-manager", &pipe_id])?;
+    let mut server = server.connect().await?;
+    tracing::debug!("Harness accepted connection from Worker");
+
+    // Send a few requests to make sure the worker is connected and good
+    for _ in 0..3 {
+        server.request(Request::AwaitCallback).await?;
+    }
+
+    tokio::time::sleep(std::time::Duration::from_secs(15)).await;
+
+    manager.process.kill()?;
+    tracing::debug!("Harness killed manager");
+
+    // I can't think of a good way to synchronize with the worker process stopping,
+    // so just give it 10 seconds for Windows to stop it.
+    for _ in 0..10 {
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        if server.request(Request::AwaitCallback).await.is_err() {
+            tracing::info!("confirmed worker stopped responding");
+            break;
+        }
+    }
+
+    assert!(
+        server.request(Request::AwaitCallback).await.is_err(),
+        "worker shouldn't be able to respond here"
+    );
+    Ok(())
+}
+
+fn leak_manager(pipe_id: String) -> Result<()> {
+    let leak_guard = LeakGuard::new()?;
+
+    let worker = SubcommandChild::new(&["debug", "test", "leak-worker", &pipe_id])?;
+    // If you comment out this line the test should fail since the worker will keep running.
+    leak_guard.add_process(&worker.process)?;
+    tracing::debug!("Manager set up leak protection, waiting for SIGKILL");
+    loop {
+        std::thread::park();
+    }
+}
+
+async fn leak_worker(pipe_id: String) -> Result<()> {
+    let mut client = Client::new(&pipe_id)?;
+    tracing::debug!("Worker connected to named pipe");
+    loop {
+        let (_, responder) = client.next_request().await?;
+        responder.respond(Response::CallbackTunnelReady).await?;
+    }
+}
+
+/// Returns a random valid named pipe ID based on a UUIDv4
+///
+/// e.g. "\\.\pipe\dev.firezone.client\9508e87c-1c92-4630-bb20-839325d169bd"
+///
+/// Normally you don't need to call this directly. Tests may need it to inject
+/// a known pipe ID into a process controlled by the test.
+fn random_pipe_id() -> String {
+    format!(r"\\.\pipe\dev.firezone.client\{}", uuid::Uuid::new_v4())
+}
+
+/// A server that accepts only one client
+pub(crate) struct UnconnectedServer {
+    pipe: named_pipe::NamedPipeServer,
+}
+
+impl UnconnectedServer {
+    /// Requires a Tokio context
+    pub fn new() -> anyhow::Result<(Self, String)> {
+        let id = random_pipe_id();
+        let this = Self::new_with_id(&id)?;
+        Ok((this, id))
+    }
+
+    fn new_with_id(id: &str) -> anyhow::Result<Self> {
+        let pipe = named_pipe::ServerOptions::new()
+            .first_pipe_instance(true)
+            .create(id)?;
+
+        Ok(Self { pipe })
+    }
+
+    pub async fn connect(self) -> anyhow::Result<Server> {
+        self.pipe.connect().await?;
+        Ok(Server { pipe: self.pipe })
+    }
+}
+
+/// A server that's connected to a client
+///
+/// Manual testing shows that if the corresponding Client's process crashes, Windows will
+/// be nice and return errors for anything trying to read from the Server
+pub(crate) struct Server {
+    pipe: named_pipe::NamedPipeServer,
+}
+
+/// A client that's connected to a server
+///
+/// Manual testing shows that if the corresponding Server's process crashes, Windows will
+/// be nice and return errors for anything trying to read from the Client
+pub(crate) struct Client {
+    pipe: named_pipe::NamedPipeClient,
+}
+
+#[derive(Deserialize, Serialize)]
+pub(crate) enum Request {
+    AwaitCallback,
+    Connect,
+    Disconnect,
+}
+
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+pub(crate) enum Response {
+    CallbackOnUpdateResources(Vec<ResourceDescription>),
+    CallbackTunnelReady,
+    Connected,
+    Disconnected,
+}
+
+#[must_use]
+pub(crate) struct Responder<'a> {
+    client: &'a mut Client,
+}
+
+impl Server {
+    pub async fn request(&mut self, req: Request) -> Result<Response> {
+        write_bincode(&mut self.pipe, &req)
+            .await
+            .context("couldn't send request")?;
+        read_bincode(&mut self.pipe)
+            .await
+            .context("couldn't read response")
+    }
+}
+
+impl Client {
+    /// Creates a `Client`. Requires a Tokio context
+    pub fn new(server_id: &str) -> Result<Self> {
+        let pipe = named_pipe::ClientOptions::new().open(server_id)?;
+        Ok(Self { pipe })
+    }
+
+    pub async fn next_request(&mut self) -> Result<(Request, Responder)> {
+        let req = read_bincode(&mut self.pipe).await?;
+        let responder = Responder { client: self };
+        Ok((req, responder))
+    }
+}
+
+impl<'a> Responder<'a> {
+    pub async fn respond(self, resp: Response) -> Result<()> {
+        write_bincode(&mut self.client.pipe, &resp).await?;
+        Ok(())
+    }
+}
+
+/// Reads a message from an async reader, with a 32-bit little-endian length prefix
+async fn read_bincode<R: AsyncRead + Unpin, T: DeserializeOwned>(reader: &mut R) -> Result<T> {
+    let mut len_buf = [0u8; 4];
+    reader.read_exact(&mut len_buf).await?;
+    let len = u32::from_le_bytes(len_buf);
+    let mut buf = vec![0u8; usize::try_from(len)?];
+    reader.read_exact(&mut buf).await?;
+    let msg = bincode::deserialize(&buf)?;
+    Ok(msg)
+}
+
+/// Writes a message to an async writer, with a 32-bit little-endian length prefix
+async fn write_bincode<W: AsyncWrite + Unpin, T: Serialize>(writer: &mut W, msg: &T) -> Result<()> {
+    let buf = bincode::serialize(msg)?;
+    let len = u32::try_from(buf.len())?.to_le_bytes();
+    writer.write_all(&len).await?;
+    writer.write_all(&buf).await?;
+    Ok(())
+}
+
+/// `std::process::Child` but for a subcommand running from the same exe as
+/// the current process.
+///
+/// Unlike `std::process::Child`, `Drop` tries to join the process, and kills it
+/// if it can't.
+struct SubcommandChild {
+    process: Child,
+}
+
+impl SubcommandChild {
+    /// Launches the current exe as a subprocess with new arguments
+    ///
+    /// # Parameters
+    ///
+    /// * `args` - e.g. `["debug", "test", "ipc-worker"]`
+    pub fn new(args: &[&str]) -> Result<Self> {
+        let mut process = process::Command::new(std::env::current_exe()?);
+        for arg in args {
+            process.arg(arg);
+        }
+        let process = process.spawn()?;
+        Ok(SubcommandChild { process })
+    }
+
+    /// Joins the subprocess, returning an error if the process doesn't stop
+    pub fn wait_or_kill(&mut self) -> Result<()> {
+        if let Ok(Some(status)) = self.process.try_wait() {
+            if status.success() {
+                tracing::info!("process exited with success code");
+            } else {
+                tracing::warn!("process exited with non-success code");
+            }
+        } else {
+            self.process.kill()?;
+            tracing::error!("process was killed");
+        }
+        Ok(())
+    }
+}
+
+impl Drop for SubcommandChild {
+    fn drop(&mut self) {
+        if let Err(error) = self.wait_or_kill() {
+            tracing::error!(?error, "SubcommandChild could not be joined or killed");
+        }
+    }
+}
 
 /// Uses a Windows job object to kill child processes when the parent exits
 pub(crate) struct LeakGuard {
@@ -61,121 +392,6 @@ impl LeakGuard {
             .context("AssignProcessToJobObject")?;
         Ok(())
     }
-}
-
-/// Returns a random valid named pipe ID based on a UUIDv4
-///
-/// e.g. "\\.\pipe\dev.firezone.client\9508e87c-1c92-4630-bb20-839325d169bd"
-pub(crate) fn random_pipe_id() -> String {
-    format!(r"\\.\pipe\dev.firezone.client\{}", uuid::Uuid::new_v4())
-}
-
-/// A server that accepts only one client
-pub(crate) struct UnconnectedServer {
-    pipe: named_pipe::NamedPipeServer,
-}
-
-impl UnconnectedServer {
-    // Will be used for production code soon
-    pub fn new() -> anyhow::Result<(Self, String)> {
-        let id = random_pipe_id();
-        let this = Self::new_with_id(&id)?;
-        Ok((this, id))
-    }
-
-    pub fn new_with_id(id: &str) -> anyhow::Result<Self> {
-        let pipe = named_pipe::ServerOptions::new()
-            .first_pipe_instance(true)
-            .create(id)?;
-
-        Ok(Self { pipe })
-    }
-
-    pub async fn connect(self) -> anyhow::Result<Server> {
-        self.pipe.connect().await?;
-        Ok(Server { pipe: self.pipe })
-    }
-}
-
-/// A server that's connected to a client
-pub(crate) struct Server {
-    pipe: named_pipe::NamedPipeServer,
-}
-
-/// A client that's connected to a server
-pub(crate) struct Client {
-    pipe: named_pipe::NamedPipeClient,
-}
-
-#[derive(Deserialize, Serialize)]
-pub(crate) enum Request {
-    AwaitCallback,
-    Connect,
-    Disconnect,
-}
-
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-pub(crate) enum Response {
-    CallbackOnUpdateResources(Vec<ResourceDescription>),
-    CallbackTunnelReady,
-    Connected,
-    Disconnected,
-}
-
-#[must_use]
-pub(crate) struct Responder<'a> {
-    client: &'a mut Client,
-}
-
-impl Server {
-    pub async fn request(&mut self, req: Request) -> Result<Response> {
-        write_bincode(&mut self.pipe, &req)
-            .await
-            .context("couldn't send request")?;
-        read_bincode(&mut self.pipe)
-            .await
-            .context("couldn't read response")
-    }
-}
-
-impl Client {
-    pub fn new(server_id: &str) -> Result<Self> {
-        let pipe = named_pipe::ClientOptions::new().open(server_id)?;
-        Ok(Self { pipe })
-    }
-
-    pub async fn next_request(&mut self) -> Result<(Request, Responder)> {
-        let req = read_bincode(&mut self.pipe).await?;
-        let responder = Responder { client: self };
-        Ok((req, responder))
-    }
-}
-
-impl<'a> Responder<'a> {
-    pub async fn respond(self, resp: Response) -> Result<()> {
-        write_bincode(&mut self.client.pipe, &resp).await?;
-        Ok(())
-    }
-}
-
-/// Reads a message from an async reader, with a 32-bit little-endian length prefix
-async fn read_bincode<R: AsyncRead + Unpin, T: DeserializeOwned>(reader: &mut R) -> Result<T> {
-    let mut len_buf = [0u8; 4];
-    reader.read_exact(&mut len_buf).await?;
-    let len = u32::from_le_bytes(len_buf);
-    let mut buf = vec![0u8; usize::try_from(len)?];
-    reader.read_exact(&mut buf).await?;
-    let msg = bincode::deserialize(&buf)?;
-    Ok(msg)
-}
-
-/// Writes a message to an async writer, with a 32-bit little-endian length prefix
-async fn write_bincode<W: AsyncWrite + Unpin, T: Serialize>(writer: &mut W, msg: &T) -> Result<()> {
-    let buf = bincode::serialize(msg)?;
-    let len = u32::try_from(buf.len())?.to_le_bytes();
-    writer.write_all(&len).await?;
-    writer.write_all(&buf).await?;
-    Ok(())
 }
 
 #[cfg(test)]
