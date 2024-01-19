@@ -31,6 +31,18 @@ public final class AppLogger {
     let dateFormatter = DateFormatter()
     dateFormatter.dateFormat = "yyyy-MM-dd HH:mm:ss.SSS Z"
     self.dateFormatter = dateFormatter
+
+    log("Starting logging")
+
+    let appVersionString = Bundle.main.infoDictionary?["CFBundleShortVersionString"] ?? "Unknown"
+    log("Firezone \(appVersionString) (\(process.rawValue) process)")
+
+    let osVersionString = ProcessInfo.processInfo.operatingSystemVersionString
+    #if os(iOS)
+      log("iOS \(osVersionString)")
+    #elseif os(macOS)
+      log("macOS \(osVersionString)")
+    #endif
   }
 
   public func log(_ message: String) {
