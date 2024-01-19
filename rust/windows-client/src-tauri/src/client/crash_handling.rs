@@ -4,6 +4,7 @@
 //!
 //! TODO: Capture crash dumps on panic.
 
+use crate::client::BUNDLE_ID;
 use anyhow::{anyhow, bail, Context};
 use known_folders::{get_known_folder_path, KnownFolder};
 use std::{fs::File, io::Write, path::PathBuf};
@@ -105,7 +106,7 @@ impl minidumper::ServerHandler for Handler {
     fn create_minidump_file(&self) -> Result<(File, PathBuf), std::io::Error> {
         let dump_path = get_known_folder_path(KnownFolder::ProgramData)
             .expect("should be able to find C:/ProgramData")
-            .join(crate::client::gui::BUNDLE_ID)
+            .join(BUNDLE_ID)
             .join("dumps")
             .join("last_crash.dmp");
 
