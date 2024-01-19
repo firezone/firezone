@@ -1,21 +1,109 @@
 //! Inter-process communication for the connlib subprocess
-//!
-//! Everything in here that constructs or uses a `Client` or `Server`,
-//! requires a Tokio reactor context.
 
 use anyhow::{Context, Result};
 use connlib_client_shared::ResourceDescription;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use std::marker::Unpin;
+use std::{
+    marker::Unpin,
+    process::{self, Child},
+    time::Duration,
+};
 use tokio::{
     io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt},
     net::windows::named_pipe,
 };
 
+#[derive(clap::Subcommand)]
+pub enum Subcommand {
+    Manager { pipe_id: String },
+    Worker { pipe_id: String },
+}
+
+pub fn test_subcommand(cmd: Option<Subcommand>) -> Result<()> {
+    let rt = tokio::runtime::Runtime::new()?;
+    rt.block_on(async move {
+        match cmd {
+            None => test_harness(),
+            Some(Subcommand::Manager { pipe_id }) => test_manager_process(pipe_id).await,
+            Some(Subcommand::Worker { pipe_id }) => test_worker_process(pipe_id).await,
+        }
+    })?;
+    Ok(())
+}
+
+fn test_harness() -> Result<()> {
+    tracing_subscriber::fmt::init();
+
+    let id = random_pipe_id();
+
+    let _manager = SubcommandChild::new(&["debug", "test-ipc", "manager", &id]);
+    let _worker = SubcommandChild::new(&["debug", "test-ipc", "worker", &id]);
+
+    std::thread::sleep(Duration::from_secs(10));
+    Ok(())
+}
+
+async fn test_manager_process(pipe_id: String) -> Result<()> {
+    tracing_subscriber::fmt::init();
+    let server = UnconnectedServer::new_with_id(&pipe_id)?;
+
+    // TODO: The real manager would spawn the worker subprocess here, but
+    // for this case, the test harness spawns it for us.
+
+    let mut server = server.connect().await?;
+
+    let start_time = std::time::Instant::now();
+    assert_eq!(server.request(Request::Connect).await?, Response::Connected);
+    assert_eq!(
+        server.request(Request::AwaitCallback).await?,
+        Response::CallbackOnUpdateResources(vec![])
+    );
+    assert_eq!(
+        server.request(Request::Disconnect).await?,
+        Response::Disconnected
+    );
+
+    let elapsed = start_time.elapsed();
+    assert!(
+        elapsed < std::time::Duration::from_millis(6),
+        "{:?}",
+        elapsed
+    );
+    tracing::info!(?elapsed, "made 3 IPC requests");
+
+    Ok(())
+}
+
+async fn test_worker_process(pipe_id: String) -> Result<()> {
+    tracing_subscriber::fmt::init();
+    let mut client = Client::new(&pipe_id)?;
+    // panic!("Pretending the worker crashed right after connecting");
+
+    // Handle requests from the main process
+    loop {
+        let (req, responder) = client.next_request().await?;
+        let resp = match &req {
+            Request::AwaitCallback => Response::CallbackOnUpdateResources(vec![]),
+            Request::Connect => Response::Connected,
+            Request::Disconnect => Response::Disconnected,
+        };
+        responder.respond(resp).await?;
+
+        if let Request::Disconnect = req {
+            break;
+        }
+    }
+
+    Ok(())
+}
+
 /// Returns a random valid named pipe ID based on a UUIDv4
 ///
 /// e.g. "\\.\pipe\dev.firezone.client\9508e87c-1c92-4630-bb20-839325d169bd"
-pub(crate) fn random_pipe_id() -> String {
+///
+/// Normally you don't need to call this directly. Tests may need it to inject
+/// a known pipe ID into a process controlled by the test.
+fn random_pipe_id() -> String {
     format!(r"\\.\pipe\dev.firezone.client\{}", uuid::Uuid::new_v4())
 }
 
@@ -25,14 +113,16 @@ pub(crate) struct UnconnectedServer {
 }
 
 impl UnconnectedServer {
-    // Will be used for production code soon
+    /// Requires a Tokio context
+    ///
+    /// Will be used for production code soon
     pub fn _new() -> anyhow::Result<(Self, String)> {
         let id = random_pipe_id();
         let this = Self::new_with_id(&id)?;
         Ok((this, id))
     }
 
-    pub fn new_with_id(id: &str) -> anyhow::Result<Self> {
+    fn new_with_id(id: &str) -> anyhow::Result<Self> {
         let pipe = named_pipe::ServerOptions::new()
             .first_pipe_instance(true)
             .create(id)?;
@@ -87,6 +177,7 @@ impl Server {
 }
 
 impl Client {
+    /// Creates a `Client`. Requires a Tokio context
     pub fn new(server_id: &str) -> Result<Self> {
         let pipe = named_pipe::ClientOptions::new().open(server_id)?;
         Ok(Self { pipe })
@@ -124,6 +215,54 @@ async fn write_bincode<W: AsyncWrite + Unpin, T: Serialize>(writer: &mut W, msg:
     writer.write_all(&len).await?;
     writer.write_all(&buf).await?;
     Ok(())
+}
+
+/// `std::process::Child` but for a subcommand running from the same exe as
+/// the current process.
+///
+/// Unlike `std::process::Child`, `Drop` tries to join the process, and kills it
+/// if it can't.
+pub(crate) struct SubcommandChild {
+    process: Child,
+}
+
+impl SubcommandChild {
+    /// Launches the current exe as a subprocess with new arguments
+    ///
+    /// # Parameters
+    ///
+    /// * `args` - e.g. `["debug", "test", "ipc-worker"]`
+    pub fn new(args: &[&str]) -> Result<Self> {
+        let mut process = process::Command::new(std::env::current_exe()?);
+        for arg in args {
+            process.arg(arg);
+        }
+        let process = process.spawn()?;
+        Ok(SubcommandChild { process })
+    }
+
+    /// Joins the subprocess, returning an error if the process doesn't stop
+    pub fn wait_or_kill(&mut self) -> Result<()> {
+        if let Ok(Some(status)) = self.process.try_wait() {
+            if status.success() {
+                tracing::info!("process exited with success code");
+            } else {
+                tracing::warn!("process exited with non-success code");
+            }
+        } else {
+            self.process.kill()?;
+            tracing::error!("process was killed");
+        }
+        Ok(())
+    }
+}
+
+impl Drop for SubcommandChild {
+    fn drop(&mut self) {
+        if let Err(error) = self.wait_or_kill() {
+            tracing::error!(?error, "SubcommandChild could not be joined or killed");
+        }
+    }
 }
 
 #[cfg(test)]
