@@ -296,8 +296,6 @@ impl Allocation {
     // }
 
     pub fn bind_channel(&mut self, peer: SocketAddr, now: Instant) {
-        // Start binding a channel, no return value for now ...
-
         let channel = self.next_channel;
         self.next_channel += 1;
 
