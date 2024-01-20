@@ -3,8 +3,8 @@ use crate::device_channel::Packet;
 use crate::ip_packet::{to_dns, IpPacket, MutableIpPacket, Version};
 use crate::{get_v4, get_v6, DnsQuery};
 use connlib_shared::error::ConnlibError;
-use connlib_shared::messages::ResourceDescriptionDns;
-use connlib_shared::{Dname, DNS_SENTINEL};
+use connlib_shared::messages::{DnsServer, ResourceDescriptionDns};
+use connlib_shared::Dname;
 use domain::base::RelativeDname;
 use domain::base::{
     iana::{Class, Rcode, Rtype},
@@ -63,11 +63,10 @@ impl<T, V> ResolveStrategy<T, DnsQueryParams, V> {
 pub(crate) fn parse<'a>(
     dns_resources: &HashMap<String, ResourceDescriptionDns>,
     dns_resources_internal_ips: &HashMap<DnsResource, HashSet<IpAddr>>,
+    dns_mapping: &bimap::BiMap<IpAddr, DnsServer>,
     packet: IpPacket<'a>,
 ) -> Option<ResolveStrategy<Packet<'static>, DnsQuery<'a>, (DnsResource, Rtype)>> {
-    if packet.destination() != IpAddr::from(DNS_SENTINEL) {
-        return None;
-    }
+    dns_mapping.get_by_left(&packet.destination())?;
     let datagram = packet.as_udp()?;
     let message = to_dns(&datagram)?;
     if message.header().qr() {
@@ -372,7 +371,7 @@ fn resource_from_question<N: ToDname>(
             )))
         }
         _ => {
-            let Some(_) = get_description(&name, dns_resources) else {
+            if get_description(&name, dns_resources).is_some() {
                 return None;
             };
 

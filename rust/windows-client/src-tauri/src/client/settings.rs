@@ -37,20 +37,23 @@ impl Default for AdvancedSettings {
     }
 }
 
-/// Gets the path for storing advanced settings, creating parent dirs if needed.
-pub(crate) async fn advanced_settings_path(app: &tauri::AppHandle) -> Result<PathBuf> {
-    let dir = gui::app_local_data_dir(app)?.0.join("config");
-    tokio::fs::create_dir_all(&dir).await?;
-    Ok(dir.join("advanced_settings.json"))
+struct DirAndPath {
+    dir: PathBuf,
+    path: PathBuf,
+}
+
+fn advanced_settings_path() -> Result<DirAndPath> {
+    let dir = gui::app_local_data_dir()?.0.join("config");
+    let path = dir.join("advanced_settings.json");
+    Ok(DirAndPath { dir, path })
 }
 
 #[tauri::command]
 pub(crate) async fn apply_advanced_settings(
-    app: tauri::AppHandle,
     managed: tauri::State<'_, Managed>,
     settings: AdvancedSettings,
 ) -> StdResult<(), String> {
-    apply_advanced_settings_inner(app, managed.inner(), settings)
+    apply_advanced_settings_inner(managed.inner(), settings)
         .await
         .map_err(|e| e.to_string())
 }
@@ -71,15 +74,12 @@ pub(crate) async fn get_advanced_settings(
 }
 
 pub(crate) async fn apply_advanced_settings_inner(
-    app: tauri::AppHandle,
     managed: &Managed,
     settings: AdvancedSettings,
 ) -> Result<()> {
-    tokio::fs::write(
-        advanced_settings_path(&app).await?,
-        serde_json::to_string(&settings)?,
-    )
-    .await?;
+    let DirAndPath { dir, path } = advanced_settings_path()?;
+    tokio::fs::create_dir_all(&dir).await?;
+    tokio::fs::write(path, serde_json::to_string(&settings)?).await?;
 
     if managed.inject_faults {
         tokio::time::sleep(Duration::from_secs(2)).await;
@@ -87,9 +87,12 @@ pub(crate) async fn apply_advanced_settings_inner(
     Ok(())
 }
 
-pub(crate) async fn load_advanced_settings(app: &tauri::AppHandle) -> Result<AdvancedSettings> {
-    let path = advanced_settings_path(app).await?;
-    let text = tokio::fs::read_to_string(&path).await?;
+/// Return advanced settings if they're stored on disk
+///
+/// Uses std::fs, so stick it in `spawn_blocking` for async contexts
+pub(crate) fn load_advanced_settings() -> Result<AdvancedSettings> {
+    let DirAndPath { dir: _, path } = advanced_settings_path()?;
+    let text = std::fs::read_to_string(path)?;
     let settings = serde_json::from_str(&text)?;
     Ok(settings)
 }

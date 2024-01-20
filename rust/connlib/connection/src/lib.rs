@@ -1,6 +1,7 @@
 mod index;
 mod ip_packet;
 mod pool;
+mod stun_binding;
 
 pub use ip_packet::IpPacket;
 pub use pool::{

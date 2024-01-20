@@ -1,10 +1,8 @@
 use anyhow::Result;
-use clap::Parser;
-use cli::CliCommands as Cmd;
+use clap::{Args, Parser};
 use std::{os::windows::process::CommandExt, process::Command};
 
 mod auth;
-mod cli;
 mod crash_handling;
 mod debug_commands;
 mod deep_link;
@@ -16,6 +14,17 @@ mod network_changes;
 mod resolvers;
 mod settings;
 mod wintun_install;
+
+/// Bundle ID / App ID that we use to distinguish ourself from other programs on the system
+///
+/// e.g. In ProgramData and AppData we use this to name our subdirectories for configs and data,
+/// and Windows may use it to track things like the MSI installer, notification titles,
+/// deep link registration, etc.
+///
+/// This should be identical to the `tauri.bundle.identifier` over in `tauri.conf.json`,
+/// but sometimes I need to use this before Tauri has booted up, or in a place where
+/// getting the Tauri app handle would be awkward.
+pub const BUNDLE_ID: &str = "dev.firezone.client";
 
 /// Output of `git describe` at compile time
 /// e.g. `1.0.0-pre.4-20-ged5437c88-modified` where:
@@ -69,7 +78,7 @@ const CREATE_NO_WINDOW: u32 = 0x08000000;
 /// In steady state, the only processes running will be the GUI and the crash handler.
 pub(crate) fn run() -> Result<()> {
     std::panic::set_hook(Box::new(tracing_panic::panic_hook));
-    let cli = cli::Cli::parse();
+    let cli = Cli::parse();
 
     match cli.command {
         None => {
@@ -107,8 +116,7 @@ pub(crate) fn run() -> Result<()> {
         }
         Some(Cmd::DebugCrash) => debug_commands::crash(),
         Some(Cmd::DebugHostname) => debug_commands::hostname(),
-        Some(Cmd::DebugNetworkChanges) => debug_commands::network_changes(),
-        Some(Cmd::DebugPipeServer) => debug_commands::pipe_server(),
+        Some(Cmd::DebugNetworkChanges) => network_changes::run_debug(),
         Some(Cmd::DebugWintun) => debug_commands::wintun(cli),
         // If we already tried to elevate ourselves, don't try again
         Some(Cmd::Elevated) => gui::run(GuiParams {
@@ -116,9 +124,40 @@ pub(crate) fn run() -> Result<()> {
             flag_elevated: true,
             inject_faults: cli.inject_faults,
         }),
-        Some(Cmd::OpenDeepLink(deep_link)) => debug_commands::open_deep_link(&deep_link.url),
-        Some(Cmd::RegisterDeepLink) => debug_commands::register_deep_link(),
+        Some(Cmd::OpenDeepLink(deep_link)) => {
+            let rt = tokio::runtime::Runtime::new()?;
+            rt.block_on(deep_link::open(&deep_link.url))?;
+            Ok(())
+        }
     }
+}
+
+#[derive(Parser)]
+#[command(author, version, about, long_about = None)]
+pub struct Cli {
+    #[command(subcommand)]
+    pub command: Option<Cmd>,
+    #[arg(long, hide = true)]
+    pub crash_on_purpose: bool,
+    #[arg(long, hide = true)]
+    pub inject_faults: bool,
+}
+
+#[derive(clap::Subcommand)]
+pub enum Cmd {
+    CrashHandlerServer,
+    Debug,
+    DebugCrash,
+    DebugHostname,
+    DebugNetworkChanges,
+    DebugWintun,
+    Elevated,
+    OpenDeepLink(DeepLink),
+}
+
+#[derive(Args)]
+pub struct DeepLink {
+    pub url: url::Url,
 }
 
 #[cfg(test)]
