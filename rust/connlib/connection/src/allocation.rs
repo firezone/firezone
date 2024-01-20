@@ -49,6 +49,7 @@ pub struct Allocation {
     channel_bindings: HashMap<u16, Channel>, // TODO: We need to track activity on these and keep them alive accordingly.
 
     next_channel: u16,
+    last_now: Option<Instant>,
 
     username: Username,
     password: String,
@@ -73,6 +74,7 @@ impl Allocation {
             nonce: Default::default(),
             allocation_lifetime: Default::default(),
             channel_bindings: Default::default(),
+            last_now: Default::default(),
         }
     }
 
@@ -87,6 +89,10 @@ impl Allocation {
     }
 
     pub fn handle_input(&mut self, from: SocketAddr, packet: &[u8], now: Instant) -> bool {
+        if Some(now) > self.last_now {
+            self.last_now = Some(now);
+        }
+
         if from != self.server {
             return false;
         }
@@ -128,6 +134,10 @@ impl Allocation {
 
                 return true;
             }
+
+            // TODO: Handle error codes such as:
+            // - Failed allocations
+            // - Failed channel bindings
 
             tracing::warn!(method = %original_request.method(), error = %error.reason_phrase(), "STUN request failed");
             return true;
@@ -216,6 +226,8 @@ impl Allocation {
                 };
 
                 binding.bound = true;
+                binding.bound_at = now;
+                binding.last_activity = now;
             }
             _ => {}
         }
@@ -252,6 +264,10 @@ impl Allocation {
     }
 
     pub fn handle_timeout(&mut self, now: Instant) {
+        if Some(now) > self.last_now {
+            self.last_now = Some(now);
+        }
+
         if !self.has_allocation() && !self.allocate_in_flight() {
             tracing::debug!(server = %self.server, "Request new allocation");
 
@@ -281,6 +297,10 @@ impl Allocation {
                 self.authenticate_and_queue(make_refresh_request(), now);
             }
         }
+
+        // TODO: Refresh channels
+
+        // TODO: Clean up unused channels
     }
 
     pub fn poll_candidate(&mut self) -> Option<Candidate> {
@@ -300,34 +320,48 @@ impl Allocation {
         self.next_channel += 1;
 
         self.authenticate_and_queue(make_channel_bind_request(peer, channel), now);
-        self.channel_bindings
-            .insert(channel, Channel { peer, bound: false });
+        self.channel_bindings.insert(
+            channel,
+            Channel {
+                peer,
+                bound: false,
+                bound_at: now,
+                last_activity: now,
+            },
+        );
     }
 
     pub fn encode_to_slice(
-        &self,
+        &mut self,
         peer: SocketAddr,
         packet: &[u8],
         header: &mut [u8],
     ) -> Option<usize> {
-        let channel_number = self.channel_to_peer(peer)?;
+        let now = self.last_now?;
+
+        let (channel_number, channel) = self.channel_to_peer(peer)?;
         let total_length =
             crate::channel_data::encode_header_to_slice(channel_number, packet, header);
+        channel.last_activity = now;
 
         Some(total_length)
     }
 
-    pub fn encode_to_vec(&self, peer: SocketAddr, packet: &[u8]) -> Option<Vec<u8>> {
-        let channel_number = self.channel_to_peer(peer)?;
+    pub fn encode_to_vec(&mut self, peer: SocketAddr, packet: &[u8]) -> Option<Vec<u8>> {
+        let now = self.last_now?;
+
+        let (channel_number, channel) = self.channel_to_peer(peer)?;
         let channel_data = crate::channel_data::encode(channel_number, packet);
+        channel.last_activity = now;
 
         Some(channel_data)
     }
 
-    fn channel_to_peer(&self, peer: SocketAddr) -> Option<u16> {
+    fn channel_to_peer(&mut self, peer: SocketAddr) -> Option<(u16, &mut Channel)> {
         self.channel_bindings
-            .iter()
-            .find_map(|(n, c)| (c.peer == peer).then_some(*n))
+            .iter_mut()
+            .find(|(_, c)| c.peer == peer)
+            .map(|(n, c)| (*n, c))
     }
 
     fn has_allocation(&self) -> bool {
@@ -387,13 +421,14 @@ impl Allocation {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 struct Channel {
     peer: SocketAddr,
 
     /// If `false`, the channel binding has not yet been confirmed.
     bound: bool,
-    // last_activity: Instant ?
+    bound_at: Instant,
+    last_activity: Instant,
 }
 
 fn update_candidate(

@@ -251,14 +251,14 @@ where
                     conn.set_remote_from_wg_activity(from, remote_socket);
 
                     self.buffered_transmits
-                        .extend(conn.encapsulate(bytes, &self.allocations));
+                        .extend(conn.encapsulate(bytes, &mut self.allocations));
 
                     while let TunnResult::WriteToNetwork(packet) =
                         conn.tunnel
                             .decapsulate(None, &[], self.buffer.as_mut_slice())
                     {
                         self.buffered_transmits
-                            .extend(conn.encapsulate(packet, &self.allocations));
+                            .extend(conn.encapsulate(packet, &mut self.allocations));
                     }
 
                     Ok(None)
@@ -301,7 +301,7 @@ where
         match conn.remote_socket.ok_or(Error::NotConnected)? {
             RemoteSocket::Direct(remote) => Ok(Some((remote, packet))),
             RemoteSocket::Relay { relay, dest: peer } => {
-                let Some(allocation) = self.allocations.get(&relay) else {
+                let Some(allocation) = self.allocations.get_mut(&relay) else {
                     tracing::warn!(%relay, "No allocation");
                     return Ok(None);
                 };
@@ -399,7 +399,7 @@ where
 
         for c in self.negotiated_connections.values_mut() {
             self.buffered_transmits
-                .extend(c.handle_timeout(now, &self.allocations));
+                .extend(c.handle_timeout(now, &mut self.allocations));
         }
 
         for binding in self.bindings.values_mut() {
@@ -428,7 +428,7 @@ where
                     relay,
                     transmit.destination,
                     &transmit.contents,
-                    &self.allocations,
+                    &mut self.allocations,
                 )
                 .unwrap_or(Transmit {
                     dst: transmit.destination,
@@ -580,9 +580,9 @@ fn encode_as_channel_data(
     relay: SocketAddr,
     dest: SocketAddr,
     contents: &[u8],
-    allocations: &HashMap<SocketAddr, Allocation>,
+    allocations: &mut HashMap<SocketAddr, Allocation>,
 ) -> Option<Transmit> {
-    let allocation = allocations.get(&relay)?;
+    let allocation = allocations.get_mut(&relay)?;
     let payload = allocation.encode_to_vec(dest, contents)?;
 
     Some(Transmit {
@@ -926,7 +926,7 @@ impl Connection {
     fn handle_timeout(
         &mut self,
         now: Instant,
-        allocations: &HashMap<SocketAddr, Allocation>,
+        allocations: &mut HashMap<SocketAddr, Allocation>,
     ) -> Option<Transmit> {
         self.agent.handle_timeout(now);
 
@@ -963,7 +963,7 @@ impl Connection {
     fn encapsulate(
         &self,
         message: &[u8],
-        allocations: &HashMap<SocketAddr, Allocation>,
+        allocations: &mut HashMap<SocketAddr, Allocation>,
     ) -> Option<Transmit> {
         match self.remote_socket? {
             RemoteSocket::Direct(remote) => Some(Transmit {
