@@ -1,3 +1,4 @@
+/* Licensed under Apache 2.0 (C) 2024 Firezone, Inc. */
 package dev.firezone.android.features.settings.ui
 
 import android.os.Bundle
@@ -10,14 +11,16 @@ import dev.firezone.android.R
 import dev.firezone.android.databinding.FragmentSettingsAdvancedBinding
 
 class AdvancedSettingsFragment : Fragment(R.layout.fragment_settings_advanced) {
-
     private var _binding: FragmentSettingsAdvancedBinding? = null
 
     private val binding get() = _binding!!
 
     private val viewModel: SettingsViewModel by activityViewModels()
 
-    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+    override fun onViewCreated(
+        view: View,
+        savedInstanceState: Bundle?,
+    ) {
         super.onViewCreated(view, savedInstanceState)
         _binding = FragmentSettingsAdvancedBinding.bind(view)
 

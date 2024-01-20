@@ -1,3 +1,4 @@
+/* Licensed under Apache 2.0 (C) 2024 Firezone, Inc. */
 package dev.firezone.android.features.settings.ui
 
 import android.os.Bundle
@@ -11,14 +12,15 @@ import dev.firezone.android.R
 import dev.firezone.android.databinding.FragmentSettingsLogsBinding
 import kotlinx.coroutines.launch
 
-
 class LogSettingsFragment : Fragment(R.layout.fragment_settings_logs) {
-
     private var _binding: FragmentSettingsLogsBinding? = null
     private val binding get() = _binding!!
     private val viewModel: SettingsViewModel by activityViewModels()
 
-    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+    override fun onViewCreated(
+        view: View,
+        savedInstanceState: Bundle?,
+    ) {
         super.onViewCreated(view, savedInstanceState)
         _binding = FragmentSettingsLogsBinding.bind(view)
 
