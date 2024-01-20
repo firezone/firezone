@@ -14,6 +14,16 @@ use std::{
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::EnvFilter;
 
+/// The Apple client implements reconnect logic in the upper layer using OS provided
+/// APIs to detect network connectivity changes. The reconnect timeout here only
+/// applies only in the following conditions:
+///
+/// * That reconnect logic fails to detect network changes (not expected to happen)
+/// * The portal is DOWN
+///
+/// Hopefully we aren't down for more than 24 hours.
+const MAX_PARTITION_TIME_SECS: Duration = Duration::from_secs(60 * 60 * 24);
+
 #[swift_bridge::bridge]
 mod ffi {
     extern "Rust" {
@@ -192,7 +202,7 @@ impl WrappedSession {
                 inner: Arc::new(callback_handler),
                 handle: init_logging(log_dir.into(), log_filter),
             },
-            Duration::from_secs(5 * 60),
+            MAX_PARTITION_TIME_SECS,
         )
         .map_err(|err| err.to_string())?;
 

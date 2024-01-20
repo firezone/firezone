@@ -62,7 +62,9 @@ struct Cli {
     #[arg(short, long, env = "LOG_DIR")]
     log_dir: Option<PathBuf>,
 
+    /// Maximum length of time to retry connecting to the portal if we're having internet issues or
+    /// it's down.
     #[arg(env = "MAX_PARTITION_TIME")]
-    #[clap(default_value = "5m")]
+    #[clap(default_value = "7d")]
     max_partition_time: humantime::Duration,
 }
