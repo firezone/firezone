@@ -67,7 +67,7 @@ internal class SettingsViewModel
 
             _uiState.value =
                 _uiState.value.copy(
-                    logSize = totalSize,
+                    logSizeBytes = totalSize,
                 )
         }
 
@@ -107,7 +107,7 @@ internal class SettingsViewModel
                 }
                 _uiState.value =
                     _uiState.value.copy(
-                        logSize = 0,
+                        logSizeBytes = 0,
                     )
             }
         }
@@ -205,8 +205,7 @@ internal class SettingsViewModel
 
         internal data class UiState(
             val isSaveButtonEnabled: Boolean = false,
-            // Size in Bytes
-            val logSize: Long = 0,
+            val logSizeBytes: Long = 0,
         )
 
         internal sealed class ViewAction {

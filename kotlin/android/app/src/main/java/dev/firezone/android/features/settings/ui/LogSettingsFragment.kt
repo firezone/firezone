@@ -42,10 +42,10 @@ class LogSettingsFragment : Fragment(R.layout.fragment_settings_logs) {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 viewModel.uiState.collect { uiState ->
                     with(binding) {
-                        val hasLogs = uiState.logSize > 0
+                        val hasLogs = uiState.logSizeBytes > 0
                         btShareLog.isEnabled = hasLogs
                         btClearLog.isEnabled = hasLogs
-                        val logSize = "${uiState.logSize / 1000L} KB"
+                        val logSize = "${uiState.logSizeBytes / 1000L} KB"
                         tvLogDirectorySize.text = getString(R.string.log_directory_size, logSize)
                     }
                 }
