@@ -453,142 +453,6 @@ where
 
         self.buffered_transmits.pop_front()
     }
-
-    fn agent_mut(&mut self, id: TId) -> Option<&mut IceAgent> {
-        let maybe_initial_connection = self.initial_connections.get_mut(&id).map(|i| &mut i.agent);
-        let maybe_established_connection = self
-            .negotiated_connections
-            .get_mut(&id)
-            .map(|c| &mut c.agent);
-
-        maybe_initial_connection.or(maybe_established_connection)
-    }
-
-    fn agents_mut(&mut self) -> impl Iterator<Item = &mut IceAgent> {
-        let initial_agents = self.initial_connections.values_mut().map(|c| &mut c.agent);
-        let negotiated_agents = self
-            .negotiated_connections
-            .values_mut()
-            .map(|c| &mut c.agent);
-
-        initial_agents.chain(negotiated_agents)
-    }
-
-    fn upsert_stun_servers(&mut self, servers: &HashSet<SocketAddr>) {
-        for server in servers {
-            if !self.bindings.contains_key(server) {
-                tracing::debug!(address = %server, "Adding new STUN server");
-
-                self.bindings.insert(*server, StunBinding::new(*server));
-            }
-        }
-    }
-
-    fn upsert_turn_servers(&mut self, servers: &HashSet<(SocketAddr, String, String, String)>) {
-        for (server, username, password, realm) in servers {
-            debug_assert_eq!(
-                server.port(),
-                3478,
-                "We rely on TURN servers running on port 3478"
-            );
-
-            let Ok(username) = Username::new(username.to_owned()) else {
-                tracing::debug!(%username, "Invalid TURN username");
-                continue;
-            };
-            let Ok(realm) = Realm::new(realm.to_owned()) else {
-                tracing::debug!(%realm, "Invalid TURN realm");
-                continue;
-            };
-
-            if !self.allocations.contains_key(server) {
-                tracing::debug!(address = %server, "Adding new TURN server");
-
-                self.allocations.insert(
-                    *server,
-                    Allocation::new(*server, username, password.clone(), realm),
-                );
-            }
-        }
-    }
-
-    fn seed_agent_with_local_candidates(
-        &mut self,
-        connection: TId,
-        agent: &mut IceAgent,
-        allowed_stun_servers: &HashSet<SocketAddr>,
-        allowed_turn_servers: &HashSet<SocketAddr>,
-    ) {
-        for local in self.local_interfaces.iter().copied() {
-            let candidate = match Candidate::host(local, Protocol::Udp) {
-                Ok(c) => c,
-                Err(e) => {
-                    tracing::debug!("Failed to generate host candidate from addr: {e}");
-                    continue;
-                }
-            };
-
-            add_local_candidate(
-                connection,
-                agent,
-                candidate.clone(),
-                &mut self.pending_events,
-            );
-        }
-
-        for candidate in self.bindings.iter().filter_map(|(server, binding)| {
-            let candidate = allowed_stun_servers
-                .contains(server)
-                .then(|| binding.candidate())??;
-
-            Some(candidate)
-        }) {
-            add_local_candidate(
-                connection,
-                agent,
-                candidate.clone(),
-                &mut self.pending_events,
-            );
-        }
-
-        for candidate in self
-            .allocations
-            .iter()
-            .flat_map(|(server, allocation)| {
-                allowed_turn_servers
-                    .contains(server)
-                    .then(|| allocation.current_candidates())
-            })
-            .flatten()
-        {
-            add_local_candidate(
-                connection,
-                agent,
-                candidate.clone(),
-                &mut self.pending_events,
-            );
-        }
-    }
-}
-
-/// Wraps the message as a channel data message via the relay, iff:
-///
-/// - `relay` is in fact a relay
-/// - We have an allocation on the relay
-/// - There is a channel bound to the provided peer
-fn encode_as_channel_data(
-    relay: SocketAddr,
-    dest: SocketAddr,
-    contents: &[u8],
-    allocations: &mut HashMap<SocketAddr, Allocation>,
-) -> Option<Transmit> {
-    let allocation = allocations.get_mut(&relay)?;
-    let payload = allocation.encode_to_vec(dest, contents)?;
-
-    Some(Transmit {
-        dst: relay,
-        payload,
-    })
 }
 
 impl<TId> ConnectionPool<Client, TId>
@@ -747,6 +611,147 @@ where
     }
 }
 
+impl<T, TId> ConnectionPool<T, TId>
+where
+    TId: Eq + Hash + Copy + fmt::Display,
+{
+    fn agent_mut(&mut self, id: TId) -> Option<&mut IceAgent> {
+        let maybe_initial_connection = self.initial_connections.get_mut(&id).map(|i| &mut i.agent);
+        let maybe_established_connection = self
+            .negotiated_connections
+            .get_mut(&id)
+            .map(|c| &mut c.agent);
+
+        maybe_initial_connection.or(maybe_established_connection)
+    }
+
+    fn agents_mut(&mut self) -> impl Iterator<Item = &mut IceAgent> {
+        let initial_agents = self.initial_connections.values_mut().map(|c| &mut c.agent);
+        let negotiated_agents = self
+            .negotiated_connections
+            .values_mut()
+            .map(|c| &mut c.agent);
+
+        initial_agents.chain(negotiated_agents)
+    }
+
+    fn upsert_stun_servers(&mut self, servers: &HashSet<SocketAddr>) {
+        for server in servers {
+            if !self.bindings.contains_key(server) {
+                tracing::debug!(address = %server, "Adding new STUN server");
+
+                self.bindings.insert(*server, StunBinding::new(*server));
+            }
+        }
+    }
+
+    fn upsert_turn_servers(&mut self, servers: &HashSet<(SocketAddr, String, String, String)>) {
+        for (server, username, password, realm) in servers {
+            debug_assert_eq!(
+                server.port(),
+                3478,
+                "We rely on TURN servers running on port 3478"
+            );
+
+            let Ok(username) = Username::new(username.to_owned()) else {
+                tracing::debug!(%username, "Invalid TURN username");
+                continue;
+            };
+            let Ok(realm) = Realm::new(realm.to_owned()) else {
+                tracing::debug!(%realm, "Invalid TURN realm");
+                continue;
+            };
+
+            if !self.allocations.contains_key(server) {
+                tracing::debug!(address = %server, "Adding new TURN server");
+
+                self.allocations.insert(
+                    *server,
+                    Allocation::new(*server, username, password.clone(), realm),
+                );
+            }
+        }
+    }
+
+    fn seed_agent_with_local_candidates(
+        &mut self,
+        connection: TId,
+        agent: &mut IceAgent,
+        allowed_stun_servers: &HashSet<SocketAddr>,
+        allowed_turn_servers: &HashSet<SocketAddr>,
+    ) {
+        for local in self.local_interfaces.iter().copied() {
+            let candidate = match Candidate::host(local, Protocol::Udp) {
+                Ok(c) => c,
+                Err(e) => {
+                    tracing::debug!("Failed to generate host candidate from addr: {e}");
+                    continue;
+                }
+            };
+
+            add_local_candidate(
+                connection,
+                agent,
+                candidate.clone(),
+                &mut self.pending_events,
+            );
+        }
+
+        for candidate in self.bindings.iter().filter_map(|(server, binding)| {
+            let candidate = allowed_stun_servers
+                .contains(server)
+                .then(|| binding.candidate())??;
+
+            Some(candidate)
+        }) {
+            add_local_candidate(
+                connection,
+                agent,
+                candidate.clone(),
+                &mut self.pending_events,
+            );
+        }
+
+        for candidate in self
+            .allocations
+            .iter()
+            .flat_map(|(server, allocation)| {
+                allowed_turn_servers
+                    .contains(server)
+                    .then(|| allocation.current_candidates())
+            })
+            .flatten()
+        {
+            add_local_candidate(
+                connection,
+                agent,
+                candidate.clone(),
+                &mut self.pending_events,
+            );
+        }
+    }
+}
+
+/// Wraps the message as a channel data message via the relay, iff:
+///
+/// - `relay` is in fact a relay
+/// - We have an allocation on the relay
+/// - There is a channel bound to the provided peer
+fn encode_as_channel_data(
+    relay: SocketAddr,
+    dest: SocketAddr,
+    contents: &[u8],
+    allocations: &mut HashMap<SocketAddr, Allocation>,
+) -> Option<Transmit> {
+    let allocation = allocations.get_mut(&relay)?;
+    let payload = allocation.encode_to_vec(dest, contents)?;
+
+    Some(Transmit {
+        dst: relay,
+        payload,
+    })
+}
+
 fn drain_and_add_candidates<TId>(
     server: SocketAddr,
     mut next_candidate: impl FnMut() -> Option<Candidate>,
@@ -858,7 +863,7 @@ pub struct Transmit {
     pub payload: Vec<u8>,
 }
 
-pub struct InitialConnection {
+struct InitialConnection {
     agent: IceAgent,
     session_key: Secret<[u8; 32]>,
     stun_servers: HashSet<SocketAddr>,
