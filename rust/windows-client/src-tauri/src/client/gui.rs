@@ -21,6 +21,12 @@ use ControllerRequest as Req;
 
 mod system_tray_menu;
 
+/// The Windows client doesn't use platform APIs to detect network connectivity changes,
+/// so we rely on connlib to do so. We have valid use cases for headless Windows clients
+/// (IoT devices, point-of-sale devices, etc), so try to reconnect for 7 days if there's
+/// been a partition.
+const MAX_PARTITION_TIME_SECS: Duration = Duration::from_secs(60 * 60 * 24 * 7);
+
 pub(crate) type CtlrTx = mpsc::Sender<ControllerRequest>;
 
 // TODO: Move out of GUI module, shouldn't be here
@@ -411,7 +417,7 @@ impl Controller {
             None, // TODO: Send device name here (windows computer name)
             None,
             callback_handler.clone(),
-            Duration::from_secs(5 * 60),
+            MAX_PARTITION_TIME_SECS,
         )?;
 
         self.session = Some(Session {
