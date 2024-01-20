@@ -60,7 +60,7 @@ internal class SettingsViewModel
         }
 
         fun onViewResume(context: Context) {
-            val directory = File(context.cacheDir.absolutePath + "/log")
+            val directory = File(context.cacheDir.absolutePath + "/logs")
             val totalSize = directory.walkTopDown().filter { it.isFile }.map { it.length() }.sum()
 
             deleteLogZip(context)
