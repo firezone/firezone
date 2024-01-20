@@ -76,7 +76,8 @@ android {
             buildConfigField(
                 "String",
                 "LOG_FILTER",
-                "\"connlib_client_android=debug,firezone_tunnel=trace,connlib_shared=debug,connlib_client_shared=debug,warn\"",
+                "\"connlib_client_android=debug,firezone_tunnel=trace,phoenix_channel=debug,connlib_shared=debug," +
+                    "connlib_client_shared=debug,warn\"",
             )
         }
 
@@ -110,7 +111,8 @@ android {
             buildConfigField(
                 "String",
                 "LOG_FILTER",
-                "\"connlib_client_android=info,firezone_tunnel=trace,connlib_shared=info,connlib_client_shared=info,webrtc=error,warn\"",
+                "\"connlib_client_android=info,firezone_tunnel=trace,phoenix_channel=info,connlib_shared=info," +
+                    "connlib_client_shared=info,webrtc=error,warn\"",
             )
             firebaseAppDistribution {
                 serviceCredentialsFile = System.getenv("FIREBASE_CREDENTIALS_PATH")
