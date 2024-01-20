@@ -291,9 +291,9 @@ impl Allocation {
         self.buffered_transmits.pop_front()
     }
 
-    pub fn poll_timeout(&self) -> Option<Instant> {
-        None // TODO: Implement this.
-    }
+    // pub fn poll_timeout(&self) -> Option<Instant> {
+    //     None // TODO: Implement this.
+    // }
 
     pub fn bind_channel(&mut self, peer: SocketAddr, now: Instant) {
         // Start binding a channel, no return value for now ...
