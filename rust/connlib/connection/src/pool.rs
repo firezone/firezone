@@ -305,13 +305,10 @@ where
                     tracing::warn!(%relay, "No allocation");
                     return Ok(None);
                 };
-                let Some(channel) = allocation.channel_to_peer(peer) else {
+                let Some(total_length) = allocation.encode_to_slice(peer, packet, header) else {
                     tracing::warn!(%peer, "No channel");
                     return Ok(None);
                 };
-
-                let total_length =
-                    crate::channel_data::encode_header_to_slice(channel, packet, header);
 
                 // Safety: We split the slice before, but the borrow-checker doesn't allow us to re-borrow `self.buffer`.
                 let channel_data_packet =
@@ -586,11 +583,11 @@ fn encode_as_channel_data(
     allocations: &HashMap<SocketAddr, Allocation>,
 ) -> Option<Transmit> {
     let allocation = allocations.get(&relay)?;
-    let c = allocation.channel_to_peer(dest)?;
+    let payload = allocation.encode_to_vec(dest, contents)?;
 
     Some(Transmit {
         dst: relay,
-        payload: crate::channel_data::encode(c, contents),
+        payload,
     })
 }
 

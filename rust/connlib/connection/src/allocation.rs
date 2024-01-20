@@ -304,7 +304,27 @@ impl Allocation {
             .insert(channel, Channel { peer, bound: false });
     }
 
-    pub fn channel_to_peer(&self, peer: SocketAddr) -> Option<u16> {
+    pub fn encode_to_slice(
+        &self,
+        peer: SocketAddr,
+        packet: &[u8],
+        header: &mut [u8],
+    ) -> Option<usize> {
+        let channel_number = self.channel_to_peer(peer)?;
+        let total_length =
+            crate::channel_data::encode_header_to_slice(channel_number, packet, header);
+
+        Some(total_length)
+    }
+
+    pub fn encode_to_vec(&self, peer: SocketAddr, packet: &[u8]) -> Option<Vec<u8>> {
+        let channel_number = self.channel_to_peer(peer)?;
+        let channel_data = crate::channel_data::encode(channel_number, packet);
+
+        Some(channel_data)
+    }
+
+    fn channel_to_peer(&self, peer: SocketAddr) -> Option<u16> {
         self.channel_bindings
             .iter()
             .find_map(|(n, c)| (c.peer == peer).then_some(*n))
