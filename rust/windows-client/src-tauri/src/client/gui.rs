@@ -344,7 +344,6 @@ struct Controller {
     /// The UUIDv4 device ID persisted to disk
     /// Sent verbatim to Session::connect
     device_id: String,
-    log_counting_task: Option<tokio::task::JoinHandle<Result<()>>>,
     logging_handles: client::logging::Handles,
     /// Tells us when to wake up and look for a new resource list. Tokio docs say that memory reads and writes are synchronized when notifying, so we don't need an extra mutex on the resources.
     notify_controller: Arc<Notify>,
@@ -374,7 +373,6 @@ impl Controller {
             ctlr_tx,
             session: None,
             device_id,
-            log_counting_task: None,
             logging_handles,
             notify_controller,
             tunnel_ready: false,
