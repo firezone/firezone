@@ -6,7 +6,7 @@
 //! RUST_LOG=debug cargo run -p firezone-windows-client debug test-ipc
 //! ```
 
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use connlib_client_shared::ResourceDescription;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::{
@@ -53,6 +53,9 @@ pub(crate) enum Subcommand {
     SecurityWorker {
         pipe_id: String,
     },
+    ApiWorker {
+        pipe_id: String,
+    },
 }
 
 pub fn test_subcommand(cmd: Option<Subcommand>) -> Result<()> {
@@ -61,6 +64,7 @@ pub fn test_subcommand(cmd: Option<Subcommand>) -> Result<()> {
     rt.block_on(async move {
         match cmd {
             None => {
+                test_api().await?;
                 test_security().await?;
                 test_happy_path().await?;
                 test_leak(true).await?;
@@ -75,6 +79,7 @@ pub fn test_subcommand(cmd: Option<Subcommand>) -> Result<()> {
             }) => leak_manager(pipe_id, enable_protection),
             Some(Subcommand::LeakWorker { pipe_id }) => leak_worker(pipe_id).await,
             Some(Subcommand::SecurityWorker { pipe_id }) => security_worker(pipe_id).await,
+            Some(Subcommand::ApiWorker { pipe_id }) => test_api_worker(pipe_id).await,
         }
     })?;
     Ok(())
@@ -292,6 +297,42 @@ async fn security_worker(pipe_id: String) -> Result<()> {
     Ok(())
 }
 
+#[tracing::instrument]
+async fn test_api() -> Result<()> {
+    let start_time = Instant::now();
+
+    let leak_guard = LeakGuard::new()?;
+    let args = ["debug", "test-ipc", "api-worker"];
+    let Subprocess {
+        mut server,
+        mut worker,
+    } = timeout(Duration::from_secs(10), Subprocess::new(&leak_guard, &args)).await??;
+
+    server.request(Request::Disconnect).await?;
+
+    let elapsed = start_time.elapsed();
+    assert!(elapsed < Duration::from_millis(200), "{:?}", elapsed);
+
+    tokio::time::sleep(Duration::from_secs(3)).await;
+    worker.wait_or_kill()?;
+
+    Ok(())
+}
+
+#[tracing::instrument]
+async fn test_api_worker(pipe_id: String) -> Result<()> {
+    let mut client = client(&pipe_id).await?;
+    tracing::debug!("Worker connected to named pipe");
+    loop {
+        let (req, responder) = client.next_request().await?;
+        responder.respond(Response::CallbackTunnelReady).await?;
+        if let Request::Disconnect = req {
+            break;
+        }
+    }
+    Ok(())
+}
+
 /// Returns a random valid named pipe ID based on a UUIDv4
 ///
 /// e.g. "\\.\pipe\dev.firezone.client\9508e87c-1c92-4630-bb20-839325d169bd"
@@ -300,6 +341,68 @@ async fn security_worker(pipe_id: String) -> Result<()> {
 /// a known pipe ID into a process controlled by the test.
 fn random_pipe_id() -> String {
     format!(r"\\.\pipe\dev.firezone.client\{}", uuid::Uuid::new_v4())
+}
+
+/// A named pipe server linked to a worker subprocess
+pub(crate) struct Subprocess {
+    server: Server,
+    worker: SubcommandChild,
+}
+
+impl Subprocess {
+    /// Returns a linked named pipe server and worker subprocess
+    ///
+    /// The process ID and cookie have already been checked for security
+    /// when this function returns.
+    pub(crate) async fn new(leak_guard: &LeakGuard, args: &[&str]) -> Result<Self> {
+        let (server, pipe_id) = UnconnectedServer::new()?;
+        let mut process = process::Command::new(std::env::current_exe()?);
+        // Make the child's stdin piped so we can send it a security cookie.
+        process.stdin(process::Stdio::piped());
+        for arg in args {
+            process.arg(arg);
+        }
+        process.arg(&pipe_id);
+        let process = process.spawn()?;
+        leak_guard.add_process(&process)?;
+        let child_pid = process.id();
+        let mut worker = SubcommandChild { process };
+
+        // Make sure our child process connected to our pipe, and not some 3rd-party process
+        let mut server = server.accept().await?;
+        let client_pid = server.client_pid()?;
+        if child_pid != client_pid {
+            bail!("PID of child process and pipe client should match");
+        }
+
+        // Make sure the process on the other end of the pipe knows the cookie we went
+        // to our child process' stdin
+        let mut child_stdin = worker
+            .process
+            .stdin
+            .take()
+            .ok_or_else(|| anyhow::anyhow!("couldn't get stdin of child process"))?;
+        let cookie = uuid::Uuid::new_v4().to_string();
+        writeln!(child_stdin, "{cookie}")?;
+
+        let echoed_cookie: String = read_bincode(&mut server.pipe).await?;
+        if echoed_cookie != cookie {
+            bail!("cookie received from pipe client should match the cookie we sent to our child process");
+        }
+
+        Ok(Self { server, worker })
+    }
+}
+
+/// Returns a named pipe client for use in a worker subprocess
+///
+/// The security cookie has already been read from stdin and echoed to the pipe server.
+pub(crate) async fn client(pipe_id: &str) -> Result<Client> {
+    let mut client = Client::new(pipe_id)?;
+    let mut cookie = String::new();
+    std::io::stdin().read_line(&mut cookie)?;
+    write_bincode(&mut client.pipe, &cookie.trim()).await?;
+    Ok(client)
 }
 
 /// A server that accepts only one client
@@ -337,7 +440,7 @@ impl UnconnectedServer {
 ///
 /// Manual testing shows that if the corresponding Client's process crashes, Windows will
 /// be nice and return errors for anything trying to read from the Server
-struct Server {
+pub(crate) struct Server {
     pipe: named_pipe::NamedPipeServer,
 }
 
@@ -345,7 +448,7 @@ struct Server {
 ///
 /// Manual testing shows that if the corresponding Server's process crashes, Windows will
 /// be nice and return errors for anything trying to read from the Client
-struct Client {
+pub(crate) struct Client {
     pipe: named_pipe::NamedPipeClient,
 }
 
@@ -365,7 +468,7 @@ pub(crate) enum Response {
 }
 
 #[must_use]
-struct Responder<'a> {
+pub(crate) struct Responder<'a> {
     client: &'a mut Client,
 }
 
@@ -438,7 +541,7 @@ async fn write_bincode<W: AsyncWrite + Unpin, T: Serialize>(writer: &mut W, msg:
 ///
 /// Unlike `std::process::Child`, `Drop` tries to join the process, and kills it
 /// if it can't.
-struct SubcommandChild {
+pub(crate) struct SubcommandChild {
     process: Child,
 }
 
@@ -464,7 +567,7 @@ impl SubcommandChild {
     pub fn wait_or_kill(&mut self) -> Result<()> {
         if let Ok(Some(status)) = self.process.try_wait() {
             if status.success() {
-                tracing::info!("process exited with success code");
+                tracing::debug!("process exited with success code");
             } else {
                 tracing::warn!("process exited with non-success code");
             }
@@ -485,7 +588,7 @@ impl Drop for SubcommandChild {
 }
 
 /// Uses a Windows job object to kill child processes when the parent exits
-struct LeakGuard {
+pub(crate) struct LeakGuard {
     job_object: HANDLE,
 }
 
