@@ -129,16 +129,20 @@ defmodule Web.Actors.Components do
     ~H"""
     <div>
       <.input
-        label="Email or Sub claim"
-        placeholder="Email or Sub claim"
+        label="Email"
+        placeholder="Email"
         field={@form[:provider_identifier]}
         autocomplete="off"
       />
+      <p class="mt-2 text-xs text-neutral-500">
+        The token <code>sub</code> claim value or userinfo <code>email</code> value.
+        This will be used to match the user to this identity when signing in for the first time.
+      </p>
     </div>
     <div>
       <.input
-        label="Email or Sub claim Confirmation"
-        placeholder="Email or Sub claim Confirmation"
+        label="Email Confirmation"
+        placeholder="Email Confirmation"
         field={@form[:provider_identifier_confirmation]}
         autocomplete="off"
       />
