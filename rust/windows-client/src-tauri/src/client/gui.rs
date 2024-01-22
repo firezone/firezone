@@ -132,8 +132,8 @@ pub(crate) fn run(params: client::GuiParams) -> Result<()> {
         })
         .invoke_handler(tauri::generate_handler![
             logging::clear_logs,
+            logging::count_logs,
             logging::export_logs,
-            logging::start_stop_log_counting,
             settings::apply_advanced_settings,
             settings::reset_advanced_settings,
             settings::get_advanced_settings,

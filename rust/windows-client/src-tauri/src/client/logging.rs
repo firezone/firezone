@@ -10,7 +10,6 @@ use std::{
     result::Result as StdResult,
     str::FromStr,
 };
-use tauri::Manager;
 use tokio::task::spawn_blocking;
 use tracing::subscriber::set_global_default;
 use tracing_log::LogTracer;
@@ -62,7 +61,7 @@ pub(crate) async fn export_logs(managed: tauri::State<'_, Managed>) -> StdResult
 ///
 /// This includes the current log file, so we won't write any more logs to disk
 /// until the file rolls over or the app restarts.
-pub(crate) async fn clear_logs_inner(app: tauri::AppHandle, managed: &Managed) -> Result<()> {
+pub(crate) async fn clear_logs_inner(managed: &Managed) -> Result<()> {
     let mut dir = tokio::fs::read_dir("logs").await?;
     while let Some(entry) = dir.next_entry().await? {
         tokio::fs::remove_file(entry.path()).await?;
