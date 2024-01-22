@@ -3011,7 +3011,7 @@ dependencies = [
  "httpdate",
  "itoa 1.0.10",
  "pin-project-lite",
- "socket2 0.4.10",
+ "socket2 0.5.5",
  "tokio",
  "tower-service",
  "tracing",
@@ -8384,15 +8384,15 @@ dependencies = [
 
 [[package]]
 name = "wintun"
-version = "0.3.2"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "29b83b0eca06dd125dbcd48a45327c708a6da8aada3d95a3f06db0ce4b17e0d4"
+checksum = "1b3c8c8876c686f8a2d6376999ac1c9a24c74d2968551c9394f7e89127783685"
 dependencies = [
  "c2rust-bitfields",
  "libloading 0.8.1",
  "log",
  "thiserror",
- "windows 0.51.1",
+ "windows 0.52.0",
 ]
 
 [[package]]

@@ -53,7 +53,7 @@ sadness-generator = "0.5.0"
 tauri = { version = "1.5", features = [ "dialog", "notification", "shell-open-api", "system-tray" ] }
 tauri-utils = "1.5.1"
 winreg = "0.51.0"
-wintun = "0.3.2"
+wintun = "0.4.0"
 
 [target.'cfg(windows)'.dependencies.windows]
 version = "0.52.0"
