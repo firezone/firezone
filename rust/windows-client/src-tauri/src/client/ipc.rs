@@ -109,10 +109,6 @@ async fn test_manager_process(pipe_id: String) -> Result<()> {
     let start_time = Instant::now();
     assert_eq!(server.request(Request::Connect).await?, Response::Connected);
     assert_eq!(
-        server.request(Request::AwaitCallback).await?,
-        Response::CallbackOnUpdateResources(vec![])
-    );
-    assert_eq!(
         server.request(Request::Disconnect).await?,
         Response::Disconnected
     );
@@ -136,7 +132,6 @@ async fn test_worker_process(pipe_id: String) -> Result<()> {
     loop {
         let (req, responder) = client.next_request().await?;
         let resp = match &req {
-            Request::AwaitCallback => Response::CallbackOnUpdateResources(vec![]),
             Request::Connect => Response::Connected,
             Request::Disconnect => Response::Disconnected,
         };
@@ -184,7 +179,7 @@ async fn test_leak(enable_protection: bool) -> Result<()> {
 
     // Send a few requests to make sure the worker is connected and good
     for _ in 0..3 {
-        server.request(Request::AwaitCallback).await?;
+        server.request(Request::Connect).await?;
     }
 
     manager.process.kill()?;
@@ -194,7 +189,7 @@ async fn test_leak(enable_protection: bool) -> Result<()> {
     // so just give it 10 seconds for Windows to stop it.
     for _ in 0..10 {
         tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-        if server.request(Request::AwaitCallback).await.is_err() {
+        if server.request(Request::Connect).await.is_err() {
             tracing::info!("confirmed worker stopped responding");
             break;
         }
@@ -202,13 +197,13 @@ async fn test_leak(enable_protection: bool) -> Result<()> {
 
     if enable_protection {
         assert!(
-            server.request(Request::AwaitCallback).await.is_err(),
+            server.request(Request::Connect).await.is_err(),
             "worker shouldn't be able to respond here, it should have stopped when the manager stopped"
         );
         tracing::info!("enabling leak protection worked");
     } else {
         assert!(
-            server.request(Request::AwaitCallback).await.is_ok(),
+            server.request(Request::Connect).await.is_ok(),
             "worker shouldn still respond here, this failure means the test is invalid"
         );
         tracing::info!("not enabling leak protection worked");
@@ -239,7 +234,7 @@ async fn leak_worker(pipe_id: String) -> Result<()> {
     tracing::debug!("Worker connected to named pipe");
     loop {
         let (_, responder) = client.next_request().await?;
-        responder.respond(Response::CallbackTunnelReady).await?;
+        responder.respond(Response::Connected).await?;
     }
 }
 
@@ -289,7 +284,7 @@ async fn security_worker(pipe_id: String) -> Result<()> {
     tracing::debug!("Worker connected to named pipe");
     loop {
         let (req, responder) = client.next_request().await?;
-        responder.respond(Response::CallbackTunnelReady).await?;
+        responder.respond(Response::TunnelReady).await?;
         if let Request::Disconnect = req {
             break;
         }
@@ -325,7 +320,7 @@ async fn test_api_worker(pipe_id: String) -> Result<()> {
     tracing::debug!("Worker connected to named pipe");
     loop {
         let (req, responder) = client.next_request().await?;
-        responder.respond(Response::CallbackTunnelReady).await?;
+        responder.respond(Response::TunnelReady).await?;
         if let Request::Disconnect = req {
             break;
         }
@@ -454,17 +449,16 @@ pub(crate) struct Client {
 
 #[derive(Deserialize, Serialize)]
 pub(crate) enum Request {
-    AwaitCallback,
     Connect,
     Disconnect,
 }
 
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 pub(crate) enum Response {
-    CallbackOnUpdateResources(Vec<ResourceDescription>),
-    CallbackTunnelReady,
     Connected,
     Disconnected,
+    OnUpdateResources(Vec<ResourceDescription>),
+    TunnelReady,
 }
 
 #[must_use]
@@ -652,7 +646,6 @@ mod tests {
                 loop {
                     let (req, responder) = client.next_request().await?;
                     let resp = match &req {
-                        Request::AwaitCallback => Response::CallbackOnUpdateResources(vec![]),
                         Request::Connect => Response::Connected,
                         Request::Disconnect => Response::Disconnected,
                     };
@@ -669,10 +662,6 @@ mod tests {
 
             let start_time = Instant::now();
             assert_eq!(server.request(Request::Connect).await?, Response::Connected);
-            assert_eq!(
-                server.request(Request::AwaitCallback).await?,
-                Response::CallbackOnUpdateResources(vec![])
-            );
             assert_eq!(
                 server.request(Request::Disconnect).await?,
                 Response::Disconnected
