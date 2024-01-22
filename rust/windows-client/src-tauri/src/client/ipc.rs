@@ -367,7 +367,7 @@ pub(crate) enum Response {
 }
 
 #[must_use]
-struct Responder<'a> {
+pub(crate) struct Responder<'a> {
     client: &'a mut Client,
 }
 
