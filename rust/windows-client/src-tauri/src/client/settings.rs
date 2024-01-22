@@ -65,6 +65,7 @@ pub(crate) async fn reset_advanced_settings(
     let settings = AdvancedSettings::default();
     apply_advanced_settings_inner(managed.inner(), settings.clone())
         .await
+        .map(|_| settings)
         .map_err(|e| e.to_string());
 
     Ok(settings)
