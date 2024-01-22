@@ -52,6 +52,17 @@ pub(crate) async fn export_logs(managed: tauri::State<'_, Managed>) -> StdResult
         .map_err(|e| e.to_string())
 }
 
+#[derive(Clone, Default, Serialize)]
+struct FileCount {
+    bytes: u64,
+    files: u64,
+}
+
+#[tauri::command]
+pub(crate) async fn count_logs() -> StdResult<FileCount, String> {
+    count_logs_inner().await.map_err(|e| e.to_string())
+}
+
 /// Delete all files in the logs directory.
 ///
 /// This includes the current log file, so we won't write any more logs to disk
@@ -124,14 +135,9 @@ pub(crate) async fn export_logs_to(path: PathBuf, stem: PathBuf) -> Result<()> {
     Ok(())
 }
 
-#[derive(Clone, Default, Serialize)]
-struct FileCount {
-    bytes: u64,
-    files: u64,
-}
-
-#[tauri::command]
-pub(crate) async fn count_logs() -> StdResult<FileCount, String> {
+/// Count log files and their sizes
+///
+pub(crate) async fn count_logs_inner() -> Result<FileCount> {
     let mut dir = tokio::fs::read_dir("logs").await?;
     let mut file_count = FileCount::default();
 
