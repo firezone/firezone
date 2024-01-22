@@ -246,8 +246,7 @@ fn start_recv_thread(
                             break;
                         }
                     }
-                    // We get an Error::String when `Session::shutdown` is called
-                    Err(wintun::Error::String(_)) => break,
+                    Err(wintun::Error::ShuttingDown) => break,
                     Err(e) => {
                         tracing::error!("wintun::Session::receive_blocking: {e:#?}");
                         break;
