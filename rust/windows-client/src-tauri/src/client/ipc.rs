@@ -183,6 +183,8 @@ async fn test_leak(enable_protection: bool) -> Result<()> {
         server.read().await?;
     }
 
+    tokio::time::sleep(std::time::Duration::from_secs(15)).await;
+
     manager.process.kill()?;
     tracing::debug!("Harness killed manager");
 
