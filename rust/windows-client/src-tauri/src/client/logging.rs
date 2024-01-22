@@ -68,8 +68,6 @@ pub(crate) async fn clear_logs_inner(app: tauri::AppHandle, managed: &Managed) -
         tokio::fs::remove_file(entry.path()).await?;
     }
 
-    count_logs(app).await?;
-
     managed.fault_msleep(5000).await;
     Ok(())
 }
