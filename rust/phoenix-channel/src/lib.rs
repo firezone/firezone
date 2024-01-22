@@ -147,11 +147,11 @@ where
     /// The provided URL must contain a host.
     /// Additionally, you must already provide any query parameters required for authentication.
     pub async fn connect(secret_url: Secret<SecureUrl>, user_agent: String) -> Result<Self, Error> {
-        tracing::trace!("Trying to connect to the portal...");
+        tracing::info!("Trying to connect to the portal...");
 
         let (stream, _) = connect_async(make_request(secret_url, user_agent)?).await?;
 
-        tracing::trace!("Successfully connected to portal");
+        tracing::info!("Successfully connected to portal");
 
         Ok(Self {
             stream,

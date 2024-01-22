@@ -1,10 +1,26 @@
 //! CLI subcommands used to test features / dependencies before integrating
 //! them with the GUI, or to exercise features programmatically.
 
-use crate::client::Cli;
 use anyhow::Result;
 
-pub fn crash() -> Result<()> {
+#[derive(clap::Subcommand)]
+pub enum Cmd {
+    Crash,
+    Hostname,
+    NetworkChanges,
+    Wintun,
+}
+
+pub fn run(cmd: Cmd) -> Result<()> {
+    match cmd {
+        Cmd::Crash => crash(),
+        Cmd::Hostname => hostname(),
+        Cmd::NetworkChanges => crate::client::network_changes::run_debug(),
+        Cmd::Wintun => wintun(),
+    }
+}
+
+fn crash() -> Result<()> {
     // `_` doesn't seem to work here, the log files end up empty
     let _handles = crate::client::logging::setup("debug")?;
     tracing::info!("started log (DebugCrash)");
@@ -12,7 +28,7 @@ pub fn crash() -> Result<()> {
     panic!("purposely crashing to see if it shows up in logs");
 }
 
-pub fn hostname() -> Result<()> {
+fn hostname() -> Result<()> {
     println!(
         "{:?}",
         hostname::get().ok().and_then(|x| x.into_string().ok())
@@ -20,7 +36,7 @@ pub fn hostname() -> Result<()> {
     Ok(())
 }
 
-pub fn wintun(_: Cli) -> Result<()> {
+fn wintun() -> Result<()> {
     tracing_subscriber::fmt::init();
 
     if crate::client::elevation::check()? {
