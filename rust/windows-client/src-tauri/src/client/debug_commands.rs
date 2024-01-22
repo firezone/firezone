@@ -8,7 +8,16 @@ pub enum Cmd {
     Crash,
     Hostname,
     NetworkChanges,
+    Test {
+        #[command(subcommand)]
+        command: Test,
+    },
     Wintun,
+}
+
+#[derive(clap::Subcommand)]
+pub enum Test {
+    Ipc,
 }
 
 pub fn run(cmd: Cmd) -> Result<()> {
@@ -16,7 +25,14 @@ pub fn run(cmd: Cmd) -> Result<()> {
         Cmd::Crash => crash(),
         Cmd::Hostname => hostname(),
         Cmd::NetworkChanges => crate::client::network_changes::run_debug(),
+        Cmd::Test { command } => run_test(command),
         Cmd::Wintun => wintun(),
+    }
+}
+
+fn run_test(cmd: Test) -> Result<()> {
+    match cmd {
+        Test::Ipc => test_ipc(),
     }
 }
 
@@ -33,6 +49,12 @@ fn hostname() -> Result<()> {
         "{:?}",
         hostname::get().ok().and_then(|x| x.into_string().ok())
     );
+    Ok(())
+}
+
+fn test_ipc() -> Result<()> {
+    // TODO: Add multi-process IPC test here. This would be difficult to implement
+    // idiomatically with `cargo test` alone.
     Ok(())
 }
 
