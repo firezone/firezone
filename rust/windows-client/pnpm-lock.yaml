@@ -16,6 +16,9 @@ dependencies:
     version: 2.2.1
 
 devDependencies:
+  run-script-os:
+    specifier: ^1.1.6
+    version: 1.1.6
   tailwindcss:
     specifier: ^3.4.1
     version: 3.4.1
@@ -703,6 +706,11 @@ packages:
     resolution: {integrity: sha512-5l4VyZR86LZ/lDxZTR6jqL8AFE2S0IFLMP26AbjsLVADxHdhB/c0GUsH+y39UfCi3dzz8OlQuPmnaJOMoDHQBA==}
     dependencies:
       queue-microtask: 1.2.3
+    dev: true
+
+  /run-script-os@1.1.6:
+    resolution: {integrity: sha512-ql6P2LzhBTTDfzKts+Qo4H94VUKpxKDFz6QxxwaUZN0mwvi7L3lpOI7BqPCq7lgDh3XLl0dpeXwfcVIitlrYrw==}
+    hasBin: true
     dev: true
 
   /shebang-command@2.0.0:

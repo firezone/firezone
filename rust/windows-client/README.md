@@ -8,6 +8,7 @@ This is the minimal toolchain needed to compile natively for x86_64 Windows:
 
 1. [Install rustup](https://win.rustup.rs/x86_64) for Windows.
 1. Install Tauri tooling: `cargo install tauri-cli`
+1. Install [pnpm](https://pnpm.io/installation) for your platform.
 
 ### Recommended IDE Setup
 
@@ -19,9 +20,15 @@ This is the minimal toolchain needed to compile natively for x86_64 Windows:
 
 ## Building
 
+Builds are best started from the frontend tool `pnpm`. This ensure typescript
+and css is compiled properly before bundling the application.
+
+See the [`package.json`](./package.json) script for more details as to what's
+going on under the hood.
+
 ```powershell
 # Builds a release exe
-cargo tauri build
+pnpm build
 
 # The release exe, MSI, and NSIS installer should be up in the workspace.
 # The exe can run without being installed
@@ -35,6 +42,12 @@ stat ../target/release/bundle/nsis/firezone-windows-client_0.0.0_x64-setup.exe
 From this dir:
 
 ```powershell
+# First, start the Typescript compiler in watch mode to pick up changes
+pnpm tsc --watch
+
+# Optionally, start the Tailwind compiler to pick on CSS changes
+pnpm tailwindcss -i src/input.css -o src/output.css --watch
+
 # Tauri has some hot-reloading features. If the Rust code changes it will even recompile
 # and restart the program for you.
 RUST_LOG=info,firezone_windows_client=debug cargo tauri dev
@@ -55,6 +68,10 @@ The app's config and logs will be stored at
 Tauri says it should work on Windows 10, Version 1803 and up. Older versions may
 work if you
 [manually install WebView2](https://tauri.app/v1/guides/getting-started/prerequisites#2-webview2)
+
+`x86_64` architecture is supported at this time. See
+[this issue](https://github.com/firezone/firezone/issues/2992) for `aarch64`
+support.
 
 ## Threat model
 
