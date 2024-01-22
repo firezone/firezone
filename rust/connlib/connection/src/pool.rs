@@ -186,9 +186,9 @@ where
         // Next, the packet could be a channel-data message, unwrap if that is the case.
         let (from, packet, remote_socket) = self
             .allocations
-            .get(&from)
+            .get_mut(&from)
             .and_then(|a| {
-                let (from, packet, remote_socket) = a.decapsulate(from, packet)?;
+                let (from, packet, remote_socket) = a.decapsulate(from, packet, now)?;
 
                 Some((from, packet, Some(remote_socket)))
             })

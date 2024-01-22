@@ -11,6 +11,7 @@ use stun_codec::{
     rfc5389::{
         attributes::{ErrorCode, MessageIntegrity, Nonce, Realm, Username, XorMappedAddress},
         errors::{StaleNonce, Unauthorized},
+        methods::BINDING,
     },
     rfc5766::{
         attributes::{
@@ -26,6 +27,8 @@ use stun_codec::{
 const FIRST_CHANNEL: u16 = 0x4000;
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
+
+const CHANNEL_LIFETIME: Duration = Duration::from_secs(10 * 60);
 
 /// Represents a TURN allocation that refreshes itself.
 ///
@@ -216,7 +219,7 @@ impl Allocation {
                 );
             }
             CHANNEL_BIND => {
-                let Some(binding) = original_request
+                let Some(channel) = original_request
                     .get_attribute::<ChannelNumber>()
                     .map(|c| c.value())
                     .and_then(|c| self.channel_bindings.get_mut(&c))
@@ -225,9 +228,7 @@ impl Allocation {
                     return true;
                 };
 
-                binding.bound = true;
-                binding.bound_at = now;
-                binding.last_activity = now;
+                channel.set_confirmed(now);
             }
             _ => {}
         }
@@ -239,16 +240,18 @@ impl Allocation {
     ///
     /// Returns the original sender, the packet and _our_ remote socket that this packet was sent to.
     pub fn decapsulate<'p>(
-        &self,
+        &mut self,
         from: SocketAddr,
         packet: &'p [u8],
+        now: Instant,
     ) -> Option<(SocketAddr, &'p [u8], SocketAddr)> {
         if from != self.server {
             return None;
         }
 
         let (channel_number, payload) = crate::channel_data::decode(packet).ok()?;
-        let channel = self.channel_bindings.get(&channel_number)?;
+        let channel = self.channel_bindings.get_mut(&channel_number)?;
+        channel.record_received(now);
 
         debug_assert!(channel.bound); // TODO: Should we "force-set" this? We seem to be getting traffic on this channel ..
 
@@ -298,7 +301,25 @@ impl Allocation {
             }
         }
 
-        // TODO: Refresh channels
+        let refresh_messages = self
+            .channel_bindings
+            .iter()
+            .filter_map(|(number, channel)| {
+                let needs_refresh = channel.needs_refresh(now);
+                let refresh_in_flight = self.channel_binding_in_flight(*number);
+
+                if needs_refresh && !refresh_in_flight {
+                    tracing::debug!(%number, relay = %self.server, peer = %channel.peer, "Refreshing channel binding");
+                    return Some(make_channel_bind_request(channel.peer, *number))
+                }
+
+                None
+            })
+            .collect::<Vec<_>>(); // Need to allocate here to satisfy borrow-checker. Number of channel refresh messages should be small so this shouldn't be a big impact.
+
+        for message in refresh_messages {
+            self.authenticate_and_queue(message, now);
+        }
 
         // TODO: Clean up unused channels
     }
@@ -326,7 +347,7 @@ impl Allocation {
                 peer,
                 bound: false,
                 bound_at: now,
-                last_activity: now,
+                last_received: now,
             },
         );
     }
@@ -337,31 +358,25 @@ impl Allocation {
         packet: &[u8],
         header: &mut [u8],
     ) -> Option<usize> {
-        let now = self.last_now?;
-
-        let (channel_number, channel) = self.channel_to_peer(peer)?;
+        let channel_number = self.channel_to_peer(peer)?;
         let total_length =
             crate::channel_data::encode_header_to_slice(channel_number, packet, header);
-        channel.last_activity = now;
 
         Some(total_length)
     }
 
     pub fn encode_to_vec(&mut self, peer: SocketAddr, packet: &[u8]) -> Option<Vec<u8>> {
-        let now = self.last_now?;
-
-        let (channel_number, channel) = self.channel_to_peer(peer)?;
+        let channel_number = self.channel_to_peer(peer)?;
         let channel_data = crate::channel_data::encode(channel_number, packet);
-        channel.last_activity = now;
 
         Some(channel_data)
     }
 
-    fn channel_to_peer(&mut self, peer: SocketAddr) -> Option<(u16, &mut Channel)> {
+    fn channel_to_peer(&self, peer: SocketAddr) -> Option<u16> {
         self.channel_bindings
-            .iter_mut()
-            .find(|(_, c)| c.peer == peer)
-            .map(|(n, c)| (*n, c))
+            .iter()
+            .find(|(_, c)| c.peer == peer) // TODO: We need to ensure the channel is still alive.
+            .map(|(n, _)| *n)
     }
 
     fn has_allocation(&self) -> bool {
@@ -372,6 +387,14 @@ impl Allocation {
         self.sent_requests
             .values()
             .any(|(r, _)| r.method() == ALLOCATE)
+    }
+
+    fn channel_binding_in_flight(&self, channel: u16) -> bool {
+        self.sent_requests.values().any(|(r, _)| {
+            r.method() == BINDING
+                && r.get_attribute::<ChannelNumber>()
+                    .is_some_and(|n| n.value() == channel)
+        })
     }
 
     fn authenticate(&self, message: Message<Attribute>) -> Message<Attribute> {
@@ -427,8 +450,47 @@ struct Channel {
 
     /// If `false`, the channel binding has not yet been confirmed.
     bound: bool,
+
+    /// When the channel was created or last refreshed.
     bound_at: Instant,
-    last_activity: Instant,
+    last_received: Instant,
+}
+
+impl Channel {
+    /// Check if we need to refresh this channel.
+    ///
+    /// We will refresh all channels that:
+    /// - are older than 5 minutes
+    /// - we have received data on since we created / refreshed them
+    fn needs_refresh(&self, now: Instant) -> bool {
+        let channel_refresh_threshold = CHANNEL_LIFETIME / 2;
+
+        let age = now.duration_since(self.bound_at);
+
+        if age < channel_refresh_threshold {
+            return false;
+        }
+
+        if self.last_received == self.bound_at {
+            return false;
+        }
+
+        true
+    }
+
+    fn set_confirmed(&mut self, now: Instant) {
+        self.bound = true;
+        self.bound_at = now;
+        self.last_received = now;
+    }
+
+    /// Record when we last received data on this channel.
+    ///
+    /// This is used for keeping channels alive.
+    /// We will keep all channels alive that we have received data on since we created them.
+    fn record_received(&mut self, now: Instant) {
+        self.last_received = now;
+    }
 }
 
 fn update_candidate(
@@ -551,3 +613,70 @@ stun_codec::define_attribute_enums!(
         Lifetime
     ]
 );
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::net::{IpAddr, Ipv4Addr};
+
+    const PEER1: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 10000);
+    const MINUTE: Duration = Duration::from_secs(60);
+
+    #[test]
+    fn channel_that_is_less_than_5_min_old_should_not_be_refreshed() {
+        let now = Instant::now();
+        let channel = ch(PEER1, now);
+
+        let four_minutes_later = now + 4 * MINUTE;
+        let needs_refresh = channel.needs_refresh(four_minutes_later);
+
+        assert!(!needs_refresh)
+    }
+
+    #[test]
+    fn channel_with_received_data_but_less_than_5_min_old_should_not_be_refreshed() {
+        let now = Instant::now();
+        let mut channel = ch(PEER1, now);
+
+        let three_minutes_later = now + 3 * MINUTE;
+        channel.record_received(three_minutes_later);
+
+        let four_minutes_later = now + 4 * MINUTE;
+        let needs_refresh = channel.needs_refresh(four_minutes_later);
+
+        assert!(!needs_refresh)
+    }
+
+    #[test]
+    fn channel_with_no_activity_and_older_than_5_minutes_should_not_be_refreshed() {
+        let now = Instant::now();
+        let channel = ch(PEER1, now);
+
+        let six_minutes_later = now + 6 * MINUTE;
+        let needs_refresh = channel.needs_refresh(six_minutes_later);
+
+        assert!(!needs_refresh)
+    }
+
+    #[test]
+    fn channel_with_received_data_and_older_than_5_min_should_be_refreshed() {
+        let now = Instant::now();
+        let mut channel = ch(PEER1, now);
+
+        channel.record_received(now + Duration::from_secs(1));
+
+        let six_minutes_later = now + 6 * MINUTE;
+        let needs_refresh = channel.needs_refresh(six_minutes_later);
+
+        assert!(needs_refresh)
+    }
+
+    fn ch(peer: SocketAddr, now: Instant) -> Channel {
+        Channel {
+            peer,
+            bound: true,
+            bound_at: now,
+            last_received: now,
+        }
+    }
+}
