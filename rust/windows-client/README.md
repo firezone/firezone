@@ -20,7 +20,7 @@ This is the minimal toolchain needed to compile natively for x86_64 Windows:
 
 ## Building
 
-Builds are best started from the frontend tool `pnpm`. This ensure typescript
+Builds are best started from the frontend tool `pnpm`. This ensures typescript
 and css is compiled properly before bundling the application.
 
 See the [`package.json`](./package.json) script for more details as to what's
@@ -42,15 +42,8 @@ stat ../target/release/bundle/nsis/firezone-windows-client_0.0.0_x64-setup.exe
 From this dir:
 
 ```powershell
-# First, start the Typescript compiler in watch mode to pick up changes
-pnpm tsc --watch
-
-# Optionally, start the Tailwind compiler to pick on CSS changes
-pnpm tailwindcss -i src/input.css -o src/output.css --watch
-
-# Tauri has some hot-reloading features. If the Rust code changes it will even recompile
-# and restart the program for you.
-RUST_LOG=info,firezone_windows_client=debug cargo tauri dev
+# This will start the frontend tools in watch mode and then run `tauri dev`
+pnpm dev
 
 # You can call debug subcommands on the exe from this directory too
 # e.g. this is equivalent to `cargo run -- debug`
