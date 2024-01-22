@@ -3,7 +3,7 @@
 
 // TODO: `git grep` for unwraps before 1.0, especially this gui module
 
-use crate::client::{self, deep_link, AppLocalDataDir, BUNDLE_ID};
+use crate::client::{self, deep_link, network_changes, AppLocalDataDir, BUNDLE_ID};
 use anyhow::{anyhow, bail, Context, Result};
 use arc_swap::ArcSwap;
 use client::{
@@ -508,10 +508,23 @@ async fn run_controller(
     .await
     .context("couldn't create Controller")?;
 
+    let mut have_internet = network_changes::check_internet()?;
+    tracing::debug!(?have_internet);
+
+    let mut com_worker = network_changes::Worker::new()?;
+
     loop {
         tokio::select! {
             () = controller.notify_controller.notified() => if let Err(e) = controller.refresh_system_tray_menu() {
                 tracing::error!("couldn't reload resource list: {e:#?}");
+            },
+            () = com_worker.notified() => {
+                let new_have_internet = network_changes::check_internet()?;
+                if new_have_internet != have_internet {
+                    have_internet = new_have_internet;
+                    // TODO: Stop / start / restart connlib as needed here
+                    tracing::debug!(?have_internet);
+                }
             },
             req = rx.recv() => {
                 let Some(req) = req else {
@@ -592,6 +605,10 @@ async fn run_controller(
                 }
             }
         }
+    }
+
+    if let Err(error) = com_worker.close() {
+        tracing::error!(?error, "com_worker");
     }
 
     // Last chance to do any drops / cleanup before the process crashes.
