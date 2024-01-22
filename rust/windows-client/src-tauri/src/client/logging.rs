@@ -53,7 +53,7 @@ pub(crate) async fn export_logs(managed: tauri::State<'_, Managed>) -> StdResult
 }
 
 #[derive(Clone, Default, Serialize)]
-struct FileCount {
+pub(crate) struct FileCount {
     bytes: u64,
     files: u64,
 }
@@ -136,7 +136,6 @@ pub(crate) async fn export_logs_to(path: PathBuf, stem: PathBuf) -> Result<()> {
 }
 
 /// Count log files and their sizes
-///
 pub(crate) async fn count_logs_inner() -> Result<FileCount> {
     let mut dir = tokio::fs::read_dir("logs").await?;
     let mut file_count = FileCount::default();
