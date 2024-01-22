@@ -85,9 +85,9 @@ pub fn test_subcommand(cmd: Option<Subcommand>) -> Result<()> {
     Ok(())
 }
 
+/// Test normal IPC
 #[tracing::instrument]
 async fn test_happy_path() -> Result<()> {
-    // Test normal IPC
     let id = random_pipe_id();
 
     let _manager = SubcommandChild::new(&["debug", "test-ipc", "manager", &id]);
@@ -629,8 +629,6 @@ mod tests {
     /// It's hard to simulate a process crash because:
     /// - If I Drop anything, Tokio will clean it up
     /// - If I `std::mem::forget` anything, the test process is still running, so Windows will not clean it up
-    ///
-    /// TODO: Simulate crashes of processes involved in IPC using our own test framework
     #[test]
     fn happy_path() -> anyhow::Result<()> {
         let rt = Runtime::new()?;
