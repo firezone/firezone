@@ -10,53 +10,86 @@ use anyhow::{Context, Result};
 use connlib_client_shared::ResourceDescription;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::{
+    ffi::c_void,
     marker::Unpin,
+    os::windows::io::{AsHandle, AsRawHandle},
     process::{self, Child},
     time::Duration,
 };
 use tokio::{
     io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt},
     net::windows::named_pipe,
+    time::timeout,
+};
+use windows::Win32::{
+    Foundation::HANDLE,
+    System::JobObjects::{
+        AssignProcessToJobObject, CreateJobObjectA, JobObjectExtendedLimitInformation,
+        SetInformationJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
+        JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+    },
 };
 
 #[derive(clap::Subcommand)]
 pub enum Subcommand {
-    Manager { pipe_id: String },
-    Worker { pipe_id: String },
+    Manager {
+        pipe_id: String,
+    },
+    Worker {
+        pipe_id: String,
+    },
+
+    LeakManager {
+        #[arg(long, action = clap::ArgAction::Set)]
+        enable_protection: bool,
+        pipe_id: String,
+    },
+    LeakWorker {
+        pipe_id: String,
+    },
 }
 
 pub fn test_subcommand(cmd: Option<Subcommand>) -> Result<()> {
+    tracing_subscriber::fmt::init();
     let rt = tokio::runtime::Runtime::new()?;
     rt.block_on(async move {
         match cmd {
-            None => test_harness(),
+            None => {
+                test_happy_path().await?;
+                test_leak(true).await?;
+                test_leak(false).await?;
+                Ok(())
+            }
             Some(Subcommand::Manager { pipe_id }) => test_manager_process(pipe_id).await,
             Some(Subcommand::Worker { pipe_id }) => test_worker_process(pipe_id).await,
+            Some(Subcommand::LeakManager {
+                enable_protection,
+                pipe_id,
+            }) => leak_manager(pipe_id, enable_protection),
+            Some(Subcommand::LeakWorker { pipe_id }) => leak_worker(pipe_id).await,
         }
     })?;
     Ok(())
 }
 
-fn test_harness() -> Result<()> {
-    tracing_subscriber::fmt::init();
-
+/// Test normal IPC
+async fn test_happy_path() -> Result<()> {
     let id = random_pipe_id();
 
     let _manager = SubcommandChild::new(&["debug", "test-ipc", "manager", &id]);
     let _worker = SubcommandChild::new(&["debug", "test-ipc", "worker", &id]);
 
-    std::thread::sleep(Duration::from_secs(10));
+    tokio::time::sleep(Duration::from_secs(10)).await;
     Ok(())
 }
 
 async fn test_manager_process(pipe_id: String) -> Result<()> {
-    tracing_subscriber::fmt::init();
     let server = UnconnectedServer::new_with_id(&pipe_id)?;
 
     // TODO: The real manager would spawn the worker subprocess here, but
     // for this case, the test harness spawns it for us.
 
-    let mut server = server.connect().await?;
+    let mut server = timeout(Duration::from_secs(5), server.accept()).await??;
 
     let start_time = std::time::Instant::now();
     assert_eq!(server.request(Request::Connect).await?, Response::Connected);
@@ -81,9 +114,7 @@ async fn test_manager_process(pipe_id: String) -> Result<()> {
 }
 
 async fn test_worker_process(pipe_id: String) -> Result<()> {
-    tracing_subscriber::fmt::init();
     let mut client = Client::new(&pipe_id)?;
-    // panic!("Pretending the worker crashed right after connecting");
 
     // Handle requests from the main process
     loop {
@@ -103,6 +134,95 @@ async fn test_worker_process(pipe_id: String) -> Result<()> {
     Ok(())
 }
 
+/// Top-level function to test whether the process leak protection works.
+///
+/// 1. Open a named pipe server
+/// 2. Spawn a manager process, passing the pipe name to it
+/// 3. The manager process spawns a worker process, passing the pipe name to it
+/// 4. The manager process sets up leak protection on the worker process
+/// 5. The worker process connects to our pipe server to confirm that it's up
+/// 6. We SIGKILL the manager process
+/// 7. Reading from the named pipe server should return an EOF since the worker process was killed by leak protection.
+///
+/// # Research
+/// - [Stack Overflow example](https://stackoverflow.com/questions/53208/how-do-i-automatically-destroy-child-processes-in-windows)
+/// - [Chromium example](https://source.chromium.org/chromium/chromium/src/+/main:base/process/launch_win.cc;l=421;drc=b7d560c40ceb5283dba3e3d305abd9e2e7e926cd)
+/// - [MSDN docs](https://learn.microsoft.com/en-us/windows/win32/api/jobapi2/nf-jobapi2-assignprocesstojobobject)
+/// - [windows-rs docs](https://microsoft.github.io/windows-docs-rs/doc/windows/Win32/System/JobObjects/fn.AssignProcessToJobObject.html)
+async fn test_leak(enable_protection: bool) -> Result<()> {
+    let (server, pipe_id) = UnconnectedServer::new()?;
+    let args = [
+        "debug",
+        "test-ipc",
+        "leak-manager",
+        "--enable-protection",
+        &enable_protection.to_string(),
+        &pipe_id,
+    ];
+    let mut manager = SubcommandChild::new(&args)?;
+    let mut server = timeout(Duration::from_secs(5), server.accept()).await??;
+    tracing::debug!("Harness accepted connection from Worker");
+
+    // Send a few requests to make sure the worker is connected and good
+    for _ in 0..3 {
+        server.request(Request::AwaitCallback).await?;
+    }
+
+    tokio::time::sleep(std::time::Duration::from_secs(15)).await;
+
+    manager.process.kill()?;
+    tracing::debug!("Harness killed manager");
+
+    // I can't think of a good way to synchronize with the worker process stopping,
+    // so just give it 10 seconds for Windows to stop it.
+    for _ in 0..10 {
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        if server.request(Request::AwaitCallback).await.is_err() {
+            tracing::info!("confirmed worker stopped responding");
+            break;
+        }
+    }
+
+    if enable_protection {
+        assert!(
+            server.request(Request::AwaitCallback).await.is_err(),
+            "worker shouldn't be able to respond here, it should have stopped when the manager stopped"
+        );
+        tracing::info!("enabling leak protection worked");
+    } else {
+        assert!(
+            server.request(Request::AwaitCallback).await.is_ok(),
+            "worker shouldn still respond here, this failure means the test is invalid"
+        );
+        tracing::info!("not enabling leak protection worked");
+    }
+    Ok(())
+}
+
+fn leak_manager(pipe_id: String, enable_protection: bool) -> Result<()> {
+    let leak_guard = LeakGuard::new()?;
+
+    let worker = SubcommandChild::new(&["debug", "test-ipc", "leak-worker", &pipe_id])?;
+
+    if enable_protection {
+        leak_guard.add_process(&worker.process)?;
+    }
+
+    tracing::debug!("Manager set up leak protection, waiting for SIGKILL");
+    loop {
+        std::thread::park();
+    }
+}
+
+async fn leak_worker(pipe_id: String) -> Result<()> {
+    let mut client = Client::new(&pipe_id)?;
+    tracing::debug!("Worker connected to named pipe");
+    loop {
+        let (_, responder) = client.next_request().await?;
+        responder.respond(Response::CallbackTunnelReady).await?;
+    }
+}
+
 /// Returns a random valid named pipe ID based on a UUIDv4
 ///
 /// e.g. "\\.\pipe\dev.firezone.client\9508e87c-1c92-4630-bb20-839325d169bd"
@@ -120,9 +240,7 @@ pub(crate) struct UnconnectedServer {
 
 impl UnconnectedServer {
     /// Requires a Tokio context
-    ///
-    /// Will be used for production code soon
-    pub fn _new() -> anyhow::Result<(Self, String)> {
+    pub fn new() -> anyhow::Result<(Self, String)> {
         let id = random_pipe_id();
         let this = Self::new_with_id(&id)?;
         Ok((this, id))
@@ -136,18 +254,28 @@ impl UnconnectedServer {
         Ok(Self { pipe })
     }
 
-    pub async fn connect(self) -> anyhow::Result<Server> {
+    /// Accept an incoming connection
+    ///
+    /// This will wait forever if the client never shows up.
+    /// Try pairing it with `tokio::time:timeout`
+    pub async fn accept(self) -> anyhow::Result<Server> {
         self.pipe.connect().await?;
         Ok(Server { pipe: self.pipe })
     }
 }
 
 /// A server that's connected to a client
+///
+/// Manual testing shows that if the corresponding Client's process crashes, Windows will
+/// be nice and return errors for anything trying to read from the Server
 pub(crate) struct Server {
     pipe: named_pipe::NamedPipeServer,
 }
 
 /// A client that's connected to a server
+///
+/// Manual testing shows that if the corresponding Server's process crashes, Windows will
+/// be nice and return errors for anything trying to read from the Client
 pub(crate) struct Client {
     pipe: named_pipe::NamedPipeClient,
 }
@@ -162,6 +290,7 @@ pub(crate) enum Request {
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 pub(crate) enum Response {
     CallbackOnUpdateResources(Vec<ResourceDescription>),
+    CallbackTunnelReady,
     Connected,
     Disconnected,
 }
@@ -184,6 +313,8 @@ impl Server {
 
 impl Client {
     /// Creates a `Client`. Requires a Tokio context
+    ///
+    /// Doesn't block, will fail instantly if the server isn't ready
     pub fn new(server_id: &str) -> Result<Self> {
         let pipe = named_pipe::ClientOptions::new().open(server_id)?;
         Ok(Self { pipe })
@@ -271,6 +402,45 @@ impl Drop for SubcommandChild {
     }
 }
 
+/// Uses a Windows job object to kill child processes when the parent exits
+pub(crate) struct LeakGuard {
+    job_object: HANDLE,
+}
+
+impl LeakGuard {
+    pub fn new() -> Result<Self> {
+        let job_object = unsafe { CreateJobObjectA(None, None) }?;
+
+        let mut jeli = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
+        jeli.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+        // SAFETY: Windows shouldn't hang on to `jeli`. I'm not sure why this is unsafe.
+        unsafe {
+            SetInformationJobObject(
+                job_object,
+                JobObjectExtendedLimitInformation,
+                &jeli as *const JOBOBJECT_EXTENDED_LIMIT_INFORMATION as *const c_void,
+                u32::try_from(std::mem::size_of_val(&jeli))?,
+            )
+        }?;
+
+        Ok(Self { job_object })
+    }
+
+    pub fn add_process(&self, process: &std::process::Child) -> Result<()> {
+        // Process IDs are not the same as handles, so get a handle to the process.
+        let process_handle = process.as_handle();
+        // SAFETY: The docs say this is UB since the null pointer doesn't belong to the same allocated object as the handle.
+        // I couldn't get `OpenProcess` to work, and I don't have any other way to convert the process ID to a handle safely.
+        // Since the handles aren't pointers per se, maybe it'll work?
+        let process_handle =
+            HANDLE(unsafe { process_handle.as_raw_handle().offset_from(std::ptr::null()) });
+        // SAFETY: TODO
+        unsafe { AssignProcessToJobObject(self.job_object, process_handle) }
+            .context("AssignProcessToJobObject")?;
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -280,14 +450,12 @@ mod tests {
     /// It's hard to simulate a process crash because:
     /// - If I Drop anything, Tokio will clean it up
     /// - If I `std::mem::forget` anything, the test process is still running, so Windows will not clean it up
-    ///
-    /// TODO: Simulate crashes of processes involved in IPC using our own test framework
     #[test]
     fn happy_path() -> anyhow::Result<()> {
         let rt = Runtime::new()?;
         rt.block_on(async move {
             // Pretend we're in the main process
-            let (server, server_id) = UnconnectedServer::_new()?;
+            let (server, server_id) = UnconnectedServer::new()?;
 
             let worker_task = tokio::spawn(async move {
                 // Pretend we're in a worker process
@@ -310,7 +478,7 @@ mod tests {
                 Ok::<_, anyhow::Error>(())
             });
 
-            let mut server = server.connect().await?;
+            let mut server = server.accept().await?;
 
             let start_time = std::time::Instant::now();
             assert_eq!(server.request(Request::Connect).await?, Response::Connected);
