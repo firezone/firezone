@@ -168,6 +168,28 @@ module "aws_gateway" {
   tags = local.tags
 }
 
+module "aws_coredns" {
+  source = "../../modules/aws/coredns"
+
+  ami  = data.aws_ami.ubuntu.id
+  name = "coredns - ${local.environment}"
+
+  associate_public_ip_address = false
+  instance_type               = "t3.micro"
+  key_name                    = local.ssh_keypair_name
+  subnet_id                   = element(module.vpc.private_subnets, 0)
+  private_ip                  = cidrhost(element(module.vpc.private_subnets_cidr_blocks, 0), 10)
+
+  application_name = "coredns"
+
+  vpc_security_group_ids = [
+    module.sg_allow_all_egress.security_group_id,
+    module.sg_allow_subnet_ingress.security_group_id
+  ]
+
+  tags = local.tags
+}
+
 ################################################################################
 # Security Groups
 ################################################################################
