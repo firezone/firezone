@@ -23,12 +23,17 @@ use stun_codec::{
     DecodedMessage, Message, MessageClass, MessageDecoder, MessageEncoder, TransactionId,
 };
 
-/// As per TURN spec, 0x4000 is the first channel number.
+/// Per TURN spec, 0x4000 is the first channel number.
 const FIRST_CHANNEL: u16 = 0x4000;
+/// Per TURN spec, 0x4000 is the last channel number.
+const LAST_CHANNEL: u16 = 0x4FFF;
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
 
 const CHANNEL_LIFETIME: Duration = Duration::from_secs(10 * 60);
+
+/// Per TURN spec, a client MUST wait for an additional 5 minutes before rebinding a channel.
+const CHANNEL_REBIND_TIMEOUT: Duration = Duration::from_secs(5 * 60);
 
 /// Represents a TURN allocation that refreshes itself.
 ///
@@ -337,8 +342,7 @@ impl Allocation {
     // }
 
     pub fn bind_channel(&mut self, peer: SocketAddr, now: Instant) {
-        let channel = self.next_channel;
-        self.next_channel += 1;
+        let channel = self.next_channel_number(now);
 
         self.authenticate_and_queue(make_channel_bind_request(peer, channel), now);
         self.channel_bindings.insert(
@@ -376,6 +380,22 @@ impl Allocation {
         let channel_data = crate::channel_data::encode(channel_number, packet);
 
         Some(channel_data)
+    }
+
+    fn next_channel_number(&mut self, now: Instant) -> u16 {
+        if self.next_channel == LAST_CHANNEL {
+            self.next_channel = FIRST_CHANNEL;
+        }
+
+        loop {
+            match self.channel_bindings.get(&self.next_channel) {
+                Some(channel) if channel.can_rebind(now) => return self.next_channel,
+                None => return self.next_channel,
+                _ => {}
+            }
+
+            self.next_channel += 1;
+        }
     }
 
     fn channel_to_peer(&self, peer: SocketAddr, now: Instant) -> Option<u16> {
@@ -470,6 +490,10 @@ impl Channel {
         self.peer == peer && self.age(now) < CHANNEL_LIFETIME
     }
 
+    fn can_rebind(&self, now: Instant) -> bool {
+        self.no_activity() && (self.age(now) >= CHANNEL_LIFETIME + CHANNEL_REBIND_TIMEOUT)
+    }
+
     /// Check if we need to refresh this channel.
     ///
     /// We will refresh all channels that:
@@ -482,11 +506,16 @@ impl Channel {
             return false;
         }
 
-        if self.last_received == self.bound_at {
+        if self.no_activity() {
             return false;
         }
 
         true
+    }
+
+    /// Returns `true` if no data has been received since we created this channel.
+    fn no_activity(&self) -> bool {
+        self.last_received == self.bound_at
     }
 
     fn age(&self, now: Instant) -> Duration {
@@ -684,6 +713,28 @@ mod tests {
         let needs_refresh = channel.needs_refresh(six_minutes_later);
 
         assert!(needs_refresh)
+    }
+
+    #[test]
+    fn when_just_expires_channel_cannot_be_rebound() {
+        let now = Instant::now();
+        let channel = ch(PEER1, now);
+
+        let ten_minutes_one_second = now + 10 * MINUTE + Duration::from_secs(1);
+        let can_rebind = channel.can_rebind(ten_minutes_one_second);
+
+        assert!(!can_rebind)
+    }
+
+    #[test]
+    fn when_just_expires_plus_5_minutes_channel_can_be_rebound() {
+        let now = Instant::now();
+        let channel = ch(PEER1, now);
+
+        let fiveteen_minutes = now + 10 * MINUTE + 5 * MINUTE;
+        let can_rebind = channel.can_rebind(fiveteen_minutes);
+
+        assert!(can_rebind)
     }
 
     fn ch(peer: SocketAddr, now: Instant) -> Channel {
