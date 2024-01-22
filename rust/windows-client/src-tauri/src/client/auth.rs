@@ -208,6 +208,9 @@ fn secure_equality(a: &SecretString, b: &SecretString) -> bool {
 mod tests {
     use super::*;
 
+    use anyhow::{bail, Context};
+    use std::time::{Duration, Instant};
+
     fn bogus_secret(x: &str) -> SecretString {
         SecretString::new(x.into())
     }
@@ -342,7 +345,9 @@ mod tests {
 
         keyring::Entry::new_with_target(name_2, "", "")?.set_password("test_password_2")?;
 
-        let actual = keyring::Entry::new_with_target(name_1, "", "")?.get_password()?;
+        let actual = keyring::Entry::new_with_target(name_1, "", "")?
+            .get_password()
+            .context("`get_password` failed")?;
         let expected = "test_password_1";
 
         assert_eq!(actual, expected);
@@ -350,6 +355,39 @@ mod tests {
         keyring::Entry::new_with_target(name_1, "", "")?.delete_password()?;
         keyring::Entry::new_with_target(name_2, "", "")?.delete_password()?;
 
+        Ok(())
+    }
+
+    #[test]
+    fn hammer() -> anyhow::Result<()> {
+        let start_time = Instant::now();
+        let cycle_count = 10;
+        for i in 0..cycle_count {
+            hammer_cycle().with_context(|| format!("failed on iteration {i}"))?;
+        }
+        let elapsed = start_time.elapsed();
+        let max_time = Duration::from_millis(5 * cycle_count);
+        assert!(
+            elapsed < max_time,
+            "Took too long to save and reload credentials: {:?}",
+            elapsed
+        );
+
+        Ok(())
+    }
+
+    fn hammer_cycle() -> anyhow::Result<()> {
+        let name = "dev.firezone.client/test_EXA2YY5E/token";
+        let password = "bogus_password";
+
+        keyring::Entry::new_with_target(name, "", "")?.set_password(password)?;
+        let actual = keyring::Entry::new_with_target(name, "", "")?
+            .get_password()
+            .context("`get_password` failed")?;
+        if actual != password {
+            bail!("retrieved password didn't match stored password");
+        }
+        keyring::Entry::new_with_target(name, "", "")?.delete_password()?;
         Ok(())
     }
 }
