@@ -41,13 +41,8 @@ pub(crate) fn setup(log_filter: &str) -> Result<Handles> {
 }
 
 #[tauri::command]
-pub(crate) async fn clear_logs(
-    app: tauri::AppHandle,
-    managed: tauri::State<'_, Managed>,
-) -> StdResult<(), String> {
-    clear_logs_inner(app, &managed)
-        .await
-        .map_err(|e| e.to_string())
+pub(crate) async fn clear_logs(managed: tauri::State<'_, Managed>) -> StdResult<(), String> {
+    clear_logs_inner(&managed).await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -136,7 +131,7 @@ struct FileCount {
 }
 
 #[tauri::command]
-pub(crate) async fn count_logs() -> Result<FileCount> {
+pub(crate) async fn count_logs() -> StdResult<(), FileCount> {
     let mut dir = tokio::fs::read_dir("logs").await?;
     let mut file_count = FileCount::default();
 
