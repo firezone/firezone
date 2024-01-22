@@ -68,6 +68,9 @@ features = [
   "Win32_Security",
   # COM is needed to listen for network change events
   "Win32_System_Com",
+  # Needed for Windows to automatically kill child processes if the main process crashes
+  "Win32_System_JobObjects",
+  "Win32_System_Threading",
   # For deep_link module
   "Win32_System_SystemServices",
 ]
