@@ -153,13 +153,14 @@ defmodule Domain.Mocks.OpenIDConnect do
     claims =
       Map.merge(
         %{
-          "email" => identity.provider_identifier,
+          "email" => identity.provider_identifier <> "@example.com",
           "sub" => identity.provider_identifier,
           "aud" => provider.adapter_config["client_id"],
           "exp" => DateTime.utc_now() |> DateTime.add(10, :second) |> DateTime.to_unix()
         },
         claims
       )
+      |> Map.filter(fn {_, v} -> not is_nil(v) end)
 
     {sign_openid_connect_token(claims), claims}
   end
