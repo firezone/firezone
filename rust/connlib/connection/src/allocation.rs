@@ -294,17 +294,8 @@ impl Allocation {
 
         let refresh_messages = self
             .channel_bindings
-            .channels_to_refresh(now)
-            .filter_map(|(number, peer)| {
-                let refresh_in_flight = self.channel_binding_in_flight(number);
-
-                if !refresh_in_flight {
-                    tracing::debug!(%number, relay = %self.server, %peer, "Refreshing channel binding");
-                    return Some(make_channel_bind_request(peer, number))
-                }
-
-                None
-            })
+            .channels_to_refresh(now, |number| self.channel_binding_in_flight(number))
+            .map(|(number, peer)| make_channel_bind_request(peer, number))
             .collect::<Vec<_>>(); // Need to allocate here to satisfy borrow-checker. Number of channel refresh messages should be small so this shouldn't be a big impact.
 
         for message in refresh_messages {
@@ -598,10 +589,15 @@ impl ChannelBindings {
         channel
     }
 
-    fn channels_to_refresh(&self, now: Instant) -> impl Iterator<Item = (u16, SocketAddr)> + '_ {
+    fn channels_to_refresh<'s>(
+        &'s self,
+        now: Instant,
+        is_inflight: impl Fn(u16) -> bool + 's,
+    ) -> impl Iterator<Item = (u16, SocketAddr)> + 's {
         self.inner
             .iter()
             .filter(move |(_, channel)| channel.needs_refresh(now))
+            .filter(move |(number, _)| is_inflight(**number))
             .map(|(number, channel)| (*number, channel.peer))
     }
 
