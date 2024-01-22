@@ -1,4 +1,10 @@
 //! Inter-process communication for the connlib subprocess
+//!
+//! To run the unit tests and multi-process tests, use
+//! ```bash
+//! cargo test --all-features -p firezone-windows-client && \
+//! RUST_LOG=debug cargo run -p firezone-windows-client debug test-ipc
+//! ```
 
 use anyhow::{Context, Result};
 use connlib_client_shared::ResourceDescription;
