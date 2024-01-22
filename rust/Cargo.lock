@@ -2144,6 +2144,7 @@ dependencies = [
  "anyhow",
  "arboard",
  "arc-swap",
+ "bincode",
  "chrono",
  "clap",
  "connlib-client-shared",
