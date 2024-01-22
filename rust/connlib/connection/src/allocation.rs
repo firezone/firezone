@@ -357,25 +357,31 @@ impl Allocation {
         peer: SocketAddr,
         packet: &[u8],
         header: &mut [u8],
+        now: Instant,
     ) -> Option<usize> {
-        let channel_number = self.channel_to_peer(peer)?;
+        let channel_number = self.channel_to_peer(peer, now)?;
         let total_length =
             crate::channel_data::encode_header_to_slice(channel_number, packet, header);
 
         Some(total_length)
     }
 
-    pub fn encode_to_vec(&mut self, peer: SocketAddr, packet: &[u8]) -> Option<Vec<u8>> {
-        let channel_number = self.channel_to_peer(peer)?;
+    pub fn encode_to_vec(
+        &mut self,
+        peer: SocketAddr,
+        packet: &[u8],
+        now: Instant,
+    ) -> Option<Vec<u8>> {
+        let channel_number = self.channel_to_peer(peer, now)?;
         let channel_data = crate::channel_data::encode(channel_number, packet);
 
         Some(channel_data)
     }
 
-    fn channel_to_peer(&self, peer: SocketAddr) -> Option<u16> {
+    fn channel_to_peer(&self, peer: SocketAddr, now: Instant) -> Option<u16> {
         self.channel_bindings
             .iter()
-            .find(|(_, c)| c.peer == peer) // TODO: We need to ensure the channel is still alive.
+            .find(|(_, c)| c.connected_to_peer(peer, now))
             .map(|(n, _)| *n)
     }
 
@@ -457,6 +463,13 @@ struct Channel {
 }
 
 impl Channel {
+    /// Check if this channel is connected to the given peer.
+    ///
+    /// In case the channel is older than its lifetime (10 minutes), this returns false because the relay will have de-allocated the channel.
+    fn connected_to_peer(&self, peer: SocketAddr, now: Instant) -> bool {
+        self.peer == peer && self.age(now) < CHANNEL_LIFETIME
+    }
+
     /// Check if we need to refresh this channel.
     ///
     /// We will refresh all channels that:
@@ -465,9 +478,7 @@ impl Channel {
     fn needs_refresh(&self, now: Instant) -> bool {
         let channel_refresh_threshold = CHANNEL_LIFETIME / 2;
 
-        let age = now.duration_since(self.bound_at);
-
-        if age < channel_refresh_threshold {
+        if self.age(now) < channel_refresh_threshold {
             return false;
         }
 
@@ -476,6 +487,10 @@ impl Channel {
         }
 
         true
+    }
+
+    fn age(&self, now: Instant) -> Duration {
+        now.duration_since(self.bound_at)
     }
 
     fn set_confirmed(&mut self, now: Instant) {

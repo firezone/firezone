@@ -250,15 +250,21 @@ where
                 TunnResult::WriteToNetwork(bytes) => {
                     conn.set_remote_from_wg_activity(from, remote_socket);
 
-                    self.buffered_transmits
-                        .extend(conn.encapsulate(bytes, &mut self.allocations));
+                    self.buffered_transmits.extend(conn.encapsulate(
+                        bytes,
+                        &mut self.allocations,
+                        now,
+                    ));
 
                     while let TunnResult::WriteToNetwork(packet) =
                         conn.tunnel
                             .decapsulate(None, &[], self.buffer.as_mut_slice())
                     {
-                        self.buffered_transmits
-                            .extend(conn.encapsulate(packet, &mut self.allocations));
+                        self.buffered_transmits.extend(conn.encapsulate(
+                            packet,
+                            &mut self.allocations,
+                            now,
+                        ));
                     }
 
                     Ok(None)
@@ -279,6 +285,10 @@ where
         connection: TId,
         packet: IpPacket<'_>,
     ) -> Result<Option<(SocketAddr, &'s [u8])>, Error> {
+        let now = self
+            .last_now
+            .expect("must call `handle_timeout` once before `encapsulate`");
+
         // TODO: We need to return, which local socket to use to send the data.
         let conn = self
             .negotiated_connections
@@ -305,7 +315,8 @@ where
                     tracing::warn!(%relay, "No allocation");
                     return Ok(None);
                 };
-                let Some(total_length) = allocation.encode_to_slice(peer, packet, header) else {
+                let Some(total_length) = allocation.encode_to_slice(peer, packet, header, now)
+                else {
                     tracing::warn!(%peer, "No channel");
                     return Ok(None);
                 };
@@ -420,6 +431,10 @@ where
 
     /// Returns buffered data that needs to be sent on the socket.
     pub fn poll_transmit(&mut self) -> Option<Transmit> {
+        let now = self
+            .last_now
+            .expect("must call `handle_timeout` once before `poll_transmit`");
+
         for conn in self.negotiated_connections.values_mut() {
             if let Some(transmit) = conn.agent.poll_transmit() {
                 let relay = SocketAddr::new(transmit.source.ip(), 3478); // TODO: Don't hardcode this.
@@ -429,6 +444,7 @@ where
                     transmit.destination,
                     &transmit.contents,
                     &mut self.allocations,
+                    now,
                 )
                 .unwrap_or(Transmit {
                     dst: transmit.destination,
@@ -742,9 +758,10 @@ fn encode_as_channel_data(
     dest: SocketAddr,
     contents: &[u8],
     allocations: &mut HashMap<SocketAddr, Allocation>,
+    now: Instant,
 ) -> Option<Transmit> {
     let allocation = allocations.get_mut(&relay)?;
-    let payload = allocation.encode_to_vec(dest, contents)?;
+    let payload = allocation.encode_to_vec(dest, contents, now)?;
 
     Some(Transmit {
         dst: relay,
@@ -954,7 +971,7 @@ impl Connection {
                     panic!("{e:?}")
                 }
                 TunnResult::WriteToNetwork(b) => {
-                    let transmit = self.encapsulate(b, allocations)?;
+                    let transmit = self.encapsulate(b, allocations, now)?;
 
                     return Some(transmit);
                 }
@@ -969,6 +986,7 @@ impl Connection {
         &self,
         message: &[u8],
         allocations: &mut HashMap<SocketAddr, Allocation>,
+        now: Instant,
     ) -> Option<Transmit> {
         match self.remote_socket? {
             RemoteSocket::Direct(remote) => Some(Transmit {
@@ -976,7 +994,7 @@ impl Connection {
                 payload: message.to_vec(),
             }),
             RemoteSocket::Relay { relay, dest: peer } => {
-                encode_as_channel_data(relay, peer, message, allocations)
+                encode_as_channel_data(relay, peer, message, allocations, now)
             }
         }
     }
