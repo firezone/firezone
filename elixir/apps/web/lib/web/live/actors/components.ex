@@ -125,6 +125,31 @@ defmodule Web.Actors.Components do
     """
   end
 
+  def provider_form(%{provider: %{adapter: :openid_connect}} = assigns) do
+    ~H"""
+    <div>
+      <.input
+        label="Email"
+        placeholder="Email"
+        field={@form[:provider_identifier]}
+        autocomplete="off"
+      />
+      <p class="mt-2 text-xs text-neutral-500">
+        The token <code>sub</code> claim value or userinfo <code>email</code> value.
+        This will be used to match the user to this identity when signing in for the first time.
+      </p>
+    </div>
+    <div>
+      <.input
+        label="Email Confirmation"
+        placeholder="Email Confirmation"
+        field={@form[:provider_identifier_confirmation]}
+        autocomplete="off"
+      />
+    </div>
+    """
+  end
+
   def provider_form(%{provider: %{adapter: :userpass}} = assigns) do
     ~H"""
     <div>
