@@ -23,9 +23,9 @@ mod system_tray_menu;
 
 /// The Windows client doesn't use platform APIs to detect network connectivity changes,
 /// so we rely on connlib to do so. We have valid use cases for headless Windows clients
-/// (IoT devices, point-of-sale devices, etc), so try to reconnect for 7 days if there's
+/// (IoT devices, point-of-sale devices, etc), so try to reconnect for 30 days if there's
 /// been a partition.
-const MAX_PARTITION_TIME_SECS: Duration = Duration::from_secs(60 * 60 * 24 * 7);
+const MAX_PARTITION_TIME: Duration = Duration::from_secs(60 * 60 * 24 * 30);
 
 pub(crate) type CtlrTx = mpsc::Sender<ControllerRequest>;
 
@@ -417,7 +417,7 @@ impl Controller {
             None, // TODO: Send device name here (windows computer name)
             None,
             callback_handler.clone(),
-            MAX_PARTITION_TIME_SECS,
+            MAX_PARTITION_TIME,
         )?;
 
         self.session = Some(Session {

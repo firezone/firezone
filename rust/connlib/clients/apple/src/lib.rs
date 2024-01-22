@@ -22,7 +22,7 @@ use tracing_subscriber::EnvFilter;
 /// * The portal is DOWN
 ///
 /// Hopefully we aren't down for more than 24 hours.
-const MAX_PARTITION_TIME_SECS: Duration = Duration::from_secs(60 * 60 * 24);
+const MAX_PARTITION_TIME: Duration = Duration::from_secs(60 * 60 * 24);
 
 #[swift_bridge::bridge]
 mod ffi {
@@ -202,7 +202,7 @@ impl WrappedSession {
                 inner: Arc::new(callback_handler),
                 handle: init_logging(log_dir.into(), log_filter),
             },
-            MAX_PARTITION_TIME_SECS,
+            MAX_PARTITION_TIME,
         )
         .map_err(|err| err.to_string())?;
 
