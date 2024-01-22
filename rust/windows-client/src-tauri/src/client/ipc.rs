@@ -108,10 +108,10 @@ async fn test_manager_process(pipe_id: String) -> Result<()> {
     let mut server = timeout(Duration::from_secs(5), server.accept()).await??;
 
     let start_time = Instant::now();
-    server.write(Request::Connect).await?;
-    assert_eq!(server.read().await?, Response::Connected);
-    server.write(Request::Disconnect).await?;
-    assert_eq!(server.read().await?, Response::Disconnected);
+    server.write(ManagerMsg::Connect).await?;
+    assert_eq!(server.read().await?, WorkerMsg::Connected);
+    server.write(ManagerMsg::Disconnect).await?;
+    assert_eq!(server.read().await?, WorkerMsg::Disconnected);
 
     let elapsed = start_time.elapsed();
     assert!(
@@ -132,12 +132,12 @@ async fn test_worker_process(pipe_id: String) -> Result<()> {
     loop {
         let req = client.read().await?;
         let resp = match &req {
-            Request::Connect => Response::Connected,
-            Request::Disconnect => Response::Disconnected,
+            ManagerMsg::Connect => WorkerMsg::Connected,
+            ManagerMsg::Disconnect => WorkerMsg::Disconnected,
         };
         client.write(resp).await?;
 
-        if let Request::Disconnect = req {
+        if let ManagerMsg::Disconnect = req {
             break;
         }
     }
@@ -179,7 +179,7 @@ async fn test_leak(enable_protection: bool) -> Result<()> {
 
     // Send a few requests to make sure the worker is connected and good
     for _ in 0..3 {
-        server.write(Request::Connect).await?;
+        server.write(ManagerMsg::Connect).await?;
         server.read().await?;
     }
 
@@ -192,7 +192,7 @@ async fn test_leak(enable_protection: bool) -> Result<()> {
     // so just give it 10 seconds for Windows to stop it.
     for _ in 0..10 {
         tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-        if server.write(Request::Connect).await.is_err() {
+        if server.write(ManagerMsg::Connect).await.is_err() {
             tracing::info!("confirmed worker stopped responding");
             break;
         }
@@ -204,7 +204,7 @@ async fn test_leak(enable_protection: bool) -> Result<()> {
 
     if enable_protection {
         assert!(
-            server.write(Request::Connect).await.is_err(),
+            server.write(ManagerMsg::Connect).await.is_err(),
             "worker shouldn't be able to respond here, it should have stopped when the manager stopped"
         );
         assert!(
@@ -214,7 +214,7 @@ async fn test_leak(enable_protection: bool) -> Result<()> {
         tracing::info!("enabling leak protection worked");
     } else {
         assert!(
-            server.write(Request::Connect).await.is_ok(),
+            server.write(ManagerMsg::Connect).await.is_ok(),
             "worker should still respond here, this failure means the test is invalid"
         );
         assert!(
@@ -249,7 +249,7 @@ async fn leak_worker(pipe_id: String) -> Result<()> {
     tracing::debug!("Worker connected to named pipe");
     loop {
         let _ = client.read().await?;
-        client.write(Response::Connected).await?;
+        client.write(WorkerMsg::Connected).await?;
     }
 }
 
@@ -279,7 +279,7 @@ async fn test_security() -> Result<()> {
     let echoed_cookie: String = read_bincode(&mut server.pipe).await?;
     assert_eq!(echoed_cookie, cookie);
 
-    server.write(Request::Disconnect).await?;
+    server.write(ManagerMsg::Disconnect).await?;
     server.read().await?;
 
     let elapsed = start_time.elapsed();
@@ -300,8 +300,8 @@ async fn security_worker(pipe_id: String) -> Result<()> {
     tracing::debug!("Worker connected to named pipe");
     loop {
         let req = client.read().await?;
-        client.write(Response::TunnelReady).await?;
-        if let Request::Disconnect = req {
+        client.write(WorkerMsg::TunnelReady).await?;
+        if let ManagerMsg::Disconnect = req {
             break;
         }
     }
@@ -319,7 +319,7 @@ async fn test_api() -> Result<()> {
         mut worker,
     } = timeout(Duration::from_secs(10), Subprocess::new(&leak_guard, &args)).await??;
 
-    server.write(Request::Disconnect).await?;
+    server.write(ManagerMsg::Disconnect).await?;
     server.read().await?;
 
     let elapsed = start_time.elapsed();
@@ -337,8 +337,8 @@ async fn test_api_worker(pipe_id: String) -> Result<()> {
     tracing::debug!("Worker connected to named pipe");
     loop {
         let req = client.read().await?;
-        client.write(Response::TunnelReady).await?;
-        if let Request::Disconnect = req {
+        client.write(WorkerMsg::TunnelReady).await?;
+        if let ManagerMsg::Disconnect = req {
             break;
         }
     }
@@ -465,13 +465,13 @@ pub(crate) struct Client {
 }
 
 #[derive(Deserialize, Serialize)]
-pub(crate) enum Request {
+pub(crate) enum ManagerMsg {
     Connect,
     Disconnect,
 }
 
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
-pub(crate) enum Response {
+pub(crate) enum WorkerMsg {
     Connected,
     Disconnected,
     OnUpdateResources(Vec<ResourceDescription>),
@@ -479,11 +479,11 @@ pub(crate) enum Response {
 }
 
 impl Server {
-    pub async fn read(&mut self) -> Result<Response> {
+    pub async fn read(&mut self) -> Result<WorkerMsg> {
         read_bincode(&mut self.pipe).await.context("couldn't read")
     }
 
-    pub async fn write(&mut self, req: Request) -> Result<()> {
+    pub async fn write(&mut self, req: ManagerMsg) -> Result<()> {
         write_bincode(&mut self.pipe, &req)
             .await
             .context("couldn't write")
@@ -509,11 +509,11 @@ impl Client {
         Ok(Self { pipe })
     }
 
-    pub async fn read(&mut self) -> Result<Request> {
+    pub async fn read(&mut self) -> Result<ManagerMsg> {
         read_bincode(&mut self.pipe).await.context("couldn't read")
     }
 
-    pub async fn write(&mut self, req: Response) -> Result<()> {
+    pub async fn write(&mut self, req: WorkerMsg) -> Result<()> {
         write_bincode(&mut self.pipe, &req)
             .await
             .context("couldn't write")
@@ -654,12 +654,12 @@ mod tests {
                 loop {
                     let req = client.read().await?;
                     let resp = match &req {
-                        Request::Connect => Response::Connected,
-                        Request::Disconnect => Response::Disconnected,
+                        ManagerMsg::Connect => WorkerMsg::Connected,
+                        ManagerMsg::Disconnect => WorkerMsg::Disconnected,
                     };
                     client.write(resp).await?;
 
-                    if let Request::Disconnect = req {
+                    if let ManagerMsg::Disconnect = req {
                         break;
                     }
                 }
@@ -669,10 +669,10 @@ mod tests {
             let mut server = server.accept().await?;
 
             let start_time = Instant::now();
-            server.write(Request::Connect).await?;
-            assert_eq!(server.read().await?, Response::Connected);
-            server.write(Request::Disconnect).await?;
-            assert_eq!(server.read().await?, Response::Disconnected);
+            server.write(ManagerMsg::Connect).await?;
+            assert_eq!(server.read().await?, WorkerMsg::Connected);
+            server.write(ManagerMsg::Disconnect).await?;
+            assert_eq!(server.read().await?, WorkerMsg::Disconnected);
 
             let elapsed = start_time.elapsed();
             assert!(elapsed < Duration::from_millis(6), "{:?}", elapsed);
