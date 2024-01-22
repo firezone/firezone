@@ -1,0 +1,15 @@
+{
+  "scripts": {
+    "build": "cp node_modules/flowbite/dist/flowbite.min.js src/ && tailwindcss -i src/input.css -o src/output.css && tsc && tauri build",
+    "tauri": "tauri"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^1.0",
+    "@tauri-apps/cli": "^1.0",
+    "flowbite": "^2.2.1"
+  },
+  "devDependencies": {
+    "tailwindcss": "^3.4.1",
+    "typescript": "^5.3.3"
+  }
+}

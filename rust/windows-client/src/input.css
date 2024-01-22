@@ -1,0 +1,10 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * This file serves as the main entry point for your Tailwind CSS installation.
+ * Generate the CSS from this with `pnpm tailwindcss -i src/input.css -o src/output.css`
+ * This has been added to the build script in package.json for convenience.
+ */
+ 

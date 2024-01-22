@@ -2,34 +2,40 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="output.css" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Settings</title>
-    <script src="settings.js"></script>
-    <style>
-      .logo.vanilla:hover {
-        filter: drop-shadow(0 0 2em #ffe21c);
-      }
-
-      .tab button.active {
-        background-color: orange;
-        color: black;
-      }
-
-      .tabcontent {
-        display: none;
-      }
-    </style>
+    <script src="settings.js" defer></script>
+    <script src="flowbite.min.js" defer></script>
   </head>
 
   <body>
-    <div class="container">
-      <div class="row tab">
-        <button class="tablinks" onclick="openTab(event, 'tab_advanced')">Advanced</button>
-        <button class="tablinks" onclick="openTab(event, 'tab_logs')">Diagnostic Logs</button>
+    <div class="container mx-auto">
+      <div
+        class="text-sm font-medium text-center text-gray-500 border-b border-gray-200 dark:text-gray-400 dark:border-gray-700"
+      >
+        <ul class="flex flex-wrap -mb-px">
+          <li class="me-2">
+            <a
+              href="#"
+              class="active inline-block p-4 border-b-2 border-transparent rounded-t-lg hover:text-gray-600 hover:border-gray-300 dark:hover:text-gray-300"
+              >Advanced</a
+            >
+          </li>
+          <li class="me-2">
+            <a
+              href="#"
+              class="inline-block p-4 text-blue-600 border-b-2 border-blue-600 rounded-t-lg dark:text-blue-500 dark:border-blue-500"
+              aria-current="page"
+              >Diagnostic Logs</a
+            >
+          </li>
+        </ul>
       </div>
-
-      <p>
+      <div id="tablinks" class="row tab">
+        <button onclick="openTab(event, 'tab_advanced')">Advanced</button>
+        <button onclick="openTab(event, 'tab_logs')">Diagnostic Logs</button>
+      </div>
 
       <div id="tab_logs" class="tabcontent">
         <div class="row">
@@ -45,24 +51,32 @@
         <form id="advanced-settings-form">
           <div class="row">
             <label for="auth-base-url-input">Auth Base URL:</label>
-            <input id="auth-base-url-input"></input>
+            <input id="auth-base-url-input" />
           </div>
 
           <div class="row">
             <label for="api-url-input">API URL:</label>
-            <input id="api-url-input"></input>
+            <input id="api-url-input" />
           </div>
 
           <div class="row">
             <label for="log-filter-input">Log Filter:</label>
-            <input id="log-filter-input"></input>
+            <input id="log-filter-input" />
           </div>
 
-          <p><b>WARNING</b>: These settings are intended for internal debug purposes <b>only</b>. Changing these is not supported and will disrupt access to your resources.</p>
+          <p>
+            <b>WARNING</b>: These settings are intended for internal debug
+            purposes <b>only</b>. Changing these is not supported and will
+            disrupt access to your resources.
+          </p>
 
           <div class="row">
-            <button type="button" id="reset-advanced-settings-btn">Reset to Defaults</button>
-            <button type="submit" id="apply-advanced-settings-btn">Apply</button>
+            <button type="button" id="reset-advanced-settings-btn">
+              Reset to Defaults
+            </button>
+            <button type="submit" id="apply-advanced-settings-btn">
+              Apply
+            </button>
           </div>
         </form>
       </div>
