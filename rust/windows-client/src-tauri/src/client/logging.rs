@@ -131,7 +131,7 @@ struct FileCount {
 }
 
 #[tauri::command]
-pub(crate) async fn count_logs() -> StdResult<(), FileCount> {
+pub(crate) async fn count_logs() -> StdResult<FileCount> {
     let mut dir = tokio::fs::read_dir("logs").await?;
     let mut file_count = FileCount::default();
 
