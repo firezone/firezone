@@ -53,11 +53,11 @@ const authBaseUrlInput = <HTMLInputElement>(
   document.getElementById("auth-base-url-input")
 );
 const apiUrlInput = <HTMLInputElement>document.getElementById("api-url-input");
-const logCountOutput = <HTMLParagraphElement>(
-  document.getElementById("log-count-output")
-);
 const logFilterInput = <HTMLInputElement>(
   document.getElementById("log-filter-input")
+);
+const logCountOutput = <HTMLParagraphElement>(
+  document.getElementById("log-count-output")
 );
 const resetAdvancedSettingsBtn = <HTMLButtonElement>(
   document.getElementById("reset-advanced-settings-btn")
