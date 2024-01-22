@@ -5,14 +5,20 @@
 # Windows client.
 set -e
 
+# Fixes exiting with Ctrl-C
+stop() {
+  kill $(jobs -p)
+}
+trap stop SIGINT SIGTERM
+
 # Copy frontend dependencies
 cp node_modules/flowbite/dist/flowbite.min.js src/
 
 # Compile TypeScript
-tsc
+tsc --watch &
 
 # Compile CSS
-tailwindcss -i src/input.css -o src/output.css
+tailwindcss -i src/input.css -o src/output.css --watch &
 
-# Compile Rust and bundle
-tauri build
+# Start Tauri hot-reloading: Not applicable for Windows
+# tauri dev

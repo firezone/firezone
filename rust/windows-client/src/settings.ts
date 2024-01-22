@@ -1,22 +1,4 @@
 // Purpose: TypeScript file for the settings page.
-//
-// Ensure this file is loaded with the "defer" attribute on the script tag because we don't
-// bother waiting for the DOM to load.
-
-// Stub Tauri API for TypeScript
-export {};
-declare global {
-  interface Window {
-    __TAURI__: {
-      tauri: {
-        invoke: (cmd: string, args?: any) => Promise<any>;
-      };
-      event: {
-        listen: (cmd: string, callback: (event: TauriEvent) => void) => void;
-      };
-    };
-  }
-}
 
 // Custom types
 interface Settings {
@@ -30,178 +12,214 @@ interface TauriEvent {
   payload: any;
 }
 
-interface FileCountProgress {
+interface FileCount {
   files: number;
   bytes: number;
 }
 
-// Tauri API
+// Stub Tauri API for TypeScript. Helpful when developing without Tauri running.
+export {};
+declare global {
+  interface Window {
+    __TAURI__: {
+      tauri: {
+        invoke: (cmd: string, args?: any) => Promise<any>;
+      };
+      event: {
+        listen: (cmd: string, callback: (event: TauriEvent) => void) => void;
+      };
+    };
+  }
+}
+window.__TAURI__ = window.__TAURI__ || {
+  tauri: {
+    invoke: (_cmd: string, _args?: any) => {
+      return Promise.reject("Tauri API not initialized");
+    },
+  },
+  event: {
+    listen: (_cmd: string, _callback: (event: TauriEvent) => void) => {
+      console.error("Tauri API not initialized");
+    },
+  },
+};
+
 const { invoke } = window.__TAURI__.tauri;
 const { listen } = window.__TAURI__.event;
 
 // DOM elements
 const form = <HTMLFormElement>document.getElementById("advanced-settings-form");
-const auth_base_url_input = <HTMLInputElement>(
+const authBaseUrlInput = <HTMLInputElement>(
   document.getElementById("auth-base-url-input")
 );
-const api_url_input = <HTMLInputElement>(
-  document.getElementById("api-url-input")
-);
-const log_count_output = <HTMLParagraphElement>(
+const apiUrlInput = <HTMLInputElement>document.getElementById("api-url-input");
+const logCountOutput = <HTMLParagraphElement>(
   document.getElementById("log-count-output")
 );
-const log_filter_input = <HTMLInputElement>(
+const logFilterInput = <HTMLInputElement>(
   document.getElementById("log-filter-input")
 );
-const reset_advanced_settings_btn = <HTMLButtonElement>(
+const resetAdvancedSettingsBtn = <HTMLButtonElement>(
   document.getElementById("reset-advanced-settings-btn")
 );
-const apply_advanced_settings_btn = <HTMLButtonElement>(
+const applyAdvancedSettingsBtn = <HTMLButtonElement>(
   document.getElementById("apply-advanced-settings-btn")
 );
-const export_logs_btn = <HTMLButtonElement>(
+const exportLogsBtn = <HTMLButtonElement>(
   document.getElementById("export-logs-btn")
 );
-const clear_logs_btn = <HTMLButtonElement>(
+const clearLogsBtn = <HTMLButtonElement>(
   document.getElementById("clear-logs-btn")
 );
-
-// Setup event listeners
-form.addEventListener("submit", (e) => {
-  e.preventDefault();
-  apply_advanced_settings();
-});
-export_logs_btn.addEventListener("click", (e) => {
-  export_logs();
-});
-clear_logs_btn.addEventListener("click", (e) => {
-  clear_logs();
-});
-
-listen("file_count_progress", (event: TauriEvent) => {
-  const pl = <FileCountProgress>event.payload;
-
-  let s = "Calculating...";
-  if (!!pl) {
-    const megabytes = Math.round(pl.bytes / 100000) / 10;
-    s = `${pl.files} files, ${megabytes} MB`;
-  }
-
-  log_count_output.innerText = s;
-});
+const logsTabBtn = <HTMLButtonElement>document.getElementById("logs-tab");
 
 // Rust bridge functions
 
 // Lock the UI when we're saving to disk, since disk writes are technically async.
-// Parameters:
-// - locked - Boolean, true to lock the UI, false to unlock it.
-function lock_advanced_settings_form(locked: boolean) {
-  auth_base_url_input.disabled = locked;
-  api_url_input.disabled = locked;
-  log_filter_input.disabled = locked;
+function lockAdvancedSettingsForm() {
+  authBaseUrlInput.disabled = true;
+  apiUrlInput.disabled = true;
+  logFilterInput.disabled = true;
+  resetAdvancedSettingsBtn.disabled = true;
+  applyAdvancedSettingsBtn.disabled = true;
 
-  if (locked) {
-    reset_advanced_settings_btn.textContent = "...";
-    apply_advanced_settings_btn.textContent = "...";
-  } else {
-    reset_advanced_settings_btn.textContent = "Reset to Defaults";
-    apply_advanced_settings_btn.textContent = "Apply";
-  }
-
-  reset_advanced_settings_btn.disabled = locked;
-  apply_advanced_settings_btn.disabled = locked;
+  resetAdvancedSettingsBtn.textContent = "Updating...";
+  applyAdvancedSettingsBtn.textContent = "Updating...";
 }
 
-function lock_logs_form(locked: boolean) {
-  export_logs_btn.disabled = locked;
-  clear_logs_btn.disabled = locked;
+function unlockAdvancedSettingsForm() {
+  authBaseUrlInput.disabled = false;
+  apiUrlInput.disabled = false;
+  logFilterInput.disabled = false;
+  resetAdvancedSettingsBtn.disabled = false;
+  applyAdvancedSettingsBtn.disabled = false;
+
+  resetAdvancedSettingsBtn.textContent = "Reset to Defaults";
+  applyAdvancedSettingsBtn.textContent = "Apply";
 }
 
-async function apply_advanced_settings() {
-  lock_advanced_settings_form(true);
+function lockLogsForm() {
+  exportLogsBtn.disabled = true;
+  clearLogsBtn.disabled = true;
+}
 
-  // Invoke Rust
-  // TODO: Why doesn't JS' await syntax work here?
+function unlockLogsForm() {
+  exportLogsBtn.disabled = false;
+  clearLogsBtn.disabled = false;
+}
+
+async function applyAdvancedSettings() {
+  console.log("Applying advanced settings");
+  lockAdvancedSettingsForm();
+
   invoke("apply_advanced_settings", {
     settings: {
-      auth_base_url: auth_base_url_input.value,
-      api_url: api_url_input.value,
-      log_filter: log_filter_input.value,
+      auth_base_url: authBaseUrlInput.value,
+      api_url: apiUrlInput.value,
+      log_filter: logFilterInput.value,
     },
   })
-    .then(() => {
-      lock_advanced_settings_form(false);
-    })
     .catch((e: Error) => {
       console.error(e);
-      lock_advanced_settings_form(false);
+    })
+    .finally(() => {
+      unlockAdvancedSettingsForm();
     });
 }
 
-async function get_advanced_settings(): Promise<void> {
-  lock_advanced_settings_form(true);
+async function resetAdvancedSettings() {
+  console.log("Resetting advanced settings");
+  lockAdvancedSettingsForm();
+
+  invoke("reset_advanced_settings")
+    .then((settings: Settings) => {
+      authBaseUrlInput.value = settings.auth_base_url;
+      apiUrlInput.value = settings.api_url;
+      logFilterInput.value = settings.log_filter;
+    })
+    .catch((e: Error) => {
+      console.error(e);
+    })
+    .finally(() => {
+      unlockAdvancedSettingsForm();
+    });
+}
+
+async function getAdvancedSettings() {
+  console.log("Getting advanced settings");
+  lockAdvancedSettingsForm();
 
   invoke("get_advanced_settings")
     .then((settings: Settings) => {
-      auth_base_url_input.value = settings.auth_base_url;
-      api_url_input.value = settings.api_url;
-      log_filter_input.value = settings.log_filter;
-      lock_advanced_settings_form(false);
+      authBaseUrlInput.value = settings.auth_base_url;
+      apiUrlInput.value = settings.api_url;
+      logFilterInput.value = settings.log_filter;
     })
     .catch((e: Error) => {
       console.error(e);
-      lock_advanced_settings_form(false);
+    })
+    .finally(() => {
+      unlockAdvancedSettingsForm();
     });
 }
 
-async function export_logs() {
-  lock_logs_form(true);
+async function exportLogs() {
+  console.log("Exporting logs");
+  lockLogsForm();
 
   invoke("export_logs")
-    .then(() => {
-      lock_logs_form(false);
-    })
     .catch((e: Error) => {
       console.error(e);
-      lock_logs_form(false);
+    })
+    .finally(() => {
+      unlockLogsForm();
     });
 }
 
-async function clear_logs() {
-  lock_logs_form(true);
+async function clearLogs() {
+  console.log("Clearing logs");
+  lockLogsForm();
 
   invoke("clear_logs")
-    .then(() => {
-      lock_logs_form(false);
-    })
     .catch((e: Error) => {
       console.error(e);
-      lock_logs_form(false);
+    })
+    .finally(() => {
+      logCountOutput.innerText = "0 files, 0 MB";
+      unlockLogsForm();
     });
 }
 
-function openTab(tabName: string) {
-  let tabcontent = document.getElementsByClassName("tabcontent");
-  for (let i = 0; i < tabcontent.length; i++) {
-    tabcontent[i].className = tabcontent[i].className + " collapse";
-  }
-
-  let tablinks = document.getElementById("tablinks")!.children;
-
-  for (let i = 0; i < tablinks.length; i++) {
-    tablinks[i].classList.remove("active");
-  }
-
-  document.getElementById(tabName)!.classList.remove("collapse");
-
-  invoke("start_stop_log_counting", { enable: tabName == "tab_logs" })
-    .then(() => {
-      // Good
+async function countLogs() {
+  invoke("count_logs")
+    .then((fileCount) => {
+      console.log(fileCount);
+      const megabytes = Math.round(fileCount.bytes / 100000) / 10;
+      logCountOutput.innerText = `${fileCount.files} files, ${megabytes} MB`;
     })
     .catch((e: Error) => {
       console.error(e);
+      logCountOutput.innerText = `Error counting logs: ${e.message}`;
     });
 }
+
+// Setup event listeners
+form.addEventListener("submit", (e) => {
+  e.preventDefault();
+  applyAdvancedSettings();
+});
+resetAdvancedSettingsBtn.addEventListener("click", (e) => {
+  resetAdvancedSettings();
+});
+exportLogsBtn.addEventListener("click", (e) => {
+  exportLogs();
+});
+clearLogsBtn.addEventListener("click", (e) => {
+  clearLogs();
+});
+logsTabBtn.addEventListener("click", (e) => {
+  countLogs();
+});
 
 // Load settings
-get_advanced_settings();
+getAdvancedSettings();

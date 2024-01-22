@@ -42,20 +42,6 @@ pub(crate) fn setup(log_filter: &str) -> Result<Handles> {
 }
 
 #[tauri::command]
-pub(crate) async fn start_stop_log_counting(
-    managed: tauri::State<'_, Managed>,
-    enable: bool,
-) -> StdResult<(), String> {
-    // Delegate this to Controller so that it can decide whether to obey.
-    // e.g. if there's already a count task running, it may refuse to start another.
-    managed
-        .ctlr_tx
-        .send(ControllerRequest::StartStopLogCounting(enable))
-        .await
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
 pub(crate) async fn clear_logs(
     app: tauri::AppHandle,
     managed: tauri::State<'_, Managed>,
@@ -152,17 +138,16 @@ struct FileCount {
     files: u64,
 }
 
-pub(crate) async fn count_logs(app: tauri::AppHandle) -> Result<()> {
+#[tauri::command]
+pub(crate) async fn count_logs() -> Result<FileCount> {
     let mut dir = tokio::fs::read_dir("logs").await?;
     let mut file_count = FileCount::default();
-    // Zero out the GUI
-    app.emit_all("file_count_progress", None::<FileCount>)?;
+
     while let Some(entry) = dir.next_entry().await? {
         let md = entry.metadata().await?;
         file_count.files += 1;
         file_count.bytes += md.len();
     }
-    // Show the result on the GUI
-    app.emit_all("file_count_progress", Some(&file_count))?;
-    Ok(())
+
+    Ok(file_count)
 }

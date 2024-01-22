@@ -5,81 +5,177 @@
     <link rel="stylesheet" href="output.css" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Settings</title>
-    <script src="settings.js" defer></script>
-    <script src="flowbite.min.js" defer></script>
+    <script type="module" src="settings.js" defer></script>
   </head>
 
-  <body>
+  <body class="bg-netural-100 text-neutral-900">
     <div class="container mx-auto">
-      <div
-        class="text-sm font-medium text-center text-gray-500 border-b border-gray-200 dark:text-gray-400 dark:border-gray-700"
-      >
-        <ul class="flex flex-wrap -mb-px">
-          <li class="me-2">
-            <a
-              href="#"
-              class="active inline-block p-4 border-b-2 border-transparent rounded-t-lg hover:text-gray-600 hover:border-gray-300 dark:hover:text-gray-300"
-              >Advanced</a
+      <div class="mb-4 border-b border-neutral-300">
+        <ul
+          class="justify-center flex flex-wrap -mb-px text-sm font-medium text-center"
+          id="tabs"
+          data-tabs-toggle="#tab-content"
+          role="tablist"
+        >
+          <li class="me-2" role="presentation">
+            <button
+              class="inline-block p-4 border-b-2 rounded-t-lg"
+              id="advanced-tab"
+              data-tabs-target="#advanced"
+              type="button"
+              role="tab"
+              aria-controls="advanced"
+              aria-selected="false"
             >
+              Advanced
+            </button>
           </li>
-          <li class="me-2">
-            <a
-              href="#"
-              class="inline-block p-4 text-blue-600 border-b-2 border-blue-600 rounded-t-lg dark:text-blue-500 dark:border-blue-500"
-              aria-current="page"
-              >Diagnostic Logs</a
+          <li class="me-2" role="presentation">
+            <button
+              class="inline-block p-4 border-b-2 rounded-t-lg hover:text-neutral-700 hover:border-neutral-400"
+              id="logs-tab"
+              data-tabs-target="#logs"
+              type="button"
+              role="tab"
+              aria-controls="logs"
+              aria-selected="false"
             >
+              Diagnostic Logs
+            </button>
           </li>
         </ul>
       </div>
-      <div id="tablinks" class="row tab">
-        <button onclick="openTab(event, 'tab_advanced')">Advanced</button>
-        <button onclick="openTab(event, 'tab_logs')">Diagnostic Logs</button>
-      </div>
-
-      <div id="tab_logs" class="tabcontent">
-        <div class="row">
-          <button type="button" id="export-logs-btn">Export Logs</button>
-          <button type="button" id="clear-logs-btn">Clear Logs</button>
-        </div>
-        <div class="row">
-          <p id="log-count-output"></p>
-        </div>
-      </div>
-
-      <div id="tab_advanced" class="tabcontent">
-        <form id="advanced-settings-form">
-          <div class="row">
-            <label for="auth-base-url-input">Auth Base URL:</label>
-            <input id="auth-base-url-input" />
-          </div>
-
-          <div class="row">
-            <label for="api-url-input">API URL:</label>
-            <input id="api-url-input" />
-          </div>
-
-          <div class="row">
-            <label for="log-filter-input">Log Filter:</label>
-            <input id="log-filter-input" />
-          </div>
-
-          <p>
-            <b>WARNING</b>: These settings are intended for internal debug
-            purposes <b>only</b>. Changing these is not supported and will
-            disrupt access to your resources.
+      <div id="tab-content">
+        <div
+          class="hidden p-4 rounded-lg bg-neutral-50"
+          id="advanced"
+          role="tabpanel"
+          aria-labelledby="advanced-tab"
+        >
+          <p class="mx-8 text-neutral-900">
+            <strong>WARNING</strong>: These settings are intended for internal
+            debug purposes <strong>only</strong>. Changing these is not
+            supported and will disrupt access to your resources.
           </p>
+          <form id="advanced-settings-form" class="max-w-md mt-12 mx-auto">
+            <div class="relative z-0 w-full mb-5 group">
+              <input
+                name="auth-base-url"
+                id="auth-base-url-input"
+                class="block py-2.5 px-0 w-full text-sm text-neutral-900 bg-transparent border-0 border-b-2 border-neutral-300 appearance-none focus:outline-none focus:ring-0 focus:border-accent-600 peer"
+                placeholder=" "
+                required
+              />
+              <label
+                for="auth-base-url"
+                class="peer-focus:font-medium absolute text-sm text-neutral-600 duration-300 transform -translate-y-6 scale-75 top-3 -z-10 origin-[0] peer-focus:start-0 rtl:peer-focus:translate-x-1/4 rtl:peer-focus:left-auto peer-focus:text-accent-600 peer-placeholder-shown:scale-100 peer-placeholder-shown:translate-y-0 peer-focus:scale-75 peer-focus:-translate-y-6"
+                >Auth Base URL</label
+              >
+            </div>
+            <div class="relative z-0 w-full mb-5 group">
+              <input
+                name="api-url"
+                id="api-url-input"
+                class="block py-2.5 px-0 w-full text-sm text-neutral-900 bg-transparent border-0 border-b-2 border-neutral-300 appearance-none focus:outline-none focus:ring-0 focus:border-accent-600 peer"
+                placeholder=" "
+                required
+              />
+              <label
+                for="api-url"
+                class="peer-focus:font-medium absolute text-sm text-neutral-600 duration-300 transform -translate-y-6 scale-75 top-3 -z-10 origin-[0] peer-focus:start-0 rtl:peer-focus:translate-x-1/4 peer-focus:text-accent-600 peer-placeholder-shown:scale-100 peer-placeholder-shown:translate-y-0 peer-focus:scale-75 peer-focus:-translate-y-6"
+                >API URL</label
+              >
+            </div>
+            <div class="relative z-0 w-full mb-5 group">
+              <input
+                name="log-filter"
+                id="log-filter-input"
+                class="block py-2.5 px-0 w-full text-sm text-neutral-900 bg-transparent border-0 border-b-2 border-neutral-300 appearance-none focus:outline-none focus:ring-0 focus:border-accent-600 peer"
+                placeholder=" "
+                required
+              />
+              <label
+                for="log_filter"
+                class="peer-focus:font-medium absolute text-sm text-neutral-600 duration-300 transform -translate-y-6 scale-75 top-3 -z-10 origin-[0] peer-focus:start-0 rtl:peer-focus:translate-x-1/4 peer-focus:text-accent-600 peer-placeholder-shown:scale-100 peer-placeholder-shown:translate-y-0 peer-focus:scale-75 peer-focus:-translate-y-6"
+                >Log Filter</label
+              >
+            </div>
+            <div class="inline-flex w-full justify-between">
+              <button
+                id="reset-advanced-settings-btn"
+                type="button"
+                class="bg-neutral-200 text-neutral-900 hover:bg-neutral-300 font-medium rounded text-sm w-full sm:w-auto px-5 py-2.5 text-center"
+              >
+                Reset to Defaults
+              </button>
+              <button
+                id="apply-advanced-settings-btn"
+                type="submit"
+                class="text-white bg-accent-450 hover:bg-accent-700 font-medium rounded text-sm w-full sm:w-auto px-5 py-2.5 text-center"
+              >
+                Apply
+              </button>
+            </div>
+          </form>
+        </div>
+        <div
+          class="hidden p-4 rounded-lg bg-neutral-50"
+          id="logs"
+          role="tabpanel"
+          aria-labelledby="logs-tab"
+        >
+          <div class="mt-16 flex justify-center">
+            <p class="mr-1">Log directory size:</p>
+            <p id="log-count-output">Calculating...</p>
+          </div>
+          <div class="mt-8 flex justify-center">
+            <button
+              id="export-logs-btn"
+              type="button"
+              class="mr-4 inline-flex items-center bg-neutral-200 text-neutral-900 hover:bg-neutral-300 font-medium rounded text-sm px-5 py-2.5 text-center"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke-width="1.5"
+                stroke="currentColor"
+                class="w-4 h-4 mr-2"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  d="M7.217 10.907a2.25 2.25 0 1 0 0 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186 9.566-5.314m-9.566 7.5 9.566 5.314m0 0a2.25 2.25 0 1 0 3.935 2.186 2.25 2.25 0 0 0-3.935-2.186Zm0-12.814a2.25 2.25 0 1 0 3.933-2.185 2.25 2.25 0 0 0-3.933 2.185Z"
+                />
+              </svg>
 
-          <div class="row">
-            <button type="button" id="reset-advanced-settings-btn">
-              Reset to Defaults
+              Export Logs
             </button>
-            <button type="submit" id="apply-advanced-settings-btn">
-              Apply
+            <button
+              id="clear-logs-btn"
+              type="button"
+              class="inline-flex items-center bg-neutral-200 text-neutral-900 hover:bg-neutral-300 font-medium rounded text-sm px-5 py-2.5 text-center"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke-width="1.5"
+                stroke="currentColor"
+                class="w-4 h-4 mr-2"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0"
+                />
+              </svg>
+              Clear Logs
             </button>
           </div>
-        </form>
+        </div>
       </div>
     </div>
+    <script src="./flowbite.min.js"></script>
   </body>
 </html>
