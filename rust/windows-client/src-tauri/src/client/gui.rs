@@ -135,6 +135,7 @@ pub(crate) fn run(params: client::GuiParams) -> Result<()> {
             logging::export_logs,
             logging::start_stop_log_counting,
             settings::apply_advanced_settings,
+            settings::reset_advanced_settings,
             settings::get_advanced_settings,
         ])
         .system_tray(tray)
@@ -267,7 +268,6 @@ pub(crate) enum ControllerRequest {
     Quit,
     SchemeRequest(url::Url),
     SignIn,
-    StartStopLogCounting(bool),
     SignOut,
     TunnelReady,
 }
