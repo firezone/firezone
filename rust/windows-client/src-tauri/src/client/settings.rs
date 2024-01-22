@@ -63,7 +63,7 @@ pub(crate) async fn reset_advanced_settings(
     managed: tauri::State<'_, Managed>,
 ) -> StdResult<AdvancedSettings, String> {
     let settings = AdvancedSettings::default();
-    apply_advanced_settings_inner(managed.inner(), settings)
+    apply_advanced_settings_inner(managed.inner(), settings.clone())
         .await
         .map_err(|e| e.to_string());
 
