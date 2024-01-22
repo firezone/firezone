@@ -182,6 +182,8 @@ async fn test_leak(enable_protection: bool) -> Result<()> {
         server.request(Request::AwaitCallback).await?;
     }
 
+    tokio::time::sleep(std::time::Duration::from_secs(15)).await;
+
     manager.process.kill()?;
     tracing::debug!("Harness killed manager");
 
@@ -337,7 +339,7 @@ impl UnconnectedServer {
 ///
 /// Manual testing shows that if the corresponding Client's process crashes, Windows will
 /// be nice and return errors for anything trying to read from the Server
-struct Server {
+pub(crate) struct Server {
     pipe: named_pipe::NamedPipeServer,
 }
 
@@ -345,7 +347,7 @@ struct Server {
 ///
 /// Manual testing shows that if the corresponding Server's process crashes, Windows will
 /// be nice and return errors for anything trying to read from the Client
-struct Client {
+pub(crate) struct Client {
     pipe: named_pipe::NamedPipeClient,
 }
 
@@ -485,7 +487,7 @@ impl Drop for SubcommandChild {
 }
 
 /// Uses a Windows job object to kill child processes when the parent exits
-struct LeakGuard {
+pub(crate) struct LeakGuard {
     job_object: HANDLE,
 }
 
