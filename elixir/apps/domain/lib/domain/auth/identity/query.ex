@@ -65,6 +65,27 @@ defmodule Domain.Auth.Identity.Query do
     )
   end
 
+  def by_provider_claims(queryable, provider_identifier, nil) do
+    by_provider_identifier(queryable, provider_identifier)
+  end
+
+  def by_provider_claims(queryable, provider_identifier, "") do
+    by_provider_identifier(queryable, provider_identifier)
+  end
+
+  def by_provider_claims(queryable, provider_identifier, email) do
+    # For manually created IdP identities (where last_seen_at is nil)
+    # we also try to fetch them by email, so that users can provision
+    # them without knowing which ID will be assigned to the OIDC sub claim.
+    where(
+      queryable,
+      [identities: identities],
+      identities.provider_identifier == ^provider_identifier or
+        (is_nil(identities.last_seen_at) and
+           identities.provider_identifier == ^email)
+    )
+  end
+
   def by_id_or_provider_identifier(queryable \\ not_deleted(), id_or_provider_identifier) do
     if Domain.Validator.valid_uuid?(id_or_provider_identifier) do
       where(

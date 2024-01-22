@@ -49,6 +49,34 @@ defmodule Web.Acceptance.Auth.OpenIDConnectTest do
     |> assert_path(~p"/#{account.slug}/sites")
   end
 
+  feature "authenticates an invited user to a portal using email claim", %{session: session} do
+    account = Fixtures.Accounts.create_account()
+    provider = Vault.setup_oidc_provider(account, @endpoint.url)
+
+    oidc_login = "firezone-1"
+    oidc_password = "firezone1234_oidc"
+    email = Fixtures.Auth.email()
+
+    {:ok, _entity_id} = Vault.upsert_user(oidc_login, email, oidc_password)
+
+    identity =
+      Fixtures.Auth.create_identity(
+        actor: [type: :account_admin_user],
+        account: account,
+        provider: provider,
+        provider_identifier: email
+      )
+
+    session
+    |> visit(~p"/#{account}")
+    |> assert_el(Query.text("Sign into #{account.name}"))
+    |> click(Query.link("Sign in with Vault"))
+    |> Vault.userpass_flow(oidc_login, oidc_password)
+    |> assert_el(Query.css("#user-menu-button"))
+    |> Auth.assert_authenticated(identity)
+    |> assert_path(~p"/#{account.slug}/sites")
+  end
+
   feature "authenticates a user to a client", %{session: session} do
     nonce = Ecto.UUID.generate()
     state = Ecto.UUID.generate()

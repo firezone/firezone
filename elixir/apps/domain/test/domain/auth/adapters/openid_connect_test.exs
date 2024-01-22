@@ -262,6 +262,136 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
       assert DateTime.diff(identity.provider_state["expires_at"], DateTime.utc_now()) in 3595..3605
     end
 
+    test "verifies newly created identities by email claim", %{
+      account: account,
+      provider: provider,
+      bypass: bypass
+    } do
+      email = Fixtures.Auth.email()
+      sub = Ecto.UUID.generate()
+
+      identity =
+        Fixtures.Auth.create_identity(
+          account: account,
+          provider: provider,
+          provider_identifier: email
+        )
+
+      {token, _claims} =
+        Mocks.OpenIDConnect.generate_openid_connect_token(provider, identity, %{
+          "sub" => sub,
+          "email" => email
+        })
+
+      Mocks.OpenIDConnect.expect_refresh_token(bypass, %{
+        "token_type" => "Bearer",
+        "id_token" => token,
+        "access_token" => "MY_ACCESS_TOKEN",
+        "refresh_token" => "MY_REFRESH_TOKEN",
+        "expires_in" => 3600
+      })
+
+      Mocks.OpenIDConnect.expect_userinfo(bypass)
+
+      code_verifier = PKCE.code_verifier()
+      redirect_uri = "https://example.com/"
+      payload = {redirect_uri, code_verifier, "MyFakeCode"}
+
+      assert {:ok, identity, _expires_at} = verify_and_update_identity(provider, payload)
+
+      assert identity.provider_identifier == sub
+      assert identity.provider_state["access_token"] == "MY_ACCESS_TOKEN"
+      assert identity.provider_state["refresh_token"] == "MY_REFRESH_TOKEN"
+
+      assert DateTime.diff(identity.provider_state["expires_at"], DateTime.utc_now()) in 3595..3605
+    end
+
+    test "verifies newly created identities by email profile field", %{
+      account: account,
+      provider: provider,
+      bypass: bypass
+    } do
+      email = Fixtures.Auth.email()
+      sub = Ecto.UUID.generate()
+
+      identity =
+        Fixtures.Auth.create_identity(
+          account: account,
+          provider: provider,
+          provider_identifier: email
+        )
+
+      {token, _claims} =
+        Mocks.OpenIDConnect.generate_openid_connect_token(provider, identity, %{
+          "sub" => sub,
+          "email" => nil
+        })
+
+      Mocks.OpenIDConnect.expect_refresh_token(bypass, %{
+        "token_type" => "Bearer",
+        "id_token" => token,
+        "access_token" => "MY_ACCESS_TOKEN",
+        "refresh_token" => "MY_REFRESH_TOKEN",
+        "expires_in" => 3600
+      })
+
+      Mocks.OpenIDConnect.expect_userinfo(bypass, %{
+        "email" => email
+      })
+
+      code_verifier = PKCE.code_verifier()
+      redirect_uri = "https://example.com/"
+      payload = {redirect_uri, code_verifier, "MyFakeCode"}
+
+      assert {:ok, identity, _expires_at} = verify_and_update_identity(provider, payload)
+
+      assert identity.provider_identifier == sub
+      assert identity.provider_state["access_token"] == "MY_ACCESS_TOKEN"
+      assert identity.provider_state["refresh_token"] == "MY_REFRESH_TOKEN"
+
+      assert DateTime.diff(identity.provider_state["expires_at"], DateTime.utc_now()) in 3595..3605
+    end
+
+    test "does not verify already synced identities by email claim", %{
+      account: account,
+      provider: provider,
+      bypass: bypass
+    } do
+      email = Fixtures.Auth.email()
+      sub = Ecto.UUID.generate()
+
+      identity =
+        Fixtures.Auth.create_identity(
+          account: account,
+          provider: provider,
+          provider_identifier: email
+        )
+        |> Ecto.Changeset.change(last_seen_at: DateTime.utc_now())
+        |> Repo.update!()
+
+      {token, _claims} =
+        Mocks.OpenIDConnect.generate_openid_connect_token(provider, identity, %{
+          "sub" => sub,
+          "email" => email
+        })
+
+      Mocks.OpenIDConnect.expect_refresh_token(bypass, %{
+        "token_type" => "Bearer",
+        "id_token" => token,
+        "access_token" => "MY_ACCESS_TOKEN",
+        "refresh_token" => "MY_REFRESH_TOKEN",
+        "expires_in" => 3600
+      })
+
+      Mocks.OpenIDConnect.expect_userinfo(bypass)
+
+      code_verifier = PKCE.code_verifier()
+      redirect_uri = "https://example.com/"
+      payload = {redirect_uri, code_verifier, "MyFakeCode"}
+
+      assert verify_and_update_identity(provider, payload) == {:error, :not_found}
+    end
+
     test "returns error when token is expired", %{
       provider: provider,
       identity: identity,
