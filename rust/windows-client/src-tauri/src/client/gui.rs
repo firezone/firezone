@@ -565,19 +565,6 @@ async fn run_controller(
                             )?;
                         }
                     }
-                    Req::StartStopLogCounting(enable) => {
-                        if enable {
-                            if controller.log_counting_task.is_none() {
-                                let app = app.clone();
-                                controller.log_counting_task = Some(tokio::spawn(logging::count_logs(app)));
-                                tracing::debug!("started log counting");
-                            }
-                        } else if let Some(t) = controller.log_counting_task {
-                            t.abort();
-                            controller.log_counting_task = None;
-                            tracing::debug!("cancelled log counting");
-                        }
-                    }
                     Req::TunnelReady => {
                         controller.tunnel_ready = true;
                         controller.refresh_system_tray_menu()?;
