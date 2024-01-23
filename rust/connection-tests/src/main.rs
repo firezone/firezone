@@ -80,7 +80,7 @@ async fn main() -> Result<()> {
 
     match role {
         Role::Dialer => {
-            let mut pool = ClientConnectionPool::<u64>::new(private_key);
+            let mut pool = ClientConnectionPool::<u64>::new(private_key, Instant::now());
             pool.add_local_interface(socket_addr);
 
             let offer = pool.new_connection(
@@ -164,7 +164,7 @@ async fn main() -> Result<()> {
             }
         }
         Role::Listener => {
-            let mut pool = ServerConnectionPool::<u64>::new(private_key);
+            let mut pool = ServerConnectionPool::<u64>::new(private_key, Instant::now());
             pool.add_local_interface(socket_addr);
 
             let offer = redis_connection

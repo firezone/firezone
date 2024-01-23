@@ -54,7 +54,7 @@ pub struct ConnectionPool<T, TId> {
     negotiated_connections: HashMap<TId, Connection>,
     pending_events: VecDeque<Event<TId>>,
 
-    last_now: Option<Instant>,
+    last_now: Instant,
 
     buffer: Box<[u8; MAX_UDP_SIZE]>,
 
@@ -79,7 +79,7 @@ impl<T, TId> ConnectionPool<T, TId>
 where
     TId: Eq + Hash + Copy + fmt::Display,
 {
-    pub fn new(private_key: StaticSecret) -> Self {
+    pub fn new(private_key: StaticSecret, now: Instant) -> Self {
         let public_key = &(&private_key).into();
         Self {
             private_key,
@@ -95,7 +95,7 @@ where
             buffer: Box::new([0u8; MAX_UDP_SIZE]),
             bindings: HashMap::default(),
             allocations: HashMap::default(),
-            last_now: None,
+            last_now: now,
         }
     }
 
@@ -126,10 +126,7 @@ where
                     continue;
                 };
 
-                allocation.bind_channel(
-                    candidate.addr(),
-                    self.last_now.expect("to have a `last_now` timestamp"),
-                );
+                allocation.bind_channel(candidate.addr(), self.last_now);
             }
         }
     }
@@ -285,10 +282,6 @@ where
         connection: TId,
         packet: IpPacket<'_>,
     ) -> Result<Option<(SocketAddr, &'s [u8])>, Error> {
-        let now = self
-            .last_now
-            .expect("must call `handle_timeout` once before `encapsulate`");
-
         // TODO: We need to return, which local socket to use to send the data.
         let conn = self
             .negotiated_connections
@@ -315,7 +308,8 @@ where
                     tracing::warn!(%relay, "No allocation");
                     return Ok(None);
                 };
-                let Some(total_length) = allocation.encode_to_slice(peer, packet, header, now)
+                let Some(total_length) =
+                    allocation.encode_to_slice(peer, packet, header, self.last_now)
                 else {
                     tracing::warn!(%peer, "No channel");
                     return Ok(None);
@@ -406,7 +400,7 @@ where
     ///
     /// This advances time within the ICE agent, updates timers within all wireguard connections as well as resets wireguard's rate limiter (if necessary).
     pub fn handle_timeout(&mut self, now: Instant) {
-        self.last_now = Some(now);
+        self.last_now = now;
 
         for c in self.negotiated_connections.values_mut() {
             self.buffered_transmits
@@ -431,10 +425,6 @@ where
 
     /// Returns buffered data that needs to be sent on the socket.
     pub fn poll_transmit(&mut self) -> Option<Transmit> {
-        let now = self
-            .last_now
-            .expect("must call `handle_timeout` once before `poll_transmit`");
-
         for conn in self.negotiated_connections.values_mut() {
             if let Some(transmit) = conn.agent.poll_transmit() {
                 let relay = SocketAddr::new(transmit.source.ip(), 3478); // TODO: Don't hardcode this.
@@ -444,7 +434,7 @@ where
                     transmit.destination,
                     &transmit.contents,
                     &mut self.allocations,
-                    now,
+                    self.last_now,
                 )
                 .unwrap_or(Transmit {
                     dst: transmit.destination,
