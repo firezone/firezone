@@ -2,7 +2,7 @@
 name = "firezone-windows-client"
 # mark:automatic-version
 version = "1.0.0"
-description = "Firezone Windows Client"
+description = "Firezone"
 edition = "2021"
 
 [build-dependencies]
