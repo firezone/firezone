@@ -657,13 +657,21 @@ impl Default for ClientState {
         // therefore, only the first time it's added that happens, after that it doesn't matter.
         let mut interval = tokio::time::interval(Duration::from_secs(300));
         interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
-        let if_watcher = IfWatcher::new().expect("TODO");
+        let if_watcher = IfWatcher::new().expect(
+            "Program should be able to list interfaces on the system. Check binary's permissions",
+        );
         let mut connection_pool = ConnectionPool::new(StaticSecret::random_from_rng(OsRng));
         let mut udp_sockets = UdpSockets::default();
+
         for ip in if_watcher.iter() {
-            let addr = udp_sockets.bind((ip.addr(), 0)).expect("TODO");
-            connection_pool.add_local_interface(addr);
+            match udp_sockets.bind((ip.addr(), 0)) {
+                Ok(addr) => connection_pool.add_local_interface(addr),
+                Err(e) => {
+                    tracing::debug!(address = %ip.addr(), err = ?e, "Couldn't bind socket to interface: {e:#?}")
+                }
+            }
         }
+
         Self {
             active_candidate_receivers: StreamMap::new(
                 Duration::from_secs(ICE_GATHERING_TIMEOUT_SECONDS),
