@@ -2060,6 +2060,7 @@ version = "1.0.0"
 dependencies = [
  "anyhow",
  "axum 0.7.4",
+ "backoff",
  "base64 0.21.7",
  "bytecodec",
  "bytes",
@@ -4609,6 +4610,7 @@ dependencies = [
 name = "phoenix-channel"
 version = "1.0.0"
 dependencies = [
+ "backoff",
  "base64 0.21.7",
  "futures",
  "rand_core 0.6.4",
