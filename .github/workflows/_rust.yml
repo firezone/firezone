@@ -103,7 +103,7 @@ jobs:
 
           # Used for release artifact
           # In release mode the name comes from tauri.conf.json
-          cp "target/release/Firezone Windows Client.exe" "${{ env.BINARY_DEST_PATH }}-x64.exe"
+          cp "target/release/Firezone.exe" "${{ env.BINARY_DEST_PATH }}-x64.exe"
           cp "target/release/bundle/msi/*.msi" "${{ env.BINARY_DEST_PATH }}-x64.msi"
 
           Get-FileHash ${{ env.BINARY_DEST_PATH }}-x64.exe -Algorithm SHA256 | Select-Object Hash > ${{ env.BINARY_DEST_PATH }}-x64.exe.sha256sum.txt
