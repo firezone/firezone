@@ -119,7 +119,6 @@ where
         }
 
         // Each remote candidate might be source of traffic: Bind a channel for each.
-        // TODO: How soon will we run out of channels if we do this?
         if let Some(conn) = self.negotiated_connections.get_mut(&id) {
             for relay in &conn.turn_servers {
                 let Some(allocation) = self.allocations.get_mut(relay) else {
