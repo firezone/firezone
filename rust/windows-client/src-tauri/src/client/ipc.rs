@@ -474,6 +474,7 @@ pub(crate) enum ManagerMsg {
 pub(crate) enum WorkerMsg {
     Connected,
     Disconnected,
+    DisconnectedTokenExpired,
     OnUpdateResources(Vec<ResourceDescription>),
     TunnelReady,
 }
@@ -511,6 +512,10 @@ impl Client {
 
     pub async fn read(&mut self) -> Result<ManagerMsg> {
         read_bincode(&mut self.pipe).await.context("couldn't read")
+    }
+
+    pub async fn ready(&self, interest: tokio::io::Interest) -> Result<tokio::io::Ready> {
+        Ok(self.pipe.ready(interest).await?)
     }
 
     pub async fn write(&mut self, req: WorkerMsg) -> Result<()> {

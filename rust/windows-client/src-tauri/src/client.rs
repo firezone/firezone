@@ -3,6 +3,7 @@ use clap::{Args, Parser};
 use std::{os::windows::process::CommandExt, process::Command};
 
 mod auth;
+mod connlib_worker;
 mod crash_handling;
 mod debug_commands;
 mod deep_link;
@@ -110,6 +111,7 @@ pub(crate) fn run() -> Result<()> {
                 Ok(())
             }
         }
+        Some(Cmd::ConnlibWorker { pipe_id }) => connlib_worker::run(pipe_id),
         Some(Cmd::CrashHandlerServer) => crash_handling::server(),
         Some(Cmd::Debug { command }) => debug_commands::run(command),
         // If we already tried to elevate ourselves, don't try again
@@ -139,6 +141,9 @@ struct Cli {
 
 #[derive(clap::Subcommand)]
 pub enum Cmd {
+    ConnlibWorker {
+        pipe_id: String,
+    },
     CrashHandlerServer,
     Debug {
         #[command(subcommand)]
