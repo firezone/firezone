@@ -318,7 +318,10 @@ impl Allocation {
     // }
 
     pub fn bind_channel(&mut self, peer: SocketAddr, now: Instant) {
-        let channel = self.channel_bindings.new_channel_to_peer(peer, now);
+        let Some(channel) = self.channel_bindings.new_channel_to_peer(peer, now) else {
+            tracing::warn!(relay = %self.server, "All channels are exhausted");
+            return;
+        };
 
         self.authenticate_and_queue(make_channel_bind_request(peer, channel), now);
     }
@@ -535,10 +538,19 @@ stun_codec::define_attribute_enums!(
     ]
 );
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 struct ChannelBindings {
     inner: HashMap<u16, Channel>,
     next_channel: u16,
+}
+
+impl Default for ChannelBindings {
+    fn default() -> Self {
+        Self {
+            inner: Default::default(),
+            next_channel: ChannelBindings::FIRST_CHANNEL,
+        }
+    }
 }
 
 impl ChannelBindings {
@@ -557,7 +569,7 @@ impl ChannelBindings {
         Some((channel.peer, payload))
     }
 
-    fn new_channel_to_peer(&mut self, peer: SocketAddr, now: Instant) -> u16 {
+    fn new_channel_to_peer(&mut self, peer: SocketAddr, now: Instant) -> Option<u16> {
         if self.next_channel == Self::LAST_CHANNEL {
             self.next_channel = Self::FIRST_CHANNEL;
         }
@@ -572,7 +584,7 @@ impl ChannelBindings {
             self.next_channel += 1;
 
             if self.next_channel >= Self::LAST_CHANNEL {
-                panic!("All channels exhausted") // TODO: Don't panic here but gracefully fail the channel binding.
+                return None;
             }
         };
 
@@ -586,7 +598,7 @@ impl ChannelBindings {
             },
         );
 
-        channel
+        Some(channel)
     }
 
     fn channels_to_refresh<'s>(
@@ -597,7 +609,7 @@ impl ChannelBindings {
         self.inner
             .iter()
             .filter(move |(_, channel)| channel.needs_refresh(now))
-            .filter(move |(number, _)| is_inflight(**number))
+            .filter(move |(number, _)| !is_inflight(**number))
             .map(|(number, channel)| (*number, channel.peer))
     }
 
@@ -699,6 +711,101 @@ mod tests {
 
     const PEER1: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 10000);
     const MINUTE: Duration = Duration::from_secs(60);
+
+    #[test]
+    fn returns_first_available_channel() {
+        let mut channel_bindings = ChannelBindings::default();
+
+        let channel = channel_bindings
+            .new_channel_to_peer(PEER1, Instant::now())
+            .unwrap();
+
+        assert_eq!(channel, ChannelBindings::FIRST_CHANNEL);
+    }
+
+    #[test]
+    fn recycles_channels_in_case_they_are_not_in_use() {
+        let mut channel_bindings = ChannelBindings::default();
+        let start = Instant::now();
+
+        for channel in ChannelBindings::FIRST_CHANNEL..ChannelBindings::LAST_CHANNEL {
+            let allocated_channel = channel_bindings.new_channel_to_peer(PEER1, start).unwrap();
+
+            assert_eq!(channel, allocated_channel)
+        }
+
+        let maybe_channel = channel_bindings.new_channel_to_peer(PEER1, start);
+        assert!(maybe_channel.is_none());
+
+        let channel = channel_bindings
+            .new_channel_to_peer(
+                PEER1,
+                start + Channel::CHANNEL_LIFETIME + Channel::CHANNEL_REBIND_TIMEOUT,
+            )
+            .unwrap();
+        assert_eq!(channel, ChannelBindings::FIRST_CHANNEL);
+    }
+
+    #[test]
+    fn bound_channel_can_decode_data() {
+        let mut channel_bindings = ChannelBindings::default();
+        let start = Instant::now();
+
+        let channel = channel_bindings.new_channel_to_peer(PEER1, start).unwrap();
+        channel_bindings.set_confirmed(channel, start + Duration::from_secs(1));
+
+        let packet = crate::channel_data::encode(channel, b"foobar");
+        let (peer, payload) = channel_bindings
+            .try_decode(&packet, start + Duration::from_secs(2))
+            .unwrap();
+
+        assert_eq!(peer, PEER1);
+        assert_eq!(payload, b"foobar");
+    }
+
+    #[test]
+    fn channel_with_activity_is_refreshed() {
+        let mut channel_bindings = ChannelBindings::default();
+        let start = Instant::now();
+
+        let channel = channel_bindings.new_channel_to_peer(PEER1, start).unwrap();
+        channel_bindings.set_confirmed(channel, start + Duration::from_secs(1));
+
+        let packet = crate::channel_data::encode(channel, b"foobar");
+        channel_bindings
+            .try_decode(&packet, start + Duration::from_secs(2))
+            .unwrap();
+
+        let not_inflight = |_| false;
+        let (channel_to_refresh, _) = channel_bindings
+            .channels_to_refresh(start + 6 * MINUTE, not_inflight)
+            .next()
+            .unwrap();
+
+        assert_eq!(channel_to_refresh, channel);
+
+        let inflight = |_| true;
+        let maybe_refresh = channel_bindings
+            .channels_to_refresh(start + 6 * MINUTE, inflight)
+            .next();
+
+        assert!(maybe_refresh.is_none())
+    }
+
+    #[test]
+    fn channel_without_activity_is_not_refreshed() {
+        let mut channel_bindings = ChannelBindings::default();
+        let start = Instant::now();
+
+        let channel = channel_bindings.new_channel_to_peer(PEER1, start).unwrap();
+        channel_bindings.set_confirmed(channel, start + Duration::from_secs(1));
+
+        let maybe_refresh = channel_bindings
+            .channels_to_refresh(start + 6 * MINUTE, |_| false)
+            .next();
+
+        assert!(maybe_refresh.is_none())
+    }
 
     #[test]
     fn channel_that_is_less_than_5_min_old_should_not_be_refreshed() {
