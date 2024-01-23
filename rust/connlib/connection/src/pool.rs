@@ -15,9 +15,9 @@ use std::{
     net::SocketAddr,
     sync::Arc,
 };
-use str0m::ice::{IceAgent, IceAgentEvent, IceCreds};
-use str0m::net::{Protocol, Receive};
-use str0m::{Candidate, IceConnectionState, StunMessage};
+use str0m::ice::{IceAgent, IceAgentEvent, IceCreds, StunMessage, StunPacket};
+use str0m::net::Protocol;
+use str0m::{Candidate, IceConnectionState};
 
 use crate::index::IndexLfsr;
 use crate::stun_binding::StunBinding;
@@ -147,17 +147,17 @@ where
         }
 
         // Next: If we can parse the message as a STUN message, cycle through all agents to check which one it is for.
-        if let Ok(stun_message) = StunMessage::parse(packet) {
+        if let Ok(message) = StunMessage::parse(packet) {
             for (_, conn) in self.initial_connections.iter_mut() {
                 // TODO: `accepts_message` cannot demultiplexing multiple connections until https://github.com/algesten/str0m/pull/418 is merged.
-                if conn.agent.accepts_message(&stun_message) {
-                    conn.agent.handle_receive(
+                if conn.agent.accepts_message(&message) {
+                    conn.agent.handle_packet(
                         now,
-                        Receive {
+                        StunPacket {
                             proto: Protocol::Udp,
                             source: from,
                             destination: local,
-                            contents: str0m::net::DatagramRecv::Stun(stun_message),
+                            message,
                         },
                     );
                     return Ok(None);
@@ -166,14 +166,14 @@ where
 
             for (_, conn) in self.negotiated_connections.iter_mut() {
                 // Would the ICE agent of this connection like to handle the packet?
-                if conn.agent.accepts_message(&stun_message) {
-                    conn.agent.handle_receive(
+                if conn.agent.accepts_message(&message) {
+                    conn.agent.handle_packet(
                         now,
-                        Receive {
+                        StunPacket {
                             proto: Protocol::Udp,
                             source: from,
                             destination: local,
-                            contents: str0m::net::DatagramRecv::Stun(stun_message),
+                            message,
                         },
                     );
                     return Ok(None);
