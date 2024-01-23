@@ -543,7 +543,7 @@ where
                 ),
                 stun_servers: initial.stun_servers,
                 turn_servers: initial.turn_servers,
-                next_timer_update: None,
+                next_timer_update: self.last_now,
                 remote_socket: None,
                 possible_sockets: HashSet::default(),
             },
@@ -606,7 +606,7 @@ where
                 ),
                 stun_servers: allowed_stun_servers,
                 turn_servers: allowed_turn_servers,
-                next_timer_update: None,
+                next_timer_update: self.last_now,
                 remote_socket: None,
                 possible_sockets: HashSet::default(),
             },
@@ -880,7 +880,7 @@ struct Connection {
     agent: IceAgent,
 
     tunnel: Tunn,
-    next_timer_update: Option<Instant>,
+    next_timer_update: Instant,
 
     // When this is `Some`, we are connected.
     remote_socket: Option<RemoteSocket>,
@@ -929,7 +929,7 @@ impl Connection {
 
     fn poll_timeout(&mut self) -> Option<Instant> {
         let agent_timeout = self.agent.poll_timeout();
-        let next_wg_timer = self.next_timer_update;
+        let next_wg_timer = Some(self.next_timer_update);
 
         earliest(agent_timeout, next_wg_timer)
     }
@@ -941,10 +941,8 @@ impl Connection {
     ) -> Option<Transmit> {
         self.agent.handle_timeout(now);
 
-        let next_timer_update = self.next_timer_update?;
-
-        if now >= next_timer_update {
-            self.next_timer_update = Some(now + Duration::from_nanos(1));
+        if now >= self.next_timer_update {
+            self.next_timer_update = now + Duration::from_secs(1);
 
             /// [`boringtun`] requires us to pass buffers in where it can construct its packets.
             ///
