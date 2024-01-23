@@ -22,7 +22,7 @@ pub struct StunBinding {
     state: State,
     last_now: Option<Instant>,
 
-    buffered_transmits: VecDeque<Transmit>,
+    buffered_transmits: VecDeque<Transmit<'static>>,
     new_candidates: VecDeque<Candidate>,
 }
 
@@ -121,7 +121,7 @@ impl StunBinding {
 
         self.buffered_transmits.push_back(Transmit {
             dst: self.server,
-            payload: encode(request),
+            payload: encode(request).into(),
         });
     }
 
@@ -137,7 +137,7 @@ impl StunBinding {
         }
     }
 
-    pub fn poll_transmit(&mut self) -> Option<Transmit> {
+    pub fn poll_transmit(&mut self) -> Option<Transmit<'static>> {
         self.buffered_transmits.pop_front()
     }
 

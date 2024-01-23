@@ -39,7 +39,7 @@ pub struct Allocation {
     /// When we received the allocation and how long it is valid.
     allocation_lifetime: Option<(Instant, Duration)>,
 
-    buffered_transmits: VecDeque<Transmit>,
+    buffered_transmits: VecDeque<Transmit<'static>>,
     new_candidates: VecDeque<Candidate>,
 
     sent_requests: HashMap<TransactionId, (Message<Attribute>, Instant)>,
@@ -309,7 +309,7 @@ impl Allocation {
         self.new_candidates.pop_front()
     }
 
-    pub fn poll_transmit(&mut self) -> Option<Transmit> {
+    pub fn poll_transmit(&mut self) -> Option<Transmit<'static>> {
         self.buffered_transmits.pop_front()
     }
 
@@ -412,7 +412,7 @@ impl Allocation {
             .insert(id, (authenticated_message.clone(), now));
         self.buffered_transmits.push_back(Transmit {
             dst: self.server,
-            payload: encode(authenticated_message),
+            payload: encode(authenticated_message).into(),
         });
     }
 }

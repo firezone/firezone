@@ -24,6 +24,7 @@ use crate::index::IndexLfsr;
 use crate::stun_binding::StunBinding;
 use crate::IpPacket;
 use boringtun::noise::errors::WireGuardError;
+use std::borrow::Cow;
 use stun_codec::rfc5389::attributes::{Realm, Username};
 
 // Note: Taken from boringtun
@@ -44,7 +45,7 @@ pub struct ConnectionPool<T, TId> {
     index: IndexLfsr,
     rate_limiter: Arc<RateLimiter>,
     local_interfaces: HashSet<SocketAddr>,
-    buffered_transmits: VecDeque<Transmit>,
+    buffered_transmits: VecDeque<Transmit<'static>>,
 
     next_rate_limiter_reset: Option<Instant>,
 
@@ -434,7 +435,7 @@ where
     }
 
     /// Returns buffered data that needs to be sent on the socket.
-    pub fn poll_transmit(&mut self) -> Option<Transmit> {
+    pub fn poll_transmit(&mut self) -> Option<Transmit<'static>> {
         for conn in self.negotiated_connections.values_mut() {
             if let Some(transmit) = conn.agent.poll_transmit() {
                 let relay = SocketAddr::new(transmit.source.ip(), 3478); // TODO: Don't hardcode this.
@@ -448,7 +449,7 @@ where
                 )
                 .unwrap_or(Transmit {
                     dst: transmit.destination,
-                    payload: transmit.contents.into(),
+                    payload: Cow::Owned(transmit.contents.into()),
                 });
 
                 return Some(transmit);
@@ -766,13 +767,13 @@ fn encode_as_channel_data(
     contents: &[u8],
     allocations: &mut HashMap<SocketAddr, Allocation>,
     now: Instant,
-) -> Option<Transmit> {
+) -> Option<Transmit<'static>> {
     let allocation = allocations.get_mut(&relay)?;
     let payload = allocation.encode_to_vec(dest, contents, now)?;
 
     Some(Transmit {
         dst: relay,
-        payload,
+        payload: Cow::Owned(payload),
     })
 }
 
@@ -882,9 +883,18 @@ pub enum Event<TId> {
 }
 
 #[derive(Debug)]
-pub struct Transmit {
+pub struct Transmit<'a> {
     pub dst: SocketAddr,
-    pub payload: Vec<u8>,
+    pub payload: Cow<'a, [u8]>,
+}
+
+impl<'a> Transmit<'a> {
+    pub fn into_owned(self) -> Transmit<'static> {
+        Transmit {
+            dst: self.dst,
+            payload: Cow::Owned(self.payload.into_owned()),
+        }
+    }
 }
 
 struct InitialConnection {
@@ -956,7 +966,7 @@ impl Connection {
         &mut self,
         now: Instant,
         allocations: &mut HashMap<SocketAddr, Allocation>,
-    ) -> Result<Option<Transmit>, WireGuardError> {
+    ) -> Result<Option<Transmit<'static>>, WireGuardError> {
         self.agent.handle_timeout(now);
 
         if now >= self.next_timer_update {
@@ -973,9 +983,11 @@ impl Connection {
                 TunnResult::Done => {}
                 TunnResult::Err(e) => return Err(e),
                 TunnResult::WriteToNetwork(b) => {
-                    let transmit = self.encapsulate(b, allocations, now)?;
+                    let Some(transmit) = self.encapsulate(b, allocations, now) else {
+                        return Ok(None);
+                    };
 
-                    return Ok(Some(transmit));
+                    return Ok(Some(transmit.into_owned()));
                 }
                 _ => panic!("Unexpected result from update_timers"),
             };
@@ -989,11 +1001,11 @@ impl Connection {
         message: &[u8],
         allocations: &mut HashMap<SocketAddr, Allocation>,
         now: Instant,
-    ) -> Option<Transmit> {
+    ) -> Option<Transmit<'static>> {
         match self.remote_socket? {
             RemoteSocket::Direct(remote) => Some(Transmit {
                 dst: remote,
-                payload: message.to_vec(),
+                payload: Cow::Owned(message.into()),
             }),
             RemoteSocket::Relay { relay, dest: peer } => {
                 encode_as_channel_data(relay, peer, message, allocations, now)
