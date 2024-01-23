@@ -205,6 +205,14 @@ defmodule Domain.Tokens do
     end
   end
 
+  def delete_tokens_for(%Auth.Identity{} = identity, %Auth.Subject{} = subject) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_tokens_permission()) do
+      Token.Query.by_identity_id(identity.id)
+      |> Authorizer.for_subject(subject)
+      |> delete_tokens()
+    end
+  end
+
   def delete_tokens_for(%Relays.Group{} = group, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_tokens_permission()) do
       Token.Query.by_relay_group_id(group.id)
@@ -244,26 +252,12 @@ defmodule Domain.Tokens do
     {:ok, count}
   end
 
-  defp broadcast_disconnect_message(%{type: :gateway_group, gateway_group_id: id}) do
-    Phoenix.PubSub.broadcast(Domain.PubSub, "gateway_groups:#{id}", "disconnect")
-  end
-
-  defp broadcast_disconnect_message(%{type: :relay_group, relay_group_id: id}) do
-    Phoenix.PubSub.broadcast(Domain.PubSub, "relay_groups:#{id}", "disconnect")
-  end
-
-  defp broadcast_disconnect_message(%{type: :client, id: id}) do
-    # TODO: use Domain.PubSub once it's in the codebase
-    Phoenix.PubSub.broadcast(Domain.PubSub, "client:#{id}", "disconnect")
-    Phoenix.PubSub.broadcast(Domain.PubSub, "sessions:#{id}", "disconnect")
-  end
-
-  defp broadcast_disconnect_message(%{type: :browser, id: id}) do
-    Phoenix.PubSub.broadcast(Domain.PubSub, "sessions:#{id}", "disconnect")
-  end
-
   defp broadcast_disconnect_message(%{type: :email}) do
     :ok
+  end
+
+  defp broadcast_disconnect_message(%{id: id}) do
+    Phoenix.PubSub.broadcast(Domain.PubSub, "sessions:#{id}", "disconnect")
   end
 
   def delete_token_by_id(token_id) do
@@ -278,4 +272,7 @@ defmodule Domain.Tokens do
   defp fetch_config! do
     Domain.Config.fetch_env!(:domain, __MODULE__)
   end
+
+  def socket_id(%Token{} = token), do: socket_id(token.id)
+  def socket_id(token_id), do: "sessions:#{token_id}"
 end

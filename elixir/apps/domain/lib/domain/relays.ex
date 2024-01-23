@@ -64,7 +64,7 @@ defmodule Domain.Relays do
   # TODO: this is ugly!
   defp maybe_preload_online_status(group) do
     if Ecto.assoc_loaded?(group.relays) do
-      connected_relays = Presence.list("relay_groups:#{group.id}")
+      connected_relays = group |> group_presence_topic() |> Presence.list()
 
       relays =
         Enum.map(group.relays, fn relay ->
@@ -80,8 +80,8 @@ defmodule Domain.Relays do
   defp maybe_preload_online_statuses([]), do: []
 
   defp maybe_preload_online_statuses([group | _] = groups) do
-    connected_global_relays = Presence.list("relays")
-    connected_relays = Presence.list("relays:#{group.account_id}")
+    connected_global_relays = global_group_presence_topic() |> Presence.list()
+    connected_relays = group.account_id |> account_presence_topic() |> Presence.list()
 
     if Ecto.assoc_loaded?(group.relays) do
       Enum.map(groups, fn group ->
@@ -151,9 +151,22 @@ defmodule Domain.Relays do
       |> Repo.fetch_and_update(
         with: fn group ->
           {:ok, _count} = Tokens.delete_tokens_for(group, subject)
+
+          {_count, _} =
+            Relay.Query.by_group_id(group.id)
+            |> Repo.update_all(set: [deleted_at: DateTime.utc_now()])
+
           Group.Changeset.delete(group)
         end
       )
+      |> case do
+        {:ok, group} ->
+          :ok = disconnect_relays_in_group(group)
+          {:ok, group}
+
+        {:error, changeset} ->
+          {:error, changeset}
+      end
     end
   end
 
@@ -195,7 +208,7 @@ defmodule Domain.Relays do
     with {:ok, token} <- Tokens.use_token(encoded_token, context),
          queryable = Group.Query.by_id(token.relay_group_id),
          {:ok, group} <- Repo.fetch(queryable) do
-      {:ok, group}
+      {:ok, group, token}
     else
       {:error, :invalid_or_expired_token} -> {:error, :unauthorized}
       {:error, :not_found} -> {:error, :unauthorized}
@@ -258,15 +271,18 @@ defmodule Domain.Relays do
 
   # TODO: make it function of a preload, so that we don't pull this data when we don't need to
   defp preload_online_status(%Relay{} = relay) do
-    case Presence.get_by_key("relays:#{relay.account_id}", relay.id) do
+    relay.account_id
+    |> account_presence_topic()
+    |> Presence.get_by_key(relay.id)
+    |> case do
       [] -> %{relay | online?: false}
       %{metas: [_ | _]} -> %{relay | online?: true}
     end
   end
 
   defp preload_online_statuses(relays, account_id) do
-    connected_global_relays = Presence.list("relays")
-    connected_relays = Presence.list("relays:#{account_id}")
+    connected_global_relays = global_group_presence_topic() |> Presence.list()
+    connected_relays = account_id |> account_presence_topic() |> Presence.list()
 
     Enum.map(relays, fn relay ->
       online? =
@@ -278,13 +294,13 @@ defmodule Domain.Relays do
   end
 
   def list_connected_relays_for_resource(%Resources.Resource{} = _resource, :managed) do
-    connected_relays = Presence.list("relays")
+    connected_relays = global_group_presence_topic() |> Presence.list()
     filter = &Relay.Query.public(&1)
     list_relays_for_resource(connected_relays, filter)
   end
 
   def list_connected_relays_for_resource(%Resources.Resource{} = resource, :self_hosted) do
-    connected_relays = Presence.list("relays:#{resource.account_id}")
+    connected_relays = resource.account_id |> account_presence_topic() |> Presence.list()
     filter = &Relay.Query.by_account_id(&1, resource.account_id)
     list_relays_for_resource(connected_relays, filter)
   end
@@ -344,6 +360,14 @@ defmodule Domain.Relays do
       Relay.Query.by_id(relay.id)
       |> Authorizer.for_subject(subject)
       |> Repo.fetch_and_update(with: &Relay.Changeset.delete/1)
+      |> case do
+        {:ok, relay} ->
+          :ok = disconnect_relay(relay)
+          {:ok, relay}
+
+        {:error, changeset} ->
+          {:error, changeset}
+      end
     end
   end
 
@@ -377,30 +401,76 @@ defmodule Domain.Relays do
   end
 
   def connect_relay(%Relay{} = relay, secret) do
-    scope =
-      if relay.account_id do
-        ":#{relay.account_id}"
-      else
-        ""
-      end
-
-    meta = %{
-      online_at: System.system_time(:second),
-      secret: secret
-    }
-
-    with {:ok, _} <- Presence.track(self(), "relays#{scope}", relay.id, meta) do
-      {:ok, _} = Presence.track(self(), "relay_groups:#{relay.group_id}", relay.id, %{})
+    with {:ok, _} <-
+           Presence.track(self(), group_presence_topic(relay.group_id), relay.id, %{}),
+         {:ok, _} <-
+           Presence.track(self(), presence_topic(relay), relay.id, %{
+             online_at: System.system_time(:second),
+             secret: secret
+           }) do
+      :ok = PubSub.subscribe(relay_topic(relay))
+      :ok = PubSub.subscribe(group_topic(relay.group_id))
+      :ok = PubSub.subscribe(account_topic(relay.account_id))
       :ok
     end
   end
 
+  ### Presence
+
+  defp presence_topic(%Relay{account_id: nil}),
+    do: global_group_presence_topic()
+
+  defp presence_topic(%Relay{account_id: account_id}),
+    do: account_presence_topic(account_id)
+
+  def global_group_presence_topic,
+    do: "presences:#{global_groups_topic()}}"
+
+  def account_presence_topic(account_or_id),
+    do: "presences:#{account_topic(account_or_id)}"
+
+  defp group_presence_topic(group_or_id),
+    do: "presences:#{group_topic(group_or_id)}"
+
+  ### PubSub
+
+  defp relay_topic(%Relay{} = relay), do: relay_topic(relay.id)
+  defp relay_topic(relay_id), do: "relays:#{relay_id}"
+
+  defp global_groups_topic, do: "global_relays"
+
+  defp account_topic(%Accounts.Account{} = account), do: account_topic(account.id)
+  defp account_topic(account_id), do: "account_relays:#{account_id}"
+
+  defp group_topic(%Group{} = group), do: group_topic(group.id)
+  defp group_topic(group_id), do: "group_relays:#{group_id}"
+
   def subscribe_for_relays_presence_in_account(%Accounts.Account{} = account) do
-    PubSub.subscribe("relays")
-    PubSub.subscribe("relays:#{account.id}")
+    PubSub.subscribe(global_groups_topic())
+    PubSub.subscribe(account_topic(account))
   end
 
   def subscribe_for_relays_presence_in_group(%Group{} = group) do
-    PubSub.subscribe("relay_groups:#{group.id}")
+    PubSub.subscribe(group_topic(group))
+  end
+
+  def broadcast_to_relay(relay_or_id, payload) do
+    relay_or_id
+    |> relay_topic()
+    |> PubSub.broadcast(payload)
+  end
+
+  defp broadcast_to_relays_in_group(group_or_id, payload) do
+    group_or_id
+    |> group_topic()
+    |> PubSub.broadcast(payload)
+  end
+
+  def disconnect_relay(relay_or_id) do
+    broadcast_to_relay(relay_or_id, "disconnect")
+  end
+
+  def disconnect_relays_in_group(group_or_id) do
+    broadcast_to_relays_in_group(group_or_id, "disconnect")
   end
 end

@@ -1,6 +1,6 @@
 defmodule Domain.Clients do
   use Supervisor
-  alias Domain.{Repo, Auth, Validator}
+  alias Domain.{Repo, Auth, Validator, PubSub}
   alias Domain.{Accounts, Actors}
   alias Domain.Clients.{Client, Authorizer, Presence}
   require Ecto.Query
@@ -127,7 +127,10 @@ defmodule Domain.Clients do
 
   # TODO: this is ugly!
   defp preload_online_status(client) do
-    case Presence.get_by_key("clients:#{client.account_id}", client.id) do
+    client.account_id
+    |> account_presence_topic()
+    |> Presence.get_by_key(client.id)
+    |> case do
       [] -> %{client | online?: false}
       %{metas: [_ | _]} -> %{client | online?: true}
     end
@@ -136,7 +139,7 @@ defmodule Domain.Clients do
   def preload_online_statuses([]), do: []
 
   def preload_online_statuses([client | _] = clients) do
-    connected_clients = Presence.list("clients:#{client.account_id}")
+    connected_clients = client.account_id |> account_presence_topic() |> Presence.list()
 
     Enum.map(clients, fn client ->
       %{client | online?: Map.has_key?(connected_clients, client.id)}
@@ -202,6 +205,14 @@ defmodule Domain.Clients do
       Client.Query.by_id(client.id)
       |> Authorizer.for_subject(subject)
       |> Repo.fetch_and_update(with: &Client.Changeset.delete/1)
+      |> case do
+        {:ok, client} ->
+          :ok = disconnect_client(client)
+          {:ok, client}
+
+        {:error, reason} ->
+          {:error, reason}
+      end
     end
   end
 
@@ -212,6 +223,8 @@ defmodule Domain.Clients do
         |> Client.Query.by_account_id(actor.account_id)
         |> Authorizer.for_subject(subject)
         |> Repo.update_all(set: [deleted_at: DateTime.utc_now()])
+
+      :ok = disconnect_actor_clients(actor)
 
       :ok
     end
@@ -229,7 +242,17 @@ defmodule Domain.Clients do
     Auth.ensure_has_permissions(subject, Authorizer.manage_clients_permission())
   end
 
+  def fetch_client_config!(%Client{} = client) do
+    Domain.Config.fetch_resolved_configs!(client.account_id, [:clients_upstream_dns])
+  end
+
   def connect_client(%Client{} = client) do
+    with {:ok, _} <-
+           Presence.track(self(), account_presence_topic(client.account_id), client.id, %{
+             online_at: System.system_time(:second)
+           }),
+         {:ok, _} <- Presence.track(self(), actor_presence_topic(client.actor_id), client.id, %{}) do
+      :ok = PubSub.subscribe(client_topic(client))
     {:ok, _} =
       Presence.track(self(), "clients:#{client.account_id}", client.id, %{
         online_at: System.system_time(:second)
@@ -239,24 +262,57 @@ defmodule Domain.Clients do
 
     :ok
   end
-
-  def subscribe_for_clients_presence_in_account(%Accounts.Account{} = account) do
-    subscribe_for_clients_presence_in_account(account.id)
+      :ok
+    end
   end
 
-  def subscribe_for_clients_presence_in_account(account_id) do
-    Phoenix.PubSub.subscribe(Domain.PubSub, "clients:#{account_id}")
+  ### Presence
+
+  def account_presence_topic(account_or_id),
+    do: "presences:#{account_topic(account_or_id)}"
+
+  defp actor_presence_topic(actor_or_id),
+    do: "presences:#{actor_topic(actor_or_id)}"
+
+  ### PubSub
+
+  defp client_topic(%Client{} = client), do: client_topic(client.id)
+  defp client_topic(client_id), do: "clients:#{client_id}"
+
+  defp account_topic(%Accounts.Account{} = account), do: account_topic(account.id)
+  defp account_topic(account_id), do: "account_clients:#{account_id}"
+
+  defp actor_topic(%Actors.Actor{} = actor), do: actor_topic(actor.id)
+  defp actor_topic(actor_id), do: "actor_clients:#{actor_id}"
+
+  # defp identity_topic(%Auth.Identity{} = identity), do: identity_topic(identity.id)
+  # defp identity_topic(identity_id), do: "identity_clients:#{identity_id}"
+
+  def subscribe_for_clients_presence_in_account(%Accounts.Account{} = account) do
+    PubSub.subscribe(account_topic(account))
   end
 
   def subscribe_for_clients_presence_for_actor(%Actors.Actor{} = actor) do
-    Phoenix.PubSub.subscribe(Domain.PubSub, "actor_clients:#{actor.id}")
+    PubSub.subscribe(actor_topic(actor))
   end
 
-  def fetch_client_config!(%Client{} = client) do
-    %{
-      clients_upstream_dns: upstream_dns
-    } = Domain.Config.fetch_resolved_configs!(client.account_id, [:clients_upstream_dns])
+  def broadcast_to_client(client_or_id, payload) do
+    client_or_id
+    |> client_topic()
+    |> PubSub.broadcast(payload)
+  end
 
-    [upstream_dns: upstream_dns]
+  defp broadcast_to_actor_clients(actor_or_id, payload) do
+    actor_or_id
+    |> actor_topic()
+    |> PubSub.broadcast(payload)
+  end
+
+  def disconnect_client(client_or_id) do
+    broadcast_to_client(client_or_id, "disconnect")
+  end
+
+  def disconnect_actor_clients(actor_or_id) do
+    broadcast_to_actor_clients(actor_or_id, "disconnect")
   end
 end

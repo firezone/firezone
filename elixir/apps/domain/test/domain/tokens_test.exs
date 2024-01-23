@@ -555,10 +555,22 @@ defmodule Domain.TokensTest do
       assert_receive "disconnect"
     end
 
+    test "deletes client tokens for given identity", %{account: account, subject: subject} do
+      actor = Fixtures.Actors.create_actor(account: account)
+      identity = Fixtures.Auth.create_identity(account: account, actor: actor)
+      token = Fixtures.Tokens.create_token(type: :client, account: account, identity: identity)
+      Phoenix.PubSub.subscribe(Domain.PubSub, "sessions:#{token.id}")
+
+      assert delete_tokens_for(identity, subject) == {:ok, 1}
+
+      assert Repo.get(Tokens.Token, token.id).deleted_at
+      assert_receive "disconnect"
+    end
+
     test "deletes gateway group tokens", %{account: account, subject: subject} do
       group = Fixtures.Gateways.create_group(account: account)
       token = Fixtures.Gateways.create_token(account: account, group: group)
-      Phoenix.PubSub.subscribe(Domain.PubSub, "gateway_groups:#{group.id}")
+      Phoenix.PubSub.subscribe(Domain.PubSub, "sessions:#{token.id}")
 
       assert delete_tokens_for(group, subject) == {:ok, 1}
 
@@ -569,7 +581,7 @@ defmodule Domain.TokensTest do
     test "deletes relay group tokens", %{account: account, subject: subject} do
       group = Fixtures.Relays.create_group(account: account)
       token = Fixtures.Relays.create_token(account: account, group: group)
-      Phoenix.PubSub.subscribe(Domain.PubSub, "relay_groups:#{group.id}")
+      Phoenix.PubSub.subscribe(Domain.PubSub, "sessions:#{token.id}")
 
       assert delete_tokens_for(group, subject) == {:ok, 1}
 

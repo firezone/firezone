@@ -2,7 +2,7 @@ defmodule Domain.Actors do
   alias Domain.Actors.Membership
   alias Web.Clients
   alias Domain.{Repo, Validator}
-  alias Domain.{Accounts, Auth, Clients}
+  alias Domain.{Accounts, Auth, Tokens, Clients}
   alias Domain.Actors.{Authorizer, Actor, Group}
   require Ecto.Query
 
@@ -285,6 +285,7 @@ defmodule Domain.Actors do
       |> Repo.fetch_and_update(
         with: fn actor ->
           if actor.type != :account_admin_user or other_enabled_admins_exist?(actor) do
+            {:ok, _count} = Tokens.delete_tokens_for(actor, subject)
             Actor.Changeset.disable_actor(actor)
           else
             :cant_disable_the_last_admin
@@ -302,7 +303,7 @@ defmodule Domain.Actors do
     end
   end
 
-  def delete_actor(%Actor{} = actor, %Auth.Subject{} = subject) do
+  def delete_actor(%Actor{last_synced_at: nil} = actor, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
       Actor.Query.by_id(actor.id)
       |> Authorizer.for_subject(subject)
@@ -311,6 +312,8 @@ defmodule Domain.Actors do
           if actor.type != :account_admin_user or other_enabled_admins_exist?(actor) do
             :ok = Auth.delete_actor_identities(actor, subject)
             :ok = Clients.delete_actor_clients(actor, subject)
+            # TODO: :ok = delete_actor_memberships(actor)
+            {:ok, _count} = Tokens.delete_tokens_for(actor, subject)
 
             Actor.Changeset.delete_actor(actor)
           else

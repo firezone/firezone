@@ -2147,6 +2147,7 @@ defmodule Domain.AuthTest do
         |> Fixtures.Auth.remove_permissions()
         |> Fixtures.Auth.add_permission(Authorizer.manage_own_identities_permission())
         |> Fixtures.Auth.add_permission(Authorizer.manage_identities_permission())
+        |> Fixtures.Auth.add_permission(Tokens.Authorizer.manage_tokens_permission())
 
       assert {:ok, deleted_identity} = delete_identity(identity, subject)
 
@@ -2154,6 +2155,22 @@ defmodule Domain.AuthTest do
       assert deleted_identity.deleted_at
 
       assert Repo.get(Auth.Identity, identity.id).deleted_at
+    end
+
+    test "deletes token and broadcasts message to disconnect the identity sessions", %{
+      account: account,
+      provider: provider,
+      subject: subject
+    } do
+      identity = Fixtures.Auth.create_identity(account: account, provider: provider)
+      token = Fixtures.Tokens.create_token(account: account, identity: identity)
+      Phoenix.PubSub.subscribe(Domain.PubSub, "sessions:#{token.id}")
+
+      assert {:ok, _deleted_identity} = delete_identity(identity, subject)
+
+      assert token = Repo.get(Domain.Tokens.Token, token.id)
+      assert token.deleted_at
+      assert_receive "disconnect"
     end
 
     test "does not delete identity that belongs to another actor with manage_own permission", %{
@@ -2252,6 +2269,24 @@ defmodule Domain.AuthTest do
       assert delete_actor_identities(actor, subject) == :ok
 
       assert Repo.aggregate(Auth.Identity.Query.by_actor_id(actor.id), :count) == 0
+    end
+
+    test "deletes tokens and broadcasts message to disconnect the actor sessions", %{
+      account: account,
+      provider: provider,
+      subject: subject
+    } do
+      actor = Fixtures.Actors.create_actor(account: account, provider: provider)
+      identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
+      token = Fixtures.Tokens.create_token(account: account, identity: identity)
+
+      Phoenix.PubSub.subscribe(Domain.PubSub, "sessions:#{token.id}")
+
+      assert delete_actor_identities(actor, subject) == :ok
+
+      assert token = Repo.get(Domain.Tokens.Token, token.id)
+      assert token.deleted_at
+      assert_receive "disconnect"
     end
 
     test "does not remove identities that belong to another actor", %{

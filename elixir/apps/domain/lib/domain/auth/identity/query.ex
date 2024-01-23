@@ -103,6 +103,10 @@ defmodule Domain.Auth.Identity.Query do
     lock(queryable, "FOR UPDATE")
   end
 
+  def returning_ids(queryable \\ not_deleted()) do
+    select(queryable, [identities: identities], identities.id)
+  end
+
   def group_by_provider_id(queryable \\ not_deleted()) do
     queryable
     |> group_by([identities: identities], identities.provider_id)

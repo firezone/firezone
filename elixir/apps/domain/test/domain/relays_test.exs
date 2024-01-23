@@ -340,6 +340,55 @@ defmodule Domain.RelaysTest do
       assert Enum.all?(tokens, & &1.deleted_at)
     end
 
+    test "deletes all relays when group is deleted", %{account: account, subject: subject} do
+      group = Fixtures.Relays.create_group(account: account)
+      Fixtures.Relays.create_relay(account: account, group: group)
+
+      assert {:ok, _group} = delete_group(group, subject)
+
+      relays =
+        Domain.Relays.Relay.Query.all()
+        |> Domain.Relays.Relay.Query.by_group_id(group.id)
+        |> Repo.all()
+
+      assert length(relays) > 0
+      assert Enum.all?(relays, & &1.deleted_at)
+    end
+
+    test "broadcasts disconnect message to all connected relay sockets", %{
+      account: account,
+      subject: subject
+    } do
+      group = Fixtures.Relays.create_group(account: account)
+
+      token1 = Fixtures.Relays.create_token(account: account, group: group)
+      Domain.PubSub.subscribe(Tokens.socket_id(token1))
+
+      token2 = Fixtures.Relays.create_token(account: account, group: group)
+      Domain.PubSub.subscribe(Tokens.socket_id(token2))
+
+      Fixtures.Relays.create_relay(account: account, group: group)
+
+      assert {:ok, _group} = delete_group(group, subject)
+
+      assert_receive "disconnect"
+      assert_receive "disconnect"
+    end
+
+    test "broadcasts disconnect message to all connected relays", %{
+      account: account,
+      subject: subject
+    } do
+      group = Fixtures.Relays.create_group(account: account)
+      relay = Fixtures.Relays.create_relay(account: account, group: group)
+
+      :ok = Relays.connect_relay(relay, "foo")
+
+      assert {:ok, _group} = delete_group(group, subject)
+
+      assert_receive "disconnect"
+    end
+
     test "returns error when subject has no permission to delete groups", %{
       subject: subject
     } do
@@ -382,10 +431,11 @@ defmodule Domain.RelaysTest do
 
       assert {:ok, encoded_token} = create_token(group, %{}, subject)
 
-      assert {:ok, fetched_group} = authenticate(encoded_token, context)
+      assert {:ok, fetched_group, fetched_token} = authenticate(encoded_token, context)
       assert fetched_group.id == group.id
 
       assert token = Repo.get_by(Tokens.Token, relay_group_id: fetched_group.id)
+      assert token.id == fetched_token.id
       assert token.type == :relay_group
       assert token.account_id == account.id
       assert token.relay_group_id == group.id
@@ -403,10 +453,11 @@ defmodule Domain.RelaysTest do
 
       assert {:ok, encoded_token} = create_token(group, %{})
 
-      assert {:ok, fetched_group} = authenticate(encoded_token, context)
+      assert {:ok, fetched_group, fetched_token} = authenticate(encoded_token, context)
       assert fetched_group.id == group.id
 
       assert token = Repo.get_by(Tokens.Token, relay_group_id: fetched_group.id)
+      assert token.id == fetched_token.id
       assert token.type == :relay_group
       refute token.account_id
       assert token.relay_group_id == group.id
@@ -445,10 +496,11 @@ defmodule Domain.RelaysTest do
 
       assert {:ok, encoded_token} = create_token(group, %{}, subject)
 
-      assert {:ok, fetched_group} = authenticate(encoded_token, context)
+      assert {:ok, fetched_group, fetched_token} = authenticate(encoded_token, context)
       assert fetched_group.id == group.id
 
       assert token = Repo.get_by(Tokens.Token, relay_group_id: fetched_group.id)
+      assert token.id == fetched_token.id
       assert token.type == :relay_group
       assert token.account_id == account.id
       assert token.relay_group_id == group.id
@@ -515,7 +567,7 @@ defmodule Domain.RelaysTest do
       group = Fixtures.Relays.create_global_group()
       assert {:ok, encoded_token} = create_token(group, %{})
 
-      assert {:ok, fetched_group} = authenticate(encoded_token, context)
+      assert {:ok, fetched_group, _fetched_token} = authenticate(encoded_token, context)
       assert fetched_group.id == group.id
       refute fetched_group.account_id
     end
@@ -528,7 +580,7 @@ defmodule Domain.RelaysTest do
       group = Fixtures.Relays.create_group(account: account)
       assert {:ok, encoded_token} = create_token(group, %{}, subject)
 
-      assert {:ok, fetched_group} = authenticate(encoded_token, context)
+      assert {:ok, fetched_group, _fetched_token} = authenticate(encoded_token, context)
       assert fetched_group.id == group.id
       assert fetched_group.account_id == account.id
     end

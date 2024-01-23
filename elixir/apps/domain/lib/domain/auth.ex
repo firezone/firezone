@@ -435,7 +435,14 @@ defmodule Domain.Auth do
     with :ok <- ensure_has_permissions(subject, required_permissions) do
       Identity.Query.by_id(identity.id)
       |> Authorizer.for_subject(Identity, subject)
-      |> Repo.fetch_and_update(with: &Identity.Changeset.delete_identity/1)
+      |> Repo.fetch_and_update(
+        with: fn identity ->
+          {:ok, _count} = Tokens.delete_tokens_for(identity, subject)
+          Identity.Changeset.delete_identity(identity)
+        end
+      )
+
+      # TODO: delete tokens and broadcast messages to identity tokens
     end
   end
 
@@ -446,6 +453,8 @@ defmodule Domain.Auth do
         |> Identity.Query.by_account_id(actor.account_id)
         |> Authorizer.for_subject(Identity, subject)
         |> Repo.update_all(set: [deleted_at: DateTime.utc_now(), provider_state: %{}])
+
+      {:ok, _count} = Tokens.delete_tokens_for(actor, subject)
 
       :ok
     end
