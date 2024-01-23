@@ -458,6 +458,34 @@ where
 
         self.buffered_transmits.pop_front()
     }
+
+    fn init_connection(
+        &mut self,
+        mut agent: IceAgent,
+        remote: PublicKey,
+        key: [u8; 32],
+        allowed_stun_servers: HashSet<SocketAddr>,
+        allowed_turn_servers: HashSet<SocketAddr>,
+    ) -> Connection {
+        agent.handle_timeout(self.last_now);
+
+        Connection {
+            agent,
+            tunnel: Tunn::new(
+                self.private_key.clone(),
+                remote,
+                Some(key),
+                None,
+                self.index.next(),
+                Some(self.rate_limiter.clone()),
+            ),
+            stun_servers: allowed_stun_servers,
+            turn_servers: allowed_turn_servers,
+            next_timer_update: self.last_now,
+            remote_socket: None,
+            possible_sockets: HashSet::default(),
+        }
+    }
 }
 
 impl<TId> ConnectionPool<Client, TId>
@@ -529,25 +557,15 @@ where
             pass: answer.credentials.password,
         });
 
-        self.negotiated_connections.insert(
-            id,
-            Connection {
-                agent,
-                tunnel: Tunn::new(
-                    self.private_key.clone(),
-                    remote,
-                    Some(*initial.session_key.expose_secret()),
-                    None,
-                    self.index.next(),
-                    Some(self.rate_limiter.clone()),
-                ),
-                stun_servers: initial.stun_servers,
-                turn_servers: initial.turn_servers,
-                next_timer_update: self.last_now,
-                remote_socket: None,
-                possible_sockets: HashSet::default(),
-            },
+        let connection = self.init_connection(
+            agent,
+            remote,
+            *initial.session_key.expose_secret(),
+            initial.stun_servers,
+            initial.turn_servers,
         );
+
+        self.negotiated_connections.insert(id, connection);
     }
 }
 
@@ -592,25 +610,14 @@ where
             &allowed_turn_servers,
         );
 
-        self.negotiated_connections.insert(
-            id,
-            Connection {
-                agent,
-                tunnel: Tunn::new(
-                    self.private_key.clone(),
-                    remote,
-                    Some(*offer.session_key.expose_secret()),
-                    None,
-                    self.index.next(),
-                    Some(self.rate_limiter.clone()),
-                ),
-                stun_servers: allowed_stun_servers,
-                turn_servers: allowed_turn_servers,
-                next_timer_update: self.last_now,
-                remote_socket: None,
-                possible_sockets: HashSet::default(),
-            },
+        let connection = self.init_connection(
+            agent,
+            remote,
+            *offer.session_key.expose_secret(),
+            allowed_stun_servers,
+            allowed_turn_servers,
         );
+        self.negotiated_connections.insert(id, connection);
 
         answer
     }
