@@ -282,7 +282,7 @@ where
         &'s mut self,
         connection: TId,
         packet: IpPacket<'_>,
-    ) -> Result<Option<(SocketAddr, &'s [u8])>, Error> {
+    ) -> Result<Option<Transmit<'s>>, Error> {
         // TODO: We need to return, which local socket to use to send the data.
         let conn = self
             .negotiated_connections
@@ -303,7 +303,10 @@ where
         let packet = &payload[..packet_len];
 
         match conn.remote_socket.ok_or(Error::NotConnected)? {
-            RemoteSocket::Direct(remote) => Ok(Some((remote, packet))),
+            RemoteSocket::Direct(remote) => Ok(Some(Transmit {
+                dst: remote,
+                payload: Cow::Borrowed(packet),
+            })),
             RemoteSocket::Relay { relay, dest: peer } => {
                 let Some(allocation) = self.allocations.get_mut(&relay) else {
                     tracing::warn!(%relay, "No allocation");
@@ -320,7 +323,10 @@ where
                 let channel_data_packet =
                     unsafe { slice::from_raw_parts(header.as_ptr(), total_length) };
 
-                Ok(Some((relay, channel_data_packet)))
+                Ok(Some(Transmit {
+                    dst: relay,
+                    payload: Cow::Borrowed(channel_data_packet),
+                }))
             }
         }
     }

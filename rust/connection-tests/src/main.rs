@@ -339,13 +339,13 @@ impl<T> Eventloop<T> {
     }
 
     fn send_to(&mut self, id: u64, packet: IpPacket<'_>) -> Result<()> {
-        let Some((addr, msg)) = self.pool.encapsulate(id, packet)? else {
+        let Some(transmit) = self.pool.encapsulate(id, packet)? else {
             return Ok(());
         };
 
-        tracing::trace!(target = "wire::out", to = %addr, packet = %hex::encode(msg));
+        tracing::trace!(target = "wire::out", to = %transmit.dst, packet = %hex::encode(&transmit.payload));
 
-        self.socket.try_send_to(msg, addr)?;
+        self.socket.try_send_to(&transmit.payload, transmit.dst)?;
 
         Ok(())
     }
