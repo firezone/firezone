@@ -52,7 +52,7 @@ tracing-android = "0.2"
 
 # Windows tunnel dependencies
 [target.'cfg(target_os = "windows")'.dependencies]
-uuid = { version = "1.5.0", features = ["v4"] }
+uuid = { version = "1.7.0", features = ["v4"] }
 wintun = "0.4.0"
 
 # Windows Win32 API
