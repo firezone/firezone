@@ -7,6 +7,10 @@ use std::{fmt, str::FromStr};
 
 use crate::Error;
 
+// Note: the wireguard key and the ICE session key are the same length by mere coincidence
+// it'd be correct to define key with a const generic parameter for the size and have a different type
+// that depends on the length.
+// However, that's some unnecesary complexity due to the coincide mentioned above.
 const KEY_SIZE: usize = 32;
 
 /// A `Key` struct to hold interface or peer keys as bytes. This type is

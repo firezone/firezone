@@ -157,9 +157,9 @@ mod test {
                     },
                     "payload": {
                         "ice_parameters": {
-                            "ice_lite":false,
+                            "username": "PvCPFevCOgkvVCtH",
                             "password": "xEwoXEzHuSyrcgOCSRnwOXQVnbnbeGeF",
-                            "username_fragment": "PvCPFevCOgkvVCtH"
+                            "session_key": "OR2dYCLwMEtwqtjOxSm4SU7BbHJDfM8ZCqK7HKXXxDw="
                         }
                     }
                 },

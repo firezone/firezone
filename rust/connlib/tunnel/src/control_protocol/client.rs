@@ -4,7 +4,7 @@ use boringtun::x25519::PublicKey;
 use connlib_shared::{
     control::Reference,
     messages::{
-        ClientPayload, DomainResponse, GatewayId, Key, Relay, RequestConnection,
+        Answer, ClientPayload, DomainResponse, GatewayId, Key, Relay, RequestConnection,
         ResourceDescription, ResourceId,
     },
     Callbacks,
@@ -183,16 +183,11 @@ where
     /// Called when a response to [Tunnel::request_connection] is ready.
     ///
     /// Once this is called, if everything goes fine, a new tunnel should be started between the 2 peers.
-    ///
-    /// # Parameters
-    /// - `resource_id`: Id of the resource that responded.
-    /// - `rtc_sdp`: Remote SDP.
-    /// - `gateway_public_key`: Public key of the gateway that is handling that resource for this connection.
     #[tracing::instrument(level = "trace", skip(self))]
     pub fn received_offer_response(
         self: &Arc<Self>,
         resource_id: ResourceId,
-        rtc_ice_params: String,
+        rtc_ice_params: Answer,
         domain_response: Option<DomainResponse>,
         gateway_public_key: PublicKey,
     ) -> Result<()> {

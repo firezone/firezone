@@ -99,9 +99,9 @@ pub struct RequestConnection {
     pub client_payload: ClientPayload,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct ClientPayload {
-    pub ice_parameters: String,
+    pub ice_parameters: Offer,
     pub domain: Option<Dname>,
 }
 
@@ -141,9 +141,22 @@ pub struct DomainResponse {
     pub address: Vec<IpAddr>,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Answer {
+    pub username: String,
+    pub password: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Offer {
+    pub username: String,
+    pub password: String,
+    pub session_key: SecretKey,
+}
+
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct ConnectionAccepted {
-    pub ice_parameters: String,
+    pub ice_parameters: Answer,
     pub domain_response: Option<DomainResponse>,
 }
 

@@ -190,9 +190,8 @@ mod test {
                              "domain":"google.com"
                           },
                           "ice_parameters":{
-                             "ice_lite":false,
-                             "password":"pMAxxTgHHSdpqHRzHGNvuNsZinLrMxwe",
-                             "username_fragment":"tGeqOjtGuPzPpuOx"
+                             "username":"tGeqOjtGuPzPpuOx",
+                             "password":"pMAxxTgHHSdpqHRzHGNvuNsZinLrMxwe"
                           }
                        }
                     },
