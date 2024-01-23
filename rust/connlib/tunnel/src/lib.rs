@@ -127,8 +127,6 @@ impl From<connlib_shared::messages::Peer> for PeerConfig {
 pub struct Tunnel<CB: Callbacks, TRoleState: RoleState> {
     next_index: Mutex<IndexLfsr>,
     rate_limiter: Arc<RateLimiter>,
-    private_key: StaticSecret,
-    public_key: PublicKey,
     // TODO: these are used to stop connections
     // peer_connections: Mutex<HashMap<TRoleState::Id, Arc<RTCIceTransport>>>,
     callbacks: CallbackErrorFacade<CB>,
@@ -295,7 +293,7 @@ impl<TId, TTranform> Clone for ConnectedPeer<TId, TTranform> {
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct TunnelStats {
-    public_key: String,
+    // public_key: String,
     // TODO:
     // peer_connections: Vec<TId>,
 }
@@ -310,7 +308,7 @@ where
         // let peer_connections = self.peer_connections.lock().keys().cloned().collect();
 
         TunnelStats {
-            public_key: Key::from(self.public_key).to_string(),
+            // public_key: Key::from(self.public_key).to_string(),
             // TODO:
             // peer_connections,
         }
@@ -478,10 +476,8 @@ where
 
         Ok(Self {
             rate_limiter,
-            private_key,
             // TODO:
             // peer_connections,
-            public_key,
             next_index,
             device,
             read_buf: Mutex::new(Box::new([0u8; MAX_UDP_SIZE])),
@@ -494,10 +490,6 @@ where
             peers_to_stop: Default::default(),
             no_device_waker: Default::default(),
         })
-    }
-
-    fn next_index(&self) -> u32 {
-        self.next_index.lock().next()
     }
 
     pub fn callbacks(&self) -> &CallbackErrorFacade<CB> {

@@ -221,8 +221,6 @@ where
         tracing::trace!(?peer_config.ips, "new_data_channel_open");
 
         let peer = Arc::new(Peer::new(
-            self.private_key.clone(),
-            self.next_index(),
             peer_config.clone(),
             client_id,
             self.rate_limiter.clone(),

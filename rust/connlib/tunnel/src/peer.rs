@@ -30,7 +30,6 @@ type ExpiryingResource = (ResourceDescription, Option<DateTime<Utc>>);
 const IDS_EXPIRE: std::time::Duration = std::time::Duration::from_secs(60);
 
 pub(crate) struct Peer<TId, TTransform> {
-    tunnel: Mutex<Tunn>,
     allowed_ips: RwLock<IpNetworkTable<()>>,
     pub conn_id: TId,
     pub transform: TTransform,
@@ -57,22 +56,11 @@ where
     }
 
     pub(crate) fn new(
-        private_key: StaticSecret,
-        index: u32,
         peer_config: PeerConfig,
         conn_id: TId,
         rate_limiter: Arc<RateLimiter>,
         transform: TTransform,
     ) -> Peer<TId, TTransform> {
-        let tunnel = Tunn::new(
-            private_key.clone(),
-            peer_config.public_key,
-            Some(peer_config.preshared_key.expose_secret().0),
-            peer_config.persistent_keepalive,
-            index,
-            Some(rate_limiter),
-        );
-
         let mut allowed_ips = IpNetworkTable::new();
         for ip in peer_config.ips {
             allowed_ips.insert(ip, ());
@@ -80,7 +68,6 @@ where
         let allowed_ips = RwLock::new(allowed_ips);
 
         Peer {
-            tunnel: Mutex::new(tunnel),
             allowed_ips,
             conn_id,
             transform,
@@ -89,24 +76,6 @@ where
 
     pub(crate) fn add_allowed_ip(&self, ip: IpNetwork) {
         self.allowed_ips.write().insert(ip, ());
-    }
-
-    pub(crate) fn update_timers(&self) -> Result<Option<Bytes>> {
-        /// [`boringtun`] requires us to pass buffers in where it can construct its packets.
-        ///
-        /// When updating the timers, the largest packet that we may have to send is `148` bytes as per `HANDSHAKE_INIT_SZ` constant in [`boringtun`].
-        const MAX_SCRATCH_SPACE: usize = 148;
-
-        let mut buf = [0u8; MAX_SCRATCH_SPACE];
-
-        let packet = match self.tunnel.lock().update_timers(&mut buf) {
-            TunnResult::Done => return Ok(None),
-            TunnResult::Err(e) => return Err(e.into()),
-            TunnResult::WriteToNetwork(b) => b,
-            _ => panic!("Unexpected result from update_timers"),
-        };
-
-        Ok(Some(Bytes::copy_from_slice(packet)))
     }
 
     fn is_allowed(&self, addr: IpAddr) -> bool {
@@ -123,14 +92,16 @@ where
             return Ok(None);
         };
 
-        let packet = match self.tunnel.lock().encapsulate(packet.packet(), buf) {
-            TunnResult::Done => return Ok(None),
-            TunnResult::Err(e) => return Err(e.into()),
-            TunnResult::WriteToNetwork(b) => b,
-            _ => panic!("Unexpected result from `encapsulate`"),
-        };
+        // TODO
+        // let packet = match self.tunnel.lock().encapsulate(packet.packet(), buf) {
+        //     TunnResult::Done => return Ok(None),
+        //     TunnResult::Err(e) => return Err(e.into()),
+        //     TunnResult::WriteToNetwork(b) => b,
+        //     _ => panic!("Unexpected result from `encapsulate`"),
+        // };
 
-        Ok(Some(Bytes::copy_from_slice(packet)))
+        // Ok(Some(Bytes::copy_from_slice(packet)))
+        todo!()
     }
 
     pub(crate) fn decapsulate<'b>(
@@ -138,31 +109,32 @@ where
         src: &[u8],
         dst: &'b mut [u8],
     ) -> Result<Option<WriteTo<'b>>> {
-        let mut tunnel = self.tunnel.lock();
+        todo!()
+        // let mut tunnel = self.tunnel.lock();
 
-        match tunnel.decapsulate(None, src, dst) {
-            TunnResult::Done => Ok(None),
-            TunnResult::Err(e) => Err(e.into()),
-            TunnResult::WriteToNetwork(packet) => {
-                let mut packets = VecDeque::from([Bytes::copy_from_slice(packet)]);
+        // match tunnel.decapsulate(None, src, dst) {
+        //     TunnResult::Done => Ok(None),
+        //     TunnResult::Err(e) => Err(e.into()),
+        //     TunnResult::WriteToNetwork(packet) => {
+        //         let mut packets = VecDeque::from([Bytes::copy_from_slice(packet)]);
 
-                let mut buf = [0u8; MAX_UDP_SIZE];
+        //         let mut buf = [0u8; MAX_UDP_SIZE];
 
-                while let TunnResult::WriteToNetwork(packet) =
-                    tunnel.decapsulate(None, &[], &mut buf)
-                {
-                    packets.push_back(Bytes::copy_from_slice(packet));
-                }
+        //         while let TunnResult::WriteToNetwork(packet) =
+        //             tunnel.decapsulate(None, &[], &mut buf)
+        //         {
+        //             packets.push_back(Bytes::copy_from_slice(packet));
+        //         }
 
-                Ok(Some(WriteTo::Network(packets)))
-            }
-            TunnResult::WriteToTunnelV4(packet, addr) => {
-                self.make_packet_for_resource(addr.into(), packet)
-            }
-            TunnResult::WriteToTunnelV6(packet, addr) => {
-                self.make_packet_for_resource(addr.into(), packet)
-            }
-        }
+        //         Ok(Some(WriteTo::Network(packets)))
+        //     }
+        //     TunnResult::WriteToTunnelV4(packet, addr) => {
+        //         self.make_packet_for_resource(addr.into(), packet)
+        //     }
+        //     TunnResult::WriteToTunnelV6(packet, addr) => {
+        //         self.make_packet_for_resource(addr.into(), packet)
+        //     }
+        // }
     }
 
     fn make_packet_for_resource<'a>(

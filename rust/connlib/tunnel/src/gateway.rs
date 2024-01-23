@@ -119,23 +119,24 @@ impl RoleState for GatewayState {
                 continue;
             }
 
-            let bytes = match peer.inner.update_timers() {
-                Ok(Some(bytes)) => bytes,
-                Ok(None) => continue,
-                Err(e) => {
-                    tracing::error!("Failed to update timers for peer: {e}");
-                    if e.is_fatal_connection_error() {
-                        peers_to_stop.push_back(conn_id);
-                    }
+            // TODO:
+            // let bytes = match peer.inner.update_timers() {
+            //     Ok(Some(bytes)) => bytes,
+            //     Ok(None) => continue,
+            //     Err(e) => {
+            //         tracing::error!("Failed to update timers for peer: {e}");
+            //         if e.is_fatal_connection_error() {
+            //             peers_to_stop.push_back(conn_id);
+            //         }
 
-                    continue;
-                }
-            };
+            //         continue;
+            //     }
+            // };
 
             let peer_channel = peer.channel.clone();
 
             tokio::spawn(async move {
-                if let Err(e) = peer_channel.send(bytes).await {
+                if let Err(e) = peer_channel.send(todo!()).await {
                     tracing::error!("Failed to send packet to peer: {e:#}");
                 }
             });
