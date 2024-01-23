@@ -31,8 +31,9 @@ write_files:
                       1h         ; Minimum TTL (1 hour)
                   )
 
-      httpbin     IN A     10.0.32.101
-      iperf       IN A     10.0.32.102
+      %{ for record in dns_records ~}
+      ${record.name}     IN A     ${record.value}
+      %{ endfor ~}
 
   - path: /etc/systemd/system/coredns.service
     permissions: "0644"
@@ -62,4 +63,5 @@ runcmd:
   - sudo systemctl stop docker
   - sudo systemctl start docker
   - sudo systemctl daemon-reload
+  - sudo sed -r -i 's/^\s*(.* IN A .*)$/\1/' /etc/coredns/db.firezone.internal
   - sudo systemctl start coredns.service

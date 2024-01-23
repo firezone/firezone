@@ -15,15 +15,6 @@ variable "api_url" {
   default     = null
 }
 
-variable "application_environment_variables" {
-  description = "List of environment variables to set for all application containers."
-  type = list(object({
-    name  = string
-    value = string
-  }))
-  default  = []
-  nullable = false
-}
 
 variable "application_name" {
   description = "Name of the application. Defaults to value of `var.image_name` with `_` replaced to `-`."
@@ -43,6 +34,16 @@ variable "associate_public_ip_address" {
   description = "Whether to associate a public IP address with an instance in a VPC"
   type        = bool
   default     = true
+}
+
+variable "dns_records" {
+  description = "List of DNS records to set for CoreDNS."
+  type = list(object({
+    name  = string
+    value = string
+  }))
+  default  = []
+  nullable = false
 }
 
 variable "instance_type" {

@@ -1,7 +1,3 @@
-locals {
-  environment_variables = concat([], var.application_environment_variables)
-}
-
 resource "aws_instance" "this" {
   ami                         = var.ami
   instance_type               = var.instance_type
@@ -13,10 +9,10 @@ resource "aws_instance" "this" {
   key_name                    = var.key_name
 
   user_data = templatefile("${path.module}/templates/cloud-init.yaml", {
-    container_name        = "coredns"
-    container_image       = "coredns/coredns"
-    host_ip               = var.private_ip
-    container_environment = local.environment_variables
+    container_name  = "coredns"
+    container_image = "coredns/coredns"
+    host_ip         = var.private_ip
+    dns_records     = concat([{ name = "coredns", value = var.private_ip }], var.dns_records)
   })
 
   root_block_device {

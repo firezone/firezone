@@ -182,6 +182,21 @@ module "aws_coredns" {
 
   application_name = "coredns"
 
+  dns_records = [
+    {
+      name  = "gateway",
+      value = module.aws_gateway.private_ip
+    },
+    {
+      name  = "httpbin",
+      value = module.aws_httpbin.private_ip
+    },
+    {
+      name  = "iperf",
+      value = module.aws_iperf.private_ip
+    },
+  ]
+
   vpc_security_group_ids = [
     module.sg_allow_all_egress.security_group_id,
     module.sg_allow_subnet_ingress.security_group_id
