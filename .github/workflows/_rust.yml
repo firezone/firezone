@@ -90,12 +90,20 @@ jobs:
         run: |
           pnpm install -g @tauri-apps/cli
 
+          # Set logs to debug
+          $env:RUST_LOG = "debug"
+
+          # I'm running the multi-process test here because I don't think it can be
+          # embedded in a test binary. It requires the client to call subcommands
+          # from its own exe.
+          cargo run -p firezone-windows-client -- debug test-ipc
+
           # PNPM installs tauri-cli to somewhere in $PATH
           tauri build
 
           # Used for release artifact
           # In release mode the name comes from tauri.conf.json
-          cp "target/release/Firezone Windows Client.exe" "${{ env.BINARY_DEST_PATH }}-x64.exe"
+          cp "target/release/Firezone.exe" "${{ env.BINARY_DEST_PATH }}-x64.exe"
           cp "target/release/bundle/msi/*.msi" "${{ env.BINARY_DEST_PATH }}-x64.msi"
 
           Get-FileHash ${{ env.BINARY_DEST_PATH }}-x64.exe -Algorithm SHA256 | Select-Object Hash > ${{ env.BINARY_DEST_PATH }}-x64.exe.sha256sum.txt
