@@ -21,15 +21,15 @@ pub struct UdpSockets<const N: usize> {
 
 impl<const N: usize> UdpSockets<N> {
     pub fn bind(&mut self, addr: impl Into<SocketAddr>) -> io::Result<SocketAddr> {
-        let udp_socket = UdpSocket::bind(addr.into())
+        let socket = UdpSocket::bind(addr.into())
             .now_or_never()
             .expect("binding to `SocketAddr` is not actually async")?;
 
-        let local_addr = udp_socket.local_addr()?;
+        let local = socket.local_addr()?;
 
         self.sockets.push(Socket {
-            local: addr.into(),
-            socket: udp_socket,
+            local,
+            socket,
             buffer: Box::new([0u8; N]),
         });
 
@@ -37,7 +37,7 @@ impl<const N: usize> UdpSockets<N> {
             waker.wake();
         }
 
-        Ok(local_addr)
+        Ok(local)
     }
 
     pub fn unbind(&mut self, addr: SocketAddr) {
