@@ -11,4 +11,4 @@ REM Compile CSS in watch mode
 start call npx tailwindcss -i src\input.css -o src\output.css --watch
 
 REM Start Tauri hot-reloading
-start tauri dev
+tauri dev
