@@ -1,0 +1,67 @@
+#cloud-config
+
+write_files:
+  - path: /etc/coredns/Corefile
+    permissions: "0644"
+    owner: root
+    content: |
+      .:53 {
+        forward . 1.1.1.1 9.9.9.9
+        log
+        errors
+      }
+
+      firezone.internal:53 {
+        file /etc/coredns/db.firezone.internal
+        log
+        errors
+      }
+
+  - path: /etc/coredns/db.firezone.internal
+    permissions: "0644"
+    owner: root
+    content: |
+      $ORIGIN firezone.internal.
+      $TTL 1h
+      @   IN SOA   ns1.firezone.internal. admin.firezone.internal. (
+                      2024010501 ; Serial
+                      1h         ; Refresh (1 hour)
+                      10m        ; Retry (10 minutes)
+                      7d         ; Expire (7 days)
+                      1h         ; Minimum TTL (1 hour)
+                  )
+
+      %{ for record in dns_records ~}
+      ${record.name}     IN A     ${record.value}
+      %{ endfor ~}
+
+  - path: /etc/systemd/system/coredns.service
+    permissions: "0644"
+    owner: root
+    content: |
+      [Unit]
+      Description=Start a CoreDNS container
+
+      [Service]
+      TimeoutStartSec=0
+      Restart=always
+      ExecStartPre=/usr/bin/docker pull ${container_image}
+      ExecStart=/bin/sh -c 'docker run --name=${container_name} -p ${host_ip}:53:53 -p ${host_ip}:53:53/udp -v /etc/coredns:/etc/coredns --restart=unless-stopped --pull=always ${container_image} -conf /etc/coredns/Corefile'
+      ExecStop=/usr/bin/docker stop coredns
+      ExecStopPost=/usr/bin/docker rm coredns
+
+runcmd:
+  - sudo apt-get update
+  - sudo apt-get install -y apt-transport-https ca-certificates curl software-properties-common
+  - curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+  - echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+  - sudo apt-get update
+  - sudo apt-get install -y docker-ce docker-ce-cli containerd.io
+  - echo '{"experimental":true,"ip6tables":true,"ipv6":true,"fixed-cidr-v6":"fd00::/80"}' | sudo tee -a /etc/docker/daemon.json
+  - sudo usermod -aG docker ubuntu
+  - sudo systemctl enable docker
+  - sudo systemctl stop docker
+  - sudo systemctl start docker
+  - sudo systemctl daemon-reload
+  - sudo sed -r -i 's/^\s*(.* IN A .*)$/\1/' /etc/coredns/db.firezone.internal
+  - sudo systemctl start coredns.service
