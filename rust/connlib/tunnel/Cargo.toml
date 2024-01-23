@@ -30,6 +30,7 @@ hickory-resolver = { workspace = true }
 arc-swap = "1.6.0"
 bimap = "0.6"
 dns-lookup = { workspace = true }
+if-watch = { version = "3.2", features = ["tokio"] }
 
 firezone-connection = { path = "../connection" }
 

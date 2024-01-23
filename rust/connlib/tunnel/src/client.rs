@@ -2,9 +2,10 @@ use crate::bounded_queue::BoundedQueue;
 use crate::device_channel::{Device, Packet};
 use crate::ip_packet::{IpPacket, MutableIpPacket};
 use crate::peer::PacketTransformClient;
+use crate::sockets::UdpSockets;
 use crate::{
     dns, ConnectedPeer, DnsQuery, Event, PeerConfig, RoleState, Tunnel, DNS_QUERIES_QUEUE_SIZE,
-    ICE_GATHERING_TIMEOUT_SECONDS, MAX_CONCURRENT_ICE_GATHERING,
+    ICE_GATHERING_TIMEOUT_SECONDS, MAX_CONCURRENT_ICE_GATHERING, MAX_UDP_SIZE,
 };
 use bimap::BiMap;
 use boringtun::x25519::{PublicKey, StaticSecret};
@@ -15,10 +16,12 @@ use connlib_shared::messages::{
 };
 use connlib_shared::{Callbacks, Dname, IpProvider};
 use domain::base::Rtype;
+use firezone_connection::{ClientConnectionPool, ConnectionPool};
 use futures::channel::mpsc::Receiver;
 use futures::stream;
 use futures_bounded::{FuturesMap, PushError, StreamMap};
 use hickory_resolver::lookup::Lookup;
+use if_watch::tokio::IfWatcher;
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
 use itertools::Itertools;
@@ -235,6 +238,10 @@ pub struct ClientState {
     refresh_dns_timer: Interval,
 
     pub dns_mapping: BiMap<IpAddr, DnsServer>,
+
+    connection_pool: ClientConnectionPool<GatewayId>,
+    if_watcher: IfWatcher,
+    udp_sockets: UdpSockets<MAX_UDP_SIZE>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -650,6 +657,13 @@ impl Default for ClientState {
         // therefore, only the first time it's added that happens, after that it doesn't matter.
         let mut interval = tokio::time::interval(Duration::from_secs(300));
         interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
+        let if_watcher = IfWatcher::new().expect("TODO");
+        let mut connection_pool = ConnectionPool::new(StaticSecret::random_from_rng(OsRng));
+        let mut udp_sockets = UdpSockets::default();
+        for ip in if_watcher.iter() {
+            let addr = udp_sockets.bind((ip.addr(), 0)).expect("TODO");
+            connection_pool.add_local_interface(addr);
+        }
         Self {
             active_candidate_receivers: StreamMap::new(
                 Duration::from_secs(ICE_GATHERING_TIMEOUT_SECONDS),
@@ -680,6 +694,9 @@ impl Default for ClientState {
             deferred_dns_queries: Default::default(),
             refresh_dns_timer: interval,
             dns_mapping: Default::default(),
+            connection_pool,
+            if_watcher,
+            udp_sockets,
         }
     }
 }

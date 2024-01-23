@@ -8,10 +8,7 @@ use boringtun::{
 };
 
 use bytes::Bytes;
-use connlib_shared::{
-    messages::{Key, ReuseConnection},
-    CallbackErrorFacade, Callbacks, Error,
-};
+use connlib_shared::{messages::ReuseConnection, CallbackErrorFacade, Callbacks, Error};
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
 use ip_packet::IpPacket;
@@ -58,6 +55,7 @@ mod index;
 mod ip_packet;
 mod peer;
 mod peer_handler;
+mod sockets;
 
 const MAX_UDP_SIZE: usize = (1 << 16) - 1;
 const DNS_QUERIES_QUEUE_SIZE: usize = 100;
