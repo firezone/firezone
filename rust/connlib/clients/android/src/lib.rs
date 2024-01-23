@@ -22,6 +22,11 @@ use thiserror::Error;
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::EnvFilter;
 
+/// The Android client doesn't use platform APIs to detect network connectivity changes,
+/// so we rely on connlib to do so. We have valid use cases for headless Android clients
+/// (IoT devices, point-of-sale devices, etc), so try to reconnect for 30 days.
+const MAX_PARTITION_TIME: Duration = Duration::from_secs(60 * 60 * 24 * 30);
+
 pub struct CallbackHandler {
     vm: JavaVM,
     callback_handler: GlobalRef,
@@ -400,7 +405,7 @@ fn connect(
         Some(device_name),
         Some(os_version),
         callback_handler,
-        Duration::from_secs(5 * 60),
+        MAX_PARTITION_TIME,
     )?;
 
     Ok(session)
