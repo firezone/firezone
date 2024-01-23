@@ -21,6 +21,12 @@ use ControllerRequest as Req;
 
 mod system_tray_menu;
 
+/// The Windows client doesn't use platform APIs to detect network connectivity changes,
+/// so we rely on connlib to do so. We have valid use cases for headless Windows clients
+/// (IoT devices, point-of-sale devices, etc), so try to reconnect for 30 days if there's
+/// been a partition.
+const MAX_PARTITION_TIME: Duration = Duration::from_secs(60 * 60 * 24 * 30);
+
 pub(crate) type CtlrTx = mpsc::Sender<ControllerRequest>;
 
 // TODO: Move out of GUI module, shouldn't be here
@@ -132,9 +138,10 @@ pub(crate) fn run(params: client::GuiParams) -> Result<()> {
         })
         .invoke_handler(tauri::generate_handler![
             logging::clear_logs,
+            logging::count_logs,
             logging::export_logs,
-            logging::start_stop_log_counting,
             settings::apply_advanced_settings,
+            settings::reset_advanced_settings,
             settings::get_advanced_settings,
         ])
         .system_tray(tray)
@@ -267,7 +274,6 @@ pub(crate) enum ControllerRequest {
     Quit,
     SchemeRequest(url::Url),
     SignIn,
-    StartStopLogCounting(bool),
     SignOut,
     TunnelReady,
 }
@@ -344,7 +350,6 @@ struct Controller {
     /// The UUIDv4 device ID persisted to disk
     /// Sent verbatim to Session::connect
     device_id: String,
-    log_counting_task: Option<tokio::task::JoinHandle<Result<()>>>,
     logging_handles: client::logging::Handles,
     /// Tells us when to wake up and look for a new resource list. Tokio docs say that memory reads and writes are synchronized when notifying, so we don't need an extra mutex on the resources.
     notify_controller: Arc<Notify>,
@@ -374,7 +379,6 @@ impl Controller {
             ctlr_tx,
             session: None,
             device_id,
-            log_counting_task: None,
             logging_handles,
             notify_controller,
             tunnel_ready: false,
@@ -411,7 +415,7 @@ impl Controller {
             None, // TODO: Send device name here (windows computer name)
             None,
             callback_handler.clone(),
-            Duration::from_secs(5 * 60),
+            MAX_PARTITION_TIME,
         )?;
 
         self.session = Some(Session {
@@ -576,19 +580,6 @@ async fn run_controller(
                                 &url.expose_secret().inner,
                                 None,
                             )?;
-                        }
-                    }
-                    Req::StartStopLogCounting(enable) => {
-                        if enable {
-                            if controller.log_counting_task.is_none() {
-                                let app = app.clone();
-                                controller.log_counting_task = Some(tokio::spawn(logging::count_logs(app)));
-                                tracing::debug!("started log counting");
-                            }
-                        } else if let Some(t) = controller.log_counting_task {
-                            t.abort();
-                            controller.log_counting_task = None;
-                            tracing::debug!("cancelled log counting");
                         }
                     }
                     Req::TunnelReady => {
