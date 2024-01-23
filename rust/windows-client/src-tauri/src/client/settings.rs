@@ -53,9 +53,22 @@ pub(crate) async fn apply_advanced_settings(
     managed: tauri::State<'_, Managed>,
     settings: AdvancedSettings,
 ) -> StdResult<(), String> {
-    apply_advanced_settings_inner(managed.inner(), settings)
+    apply_advanced_settings_inner(managed.inner(), &settings)
         .await
         .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub(crate) async fn reset_advanced_settings(
+    managed: tauri::State<'_, Managed>,
+) -> StdResult<AdvancedSettings, String> {
+    let settings = AdvancedSettings::default();
+
+    apply_advanced_settings_inner(managed.inner(), &settings)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(settings)
 }
 
 #[tauri::command]
@@ -75,7 +88,7 @@ pub(crate) async fn get_advanced_settings(
 
 pub(crate) async fn apply_advanced_settings_inner(
     managed: &Managed,
-    settings: AdvancedSettings,
+    settings: &AdvancedSettings,
 ) -> Result<()> {
     let DirAndPath { dir, path } = advanced_settings_path()?;
     tokio::fs::create_dir_all(&dir).await?;

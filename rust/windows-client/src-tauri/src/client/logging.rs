@@ -10,7 +10,6 @@ use std::{
     result::Result as StdResult,
     str::FromStr,
 };
-use tauri::Manager;
 use tokio::task::spawn_blocking;
 use tracing::subscriber::set_global_default;
 use tracing_log::LogTracer;
@@ -42,27 +41,8 @@ pub(crate) fn setup(log_filter: &str) -> Result<Handles> {
 }
 
 #[tauri::command]
-pub(crate) async fn start_stop_log_counting(
-    managed: tauri::State<'_, Managed>,
-    enable: bool,
-) -> StdResult<(), String> {
-    // Delegate this to Controller so that it can decide whether to obey.
-    // e.g. if there's already a count task running, it may refuse to start another.
-    managed
-        .ctlr_tx
-        .send(ControllerRequest::StartStopLogCounting(enable))
-        .await
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub(crate) async fn clear_logs(
-    app: tauri::AppHandle,
-    managed: tauri::State<'_, Managed>,
-) -> StdResult<(), String> {
-    clear_logs_inner(app, &managed)
-        .await
-        .map_err(|e| e.to_string())
+pub(crate) async fn clear_logs(managed: tauri::State<'_, Managed>) -> StdResult<(), String> {
+    clear_logs_inner(&managed).await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -72,17 +52,26 @@ pub(crate) async fn export_logs(managed: tauri::State<'_, Managed>) -> StdResult
         .map_err(|e| e.to_string())
 }
 
+#[derive(Clone, Default, Serialize)]
+pub(crate) struct FileCount {
+    bytes: u64,
+    files: u64,
+}
+
+#[tauri::command]
+pub(crate) async fn count_logs() -> StdResult<FileCount, String> {
+    count_logs_inner().await.map_err(|e| e.to_string())
+}
+
 /// Delete all files in the logs directory.
 ///
 /// This includes the current log file, so we won't write any more logs to disk
 /// until the file rolls over or the app restarts.
-pub(crate) async fn clear_logs_inner(app: tauri::AppHandle, managed: &Managed) -> Result<()> {
+pub(crate) async fn clear_logs_inner(managed: &Managed) -> Result<()> {
     let mut dir = tokio::fs::read_dir("logs").await?;
     while let Some(entry) = dir.next_entry().await? {
         tokio::fs::remove_file(entry.path()).await?;
     }
-
-    count_logs(app).await?;
 
     managed.fault_msleep(5000).await;
     Ok(())
@@ -146,23 +135,16 @@ pub(crate) async fn export_logs_to(path: PathBuf, stem: PathBuf) -> Result<()> {
     Ok(())
 }
 
-#[derive(Clone, Default, Serialize)]
-struct FileCount {
-    bytes: u64,
-    files: u64,
-}
-
-pub(crate) async fn count_logs(app: tauri::AppHandle) -> Result<()> {
+/// Count log files and their sizes
+pub(crate) async fn count_logs_inner() -> Result<FileCount> {
     let mut dir = tokio::fs::read_dir("logs").await?;
     let mut file_count = FileCount::default();
-    // Zero out the GUI
-    app.emit_all("file_count_progress", None::<FileCount>)?;
+
     while let Some(entry) = dir.next_entry().await? {
         let md = entry.metadata().await?;
         file_count.files += 1;
         file_count.bytes += md.len();
     }
-    // Show the result on the GUI
-    app.emit_all("file_count_progress", Some(&file_count))?;
-    Ok(())
+
+    Ok(file_count)
 }

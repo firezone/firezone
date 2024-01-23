@@ -69,6 +69,10 @@ updates:
     schedule:
       interval: monthly
   - package-ecosystem: npm
+    directory: rust/windows-client/
+    schedule:
+      interval: monthly
+  - package-ecosystem: npm
     directory: elixir/apps/web/assets/
     schedule:
       interval: monthly
