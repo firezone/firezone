@@ -664,6 +664,7 @@ impl Default for ClientState {
         let mut udp_sockets = UdpSockets::default();
 
         for ip in if_watcher.iter() {
+            tracing::info!(address = %ip.addr(), "New local interface address found");
             match udp_sockets.bind((ip.addr(), 0)) {
                 Ok(addr) => connection_pool.add_local_interface(addr),
                 Err(e) => {
@@ -803,6 +804,28 @@ impl RoleState for ClientState {
                     });
                 }
                 return Poll::Ready(Event::RefreshResources { connections });
+            }
+
+            match self.if_watcher.poll_if_event(cx) {
+                Poll::Ready(Ok(ev)) => match ev {
+                    if_watch::IfEvent::Up(ip) => {
+                        tracing::info!(address = %ip.addr(), "New local interface address found");
+                        match self.udp_sockets.bind((ip.addr(), 0)) {
+                            Ok(addr) => self.connection_pool.add_local_interface(addr),
+                            Err(e) => {
+                                tracing::debug!(address = %ip.addr(), err = ?e, "Couldn't bind socket to interface: {e:#?}")
+                            }
+                        }
+                    }
+                    if_watch::IfEvent::Down(ip) => {
+                        tracing::info!(address = %ip.addr(), "Interface IP no longer available");
+                        todo!()
+                    }
+                },
+                Poll::Ready(Err(e)) => {
+                    tracing::debug!("Error while polling interfces: {e:#?}");
+                }
+                Poll::Pending => {}
             }
 
             return self.forwarded_dns_queries.poll(cx).map(Event::DnsQuery);
