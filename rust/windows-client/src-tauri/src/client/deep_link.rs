@@ -103,7 +103,7 @@ impl Server {
 
         let mut server_options = named_pipe::ServerOptions::new();
         server_options.first_pipe_instance(true);
-
+        /*
         // This will allow non-admin clients to connect to us even if we're running as admin
         let mut sd = WinSec::SECURITY_DESCRIPTOR::default();
         let psd = WinSec::PSECURITY_DESCRIPTOR(&mut sd as *mut _ as *mut c_void);
@@ -125,13 +125,16 @@ impl Server {
             lpSecurityDescriptor: psd.0,
             bInheritHandle: false.into(),
         };
-
+        */
         let path = named_pipe_path(BUNDLE_ID);
+        /*
         let server = unsafe {
             server_options
                 .create_with_security_attributes_raw(path, &mut sa as *mut _ as *mut c_void)
         }
         .map_err(|_| Error::Listen)?;
+        */
+        let server = server_options.create(path).map_err(|_| Error::Listen)?;
 
         tracing::debug!("server is bound");
         Ok(Server { inner: server })

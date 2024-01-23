@@ -64,6 +64,7 @@ pub fn test_subcommand(cmd: Option<Subcommand>) -> Result<()> {
     rt.block_on(async move {
         match cmd {
             None => {
+                test_two_servers().await?;
                 test_api().await?;
                 test_security().await?;
                 test_happy_path().await?;
@@ -86,10 +87,41 @@ pub fn test_subcommand(cmd: Option<Subcommand>) -> Result<()> {
     Ok(())
 }
 
+// This could go in the tests module, but I want to run it elevated too
+#[tracing::instrument]
+async fn test_two_servers() -> Result<()> {
+    let mut dl_server = crate::client::deep_link::Server::new()?;
+    let t = tokio::task::spawn(async move {
+        loop {
+            if let Ok(_url) = dl_server.accept().await {
+
+            }
+            dl_server = crate::client::deep_link::Server::new().unwrap();
+        }
+    });
+
+    let (server_1, _) = UnconnectedServer::new()?;
+    let t = tokio::task::spawn(async move {
+        tracing::info!("await connection");
+        server_1.pipe.connect().await?;
+        tracing::info!("task exiting");
+        Ok::<_, anyhow::Error>(())
+    });
+
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+    let (server_2, _) = UnconnectedServer::new()?;
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    t.abort();
+    tracing::info!("test_two_servers passed");
+    Ok(())
+}
+
 /// Test normal IPC
 #[tracing::instrument]
 async fn test_happy_path() -> Result<()> {
     let id = random_pipe_id();
+    tracing::debug!("`{id}`");
 
     let _manager = SubcommandChild::new(&["debug", "test-ipc", "manager", &id]);
     let _worker = SubcommandChild::new(&["debug", "test-ipc", "worker", &id]);
@@ -357,8 +389,8 @@ fn random_pipe_id() -> String {
 
 /// A named pipe server linked to a worker subprocess
 pub(crate) struct Subprocess {
-    server: Server,
-    worker: SubcommandChild,
+    pub server: Server,
+    pub worker: SubcommandChild,
 }
 
 impl Subprocess {
@@ -367,22 +399,26 @@ impl Subprocess {
     /// The process ID and cookie have already been checked for security
     /// when this function returns.
     pub(crate) async fn new(leak_guard: &LeakGuard, args: &[&str]) -> Result<Self> {
-        let (server, pipe_id) = UnconnectedServer::new()?;
-        let mut process = process::Command::new(std::env::current_exe()?);
+        let (server, pipe_id) = UnconnectedServer::new().context("couldn't create UnconnectedServer")?;
+        let mut process = process::Command::new(std::env::current_exe().context("couldn't get current exe name")?);
         // Make the child's stdin piped so we can send it a security cookie.
         process.stdin(process::Stdio::piped());
         for arg in args {
             process.arg(arg);
         }
         process.arg(&pipe_id);
-        let process = process.spawn()?;
-        leak_guard.add_process(&process)?;
+        let mut process = process.spawn().context("couldn't spawn subprocess")?;
+        if let Err(error) = leak_guard.add_process(&process) {
+            tracing::error!("couldn't add subprocess to leak guard, attempting to kill subprocess");
+            process.kill().ok();
+            return Err(error.context("couldn't add subprocess to leak guard"));
+        }
         let child_pid = process.id();
         let mut worker = SubcommandChild { process };
 
         // Make sure our child process connected to our pipe, and not some 3rd-party process
-        let mut server = server.accept().await?;
-        let client_pid = server.client_pid()?;
+        let mut server = server.accept().await.context("didn't get connection from subprocess")?;
+        let client_pid = server.client_pid().context("couldn't check pipe client PID")?;
         if child_pid != client_pid {
             bail!("PID of child process and pipe client should match");
         }
@@ -393,11 +429,11 @@ impl Subprocess {
             .process
             .stdin
             .take()
-            .ok_or_else(|| anyhow::anyhow!("couldn't get stdin of child process"))?;
+            .ok_or_else(|| anyhow::anyhow!("couldn't get stdin of subprocess"))?;
         let cookie = uuid::Uuid::new_v4().to_string();
-        writeln!(child_stdin, "{cookie}")?;
+        writeln!(child_stdin, "{cookie}").context("couldn't write cookie to subprocess stdin")?;
 
-        let echoed_cookie: String = read_bincode(&mut server.pipe).await?;
+        let echoed_cookie: String = read_bincode(&mut server.pipe).await.context("couldn't read cookie back from subprocess")?;
         if echoed_cookie != cookie {
             bail!("cookie received from pipe client should match the cookie we sent to our child process");
         }
@@ -431,6 +467,7 @@ impl UnconnectedServer {
     }
 
     fn new_with_id(id: &str) -> anyhow::Result<Self> {
+        tracing::debug!(?id, "creating new pipe server");
         let pipe = named_pipe::ServerOptions::new()
             .first_pipe_instance(true)
             .create(id)?;
@@ -571,7 +608,7 @@ impl SubcommandChild {
         Ok(SubcommandChild { process })
     }
 
-    /// Joins the subprocess, returning an error if the process doesn't stop
+    /// Joins the subprocess without blocking, returning an error if the process doesn't stop
     #[tracing::instrument(skip(self))]
     pub fn wait_or_kill(&mut self) -> Result<()> {
         if let Ok(Some(status)) = self.process.try_wait() {

@@ -3,7 +3,7 @@
 
 // TODO: `git grep` for unwraps before 1.0, especially this gui module
 
-use crate::client::{self, deep_link, network_changes, AppLocalDataDir, BUNDLE_ID};
+use crate::client::{self, deep_link, ipc, network_changes, AppLocalDataDir, BUNDLE_ID};
 use anyhow::{anyhow, bail, Context, Result};
 use arc_swap::ArcSwap;
 use client::{
@@ -16,7 +16,10 @@ use secrecy::{ExposeSecret, SecretString};
 use std::{net::IpAddr, path::PathBuf, str::FromStr, sync::Arc, time::Duration};
 use system_tray_menu::Event as TrayMenuEvent;
 use tauri::{api::notification::Notification, Manager, SystemTray, SystemTrayEvent};
-use tokio::sync::{mpsc, oneshot, Notify};
+use tokio::{
+    sync::{mpsc, oneshot, Notify},
+    time::timeout,
+};
 use ControllerRequest as Req;
 
 mod system_tray_menu;
@@ -350,6 +353,8 @@ struct Controller {
     /// The UUIDv4 device ID persisted to disk
     /// Sent verbatim to Session::connect
     device_id: String,
+    /// Kills subprocesses when our own process exits
+    leak_guard: ipc::LeakGuard,
     logging_handles: client::logging::Handles,
     /// Tells us when to wake up and look for a new resource list. Tokio docs say that memory reads and writes are synchronized when notifying, so we don't need an extra mutex on the resources.
     notify_controller: Arc<Notify>,
@@ -358,8 +363,7 @@ struct Controller {
 
 /// Everything related to a signed-in user session
 struct Session {
-    callback_handler: CallbackHandler,
-    connlib: connlib_client_shared::Session<CallbackHandler>,
+    subprocess: ipc::Subprocess,
 }
 
 impl Controller {
@@ -379,6 +383,7 @@ impl Controller {
             ctlr_tx,
             session: None,
             device_id,
+            leak_guard: ipc::LeakGuard::new()?,
             logging_handles,
             notify_controller,
             tunnel_ready: false,
@@ -386,8 +391,8 @@ impl Controller {
 
         if let Some(token) = this.auth.token()? {
             // Connect immediately if we reloaded the token
-            if let Err(e) = this.start_session(token) {
-                tracing::error!("couldn't restart session on app start: {e:#?}");
+            if let Err(error) = this.start_session(token).await {
+                tracing::error!(?error, "couldn't restart session on app start");
             }
         }
 
@@ -396,31 +401,20 @@ impl Controller {
 
     // TODO: Figure out how re-starting sessions automatically will work
     /// Pre-req: the auth module must be signed in
-    fn start_session(&mut self, token: SecretString) -> Result<()> {
+    async fn start_session(&mut self, token: SecretString) -> Result<()> {
         if self.session.is_some() {
             bail!("can't start session, we're already in a session");
         }
 
-        let callback_handler = CallbackHandler {
-            ctlr_tx: self.ctlr_tx.clone(),
-            logger: self.logging_handles.logger.clone(),
-            notify_controller: Arc::clone(&self.notify_controller),
-            resources: Default::default(),
+        let args = ["connlib-worker"];
+        let mut subprocess = timeout(Duration::from_secs(10), ipc::Subprocess::new(&self.leak_guard, &args)).await.context("timed out while starting subprocess")?.context("error while starting subprocess")?;
+        subprocess.server.write(ipc::ManagerMsg::Connect).await.context("couldn't send Connect request to worker")?;
+        let ipc::WorkerMsg::Connected = subprocess.server.read().await.context("didn't get response from worker")? else {
+            anyhow::bail!("Expected Connected back from connlib worker");
         };
 
-        let connlib = connlib_client_shared::Session::connect(
-            self.advanced_settings.api_url.clone(),
-            token,
-            self.device_id.clone(),
-            None, // TODO: Send device name here (windows computer name)
-            None,
-            callback_handler.clone(),
-            MAX_PARTITION_TIME,
-        )?;
-
         self.session = Some(Session {
-            callback_handler,
-            connlib,
+            subprocess
         });
 
         Ok(())
@@ -430,7 +424,7 @@ impl Controller {
         let Some(session) = &self.session else {
             bail!("app is signed out");
         };
-        let resources = session.callback_handler.resources.load();
+        let resources: Vec<ResourceDescription> = todo!("cache resources from worker subprocess");
         let id = ResourceId::from_str(id)?;
         let Some(res) = resources.iter().find(|r| r.id() == id) else {
             bail!("resource ID is not in the list");
@@ -451,7 +445,7 @@ impl Controller {
         };
 
         let token = self.auth.handle_response(auth_response)?;
-        if let Err(e) = self.start_session(token) {
+        if let Err(e) = self.start_session(token).await {
             // TODO: Replace `bail` with `context` here too
             bail!("couldn't start session: {e:#?}");
         }
@@ -466,7 +460,8 @@ impl Controller {
             if let Some(connlib_session) = &self.session {
                 if self.tunnel_ready {
                     // Signed in, tunnel ready
-                    let resources = connlib_session.callback_handler.resources.load();
+                    // TODO
+                    let resources = vec![];
                     system_tray_menu::signed_in(&auth_session.actor_name, &resources)
                 } else {
                     // Signed in, raising tunnel
@@ -541,10 +536,16 @@ async fn run_controller(
                     Req::Disconnected => {
                         tracing::debug!("connlib disconnected, tearing down Session");
                         controller.tunnel_ready = false;
-                        if let Some(mut session) = controller.session.take() {
+                        if let Some(session) = controller.session.take() {
                             tracing::debug!("disconnecting connlib");
-                            // This is probably redundant since connlib shuts itself down if it's disconnected.
-                            session.connlib.disconnect(None);
+                            let mut subprocess = session.subprocess;
+                            subprocess.server.write(ipc::ManagerMsg::Disconnect).await?;
+                            let ipc::WorkerMsg::Disconnected = subprocess.server.read().await? else {
+                                anyhow::bail!("expected Disconnected back from worker");
+                            };
+                            if let Err(error) = subprocess.worker.wait_or_kill() {
+                                tracing::error!(?error, "couldn't join or kill connlib worker");
+                            }
                         }
                         controller.refresh_system_tray_menu()?;
                     }
@@ -552,11 +553,18 @@ async fn run_controller(
                         tracing::debug!("Token expired or user signed out");
                         controller.auth.sign_out()?;
                         controller.tunnel_ready = false;
-                        if let Some(mut session) = controller.session.take() {
+                        if let Some(session) = controller.session.take() {
                             tracing::debug!("disconnecting connlib");
                             // This is redundant if the token is expired, in that case
                             // connlib already disconnected itself.
-                            session.connlib.disconnect(None);
+                            let mut subprocess = session.subprocess;
+                            subprocess.server.write(ipc::ManagerMsg::Disconnect).await?;
+                            let ipc::WorkerMsg::Disconnected = subprocess.server.read().await? else {
+                                anyhow::bail!("expected Disconnected back from worker");
+                            };
+                            if let Err(error) = subprocess.worker.wait_or_kill() {
+                                tracing::error!(?error, "couldn't join or kill connlib worker");
+                            }
                         }
                         else {
                             tracing::error!("tried to sign out but there's no session");
