@@ -46,8 +46,8 @@ From this dir:
 pnpm dev
 
 # You can call debug subcommands on the exe from this directory too
-# e.g. this is equivalent to `cargo run -- debug`
-cargo tauri dev -- -- debug
+# e.g. this is equivalent to `cargo run -- debug hostname`
+cargo tauri dev -- -- debug hostname
 
 # The exe is up in the workspace
 stat ../target/debug/firezone-windows-client.exe

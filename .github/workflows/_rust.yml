@@ -90,6 +90,14 @@ jobs:
         run: |
           pnpm install -g @tauri-apps/cli
 
+          # Set logs to debug
+          $env:RUST_LOG = "debug"
+
+          # I'm running the multi-process test here because I don't think it can be
+          # embedded in a test binary. It requires the client to call subcommands
+          # from its own exe.
+          cargo run -p firezone-windows-client -- debug test-ipc
+
           # PNPM installs tauri-cli to somewhere in $PATH
           tauri build
 
