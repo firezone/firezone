@@ -24,12 +24,12 @@ required for Gateways to function.
 If the network in which your Gateway is deployed performs egress filtering,
 you'll need to make sure the following outbound traffic is allowed:
 
-| IP Address           | Port(s)         | Protocol | Purpose                  |
-| -------------------- | --------------- | -------- | ------------------------ |
-| `34.102.202.25`      | `443`           | `TCP`    | Control Plane API (IPv4) |
-| `2600:1901:0:620b::` | `443`           | `TCP`    | Control Plane API (IPv6) |
-| Varies               | `3478`          | `UDP`    | STUN protocol            |
-| Varies               | `49152 - 65535` | `UDP`    | TURN protocol            |
+| Host             | (IP Address)         | Port(s)         | Protocol(s)     | Purpose                    |
+| ---------------- | -------------------- | --------------- | --------------- | -------------------------- |
+| api.firezone.dev | `34.102.202.25`      | `443`           | HTTPS/WebSocket | Control Plane API (IPv4)   |
+| api.firezone.dev | `2600:1901:0:620b::` | `443`           | HTTPS/WebSocket | Control Plane API (IPv6)   |
+| N/A              | Varies               | `3478`          | STUN            | STUN protocol signaling    |
+| N/A              | Varies               | `49152 - 65535` | TURN            | TURN protocol channel data |
 
 ## Resource considerations
 
