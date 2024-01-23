@@ -23,6 +23,7 @@ use crate::allocation::Allocation;
 use crate::index::IndexLfsr;
 use crate::stun_binding::StunBinding;
 use crate::IpPacket;
+use boringtun::noise::errors::WireGuardError;
 use stun_codec::rfc5389::attributes::{Realm, Username};
 
 // Note: Taken from boringtun
@@ -401,9 +402,19 @@ where
     pub fn handle_timeout(&mut self, now: Instant) {
         self.last_now = now;
 
-        for c in self.negotiated_connections.values_mut() {
-            self.buffered_transmits
-                .extend(c.handle_timeout(now, &mut self.allocations));
+        for (id, c) in self.negotiated_connections.iter_mut() {
+            match c.handle_timeout(now, &mut self.allocations) {
+                Ok(Some(transmit)) => {
+                    self.buffered_transmits.push_back(transmit);
+                }
+                Err(WireGuardError::ConnectionExpired) => {
+                    self.pending_events.push_back(Event::ConnectionFailed(*id))
+                }
+                Err(e) => {
+                    tracing::warn!(%id, ?e);
+                }
+                _ => {}
+            };
         }
 
         for binding in self.bindings.values_mut() {
@@ -945,7 +956,7 @@ impl Connection {
         &mut self,
         now: Instant,
         allocations: &mut HashMap<SocketAddr, Allocation>,
-    ) -> Option<Transmit> {
+    ) -> Result<Option<Transmit>, WireGuardError> {
         self.agent.handle_timeout(now);
 
         if now >= self.next_timer_update {
@@ -960,20 +971,17 @@ impl Connection {
 
             match self.tunnel.update_timers(&mut buf) {
                 TunnResult::Done => {}
-                TunnResult::Err(e) => {
-                    // TODO: Handle this error. I think it can only be an expired connection so we should return a very specific error to the caller to make this easy to handle!
-                    panic!("{e:?}")
-                }
+                TunnResult::Err(e) => return Err(e),
                 TunnResult::WriteToNetwork(b) => {
                     let transmit = self.encapsulate(b, allocations, now)?;
 
-                    return Some(transmit);
+                    return Ok(Some(transmit));
                 }
                 _ => panic!("Unexpected result from update_timers"),
             };
         }
 
-        None
+        Ok(None)
     }
 
     fn encapsulate(
