@@ -225,7 +225,7 @@ where
                 // In our API, we parse the packets directly as an IpPacket.
                 // Thus, the caller can query whatever data they'd like, not just the source IP so we don't return it in addition.
                 TunnResult::WriteToTunnelV4(packet, ip) => {
-                    conn.set_remote_from_wg_activity(from, remote_socket);
+                    conn.set_remote_from_wg_activity(local, from, remote_socket);
 
                     let ipv4_packet = Ipv4Packet::new(packet).expect("boringtun verifies validity");
                     debug_assert_eq!(ipv4_packet.get_source(), ip);
@@ -233,7 +233,7 @@ where
                     Ok(Some((*id, ipv4_packet.into())))
                 }
                 TunnResult::WriteToTunnelV6(packet, ip) => {
-                    conn.set_remote_from_wg_activity(from, remote_socket);
+                    conn.set_remote_from_wg_activity(local, from, remote_socket);
 
                     let ipv6_packet = Ipv6Packet::new(packet).expect("boringtun verifies validity");
                     debug_assert_eq!(ipv6_packet.get_source(), ip);
@@ -246,7 +246,7 @@ where
                 // This should be fairly rare which is why we just allocate these and return them from `poll_transmit` instead.
                 // Overall, this results in a much nicer API for our caller and should not affect performance.
                 TunnResult::WriteToNetwork(bytes) => {
-                    conn.set_remote_from_wg_activity(from, remote_socket);
+                    conn.set_remote_from_wg_activity(local, from, remote_socket);
 
                     self.buffered_transmits.extend(conn.encapsulate(
                         bytes,
@@ -303,7 +303,11 @@ where
         let packet = &payload[..packet_len];
 
         match conn.remote_socket.ok_or(Error::NotConnected)? {
-            RemoteSocket::Direct(remote) => Ok(Some(Transmit {
+            RemoteSocket::Direct {
+                dest: remote,
+                source,
+            } => Ok(Some(Transmit {
+                src: Some(source),
                 dst: remote,
                 payload: Cow::Borrowed(packet),
             })),
@@ -324,6 +328,7 @@ where
                     unsafe { slice::from_raw_parts(header.as_ptr(), total_length) };
 
                 Ok(Some(Transmit {
+                    src: None,
                     dst: relay,
                     payload: Cow::Borrowed(channel_data_packet),
                 }))
@@ -365,7 +370,10 @@ where
                                 }
                             }
                             CandidateKind::ServerReflexive | CandidateKind::Host => {
-                                RemoteSocket::Direct(destination)
+                                RemoteSocket::Direct {
+                                    dest: destination,
+                                    source,
+                                }
                             }
                             CandidateKind::PeerReflexive => {
                                 unreachable!("local candidate is never `PeerReflexive`")
@@ -454,6 +462,7 @@ where
                     self.last_now,
                 )
                 .unwrap_or(Transmit {
+                    src: Some(transmit.source),
                     dst: transmit.destination,
                     payload: Cow::Owned(transmit.contents.into()),
                 });
@@ -591,6 +600,13 @@ impl<TId> ConnectionPool<Server, TId>
 where
     TId: Eq + Hash + Copy + fmt::Display,
 {
+    /// Accept a new connection indexed by the given ID.
+    ///
+    /// The `local_server_socket` is the socket from which you are planning to send all required traffic to the (relay) servers.
+    /// It will be returned as part of [`Transmit`]'s `src` field.
+    ///
+    /// Out of all configured STUN and TURN servers, the connection will only use the ones provided here.
+    /// The returned [`Answer`] must be passed to the remote via a signalling channel.
     pub fn accept_connection(
         &mut self,
         id: TId,
@@ -778,6 +794,7 @@ fn encode_as_channel_data(
     let payload = allocation.encode_to_vec(dest, contents, now)?;
 
     Some(Transmit {
+        src: None,
         dst: relay,
         payload: Cow::Owned(payload),
     })
@@ -890,13 +907,23 @@ pub enum Event<TId> {
 
 #[derive(Debug)]
 pub struct Transmit<'a> {
+    /// The local interface from which this packet should be sent.
+    ///
+    /// If `None`, it can be sent from any interface.
+    /// Typically, this will be `None` for any message that needs to be sent to a relay.
+    ///
+    /// For all direct communication with another peer, this will be set and must be honored.
+    pub src: Option<SocketAddr>,
+    /// The remote the packet should be sent to.
     pub dst: SocketAddr,
+    /// The data that should be sent.
     pub payload: Cow<'a, [u8]>,
 }
 
 impl<'a> Transmit<'a> {
     pub fn into_owned(self) -> Transmit<'static> {
         Transmit {
+            src: self.src,
             dst: self.dst,
             payload: Cow::Owned(self.payload.into_owned()),
         }
@@ -927,8 +954,14 @@ struct Connection {
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 enum RemoteSocket {
-    Direct(SocketAddr),
-    Relay { relay: SocketAddr, dest: SocketAddr },
+    Direct {
+        source: SocketAddr,
+        dest: SocketAddr,
+    },
+    Relay {
+        relay: SocketAddr,
+        dest: SocketAddr,
+    },
 }
 
 impl Connection {
@@ -938,7 +971,7 @@ impl Connection {
     /// We already want to accept that traffic and not throw it away.
     fn accepts(&self, addr: SocketAddr) -> bool {
         let from_connected_remote = self.remote_socket.is_some_and(|r| match r {
-            RemoteSocket::Direct(direct) => direct == addr,
+            RemoteSocket::Direct { dest, .. } => dest == addr,
             RemoteSocket::Relay { dest, .. } => dest == addr,
         });
         let from_possible_remote = self.possible_sockets.contains(&addr);
@@ -946,13 +979,21 @@ impl Connection {
         from_connected_remote || from_possible_remote
     }
 
-    fn set_remote_from_wg_activity(&mut self, dest: SocketAddr, relay_socket: Option<SocketAddr>) {
+    fn set_remote_from_wg_activity(
+        &mut self,
+        local: SocketAddr,
+        dest: SocketAddr,
+        relay_socket: Option<SocketAddr>,
+    ) {
         let remote_socket = match relay_socket {
             Some(relay_socket) => RemoteSocket::Relay {
                 relay: SocketAddr::new(relay_socket.ip(), 3478),
                 dest,
             },
-            None => RemoteSocket::Direct(dest),
+            None => RemoteSocket::Direct {
+                source: local,
+                dest,
+            },
         };
 
         if self.remote_socket != Some(remote_socket) {
@@ -1009,7 +1050,11 @@ impl Connection {
         now: Instant,
     ) -> Option<Transmit<'static>> {
         match self.remote_socket? {
-            RemoteSocket::Direct(remote) => Some(Transmit {
+            RemoteSocket::Direct {
+                dest: remote,
+                source,
+            } => Some(Transmit {
+                src: Some(source),
                 dst: remote,
                 payload: Cow::Owned(message.into()),
             }),

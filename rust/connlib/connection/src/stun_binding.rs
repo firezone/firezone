@@ -120,6 +120,7 @@ impl StunBinding {
         };
 
         self.buffered_transmits.push_back(Transmit {
+            src: None,
             dst: self.server,
             payload: encode(request).into(),
         });

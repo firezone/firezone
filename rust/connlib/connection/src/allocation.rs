@@ -411,6 +411,7 @@ impl Allocation {
         self.sent_requests
             .insert(id, (authenticated_message.clone(), now));
         self.buffered_transmits.push_back(Transmit {
+            src: None,
             dst: self.server,
             payload: encode(authenticated_message).into(),
         });
