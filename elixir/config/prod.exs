@@ -29,6 +29,9 @@ config :api, API.Endpoint, server: true
 config :phoenix, :filter_parameters, [
   "password",
   "secret",
+  "nonce",
+  "fragment",
+  "state",
   "token",
   "public_key",
   "private_key",
