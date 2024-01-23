@@ -8,7 +8,6 @@ use connlib_shared::{
 };
 use serde::{Deserialize, Serialize};
 use std::net::IpAddr;
-use webrtc::ice_transport::ice_candidate::RTCIceCandidate;
 
 // TODO: Should this have a resource?
 #[derive(Debug, PartialEq, Eq, Deserialize, Serialize, Clone)]
@@ -91,8 +90,6 @@ pub struct AllowAccess {
 // either by a client or a gateway by the client.
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "snake_case", tag = "event", content = "payload")]
-// TODO: We will need to re-visit webrtc-rs
-#[allow(clippy::large_enum_variant)]
 pub enum IngressMessages {
     RequestConnection(RequestConnection),
     AllowAccess(AllowAccess),
@@ -106,7 +103,7 @@ pub struct BroadcastClientIceCandidates {
     /// Client's id the ice candidates are meant for
     pub client_ids: Vec<ClientId>,
     /// Actual RTC ice candidates
-    pub candidates: Vec<RTCIceCandidate>,
+    pub candidates: Vec<String>,
 }
 
 /// A client's ice candidate message.
@@ -115,15 +112,13 @@ pub struct ClientIceCandidates {
     /// Client's id the ice candidates came from
     pub client_id: ClientId,
     /// Actual RTC ice candidates
-    pub candidates: Vec<RTCIceCandidate>,
+    pub candidates: Vec<String>,
 }
 
 // These messages can be sent from a gateway
 // to a control pane.
 #[derive(Debug, Deserialize, Serialize, Clone)]
 #[serde(rename_all = "snake_case", tag = "event", content = "payload")]
-// TODO: We will need to re-visit webrtc-rs
-#[allow(clippy::large_enum_variant)]
 pub enum EgressMessages {
     ConnectionReady(ConnectionReady),
     Metrics(Metrics),

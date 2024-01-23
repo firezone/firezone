@@ -9,7 +9,6 @@ use ip_network::IpNetwork;
 use serde::{Deserialize, Serialize};
 use std::{fmt, str::FromStr};
 use uuid::Uuid;
-use webrtc::ice_transport::ice_parameters::RTCIceParameters;
 
 mod key;
 
@@ -102,7 +101,7 @@ pub struct RequestConnection {
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct ClientPayload {
-    pub ice_parameters: RTCIceParameters,
+    pub ice_parameters: String,
     pub domain: Option<Dname>,
 }
 
@@ -144,7 +143,7 @@ pub struct DomainResponse {
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct ConnectionAccepted {
-    pub ice_parameters: RTCIceParameters,
+    pub ice_parameters: String,
     pub domain_response: Option<DomainResponse>,
 }
 

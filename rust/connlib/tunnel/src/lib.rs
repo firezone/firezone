@@ -21,24 +21,16 @@ use hickory_resolver::proto::rr::RecordType;
 use parking_lot::Mutex;
 use peer::{PacketTransform, Peer};
 use tokio::time::MissedTickBehavior;
-use webrtc::{
-    api::{
-        interceptor_registry::register_default_interceptors, media_engine::MediaEngine,
-        setting_engine::SettingEngine, APIBuilder, API,
-    },
-    ice_transport::{ice_candidate::RTCIceCandidate, RTCIceTransport},
-    interceptor::registry::Registry,
-};
 
 use arc_swap::ArcSwapOption;
 use futures_util::task::AtomicWaker;
 use std::task::{ready, Context, Poll};
-use std::{collections::HashMap, fmt, net::IpAddr, sync::Arc, time::Duration};
 use std::{collections::HashSet, hash::Hash};
 use std::{
     collections::VecDeque,
     net::{Ipv4Addr, Ipv6Addr},
 };
+use std::{fmt, net::IpAddr, sync::Arc, time::Duration};
 use tokio::time::Interval;
 
 use connlib_shared::{
@@ -137,8 +129,8 @@ pub struct Tunnel<CB: Callbacks, TRoleState: RoleState> {
     rate_limiter: Arc<RateLimiter>,
     private_key: StaticSecret,
     public_key: PublicKey,
-    peer_connections: Mutex<HashMap<TRoleState::Id, Arc<RTCIceTransport>>>,
-    webrtc_api: API,
+    // TODO: these are used to stop connections
+    // peer_connections: Mutex<HashMap<TRoleState::Id, Arc<RTCIceTransport>>>,
     callbacks: CallbackErrorFacade<CB>,
 
     /// State that differs per role, i.e. clients vs gateways.
@@ -302,9 +294,10 @@ impl<TId, TTranform> Clone for ConnectedPeer<TId, TTranform> {
 
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
-pub struct TunnelStats<TId> {
+pub struct TunnelStats {
     public_key: String,
-    peer_connections: Vec<TId>,
+    // TODO:
+    // peer_connections: Vec<TId>,
 }
 
 impl<CB, TRoleState> Tunnel<CB, TRoleState>
@@ -312,12 +305,14 @@ where
     CB: Callbacks + 'static,
     TRoleState: RoleState,
 {
-    pub fn stats(&self) -> TunnelStats<TRoleState::Id> {
-        let peer_connections = self.peer_connections.lock().keys().cloned().collect();
+    pub fn stats(&self) -> TunnelStats {
+        // TODO:
+        // let peer_connections = self.peer_connections.lock().keys().cloned().collect();
 
         TunnelStats {
             public_key: Key::from(self.public_key).to_string(),
-            peer_connections,
+            // TODO:
+            // peer_connections,
         }
     }
 
@@ -326,15 +321,16 @@ where
             if let Some(conn_id) = self.peers_to_stop.lock().pop_front() {
                 self.role_state.lock().remove_peers(conn_id);
 
-                if let Some(conn) = self.peer_connections.lock().remove(&conn_id) {
-                    tokio::spawn({
-                        async move {
-                            if let Err(e) = conn.stop().await {
-                                tracing::warn!(%conn_id, error = ?e, "Can't close peer");
-                            }
-                        }
-                    });
-                }
+                // TODO: Stop the connection
+                // if let Some(conn) = self.peer_connections.lock().remove(&conn_id) {
+                //     tokio::spawn({
+                //         async move {
+                //             if let Err(e) = conn.stop().await {
+                //                 tracing::warn!(%conn_id, error = ?e, "Can't close peer");
+                //             }
+                //         }
+                //     });
+                // }
             }
 
             if self
@@ -438,7 +434,7 @@ impl<'a> DnsQuery<'a> {
 pub enum Event<TId> {
     SignalIceCandidate {
         conn_id: TId,
-        candidate: RTCIceCandidate,
+        candidate: String,
     },
     ConnectionIntent {
         resource: ResourceDescription,
@@ -466,37 +462,27 @@ where
         let public_key = (&private_key).into();
         let rate_limiter = Arc::new(RateLimiter::new(&public_key, HANDSHAKE_RATE_LIMIT));
         let next_index = Default::default();
-        let peer_connections = Default::default();
+        // TODO:
+        // let peer_connections = Default::default();
         let device = Default::default();
 
-        // ICE
-        let mut media_engine = MediaEngine::default();
-
         // Register default codecs (TODO: We need this?)
-        media_engine.register_default_codecs()?;
-        let mut registry = Registry::new();
-        registry = register_default_interceptors(registry, &mut media_engine)?;
-        let mut setting_engine = SettingEngine::default();
-        setting_engine.set_interface_filter(Box::new(|name| !name.contains("tun")));
-        setting_engine.set_ice_timeouts(
-            Some(ICE_DISCONNECTED_TIMEOUT),
-            Some(ICE_FAILED_TIMEOUT),
-            Some(ICE_KEEPALIVE),
-        );
-
-        let webrtc_api = APIBuilder::new()
-            .with_media_engine(media_engine)
-            .with_interceptor_registry(registry)
-            .with_setting_engine(setting_engine)
-            .build();
+        // TODO:
+        // setting_engine.set_interface_filter(Box::new(|name| !name.contains("tun")));
+        // TODO:
+        // setting_engine.set_ice_timeouts(
+        //     Some(ICE_DISCONNECTED_TIMEOUT),
+        //     Some(ICE_FAILED_TIMEOUT),
+        //     Some(ICE_KEEPALIVE),
+        // );
 
         Ok(Self {
             rate_limiter,
             private_key,
-            peer_connections,
+            // TODO:
+            // peer_connections,
             public_key,
             next_index,
-            webrtc_api,
             device,
             read_buf: Mutex::new(Box::new([0u8; MAX_UDP_SIZE])),
             write_buf: Mutex::new(Box::new([0u8; MAX_UDP_SIZE])),

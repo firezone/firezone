@@ -14,7 +14,6 @@ use std::collections::VecDeque;
 use std::sync::Arc;
 use std::task::{ready, Context, Poll};
 use std::time::Duration;
-use webrtc::ice_transport::ice_candidate::RTCIceCandidate;
 
 const PEERS_IPV4: &str = "100.64.0.0/11";
 const PEERS_IPV6: &str = "fd00:2021:1111::/107";
@@ -44,19 +43,20 @@ where
     /// Clean up a connection to a resource.
     // FIXME: this cleanup connection is wrong!
     pub fn cleanup_connection(&self, id: ClientId) {
-        self.peer_connections.lock().remove(&id);
+        // TODO:
+        // self.peer_connections.lock().remove(&id);
     }
 }
 
 /// [`Tunnel`] state specific to gateways.
 pub struct GatewayState {
-    pub candidate_receivers: StreamMap<ClientId, RTCIceCandidate>,
+    pub candidate_receivers: StreamMap<ClientId, String>,
     #[allow(clippy::type_complexity)]
     pub peers_by_ip: IpNetworkTable<ConnectedPeer<ClientId, PacketTransformGateway>>,
 }
 
 impl GatewayState {
-    pub fn add_new_ice_receiver(&mut self, id: ClientId, receiver: Receiver<RTCIceCandidate>) {
+    pub fn add_new_ice_receiver(&mut self, id: ClientId, receiver: Receiver<String>) {
         match self.candidate_receivers.try_push(id, receiver) {
             Ok(()) => {}
             Err(PushError::BeyondCapacity(_)) => {

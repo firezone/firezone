@@ -26,7 +26,6 @@ tokio-tungstenite = { version = "0.21", default-features = false, features = ["c
 tracing = { workspace = true }
 tracing-subscriber = "0.3.17"
 url = { version = "2.4.1", default-features = false }
-webrtc = { workspace = true }
 domain = { workspace = true }
 uuid = { version = "1.7.0", features = ["v4"] }
 

@@ -40,12 +40,6 @@ pub enum ConnlibError {
     /// Serde's serialize error.
     #[error(transparent)]
     SerializeError(#[from] serde_json::Error),
-    /// Webrtc error
-    #[error("ICE-related error: {0}")]
-    IceError(#[from] webrtc::Error),
-    /// Webrtc error regarding data channel.
-    #[error("ICE-data error: {0}")]
-    IceDataError(#[from] webrtc::data::Error),
     /// Error while sending through an async channelchannel.
     #[error("Error sending message through an async channel")]
     SendChannelError,
@@ -184,13 +178,14 @@ impl ConnlibError {
             );
         }
 
-        if let Self::IceDataError(e) = self {
-            return matches!(
-                e,
-                webrtc::data::Error::ErrStreamClosed
-                    | webrtc::data::Error::Sctp(webrtc::sctp::Error::ErrStreamClosed)
-            );
-        }
+        // TODO:!
+        // if let Self::IceDataError(e) = self {
+        //     return matches!(
+        //         e,
+        //         webrtc::data::Error::ErrStreamClosed
+        //             | webrtc::data::Error::Sctp(webrtc::sctp::Error::ErrStreamClosed)
+        //     );
+        // }
 
         false
     }

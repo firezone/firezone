@@ -26,7 +26,6 @@ tracing = { version = "0.1.40" }
 tracing-subscriber = { version = "0.3.17", features = ["parking_lot"] }
 secrecy = "0.8"
 hickory-resolver = { version = "0.24", features = ["tokio-runtime"] }
-webrtc = "0.9"
 str0m = { version = "0.4", default-features = false }
 futures-bounded = "0.2.1"
 domain = { version = "0.9", features = ["serde"] }
@@ -48,7 +47,6 @@ phoenix-channel = { path = "phoenix-channel"}
 
 [patch.crates-io]
 boringtun = { git = "https://github.com/thomaseizinger/boringtun", branch = "feat/expose-last-seen" }
-webrtc = { git = "https://github.com/firezone/webrtc", branch = "expose-new-endpoint" }
 str0m = { git = "https://github.com/algesten/str0m", branch = "main" }
 
 [profile.release]

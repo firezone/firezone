@@ -31,8 +31,7 @@ arc-swap = "1.6.0"
 bimap = "0.6"
 dns-lookup = { workspace = true }
 
-# TODO: research replacing for https://github.com/algesten/str0m
-webrtc = { workspace = true }
+firezone-connection = { path = "../connection" }
 
 # Needed for Android logging until tracing is fixed
 log = "0.4"

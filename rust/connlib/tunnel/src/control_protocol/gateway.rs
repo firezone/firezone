@@ -15,30 +15,26 @@ use connlib_shared::{
 };
 use ip_network::IpNetwork;
 use std::sync::Arc;
-use webrtc::ice_transport::{
-    ice_role::RTCIceRole, ice_transport_state::RTCIceTransportState, RTCIceTransport,
-};
 
-use super::{new_ice_connection, IceConnection};
-
-#[tracing::instrument(level = "trace", skip(ice))]
-fn set_connection_state_update(ice: &Arc<RTCIceTransport>, client_id: ClientId) {
-    let ice = ice.clone();
-    ice.on_connection_state_change({
-        let ice = ice.clone();
-        Box::new(move |state| {
-            tracing::trace!(%state, "peer_state");
-            let ice = ice.clone();
-            Box::pin(async move {
-                if state == RTCIceTransportState::Failed {
-                    if let Err(e) = ice.stop().await {
-                        tracing::warn!(err = ?e, "Couldn't stop ice client: {e:#}");
-                    }
-                }
-            })
-        })
-    });
-}
+// TODO:
+// #[tracing::instrument(level = "trace", skip(ice))]
+// fn set_connection_state_update(ice: &Arc<RTCIceTransport>, client_id: ClientId) {
+//     let ice = ice.clone();
+//     ice.on_connection_state_change({
+//         let ice = ice.clone();
+//         Box::new(move |state| {
+//             tracing::trace!(%state, "peer_state");
+//             let ice = ice.clone();
+//             Box::pin(async move {
+//                 if state == RTCIceTransportState::Failed {
+//                     if let Err(e) = ice.stop().await {
+//                         tracing::warn!(err = ?e, "Couldn't stop ice client: {e:#}");
+//                     }
+//                 }
+//             })
+//         })
+//     });
+// }
 
 impl<CB> Tunnel<CB, GatewayState>
 where
@@ -66,29 +62,27 @@ where
         expires_at: Option<DateTime<Utc>>,
         resource: ResourceDescription,
     ) -> Result<ConnectionAccepted> {
-        let IceConnection {
-            ice_parameters: local_params,
-            ice_transport: ice,
-            ice_candidate_rx,
-        } = new_ice_connection(&self.webrtc_api, relays).await?;
+        let offer = todo!();
         self.role_state
             .lock()
-            .add_new_ice_receiver(client_id, ice_candidate_rx);
+            .add_new_ice_receiver(client_id, todo!());
 
-        set_connection_state_update(&ice, client_id);
+        // TODO:
+        // set_connection_state_update(&ice, client_id);
 
-        let previous_ice = self
-            .peer_connections
-            .lock()
-            .insert(client_id, Arc::clone(&ice));
-        if let Some(ice) = previous_ice {
-            // If we had a previous on-going connection we stop it.
-            // Note that ice.stop also closes the gatherer.
-            // we only have to do this on the gateway because clients can query
-            // twice for initiating connections since they can close/reopen suddenly
-            // however, gateways never initiate connection requests
-            let _ = ice.stop().await;
-        }
+        // TODO:
+        // let previous_ice = self
+        //     .peer_connections
+        //     .lock()
+        //     .insert(client_id, Arc::clone(&ice));
+        // if let Some(ice) = previous_ice {
+        //     // If we had a previous on-going connection we stop it.
+        //     // Note that ice.stop also closes the gatherer.
+        //     // we only have to do this on the gateway because clients can query
+        //     // twice for initiating connections since they can close/reopen suddenly
+        //     // however, gateways never initiate connection requests
+        //     let _ = ice.stop().await;
+        // }
 
         let resource_addresses = match &resource {
             ResourceDescription::Dns(r) => {
@@ -97,8 +91,9 @@ where
                 };
 
                 if !is_subdomain(&domain, &r.address) {
-                    let _ = ice.stop().await;
-                    return Err(Error::InvalidResource);
+                    // TODO:
+                    // let _ = ice.stop().await;
+                    // return Err(Error::InvalidResource);
                 }
 
                 tokio::task::spawn_blocking(move || resolve_addresses(&domain.to_string()))
@@ -108,48 +103,49 @@ where
         };
 
         {
-            let resource_addresses = resource_addresses.clone();
-            let tunnel = self.clone();
-            tokio::spawn(async move {
-                if let Err(e) = ice
-                    .start(&client_payload.ice_parameters, Some(RTCIceRole::Controlled))
-                    .await
-                    .map_err(Into::into)
-                    .and_then(|_| {
-                        tunnel.new_tunnel(
-                            peer,
-                            client_id,
-                            resource,
-                            expires_at,
-                            ice.clone(),
-                            resource_addresses,
-                        )
-                    })
-                {
-                    tracing::warn!(%client_id, err = ?e, "Can't start tunnel: {e:#}");
-                    {
-                        let mut peer_connections = tunnel.peer_connections.lock();
-                        if let Some(peer_connection) = peer_connections.get(&client_id).cloned() {
-                            // We need to re-check this since it might have been replaced in between.
-                            if matches!(
-                                peer_connection.state(),
-                                RTCIceTransportState::Failed
-                                    | RTCIceTransportState::Disconnected
-                                    | RTCIceTransportState::Closed
-                            ) {
-                                peer_connections.remove(&client_id);
-                            }
-                        }
-                    }
+            // TODO:
+            // let resource_addresses = resource_addresses.clone();
+            // let tunnel = self.clone();
+            // tokio::spawn(async move {
+            //     if let Err(e) = ice
+            //         .start(&client_payload.ice_parameters, Some(RTCIceRole::Controlled))
+            //         .await
+            //         .map_err(Into::into)
+            //         .and_then(|_| {
+            //             tunnel.new_tunnel(
+            //                 peer,
+            //                 client_id,
+            //                 resource,
+            //                 expires_at,
+            //                 ice.clone(),
+            //                 resource_addresses,
+            //             )
+            //         })
+            //     {
+            //         tracing::warn!(%client_id, err = ?e, "Can't start tunnel: {e:#}");
+            //         {
+            //             let mut peer_connections = tunnel.peer_connections.lock();
+            //             if let Some(peer_connection) = peer_connections.get(&client_id).cloned() {
+            //                 // We need to re-check this since it might have been replaced in between.
+            //                 if matches!(
+            //                     peer_connection.state(),
+            //                     RTCIceTransportState::Failed
+            //                         | RTCIceTransportState::Disconnected
+            //                         | RTCIceTransportState::Closed
+            //                 ) {
+            //                     peer_connections.remove(&client_id);
+            //                 }
+            //             }
+            //         }
 
-                    // We only need to stop here because in case tunnel.new_tunnel failed.
-                    let _ = ice.stop().await;
-                }
-            });
+            //         // We only need to stop here because in case tunnel.new_tunnel failed.
+            //         let _ = ice.stop().await;
+            //     }
+            // });
         }
 
         Ok(ConnectionAccepted {
-            ice_parameters: local_params,
+            ice_parameters: offer,
             domain_response: client_payload.domain.map(|domain| DomainResponse {
                 domain,
                 address: resource_addresses
@@ -218,7 +214,8 @@ where
         client_id: ClientId,
         resource: ResourceDescription,
         expires_at: Option<DateTime<Utc>>,
-        ice: Arc<RTCIceTransport>,
+        // TODO:
+        // ice: Arc<RTCIceTransport>,
         resource_addresses: Vec<IpNetwork>,
     ) -> Result<()> {
         tracing::trace!(?peer_config.ips, "new_data_channel_open");
@@ -243,7 +240,8 @@ where
             Arc::clone(self),
             Arc::clone(&self.device),
             peer.clone(),
-            ice,
+            // TODO:
+            // ice,
             peer_receiver,
         );
 

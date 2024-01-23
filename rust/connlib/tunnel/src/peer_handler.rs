@@ -4,8 +4,7 @@ use std::time::Duration;
 
 use arc_swap::ArcSwapOption;
 use bytes::Bytes;
-use webrtc::mux::endpoint::Endpoint;
-use webrtc::util::Conn;
+use tokio::net::UdpSocket;
 
 use crate::device_channel::Device;
 use crate::peer::{PacketTransform, WriteTo};
@@ -14,7 +13,8 @@ use crate::{peer::Peer, MAX_UDP_SIZE};
 pub(crate) async fn start_peer_handler<TId, TTransform>(
     device: Arc<ArcSwapOption<Device>>,
     peer: Arc<Peer<TId, TTransform>>,
-    channel: Arc<Endpoint>,
+    // TODO: this will definetly not be a UdpSocket
+    channel: Arc<UdpSocket>,
 ) where
     TId: Copy + fmt::Debug + Send + Sync + 'static,
     TTransform: PacketTransform,
@@ -44,7 +44,8 @@ pub(crate) async fn start_peer_handler<TId, TTransform>(
 
 async fn peer_handler<TId, TTransform>(
     peer: &Arc<Peer<TId, TTransform>>,
-    channel: Arc<Endpoint>,
+    // TODO: see up
+    channel: Arc<UdpSocket>,
     device: &Device,
 ) -> std::io::Result<()>
 where
@@ -88,7 +89,7 @@ where
 }
 
 pub(crate) async fn handle_packet(
-    ep: Arc<Endpoint>,
+    ep: Arc<UdpSocket>,
     mut receiver: tokio::sync::mpsc::Receiver<Bytes>,
 ) {
     while let Some(packet) = receiver.recv().await {
@@ -97,9 +98,10 @@ pub(crate) async fn handle_packet(
         }
     }
 
-    if ep.close().await.is_err() {
-        tracing::warn!("failed to close endpoint");
-    }
+    // TODO:
+    // if ep.close().await.is_err() {
+    //     tracing::warn!("failed to close endpoint");
+    // }
 
     tracing::trace!("closed endpoint");
 }

@@ -31,7 +31,6 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
 use tokio::time::{Instant, Interval, MissedTickBehavior};
-use webrtc::ice_transport::ice_candidate::RTCIceCandidate;
 
 // Using str here because Ipv4/6Network doesn't support `const` 🙃
 const IPV4_RESOURCES: &str = "100.96.0.0/11";
@@ -197,9 +196,9 @@ where
 
 /// [`Tunnel`] state specific to clients.
 pub struct ClientState {
-    active_candidate_receivers: StreamMap<GatewayId, RTCIceCandidate>,
+    active_candidate_receivers: StreamMap<GatewayId, String>,
     /// We split the receivers of ICE candidates into two phases because we only want to start sending them once we've received an SDP from the gateway.
-    waiting_for_sdp_from_gateway: HashMap<GatewayId, Receiver<RTCIceCandidate>>,
+    waiting_for_sdp_from_gateway: HashMap<GatewayId, Receiver<String>>,
 
     // TODO: Make private
     pub awaiting_connection: HashMap<ResourceId, AwaitingConnectionDetails>,
@@ -554,7 +553,7 @@ impl ClientState {
     pub fn add_waiting_gateway(
         &mut self,
         id: GatewayId,
-        receiver: Receiver<RTCIceCandidate>,
+        receiver: Receiver<String>,
     ) -> StaticSecret {
         self.waiting_for_sdp_from_gateway.insert(id, receiver);
         let preshared_key = StaticSecret::random_from_rng(OsRng);

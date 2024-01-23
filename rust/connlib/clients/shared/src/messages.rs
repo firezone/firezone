@@ -7,7 +7,6 @@ use connlib_shared::messages::{
     ResourceId, ReuseConnection,
 };
 use url::Url;
-use webrtc::ice_transport::ice_candidate::RTCIceCandidate;
 
 #[derive(Debug, PartialEq, Eq, Deserialize, Serialize, Clone)]
 pub struct InitClient {
@@ -53,8 +52,6 @@ impl Eq for Connect {}
 // by a client.
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "snake_case", tag = "event", content = "payload")]
-// TODO: We will need to re-visit webrtc-rs
-#[allow(clippy::large_enum_variant)]
 pub enum IngressMessages {
     Init(InitClient),
 
@@ -73,7 +70,7 @@ pub struct BroadcastGatewayIceCandidates {
     /// Gateway's id the ice candidates are meant for
     pub gateway_ids: Vec<GatewayId>,
     /// Actual RTC ice candidates
-    pub candidates: Vec<RTCIceCandidate>,
+    pub candidates: Vec<String>,
 }
 
 /// A gateway's ice candidate message.
@@ -82,7 +79,7 @@ pub struct GatewayIceCandidates {
     /// Gateway's id the ice candidates are from
     pub gateway_id: GatewayId,
     /// Actual RTC ice candidates
-    pub candidates: Vec<RTCIceCandidate>,
+    pub candidates: Vec<String>,
 }
 
 /// The replies that can arrive from the channel by a client
@@ -139,9 +136,7 @@ impl From<ReplyMessages> for Messages {
 // These messages can be sent from a client to a control pane
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "snake_case", tag = "event", content = "payload")]
-// large_enum_variant: TODO: We will need to re-visit webrtc-rs
 // enum_variant_names: These are the names in the portal!
-#[allow(clippy::large_enum_variant, clippy::enum_variant_names)]
 pub enum EgressMessages {
     PrepareConnection {
         resource_id: ResourceId,
