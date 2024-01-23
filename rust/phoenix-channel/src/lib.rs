@@ -50,7 +50,7 @@ enum State {
 ///
 /// The provided URL must contain a host.
 /// Additionally, you must already provide any query parameters required for authentication.
-#[tracing::instrument(level = "debug", skip(payload, secret_url))]
+#[tracing::instrument(level = "debug", skip(payload, secret_url, reconnect_backoff))]
 #[allow(clippy::type_complexity)]
 pub async fn init<TInitM, TInboundMsg, TOutboundRes>(
     secret_url: Secret<SecureUrl>,
@@ -246,7 +246,7 @@ where
                         let secret_url = self.secret_url.clone();
                         let user_agent = self.user_agent.clone();
 
-                        tracing::debug!(?backoff, "Reconnecting to portal");
+                        tracing::debug!(?backoff, max_elapsed_time = ?self.reconnect_backoff.max_elapsed_time, "Reconnecting to portal");
 
                         self.state = State::Connecting(Box::pin(async move {
                             tokio::time::sleep(backoff).await;
