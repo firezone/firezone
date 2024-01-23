@@ -6076,13 +6076,13 @@ checksum = "9e08d8363704e6c71fc928674353e6b7c23dcea9d82d7012c8faf2a3a025f8d0"
 [[package]]
 name = "str0m"
 version = "0.4.1"
-source = "git+https://github.com/thomaseizinger/str0m?branch=main#12575cab1c8c466cbf1e05b0b7459136eeaba8ed"
+source = "git+https://github.com/thomaseizinger/str0m?branch=feat/export-stunpacket#da94d074602eb236987b21976ab4c3a9826c6e9a"
 dependencies = [
  "combine",
  "crc",
+ "fastrand 2.0.1",
  "hmac",
  "once_cell",
- "rand 0.8.5",
  "sctp-proto",
  "serde",
  "sha-1",
