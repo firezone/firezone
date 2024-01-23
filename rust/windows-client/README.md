@@ -7,7 +7,6 @@ This crate houses a Windows GUI client.
 This is the minimal toolchain needed to compile natively for x86_64 Windows:
 
 1. [Install rustup](https://win.rustup.rs/x86_64) for Windows.
-1. Install Tauri tooling: `cargo install tauri-cli`
 1. Install [pnpm](https://pnpm.io/installation) for your platform.
 
 ### Recommended IDE Setup
@@ -30,11 +29,10 @@ going on under the hood.
 # Builds a release exe
 pnpm build
 
-# The release exe, MSI, and NSIS installer should be up in the workspace.
+# The release exe and MSI installer should be up in the workspace.
 # The exe can run without being installed
-stat ../target/release/firezone-windows-client.exe
-stat ../target/release/bundle/msi/firezone-windows-client_0.0.0_x64_en-US.msi
-stat ../target/release/bundle/nsis/firezone-windows-client_0.0.0_x64-setup.exe
+stat ../target/release/Firezone.exe
+stat ../target/release/bundle/msi/Firezone_0.0.0_x64_en-US.msi
 ```
 
 ## Running
@@ -50,7 +48,7 @@ pnpm dev
 cargo tauri dev -- -- debug hostname
 
 # The exe is up in the workspace
-stat ../target/debug/firezone-windows-client.exe
+stat ../target/debug/Firezone.exe
 ```
 
 The app's config and logs will be stored at
