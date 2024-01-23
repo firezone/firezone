@@ -8,5 +8,5 @@ mod stun_binding;
 pub use ip_packet::IpPacket;
 pub use pool::{
     Answer, ClientConnectionPool, ConnectionPool, Credentials, Error, Event, Offer,
-    ServerConnectionPool,
+    ServerConnectionPool, Transmit,
 };
