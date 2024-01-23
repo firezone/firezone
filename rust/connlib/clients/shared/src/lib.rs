@@ -105,7 +105,9 @@ where
                         .payload()
                         .downcast_ref::<&str>()
                         .map(|s| Error::Panic(s.to_string()))
-                        .unwrap_or(Error::PanicNonStringPayload);
+                        .unwrap_or(Error::PanicNonStringPayload(
+                            info.location().map(ToString::to_string),
+                        ));
                     Self::disconnect_inner(tx, &callbacks, Some(err));
                     default_panic_hook(info);
                 }
@@ -168,7 +170,7 @@ where
             });
 
             let tunnel = fatal_error!(
-                Tunnel::new(private_key, callbacks.clone()).await,
+                Tunnel::new(private_key, callbacks.clone()),
                 runtime_stopper,
                 &callbacks
             );

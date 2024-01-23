@@ -40,12 +40,6 @@ pub enum ConnlibError {
     /// Serde's serialize error.
     #[error(transparent)]
     SerializeError(#[from] serde_json::Error),
-    /// Webrtc error
-    #[error("ICE-related error: {0}")]
-    IceError(#[from] webrtc::Error),
-    /// Webrtc error regarding data channel.
-    #[error("ICE-data error: {0}")]
-    IceDataError(#[from] webrtc::data::Error),
     /// Error while sending through an async channelchannel.
     #[error("Error sending message through an async channel")]
     SendChannelError,
@@ -110,7 +104,7 @@ pub enum ConnlibError {
     Panic(String),
     /// A panic occurred with a non-string payload.
     #[error("Panicked with a non-string payload")]
-    PanicNonStringPayload,
+    PanicNonStringPayload(Option<String>),
     /// Received connection details that might be stale
     #[error("Unexpected connection details")]
     UnexpectedConnectionDetails,
@@ -174,6 +168,14 @@ pub enum ConnlibError {
     WriteResolvConfBackup(std::io::Error),
     #[error("Failed to rewrite `resolv.conf`: {0}")]
     RewriteResolvConf(std::io::Error),
+    #[error(transparent)]
+    Snownet(#[from] snownet::Error),
+    #[error("Detected non-allowed packet in channel")]
+    UnallowedPacket,
+    #[error("No available ipv4 socket")]
+    NoIpv4,
+    #[error("No available ipv6 socket")]
+    NoIpv6,
 
     // Error variants for `systemd-resolved` DNS control
     #[error("Failed to control system DNS with `resolvectl`")]
@@ -187,26 +189,6 @@ impl ConnlibError {
             Self::PortalConnectionError(tokio_tungstenite::tungstenite::error::Error::Http(e))
             if e.status().is_client_error()
         )
-    }
-
-    /// Whether this error is fatal to the underlying connection.
-    pub fn is_fatal_connection_error(&self) -> bool {
-        if let Self::WireguardError(e) = self {
-            return matches!(
-                e,
-                WireGuardError::ConnectionExpired | WireGuardError::NoCurrentSession
-            );
-        }
-
-        if let Self::IceDataError(e) = self {
-            return matches!(
-                e,
-                webrtc::data::Error::ErrStreamClosed
-                    | webrtc::data::Error::Sctp(webrtc::sctp::Error::ErrStreamClosed)
-            );
-        }
-
-        false
     }
 }
 

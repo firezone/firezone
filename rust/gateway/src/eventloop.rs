@@ -1,53 +1,43 @@
 use crate::messages::{
     AllowAccess, BroadcastClientIceCandidates, ClientIceCandidates, ConnectionReady,
-    EgressMessages, IngressMessages,
+    EgressMessages, IngressMessages, RequestConnection,
 };
 use crate::CallbackHandler;
-use anyhow::{anyhow, bail, Result};
-use connlib_shared::messages::{
-    ClientId, DomainResponse, GatewayResponse, ResourceAccepted, ResourceDescription,
+use anyhow::{anyhow, Result};
+use connlib_shared::{
+    messages::{GatewayResponse, ResourceAccepted, ResourceDescription},
+    Dname,
 };
-use connlib_shared::{Dname, Error};
-use firezone_tunnel::{Event, GatewayState, ResolvedResourceDescriptionDns, Tunnel};
+use firezone_tunnel::{Event, GatewayTunnel, ResolvedResourceDescriptionDns};
 use ip_network::IpNetwork;
 use phoenix_channel::PhoenixChannel;
 use std::convert::Infallible;
-use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
 
 pub const PHOENIX_TOPIC: &str = "gateway";
 
 pub struct Eventloop {
-    tunnel: Arc<Tunnel<CallbackHandler, GatewayState>>,
+    tunnel: GatewayTunnel<CallbackHandler>,
     portal: PhoenixChannel<(), IngressMessages, EgressMessages>,
 
-    // TODO: Strongly type request reference (currently `String`)
-    connection_request_tasks:
-        futures_bounded::FuturesMap<(ClientId, String), Result<GatewayResponse>>,
-    add_ice_candidate_tasks: futures_bounded::FuturesSet<Result<(), Error>>,
-    allow_access_tasks: futures_bounded::FuturesMap<String, Option<DomainResponse>>,
-
+    resolve_tasks: futures_bounded::FuturesTupleSet<
+        Result<ResourceDescription<ResolvedResourceDescriptionDns>>,
+        Either<RequestConnection, AllowAccess>,
+    >,
     print_stats_timer: tokio::time::Interval,
 }
 
 impl Eventloop {
     pub(crate) fn new(
-        tunnel: Arc<Tunnel<CallbackHandler, GatewayState>>,
+        tunnel: GatewayTunnel<CallbackHandler>,
         portal: PhoenixChannel<(), IngressMessages, EgressMessages>,
     ) -> Self {
         Self {
             tunnel,
             portal,
-
-            // TODO: Pick sane values for timeouts and size.
-            connection_request_tasks: futures_bounded::FuturesMap::new(
-                Duration::from_secs(60),
-                100,
-            ),
-            add_ice_candidate_tasks: futures_bounded::FuturesSet::new(Duration::from_secs(60), 100),
+            resolve_tasks: futures_bounded::FuturesTupleSet::new(Duration::from_secs(60), 100),
             print_stats_timer: tokio::time::interval(Duration::from_secs(10)),
-            allow_access_tasks: futures_bounded::FuturesMap::new(Duration::from_secs(60), 100),
         }
     }
 }
@@ -80,151 +70,118 @@ impl Eventloop {
                 Poll::Pending => {}
             }
 
-            match self.connection_request_tasks.poll_unpin(cx) {
-                Poll::Ready(((client, reference), Ok(Ok(gateway_payload)))) => {
-                    tracing::debug!(%client, %reference, "Connection is ready");
+            match self.resolve_tasks.poll_unpin(cx) {
+                Poll::Ready((Ok(Ok(resource)), Either::Left(req))) => {
+                    let ips = req.client.peer.ips();
 
-                    self.portal.send(
-                        PHOENIX_TOPIC,
-                        EgressMessages::ConnectionReady(ConnectionReady {
-                            reference,
-                            gateway_payload,
-                        }),
+                    match self.tunnel.set_peer_connection_request(
+                        req.client.id,
+                        req.client.peer.preshared_key,
+                        req.client.payload.ice_parameters,
+                        PublicKey::from(req.client.peer.public_key.0),
+                        ips,
+                        req.relays,
+                        req.client.payload.domain,
+                        req.expires_at,
+                        resource,
+                    ) {
+                        Ok(accepted) => {
+                            self.portal.send(
+                                PHOENIX_TOPIC,
+                                EgressMessages::ConnectionReady(ConnectionReady {
+                                    reference: req.reference,
+                                    gateway_payload: GatewayResponse::ConnectionAccepted(accepted),
+                                }),
+                            );
+
+                            // TODO: If outbound request fails, cleanup connection.
+                            continue;
+                        }
+                        Err(e) => {
+                            let client = req.client.id;
+
+                            self.tunnel.cleanup_connection(client);
+                            tracing::debug!(%client, "Connection request failed: {:#}", anyhow::Error::new(e));
+
+                            continue;
+                        }
+                    }
+                }
+                Poll::Ready((Ok(Ok(resource)), Either::Right(req))) => {
+                    let maybe_domain_response = self.tunnel.allow_access(
+                        resource,
+                        req.client_id,
+                        req.expires_at,
+                        req.payload,
                     );
 
-                    // TODO: If outbound request fails, cleanup connection.
-                    continue;
-                }
-                Poll::Ready(((client, _), Ok(Err(e)))) => {
-                    self.tunnel.cleanup_connection(client);
-                    tracing::debug!(%client, "Connection request failed: {:#}", e);
-
-                    continue;
-                }
-                Poll::Ready(((client, reference), Err(e))) => {
-                    tracing::debug!(
-                        %client,
-                        %reference,
-                        "Failed to establish connection: {:#}", anyhow::Error::new(e)
-                    );
-                    continue;
-                }
-                Poll::Pending => {}
-            }
-
-            match self.allow_access_tasks.poll_unpin(cx) {
-                Poll::Ready((reference, Ok(Some(domain_response)))) => {
-                    self.portal.send(
-                        PHOENIX_TOPIC,
-                        EgressMessages::ConnectionReady(ConnectionReady {
-                            reference,
-                            gateway_payload: GatewayResponse::ResourceAccepted(ResourceAccepted {
-                                domain_response,
+                    if let Some(domain_response) = maybe_domain_response {
+                        self.portal.send(
+                            PHOENIX_TOPIC,
+                            EgressMessages::ConnectionReady(ConnectionReady {
+                                reference: req.reference,
+                                gateway_payload: GatewayResponse::ResourceAccepted(
+                                    ResourceAccepted { domain_response },
+                                ),
                             }),
-                        }),
-                    );
+                        );
+                        continue;
+                    }
+                }
+                Poll::Ready((Ok(Err(dns_error)), Either::Left(req))) => {
+                    tracing::debug!(client = %req.client.id, reference = %req.reference, "Failed to resolve domains as part of connection request: {dns_error}");
                     continue;
                 }
-                Poll::Ready((_, Ok(None))) => {
+                Poll::Ready((Ok(Err(dns_error)), Either::Right(req))) => {
+                    tracing::debug!(client = %req.client_id, reference = %req.reference, "Failed to resolve domains as part of allow access request: {dns_error}");
                     continue;
                 }
-                Poll::Ready((reference, Err(e))) => {
-                    tracing::debug!(
-                        %reference,
-                        "Failed to allow access: {:#}", anyhow::Error::new(e)
-                    );
+                Poll::Ready((Err(dns_timeout), Either::Left(req))) => {
+                    tracing::debug!(client = %req.client.id, reference = %req.reference, "DNS resolution timed out as part of connection request: {dns_timeout}");
                     continue;
                 }
-                Poll::Pending => {}
-            }
-
-            match self.add_ice_candidate_tasks.poll_unpin(cx) {
-                Poll::Ready(Ok(Ok(()))) => {
-                    continue;
-                }
-                Poll::Ready(Ok(Err(e))) => {
-                    tracing::error!("Failed to add ICE candidate: {:#}", anyhow::Error::new(e));
-
-                    continue;
-                }
-                Poll::Ready(Err(e)) => {
-                    tracing::error!("Failed to add ICE candidate: {e}");
+                Poll::Ready((Err(dns_timeout), Either::Right(req))) => {
+                    tracing::debug!(client = %req.client_id, reference = %req.reference, "DNS resolution timed out as part of allow access request: {dns_timeout}");
                     continue;
                 }
                 Poll::Pending => {}
             }
-
             match self.portal.poll(cx)? {
                 Poll::Ready(phoenix_channel::Event::InboundMessage {
                     msg: IngressMessages::RequestConnection(req),
                     ..
                 }) => {
-                    let tunnel = Arc::clone(&self.tunnel);
-
-                    let connection_request = async move {
-                        let resource =
-                            resolve_resource_description(req.resource, &req.client.payload.domain)
-                                .await?;
-
-                        let conn = tunnel
-                            .set_peer_connection_request(
-                                req.client.payload.ice_parameters,
-                                req.client.peer.into(),
-                                req.relays,
-                                req.client.id,
-                                req.client.payload.domain,
-                                req.expires_at,
-                                resource,
-                            )
-                            .await?;
-                        Ok(GatewayResponse::ConnectionAccepted(conn))
-                    };
-
-                    match self
-                        .connection_request_tasks
-                        .try_push((req.client.id, req.reference.clone()), connection_request)
+                    if self
+                        .resolve_tasks
+                        .try_push(
+                            resolve_resource_description(
+                                req.resource.clone(),
+                                req.client.payload.domain.clone(),
+                            ),
+                            Either::Left(req),
+                        )
+                        .is_err()
                     {
-                        Err(futures_bounded::PushError::BeyondCapacity(_)) => {
-                            tracing::warn!("Too many connections requests, dropping existing one");
-                        }
-                        Err(futures_bounded::PushError::Replaced(_)) => {
-                            debug_assert!(false, "Received a 2nd connection requested with the same reference from the same client");
-                        }
-                        Ok(()) => {}
+                        tracing::warn!("Too many connections requests, dropping existing one");
                     };
 
                     continue;
                 }
                 Poll::Ready(phoenix_channel::Event::InboundMessage {
-                    msg:
-                        IngressMessages::AllowAccess(AllowAccess {
-                            client_id,
-                            resource,
-                            expires_at,
-                            payload,
-                            reference,
-                        }),
+                    msg: IngressMessages::AllowAccess(req),
                     ..
                 }) => {
-                    tracing::debug!(client = %client_id, resource = %resource.id(), expires = ?expires_at.map(|e| e.to_rfc3339()), "Allowing access to resource");
-
-                    let tunnel = Arc::clone(&self.tunnel);
-
-                    let allow_access = async move {
-                        let resource = resolve_resource_description(resource, &payload)
-                            .await
-                            .ok()?;
-
-                        tunnel.allow_access(resource, client_id, expires_at, payload)
-                    };
-
                     if self
-                        .allow_access_tasks
-                        .try_push(reference, allow_access)
+                        .resolve_tasks
+                        .try_push(
+                            resolve_resource_description(req.resource.clone(), req.payload.clone()),
+                            Either::Right(req),
+                        )
                         .is_err()
                     {
                         tracing::warn!("Too many allow access requests, dropping existing one");
-                    }
+                    };
+
                     continue;
                 }
                 Poll::Ready(phoenix_channel::Event::InboundMessage {
@@ -238,16 +195,7 @@ impl Eventloop {
                     for candidate in candidates {
                         tracing::debug!(client = %client_id, %candidate, "Adding ICE candidate from client");
 
-                        let tunnel = Arc::clone(&self.tunnel);
-                        if self
-                            .add_ice_candidate_tasks
-                            .try_push(async move {
-                                tunnel.add_ice_candidate(client_id, candidate).await
-                            })
-                            .is_err()
-                        {
-                            tracing::debug!("Received too many ICE candidates, dropping some");
-                        }
+                        self.tunnel.add_ice_candidate(client_id, candidate);
                     }
                     continue;
                 }
@@ -276,7 +224,7 @@ impl Eventloop {
 
 async fn resolve_resource_description(
     resource: ResourceDescription,
-    domain: &Option<Dname>,
+    domain: Option<Dname>,
 ) -> Result<ResourceDescription<ResolvedResourceDescriptionDns>> {
     match resource {
         ResourceDescription::Dns(dns) => {
@@ -285,7 +233,7 @@ async fn resolve_resource_description(
                     false,
                     "We should never get a DNS resource access request without the subdomain"
                 );
-                bail!("Protocol error: Request for DNS resource without the subdomain being tried to access.")
+                anyhow::bail!("Protocol error: Request for DNS resource without the subdomain being tried to access.")
             };
 
             let addresses =
@@ -329,8 +277,10 @@ fn resolve_addresses(addr: &str) -> std::io::Result<Vec<IpNetwork>> {
     }
 }
 
+use boringtun::x25519::PublicKey;
 #[cfg(not(target_os = "windows"))]
 use dns_lookup::{AddrInfoHints, AddrInfoIter, LookupError};
+use either::Either;
 
 #[cfg(not(target_os = "windows"))]
 fn resolve_address_family(

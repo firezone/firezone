@@ -59,7 +59,7 @@ pub trait Callbacks: Clone + Send + Sync {
     /// If the tunnel disconnected due to a fatal error, `error` is the error
     /// that caused the disconnect.
     fn on_disconnect(&self, error: Option<&crate::Error>) -> Result<(), Self::Error> {
-        tracing::trace!(error = ?error, "tunnel_disconnected");
+        tracing::error!(error = ?error, "tunnel_disconnected");
         // Note that we can't panic here, since we already hooked the panic to this function.
         std::process::exit(0);
     }

@@ -121,6 +121,9 @@ ENV PACKAGE=${PACKAGE}
 
 CMD $PACKAGE
 
+FROM runtime AS development
+RUN apk add --no-cache iperf3
+
 # Build an image for GitHub Actions which includes debug asserts and test utilities
 FROM runtime AS debug
 

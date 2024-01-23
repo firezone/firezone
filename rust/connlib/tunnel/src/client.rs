@@ -1,37 +1,31 @@
 use crate::device_channel::{Device, Packet};
 use crate::ip_packet::{IpPacket, MutableIpPacket};
-use crate::peer::PacketTransformClient;
-use crate::{
-    dns, ConnectedPeer, DnsQuery, Event, PeerConfig, RoleState, Tunnel, DNS_QUERIES_QUEUE_SIZE,
-    ICE_GATHERING_TIMEOUT_SECONDS, MAX_CONCURRENT_ICE_GATHERING,
-};
+use crate::peer::{PacketTransformClient, Peer};
+use crate::{dns, DnsQuery, Event, Tunnel, DNS_QUERIES_QUEUE_SIZE};
 use bimap::BiMap;
-use boringtun::x25519::{PublicKey, StaticSecret};
 use connlib_shared::error::{ConnlibError as Error, ConnlibError};
 use connlib_shared::messages::{
-    DnsServer, GatewayId, Interface as InterfaceConfig, Key, ResourceDescription,
-    ResourceDescriptionCidr, ResourceDescriptionDns, ResourceId, ReuseConnection, SecretKey,
+    DnsServer, GatewayId, Interface as InterfaceConfig, ResourceDescription,
+    ResourceDescriptionCidr, ResourceDescriptionDns, ResourceId, ReuseConnection,
 };
 use connlib_shared::{Callbacks, Dname, IpProvider};
 use domain::base::Rtype;
-use futures::channel::mpsc::Receiver;
 use futures::stream;
 use futures_bounded::{FuturesMap, FuturesTupleSet, PushError, StreamMap};
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
 use itertools::Itertools;
+use snownet::Client;
 
 use hickory_resolver::config::{NameServerConfig, Protocol, ResolverConfig};
 use hickory_resolver::TokioAsyncResolver;
-use rand_core::OsRng;
 use std::collections::hash_map::Entry;
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, HashSet};
 use std::net::IpAddr;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
 use tokio::time::{Instant, Interval, MissedTickBehavior};
-use webrtc::ice_transport::ice_candidate::RTCIceCandidate;
 
 // Using str here because Ipv4/6Network doesn't support `const` 🙃
 const IPV4_RESOURCES: &str = "100.96.0.0/11";
@@ -53,7 +47,7 @@ impl DnsResource {
     }
 }
 
-impl<CB> Tunnel<CB, ClientState>
+impl<CB> Tunnel<CB, ClientState, Client, GatewayId, PacketTransformClient>
 where
     CB: Callbacks + 'static,
 {
@@ -178,12 +172,7 @@ where
 
 /// [`Tunnel`] state specific to clients.
 pub struct ClientState {
-    active_candidate_receivers: StreamMap<GatewayId, RTCIceCandidate>,
-    /// We split the receivers of ICE candidates into two phases because we only want to start sending them once we've received an SDP from the gateway.
-    waiting_for_sdp_from_gateway: HashMap<GatewayId, Receiver<RTCIceCandidate>>,
-
-    // TODO: Make private
-    pub awaiting_connection: HashMap<ResourceId, AwaitingConnectionDetails>,
+    awaiting_connection: HashMap<ResourceId, AwaitingConnectionDetails>,
     awaiting_connection_timers: StreamMap<ResourceId, Instant>,
 
     pub gateway_awaiting_connection: HashSet<GatewayId>,
@@ -197,8 +186,6 @@ pub struct ClientState {
     // then the old peer will expire, this might take ~180 seconds. This is an even worse experience but the likelihood of this happen is infinitesimaly small, again correctness is the only important part.
     gateway_awaiting_connection_timers: FuturesMap<GatewayId, ()>,
 
-    pub gateway_public_keys: HashMap<GatewayId, PublicKey>,
-    pub gateway_preshared_keys: HashMap<GatewayId, StaticSecret>,
     resources_gateways: HashMap<ResourceId, GatewayId>,
 
     pub dns_resources_internal_ips: HashMap<DnsResource, HashSet<IpAddr>>,
@@ -207,8 +194,7 @@ pub struct ClientState {
     pub resource_ids: HashMap<ResourceId, ResourceDescription>,
     pub deferred_dns_queries: HashMap<(DnsResource, Rtype), IpPacket<'static>>,
 
-    #[allow(clippy::type_complexity)]
-    pub peers_by_ip: IpNetworkTable<ConnectedPeer<GatewayId, PacketTransformClient>>,
+    pub peers_by_ip: IpNetworkTable<Arc<Peer<GatewayId, PacketTransformClient>>>,
 
     forwarded_dns_queries: FuturesTupleSet<
         Result<hickory_resolver::lookup::Lookup, hickory_resolver::error::ResolveError>,
@@ -327,12 +313,11 @@ impl ClientState {
 
         self.resources_gateways.insert(resource, gateway);
 
-        let Some(peer) = self.peers_by_ip.iter().find_map(|(_, p)| {
-            (p.inner.conn_id == gateway).then_some(ConnectedPeer {
-                inner: p.inner.clone(),
-                channel: p.channel.clone(),
-            })
-        }) else {
+        let Some(peer) = self
+            .peers_by_ip
+            .iter()
+            .find_map(|(_, p)| (p.conn_id == gateway).then_some(p.clone()))
+        else {
             match self
                 .gateway_awaiting_connection_timers
                 // Note: we don't need to set a timer here because
@@ -354,14 +339,8 @@ impl ClientState {
         };
 
         for ip in self.get_resource_ip(desc, &domain) {
-            peer.inner.add_allowed_ip(ip);
-            self.peers_by_ip.insert(
-                ip,
-                ConnectedPeer {
-                    inner: peer.inner.clone(),
-                    channel: peer.channel.clone(),
-                },
-            );
+            peer.add_allowed_ip(ip);
+            self.peers_by_ip.insert(ip, peer.clone());
         }
         self.awaiting_connection.remove(&resource);
         self.awaiting_connection_timers.remove(resource);
@@ -496,20 +475,7 @@ impl ClientState {
         resource: ResourceId,
         gateway: GatewayId,
         domain: &Option<Dname>,
-    ) -> Result<PeerConfig, ConnlibError> {
-        let shared_key = self
-            .gateway_preshared_keys
-            .get(&gateway)
-            .ok_or(Error::ControlProtocolError)?
-            .clone();
-
-        let Some(public_key) = self.gateway_public_keys.remove(&gateway) else {
-            self.awaiting_connection.remove(&resource);
-            self.gateway_awaiting_connection.remove(&gateway);
-
-            return Err(Error::ControlProtocolError);
-        };
-
+    ) -> Result<Vec<IpNetwork>, ConnlibError> {
         let desc = self
             .resource_ids
             .get(&resource)
@@ -517,52 +483,16 @@ impl ClientState {
 
         let ips = self.get_resource_ip(desc, domain);
 
-        let config = PeerConfig {
-            persistent_keepalive: None,
-            public_key,
-            ips,
-            preshared_key: SecretKey::new(Key(shared_key.to_bytes())),
-        };
-
         // Tidy up state once everything succeeded.
         self.gateway_awaiting_connection.remove(&gateway);
         self.gateway_awaiting_connection_timers.remove(gateway);
         self.awaiting_connection.remove(&resource);
 
-        Ok(config)
+        Ok(ips)
     }
 
     pub fn gateway_by_resource(&self, resource: &ResourceId) -> Option<GatewayId> {
         self.resources_gateways.get(resource).copied()
-    }
-
-    pub fn add_waiting_gateway(
-        &mut self,
-        id: GatewayId,
-        receiver: Receiver<RTCIceCandidate>,
-    ) -> StaticSecret {
-        self.waiting_for_sdp_from_gateway.insert(id, receiver);
-        let preshared_key = StaticSecret::random_from_rng(OsRng);
-        self.gateway_preshared_keys
-            .insert(id, preshared_key.clone());
-        preshared_key
-    }
-
-    pub fn activate_ice_candidate_receiver(&mut self, id: GatewayId, key: PublicKey) {
-        let Some(receiver) = self.waiting_for_sdp_from_gateway.remove(&id) else {
-            return;
-        };
-        self.gateway_public_keys.insert(id, key);
-
-        match self.active_candidate_receivers.try_push(id, receiver) {
-            Ok(()) => {}
-            Err(PushError::BeyondCapacity(_)) => {
-                tracing::warn!("Too many active ICE candidate receivers at a time")
-            }
-            Err(PushError::Replaced(_)) => {
-                tracing::warn!(%id, "Replaced old ICE candidate receiver with new one")
-            }
-        }
     }
 
     pub fn set_dns_mapping(&mut self, mapping: BiMap<IpAddr, DnsServer>) {
@@ -585,7 +515,7 @@ impl ClientState {
     fn is_connected_to(
         &self,
         resource: ResourceId,
-        connected_peers: &IpNetworkTable<ConnectedPeer<GatewayId, PacketTransformClient>>,
+        connected_peers: &IpNetworkTable<Arc<Peer<GatewayId, PacketTransformClient>>>,
         domain: &Option<Dname>,
     ) -> bool {
         let Some(resource) = self.resource_ids.get(&resource) else {
@@ -652,89 +582,9 @@ impl ClientState {
             tracing::warn!("Too many DNS queries, dropping existing one");
         }
     }
-}
 
-fn create_resolvers(
-    sentinel_mapping: BiMap<IpAddr, DnsServer>,
-) -> HashMap<IpAddr, TokioAsyncResolver> {
-    sentinel_mapping
-        .into_iter()
-        .map(|(sentinel, srv)| {
-            let mut resolver_config = ResolverConfig::new();
-            resolver_config.add_name_server(NameServerConfig::new(srv.address(), Protocol::Udp));
-            (
-                sentinel,
-                TokioAsyncResolver::tokio(resolver_config, Default::default()),
-            )
-        })
-        .collect()
-}
-
-impl Default for ClientState {
-    fn default() -> Self {
-        // With this single timer this might mean that some DNS are refreshed too often
-        // however... this also mean any resource is refresh within a 5 mins interval
-        // therefore, only the first time it's added that happens, after that it doesn't matter.
-        let mut interval = tokio::time::interval(Duration::from_secs(300));
-        interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
-        Self {
-            active_candidate_receivers: StreamMap::new(
-                Duration::from_secs(ICE_GATHERING_TIMEOUT_SECONDS),
-                MAX_CONCURRENT_ICE_GATHERING,
-            ),
-            waiting_for_sdp_from_gateway: Default::default(),
-
-            awaiting_connection: Default::default(),
-            awaiting_connection_timers: StreamMap::new(Duration::from_secs(60), 100),
-
-            gateway_awaiting_connection: Default::default(),
-            gateway_awaiting_connection_timers: FuturesMap::new(MAX_CONNECTION_REQUEST_DELAY, 100),
-
-            gateway_public_keys: Default::default(),
-            resources_gateways: Default::default(),
-            forwarded_dns_queries: FuturesTupleSet::new(
-                Duration::from_secs(60),
-                DNS_QUERIES_QUEUE_SIZE,
-            ),
-            gateway_preshared_keys: Default::default(),
-            // TODO: decide ip ranges
-            ip_provider: IpProvider::new(
-                IPV4_RESOURCES.parse().unwrap(),
-                IPV6_RESOURCES.parse().unwrap(),
-            ),
-            dns_resources_internal_ips: Default::default(),
-            dns_resources: Default::default(),
-            cidr_resources: IpNetworkTable::new(),
-            resource_ids: Default::default(),
-            peers_by_ip: IpNetworkTable::new(),
-            deferred_dns_queries: Default::default(),
-            refresh_dns_timer: interval,
-            dns_mapping: Default::default(),
-            dns_resolvers: Default::default(),
-        }
-    }
-}
-
-impl RoleState for ClientState {
-    type Id = GatewayId;
-
-    fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Event<Self::Id>> {
+    pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Event<GatewayId>> {
         loop {
-            match self.active_candidate_receivers.poll_next_unpin(cx) {
-                Poll::Ready((conn_id, Some(Ok(c)))) => {
-                    return Poll::Ready(Event::SignalIceCandidate {
-                        conn_id,
-                        candidate: c,
-                    })
-                }
-                Poll::Ready((id, Some(Err(e)))) => {
-                    tracing::warn!(gateway_id = %id, "ICE gathering timed out: {e}");
-                    continue;
-                }
-                Poll::Ready((_, None)) => continue,
-                Poll::Pending => {}
-            }
-
             if let Poll::Ready((gateway_id, _)) =
                 self.gateway_awaiting_connection_timers.poll_unpin(cx)
             {
@@ -787,7 +637,7 @@ impl RoleState for ClientState {
 
                 self.peers_by_ip
                     .iter()
-                    .for_each(|p| p.1.inner.transform.expire_dns_track());
+                    .for_each(|p| p.1.transform.expire_dns_track());
 
                 for resource in self.dns_resources_internal_ips.keys() {
                     let Some(gateway_id) = self.resources_gateways.get(&resource.id) else {
@@ -797,7 +647,7 @@ impl RoleState for ClientState {
                     if !self
                         .peers_by_ip
                         .iter()
-                        .any(|(_, p)| &p.inner.conn_id == gateway_id)
+                        .any(|(_, p)| &p.conn_id == gateway_id)
                     {
                         continue;
                     }
@@ -832,39 +682,58 @@ impl RoleState for ClientState {
             return Poll::Pending;
         }
     }
+}
 
-    fn remove_peers(&mut self, conn_id: GatewayId) {
-        self.peers_by_ip.retain(|_, p| p.inner.conn_id != conn_id);
-    }
+fn create_resolvers(
+    sentinel_mapping: BiMap<IpAddr, DnsServer>,
+) -> HashMap<IpAddr, TokioAsyncResolver> {
+    sentinel_mapping
+        .into_iter()
+        .map(|(sentinel, srv)| {
+            let mut resolver_config = ResolverConfig::new();
+            resolver_config.add_name_server(NameServerConfig::new(srv.address(), Protocol::Udp));
+            (
+                sentinel,
+                TokioAsyncResolver::tokio(resolver_config, Default::default()),
+            )
+        })
+        .collect()
+}
 
-    fn refresh_peers(&mut self) -> VecDeque<Self::Id> {
-        let mut peers_to_stop = VecDeque::new();
-        for (_, peer) in self.peers_by_ip.iter().unique_by(|(_, p)| p.inner.conn_id) {
-            let conn_id = peer.inner.conn_id;
+impl Default for ClientState {
+    fn default() -> Self {
+        // With this single timer this might mean that some DNS are refreshed too often
+        // however... this also mean any resource is refresh within a 5 mins interval
+        // therefore, only the first time it's added that happens, after that it doesn't matter.
+        let mut interval = tokio::time::interval(Duration::from_secs(300));
+        interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
-            let bytes = match peer.inner.update_timers() {
-                Ok(Some(bytes)) => bytes,
-                Ok(None) => continue,
-                Err(e) => {
-                    tracing::error!("Failed to update timers for peer: {e}");
-                    if e.is_fatal_connection_error() {
-                        peers_to_stop.push_back(conn_id);
-                    }
+        Self {
+            awaiting_connection: Default::default(),
+            awaiting_connection_timers: StreamMap::new(Duration::from_secs(60), 100),
 
-                    continue;
-                }
-            };
+            gateway_awaiting_connection: Default::default(),
+            gateway_awaiting_connection_timers: FuturesMap::new(MAX_CONNECTION_REQUEST_DELAY, 100),
 
-            let peer_channel = peer.channel.clone();
-
-            tokio::spawn(async move {
-                if let Err(e) = peer_channel.send(bytes).await {
-                    tracing::error!("Failed to send packet to peer: {e:#}");
-                }
-            });
+            resources_gateways: Default::default(),
+            forwarded_dns_queries: FuturesTupleSet::new(
+                Duration::from_secs(60),
+                DNS_QUERIES_QUEUE_SIZE,
+            ),
+            ip_provider: IpProvider::new(
+                IPV4_RESOURCES.parse().unwrap(),
+                IPV6_RESOURCES.parse().unwrap(),
+            ),
+            dns_resources_internal_ips: Default::default(),
+            dns_resources: Default::default(),
+            cidr_resources: IpNetworkTable::new(),
+            resource_ids: Default::default(),
+            peers_by_ip: IpNetworkTable::new(),
+            deferred_dns_queries: Default::default(),
+            refresh_dns_timer: interval,
+            dns_mapping: Default::default(),
+            dns_resolvers: Default::default(),
         }
-
-        peers_to_stop
     }
 }
 

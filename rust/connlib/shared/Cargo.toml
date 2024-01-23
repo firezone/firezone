@@ -32,13 +32,13 @@ tracing = { workspace = true }
 tracing-appender = "0.2"
 url = { version = "2.4.1", default-features = false }
 uuid = { version = "1.7", default-features = false, features = ["std", "v4", "serde"] }
-webrtc = { workspace = true }
 ring = "0.17"
 hickory-resolver = { workspace = true }
 domain = { workspace = true }
 libc = "0.2"
 dns-lookup = { workspace = true }
 known-folders = "1.1.0"
+snownet = { workspace = true }
 
 # Needed for Android logging until tracing is working
 log = "0.4"
@@ -50,7 +50,7 @@ swift-bridge = { workspace = true }
 tracing-android = "0.2"
 
 [target.'cfg(target_os = "linux")'.dependencies]
-rtnetlink = { version = "0.13", default-features = false, features = ["tokio_socket"] }
+rtnetlink = { workspace = true }
 
 # Windows tunnel dependencies
 [target.'cfg(target_os = "windows")'.dependencies]

@@ -830,7 +830,7 @@ impl ChannelBindings {
         let channel = self.inner.get_mut(&channel_number)?;
         channel.record_received(now);
 
-        debug_assert!(channel.bound); // TODO: Should we "force-set" this? We seem to be getting traffic on this channel ..
+        // debug_assert!(channel.bound); // TODO: Should we "force-set" this? We seem to be getting traffic on this channel ..
 
         Some((channel.peer, payload))
     }

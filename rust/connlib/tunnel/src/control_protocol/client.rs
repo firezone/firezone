@@ -4,64 +4,28 @@ use boringtun::x25519::PublicKey;
 use connlib_shared::{
     control::Reference,
     messages::{
-        ClientPayload, DomainResponse, GatewayId, Key, Relay, RequestConnection,
+        Answer, ClientPayload, DomainResponse, GatewayId, Key, Offer, Relay, RequestConnection,
         ResourceDescription, ResourceId,
     },
     Callbacks,
 };
 use domain::base::Rtype;
 use ip_network::IpNetwork;
-use secrecy::Secret;
-use webrtc::ice_transport::{
-    ice_parameters::RTCIceParameters, ice_role::RTCIceRole,
-    ice_transport_state::RTCIceTransportState, RTCIceTransport,
-};
+use secrecy::{ExposeSecret, Secret};
+use snownet::Client;
 
 use crate::{
     client::DnsResource,
-    control_protocol::{new_ice_connection, IceConnection},
+    control_protocol::{stun, turn},
     device_channel::Device,
     dns,
     peer::PacketTransformClient,
-    PEER_QUEUE_SIZE,
 };
-use crate::{peer::Peer, ClientState, ConnectedPeer, Error, Request, Result, Tunnel};
+use crate::{peer::Peer, ClientState, Error, Request, Result, Tunnel};
 
-use super::{insert_peers, start_handlers};
+use super::insert_peers;
 
-#[tracing::instrument(level = "trace", skip(tunnel, ice))]
-fn set_connection_state_update<CB>(
-    tunnel: &Arc<Tunnel<CB, ClientState>>,
-    ice: &Arc<RTCIceTransport>,
-    gateway_id: GatewayId,
-    resource_id: ResourceId,
-) where
-    CB: Callbacks + 'static,
-{
-    let tunnel = Arc::clone(tunnel);
-    ice.on_connection_state_change(Box::new(move |state| {
-        let tunnel = Arc::clone(&tunnel);
-        tracing::trace!(%state, "peer_state");
-        Box::pin(async move {
-            if state == RTCIceTransportState::Failed {
-                // There's a really unlikely race condition but this line needs to be before on_connection_failed.
-                // if we clear up the gateway awaiting flag before removing the connection a new connection could be
-                // established that replaces this one and this line removes it.
-                let ice = tunnel.peer_connections.lock().remove(&gateway_id);
-
-                if let Some(ice) = ice {
-                    if let Err(err) = ice.stop().await {
-                        tracing::warn!(%err, "couldn't stop ice transport: {err:#}");
-                    }
-                }
-
-                tunnel.role_state.lock().on_connection_failed(resource_id);
-            }
-        })
-    }));
-}
-
-impl<CB> Tunnel<CB, ClientState>
+impl<CB> Tunnel<CB, ClientState, Client, GatewayId, PacketTransformClient>
 where
     CB: Callbacks + 'static,
 {
@@ -77,8 +41,8 @@ where
     /// # Returns
     /// A [RequestConnection] that should be sent to the gateway through the control-plane.
     #[tracing::instrument(level = "trace", skip_all, fields(%resource_id, %gateway_id))]
-    pub async fn request_connection(
-        self: &Arc<Self>,
+    pub fn request_connection(
+        &self,
         resource_id: ResourceId,
         gateway_id: GatewayId,
         relays: Vec<Relay>,
@@ -96,6 +60,11 @@ where
             gateway_id,
             reference,
         )? {
+            // TODO: now we send reuse connections before connection is established but after
+            // response is offered.
+            // We need to consider new race conditions, such as connection failed after
+            // reuse connection is sent.
+            // Though I believe everything will work just fine like this.
             return Ok(Request::ReuseConnection(connection));
         }
 
@@ -105,40 +74,36 @@ where
             .get_awaiting_connection_domain(&resource_id)?
             .clone();
 
-        let IceConnection {
-            ice_parameters,
-            ice_transport,
-            ice_candidate_rx,
-        } = new_ice_connection(&self.webrtc_api, relays).await?;
-        let preshared_key = self
-            .role_state
+        let mut stun_relays = stun(&relays);
+        stun_relays.extend(turn(&relays).iter().map(|r| r.0).collect::<HashSet<_>>());
+        let offer = self
+            .connections_state
             .lock()
-            .add_waiting_gateway(gateway_id, ice_candidate_rx);
-        self.peer_connections
-            .lock()
-            .insert(gateway_id, Arc::clone(&ice_transport));
-
-        set_connection_state_update(self, &ice_transport, gateway_id, resource_id);
+            .connections
+            .node
+            .new_connection(gateway_id, stun_relays, turn(&relays));
 
         Ok(Request::NewConnection(RequestConnection {
             resource_id,
             gateway_id,
-            client_preshared_key: Secret::new(Key(preshared_key.to_bytes())),
+            client_preshared_key: Secret::new(Key(*offer.session_key.expose_secret())),
             client_payload: ClientPayload {
-                ice_parameters,
+                ice_parameters: Offer {
+                    username: offer.credentials.username,
+                    password: offer.credentials.password,
+                },
                 domain,
             },
         }))
     }
 
-    fn new_tunnel(
-        self: &Arc<Self>,
+    fn new_peer(
+        &self,
         resource_id: ResourceId,
         gateway_id: GatewayId,
-        ice: Arc<RTCIceTransport>,
         domain_response: Option<DomainResponse>,
     ) -> Result<()> {
-        let peer_config = self
+        let ips = self
             .role_state
             .lock()
             .create_peer_config_for_new_connection(
@@ -147,43 +112,27 @@ where
                 &domain_response.as_ref().map(|d| d.domain.clone()),
             )?;
 
-        let peer = Arc::new(Peer::new(
-            self.private_key.clone(),
-            self.next_index(),
-            peer_config.clone(),
-            gateway_id,
-            self.rate_limiter.clone(),
-            Default::default(),
-        ));
+        let peer = Arc::new(Peer::new(ips.clone(), gateway_id, Default::default()));
 
         let peer_ips = if let Some(domain_response) = domain_response {
             self.dns_response(&resource_id, &domain_response, &peer)?
         } else {
-            peer_config.ips
+            ips
         };
-
-        let (peer_sender, peer_receiver) = tokio::sync::mpsc::channel(PEER_QUEUE_SIZE);
 
         peer.transform.set_dns(self.role_state.lock().dns_mapping());
 
-        start_handlers(
-            Arc::clone(self),
-            Arc::clone(&self.device),
-            peer.clone(),
-            ice,
-            peer_receiver,
-        );
-
-        // Partial reads of peers_by_ip can be problematic in the very unlikely case of an expiration
-        // before inserting finishes.
-        insert_peers(
-            &mut self.role_state.lock().peers_by_ip,
-            &peer_ips,
-            ConnectedPeer {
-                inner: peer,
-                channel: peer_sender,
-            },
-        );
+        // cleaning up old state
+        self.role_state
+            .lock()
+            .peers_by_ip
+            .retain(|_, p| p.conn_id != gateway_id);
+        self.connections_state
+            .lock()
+            .connections
+            .peers_by_id
+            .insert(gateway_id, Arc::clone(&peer));
+        insert_peers(&mut self.role_state.lock().peers_by_ip, &peer_ips, peer);
 
         Ok(())
     }
@@ -191,60 +140,44 @@ where
     /// Called when a response to [Tunnel::request_connection] is ready.
     ///
     /// Once this is called, if everything goes fine, a new tunnel should be started between the 2 peers.
-    ///
-    /// # Parameters
-    /// - `resource_id`: Id of the resource that responded.
-    /// - `rtc_sdp`: Remote SDP.
-    /// - `gateway_public_key`: Public key of the gateway that is handling that resource for this connection.
-    #[tracing::instrument(level = "trace", skip(self))]
+    #[tracing::instrument(level = "trace", skip(self, gateway_public_key, resource_id))]
     pub fn received_offer_response(
-        self: &Arc<Self>,
+        &self,
         resource_id: ResourceId,
-        rtc_ice_params: RTCIceParameters,
+        rtc_ice_params: Answer,
         domain_response: Option<DomainResponse>,
         gateway_public_key: PublicKey,
     ) -> Result<()> {
+        tracing::trace!("received offer response");
+
         let gateway_id = self
             .role_state
             .lock()
             .gateway_by_resource(&resource_id)
             .ok_or(Error::UnknownResource)?;
 
-        let peer_connection = self
-            .peer_connections
+        self.connections_state
             .lock()
-            .get(&gateway_id)
-            .ok_or(Error::UnknownResource)?
-            .clone();
+            .connections
+            .node
+            .accept_answer(
+                gateway_id,
+                gateway_public_key,
+                snownet::Answer {
+                    credentials: snownet::Credentials {
+                        username: rtc_ice_params.username,
+                        password: rtc_ice_params.password,
+                    },
+                },
+            );
 
-        self.role_state
-            .lock()
-            .activate_ice_candidate_receiver(gateway_id, gateway_public_key);
-        let tunnel = self.clone();
-        // RTCIceTransport::start blocks until there's an ice connection.
-        tokio::spawn(async move {
-            if let Err(e) = peer_connection
-                .start(&rtc_ice_params, Some(RTCIceRole::Controlling))
-                .await
-                .map_err(Into::into)
-                .and_then(|_| {
-                    tunnel.new_tunnel(resource_id, gateway_id, peer_connection, domain_response)
-                })
-            {
-                tracing::warn!(%gateway_id, err = ?e, "Can't start tunnel: {e:#}");
-                tunnel.role_state.lock().on_connection_failed(resource_id);
-                let peer_connection = tunnel.peer_connections.lock().remove(&gateway_id);
-                if let Some(peer_connection) = peer_connection {
-                    let _ = peer_connection.stop().await;
-                }
-            }
-        });
+        self.new_peer(resource_id, gateway_id, domain_response)?;
 
         Ok(())
     }
 
     fn dns_response(
-        self: &Arc<Self>,
+        &self,
         resource_id: &ResourceId,
         domain_response: &DomainResponse,
         peer: &Peer<GatewayId, PacketTransformClient>,
@@ -306,9 +239,9 @@ where
         Ok(ips)
     }
 
-    #[tracing::instrument(level = "trace", skip(self))]
+    #[tracing::instrument(level = "trace", skip(self, resource_id))]
     pub fn received_domain_parameters(
-        self: &Arc<Self>,
+        &self,
         resource_id: ResourceId,
         domain_response: DomainResponse,
     ) -> Result<()> {
@@ -323,12 +256,12 @@ where
             .lock()
             .peers_by_ip
             .iter_mut()
-            .find_map(|(_, p)| (p.inner.conn_id == gateway_id).then_some(p.clone()))
+            .find_map(|(_, p)| (p.conn_id == gateway_id).then_some(p.clone()))
         else {
             return Err(Error::ControlProtocolError);
         };
 
-        let peer_ips = self.dns_response(&resource_id, &domain_response, &peer.inner)?;
+        let peer_ips = self.dns_response(&resource_id, &domain_response, &peer)?;
         insert_peers(&mut self.role_state.lock().peers_by_ip, &peer_ips, peer);
         Ok(())
     }
