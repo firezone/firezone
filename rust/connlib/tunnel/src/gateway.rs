@@ -1,15 +1,20 @@
 use crate::device_channel::Device;
 use crate::peer::PacketTransformGateway;
+use crate::sockets::UdpSockets;
 use crate::{
     ConnectedPeer, Event, RoleState, Tunnel, ICE_GATHERING_TIMEOUT_SECONDS,
-    MAX_CONCURRENT_ICE_GATHERING,
+    MAX_CONCURRENT_ICE_GATHERING, MAX_UDP_SIZE,
 };
+use boringtun::x25519::StaticSecret;
 use connlib_shared::messages::{ClientId, Interface as InterfaceConfig};
 use connlib_shared::Callbacks;
+use firezone_connection::{ConnectionPool, ServerConnectionPool};
 use futures::channel::mpsc::Receiver;
 use futures_bounded::{PushError, StreamMap};
+use if_watch::tokio::IfWatcher;
 use ip_network_table::IpNetworkTable;
 use itertools::Itertools;
+use rand_core::OsRng;
 use std::collections::VecDeque;
 use std::sync::Arc;
 use std::task::{ready, Context, Poll};
@@ -53,6 +58,9 @@ pub struct GatewayState {
     pub candidate_receivers: StreamMap<ClientId, String>,
     #[allow(clippy::type_complexity)]
     pub peers_by_ip: IpNetworkTable<ConnectedPeer<ClientId, PacketTransformGateway>>,
+    pub connection_pool: ServerConnectionPool<ClientId>,
+    if_watcher: IfWatcher,
+    udp_sockets: UdpSockets<MAX_UDP_SIZE>,
 }
 
 impl GatewayState {
@@ -71,12 +79,33 @@ impl GatewayState {
 
 impl Default for GatewayState {
     fn default() -> Self {
+        let if_watcher = IfWatcher::new().expect(
+            "Program should be able to list interfaces on the system. Check binary's permissions",
+        );
+        let mut connection_pool = ConnectionPool::new(
+            StaticSecret::random_from_rng(OsRng),
+            std::time::Instant::now(),
+        );
+        let mut udp_sockets = UdpSockets::default();
+
+        for ip in if_watcher.iter() {
+            tracing::info!(address = %ip.addr(), "New local interface address found");
+            match udp_sockets.bind((ip.addr(), 0)) {
+                Ok(addr) => connection_pool.add_local_interface(addr),
+                Err(e) => {
+                    tracing::debug!(address = %ip.addr(), err = ?e, "Couldn't bind socket to interface: {e:#?}")
+                }
+            }
+        }
         Self {
             candidate_receivers: StreamMap::new(
                 Duration::from_secs(ICE_GATHERING_TIMEOUT_SECONDS),
                 MAX_CONCURRENT_ICE_GATHERING,
             ),
             peers_by_ip: IpNetworkTable::new(),
+            connection_pool,
+            if_watcher,
+            udp_sockets,
         }
     }
 }
@@ -97,6 +126,28 @@ impl RoleState for GatewayState {
                     tracing::warn!(gateway_id = %id, "ICE gathering timed out: {e}")
                 }
                 (_, None) => {}
+            }
+
+            match self.if_watcher.poll_if_event(cx) {
+                Poll::Ready(Ok(ev)) => match ev {
+                    if_watch::IfEvent::Up(ip) => {
+                        tracing::info!(address = %ip.addr(), "New local interface address found");
+                        match self.udp_sockets.bind((ip.addr(), 0)) {
+                            Ok(addr) => self.connection_pool.add_local_interface(addr),
+                            Err(e) => {
+                                tracing::debug!(address = %ip.addr(), err = ?e, "Couldn't bind socket to interface: {e:#?}")
+                            }
+                        }
+                    }
+                    if_watch::IfEvent::Down(ip) => {
+                        tracing::info!(address = %ip.addr(), "Interface IP no longer available");
+                        todo!()
+                    }
+                },
+                Poll::Ready(Err(e)) => {
+                    tracing::debug!("Error while polling interfces: {e:#?}");
+                }
+                Poll::Pending => {}
             }
         }
     }
