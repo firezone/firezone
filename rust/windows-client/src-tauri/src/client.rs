@@ -2,6 +2,7 @@ use anyhow::Result;
 use clap::{Args, Parser};
 use std::{os::windows::process::CommandExt, process::Command};
 
+mod about;
 mod auth;
 mod crash_handling;
 mod debug_commands;

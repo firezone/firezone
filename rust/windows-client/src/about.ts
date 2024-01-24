@@ -7,7 +7,7 @@ const cargoVersionSpan = <HTMLSpanElement>(
 );
 const gitVersionSpan = <HTMLSpanElement>document.getElementById("git-version");
 
-async function get_cargo_version() {
+function get_cargo_version() {
   invoke("get_cargo_version")
     .then((cargoVersion: string) => {
       cargoVersionSpan.innerText = cargoVersion;
@@ -18,7 +18,7 @@ async function get_cargo_version() {
     });
 }
 
-async function get_git_version() {
+function get_git_version() {
   invoke("get_git_version")
     .then((gitVersion: string) => {
       gitVersionSpan.innerText = gitVersion;
