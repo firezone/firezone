@@ -1,13 +1,16 @@
 use std::collections::HashSet;
 use std::{fmt, future, marker::PhantomData, time::Duration};
 
+use backoff::backoff::Backoff;
+use backoff::ExponentialBackoff;
 use base64::Engine;
+use futures::future::BoxFuture;
 use futures::{FutureExt, SinkExt, StreamExt};
 use rand_core::{OsRng, RngCore};
-use secrecy::Secret;
+use secrecy::{CloneableSecret, Secret};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::pin::Pin;
-use std::task::{Context, Poll};
+use std::task::{ready, Context, Poll};
 use tokio::net::TcpStream;
 use tokio::time::Instant;
 use tokio_tungstenite::{
@@ -22,7 +25,7 @@ const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(30);
 // TODO: Refactor this PhoenixChannel to be compatible with the needs of the client and gateway
 // See https://github.com/firezone/firezone/issues/2158
 pub struct PhoenixChannel<TInboundMsg, TOutboundRes> {
-    stream: WebSocketStream<MaybeTlsStream<TcpStream>>,
+    state: State,
     pending_messages: Vec<Message>,
     next_request_id: u64,
 
@@ -31,19 +34,30 @@ pub struct PhoenixChannel<TInboundMsg, TOutboundRes> {
     _phantom: PhantomData<(TInboundMsg, TOutboundRes)>,
 
     pending_join_requests: HashSet<OutboundRequestId>,
+
+    // Stored here to allow re-connecting.
+    secret_url: Secret<SecureUrl>,
+    user_agent: String,
+    reconnect_backoff: ExponentialBackoff,
+}
+
+enum State {
+    Connected(WebSocketStream<MaybeTlsStream<TcpStream>>),
+    Connecting(BoxFuture<'static, Result<WebSocketStream<MaybeTlsStream<TcpStream>>, Error>>),
 }
 
 /// Creates a new [PhoenixChannel] to the given endpoint and waits for an `init` message.
 ///
 /// The provided URL must contain a host.
 /// Additionally, you must already provide any query parameters required for authentication.
-#[tracing::instrument(level = "debug", skip(payload, secret_url))]
+#[tracing::instrument(level = "debug", skip(payload, secret_url, reconnect_backoff))]
 #[allow(clippy::type_complexity)]
 pub async fn init<TInitM, TInboundMsg, TOutboundRes>(
     secret_url: Secret<SecureUrl>,
     user_agent: String,
     login_topic: &'static str,
     payload: impl Serialize,
+    reconnect_backoff: ExponentialBackoff,
 ) -> Result<
     Result<(PhoenixChannel<TInboundMsg, TOutboundRes>, TInitM), UnexpectedEventDuringInit>,
     Error,
@@ -53,8 +67,11 @@ where
     TInboundMsg: DeserializeOwned,
     TOutboundRes: DeserializeOwned,
 {
-    let mut channel =
-        PhoenixChannel::<InitMessage<TInitM>, ()>::connect(secret_url, user_agent).await?;
+    let mut channel = PhoenixChannel::<InitMessage<TInitM>, ()>::connect(
+        secret_url,
+        user_agent,
+        reconnect_backoff,
+    ); // No reconnection on `init`.
     channel.join(login_topic, payload);
 
     tracing::info!("Connected to portal, waiting for `init` message");
@@ -120,6 +137,7 @@ impl fmt::Display for InboundRequestId {
     }
 }
 
+#[derive(Clone)]
 pub struct SecureUrl {
     inner: Url,
 }
@@ -129,6 +147,8 @@ impl SecureUrl {
         Self { inner: url }
     }
 }
+
+impl CloneableSecret for SecureUrl {}
 
 impl secrecy::Zeroize for SecureUrl {
     fn zeroize(&mut self) {
@@ -146,21 +166,26 @@ where
     ///
     /// The provided URL must contain a host.
     /// Additionally, you must already provide any query parameters required for authentication.
-    pub async fn connect(secret_url: Secret<SecureUrl>, user_agent: String) -> Result<Self, Error> {
-        tracing::info!("Trying to connect to the portal...");
+    pub fn connect(
+        secret_url: Secret<SecureUrl>,
+        user_agent: String,
+        reconnect_backoff: ExponentialBackoff,
+    ) -> Self {
+        Self {
+            reconnect_backoff,
+            secret_url: secret_url.clone(),
+            user_agent: user_agent.clone(),
+            state: State::Connecting(Box::pin(async move {
+                let (stream, _) = connect_async(make_request(secret_url, user_agent)?).await?;
 
-        let (stream, _) = connect_async(make_request(secret_url, user_agent)?).await?;
-
-        tracing::info!("Successfully connected to portal");
-
-        Ok(Self {
-            stream,
+                Ok(stream)
+            })),
             pending_messages: vec![],
             _phantom: PhantomData,
             next_request_id: 0,
             next_heartbeat: Box::pin(tokio::time::sleep(HEARTBEAT_INTERVAL)),
             pending_join_requests: Default::default(),
-        })
+        }
     }
 
     /// Join the provided room.
@@ -182,101 +207,173 @@ where
         cx: &mut Context,
     ) -> Poll<Result<Event<TInboundMsg, TOutboundRes>, Error>> {
         loop {
+            // First, check if we are connected.
+            let stream = match &mut self.state {
+                State::Connected(stream) => stream,
+                State::Connecting(future) => match ready!(future.poll_unpin(cx)) {
+                    Ok(stream) => {
+                        self.reconnect_backoff.reset();
+                        self.state = State::Connected(stream);
+
+                        tracing::info!("Connected to portal");
+
+                        continue;
+                    }
+                    Err(e) => {
+                        if let Error::WebSocket(tokio_tungstenite::tungstenite::Error::Http(r)) = &e
+                        {
+                            let status = r.status();
+
+                            if status.is_client_error() {
+                                let body = r
+                                    .body()
+                                    .as_deref()
+                                    .map(String::from_utf8_lossy)
+                                    .unwrap_or_default();
+
+                                tracing::warn!(
+                                    "Fatal client error ({status}) in portal connection: {body}"
+                                );
+
+                                return Poll::Ready(Err(e));
+                            }
+                        };
+
+                        let Some(backoff) = self.reconnect_backoff.next_backoff() else {
+                            tracing::warn!("Reconnect backoff expired");
+                            return Poll::Ready(Err(e));
+                        };
+                        let secret_url = self.secret_url.clone();
+                        let user_agent = self.user_agent.clone();
+
+                        tracing::debug!(?backoff, max_elapsed_time = ?self.reconnect_backoff.max_elapsed_time, "Reconnecting to portal");
+
+                        self.state = State::Connecting(Box::pin(async move {
+                            tokio::time::sleep(backoff).await;
+
+                            let (stream, _) =
+                                connect_async(make_request(secret_url, user_agent)?).await?;
+
+                            Ok(stream)
+                        }));
+                        continue;
+                    }
+                },
+            };
+
             // Priority 1: Keep local buffers small and send pending messages.
-            if self.stream.poll_ready_unpin(cx).is_ready() {
+            if stream.poll_ready_unpin(cx).is_ready() {
                 if let Some(message) = self.pending_messages.pop() {
-                    self.stream.start_send_unpin(message)?;
+                    match stream.start_send_unpin(message) {
+                        Ok(()) => {}
+                        Err(e) => {
+                            self.reconnect_on_transient_error(e);
+                        }
+                    }
                     continue;
                 }
             }
 
             // Priority 2: Handle incoming messages.
-            if let Poll::Ready(Some(message)) = self.stream.poll_next_unpin(cx)? {
-                let Ok(text) = message.into_text() else {
-                    tracing::warn!("Received non-text message from portal");
-                    continue;
-                };
-
-                tracing::trace!("Received message from portal: {text}");
-
-                let message = match serde_json::from_str::<PhoenixMessage<TInboundMsg, TOutboundRes>>(
-                    &text,
-                ) {
-                    Ok(m) => m,
-                    Err(e) => {
-                        tracing::warn!("Failed to deserialize message {text}: {e}");
+            match stream.poll_next_unpin(cx) {
+                Poll::Ready(Some(Ok(message))) => {
+                    let Ok(text) = message.into_text() else {
+                        tracing::warn!("Received non-text message from portal");
                         continue;
-                    }
-                };
+                    };
 
-                match message.payload {
-                    Payload::Message(msg) => match message.reference {
-                        None => {
-                            return Poll::Ready(Ok(Event::InboundMessage {
-                                topic: message.topic,
-                                msg,
-                            }))
-                        }
-                        Some(reference) => {
-                            return Poll::Ready(Ok(Event::InboundReq {
-                                req_id: InboundRequestId(reference),
-                                req: msg,
-                            }))
-                        }
-                    },
-                    Payload::Reply(ReplyMessage::PhxReply(PhxReply::Error(ErrorInfo::Reason(
-                        reason,
-                    )))) => {
-                        return Poll::Ready(Ok(Event::ErrorResponse {
-                            topic: message.topic,
-                            req_id: OutboundRequestId(
-                                message.reference.ok_or(Error::MissingReplyId)?,
-                            ),
-                            reason,
-                        }));
-                    }
-                    Payload::Reply(ReplyMessage::PhxReply(PhxReply::Ok(OkReply::Message(
-                        reply,
-                    )))) => {
-                        let req_id =
-                            OutboundRequestId(message.reference.ok_or(Error::MissingReplyId)?);
+                    tracing::trace!("Received message from portal: {text}");
 
-                        if self.pending_join_requests.remove(&req_id) {
-                            // For `phx_join` requests, `reply` is empty so we can safely ignore it.
-                            return Poll::Ready(Ok(Event::JoinedRoom {
+                    let message = match serde_json::from_str::<
+                        PhoenixMessage<TInboundMsg, TOutboundRes>,
+                    >(&text)
+                    {
+                        Ok(m) => m,
+                        Err(e) => {
+                            tracing::warn!("Failed to deserialize message {text}: {e}");
+                            continue;
+                        }
+                    };
+
+                    match message.payload {
+                        Payload::Message(msg) => match message.reference {
+                            None => {
+                                return Poll::Ready(Ok(Event::InboundMessage {
+                                    topic: message.topic,
+                                    msg,
+                                }))
+                            }
+                            Some(reference) => {
+                                return Poll::Ready(Ok(Event::InboundReq {
+                                    req_id: InboundRequestId(reference),
+                                    req: msg,
+                                }))
+                            }
+                        },
+                        Payload::Reply(ReplyMessage::PhxReply(PhxReply::Error(
+                            ErrorInfo::Reason(reason),
+                        ))) => {
+                            return Poll::Ready(Ok(Event::ErrorResponse {
                                 topic: message.topic,
+                                req_id: OutboundRequestId(
+                                    message.reference.ok_or(Error::MissingReplyId)?,
+                                ),
+                                reason,
                             }));
                         }
+                        Payload::Reply(ReplyMessage::PhxReply(PhxReply::Ok(OkReply::Message(
+                            reply,
+                        )))) => {
+                            let req_id =
+                                OutboundRequestId(message.reference.ok_or(Error::MissingReplyId)?);
 
-                        return Poll::Ready(Ok(Event::SuccessResponse {
-                            topic: message.topic,
-                            req_id,
-                            res: reply,
-                        }));
-                    }
-                    Payload::Reply(ReplyMessage::PhxReply(PhxReply::Error(ErrorInfo::Offline))) => {
-                        tracing::warn!(
-                            "Received offline error for request {:?}",
-                            message.reference
-                        );
-                        continue;
-                    }
-                    Payload::Reply(ReplyMessage::PhxReply(PhxReply::Ok(OkReply::NoMessage(
-                        Empty {},
-                    )))) => {
-                        tracing::trace!("Received empty reply for request {:?}", message.reference);
-                        continue;
-                    }
-                    Payload::Reply(ReplyMessage::PhxError(Empty {})) => {
-                        return Poll::Ready(Ok(Event::ErrorResponse {
-                            topic: message.topic,
-                            req_id: OutboundRequestId(
-                                message.reference.ok_or(Error::MissingReplyId)?,
-                            ),
-                            reason: "unknown error (bad event?)".to_owned(),
-                        }))
+                            if self.pending_join_requests.remove(&req_id) {
+                                // For `phx_join` requests, `reply` is empty so we can safely ignore it.
+                                return Poll::Ready(Ok(Event::JoinedRoom {
+                                    topic: message.topic,
+                                }));
+                            }
+
+                            return Poll::Ready(Ok(Event::SuccessResponse {
+                                topic: message.topic,
+                                req_id,
+                                res: reply,
+                            }));
+                        }
+                        Payload::Reply(ReplyMessage::PhxReply(PhxReply::Error(
+                            ErrorInfo::Offline,
+                        ))) => {
+                            tracing::warn!(
+                                "Received offline error for request {:?}",
+                                message.reference
+                            );
+                            continue;
+                        }
+                        Payload::Reply(ReplyMessage::PhxReply(PhxReply::Ok(
+                            OkReply::NoMessage(Empty {}),
+                        ))) => {
+                            tracing::trace!(
+                                "Received empty reply for request {:?}",
+                                message.reference
+                            );
+                            continue;
+                        }
+                        Payload::Reply(ReplyMessage::PhxError(Empty {})) => {
+                            return Poll::Ready(Ok(Event::ErrorResponse {
+                                topic: message.topic,
+                                req_id: OutboundRequestId(
+                                    message.reference.ok_or(Error::MissingReplyId)?,
+                                ),
+                                reason: "unknown error (bad event?)".to_owned(),
+                            }))
+                        }
                     }
                 }
+                Poll::Ready(Some(Err(e))) => {
+                    self.reconnect_on_transient_error(e);
+                    continue;
+                }
+                _ => (),
             }
 
             // Priority 3: Handle heartbeats.
@@ -290,12 +387,26 @@ where
             }
 
             // Priority 4: Flush out.
-            if self.stream.poll_flush_unpin(cx)?.is_ready() {
-                tracing::trace!("Flushed websocket")
+            match stream.poll_flush_unpin(cx) {
+                Poll::Ready(Ok(())) => {
+                    tracing::trace!("Flushed websocket");
+                }
+                Poll::Ready(Err(e)) => {
+                    self.reconnect_on_transient_error(e);
+                    continue;
+                }
+                Poll::Pending => {}
             }
 
             return Poll::Pending;
         }
+    }
+
+    /// Sets the channels state to [`State::Connecting`] with the given error.
+    ///
+    /// The [`PhoenixChannel::poll`] function will handle the reconnect if appropriate for the given error.
+    fn reconnect_on_transient_error(&mut self, e: tokio_tungstenite::tungstenite::Error) {
+        self.state = State::Connecting(future::ready(Err(Error::WebSocket(e))).boxed())
     }
 
     fn send_message(
@@ -326,12 +437,15 @@ where
         self,
     ) -> PhoenixChannel<TInboundMsgNew, TOutboundResNew> {
         PhoenixChannel {
-            stream: self.stream,
+            state: self.state,
             pending_messages: self.pending_messages,
             next_request_id: self.next_request_id,
             next_heartbeat: self.next_heartbeat,
             _phantom: PhantomData,
             pending_join_requests: self.pending_join_requests,
+            secret_url: self.secret_url,
+            user_agent: self.user_agent,
+            reconnect_backoff: self.reconnect_backoff,
         }
     }
 }
