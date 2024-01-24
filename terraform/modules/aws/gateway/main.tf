@@ -35,6 +35,7 @@ resource "aws_instance" "this" {
   associate_public_ip_address = var.associate_public_ip_address
   private_ip                  = var.private_ip
   key_name                    = var.key_name
+  user_data_replace_on_change = true
 
   user_data = templatefile("${path.module}/templates/cloud-init.yaml", {
     container_name        = local.application_name != null ? local.application_name : var.image
