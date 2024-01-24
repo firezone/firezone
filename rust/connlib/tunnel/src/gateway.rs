@@ -101,6 +101,21 @@ impl RoleState for GatewayState {
 
     fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Event<Self::Id>> {
         loop {
+            match self.connection_pool.poll_event() {
+                Some(firezone_connection::Event::SignalIceCandidate {
+                    connection,
+                    candidate,
+                }) => {
+                    return Poll::Ready(Event::SignalIceCandidate {
+                        conn_id: connection,
+                        candidate,
+                    })
+                }
+                Some(firezone_connection::Event::ConnectionEstablished(id)) => todo!(),
+                Some(firezone_connection::Event::ConnectionFailed(id)) => todo!(),
+                None => {}
+            }
+
             match self.if_watcher.poll_if_event(cx) {
                 Poll::Ready(Ok(ev)) => match ev {
                     if_watch::IfEvent::Up(ip) => {
