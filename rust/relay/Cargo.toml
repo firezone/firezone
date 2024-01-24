@@ -22,7 +22,7 @@ tracing-opentelemetry = "0.21.0"
 opentelemetry = { version = "0.20.0", features = ["rt-tokio", "metrics"] }
 opentelemetry_api = "0.20.0"
 opentelemetry-otlp = { version = "0.13.0", features = ["metrics"]}
-env_logger = "0.10.1"
+env_logger = "0.10.2"
 tracing-core = "0.1.31"
 bytes = "1.4.0"
 sha2 = "0.10.8"

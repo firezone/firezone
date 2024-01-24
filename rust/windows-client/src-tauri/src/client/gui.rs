@@ -420,7 +420,7 @@ impl Controller {
             None, // TODO: Send device name here (windows computer name)
             None,
             callback_handler.clone(),
-            MAX_PARTITION_TIME,
+            Some(MAX_PARTITION_TIME),
         )?;
 
         self.session = Some(Session {
