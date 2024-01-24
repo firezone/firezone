@@ -43,17 +43,10 @@ where
         conn_id: TRoleState::Id,
         ice_candidate: String,
     ) -> Result<()> {
-        tracing::info!(%ice_candidate, %conn_id, "adding new remote candidate");
-        todo!();
-        // let peer_connection = self
-        //     .peer_connections
-        //     .lock()
-        //     .get(&conn_id)
-        //     .ok_or(Error::ControlProtocolError)?
-        //     .clone();
-        // peer_connection
-        //     .add_remote_candidate(Some(ice_candidate))
-        //     .await?;
+        tracing::info!(%ice_candidate, %conn_id, "new remote candidate");
+        self.role_state
+            .lock()
+            .add_remote_candidate(conn_id, ice_candidate);
         Ok(())
     }
 }

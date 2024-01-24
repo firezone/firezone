@@ -94,6 +94,11 @@ impl Default for GatewayState {
 impl RoleState for GatewayState {
     type Id = ClientId;
 
+    fn add_remote_candidate(&mut self, conn_id: ClientId, ice_candidate: String) {
+        self.connection_pool
+            .add_remote_candidate(conn_id, ice_candidate);
+    }
+
     fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Event<Self::Id>> {
         loop {
             match self.if_watcher.poll_if_event(cx) {

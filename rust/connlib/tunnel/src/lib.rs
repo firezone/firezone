@@ -530,4 +530,5 @@ pub trait RoleState: Default + Send + 'static {
     fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Event<Self::Id>>;
     fn remove_peers(&mut self, conn_id: Self::Id);
     fn refresh_peers(&mut self) -> VecDeque<Self::Id>;
+    fn add_remote_candidate(&mut self, conn_id: Self::Id, ice_candidate: String);
 }

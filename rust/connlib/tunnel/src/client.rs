@@ -680,6 +680,11 @@ impl Default for ClientState {
 impl RoleState for ClientState {
     type Id = GatewayId;
 
+    fn add_remote_candidate(&mut self, conn_id: GatewayId, ice_candidate: String) {
+        self.connection_pool
+            .add_remote_candidate(conn_id, ice_candidate);
+    }
+
     fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Event<Self::Id>> {
         loop {
             if let Poll::Ready((gateway_id, _)) =
