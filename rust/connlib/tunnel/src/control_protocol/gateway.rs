@@ -8,13 +8,15 @@ use crate::{
 use chrono::{DateTime, Utc};
 use connlib_shared::{
     messages::{
-        ClientId, ClientPayload, ConnectionAccepted, DomainResponse, Relay, ResourceAccepted,
-        ResourceDescription,
+        Answer, ClientId, ClientPayload, ConnectionAccepted, DomainResponse, Relay,
+        ResourceAccepted, ResourceDescription,
     },
     Callbacks, Dname, Error, Result,
 };
+use firezone_connection::{Credentials, Offer};
 use ip_network::IpNetwork;
-use std::sync::Arc;
+use secrecy::ExposeSecret;
+use std::{collections::HashSet, sync::Arc};
 
 // TODO:
 // #[tracing::instrument(level = "trace", skip(ice))]
@@ -45,12 +47,6 @@ where
     /// Sets a connection to a remote SDP, creates the local SDP
     /// and returns it.
     ///
-    /// # Parameters
-    /// - `sdp_session`: Remote session description.
-    /// - `peer`: Configuration for the remote peer.
-    /// - `relays`: List of relays to use with this connection.
-    /// - `client_id`: UUID of the remote client.
-    ///
     /// # Returns
     /// The connection details
     pub async fn set_peer_connection_request(
@@ -62,7 +58,21 @@ where
         expires_at: Option<DateTime<Utc>>,
         resource: ResourceDescription,
     ) -> Result<ConnectionAccepted> {
-        let offer = todo!();
+        let mut stun_servers: HashSet<_> = turn(&relays).iter().map(|r| r.0).collect();
+        stun_servers.extend(stun(&relays));
+        let answer = self.role_state.lock().connection_pool.accept_connection(
+            client_id,
+            Offer {
+                session_key: peer.preshared_key.expose_secret().0.into(),
+                credentials: Credentials {
+                    username: client_payload.ice_parameters.username,
+                    password: client_payload.ice_parameters.password,
+                },
+            },
+            peer.public_key,
+            stun_servers,
+            turn(&relays),
+        );
 
         // TODO:
         // set_connection_state_update(&ice, client_id);
@@ -142,7 +152,10 @@ where
         }
 
         Ok(ConnectionAccepted {
-            ice_parameters: offer,
+            ice_parameters: Answer {
+                username: answer.credentials.username,
+                password: answer.credentials.password,
+            },
             domain_response: client_payload.domain.map(|domain| DomainResponse {
                 domain,
                 address: resource_addresses
@@ -281,6 +294,8 @@ fn resolve_addresses(addr: &str) -> std::io::Result<Vec<IpNetwork>> {
 
 #[cfg(not(target_os = "windows"))]
 use dns_lookup::{AddrInfoHints, AddrInfoIter, LookupError};
+
+use super::{stun, turn};
 
 #[cfg(not(target_os = "windows"))]
 fn resolve_address_family(
