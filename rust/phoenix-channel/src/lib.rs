@@ -71,7 +71,7 @@ where
         secret_url,
         user_agent,
         reconnect_backoff,
-    ); // No reconnection on `init`.
+    );
     channel.join(login_topic, payload);
 
     tracing::info!("Connected to portal, waiting for `init` message");
