@@ -744,7 +744,7 @@ dependencies = [
 [[package]]
 name = "boringtun"
 version = "0.6.0"
-source = "git+https://github.com/cloudflare/boringtun?branch=master#f672bb6c1e1e371240a8d151f15854687eb740bb"
+source = "git+https://github.com/thomaseizinger/boringtun?branch=feat/expose-last-seen#6fd54c027e6b78192a02de3e77d00552ec36968d"
 dependencies = [
  "aead",
  "base64 0.13.1",
