@@ -7,6 +7,7 @@ use std::path::PathBuf;
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
+    let max_partition_time = cli.max_partition_time.map(|d| d.into());
 
     let (layer, handle) = cli.log_dir.as_deref().map(file_logger::layer).unzip();
     setup_global_subscriber(layer);
@@ -18,7 +19,7 @@ fn main() -> Result<()> {
         None,
         None,
         CallbackHandler { handle },
-        cli.max_partition_time,
+        max_partition_time,
     )
     .unwrap();
     tracing::info!("new_session");
