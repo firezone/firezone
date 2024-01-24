@@ -8,7 +8,9 @@
 
 use crate::client::BUNDLE_ID;
 use anyhow::{bail, Context, Result};
-use connlib_client_shared::ResourceDescription;
+use connlib_shared::messages::{
+    ResourceDescription, ResourceDescriptionCidr, ResourceDescriptionDns, ResourceId,
+};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::{
     ffi::c_void,
@@ -16,12 +18,14 @@ use std::{
     marker::Unpin,
     os::windows::io::{AsHandle, AsRawHandle},
     process::{self, Child},
+    str::FromStr,
     time::{Duration, Instant},
 };
 use tokio::{
     io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt},
     net::windows::named_pipe,
     sync::mpsc,
+    task::JoinHandle,
     time::timeout,
 };
 use windows::Win32::{
@@ -66,11 +70,11 @@ pub fn test_subcommand(cmd: Option<Subcommand>) -> Result<()> {
     rt.block_on(async move {
         match cmd {
             None => {
-                test_api().await?;
-                test_security().await?;
-                test_happy_path().await?;
-                test_leak(true).await?;
-                test_leak(false).await?;
+                test_api().await.context("test_api failed")?;
+                test_security().await.context("test_security failed")?;
+                test_happy_path().await.context("test_happy_path failed")?;
+                test_leak(true).await.context("test_leak(true) failed")?;
+                test_leak(false).await.context("test_leak(false) failed")?;
                 tracing::info!("all tests passed");
                 Ok(())
             }
@@ -94,10 +98,14 @@ async fn test_happy_path() -> Result<()> {
     let id = random_pipe_id();
     tracing::debug!("`{id}`");
 
-    let _manager = SubcommandChild::new(&["debug", "test-ipc", "manager", &id]);
-    let _worker = SubcommandChild::new(&["debug", "test-ipc", "worker", &id]);
+    let mut manager = SubcommandChild::new(&["debug", "test-ipc", "manager", &id])?;
+    let mut worker = SubcommandChild::new(&["debug", "test-ipc", "worker", &id])?;
 
     tokio::time::sleep(Duration::from_secs(10)).await;
+
+    assert_eq!(manager.wait_or_kill()?, SubcommandExit::Success);
+    assert_eq!(worker.wait_or_kill()?, SubcommandExit::Success);
+
     Ok(())
 }
 
@@ -112,9 +120,23 @@ async fn test_manager_process(pipe_id: String) -> Result<()> {
 
     let start_time = Instant::now();
     server.write_tx.send(ManagerMsg::Connect).await?;
-    assert_eq!(server.response_rx.recv().await.context("should have gotten a response")?, ManagerMsg::Connect);
+    assert_eq!(
+        server
+            .response_rx
+            .recv()
+            .await
+            .context("test_manager_process should have gotten a response to Connect")?,
+        ManagerMsg::Connect
+    );
     server.write_tx.send(ManagerMsg::Disconnect).await?;
-    assert_eq!(server.response_rx.recv().await.context("should have gotten a response")?, ManagerMsg::Disconnect);
+    assert_eq!(
+        server
+            .response_rx
+            .recv()
+            .await
+            .context("test_manager_process should have gotten a response to Disconnect")?,
+        ManagerMsg::Disconnect
+    );
 
     let elapsed = start_time.elapsed();
     assert!(
@@ -122,7 +144,7 @@ async fn test_manager_process(pipe_id: String) -> Result<()> {
         "{:?}",
         elapsed
     );
-    tracing::info!(?elapsed, "made 3 IPC requests");
+    tracing::debug!(?elapsed, "made 3 IPC requests");
 
     Ok(())
 }
@@ -133,17 +155,17 @@ async fn test_worker_process(pipe_id: String) -> Result<()> {
 
     // Handle requests from the main process
     loop {
-        let req = client.read().await?;
-        let resp = match &req {
-            ManagerMsg::Connect => WorkerMsg::Response(ManagerMsg::Connect),
-            ManagerMsg::Disconnect => WorkerMsg::Response(ManagerMsg::Disconnect),
+        let Some(req) = client.request_rx.recv().await else {
+            break;
         };
-        client.write(resp).await?;
+        let resp = WorkerMsg::Response(req.clone());
+        client.send(resp).await?;
 
         if let ManagerMsg::Disconnect = req {
             break;
         }
     }
+    client.close().await?;
 
     Ok(())
 }
@@ -177,19 +199,24 @@ async fn test_leak(enable_protection: bool) -> Result<()> {
     let mut manager = SubcommandChild::new(&args)?;
     let mut server = timeout(Duration::from_secs(5), server.accept()).await??;
 
-    tracing::info!("Actual pipe client PID = {}", server.client_pid);
+    tracing::debug!("Actual pipe client PID = {}", server.client_pid);
     tracing::debug!("Harness accepted connection from Worker");
 
     // Send a few requests to make sure the worker is connected and good
     for _ in 0..3 {
         server.write_tx.send(ManagerMsg::Connect).await?;
-        server.response_rx.recv().await.context("should have gotten a response")?;
+        server
+            .response_rx
+            .recv()
+            .await
+            .context("should have gotten a response to Connect")?;
     }
 
     tokio::time::sleep(std::time::Duration::from_secs(15)).await;
 
     manager.process.kill()?;
     tracing::debug!("Harness killed manager");
+    assert_eq!(manager.wait_or_kill()?, SubcommandExit::Killed);
 
     // I can't think of a good way to synchronize with the worker process stopping,
     // so just give it 10 seconds for Windows to stop it.
@@ -234,7 +261,7 @@ fn leak_manager(pipe_id: String, enable_protection: bool) -> Result<()> {
     let leak_guard = LeakGuard::new()?;
 
     let worker = SubcommandChild::new(&["debug", "test-ipc", "leak-worker", &pipe_id])?;
-    tracing::info!("Expected worker PID = {}", worker.process.id());
+    tracing::debug!("Expected worker PID = {}", worker.process.id());
 
     if enable_protection {
         leak_guard.add_process(&worker.process)?;
@@ -246,17 +273,20 @@ fn leak_manager(pipe_id: String, enable_protection: bool) -> Result<()> {
     }
 }
 
-#[tracing::instrument]
+#[tracing::instrument(skip_all)]
 async fn leak_worker(pipe_id: String) -> Result<()> {
     let mut client = Client::new(&pipe_id)?;
     tracing::debug!("Worker connected to named pipe");
     loop {
-        let _ = client.read().await?;
-        client.write(WorkerMsg::Response(ManagerMsg::Connect)).await?;
+        let Some(req) = client.request_rx.recv().await else {
+            break;
+        };
+        client.send(WorkerMsg::Response(req)).await?;
     }
+    Ok(())
 }
 
-#[tracing::instrument]
+#[tracing::instrument(skip_all)]
 async fn test_security() -> Result<()> {
     let start_time = Instant::now();
 
@@ -279,42 +309,55 @@ async fn test_security() -> Result<()> {
     let cookie = uuid::Uuid::new_v4().to_string();
     writeln!(child_stdin, "{cookie}")?;
 
-    let Callback::Cookie(echoed_cookie) = server.cb_rx.recv().await.context("should have gotten the cookie back")? else {
+    let Callback::Cookie(echoed_cookie) = server
+        .cb_rx
+        .recv()
+        .await
+        .context("should have gotten the cookie back")?
+    else {
         bail!("callback should have been a cookie");
     };
     assert_eq!(echoed_cookie, cookie);
 
     server.write_tx.send(ManagerMsg::Disconnect).await?;
-    server.response_rx.recv().await.context("should have gotten a response to Disconnect request")?;
+    server
+        .response_rx
+        .recv()
+        .await
+        .context("should have gotten a response to Disconnect request")?;
 
     let elapsed = start_time.elapsed();
     assert!(elapsed < Duration::from_millis(200), "{:?}", elapsed);
 
     tokio::time::sleep(Duration::from_secs(3)).await;
-    worker.wait_or_kill()?;
+    assert_eq!(worker.wait_or_kill()?, SubcommandExit::Success);
 
     Ok(())
 }
 
-#[tracing::instrument]
+#[tracing::instrument(skip_all)]
 async fn security_worker(pipe_id: String) -> Result<()> {
     let mut client = Client::new(&pipe_id)?;
     let mut cookie = String::new();
     std::io::stdin().read_line(&mut cookie)?;
     let cookie = WorkerMsg::Callback(Callback::Cookie(cookie.trim().to_string()));
-    write_bincode(&mut client.pipe, &cookie).await?;
+    client.send(cookie).await?;
     tracing::debug!("Worker connected to named pipe");
     loop {
-        let req = client.read().await?;
-        client.write(WorkerMsg::Response(req.clone())).await?;
+        let Some(req) = client.request_rx.recv().await else {
+            break;
+        };
+        client.send(WorkerMsg::Response(req.clone())).await?;
         if let ManagerMsg::Disconnect = req {
             break;
         }
     }
+    // Needed to flush out the `Disconnect` response to the pipe server
+    client.close().await?;
     Ok(())
 }
 
-#[tracing::instrument]
+#[tracing::instrument(skip_all)]
 async fn test_api() -> Result<()> {
     let start_time = Instant::now();
 
@@ -326,34 +369,83 @@ async fn test_api() -> Result<()> {
     } = timeout(Duration::from_secs(10), Subprocess::new(&leak_guard, &args)).await??;
     tracing::debug!("Manager got connection from worker");
 
+    let cb = server
+        .cb_rx
+        .recv()
+        .await
+        .context("should have gotten a TunnelReady callback")?;
+    assert_eq!(cb, Callback::TunnelReady);
+
+    let cb = server
+        .cb_rx
+        .recv()
+        .await
+        .context("should have gotten a OnUpdateResources callback")?;
+    assert_eq!(cb, Callback::OnUpdateResources(sample_resources()));
+
     server.write_tx.send(ManagerMsg::Disconnect).await?;
     tracing::debug!("Manager requested Disconnect");
-    assert_eq!(server.response_rx.recv().await.context("should have gotten a response")?, ManagerMsg::Disconnect);
+    assert_eq!(
+        server
+            .response_rx
+            .recv()
+            .await
+            .context("should have gotten a response to Disconnect")?,
+        ManagerMsg::Disconnect
+    );
 
     let elapsed = start_time.elapsed();
     assert!(elapsed < Duration::from_millis(200), "{:?}", elapsed);
 
     tokio::time::sleep(Duration::from_secs(3)).await;
-    worker.wait_or_kill()?;
+    assert_eq!(worker.wait_or_kill()?, SubcommandExit::Success);
 
     Ok(())
 }
 
-#[tracing::instrument]
+#[tracing::instrument(skip_all)]
 async fn test_api_worker(pipe_id: String) -> Result<()> {
     let mut client = client(&pipe_id).await?;
 
+    client
+        .send(WorkerMsg::Callback(Callback::TunnelReady))
+        .await?;
+
+    client
+        .send(WorkerMsg::Callback(Callback::OnUpdateResources(
+            sample_resources(),
+        )))
+        .await?;
+
     tracing::debug!("Worker connected to named pipe");
     loop {
-        let req = client.read().await?;
+        let Some(req) = client.request_rx.recv().await else {
+            break;
+        };
         tracing::debug!(?req, "worker got request");
-        client.write(WorkerMsg::Response(req.clone())).await?;
+        client.send(WorkerMsg::Response(req.clone())).await?;
         tracing::debug!(?req, "worker replied");
         if let ManagerMsg::Disconnect = req {
             break;
         }
     }
+    client.close().await?;
     Ok(())
+}
+
+fn sample_resources() -> Vec<ResourceDescription> {
+    vec![
+        ResourceDescription::Cidr(ResourceDescriptionCidr {
+            id: ResourceId::from_str("2efe9c25-bd92-49a0-99d7-8b92da014dd5").unwrap(),
+            name: "Cloudflare DNS".to_string(),
+            address: ip_network::IpNetwork::from_str("1.1.1.1/32").unwrap(),
+        }),
+        ResourceDescription::Dns(ResourceDescriptionDns {
+            id: ResourceId::from_str("613eaf56-6efa-45e5-88aa-ea4ad64d8c18").unwrap(),
+            name: "Example".to_string(),
+            address: "*.example.com".to_string(),
+        }),
+    ]
 }
 
 /// Returns a random valid named pipe ID based on a UUIDv4
@@ -379,8 +471,11 @@ impl Subprocess {
     /// The process ID and cookie have already been checked for security
     /// when this function returns.
     pub(crate) async fn new(leak_guard: &LeakGuard, args: &[&str]) -> Result<Self> {
-        let (mut server, pipe_id) = UnconnectedServer::new().context("couldn't create UnconnectedServer")?;
-        let mut process = process::Command::new(std::env::current_exe().context("couldn't get current exe name")?);
+        let (mut server, pipe_id) =
+            UnconnectedServer::new().context("couldn't create UnconnectedServer")?;
+        let mut process = process::Command::new(
+            std::env::current_exe().context("couldn't get current exe name")?,
+        );
         // Make the child's stdin piped so we can send it a security cookie.
         process.stdin(process::Stdio::piped());
         for arg in args {
@@ -397,7 +492,11 @@ impl Subprocess {
         let mut worker = SubcommandChild { process };
 
         // Accept the connection
-        server.pipe.connect().await.context("expected a client connection")?;
+        server
+            .pipe
+            .connect()
+            .await
+            .context("expected a client connection")?;
         let client_pid = Server::client_pid(&server.pipe)?;
 
         // Make sure our child process connected to our pipe, and not some 3rd-party process
@@ -415,14 +514,15 @@ impl Subprocess {
         let cookie = uuid::Uuid::new_v4().to_string();
         writeln!(child_stdin, "{cookie}").context("couldn't write cookie to subprocess stdin")?;
 
-        let WorkerMsg::Callback(Callback::Cookie(echoed_cookie)) = Server::read(&mut server.pipe).await.context("couldn't read cookie back from subprocess")? else {
+        let WorkerMsg::Callback(Callback::Cookie(echoed_cookie)) = Server::read(&mut server.pipe)
+            .await
+            .context("couldn't read cookie back from subprocess")?
+        else {
             bail!("didn't receive cookie from pipe client");
         };
         if echoed_cookie != cookie {
             bail!("cookie received from pipe client should match the cookie we sent to our child process");
         }
-
-
 
         let server = Server::new(server.pipe)?;
 
@@ -434,11 +534,11 @@ impl Subprocess {
 ///
 /// The security cookie has already been read from stdin and echoed to the pipe server.
 pub(crate) async fn client(pipe_id: &str) -> Result<Client> {
-    let mut client = Client::new(pipe_id)?;
+    let client = Client::new(pipe_id)?;
     let mut cookie = String::new();
     std::io::stdin().read_line(&mut cookie)?;
     let cookie = WorkerMsg::Callback(Callback::Cookie(cookie.trim().to_string()));
-    write_bincode(&mut client.pipe, &cookie).await?;
+    client.send(cookie).await?;
     Ok(client)
 }
 
@@ -484,14 +584,6 @@ pub(crate) struct Server {
     pub write_tx: mpsc::Sender<ManagerMsg>,
 }
 
-/// A client that's connected to a server
-///
-/// Manual testing shows that if the corresponding Server's process crashes, Windows will
-/// be nice and return errors for anything trying to read from the Client
-pub(crate) struct Client {
-    pipe: named_pipe::NamedPipeClient,
-}
-
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub(crate) enum ManagerMsg {
     Connect,
@@ -518,6 +610,7 @@ pub(crate) enum Callback {
 }
 
 impl Server {
+    #[tracing::instrument(skip_all)]
     fn new(pipe: named_pipe::NamedPipeServer) -> Result<Self> {
         let (cb_tx, cb_rx) = mpsc::channel(5);
         let (response_tx, response_rx) = mpsc::channel(5);
@@ -528,9 +621,8 @@ impl Server {
         // TODO: Make sure this task stops
         let _task = tokio::task::spawn(async move {
             if let Err(error) = Self::pipe_task(pipe, cb_tx, response_tx, write_rx).await {
-                tracing::error!(?error, "pipe_task failed");
+                tracing::error!(?error, "Server::pipe_task returned error");
             }
-            tracing::debug!("pipe_task exited gracefully");
         });
 
         Ok(Self {
@@ -545,13 +637,19 @@ impl Server {
     ///
     /// It is incidentally half-duplex, it can't read and write at the same time.
     #[tracing::instrument(skip_all)]
-    async fn pipe_task(mut pipe: named_pipe::NamedPipeServer, cb_tx: mpsc::Sender<Callback>, response_tx: mpsc::Sender<ManagerMsg>, mut write_rx: mpsc::Receiver<ManagerMsg>) -> anyhow::Result<()> {
+    async fn pipe_task(
+        mut pipe: named_pipe::NamedPipeServer,
+        cb_tx: mpsc::Sender<Callback>,
+        response_tx: mpsc::Sender<ManagerMsg>,
+        mut write_rx: mpsc::Receiver<ManagerMsg>,
+    ) -> anyhow::Result<()> {
         loop {
             // Note: Make sure these are all cancel-safe
             tokio::select! {
                 // TODO: Is this cancel-safe?
                 ready = pipe.ready(tokio::io::Interest::READABLE) => {
                     tracing::debug!("waking up to read");
+                    // Zero bytes just to see if any data is ready at all
                     let mut buf = [];
                     if ready?.is_readable() && pipe.try_read(&mut buf).is_ok() {
                         match Self::read(&mut pipe).await? {
@@ -563,23 +661,25 @@ impl Server {
                         tracing::debug!("spurious wakeup");
                     }
                 },
-                // Cancel safe. <https://docs.rs/tokio/latest/tokio/sync/mpsc/struct.Receiver.html#cancel-safety>
+                // Cancel-safe per <https://docs.rs/tokio/latest/tokio/sync/mpsc/struct.Receiver.html#cancel-safety>
                 msg = write_rx.recv() => {
                     tracing::debug!("waking up to write");
                     Self::write(&mut pipe, msg.context("write_tx must have closed")?).await?
                 },
             }
         }
+
+        // TODO: Add graceful shutdown that passes through here
     }
 
     async fn read(pipe: &mut named_pipe::NamedPipeServer) -> Result<WorkerMsg> {
-        read_bincode(pipe).await.context("couldn't read")
+        read_deserialize(pipe)
+            .await
+            .context("ipc::Server couldn't read")
     }
 
     pub async fn write(pipe: &mut named_pipe::NamedPipeServer, req: ManagerMsg) -> Result<()> {
-        write_bincode(pipe, &req)
-            .await
-            .context("couldn't write")
+        write_serialize(pipe, &req).await.context("couldn't write")
     }
 
     fn client_pid(pipe: &named_pipe::NamedPipeServer) -> Result<u32> {
@@ -593,47 +693,128 @@ impl Server {
     }
 }
 
+/// A client that's connected to a server
+///
+/// Manual testing shows that if the corresponding Server's process crashes, Windows will
+/// be nice and return errors for anything trying to read from the Client
+pub(crate) struct Client {
+    pipe_task: JoinHandle<anyhow::Result<()>>,
+    pub request_rx: mpsc::Receiver<ManagerMsg>,
+    write_tx: mpsc::Sender<ClientInternalMsg>,
+}
+
+enum ClientInternalMsg {
+    Msg(WorkerMsg),
+    Shutdown,
+}
+
 impl Client {
     /// Creates a `Client`. Requires a Tokio context
     ///
     /// Doesn't block, will fail instantly if the server isn't ready
+    #[tracing::instrument(skip_all)]
     pub fn new(server_id: &str) -> Result<Self> {
         let pipe = named_pipe::ClientOptions::new().open(server_id)?;
-        Ok(Self { pipe })
+        let (request_tx, request_rx) = mpsc::channel(5);
+        let (write_tx, write_rx) = mpsc::channel(5);
+
+        // TODO: Make sure this task stops
+        let pipe_task =
+            tokio::task::spawn(async move { Self::pipe_task(pipe, request_tx, write_rx).await });
+
+        Ok(Self {
+            pipe_task,
+            request_rx,
+            write_tx,
+        })
     }
 
-    pub async fn read(&mut self) -> Result<ManagerMsg> {
-        read_bincode(&mut self.pipe).await.context("couldn't read")
-    }
-
-    pub async fn ready(&self, interest: tokio::io::Interest) -> Result<tokio::io::Ready> {
-        Ok(self.pipe.ready(interest).await?)
-    }
-
-    pub async fn write(&mut self, req: WorkerMsg) -> Result<()> {
-        write_bincode(&mut self.pipe, &req)
+    pub async fn close(self) -> anyhow::Result<()> {
+        self.write_tx
+            .send(ClientInternalMsg::Shutdown)
             .await
-            .context("couldn't write")
+            .context("couldn't send ClientInternalMsg::Shutdown")?;
+        let Self { pipe_task, .. } = self;
+        pipe_task
+            .await
+            .context("async runtime error for ipc::Client::pipe_task")?
+            .context("ipc::Client::pipe_task returned an error")?;
+        Ok(())
+    }
+
+    pub async fn send(&self, msg: WorkerMsg) -> anyhow::Result<()> {
+        self.write_tx.send(ClientInternalMsg::Msg(msg)).await?;
+        Ok(())
+    }
+
+    #[tracing::instrument(skip_all)]
+    async fn pipe_task(
+        mut pipe: named_pipe::NamedPipeClient,
+        request_tx: mpsc::Sender<ManagerMsg>,
+        mut write_rx: mpsc::Receiver<ClientInternalMsg>,
+    ) -> anyhow::Result<()> {
+        loop {
+            // Note: Make sure these are all cancel-safe
+            tokio::select! {
+                // TODO: Is this cancel-safe?
+                ready = pipe.ready(tokio::io::Interest::READABLE) => {
+                    // Zero bytes just to see if any data is ready at all
+                    let mut buf = [];
+                    if ready?.is_readable() && pipe.try_read(&mut buf).is_ok() {
+                        let req = read_deserialize(&mut pipe).await?;
+                        request_tx.send(req).await?;
+                    }
+                },
+                // Cancel-safe per <https://docs.rs/tokio/latest/tokio/sync/mpsc/struct.Receiver.html#cancel-safety>
+                msg = write_rx.recv() => {
+                    let Some(msg) = msg else {
+                        bail!("write_rx closed suddenly");
+                    };
+                    let msg = match msg {
+                        ClientInternalMsg::Shutdown => break,
+                        ClientInternalMsg::Msg(msg) => msg,
+                    };
+                    write_serialize(&mut pipe, &msg).await?;
+                }
+            }
+        }
+
+        pipe.flush().await?;
+        pipe.shutdown().await?;
+        tracing::debug!("Client::pipe_task exiting gracefully");
+        Ok(())
     }
 }
 
 /// Reads a message from an async reader, with a 32-bit little-endian length prefix
-async fn read_bincode<R: AsyncRead + Unpin, T: DeserializeOwned>(reader: &mut R) -> Result<T> {
+#[tracing::instrument(skip(reader))]
+async fn read_deserialize<R: AsyncRead + Unpin, T: std::fmt::Debug + DeserializeOwned>(
+    reader: &mut R,
+) -> Result<T> {
     let mut len_buf = [0u8; 4];
     reader.read_exact(&mut len_buf).await?;
     let len = u32::from_le_bytes(len_buf);
+    tracing::trace!(?len, "reading message");
     let mut buf = vec![0u8; usize::try_from(len)?];
     reader.read_exact(&mut buf).await?;
-    let msg = bincode::deserialize(&buf)?;
+    let buf = String::from_utf8(buf)?;
+    let msg = serde_json::from_str(&buf)?;
+    tracing::trace!(?msg, "read message");
     Ok(msg)
 }
 
 /// Writes a message to an async writer, with a 32-bit little-endian length prefix
-async fn write_bincode<W: AsyncWrite + Unpin, T: Serialize>(writer: &mut W, msg: &T) -> Result<()> {
-    let buf = bincode::serialize(msg)?;
+#[tracing::instrument(skip(writer))]
+async fn write_serialize<W: AsyncWrite + Unpin, T: std::fmt::Debug + Serialize>(
+    writer: &mut W,
+    msg: &T,
+) -> Result<()> {
+    // Using JSON because `bincode` couldn't decode `ResourceDescription`
+    let buf = serde_json::to_string(msg)?;
     let len = u32::try_from(buf.len())?.to_le_bytes();
+    tracing::trace!(len = buf.len(), "writing message");
     writer.write_all(&len).await?;
-    writer.write_all(&buf).await?;
+    writer.write_all(buf.as_bytes()).await?;
     Ok(())
 }
 
@@ -644,6 +825,13 @@ async fn write_bincode<W: AsyncWrite + Unpin, T: Serialize>(writer: &mut W, msg:
 /// if it can't.
 pub(crate) struct SubcommandChild {
     process: Child,
+}
+
+#[derive(Debug, PartialEq)]
+pub(crate) enum SubcommandExit {
+    Success,
+    Failure,
+    Killed,
 }
 
 impl SubcommandChild {
@@ -665,25 +853,27 @@ impl SubcommandChild {
 
     /// Joins the subprocess without blocking, returning an error if the process doesn't stop
     #[tracing::instrument(skip(self))]
-    pub fn wait_or_kill(&mut self) -> Result<()> {
+    pub fn wait_or_kill(&mut self) -> Result<SubcommandExit> {
         if let Ok(Some(status)) = self.process.try_wait() {
             if status.success() {
-                tracing::debug!("process exited with success code");
+                Ok(SubcommandExit::Success)
             } else {
-                tracing::warn!("process exited with non-success code");
+                Ok(SubcommandExit::Failure)
             }
         } else {
             self.process.kill()?;
-            tracing::error!("process was killed");
+            Ok(SubcommandExit::Killed)
         }
-        Ok(())
     }
 }
 
 impl Drop for SubcommandChild {
     fn drop(&mut self) {
-        if let Err(error) = self.wait_or_kill() {
-            tracing::error!(?error, "SubcommandChild could not be joined or killed");
+        match self.wait_or_kill() {
+            Ok(SubcommandExit::Killed) => tracing::error!("SubcommandChild was killed inside Drop"),
+            // Don't care - might have already been handled before Drop
+            Ok(_) => {}
+            Err(error) => tracing::error!(?error, "SubcommandChild could not be joined or killed"),
         }
     }
 }
@@ -732,11 +922,28 @@ mod tests {
     use super::*;
     use tokio::runtime::Runtime;
 
+    /// Because it turns out `bincode` can't deserialize `ResourceDescription` or something.
+    #[test]
+    fn round_trip_serde() -> anyhow::Result<()> {
+        let cb: WorkerMsg = WorkerMsg::Callback(Callback::OnUpdateResources(sample_resources()));
+
+        let v = serde_json::to_string(&cb)?;
+        let roundtripped: WorkerMsg = serde_json::from_str(&v)?;
+
+        assert_eq!(roundtripped, cb);
+
+        Ok(())
+    }
+
     /// Test just the happy path
     /// It's hard to simulate a process crash because:
     /// - If I Drop anything, Tokio will clean it up
     /// - If I `std::mem::forget` anything, the test process is still running, so Windows will not clean it up
+    #[test]
+    #[tracing::instrument(skip_all)]
     fn happy_path() -> anyhow::Result<()> {
+        tracing_subscriber::fmt::try_init().ok();
+
         let rt = Runtime::new()?;
         rt.block_on(async move {
             // Pretend we're in the main process
@@ -746,32 +953,54 @@ mod tests {
                 // Pretend we're in a worker process
                 let mut client = Client::new(&server_id)?;
 
+                client
+                    .send(WorkerMsg::Callback(Callback::OnUpdateResources(
+                        sample_resources(),
+                    )))
+                    .await?;
+
                 // Handle requests from the main process
                 loop {
-                    let req = client.read().await?;
-                    let resp = match &req {
-                        ManagerMsg::Connect => WorkerMsg::Response(ManagerMsg::Connect),
-                        ManagerMsg::Disconnect => WorkerMsg::Response(ManagerMsg::Disconnect),
+                    let Some(req) = client.request_rx.recv().await else {
+                        tracing::debug!("shutting down worker_task");
+                        break;
                     };
-                    client.write(resp).await?;
+                    tracing::debug!(?req, "worker_task got request");
+                    let resp = WorkerMsg::Response(req.clone());
+                    client.send(resp).await?;
 
                     if let ManagerMsg::Disconnect = req {
                         break;
                     }
                 }
+                client.close().await?;
                 Ok::<_, anyhow::Error>(())
             });
 
             let mut server = server.accept().await?;
 
             let start_time = Instant::now();
+
+            let cb = server
+                .cb_rx
+                .recv()
+                .await
+                .context("should have gotten a OnUpdateResources callback")?;
+            assert_eq!(cb, Callback::OnUpdateResources(sample_resources()));
+
             server.write_tx.send(ManagerMsg::Connect).await?;
-            assert_eq!(server.response_rx.recv().await.unwrap(), ManagerMsg::Connect);
+            assert_eq!(
+                server.response_rx.recv().await.unwrap(),
+                ManagerMsg::Connect
+            );
             server.write_tx.send(ManagerMsg::Disconnect).await?;
-            assert_eq!(server.response_rx.recv().await.unwrap(), ManagerMsg::Disconnect);
+            assert_eq!(
+                server.response_rx.recv().await.unwrap(),
+                ManagerMsg::Disconnect
+            );
 
             let elapsed = start_time.elapsed();
-            assert!(elapsed < Duration::from_millis(6), "{:?}", elapsed);
+            assert!(elapsed < Duration::from_millis(20), "{:?}", elapsed);
 
             // Make sure the worker 'process' exited
             worker_task.await??;

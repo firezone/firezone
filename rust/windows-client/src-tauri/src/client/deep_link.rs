@@ -232,7 +232,7 @@ fn set_registry_values(id: &str, exe: &str) -> Result<(), io::Error> {
 /// * `id` - a non-empty string, e.g. `deep_link`
 fn named_pipe_path(id: &str) -> String {
     // TODO: DRY with `ipc.rs`
-    assert!(! id.is_empty());
+    assert!(!id.is_empty());
     format!(r"\\.\pipe\{BUNDLE_ID}\{}", id)
 }
 

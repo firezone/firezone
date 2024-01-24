@@ -265,7 +265,6 @@ fn handle_system_tray_event(app: &tauri::AppHandle, event: TrayMenuEvent) -> Res
 pub(crate) enum ControllerRequest {
     Callback(ipc::Callback),
     CopyResource(String),
-    Disconnected,
     ExportLogs { path: PathBuf, stem: PathBuf },
     GetAdvancedSettings(oneshot::Sender<AdvancedSettings>),
     Quit,
@@ -334,19 +333,37 @@ impl Controller {
         }
 
         let args = ["connlib-worker"];
-        let mut subprocess = timeout(Duration::from_secs(10), ipc::Subprocess::new(&self.leak_guard, &args)).await.context("timed out while starting subprocess")?.context("error while starting subprocess")?;
-        subprocess.server.write_tx.send(ipc::ManagerMsg::Connect).await.context("couldn't send Connect request to worker")?;
-        let ipc::ManagerMsg::Connect = subprocess.server.response_rx.recv().await.context("didn't get response from worker")? else {
+        let mut subprocess = timeout(
+            Duration::from_secs(10),
+            ipc::Subprocess::new(&self.leak_guard, &args),
+        )
+        .await
+        .context("timed out while starting subprocess")?
+        .context("error while starting subprocess")?;
+        subprocess
+            .server
+            .write_tx
+            .send(ipc::ManagerMsg::Connect)
+            .await
+            .context("couldn't send Connect request to worker")?;
+        let ipc::ManagerMsg::Connect = subprocess
+            .server
+            .response_rx
+            .recv()
+            .await
+            .context("didn't get response from worker")?
+        else {
             anyhow::bail!("Expected Connected back from connlib worker");
         };
 
         let ipc::Subprocess {
-            server: ipc::Server {
-                mut cb_rx,
-                response_rx,
-                write_tx,
-                ..
-            },
+            server:
+                ipc::Server {
+                    mut cb_rx,
+                    response_rx,
+                    write_tx,
+                    ..
+                },
             worker,
         } = subprocess;
 
@@ -357,6 +374,7 @@ impl Controller {
             while let Some(cb) = cb_rx.recv().await {
                 ctlr_tx.send(ControllerRequest::Callback(cb)).await?;
             }
+            tracing::info!("callback receiver task exiting");
             Ok::<_, anyhow::Error>(())
         });
 
@@ -442,14 +460,10 @@ async fn run_controller(
     advanced_settings: AdvancedSettings,
     notify_controller: Arc<Notify>,
 ) -> Result<()> {
-    let mut controller = Controller::new(
-        app.clone(),
-        advanced_settings,
-        ctlr_tx,
-        notify_controller,
-    )
-    .await
-    .context("couldn't create Controller")?;
+    let mut controller =
+        Controller::new(app.clone(), advanced_settings, ctlr_tx, notify_controller)
+            .await
+            .context("couldn't create Controller")?;
 
     let mut have_internet = network_changes::check_internet()?;
     tracing::debug!(?have_internet);
@@ -477,21 +491,6 @@ async fn run_controller(
                     Req::CopyResource(id) => if let Err(e) = controller.copy_resource(&id) {
                         tracing::error!("couldn't copy resource to clipboard: {e:#?}");
                     }
-                    Req::Disconnected => {
-                        tracing::debug!("connlib disconnected, tearing down Session");
-                        controller.tunnel_ready = false;
-                        if let Some(mut session) = controller.session.take() {
-                            tracing::debug!("disconnecting connlib");
-                            session.write_tx.send(ipc::ManagerMsg::Disconnect).await?;
-                            let ipc::ManagerMsg::Disconnect = session.response_rx.recv().await.context("should have gotten a response")? else {
-                                anyhow::bail!("expected Disconnected back from worker");
-                            };
-                            if let Err(error) = session.worker.wait_or_kill() {
-                                tracing::error!(?error, "couldn't join or kill connlib worker");
-                            }
-                        }
-                        controller.refresh_system_tray_menu()?;
-                    }
                     Req::Callback(ipc::Callback::DisconnectedTokenExpired) | Req::SignOut => {
                         tracing::debug!("Token expired or user signed out");
                         controller.auth.sign_out()?;
@@ -517,7 +516,10 @@ async fn run_controller(
                         // TODO: Make this impossible
                         ipc::Callback::Cookie(_) => bail!("Cookie isn't supposed to show up here"),
                         ipc::Callback::DisconnectedTokenExpired => bail!("DisconnectedTokenExpired should be handled above here"),
-                        ipc::Callback::OnUpdateResources(resources) => controller.resources = resources,
+                        ipc::Callback::OnUpdateResources(resources) => {
+                            controller.resources = resources;
+                            controller.refresh_system_tray_menu()?;
+                        },
                         ipc::Callback::TunnelReady => {
                             controller.tunnel_ready = true;
                             controller.refresh_system_tray_menu()?;

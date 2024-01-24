@@ -5,7 +5,7 @@ use crate::client::{
     logging, resolvers,
     settings::{self, AdvancedSettings},
 };
-use anyhow::Result;
+use anyhow::{Context, Result};
 use arc_swap::ArcSwap;
 use connlib_client_shared::{file_logger, ResourceDescription};
 use std::{net::IpAddr, path::PathBuf, sync::Arc, time::Duration};
@@ -25,24 +25,20 @@ pub(crate) fn run(pipe_id: String) -> Result<()> {
 
     let rt = tokio::runtime::Runtime::new()?;
     if let Err(error) = rt.block_on(async move {
-        let mut cw = ConnlibWorker::new(advanced_settings, logger.logger)?;
-        cw.run_async(pipe_id).await
+        let cw = ConnlibWorker::new(advanced_settings, logger.logger, pipe_id).await?;
+        cw.run_async().await
     }) {
         tracing::error!(?error, "error from async runtime");
     }
 
-    tracing::info!("connlib worker subproces exiting cleanly");
+    tracing::info!("connlib worker subprocess exiting cleanly");
     Ok(())
-}
-
-enum ControlFlow {
-    Break,
-    Nothing,
 }
 
 struct ConnlibWorker {
     advanced_settings: AdvancedSettings,
     callback_handler: CallbackHandler,
+    client: ipc::Client,
     connlib: Option<connlib_client_shared::Session<CallbackHandler>>,
     /// Tells us when to wake up and look for a new resource list. Tokio docs say that memory reads and writes are synchronized when notifying, so we don't need an extra mutex on the resources.
     notify: Arc<Notify>,
@@ -58,7 +54,12 @@ struct CallbackHandler {
 }
 
 impl ConnlibWorker {
-    fn new(advanced_settings: AdvancedSettings, logger: file_logger::Handle) -> Result<Self> {
+    async fn new(
+        advanced_settings: AdvancedSettings,
+        logger: file_logger::Handle,
+        pipe_id: String,
+    ) -> Result<Self> {
+        let client = ipc::client(&pipe_id).await?;
         let (ipc_tx, rx) = mpsc::channel(10);
 
         let notify = Arc::new(Notify::new());
@@ -73,38 +74,49 @@ impl ConnlibWorker {
         Ok(Self {
             advanced_settings,
             callback_handler,
+            client,
             connlib: None,
             notify,
             rx,
         })
     }
 
-    async fn run_async(&mut self, pipe_id: String) -> Result<()> {
-        let mut client = ipc::client(&pipe_id).await?;
-
+    async fn run_async(mut self) -> Result<()> {
         loop {
             // Note: Make sure these are all cancel-safe
             tokio::select! {
-                // TODO: Is this cancel-safe?
-                ready = client.ready(tokio::io::Interest::READABLE) => if ready?.is_readable() {
-                    let msg = client.read().await?;
-                    match self.handle_manager_msg(msg).await? {
-                        ControlFlow::Break => break,
-                        ControlFlow::Nothing => {}
+                // Cancel safe per <https://docs.rs/tokio/latest/tokio/sync/mpsc/struct.Receiver.html#cancel-safety>
+                req = self.client.request_rx.recv() => {
+                    let Some(req) = req else {
+                        tracing::info!("named pipe dropped");
+                        break;
+                    };
+                    let resp = self.handle_manager_msg(&req).await.context("handle_manager_msg failed")?;
+                    self.client.send(ipc::WorkerMsg::Response(resp)).await.context("ipc::Client::send failed")?;
+                    if let ipc::ManagerMsg::Disconnect = req {
+                        break;
                     }
                 },
                 // TODO: Not sure if this is cancel-safe? <https://docs.rs/tokio/latest/tokio/sync/struct.Notify.html#cancel-safety>
-                () = self.notify.notified() => self.refresh().await?,
-                // Cancel safe. <https://docs.rs/tokio/latest/tokio/sync/mpsc/struct.Receiver.html#cancel-safety>
-                msg = self.rx.recv() => client.write(msg.ok_or_else(|| anyhow::anyhow!("should have received a message over mpsc"))?).await?,
+                () = self.notify.notified() => self.refresh().await.context("ConnlibWorker::refresh failed")?,
+                // Cancel safe per <https://docs.rs/tokio/latest/tokio/sync/mpsc/struct.Receiver.html#cancel-safety>
+                msg = self.rx.recv() => {
+                    tracing::debug!(?msg, "trying to send message over IPC");
+                    self.client.send(msg.ok_or_else(|| anyhow::anyhow!("should have received a message over mpsc"))?).await.context("ipc::Client::send failed")?;
+                },
             }
         }
 
+        self.client
+            .close()
+            .await
+            .context("ipc::Client::close failed")?;
+        tracing::info!("ConnlibWorker::run_async exiting gracefully");
         Ok::<_, anyhow::Error>(())
     }
 
-    async fn handle_manager_msg(&mut self, manager_msg: ipc::ManagerMsg) -> Result<ControlFlow> {
-        match manager_msg {
+    async fn handle_manager_msg(&mut self, msg: &ipc::ManagerMsg) -> Result<ipc::ManagerMsg> {
+        match msg {
             ManagerMsg::Connect => {
                 let auth = crate::client::auth::Auth::new()?;
                 let token = auth
@@ -124,15 +136,19 @@ impl ConnlibWorker {
                     MAX_PARTITION_TIME,
                 )?;
                 self.connlib = Some(connlib);
-                Ok(ControlFlow::Nothing)
+                Ok(ipc::ManagerMsg::Connect)
             }
-            ManagerMsg::Disconnect => Ok(ControlFlow::Break),
+            ManagerMsg::Disconnect => Ok(ipc::ManagerMsg::Disconnect),
         }
     }
 
     async fn refresh(&mut self) -> Result<()> {
-        // TODO: Handle when connlib tells us we have new resources
-
+        let resources = Vec::clone(&self.callback_handler.resources.load());
+        self.client
+            .send(ipc::WorkerMsg::Callback(ipc::Callback::OnUpdateResources(
+                resources,
+            )))
+            .await?;
         Ok(())
     }
 }
@@ -156,20 +172,23 @@ impl connlib_client_shared::Callbacks for CallbackHandler {
         tracing::debug!("on_disconnect {error:?}");
         // TODO: This is suspicious
         self.ipc_tx.try_send(match error {
-            Some(connlib_client_shared::Error::TokenExpired) => ipc::WorkerMsg::Callback(ipc::Callback::DisconnectedTokenExpired),
+            Some(connlib_client_shared::Error::TokenExpired) => {
+                ipc::WorkerMsg::Callback(ipc::Callback::DisconnectedTokenExpired)
+            }
             _ => ipc::WorkerMsg::Response(ipc::ManagerMsg::Disconnect),
         })?;
         Ok(())
     }
 
     fn on_tunnel_ready(&self) -> Result<(), Self::Error> {
-        tracing::info!("on_tunnel_ready");
-        self.ipc_tx.try_send(ipc::WorkerMsg::Callback(ipc::Callback::TunnelReady))?;
+        self.ipc_tx
+            .try_send(ipc::WorkerMsg::Callback(ipc::Callback::TunnelReady))?;
+        tracing::info!("Sent on_tunnel_ready");
         Ok(())
     }
 
     fn on_update_resources(&self, resources: Vec<ResourceDescription>) -> Result<(), Self::Error> {
-        tracing::info!("on_update_resources");
+        tracing::trace!("on_update_resources");
         self.resources.store(resources.into());
         self.notify.notify_one();
         Ok(())
