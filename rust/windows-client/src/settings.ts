@@ -1,4 +1,8 @@
 // Purpose: TypeScript file for the settings page.
+import "./tauri_stub.js";
+
+const invoke = window.__TAURI__.tauri.invoke;
+const listen = window.__TAURI__.event.listen;
 
 // Custom types
 interface Settings {
@@ -7,45 +11,10 @@ interface Settings {
   log_filter: string;
 }
 
-interface TauriEvent {
-  type: string;
-  payload: any;
-}
-
 interface FileCount {
   files: number;
   bytes: number;
 }
-
-// Stub Tauri API for TypeScript. Helpful when developing without Tauri running.
-export {};
-declare global {
-  interface Window {
-    __TAURI__: {
-      tauri: {
-        invoke: (cmd: string, args?: any) => Promise<any>;
-      };
-      event: {
-        listen: (cmd: string, callback: (event: TauriEvent) => void) => void;
-      };
-    };
-  }
-}
-window.__TAURI__ = window.__TAURI__ || {
-  tauri: {
-    invoke: (_cmd: string, _args?: any) => {
-      return Promise.reject("Tauri API not initialized");
-    },
-  },
-  event: {
-    listen: (_cmd: string, _callback: (event: TauriEvent) => void) => {
-      console.error("Tauri API not initialized");
-    },
-  },
-};
-
-const { invoke } = window.__TAURI__.tauri;
-const { listen } = window.__TAURI__.event;
 
 // DOM elements
 const form = <HTMLFormElement>document.getElementById("advanced-settings-form");
