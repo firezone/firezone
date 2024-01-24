@@ -18,7 +18,7 @@ fn main() -> Result<()> {
         None,
         None,
         CallbackHandler { handle },
-        cli.max_partition_time.into(),
+        cli.max_partition_time,
     )
     .unwrap();
     tracing::info!("new_session");
@@ -63,8 +63,7 @@ struct Cli {
     log_dir: Option<PathBuf>,
 
     /// Maximum length of time to retry connecting to the portal if we're having internet issues or
-    /// it's down.
-    #[arg(env = "MAX_PARTITION_TIME")]
-    #[clap(default_value = "30d")]
-    max_partition_time: humantime::Duration,
+    /// it's down. Accepts human times. e.g. "5m" or "1h" or "30d".
+    #[arg(short, long, env = "MAX_PARTITION_TIME")]
+    max_partition_time: Option<humantime::Duration>,
 }

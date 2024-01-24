@@ -220,6 +220,54 @@ jobs:
               # Ping again
               docker compose exec -it client timeout 60 \
               sh -c 'until ping -W 1 -c 1 172.20.0.100 &>/dev/null; do true; done'
+          - test_name: Client can ping a resource when portal is down (Direct)
+            setup: echo 'Noop'
+            execute: |
+              docker compose exec -it client timeout 60 \
+              sh -c 'until ping -W 1 -c 10 172.20.0.100 &>/dev/null; do true; done'
+
+              # Stop portal
+              docker compose stop api
+
+              # Wait for client to disconnect
+              sleep 5
+
+              # Ping again
+              docker compose exec -it client timeout 60 \
+              sh -c 'until ping -W 1 -c 1 172.20.0.100 &>/dev/null; do true; done'
+          - test_name: Client can ping a resource after portal restarts (Relayed)
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+            execute: |
+              docker compose exec -it client timeout 60 \
+              sh -c 'until ping -W 1 -c 1 172.20.0.100 &>/dev/null; do true; done'
+
+              # Stop portal
+              docker compose stop api
+
+              # Wait for client to disconnect
+              sleep 5
+
+              # Ping again
+              docker compose exec -it client timeout 60 \
+              sh -c 'until ping -W 1 -c 1 172.20.0.100 &>/dev/null; do true; done'
+          - test_name: Client can ping a connected resource when api and relay is down (Direct)
+            setup: echo 'Noop'
+            execute: |
+              docker compose exec -it client timeout 60 \
+              sh -c 'until ping -W 1 -c 10 172.20.0.100 &>/dev/null; do true; done'
+
+              # Stop api, relay
+              docker compose stop api relay
+
+              # Wait for client to disconnect
+              sleep 5
+
+              # Ping again
+              docker compose exec -it client timeout 60 \
+              sh -c 'until ping -W 1 -c 1 172.20.0.100 &>/dev/null; do true; done'
 
           # Performance Tests
           - test_name: Client can ping a resource (Direct)
