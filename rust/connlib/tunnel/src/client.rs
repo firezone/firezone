@@ -704,6 +704,21 @@ impl RoleState for ClientState {
                 self.gateway_awaiting_connection.remove(&gateway_id);
             }
 
+            match self.connection_pool.poll_event() {
+                Some(firezone_connection::Event::SignalIceCandidate {
+                    connection,
+                    candidate,
+                }) => {
+                    return Poll::Ready(Event::SignalIceCandidate {
+                        conn_id: connection,
+                        candidate,
+                    })
+                }
+                Some(firezone_connection::Event::ConnectionEstablished(id)) => todo!(),
+                Some(firezone_connection::Event::ConnectionFailed(id)) => todo!(),
+                None => {}
+            }
+
             match self.awaiting_connection_timers.poll_next_unpin(cx) {
                 Poll::Ready((resource, Some(Ok(_)))) => {
                     let Entry::Occupied(mut entry) = self.awaiting_connection.entry(resource)
