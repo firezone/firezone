@@ -2,7 +2,7 @@ use crate::device_channel::Device;
 use crate::peer::PacketTransformGateway;
 use crate::sockets::UdpSockets;
 use crate::{
-    ConnectedPeer, Event, RoleState, Tunnel, ICE_GATHERING_TIMEOUT_SECONDS,
+    sleep_until, ConnectedPeer, Event, RoleState, Tunnel, ICE_GATHERING_TIMEOUT_SECONDS,
     MAX_CONCURRENT_ICE_GATHERING, MAX_UDP_SIZE,
 };
 use boringtun::x25519::StaticSecret;
@@ -11,6 +11,7 @@ use connlib_shared::Callbacks;
 use firezone_connection::{ConnectionPool, ServerConnectionPool};
 use futures::channel::mpsc::Receiver;
 use futures_bounded::{PushError, StreamMap};
+use futures_util::future::BoxFuture;
 use futures_util::FutureExt;
 use if_watch::tokio::IfWatcher;
 use ip_network_table::IpNetworkTable;
@@ -59,6 +60,7 @@ pub struct GatewayState {
     #[allow(clippy::type_complexity)]
     pub peers_by_ip: IpNetworkTable<ConnectedPeer<ClientId, PacketTransformGateway>>,
     pub connection_pool: ServerConnectionPool<ClientId>,
+    connection_pool_timeout: BoxFuture<'static, std::time::Instant>,
     if_watcher: IfWatcher,
     udp_sockets: UdpSockets<MAX_UDP_SIZE>,
     relay_socket: tokio::net::UdpSocket,
@@ -97,6 +99,7 @@ impl Default for GatewayState {
             if_watcher,
             udp_sockets,
             relay_socket,
+            connection_pool_timeout: sleep_until(std::time::Instant::now()).boxed(),
         }
     }
 }
@@ -137,6 +140,15 @@ impl RoleState for GatewayState {
                 Some(firezone_connection::Event::ConnectionEstablished(id)) => todo!(),
                 Some(firezone_connection::Event::ConnectionFailed(id)) => todo!(),
                 None => {}
+            }
+
+            if let Poll::Ready(instant) = self.connection_pool_timeout.poll_unpin(cx) {
+                self.connection_pool.handle_timeout(instant);
+                if let Some(timeout) = self.connection_pool.poll_timeout() {
+                    self.connection_pool_timeout = sleep_until(timeout).boxed();
+                }
+
+                continue;
             }
 
             match self.if_watcher.poll_if_event(cx) {
