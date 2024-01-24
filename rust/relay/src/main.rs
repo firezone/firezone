@@ -1,4 +1,5 @@
 use anyhow::{anyhow, bail, Context, Result};
+use backoff::ExponentialBackoffBuilder;
 use clap::Parser;
 use firezone_relay::{
     AddressFamily, Allocation, AllocationId, Command, IpStack, Server, Sleep, SocketAddrExt,
@@ -272,6 +273,9 @@ async fn connect_to_portal(
         JoinMessage {
             stamp_secret: stamp_secret.expose_secret().to_string(),
         },
+        ExponentialBackoffBuilder::default()
+            .with_max_elapsed_time(None)
+            .build(),
     )
     .await??;
 
