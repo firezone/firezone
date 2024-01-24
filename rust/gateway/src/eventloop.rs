@@ -169,20 +169,24 @@ impl Eventloop {
                 }))) => {
                     tracing::debug!(client = %client_id, resource = %resource.id(), expires = ?expires_at.map(|e| e.to_rfc3339()), "Allowing access to resource");
 
-                    if let Some(res) = self
-                        .tunnel
-                        .allow_access(resource, client_id, expires_at, payload)
-                    {
-                        let sender = self.portal_sender.clone();
-                        tokio::spawn(async move {
-                            sender
+                    let tunnel = Arc::clone(&self.tunnel);
+                    let sender = self.portal_sender.clone();
+                    tokio::spawn(async move {
+                        if let Some(res) = tunnel
+                            .allow_access(resource, client_id, expires_at, payload)
+                            .await
+                        {
+                            if let Err(e) = sender
                                 .send(EgressMessages::ConnectionReady(ConnectionReady {
                                     reference,
                                     gateway_payload: GatewayResponse::ResourceAccepted(res),
                                 }))
                                 .await
-                        });
-                    }
+                            {
+                                tracing::warn!("Error while sending gateway response: {e:#?}");
+                            }
+                        }
+                    });
                     continue;
                 }
                 Poll::Ready(Some(IngressMessages::IceCandidates(ClientIceCandidates {
