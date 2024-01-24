@@ -1,5 +1,4 @@
-//! Everything related to the About window, including
-
+//! Everything related to the About window
 use crate::client::GIT_VERSION;
 
 #[tauri::command]
