@@ -234,6 +234,13 @@ impl Eventloop {
                     }
                     continue;
                 }
+                Poll::Ready(phoenix_channel::Event::InboundMessage {
+                    msg: IngressMessages::Init(_),
+                    ..
+                }) => {
+                    // TODO: Handle `init` message during operation.
+                    continue;
+                }
                 _ => {}
             }
 
