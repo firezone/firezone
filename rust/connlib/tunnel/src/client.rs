@@ -4,8 +4,9 @@ use crate::ip_packet::{IpPacket, MutableIpPacket};
 use crate::peer::PacketTransformClient;
 use crate::sockets::UdpSockets;
 use crate::{
-    dns, ConnectedPeer, DnsQuery, Event, PeerConfig, RoleState, Tunnel, DNS_QUERIES_QUEUE_SIZE,
-    ICE_GATHERING_TIMEOUT_SECONDS, MAX_CONCURRENT_ICE_GATHERING, MAX_UDP_SIZE,
+    dns, sleep_until, ConnectedPeer, DnsQuery, Event, PeerConfig, RoleState, Tunnel,
+    DNS_QUERIES_QUEUE_SIZE, ICE_GATHERING_TIMEOUT_SECONDS, MAX_CONCURRENT_ICE_GATHERING,
+    MAX_UDP_SIZE,
 };
 use bimap::BiMap;
 use boringtun::x25519::{PublicKey, StaticSecret};
@@ -19,6 +20,7 @@ use domain::base::Rtype;
 use firezone_connection::{ClientConnectionPool, ConnectionPool};
 use futures::stream;
 use futures_bounded::{FuturesMap, PushError, StreamMap};
+use futures_util::future::BoxFuture;
 use futures_util::FutureExt;
 use hickory_resolver::lookup::Lookup;
 use if_watch::tokio::IfWatcher;
@@ -33,7 +35,7 @@ use std::net::IpAddr;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
-use tokio::time::{Instant, Interval, MissedTickBehavior};
+use tokio::time::{Instant, Interval, MissedTickBehavior, Sleep};
 
 // Using str here because Ipv4/6Network doesn't support `const` 🙃
 const IPV4_RESOURCES: &str = "100.96.0.0/11";
@@ -236,6 +238,7 @@ pub struct ClientState {
     pub dns_mapping: BiMap<IpAddr, DnsServer>,
 
     pub connection_pool: ClientConnectionPool<GatewayId>,
+    connection_pool_timeout: BoxFuture<'static, std::time::Instant>,
     if_watcher: IfWatcher,
     udp_sockets: UdpSockets<MAX_UDP_SIZE>,
     relay_socket: tokio::net::UdpSocket,
@@ -682,6 +685,7 @@ impl Default for ClientState {
             if_watcher,
             udp_sockets,
             relay_socket,
+            connection_pool_timeout: sleep_until(std::time::Instant::now()).boxed(),
         }
     }
 }
@@ -722,6 +726,15 @@ impl RoleState for ClientState {
                 Some(firezone_connection::Event::ConnectionEstablished(id)) => todo!(),
                 Some(firezone_connection::Event::ConnectionFailed(id)) => todo!(),
                 None => {}
+            }
+
+            if let Poll::Ready(instant) = self.connection_pool_timeout.poll_unpin(cx) {
+                self.connection_pool.handle_timeout(instant);
+                if let Some(timeout) = self.connection_pool.poll_timeout() {
+                    self.connection_pool_timeout = sleep_until(timeout).boxed();
+                }
+
+                continue;
             }
 
             if let Poll::Ready((gateway_id, _)) =

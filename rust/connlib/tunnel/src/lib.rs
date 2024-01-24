@@ -21,13 +21,16 @@ use tokio::time::MissedTickBehavior;
 
 use arc_swap::ArcSwapOption;
 use futures_util::task::AtomicWaker;
-use std::task::{ready, Context, Poll};
 use std::{collections::HashSet, hash::Hash};
 use std::{
     collections::VecDeque,
     net::{Ipv4Addr, Ipv6Addr},
 };
 use std::{fmt, net::IpAddr, sync::Arc, time::Duration};
+use std::{
+    task::{ready, Context, Poll},
+    time::Instant,
+};
 use tokio::time::Interval;
 
 use connlib_shared::{
@@ -531,4 +534,10 @@ pub trait RoleState: Default + Send + 'static {
     fn remove_peers(&mut self, conn_id: Self::Id);
     fn refresh_peers(&mut self) -> VecDeque<Self::Id>;
     fn add_remote_candidate(&mut self, conn_id: Self::Id, ice_candidate: String);
+}
+
+async fn sleep_until(deadline: Instant) -> Instant {
+    tokio::time::sleep_until(deadline.into()).await;
+
+    deadline
 }
