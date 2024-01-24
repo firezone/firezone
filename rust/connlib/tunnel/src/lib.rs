@@ -43,7 +43,6 @@ pub use gateway::GatewayState;
 use crate::ip_packet::MutableIpPacket;
 use connlib_shared::messages::{ClientId, SecretKey};
 use device_channel::Device;
-use index::IndexLfsr;
 
 mod bounded_queue;
 mod client;
@@ -125,7 +124,6 @@ impl From<connlib_shared::messages::Peer> for PeerConfig {
 
 /// Tunnel is a wireguard state machine that uses webrtc's ICE channels instead of UDP sockets to communicate between peers.
 pub struct Tunnel<CB: Callbacks, TRoleState: RoleState> {
-    next_index: Mutex<IndexLfsr>,
     rate_limiter: Arc<RateLimiter>,
     // TODO: these are used to stop connections
     // peer_connections: Mutex<HashMap<TRoleState::Id, Arc<RTCIceTransport>>>,
@@ -459,7 +457,6 @@ where
     pub async fn new(private_key: StaticSecret, callbacks: CB) -> Result<Self> {
         let public_key = (&private_key).into();
         let rate_limiter = Arc::new(RateLimiter::new(&public_key, HANDSHAKE_RATE_LIMIT));
-        let next_index = Default::default();
         // TODO:
         // let peer_connections = Default::default();
         let device = Default::default();
@@ -478,7 +475,6 @@ where
             rate_limiter,
             // TODO:
             // peer_connections,
-            next_index,
             device,
             read_buf: Mutex::new(Box::new([0u8; MAX_UDP_SIZE])),
             write_buf: Mutex::new(Box::new([0u8; MAX_UDP_SIZE])),
