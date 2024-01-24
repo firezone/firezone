@@ -32,8 +32,11 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
 pub struct Allocation {
     server: SocketAddr,
 
+    /// If present, the last address the relay observed for us.
     last_srflx_candidate: Option<Candidate>,
-    last_ip4_candidate: Option<Candidate>,
+    /// If present, the IPv4 socket the relay allocated for us.
+    ip4_candidate: Option<Candidate>,
+    /// If present, the IPv6 socket the relay allocated for us.
     last_ip6_candidate: Option<Candidate>,
 
     /// When we received the allocation and how long it is valid.
@@ -58,7 +61,7 @@ impl Allocation {
         Self {
             server,
             last_srflx_candidate: Default::default(),
-            last_ip4_candidate: Default::default(),
+            ip4_candidate: Default::default(),
             last_ip6_candidate: Default::default(),
             buffered_transmits: Default::default(),
             new_candidates: Default::default(),
@@ -76,7 +79,7 @@ impl Allocation {
     pub fn current_candidates(&self) -> impl Iterator<Item = Candidate> {
         [
             self.last_srflx_candidate.clone(),
-            self.last_ip4_candidate.clone(),
+            self.ip4_candidate.clone(),
             self.last_ip6_candidate.clone(),
         ]
         .into_iter()
@@ -177,7 +180,7 @@ impl Allocation {
                 );
                 update_candidate(
                     maybe_ip4_relay_candidate,
-                    &mut self.last_ip4_candidate,
+                    &mut self.ip4_candidate,
                     &mut self.new_candidates,
                 );
                 update_candidate(
@@ -188,7 +191,7 @@ impl Allocation {
 
                 tracing::info!(
                     srflx = ?self.last_srflx_candidate,
-                    relay_ip4 = ?self.last_ip4_candidate,
+                    relay_ip4 = ?self.ip4_candidate,
                     relay_ip6 = ?self.last_ip6_candidate,
                     ?lifetime,
                     "Updated candidates of allocation"
@@ -204,7 +207,7 @@ impl Allocation {
 
                 tracing::info!(
                     srflx = ?self.last_srflx_candidate,
-                    relay_ip4 = ?self.last_ip4_candidate,
+                    relay_ip4 = ?self.ip4_candidate,
                     relay_ip6 = ?self.last_ip6_candidate,
                     ?lifetime,
                     "Updated lifetime of allocation"
@@ -248,7 +251,7 @@ impl Allocation {
 
         // Our remote socket that we received this packet on!
         let remote_socket = match peer {
-            SocketAddr::V4(_) => self.last_ip4_candidate.as_ref()?.addr(),
+            SocketAddr::V4(_) => self.ip4_candidate.as_ref()?.addr(),
             SocketAddr::V6(_) => self.last_ip6_candidate.as_ref()?.addr(),
         };
 
@@ -353,7 +356,7 @@ impl Allocation {
     }
 
     fn has_allocation(&self) -> bool {
-        self.last_ip4_candidate.is_some() || self.last_ip6_candidate.is_some()
+        self.ip4_candidate.is_some() || self.last_ip6_candidate.is_some()
     }
 
     fn allocate_in_flight(&self) -> bool {
