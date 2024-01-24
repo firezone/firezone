@@ -22,6 +22,11 @@ use thiserror::Error;
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::EnvFilter;
 
+/// The Android client doesn't use platform APIs to detect network connectivity changes,
+/// so we rely on connlib to do so. We have valid use cases for headless Android clients
+/// (IoT devices, point-of-sale devices, etc), so try to reconnect for 30 days.
+const MAX_PARTITION_TIME: Duration = Duration::from_secs(60 * 60 * 24 * 30);
+
 pub struct CallbackHandler {
     vm: JavaVM,
     callback_handler: GlobalRef,
@@ -136,7 +141,7 @@ impl Callbacks for CallbackHandler {
         &self,
         tunnel_address_v4: Ipv4Addr,
         tunnel_address_v6: Ipv6Addr,
-        dns_address: Ipv4Addr,
+        dns_addresses: Vec<IpAddr>,
     ) -> Result<Option<RawFd>, Self::Error> {
         self.env(|mut env| {
             let tunnel_address_v4 =
@@ -151,12 +156,12 @@ impl Callbacks for CallbackHandler {
                         name: "tunnel_address_v6",
                         source,
                     })?;
-            let dns_address = env.new_string(dns_address.to_string()).map_err(|source| {
-                CallbackError::NewStringFailed {
-                    name: "dns_address",
+            let dns_addresses = env
+                .new_string(serde_json::to_string(&dns_addresses)?)
+                .map_err(|source| CallbackError::NewStringFailed {
+                    name: "dns_addresses",
                     source,
-                }
-            })?;
+                })?;
             let name = "onSetInterfaceConfig";
             env.call_method(
                 &self.callback_handler,
@@ -165,7 +170,7 @@ impl Callbacks for CallbackHandler {
                 &[
                     JValue::from(&tunnel_address_v4),
                     JValue::from(&tunnel_address_v6),
-                    JValue::from(&dns_address),
+                    JValue::from(&dns_addresses),
                 ],
             )
             .and_then(|val| val.i())
@@ -400,7 +405,7 @@ fn connect(
         Some(device_name),
         Some(os_version),
         callback_handler,
-        Duration::from_secs(5 * 60),
+        MAX_PARTITION_TIME,
     )?;
 
     Ok(session)

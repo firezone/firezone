@@ -3,10 +3,11 @@ use crate::messages::{
     EgressMessages, IngressMessages,
 };
 use crate::CallbackHandler;
-use anyhow::{anyhow, Result};
-use connlib_shared::messages::{ClientId, GatewayResponse};
+use anyhow::Result;
+use connlib_shared::messages::{ClientId, GatewayResponse, ResourceAccepted};
 use connlib_shared::Error;
 use firezone_tunnel::{Event, GatewayState, Tunnel};
+use phoenix_channel::PhoenixChannel;
 use std::convert::Infallible;
 use std::sync::Arc;
 use std::task::{Context, Poll};
@@ -16,13 +17,13 @@ pub const PHOENIX_TOPIC: &str = "gateway";
 
 pub struct Eventloop {
     tunnel: Arc<Tunnel<CallbackHandler, GatewayState>>,
-    portal: tokio::sync::mpsc::Receiver<IngressMessages>,
-    portal_sender: tokio::sync::mpsc::Sender<EgressMessages>,
+    portal: PhoenixChannel<IngressMessages, EgressMessages>,
 
     // TODO: Strongly type request reference (currently `String`)
     connection_request_tasks:
         futures_bounded::FuturesMap<(ClientId, String), Result<GatewayResponse, Error>>,
     add_ice_candidate_tasks: futures_bounded::FuturesSet<Result<(), Error>>,
+    allow_access_tasks: futures_bounded::FuturesMap<String, Option<ResourceAccepted>>,
 
     print_stats_timer: tokio::time::Interval,
 }
@@ -30,13 +31,11 @@ pub struct Eventloop {
 impl Eventloop {
     pub(crate) fn new(
         tunnel: Arc<Tunnel<CallbackHandler, GatewayState>>,
-        portal: tokio::sync::mpsc::Receiver<IngressMessages>,
-        portal_sender: tokio::sync::mpsc::Sender<EgressMessages>,
+        portal: PhoenixChannel<IngressMessages, EgressMessages>,
     ) -> Self {
         Self {
             tunnel,
             portal,
-            portal_sender,
 
             // TODO: Pick sane values for timeouts and size.
             connection_request_tasks: futures_bounded::FuturesMap::new(
@@ -45,6 +44,7 @@ impl Eventloop {
             ),
             add_ice_candidate_tasks: futures_bounded::FuturesSet::new(Duration::from_secs(60), 100),
             print_stats_timer: tokio::time::interval(Duration::from_secs(10)),
+            allow_access_tasks: futures_bounded::FuturesMap::new(Duration::from_secs(60), 100),
         }
     }
 }
@@ -60,17 +60,14 @@ impl Eventloop {
                 }) => {
                     tracing::debug!(%client, %candidate, "Sending ICE candidate to client");
 
-                    let sender = self.portal_sender.clone();
-                    tokio::spawn(async move {
-                        sender
-                            .send(EgressMessages::BroadcastIceCandidates(
-                                BroadcastClientIceCandidates {
-                                    client_ids: vec![client],
-                                    candidates: vec![candidate],
-                                },
-                            ))
-                            .await
-                    });
+                    self.portal.send(
+                        PHOENIX_TOPIC,
+                        EgressMessages::BroadcastIceCandidates(BroadcastClientIceCandidates {
+                            client_ids: vec![client],
+                            candidates: vec![candidate],
+                        }),
+                    );
+
                     continue;
                 }
                 Poll::Ready(Event::ConnectionIntent { .. }) => {
@@ -84,15 +81,13 @@ impl Eventloop {
                 Poll::Ready(((client, reference), Ok(Ok(gateway_payload)))) => {
                     tracing::debug!(%client, %reference, "Connection is ready");
 
-                    let sender = self.portal_sender.clone();
-                    tokio::spawn(async move {
-                        sender
-                            .send(EgressMessages::ConnectionReady(ConnectionReady {
-                                reference,
-                                gateway_payload,
-                            }))
-                            .await
-                    });
+                    self.portal.send(
+                        PHOENIX_TOPIC,
+                        EgressMessages::ConnectionReady(ConnectionReady {
+                            reference,
+                            gateway_payload,
+                        }),
+                    );
 
                     // TODO: If outbound request fails, cleanup connection.
                     continue;
@@ -108,6 +103,30 @@ impl Eventloop {
                         %client,
                         %reference,
                         "Failed to establish connection: {:#}", anyhow::Error::new(e)
+                    );
+                    continue;
+                }
+                Poll::Pending => {}
+            }
+
+            match self.allow_access_tasks.poll_unpin(cx) {
+                Poll::Ready((reference, Ok(Some(res)))) => {
+                    self.portal.send(
+                        PHOENIX_TOPIC,
+                        EgressMessages::ConnectionReady(ConnectionReady {
+                            reference,
+                            gateway_payload: GatewayResponse::ResourceAccepted(res),
+                        }),
+                    );
+                    continue;
+                }
+                Poll::Ready((_, Ok(None))) => {
+                    continue;
+                }
+                Poll::Ready((reference, Err(e))) => {
+                    tracing::debug!(
+                        %reference,
+                        "Failed to allow access: {:#}", anyhow::Error::new(e)
                     );
                     continue;
                 }
@@ -130,8 +149,11 @@ impl Eventloop {
                 Poll::Pending => {}
             }
 
-            match self.portal.poll_recv(cx) {
-                Poll::Ready(Some(IngressMessages::RequestConnection(req))) => {
+            match self.portal.poll(cx)? {
+                Poll::Ready(phoenix_channel::Event::InboundMessage {
+                    msg: IngressMessages::RequestConnection(req),
+                    ..
+                }) => {
                     let tunnel = Arc::clone(&self.tunnel);
 
                     match self.connection_request_tasks.try_push(
@@ -160,35 +182,42 @@ impl Eventloop {
                     };
                     continue;
                 }
-                Poll::Ready(Some(IngressMessages::AllowAccess(AllowAccess {
-                    client_id,
-                    resource,
-                    expires_at,
-                    payload,
-                    reference,
-                }))) => {
+                Poll::Ready(phoenix_channel::Event::InboundMessage {
+                    msg:
+                        IngressMessages::AllowAccess(AllowAccess {
+                            client_id,
+                            resource,
+                            expires_at,
+                            payload,
+                            reference,
+                        }),
+                    ..
+                }) => {
                     tracing::debug!(client = %client_id, resource = %resource.id(), expires = ?expires_at.map(|e| e.to_rfc3339()), "Allowing access to resource");
 
-                    if let Some(res) = self
-                        .tunnel
-                        .allow_access(resource, client_id, expires_at, payload)
-                    {
-                        let sender = self.portal_sender.clone();
-                        tokio::spawn(async move {
-                            sender
-                                .send(EgressMessages::ConnectionReady(ConnectionReady {
-                                    reference,
-                                    gateway_payload: GatewayResponse::ResourceAccepted(res),
-                                }))
+                    let tunnel = Arc::clone(&self.tunnel);
+
+                    if self
+                        .allow_access_tasks
+                        .try_push(reference, async move {
+                            tunnel
+                                .allow_access(resource, client_id, expires_at, payload)
                                 .await
-                        });
+                        })
+                        .is_err()
+                    {
+                        tracing::warn!("Too many allow access requests, dropping existing one");
                     }
                     continue;
                 }
-                Poll::Ready(Some(IngressMessages::IceCandidates(ClientIceCandidates {
-                    client_id,
-                    candidates,
-                }))) => {
+                Poll::Ready(phoenix_channel::Event::InboundMessage {
+                    msg:
+                        IngressMessages::IceCandidates(ClientIceCandidates {
+                            client_id,
+                            candidates,
+                        }),
+                    ..
+                }) => {
                     for candidate in candidates {
                         tracing::debug!(client = %client_id, %candidate, "Adding ICE candidate from client");
 
@@ -204,10 +233,6 @@ impl Eventloop {
                         }
                     }
                     continue;
-                }
-                // if we dropped the sender it means that there was an unrecoverable error
-                Poll::Ready(None) => {
-                    return Poll::Ready(Err(anyhow!("portal connection completely dropped")));
                 }
                 _ => {}
             }

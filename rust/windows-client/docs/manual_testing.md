@@ -113,3 +113,31 @@ Given the client is signed in, when you ping...
 4. [ ] a public resource by domain (e.g. example.com), Firezone's DNS will make an IP for it, and it will respond through the tunnel
 5. [ ] a protected resource by domain (e.g. gitlab.company.com), Firezone's DNS will make an IP for it, and it will respond through the tunnel
 6. [ ] a non-resource by domain (e.g. example.com), Firezone's DNS will fall back on the system's DNS, which will find the domain's publicly-routable IP, and it will respond through a physical interface
+
+# Network changes
+
+<https://github.com/firezone/firezone/issues/3000>
+
+## Wi-Fi cycle
+
+1. FZ up, Eth down, Wi-Fi up (steady Wi-Fi)
+2. FZ up, Eth down, Wi-Fi disconnecting (temporary network loss)
+3. FZ up, Eth down, Wi-Fi down (steady state, no network)
+4. FZ up, Eth down, Wi-Fi connecting (regaining Wi-Fi)
+
+## Ethernet cycle, no Wi-Fi
+
+5. FZ up, Eth up, Wi-Fi down (steady Eth)
+6. FZ up, Eth disconnecting, Wi-Fi down (temporary network loss)
+7. FZ up, Eth down, Wi-Fi down (steady state, no network)
+8. FZ up, Eth connecting, Wi-Fi down (regaining Eth)
+
+## Ethernet cycle with Wi-Fi
+
+(This trips up Firezone on the Windows dev laptop)
+
+9. FZ up, Eth up, Wi-Fi down (skip, same as 5)
+10. FZ up, Eth disconnecting, Wi-Fi connecting (unplugging Ethernet)
+11. FZ up, Eth down, Wi-Fi up (skip, same as 1)
+12. FZ up, Eth connecting, Wi-Fi up (regaining Ethernet)
+13. FZ up, Eth up, Wi-Fi disconnecting (Letting Wi-Fi lapse)

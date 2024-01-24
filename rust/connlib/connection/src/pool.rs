@@ -15,11 +15,12 @@ use std::{
     net::SocketAddr,
     sync::Arc,
 };
-use str0m::ice::{IceAgent, IceAgentEvent, IceCreds};
-use str0m::net::{Protocol, Receive};
-use str0m::{Candidate, StunMessage};
+use str0m::ice::{IceAgent, IceAgentEvent, IceCreds, StunMessage, StunPacket};
+use str0m::net::Protocol;
+use str0m::{Candidate, IceConnectionState};
 
 use crate::index::IndexLfsr;
+use crate::stun_binding::StunBinding;
 use crate::IpPacket;
 
 // Note: Taken from boringtun
@@ -43,6 +44,8 @@ pub struct ConnectionPool<T, TId> {
     buffered_transmits: VecDeque<Transmit>,
 
     next_rate_limiter_reset: Option<Instant>,
+
+    stun_servers: HashMap<SocketAddr, StunBinding>,
 
     initial_connections: HashMap<TId, InitialConnection>,
     negotiated_connections: HashMap<TId, Connection>,
@@ -85,6 +88,7 @@ where
             pending_events: VecDeque::default(),
             initial_connections: HashMap::default(),
             buffer: Box::new([0u8; MAX_UDP_SIZE]),
+            stun_servers: HashMap::default(),
         }
     }
 
@@ -127,22 +131,33 @@ where
             return Err(Error::UnknownInterface);
         }
 
-        // TODO: First thing we need to check if the message is from one of our STUN / TURN servers AND it is a STUN message (starts with 0x03)
-        // ...
-        // ...
+        // First, check if a `StunBinding` wants the packet
+        if let Some(binding) = self.stun_servers.get_mut(&from) {
+            if binding.handle_input(from, packet, now) {
+                // If it handled the packet, drain its events to ensure we update the candidates of all connections.
+                drain_binding_events(
+                    from,
+                    binding,
+                    &mut self.initial_connections,
+                    &mut self.negotiated_connections,
+                    &mut self.pending_events,
+                );
+                return Ok(None);
+            }
+        }
 
         // Next: If we can parse the message as a STUN message, cycle through all agents to check which one it is for.
-        if let Ok(stun_message) = StunMessage::parse(packet) {
+        if let Ok(message) = StunMessage::parse(packet) {
             for (_, conn) in self.initial_connections.iter_mut() {
                 // TODO: `accepts_message` cannot demultiplexing multiple connections until https://github.com/algesten/str0m/pull/418 is merged.
-                if conn.agent.accepts_message(&stun_message) {
-                    conn.agent.handle_receive(
+                if conn.agent.accepts_message(&message) {
+                    conn.agent.handle_packet(
                         now,
-                        Receive {
+                        StunPacket {
                             proto: Protocol::Udp,
                             source: from,
                             destination: local,
-                            contents: str0m::net::DatagramRecv::Stun(stun_message),
+                            message,
                         },
                     );
                     return Ok(None);
@@ -151,14 +166,14 @@ where
 
             for (_, conn) in self.negotiated_connections.iter_mut() {
                 // Would the ICE agent of this connection like to handle the packet?
-                if conn.agent.accepts_message(&stun_message) {
-                    conn.agent.handle_receive(
+                if conn.agent.accepts_message(&message) {
+                    conn.agent.handle_packet(
                         now,
-                        Receive {
+                        StunPacket {
                             proto: Protocol::Udp,
                             source: from,
                             destination: local,
-                            contents: str0m::net::DatagramRecv::Stun(stun_message),
+                            message,
                         },
                     );
                     return Ok(None);
@@ -270,8 +285,9 @@ where
                         conn.possible_sockets.insert(source);
                         // TODO: Here is where we'd allocate channels.
                     }
-                    IceAgentEvent::IceRestart(_) => {}
-                    IceAgentEvent::IceConnectionStateChange(_) => {}
+                    IceAgentEvent::IceConnectionStateChange(IceConnectionState::Disconnected) => {
+                        return Some(Event::ConnectionFailed(*id));
+                    }
                     IceAgentEvent::NominatedSend { destination, .. } => match conn.remote_socket {
                         Some(old) if old != destination => {
                             tracing::info!(%id, new = %destination, %old, "Migrating connection to peer");
@@ -285,6 +301,7 @@ where
                         }
                         _ => {}
                     },
+                    _ => {}
                 }
             }
         }
@@ -304,6 +321,9 @@ where
         for c in self.negotiated_connections.values_mut() {
             connection_timeout = earliest(connection_timeout, c.poll_timeout());
         }
+        for b in self.stun_servers.values_mut() {
+            connection_timeout = earliest(connection_timeout, b.poll_timeout());
+        }
 
         earliest(connection_timeout, self.next_rate_limiter_reset)
     }
@@ -314,6 +334,10 @@ where
     pub fn handle_timeout(&mut self, now: Instant) {
         for c in self.negotiated_connections.values_mut() {
             self.buffered_transmits.extend(c.handle_timeout(now));
+        }
+
+        for binding in self.stun_servers.values_mut() {
+            binding.handle_timeout(now);
         }
 
         let next_reset = *self.next_rate_limiter_reset.get_or_insert(now);
@@ -332,6 +356,12 @@ where
                     dst: transmit.destination,
                     payload: transmit.contents.into(),
                 });
+            }
+        }
+
+        for binding in self.stun_servers.values_mut() {
+            if let Some(transmit) = binding.poll_transmit() {
+                return Some(transmit);
             }
         }
 
@@ -356,25 +386,23 @@ where
 
         maybe_initial_connection.or(maybe_established_connection)
     }
-}
 
-impl<TId> ConnectionPool<Client, TId>
-where
-    TId: Eq + Hash + Copy,
-{
-    /// Create a new connection indexed by the given ID.
-    ///
-    /// Out of all configured STUN and TURN servers, the connection will only use the ones provided here.
-    /// The returned [`Offer`] must be passed to the remote via a signalling channel.
-    pub fn new_connection(
+    fn upsert_stun_servers(&mut self, servers: &HashSet<SocketAddr>) {
+        for server in servers {
+            if !self.stun_servers.contains_key(server) {
+                tracing::debug!(address = %server, "Adding new STUN server");
+
+                self.stun_servers.insert(*server, StunBinding::new(*server));
+            }
+        }
+    }
+
+    fn seed_agent_with_local_candidates(
         &mut self,
-        id: TId,
-        allowed_stun_servers: Vec<SocketAddr>,
-        allowed_turn_servers: Vec<SocketAddr>,
-    ) -> Offer {
-        let mut agent = IceAgent::new();
-        agent.set_controlling(true);
-
+        connection: TId,
+        agent: &mut IceAgent,
+        allowed_stun_servers: &HashSet<SocketAddr>,
+    ) {
         for local in self.local_interfaces.iter().copied() {
             let candidate = match Candidate::host(local, Protocol::Udp) {
                 Ok(c) => c,
@@ -384,13 +412,51 @@ where
                 }
             };
 
-            if agent.add_local_candidate(candidate.clone()) {
-                self.pending_events.push_back(Event::SignalIceCandidate {
-                    connection: id,
-                    candidate: candidate.to_sdp_string(),
-                });
-            }
+            add_local_candidate(
+                connection,
+                agent,
+                candidate.clone(),
+                &mut self.pending_events,
+            );
         }
+
+        for candidate in self.stun_servers.iter().filter_map(|(server, binding)| {
+            let candidate = allowed_stun_servers
+                .contains(server)
+                .then(|| binding.candidate())??;
+
+            Some(candidate)
+        }) {
+            add_local_candidate(
+                connection,
+                agent,
+                candidate.clone(),
+                &mut self.pending_events,
+            );
+        }
+    }
+}
+
+impl<TId> ConnectionPool<Client, TId>
+where
+    TId: Eq + Hash + Copy + fmt::Display,
+{
+    /// Create a new connection indexed by the given ID.
+    ///
+    /// Out of all configured STUN and TURN servers, the connection will only use the ones provided here.
+    /// The returned [`Offer`] must be passed to the remote via a signalling channel.
+    pub fn new_connection(
+        &mut self,
+        id: TId,
+        allowed_stun_servers: HashSet<SocketAddr>,
+        allowed_turn_servers: HashSet<SocketAddr>,
+    ) -> Offer {
+        self.upsert_stun_servers(&allowed_stun_servers);
+
+        let mut agent = IceAgent::new();
+        agent.set_controlling(true);
+
+        self.seed_agent_with_local_candidates(id, &mut agent, &allowed_stun_servers);
 
         let session_key = Secret::new(random());
         let ice_creds = agent.local_credentials();
@@ -440,7 +506,7 @@ where
                     self.index.next(),
                     Some(self.rate_limiter.clone()),
                 ),
-                _stun_servers: initial.stun_servers,
+                stun_servers: initial.stun_servers,
                 _turn_servers: initial.turn_servers,
                 next_timer_update: None,
                 remote_socket: None,
@@ -452,16 +518,18 @@ where
 
 impl<TId> ConnectionPool<Server, TId>
 where
-    TId: Eq + Hash + Copy,
+    TId: Eq + Hash + Copy + fmt::Display,
 {
     pub fn accept_connection(
         &mut self,
         id: TId,
         offer: Offer,
         remote: PublicKey,
-        allowed_stun_servers: Vec<SocketAddr>,
-        allowed_turn_servers: Vec<SocketAddr>,
+        allowed_stun_servers: HashSet<SocketAddr>,
+        allowed_turn_servers: HashSet<SocketAddr>,
     ) -> Answer {
+        self.upsert_stun_servers(&allowed_stun_servers);
+
         let mut agent = IceAgent::new();
         agent.set_controlling(false);
         agent.set_remote_credentials(IceCreds {
@@ -475,22 +543,7 @@ where
             },
         };
 
-        for local in self.local_interfaces.iter().copied() {
-            let candidate = match Candidate::host(local, Protocol::Udp) {
-                Ok(c) => c,
-                Err(e) => {
-                    tracing::debug!("Failed to generate host candidate from addr: {e}");
-                    continue;
-                }
-            };
-
-            if agent.add_local_candidate(candidate.clone()) {
-                self.pending_events.push_back(Event::SignalIceCandidate {
-                    connection: id,
-                    candidate: candidate.to_sdp_string(),
-                });
-            }
-        }
+        self.seed_agent_with_local_candidates(id, &mut agent, &allowed_stun_servers);
 
         self.negotiated_connections.insert(
             id,
@@ -504,7 +557,7 @@ where
                     self.index.next(),
                     Some(self.rate_limiter.clone()),
                 ),
-                _stun_servers: allowed_stun_servers,
+                stun_servers: allowed_stun_servers,
                 _turn_servers: allowed_turn_servers,
                 next_timer_update: None,
                 remote_socket: None,
@@ -513,6 +566,55 @@ where
         );
 
         answer
+    }
+}
+
+fn drain_binding_events<TId>(
+    server: SocketAddr,
+    binding: &mut StunBinding,
+    initial_connections: &mut HashMap<TId, InitialConnection>,
+    negotiated_connections: &mut HashMap<TId, Connection>,
+    pending_events: &mut VecDeque<Event<TId>>,
+) where
+    TId: Copy,
+{
+    while let Some(event) = binding.poll_event() {
+        match event {
+            crate::stun_binding::Event::NewServerReflexiveCandidate { candidate } => {
+                // TODO: Reduce duplication between initial and negotiated connections
+                for (id, c) in initial_connections.iter_mut() {
+                    if !c.stun_servers.contains(&server) {
+                        continue;
+                    }
+
+                    add_local_candidate(*id, &mut c.agent, candidate.clone(), pending_events);
+                }
+
+                for (id, c) in negotiated_connections.iter_mut() {
+                    if !c.stun_servers.contains(&server) {
+                        continue;
+                    }
+
+                    add_local_candidate(*id, &mut c.agent, candidate.clone(), pending_events);
+                }
+            }
+        };
+    }
+}
+
+fn add_local_candidate<TId>(
+    id: TId,
+    agent: &mut IceAgent,
+    candidate: Candidate,
+    pending_events: &mut VecDeque<Event<TId>>,
+) {
+    let is_new = agent.add_local_candidate(candidate.clone());
+
+    if is_new {
+        pending_events.push_back(Event::SignalIceCandidate {
+            connection: id,
+            candidate: candidate.to_sdp_string(),
+        })
     }
 }
 
@@ -542,8 +644,14 @@ pub enum Event<TId> {
         candidate: String,
     },
     ConnectionEstablished(TId),
+
+    /// We tested all candidates and failed to establish a connection.
+    ///
+    /// This condition will not resolve unless more candidates are added or the network conditions change.
+    ConnectionFailed(TId),
 }
 
+#[derive(Debug)]
 pub struct Transmit {
     pub dst: SocketAddr,
     pub payload: Vec<u8>,
@@ -552,8 +660,8 @@ pub struct Transmit {
 pub struct InitialConnection {
     agent: IceAgent,
     session_key: Secret<[u8; 32]>,
-    stun_servers: Vec<SocketAddr>,
-    turn_servers: Vec<SocketAddr>,
+    stun_servers: HashSet<SocketAddr>,
+    turn_servers: HashSet<SocketAddr>,
 }
 
 struct Connection {
@@ -567,8 +675,8 @@ struct Connection {
     // Socket addresses from which we might receive data (even before we are connected).
     possible_sockets: HashSet<SocketAddr>,
 
-    _stun_servers: Vec<SocketAddr>,
-    _turn_servers: Vec<SocketAddr>,
+    stun_servers: HashSet<SocketAddr>,
+    _turn_servers: HashSet<SocketAddr>,
 }
 
 impl Connection {

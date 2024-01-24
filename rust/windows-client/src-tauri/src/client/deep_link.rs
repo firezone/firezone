@@ -1,7 +1,7 @@
 //! A module for registering, catching, and parsing deep links that are sent over to the app's already-running instance
 //! Based on reading some of the Windows code from <https://github.com/FabianLars/tauri-plugin-deep-link>, which is licensed "MIT OR Apache-2.0"
 
-use crate::client::auth::Response as AuthResponse;
+use crate::client::{auth::Response as AuthResponse, BUNDLE_ID};
 use secrecy::SecretString;
 use std::{ffi::c_void, io, path::Path};
 use tokio::{io::AsyncReadExt, io::AsyncWriteExt, net::windows::named_pipe};
@@ -92,7 +92,7 @@ impl Server {
     /// Construct a server, but don't await client connections yet
     ///
     /// Panics if there is no Tokio runtime
-    pub fn new(id: &str) -> Result<Self, Error> {
+    pub fn new() -> Result<Self, Error> {
         // This isn't air-tight - We recreate the whole server on each loop,
         // rather than binding 1 socket and accepting many streams like a normal socket API.
         // I can only assume Tokio is following Windows' underlying API.
@@ -118,6 +118,7 @@ impl Server {
         }
 
         let mut sa = WinSec::SECURITY_ATTRIBUTES {
+            // TODO: Try `size_of_val` here instead
             nLength: std::mem::size_of::<WinSec::SECURITY_ATTRIBUTES>()
                 .try_into()
                 .unwrap(),
@@ -125,7 +126,7 @@ impl Server {
             bInheritHandle: false.into(),
         };
 
-        let path = named_pipe_path(id);
+        let path = named_pipe_path(BUNDLE_ID);
         let server = unsafe {
             server_options
                 .create_with_security_attributes_raw(path, &mut sa as *mut _ as *mut c_void)
@@ -169,8 +170,8 @@ impl Server {
 }
 
 /// Open a deep link by sending it to the already-running instance of the app
-pub async fn open(id: &str, url: &url::Url) -> Result<(), Error> {
-    let path = named_pipe_path(id);
+pub async fn open(url: &url::Url) -> Result<(), Error> {
+    let path = named_pipe_path(BUNDLE_ID);
     let mut client = named_pipe::ClientOptions::new()
         .open(path)
         .map_err(Error::Connect)?;
@@ -187,14 +188,14 @@ pub async fn open(id: &str, url: &url::Url) -> Result<(), Error> {
 /// that we send the deep link to a subcommand so the URL won't confuse `clap`
 ///
 /// * `id` A unique ID for the app, e.g. "com.contoso.todo-list" or "dev.firezone.client"
-pub fn register(id: &str) -> Result<(), Error> {
+pub fn register() -> Result<(), Error> {
     let exe = tauri_utils::platform::current_exe()
         .map_err(Error::CurrentExe)?
         .display()
         .to_string()
         .replace("\\\\?\\", "");
 
-    set_registry_values(id, &exe).map_err(Error::WindowsRegistry)?;
+    set_registry_values(BUNDLE_ID, &exe).map_err(Error::WindowsRegistry)?;
 
     Ok(())
 }
@@ -219,6 +220,11 @@ fn set_registry_values(id: &str, exe: &str) -> Result<(), io::Error> {
     Ok(())
 }
 
+/// Returns a valid name for a Windows named pipe
+///
+/// # Arguments
+///
+/// * `id` - BUNDLE_ID, e.g. `dev.firezone.client`
 fn named_pipe_path(id: &str) -> String {
     format!(r"\\.\pipe\{}", id)
 }

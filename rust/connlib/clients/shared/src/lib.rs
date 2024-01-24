@@ -12,6 +12,7 @@ use messages::IngressMessages;
 use messages::Messages;
 use messages::ReplyMessages;
 use secrecy::{Secret, SecretString};
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::{Interval, MissedTickBehavior};
@@ -23,6 +24,11 @@ pub mod file_logger;
 mod messages;
 
 struct StopRuntime;
+
+/// Max interval to retry connections to the portal if it's down or the client has network
+/// connectivity changes. Set this to something short so that the end-user experiences
+/// minimal disruption to their Firezone resources when switching networks.
+const MAX_RECONNECT_INTERVAL: Duration = Duration::from_secs(5);
 
 /// A session is the entry-point for connlib, maintains the runtime and the tunnel.
 ///
@@ -172,7 +178,7 @@ where
                 tunnel: Arc::new(tunnel),
                 phoenix_channel: connection.sender_with_topic("client".to_owned()),
                 tunnel_init: Mutex::new(false),
-                fallback_resolver: parking_lot::Mutex::new(None),
+                fallback_resolver: parking_lot::Mutex::new(HashMap::new()),
             };
 
             tokio::spawn({
@@ -205,7 +211,7 @@ where
             }});
 
             tokio::spawn(async move {
-                let mut exponential_backoff = ExponentialBackoffBuilder::default().with_max_elapsed_time(Some(max_partition_time)).build();
+                let mut exponential_backoff = ExponentialBackoffBuilder::default().with_max_elapsed_time(Some(max_partition_time)).with_max_interval(MAX_RECONNECT_INTERVAL).build();
                 loop {
                     // `connection.start` calls the callback only after connecting
                     tracing::debug!("Attempting connection to portal...");
@@ -220,7 +226,7 @@ where
                         }
                     }
                     if let Some(t) = exponential_backoff.next_backoff() {
-                        tracing::error!("Connection to portal failed. Retrying connection to portal in {} seconds", t.as_secs());
+                        tracing::debug!("Connection to portal failed. Retrying connection to portal in {:?}", t);
                         tokio::time::sleep(t).await;
                     } else {
                         tracing::error!("Connection to portal failed, giving up!");

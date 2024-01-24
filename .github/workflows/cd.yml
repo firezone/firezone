@@ -243,7 +243,7 @@ jobs:
     runs-on: windows-2019
     defaults:
       run:
-        working-directory: ./rust
+        working-directory: ./rust/windows-client
     strategy:
       fail-fast: false
       # The matrix is 1x1 to match the style of build-push-linux-release-artifacts
@@ -261,16 +261,13 @@ jobs:
           targets: x86_64-pc-windows-msvc
       - name: Build release binaries
         run: |
-          npm install -g @tauri-apps/cli
-
-          # NPM installs tauri-cli to somewhere in $PATH
-          # Tauri build already defaults to release profile
-          tauri build
+          pnpm install
+          pnpm build
 
           # Used for release artifact
           # This should match 'build-tauri' in _rust.yml
-          cp "target/release/Firezone Windows Client.exe" "${{ env.BINARY_DEST_PATH }}-x64.exe"
-          cp "target/release/bundle/msi/*.msi" "${{ env.BINARY_DEST_PATH }}-x64.msi"
+          cp "../target/release/Firezone.exe" "${{ env.BINARY_DEST_PATH }}-x64.exe"
+          cp "../target/release/bundle/msi/*.msi" "${{ env.BINARY_DEST_PATH }}-x64.msi"
 
           Get-FileHash ${{ env.BINARY_DEST_PATH }}-x64.exe -Algorithm SHA256 | Select-Object Hash > ${{ env.BINARY_DEST_PATH }}-x64.exe.sha256sum.txt
           Get-FileHash ${{ env.BINARY_DEST_PATH }}-x64.msi -Algorithm SHA256 | Select-Object Hash > ${{ env.BINARY_DEST_PATH }}-x64.msi.sha256sum.txt

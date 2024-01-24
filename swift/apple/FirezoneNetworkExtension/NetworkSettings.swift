@@ -12,7 +12,7 @@ class NetworkSettings {
   // Unchanging values
   let tunnelAddressIPv4: String
   let tunnelAddressIPv6: String
-  let dnsAddress: String
+  let dnsAddresses: [String]
 
   // WireGuard has an 80-byte overhead. We could try setting tunnelOverheadBytes
   // but that's not a reliable way to calculate how big our packets should be,
@@ -28,11 +28,11 @@ class NetworkSettings {
   private(set) var hasUnappliedChanges: Bool
 
   init(
-    tunnelAddressIPv4: String, tunnelAddressIPv6: String, dnsAddress: String
+    tunnelAddressIPv4: String, tunnelAddressIPv6: String, dnsAddresses: [String]
   ) {
     self.tunnelAddressIPv4 = tunnelAddressIPv4
     self.tunnelAddressIPv6 = tunnelAddressIPv6
-    self.dnsAddress = dnsAddress
+    self.dnsAddresses = dnsAddresses
     self.hasUnappliedChanges = true
   }
 
@@ -150,7 +150,7 @@ class NetworkSettings {
     ipv6Settings.includedRoutes = tunnelIPv6Routes
     tunnelNetworkSettings.ipv6Settings = ipv6Settings
 
-    let dnsSettings = NEDNSSettings(servers: [dnsAddress])
+    let dnsSettings = NEDNSSettings(servers: dnsAddresses)
     // Intercept all DNS queries; SplitDNS will be handled by connlib
     dnsSettings.matchDomains = matchDomains
     dnsSettings.matchDomainsNoSearch = true

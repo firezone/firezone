@@ -14,6 +14,16 @@ use std::{
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::EnvFilter;
 
+/// The Apple client implements reconnect logic in the upper layer using OS provided
+/// APIs to detect network connectivity changes. The reconnect timeout here only
+/// applies only in the following conditions:
+///
+/// * That reconnect logic fails to detect network changes (not expected to happen)
+/// * The portal is DOWN
+///
+/// Hopefully we aren't down for more than 24 hours.
+const MAX_PARTITION_TIME: Duration = Duration::from_secs(60 * 60 * 24);
+
 #[swift_bridge::bridge]
 mod ffi {
     extern "Rust" {
@@ -42,7 +52,7 @@ mod ffi {
             &self,
             tunnelAddressIPv4: String,
             tunnelAddressIPv6: String,
-            dnsAddress: String,
+            dnsAddresses: String,
         );
 
         #[swift_bridge(swift_name = "onTunnelReady")]
@@ -89,12 +99,13 @@ impl Callbacks for CallbackHandler {
         &self,
         tunnel_address_v4: Ipv4Addr,
         tunnel_address_v6: Ipv6Addr,
-        dns_address: Ipv4Addr,
+        dns_addresses: Vec<IpAddr>,
     ) -> Result<Option<RawFd>, Self::Error> {
         self.inner.on_set_interface_config(
             tunnel_address_v4.to_string(),
             tunnel_address_v6.to_string(),
-            dns_address.to_string(),
+            serde_json::to_string(&dns_addresses)
+                .expect("developer error: a list of ips should always be serializable"),
         );
         Ok(None)
     }
@@ -191,7 +202,7 @@ impl WrappedSession {
                 inner: Arc::new(callback_handler),
                 handle: init_logging(log_dir.into(), log_filter),
             },
-            Duration::from_secs(5 * 60),
+            MAX_PARTITION_TIME,
         )
         .map_err(|err| err.to_string())?;
 

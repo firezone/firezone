@@ -7,7 +7,7 @@ This crate houses a Windows GUI client.
 This is the minimal toolchain needed to compile natively for x86_64 Windows:
 
 1. [Install rustup](https://win.rustup.rs/x86_64) for Windows.
-1. Install Tauri tooling: `cargo install tauri-cli`
+1. Install [pnpm](https://pnpm.io/installation) for your platform.
 
 ### Recommended IDE Setup
 
@@ -19,15 +19,20 @@ This is the minimal toolchain needed to compile natively for x86_64 Windows:
 
 ## Building
 
+Builds are best started from the frontend tool `pnpm`. This ensures typescript
+and css is compiled properly before bundling the application.
+
+See the [`package.json`](./package.json) script for more details as to what's
+going on under the hood.
+
 ```powershell
 # Builds a release exe
-cargo tauri build
+pnpm build
 
-# The release exe, MSI, and NSIS installer should be up in the workspace.
+# The release exe and MSI installer should be up in the workspace.
 # The exe can run without being installed
-stat ../target/release/firezone-windows-client.exe
-stat ../target/release/bundle/msi/firezone-windows-client_0.0.0_x64_en-US.msi
-stat ../target/release/bundle/nsis/firezone-windows-client_0.0.0_x64-setup.exe
+stat ../target/release/Firezone.exe
+stat ../target/release/bundle/msi/Firezone_0.0.0_x64_en-US.msi
 ```
 
 ## Running
@@ -35,16 +40,15 @@ stat ../target/release/bundle/nsis/firezone-windows-client_0.0.0_x64-setup.exe
 From this dir:
 
 ```powershell
-# Tauri has some hot-reloading features. If the Rust code changes it will even recompile
-# and restart the program for you.
-RUST_LOG=info,firezone_windows_client=debug cargo tauri dev
+# This will start the frontend tools in watch mode and then run `tauri dev`
+pnpm dev
 
 # You can call debug subcommands on the exe from this directory too
-# e.g. this is equivalent to `cargo run -- debug`
-cargo tauri dev -- -- debug
+# e.g. this is equivalent to `cargo run -- debug hostname`
+cargo tauri dev -- -- debug hostname
 
 # The exe is up in the workspace
-stat ../target/debug/firezone-windows-client.exe
+stat ../target/debug/Firezone.exe
 ```
 
 The app's config and logs will be stored at
@@ -55,6 +59,10 @@ The app's config and logs will be stored at
 Tauri says it should work on Windows 10, Version 1803 and up. Older versions may
 work if you
 [manually install WebView2](https://tauri.app/v1/guides/getting-started/prerequisites#2-webview2)
+
+`x86_64` architecture is supported at this time. See
+[this issue](https://github.com/firezone/firezone/issues/2992) for `aarch64`
+support.
 
 ## Threat model
 

@@ -3,11 +3,11 @@
 
 // TODO: `git grep` for unwraps before 1.0, especially this gui module
 
-use crate::client::{self, deep_link, AppLocalDataDir};
+use crate::client::{self, deep_link, network_changes, AppLocalDataDir, BUNDLE_ID};
 use anyhow::{anyhow, bail, Context, Result};
 use arc_swap::ArcSwap;
 use client::{
-    logging,
+    about, logging,
     settings::{self, AdvancedSettings},
 };
 use connlib_client_shared::{file_logger, ResourceDescription};
@@ -21,13 +21,19 @@ use ControllerRequest as Req;
 
 mod system_tray_menu;
 
+/// The Windows client doesn't use platform APIs to detect network connectivity changes,
+/// so we rely on connlib to do so. We have valid use cases for headless Windows clients
+/// (IoT devices, point-of-sale devices, etc), so try to reconnect for 30 days if there's
+/// been a partition.
+const MAX_PARTITION_TIME: Duration = Duration::from_secs(60 * 60 * 24 * 30);
+
 pub(crate) type CtlrTx = mpsc::Sender<ControllerRequest>;
 
-pub(crate) fn app_local_data_dir(app: &tauri::AppHandle) -> Result<AppLocalDataDir> {
-    let path = app
-        .path_resolver()
-        .app_local_data_dir()
-        .ok_or_else(|| anyhow!("getting app_local_data_dir"))?;
+// TODO: Move out of GUI module, shouldn't be here
+pub(crate) fn app_local_data_dir() -> Result<AppLocalDataDir> {
+    let path = known_folders::get_known_folder_path(known_folders::KnownFolder::LocalAppData)
+        .context("should be able to ask Windows where AppData/Local is")?
+        .join(BUNDLE_ID);
     Ok(AppLocalDataDir(path))
 }
 
@@ -54,22 +60,23 @@ impl Managed {
     pub async fn fault_msleep(&self, _millis: u64) {}
 }
 
-/// Bundle ID / App ID that we use to distinguish ourself from other programs on the system
-///
-/// e.g. In ProgramData and AppData we use this to name our subdirectories for configs and data,
-/// and Windows may use it to track things like the MSI installer, notification titles,
-/// deep link registration, etc.
-///
-/// This should be identical to the `tauri.bundle.identifier` over in `tauri.conf.json`,
-/// but sometimes I need to use this before Tauri has booted up, or in a place where
-/// getting the Tauri app handle would be awkward.
-pub const BUNDLE_ID: &str = "dev.firezone.client";
-
 /// Runs the Tauri GUI and returns on exit or unrecoverable error
 pub(crate) fn run(params: client::GuiParams) -> Result<()> {
+    // Change to data dir so the file logger will write there and not in System32 if we're launching from an app link
+    let cwd = app_local_data_dir()?.0.join("data");
+    std::fs::create_dir_all(&cwd)?;
+    std::env::set_current_dir(&cwd)?;
+
+    let advanced_settings = settings::load_advanced_settings().unwrap_or_default();
+
+    // Start logging
+    let logging_handles = client::logging::setup(&advanced_settings.log_filter)?;
+    tracing::info!("started log");
+    tracing::info!("GIT_VERSION = {}", crate::client::GIT_VERSION);
+
     let client::GuiParams {
         crash_on_purpose,
-        flag_elevated,
+        flag_elevated: _,
         inject_faults,
     } = params;
 
@@ -98,18 +105,17 @@ pub(crate) fn run(params: client::GuiParams) -> Result<()> {
         });
     }
 
-    // Make sure we're single-instance
-    // We register our deep links to call the `open-deep-link` subcommand,
-    // so if we're at this point, we know we've been launched manually
-    let server = deep_link::Server::new(BUNDLE_ID)?;
-
-    // We know now we're the only instance on the computer, so register our exe
-    // to handle deep links
-    deep_link::register(BUNDLE_ID)?;
-
     let (ctlr_tx, ctlr_rx) = mpsc::channel(5);
     let notify_controller = Arc::new(Notify::new());
 
+    // Make sure we're single-instance
+    // We register our deep links to call the `open-deep-link` subcommand,
+    // so if we're at this point, we know we've been launched manually
+    let server = deep_link::Server::new()?;
+
+    // We know now we're the only instance on the computer, so register our exe
+    // to handle deep links
+    deep_link::register()?;
     tokio::spawn(accept_deep_links(server, ctlr_tx.clone()));
 
     let managed = Managed {
@@ -131,10 +137,13 @@ pub(crate) fn run(params: client::GuiParams) -> Result<()> {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            about::get_cargo_version,
+            about::get_git_version,
             logging::clear_logs,
+            logging::count_logs,
             logging::export_logs,
-            logging::start_stop_log_counting,
             settings::apply_advanced_settings,
+            settings::reset_advanced_settings,
             settings::get_advanced_settings,
         ])
         .system_tray(tray)
@@ -154,27 +163,11 @@ pub(crate) fn run(params: client::GuiParams) -> Result<()> {
             }
         })
         .setup(move |app| {
-            // Change to data dir so the file logger will write there and not in System32 if we're launching from an app link
-            let cwd = app_local_data_dir(&app.handle())?.0.join("data");
-            std::fs::create_dir_all(&cwd)?;
-            std::env::set_current_dir(&cwd)?;
-
-            let advanced_settings = tokio::runtime::Handle::current()
-                .block_on(settings::load_advanced_settings(&app.handle()))
-                .unwrap_or_default();
-
-            // Set up logger
-            // It's hard to set it up before Tauri's setup, because Tauri knows where all the config and data go in AppData and I don't want to replicate their logic.
-            let logging_handles = client::logging::setup(&advanced_settings.log_filter)?;
-            tracing::info!("started log");
             assert_eq!(
                 BUNDLE_ID,
                 app.handle().config().tauri.bundle.identifier,
                 "BUNDLE_ID should match bundle ID in tauri.conf.json"
             );
-            tracing::info!("GIT_VERSION = {}", crate::client::GIT_VERSION);
-            // I checked this on my dev system to make sure Powershell is doing what I expect and passing the argument back to us after relaunch
-            tracing::debug!("flag_elevated: {flag_elevated}");
 
             let app_handle = app.handle();
             let _ctlr_task = tokio::spawn(async move {
@@ -230,7 +223,7 @@ async fn accept_deep_links(mut server: deep_link::Server, ctlr_tx: CtlrTx) -> Re
                 .ok();
         }
         // We re-create the named pipe server every time we get a link, because of an oddity in the Windows API.
-        server = deep_link::Server::new(BUNDLE_ID)?;
+        server = deep_link::Server::new()?;
     }
 }
 
@@ -283,7 +276,6 @@ pub(crate) enum ControllerRequest {
     Quit,
     SchemeRequest(url::Url),
     SignIn,
-    StartStopLogCounting(bool),
     SignOut,
     TunnelReady,
 }
@@ -360,7 +352,6 @@ struct Controller {
     /// The UUIDv4 device ID persisted to disk
     /// Sent verbatim to Session::connect
     device_id: String,
-    log_counting_task: Option<tokio::task::JoinHandle<Result<()>>>,
     logging_handles: client::logging::Handles,
     /// Tells us when to wake up and look for a new resource list. Tokio docs say that memory reads and writes are synchronized when notifying, so we don't need an extra mutex on the resources.
     notify_controller: Arc<Notify>,
@@ -390,7 +381,6 @@ impl Controller {
             ctlr_tx,
             session: None,
             device_id,
-            log_counting_task: None,
             logging_handles,
             notify_controller,
             tunnel_ready: false,
@@ -427,7 +417,7 @@ impl Controller {
             None, // TODO: Send device name here (windows computer name)
             None,
             callback_handler.clone(),
-            Duration::from_secs(5 * 60),
+            MAX_PARTITION_TIME,
         )?;
 
         self.session = Some(Session {
@@ -524,10 +514,23 @@ async fn run_controller(
     .await
     .context("couldn't create Controller")?;
 
+    let mut have_internet = network_changes::check_internet()?;
+    tracing::debug!(?have_internet);
+
+    let mut com_worker = network_changes::Worker::new()?;
+
     loop {
         tokio::select! {
             () = controller.notify_controller.notified() => if let Err(e) = controller.refresh_system_tray_menu() {
                 tracing::error!("couldn't reload resource list: {e:#?}");
+            },
+            () = com_worker.notified() => {
+                let new_have_internet = network_changes::check_internet()?;
+                if new_have_internet != have_internet {
+                    have_internet = new_have_internet;
+                    // TODO: Stop / start / restart connlib as needed here
+                    tracing::debug!(?have_internet);
+                }
             },
             req = rx.recv() => {
                 let Some(req) = req else {
@@ -581,19 +584,6 @@ async fn run_controller(
                             )?;
                         }
                     }
-                    Req::StartStopLogCounting(enable) => {
-                        if enable {
-                            if controller.log_counting_task.is_none() {
-                                let app = app.clone();
-                                controller.log_counting_task = Some(tokio::spawn(logging::count_logs(app)));
-                                tracing::debug!("started log counting");
-                            }
-                        } else if let Some(t) = controller.log_counting_task {
-                            t.abort();
-                            controller.log_counting_task = None;
-                            tracing::debug!("cancelled log counting");
-                        }
-                    }
                     Req::TunnelReady => {
                         controller.tunnel_ready = true;
                         controller.refresh_system_tray_menu()?;
@@ -608,6 +598,10 @@ async fn run_controller(
                 }
             }
         }
+    }
+
+    if let Err(error) = com_worker.close() {
+        tracing::error!(?error, "com_worker");
     }
 
     // Last chance to do any drops / cleanup before the process crashes.
