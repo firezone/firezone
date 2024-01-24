@@ -128,8 +128,6 @@ services:
       - NET_ADMIN
     sysctls:
       - net.ipv6.conf.all.disable_ipv6=0
-    devices:
-      - "/dev/net/tun:/dev/net/tun"
     depends_on:
       gateway:
         condition: "service_healthy"
@@ -169,8 +167,6 @@ services:
       - net.ipv6.conf.all.disable_ipv6=0
       - net.ipv6.conf.all.forwarding=1
       - net.ipv6.conf.default.forwarding=1
-    devices:
-      - "/dev/net/tun:/dev/net/tun"
     depends_on:
       api:
         condition: "service_healthy"
