@@ -50,7 +50,6 @@ mod control_protocol;
 mod device_channel;
 mod dns;
 mod gateway;
-mod index;
 mod ip_packet;
 mod peer;
 mod peer_handler;

@@ -63,9 +63,6 @@ where
         resource: ResourceDescription,
     ) -> Result<ConnectionAccepted> {
         let offer = todo!();
-        self.role_state
-            .lock()
-            .add_new_ice_receiver(client_id, todo!());
 
         // TODO:
         // set_connection_state_update(&ice, client_id);

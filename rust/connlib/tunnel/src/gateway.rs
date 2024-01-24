@@ -55,26 +55,11 @@ where
 
 /// [`Tunnel`] state specific to gateways.
 pub struct GatewayState {
-    pub candidate_receivers: StreamMap<ClientId, String>,
     #[allow(clippy::type_complexity)]
     pub peers_by_ip: IpNetworkTable<ConnectedPeer<ClientId, PacketTransformGateway>>,
     pub connection_pool: ServerConnectionPool<ClientId>,
     if_watcher: IfWatcher,
     udp_sockets: UdpSockets<MAX_UDP_SIZE>,
-}
-
-impl GatewayState {
-    pub fn add_new_ice_receiver(&mut self, id: ClientId, receiver: Receiver<String>) {
-        match self.candidate_receivers.try_push(id, receiver) {
-            Ok(()) => {}
-            Err(PushError::BeyondCapacity(_)) => {
-                tracing::warn!("Too many active ICE candidate receivers at a time")
-            }
-            Err(PushError::Replaced(_)) => {
-                tracing::warn!(%id, "Replaced old ICE candidate receiver with new one")
-            }
-        }
-    }
 }
 
 impl Default for GatewayState {
@@ -98,10 +83,6 @@ impl Default for GatewayState {
             }
         }
         Self {
-            candidate_receivers: StreamMap::new(
-                Duration::from_secs(ICE_GATHERING_TIMEOUT_SECONDS),
-                MAX_CONCURRENT_ICE_GATHERING,
-            ),
             peers_by_ip: IpNetworkTable::new(),
             connection_pool,
             if_watcher,
@@ -115,19 +96,6 @@ impl RoleState for GatewayState {
 
     fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Event<Self::Id>> {
         loop {
-            match ready!(self.candidate_receivers.poll_next_unpin(cx)) {
-                (conn_id, Some(Ok(c))) => {
-                    return Poll::Ready(Event::SignalIceCandidate {
-                        conn_id,
-                        candidate: c,
-                    });
-                }
-                (id, Some(Err(e))) => {
-                    tracing::warn!(gateway_id = %id, "ICE gathering timed out: {e}")
-                }
-                (_, None) => {}
-            }
-
             match self.if_watcher.poll_if_event(cx) {
                 Poll::Ready(Ok(ev)) => match ev {
                     if_watch::IfEvent::Up(ip) => {
