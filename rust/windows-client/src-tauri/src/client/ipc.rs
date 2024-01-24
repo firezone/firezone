@@ -11,10 +11,11 @@ use connlib_client_shared::ResourceDescription;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::{
     ffi::c_void,
+    io::Write,
     marker::Unpin,
     os::windows::io::{AsHandle, AsRawHandle},
     process::{self, Child},
-    time::Duration,
+    time::{Duration, Instant},
 };
 use tokio::{
     io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt},
@@ -28,10 +29,11 @@ use windows::Win32::{
         SetInformationJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
         JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
     },
+    System::Pipes::GetNamedPipeClientProcessId,
 };
 
 #[derive(clap::Subcommand)]
-pub enum Subcommand {
+pub(crate) enum Subcommand {
     Manager {
         pipe_id: String,
     },
@@ -47,6 +49,10 @@ pub enum Subcommand {
     LeakWorker {
         pipe_id: String,
     },
+
+    SecurityWorker {
+        pipe_id: String,
+    },
 }
 
 pub fn test_subcommand(cmd: Option<Subcommand>) -> Result<()> {
@@ -55,6 +61,7 @@ pub fn test_subcommand(cmd: Option<Subcommand>) -> Result<()> {
     rt.block_on(async move {
         match cmd {
             None => {
+                test_security().await?;
                 test_happy_path().await?;
                 test_leak(true).await?;
                 test_leak(false).await?;
@@ -67,12 +74,14 @@ pub fn test_subcommand(cmd: Option<Subcommand>) -> Result<()> {
                 pipe_id,
             }) => leak_manager(pipe_id, enable_protection),
             Some(Subcommand::LeakWorker { pipe_id }) => leak_worker(pipe_id).await,
+            Some(Subcommand::SecurityWorker { pipe_id }) => security_worker(pipe_id).await,
         }
     })?;
     Ok(())
 }
 
 /// Test normal IPC
+#[tracing::instrument]
 async fn test_happy_path() -> Result<()> {
     let id = random_pipe_id();
 
@@ -83,6 +92,7 @@ async fn test_happy_path() -> Result<()> {
     Ok(())
 }
 
+#[tracing::instrument]
 async fn test_manager_process(pipe_id: String) -> Result<()> {
     let server = UnconnectedServer::new_with_id(&pipe_id)?;
 
@@ -91,7 +101,7 @@ async fn test_manager_process(pipe_id: String) -> Result<()> {
 
     let mut server = timeout(Duration::from_secs(5), server.accept()).await??;
 
-    let start_time = std::time::Instant::now();
+    let start_time = Instant::now();
     assert_eq!(server.request(Request::Connect).await?, Response::Connected);
     assert_eq!(
         server.request(Request::AwaitCallback).await?,
@@ -113,6 +123,7 @@ async fn test_manager_process(pipe_id: String) -> Result<()> {
     Ok(())
 }
 
+#[tracing::instrument]
 async fn test_worker_process(pipe_id: String) -> Result<()> {
     let mut client = Client::new(&pipe_id)?;
 
@@ -149,6 +160,7 @@ async fn test_worker_process(pipe_id: String) -> Result<()> {
 /// - [Chromium example](https://source.chromium.org/chromium/chromium/src/+/main:base/process/launch_win.cc;l=421;drc=b7d560c40ceb5283dba3e3d305abd9e2e7e926cd)
 /// - [MSDN docs](https://learn.microsoft.com/en-us/windows/win32/api/jobapi2/nf-jobapi2-assignprocesstojobobject)
 /// - [windows-rs docs](https://microsoft.github.io/windows-docs-rs/doc/windows/Win32/System/JobObjects/fn.AssignProcessToJobObject.html)
+#[tracing::instrument]
 async fn test_leak(enable_protection: bool) -> Result<()> {
     let (server, pipe_id) = UnconnectedServer::new()?;
     let args = [
@@ -161,6 +173,8 @@ async fn test_leak(enable_protection: bool) -> Result<()> {
     ];
     let mut manager = SubcommandChild::new(&args)?;
     let mut server = timeout(Duration::from_secs(5), server.accept()).await??;
+
+    tracing::info!("Actual pipe client PID = {}", server.client_pid()?);
     tracing::debug!("Harness accepted connection from Worker");
 
     // Send a few requests to make sure the worker is connected and good
@@ -199,10 +213,12 @@ async fn test_leak(enable_protection: bool) -> Result<()> {
     Ok(())
 }
 
+#[tracing::instrument]
 fn leak_manager(pipe_id: String, enable_protection: bool) -> Result<()> {
     let leak_guard = LeakGuard::new()?;
 
     let worker = SubcommandChild::new(&["debug", "test-ipc", "leak-worker", &pipe_id])?;
+    tracing::info!("Expected worker PID = {}", worker.process.id());
 
     if enable_protection {
         leak_guard.add_process(&worker.process)?;
@@ -214,6 +230,7 @@ fn leak_manager(pipe_id: String, enable_protection: bool) -> Result<()> {
     }
 }
 
+#[tracing::instrument]
 async fn leak_worker(pipe_id: String) -> Result<()> {
     let mut client = Client::new(&pipe_id)?;
     tracing::debug!("Worker connected to named pipe");
@@ -221,6 +238,60 @@ async fn leak_worker(pipe_id: String) -> Result<()> {
         let (_, responder) = client.next_request().await?;
         responder.respond(Response::CallbackTunnelReady).await?;
     }
+}
+
+#[tracing::instrument]
+async fn test_security() -> Result<()> {
+    let start_time = Instant::now();
+
+    let leak_guard = LeakGuard::new()?;
+    let (server, pipe_id) = UnconnectedServer::new()?;
+    let args = ["debug", "test-ipc", "security-worker", &pipe_id];
+    let mut worker = SubcommandChild::new(&args)?;
+    leak_guard.add_process(&worker.process)?;
+    let mut server = timeout(Duration::from_secs(5), server.accept()).await??;
+
+    let client_pid = server.client_pid()?;
+    let child_pid = worker.process.id();
+    assert_eq!(child_pid, client_pid);
+
+    let mut child_stdin = worker
+        .process
+        .stdin
+        .take()
+        .ok_or_else(|| anyhow::anyhow!("couldn't get stdin of child process"))?;
+    let cookie = uuid::Uuid::new_v4().to_string();
+    writeln!(child_stdin, "{cookie}")?;
+
+    let echoed_cookie: String = read_bincode(&mut server.pipe).await?;
+    assert_eq!(echoed_cookie, cookie);
+
+    server.request(Request::Disconnect).await?;
+
+    let elapsed = start_time.elapsed();
+    assert!(elapsed < Duration::from_millis(200), "{:?}", elapsed);
+
+    tokio::time::sleep(Duration::from_secs(3)).await;
+    worker.wait_or_kill()?;
+
+    Ok(())
+}
+
+#[tracing::instrument]
+async fn security_worker(pipe_id: String) -> Result<()> {
+    let mut client = Client::new(&pipe_id)?;
+    let mut cookie = String::new();
+    std::io::stdin().read_line(&mut cookie)?;
+    write_bincode(&mut client.pipe, &cookie.trim()).await?;
+    tracing::debug!("Worker connected to named pipe");
+    loop {
+        let (req, responder) = client.next_request().await?;
+        responder.respond(Response::CallbackTunnelReady).await?;
+        if let Request::Disconnect = req {
+            break;
+        }
+    }
+    Ok(())
 }
 
 /// Returns a random valid named pipe ID based on a UUIDv4
@@ -234,7 +305,7 @@ fn random_pipe_id() -> String {
 }
 
 /// A server that accepts only one client
-pub(crate) struct UnconnectedServer {
+struct UnconnectedServer {
     pipe: named_pipe::NamedPipeServer,
 }
 
@@ -309,6 +380,16 @@ impl Server {
             .await
             .context("couldn't read response")
     }
+
+    fn client_pid(&self) -> Result<u32> {
+        let handle = self.pipe.as_handle();
+        let handle = HANDLE(unsafe { handle.as_raw_handle().offset_from(std::ptr::null()) });
+        let mut pid = 0;
+        // SAFETY: Not sure if this can be called from two threads at once?
+        // But the pointer is valid at least.
+        unsafe { GetNamedPipeClientProcessId(handle, &mut pid) }?;
+        Ok(pid)
+    }
 }
 
 impl Client {
@@ -371,6 +452,8 @@ impl SubcommandChild {
     /// * `args` - e.g. `["debug", "test", "ipc-worker"]`
     pub fn new(args: &[&str]) -> Result<Self> {
         let mut process = process::Command::new(std::env::current_exe()?);
+        // Make the child's stdin piped so we can send it a security cookie.
+        process.stdin(process::Stdio::piped());
         for arg in args {
             process.arg(arg);
         }
@@ -379,6 +462,7 @@ impl SubcommandChild {
     }
 
     /// Joins the subprocess, returning an error if the process doesn't stop
+    #[tracing::instrument(skip(self))]
     pub fn wait_or_kill(&mut self) -> Result<()> {
         if let Ok(Some(status)) = self.process.try_wait() {
             if status.success() {
@@ -427,7 +511,7 @@ impl LeakGuard {
     }
 
     pub fn add_process(&self, process: &std::process::Child) -> Result<()> {
-        // Process IDs are not the same as handles, so get a handle to the process.
+        // Process IDs are not the same as handles, so get our handle to the process.
         let process_handle = process.as_handle();
         // SAFETY: The docs say this is UB since the null pointer doesn't belong to the same allocated object as the handle.
         // I couldn't get `OpenProcess` to work, and I don't have any other way to convert the process ID to a handle safely.
@@ -480,7 +564,7 @@ mod tests {
 
             let mut server = server.accept().await?;
 
-            let start_time = std::time::Instant::now();
+            let start_time = Instant::now();
             assert_eq!(server.request(Request::Connect).await?, Response::Connected);
             assert_eq!(
                 server.request(Request::AwaitCallback).await?,
@@ -492,11 +576,7 @@ mod tests {
             );
 
             let elapsed = start_time.elapsed();
-            assert!(
-                elapsed < std::time::Duration::from_millis(6),
-                "{:?}",
-                elapsed
-            );
+            assert!(elapsed < Duration::from_millis(6), "{:?}", elapsed);
 
             // Make sure the worker 'process' exited
             worker_task.await??;

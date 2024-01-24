@@ -70,6 +70,8 @@ features = [
   "Win32_System_Com",
   # Needed for Windows to automatically kill child processes if the main process crashes
   "Win32_System_JobObjects",
+  # Needed to check process ID of named pipe clients
+  "Win32_System_Pipes",
   "Win32_System_Threading",
   # For deep_link module
   "Win32_System_SystemServices",
