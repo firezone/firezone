@@ -151,7 +151,6 @@ pub struct Answer {
 pub struct Offer {
     pub username: String,
     pub password: String,
-    pub session_key: SecretKey,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]

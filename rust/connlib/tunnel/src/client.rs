@@ -17,7 +17,6 @@ use connlib_shared::messages::{
 use connlib_shared::{Callbacks, Dname, IpProvider};
 use domain::base::Rtype;
 use firezone_connection::{ClientConnectionPool, ConnectionPool};
-use futures::channel::mpsc::Receiver;
 use futures::stream;
 use futures_bounded::{FuturesMap, PushError, StreamMap};
 use hickory_resolver::lookup::Lookup;
@@ -199,10 +198,6 @@ where
 
 /// [`Tunnel`] state specific to clients.
 pub struct ClientState {
-    active_candidate_receivers: StreamMap<GatewayId, String>,
-    /// We split the receivers of ICE candidates into two phases because we only want to start sending them once we've received an SDP from the gateway.
-    waiting_for_sdp_from_gateway: HashMap<GatewayId, Receiver<String>>,
-
     // TODO: Make private
     pub awaiting_connection: HashMap<ResourceId, AwaitingConnectionDetails>,
     awaiting_connection_timers: StreamMap<ResourceId, Instant>,
@@ -557,33 +552,8 @@ impl ClientState {
         self.resources_gateways.get(resource).copied()
     }
 
-    pub fn add_waiting_gateway(
-        &mut self,
-        id: GatewayId,
-        receiver: Receiver<String>,
-    ) -> StaticSecret {
-        self.waiting_for_sdp_from_gateway.insert(id, receiver);
-        let preshared_key = StaticSecret::random_from_rng(OsRng);
-        self.gateway_preshared_keys
-            .insert(id, preshared_key.clone());
-        preshared_key
-    }
-
     pub fn activate_ice_candidate_receiver(&mut self, id: GatewayId, key: PublicKey) {
-        let Some(receiver) = self.waiting_for_sdp_from_gateway.remove(&id) else {
-            return;
-        };
         self.gateway_public_keys.insert(id, key);
-
-        match self.active_candidate_receivers.try_push(id, receiver) {
-            Ok(()) => {}
-            Err(PushError::BeyondCapacity(_)) => {
-                tracing::warn!("Too many active ICE candidate receivers at a time")
-            }
-            Err(PushError::Replaced(_)) => {
-                tracing::warn!(%id, "Replaced old ICE candidate receiver with new one")
-            }
-        }
     }
 
     fn is_awaiting_connection_to_cidr(&self, destination: IpAddr) -> bool {
@@ -660,7 +630,10 @@ impl Default for ClientState {
         let if_watcher = IfWatcher::new().expect(
             "Program should be able to list interfaces on the system. Check binary's permissions",
         );
-        let mut connection_pool = ConnectionPool::new(StaticSecret::random_from_rng(OsRng));
+        let mut connection_pool = ConnectionPool::new(
+            StaticSecret::random_from_rng(OsRng),
+            std::time::Instant::now(),
+        );
         let mut udp_sockets = UdpSockets::default();
 
         for ip in if_watcher.iter() {
@@ -674,12 +647,6 @@ impl Default for ClientState {
         }
 
         Self {
-            active_candidate_receivers: StreamMap::new(
-                Duration::from_secs(ICE_GATHERING_TIMEOUT_SECONDS),
-                MAX_CONCURRENT_ICE_GATHERING,
-            ),
-            waiting_for_sdp_from_gateway: Default::default(),
-
             awaiting_connection: Default::default(),
             awaiting_connection_timers: StreamMap::new(Duration::from_secs(60), 100),
 
@@ -715,20 +682,21 @@ impl RoleState for ClientState {
 
     fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Event<Self::Id>> {
         loop {
-            match self.active_candidate_receivers.poll_next_unpin(cx) {
-                Poll::Ready((conn_id, Some(Ok(c)))) => {
-                    return Poll::Ready(Event::SignalIceCandidate {
-                        conn_id,
-                        candidate: c,
-                    })
-                }
-                Poll::Ready((id, Some(Err(e)))) => {
-                    tracing::warn!(gateway_id = %id, "ICE gathering timed out: {e}");
-                    continue;
-                }
-                Poll::Ready((_, None)) => continue,
-                Poll::Pending => {}
-            }
+            // TODO: send ICE candidates
+            // match self.active_candidate_receivers.poll_next_unpin(cx) {
+            //     Poll::Ready((conn_id, Some(Ok(c)))) => {
+            //         return Poll::Ready(Event::SignalIceCandidate {
+            //             conn_id,
+            //             candidate: c,
+            //         })
+            //     }
+            //     Poll::Ready((id, Some(Err(e)))) => {
+            //         tracing::warn!(gateway_id = %id, "ICE gathering timed out: {e}");
+            //         continue;
+            //     }
+            //     Poll::Ready((_, None)) => continue,
+            //     Poll::Pending => {}
+            // }
 
             if let Poll::Ready((gateway_id, _)) =
                 self.gateway_awaiting_connection_timers.poll_unpin(cx)

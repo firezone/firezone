@@ -4,14 +4,14 @@ use boringtun::x25519::PublicKey;
 use connlib_shared::{
     control::Reference,
     messages::{
-        Answer, ClientPayload, DomainResponse, GatewayId, Key, Relay, RequestConnection,
+        Answer, ClientPayload, DomainResponse, GatewayId, Key, Offer, Relay, RequestConnection,
         ResourceDescription, ResourceId,
     },
     Callbacks,
 };
 use domain::base::Rtype;
 use ip_network::IpNetwork;
-use secrecy::Secret;
+use secrecy::{ExposeSecret, Secret};
 
 use crate::{
     client::DnsResource,
@@ -103,16 +103,13 @@ where
             .clone();
 
         let mut stun_relays = stun(&relays);
-        stun_relays.extend(turn(&relays));
+        stun_relays.extend(turn(&relays).iter().map(|r| r.0).collect::<HashSet<_>>());
         let offer = self.role_state.lock().connection_pool.new_connection(
             gateway_id,
             stun_relays,
             turn(&relays),
         );
-        let preshared_key = self
-            .role_state
-            .lock()
-            .add_waiting_gateway(gateway_id, todo!());
+
         // TODO: track connection
         // self.peer_connections
         //     .lock()
@@ -124,9 +121,12 @@ where
         Ok(Request::NewConnection(RequestConnection {
             resource_id,
             gateway_id,
-            client_preshared_key: Secret::new(Key(preshared_key.to_bytes())),
+            client_preshared_key: Secret::new(Key(*offer.session_key.expose_secret())),
             client_payload: ClientPayload {
-                ice_parameters: todo!(),
+                ice_parameters: Offer {
+                    username: offer.credentials.username,
+                    password: offer.credentials.password,
+                },
                 domain,
             },
         }))

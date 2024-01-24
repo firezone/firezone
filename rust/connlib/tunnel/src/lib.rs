@@ -86,6 +86,8 @@ const ICE_KEEPALIVE: Duration = Duration::from_secs(2);
 // This is approximately how long failoever will take :)
 const ICE_FAILED_TIMEOUT: Duration = Duration::from_secs(10);
 
+const REALM: &str = "firezone";
+
 pub(crate) fn get_v4(ip: IpAddr) -> Option<Ipv4Addr> {
     match ip {
         IpAddr::V4(v4) => Some(v4),

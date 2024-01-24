@@ -14,7 +14,7 @@ use connlib_shared::{
 use crate::{
     device_channel::Device,
     peer::{PacketTransform, Peer},
-    peer_handler, ConnectedPeer, RoleState, Tunnel,
+    peer_handler, ConnectedPeer, RoleState, Tunnel, REALM,
 };
 
 mod client;
@@ -114,12 +114,17 @@ fn stun(relays: &[Relay]) -> HashSet<SocketAddr> {
         .collect()
 }
 
-fn turn(relays: &[Relay]) -> HashSet<SocketAddr> {
+fn turn(relays: &[Relay]) -> HashSet<(SocketAddr, String, String, String)> {
     relays
         .iter()
         .filter_map(|r| {
             if let Relay::Turn(r) = r {
-                Some(r.addr)
+                Some((
+                    r.addr,
+                    r.username.clone(),
+                    r.password.clone(),
+                    REALM.to_string(),
+                ))
             } else {
                 None
             }
