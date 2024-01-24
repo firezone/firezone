@@ -11,6 +11,7 @@ use connlib_shared::Callbacks;
 use firezone_connection::{ConnectionPool, ServerConnectionPool};
 use futures::channel::mpsc::Receiver;
 use futures_bounded::{PushError, StreamMap};
+use futures_util::FutureExt;
 use if_watch::tokio::IfWatcher;
 use ip_network_table::IpNetworkTable;
 use itertools::Itertools;
@@ -60,6 +61,7 @@ pub struct GatewayState {
     pub connection_pool: ServerConnectionPool<ClientId>,
     if_watcher: IfWatcher,
     udp_sockets: UdpSockets<MAX_UDP_SIZE>,
+    relay_socket: tokio::net::UdpSocket,
 }
 
 impl Default for GatewayState {
@@ -82,11 +84,19 @@ impl Default for GatewayState {
                 }
             }
         }
+
+        let relay_socket = tokio::net::UdpSocket::bind("0.0.0.0:0")
+            .now_or_never()
+            .expect("binding to `SocketAddr` is not async")
+            // Note: We could relax this condition
+            .expect("Program should be able to bind to 0.0.0.0:0 to be able to connect to relays");
+
         Self {
             peers_by_ip: IpNetworkTable::new(),
             connection_pool,
             if_watcher,
             udp_sockets,
+            relay_socket,
         }
     }
 }
