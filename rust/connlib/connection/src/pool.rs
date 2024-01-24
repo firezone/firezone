@@ -323,6 +323,7 @@ where
                 };
 
                 // Safety: We split the slice before, but the borrow-checker doesn't allow us to re-borrow `self.buffer`.
+                // Safety: `total_length` < `buffer.len()` because it is returned from `Tunn::encapsulate`.
                 let channel_data_packet =
                     unsafe { slice::from_raw_parts(header.as_ptr(), total_length) };
 
