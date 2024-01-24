@@ -5,7 +5,7 @@ const invoke = window.__TAURI__.tauri.invoke;
 const cargoVersionSpan = <HTMLSpanElement>(
   document.getElementById("cargo-version")
 );
-const gitShaSpan = <HTMLSpanElement>document.getElementById("git-sha");
+const gitVersionSpan = <HTMLSpanElement>document.getElementById("git-version");
 
 async function get_cargo_version() {
   invoke("get_cargo_version")
@@ -18,18 +18,18 @@ async function get_cargo_version() {
     });
 }
 
-async function get_git_sha() {
-  invoke("get_git_sha")
-    .then((gitSha: string) => {
-      gitShaSpan.innerText = gitSha;
+async function get_git_version() {
+  invoke("get_git_version")
+    .then((gitVersion: string) => {
+      gitVersionSpan.innerText = gitVersion;
     })
     .catch((e: Error) => {
-      gitShaSpan.innerText = "Unknown";
+      gitVersionSpan.innerText = "Unknown";
       console.error(e);
     });
 }
 
 document.addEventListener("DOMContentLoaded", () => {
   get_cargo_version();
-  get_git_sha();
+  get_git_version();
 });
