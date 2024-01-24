@@ -159,7 +159,7 @@ module "aws_gateway" {
   image_repo              = module.google-artifact-registry.repo
   image                   = "gateway"
   image_tag               = var.image_tag
-  observability_log_level = "firezone_gateway=trace,wire=trace,connlib_gateway_shared=trace,firezone_tunnel=trace,connlib_shared=trace,warn"
+  observability_log_level = "phoenix_channel=debug,firezone_gateway=trace,wire=trace,connlib_gateway_shared=trace,firezone_tunnel=trace,connlib_shared=trace,warn"
   application_name        = "gateway"
   application_version     = replace(var.image_tag, ".", "-")
   api_url                 = "wss://api.${local.tld}"

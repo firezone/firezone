@@ -406,6 +406,7 @@ where
     ///
     /// The [`PhoenixChannel::poll`] function will handle the reconnect if appropriate for the given error.
     fn reconnect_on_transient_error(&mut self, e: tokio_tungstenite::tungstenite::Error) {
+        tracing::info!("Websocket disconnected: {e:#?}");
         self.state = State::Connecting(future::ready(Err(Error::WebSocket(e))).boxed())
     }
 
