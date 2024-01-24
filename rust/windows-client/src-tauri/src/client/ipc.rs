@@ -101,6 +101,8 @@ async fn test_happy_path() -> Result<()> {
     let mut manager = SubcommandChild::new(&["debug", "test-ipc", "manager", &id])?;
     let mut worker = SubcommandChild::new(&["debug", "test-ipc", "worker", &id])?;
 
+    assert_ne!(manager.process.id(), worker.process.id());
+
     tokio::time::sleep(Duration::from_secs(10)).await;
 
     assert_eq!(manager.wait_or_kill()?, SubcommandExit::Success);
