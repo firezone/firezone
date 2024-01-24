@@ -239,7 +239,7 @@ pub struct ClientState {
 
     pub dns_mapping: BiMap<IpAddr, DnsServer>,
 
-    connection_pool: ClientConnectionPool<GatewayId>,
+    pub connection_pool: ClientConnectionPool<GatewayId>,
     if_watcher: IfWatcher,
     udp_sockets: UdpSockets<MAX_UDP_SIZE>,
 }

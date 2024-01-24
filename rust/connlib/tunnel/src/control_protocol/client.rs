@@ -14,7 +14,12 @@ use ip_network::IpNetwork;
 use secrecy::Secret;
 
 use crate::{
-    client::DnsResource, device_channel::Device, dns, peer::PacketTransformClient, PEER_QUEUE_SIZE,
+    client::DnsResource,
+    control_protocol::{stun, turn},
+    device_channel::Device,
+    dns,
+    peer::PacketTransformClient,
+    PEER_QUEUE_SIZE,
 };
 use crate::{peer::Peer, ClientState, ConnectedPeer, Error, Request, Result, Tunnel};
 
@@ -97,7 +102,13 @@ where
             .get_awaiting_connection_domain(&resource_id)?
             .clone();
 
-        let offer = todo!();
+        let mut stun_relays = stun(&relays);
+        stun_relays.extend(turn(&relays));
+        let offer = self.role_state.lock().connection_pool.new_connection(
+            gateway_id,
+            stun_relays,
+            turn(&relays),
+        );
         let preshared_key = self
             .role_state
             .lock()
@@ -115,7 +126,7 @@ where
             gateway_id,
             client_preshared_key: Secret::new(Key(preshared_key.to_bytes())),
             client_payload: ClientPayload {
-                ice_parameters: offer,
+                ice_parameters: todo!(),
                 domain,
             },
         }))

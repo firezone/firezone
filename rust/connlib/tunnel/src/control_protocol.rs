@@ -4,7 +4,7 @@ use futures::channel::mpsc;
 use futures_util::SinkExt;
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
-use std::{fmt, sync::Arc};
+use std::{collections::HashSet, fmt, net::SocketAddr, sync::Arc};
 
 use connlib_shared::{
     messages::{Relay, RequestConnection, ReuseConnection},
@@ -99,4 +99,30 @@ fn start_handlers<TId, TTransform, TRoleState>(
             tokio::spawn(peer_handler::handle_packet(todo!(), peer_receiver));
         }
     });
+}
+
+fn stun(relays: &[Relay]) -> HashSet<SocketAddr> {
+    relays
+        .iter()
+        .filter_map(|r| {
+            if let Relay::Stun(r) = r {
+                Some(r.addr)
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+fn turn(relays: &[Relay]) -> HashSet<SocketAddr> {
+    relays
+        .iter()
+        .filter_map(|r| {
+            if let Relay::Turn(r) = r {
+                Some(r.addr)
+            } else {
+                None
+            }
+        })
+        .collect()
 }
