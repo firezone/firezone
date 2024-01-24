@@ -37,7 +37,7 @@ pub struct Allocation {
     /// If present, the IPv4 socket the relay allocated for us.
     ip4_candidate: Option<Candidate>,
     /// If present, the IPv6 socket the relay allocated for us.
-    last_ip6_candidate: Option<Candidate>,
+    ip6_candidate: Option<Candidate>,
 
     /// When we received the allocation and how long it is valid.
     allocation_lifetime: Option<(Instant, Duration)>,
@@ -62,7 +62,7 @@ impl Allocation {
             server,
             last_srflx_candidate: Default::default(),
             ip4_candidate: Default::default(),
-            last_ip6_candidate: Default::default(),
+            ip6_candidate: Default::default(),
             buffered_transmits: Default::default(),
             new_candidates: Default::default(),
             sent_requests: Default::default(),
@@ -80,7 +80,7 @@ impl Allocation {
         [
             self.last_srflx_candidate.clone(),
             self.ip4_candidate.clone(),
-            self.last_ip6_candidate.clone(),
+            self.ip6_candidate.clone(),
         ]
         .into_iter()
         .flatten()
@@ -185,14 +185,14 @@ impl Allocation {
                 );
                 update_candidate(
                     maybe_ip6_relay_candidate,
-                    &mut self.last_ip6_candidate,
+                    &mut self.ip6_candidate,
                     &mut self.new_candidates,
                 );
 
                 tracing::info!(
                     srflx = ?self.last_srflx_candidate,
                     relay_ip4 = ?self.ip4_candidate,
-                    relay_ip6 = ?self.last_ip6_candidate,
+                    relay_ip6 = ?self.ip6_candidate,
                     ?lifetime,
                     "Updated candidates of allocation"
                 );
@@ -208,7 +208,7 @@ impl Allocation {
                 tracing::info!(
                     srflx = ?self.last_srflx_candidate,
                     relay_ip4 = ?self.ip4_candidate,
-                    relay_ip6 = ?self.last_ip6_candidate,
+                    relay_ip6 = ?self.ip6_candidate,
                     ?lifetime,
                     "Updated lifetime of allocation"
                 );
@@ -252,7 +252,7 @@ impl Allocation {
         // Our remote socket that we received this packet on!
         let remote_socket = match peer {
             SocketAddr::V4(_) => self.ip4_candidate.as_ref()?.addr(),
-            SocketAddr::V6(_) => self.last_ip6_candidate.as_ref()?.addr(),
+            SocketAddr::V6(_) => self.ip6_candidate.as_ref()?.addr(),
         };
 
         tracing::debug!(server = %self.server, %peer, %remote_socket, "Decapsulated channel-data message");
@@ -356,7 +356,7 @@ impl Allocation {
     }
 
     fn has_allocation(&self) -> bool {
-        self.ip4_candidate.is_some() || self.last_ip6_candidate.is_some()
+        self.ip4_candidate.is_some() || self.ip6_candidate.is_some()
     }
 
     fn allocate_in_flight(&self) -> bool {
