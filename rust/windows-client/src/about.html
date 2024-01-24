@@ -5,32 +5,18 @@
     <link rel="stylesheet" href="output.css" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>About Firezone</title>
-    <script src="../node_modules/flowbite/dist/flowbite.min.js" defer></script>
-    <style>
-      .logo.vanilla:hover {
-        filter: drop-shadow(0 0 2em #ffe21c);
-      }
-    </style>
+    <script src="./flowbite.min.js" defer></script>
+    <script type="module" src="about.js" defer></script>
   </head>
 
-  <body>
+  <body class="bg-neutral-100 text-neutral-900">
     <div class="container">
-      <h1>About Firezone</h1>
-
-      <div class="row">
-        <a href="https://www.firezone.dev/?utm_source=windows-client" target="_blank">
-          firezone.dev
-        </a>
-        </a>
-      </div>
-
-       <div class="row">
-        <a href="steam://browsemedia" target="_blank">
-          app link?
-        </a>
-        </a>
-      </div>
-
+      <img src="logo.png" alt="Firezone Logo" class="mt-16 w-64 h-64 mx-auto" />
+      <p class="mt-12 font-medium text-center text-sm">
+        Version
+        <span id="cargo-version"></span>
+        (<span id="git-sha"></span>)
+      </p>
     </div>
   </body>
 </html>
