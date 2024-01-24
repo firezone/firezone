@@ -24,7 +24,7 @@ const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(30);
 
 // TODO: Refactor this PhoenixChannel to be compatible with the needs of the client and gateway
 // See https://github.com/firezone/firezone/issues/2158
-pub struct PhoenixChannel<TInboundMsg, TOutboundRes> {
+pub struct PhoenixChannel<TInitReq, TInboundMsg, TOutboundRes> {
     state: State,
     pending_messages: Vec<Message>,
     next_request_id: u64,
@@ -39,6 +39,9 @@ pub struct PhoenixChannel<TInboundMsg, TOutboundRes> {
     secret_url: Secret<SecureUrl>,
     user_agent: String,
     reconnect_backoff: ExponentialBackoff,
+
+    login: &'static str,
+    init_req: TInitReq,
 }
 
 enum State {
@@ -52,27 +55,35 @@ enum State {
 /// Additionally, you must already provide any query parameters required for authentication.
 #[tracing::instrument(level = "debug", skip(payload, secret_url, reconnect_backoff))]
 #[allow(clippy::type_complexity)]
-pub async fn init<TInitM, TInboundMsg, TOutboundRes>(
+pub async fn init<TInitReq, TInitRes, TInboundMsg, TOutboundRes>(
     secret_url: Secret<SecureUrl>,
     user_agent: String,
     login_topic: &'static str,
-    payload: impl Serialize,
+    payload: TInitReq,
     reconnect_backoff: ExponentialBackoff,
 ) -> Result<
-    Result<(PhoenixChannel<TInboundMsg, TOutboundRes>, TInitM), UnexpectedEventDuringInit>,
+    Result<
+        (
+            PhoenixChannel<TInitReq, TInboundMsg, TOutboundRes>,
+            TInitRes,
+        ),
+        UnexpectedEventDuringInit,
+    >,
     Error,
 >
 where
-    TInitM: DeserializeOwned + fmt::Debug,
+    TInitReq: Serialize + Clone,
+    TInitRes: DeserializeOwned + fmt::Debug,
     TInboundMsg: DeserializeOwned,
     TOutboundRes: DeserializeOwned,
 {
-    let mut channel = PhoenixChannel::<InitMessage<TInitM>, ()>::connect(
+    let mut channel = PhoenixChannel::<_, InitMessage<TInitRes>, ()>::connect(
         secret_url,
         user_agent,
+        login_topic,
+        payload,
         reconnect_backoff,
     );
-    channel.join(login_topic, payload);
 
     tracing::info!("Connected to portal, waiting for `init` message");
 
@@ -157,8 +168,9 @@ impl secrecy::Zeroize for SecureUrl {
     }
 }
 
-impl<TInboundMsg, TOutboundRes> PhoenixChannel<TInboundMsg, TOutboundRes>
+impl<TInitReq, TInboundMsg, TOutboundRes> PhoenixChannel<TInitReq, TInboundMsg, TOutboundRes>
 where
+    TInitReq: Serialize + Clone,
     TInboundMsg: DeserializeOwned,
     TOutboundRes: DeserializeOwned,
 {
@@ -166,12 +178,16 @@ where
     ///
     /// The provided URL must contain a host.
     /// Additionally, you must already provide any query parameters required for authentication.
+    ///
+    /// Once the connection is established,
     pub fn connect(
         secret_url: Secret<SecureUrl>,
         user_agent: String,
+        login: &'static str,
+        init_req: TInitReq,
         reconnect_backoff: ExponentialBackoff,
     ) -> Self {
-        Self {
+        let mut phoenix_channel = Self {
             reconnect_backoff,
             secret_url: secret_url.clone(),
             user_agent: user_agent.clone(),
@@ -185,7 +201,12 @@ where
             next_request_id: 0,
             next_heartbeat: Box::pin(tokio::time::sleep(HEARTBEAT_INTERVAL)),
             pending_join_requests: Default::default(),
-        }
+            login,
+            init_req: init_req.clone(),
+        };
+        phoenix_channel.join(login, init_req);
+
+        phoenix_channel
     }
 
     /// Join the provided room.
@@ -216,6 +237,7 @@ where
                         self.state = State::Connected(stream);
 
                         tracing::info!("Connected to portal");
+                        self.join(self.login, self.init_req.clone());
 
                         continue;
                     }
@@ -436,7 +458,7 @@ where
     /// Cast this instance of [PhoenixChannel] to new message types.
     fn cast<TInboundMsgNew, TOutboundResNew>(
         self,
-    ) -> PhoenixChannel<TInboundMsgNew, TOutboundResNew> {
+    ) -> PhoenixChannel<TInitReq, TInboundMsgNew, TOutboundResNew> {
         PhoenixChannel {
             state: self.state,
             pending_messages: self.pending_messages,
@@ -447,6 +469,8 @@ where
             secret_url: self.secret_url,
             user_agent: self.user_agent,
             reconnect_backoff: self.reconnect_backoff,
+            login: self.login,
+            init_req: self.init_req,
         }
     }
 }

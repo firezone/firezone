@@ -17,7 +17,7 @@ pub const PHOENIX_TOPIC: &str = "gateway";
 
 pub struct Eventloop {
     tunnel: Arc<Tunnel<CallbackHandler, GatewayState>>,
-    portal: PhoenixChannel<IngressMessages, EgressMessages>,
+    portal: PhoenixChannel<(), IngressMessages, EgressMessages>,
 
     // TODO: Strongly type request reference (currently `String`)
     connection_request_tasks:
@@ -31,7 +31,7 @@ pub struct Eventloop {
 impl Eventloop {
     pub(crate) fn new(
         tunnel: Arc<Tunnel<CallbackHandler, GatewayState>>,
-        portal: PhoenixChannel<IngressMessages, EgressMessages>,
+        portal: PhoenixChannel<(), IngressMessages, EgressMessages>,
     ) -> Self {
         Self {
             tunnel,

@@ -82,7 +82,7 @@ async fn run(connect_url: Url, private_key: StaticSecret) -> Result<Infallible> 
     let tunnel: Arc<Tunnel<_, GatewayState>> =
         Arc::new(Tunnel::new(private_key, CallbackHandler).await?);
 
-    let (portal, init) = phoenix_channel::init::<InitGateway, _, _>(
+    let (portal, init) = phoenix_channel::init::<_, InitGateway, _, _>(
         Secret::new(SecureUrl::from_url(connect_url.clone())),
         get_user_agent(None),
         PHOENIX_TOPIC,
