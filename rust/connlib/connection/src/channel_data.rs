@@ -70,34 +70,3 @@ fn to_bytes(channel: u16, len: u16, payload: &[u8]) -> Vec<u8> {
 
     message.freeze().into()
 }
-
-// #[cfg(all(test, feature = "proptest"))]
-// mod tests {
-//     use super::*;
-//     use stun_codec::rfc5766::attributes::ChannelNumber;
-
-//     #[test_strategy::proptest]
-//     fn channel_data_encoding_roundtrip(
-//         #[strategy(crate::proptest::channel_number())] channel: ChannelNumber,
-//         payload: Vec<u8>,
-//     ) {
-//         let encoded = encode(channel.value(), &payload);
-
-//         let (decoded_number, decoded_payload) = decode(&encoded).unwrap();
-
-//         assert_eq!(decoded_number, channel.value());
-//         assert_eq!(decoded_payload, payload);
-//     }
-
-//     #[test_strategy::proptest]
-//     fn channel_data_decoding(
-//         #[strategy(crate::proptest::channel_number())] channel: ChannelNumber,
-//         #[strategy(crate::proptest::channel_payload())] payload: (Vec<u8>, usize),
-//     ) {
-//         let encoded = to_bytes(channel.value(), payload.1 as u16, &payload.0);
-//         let (decoded_number, decoded_payload) = decode(&encoded).unwrap();
-
-//         assert_eq!(channel.value(), decoded_number);
-//         assert_eq!(&payload.0[..payload.1], decoded_payload)
-//     }
-// }
