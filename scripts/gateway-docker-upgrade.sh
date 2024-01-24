@@ -2,7 +2,7 @@
 
 set -e
 
-TARGET_IMAGE="${TARGET_IMAGE:-us-east1-docker.pkg.dev/firezone-prod/firezone/gateway:1}"
+TARGET_IMAGE="ghcr.io/firezone/gateway:1"
 REPO=$(dirname "$TARGET_IMAGE")
 IMAGE=$(basename "$TARGET_IMAGE")
 

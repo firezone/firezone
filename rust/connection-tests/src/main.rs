@@ -1,5 +1,4 @@
 use std::{
-    collections::HashSet,
     future::poll_fn,
     net::{IpAddr, Ipv4Addr, SocketAddr},
     str::FromStr,
@@ -49,6 +48,19 @@ async fn main() -> Result<()> {
         .transpose()
         .context("Failed to parse `STUN_SERVER`")?
         .map(|ip| SocketAddr::new(ip, 3478));
+    let turn_server = std::env::var("TURN_SERVER")
+        .ok()
+        .map(|a| a.parse::<IpAddr>())
+        .transpose()
+        .context("Failed to parse `TURNERVER`")?
+        .map(|ip| {
+            (
+                SocketAddr::new(ip, 3478),
+                "2000000000:client".to_owned(), // TODO: Use different credentials per role.
+                "+Qou8TSjw9q3JMnWET7MbFsQh/agwz/LURhpfX7a0hE".to_owned(),
+                "firezone".to_owned(),
+            )
+        });
 
     tracing::info!(%listen_addr);
 
@@ -68,11 +80,14 @@ async fn main() -> Result<()> {
 
     match role {
         Role::Dialer => {
-            let mut pool = ClientConnectionPool::<u64>::new(private_key);
+            let mut pool = ClientConnectionPool::<u64>::new(private_key, Instant::now());
             pool.add_local_interface(socket_addr);
 
-            let offer =
-                pool.new_connection(1, stun_server.into_iter().collect(), HashSet::default());
+            let offer = pool.new_connection(
+                1,
+                stun_server.into_iter().collect(),
+                turn_server.into_iter().collect(),
+            );
 
             redis_connection
                 .rpush(
@@ -149,7 +164,7 @@ async fn main() -> Result<()> {
             }
         }
         Role::Listener => {
-            let mut pool = ServerConnectionPool::<u64>::new(private_key);
+            let mut pool = ServerConnectionPool::<u64>::new(private_key, Instant::now());
             pool.add_local_interface(socket_addr);
 
             let offer = redis_connection
@@ -169,7 +184,7 @@ async fn main() -> Result<()> {
                 },
                 offer.public_key.into(),
                 stun_server.into_iter().collect(),
-                HashSet::default(),
+                turn_server.into_iter().collect(),
             );
 
             redis_connection
@@ -324,13 +339,13 @@ impl<T> Eventloop<T> {
     }
 
     fn send_to(&mut self, id: u64, packet: IpPacket<'_>) -> Result<()> {
-        let Some((addr, msg)) = self.pool.encapsulate(id, packet)? else {
+        let Some(transmit) = self.pool.encapsulate(id, packet)? else {
             return Ok(());
         };
 
-        tracing::trace!(target = "wire::out", to = %addr, packet = %hex::encode(msg));
+        tracing::trace!(target = "wire::out", to = %transmit.dst, packet = %hex::encode(&transmit.payload));
 
-        self.socket.try_send_to(msg, addr)?;
+        self.socket.try_send_to(&transmit.payload, transmit.dst)?;
 
         Ok(())
     }

@@ -15,14 +15,21 @@ write_files:
     content: |
       [Unit]
       Description=Start an Firezone Gateway container
+      After=docker.service
+      Requires=docker.service
 
       [Service]
       TimeoutStartSec=0
       Restart=always
+      ExecStartPre=-/usr/bin/docker stop ${container_name}
+      ExecStartPre=-/usr/bin/docker rm ${container_name}
       ExecStartPre=/usr/bin/docker pull ${container_image}
       ExecStart=/bin/sh -c 'docker run --rm --name=${container_name} --cap-add=NET_ADMIN --volume /etc/firezone --sysctl net.ipv4.ip_forward=1 --sysctl net.ipv4.conf.all.src_valid_mark=1 --sysctl net.ipv6.conf.all.disable_ipv6=0 --sysctl net.ipv6.conf.all.forwarding=1 --sysctl net.ipv6.conf.default.forwarding=1 --device="/dev/net/tun:/dev/net/tun" --env FIREZONE_NAME=$(hostname) --env FIREZONE_ID=$(echo $RANDOM$(hostname) | md5sum | head -c 20; echo;) --env-file="/etc/firezone-gateway/env" ${container_image}'
       ExecStop=/usr/bin/docker stop gateway
       ExecStopPost=/usr/bin/docker rm gateway
+
+      [Install]
+      WantedBy=multi-user.target
 
 runcmd:
   - sudo apt-get update
@@ -37,4 +44,4 @@ runcmd:
   - sudo systemctl stop docker
   - sudo systemctl start docker
   - sudo systemctl daemon-reload
-  - sudo systemctl start gateway.service
+  - sudo systemctl enable --now gateway.service
