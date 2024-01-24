@@ -283,7 +283,6 @@ where
         connection: TId,
         packet: IpPacket<'_>,
     ) -> Result<Option<Transmit<'s>>, Error> {
-        // TODO: We need to return, which local socket to use to send the data.
         let conn = self
             .negotiated_connections
             .get_mut(&connection)
