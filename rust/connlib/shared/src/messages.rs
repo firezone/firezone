@@ -298,7 +298,7 @@ pub struct Turn {
     #[serde(with = "ts_seconds")]
     pub expires_at: DateTime<Utc>,
     /// URI of the relay
-    pub uri: String,
+    pub addr: SocketAddr,
     /// Username for the relay
     pub username: String,
     // TODO: SecretString
@@ -310,5 +310,5 @@ pub struct Turn {
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct Stun {
     /// URI for the relay
-    pub uri: String,
+    pub addr: SocketAddr,
 }
