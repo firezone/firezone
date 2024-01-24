@@ -4,7 +4,7 @@
 	<!-- Settings -->
 	<string name="settings_title">Settings</string>
 	<string name="advanced_settings_title">Advanced</string>
-	<string name="log_settings_title">Logs</string>
+	<string name="log_settings_title">Diagnostic Logs</string>
 	<string name="auth_base_url">Auth Base URL</string>
 	<string name="api_url">API URL</string>
 	<string name="log_filter">Log Filter</string>
