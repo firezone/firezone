@@ -7,7 +7,7 @@ use crate::client::{self, deep_link, network_changes, AppLocalDataDir, BUNDLE_ID
 use anyhow::{anyhow, bail, Context, Result};
 use arc_swap::ArcSwap;
 use client::{
-    logging,
+    about, logging,
     settings::{self, AdvancedSettings},
 };
 use connlib_client_shared::{file_logger, ResourceDescription};
@@ -137,6 +137,8 @@ pub(crate) fn run(params: client::GuiParams) -> Result<()> {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            about::get_cargo_version,
+            about::get_git_version,
             logging::clear_logs,
             logging::count_logs,
             logging::export_logs,
