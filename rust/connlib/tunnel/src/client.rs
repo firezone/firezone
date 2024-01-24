@@ -19,6 +19,7 @@ use domain::base::Rtype;
 use firezone_connection::{ClientConnectionPool, ConnectionPool};
 use futures::stream;
 use futures_bounded::{FuturesMap, PushError, StreamMap};
+use futures_util::FutureExt;
 use hickory_resolver::lookup::Lookup;
 use if_watch::tokio::IfWatcher;
 use ip_network::IpNetwork;
@@ -237,6 +238,7 @@ pub struct ClientState {
     pub connection_pool: ClientConnectionPool<GatewayId>,
     if_watcher: IfWatcher,
     udp_sockets: UdpSockets<MAX_UDP_SIZE>,
+    relay_socket: tokio::net::UdpSocket,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -646,6 +648,12 @@ impl Default for ClientState {
             }
         }
 
+        let relay_socket = tokio::net::UdpSocket::bind("0.0.0.0:0")
+            .now_or_never()
+            .expect("binding to `SocketAddr` is not async")
+            // Note: We could relax this condition
+            .expect("Program should be able to bind to 0.0.0.0:0 to be able to connect to relays");
+
         Self {
             awaiting_connection: Default::default(),
             awaiting_connection_timers: StreamMap::new(Duration::from_secs(60), 100),
@@ -673,6 +681,7 @@ impl Default for ClientState {
             connection_pool,
             if_watcher,
             udp_sockets,
+            relay_socket,
         }
     }
 }
