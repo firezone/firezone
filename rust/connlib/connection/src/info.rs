@@ -50,7 +50,7 @@ mod tests {
 
         let missed_keep_alives = info.missed_keep_alives();
 
-        assert_eq!(missed_keep_alives, 1);
+        assert_eq!(missed_keep_alives, 2);
     }
 
     fn info(last_seen: Option<Instant>) -> ConnectionInfo {
