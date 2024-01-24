@@ -60,14 +60,14 @@ internal class SettingsViewModel
         }
 
         fun onViewResume(context: Context) {
-            val directory = File(context.cacheDir.absolutePath + "/log")
+            val directory = File(context.cacheDir.absolutePath + "/logs")
             val totalSize = directory.walkTopDown().filter { it.isFile }.map { it.length() }.sum()
 
             deleteLogZip(context)
 
             _uiState.value =
                 _uiState.value.copy(
-                    logSize = totalSize,
+                    logSizeBytes = totalSize,
                 )
         }
 
@@ -96,6 +96,20 @@ internal class SettingsViewModel
         fun onValidateLogFilter(logFilter: String) {
             this.logFilter = logFilter
             onFieldUpdated()
+        }
+
+        fun deleteLogDirectory(context: Context) {
+            viewModelScope.launch {
+                val logDir = context.cacheDir.absolutePath + "/logs"
+                val directory = File(logDir)
+                directory.walkTopDown().forEach { file ->
+                    file.delete()
+                }
+                _uiState.value =
+                    _uiState.value.copy(
+                        logSizeBytes = 0,
+                    )
+            }
         }
 
         fun createLogZip(context: Context) {
@@ -191,7 +205,7 @@ internal class SettingsViewModel
 
         internal data class UiState(
             val isSaveButtonEnabled: Boolean = false,
-            val logSize: Long = 0,
+            val logSizeBytes: Long = 0,
         )
 
         internal sealed class ViewAction {

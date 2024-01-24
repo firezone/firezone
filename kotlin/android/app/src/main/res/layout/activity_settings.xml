@@ -39,118 +39,82 @@
 
     </androidx.constraintlayout.widget.ConstraintLayout>
 
-    <TextView
-        android:id="@+id/tvSettings"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        style="@style/AppTheme.Base.H5"
-        android:text="@string/settings_title"
-        android:layout_marginTop="@dimen/spacing_4x"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/llContainer" />
-
-    <TextView
-        android:id="@+id/tvAdvancedSettings"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="@string/advanced_settings_title"
-        android:textSize="16sp"
-        android:textStyle="bold"
-        android:layout_marginTop="@dimen/spacing_4x"
-        app:layout_constraintTop_toBottomOf="@id/tvSettings"
-        app:layout_constraintStart_toStartOf="parent" />
-
-    <com.google.android.material.textfield.TextInputLayout
-        android:id="@+id/ilAuthBaseUrlInput"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="@dimen/spacing_1x"
-        app:errorEnabled="true"
-        app:layout_constraintTop_toBottomOf="@id/tvAdvancedSettings"
-        app:layout_constraintStart_toStartOf="parent">
-
-    <com.google.android.material.textfield.TextInputEditText
-        android:id="@+id/etAuthBaseUrlInput"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:hint="@string/auth_base_url"
-        android:importantForAutofill="no"
-        android:inputType="text" />
-
-    </com.google.android.material.textfield.TextInputLayout>
-    <com.google.android.material.textfield.TextInputLayout
-        android:id="@+id/ilApiUrlInput"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="@dimen/spacing_1x"
-        app:errorEnabled="true"
-        app:layout_constraintTop_toBottomOf="@id/ilAuthBaseUrlInput"
-        app:layout_constraintStart_toStartOf="parent">
-
-        <com.google.android.material.textfield.TextInputEditText
-            android:id="@+id/etApiUrlInput"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:hint="@string/api_url"
-            android:importantForAutofill="no"
-            android:inputType="text" />
-
-    </com.google.android.material.textfield.TextInputLayout>
-    <com.google.android.material.textfield.TextInputLayout
-        android:id="@+id/ilLogFilterInput"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="@dimen/spacing_1x"
-        app:errorEnabled="true"
-        app:layout_constraintTop_toBottomOf="@id/ilApiUrlInput"
-        app:layout_constraintStart_toStartOf="parent">
-
-        <com.google.android.material.textfield.TextInputEditText
-            android:id="@+id/etLogFilterInput"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:hint="@string/log_filter"
-            android:importantForAutofill="no"
-            android:inputType="text" />
-
-    </com.google.android.material.textfield.TextInputLayout>
-
-    <com.google.android.material.button.MaterialButton
-        android:id="@+id/btShareLog"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="@string/share_diagnostic_logs"
-        style="?attr/materialIconButtonOutlinedStyle"
-        app:icon="@drawable/ic_share"
-        app:iconGravity="textStart"
-        app:iconPadding="@dimen/spacing_small"
-        app:layout_constraintTop_toTopOf="@id/tvSettings"
-        app:layout_constraintBottom_toBottomOf="@id/tvSettings"
-        app:layout_constraintEnd_toEndOf="parent" />
-
     <com.google.android.material.button.MaterialButton
         android:id="@+id/btCancel"
-        style="?attr/materialIconButtonOutlinedStyle"
+        style="@style/Widget.MaterialComponents.Button.TextButton"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:layout_marginBottom="8dp"
+        android:layout_marginStart="8dp"
+        android:layout_marginTop="16dp"
         android:enabled="true"
         android:text="@android:string/cancel"
-        android:layout_marginEnd="@dimen/spacing_2x"
-        app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toStartOf="@id/btSaveSettings" />
+        app:layout_constraintTop_toBottomOf="@+id/llContainer" />
+
+    <TextView
+        android:id="@+id/tvSettings"
+        style="@style/AppTheme.Base.H5"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="16dp"
+        android:layout_marginTop="24dp"
+        android:layout_marginEnd="16dp"
+        android:text="@string/settings_title"
+        app:layout_constraintEnd_toStartOf="@+id/btSaveSettings"
+        app:layout_constraintStart_toEndOf="@+id/btCancel"
+        app:layout_constraintTop_toBottomOf="@id/llContainer" />
 
     <com.google.android.material.button.MaterialButton
         android:id="@+id/btSaveSettings"
+        style="@style/Widget.MaterialComponents.Button.TextButton"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:layout_marginBottom="8dp"
+        android:layout_marginTop="16dp"
         android:enabled="false"
         android:text="@string/save"
-        android:layout_marginStart="@dimen/spacing_2x"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/llContainer" />
+
+    <androidx.viewpager2.widget.ViewPager2
+        android:id="@+id/viewPager"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_marginStart="8dp"
+        android:layout_marginTop="16dp"
+        android:layout_marginEnd="8dp"
+        android:layout_marginBottom="16dp"
+        app:layout_constraintBottom_toTopOf="@+id/tabLayout"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/tvSettings">
+
+    </androidx.viewpager2.widget.ViewPager2>
+
+    <com.google.android.material.tabs.TabLayout
+        android:id="@+id/tabLayout"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="8dp"
+        android:layout_marginTop="15dp"
+        android:layout_marginEnd="8dp"
+        android:layout_marginBottom="8dp"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toEndOf="@id/btCancel" />
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/viewPager">
+
+        <com.google.android.material.tabs.TabItem
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:icon="@drawable/rounded_discover_tune_black_24dp"
+            android:text="@string/advanced_settings_title" />
+
+        <com.google.android.material.tabs.TabItem
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:icon="@drawable/rounded_description_black_24dp"
+            android:text="@string/log_settings_title" />
+
+    </com.google.android.material.tabs.TabLayout>
 
 </androidx.constraintlayout.widget.ConstraintLayout>
