@@ -5,8 +5,7 @@ use crate::peer::PacketTransformClient;
 use crate::sockets::UdpSockets;
 use crate::{
     dns, sleep_until, ConnectedPeer, DnsQuery, Event, PeerConfig, RoleState, Tunnel,
-    DNS_QUERIES_QUEUE_SIZE, ICE_GATHERING_TIMEOUT_SECONDS, MAX_CONCURRENT_ICE_GATHERING,
-    MAX_UDP_SIZE,
+    DNS_QUERIES_QUEUE_SIZE, MAX_UDP_SIZE,
 };
 use bimap::BiMap;
 use boringtun::x25519::{PublicKey, StaticSecret};
@@ -35,7 +34,7 @@ use std::net::IpAddr;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
-use tokio::time::{Instant, Interval, MissedTickBehavior, Sleep};
+use tokio::time::{Instant, Interval, MissedTickBehavior};
 
 // Using str here because Ipv4/6Network doesn't support `const` 🙃
 const IPV4_RESOURCES: &str = "100.96.0.0/11";

@@ -1,16 +1,11 @@
 use crate::device_channel::Device;
 use crate::peer::PacketTransformGateway;
 use crate::sockets::UdpSockets;
-use crate::{
-    sleep_until, ConnectedPeer, Event, RoleState, Tunnel, ICE_GATHERING_TIMEOUT_SECONDS,
-    MAX_CONCURRENT_ICE_GATHERING, MAX_UDP_SIZE,
-};
+use crate::{sleep_until, ConnectedPeer, Event, RoleState, Tunnel, MAX_UDP_SIZE};
 use boringtun::x25519::StaticSecret;
 use connlib_shared::messages::{ClientId, Interface as InterfaceConfig};
 use connlib_shared::Callbacks;
 use firezone_connection::{ConnectionPool, ServerConnectionPool};
-use futures::channel::mpsc::Receiver;
-use futures_bounded::{PushError, StreamMap};
 use futures_util::future::BoxFuture;
 use futures_util::FutureExt;
 use if_watch::tokio::IfWatcher;
@@ -19,8 +14,7 @@ use itertools::Itertools;
 use rand_core::OsRng;
 use std::collections::VecDeque;
 use std::sync::Arc;
-use std::task::{ready, Context, Poll};
-use std::time::Duration;
+use std::task::{Context, Poll};
 
 const PEERS_IPV4: &str = "100.64.0.0/11";
 const PEERS_IPV6: &str = "fd00:2021:1111::/107";
