@@ -30,5 +30,5 @@ sudo cp $UPGRADE_CONF_FILE /tmp/unattended-upgrades.conf
 sudo sed -i 's/\/\/\(\s*"\${distro_id}:\${distro_codename}-updates";\)/  \1/' "${UPGRADE_CONF_FILE}"
 sudo sed -i 's/\/\/\(Unattended-Upgrade::Remove-Unused-Kernel-Packages "true";\)/\1/' "${UPGRADE_CONF_FILE}"
 sudo sed -i 's/\/\/\(Unattended-Upgrade::Automatic-Reboot \)"false";/\1 "true";/' "${UPGRADE_CONF_FILE}"
-sudo sed -i 's/\/\/\(Unattended-Upgrade::Automatic-Reboot-Time \)"02:00";/\1 "07:00;"/' "${UPGRADE_CONF_FILE}"
+sudo sed -i 's/\/\/\(Unattended-Upgrade::Automatic-Reboot-Time \)"02:00";/\1 "07:00";/' "${UPGRADE_CONF_FILE}"
 sudo sed -i 's/\/\/\(Unattended-Upgrade::Automatic-Reboot-WithUsers "true";\)/\1/' "${UPGRADE_CONF_FILE}"

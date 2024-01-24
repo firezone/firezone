@@ -5,7 +5,7 @@ set -ex
 # Set up NAT
 nft add table ip nat
 nft add chain ip nat postrouting { type nat hook postrouting priority 100 \; }
-nft add rule ip nat postrouting masquerade
+nft add rule ip nat postrouting masquerade $NAT_BEHAVIOUR
 
 # Assumption after a long debugging session involving Gabi, Jamil and Thomas:
 # On the same machine, the kernel cannot differentiate between incoming and outgoing packets across different network namespaces within the firewall and NAT mapping table.
