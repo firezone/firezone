@@ -696,10 +696,17 @@ impl RoleState for ClientState {
 
     fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Event<Self::Id>> {
         loop {
-            if let Poll::Ready((gateway_id, _)) =
-                self.gateway_awaiting_connection_timers.poll_unpin(cx)
-            {
-                self.gateway_awaiting_connection.remove(&gateway_id);
+            while let Some(transmit) = self.connection_pool.poll_transmit() {
+                if let Err(e) = match transmit.src {
+                    Some(src) => self
+                        .udp_sockets
+                        .try_send_to(src, transmit.dst, &transmit.payload),
+                    None => self
+                        .relay_socket
+                        .try_send_to(&transmit.payload, transmit.dst),
+                } {
+                    tracing::warn!(src = ?transmit.src, dst = %transmit.dst, "Failed to send UDP packet: {e:#?}");
+                }
             }
 
             match self.connection_pool.poll_event() {
@@ -715,6 +722,12 @@ impl RoleState for ClientState {
                 Some(firezone_connection::Event::ConnectionEstablished(id)) => todo!(),
                 Some(firezone_connection::Event::ConnectionFailed(id)) => todo!(),
                 None => {}
+            }
+
+            if let Poll::Ready((gateway_id, _)) =
+                self.gateway_awaiting_connection_timers.poll_unpin(cx)
+            {
+                self.gateway_awaiting_connection.remove(&gateway_id);
             }
 
             match self.awaiting_connection_timers.poll_next_unpin(cx) {
