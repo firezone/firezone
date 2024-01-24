@@ -257,7 +257,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
         });
     }
 
-    async fn add_ice_candidate(
+    fn add_ice_candidate(
         &self,
         GatewayIceCandidates {
             gateway_id,
@@ -265,9 +265,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
         }: GatewayIceCandidates,
     ) {
         for candidate in candidates {
-            if let Err(e) = self.tunnel.add_ice_candidate(gateway_id, candidate).await {
-                tracing::error!(err = ?e,"add_ice_candidate");
-            }
+            self.tunnel.add_ice_candidate(gateway_id, candidate)
         }
     }
 
@@ -288,7 +286,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
             Messages::Connect(connect) => self.connect(connect),
             Messages::ResourceCreatedOrUpdated(resource) => self.add_resource(resource),
             Messages::ResourceDeleted(resource) => self.resource_deleted(resource.0),
-            Messages::IceCandidates(ice_candidate) => self.add_ice_candidate(ice_candidate).await,
+            Messages::IceCandidates(ice_candidate) => self.add_ice_candidate(ice_candidate),
             Messages::SignedLogUrl(url) => {
                 let Some(path) = self.tunnel.callbacks().roll_log_file() else {
                     return Ok(());

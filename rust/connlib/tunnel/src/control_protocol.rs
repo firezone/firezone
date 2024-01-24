@@ -38,16 +38,11 @@ where
     CB: Callbacks + 'static,
     TRoleState: RoleState,
 {
-    pub async fn add_ice_candidate(
-        &self,
-        conn_id: TRoleState::Id,
-        ice_candidate: String,
-    ) -> Result<()> {
+    pub fn add_ice_candidate(&self, conn_id: TRoleState::Id, ice_candidate: String) {
         tracing::info!(%ice_candidate, %conn_id, "new remote candidate");
         self.role_state
             .lock()
             .add_remote_candidate(conn_id, ice_candidate);
-        Ok(())
     }
 }
 

@@ -22,7 +22,6 @@ pub struct Eventloop {
     // TODO: Strongly type request reference (currently `String`)
     connection_request_tasks:
         futures_bounded::FuturesMap<(ClientId, String), Result<GatewayResponse, Error>>,
-    add_ice_candidate_tasks: futures_bounded::FuturesSet<Result<(), Error>>,
     allow_access_tasks: futures_bounded::FuturesMap<String, Option<ResourceAccepted>>,
 
     print_stats_timer: tokio::time::Interval,
@@ -42,7 +41,6 @@ impl Eventloop {
                 Duration::from_secs(60),
                 100,
             ),
-            add_ice_candidate_tasks: futures_bounded::FuturesSet::new(Duration::from_secs(60), 100),
             print_stats_timer: tokio::time::interval(Duration::from_secs(10)),
             allow_access_tasks: futures_bounded::FuturesMap::new(Duration::from_secs(60), 100),
         }
@@ -133,22 +131,6 @@ impl Eventloop {
                 Poll::Pending => {}
             }
 
-            match self.add_ice_candidate_tasks.poll_unpin(cx) {
-                Poll::Ready(Ok(Ok(()))) => {
-                    continue;
-                }
-                Poll::Ready(Ok(Err(e))) => {
-                    tracing::error!("Failed to add ICE candidate: {:#}", anyhow::Error::new(e));
-
-                    continue;
-                }
-                Poll::Ready(Err(e)) => {
-                    tracing::error!("Failed to add ICE candidate: {e}");
-                    continue;
-                }
-                Poll::Pending => {}
-            }
-
             match self.portal.poll(cx)? {
                 Poll::Ready(phoenix_channel::Event::InboundMessage {
                     msg: IngressMessages::RequestConnection(req),
@@ -221,16 +203,7 @@ impl Eventloop {
                     for candidate in candidates {
                         tracing::debug!(client = %client_id, %candidate, "Adding ICE candidate from client");
 
-                        let tunnel = Arc::clone(&self.tunnel);
-                        if self
-                            .add_ice_candidate_tasks
-                            .try_push(async move {
-                                tunnel.add_ice_candidate(client_id, candidate).await
-                            })
-                            .is_err()
-                        {
-                            tracing::debug!("Received too many ICE candidates, dropping some");
-                        }
+                        self.tunnel.add_ice_candidate(client_id, candidate);
                     }
                     continue;
                 }
