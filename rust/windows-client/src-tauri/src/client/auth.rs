@@ -212,7 +212,18 @@ mod tests {
         SecretString::new(x.into())
     }
 
+    /// Runs everything in one test so that `cargo test` can't multi-thread it
+    /// This should work around a bug we had <https://github.com/firezone/firezone/issues/3256>
     #[test]
+    fn everything() -> anyhow::Result<()> {
+        utils();
+        happy_path();
+        no_inflight_request();
+        states_dont_match();
+        test_keyring()?;
+        Ok(())
+    }
+
     fn utils() {
         // This doesn't test for constant-time properties, it just makes sure the function
         // gives the right result
@@ -239,7 +250,6 @@ mod tests {
         );
     }
 
-    #[test]
     fn happy_path() {
         // Start the program
         let mut state =
@@ -274,7 +284,6 @@ mod tests {
         assert!(state.token().unwrap().is_none());
     }
 
-    #[test]
     fn no_inflight_request() {
         // Start the program
         let mut state =
@@ -300,7 +309,6 @@ mod tests {
         state.sign_out().unwrap();
     }
 
-    #[test]
     fn states_dont_match() {
         // Start the program
         let mut state =
@@ -331,7 +339,6 @@ mod tests {
         assert!(state.token().unwrap().is_none());
     }
 
-    #[test]
     fn test_keyring() -> anyhow::Result<()> {
         // I used this test to find that `service` is not used - We have to namespace on our own.
 
