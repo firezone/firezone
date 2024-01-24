@@ -11,6 +11,12 @@ use connlib_client_shared::{file_logger, ResourceDescription};
 use std::{net::IpAddr, path::PathBuf, sync::Arc, time::Duration};
 use tokio::sync::{mpsc, Notify};
 
+/// The Windows client doesn't use platform APIs to detect network connectivity changes,
+/// so we rely on connlib to do so. We have valid use cases for headless Windows clients
+/// (IoT devices, point-of-sale devices, etc), so try to reconnect for 30 days if there's
+/// been a partition.
+const MAX_PARTITION_TIME: Duration = Duration::from_secs(60 * 60 * 24 * 30);
+
 pub(crate) fn run(pipe_id: String) -> Result<()> {
     let advanced_settings = settings::load_advanced_settings().unwrap_or_default();
     let logger = logging::setup(&advanced_settings.log_filter)?;
@@ -18,10 +24,12 @@ pub(crate) fn run(pipe_id: String) -> Result<()> {
     tracing::info!("GIT_VERSION = {}", crate::client::GIT_VERSION);
 
     let rt = tokio::runtime::Runtime::new()?;
-    rt.block_on(async move {
+    if let Err(error) = rt.block_on(async move {
         let mut cw = ConnlibWorker::new(advanced_settings, logger.logger)?;
         cw.run_async(pipe_id).await
-    })?;
+    }) {
+        tracing::error!(?error, "error from async runtime");
+    }
 
     tracing::info!("connlib worker subproces exiting cleanly");
     Ok(())
@@ -36,6 +44,7 @@ struct ConnlibWorker {
     advanced_settings: AdvancedSettings,
     callback_handler: CallbackHandler,
     connlib: Option<connlib_client_shared::Session<CallbackHandler>>,
+    /// Tells us when to wake up and look for a new resource list. Tokio docs say that memory reads and writes are synchronized when notifying, so we don't need an extra mutex on the resources.
     notify: Arc<Notify>,
     rx: mpsc::Receiver<WorkerMsg>,
 }
@@ -76,6 +85,7 @@ impl ConnlibWorker {
         loop {
             // Note: Make sure these are all cancel-safe
             tokio::select! {
+                // TODO: Is this cancel-safe?
                 ready = client.ready(tokio::io::Interest::READABLE) => if ready?.is_readable() {
                     let msg = client.read().await?;
                     match self.handle_manager_msg(msg).await? {
@@ -111,7 +121,7 @@ impl ConnlibWorker {
                     None, // TODO: Send device name here (windows computer name)
                     None,
                     self.callback_handler.clone(),
-                    Duration::from_secs(5 * 60),
+                    MAX_PARTITION_TIME,
                 )?;
                 self.connlib = Some(connlib);
                 Ok(ControlFlow::Nothing)
@@ -144,16 +154,17 @@ impl connlib_client_shared::Callbacks for CallbackHandler {
         error: Option<&connlib_client_shared::Error>,
     ) -> Result<(), Self::Error> {
         tracing::debug!("on_disconnect {error:?}");
+        // TODO: This is suspicious
         self.ipc_tx.try_send(match error {
-            Some(connlib_client_shared::Error::TokenExpired) => WorkerMsg::DisconnectedTokenExpired,
-            _ => WorkerMsg::Disconnected,
+            Some(connlib_client_shared::Error::TokenExpired) => ipc::WorkerMsg::Callback(ipc::Callback::DisconnectedTokenExpired),
+            _ => ipc::WorkerMsg::Response(ipc::ManagerMsg::Disconnect),
         })?;
         Ok(())
     }
 
     fn on_tunnel_ready(&self) -> Result<(), Self::Error> {
         tracing::info!("on_tunnel_ready");
-        self.ipc_tx.try_send(WorkerMsg::TunnelReady)?;
+        self.ipc_tx.try_send(ipc::WorkerMsg::Callback(ipc::Callback::TunnelReady))?;
         Ok(())
     }
 

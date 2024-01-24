@@ -103,7 +103,7 @@ impl Server {
 
         let mut server_options = named_pipe::ServerOptions::new();
         server_options.first_pipe_instance(true);
-        /*
+
         // This will allow non-admin clients to connect to us even if we're running as admin
         let mut sd = WinSec::SECURITY_DESCRIPTOR::default();
         let psd = WinSec::PSECURITY_DESCRIPTOR(&mut sd as *mut _ as *mut c_void);
@@ -125,16 +125,14 @@ impl Server {
             lpSecurityDescriptor: psd.0,
             bInheritHandle: false.into(),
         };
-        */
-        let path = named_pipe_path(BUNDLE_ID);
-        /*
+
+        let path = named_pipe_path("deep_link");
+
         let server = unsafe {
             server_options
                 .create_with_security_attributes_raw(path, &mut sa as *mut _ as *mut c_void)
         }
         .map_err(|_| Error::Listen)?;
-        */
-        let server = server_options.create(path).map_err(|_| Error::Listen)?;
 
         tracing::debug!("server is bound");
         Ok(Server { inner: server })
@@ -174,7 +172,7 @@ impl Server {
 
 /// Open a deep link by sending it to the already-running instance of the app
 pub async fn open(url: &url::Url) -> Result<(), Error> {
-    let path = named_pipe_path(BUNDLE_ID);
+    let path = named_pipe_path("deep_link");
     let mut client = named_pipe::ClientOptions::new()
         .open(path)
         .map_err(Error::Connect)?;
@@ -225,11 +223,17 @@ fn set_registry_values(id: &str, exe: &str) -> Result<(), io::Error> {
 
 /// Returns a valid name for a Windows named pipe
 ///
+/// # Returns
+///
+/// A named pipe path with our bundle ID in front, e.g. `\\.\pipe\dev.firezone.client\id`
+///
 /// # Arguments
 ///
-/// * `id` - BUNDLE_ID, e.g. `dev.firezone.client`
+/// * `id` - a non-empty string, e.g. `deep_link`
 fn named_pipe_path(id: &str) -> String {
-    format!(r"\\.\pipe\{}", id)
+    // TODO: DRY with `ipc.rs`
+    assert!(! id.is_empty());
+    format!(r"\\.\pipe\{BUNDLE_ID}\{}", id)
 }
 
 #[cfg(test)]

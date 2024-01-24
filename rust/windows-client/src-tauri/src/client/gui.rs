@@ -5,15 +5,14 @@
 
 use crate::client::{self, deep_link, ipc, network_changes, AppLocalDataDir, BUNDLE_ID};
 use anyhow::{anyhow, bail, Context, Result};
-use arc_swap::ArcSwap;
 use client::{
     logging,
     settings::{self, AdvancedSettings},
 };
-use connlib_client_shared::{file_logger, ResourceDescription};
+use connlib_client_shared::ResourceDescription;
 use connlib_shared::messages::ResourceId;
-use secrecy::{ExposeSecret, SecretString};
-use std::{net::IpAddr, path::PathBuf, str::FromStr, sync::Arc, time::Duration};
+use secrecy::ExposeSecret;
+use std::{path::PathBuf, str::FromStr, sync::Arc, time::Duration};
 use system_tray_menu::Event as TrayMenuEvent;
 use tauri::{api::notification::Notification, Manager, SystemTray, SystemTrayEvent};
 use tokio::{
@@ -23,12 +22,6 @@ use tokio::{
 use ControllerRequest as Req;
 
 mod system_tray_menu;
-
-/// The Windows client doesn't use platform APIs to detect network connectivity changes,
-/// so we rely on connlib to do so. We have valid use cases for headless Windows clients
-/// (IoT devices, point-of-sale devices, etc), so try to reconnect for 30 days if there's
-/// been a partition.
-const MAX_PARTITION_TIME: Duration = Duration::from_secs(60 * 60 * 24 * 30);
 
 pub(crate) type CtlrTx = mpsc::Sender<ControllerRequest>;
 
@@ -73,7 +66,7 @@ pub(crate) fn run(params: client::GuiParams) -> Result<()> {
     let advanced_settings = settings::load_advanced_settings().unwrap_or_default();
 
     // Start logging
-    let logging_handles = client::logging::setup(&advanced_settings.log_filter)?;
+    let _logging_handles = client::logging::setup(&advanced_settings.log_filter)?;
     tracing::info!("started log");
     tracing::info!("GIT_VERSION = {}", crate::client::GIT_VERSION);
 
@@ -176,7 +169,6 @@ pub(crate) fn run(params: client::GuiParams) -> Result<()> {
                     app_handle.clone(),
                     ctlr_tx,
                     ctlr_rx,
-                    logging_handles,
                     advanced_settings,
                     notify_controller,
                 )
@@ -269,76 +261,15 @@ fn handle_system_tray_event(app: &tauri::AppHandle, event: TrayMenuEvent) -> Res
 }
 
 pub(crate) enum ControllerRequest {
+    Callback(ipc::Callback),
     CopyResource(String),
     Disconnected,
-    DisconnectedTokenExpired,
     ExportLogs { path: PathBuf, stem: PathBuf },
     GetAdvancedSettings(oneshot::Sender<AdvancedSettings>),
     Quit,
     SchemeRequest(url::Url),
     SignIn,
     SignOut,
-    TunnelReady,
-}
-
-#[derive(Clone)]
-struct CallbackHandler {
-    logger: file_logger::Handle,
-    notify_controller: Arc<Notify>,
-    ctlr_tx: CtlrTx,
-    resources: Arc<ArcSwap<Vec<ResourceDescription>>>,
-}
-
-#[derive(thiserror::Error, Debug)]
-enum CallbackError {
-    #[error("system DNS resolver problem: {0}")]
-    Resolvers(#[from] client::resolvers::Error),
-    #[error("can't send to controller task: {0}")]
-    SendError(#[from] mpsc::error::TrySendError<ControllerRequest>),
-}
-
-// Callbacks must all be non-blocking
-impl connlib_client_shared::Callbacks for CallbackHandler {
-    type Error = CallbackError;
-
-    fn on_disconnect(
-        &self,
-        error: Option<&connlib_client_shared::Error>,
-    ) -> Result<(), Self::Error> {
-        tracing::debug!("on_disconnect {error:?}");
-        self.ctlr_tx.try_send(match error {
-            Some(connlib_client_shared::Error::TokenExpired) => {
-                ControllerRequest::DisconnectedTokenExpired
-            }
-            _ => ControllerRequest::Disconnected,
-        })?;
-        Ok(())
-    }
-
-    fn on_tunnel_ready(&self) -> Result<(), Self::Error> {
-        tracing::info!("on_tunnel_ready");
-        self.ctlr_tx.try_send(ControllerRequest::TunnelReady)?;
-        Ok(())
-    }
-
-    fn on_update_resources(&self, resources: Vec<ResourceDescription>) -> Result<(), Self::Error> {
-        tracing::info!("on_update_resources");
-        self.resources.store(resources.into());
-        self.notify_controller.notify_one();
-        Ok(())
-    }
-
-    fn get_system_default_resolvers(&self) -> Result<Option<Vec<IpAddr>>, Self::Error> {
-        Ok(Some(client::resolvers::get()?))
-    }
-
-    fn roll_log_file(&self) -> Option<PathBuf> {
-        self.logger.roll_to_new_file().unwrap_or_else(|e| {
-            tracing::debug!("Failed to roll over to new file: {e}");
-
-            None
-        })
-    }
 }
 
 struct Controller {
@@ -350,48 +281,42 @@ struct Controller {
     ctlr_tx: CtlrTx,
     /// connlib session for the currently signed-in user, if there is one
     session: Option<Session>,
-    /// The UUIDv4 device ID persisted to disk
-    /// Sent verbatim to Session::connect
-    device_id: String,
     /// Kills subprocesses when our own process exits
     leak_guard: ipc::LeakGuard,
-    logging_handles: client::logging::Handles,
-    /// Tells us when to wake up and look for a new resource list. Tokio docs say that memory reads and writes are synchronized when notifying, so we don't need an extra mutex on the resources.
     notify_controller: Arc<Notify>,
+    resources: Vec<ResourceDescription>,
     tunnel_ready: bool,
 }
 
 /// Everything related to a signed-in user session
 struct Session {
-    subprocess: ipc::Subprocess,
+    response_rx: mpsc::Receiver<ipc::ManagerMsg>,
+    write_tx: mpsc::Sender<ipc::ManagerMsg>,
+    worker: ipc::SubcommandChild,
 }
 
 impl Controller {
     async fn new(
         app: tauri::AppHandle,
-        ctlr_tx: CtlrTx,
-        logging_handles: client::logging::Handles,
         advanced_settings: AdvancedSettings,
+        ctlr_tx: CtlrTx,
         notify_controller: Arc<Notify>,
     ) -> Result<Self> {
-        let device_id = client::device_id::device_id(&app.config().tauri.bundle.identifier).await?;
-
         let mut this = Self {
             advanced_settings,
             app,
             auth: client::auth::Auth::new()?,
             ctlr_tx,
             session: None,
-            device_id,
             leak_guard: ipc::LeakGuard::new()?,
-            logging_handles,
             notify_controller,
+            resources: vec![],
             tunnel_ready: false,
         };
 
-        if let Some(token) = this.auth.token()? {
+        if let Some(_token) = this.auth.token()? {
             // Connect immediately if we reloaded the token
-            if let Err(error) = this.start_session(token).await {
+            if let Err(error) = this.start_session().await {
                 tracing::error!(?error, "couldn't restart session on app start");
             }
         }
@@ -401,32 +326,53 @@ impl Controller {
 
     // TODO: Figure out how re-starting sessions automatically will work
     /// Pre-req: the auth module must be signed in
-    async fn start_session(&mut self, token: SecretString) -> Result<()> {
+    async fn start_session(&mut self) -> Result<()> {
         if self.session.is_some() {
             bail!("can't start session, we're already in a session");
         }
 
         let args = ["connlib-worker"];
         let mut subprocess = timeout(Duration::from_secs(10), ipc::Subprocess::new(&self.leak_guard, &args)).await.context("timed out while starting subprocess")?.context("error while starting subprocess")?;
-        subprocess.server.write(ipc::ManagerMsg::Connect).await.context("couldn't send Connect request to worker")?;
-        let ipc::WorkerMsg::Connected = subprocess.server.read().await.context("didn't get response from worker")? else {
+        subprocess.server.write_tx.send(ipc::ManagerMsg::Connect).await.context("couldn't send Connect request to worker")?;
+        let ipc::ManagerMsg::Connect = subprocess.server.response_rx.recv().await.context("didn't get response from worker")? else {
             anyhow::bail!("Expected Connected back from connlib worker");
         };
 
+        let ipc::Subprocess {
+            server: ipc::Server {
+                mut cb_rx,
+                response_rx,
+                write_tx,
+                ..
+            },
+            worker,
+        } = subprocess;
+
+        let ctlr_tx = self.ctlr_tx.clone();
+
+        // TODO: Make sure this task doesn't leak
+        tokio::task::spawn(async move {
+            while let Some(cb) = cb_rx.recv().await {
+                ctlr_tx.send(ControllerRequest::Callback(cb)).await?;
+            }
+            Ok::<_, anyhow::Error>(())
+        });
+
         self.session = Some(Session {
-            subprocess
+            response_rx,
+            worker,
+            write_tx,
         });
 
         Ok(())
     }
 
     fn copy_resource(&self, id: &str) -> Result<()> {
-        let Some(session) = &self.session else {
+        if self.session.is_none() {
             bail!("app is signed out");
         };
-        let resources: Vec<ResourceDescription> = todo!("cache resources from worker subprocess");
         let id = ResourceId::from_str(id)?;
-        let Some(res) = resources.iter().find(|r| r.id() == id) else {
+        let Some(res) = self.resources.iter().find(|r| r.id() == id) else {
             bail!("resource ID is not in the list");
         };
         let mut clipboard = arboard::Clipboard::new()?;
@@ -444,8 +390,8 @@ impl Controller {
             bail!("couldn't parse scheme request");
         };
 
-        let token = self.auth.handle_response(auth_response)?;
-        if let Err(e) = self.start_session(token).await {
+        let _token = self.auth.handle_response(auth_response)?;
+        if let Err(e) = self.start_session().await {
             // TODO: Replace `bail` with `context` here too
             bail!("couldn't start session: {e:#?}");
         }
@@ -457,12 +403,10 @@ impl Controller {
         // TODO: Refactor this and the auth module so that "Are we logged in"
         // doesn't require such complicated control flow to answer.
         if let Some(auth_session) = self.auth.session() {
-            if let Some(connlib_session) = &self.session {
+            if self.session.is_some() {
                 if self.tunnel_ready {
                     // Signed in, tunnel ready
-                    // TODO
-                    let resources = vec![];
-                    system_tray_menu::signed_in(&auth_session.actor_name, &resources)
+                    system_tray_menu::signed_in(&auth_session.actor_name, &self.resources)
                 } else {
                     // Signed in, raising tunnel
                     system_tray_menu::signing_in()
@@ -493,15 +437,13 @@ async fn run_controller(
     app: tauri::AppHandle,
     ctlr_tx: CtlrTx,
     mut rx: mpsc::Receiver<ControllerRequest>,
-    logging_handles: client::logging::Handles,
     advanced_settings: AdvancedSettings,
     notify_controller: Arc<Notify>,
 ) -> Result<()> {
     let mut controller = Controller::new(
         app.clone(),
-        ctlr_tx,
-        logging_handles,
         advanced_settings,
+        ctlr_tx,
         notify_controller,
     )
     .await
@@ -536,33 +478,31 @@ async fn run_controller(
                     Req::Disconnected => {
                         tracing::debug!("connlib disconnected, tearing down Session");
                         controller.tunnel_ready = false;
-                        if let Some(session) = controller.session.take() {
+                        if let Some(mut session) = controller.session.take() {
                             tracing::debug!("disconnecting connlib");
-                            let mut subprocess = session.subprocess;
-                            subprocess.server.write(ipc::ManagerMsg::Disconnect).await?;
-                            let ipc::WorkerMsg::Disconnected = subprocess.server.read().await? else {
+                            session.write_tx.send(ipc::ManagerMsg::Disconnect).await?;
+                            let ipc::ManagerMsg::Disconnect = session.response_rx.recv().await.context("should have gotten a response")? else {
                                 anyhow::bail!("expected Disconnected back from worker");
                             };
-                            if let Err(error) = subprocess.worker.wait_or_kill() {
+                            if let Err(error) = session.worker.wait_or_kill() {
                                 tracing::error!(?error, "couldn't join or kill connlib worker");
                             }
                         }
                         controller.refresh_system_tray_menu()?;
                     }
-                    Req::DisconnectedTokenExpired | Req::SignOut => {
+                    Req::Callback(ipc::Callback::DisconnectedTokenExpired) | Req::SignOut => {
                         tracing::debug!("Token expired or user signed out");
                         controller.auth.sign_out()?;
                         controller.tunnel_ready = false;
-                        if let Some(session) = controller.session.take() {
+                        if let Some(mut session) = controller.session.take() {
                             tracing::debug!("disconnecting connlib");
                             // This is redundant if the token is expired, in that case
                             // connlib already disconnected itself.
-                            let mut subprocess = session.subprocess;
-                            subprocess.server.write(ipc::ManagerMsg::Disconnect).await?;
-                            let ipc::WorkerMsg::Disconnected = subprocess.server.read().await? else {
+                            session.write_tx.send(ipc::ManagerMsg::Disconnect).await?;
+                            let ipc::ManagerMsg::Disconnect = session.response_rx.recv().await.context("should have gotten a response")? else {
                                 anyhow::bail!("expected Disconnected back from worker");
                             };
-                            if let Err(error) = subprocess.worker.wait_or_kill() {
+                            if let Err(error) = session.worker.wait_or_kill() {
                                 tracing::error!(?error, "couldn't join or kill connlib worker");
                             }
                         }
@@ -570,6 +510,23 @@ async fn run_controller(
                             tracing::error!("tried to sign out but there's no session");
                         }
                         controller.refresh_system_tray_menu()?;
+                    }
+                    Req::Callback(cb) => match cb {
+                        // TODO: Make this impossible
+                        ipc::Callback::Cookie(_) => bail!("Cookie isn't supposed to show up here"),
+                        ipc::Callback::DisconnectedTokenExpired => bail!("DisconnectedTokenExpired should be handled above here"),
+                        ipc::Callback::OnUpdateResources(resources) => controller.resources = resources,
+                        ipc::Callback::TunnelReady => {
+                            controller.tunnel_ready = true;
+                            controller.refresh_system_tray_menu()?;
+
+                            // May say "Windows Powershell" in dev mode
+                            // See https://github.com/tauri-apps/tauri/issues/3700
+                            Notification::new(&controller.app.config().tauri.bundle.identifier)
+                                .title("Firezone connected")
+                                .body("You are now signed in and able to access resources.")
+                            .show()?;
+                        },
                     }
                     Req::ExportLogs{path, stem} => logging::export_logs_to(path, stem).await?,
                     Req::GetAdvancedSettings(tx) => {
@@ -590,17 +547,6 @@ async fn run_controller(
                             )?;
                         }
                     }
-                    Req::TunnelReady => {
-                        controller.tunnel_ready = true;
-                        controller.refresh_system_tray_menu()?;
-
-                        // May say "Windows Powershell" in dev mode
-                        // See https://github.com/tauri-apps/tauri/issues/3700
-                        Notification::new(&controller.app.config().tauri.bundle.identifier)
-                            .title("Firezone connected")
-                            .body("You are now signed in and able to access resources.")
-                            .show()?;
-                    },
                 }
             }
         }

@@ -6,6 +6,7 @@
 //! RUST_LOG=debug cargo run -p firezone-windows-client debug test-ipc
 //! ```
 
+use crate::client::BUNDLE_ID;
 use anyhow::{bail, Context, Result};
 use connlib_client_shared::ResourceDescription;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
@@ -20,6 +21,7 @@ use std::{
 use tokio::{
     io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt},
     net::windows::named_pipe,
+    sync::mpsc,
     time::timeout,
 };
 use windows::Win32::{
@@ -64,7 +66,6 @@ pub fn test_subcommand(cmd: Option<Subcommand>) -> Result<()> {
     rt.block_on(async move {
         match cmd {
             None => {
-                test_two_servers().await?;
                 test_api().await?;
                 test_security().await?;
                 test_happy_path().await?;
@@ -84,36 +85,6 @@ pub fn test_subcommand(cmd: Option<Subcommand>) -> Result<()> {
             Some(Subcommand::ApiWorker { pipe_id }) => test_api_worker(pipe_id).await,
         }
     })?;
-    Ok(())
-}
-
-// This could go in the tests module, but I want to run it elevated too
-#[tracing::instrument]
-async fn test_two_servers() -> Result<()> {
-    let mut dl_server = crate::client::deep_link::Server::new()?;
-    let t = tokio::task::spawn(async move {
-        loop {
-            if let Ok(_url) = dl_server.accept().await {
-
-            }
-            dl_server = crate::client::deep_link::Server::new().unwrap();
-        }
-    });
-
-    let (server_1, _) = UnconnectedServer::new()?;
-    let t = tokio::task::spawn(async move {
-        tracing::info!("await connection");
-        server_1.pipe.connect().await?;
-        tracing::info!("task exiting");
-        Ok::<_, anyhow::Error>(())
-    });
-
-    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-
-    let (server_2, _) = UnconnectedServer::new()?;
-    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-    t.abort();
-    tracing::info!("test_two_servers passed");
     Ok(())
 }
 
@@ -140,10 +111,10 @@ async fn test_manager_process(pipe_id: String) -> Result<()> {
     let mut server = timeout(Duration::from_secs(5), server.accept()).await??;
 
     let start_time = Instant::now();
-    server.write(ManagerMsg::Connect).await?;
-    assert_eq!(server.read().await?, WorkerMsg::Connected);
-    server.write(ManagerMsg::Disconnect).await?;
-    assert_eq!(server.read().await?, WorkerMsg::Disconnected);
+    server.write_tx.send(ManagerMsg::Connect).await?;
+    assert_eq!(server.response_rx.recv().await.context("should have gotten a response")?, ManagerMsg::Connect);
+    server.write_tx.send(ManagerMsg::Disconnect).await?;
+    assert_eq!(server.response_rx.recv().await.context("should have gotten a response")?, ManagerMsg::Disconnect);
 
     let elapsed = start_time.elapsed();
     assert!(
@@ -164,8 +135,8 @@ async fn test_worker_process(pipe_id: String) -> Result<()> {
     loop {
         let req = client.read().await?;
         let resp = match &req {
-            ManagerMsg::Connect => WorkerMsg::Connected,
-            ManagerMsg::Disconnect => WorkerMsg::Disconnected,
+            ManagerMsg::Connect => WorkerMsg::Response(ManagerMsg::Connect),
+            ManagerMsg::Disconnect => WorkerMsg::Response(ManagerMsg::Disconnect),
         };
         client.write(resp).await?;
 
@@ -206,13 +177,13 @@ async fn test_leak(enable_protection: bool) -> Result<()> {
     let mut manager = SubcommandChild::new(&args)?;
     let mut server = timeout(Duration::from_secs(5), server.accept()).await??;
 
-    tracing::info!("Actual pipe client PID = {}", server.client_pid()?);
+    tracing::info!("Actual pipe client PID = {}", server.client_pid);
     tracing::debug!("Harness accepted connection from Worker");
 
     // Send a few requests to make sure the worker is connected and good
     for _ in 0..3 {
-        server.write(ManagerMsg::Connect).await?;
-        server.read().await?;
+        server.write_tx.send(ManagerMsg::Connect).await?;
+        server.response_rx.recv().await.context("should have gotten a response")?;
     }
 
     tokio::time::sleep(std::time::Duration::from_secs(15)).await;
@@ -224,11 +195,11 @@ async fn test_leak(enable_protection: bool) -> Result<()> {
     // so just give it 10 seconds for Windows to stop it.
     for _ in 0..10 {
         tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-        if server.write(ManagerMsg::Connect).await.is_err() {
+        if server.write_tx.send(ManagerMsg::Connect).await.is_err() {
             tracing::info!("confirmed worker stopped responding");
             break;
         }
-        if server.read().await.is_err() {
+        if server.response_rx.recv().await.is_none() {
             tracing::info!("confirmed worker stopped responding");
             break;
         }
@@ -236,21 +207,21 @@ async fn test_leak(enable_protection: bool) -> Result<()> {
 
     if enable_protection {
         assert!(
-            server.write(ManagerMsg::Connect).await.is_err(),
+            server.write_tx.send(ManagerMsg::Connect).await.is_err(),
             "worker shouldn't be able to respond here, it should have stopped when the manager stopped"
         );
         assert!(
-            server.read().await.is_err(),
+            server.response_rx.recv().await.is_none(),
             "worker shouldn't be able to respond here, it should have stopped when the manager stopped"
         );
         tracing::info!("enabling leak protection worked");
     } else {
         assert!(
-            server.write(ManagerMsg::Connect).await.is_ok(),
+            server.write_tx.send(ManagerMsg::Connect).await.is_ok(),
             "worker should still respond here, this failure means the test is invalid"
         );
         assert!(
-            server.read().await.is_ok(),
+            server.response_rx.recv().await.is_some(),
             "worker should still respond here, this failure means the test is invalid"
         );
         tracing::info!("not enabling leak protection worked");
@@ -281,7 +252,7 @@ async fn leak_worker(pipe_id: String) -> Result<()> {
     tracing::debug!("Worker connected to named pipe");
     loop {
         let _ = client.read().await?;
-        client.write(WorkerMsg::Connected).await?;
+        client.write(WorkerMsg::Response(ManagerMsg::Connect)).await?;
     }
 }
 
@@ -296,7 +267,7 @@ async fn test_security() -> Result<()> {
     leak_guard.add_process(&worker.process)?;
     let mut server = timeout(Duration::from_secs(5), server.accept()).await??;
 
-    let client_pid = server.client_pid()?;
+    let client_pid = server.client_pid;
     let child_pid = worker.process.id();
     assert_eq!(child_pid, client_pid);
 
@@ -308,11 +279,13 @@ async fn test_security() -> Result<()> {
     let cookie = uuid::Uuid::new_v4().to_string();
     writeln!(child_stdin, "{cookie}")?;
 
-    let echoed_cookie: String = read_bincode(&mut server.pipe).await?;
+    let Callback::Cookie(echoed_cookie) = server.cb_rx.recv().await.context("should have gotten the cookie back")? else {
+        bail!("callback should have been a cookie");
+    };
     assert_eq!(echoed_cookie, cookie);
 
-    server.write(ManagerMsg::Disconnect).await?;
-    server.read().await?;
+    server.write_tx.send(ManagerMsg::Disconnect).await?;
+    server.response_rx.recv().await.context("should have gotten a response to Disconnect request")?;
 
     let elapsed = start_time.elapsed();
     assert!(elapsed < Duration::from_millis(200), "{:?}", elapsed);
@@ -328,11 +301,12 @@ async fn security_worker(pipe_id: String) -> Result<()> {
     let mut client = Client::new(&pipe_id)?;
     let mut cookie = String::new();
     std::io::stdin().read_line(&mut cookie)?;
-    write_bincode(&mut client.pipe, &cookie.trim()).await?;
+    let cookie = WorkerMsg::Callback(Callback::Cookie(cookie.trim().to_string()));
+    write_bincode(&mut client.pipe, &cookie).await?;
     tracing::debug!("Worker connected to named pipe");
     loop {
         let req = client.read().await?;
-        client.write(WorkerMsg::TunnelReady).await?;
+        client.write(WorkerMsg::Response(req.clone())).await?;
         if let ManagerMsg::Disconnect = req {
             break;
         }
@@ -350,9 +324,11 @@ async fn test_api() -> Result<()> {
         mut server,
         mut worker,
     } = timeout(Duration::from_secs(10), Subprocess::new(&leak_guard, &args)).await??;
+    tracing::debug!("Manager got connection from worker");
 
-    server.write(ManagerMsg::Disconnect).await?;
-    server.read().await?;
+    server.write_tx.send(ManagerMsg::Disconnect).await?;
+    tracing::debug!("Manager requested Disconnect");
+    assert_eq!(server.response_rx.recv().await.context("should have gotten a response")?, ManagerMsg::Disconnect);
 
     let elapsed = start_time.elapsed();
     assert!(elapsed < Duration::from_millis(200), "{:?}", elapsed);
@@ -366,10 +342,13 @@ async fn test_api() -> Result<()> {
 #[tracing::instrument]
 async fn test_api_worker(pipe_id: String) -> Result<()> {
     let mut client = client(&pipe_id).await?;
+
     tracing::debug!("Worker connected to named pipe");
     loop {
         let req = client.read().await?;
-        client.write(WorkerMsg::TunnelReady).await?;
+        tracing::debug!(?req, "worker got request");
+        client.write(WorkerMsg::Response(req.clone())).await?;
+        tracing::debug!(?req, "worker replied");
         if let ManagerMsg::Disconnect = req {
             break;
         }
@@ -384,7 +363,8 @@ async fn test_api_worker(pipe_id: String) -> Result<()> {
 /// Normally you don't need to call this directly. Tests may need it to inject
 /// a known pipe ID into a process controlled by the test.
 fn random_pipe_id() -> String {
-    format!(r"\\.\pipe\dev.firezone.client\{}", uuid::Uuid::new_v4())
+    // TODO: DRY with `deep_link.rs`
+    format!("\\\\.\\pipe\\{BUNDLE_ID}\\{}", uuid::Uuid::new_v4())
 }
 
 /// A named pipe server linked to a worker subprocess
@@ -399,7 +379,7 @@ impl Subprocess {
     /// The process ID and cookie have already been checked for security
     /// when this function returns.
     pub(crate) async fn new(leak_guard: &LeakGuard, args: &[&str]) -> Result<Self> {
-        let (server, pipe_id) = UnconnectedServer::new().context("couldn't create UnconnectedServer")?;
+        let (mut server, pipe_id) = UnconnectedServer::new().context("couldn't create UnconnectedServer")?;
         let mut process = process::Command::new(std::env::current_exe().context("couldn't get current exe name")?);
         // Make the child's stdin piped so we can send it a security cookie.
         process.stdin(process::Stdio::piped());
@@ -416,9 +396,11 @@ impl Subprocess {
         let child_pid = process.id();
         let mut worker = SubcommandChild { process };
 
+        // Accept the connection
+        server.pipe.connect().await.context("expected a client connection")?;
+        let client_pid = Server::client_pid(&server.pipe)?;
+
         // Make sure our child process connected to our pipe, and not some 3rd-party process
-        let mut server = server.accept().await.context("didn't get connection from subprocess")?;
-        let client_pid = server.client_pid().context("couldn't check pipe client PID")?;
         if child_pid != client_pid {
             bail!("PID of child process and pipe client should match");
         }
@@ -433,10 +415,16 @@ impl Subprocess {
         let cookie = uuid::Uuid::new_v4().to_string();
         writeln!(child_stdin, "{cookie}").context("couldn't write cookie to subprocess stdin")?;
 
-        let echoed_cookie: String = read_bincode(&mut server.pipe).await.context("couldn't read cookie back from subprocess")?;
+        let WorkerMsg::Callback(Callback::Cookie(echoed_cookie)) = Server::read(&mut server.pipe).await.context("couldn't read cookie back from subprocess")? else {
+            bail!("didn't receive cookie from pipe client");
+        };
         if echoed_cookie != cookie {
             bail!("cookie received from pipe client should match the cookie we sent to our child process");
         }
+
+
+
+        let server = Server::new(server.pipe)?;
 
         Ok(Self { server, worker })
     }
@@ -449,7 +437,8 @@ pub(crate) async fn client(pipe_id: &str) -> Result<Client> {
     let mut client = Client::new(pipe_id)?;
     let mut cookie = String::new();
     std::io::stdin().read_line(&mut cookie)?;
-    write_bincode(&mut client.pipe, &cookie.trim()).await?;
+    let cookie = WorkerMsg::Callback(Callback::Cookie(cookie.trim().to_string()));
+    write_bincode(&mut client.pipe, &cookie).await?;
     Ok(client)
 }
 
@@ -467,7 +456,6 @@ impl UnconnectedServer {
     }
 
     fn new_with_id(id: &str) -> anyhow::Result<Self> {
-        tracing::debug!(?id, "creating new pipe server");
         let pipe = named_pipe::ServerOptions::new()
             .first_pipe_instance(true)
             .create(id)?;
@@ -481,7 +469,7 @@ impl UnconnectedServer {
     /// Try pairing it with `tokio::time:timeout`
     pub async fn accept(self) -> anyhow::Result<Server> {
         self.pipe.connect().await?;
-        Ok(Server { pipe: self.pipe })
+        Server::new(self.pipe)
     }
 }
 
@@ -490,7 +478,10 @@ impl UnconnectedServer {
 /// Manual testing shows that if the corresponding Client's process crashes, Windows will
 /// be nice and return errors for anything trying to read from the Server
 pub(crate) struct Server {
-    pipe: named_pipe::NamedPipeServer,
+    pub cb_rx: mpsc::Receiver<Callback>,
+    client_pid: u32,
+    pub response_rx: mpsc::Receiver<ManagerMsg>,
+    pub write_tx: mpsc::Sender<ManagerMsg>,
 }
 
 /// A client that's connected to a server
@@ -501,7 +492,7 @@ pub(crate) struct Client {
     pipe: named_pipe::NamedPipeClient,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub(crate) enum ManagerMsg {
     Connect,
     Disconnect,
@@ -509,26 +500,90 @@ pub(crate) enum ManagerMsg {
 
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 pub(crate) enum WorkerMsg {
-    Connected,
-    Disconnected,
+    /// A message that is not in response to any manager request
+    ///
+    /// Typically a wrapped connlib callback
+    Callback(Callback),
+    /// Response to a manager-initiated request to connlib (e.g. connect, disconnect)
+    Response(ManagerMsg), // All ManagerMsg variants happen to be requests
+}
+
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+pub(crate) enum Callback {
+    /// Cookie for named pipe security
+    Cookie(String),
     DisconnectedTokenExpired,
     OnUpdateResources(Vec<ResourceDescription>),
     TunnelReady,
 }
 
 impl Server {
-    pub async fn read(&mut self) -> Result<WorkerMsg> {
-        read_bincode(&mut self.pipe).await.context("couldn't read")
+    fn new(pipe: named_pipe::NamedPipeServer) -> Result<Self> {
+        let (cb_tx, cb_rx) = mpsc::channel(5);
+        let (response_tx, response_rx) = mpsc::channel(5);
+        let (write_tx, write_rx) = mpsc::channel(5);
+
+        let client_pid = Self::client_pid(&pipe)?;
+
+        // TODO: Make sure this task stops
+        let _task = tokio::task::spawn(async move {
+            if let Err(error) = Self::pipe_task(pipe, cb_tx, response_tx, write_rx).await {
+                tracing::error!(?error, "pipe_task failed");
+            }
+            tracing::debug!("pipe_task exited gracefully");
+        });
+
+        Ok(Self {
+            cb_rx,
+            client_pid,
+            response_rx,
+            write_tx,
+        })
     }
 
-    pub async fn write(&mut self, req: ManagerMsg) -> Result<()> {
-        write_bincode(&mut self.pipe, &req)
+    /// Handles reading differently kinds of messages
+    ///
+    /// It is incidentally half-duplex, it can't read and write at the same time.
+    #[tracing::instrument(skip_all)]
+    async fn pipe_task(mut pipe: named_pipe::NamedPipeServer, cb_tx: mpsc::Sender<Callback>, response_tx: mpsc::Sender<ManagerMsg>, mut write_rx: mpsc::Receiver<ManagerMsg>) -> anyhow::Result<()> {
+        loop {
+            // Note: Make sure these are all cancel-safe
+            tokio::select! {
+                // TODO: Is this cancel-safe?
+                ready = pipe.ready(tokio::io::Interest::READABLE) => {
+                    tracing::debug!("waking up to read");
+                    let mut buf = [];
+                    if ready?.is_readable() && pipe.try_read(&mut buf).is_ok() {
+                        match Self::read(&mut pipe).await? {
+                            WorkerMsg::Callback(cb) => cb_tx.send(cb).await?,
+                            WorkerMsg::Response(resp) => response_tx.send(resp).await?,
+                        }
+                    }
+                    else {
+                        tracing::debug!("spurious wakeup");
+                    }
+                },
+                // Cancel safe. <https://docs.rs/tokio/latest/tokio/sync/mpsc/struct.Receiver.html#cancel-safety>
+                msg = write_rx.recv() => {
+                    tracing::debug!("waking up to write");
+                    Self::write(&mut pipe, msg.context("write_tx must have closed")?).await?
+                },
+            }
+        }
+    }
+
+    async fn read(pipe: &mut named_pipe::NamedPipeServer) -> Result<WorkerMsg> {
+        read_bincode(pipe).await.context("couldn't read")
+    }
+
+    pub async fn write(pipe: &mut named_pipe::NamedPipeServer, req: ManagerMsg) -> Result<()> {
+        write_bincode(pipe, &req)
             .await
             .context("couldn't write")
     }
 
-    fn client_pid(&self) -> Result<u32> {
-        let handle = self.pipe.as_handle();
+    fn client_pid(pipe: &named_pipe::NamedPipeServer) -> Result<u32> {
+        let handle = pipe.as_handle();
         let handle = HANDLE(unsafe { handle.as_raw_handle().offset_from(std::ptr::null()) });
         let mut pid = 0;
         // SAFETY: Not sure if this can be called from two threads at once?
@@ -681,7 +736,6 @@ mod tests {
     /// It's hard to simulate a process crash because:
     /// - If I Drop anything, Tokio will clean it up
     /// - If I `std::mem::forget` anything, the test process is still running, so Windows will not clean it up
-    #[test]
     fn happy_path() -> anyhow::Result<()> {
         let rt = Runtime::new()?;
         rt.block_on(async move {
@@ -696,8 +750,8 @@ mod tests {
                 loop {
                     let req = client.read().await?;
                     let resp = match &req {
-                        ManagerMsg::Connect => WorkerMsg::Connected,
-                        ManagerMsg::Disconnect => WorkerMsg::Disconnected,
+                        ManagerMsg::Connect => WorkerMsg::Response(ManagerMsg::Connect),
+                        ManagerMsg::Disconnect => WorkerMsg::Response(ManagerMsg::Disconnect),
                     };
                     client.write(resp).await?;
 
@@ -711,10 +765,10 @@ mod tests {
             let mut server = server.accept().await?;
 
             let start_time = Instant::now();
-            server.write(ManagerMsg::Connect).await?;
-            assert_eq!(server.read().await?, WorkerMsg::Connected);
-            server.write(ManagerMsg::Disconnect).await?;
-            assert_eq!(server.read().await?, WorkerMsg::Disconnected);
+            server.write_tx.send(ManagerMsg::Connect).await?;
+            assert_eq!(server.response_rx.recv().await.unwrap(), ManagerMsg::Connect);
+            server.write_tx.send(ManagerMsg::Disconnect).await?;
+            assert_eq!(server.response_rx.recv().await.unwrap(), ManagerMsg::Disconnect);
 
             let elapsed = start_time.elapsed();
             assert!(elapsed < Duration::from_millis(6), "{:?}", elapsed);
