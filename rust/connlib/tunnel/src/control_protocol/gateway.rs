@@ -14,7 +14,7 @@ use connlib_shared::{
     Callbacks, Dname, Error, Result,
 };
 use ip_network::IpNetwork;
-use std::{net::ToSocketAddrs, sync::Arc};
+use std::sync::Arc;
 use webrtc::ice_transport::{
     ice_role::RTCIceRole, ice_transport_state::RTCIceTransportState, RTCIceTransport,
 };
@@ -101,9 +101,8 @@ where
                     return Err(Error::InvalidResource);
                 }
 
-                // TODO: we should make this async, this is acceptable for now though
-                // in the future we will use hickory-resolver for this anyways.
-                resolve_addresses(&domain.to_string())?
+                tokio::task::spawn_blocking(move || resolve_addresses(&domain.to_string()))
+                    .await??
             }
             ResourceDescription::Cidr(ref cidr) => vec![cidr.address],
         };
@@ -161,54 +160,53 @@ where
         })
     }
 
-    pub fn allow_access(
+    pub async fn allow_access(
         &self,
         resource: ResourceDescription,
         client_id: ClientId,
         expires_at: Option<DateTime<Utc>>,
         domain: Option<Dname>,
     ) -> Option<ResourceAccepted> {
-        if let Some((_, peer)) = self
+        let Some(peer) = self
             .role_state
             .lock()
             .peers_by_ip
             .iter_mut()
-            .find(|(_, p)| p.inner.conn_id == client_id)
-        {
-            let addresses = match &resource {
-                ResourceDescription::Dns(r) => {
-                    let Some(domain) = domain.as_ref() else {
-                        return None;
-                    };
+            .find_map(|(_, p)| (p.inner.conn_id == client_id).then_some(p.inner.clone()))
+        else {
+            return None;
+        };
 
-                    if !is_subdomain(domain, &r.address) {
-                        return None;
-                    }
+        let addresses = match &resource {
+            ResourceDescription::Dns(r) => {
+                let Some(domain) = domain.clone() else {
+                    return None;
+                };
 
-                    (domain.to_string(), 0)
-                        .to_socket_addrs()
-                        .ok()?
-                        .map(|a| a.ip())
-                        .map(Into::into)
-                        .collect()
+                if !is_subdomain(&domain, &r.address) {
+                    return None;
                 }
-                ResourceDescription::Cidr(cidr) => vec![cidr.address],
-            };
 
-            for address in &addresses {
-                peer.inner
-                    .transform
-                    .add_resource(*address, resource.clone(), expires_at);
+                tokio::task::spawn_blocking(move || resolve_addresses(&domain.to_string()))
+                    .await
+                    .ok()?
+                    .ok()?
             }
+            ResourceDescription::Cidr(cidr) => vec![cidr.address],
+        };
 
-            if let Some(domain) = domain {
-                return Some(ResourceAccepted {
-                    domain_response: DomainResponse {
-                        domain,
-                        address: addresses.iter().map(|i| i.network_address()).collect(),
-                    },
-                });
-            }
+        for address in &addresses {
+            peer.transform
+                .add_resource(*address, resource.clone(), expires_at);
+        }
+
+        if let Some(domain) = domain {
+            return Some(ResourceAccepted {
+                domain_response: DomainResponse {
+                    domain,
+                    address: addresses.iter().map(|i| i.network_address()).collect(),
+                },
+            });
         }
 
         None

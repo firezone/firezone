@@ -2,6 +2,7 @@ use anyhow::Result;
 use clap::{Args, Parser};
 use std::{os::windows::process::CommandExt, process::Command};
 
+mod about;
 mod auth;
 mod crash_handling;
 mod debug_commands;
@@ -9,6 +10,7 @@ mod deep_link;
 mod device_id;
 mod elevation;
 mod gui;
+mod ipc;
 mod logging;
 mod network_changes;
 mod resolvers;
@@ -34,7 +36,7 @@ pub const BUNDLE_ID: &str = "dev.firezone.client";
 /// * `g` doesn't mean anything
 /// * `ed5437c88` is the Git commit hash
 /// * `-modified` is present if the working dir has any changes from that commit number
-const GIT_VERSION: &str =
+pub const GIT_VERSION: &str =
     git_version::git_version!(args = ["--always", "--dirty=-modified", "--tags"]);
 
 /// GuiParams prevents a problem where changing the args to `gui::run` breaks static analysis on non-Windows targets, where the gui is stubbed out
@@ -110,14 +112,7 @@ pub(crate) fn run() -> Result<()> {
             }
         }
         Some(Cmd::CrashHandlerServer) => crash_handling::server(),
-        Some(Cmd::Debug) => {
-            println!("debug");
-            Ok(())
-        }
-        Some(Cmd::DebugCrash) => debug_commands::crash(),
-        Some(Cmd::DebugHostname) => debug_commands::hostname(),
-        Some(Cmd::DebugNetworkChanges) => network_changes::run_debug(),
-        Some(Cmd::DebugWintun) => debug_commands::wintun(cli),
+        Some(Cmd::Debug { command }) => debug_commands::run(command),
         // If we already tried to elevate ourselves, don't try again
         Some(Cmd::Elevated) => gui::run(GuiParams {
             crash_on_purpose: cli.crash_on_purpose,
@@ -134,23 +129,22 @@ pub(crate) fn run() -> Result<()> {
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
-pub struct Cli {
+struct Cli {
     #[command(subcommand)]
-    pub command: Option<Cmd>,
+    command: Option<Cmd>,
     #[arg(long, hide = true)]
-    pub crash_on_purpose: bool,
+    crash_on_purpose: bool,
     #[arg(long, hide = true)]
-    pub inject_faults: bool,
+    inject_faults: bool,
 }
 
 #[derive(clap::Subcommand)]
 pub enum Cmd {
     CrashHandlerServer,
-    Debug,
-    DebugCrash,
-    DebugHostname,
-    DebugNetworkChanges,
-    DebugWintun,
+    Debug {
+        #[command(subcommand)]
+        command: debug_commands::Cmd,
+    },
     Elevated,
     OpenDeepLink(DeepLink),
 }
