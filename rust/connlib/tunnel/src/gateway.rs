@@ -111,6 +111,19 @@ impl RoleState for GatewayState {
 
     fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Event<Self::Id>> {
         loop {
+            while let Some(transmit) = self.connection_pool.poll_transmit() {
+                if let Err(e) = match transmit.src {
+                    Some(src) => self
+                        .udp_sockets
+                        .try_send_to(src, transmit.dst, &transmit.payload),
+                    None => self
+                        .relay_socket
+                        .try_send_to(&transmit.payload, transmit.dst),
+                } {
+                    tracing::warn!(src = ?transmit.src, dst = %transmit.dst, "Failed to send UDP packet: {e:#?}");
+                }
+            }
+
             match self.connection_pool.poll_event() {
                 Some(firezone_connection::Event::SignalIceCandidate {
                     connection,
