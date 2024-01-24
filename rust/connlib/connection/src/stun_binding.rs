@@ -22,8 +22,8 @@ pub struct StunBinding {
     state: State,
     last_now: Option<Instant>,
 
-    buffered_transmits: VecDeque<Transmit>,
-    buffered_events: VecDeque<Event>,
+    buffered_transmits: VecDeque<Transmit<'static>>,
+    new_candidates: VecDeque<Candidate>,
 }
 
 impl StunBinding {
@@ -34,7 +34,7 @@ impl StunBinding {
             state: State::Initial,
             last_now: None,
             buffered_transmits: Default::default(),
-            buffered_events: Default::default(),
+            new_candidates: Default::default(),
         }
     }
 
@@ -91,24 +91,9 @@ impl StunBinding {
         }
 
         self.last_candidate = Some(new_candidate.clone());
-        self.buffered_events
-            .push_back(Event::NewServerReflexiveCandidate {
-                candidate: new_candidate,
-            });
+        self.new_candidates.push_back(new_candidate);
 
         true
-    }
-
-    pub fn poll_event(&mut self) -> Option<Event> {
-        self.buffered_events.pop_front()
-    }
-
-    pub fn poll_timeout(&mut self) -> Option<Instant> {
-        match self.state {
-            State::Initial => None,
-            State::SentRequest { at, .. } => Some(at + STUN_TIMEOUT),
-            State::ReceivedResponse { at } => Some(at + STUN_REFRESH),
-        }
     }
 
     pub fn handle_timeout(&mut self, now: Instant) {
@@ -135,12 +120,25 @@ impl StunBinding {
         };
 
         self.buffered_transmits.push_back(Transmit {
+            src: None,
             dst: self.server,
-            payload: encode(request),
+            payload: encode(request).into(),
         });
     }
 
-    pub fn poll_transmit(&mut self) -> Option<Transmit> {
+    pub fn poll_candidate(&mut self) -> Option<Candidate> {
+        self.new_candidates.pop_front()
+    }
+
+    pub fn poll_timeout(&mut self) -> Option<Instant> {
+        match self.state {
+            State::Initial => None,
+            State::SentRequest { at, .. } => Some(at + STUN_TIMEOUT),
+            State::ReceivedResponse { at } => Some(at + STUN_REFRESH),
+        }
+    }
+
+    pub fn poll_transmit(&mut self) -> Option<Transmit<'static>> {
         self.buffered_transmits.pop_front()
     }
 
@@ -150,11 +148,6 @@ impl StunBinding {
         self.last_candidate = Some(Candidate::server_reflexive(address, Protocol::Udp).unwrap());
         self.state = State::ReceivedResponse { at: now };
     }
-}
-
-#[derive(Debug)]
-pub enum Event {
-    NewServerReflexiveCandidate { candidate: Candidate },
 }
 
 fn new_stun_request() -> Message<rfc5389::Attribute> {
@@ -262,7 +255,7 @@ mod tests {
             stun_binding.handle_input(SERVER1, &response, start + Duration::from_millis(200));
         assert!(handled);
 
-        let Event::NewServerReflexiveCandidate { candidate } = stun_binding.poll_event().unwrap();
+        let candidate = stun_binding.poll_candidate().unwrap();
 
         assert_eq!(candidate.addr(), MAPPED_ADDRESS);
     }
@@ -294,7 +287,7 @@ mod tests {
             stun_binding.handle_input(SERVER2, &response, start + Duration::from_millis(200));
 
         assert!(!handled);
-        assert!(stun_binding.poll_event().is_none());
+        assert!(stun_binding.poll_candidate().is_none());
     }
 
     fn generate_stun_response(request: Transmit, mapped_address: SocketAddr) -> Vec<u8> {
