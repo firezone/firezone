@@ -682,22 +682,6 @@ impl RoleState for ClientState {
 
     fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Event<Self::Id>> {
         loop {
-            // TODO: send ICE candidates
-            // match self.active_candidate_receivers.poll_next_unpin(cx) {
-            //     Poll::Ready((conn_id, Some(Ok(c)))) => {
-            //         return Poll::Ready(Event::SignalIceCandidate {
-            //             conn_id,
-            //             candidate: c,
-            //         })
-            //     }
-            //     Poll::Ready((id, Some(Err(e)))) => {
-            //         tracing::warn!(gateway_id = %id, "ICE gathering timed out: {e}");
-            //         continue;
-            //     }
-            //     Poll::Ready((_, None)) => continue,
-            //     Poll::Pending => {}
-            // }
-
             if let Poll::Ready((gateway_id, _)) =
                 self.gateway_awaiting_connection_timers.poll_unpin(cx)
             {
