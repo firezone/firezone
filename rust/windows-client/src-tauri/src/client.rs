@@ -2,6 +2,7 @@ use anyhow::Result;
 use clap::{Args, Parser};
 use std::{os::windows::process::CommandExt, process::Command};
 
+mod about;
 mod auth;
 mod connlib_worker;
 mod crash_handling;
@@ -36,7 +37,7 @@ pub const BUNDLE_ID: &str = "dev.firezone.client";
 /// * `g` doesn't mean anything
 /// * `ed5437c88` is the Git commit hash
 /// * `-modified` is present if the working dir has any changes from that commit number
-const GIT_VERSION: &str =
+pub const GIT_VERSION: &str =
     git_version::git_version!(args = ["--always", "--dirty=-modified", "--tags"]);
 
 /// GuiParams prevents a problem where changing the args to `gui::run` breaks static analysis on non-Windows targets, where the gui is stubbed out

@@ -30,7 +30,7 @@ public protocol CallbackHandlerDelegate: AnyObject {
 
 public class CallbackHandler {
   public weak var delegate: CallbackHandlerDelegate?
-  private var systemDefaultResolvers: RustString = "[]".intoRustString()
+  private var systemDefaultResolvers: [String] = []
   private let logger = Logger.make(for: CallbackHandler.self)
 
   func onSetInterfaceConfig(
@@ -94,15 +94,7 @@ public class CallbackHandler {
   func setSystemDefaultResolvers(resolvers: [String]) {
     logger.log(
       "CallbackHandler.setSystemDefaultResolvers: \(resolvers, privacy: .public)")
-    do {
-      self.systemDefaultResolvers = try String(
-        decoding: JSONEncoder().encode(resolvers), as: UTF8.self
-      )
-      .intoRustString()
-    } catch {
-      logger.log("CallbackHandler.setSystemDefaultResolvers: \(error, privacy: .public)")
-      self.systemDefaultResolvers = "[]".intoRustString()
-    }
+    self.systemDefaultResolvers = resolvers
   }
 
   func getSystemDefaultResolvers() -> RustString {
@@ -110,6 +102,9 @@ public class CallbackHandler {
       "CallbackHandler.getSystemDefaultResolvers: \(self.systemDefaultResolvers, privacy: .public)"
     )
 
-    return systemDefaultResolvers
+    return try! String(
+      decoding: JSONEncoder().encode(self.systemDefaultResolvers),
+      as: UTF8.self
+    ).intoRustString()
   }
 }

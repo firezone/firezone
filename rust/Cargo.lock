@@ -990,15 +990,15 @@ dependencies = [
 
 [[package]]
 name = "chrono"
-version = "0.4.31"
+version = "0.4.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7f2c685bad3eb3d45a01354cedb7d5faa66194d1d58ba6e267a8de788f79db38"
+checksum = "41daef31d7a747c5c847246f36de49ced6f7403b4cdabc807a97b5cc184cda7a"
 dependencies = [
  "android-tzdata",
  "iana-time-zone",
  "num-traits",
  "serde",
- "windows-targets 0.48.5",
+ "windows-targets 0.52.0",
 ]
 
 [[package]]
@@ -1034,9 +1034,9 @@ dependencies = [
 
 [[package]]
 name = "clap"
-version = "4.4.17"
+version = "4.4.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "80932e03c33999b9235edb8655bc9df3204adc9887c2f95b50cb1deb9fd54253"
+checksum = "1e578d6ec4194633722ccf9544794b71b1385c3c027efe0c55db226fc880865c"
 dependencies = [
  "clap_builder",
  "clap_derive",
@@ -1044,9 +1044,9 @@ dependencies = [
 
 [[package]]
 name = "clap_builder"
-version = "4.4.17"
+version = "4.4.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d6c0db58c659eef1c73e444d298c27322a1b52f6927d2ad470c0c0f96fa7b8fa"
+checksum = "4df4df40ec50c46000231c914968278b1eb05098cf8f1b3a518a95030e71d1c7"
 dependencies = [
  "anstream",
  "anstyle",
@@ -2060,6 +2060,7 @@ version = "1.0.0"
 dependencies = [
  "anyhow",
  "axum 0.7.4",
+ "backoff",
  "base64 0.21.7",
  "bytecodec",
  "bytes",
@@ -3093,7 +3094,7 @@ dependencies = [
  "iana-time-zone-haiku",
  "js-sys",
  "wasm-bindgen",
- "windows-core 0.52.0",
+ "windows-core 0.51.1",
 ]
 
 [[package]]
@@ -4609,6 +4610,7 @@ dependencies = [
 name = "phoenix-channel"
 version = "1.0.0"
 dependencies = [
+ "backoff",
  "base64 0.21.7",
  "futures",
  "rand_core 0.6.4",
@@ -6076,13 +6078,13 @@ checksum = "9e08d8363704e6c71fc928674353e6b7c23dcea9d82d7012c8faf2a3a025f8d0"
 [[package]]
 name = "str0m"
 version = "0.4.1"
-source = "git+https://github.com/thomaseizinger/str0m?branch=main#12575cab1c8c466cbf1e05b0b7459136eeaba8ed"
+source = "git+https://github.com/algesten/str0m?branch=main#e6fa6808dfcdac23e0d1f61d405f938035e4eaf9"
 dependencies = [
  "combine",
  "crc",
+ "fastrand 2.0.1",
  "hmac",
  "once_cell",
- "rand 0.8.5",
  "sctp-proto",
  "serde",
  "sha-1",
