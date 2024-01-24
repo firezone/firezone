@@ -202,7 +202,7 @@ impl WrappedSession {
                 inner: Arc::new(callback_handler),
                 handle: init_logging(log_dir.into(), log_filter),
             },
-            MAX_PARTITION_TIME,
+            Some(MAX_PARTITION_TIME),
         )
         .map_err(|err| err.to_string())?;
 

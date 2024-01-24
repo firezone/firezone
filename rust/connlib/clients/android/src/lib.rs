@@ -405,7 +405,7 @@ fn connect(
         Some(device_name),
         Some(os_version),
         callback_handler,
-        MAX_PARTITION_TIME,
+        Some(MAX_PARTITION_TIME),
     )?;
 
     Ok(session)
