@@ -338,7 +338,7 @@ impl Allocation {
     ) -> Option<usize> {
         let channel_number = self.channel_bindings.channel_to_peer(peer, now)?;
         let total_length =
-            crate::channel_data::encode_header_to_slice(channel_number, packet, header);
+            crate::channel_data::encode_header_to_slice(header, channel_number, packet);
 
         Some(total_length)
     }
