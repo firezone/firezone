@@ -107,6 +107,10 @@ impl ConnlibWorker {
             }
         }
 
+        if let Some(mut connlib) = self.connlib.take() {
+            connlib.disconnect(None);
+        }
+
         self.client
             .close()
             .await
@@ -175,7 +179,7 @@ impl connlib_client_shared::Callbacks for CallbackHandler {
             Some(connlib_client_shared::Error::TokenExpired) => {
                 ipc::WorkerMsg::Callback(ipc::Callback::DisconnectedTokenExpired)
             }
-            _ => ipc::WorkerMsg::Response(ipc::ManagerMsg::Disconnect),
+            _ => ipc::WorkerMsg::Callback(ipc::Callback::OnDisconnect),
         })?;
         Ok(())
     }

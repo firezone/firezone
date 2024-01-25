@@ -294,7 +294,7 @@ struct Controller {
 
 /// Everything related to a signed-in user session
 struct Session {
-    response_rx: mpsc::Receiver<ipc::ManagerMsg>,
+    _response_rx: mpsc::Receiver<ipc::ManagerMsg>,
     server_write: ipc::ServerWriteHalf,
     worker: ipc::SubcommandChild,
 }
@@ -363,7 +363,7 @@ impl Controller {
         let (server_read, server_write) = server.into_split();
         let ipc::ServerReadHalf {
             mut cb_rx,
-            response_rx,
+            _response_rx,
         } = server_read;
 
         let ctlr_tx = self.ctlr_tx.clone();
@@ -378,7 +378,7 @@ impl Controller {
         });
 
         self.session = Some(Session {
-            response_rx,
+            _response_rx,
             server_write,
             worker,
         });
@@ -490,22 +490,16 @@ async fn run_controller(
                     Req::CopyResource(id) => if let Err(e) = controller.copy_resource(&id) {
                         tracing::error!("couldn't copy resource to clipboard: {e:#?}");
                     }
-                    Req::Callback(ipc::Callback::DisconnectedTokenExpired) | Req::CancelSignIn | Req::SignOut => {
-                        tracing::debug!("Token expired or user signed out");
+                    Req::Callback(ipc::Callback::DisconnectedTokenExpired) | Req::Callback(ipc::Callback::OnDisconnect) | Req::CancelSignIn | Req::SignOut => {
+                        tracing::debug!("Token expired, user signed out, user canceled sign-in, or connlib disconnected");
                         controller.auth.sign_out()?;
                         controller.tunnel_ready = false;
                         if let Some(mut session) = controller.session.take() {
                             tracing::debug!("disconnecting connlib");
-                            // This is redundant if the token is expired, in that case
-                            // connlib already disconnected itself.
-                            session.server_write.send(ipc::ManagerMsg::Disconnect).await?;
-                            let ipc::ManagerMsg::Disconnect = session.response_rx.recv().await.context("should have gotten a response")? else {
-                                anyhow::bail!("expected Disconnected back from worker");
-                            };
                             session.server_write.close().await?;
-                            if let Err(error) = session.worker.wait_or_kill() {
-                                tracing::error!(?error, "couldn't join or kill connlib worker");
-                            }
+                            // TODO: Use tokio's process module to remove this sleep
+                            tokio::time::sleep(Duration::from_secs(2)).await;
+                            session.worker.wait_or_kill().context("couldn't join or kill connlib worker")?;
                         }
                         else {
                             // Might just be because we got a double sign-out or
@@ -518,6 +512,7 @@ async fn run_controller(
                         // TODO: Make this impossible
                         ipc::Callback::Cookie(_) => bail!("Cookie isn't supposed to show up here"),
                         ipc::Callback::DisconnectedTokenExpired => bail!("DisconnectedTokenExpired should be handled above here"),
+                        ipc::Callback::OnDisconnect => bail!("DisconnectedTokenExpired should be handled above here"),
                         ipc::Callback::OnUpdateResources(resources) => {
                             controller.resources = resources;
                             controller.refresh_system_tray_menu()?;
@@ -556,6 +551,17 @@ async fn run_controller(
                 }
             }
         }
+    }
+
+    if let Some(mut session) = controller.session.take() {
+        tracing::debug!("disconnecting connlib");
+        session.server_write.close().await?;
+        // TODO: Use tokio's process module to remove this sleep
+        tokio::time::sleep(Duration::from_secs(2)).await;
+        session
+            .worker
+            .wait_or_kill()
+            .context("couldn't join or kill connlib worker")?;
     }
 
     if let Err(error) = com_worker.close() {
