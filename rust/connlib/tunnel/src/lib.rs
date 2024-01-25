@@ -445,15 +445,8 @@ where
         // TODO:
         // let peer_connections = Default::default();
 
-        // Register default codecs (TODO: We need this?)
         // TODO:
         // setting_engine.set_interface_filter(Box::new(|name| !name.contains("tun")));
-        // TODO:
-        // setting_engine.set_ice_timeouts(
-        //     Some(ICE_DISCONNECTED_TIMEOUT),
-        //     Some(ICE_FAILED_TIMEOUT),
-        //     Some(ICE_KEEPALIVE),
-        // );
 
         Ok(Self {
             // TODO:
