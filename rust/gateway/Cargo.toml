@@ -21,7 +21,7 @@ firezone-cli-utils = { workspace = true }
 phoenix-channel = { workspace = true }
 secrecy = { workspace = true }
 serde = { version = "1.0", default-features = false, features = ["std", "derive"] }
-tokio = { version = "1.33", default-features = false, features = ["sync", "macros", "rt-multi-thread", "fs"] }
+tokio = { version = "1.33", default-features = false, features = ["sync", "macros", "rt-multi-thread", "fs", "signal"] }
 tokio-tungstenite = { version = "0.21", default-features = false, features = ["connect", "handshake", "rustls-tls-webpki-roots"] }
 tracing = { workspace = true }
 tracing-subscriber = "0.3.17"
