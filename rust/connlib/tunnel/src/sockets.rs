@@ -91,9 +91,7 @@ impl<const N: usize> UdpSockets<N> {
             .iter()
             .find(
                 |Socket {
-                     local: sock_local,
-                     socket,
-                     ..
+                     local: sock_local, ..
                  }| *sock_local == local,
             )
             .ok_or(io::ErrorKind::NotConnected)?
