@@ -238,6 +238,7 @@ pub struct ClientState {
 
     pub connection_pool: ClientConnectionPool<GatewayId>,
     connection_pool_timeout: BoxFuture<'static, std::time::Instant>,
+    write_buf: Box<[u8; MAX_UDP_SIZE]>,
     if_watcher: IfWatcher,
     udp_sockets: UdpSockets<MAX_UDP_SIZE>,
     relay_socket: Socket<MAX_UDP_SIZE>,
@@ -682,6 +683,7 @@ impl Default for ClientState {
             udp_sockets,
             relay_socket,
             connection_pool_timeout: sleep_until(std::time::Instant::now()).boxed(),
+            write_buf: Box::new([0; MAX_UDP_SIZE]),
         }
     }
 }
@@ -697,7 +699,7 @@ impl RoleState for ClientState {
     fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Event<Self::Id>> {
         loop {
             // TODO: connection_pool handling looks very similar between client and gateway
-            // we might want to do something to unify them
+            // we might unify it later.
             while let Some(transmit) = self.connection_pool.poll_transmit() {
                 if let Err(e) = match transmit.src {
                     Some(src) => self
@@ -738,7 +740,22 @@ impl RoleState for ClientState {
             match self.udp_sockets.poll_recv_from(cx) {
                 Poll::Ready((local, Ok((from, packet)))) => {
                     tracing::trace!(target: "wire", %local, %from, bytes = %packet.filled().len(), "read new packet");
-                    todo!()
+                    match self.connection_pool.decapsulate(
+                        local,
+                        from,
+                        packet.filled(),
+                        std::time::Instant::now(),
+                        self.write_buf.as_mut(),
+                    ) {
+                        Ok(_) => {
+                            // TODO
+                        }
+                        Err(e) => {
+                            tracing::error!(%local, %from, "Failed to decapsulate incoming packet: {e:#?}");
+                        }
+                    }
+
+                    continue;
                 }
                 Poll::Ready((addr, Err(e))) => {
                     tracing::error!(%addr, "Failed to read socket: {e:#?}");
@@ -747,9 +764,24 @@ impl RoleState for ClientState {
             }
 
             match self.relay_socket.poll_recv_from(cx) {
-                Poll::Ready((_, Ok((from, packet)))) => {
+                Poll::Ready((local, Ok((from, packet)))) => {
                     tracing::trace!(target: "wire", %from, bytes = %packet.filled().len(), "read new relay packet");
-                    todo!()
+                    match self.connection_pool.decapsulate(
+                        local,
+                        from,
+                        packet.filled(),
+                        std::time::Instant::now(),
+                        self.write_buf.as_mut(),
+                    ) {
+                        Ok(_) => {
+                            // TODO
+                        }
+                        Err(e) => {
+                            tracing::error!(%from, "Failed to decapsulate incoming relay packet: {e:#?}");
+                        }
+                    }
+
+                    continue;
                 }
                 Poll::Ready((_, Err(e))) => {
                     tracing::error!("Failed to read relay socket: {e:#?}");
