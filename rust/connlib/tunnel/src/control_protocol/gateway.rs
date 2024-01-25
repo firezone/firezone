@@ -13,9 +13,9 @@ use connlib_shared::{
     },
     Callbacks, Dname, Error, Result,
 };
-use firezone_connection::{Credentials, Offer};
 use ip_network::IpNetwork;
 use secrecy::ExposeSecret;
+use snownet::{Credentials, Offer, Server};
 use std::{collections::HashSet, sync::Arc};
 
 // TODO:
@@ -38,7 +38,7 @@ use std::{collections::HashSet, sync::Arc};
 //     });
 // }
 
-impl<CB> Tunnel<CB, GatewayState>
+impl<CB> Tunnel<CB, GatewayState, Server, ClientId>
 where
     CB: Callbacks + 'static,
 {
@@ -60,7 +60,7 @@ where
     ) -> Result<ConnectionAccepted> {
         let mut stun_servers: HashSet<_> = turn(&relays).iter().map(|r| r.0).collect();
         stun_servers.extend(stun(&relays));
-        let answer = self.role_state.lock().connection_pool.accept_connection(
+        let answer = self.connections.lock().connection_pool.accept_connection(
             client_id,
             Offer {
                 session_key: peer.preshared_key.expose_secret().0.into(),

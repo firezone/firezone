@@ -2,10 +2,8 @@ use crate::bounded_queue::BoundedQueue;
 use crate::device_channel::{Device, Packet};
 use crate::ip_packet::{IpPacket, MutableIpPacket};
 use crate::peer::PacketTransformClient;
-use crate::sockets::{Socket, UdpSockets};
 use crate::{
-    dns, sleep_until, ConnectedPeer, DnsQuery, Event, PeerConfig, RoleState, Tunnel,
-    DNS_QUERIES_QUEUE_SIZE, MAX_UDP_SIZE,
+    dns, ConnectedPeer, DnsQuery, Event, PeerConfig, RoleState, Tunnel, DNS_QUERIES_QUEUE_SIZE,
 };
 use bimap::BiMap;
 use boringtun::x25519::{PublicKey, StaticSecret};
@@ -16,21 +14,17 @@ use connlib_shared::messages::{
 };
 use connlib_shared::{Callbacks, Dname, IpProvider};
 use domain::base::Rtype;
-use firezone_connection::{ClientConnectionPool, ConnectionPool};
 use futures::stream;
 use futures_bounded::{FuturesMap, PushError, StreamMap};
-use futures_util::future::BoxFuture;
-use futures_util::FutureExt;
 use hickory_resolver::lookup::Lookup;
-use if_watch::tokio::IfWatcher;
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
 use itertools::Itertools;
+use snownet::Client;
 
-use rand_core::OsRng;
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::net::{IpAddr, Ipv4Addr};
+use std::net::IpAddr;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
@@ -56,7 +50,7 @@ impl DnsResource {
     }
 }
 
-impl<CB> Tunnel<CB, ClientState>
+impl<CB> Tunnel<CB, ClientState, Client, GatewayId>
 where
     CB: Callbacks + 'static,
 {
@@ -235,13 +229,6 @@ pub struct ClientState {
     refresh_dns_timer: Interval,
 
     pub dns_mapping: BiMap<IpAddr, DnsServer>,
-
-    pub connection_pool: ClientConnectionPool<GatewayId>,
-    connection_pool_timeout: BoxFuture<'static, std::time::Instant>,
-    write_buf: Box<[u8; MAX_UDP_SIZE]>,
-    if_watcher: IfWatcher,
-    udp_sockets: UdpSockets<MAX_UDP_SIZE>,
-    relay_socket: Socket<MAX_UDP_SIZE>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -632,28 +619,6 @@ impl Default for ClientState {
         // therefore, only the first time it's added that happens, after that it doesn't matter.
         let mut interval = tokio::time::interval(Duration::from_secs(300));
         interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
-        let if_watcher = IfWatcher::new().expect(
-            "Program should be able to list interfaces on the system. Check binary's permissions",
-        );
-        let mut connection_pool = ConnectionPool::new(
-            StaticSecret::random_from_rng(OsRng),
-            std::time::Instant::now(),
-        );
-        let mut udp_sockets = UdpSockets::default();
-
-        for ip in if_watcher.iter() {
-            tracing::info!(address = %ip.addr(), "New local interface address found");
-            match udp_sockets.bind((ip.addr(), 0)) {
-                Ok(addr) => connection_pool.add_local_interface(addr),
-                Err(e) => {
-                    tracing::debug!(address = %ip.addr(), err = ?e, "Couldn't bind socket to interface: {e:#?}")
-                }
-            }
-        }
-
-        let relay_socket = Socket::bind((IpAddr::from(Ipv4Addr::UNSPECIFIED), 0))
-            .expect("Program should be able to bind to 0.0.0.0:0 to be able to connect to relays");
-        connection_pool.add_local_interface(relay_socket.local_addr());
 
         Self {
             awaiting_connection: Default::default(),
@@ -679,12 +644,6 @@ impl Default for ClientState {
             deferred_dns_queries: Default::default(),
             refresh_dns_timer: interval,
             dns_mapping: Default::default(),
-            connection_pool,
-            if_watcher,
-            udp_sockets,
-            relay_socket,
-            connection_pool_timeout: sleep_until(std::time::Instant::now()).boxed(),
-            write_buf: Box::new([0; MAX_UDP_SIZE]),
         }
     }
 }
@@ -692,110 +651,8 @@ impl Default for ClientState {
 impl RoleState for ClientState {
     type Id = GatewayId;
 
-    fn add_remote_candidate(&mut self, conn_id: GatewayId, ice_candidate: String) {
-        self.connection_pool
-            .add_remote_candidate(conn_id, ice_candidate);
-    }
-
     fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Event<Self::Id>> {
         loop {
-            // TODO: connection_pool handling looks very similar between client and gateway
-            // we might unify it later.
-            while let Some(transmit) = self.connection_pool.poll_transmit() {
-                if let Err(e) = match transmit.src {
-                    Some(src) => self
-                        .udp_sockets
-                        .try_send_to(src, transmit.dst, &transmit.payload),
-                    None => self
-                        .relay_socket
-                        .try_send_to(transmit.dst, &transmit.payload),
-                } {
-                    tracing::warn!(src = ?transmit.src, dst = %transmit.dst, "Failed to send UDP packet: {e:#?}");
-                }
-            }
-
-            match self.connection_pool.poll_event() {
-                Some(firezone_connection::Event::SignalIceCandidate {
-                    connection,
-                    candidate,
-                }) => {
-                    return Poll::Ready(Event::SignalIceCandidate {
-                        conn_id: connection,
-                        candidate,
-                    })
-                }
-                Some(firezone_connection::Event::ConnectionEstablished(id)) => {
-                    tracing::info!(gateway_id = %id, "Connection established with peer");
-                    // TODO
-                }
-                Some(firezone_connection::Event::ConnectionFailed(id)) => {
-                    tracing::info!(gateway_id = %id, "Connection failed with peer");
-                    // TODO
-                }
-                None => {}
-            }
-
-            if let Poll::Ready(instant) = self.connection_pool_timeout.poll_unpin(cx) {
-                self.connection_pool.handle_timeout(instant);
-                if let Some(timeout) = self.connection_pool.poll_timeout() {
-                    self.connection_pool_timeout = sleep_until(timeout).boxed();
-                }
-
-                continue;
-            }
-
-            match self.udp_sockets.poll_recv_from(cx) {
-                Poll::Ready((local, Ok((from, packet)))) => {
-                    tracing::trace!(target: "wire", %local, %from, bytes = %packet.filled().len(), "read new packet");
-                    match self.connection_pool.decapsulate(
-                        local,
-                        from,
-                        packet.filled(),
-                        std::time::Instant::now(),
-                        self.write_buf.as_mut(),
-                    ) {
-                        Ok(_) => {
-                            // TODO
-                        }
-                        Err(e) => {
-                            tracing::error!(%local, %from, "Failed to decapsulate incoming packet: {e:#?}");
-                        }
-                    }
-
-                    continue;
-                }
-                Poll::Ready((addr, Err(e))) => {
-                    tracing::error!(%addr, "Failed to read socket: {e:#?}");
-                }
-                Poll::Pending => {}
-            }
-
-            match self.relay_socket.poll_recv_from(cx) {
-                Poll::Ready((local, Ok((from, packet)))) => {
-                    tracing::trace!(target: "wire", %from, bytes = %packet.filled().len(), "read new relay packet");
-                    match self.connection_pool.decapsulate(
-                        local,
-                        from,
-                        packet.filled(),
-                        std::time::Instant::now(),
-                        self.write_buf.as_mut(),
-                    ) {
-                        Ok(_) => {
-                            // TODO
-                        }
-                        Err(e) => {
-                            tracing::error!(%from, "Failed to decapsulate incoming relay packet: {e:#?}");
-                        }
-                    }
-
-                    continue;
-                }
-                Poll::Ready((_, Err(e))) => {
-                    tracing::error!("Failed to read relay socket: {e:#?}");
-                }
-                Poll::Pending => {}
-            }
-
             if let Poll::Ready((gateway_id, _)) =
                 self.gateway_awaiting_connection_timers.poll_unpin(cx)
             {
@@ -870,28 +727,6 @@ impl RoleState for ClientState {
                     });
                 }
                 return Poll::Ready(Event::RefreshResources { connections });
-            }
-
-            match self.if_watcher.poll_if_event(cx) {
-                Poll::Ready(Ok(ev)) => match ev {
-                    if_watch::IfEvent::Up(ip) => {
-                        tracing::info!(address = %ip.addr(), "New local interface address found");
-                        match self.udp_sockets.bind((ip.addr(), 0)) {
-                            Ok(addr) => self.connection_pool.add_local_interface(addr),
-                            Err(e) => {
-                                tracing::debug!(address = %ip.addr(), err = ?e, "Couldn't bind socket to interface: {e:#?}")
-                            }
-                        }
-                    }
-                    if_watch::IfEvent::Down(ip) => {
-                        tracing::info!(address = %ip.addr(), "Interface IP no longer available");
-                        todo!()
-                    }
-                },
-                Poll::Ready(Err(e)) => {
-                    tracing::debug!("Error while polling interfces: {e:#?}");
-                }
-                Poll::Pending => {}
             }
 
             return self.forwarded_dns_queries.poll(cx).map(Event::DnsQuery);

@@ -1,14 +1,12 @@
 use arc_swap::ArcSwapOption;
 use bytes::Bytes;
-use futures::channel::mpsc;
-use futures_util::SinkExt;
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
-use std::{collections::HashSet, fmt, net::SocketAddr, sync::Arc};
+use std::{collections::HashSet, fmt, hash::Hash, net::SocketAddr, sync::Arc};
 
 use connlib_shared::{
     messages::{Relay, RequestConnection, ReuseConnection},
-    Callbacks, Error, Result,
+    Callbacks,
 };
 
 use crate::{
@@ -33,15 +31,17 @@ pub enum Request {
     ReuseConnection(ReuseConnection),
 }
 
-impl<CB, TRoleState> Tunnel<CB, TRoleState>
+impl<CB, TRoleState, TRole, TId> Tunnel<CB, TRoleState, TRole, TId>
 where
     CB: Callbacks + 'static,
-    TRoleState: RoleState,
+    TRoleState: RoleState<Id = TId>,
+    TId: Eq + Hash + Copy + fmt::Display,
 {
     pub fn add_ice_candidate(&self, conn_id: TRoleState::Id, ice_candidate: String) {
         tracing::info!(%ice_candidate, %conn_id, "new remote candidate");
-        self.role_state
+        self.connections
             .lock()
+            .connection_pool
             .add_remote_candidate(conn_id, ice_candidate);
     }
 }
@@ -56,8 +56,8 @@ fn insert_peers<TId: Copy, TTransform>(
     }
 }
 
-fn start_handlers<TId, TTransform, TRoleState>(
-    tunnel: Arc<Tunnel<impl Callbacks + 'static, TRoleState>>,
+fn start_handlers<TId, TTransform, TRoleState, TRole>(
+    tunnel: Arc<Tunnel<impl Callbacks + 'static, TRoleState, TRole, TId>>,
     device: Arc<ArcSwapOption<Device>>,
     peer: Arc<Peer<TId, TTransform>>,
     // TODO:

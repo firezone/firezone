@@ -6,7 +6,7 @@ use crate::CallbackHandler;
 use anyhow::{anyhow, Result};
 use connlib_shared::messages::{ClientId, GatewayResponse, ResourceAccepted};
 use connlib_shared::Error;
-use firezone_tunnel::{Event, GatewayState, Tunnel};
+use firezone_tunnel::{Event, GatewayTunnel};
 use phoenix_channel::PhoenixChannel;
 use std::convert::Infallible;
 use std::sync::Arc;
@@ -16,7 +16,7 @@ use std::time::Duration;
 pub const PHOENIX_TOPIC: &str = "gateway";
 
 pub struct Eventloop {
-    tunnel: Arc<Tunnel<CallbackHandler, GatewayState>>,
+    tunnel: Arc<GatewayTunnel<CallbackHandler>>,
     portal: PhoenixChannel<(), IngressMessages, EgressMessages>,
 
     // TODO: Strongly type request reference (currently `String`)
@@ -29,7 +29,7 @@ pub struct Eventloop {
 
 impl Eventloop {
     pub(crate) fn new(
-        tunnel: Arc<Tunnel<CallbackHandler, GatewayState>>,
+        tunnel: Arc<GatewayTunnel<CallbackHandler>>,
         portal: PhoenixChannel<(), IngressMessages, EgressMessages>,
     ) -> Self {
         Self {

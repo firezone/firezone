@@ -6,14 +6,20 @@ use boringtun::x25519::{PublicKey, StaticSecret};
 
 use bytes::Bytes;
 use connlib_shared::{messages::ReuseConnection, CallbackErrorFacade, Callbacks, Error};
+use futures_util::future::BoxFuture;
+use futures_util::FutureExt;
+use if_watch::tokio::IfWatcher;
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
 use ip_packet::IpPacket;
 use pnet_packet::Packet;
+use snownet::{Client, Node, Server};
 
 use hickory_resolver::proto::rr::RecordType;
 use parking_lot::Mutex;
 use peer::{PacketTransform, Peer};
+use rand_core::OsRng;
+use sockets::{Socket, UdpSockets};
 use tokio::time::MissedTickBehavior;
 
 use arc_swap::ArcSwapOption;
@@ -121,8 +127,190 @@ impl From<connlib_shared::messages::Peer> for PeerConfig {
     }
 }
 
+struct Connections<TRole, TId> {
+    pub connection_pool: Node<TRole, TId>,
+    connection_pool_timeout: BoxFuture<'static, std::time::Instant>,
+    write_buf: Box<[u8; MAX_UDP_SIZE]>,
+    if_watcher: IfWatcher,
+    udp_sockets: UdpSockets<MAX_UDP_SIZE>,
+    relay_socket: Socket<MAX_UDP_SIZE>,
+}
+
+impl<TRole, TId> Default for Connections<TRole, TId>
+where
+    TId: Eq + Hash + Copy + fmt::Display,
+{
+    fn default() -> Self {
+        let if_watcher = IfWatcher::new().expect(
+            "Program should be able to list interfaces on the system. Check binary's permissions",
+        );
+
+        let mut connection_pool = Node::new(
+            StaticSecret::random_from_rng(OsRng),
+            std::time::Instant::now(),
+        );
+        let mut udp_sockets = UdpSockets::default();
+
+        for ip in if_watcher.iter() {
+            tracing::info!(address = %ip.addr(), "New local interface address found");
+            match udp_sockets.bind((ip.addr(), 0)) {
+                Ok(addr) => connection_pool.add_local_interface(addr),
+                Err(e) => {
+                    tracing::debug!(address = %ip.addr(), err = ?e, "Couldn't bind socket to interface: {e:#?}")
+                }
+            }
+        }
+
+        let relay_socket = Socket::bind((IpAddr::from(Ipv4Addr::UNSPECIFIED), 0))
+            .expect("Program should be able to bind to 0.0.0.0:0 to be able to connect to relays");
+        // TODO: right now the connection pool expects a socket address that it has already seen
+        // this will be relaxed on a later PR.
+        connection_pool.add_local_interface(relay_socket.local_addr());
+
+        Connections {
+            connection_pool,
+            connection_pool_timeout: sleep_until(std::time::Instant::now()).boxed(),
+            write_buf: Box::new([0; MAX_UDP_SIZE]),
+            if_watcher,
+            udp_sockets,
+            relay_socket,
+        }
+    }
+}
+
+impl<TRole, TId> Connections<TRole, TId>
+where
+    TId: Eq + Hash + Copy + fmt::Display,
+{
+    fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Event<TId>> {
+        loop {
+            while let Some(transmit) = self.connection_pool.poll_transmit() {
+                if let Err(e) = match transmit.src {
+                    Some(src) => self
+                        .udp_sockets
+                        .try_send_to(src, transmit.dst, &transmit.payload),
+                    None => self
+                        .relay_socket
+                        .try_send_to(transmit.dst, &transmit.payload),
+                } {
+                    tracing::warn!(src = ?transmit.src, dst = %transmit.dst, "Failed to send UDP packet: {e:#?}");
+                }
+            }
+
+            match self.connection_pool.poll_event() {
+                Some(snownet::Event::SignalIceCandidate {
+                    connection,
+                    candidate,
+                }) => {
+                    return Poll::Ready(Event::SignalIceCandidate {
+                        conn_id: connection,
+                        candidate,
+                    })
+                }
+                Some(snownet::Event::ConnectionEstablished(id)) => {
+                    tracing::info!(gateway_id = %id, "Connection established with peer");
+                    // TODO
+                }
+                Some(snownet::Event::ConnectionFailed(id)) => {
+                    tracing::info!(gateway_id = %id, "Connection failed with peer");
+                    // TODO
+                }
+                None => {}
+            }
+
+            if let Poll::Ready(instant) = self.connection_pool_timeout.poll_unpin(cx) {
+                self.connection_pool.handle_timeout(instant);
+                if let Some(timeout) = self.connection_pool.poll_timeout() {
+                    self.connection_pool_timeout = sleep_until(timeout).boxed();
+                }
+
+                continue;
+            }
+
+            match self.udp_sockets.poll_recv_from(cx) {
+                Poll::Ready((local, Ok((from, packet)))) => {
+                    tracing::trace!(target: "wire", %local, %from, bytes = %packet.filled().len(), "read new packet");
+                    match self.connection_pool.decapsulate(
+                        local,
+                        from,
+                        packet.filled(),
+                        std::time::Instant::now(),
+                        self.write_buf.as_mut(),
+                    ) {
+                        Ok(_) => {
+                            // TODO
+                        }
+                        Err(e) => {
+                            tracing::error!(%local, %from, "Failed to decapsulate incoming packet: {e:#?}");
+                        }
+                    }
+
+                    continue;
+                }
+                Poll::Ready((addr, Err(e))) => {
+                    tracing::error!(%addr, "Failed to read socket: {e:#?}");
+                }
+                Poll::Pending => {}
+            }
+
+            match self.relay_socket.poll_recv_from(cx) {
+                Poll::Ready((local, Ok((from, packet)))) => {
+                    tracing::trace!(target: "wire", %from, bytes = %packet.filled().len(), "read new relay packet");
+                    match self.connection_pool.decapsulate(
+                        local,
+                        from,
+                        packet.filled(),
+                        std::time::Instant::now(),
+                        self.write_buf.as_mut(),
+                    ) {
+                        Ok(_) => {
+                            // TODO
+                        }
+                        Err(e) => {
+                            tracing::error!(%from, "Failed to decapsulate incoming relay packet: {e:#?}");
+                        }
+                    }
+
+                    continue;
+                }
+                Poll::Ready((_, Err(e))) => {
+                    tracing::error!("Failed to read relay socket: {e:#?}");
+                }
+                Poll::Pending => {}
+            }
+
+            match self.if_watcher.poll_if_event(cx) {
+                Poll::Ready(Ok(ev)) => match ev {
+                    if_watch::IfEvent::Up(ip) => {
+                        tracing::info!(address = %ip.addr(), "New local interface address found");
+                        match self.udp_sockets.bind((ip.addr(), 0)) {
+                            Ok(addr) => self.connection_pool.add_local_interface(addr),
+                            Err(e) => {
+                                tracing::debug!(address = %ip.addr(), err = ?e, "Couldn't bind socket to interface: {e:#?}")
+                            }
+                        }
+                    }
+                    if_watch::IfEvent::Down(ip) => {
+                        tracing::info!(address = %ip.addr(), "Interface IP no longer available");
+                        todo!()
+                    }
+                },
+                Poll::Ready(Err(e)) => {
+                    tracing::debug!("Error while polling interfces: {e:#?}");
+                }
+                Poll::Pending => {}
+            }
+
+            return Poll::Pending;
+        }
+    }
+}
+
+pub type GatewayTunnel<CB> = Tunnel<CB, GatewayState, Server, ClientId>;
+pub type ClientTunnel<CB> = Tunnel<CB, ClientState, Client, GatewayId>;
+
 /// Tunnel is a wireguard state machine that uses webrtc's ICE channels instead of UDP sockets to communicate between peers.
-pub struct Tunnel<CB: Callbacks, TRoleState: RoleState> {
+pub struct Tunnel<CB: Callbacks, TRoleState: RoleState, TRole, TId> {
     // TODO: these are used to stop connections
     // peer_connections: Mutex<HashMap<TRoleState::Id, Arc<RTCIceTransport>>>,
     callbacks: CallbackErrorFacade<CB>,
@@ -139,9 +327,11 @@ pub struct Tunnel<CB: Callbacks, TRoleState: RoleState> {
     read_buf: Mutex<Box<[u8; MAX_UDP_SIZE]>>,
     write_buf: Mutex<Box<[u8; MAX_UDP_SIZE]>>,
     no_device_waker: AtomicWaker,
+
+    connections: Mutex<Connections<TRole, TId>>,
 }
 
-impl<CB> Tunnel<CB, ClientState>
+impl<CB> Tunnel<CB, ClientState, Client, GatewayId>
 where
     CB: Callbacks + 'static,
 {
@@ -219,7 +409,7 @@ where
     }
 }
 
-impl<CB> Tunnel<CB, GatewayState>
+impl<CB> Tunnel<CB, GatewayState, Server, ClientId>
 where
     CB: Callbacks + 'static,
 {
@@ -293,7 +483,7 @@ pub struct TunnelStats {
     // peer_connections: Vec<TId>,
 }
 
-impl<CB, TRoleState> Tunnel<CB, TRoleState>
+impl<CB, TRoleState, TRole, TId> Tunnel<CB, TRoleState, TRole, TId>
 where
     CB: Callbacks + 'static,
     TRoleState: RoleState,
@@ -430,10 +620,11 @@ pub enum Event<TId> {
     DnsQuery(DnsQuery<'static>),
 }
 
-impl<CB, TRoleState> Tunnel<CB, TRoleState>
+impl<CB, TRoleState, TRole, TId> Tunnel<CB, TRoleState, TRole, TId>
 where
     CB: Callbacks + 'static,
-    TRoleState: RoleState,
+    TRoleState: RoleState<Id = TId>,
+    TId: Eq + Hash + Copy + fmt::Display,
 {
     /// Creates a new tunnel.
     ///
@@ -460,6 +651,7 @@ where
             mtu_refresh_interval: Mutex::new(mtu_refresh_interval()),
             peers_to_stop: Default::default(),
             no_device_waker: Default::default(),
+            connections: Default::default(),
         })
     }
 
@@ -506,7 +698,6 @@ pub trait RoleState: Default + Send + 'static {
     fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Event<Self::Id>>;
     fn remove_peers(&mut self, conn_id: Self::Id);
     fn refresh_peers(&mut self) -> VecDeque<Self::Id>;
-    fn add_remote_candidate(&mut self, conn_id: Self::Id, ice_candidate: String);
 }
 
 async fn sleep_until(deadline: Instant) -> Instant {

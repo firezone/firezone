@@ -6,7 +6,7 @@ use boringtun::x25519::StaticSecret;
 use clap::Parser;
 use connlib_shared::{get_user_agent, login_url, Callbacks, Mode};
 use firezone_cli_utils::{setup_global_subscriber, CommonArgs};
-use firezone_tunnel::{GatewayState, Tunnel};
+use firezone_tunnel::{GatewayTunnel, Tunnel};
 use futures::{future, TryFutureExt};
 use phoenix_channel::SecureUrl;
 use secrecy::{Secret, SecretString};
@@ -91,8 +91,7 @@ async fn get_firezone_id(env_id: Option<String>) -> Result<String> {
 }
 
 async fn run(connect_url: Url, private_key: StaticSecret) -> Result<Infallible> {
-    let tunnel: Arc<Tunnel<_, GatewayState>> =
-        Arc::new(Tunnel::new(private_key, CallbackHandler).await?);
+    let tunnel: Arc<GatewayTunnel<_>> = Arc::new(Tunnel::new(private_key, CallbackHandler).await?);
 
     let (portal, init) = phoenix_channel::init::<_, InitGateway, _, _>(
         Secret::new(SecureUrl::from_url(connect_url.clone())),

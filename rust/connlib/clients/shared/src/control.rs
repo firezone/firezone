@@ -5,6 +5,7 @@ use connlib_shared::control::KnownError;
 use connlib_shared::control::Reason;
 use connlib_shared::messages::{DnsServer, GatewayResponse, IpDnsServer};
 use connlib_shared::IpProvider;
+use firezone_tunnel::ClientTunnel;
 use ip_network::IpNetwork;
 use std::collections::HashMap;
 use std::net::IpAddr;
@@ -24,7 +25,7 @@ use connlib_shared::{
     Result,
 };
 
-use firezone_tunnel::{ClientState, Request, Tunnel};
+use firezone_tunnel::Request;
 use hickory_resolver::config::{NameServerConfig, Protocol, ResolverConfig};
 use hickory_resolver::TokioAsyncResolver;
 use reqwest::header::{CONTENT_ENCODING, CONTENT_TYPE};
@@ -38,7 +39,7 @@ const DNS_SENTINELS_V4: &str = "100.100.111.0/24";
 const DNS_SENTINELS_V6: &str = "fd00:2021:1111:8000:100:100:111:0/120";
 
 pub struct ControlPlane<CB: Callbacks> {
-    pub tunnel: Arc<Tunnel<CB, ClientState>>,
+    pub tunnel: Arc<ClientTunnel<CB>>,
     pub phoenix_channel: PhoenixSenderWithTopic,
     pub tunnel_init: Mutex<bool>,
     // It's a Mutex<Option<_>> because we need the init message to initialize the resolver

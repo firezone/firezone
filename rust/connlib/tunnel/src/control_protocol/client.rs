@@ -12,6 +12,7 @@ use connlib_shared::{
 use domain::base::Rtype;
 use ip_network::IpNetwork;
 use secrecy::{ExposeSecret, Secret};
+use snownet::Client;
 
 use crate::{
     client::DnsResource,
@@ -58,7 +59,7 @@ use super::{insert_peers, start_handlers};
 //     }));
 // }
 
-impl<CB> Tunnel<CB, ClientState>
+impl<CB> Tunnel<CB, ClientState, Client, GatewayId>
 where
     CB: Callbacks + 'static,
 {
@@ -104,7 +105,7 @@ where
 
         let mut stun_relays = stun(&relays);
         stun_relays.extend(turn(&relays).iter().map(|r| r.0).collect::<HashSet<_>>());
-        let offer = self.role_state.lock().connection_pool.new_connection(
+        let offer = self.connections.lock().connection_pool.new_connection(
             gateway_id,
             stun_relays,
             turn(&relays),
@@ -205,11 +206,11 @@ where
             .gateway_by_resource(&resource_id)
             .ok_or(Error::UnknownResource)?;
 
-        self.role_state.lock().connection_pool.accept_answer(
+        self.connections.lock().connection_pool.accept_answer(
             gateway_id,
             gateway_public_key,
-            firezone_connection::Answer {
-                credentials: firezone_connection::Credentials {
+            snownet::Answer {
+                credentials: snownet::Credentials {
                     username: rtc_ice_params.username,
                     password: rtc_ice_params.password,
                 },
