@@ -60,6 +60,7 @@ impl ConnlibWorker {
         pipe_id: String,
     ) -> Result<Self> {
         let client = ipc::client(&pipe_id).await?;
+        // TODO: Replace this with some atomics or something
         let (ipc_tx, rx) = mpsc::channel(10);
 
         let notify = Arc::new(Notify::new());
@@ -97,7 +98,7 @@ impl ConnlibWorker {
                         break;
                     }
                 },
-                // TODO: Not sure if this is cancel-safe? <https://docs.rs/tokio/latest/tokio/sync/struct.Notify.html#cancel-safety>
+                // ReactorScram thinks `notified` here is cancel-safe <https://docs.rs/tokio/latest/tokio/sync/struct.Notify.html#method.notified>
                 () = self.notify.notified() => self.refresh().await.context("ConnlibWorker::refresh failed")?,
                 // Cancel safe per <https://docs.rs/tokio/latest/tokio/sync/mpsc/struct.Receiver.html#cancel-safety>
                 msg = self.rx.recv() => {
@@ -146,6 +147,7 @@ impl ConnlibWorker {
         }
     }
 
+    // TODO: Better name
     async fn refresh(&mut self) -> Result<()> {
         let resources = Vec::clone(&self.callback_handler.resources.load());
         self.client
