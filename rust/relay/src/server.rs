@@ -89,7 +89,7 @@ pub enum Command {
     },
     /// Listen for traffic on the provided port [AddressFamily].
     ///
-    /// Any incoming data should be handed to the [`Server`] via [`Server::handle_relay_input`].
+    /// Any incoming data should be handed to the [`Server`] via [`Server::handle_peer_traffic`].
     /// A single allocation can reference one of either [AddressFamily]s or both.
     /// Only the combination of [AllocationId] and [AddressFamily] is unique.
     CreateAllocation {

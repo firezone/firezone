@@ -453,7 +453,7 @@ impl TestServer {
             }
             Input::Peer(peer, data, port) => {
                 self.server
-                    .handle_relay_input(&data, peer, self.id_to_port[&port]);
+                    .handle_peer_traffic(&data, peer, self.id_to_port[&port]);
             }
         }
 
