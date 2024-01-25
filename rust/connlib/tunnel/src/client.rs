@@ -723,8 +723,14 @@ impl RoleState for ClientState {
                         candidate,
                     })
                 }
-                Some(firezone_connection::Event::ConnectionEstablished(id)) => todo!(),
-                Some(firezone_connection::Event::ConnectionFailed(id)) => todo!(),
+                Some(firezone_connection::Event::ConnectionEstablished(id)) => {
+                    tracing::info!(gateway_id = %id, "Connection established with peer");
+                    // TODO
+                }
+                Some(firezone_connection::Event::ConnectionFailed(id)) => {
+                    tracing::info!(gateway_id = %id, "Connection failed with peer");
+                    // TODO
+                }
                 None => {}
             }
 
