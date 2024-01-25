@@ -524,6 +524,8 @@ where
         }
         self.send_message(message, sender);
 
+        Span::current().record("allocation", display(&allocation.id));
+
         if let Some(second_relay_addr) = maybe_second_relay_addr {
             tracing::info!(
                 target: "relay",
