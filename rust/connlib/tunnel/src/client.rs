@@ -2,7 +2,7 @@ use crate::bounded_queue::BoundedQueue;
 use crate::device_channel::{Device, Packet};
 use crate::ip_packet::{IpPacket, MutableIpPacket};
 use crate::peer::PacketTransformClient;
-use crate::sockets::UdpSockets;
+use crate::sockets::{Socket, UdpSockets};
 use crate::{
     dns, sleep_until, ConnectedPeer, DnsQuery, Event, PeerConfig, RoleState, Tunnel,
     DNS_QUERIES_QUEUE_SIZE, MAX_UDP_SIZE,
@@ -30,7 +30,7 @@ use itertools::Itertools;
 use rand_core::OsRng;
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::net::IpAddr;
+use std::net::{IpAddr, Ipv4Addr};
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
@@ -240,7 +240,7 @@ pub struct ClientState {
     connection_pool_timeout: BoxFuture<'static, std::time::Instant>,
     if_watcher: IfWatcher,
     udp_sockets: UdpSockets<MAX_UDP_SIZE>,
-    relay_socket: tokio::net::UdpSocket,
+    relay_socket: Socket<MAX_UDP_SIZE>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -650,10 +650,7 @@ impl Default for ClientState {
             }
         }
 
-        let relay_socket = tokio::net::UdpSocket::bind("0.0.0.0:0")
-            .now_or_never()
-            .expect("binding to `SocketAddr` is not async")
-            // Note: We could relax this condition
+        let relay_socket = Socket::bind((IpAddr::from(Ipv4Addr::UNSPECIFIED), 0))
             .expect("Program should be able to bind to 0.0.0.0:0 to be able to connect to relays");
 
         Self {
@@ -699,6 +696,8 @@ impl RoleState for ClientState {
 
     fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Event<Self::Id>> {
         loop {
+            // TODO: connection_pool handling looks very similar between client and gateway
+            // we might want to do something to unify them
             while let Some(transmit) = self.connection_pool.poll_transmit() {
                 if let Err(e) = match transmit.src {
                     Some(src) => self
@@ -706,7 +705,7 @@ impl RoleState for ClientState {
                         .try_send_to(src, transmit.dst, &transmit.payload),
                     None => self
                         .relay_socket
-                        .try_send_to(&transmit.payload, transmit.dst),
+                        .try_send_to(transmit.dst, &transmit.payload),
                 } {
                     tracing::warn!(src = ?transmit.src, dst = %transmit.dst, "Failed to send UDP packet: {e:#?}");
                 }
@@ -734,6 +733,18 @@ impl RoleState for ClientState {
                 }
 
                 continue;
+            }
+
+            match self.udp_sockets.poll_recv_from(cx) {
+                Poll::Ready((addr, result)) => match result {
+                    Ok(packet) => {
+                        todo!()
+                    }
+                    Err(e) => {
+                        tracing::error!(%addr, "Failed to read socket");
+                    }
+                },
+                Poll::Pending => {}
             }
 
             if let Poll::Ready((gateway_id, _)) =

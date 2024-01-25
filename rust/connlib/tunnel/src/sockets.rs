@@ -7,10 +7,54 @@ use std::{
 use futures::FutureExt;
 use tokio::{io::ReadBuf, net::UdpSocket};
 
-struct Socket<const N: usize> {
+pub struct Socket<const N: usize> {
     local: SocketAddr,
     socket: UdpSocket,
     buffer: Box<[u8; N]>,
+}
+
+impl<const N: usize> Socket<N> {
+    pub fn bind(addr: impl Into<SocketAddr>) -> io::Result<Socket<N>> {
+        let socket = UdpSocket::bind(addr.into())
+            .now_or_never()
+            .expect("binding to `SocketAddr` is not actually async")?;
+
+        let local = socket.local_addr()?;
+
+        Ok(Socket {
+            local,
+            socket,
+            buffer: Box::new([0u8; N]),
+        })
+    }
+
+    pub fn poll_recv_from<'b>(
+        &'b mut self,
+        cx: &mut Context<'_>,
+    ) -> Poll<(SocketAddr, io::Result<(SocketAddr, ReadBuf<'b>)>)> {
+        let Socket {
+            local: addr,
+            socket,
+            buffer,
+        } = self;
+
+        let mut buf = ReadBuf::new(buffer.as_mut());
+
+        let from = match ready!(socket.poll_recv_from(cx, &mut buf)) {
+            Ok(from) => from,
+            Err(e) => return Poll::Ready((*addr, Err(e))),
+        };
+
+        Poll::Ready((*addr, Ok((from, buf))))
+    }
+
+    pub fn try_send_to(&mut self, dest: SocketAddr, buf: &[u8]) -> io::Result<usize> {
+        self.socket.try_send_to(buf, dest)
+    }
+
+    fn local_addr(&self) -> io::Result<SocketAddr> {
+        self.socket.local_addr()
+    }
 }
 
 #[derive(Default)]
@@ -21,17 +65,10 @@ pub struct UdpSockets<const N: usize> {
 
 impl<const N: usize> UdpSockets<N> {
     pub fn bind(&mut self, addr: impl Into<SocketAddr>) -> io::Result<SocketAddr> {
-        let socket = UdpSocket::bind(addr.into())
-            .now_or_never()
-            .expect("binding to `SocketAddr` is not actually async")?;
-
+        let socket = Socket::bind(addr.into())?;
         let local = socket.local_addr()?;
 
-        self.sockets.push(Socket {
-            local,
-            socket,
-            buffer: Box::new([0u8; N]),
-        });
+        self.sockets.push(socket);
 
         if let Some(waker) = self.empty_waker.take() {
             waker.wake();
@@ -50,19 +87,17 @@ impl<const N: usize> UdpSockets<N> {
         dest: SocketAddr,
         buf: &[u8],
     ) -> io::Result<usize> {
-        let udp_socket = self
-            .sockets
+        self.sockets
             .iter()
-            .find_map(
+            .find(
                 |Socket {
                      local: sock_local,
                      socket,
                      ..
-                 }| (*sock_local == local).then_some(socket),
+                 }| *sock_local == local,
             )
-            .ok_or(io::ErrorKind::NotConnected)?;
-
-        udp_socket.try_send_to(buf, dest)
+            .ok_or(io::ErrorKind::NotConnected)?
+            .try_send_to(dest, buf)
     }
 
     pub fn poll_recv_from<'b>(
@@ -91,19 +126,9 @@ impl<const N: usize> UdpSockets<N> {
 
         self.sockets.swap(ready_index, last_index); // Swap with last element to ensure "fair" polling.
 
-        let Socket {
-            local: addr,
-            socket,
-            buffer,
-        } = self.sockets.last_mut().expect("not empty");
-
-        let mut buf = ReadBuf::new(buffer.as_mut());
-
-        let from = match ready!(socket.poll_recv_from(cx, &mut buf)) {
-            Ok(from) => from,
-            Err(e) => return Poll::Ready((*addr, Err(e))),
-        };
-
-        Poll::Ready((*addr, Ok((from, buf))))
+        self.sockets
+            .last_mut()
+            .expect("not empty")
+            .poll_recv_from(cx)
     }
 }
