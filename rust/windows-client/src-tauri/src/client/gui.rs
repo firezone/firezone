@@ -299,6 +299,18 @@ struct Session {
     worker: ipc::SubcommandChild,
 }
 
+impl Session {
+    async fn close(mut self) -> anyhow::Result<()> {
+        tracing::info!("disconnecting connlib");
+        self.server_write.close().await?;
+        self.worker
+            .wait_then_kill(Duration::from_secs(2))
+            .await
+            .context("couldn't join or kill connlib worker")?;
+        Ok(())
+    }
+}
+
 impl Controller {
     async fn new(
         app: tauri::AppHandle,
@@ -494,12 +506,8 @@ async fn run_controller(
                         tracing::debug!("Token expired, user signed out, user canceled sign-in, or connlib disconnected");
                         controller.auth.sign_out()?;
                         controller.tunnel_ready = false;
-                        if let Some(mut session) = controller.session.take() {
-                            tracing::debug!("disconnecting connlib");
-                            session.server_write.close().await?;
-                            // TODO: Use tokio's process module to remove this sleep
-                            tokio::time::sleep(Duration::from_secs(2)).await;
-                            session.worker.wait_or_kill().context("couldn't join or kill connlib worker")?;
+                        if let Some(session) = controller.session.take() {
+                            session.close().await?;
                         }
                         else {
                             // Might just be because we got a double sign-out or
@@ -553,15 +561,8 @@ async fn run_controller(
         }
     }
 
-    if let Some(mut session) = controller.session.take() {
-        tracing::debug!("disconnecting connlib");
-        session.server_write.close().await?;
-        // TODO: Use tokio's process module to remove this sleep
-        tokio::time::sleep(Duration::from_secs(2)).await;
-        session
-            .worker
-            .wait_or_kill()
-            .context("couldn't join or kill connlib worker")?;
+    if let Some(session) = controller.session.take() {
+        session.close().await?;
     }
 
     if let Err(error) = com_worker.close() {

@@ -61,16 +61,16 @@ use connlib_shared::messages::{
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::{
     ffi::c_void,
-    io::Write,
     marker::Unpin,
     os::windows::io::{AsHandle, AsRawHandle},
-    process::{self, Child},
+    process::Stdio,
     str::FromStr,
     time::{Duration, Instant},
 };
 use tokio::{
     io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt},
     net::windows::named_pipe,
+    process::{self, Child},
     sync::mpsc,
     task::JoinHandle,
     time::timeout,
@@ -206,9 +206,10 @@ async fn test_api() -> anyhow::Result<()> {
         "Server took too long to close: {elapsed:?}"
     );
 
-    // TODO: Use tokio's process module to remove this sleep
-    tokio::time::sleep(Duration::from_secs(3)).await;
-    assert_eq!(worker.wait_or_kill()?, SubcommandExit::Success);
+    assert_eq!(
+        worker.wait_then_kill(Duration::from_secs(5)).await?,
+        SubcommandExit::Success
+    );
 
     Ok(())
 }
@@ -262,7 +263,7 @@ async fn test_security() -> anyhow::Result<()> {
     let mut server = timeout(Duration::from_secs(5), server.accept()).await??;
 
     let client_pid = server.client_pid;
-    let child_pid = worker.process.id();
+    let child_pid = worker.process.id().unwrap();
     assert_eq!(child_pid, client_pid);
 
     let mut child_stdin = worker
@@ -271,7 +272,8 @@ async fn test_security() -> anyhow::Result<()> {
         .take()
         .ok_or_else(|| anyhow::anyhow!("couldn't get stdin of child process"))?;
     let cookie = uuid::Uuid::new_v4().to_string();
-    writeln!(child_stdin, "{cookie}")?;
+    let line = format!("{}\n", cookie);
+    child_stdin.write_all(line.as_bytes()).await?;
 
     let Callback::Cookie(echoed_cookie) = server
         .cb_rx
@@ -288,9 +290,10 @@ async fn test_security() -> anyhow::Result<()> {
     let elapsed = start_time.elapsed();
     assert!(elapsed < Duration::from_millis(200), "{:?}", elapsed);
 
-    // TODO: Use tokio's process module to remove this sleep
-    tokio::time::sleep(Duration::from_secs(3)).await;
-    assert_eq!(worker.wait_or_kill()?, SubcommandExit::Success);
+    assert_eq!(
+        worker.wait_then_kill(Duration::from_secs(5)).await?,
+        SubcommandExit::Success
+    );
 
     Ok(())
 }
@@ -358,16 +361,12 @@ async fn test_leak(enable_protection: bool) -> anyhow::Result<()> {
             .context("should have gotten a response to Connect")?;
     }
 
-    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-
-    manager.process.kill()?;
+    timeout(Duration::from_secs(5), manager.process.kill()).await??;
     tracing::debug!("Harness killed manager");
-    assert_eq!(manager.wait_or_kill()?, SubcommandExit::Killed);
 
     // I can't think of a good way to synchronize with the worker process stopping,
     // so just give it 10 seconds for Windows to stop it.
-    for _ in 0..10 {
-        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+    for _ in 0..5 {
         if server.send(ManagerMsg::Connect).await.is_err() {
             tracing::info!("confirmed worker stopped responding");
             break;
@@ -376,6 +375,7 @@ async fn test_leak(enable_protection: bool) -> anyhow::Result<()> {
             tracing::info!("confirmed worker stopped responding");
             break;
         }
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
     }
 
     if enable_protection {
@@ -407,7 +407,7 @@ fn leak_manager(pipe_id: String, enable_protection: bool) -> anyhow::Result<()> 
     let leak_guard = LeakGuard::new()?;
 
     let worker = SubcommandChild::new(&["debug", "test-ipc", "leak-worker", &pipe_id])?;
-    tracing::debug!("Expected worker PID = {}", worker.process.id());
+    tracing::debug!("Expected worker PID = {}", worker.process.id().unwrap());
 
     if enable_protection {
         leak_guard.add_process(&worker.process)?;
@@ -480,7 +480,7 @@ impl Subprocess {
             std::env::current_exe().context("couldn't get current exe name")?,
         );
         // Make the child's stdin piped so we can send it a security cookie.
-        process.stdin(process::Stdio::piped());
+        process.stdin(Stdio::piped());
         for arg in args {
             process.arg(arg);
         }
@@ -488,10 +488,12 @@ impl Subprocess {
         let mut process = process.spawn().context("couldn't spawn subprocess")?;
         if let Err(error) = leak_guard.add_process(&process) {
             tracing::error!("couldn't add subprocess to leak guard, attempting to kill subprocess");
-            process.kill().ok();
+            process.kill().await.ok();
             return Err(error.context("couldn't add subprocess to leak guard"));
         }
-        let child_pid = process.id();
+        let child_pid = process
+            .id()
+            .ok_or_else(|| anyhow::anyhow!("child process should have an ID"))?;
         let mut worker = SubcommandChild { process };
 
         // Accept the connection
@@ -515,7 +517,12 @@ impl Subprocess {
             .take()
             .ok_or_else(|| anyhow::anyhow!("couldn't get stdin of subprocess"))?;
         let cookie = uuid::Uuid::new_v4().to_string();
-        writeln!(child_stdin, "{cookie}").context("couldn't write cookie to subprocess stdin")?;
+        let line = format!("{}\n", cookie);
+        tracing::trace!(?cookie, "Sending cookie");
+        child_stdin
+            .write_all(line.as_bytes())
+            .await
+            .context("couldn't write cookie to subprocess stdin")?;
 
         let WorkerMsg::Callback(Callback::Cookie(echoed_cookie)) = Server::read(&mut server.pipe)
             .await
@@ -523,6 +530,7 @@ impl Subprocess {
         else {
             bail!("didn't receive cookie from pipe client");
         };
+        tracing::trace!(?echoed_cookie, "Got cookie back");
         if echoed_cookie != cookie {
             bail!("cookie received from pipe client should match the cookie we sent to our child process");
         }
@@ -942,9 +950,15 @@ impl SubcommandChild {
     ///
     /// * `args` - e.g. `["debug", "test", "ipc-worker"]`
     pub fn new(args: &[&str]) -> anyhow::Result<Self> {
+        // Need this binding to avoid a "temporary freed while still in use" error
         let mut process = process::Command::new(std::env::current_exe()?);
-        // Make the child's stdin piped so we can send it a security cookie.
-        process.stdin(process::Stdio::piped());
+        process
+            // Make stdin a pipe so we can send the child a security cookie
+            .stdin(Stdio::piped())
+            // Best-effort attempt to kill the child when this handle drops
+            // The Tokio docs say this is hard and we should just try to clean up
+            // before dropping <https://docs.rs/tokio/latest/tokio/process/struct.Command.html#method.kill_on_drop>
+            .kill_on_drop(true);
         for arg in args {
             process.arg(arg);
         }
@@ -962,9 +976,23 @@ impl SubcommandChild {
                 Ok(SubcommandExit::Failure)
             }
         } else {
-            self.process.kill()?;
+            self.process.start_kill()?;
             Ok(SubcommandExit::Killed)
         }
+    }
+
+    /// Waits `dur` for process to exit gracefully, and then `dur` to kill process if needed
+    pub async fn wait_then_kill(&mut self, dur: Duration) -> anyhow::Result<SubcommandExit> {
+        if let Ok(status) = timeout(dur, self.process.wait()).await {
+            return if status?.success() {
+                Ok(SubcommandExit::Success)
+            } else {
+                Ok(SubcommandExit::Failure)
+            };
+        }
+
+        timeout(dur, self.process.kill()).await??;
+        Ok(SubcommandExit::Killed)
     }
 }
 
@@ -1003,14 +1031,15 @@ impl LeakGuard {
         Ok(Self { job_object })
     }
 
-    pub fn add_process(&self, process: &std::process::Child) -> anyhow::Result<()> {
+    pub fn add_process(&self, process: &Child) -> anyhow::Result<()> {
         // Process IDs are not the same as handles, so get our handle to the process.
-        let process_handle = process.as_handle();
+        let process_handle = process
+            .raw_handle()
+            .ok_or_else(|| anyhow::anyhow!("Child should have a handle"))?;
         // SAFETY: The docs say this is UB since the null pointer doesn't belong to the same allocated object as the handle.
         // I couldn't get `OpenProcess` to work, and I don't have any other way to convert the process ID to a handle safely.
         // Since the handles aren't pointers per se, maybe it'll work?
-        let process_handle =
-            HANDLE(unsafe { process_handle.as_raw_handle().offset_from(std::ptr::null()) });
+        let process_handle = HANDLE(unsafe { process_handle.offset_from(std::ptr::null()) });
         // SAFETY: TODO
         unsafe { AssignProcessToJobObject(self.job_object, process_handle) }
             .context("AssignProcessToJobObject")?;
