@@ -159,11 +159,48 @@ module "aws_gateway" {
   image_repo              = module.google-artifact-registry.repo
   image                   = "gateway"
   image_tag               = var.image_tag
-  observability_log_level = "firezone_gateway=trace,wire=trace,connlib_gateway_shared=trace,firezone_tunnel=trace,connlib_shared=trace,warn"
+  observability_log_level = "phoenix_channel=debug,firezone_gateway=trace,wire=trace,connlib_gateway_shared=trace,firezone_tunnel=trace,connlib_shared=trace,warn"
   application_name        = "gateway"
   application_version     = replace(var.image_tag, ".", "-")
   api_url                 = "wss://api.${local.tld}"
   token                   = var.aws_gateway_token
+
+  tags = local.tags
+}
+
+module "aws_coredns" {
+  source = "../../modules/aws/coredns"
+
+  ami  = data.aws_ami.ubuntu.id
+  name = "coredns - ${local.environment}"
+
+  associate_public_ip_address = false
+  instance_type               = "t3.micro"
+  key_name                    = local.ssh_keypair_name
+  subnet_id                   = element(module.vpc.private_subnets, 0)
+  private_ip                  = cidrhost(element(module.vpc.private_subnets_cidr_blocks, 0), 10)
+
+  application_name = "coredns"
+
+  dns_records = [
+    {
+      name  = "gateway",
+      value = module.aws_gateway.private_ip
+    },
+    {
+      name  = "httpbin",
+      value = module.aws_httpbin.private_ip
+    },
+    {
+      name  = "iperf",
+      value = module.aws_iperf.private_ip
+    },
+  ]
+
+  vpc_security_group_ids = [
+    module.sg_allow_all_egress.security_group_id,
+    module.sg_allow_subnet_ingress.security_group_id
+  ]
 
   tags = local.tags
 }

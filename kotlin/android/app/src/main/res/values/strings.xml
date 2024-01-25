@@ -4,12 +4,14 @@
 	<!-- Settings -->
 	<string name="settings_title">Settings</string>
 	<string name="advanced_settings_title">Advanced</string>
+	<string name="log_settings_title">Diagnostic Logs</string>
 	<string name="auth_base_url">Auth Base URL</string>
 	<string name="api_url">API URL</string>
 	<string name="log_filter">Log Filter</string>
 	<string name="save">Save</string>
-	<string name="share_diagnostic_logs">Share Diagnostic Logs</string>
-
+	<string name="share_diagnostic_logs">Export Logs</string>
+	<string name="log_directory_size">Log directory size: %1$s</string>
+	<string name="clear_log_directory">Clear Log Directory</string>
 
 	<!-- Sign In -->
 	<string name="sign_in">Sign In</string>

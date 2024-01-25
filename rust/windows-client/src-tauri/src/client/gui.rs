@@ -7,7 +7,7 @@ use crate::client::{self, deep_link, network_changes, AppLocalDataDir, BUNDLE_ID
 use anyhow::{anyhow, bail, Context, Result};
 use arc_swap::ArcSwap;
 use client::{
-    logging,
+    about, logging,
     settings::{self, AdvancedSettings},
 };
 use connlib_client_shared::{file_logger, ResourceDescription};
@@ -137,6 +137,8 @@ pub(crate) fn run(params: client::GuiParams) -> Result<()> {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            about::get_cargo_version,
+            about::get_git_version,
             logging::clear_logs,
             logging::count_logs,
             logging::export_logs,
@@ -231,6 +233,7 @@ fn handle_system_tray_event(app: &tauri::AppHandle, event: TrayMenuEvent) -> Res
         .ok_or_else(|| anyhow!("can't get Managed struct from Tauri"))?
         .ctlr_tx;
 
+    // TODO: Just handle these in Controller directly: <https://github.com/firezone/firezone/issues/2983>
     match event {
         TrayMenuEvent::About => {
             let win = app
@@ -243,6 +246,7 @@ fn handle_system_tray_event(app: &tauri::AppHandle, event: TrayMenuEvent) -> Res
                 win.show()?;
             }
         }
+        TrayMenuEvent::CancelSignIn => ctlr_tx.blocking_send(ControllerRequest::CancelSignIn)?,
         TrayMenuEvent::Resource { id } => {
             ctlr_tx.blocking_send(ControllerRequest::CopyResource(id))?
         }
@@ -266,6 +270,7 @@ fn handle_system_tray_event(app: &tauri::AppHandle, event: TrayMenuEvent) -> Res
 }
 
 pub(crate) enum ControllerRequest {
+    CancelSignIn,
     CopyResource(String),
     Disconnected,
     DisconnectedTokenExpired,
@@ -415,7 +420,7 @@ impl Controller {
             None, // TODO: Send device name here (windows computer name)
             None,
             callback_handler.clone(),
-            MAX_PARTITION_TIME,
+            Some(MAX_PARTITION_TIME),
         )?;
 
         self.session = Some(Session {
@@ -548,8 +553,8 @@ async fn run_controller(
                         }
                         controller.refresh_system_tray_menu()?;
                     }
-                    Req::DisconnectedTokenExpired | Req::SignOut => {
-                        tracing::debug!("Token expired or user signed out");
+                    Req::CancelSignIn | Req::DisconnectedTokenExpired | Req::SignOut => {
+                        tracing::debug!("Token expired, user signed out, or user canceled sign-in");
                         controller.auth.sign_out()?;
                         controller.tunnel_ready = false;
                         if let Some(mut session) = controller.session.take() {
@@ -559,7 +564,9 @@ async fn run_controller(
                             session.connlib.disconnect(None);
                         }
                         else {
-                            tracing::error!("tried to sign out but there's no session");
+                            // Might just be because we got a double sign-out or
+                            // the user canceled the sign-in or something innocent.
+                            tracing::warn!("tried to sign out but there's no session");
                         }
                         controller.refresh_system_tray_menu()?;
                     }

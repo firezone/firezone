@@ -13,6 +13,24 @@ within the same site as the gateway.
 - Docker Engine (for docker-based installs)
 - Systemd (for systemd-based installs)
 
+## Firewall considerations
+
+Gateways implement the industry-standard
+[STUN](https://datatracker.ietf.org/doc/html/rfc8489) and
+[TURN](https://www.rfc-editor.org/rfc/rfc8155.html) protocols to securely
+perform NAT traversal and firewall hole-punching. No ingress firewall ports are
+required for Gateways to function.
+
+If the network in which your Gateway is deployed performs egress filtering,
+you'll need to make sure the following outbound traffic is allowed:
+
+| Host             | (IP Address)         | Port(s)         | Protocol(s)     | Purpose                    |
+| ---------------- | -------------------- | --------------- | --------------- | -------------------------- |
+| api.firezone.dev | `34.102.202.25`      | `443`           | HTTPS/WebSocket | Control Plane API (IPv4)   |
+| api.firezone.dev | `2600:1901:0:620b::` | `443`           | HTTPS/WebSocket | Control Plane API (IPv6)   |
+| N/A              | Varies               | `3478`          | STUN            | STUN protocol signaling    |
+| N/A              | Varies               | `49152 - 65535` | TURN            | TURN protocol channel data |
+
 ## Resource considerations
 
 Gateways, like the rest of Firezone's data plane stack, are written in Rust and
@@ -28,7 +46,7 @@ optimizations, both of which are currently being worked on.
 
 ## Deploy a single gateway
 
-Deployed a single gateway can be accomplished in the admin portal.
+Deploying a single gateway can be accomplished in the admin portal.
 
 Go to `Sites` -> `<site>` -> `Deploy a Gateway` and follow the prompts to deploy
 for your preferred environment. This will deploy a single gateway.

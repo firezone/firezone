@@ -2,6 +2,7 @@
 use base64::{DecodeError, DecodeSliceError};
 use boringtun::noise::errors::WireGuardError;
 use thiserror::Error;
+use tokio::task::JoinError;
 
 /// Unified Result type to use across connlib.
 pub type Result<T> = std::result::Result<T, ConnlibError>;
@@ -155,6 +156,8 @@ pub enum ConnlibError {
     TooManyConnectionRequests,
     #[error("Channel connection closed by portal")]
     ClosedByPortal,
+    #[error(transparent)]
+    JoinError(#[from] JoinError),
 }
 
 impl ConnlibError {

@@ -1,5 +1,8 @@
+# This test environment partitions dialer and listener into different subnets.
+# Their router is configured to use `fully-random` port mapping, making hole-punching impossible.
+
 version: "3.8"
-name: wan-hp-integration-test
+name: wan-relay-integration-test
 
 services:
   dialer:
@@ -22,12 +25,12 @@ services:
         set -ex
 
         ROUTER_IP=$$(dig +short dialer_router)
-        INTERNET_SUBNET=$$(curl --fail --silent --unix-socket /var/run/docker.sock http://localhost/networks/wan-hp-integration-test_wan | jq -r '.IPAM.Config[0].Subnet')
+        INTERNET_SUBNET=$$(curl --fail --silent --unix-socket /var/run/docker.sock http://localhost/networks/wan-relay-integration-test_wan | jq -r '.IPAM.Config[0].Subnet')
 
         ip route add $$INTERNET_SUBNET via $$ROUTER_IP dev eth0
 
-        export STUN_SERVER=$$(curl --fail --silent --unix-socket /var/run/docker.sock http://localhost/containers/wan-hp-integration-test-relay-1/json | jq -r '.NetworkSettings.Networks."wan-hp-integration-test_wan".IPAddress')
-        export REDIS_HOST=$$(curl --fail --silent --unix-socket /var/run/docker.sock http://localhost/containers/wan-hp-integration-test-redis-1/json | jq -r '.NetworkSettings.Networks."wan-hp-integration-test_wan".IPAddress')
+        export TURN_SERVER=$$(curl --fail --silent --unix-socket /var/run/docker.sock http://localhost/containers/wan-relay-integration-test-relay-1/json | jq -r '.NetworkSettings.Networks."wan-relay-integration-test_wan".IPAddress')
+        export REDIS_HOST=$$(curl --fail --silent --unix-socket /var/run/docker.sock http://localhost/containers/wan-relay-integration-test-redis-1/json | jq -r '.NetworkSettings.Networks."wan-relay-integration-test_wan".IPAddress')
 
         firezone-connection-tests
     depends_on:
@@ -42,6 +45,8 @@ services:
     init: true
     build:
       context: ./router
+    environment:
+      NAT_BEHAVIOUR: fully-random
     cap_add:
       - NET_ADMIN
     networks:
@@ -67,12 +72,12 @@ services:
         set -ex
 
         ROUTER_IP=$$(dig +short listener_router)
-        INTERNET_SUBNET=$$(curl --fail --silent --unix-socket /var/run/docker.sock http://localhost/networks/wan-hp-integration-test_wan | jq -r '.IPAM.Config[0].Subnet')
+        INTERNET_SUBNET=$$(curl --fail --silent --unix-socket /var/run/docker.sock http://localhost/networks/wan-relay-integration-test_wan | jq -r '.IPAM.Config[0].Subnet')
 
         ip route add $$INTERNET_SUBNET via $$ROUTER_IP dev eth0
 
-        export STUN_SERVER=$$(curl --fail --silent --unix-socket /var/run/docker.sock http://localhost/containers/wan-hp-integration-test-relay-1/json | jq -r '.NetworkSettings.Networks."wan-hp-integration-test_wan".IPAddress')
-        export REDIS_HOST=$$(curl --fail --silent --unix-socket /var/run/docker.sock http://localhost/containers/wan-hp-integration-test-redis-1/json | jq -r '.NetworkSettings.Networks."wan-hp-integration-test_wan".IPAddress')
+        export TURN_SERVER=$$(curl --fail --silent --unix-socket /var/run/docker.sock http://localhost/containers/wan-relay-integration-test-relay-1/json | jq -r '.NetworkSettings.Networks."wan-relay-integration-test_wan".IPAddress')
+        export REDIS_HOST=$$(curl --fail --silent --unix-socket /var/run/docker.sock http://localhost/containers/wan-relay-integration-test-redis-1/json | jq -r '.NetworkSettings.Networks."wan-relay-integration-test_wan".IPAddress')
 
         firezone-connection-tests
     cap_add:
@@ -89,6 +94,8 @@ services:
     init: true
     build:
       context: ./router
+    environment:
+      NAT_BEHAVIOUR: fully-random
     cap_add:
       - NET_ADMIN
     networks:
@@ -101,6 +108,7 @@ services:
       HIGHEST_PORT: 55666
       RUST_LOG: "debug"
       RUST_BACKTRACE: 1
+      RNG_SEED: 0
     build:
       target: debug
       context: ..
@@ -109,7 +117,6 @@ services:
       args:
         PACKAGE: firezone-relay
     image: us-east1-docker.pkg.dev/firezone-staging/firezone/relay:${VERSION:-main}
-    init: true
     healthcheck:
       test: ["CMD-SHELL", "lsof -i UDP | grep firezone-relay"]
       start_period: 20s
