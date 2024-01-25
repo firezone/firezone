@@ -144,6 +144,7 @@ impl RoleState for GatewayState {
 
                 continue;
             }
+
             match self.udp_sockets.poll_recv_from(cx) {
                 Poll::Ready((local, Ok((from, packet)))) => {
                     tracing::trace!(target: "wire", %local, %from, bytes = %packet.filled().len(), "read new packet");
@@ -217,6 +218,8 @@ impl RoleState for GatewayState {
                 }
                 Poll::Pending => {}
             }
+
+            return Poll::Pending;
         }
     }
 
