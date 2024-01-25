@@ -444,7 +444,6 @@ where
     pub async fn new(private_key: StaticSecret, callbacks: CB) -> Result<Self> {
         // TODO:
         // let peer_connections = Default::default();
-        let device = Default::default();
 
         // Register default codecs (TODO: We need this?)
         // TODO:
@@ -459,7 +458,7 @@ where
         Ok(Self {
             // TODO:
             // peer_connections,
-            device,
+            device: Default::default(),
             read_buf: Mutex::new(Box::new([0u8; MAX_UDP_SIZE])),
             write_buf: Mutex::new(Box::new([0u8; MAX_UDP_SIZE])),
             callbacks: CallbackErrorFacade(callbacks),
