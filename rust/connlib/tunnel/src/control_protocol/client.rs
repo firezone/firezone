@@ -199,25 +199,26 @@ where
         domain_response: Option<DomainResponse>,
         gateway_public_key: PublicKey,
     ) -> Result<()> {
-        todo!();
-        // let gateway_id = self
-        //     .role_state
-        //     .lock()
-        //     .gateway_by_resource(&resource_id)
-        //     .ok_or(Error::UnknownResource)?;
+        let gateway_id = self
+            .role_state
+            .lock()
+            .gateway_by_resource(&resource_id)
+            .ok_or(Error::UnknownResource)?;
 
-        // let peer_connection = self
-        //     .peer_connections
-        //     .lock()
-        //     .get(&gateway_id)
-        //     .ok_or(Error::UnknownResource)?
-        //     .clone();
+        self.role_state.lock().connection_pool.accept_answer(
+            gateway_id,
+            gateway_public_key,
+            firezone_connection::Answer {
+                credentials: firezone_connection::Credentials {
+                    username: rtc_ice_params.username,
+                    password: rtc_ice_params.password,
+                },
+            },
+        );
 
-        // self.role_state
-        //     .lock()
-        //     .activate_ice_candidate_receiver(gateway_id, gateway_public_key);
-        // let tunnel = self.clone();
-        // // RTCIceTransport::start blocks until there's an ice connection.
+        Ok(())
+
+        // TODO:
         // tokio::spawn(async move {
         //     if let Err(e) = peer_connection
         //         .start(&rtc_ice_params, Some(RTCIceRole::Controlling))
