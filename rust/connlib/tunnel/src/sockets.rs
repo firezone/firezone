@@ -48,7 +48,7 @@ impl<const N: usize> Socket<N> {
         Poll::Ready((*addr, Ok((from, buf))))
     }
 
-    pub fn try_send_to(&mut self, dest: SocketAddr, buf: &[u8]) -> io::Result<usize> {
+    pub fn try_send_to(&self, dest: SocketAddr, buf: &[u8]) -> io::Result<usize> {
         self.socket.try_send_to(buf, dest)
     }
 
