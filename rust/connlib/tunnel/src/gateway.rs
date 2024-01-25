@@ -1,6 +1,6 @@
 use crate::device_channel::Device;
 use crate::peer::PacketTransformGateway;
-use crate::sockets::UdpSockets;
+use crate::sockets::{Socket, UdpSockets};
 use crate::{sleep_until, ConnectedPeer, Event, RoleState, Tunnel, MAX_UDP_SIZE};
 use boringtun::x25519::StaticSecret;
 use connlib_shared::messages::{ClientId, Interface as InterfaceConfig};
@@ -13,6 +13,7 @@ use ip_network_table::IpNetworkTable;
 use itertools::Itertools;
 use rand_core::OsRng;
 use std::collections::VecDeque;
+use std::net::{IpAddr, Ipv4Addr};
 use std::sync::Arc;
 use std::task::{Context, Poll};
 
@@ -57,7 +58,7 @@ pub struct GatewayState {
     connection_pool_timeout: BoxFuture<'static, std::time::Instant>,
     if_watcher: IfWatcher,
     udp_sockets: UdpSockets<MAX_UDP_SIZE>,
-    relay_socket: tokio::net::UdpSocket,
+    relay_socket: Socket<MAX_UDP_SIZE>,
 }
 
 impl Default for GatewayState {
@@ -81,10 +82,7 @@ impl Default for GatewayState {
             }
         }
 
-        let relay_socket = tokio::net::UdpSocket::bind("0.0.0.0:0")
-            .now_or_never()
-            .expect("binding to `SocketAddr` is not async")
-            // Note: We could relax this condition
+        let relay_socket = Socket::bind((IpAddr::from(Ipv4Addr::UNSPECIFIED), 0))
             .expect("Program should be able to bind to 0.0.0.0:0 to be able to connect to relays");
 
         Self {
@@ -115,7 +113,7 @@ impl RoleState for GatewayState {
                         .try_send_to(src, transmit.dst, &transmit.payload),
                     None => self
                         .relay_socket
-                        .try_send_to(&transmit.payload, transmit.dst),
+                        .try_send_to(transmit.dst, &transmit.payload),
                 } {
                     tracing::warn!(src = ?transmit.src, dst = %transmit.dst, "Failed to send UDP packet: {e:#?}");
                 }
