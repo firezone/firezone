@@ -442,15 +442,24 @@ where
     ) -> Result<(), Message<Attribute>> {
         self.verify_auth(&request, now)?;
 
-        if self.allocations.contains_key(&sender) {
+        if let Some(allocation) = self.allocations.get(&sender) {
+            Span::current().record("allocation", display(&allocation.id));
+            tracing::warn!(target: "relay", "Client already has an allocation");
+
             return Err(error_response(AllocationMismatch, &request));
         }
 
-        if self.allocations_by_port.len() == self.max_available_ports() as usize {
+        let max_available_ports = self.max_available_ports() as usize;
+        if self.allocations_by_port.len() == max_available_ports {
+            tracing::warn!(target: "relay", %max_available_ports, "No more ports available");
+
             return Err(error_response(InsufficientCapacity, &request));
         }
 
-        if request.requested_transport().protocol() != UDP_TRANSPORT {
+        let requested_protocol = request.requested_transport().protocol();
+        if requested_protocol != UDP_TRANSPORT {
+            tracing::warn!(target: "relay", %requested_protocol, "Unsupported protocol");
+
             return Err(error_response(BadRequest, &request));
         }
 
@@ -1059,9 +1068,44 @@ fn derive_relay_addresses(
         (IpStack::Dual { ip4, ip6 }, None, Some(AddressFamily::V6)) => {
             Ok((ip4.into(), Some(ip6.into())))
         }
-        (_, Some(_), Some(_)) => Err(BadRequest.into()),
-        (_, _, Some(AddressFamily::V4)) => Err(BadRequest.into()),
-        _ => Err(AddressFamilyNotSupported.into()),
+        (IpStack::Ip4(ip4), None, Some(AddressFamily::V6)) => {
+            // TODO: The spec says to also include an error code here.
+            // For now, we will just partially satisfy the request.
+            // We expect clients to gracefully handle this by only extracting the relay addresses they receive.
+
+            tracing::warn!(target: "relay", "Partially fulfilling allocation using only an IPv4 address");
+
+            Ok((ip4.into(), None))
+        }
+        (IpStack::Ip6(ip6), None, Some(AddressFamily::V6)) => {
+            // TODO: The spec says to also include an error code here.
+            // For now, we will just partially satisfy the request.
+            // We expect clients to gracefully handle this by only extracting the relay addresses they receive.
+
+            tracing::warn!(target: "relay", "Partially fulfilling allocation using only an IPv6 address");
+
+            Ok((ip6.into(), None))
+        }
+        (_, Some(_), Some(_)) => {
+            tracing::warn!(target: "relay", "Specifying `REQUESTED-ADDRESS-FAMILY` and `ADDITIONAL-ADDRESS-FAMILY` is against the spec");
+
+            Err(BadRequest.into())
+        }
+        (_, _, Some(AddressFamily::V4)) => {
+            tracing::warn!(target: "relay", "Specifying `IPv4` for `ADDITIONAL-ADDRESS-FAMILY` is against the spec");
+
+            Err(BadRequest.into())
+        }
+        (IpStack::Ip6(_), None | Some(AddressFamily::V4), None) => {
+            tracing::warn!(target: "relay", "Cannot provide an IPv4 allocation on an IPv6-only relay");
+
+            Err(AddressFamilyNotSupported.into())
+        }
+        (IpStack::Ip4(_), Some(AddressFamily::V6), _) => {
+            tracing::warn!(target: "relay", "Cannot provide an IPv6 allocation on an IPv4-only relay");
+
+            Err(AddressFamilyNotSupported.into())
+        }
     }
 }
 
