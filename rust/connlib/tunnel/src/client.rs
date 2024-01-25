@@ -653,6 +653,7 @@ impl Default for ClientState {
 
         let relay_socket = Socket::bind((IpAddr::from(Ipv4Addr::UNSPECIFIED), 0))
             .expect("Program should be able to bind to 0.0.0.0:0 to be able to connect to relays");
+        connection_pool.add_local_interface(relay_socket.local_addr());
 
         Self {
             awaiting_connection: Default::default(),

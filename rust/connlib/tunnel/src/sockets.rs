@@ -52,8 +52,8 @@ impl<const N: usize> Socket<N> {
         self.socket.try_send_to(buf, dest)
     }
 
-    fn local_addr(&self) -> io::Result<SocketAddr> {
-        self.socket.local_addr()
+    pub fn local_addr(&self) -> SocketAddr {
+        self.local
     }
 }
 
@@ -66,7 +66,7 @@ pub struct UdpSockets<const N: usize> {
 impl<const N: usize> UdpSockets<N> {
     pub fn bind(&mut self, addr: impl Into<SocketAddr>) -> io::Result<SocketAddr> {
         let socket = Socket::bind(addr.into())?;
-        let local = socket.local_addr()?;
+        let local = socket.local_addr();
 
         self.sockets.push(socket);
 
