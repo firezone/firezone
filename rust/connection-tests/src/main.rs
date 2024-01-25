@@ -404,6 +404,9 @@ impl<T> Eventloop<T> {
                     packet: packet.to_owned(),
                 }));
             }
+
+            cx.waker().wake_by_ref();
+            return Poll::Pending;
         }
 
         Poll::Pending
