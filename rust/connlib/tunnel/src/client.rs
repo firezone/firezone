@@ -737,6 +737,7 @@ impl RoleState for ClientState {
 
             match self.udp_sockets.poll_recv_from(cx) {
                 Poll::Ready((local, Ok((from, packet)))) => {
+                    tracing::trace!(target: "wire", %local, %from, bytes = %packet.filled().len(), "read new packet");
                     todo!()
                 }
                 Poll::Ready((addr, Err(e))) => {
@@ -747,6 +748,7 @@ impl RoleState for ClientState {
 
             match self.relay_socket.poll_recv_from(cx) {
                 Poll::Ready((_, Ok((from, packet)))) => {
+                    tracing::trace!(target: "wire", %from, bytes = %packet.filled().len(), "read new relay packet");
                     todo!()
                 }
                 Poll::Ready((_, Err(e))) => {
