@@ -76,7 +76,10 @@ defmodule Web.RelayGroups.NewToken do
               >sudo nano /etc/systemd/system/firezone-relay.service</.code_block>
 
               <p class="p-4">
-                3. Copy-paste the following contents into the file:
+                3. Copy-paste the following contents into the file and replace
+                <code>PUBLIC_IP4_ADDR</code>
+                and <code>PUBLIC_IP6_ADDR</code>
+                with your public IP addresses:
               </p>
 
               <.code_block
