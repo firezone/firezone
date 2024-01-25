@@ -292,7 +292,7 @@ struct Controller {
 /// Everything related to a signed-in user session
 struct Session {
     response_rx: mpsc::Receiver<ipc::ManagerMsg>,
-    write_tx: mpsc::Sender<ipc::ManagerMsg>,
+    server_write: ipc::ServerWriteHalf,
     worker: ipc::SubcommandChild,
 }
 
@@ -342,7 +342,6 @@ impl Controller {
         .context("error while starting subprocess")?;
         subprocess
             .server
-            .write_tx
             .send(ipc::ManagerMsg::Connect)
             .await
             .context("couldn't send Connect request to worker")?;
@@ -356,16 +355,13 @@ impl Controller {
             anyhow::bail!("Expected Connected back from connlib worker");
         };
 
-        let ipc::Subprocess {
-            server:
-                ipc::Server {
-                    mut cb_rx,
-                    response_rx,
-                    write_tx,
-                    ..
-                },
-            worker,
-        } = subprocess;
+        let ipc::Subprocess { server, worker } = subprocess;
+
+        let (server_read, server_write) = server.into_split();
+        let ipc::ServerReadHalf {
+            mut cb_rx,
+            response_rx,
+        } = server_read;
 
         let ctlr_tx = self.ctlr_tx.clone();
 
@@ -380,8 +376,8 @@ impl Controller {
 
         self.session = Some(Session {
             response_rx,
+            server_write,
             worker,
-            write_tx,
         });
 
         Ok(())
@@ -499,10 +495,11 @@ async fn run_controller(
                             tracing::debug!("disconnecting connlib");
                             // This is redundant if the token is expired, in that case
                             // connlib already disconnected itself.
-                            session.write_tx.send(ipc::ManagerMsg::Disconnect).await?;
+                            session.server_write.send(ipc::ManagerMsg::Disconnect).await?;
                             let ipc::ManagerMsg::Disconnect = session.response_rx.recv().await.context("should have gotten a response")? else {
                                 anyhow::bail!("expected Disconnected back from worker");
                             };
+                            session.server_write.close().await?;
                             if let Err(error) = session.worker.wait_or_kill() {
                                 tracing::error!(?error, "couldn't join or kill connlib worker");
                             }

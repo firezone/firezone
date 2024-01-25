@@ -121,7 +121,7 @@ async fn test_manager_process(pipe_id: String) -> Result<()> {
     let mut server = timeout(Duration::from_secs(5), server.accept()).await??;
 
     let start_time = Instant::now();
-    server.write_tx.send(ManagerMsg::Connect).await?;
+    server.send(ManagerMsg::Connect).await?;
     assert_eq!(
         server
             .response_rx
@@ -130,7 +130,7 @@ async fn test_manager_process(pipe_id: String) -> Result<()> {
             .context("test_manager_process should have gotten a response to Connect")?,
         ManagerMsg::Connect
     );
-    server.write_tx.send(ManagerMsg::Disconnect).await?;
+    server.send(ManagerMsg::Disconnect).await?;
     assert_eq!(
         server
             .response_rx
@@ -206,7 +206,7 @@ async fn test_leak(enable_protection: bool) -> Result<()> {
 
     // Send a few requests to make sure the worker is connected and good
     for _ in 0..3 {
-        server.write_tx.send(ManagerMsg::Connect).await?;
+        server.send(ManagerMsg::Connect).await?;
         server
             .response_rx
             .recv()
@@ -224,7 +224,7 @@ async fn test_leak(enable_protection: bool) -> Result<()> {
     // so just give it 10 seconds for Windows to stop it.
     for _ in 0..10 {
         tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-        if server.write_tx.send(ManagerMsg::Connect).await.is_err() {
+        if server.send(ManagerMsg::Connect).await.is_err() {
             tracing::info!("confirmed worker stopped responding");
             break;
         }
@@ -236,7 +236,7 @@ async fn test_leak(enable_protection: bool) -> Result<()> {
 
     if enable_protection {
         assert!(
-            server.write_tx.send(ManagerMsg::Connect).await.is_err(),
+            server.send(ManagerMsg::Connect).await.is_err(),
             "worker shouldn't be able to respond here, it should have stopped when the manager stopped"
         );
         assert!(
@@ -246,7 +246,7 @@ async fn test_leak(enable_protection: bool) -> Result<()> {
         tracing::info!("enabling leak protection worked");
     } else {
         assert!(
-            server.write_tx.send(ManagerMsg::Connect).await.is_ok(),
+            server.send(ManagerMsg::Connect).await.is_ok(),
             "worker should still respond here, this failure means the test is invalid"
         );
         assert!(
@@ -321,7 +321,7 @@ async fn test_security() -> Result<()> {
     };
     assert_eq!(echoed_cookie, cookie);
 
-    server.write_tx.send(ManagerMsg::Disconnect).await?;
+    server.send(ManagerMsg::Disconnect).await?;
     server
         .response_rx
         .recv()
@@ -385,7 +385,7 @@ async fn test_api() -> Result<()> {
         .context("should have gotten a OnUpdateResources callback")?;
     assert_eq!(cb, Callback::OnUpdateResources(sample_resources()));
 
-    server.write_tx.send(ManagerMsg::Disconnect).await?;
+    server.send(ManagerMsg::Disconnect).await?;
     tracing::debug!("Manager requested Disconnect");
     assert_eq!(
         server
@@ -398,6 +398,8 @@ async fn test_api() -> Result<()> {
 
     let elapsed = start_time.elapsed();
     assert!(elapsed < Duration::from_millis(200), "{:?}", elapsed);
+
+    server.close().await?;
 
     tokio::time::sleep(Duration::from_secs(3)).await;
     assert_eq!(worker.wait_or_kill()?, SubcommandExit::Success);
@@ -575,17 +577,6 @@ impl UnconnectedServer {
     }
 }
 
-/// A server that's connected to a client
-///
-/// Manual testing shows that if the corresponding Client's process crashes, Windows will
-/// be nice and return errors for anything trying to read from the Server
-pub(crate) struct Server {
-    pub cb_rx: mpsc::Receiver<Callback>,
-    client_pid: u32,
-    pub response_rx: mpsc::Receiver<ManagerMsg>,
-    pub write_tx: mpsc::Sender<ManagerMsg>,
-}
-
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub(crate) enum ManagerMsg {
     Connect,
@@ -611,6 +602,53 @@ pub(crate) enum Callback {
     TunnelReady,
 }
 
+/// A server that's connected to a client
+///
+/// Manual testing shows that if the corresponding Client's process crashes, Windows will
+/// be nice and return errors for anything trying to read from the Server
+pub(crate) struct Server {
+    pub cb_rx: mpsc::Receiver<Callback>,
+    client_pid: u32,
+    pipe_task: JoinHandle<Result<()>>,
+    pub response_rx: mpsc::Receiver<ManagerMsg>,
+    write_tx: mpsc::Sender<ServerInternalMsg>,
+}
+
+pub(crate) struct ServerReadHalf {
+    pub cb_rx: mpsc::Receiver<Callback>,
+    pub response_rx: mpsc::Receiver<ManagerMsg>,
+}
+
+pub(crate) struct ServerWriteHalf {
+    pipe_task: JoinHandle<Result<()>>,
+    write_tx: mpsc::Sender<ServerInternalMsg>,
+}
+
+enum ServerInternalMsg {
+    Msg(ManagerMsg),
+    Shutdown,
+}
+
+impl ServerWriteHalf {
+    pub async fn close(self) -> anyhow::Result<()> {
+        self.write_tx
+            .send(ServerInternalMsg::Shutdown)
+            .await
+            .context("couldn't send ServerInternalMsg::Shutdown")?;
+        let Self { pipe_task, .. } = self;
+        pipe_task
+            .await
+            .context("async runtime error for ipc::Server::pipe_task")?
+            .context("ipc::Server::pipe_task returned an error")?;
+        Ok(())
+    }
+
+    pub async fn send(&self, msg: ManagerMsg) -> anyhow::Result<()> {
+        self.write_tx.send(ServerInternalMsg::Msg(msg)).await?;
+        Ok(())
+    }
+}
+
 impl Server {
     #[tracing::instrument(skip_all)]
     fn new(pipe: named_pipe::NamedPipeServer) -> Result<Self> {
@@ -620,19 +658,52 @@ impl Server {
 
         let client_pid = Self::client_pid(&pipe)?;
 
-        // TODO: Make sure this task stops
-        let _task = tokio::task::spawn(async move {
-            if let Err(error) = Self::pipe_task(pipe, cb_tx, response_tx, write_rx).await {
+        let pipe_task = tokio::task::spawn(async move {
+            let output = Self::pipe_task(pipe, cb_tx, response_tx, write_rx).await;
+            if let Err(error) = &output {
                 tracing::error!(?error, "Server::pipe_task returned error");
             }
+            output
         });
 
         Ok(Self {
             cb_rx,
             client_pid,
+            pipe_task,
             response_rx,
             write_tx,
         })
+    }
+
+    pub async fn close(self) -> anyhow::Result<()> {
+        let (_read, write) = self.into_split();
+        write.close().await
+    }
+
+    /// Splits a `Server` into a read half and a write half, which can be used to read and write concurrently
+    ///
+    /// In the style of <https://docs.rs/tokio/latest/tokio/net/struct.TcpStream.html#method.into_split>
+    pub fn into_split(self) -> (ServerReadHalf, ServerWriteHalf) {
+        let Server {
+            cb_rx,
+            client_pid: _,
+            pipe_task,
+            response_rx,
+            write_tx,
+        } = self;
+
+        (
+            ServerReadHalf { cb_rx, response_rx },
+            ServerWriteHalf {
+                pipe_task,
+                write_tx,
+            },
+        )
+    }
+
+    pub async fn send(&self, msg: ManagerMsg) -> anyhow::Result<()> {
+        self.write_tx.send(ServerInternalMsg::Msg(msg)).await?;
+        Ok(())
     }
 
     /// Handles reading differently kinds of messages
@@ -643,7 +714,7 @@ impl Server {
         mut pipe: named_pipe::NamedPipeServer,
         cb_tx: mpsc::Sender<Callback>,
         response_tx: mpsc::Sender<ManagerMsg>,
-        mut write_rx: mpsc::Receiver<ManagerMsg>,
+        mut write_rx: mpsc::Receiver<ServerInternalMsg>,
     ) -> anyhow::Result<()> {
         loop {
             // Note: Make sure these are all cancel-safe
@@ -665,23 +736,28 @@ impl Server {
                 },
                 // Cancel-safe per <https://docs.rs/tokio/latest/tokio/sync/mpsc/struct.Receiver.html#cancel-safety>
                 msg = write_rx.recv() => {
-                    tracing::debug!("waking up to write");
-                    Self::write(&mut pipe, msg.context("write_tx must have closed")?).await?
+                    let Some(msg) = msg else {
+                        bail!("Server::write_rx closed suddenly");
+                    };
+                    let msg = match msg {
+                        ServerInternalMsg::Shutdown => break,
+                        ServerInternalMsg::Msg(msg) => msg,
+                    };
+                    write_serialize(&mut pipe, &msg).await?;
                 },
             }
         }
 
-        // TODO: Add graceful shutdown that passes through here
+        pipe.flush().await?;
+        pipe.shutdown().await?;
+        tracing::debug!("Server::pipe_task exiting gracefully");
+        Ok(())
     }
 
     async fn read(pipe: &mut named_pipe::NamedPipeServer) -> Result<WorkerMsg> {
         read_deserialize(pipe)
             .await
             .context("ipc::Server couldn't read")
-    }
-
-    pub async fn write(pipe: &mut named_pipe::NamedPipeServer, req: ManagerMsg) -> Result<()> {
-        write_serialize(pipe, &req).await.context("couldn't write")
     }
 
     fn client_pid(pipe: &named_pipe::NamedPipeServer) -> Result<u32> {
@@ -770,7 +846,7 @@ impl Client {
                 // Cancel-safe per <https://docs.rs/tokio/latest/tokio/sync/mpsc/struct.Receiver.html#cancel-safety>
                 msg = write_rx.recv() => {
                     let Some(msg) = msg else {
-                        bail!("write_rx closed suddenly");
+                        bail!("Client::write_rx closed suddenly");
                     };
                     let msg = match msg {
                         ClientInternalMsg::Shutdown => break,
@@ -990,12 +1066,12 @@ mod tests {
                 .context("should have gotten a OnUpdateResources callback")?;
             assert_eq!(cb, Callback::OnUpdateResources(sample_resources()));
 
-            server.write_tx.send(ManagerMsg::Connect).await?;
+            server.send(ManagerMsg::Connect).await?;
             assert_eq!(
                 server.response_rx.recv().await.unwrap(),
                 ManagerMsg::Connect
             );
-            server.write_tx.send(ManagerMsg::Disconnect).await?;
+            server.send(ManagerMsg::Disconnect).await?;
             assert_eq!(
                 server.response_rx.recv().await.unwrap(),
                 ManagerMsg::Disconnect
@@ -1006,6 +1082,7 @@ mod tests {
 
             // Make sure the worker 'process' exited
             worker_task.await??;
+            server.close().await?;
 
             Ok::<_, anyhow::Error>(())
         })?;
