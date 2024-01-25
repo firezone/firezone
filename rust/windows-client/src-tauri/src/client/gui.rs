@@ -12,11 +12,11 @@ use client::{
 use connlib_client_shared::ResourceDescription;
 use connlib_shared::messages::ResourceId;
 use secrecy::ExposeSecret;
-use std::{path::PathBuf, str::FromStr, sync::Arc, time::Duration};
+use std::{path::PathBuf, str::FromStr, time::Duration};
 use system_tray_menu::Event as TrayMenuEvent;
 use tauri::{api::notification::Notification, Manager, SystemTray, SystemTrayEvent};
 use tokio::{
-    sync::{mpsc, oneshot, Notify},
+    sync::{mpsc, oneshot},
     time::timeout,
 };
 use ControllerRequest as Req;
@@ -102,7 +102,6 @@ pub(crate) fn run(params: client::GuiParams) -> Result<()> {
     }
 
     let (ctlr_tx, ctlr_rx) = mpsc::channel(5);
-    let notify_controller = Arc::new(Notify::new());
 
     // Make sure we're single-instance
     // We register our deep links to call the `open-deep-link` subcommand,
@@ -166,15 +165,12 @@ pub(crate) fn run(params: client::GuiParams) -> Result<()> {
             );
 
             let app_handle = app.handle();
-            let _ctlr_task = tokio::spawn(async move {
-                let result = run_controller(
-                    app_handle.clone(),
-                    ctlr_tx,
-                    ctlr_rx,
-                    advanced_settings,
-                    notify_controller,
-                )
-                .await;
+            let _ctlr_task: tokio::task::JoinHandle<Result<()>> = tokio::spawn(async move {
+                let mut controller = Controller::new(app_handle.clone(), advanced_settings)
+                    .await
+                    .context("couldn't create Controller")?;
+
+                let result = controller.run(ctlr_rx).await;
 
                 // See <https://github.com/tauri-apps/tauri/issues/8631>
                 // This should be the ONLY place we call `app.exit` or `app_handle.exit`,
@@ -190,6 +186,7 @@ pub(crate) fn run(params: client::GuiParams) -> Result<()> {
                     tracing::debug!("GUI controller task exited cleanly");
                     app_handle.exit(0);
                 }
+                unreachable!()
             });
 
             Ok(())
@@ -265,7 +262,6 @@ fn handle_system_tray_event(app: &tauri::AppHandle, event: TrayMenuEvent) -> Res
 }
 
 pub(crate) enum ControllerRequest {
-    Callback(ipc::Callback),
     CancelSignIn,
     CopyResource(String),
     ExportLogs { path: PathBuf, stem: PathBuf },
@@ -282,27 +278,29 @@ struct Controller {
     app: tauri::AppHandle,
     // Sign-in state with the portal / deep links
     auth: client::auth::Auth,
-    ctlr_tx: CtlrTx,
     /// connlib session for the currently signed-in user, if there is one
     session: Option<Session>,
     /// Kills subprocesses when our own process exits
     leak_guard: ipc::LeakGuard,
-    notify_controller: Arc<Notify>,
     resources: Vec<ResourceDescription>,
+    running: bool,
     tunnel_ready: bool,
 }
 
 /// Everything related to a signed-in user session
 struct Session {
-    _response_rx: mpsc::Receiver<ipc::ManagerMsg>,
-    server_write: ipc::ServerWriteHalf,
+    ipc_server: ipc::Server,
     worker: ipc::SubcommandChild,
 }
 
 impl Session {
     async fn close(mut self) -> anyhow::Result<()> {
         tracing::info!("disconnecting connlib");
-        self.server_write.close().await?;
+        match timeout(Duration::from_secs(2), self.ipc_server.close()).await {
+            Err(_) => tracing::error!("timed out while gracefully closing connlib worker process"),
+            Ok(Err(error)) => tracing::error!(?error, "IPC server shutdown error"),
+            Ok(Ok(_)) => {}
+        };
         self.worker
             .wait_then_kill(Duration::from_secs(2))
             .await
@@ -312,21 +310,15 @@ impl Session {
 }
 
 impl Controller {
-    async fn new(
-        app: tauri::AppHandle,
-        advanced_settings: AdvancedSettings,
-        ctlr_tx: CtlrTx,
-        notify_controller: Arc<Notify>,
-    ) -> Result<Self> {
+    async fn new(app: tauri::AppHandle, advanced_settings: AdvancedSettings) -> Result<Self> {
         let mut this = Self {
             advanced_settings,
             app,
             auth: client::auth::Auth::new()?,
-            ctlr_tx,
             session: None,
             leak_guard: ipc::LeakGuard::new()?,
-            notify_controller,
             resources: vec![],
+            running: true,
             tunnel_ready: false,
         };
 
@@ -357,7 +349,7 @@ impl Controller {
         .context("error while starting subprocess")?;
         subprocess
             .server
-            .send(ipc::ManagerMsg::Connect)
+            .send(&ipc::ManagerMsg::Connect)
             .await
             .context("couldn't send Connect request to worker")?;
         let ipc::ManagerMsg::Connect = subprocess
@@ -372,26 +364,8 @@ impl Controller {
 
         let ipc::Subprocess { server, worker } = subprocess;
 
-        let (server_read, server_write) = server.into_split();
-        let ipc::ServerReadHalf {
-            mut cb_rx,
-            _response_rx,
-        } = server_read;
-
-        let ctlr_tx = self.ctlr_tx.clone();
-
-        // TODO: Make sure this task doesn't leak
-        tokio::task::spawn(async move {
-            while let Some(cb) = cb_rx.recv().await {
-                ctlr_tx.send(ControllerRequest::Callback(cb)).await?;
-            }
-            tracing::info!("callback receiver task exiting");
-            Ok::<_, anyhow::Error>(())
-        });
-
         self.session = Some(Session {
-            _response_rx,
-            server_write,
+            ipc_server: server,
             worker,
         });
 
@@ -461,116 +435,144 @@ impl Controller {
             .tray_handle()
             .set_menu(self.build_system_tray_menu())?)
     }
-}
 
-// TODO: Move some of this into `impl Controller`
-async fn run_controller(
-    app: tauri::AppHandle,
-    ctlr_tx: CtlrTx,
-    mut rx: mpsc::Receiver<ControllerRequest>,
-    advanced_settings: AdvancedSettings,
-    notify_controller: Arc<Notify>,
-) -> Result<()> {
-    let mut controller =
-        Controller::new(app.clone(), advanced_settings, ctlr_tx, notify_controller)
-            .await
-            .context("couldn't create Controller")?;
-
-    let mut have_internet = network_changes::check_internet()?;
-    tracing::debug!(?have_internet);
-
-    let mut com_worker = network_changes::Worker::new()?;
-
-    loop {
-        // TODO: Extract a step function so this loop isn't so long and so indented
-        tokio::select! {
-            () = controller.notify_controller.notified() => if let Err(e) = controller.refresh_system_tray_menu() {
-                tracing::error!("couldn't reload resource list: {e:#?}");
-            },
-            () = com_worker.notified() => {
-                let new_have_internet = network_changes::check_internet()?;
-                if new_have_internet != have_internet {
-                    have_internet = new_have_internet;
-                    // TODO: Stop / start / restart connlib as needed here
-                    tracing::debug!(?have_internet);
-                }
-            },
-            req = rx.recv() => {
-                let Some(req) = req else {
-                    break;
-                };
-                match req {
-                    Req::CopyResource(id) => if let Err(e) = controller.copy_resource(&id) {
-                        tracing::error!("couldn't copy resource to clipboard: {e:#?}");
-                    }
-                    Req::Callback(ipc::Callback::DisconnectedTokenExpired) | Req::Callback(ipc::Callback::OnDisconnect) | Req::CancelSignIn | Req::SignOut => {
-                        tracing::debug!("Token expired, user signed out, user canceled sign-in, or connlib disconnected");
-                        controller.auth.sign_out()?;
-                        controller.tunnel_ready = false;
-                        if let Some(session) = controller.session.take() {
-                            session.close().await?;
-                        }
-                        else {
-                            // Might just be because we got a double sign-out or
-                            // the user canceled the sign-in or something innocent.
-                            tracing::warn!("tried to sign out but there's no session");
-                        }
-                        controller.refresh_system_tray_menu()?;
-                    }
-                    Req::Callback(cb) => match cb {
-                        // TODO: Make this impossible
-                        ipc::Callback::Cookie(_) => bail!("Cookie isn't supposed to show up here"),
-                        ipc::Callback::DisconnectedTokenExpired => bail!("DisconnectedTokenExpired should be handled above here"),
-                        ipc::Callback::OnDisconnect => bail!("DisconnectedTokenExpired should be handled above here"),
-                        ipc::Callback::OnUpdateResources(resources) => {
-                            controller.resources = resources;
-                            controller.refresh_system_tray_menu()?;
-                        },
-                        ipc::Callback::TunnelReady => {
-                            controller.tunnel_ready = true;
-                            controller.refresh_system_tray_menu()?;
-
-                            // May say "Windows Powershell" in dev mode
-                            // See https://github.com/tauri-apps/tauri/issues/3700
-                            Notification::new(&controller.app.config().tauri.bundle.identifier)
-                                .title("Firezone connected")
-                                .body("You are now signed in and able to access resources.")
-                            .show()?;
-                        },
-                    }
-                    Req::ExportLogs{path, stem} => logging::export_logs_to(path, stem).await?,
-                    Req::GetAdvancedSettings(tx) => {
-                        tx.send(controller.advanced_settings.clone()).ok();
-                    }
-                    Req::Quit => break,
-                    Req::SchemeRequest(url) => if let Err(e) = controller.handle_deep_link(&url).await {
-                        tracing::error!("couldn't handle deep link: {e:#?}");
-                    }
-                    Req::SignIn => {
-                        if let Some(req) = controller.auth.start_sign_in()? {
-                            let url = req.to_url(&controller.advanced_settings.auth_base_url);
-                            controller.refresh_system_tray_menu()?;
-                            tauri::api::shell::open(
-                                &app.shell_scope(),
-                                &url.expose_secret().inner,
-                                None,
-                            )?;
-                        }
-                    }
-                }
-            }
+    /// Await the next callback from connlib
+    ///
+    /// # Cancel safety
+    ///
+    /// Receiving from mpsc is cancel-safe <https://docs.rs/tokio/latest/tokio/sync/mpsc/struct.Receiver.html#cancel-safety>
+    async fn next_connlib_callback(&mut self) -> Option<ipc::Callback> {
+        if let Some(session) = &mut self.session {
+            session.ipc_server.cb_rx.recv().await
+        } else {
+            futures::future::pending::<()>().await;
+            None
         }
     }
 
-    if let Some(session) = controller.session.take() {
-        session.close().await?;
+    async fn run(&mut self, mut rx: mpsc::Receiver<ControllerRequest>) -> Result<()> {
+        let mut have_internet = network_changes::check_internet()?;
+        tracing::debug!(?have_internet);
+
+        let mut com_worker = network_changes::Worker::new()?;
+
+        while self.running {
+            // Note: Make sure everything in `select!` stays cancel-safe
+            tokio::select! {
+                // Notify is thought to be cancel-safe
+                () = com_worker.notified() => {
+                    let new_have_internet = network_changes::check_internet()?;
+                    if new_have_internet != have_internet {
+                        have_internet = new_have_internet;
+                        // TODO: Stop / start / restart connlib as needed here
+                        tracing::debug!(?have_internet);
+                    }
+                },
+                // Ultimately receives from mpsc, which is cancel-safe
+                cb = self.next_connlib_callback() => {
+                    if let Some(cb) = cb {
+                        self.handle_connlib_callback(cb).await?;
+                    }
+                    else {
+                        tracing::warn!("This is gonna break isn't it");
+                    }
+                }
+                // Receiving from mpsc is cancel-safe <https://docs.rs/tokio/latest/tokio/sync/mpsc/struct.Receiver.html#cancel-safety>
+                req = rx.recv() => {
+                    let Some(req) = req else {
+                        break;
+                    };
+                    self.handle_req(req).await?;
+                }
+            }
+        }
+
+        if let Some(session) = self.session.take() {
+            session.close().await?;
+        }
+
+        if let Err(error) = com_worker.close() {
+            tracing::error!(?error, "com_worker");
+        }
+
+        // Last chance to do any drops / cleanup before the process crashes.
+
+        Ok(())
     }
 
-    if let Err(error) = com_worker.close() {
-        tracing::error!(?error, "com_worker");
+    async fn handle_connlib_callback(&mut self, cb: ipc::Callback) -> Result<()> {
+        match cb {
+            // TODO: Make this impossible
+            ipc::Callback::Cookie(_) => bail!("Cookie isn't supposed to show up here"),
+            ipc::Callback::DisconnectedTokenExpired | ipc::Callback::OnDisconnect => {
+                self.sign_out().await?
+            }
+            ipc::Callback::OnUpdateResources(resources) => {
+                self.resources = resources;
+                self.refresh_system_tray_menu()?;
+            }
+            ipc::Callback::TunnelReady => {
+                self.tunnel_ready = true;
+                self.refresh_system_tray_menu()?;
+
+                // May say "Windows Powershell" in dev mode
+                // See https://github.com/tauri-apps/tauri/issues/3700
+                Notification::new(BUNDLE_ID)
+                    .title("Firezone connected")
+                    .body("You are now signed in and able to access resources.")
+                    .show()?;
+            }
+        }
+        Ok(())
     }
 
-    // Last chance to do any drops / cleanup before the process crashes.
+    async fn handle_req(&mut self, req: ControllerRequest) -> Result<()> {
+        match req {
+            Req::CopyResource(id) => {
+                if let Err(e) = self.copy_resource(&id) {
+                    tracing::error!("couldn't copy resource to clipboard: {e:#?}");
+                }
+            }
+            Req::CancelSignIn | Req::SignOut => {
+                self.sign_out().await?;
+            }
+            Req::ExportLogs { path, stem } => logging::export_logs_to(path, stem).await?,
+            Req::GetAdvancedSettings(tx) => {
+                tx.send(self.advanced_settings.clone()).ok();
+            }
+            Req::Quit => self.running = false,
+            Req::SchemeRequest(url) => {
+                if let Err(e) = self.handle_deep_link(&url).await {
+                    tracing::error!("couldn't handle deep link: {e:#?}");
+                }
+            }
+            Req::SignIn => {
+                if let Some(req) = self.auth.start_sign_in()? {
+                    let url = req.to_url(&self.advanced_settings.auth_base_url);
+                    self.refresh_system_tray_menu()?;
+                    tauri::api::shell::open(
+                        &self.app.shell_scope(),
+                        &url.expose_secret().inner,
+                        None,
+                    )?;
+                }
+            }
+        }
+        Ok(())
+    }
 
-    Ok(())
+    async fn sign_out(&mut self) -> Result<()> {
+        tracing::debug!("Signing out and stopping connlib");
+        self.auth.sign_out()?;
+        self.tunnel_ready = false;
+        if let Some(session) = self.session.take() {
+            session.close().await?;
+        } else {
+            // Might just be because we got a double sign-out or
+            // the user canceled the sign-in or something innocent.
+            tracing::info!("tried to sign out but there's no session");
+        }
+        self.refresh_system_tray_menu()?;
+        Ok(())
+    }
 }

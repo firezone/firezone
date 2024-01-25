@@ -79,7 +79,7 @@ async fn test_api() -> Result<()> {
     .await??;
     tracing::debug!("Manager got connection from worker");
 
-    server.send(ManagerMsg::Connect).await?;
+    server.send(&ManagerMsg::Connect).await?;
     let resp = server
         .response_rx
         .recv()
@@ -260,7 +260,7 @@ async fn test_leak(enable_protection: bool) -> Result<()> {
 
     // Send a few requests to make sure the worker is connected and good
     for _ in 0..3 {
-        server.send(ManagerMsg::Connect).await?;
+        server.send(&ManagerMsg::Connect).await?;
         server
             .response_rx
             .recv()
@@ -274,7 +274,7 @@ async fn test_leak(enable_protection: bool) -> Result<()> {
     // I can't think of a good way to synchronize with the worker process stopping,
     // so just give it 10 seconds for Windows to stop it.
     for _ in 0..5 {
-        if server.send(ManagerMsg::Connect).await.is_err() {
+        if server.send(&ManagerMsg::Connect).await.is_err() {
             tracing::info!("confirmed worker stopped responding");
             break;
         }
@@ -287,7 +287,7 @@ async fn test_leak(enable_protection: bool) -> Result<()> {
 
     if enable_protection {
         assert!(
-            server.send(ManagerMsg::Connect).await.is_err(),
+            server.send(&ManagerMsg::Connect).await.is_err(),
             "worker shouldn't be able to respond here, it should have stopped when the manager stopped"
         );
         assert!(
@@ -297,7 +297,7 @@ async fn test_leak(enable_protection: bool) -> Result<()> {
         tracing::info!("enabling leak protection worked");
     } else {
         assert!(
-            server.send(ManagerMsg::Connect).await.is_ok(),
+            server.send(&ManagerMsg::Connect).await.is_ok(),
             "worker should still respond here, this failure means the test is invalid"
         );
         assert!(

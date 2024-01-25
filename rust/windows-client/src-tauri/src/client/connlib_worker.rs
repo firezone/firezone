@@ -109,7 +109,9 @@ impl ConnlibWorker {
         }
 
         if let Some(mut connlib) = self.connlib.take() {
+            tracing::info!("Disconnecting connlib...");
             connlib.disconnect(None);
+            tracing::info!("Disconnected connlib.");
         }
 
         self.client

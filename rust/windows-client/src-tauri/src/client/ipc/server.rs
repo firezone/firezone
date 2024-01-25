@@ -7,8 +7,8 @@ use std::{
     time::Duration,
 };
 use tokio::{
-    io::AsyncWriteExt,
-    net::windows::named_pipe,
+    io::{AsyncWriteExt, WriteHalf},
+    net::windows::named_pipe::{self, NamedPipeServer},
     process::{self, Child},
     sync::mpsc,
     task::JoinHandle,
@@ -159,45 +159,9 @@ fn random_pipe_id() -> String {
 pub(crate) struct Server {
     pub cb_rx: mpsc::Receiver<Callback>,
     client_pid: u32,
-    pipe_task: JoinHandle<Result<()>>,
+    pipe_writer: WriteHalf<NamedPipeServer>,
+    reader_task: JoinHandle<Result<()>>,
     pub response_rx: mpsc::Receiver<ManagerMsg>,
-    write_tx: mpsc::Sender<ServerInternalMsg>,
-}
-
-pub(crate) struct ServerReadHalf {
-    pub cb_rx: mpsc::Receiver<Callback>,
-    pub _response_rx: mpsc::Receiver<ManagerMsg>,
-}
-
-pub(crate) struct ServerWriteHalf {
-    pipe_task: JoinHandle<Result<()>>,
-    write_tx: mpsc::Sender<ServerInternalMsg>,
-}
-
-enum ServerInternalMsg {
-    Msg(ManagerMsg),
-    Shutdown,
-}
-
-impl ServerWriteHalf {
-    pub async fn close(self) -> Result<()> {
-        // Manager signals its pipe task that it will be shut down
-        self.write_tx
-            .send(ServerInternalMsg::Shutdown)
-            .await
-            .context("couldn't send ServerInternalMsg::Shutdown")?;
-        let Self { pipe_task, .. } = self;
-        pipe_task
-            .await
-            .context("async runtime error for ipc::Server::pipe_task")?
-            .context("ipc::Server::pipe_task returned an error")?;
-        Ok(())
-    }
-
-    pub async fn _send(&self, msg: ManagerMsg) -> Result<()> {
-        self.write_tx.send(ServerInternalMsg::Msg(msg)).await?;
-        Ok(())
-    }
 }
 
 impl Server {
@@ -205,126 +169,44 @@ impl Server {
     fn new(pipe: named_pipe::NamedPipeServer) -> Result<Self> {
         let (cb_tx, cb_rx) = mpsc::channel(5);
         let (response_tx, response_rx) = mpsc::channel(5);
-        let (write_tx, write_rx) = mpsc::channel(5);
 
         let client_pid = get_client_pid(&pipe)?;
 
-        let pipe_task = tokio::task::spawn(async move {
-            let output = Self::pipe_task(pipe, cb_tx, response_tx, write_rx).await;
-            if let Err(error) = &output {
-                tracing::error!(?error, "Server::pipe_task returned error");
+        let (mut pipe_reader, pipe_writer) = tokio::io::split(pipe);
+
+        let reader_task = tokio::task::spawn(async move {
+            while let Ok(msg) = read_deserialize(&mut pipe_reader).await {
+                match msg {
+                    WorkerMsg::Response(x) => response_tx.send(x).await?,
+                    WorkerMsg::Callback(x) => cb_tx.send(x).await?,
+                }
             }
-            output
+            tracing::debug!("ipc::Server reader_task exiting gracefully");
+            Ok(())
         });
 
         Ok(Self {
             cb_rx,
             client_pid,
-            pipe_task,
+            pipe_writer,
+            reader_task,
             response_rx,
-            write_tx,
         })
     }
 
-    pub(crate) async fn close(self) -> Result<()> {
-        let (_read, write) = self.into_split();
-        write.close().await
+    pub(crate) async fn close(mut self) -> Result<()> {
+        self.send(&ManagerMsg::Disconnect).await?;
+        self.pipe_writer.shutdown().await?;
+        self.reader_task.await??;
+        Ok(())
     }
 
     pub(crate) fn client_pid(&self) -> u32 {
         self.client_pid
     }
 
-    /// Splits a `Server` into a read half and a write half, which can be used to read and write concurrently
-    ///
-    /// In the style of <https://docs.rs/tokio/latest/tokio/net/struct.TcpStream.html#method.into_split>
-    pub(crate) fn into_split(self) -> (ServerReadHalf, ServerWriteHalf) {
-        let Server {
-            cb_rx,
-            client_pid: _,
-            pipe_task,
-            response_rx: _response_rx,
-            write_tx,
-        } = self;
-
-        (
-            ServerReadHalf {
-                cb_rx,
-                _response_rx,
-            },
-            ServerWriteHalf {
-                pipe_task,
-                write_tx,
-            },
-        )
-    }
-
-    pub async fn send(&self, msg: ManagerMsg) -> Result<()> {
-        self.write_tx.send(ServerInternalMsg::Msg(msg)).await?;
-        Ok(())
-    }
-
-    /// Handles reading differently kinds of messages
-    ///
-    /// It is incidentally half-duplex, it can't read and write at the same time.
-    #[tracing::instrument(skip_all)]
-    async fn pipe_task(
-        mut pipe: named_pipe::NamedPipeServer,
-        cb_tx: mpsc::Sender<Callback>,
-        response_tx: mpsc::Sender<ManagerMsg>,
-        mut write_rx: mpsc::Receiver<ServerInternalMsg>,
-    ) -> Result<()> {
-        loop {
-            // Note: Make sure these are all cancel-safe
-            tokio::select! {
-                // Thomas and ReactorScram assume this is cancel-safe
-                ready = pipe.ready(tokio::io::Interest::READABLE) => {
-                    tracing::trace!("waking up to read");
-                    // Zero bytes just to see if any data is ready at all
-                    let mut buf = [];
-                    if ready?.is_readable() && pipe.try_read(&mut buf).is_ok() {
-                        let msg = read_deserialize(&mut pipe).await?;
-                        match msg {
-                            WorkerMsg::Callback(cb) => cb_tx.send(cb).await?,
-                            WorkerMsg::Response(resp) => response_tx.send(resp).await?,
-                        }
-                    }
-                    else {
-                        tracing::trace!("spurious wakeup");
-                    }
-                },
-                // Cancel-safe per <https://docs.rs/tokio/latest/tokio/sync/mpsc/struct.Receiver.html#cancel-safety>
-                msg = write_rx.recv() => {
-                    let Some(msg) = msg else {
-                        bail!("Server::write_rx closed suddenly");
-                    };
-                    let msg = match msg {
-                        // Manager's pipe task stops reading
-                        ServerInternalMsg::Shutdown => break,
-                        ServerInternalMsg::Msg(msg) => msg,
-                    };
-                    write_serialize(&mut pipe, &msg).await?;
-                },
-            }
-        }
-
-        // Manager sends shut down message to worker
-        write_serialize(&mut pipe, &ManagerMsg::Disconnect).await?;
-
-        // Manager detects the pipe close and its pipe task ends
-        // Discard any other callbacks or responses until we get the correct EOF error
-        loop {
-            let msg: Result<WorkerMsg, Error> = read_deserialize(&mut pipe).await;
-            match msg {
-                Ok(_) => {}
-                Err(Error::Eof) => break,
-                Err(e) => Err(e)?,
-            }
-        }
-
-        pipe.shutdown().await?;
-        tracing::debug!("Server::pipe_task exiting gracefully");
-        Ok(())
+    pub async fn send(&mut self, msg: &ManagerMsg) -> Result<(), Error> {
+        write_serialize(&mut self.pipe_writer, msg).await
     }
 }
 
@@ -380,7 +262,7 @@ impl SubcommandChild {
 
     /// Joins the subprocess without blocking, returning an error if the process doesn't stop
     #[tracing::instrument(skip(self))]
-    pub fn wait_or_kill(&mut self) -> Result<SubcommandExit> {
+    pub(crate) fn wait_or_kill(&mut self) -> Result<SubcommandExit> {
         if let Ok(Some(status)) = self.process.try_wait() {
             if status.success() {
                 Ok(SubcommandExit::Success)
@@ -394,7 +276,7 @@ impl SubcommandChild {
     }
 
     /// Waits `dur` for process to exit gracefully, and then `dur` to kill process if needed
-    pub async fn wait_then_kill(&mut self, dur: Duration) -> Result<SubcommandExit> {
+    pub(crate) async fn wait_then_kill(&mut self, dur: Duration) -> Result<SubcommandExit> {
         if let Ok(status) = timeout(dur, self.process.wait()).await {
             return if status?.success() {
                 Ok(SubcommandExit::Success)

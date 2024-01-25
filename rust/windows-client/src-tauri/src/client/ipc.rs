@@ -65,7 +65,7 @@ mod server;
 pub(crate) mod multi_process_tests;
 
 pub(crate) use client::Client;
-pub(crate) use server::{LeakGuard, ServerReadHalf, ServerWriteHalf, SubcommandChild, Subprocess};
+pub(crate) use server::{LeakGuard, Server, SubcommandChild, Subprocess};
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum Error {
@@ -235,12 +235,12 @@ mod tests {
                 .context("should have gotten a OnUpdateResources callback")?;
             assert_eq!(cb, Callback::OnUpdateResources(sample_resources()));
 
-            server.send(ManagerMsg::Connect).await?;
+            server.send(&ManagerMsg::Connect).await?;
             assert_eq!(
                 server.response_rx.recv().await.unwrap(),
                 ManagerMsg::Connect
             );
-            server.send(ManagerMsg::Connect).await?;
+            server.send(&ManagerMsg::Connect).await?;
             assert_eq!(
                 server.response_rx.recv().await.unwrap(),
                 ManagerMsg::Connect
@@ -272,42 +272,5 @@ mod tests {
                 address: "*.example.com".to_string(),
             }),
         ]
-    }
-
-    #[test]
-    fn split_pipe() -> Result<()> {
-        tracing_subscriber::fmt::try_init().ok();
-
-        let rt = Runtime::new()?;
-        rt.block_on(async move {
-            // Pretend we're in the main process
-            let (server, server_id) = UnconnectedServer::new()?;
-
-            let _worker_task = tokio::spawn(async move {
-                // Pretend we're in a worker process
-                let mut client = Client::new_unsecured(&server_id)?;
-
-                // Handle requests from the main process
-                loop {
-                    let Ok(req) = client.recv().await else {
-                        break;
-                    };
-                    let resp = WorkerMsg::Response(req.clone());
-                    client.send(&resp).await?;
-
-                    if let ManagerMsg::Disconnect = req {
-                        break;
-                    }
-                }
-                client.close().await?;
-                Ok::<_, anyhow::Error>(())
-            });
-
-            server.pipe.connect().await?;
-            let (_pipe_reader, _pipe_writer) = tokio::io::split(server.pipe);
-
-            Ok::<_, anyhow::Error>(())
-        })?;
-        Ok(())
     }
 }

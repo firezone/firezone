@@ -45,6 +45,11 @@ impl Client {
         Ok(())
     }
 
+    /// Receives a message from the server
+    ///
+    /// # Cancel safety
+    ///
+    /// This method is not cancellation safe
     pub(crate) async fn recv(&mut self) -> Result<ManagerMsg, Error> {
         read_deserialize::<_, ManagerMsg>(&mut self.pipe_reader).await
     }
