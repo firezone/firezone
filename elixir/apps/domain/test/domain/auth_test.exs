@@ -2133,7 +2133,7 @@ defmodule Domain.AuthTest do
 
       assert token = Repo.get(Domain.Tokens.Token, token.id)
       assert token.deleted_at
-      assert_receive "disconnect"
+      assert_receive %Phoenix.Socket.Broadcast{event: "disconnect"}
     end
 
     test "returns error when subject can not delete identities", %{
@@ -2250,7 +2250,7 @@ defmodule Domain.AuthTest do
 
       assert token = Repo.get(Domain.Tokens.Token, token.id)
       assert token.deleted_at
-      assert_receive "disconnect"
+      assert_receive %Phoenix.Socket.Broadcast{event: "disconnect"}
     end
 
     test "does not delete identity that belongs to another actor with manage_own permission", %{
@@ -2382,7 +2382,7 @@ defmodule Domain.AuthTest do
 
       assert token = Repo.get(Domain.Tokens.Token, token.id)
       assert token.deleted_at
-      assert_receive "disconnect"
+      assert_receive %Phoenix.Socket.Broadcast{event: "disconnect"}
     end
 
     test "expires all flows created using deleted tokens", %{

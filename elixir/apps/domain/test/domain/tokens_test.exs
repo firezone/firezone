@@ -431,7 +431,7 @@ defmodule Domain.TokensTest do
       assert {:ok, token} = delete_token(token, subject)
 
       assert token.deleted_at
-      assert_receive "disconnect"
+      assert_receive %Phoenix.Socket.Broadcast{event: "disconnect"}
     end
 
     test "user can delete own token", %{account: account, identity: identity, subject: subject} do
@@ -441,7 +441,7 @@ defmodule Domain.TokensTest do
       assert {:ok, token} = delete_token(token, subject)
 
       assert token.deleted_at
-      assert_receive "disconnect"
+      assert_receive %Phoenix.Socket.Broadcast{event: "disconnect"}
     end
 
     test "user can not delete other users token", %{
@@ -505,7 +505,7 @@ defmodule Domain.TokensTest do
       assert deleted_token.id == subject.token_id
 
       assert Repo.get(Tokens.Token, subject.token_id).deleted_at
-      assert_receive "disconnect"
+      assert_receive %Phoenix.Socket.Broadcast{event: "disconnect"}
 
       refute Repo.get(Tokens.Token, other_token.id).deleted_at
     end
@@ -548,7 +548,7 @@ defmodule Domain.TokensTest do
       assert {:ok, [_token]} = delete_tokens_for(actor, subject)
 
       assert Repo.get(Tokens.Token, token.id).deleted_at
-      assert_receive "disconnect"
+      assert_receive %Phoenix.Socket.Broadcast{event: "disconnect"}
     end
 
     test "deletes client tokens for given actor", %{account: account, subject: subject} do
@@ -560,7 +560,7 @@ defmodule Domain.TokensTest do
       assert {:ok, [_token]} = delete_tokens_for(actor, subject)
 
       assert Repo.get(Tokens.Token, token.id).deleted_at
-      assert_receive "disconnect"
+      assert_receive %Phoenix.Socket.Broadcast{event: "disconnect"}
     end
 
     test "deletes client tokens for given identity", %{account: account, subject: subject} do
@@ -572,7 +572,7 @@ defmodule Domain.TokensTest do
       assert {:ok, [_token]} = delete_tokens_for(identity, subject)
 
       assert Repo.get(Tokens.Token, token.id).deleted_at
-      assert_receive "disconnect"
+      assert_receive %Phoenix.Socket.Broadcast{event: "disconnect"}
     end
 
     test "deletes client tokens for given provider", %{account: account, subject: subject} do
@@ -586,7 +586,7 @@ defmodule Domain.TokensTest do
       assert {:ok, [_token]} = delete_tokens_for(provider, subject)
 
       assert Repo.get(Tokens.Token, token.id).deleted_at
-      assert_receive "disconnect"
+      assert_receive %Phoenix.Socket.Broadcast{event: "disconnect"}
     end
 
     test "deletes gateway group tokens", %{account: account, subject: subject} do
@@ -597,7 +597,7 @@ defmodule Domain.TokensTest do
       assert {:ok, [_token]} = delete_tokens_for(group, subject)
 
       assert Repo.get(Tokens.Token, token.id).deleted_at
-      assert_receive "disconnect"
+      assert_receive %Phoenix.Socket.Broadcast{event: "disconnect"}
     end
 
     test "deletes relay group tokens", %{account: account, subject: subject} do
@@ -608,7 +608,7 @@ defmodule Domain.TokensTest do
       assert {:ok, [_token]} = delete_tokens_for(group, subject)
 
       assert Repo.get(Tokens.Token, token.id).deleted_at
-      assert_receive "disconnect"
+      assert_receive %Phoenix.Socket.Broadcast{event: "disconnect"}
     end
 
     test "returns error when subject does not have required permissions", %{
@@ -636,7 +636,7 @@ defmodule Domain.TokensTest do
       assert {:ok, [_token]} = delete_expired_tokens()
 
       assert Repo.get(Tokens.Token, token.id).deleted_at
-      assert_receive "disconnect"
+      assert_receive %Phoenix.Socket.Broadcast{event: "disconnect"}
     end
 
     test "does not delete non-expired tokens" do

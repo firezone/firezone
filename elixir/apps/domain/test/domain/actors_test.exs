@@ -1786,7 +1786,7 @@ defmodule Domain.ActorsTest do
 
       assert token = Repo.get(Domain.Tokens.Token, subject.token_id)
       assert token.deleted_at
-      assert_receive "disconnect"
+      assert_receive %Phoenix.Socket.Broadcast{event: "disconnect"}
     end
 
     test "expires actor flows" do
@@ -1981,7 +1981,7 @@ defmodule Domain.ActorsTest do
 
       assert token = Repo.get(Domain.Tokens.Token, subject.token_id)
       assert token.deleted_at
-      assert_receive "disconnect"
+      assert_receive %Phoenix.Socket.Broadcast{event: "disconnect"}
     end
 
     test "deletes actor identities", %{

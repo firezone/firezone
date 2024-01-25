@@ -279,7 +279,7 @@ defmodule Domain.GatewaysTest do
       assert group.routing == :stun_only
     end
 
-    test "broadcasts disconnect message to all connected gateways", %{
+    test "broadcasts disconnect message to all gateway sockets", %{
       account: account,
       subject: subject
     } do
@@ -387,8 +387,8 @@ defmodule Domain.GatewaysTest do
 
       assert {:ok, _group} = delete_group(group, subject)
 
-      assert_receive "disconnect"
-      assert_receive "disconnect"
+      assert_receive %Phoenix.Socket.Broadcast{event: "disconnect"}
+      assert_receive %Phoenix.Socket.Broadcast{event: "disconnect"}
     end
 
     test "broadcasts disconnect message to all connected gateways", %{
@@ -396,13 +396,14 @@ defmodule Domain.GatewaysTest do
       subject: subject
     } do
       group = Fixtures.Gateways.create_group(account: account)
-      gateway = Fixtures.Gateways.create_gateway(account: account, group: group)
+      Fixtures.Gateways.create_gateway(account: account, group: group)
+      token = Fixtures.Gateways.create_token(account: account, group: group)
 
-      :ok = Gateways.connect_gateway(gateway)
+      Phoenix.PubSub.subscribe(Domain.PubSub, "sessions:#{token.id}")
 
       assert {:ok, _group} = delete_group(group, subject)
 
-      assert_receive "disconnect"
+      assert_receive %Phoenix.Socket.Broadcast{event: "disconnect"}
     end
 
     test "returns error when subject has no permission to delete groups", %{

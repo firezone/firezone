@@ -274,8 +274,12 @@ defmodule Domain.Tokens do
     :ok
   end
 
-  defp broadcast_disconnect_message(%{id: id}) do
-    Phoenix.PubSub.broadcast(Domain.PubSub, "sessions:#{id}", "disconnect")
+  defp broadcast_disconnect_message(token) do
+    Phoenix.PubSub.broadcast(
+      Domain.PubSub,
+      socket_id(token),
+      %Phoenix.Socket.Broadcast{event: "disconnect"}
+    )
   end
 
   defp fetch_config! do

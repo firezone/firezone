@@ -371,8 +371,8 @@ defmodule Domain.RelaysTest do
 
       assert {:ok, _group} = delete_group(group, subject)
 
-      assert_receive "disconnect"
-      assert_receive "disconnect"
+      assert_receive %Phoenix.Socket.Broadcast{event: "disconnect"}
+      assert_receive %Phoenix.Socket.Broadcast{event: "disconnect"}
     end
 
     test "broadcasts disconnect message to all connected relays", %{
@@ -380,13 +380,14 @@ defmodule Domain.RelaysTest do
       subject: subject
     } do
       group = Fixtures.Relays.create_group(account: account)
-      relay = Fixtures.Relays.create_relay(account: account, group: group)
+      Fixtures.Relays.create_relay(account: account, group: group)
+      token = Fixtures.Relays.create_token(account: account, group: group)
 
-      :ok = Relays.connect_relay(relay, "foo")
+      Phoenix.PubSub.subscribe(Domain.PubSub, "sessions:#{token.id}")
 
       assert {:ok, _group} = delete_group(group, subject)
 
-      assert_receive "disconnect"
+      assert_receive %Phoenix.Socket.Broadcast{event: "disconnect"}
     end
 
     test "returns error when subject has no permission to delete groups", %{
