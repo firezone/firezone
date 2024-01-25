@@ -36,6 +36,7 @@ use stun_codec::rfc8656::attributes::{
 use stun_codec::rfc8656::errors::{AddressFamilyNotSupported, PeerAddressFamilyMismatch};
 use stun_codec::{Message, MessageClass, MessageEncoder, Method, TransactionId};
 use tracing::{field, log, Span};
+use tracing_core::field::display;
 use uuid::Uuid;
 
 /// A sans-IO STUN & TURN server.
@@ -539,7 +540,6 @@ where
     /// Handle a TURN refresh request.
     ///
     /// See <https://www.rfc-editor.org/rfc/rfc8656#name-receiving-a-refresh-request> for details.
-    #[tracing::instrument(skip(self, request, now), fields(%sender, lifetime = ?request.effective_lifetime().lifetime()), level = "error")]
     fn handle_refresh_request(
         &mut self,
         request: Refresh,
@@ -553,6 +553,8 @@ where
             .allocations
             .get_mut(&sender)
             .ok_or(error_response(AllocationMismatch, &request))?;
+
+        Span::current().record("allocation", display(&allocation.id));
 
         let effective_lifetime = request.effective_lifetime();
 
@@ -608,7 +610,7 @@ where
             .get_mut(&sender)
             .ok_or(error_response(AllocationMismatch, &request))?;
 
-        Span::current().record("allocation", allocation.id.to_string());
+        Span::current().record("allocation", display(&allocation.id));
 
         // Note: `channel_number` is enforced to be in the correct range.
         let requested_channel = request.channel_number().value();
@@ -881,7 +883,7 @@ where
 
     fn delete_allocation(&mut self, id: AllocationId) {
         let Some(client) = self.clients_by_allocation.remove(&id) else {
-            tracing::debug!("Unknown allocation");
+            tracing::debug!("Unable to delete unknown allocation");
 
             return;
         };
