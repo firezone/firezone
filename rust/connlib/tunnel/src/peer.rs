@@ -6,7 +6,6 @@ use std::time::Instant;
 
 use arc_swap::ArcSwap;
 use bimap::BiMap;
-use boringtun::noise::rate_limiter::RateLimiter;
 use boringtun::noise::{Tunn, TunnResult};
 use boringtun::x25519::StaticSecret;
 use bytes::Bytes;
@@ -58,7 +57,6 @@ where
     pub(crate) fn new(
         peer_config: PeerConfig,
         conn_id: TId,
-        rate_limiter: Arc<RateLimiter>,
         transform: TTransform,
     ) -> Peer<TId, TTransform> {
         let mut allowed_ips = IpNetworkTable::new();

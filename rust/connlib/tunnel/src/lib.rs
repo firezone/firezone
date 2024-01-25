@@ -2,10 +2,7 @@
 //!
 //! This is both the wireguard and ICE implementation that should work in tandem.
 //! [Tunnel] is the main entry-point for this crate.
-use boringtun::{
-    noise::rate_limiter::RateLimiter,
-    x25519::{PublicKey, StaticSecret},
-};
+use boringtun::x25519::{PublicKey, StaticSecret};
 
 use bytes::Bytes;
 use connlib_shared::{messages::ReuseConnection, CallbackErrorFacade, Callbacks, Error};
@@ -126,7 +123,6 @@ impl From<connlib_shared::messages::Peer> for PeerConfig {
 
 /// Tunnel is a wireguard state machine that uses webrtc's ICE channels instead of UDP sockets to communicate between peers.
 pub struct Tunnel<CB: Callbacks, TRoleState: RoleState> {
-    rate_limiter: Arc<RateLimiter>,
     // TODO: these are used to stop connections
     // peer_connections: Mutex<HashMap<TRoleState::Id, Arc<RTCIceTransport>>>,
     callbacks: CallbackErrorFacade<CB>,
@@ -134,7 +130,6 @@ pub struct Tunnel<CB: Callbacks, TRoleState: RoleState> {
     /// State that differs per role, i.e. clients vs gateways.
     role_state: Mutex<TRoleState>,
 
-    rate_limit_reset_interval: Mutex<Interval>,
     peer_refresh_interval: Mutex<Interval>,
     mtu_refresh_interval: Mutex<Interval>,
 
@@ -331,16 +326,6 @@ where
                 // }
             }
 
-            if self
-                .rate_limit_reset_interval
-                .lock()
-                .poll_tick(cx)
-                .is_ready()
-            {
-                self.rate_limiter.reset_count();
-                continue;
-            }
-
             if self.peer_refresh_interval.lock().poll_tick(cx).is_ready() {
                 let mut peers_to_stop = self.role_state.lock().refresh_peers();
                 self.peers_to_stop.lock().append(&mut peers_to_stop);
@@ -457,8 +442,6 @@ where
     /// -  `control_signaler`: this is used to send SDP from the tunnel to the control plane.
     #[tracing::instrument(level = "trace", skip(private_key, callbacks))]
     pub async fn new(private_key: StaticSecret, callbacks: CB) -> Result<Self> {
-        let public_key = (&private_key).into();
-        let rate_limiter = Arc::new(RateLimiter::new(&public_key, HANDSHAKE_RATE_LIMIT));
         // TODO:
         // let peer_connections = Default::default();
         let device = Default::default();
@@ -474,7 +457,6 @@ where
         // );
 
         Ok(Self {
-            rate_limiter,
             // TODO:
             // peer_connections,
             device,
@@ -482,7 +464,6 @@ where
             write_buf: Mutex::new(Box::new([0u8; MAX_UDP_SIZE])),
             callbacks: CallbackErrorFacade(callbacks),
             role_state: Default::default(),
-            rate_limit_reset_interval: Mutex::new(rate_limit_reset_interval()),
             peer_refresh_interval: Mutex::new(peer_refresh_interval()),
             mtu_refresh_interval: Mutex::new(mtu_refresh_interval()),
             peers_to_stop: Default::default(),

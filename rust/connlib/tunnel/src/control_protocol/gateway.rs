@@ -233,7 +233,6 @@ where
         let peer = Arc::new(Peer::new(
             peer_config.clone(),
             client_id,
-            self.rate_limiter.clone(),
             PacketTransformGateway::default(),
         ));
 

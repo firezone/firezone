@@ -152,7 +152,6 @@ where
         let peer = Arc::new(Peer::new(
             peer_config.clone(),
             gateway_id,
-            self.rate_limiter.clone(),
             Default::default(),
         ));
 
