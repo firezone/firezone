@@ -230,11 +230,11 @@ defmodule Web.Sites.Show do
 
   def handle_event("revoke_all_tokens", _params, socket) do
     group = socket.assigns.group
-    {:ok, deleted_count} = Tokens.delete_tokens_for(group, socket.assigns.subject)
+    {:ok, deleted_tokens} = Tokens.delete_tokens_for(group, socket.assigns.subject)
 
     socket =
       socket
-      |> put_flash(:info, "#{deleted_count} token(s) were revoked.")
+      |> put_flash(:info, "#{length(deleted_tokens)} token(s) were revoked.")
 
     {:noreply, socket}
   end
