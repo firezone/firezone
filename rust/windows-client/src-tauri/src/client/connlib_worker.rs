@@ -59,7 +59,7 @@ impl ConnlibWorker {
         logger: file_logger::Handle,
         pipe_id: String,
     ) -> Result<Self> {
-        let client = ipc::client(&pipe_id).await?;
+        let client = ipc::Client::new(&pipe_id).await?;
         // TODO: Replace this with some atomics or something
         let (ipc_tx, rx) = mpsc::channel(10);
 
