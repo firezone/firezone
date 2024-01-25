@@ -619,7 +619,7 @@ where
 
         // Check that our allocation can handle the requested peer addr.
         if !allocation.can_relay_to(peer_address) {
-            tracing::error!(target: "relay", "Allocation cannot relay to peer");
+            tracing::warn!(target: "relay", "Allocation cannot relay to peer");
 
             return Err(error_response(PeerAddressFamilyMismatch, &request));
         }
@@ -627,7 +627,7 @@ where
         // Ensure the same address isn't already bound to a different channel.
         if let Some(number) = self.channel_numbers_by_peer.get(&peer_address) {
             if number != &requested_channel {
-                tracing::error!(target: "relay", existing_channel = %number, "Peer is already bound to another channel");
+                tracing::warn!(target: "relay", existing_channel = %number, "Peer is already bound to another channel");
 
                 return Err(error_response(BadRequest, &request));
             }
@@ -639,7 +639,7 @@ where
             .get_mut(&(sender, requested_channel))
         {
             if channel.peer_address != peer_address {
-                tracing::error!(target: "relay", existing_peer = %channel.peer_address, "Channel is already bound to a different peer");
+                tracing::warn!(target: "relay", existing_peer = %channel.peer_address, "Channel is already bound to a different peer");
 
                 return Err(error_response(BadRequest, &request));
             }
