@@ -54,7 +54,7 @@
 //! Since this is all async, it can and should be wrapped with a `tokio::time::timeout`.
 
 use crate::client::BUNDLE_ID;
-use anyhow::{bail, Context};
+use anyhow::{bail, Context, Result};
 use connlib_shared::messages::{
     ResourceDescription, ResourceDescriptionCidr, ResourceDescriptionDns, ResourceId,
 };
@@ -130,7 +130,7 @@ pub(crate) enum Subcommand {
     },
 }
 
-pub fn test_subcommand(cmd: Option<Subcommand>) -> anyhow::Result<()> {
+pub fn test_subcommand(cmd: Option<Subcommand>) -> Result<()> {
     tracing_subscriber::fmt::init();
     let rt = tokio::runtime::Runtime::new()?;
     rt.block_on(async move {
@@ -159,15 +159,19 @@ pub fn test_subcommand(cmd: Option<Subcommand>) -> anyhow::Result<()> {
 }
 
 #[tracing::instrument(skip_all)]
-async fn test_api() -> anyhow::Result<()> {
+async fn test_api() -> Result<()> {
     let start_time = Instant::now();
 
-    let leak_guard = LeakGuard::new()?;
+    let mut leak_guard = LeakGuard::new()?;
     let args = ["debug", "test-ipc", "api-worker"];
     let Subprocess {
         mut server,
         mut worker,
-    } = timeout(Duration::from_secs(10), Subprocess::new(&leak_guard, &args)).await??;
+    } = timeout(
+        Duration::from_secs(10),
+        Subprocess::new(&mut leak_guard, &args),
+    )
+    .await??;
     tracing::debug!("Manager got connection from worker");
 
     server.send(ManagerMsg::Connect).await?;
@@ -215,7 +219,7 @@ async fn test_api() -> anyhow::Result<()> {
 }
 
 #[tracing::instrument(skip_all)]
-async fn test_api_worker(pipe_id: String) -> anyhow::Result<()> {
+async fn test_api_worker(pipe_id: String) -> Result<()> {
     let mut client = client(&pipe_id).await?;
 
     client
@@ -252,10 +256,10 @@ async fn test_api_worker(pipe_id: String) -> anyhow::Result<()> {
 }
 
 #[tracing::instrument(skip_all)]
-async fn test_security() -> anyhow::Result<()> {
+async fn test_security() -> Result<()> {
     let start_time = Instant::now();
 
-    let leak_guard = LeakGuard::new()?;
+    let mut leak_guard = LeakGuard::new()?;
     let (server, pipe_id) = UnconnectedServer::new()?;
     let args = ["debug", "test-ipc", "security-worker", &pipe_id];
     let mut worker = SubcommandChild::new(&args)?;
@@ -299,7 +303,7 @@ async fn test_security() -> anyhow::Result<()> {
 }
 
 #[tracing::instrument(skip_all)]
-async fn security_worker(pipe_id: String) -> anyhow::Result<()> {
+async fn security_worker(pipe_id: String) -> Result<()> {
     let mut client = Client::new(&pipe_id)?;
     let mut cookie = String::new();
     std::io::stdin().read_line(&mut cookie)?;
@@ -335,7 +339,7 @@ async fn security_worker(pipe_id: String) -> anyhow::Result<()> {
 /// - [MSDN docs](https://learn.microsoft.com/en-us/windows/win32/api/jobapi2/nf-jobapi2-assignprocesstojobobject)
 /// - [windows-rs docs](https://microsoft.github.io/windows-docs-rs/doc/windows/Win32/System/JobObjects/fn.AssignProcessToJobObject.html)
 #[tracing::instrument]
-async fn test_leak(enable_protection: bool) -> anyhow::Result<()> {
+async fn test_leak(enable_protection: bool) -> Result<()> {
     let (server, pipe_id) = UnconnectedServer::new()?;
     let args = [
         "debug",
@@ -403,8 +407,8 @@ async fn test_leak(enable_protection: bool) -> anyhow::Result<()> {
 }
 
 #[tracing::instrument]
-fn leak_manager(pipe_id: String, enable_protection: bool) -> anyhow::Result<()> {
-    let leak_guard = LeakGuard::new()?;
+fn leak_manager(pipe_id: String, enable_protection: bool) -> Result<()> {
+    let mut leak_guard = LeakGuard::new()?;
 
     let worker = SubcommandChild::new(&["debug", "test-ipc", "leak-worker", &pipe_id])?;
     tracing::debug!("Expected worker PID = {}", worker.process.id().unwrap());
@@ -420,7 +424,7 @@ fn leak_manager(pipe_id: String, enable_protection: bool) -> anyhow::Result<()> 
 }
 
 #[tracing::instrument(skip_all)]
-async fn leak_worker(pipe_id: String) -> anyhow::Result<()> {
+async fn leak_worker(pipe_id: String) -> Result<()> {
     let mut client = Client::new(&pipe_id)?;
     tracing::debug!("Worker connected to named pipe");
     loop {
@@ -473,7 +477,7 @@ impl Subprocess {
     ///
     /// The process ID and cookie have already been checked for security
     /// when this function returns.
-    pub(crate) async fn new(leak_guard: &LeakGuard, args: &[&str]) -> anyhow::Result<Self> {
+    pub(crate) async fn new(leak_guard: &mut LeakGuard, args: &[&str]) -> Result<Self> {
         let (mut server, pipe_id) =
             UnconnectedServer::new().context("couldn't create UnconnectedServer")?;
         let mut process = process::Command::new(
@@ -544,7 +548,7 @@ impl Subprocess {
 /// Returns a named pipe client for use in a worker subprocess
 ///
 /// The security cookie has already been read from stdin and echoed to the pipe server.
-pub(crate) async fn client(pipe_id: &str) -> anyhow::Result<Client> {
+pub(crate) async fn client(pipe_id: &str) -> Result<Client> {
     let client = Client::new(pipe_id)?;
     let mut cookie = String::new();
     std::io::stdin().read_line(&mut cookie)?;
@@ -560,13 +564,13 @@ struct UnconnectedServer {
 
 impl UnconnectedServer {
     /// Requires a Tokio context
-    pub fn new() -> anyhow::Result<(Self, String)> {
+    pub fn new() -> Result<(Self, String)> {
         let id = random_pipe_id();
         let this = Self::new_with_id(&id)?;
         Ok((this, id))
     }
 
-    fn new_with_id(id: &str) -> anyhow::Result<Self> {
+    fn new_with_id(id: &str) -> Result<Self> {
         let pipe = named_pipe::ServerOptions::new()
             .first_pipe_instance(true)
             .create(id)?;
@@ -578,7 +582,7 @@ impl UnconnectedServer {
     ///
     /// This will wait forever if the client never shows up.
     /// Try pairing it with `tokio::time:timeout`
-    pub async fn accept(self) -> anyhow::Result<Server> {
+    pub async fn accept(self) -> Result<Server> {
         self.pipe.connect().await?;
         Server::new(self.pipe)
     }
@@ -618,7 +622,7 @@ pub(crate) enum Callback {
 pub(crate) struct Server {
     pub cb_rx: mpsc::Receiver<Callback>,
     client_pid: u32,
-    pipe_task: JoinHandle<anyhow::Result<()>>,
+    pipe_task: JoinHandle<Result<()>>,
     pub response_rx: mpsc::Receiver<ManagerMsg>,
     write_tx: mpsc::Sender<ServerInternalMsg>,
 }
@@ -629,7 +633,7 @@ pub(crate) struct ServerReadHalf {
 }
 
 pub(crate) struct ServerWriteHalf {
-    pipe_task: JoinHandle<anyhow::Result<()>>,
+    pipe_task: JoinHandle<Result<()>>,
     write_tx: mpsc::Sender<ServerInternalMsg>,
 }
 
@@ -639,7 +643,7 @@ enum ServerInternalMsg {
 }
 
 impl ServerWriteHalf {
-    pub async fn close(self) -> anyhow::Result<()> {
+    pub async fn close(self) -> Result<()> {
         // Manager signals its pipe task that it will be shut down
         self.write_tx
             .send(ServerInternalMsg::Shutdown)
@@ -653,7 +657,7 @@ impl ServerWriteHalf {
         Ok(())
     }
 
-    pub async fn _send(&self, msg: ManagerMsg) -> anyhow::Result<()> {
+    pub async fn _send(&self, msg: ManagerMsg) -> Result<()> {
         self.write_tx.send(ServerInternalMsg::Msg(msg)).await?;
         Ok(())
     }
@@ -661,7 +665,7 @@ impl ServerWriteHalf {
 
 impl Server {
     #[tracing::instrument(skip_all)]
-    fn new(pipe: named_pipe::NamedPipeServer) -> anyhow::Result<Self> {
+    fn new(pipe: named_pipe::NamedPipeServer) -> Result<Self> {
         let (cb_tx, cb_rx) = mpsc::channel(5);
         let (response_tx, response_rx) = mpsc::channel(5);
         let (write_tx, write_rx) = mpsc::channel(5);
@@ -685,7 +689,7 @@ impl Server {
         })
     }
 
-    pub async fn close(self) -> anyhow::Result<()> {
+    pub async fn close(self) -> Result<()> {
         let (_read, write) = self.into_split();
         write.close().await
     }
@@ -714,7 +718,7 @@ impl Server {
         )
     }
 
-    pub async fn send(&self, msg: ManagerMsg) -> anyhow::Result<()> {
+    pub async fn send(&self, msg: ManagerMsg) -> Result<()> {
         self.write_tx.send(ServerInternalMsg::Msg(msg)).await?;
         Ok(())
     }
@@ -728,11 +732,11 @@ impl Server {
         cb_tx: mpsc::Sender<Callback>,
         response_tx: mpsc::Sender<ManagerMsg>,
         mut write_rx: mpsc::Receiver<ServerInternalMsg>,
-    ) -> anyhow::Result<()> {
+    ) -> Result<()> {
         loop {
             // Note: Make sure these are all cancel-safe
             tokio::select! {
-                // TODO: Is this cancel-safe?
+                // Thomas and ReactorScram assume this is cancel-safe
                 ready = pipe.ready(tokio::io::Interest::READABLE) => {
                     tracing::trace!("waking up to read");
                     // Zero bytes just to see if any data is ready at all
@@ -781,14 +785,15 @@ impl Server {
         Ok(())
     }
 
-    async fn read(pipe: &mut named_pipe::NamedPipeServer) -> anyhow::Result<WorkerMsg> {
+    async fn read(pipe: &mut named_pipe::NamedPipeServer) -> Result<WorkerMsg> {
         read_deserialize(pipe)
             .await
             .context("ipc::Server couldn't read")
     }
 
-    fn client_pid(pipe: &named_pipe::NamedPipeServer) -> anyhow::Result<u32> {
+    fn client_pid(pipe: &named_pipe::NamedPipeServer) -> Result<u32> {
         let handle = pipe.as_handle();
+        // SAFETY: TODO
         let handle = HANDLE(unsafe { handle.as_raw_handle().offset_from(std::ptr::null()) });
         let mut pid = 0;
         // SAFETY: Not sure if this can be called from two threads at once?
@@ -803,7 +808,7 @@ impl Server {
 /// Manual testing shows that if the corresponding Server's process crashes, Windows will
 /// be nice and return errors for anything trying to read from the Client
 pub(crate) struct Client {
-    pipe_task: JoinHandle<anyhow::Result<()>>,
+    pipe_task: JoinHandle<Result<()>>,
     pub request_rx: mpsc::Receiver<ManagerMsg>,
     write_tx: mpsc::Sender<ClientInternalMsg>,
 }
@@ -818,7 +823,7 @@ impl Client {
     ///
     /// Doesn't block, will fail instantly if the server isn't ready
     #[tracing::instrument(skip_all)]
-    pub fn new(server_id: &str) -> anyhow::Result<Self> {
+    pub fn new(server_id: &str) -> Result<Self> {
         let pipe = named_pipe::ClientOptions::new().open(server_id)?;
         let (request_tx, request_rx) = mpsc::channel(5);
         let (write_tx, write_rx) = mpsc::channel(5);
@@ -834,7 +839,7 @@ impl Client {
         })
     }
 
-    pub async fn close(self) -> anyhow::Result<()> {
+    pub async fn close(self) -> Result<()> {
         // Worker signals its pipe task to shut down
         self.write_tx
             .send(ClientInternalMsg::Shutdown)
@@ -848,7 +853,7 @@ impl Client {
         Ok(())
     }
 
-    pub async fn send(&self, msg: WorkerMsg) -> anyhow::Result<()> {
+    pub async fn send(&self, msg: WorkerMsg) -> Result<()> {
         self.write_tx.send(ClientInternalMsg::Msg(msg)).await?;
         Ok(())
     }
@@ -858,11 +863,11 @@ impl Client {
         mut pipe: named_pipe::NamedPipeClient,
         request_tx: mpsc::Sender<ManagerMsg>,
         mut write_rx: mpsc::Receiver<ClientInternalMsg>,
-    ) -> anyhow::Result<()> {
+    ) -> Result<()> {
         loop {
             // Note: Make sure these are all cancel-safe
             tokio::select! {
-                // TODO: Is this cancel-safe?
+                // Thomas and ReactorScram assume this is cancel-safe
                 ready = pipe.ready(tokio::io::Interest::READABLE) => {
                     // Zero bytes just to see if any data is ready at all
                     let mut buf = [];
@@ -949,7 +954,7 @@ impl SubcommandChild {
     /// # Parameters
     ///
     /// * `args` - e.g. `["debug", "test", "ipc-worker"]`
-    pub fn new(args: &[&str]) -> anyhow::Result<Self> {
+    pub fn new(args: &[&str]) -> Result<Self> {
         // Need this binding to avoid a "temporary freed while still in use" error
         let mut process = process::Command::new(std::env::current_exe()?);
         process
@@ -968,7 +973,7 @@ impl SubcommandChild {
 
     /// Joins the subprocess without blocking, returning an error if the process doesn't stop
     #[tracing::instrument(skip(self))]
-    pub fn wait_or_kill(&mut self) -> anyhow::Result<SubcommandExit> {
+    pub fn wait_or_kill(&mut self) -> Result<SubcommandExit> {
         if let Ok(Some(status)) = self.process.try_wait() {
             if status.success() {
                 Ok(SubcommandExit::Success)
@@ -982,7 +987,7 @@ impl SubcommandChild {
     }
 
     /// Waits `dur` for process to exit gracefully, and then `dur` to kill process if needed
-    pub async fn wait_then_kill(&mut self, dur: Duration) -> anyhow::Result<SubcommandExit> {
+    pub async fn wait_then_kill(&mut self, dur: Duration) -> Result<SubcommandExit> {
         if let Ok(status) = timeout(dur, self.process.wait()).await {
             return if status?.success() {
                 Ok(SubcommandExit::Success)
@@ -1009,11 +1014,13 @@ impl Drop for SubcommandChild {
 
 /// Uses a Windows job object to kill child processes when the parent exits
 pub(crate) struct LeakGuard {
+    // Technically this job object handle does leak
     job_object: HANDLE,
 }
 
 impl LeakGuard {
-    pub fn new() -> anyhow::Result<Self> {
+    pub fn new() -> Result<Self> {
+        // SAFETY: TODO
         let job_object = unsafe { CreateJobObjectA(None, None) }?;
 
         let mut jeli = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
@@ -1031,7 +1038,7 @@ impl LeakGuard {
         Ok(Self { job_object })
     }
 
-    pub fn add_process(&self, process: &Child) -> anyhow::Result<()> {
+    pub fn add_process(&mut self, process: &Child) -> Result<()> {
         // Process IDs are not the same as handles, so get our handle to the process.
         let process_handle = process
             .raw_handle()
@@ -1054,7 +1061,7 @@ mod tests {
 
     /// Because it turns out `bincode` can't deserialize `ResourceDescription` or something.
     #[test]
-    fn round_trip_serde() -> anyhow::Result<()> {
+    fn round_trip_serde() -> Result<()> {
         let cb: WorkerMsg = WorkerMsg::Callback(Callback::OnUpdateResources(sample_resources()));
 
         let v = serde_json::to_string(&cb)?;
@@ -1071,7 +1078,7 @@ mod tests {
     /// - If I `std::mem::forget` anything, the test process is still running, so Windows will not clean it up
     #[test]
     #[tracing::instrument(skip_all)]
-    fn happy_path() -> anyhow::Result<()> {
+    fn happy_path() -> Result<()> {
         tracing_subscriber::fmt::try_init().ok();
 
         let rt = Runtime::new()?;

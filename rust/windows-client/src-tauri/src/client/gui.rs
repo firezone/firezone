@@ -350,7 +350,7 @@ impl Controller {
         let args = ["connlib-worker"];
         let mut subprocess = timeout(
             Duration::from_secs(10),
-            ipc::Subprocess::new(&self.leak_guard, &args),
+            ipc::Subprocess::new(&mut self.leak_guard, &args),
         )
         .await
         .context("timed out while starting subprocess")?
