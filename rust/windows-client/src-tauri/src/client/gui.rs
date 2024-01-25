@@ -228,6 +228,7 @@ fn handle_system_tray_event(app: &tauri::AppHandle, event: TrayMenuEvent) -> Res
         .ok_or_else(|| anyhow!("can't get Managed struct from Tauri"))?
         .ctlr_tx;
 
+    // TODO: Just handle these in Controller directly: <https://github.com/firezone/firezone/issues/2983>
     match event {
         TrayMenuEvent::About => {
             let win = app
@@ -240,6 +241,7 @@ fn handle_system_tray_event(app: &tauri::AppHandle, event: TrayMenuEvent) -> Res
                 win.show()?;
             }
         }
+        TrayMenuEvent::CancelSignIn => ctlr_tx.blocking_send(ControllerRequest::CancelSignIn)?,
         TrayMenuEvent::Resource { id } => {
             ctlr_tx.blocking_send(ControllerRequest::CopyResource(id))?
         }
@@ -264,6 +266,7 @@ fn handle_system_tray_event(app: &tauri::AppHandle, event: TrayMenuEvent) -> Res
 
 pub(crate) enum ControllerRequest {
     Callback(ipc::Callback),
+    CancelSignIn,
     CopyResource(String),
     ExportLogs { path: PathBuf, stem: PathBuf },
     GetAdvancedSettings(oneshot::Sender<AdvancedSettings>),
@@ -487,7 +490,7 @@ async fn run_controller(
                     Req::CopyResource(id) => if let Err(e) = controller.copy_resource(&id) {
                         tracing::error!("couldn't copy resource to clipboard: {e:#?}");
                     }
-                    Req::Callback(ipc::Callback::DisconnectedTokenExpired) | Req::SignOut => {
+                    Req::Callback(ipc::Callback::DisconnectedTokenExpired) | Req::CancelSignIn | Req::SignOut => {
                         tracing::debug!("Token expired or user signed out");
                         controller.auth.sign_out()?;
                         controller.tunnel_ready = false;
@@ -505,7 +508,9 @@ async fn run_controller(
                             }
                         }
                         else {
-                            tracing::error!("tried to sign out but there's no session");
+                            // Might just be because we got a double sign-out or
+                            // the user canceled the sign-in or something innocent.
+                            tracing::warn!("tried to sign out but there's no session");
                         }
                         controller.refresh_system_tray_menu()?;
                     }

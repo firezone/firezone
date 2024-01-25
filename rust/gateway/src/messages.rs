@@ -97,6 +97,7 @@ pub enum IngressMessages {
     RequestConnection(RequestConnection),
     AllowAccess(AllowAccess),
     IceCandidates(ClientIceCandidates),
+    Init(InitGateway),
 }
 
 /// A client's ice candidate message.
