@@ -252,28 +252,6 @@ defmodule Domain.ResourcesTest do
       assert fetch_and_authorize_resource_by_id(resource.id, subject) == {:error, :not_found}
     end
 
-    test "does not authorize using deleted group", %{
-      account: account,
-      actor: actor,
-      subject: subject
-    } do
-      resource = Fixtures.Resources.create_resource(account: account)
-
-      actor_group =
-        Fixtures.Actors.create_group(account: account)
-        |> Fixtures.Actors.delete_group()
-
-      Fixtures.Actors.create_membership(account: account, actor: actor, group: actor_group)
-
-      Fixtures.Policies.create_policy(
-        account: account,
-        actor_group: actor_group,
-        resource: resource
-      )
-
-      assert fetch_and_authorize_resource_by_id(resource.id, subject) == {:error, :not_found}
-    end
-
     test "does not authorize using disabled policies", %{
       account: account,
       actor: actor,
@@ -1038,7 +1016,7 @@ defmodule Domain.ResourcesTest do
       assert Repo.aggregate(Domain.Network.Address, :count) == address_count
     end
 
-    test "does not allow to reuse IP addresses within an account", %{
+    test "broadcasts an account message when resource is created", %{
       account: account,
       subject: subject
     } do
@@ -1051,113 +1029,12 @@ defmodule Domain.ResourcesTest do
           ]
         )
 
-      assert {:ok, resource} = create_resource(attrs, subject)
-
-      addresses =
-        Domain.Network.Address
-        |> Repo.all()
-        |> Enum.map(fn %Domain.Network.Address{address: address, type: type} ->
-          %{address: address, type: type}
-        end)
-
-      assert %{address: resource.ipv4, type: :ipv4} in addresses
-      assert %{address: resource.ipv6, type: :ipv6} in addresses
-
-      assert_raise Ecto.ConstraintError, fn ->
-        Fixtures.Network.create_address(address: resource.ipv4, account: account)
-      end
-
-      assert_raise Ecto.ConstraintError, fn ->
-        Fixtures.Network.create_address(address: resource.ipv6, account: account)
-      end
-    end
-
-    test "ip addresses are unique per account", %{
-      account: account,
-      subject: subject
-    } do
-      gateway = Fixtures.Gateways.create_gateway(account: account)
-
-      attrs =
-        Fixtures.Resources.resource_attrs(
-          connections: [
-            %{gateway_group_id: gateway.group_id}
-          ]
-        )
+      :ok = subscribe_for_events_for_account(account)
 
       assert {:ok, resource} = create_resource(attrs, subject)
 
-      assert %Domain.Network.Address{} = Fixtures.Network.create_address(address: resource.ipv4)
-      assert %Domain.Network.Address{} = Fixtures.Network.create_address(address: resource.ipv6)
-    end
-
-    test "broadcasts a resource added message", %{account: account, subject: subject} do
-      gateway = Fixtures.Gateways.create_gateway(account: account)
-
-      attrs =
-        Fixtures.Resources.resource_attrs(
-          connections: [
-            %{gateway_group_id: gateway.group_id}
-          ]
-        )
-
-      assert :ok = subscribe_for_resource_events_in_account(account)
-      assert {:ok, resource} = create_resource(attrs, subject)
-      resource_id = resource.id
-      assert_receive {:resource_created, ^resource_id}
-    end
-
-    test "does not allow to reuse IP addresses within an account", %{
-      account: account,
-      subject: subject
-    } do
-      gateway = Fixtures.Gateways.create_gateway(account: account)
-
-      attrs =
-        Fixtures.Resources.resource_attrs(
-          connections: [
-            %{gateway_group_id: gateway.group_id}
-          ]
-        )
-
-      assert {:ok, resource} = create_resource(attrs, subject)
-
-      addresses =
-        Domain.Network.Address
-        |> Repo.all()
-        |> Enum.map(fn %Domain.Network.Address{address: address, type: type} ->
-          %{address: address, type: type}
-        end)
-
-      assert %{address: resource.ipv4, type: :ipv4} in addresses
-      assert %{address: resource.ipv6, type: :ipv6} in addresses
-
-      assert_raise Ecto.ConstraintError, fn ->
-        Fixtures.Network.create_address(address: resource.ipv4, account: account)
-      end
-
-      assert_raise Ecto.ConstraintError, fn ->
-        Fixtures.Network.create_address(address: resource.ipv6, account: account)
-      end
-    end
-
-    test "ip addresses are unique per account", %{
-      account: account,
-      subject: subject
-    } do
-      gateway = Fixtures.Gateways.create_gateway(account: account)
-
-      attrs =
-        Fixtures.Resources.resource_attrs(
-          connections: [
-            %{gateway_group_id: gateway.group_id}
-          ]
-        )
-
-      assert {:ok, resource} = create_resource(attrs, subject)
-
-      assert %Domain.Network.Address{} = Fixtures.Network.create_address(address: resource.ipv4)
-      assert %Domain.Network.Address{} = Fixtures.Network.create_address(address: resource.ipv6)
+      assert_receive {:create_resource, resource_id}
+      assert resource_id == resource.id
     end
 
     test "returns error when subject has no permission to create resources", %{
@@ -1199,21 +1076,31 @@ defmodule Domain.ResourcesTest do
              }
     end
 
-    test "broadcasts a resource updated message", %{
+    test "broadcasts an account message when resource is updated", %{
       account: account,
       resource: resource,
       subject: subject
     } do
+      :ok = subscribe_for_events_for_account(account)
+
       attrs = %{"name" => "foo"}
-
-      assert :ok = subscribe_for_resource_events_in_account(account)
-      assert :ok = subscribe_for_resource_events(resource)
-
       assert {:ok, resource} = update_resource(resource, attrs, subject)
 
-      resource_id = resource.id
-      assert_receive {:resource_updated, ^resource_id}
-      assert_receive {:resource_updated, ^resource_id}
+      assert_receive {:update_resource, resource_id}
+      assert resource_id == resource.id
+    end
+
+    test "broadcasts a resource message when resource is updated", %{
+      resource: resource,
+      subject: subject
+    } do
+      :ok = subscribe_for_events_for_resource(resource)
+
+      attrs = %{"name" => "foo"}
+      assert {:ok, resource} = update_resource(resource, attrs, subject)
+
+      assert_receive {:update_resource, resource_id}
+      assert resource_id == resource.id
     end
 
     test "allows to update name", %{resource: resource, subject: subject} do
@@ -1285,14 +1172,14 @@ defmodule Domain.ResourcesTest do
   end
 
   describe "delete_resource/2" do
-    setup context do
+    setup %{account: account, subject: subject} do
       resource =
         Fixtures.Resources.create_resource(
-          account: context.account,
-          subject: context.subject
+          account: account,
+          subject: subject
         )
 
-      Map.put(context, :resource, resource)
+      %{resource: resource}
     end
 
     test "returns error on state conflict", %{
@@ -1309,19 +1196,60 @@ defmodule Domain.ResourcesTest do
       assert deleted.deleted_at
     end
 
-    test "broadcasts a resource deleted message", %{
+    test "deletes policies that use this resource", %{
       account: account,
       resource: resource,
       subject: subject
     } do
-      assert :ok = subscribe_for_resource_events_in_account(account)
-      assert :ok = subscribe_for_resource_events(resource)
+      other_policy = Fixtures.Policies.create_policy(account: account)
+      policy = Fixtures.Policies.create_policy(account: account, resource: resource)
+
+      assert {:ok, _resource} = delete_resource(resource, subject)
+
+      refute is_nil(Repo.get_by(Domain.Policies.Policy, id: policy.id).deleted_at)
+      assert is_nil(Repo.get_by(Domain.Policies.Policy, id: other_policy.id).deleted_at)
+    end
+
+    test "deletes connections that use this resource", %{
+      account: account,
+      subject: subject
+    } do
+      group = Fixtures.Gateways.create_group(account: account, subject: subject)
+
+      resource =
+        Fixtures.Resources.create_resource(
+          account: account,
+          connections: [%{gateway_group_id: group.id}]
+        )
+
+      assert {:ok, _resource} = delete_resource(resource, subject)
+
+      assert Repo.aggregate(Resources.Connection.Query.by_gateway_group_id(group.id), :count) == 0
+    end
+
+    test "broadcasts an account message when resource is deleted", %{
+      account: account,
+      resource: resource,
+      subject: subject
+    } do
+      :ok = subscribe_for_events_for_account(account)
 
       assert {:ok, resource} = delete_resource(resource, subject)
 
-      resource_id = resource.id
-      assert_receive {:resource_deleted, ^resource_id}
-      assert_receive {:resource_deleted, ^resource_id}
+      assert_receive {:delete_resource, resource_id}
+      assert resource_id == resource.id
+    end
+
+    test "broadcasts a resource message when resource is deleted", %{
+      resource: resource,
+      subject: subject
+    } do
+      :ok = subscribe_for_events_for_resource(resource)
+
+      assert {:ok, resource} = delete_resource(resource, subject)
+
+      assert_receive {:delete_resource, resource_id}
+      assert resource_id == resource.id
     end
 
     test "returns error when subject has no permission to delete resources", %{
@@ -1331,6 +1259,49 @@ defmodule Domain.ResourcesTest do
       subject = Fixtures.Auth.remove_permissions(subject)
 
       assert delete_resource(resource, subject) ==
+               {:error,
+                {:unauthorized,
+                 reason: :missing_permissions,
+                 missing_permissions: [Resources.Authorizer.manage_resources_permission()]}}
+    end
+  end
+
+  describe "delete_connections_for/2" do
+    setup %{account: account, subject: subject} do
+      group = Fixtures.Gateways.create_group(account: account, subject: subject)
+
+      resource =
+        Fixtures.Resources.create_resource(
+          account: account,
+          connections: [%{gateway_group_id: group.id}]
+        )
+
+      %{
+        group: group,
+        resource: resource
+      }
+    end
+
+    test "does nothing on state conflict", %{
+      group: group,
+      subject: subject
+    } do
+      assert delete_connections_for(group, subject) == {:ok, 1}
+      assert delete_connections_for(group, subject) == {:ok, 0}
+    end
+
+    test "deletes connections for actor group", %{group: group, subject: subject} do
+      assert delete_connections_for(group, subject) == {:ok, 1}
+      assert Repo.aggregate(Resources.Connection.Query.by_gateway_group_id(group.id), :count) == 0
+    end
+
+    test "returns error when subject has no permission to manage resources", %{
+      group: group,
+      subject: subject
+    } do
+      subject = Fixtures.Auth.remove_permissions(subject)
+
+      assert delete_connections_for(group, subject) ==
                {:error,
                 {:unauthorized,
                  reason: :missing_permissions,

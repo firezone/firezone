@@ -150,7 +150,7 @@ defmodule Domain.Relays do
       |> Group.Query.by_account_id(subject.account.id)
       |> Repo.fetch_and_update(
         with: fn group ->
-          {:ok, _count} = Tokens.delete_tokens_for(group, subject)
+          {:ok, _tokens} = Tokens.delete_tokens_for(group, subject)
 
           {_count, _} =
             Relay.Query.by_group_id(group.id)

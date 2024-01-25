@@ -72,6 +72,7 @@ defmodule Domain.Fixtures.Flows do
       end)
 
     Flows.Flow.Changeset.create(%{
+      token_id: subject.token_id,
       policy_id: policy_id,
       client_id: client.id,
       gateway_id: gateway.id,

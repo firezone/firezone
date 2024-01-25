@@ -26,6 +26,16 @@ defmodule Domain.Clients.Client.Query do
     select(queryable, [clients: clients], clients)
   end
 
+  def delete(queryable \\ not_deleted()) do
+    queryable
+    |> Ecto.Query.select([clients: clients], clients)
+    |> Ecto.Query.update([clients: clients],
+      set: [
+        deleted_at: fragment("COALESCE(?, NOW())", clients.deleted_at)
+      ]
+    )
+  end
+
   def with_preloaded_actor(queryable \\ not_deleted()) do
     with_named_binding(queryable, :actor, fn queryable, binding ->
       queryable

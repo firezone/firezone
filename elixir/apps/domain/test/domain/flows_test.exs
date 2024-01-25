@@ -11,7 +11,10 @@ defmodule Domain.FlowsTest do
     actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
     Fixtures.Actors.create_membership(account: account, actor: actor, group: actor_group)
 
-    identity = Fixtures.Auth.create_identity(account: account, actor: actor)
+    Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
+    provider = Fixtures.Auth.create_email_provider(account: account)
+
+    identity = Fixtures.Auth.create_identity(account: account, actor: actor, provider: provider)
     subject = Fixtures.Auth.create_subject(identity: identity)
 
     client = Fixtures.Clients.create_client(account: account, actor: actor, identity: identity)
@@ -37,6 +40,7 @@ defmodule Domain.FlowsTest do
       account: account,
       actor_group: actor_group,
       actor: actor,
+      provider: provider,
       identity: identity,
       subject: subject,
       client: client,
@@ -262,7 +266,7 @@ defmodule Domain.FlowsTest do
                {:error,
                 {:unauthorized,
                  reason: :missing_permissions,
-                 missing_permissions: [Authorizer.view_flows_permission()]}}
+                 missing_permissions: [Authorizer.manage_flows_permission()]}}
     end
 
     test "associations are preloaded when opts given", %{
@@ -394,7 +398,7 @@ defmodule Domain.FlowsTest do
         {:error,
          {:unauthorized,
           reason: :missing_permissions,
-          missing_permissions: [Flows.Authorizer.view_flows_permission()]}}
+          missing_permissions: [Flows.Authorizer.manage_flows_permission()]}}
 
       assert list_flows_for(policy, subject) == expected_error
       assert list_flows_for(resource, subject) == expected_error
@@ -625,13 +629,128 @@ defmodule Domain.FlowsTest do
                {:error,
                 {:unauthorized,
                  reason: :missing_permissions,
-                 missing_permissions: [Flows.Authorizer.view_flows_permission()]}}
+                 missing_permissions: [Flows.Authorizer.manage_flows_permission()]}}
 
       assert list_flow_activities_for(flow, ended_after, started_before, subject) ==
                {:error,
                 {:unauthorized,
                  reason: :missing_permissions,
-                 missing_permissions: [Flows.Authorizer.view_flows_permission()]}}
+                 missing_permissions: [Flows.Authorizer.manage_flows_permission()]}}
+    end
+  end
+
+  describe "expire_flows_for/2" do
+    setup %{
+      account: account,
+      client: client,
+      gateway: gateway,
+      resource: resource,
+      policy: policy,
+      subject: subject
+    } do
+      subject = %{subject | expires_at: DateTime.utc_now() |> DateTime.add(1, :day)}
+
+      flow =
+        Fixtures.Flows.create_flow(
+          account: account,
+          subject: subject,
+          client: client,
+          policy: policy,
+          resource: resource,
+          gateway: gateway
+        )
+
+      %{flow: flow}
+    end
+
+    test "expires flows for actor", %{
+      flow: flow,
+      actor: actor,
+      subject: subject
+    } do
+      assert {:ok, [expired_flow]} = expire_flows_for(actor, subject)
+      assert DateTime.diff(expired_flow.expires_at, DateTime.utc_now()) < 1
+      assert expired_flow.id == flow.id
+    end
+
+    test "expires flows for policy", %{
+      flow: flow,
+      policy: policy,
+      subject: subject
+    } do
+      assert {:ok, [expired_flow]} = expire_flows_for(policy, subject)
+      assert DateTime.diff(expired_flow.expires_at, DateTime.utc_now()) < 1
+      assert expired_flow.id == flow.id
+    end
+
+    test "expires flows for resource", %{
+      flow: flow,
+      resource: resource,
+      subject: subject
+    } do
+      assert {:ok, [expired_flow]} = expire_flows_for(resource, subject)
+      assert DateTime.diff(expired_flow.expires_at, DateTime.utc_now()) < 1
+      assert expired_flow.id == flow.id
+    end
+
+    test "expires flows for policy actor group", %{
+      flow: flow,
+      actor_group: actor_group,
+      subject: subject
+    } do
+      assert {:ok, [expired_flow]} = expire_flows_for(actor_group, subject)
+      assert DateTime.diff(expired_flow.expires_at, DateTime.utc_now()) < 1
+      assert expired_flow.id == flow.id
+    end
+
+    test "expires flows for client identity", %{
+      flow: flow,
+      identity: identity,
+      subject: subject
+    } do
+      assert {:ok, [expired_flow]} = expire_flows_for(identity, subject)
+      assert DateTime.diff(expired_flow.expires_at, DateTime.utc_now()) < 1
+      assert expired_flow.id == flow.id
+    end
+
+    test "expires flows for client identity provider", %{
+      flow: flow,
+      provider: provider,
+      subject: subject
+    } do
+      assert {:ok, [expired_flow]} = expire_flows_for(provider, subject)
+      assert DateTime.diff(expired_flow.expires_at, DateTime.utc_now()) < 1
+      assert expired_flow.id == flow.id
+    end
+
+    test "returns error when subject has no permission to expire flows", %{
+      resource: resource,
+      subject: subject
+    } do
+      subject = Fixtures.Auth.remove_permissions(subject)
+
+      assert expire_flows_for(resource, subject) ==
+               {:error,
+                {:unauthorized,
+                 reason: :missing_permissions,
+                 missing_permissions: [Authorizer.create_flows_permission()]}}
+    end
+
+    test "does not do anything on state conflict", %{
+      resource: resource,
+      actor_group: actor_group,
+      subject: subject
+    } do
+      assert {:ok, [_expired_flow]} = expire_flows_for(resource, subject)
+      assert expire_flows_for(actor_group, subject) == {:ok, []}
+      assert expire_flows_for(resource, subject) == {:ok, []}
+    end
+
+    test "does not expire flows outside of account", %{
+      resource: resource
+    } do
+      subject = Fixtures.Auth.create_subject()
+      assert expire_flows_for(resource, subject) == {:ok, []}
     end
   end
 end

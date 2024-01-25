@@ -175,30 +175,36 @@ defmodule Domain.Tokens do
        ]}
 
     with :ok <- Auth.ensure_has_permissions(subject, required_permissions) do
+      {:ok, _flows} = Domain.Flows.expire_flows_for(token, subject)
+
       Token.Query.by_id(token.id)
       |> Authorizer.for_subject(subject)
-      |> Repo.fetch_and_update(with: &Token.Changeset.delete/1)
+      |> delete_tokens()
       |> case do
-        {:ok, token} ->
-          Phoenix.PubSub.broadcast(Domain.PubSub, "sessions:#{token.id}", "disconnect")
-          {:ok, token}
-
-        {:error, reason} ->
-          {:error, reason}
+        {:ok, [token]} -> {:ok, token}
+        {:ok, []} -> {:error, :not_found}
       end
     end
   end
 
-  def delete_tokens_for(%Auth.Subject{} = subject) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_own_tokens_permission()) do
-      Token.Query.by_actor_id(subject.actor.id)
-      |> Authorizer.for_subject(subject)
-      |> delete_tokens()
+  def delete_token_for(%Auth.Subject{} = subject) do
+    Token.Query.by_id(subject.token_id)
+    |> Authorizer.for_subject(subject)
+    |> delete_tokens()
+    |> case do
+      {:ok, [token]} ->
+        {:ok, _flows} = Domain.Flows.expire_flows_for(token, subject)
+        {:ok, token}
+
+      {:ok, []} ->
+        {:ok, []}
     end
   end
 
   def delete_tokens_for(%Actors.Actor{} = actor, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_tokens_permission()) do
+      {:ok, _flows} = Domain.Flows.expire_flows_for(actor, subject)
+
       Token.Query.by_actor_id(actor.id)
       |> Authorizer.for_subject(subject)
       |> delete_tokens()
@@ -207,7 +213,19 @@ defmodule Domain.Tokens do
 
   def delete_tokens_for(%Auth.Identity{} = identity, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_tokens_permission()) do
+      {:ok, _flows} = Domain.Flows.expire_flows_for(identity, subject)
+
       Token.Query.by_identity_id(identity.id)
+      |> Authorizer.for_subject(subject)
+      |> delete_tokens()
+    end
+  end
+
+  def delete_tokens_for(%Auth.Provider{} = provider, %Auth.Subject{} = subject) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_tokens_permission()) do
+      {:ok, _flows} = Domain.Flows.expire_flows_for(provider, subject)
+
+      Token.Query.by_provider_id(provider.id)
       |> Authorizer.for_subject(subject)
       |> delete_tokens()
     end
@@ -242,14 +260,14 @@ defmodule Domain.Tokens do
   end
 
   defp delete_tokens(queryable) do
-    {count, tokens} =
+    {_count, tokens} =
       queryable
-      |> Ecto.Query.select([tokens: tokens], tokens)
-      |> Repo.update_all(set: [deleted_at: DateTime.utc_now()])
+      |> Token.Query.delete()
+      |> Repo.update_all([])
 
     :ok = Enum.each(tokens, &broadcast_disconnect_message/1)
 
-    {:ok, count}
+    {:ok, tokens}
   end
 
   defp broadcast_disconnect_message(%{type: :email}) do
@@ -258,15 +276,6 @@ defmodule Domain.Tokens do
 
   defp broadcast_disconnect_message(%{id: id}) do
     Phoenix.PubSub.broadcast(Domain.PubSub, "sessions:#{id}", "disconnect")
-  end
-
-  def delete_token_by_id(token_id) do
-    if Validator.valid_uuid?(token_id) do
-      Token.Query.by_id(token_id)
-      |> delete_tokens()
-    else
-      {:ok, 0}
-    end
   end
 
   defp fetch_config! do

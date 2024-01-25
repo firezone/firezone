@@ -2,7 +2,7 @@ defmodule Domain.Actors do
   alias Domain.Actors.Membership
   alias Web.Clients
   alias Domain.{Repo, Validator}
-  alias Domain.{Accounts, Auth, Tokens, Clients}
+  alias Domain.{Accounts, Auth, Tokens, Clients, Policies}
   alias Domain.Actors.{Authorizer, Actor, Group}
   require Ecto.Query
 
@@ -121,16 +121,55 @@ defmodule Domain.Actors do
   end
 
   def delete_group(%Group{provider_id: nil} = group, %Auth.Subject{} = subject) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
-      Group.Query.by_id(group.id)
-      |> Authorizer.for_subject(subject)
-      |> Group.Query.by_account_id(subject.account.id)
-      |> Repo.fetch_and_update(with: &Group.Changeset.delete/1)
+    queryable = Group.Query.by_id(group.id)
+
+    case delete_groups(queryable, subject) do
+      {:ok, [group]} ->
+        {:ok, _policies} = Policies.delete_policies_for(group, subject)
+
+        {_count, nil} =
+          Membership.Query.by_group_id(group.id)
+          |> Repo.delete_all()
+
+        {:ok, group}
+
+      {:ok, []} ->
+        {:error, :not_found}
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
   def delete_group(%Group{}, %Auth.Subject{}) do
     {:error, :synced_group}
+  end
+
+  def delete_groups_for(%Auth.Provider{} = provider, %Auth.Subject{} = subject) do
+    queryable =
+      Group.Query.by_provider_id(provider.id)
+      |> Group.Query.by_account_id(provider.account_id)
+
+    {_count, nil} =
+      Membership.Query.by_group_provider_id(provider.id)
+      |> Repo.delete_all()
+
+    with {:ok, groups} <- delete_groups(queryable, subject) do
+      {:ok, _policies} = Policies.delete_policies_for(provider, subject)
+      {:ok, groups}
+    end
+  end
+
+  defp delete_groups(queryable, subject) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
+      {_count, groups} =
+        queryable
+        |> Authorizer.for_subject(subject)
+        |> Group.Query.delete()
+        |> Repo.update_all([])
+
+      {:ok, groups}
+    end
   end
 
   def group_synced?(%Group{provider_id: nil}), do: false
@@ -180,6 +219,18 @@ defmodule Domain.Actors do
   def fetch_actor_by_id!(id) do
     Actor.Query.by_id(id)
     |> Repo.fetch!()
+  end
+
+  # TODO: this should be replaced with list_groups(..., filter: %{actor_id: actor.id})
+  def list_actor_group_ids(%Actor{} = actor) do
+    actor = Repo.preload(actor, :memberships)
+
+    group_ids =
+      actor.memberships
+      |> Enum.map(& &1.group_id)
+      |> Enum.uniq()
+
+    {:ok, group_ids}
   end
 
   def list_actors(%Auth.Subject{} = subject, opts \\ []) do
@@ -285,7 +336,7 @@ defmodule Domain.Actors do
       |> Repo.fetch_and_update(
         with: fn actor ->
           if actor.type != :account_admin_user or other_enabled_admins_exist?(actor) do
-            {:ok, _count} = Tokens.delete_tokens_for(actor, subject)
+            {:ok, _tokens} = Tokens.delete_tokens_for(actor, subject)
             Actor.Changeset.disable_actor(actor)
           else
             :cant_disable_the_last_admin
@@ -310,10 +361,14 @@ defmodule Domain.Actors do
       |> Repo.fetch_and_update(
         with: fn actor ->
           if actor.type != :account_admin_user or other_enabled_admins_exist?(actor) do
-            :ok = Auth.delete_actor_identities(actor, subject)
-            :ok = Clients.delete_actor_clients(actor, subject)
-            # TODO: :ok = delete_actor_memberships(actor)
-            {:ok, _count} = Tokens.delete_tokens_for(actor, subject)
+            :ok = Auth.delete_identities_for(actor, subject)
+            :ok = Clients.delete_clients_for(actor, subject)
+
+            {_count, nil} =
+              Membership.Query.by_actor_id(actor.id)
+              |> Repo.delete_all()
+
+            {:ok, _tokens} = Tokens.delete_tokens_for(actor, subject)
 
             Actor.Changeset.delete_actor(actor)
           else

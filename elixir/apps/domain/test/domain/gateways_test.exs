@@ -1,7 +1,7 @@
 defmodule Domain.GatewaysTest do
   use Domain.DataCase, async: true
   import Domain.Gateways
-  alias Domain.{Gateways, Tokens}
+  alias Domain.{Gateways, Tokens, Resources}
 
   setup do
     account = Fixtures.Accounts.create_account()
@@ -356,6 +356,19 @@ defmodule Domain.GatewaysTest do
 
       assert length(gateways) > 0
       assert Enum.all?(gateways, & &1.deleted_at)
+    end
+
+    test "deletes all connections when group is deleted", %{account: account, subject: subject} do
+      group = Fixtures.Gateways.create_group(account: account)
+
+      Fixtures.Resources.create_resource(
+        account: account,
+        connections: [%{gateway_group_id: group.id}]
+      )
+
+      assert {:ok, _group} = delete_group(group, subject)
+
+      assert Repo.aggregate(Resources.Resource.Query.by_gateway_group_id(group.id), :count) == 0
     end
 
     test "broadcasts disconnect message to all connected gateway sockets", %{

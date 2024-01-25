@@ -76,12 +76,6 @@ defmodule Domain.Clients.Client.Changeset do
     |> changeset()
   end
 
-  def delete(%Clients.Client{} = client) do
-    client
-    |> change()
-    |> put_default_value(:deleted_at, DateTime.utc_now())
-  end
-
   defp changeset(changeset) do
     changeset
     |> trim_change(:name)

@@ -201,33 +201,40 @@ defmodule Domain.Clients do
   end
 
   def delete_client(%Client{} = client, %Auth.Subject{} = subject) do
+    queryable = Client.Query.by_id(client.id)
+
     with :ok <- authorize_actor_client_management(client.actor_id, subject) do
-      Client.Query.by_id(client.id)
-      |> Authorizer.for_subject(subject)
-      |> Repo.fetch_and_update(with: &Client.Changeset.delete/1)
-      |> case do
-        {:ok, client} ->
+      case delete_clients(queryable, subject) do
+        {:ok, [client]} ->
           :ok = disconnect_client(client)
           {:ok, client}
 
-        {:error, reason} ->
-          {:error, reason}
+        {:ok, []} ->
+          {:error, :not_found}
       end
     end
   end
 
-  def delete_actor_clients(%Actors.Actor{} = actor, %Auth.Subject{} = subject) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_clients_permission()) do
-      {_count, nil} =
-        Client.Query.by_actor_id(actor.id)
-        |> Client.Query.by_account_id(actor.account_id)
-        |> Authorizer.for_subject(subject)
-        |> Repo.update_all(set: [deleted_at: DateTime.utc_now()])
+  def delete_clients_for(%Actors.Actor{} = actor, %Auth.Subject{} = subject) do
+    queryable =
+      Client.Query.by_actor_id(actor.id)
+      |> Client.Query.by_account_id(actor.account_id)
 
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_clients_permission()),
+         {:ok, _clients} <- delete_clients(queryable, subject) do
       :ok = disconnect_actor_clients(actor)
-
       :ok
     end
+  end
+
+  defp delete_clients(queryable, subject) do
+    {_count, clients} =
+      queryable
+      |> Authorizer.for_subject(subject)
+      |> Client.Query.delete()
+      |> Repo.update_all([])
+
+    {:ok, clients}
   end
 
   def authorize_actor_client_management(%Actors.Actor{} = actor, %Auth.Subject{} = subject) do

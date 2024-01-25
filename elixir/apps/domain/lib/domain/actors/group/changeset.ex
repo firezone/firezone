@@ -50,10 +50,4 @@ defmodule Domain.Actors.Group.Changeset do
     |> validate_length(:name, min: 1, max: 64)
     |> unique_constraint(:name, name: :actor_groups_account_id_name_index)
   end
-
-  def delete(%Actors.Group{} = group) do
-    group
-    |> change()
-    |> put_default_value(:deleted_at, DateTime.utc_now())
-  end
 end

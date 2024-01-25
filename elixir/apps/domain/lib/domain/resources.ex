@@ -1,6 +1,6 @@
 defmodule Domain.Resources do
   alias Domain.{Repo, Validator, Auth, PubSub}
-  alias Domain.{Accounts, Gateways}
+  alias Domain.{Accounts, Gateways, Policies}
   alias Domain.Resources.{Authorizer, Resource, Connection}
 
   def fetch_resource_by_id(id, %Auth.Subject{} = subject, opts \\ []) do
@@ -17,7 +17,7 @@ defmodule Domain.Resources do
          true <- Validator.valid_uuid?(id) do
       Resource.Query.all()
       |> Resource.Query.by_id(id)
-      |> Authorizer.for_subject(subject)
+      |> Authorizer.for_subject(Resource, subject)
       |> Repo.fetch()
       |> case do
         {:ok, resource} -> {:ok, Repo.preload(resource, preload)}
@@ -80,7 +80,7 @@ defmodule Domain.Resources do
 
       {:ok, resources} =
         Resource.Query.not_deleted()
-        |> Authorizer.for_subject(subject)
+        |> Authorizer.for_subject(Resource, subject)
         |> Repo.list()
 
       {:ok, Repo.preload(resources, preload)}
@@ -98,7 +98,7 @@ defmodule Domain.Resources do
     with :ok <- Auth.ensure_has_permissions(subject, required_permissions) do
       count =
         Resource.Query.not_deleted()
-        |> Authorizer.for_subject(subject)
+        |> Authorizer.for_subject(Resource, subject)
         |> Resource.Query.by_gateway_group_id(gateway.group_id)
         |> Repo.aggregate(:count)
 
@@ -130,7 +130,7 @@ defmodule Domain.Resources do
       ids = resources |> Enum.map(& &1.id) |> Enum.uniq()
 
       Resource.Query.by_id({:in, ids})
-      |> Authorizer.for_subject(subject)
+      |> Authorizer.for_subject(Resource, subject)
       |> Resource.Query.preload_few_actor_groups_for_each_resource(limit)
       |> Repo.peek(resources)
     end
@@ -145,17 +145,7 @@ defmodule Domain.Resources do
       changeset = Resource.Changeset.create(subject.account, attrs, subject)
 
       with {:ok, resource} <- Repo.insert(changeset) do
-        # TODO: Add optimistic lock to resource.updated_at to serialize the resource updates
-        # TODO: Broadcast only to actors that have access to the resource
-        # {:ok, actors} = list_authorized_actors(resource)
-        # Phoenix.PubSub.broadcast(
-        #   Domain.PubSub,
-        #   "actor_client:#{subject.actor.id}",
-        #   {:resource_added, resource.id}
-        # )
-
-        :ok = broadcast_resource_events(:created, resource)
-
+        :ok = broadcast_resource_events(:create, resource)
         {:ok, resource}
       end
     end
@@ -172,7 +162,7 @@ defmodule Domain.Resources do
       |> Repo.update()
       |> case do
         {:ok, resource} ->
-          :ok = broadcast_resource_events(:updated, resource)
+          :ok = broadcast_resource_events(:update, resource)
           {:ok, resource}
 
         {:error, reason} ->
@@ -184,16 +174,42 @@ defmodule Domain.Resources do
   def delete_resource(%Resource{} = resource, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_resources_permission()) do
       Resource.Query.by_id(resource.id)
-      |> Authorizer.for_subject(subject)
-      |> Repo.fetch_and_update(with: &Resource.Changeset.delete/1)
+      |> Authorizer.for_subject(Resource, subject)
+      |> Repo.fetch_and_update(
+        with: fn resource ->
+          {:ok, _policies} = Policies.delete_policies_for(resource, subject)
+
+          {_count, nil} =
+            Connection.Query.by_resource_id(resource.id)
+            |> Repo.delete_all()
+
+          Resource.Changeset.delete(resource)
+        end
+      )
       |> case do
         {:ok, resource} ->
-          :ok = broadcast_resource_events(:deleted, resource)
+          :ok = broadcast_resource_events(:delete, resource)
           {:ok, resource}
 
         {:error, reason} ->
           {:error, reason}
       end
+    end
+  end
+
+  def delete_connections_for(%Gateways.Group{} = gateway_group, %Auth.Subject{} = subject) do
+    Connection.Query.by_gateway_group_id(gateway_group.id)
+    |> delete_connections(subject)
+  end
+
+  defp delete_connections(queryable, subject) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_resources_permission()) do
+      {count, nil} =
+        queryable
+        |> Authorizer.for_subject(Connection, subject)
+        |> Repo.delete_all()
+
+      {:ok, count}
     end
   end
 
@@ -206,6 +222,13 @@ defmodule Domain.Resources do
     |> Repo.exists?()
   end
 
+  ### PubSub
+
+  defp resource_topic(%Resource{} = resource), do: resource_topic(resource.id)
+  defp resource_topic(resource_id), do: "resource:#{resource_id}"
+
+  defp account_topic(%Accounts.Account{} = account), do: account_topic(account.id)
+  defp account_topic(account_id), do: "account_policies:#{account_id}"
   defp broadcast_resource_events(:created, %Resource{} = resource) do
     payload = {:resource_created, resource.id}
     PubSub.broadcast("account_resources:#{resource.account_id}", payload)
@@ -221,30 +244,31 @@ defmodule Domain.Resources do
       PubSub.broadcast(topic, payload)
     end
 
+
+  def subscribe_for_events_for_resource(resource_or_id) do
+    resource_or_id |> resource_topic() |> PubSub.subscribe()
+  end
+
+  def subscribe_for_events_for_account(account_or_id) do
+    account_or_id |> account_topic() |> PubSub.subscribe()
+  end
+
+  defp broadcast_resource_events(action, %Resource{} = resource) do
+    payload = {:"#{action}_resource", resource.id}
+    :ok = broadcast_to_resource(resource, payload)
+    :ok = broadcast_to_account(resource.account_id, payload)
     :ok
   end
 
-  def subscribe_for_resource_events_in_account(%Accounts.Account{} = account) do
-    subscribe_for_resource_events_in_account(account.id)
+  defp broadcast_to_resource(resource_or_id, payload) do
+    resource_or_id
+    |> resource_topic()
+    |> PubSub.broadcast(payload)
   end
 
-  def subscribe_for_resource_events_in_account(account_id) do
-    PubSub.subscribe("account_resources:#{account_id}")
-  end
-
-  def subscribe_for_resource_events(%Resource{} = resource) do
-    subscribe_for_resource_events(resource.id)
-  end
-
-  def subscribe_for_resource_events(resource_id) do
-    PubSub.subscribe("resources:#{resource_id}")
-  end
-
-  def unsubscribe_from_resource_events(%Resource{} = resource) do
-    unsubscribe_from_resource_events(resource.id)
-  end
-
-  def unsubscribe_from_resource_events(resource_id) do
-    PubSub.unsubscribe("resources:#{resource_id}")
+  defp broadcast_to_account(account_or_id, payload) do
+    account_or_id
+    |> account_topic()
+    |> PubSub.broadcast(payload)
   end
 end

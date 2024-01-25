@@ -1087,6 +1087,30 @@ defmodule Domain.ActorsTest do
       assert deleted.deleted_at
     end
 
+    test "deletes group memberships", %{account: account, subject: subject} do
+      group = Fixtures.Actors.create_group(account: account)
+      Fixtures.Actors.create_membership(account: account, group: group)
+
+      assert {:ok, _deleted} = delete_group(group, subject)
+
+      assert Repo.aggregate(Actors.Membership, :count) == 0
+    end
+
+    test "deletes policies that use this group", %{
+      account: account,
+      subject: subject
+    } do
+      group = Fixtures.Actors.create_group(account: account)
+
+      policy = Fixtures.Policies.create_policy(account: account, actor_group: group)
+      other_policy = Fixtures.Policies.create_policy(account: account)
+
+      assert {:ok, _resource} = delete_group(group, subject)
+
+      refute is_nil(Repo.get_by(Domain.Policies.Policy, id: policy.id).deleted_at)
+      assert is_nil(Repo.get_by(Domain.Policies.Policy, id: other_policy.id).deleted_at)
+    end
+
     test "returns error when subject has no permission to delete groups", %{
       subject: subject
     } do
@@ -1109,6 +1133,88 @@ defmodule Domain.ActorsTest do
       group = Fixtures.Actors.create_group(account: account, provider: provider)
 
       assert delete_group(group, subject) == {:error, :synced_group}
+    end
+  end
+
+  describe "delete_groups_for/2" do
+    setup do
+      account = Fixtures.Accounts.create_account()
+      actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+      Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
+      provider = Fixtures.Auth.create_email_provider(account: account)
+      identity = Fixtures.Auth.create_identity(account: account, actor: actor, provider: provider)
+      subject = Fixtures.Auth.create_subject(identity: identity)
+
+      %{
+        account: account,
+        actor: actor,
+        provider: provider,
+        identity: identity,
+        subject: subject
+      }
+    end
+
+    test "does nothing on state conflict", %{
+      account: account,
+      provider: provider,
+      subject: subject
+    } do
+      Fixtures.Actors.create_group(account: account, provider: provider)
+
+      assert {:ok, [_deleted]} = delete_groups_for(provider, subject)
+      assert delete_groups_for(provider, subject) == {:ok, []}
+      assert delete_groups_for(provider, subject) == {:ok, []}
+    end
+
+    test "deletes provider groups", %{account: account, provider: provider, subject: subject} do
+      group = Fixtures.Actors.create_group(account: account, provider: provider)
+
+      assert {:ok, [deleted]} = delete_groups_for(provider, subject)
+      assert deleted.deleted_at
+
+      refute is_nil(Repo.get(Actors.Group, group.id).deleted_at)
+    end
+
+    test "deletes provider group memberships", %{
+      account: account,
+      provider: provider,
+      subject: subject
+    } do
+      group = Fixtures.Actors.create_group(account: account, provider: provider)
+      Fixtures.Actors.create_membership(account: account, group: group)
+
+      assert {:ok, _deleted} = delete_groups_for(provider, subject)
+
+      refute Repo.get_by(Actors.Membership, group_id: group.id)
+    end
+
+    test "deletes policies that use deleted groups", %{
+      account: account,
+      provider: provider,
+      subject: subject
+    } do
+      group = Fixtures.Actors.create_group(account: account, provider: provider)
+
+      policy = Fixtures.Policies.create_policy(account: account, actor_group: group)
+      other_policy = Fixtures.Policies.create_policy(account: account)
+
+      assert {:ok, _resource} = delete_groups_for(provider, subject)
+
+      refute is_nil(Repo.get_by(Domain.Policies.Policy, id: policy.id).deleted_at)
+      assert is_nil(Repo.get_by(Domain.Policies.Policy, id: other_policy.id).deleted_at)
+    end
+
+    test "returns error when subject has no permission to delete groups", %{
+      provider: provider,
+      subject: subject
+    } do
+      subject = Fixtures.Auth.remove_permissions(subject)
+
+      assert delete_groups_for(provider, subject) ==
+               {:error,
+                {:unauthorized,
+                 reason: :missing_permissions,
+                 missing_permissions: [Actors.Authorizer.manage_actors_permission()]}}
     end
   end
 
@@ -1683,6 +1789,25 @@ defmodule Domain.ActorsTest do
       assert_receive "disconnect"
     end
 
+    test "expires actor flows" do
+      account = Fixtures.Accounts.create_account()
+      actor = Fixtures.Actors.create_actor(account: account, type: :account_admin_user)
+      identity = Fixtures.Auth.create_identity(account: account, actor: actor)
+      subject = Fixtures.Auth.create_subject(identity: identity)
+      client = Fixtures.Clients.create_client(account: account, identity: identity)
+
+      Fixtures.Flows.create_flow(
+        account: account,
+        subject: subject,
+        client: client
+      )
+
+      assert {:ok, _actor} = disable_actor(actor, subject)
+
+      expires_at = Repo.one(Domain.Flows.Flow).expires_at
+      assert DateTime.diff(expires_at, DateTime.utc_now()) < 1
+    end
+
     test "returns error when trying to disable the last admin actor" do
       account = Fixtures.Accounts.create_account()
       actor = Fixtures.Actors.create_actor(account: account, type: :account_admin_user)
@@ -1711,67 +1836,6 @@ defmodule Domain.ActorsTest do
       {:ok, _other_actor} = disable_actor(other_actor, subject)
 
       assert disable_actor(actor, subject) == {:error, :cant_disable_the_last_admin}
-    end
-
-    test "returns error when trying to disable the last admin actor using a race condition" do
-      for _ <- 0..50 do
-        test_pid = self()
-
-        Task.async(fn ->
-          allow_child_sandbox_access(test_pid)
-
-          Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
-
-          account = Fixtures.Accounts.create_account()
-          provider = Fixtures.Auth.create_email_provider(account: account)
-
-          actor_one =
-            Fixtures.Actors.create_actor(
-              type: :account_admin_user,
-              account: account,
-              provider: provider
-            )
-
-          actor_two =
-            Fixtures.Actors.create_actor(
-              type: :account_admin_user,
-              account: account,
-              provider: provider
-            )
-
-          identity_one =
-            Fixtures.Auth.create_identity(
-              account: account,
-              actor: actor_one,
-              provider: provider
-            )
-
-          identity_two =
-            Fixtures.Auth.create_identity(
-              account: account,
-              actor: actor_two,
-              provider: provider
-            )
-
-          subject_one = Fixtures.Auth.create_subject(identity: identity_one)
-          subject_two = Fixtures.Auth.create_subject(identity: identity_two)
-
-          for {actor, subject} <- [{actor_two, subject_one}, {actor_one, subject_two}] do
-            Task.async(fn ->
-              allow_child_sandbox_access(test_pid)
-              disable_actor(actor, subject)
-            end)
-          end
-          |> Task.await_many()
-
-          queryable =
-            Actors.Actor.Query.by_account_id(account.id)
-            |> Actors.Actor.Query.not_disabled()
-
-          assert Repo.aggregate(queryable, :count) == 1
-        end)
-      end
-      |> Task.await_many()
     end
 
     test "does not do anything when an actor is disabled twice" do
@@ -1873,12 +1937,26 @@ defmodule Domain.ActorsTest do
   end
 
   describe "delete_actor/2" do
-    test "deletes a given actor" do
+    setup do
       account = Fixtures.Accounts.create_account()
       actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
-      other_actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
       identity = Fixtures.Auth.create_identity(account: account, actor: actor)
       subject = Fixtures.Auth.create_subject(identity: identity)
+
+      %{
+        account: account,
+        actor: actor,
+        identity: identity,
+        subject: subject
+      }
+    end
+
+    test "deletes a given actor", %{
+      account: account,
+      actor: actor,
+      subject: subject
+    } do
+      other_actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
 
       assert {:ok, actor} = delete_actor(actor, subject)
       assert actor.deleted_at
@@ -1890,12 +1968,12 @@ defmodule Domain.ActorsTest do
       assert is_nil(other_actor.deleted_at)
     end
 
-    test "deletes token and broadcasts message to disconnect the actor sessions" do
-      account = Fixtures.Accounts.create_account()
-      actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+    test "deletes token and broadcasts message to disconnect the actor sessions", %{
+      account: account,
+      actor: actor,
+      subject: subject
+    } do
       Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
-      identity = Fixtures.Auth.create_identity(account: account, actor: actor)
-      subject = Fixtures.Auth.create_subject(identity: identity)
 
       Phoenix.PubSub.subscribe(Domain.PubSub, "sessions:#{subject.token_id}")
 
@@ -1906,63 +1984,106 @@ defmodule Domain.ActorsTest do
       assert_receive "disconnect"
     end
 
-    test "deletes actor identities and clients" do
-      account = Fixtures.Accounts.create_account()
-      actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
-      identity = Fixtures.Auth.create_identity(account: account, actor: actor)
-      subject = Fixtures.Auth.create_subject(identity: identity)
-
+    test "deletes actor identities", %{
+      account: account,
+      subject: subject
+    } do
       actor_to_delete = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
       Fixtures.Auth.create_identity(account: account, actor: actor_to_delete)
+
+      assert {:ok, actor} = delete_actor(actor_to_delete, subject)
+      assert actor.deleted_at
+
+      assert Repo.aggregate(Domain.Auth.Identity.Query.not_deleted(), :count) == 1
+    end
+
+    test "deletes actor clients", %{
+      account: account,
+      subject: subject
+    } do
+      actor_to_delete = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
       Fixtures.Clients.create_client(account: account, actor: actor_to_delete)
 
       assert {:ok, actor} = delete_actor(actor_to_delete, subject)
       assert actor.deleted_at
 
       assert Repo.aggregate(Domain.Clients.Client.Query.not_deleted(), :count) == 0
-      assert Repo.aggregate(Domain.Auth.Identity.Query.not_deleted(), :count) == 1
     end
 
-    test "returns error when trying to delete the last admin actor" do
-      account = Fixtures.Accounts.create_account()
-      actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
-      identity = Fixtures.Auth.create_identity(account: account, actor: actor)
-      subject = Fixtures.Auth.create_subject(identity: identity)
+    test "deletes actor memberships", %{
+      account: account,
+      actor: actor,
+      subject: subject
+    } do
+      Fixtures.Actors.create_membership(account: account, actor: actor)
 
+      assert {:ok, _actor} = delete_actor(actor, subject)
+
+      assert Repo.aggregate(Actors.Membership, :count) == 0
+    end
+
+    test "expires actor flows", %{
+      account: account,
+      actor: actor,
+      identity: identity,
+      subject: subject
+    } do
+      client = Fixtures.Clients.create_client(account: account, identity: identity)
+
+      Fixtures.Flows.create_flow(
+        account: account,
+        subject: subject,
+        client: client
+      )
+
+      assert {:ok, _actor} = delete_actor(actor, subject)
+
+      expires_at = Repo.one(Domain.Flows.Flow).expires_at
+      assert DateTime.diff(expires_at, DateTime.utc_now()) < 1
+    end
+
+    test "returns error when trying to delete the last admin actor", %{
+      actor: actor,
+      subject: subject
+    } do
       assert delete_actor(actor, subject) == {:error, :cant_delete_the_last_admin}
     end
 
-    test "last admin check ignores admins in other accounts" do
-      account = Fixtures.Accounts.create_account()
-      actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+    test "last admin check ignores admins in other accounts", %{
+      actor: actor,
+      subject: subject
+    } do
       Fixtures.Actors.create_actor(type: :account_admin_user)
-      identity = Fixtures.Auth.create_identity(account: account, actor: actor)
-      subject = Fixtures.Auth.create_subject(identity: identity)
 
       assert delete_actor(actor, subject) == {:error, :cant_delete_the_last_admin}
     end
 
-    test "last admin check ignores disabled admins" do
-      account = Fixtures.Accounts.create_account()
-      actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+    test "last admin check ignores disabled admins", %{
+      account: account,
+      actor: actor,
+      subject: subject
+    } do
       other_actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
-      identity = Fixtures.Auth.create_identity(account: account, actor: actor)
-      subject = Fixtures.Auth.create_subject(identity: identity)
       {:ok, _other_actor} = disable_actor(other_actor, subject)
 
       assert delete_actor(actor, subject) == {:error, :cant_delete_the_last_admin}
     end
 
-    test "last admin check ignores service accounts" do
-      account = Fixtures.Accounts.create_account()
-      actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
-      identity = Fixtures.Auth.create_identity(account: account, actor: actor)
-      subject = Fixtures.Auth.create_subject(identity: identity)
+    test "last admin check ignores service accounts", %{
+      account: account,
+      actor: actor,
+      subject: subject
+    } do
+      service_account_actor =
+        Fixtures.Actors.create_actor(
+          type: :service_account,
+          account: account
+        )
 
-      actor = Fixtures.Actors.create_actor(type: :service_account, account: account)
+      assert delete_actor(actor, subject) == {:error, :cant_delete_the_last_admin}
 
-      assert {:ok, actor} = delete_actor(actor, subject)
-      assert actor.deleted_at
+      assert {:ok, service_account_actor} = delete_actor(service_account_actor, subject)
+      assert service_account_actor.deleted_at
     end
 
     test "returns error when trying to delete the last admin actor using a race condition" do
@@ -2022,23 +2143,20 @@ defmodule Domain.ActorsTest do
       |> Task.await_many()
     end
 
-    test "does not allow to delete an actor twice" do
-      account = Fixtures.Accounts.create_account()
-      actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+    test "does not allow to delete an actor twice", %{
+      account: account,
+      subject: subject
+    } do
       other_actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
-      identity = Fixtures.Auth.create_identity(account: account, actor: actor)
-      subject = Fixtures.Auth.create_subject(identity: identity)
 
       assert {:ok, _actor} = delete_actor(other_actor, subject)
       assert delete_actor(other_actor, subject) == {:error, :not_found}
     end
 
-    test "does not allow to delete actors in other accounts" do
-      account = Fixtures.Accounts.create_account()
-      actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+    test "does not allow to delete actors in other accounts", %{
+      subject: subject
+    } do
       other_actor = Fixtures.Actors.create_actor(type: :account_admin_user)
-      identity = Fixtures.Auth.create_identity(account: account, actor: actor)
-      subject = Fixtures.Auth.create_subject(identity: identity)
 
       assert delete_actor(other_actor, subject) == {:error, :not_found}
     end

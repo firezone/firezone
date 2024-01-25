@@ -160,7 +160,8 @@ defmodule Domain.Gateways do
       |> Authorizer.for_subject(subject)
       |> Repo.fetch_and_update(
         with: fn group ->
-          {:ok, _count} = Tokens.delete_tokens_for(group, subject)
+          {:ok, _tokens} = Tokens.delete_tokens_for(group, subject)
+          {:ok, _count} = Resources.delete_connections_for(group, subject)
 
           {_count, _} =
             Gateway.Query.by_group_id(group.id)

@@ -36,12 +36,6 @@ defmodule Domain.Policies.Policy.Changeset do
     |> put_change(:disabled_at, nil)
   end
 
-  def delete(%Policy{} = policy) do
-    policy
-    |> change()
-    |> put_change(:deleted_at, DateTime.utc_now())
-  end
-
   defp changeset(changeset) do
     changeset
     |> validate_length(:description, min: 1, max: 1024)

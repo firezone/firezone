@@ -750,7 +750,7 @@ defmodule Domain.ClientsTest do
     end
   end
 
-  describe "delete_actor_clients/2" do
+  describe "delete_clients_for/2" do
     test "removes all clients that belong to an actor", %{
       account: account,
       admin_subject: subject
@@ -761,7 +761,7 @@ defmodule Domain.ClientsTest do
       Fixtures.Clients.create_client(actor: actor)
 
       assert Repo.aggregate(Clients.Client.Query.by_actor_id(actor.id), :count) == 3
-      assert delete_actor_clients(actor, subject) == :ok
+      assert delete_clients_for(actor, subject) == :ok
       assert Repo.aggregate(Clients.Client.Query.by_actor_id(actor.id), :count) == 0
     end
 
@@ -772,7 +772,7 @@ defmodule Domain.ClientsTest do
       actor = Fixtures.Actors.create_actor(account: account)
       Fixtures.Clients.create_client()
 
-      assert delete_actor_clients(actor, subject) == :ok
+      assert delete_clients_for(actor, subject) == :ok
       assert Repo.aggregate(Clients.Client.Query.all(), :count) == 1
     end
 
@@ -782,7 +782,7 @@ defmodule Domain.ClientsTest do
       actor = Fixtures.Actors.create_actor()
       Fixtures.Clients.create_client(actor: actor)
 
-      assert delete_actor_clients(actor, subject) ==
+      assert delete_clients_for(actor, subject) ==
                {:error,
                 {:unauthorized,
                  reason: :missing_permissions,

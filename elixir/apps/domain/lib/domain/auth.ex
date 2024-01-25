@@ -238,6 +238,7 @@ defmodule Domain.Auth do
   def disable_provider(%Provider{} = provider, %Subject{} = subject) do
     mutate_provider(provider, subject, fn provider ->
       if other_active_providers_exist?(provider) do
+        {:ok, _tokens} = Tokens.delete_tokens_for(provider, subject)
         Provider.Changeset.disable_provider(provider)
       else
         :cant_disable_the_last_provider
@@ -253,6 +254,8 @@ defmodule Domain.Auth do
     provider
     |> mutate_provider(subject, fn provider ->
       if other_active_providers_exist?(provider) do
+        :ok = delete_identities_for(provider, subject)
+        {:ok, _groups} = Actors.delete_groups_for(provider, subject)
         Provider.Changeset.delete_provider(provider)
       else
         :cant_delete_the_last_provider
@@ -406,6 +409,9 @@ defmodule Domain.Auth do
         Identity.Changeset.create_identity(identity.actor, identity.provider, attrs, subject)
         |> Adapters.identity_changeset(identity.provider)
       end)
+      |> Ecto.Multi.run(:delete_tokens, fn _repo, %{identity: identity} ->
+        {:ok, _tokens} = Tokens.delete_tokens_for(identity, subject)
+      end)
       |> Ecto.Multi.update(:deleted_identity, fn %{identity: identity} ->
         Identity.Changeset.delete_identity(identity)
       end)
@@ -437,24 +443,33 @@ defmodule Domain.Auth do
       |> Authorizer.for_subject(Identity, subject)
       |> Repo.fetch_and_update(
         with: fn identity ->
-          {:ok, _count} = Tokens.delete_tokens_for(identity, subject)
+          {:ok, _tokens} = Tokens.delete_tokens_for(identity, subject)
           Identity.Changeset.delete_identity(identity)
         end
       )
-
-      # TODO: delete tokens and broadcast messages to identity tokens
     end
   end
 
-  def delete_actor_identities(%Actors.Actor{} = actor, %Subject{} = subject) do
+  def delete_identities_for(%Actors.Actor{} = actor, %Subject{} = subject) do
+    Identity.Query.by_actor_id(actor.id)
+    |> Identity.Query.by_account_id(actor.account_id)
+    |> delete_identities(actor, subject)
+  end
+
+  def delete_identities_for(%Provider{} = provider, %Subject{} = subject) do
+    Identity.Query.by_provider_id(provider.id)
+    |> Identity.Query.by_account_id(provider.account_id)
+    |> delete_identities(provider, subject)
+  end
+
+  defp delete_identities(queryable, assoc, subject) do
     with :ok <- ensure_has_permissions(subject, Authorizer.manage_identities_permission()) do
+      {:ok, _tokens} = Tokens.delete_tokens_for(assoc, subject)
+
       {_count, nil} =
-        Identity.Query.by_actor_id(actor.id)
-        |> Identity.Query.by_account_id(actor.account_id)
+        queryable
         |> Authorizer.for_subject(Identity, subject)
         |> Repo.update_all(set: [deleted_at: DateTime.utc_now(), provider_state: %{}])
-
-      {:ok, _count} = Tokens.delete_tokens_for(actor, subject)
 
       :ok
     end
@@ -605,7 +620,7 @@ defmodule Domain.Auth do
   if IdP was used for Sign In, revokes the IdP token too by redirecting user to IdP logout endpoint.
   """
   def sign_out(%Subject{} = subject, redirect_url) do
-    {:ok, _count} = Tokens.delete_token_by_id(subject.token_id)
+    {:ok, _token} = Tokens.delete_token_for(subject)
     identity = Repo.preload(subject.identity, :provider)
     Adapters.sign_out(identity.provider, identity, redirect_url)
   end
