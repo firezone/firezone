@@ -24,7 +24,7 @@ defmodule API.Client.Views.Relay do
     [
       %{
         type: :stun,
-        uri: "#{format_address(address)}:#{relay.port}"
+        addr: "#{format_address(address)}:#{relay.port}"
       }
     ]
   end
@@ -39,7 +39,7 @@ defmodule API.Client.Views.Relay do
     [
       %{
         type: :turn,
-        uri: "#{format_address(address)}:#{relay.port}",
+        addr: "#{format_address(address)}:#{relay.port}",
         username: username,
         password: password,
         expires_at: expires_at
