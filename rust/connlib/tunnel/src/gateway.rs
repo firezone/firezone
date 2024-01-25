@@ -143,6 +143,26 @@ impl RoleState for GatewayState {
                 continue;
             }
 
+            match self.udp_sockets.poll_recv_from(cx) {
+                Poll::Ready((local, Ok((from, packet)))) => {
+                    todo!()
+                }
+                Poll::Ready((addr, Err(e))) => {
+                    tracing::error!(%addr, "Failed to read socket: {e:#?}");
+                }
+                Poll::Pending => {}
+            }
+
+            match self.relay_socket.poll_recv_from(cx) {
+                Poll::Ready((_, Ok((from, packet)))) => {
+                    todo!()
+                }
+                Poll::Ready((_, Err(e))) => {
+                    tracing::error!("Failed to read relay socket: {e:#?}");
+                }
+                Poll::Pending => {}
+            }
+
             match self.if_watcher.poll_if_event(cx) {
                 Poll::Ready(Ok(ev)) => match ev {
                     if_watch::IfEvent::Up(ip) => {
