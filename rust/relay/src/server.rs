@@ -212,7 +212,7 @@ where
     /// Process the bytes received from a client.
     ///
     /// After calling this method, you should call [`Server::next_command`] until it returns `None`.
-    #[tracing::instrument(skip_all, fields(transaction_id, %sender), level = "error")]
+    #[tracing::instrument(skip_all, fields(transaction_id, %sender, allocation_id, channel, recipient), level = "error")]
     pub fn handle_client_input(&mut self, bytes: &[u8], sender: SocketAddr, now: SystemTime) {
         if tracing::enabled!(target: "wire", tracing::Level::TRACE) {
             let hex_bytes = hex::encode(bytes);
@@ -300,7 +300,7 @@ where
 
     /// Process the bytes received from an allocation.
     #[tracing::instrument(skip_all, fields(%sender, %allocation_id, recipient, channel), level = "error")]
-    pub fn handle_relay_input(
+    pub fn handle_peer_traffic(
         &mut self,
         bytes: &[u8],
         sender: SocketAddr,
@@ -693,7 +693,6 @@ where
         Ok(())
     }
 
-    #[tracing::instrument(skip(self, message), fields(allocation_id, %sender, channel = %message.channel(), recipient), level = "error")]
     fn handle_channel_data_message(
         &mut self,
         message: ChannelData,
@@ -707,7 +706,7 @@ where
             .channels_by_client_and_number
             .get(&(sender, channel_number))
         else {
-            tracing::debug!(target: "relay", "Channel does not exist, refusing to forward data");
+            tracing::debug!(target: "relay", channel = %channel_number, "Channel does not exist, refusing to forward data");
             return;
         };
 
@@ -715,12 +714,13 @@ where
         // The sender of a UDP packet can be spoofed, so why would we bother?
 
         if !channel.bound {
-            tracing::debug!(target: "relay", "Channel exists but is unbound");
+            tracing::debug!(target: "relay", channel = %channel_number, "Channel exists but is unbound");
             return;
         }
 
-        let recipient = channel.peer_address;
-        Span::current().record("recipient", field::display(&recipient));
+        Span::current().record("allocation_id", field::display(&channel.allocation));
+        Span::current().record("recipient", field::display(&channel.peer_address));
+        Span::current().record("channel", field::display(&channel_number));
 
         tracing::debug!(target: "relay", "Relaying {} bytes", data.len());
 
@@ -734,7 +734,7 @@ where
         self.pending_commands.push_back(Command::ForwardData {
             id: channel.allocation,
             data: data.to_vec(),
-            receiver: recipient,
+            receiver: channel.peer_address,
         });
     }
 
