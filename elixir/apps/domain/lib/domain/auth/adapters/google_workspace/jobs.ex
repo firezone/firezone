@@ -35,7 +35,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.Jobs do
 
   every minutes(3), :sync_directory do
     with {:ok, providers} <- Domain.Auth.list_providers_pending_sync_by_adapter(:google_workspace) do
-      Logger.debug("Syncing #{length(providers)} providers")
+      Logger.debug("Syncing #{length(providers)} Google Workspace providers")
 
       providers
       |> Enum.chunk_every(5)
