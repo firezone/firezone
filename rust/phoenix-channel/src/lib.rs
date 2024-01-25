@@ -265,10 +265,11 @@ where
                             tracing::warn!("Reconnect backoff expired");
                             return Poll::Ready(Err(e));
                         };
+
                         let secret_url = self.secret_url.clone();
                         let user_agent = self.user_agent.clone();
 
-                        tracing::debug!(?backoff, max_elapsed_time = ?self.reconnect_backoff.max_elapsed_time, "Reconnecting to portal");
+                        tracing::debug!(?backoff, max_elapsed_time = ?self.reconnect_backoff.max_elapsed_time, "Reconnecting to portal on transient client error: {:#}", anyhow::Error::from(e));
 
                         self.state = State::Connecting(Box::pin(async move {
                             tokio::time::sleep(backoff).await;
@@ -289,7 +290,7 @@ where
                     match stream.start_send_unpin(message) {
                         Ok(()) => {}
                         Err(e) => {
-                            self.reconnect_on_transient_error(e);
+                            self.reconnect_on_transient_error(Error::WebSocket(e));
                         }
                     }
                     continue;
@@ -311,6 +312,10 @@ where
                     >(&text)
                     {
                         Ok(m) => m,
+                        Err(e) if e.is_io() || e.is_eof() => {
+                            self.reconnect_on_transient_error(Error::Serde(e));
+                            continue;
+                        }
                         Err(e) => {
                             tracing::warn!("Failed to deserialize message {text}: {e}");
                             continue;
@@ -392,7 +397,7 @@ where
                     }
                 }
                 Poll::Ready(Some(Err(e))) => {
-                    self.reconnect_on_transient_error(e);
+                    self.reconnect_on_transient_error(Error::WebSocket(e));
                     continue;
                 }
                 _ => (),
@@ -414,7 +419,7 @@ where
                     tracing::trace!("Flushed websocket");
                 }
                 Poll::Ready(Err(e)) => {
-                    self.reconnect_on_transient_error(e);
+                    self.reconnect_on_transient_error(Error::WebSocket(e));
                     continue;
                 }
                 Poll::Pending => {}
@@ -427,9 +432,8 @@ where
     /// Sets the channels state to [`State::Connecting`] with the given error.
     ///
     /// The [`PhoenixChannel::poll`] function will handle the reconnect if appropriate for the given error.
-    fn reconnect_on_transient_error(&mut self, e: tokio_tungstenite::tungstenite::Error) {
-        tracing::info!("Websocket disconnected: {e:#?}");
-        self.state = State::Connecting(future::ready(Err(Error::WebSocket(e))).boxed())
+    fn reconnect_on_transient_error(&mut self, e: Error) {
+        self.state = State::Connecting(future::ready(Err(e)).boxed())
     }
 
     fn send_message(
