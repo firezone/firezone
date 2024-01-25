@@ -451,7 +451,7 @@ jobs:
             elixir/esbuild-*
             elixir/tailwind-*
           key: ubuntu-22.04-${{ runner.arch }}-${{ env.cache-name }}-${{ hashFiles('elixir/apps/web/assets/pnpm-lock.yaml') }}
-      # Front-End build cache, it rarely changes so we cache it agressively too
+      # Front-End build cache, it rarely changes so we cache it aggressively too
       - uses: actions/cache/restore@v3
         name: Web Assets Cache
         id: pnpm-web-build-cache

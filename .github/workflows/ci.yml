@@ -311,7 +311,7 @@ jobs:
         run: ${{ matrix.setup }}
       - name: Execute ${{ matrix.test_name }} test
         run: ${{ matrix.execute }}
-      - name: ${{ matrix.test_name }} Perfomance Test
+      - name: ${{ matrix.test_name }} Performance Test
         if: ${{ matrix.perf_test_artifact_name }}
         id: perfomance-test
         timeout-minutes: 5
@@ -352,13 +352,13 @@ jobs:
           cat /tmp/iperf3results/udp_client2server.json | jq -r '"udp_client2server_sum_bits_per_second=" + (.end.sum.bits_per_second|tostring)' >> "$GITHUB_OUTPUT"
           cat /tmp/iperf3results/udp_client2server.json | jq -r '"udp_client2server_sum_jitter_ms=" + (.end.sum.jitter_ms|tostring)' >> "$GITHUB_OUTPUT"
           cat /tmp/iperf3results/udp_client2server.json | jq -r '"udp_client2server_sum_lost_percent=" + (.end.sum.lost_percent|tostring)' >> "$GITHUB_OUTPUT"
-      - name: Save ${{ matrix.test_name }} Perfomance Test Results
+      - name: Save ${{ matrix.test_name }} Performance Test Results
         if: ${{ matrix.perf_test_artifact_name }}
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.perf_test_artifact_name }}-iperf3results
           path: /tmp/iperf3results
-      - name: Download main branch ${{ matrix.test_name }} Perfomance Test Results
+      - name: Download main branch ${{ matrix.test_name }} Performance Test Results
         id: download-artifact
         if: ${{ github.event_name == 'pull_request' && matrix.perf_test_artifact_name }}
         env:
@@ -427,7 +427,7 @@ jobs:
             });
 
             const botComment = comments.find(comment => {
-              return comment.user.type === 'Bot' && comment.body.includes('${{ matrix.test_name }} Perfomance Test Results')
+              return comment.user.type === 'Bot' && comment.body.includes('${{ matrix.test_name }} Performance Test Results')
             });
 
             function humanFileSize(bytes, dp=1) {
@@ -478,7 +478,7 @@ jobs:
             let udp_client2server_sum_jitter_ms = (${{ steps.perfomance-test.outputs.udp_client2server_sum_jitter_ms }}).toFixed(2) + "ms (" + getDiffPercents(${{ steps.main-perfomance-test.outputs.udp_client2server_sum_jitter_ms }}, ${{ steps.perfomance-test.outputs.udp_client2server_sum_jitter_ms }}) + ')';
             let udp_client2server_sum_lost_percent = (${{ steps.perfomance-test.outputs.udp_client2server_sum_lost_percent }}).toFixed(2) + "% (" + getDiffPercents(${{ steps.main-perfomance-test.outputs.udp_client2server_sum_lost_percent }}, ${{ steps.perfomance-test.outputs.udp_client2server_sum_lost_percent }}) + ')';
 
-            const output = `## ${{ matrix.test_name }} Perfomance Test Results
+            const output = `## ${{ matrix.test_name }} Performance Test Results
 
             ### TCP
 
