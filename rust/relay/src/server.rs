@@ -212,7 +212,7 @@ where
     /// Process the bytes received from a client.
     ///
     /// After calling this method, you should call [`Server::next_command`] until it returns `None`.
-    #[tracing::instrument(skip_all, fields(transaction_id, %sender, allocation_id, channel, recipient), level = "error")]
+    #[tracing::instrument(skip_all, fields(transaction_id, %sender, allocation, channel, recipient), level = "error")]
     pub fn handle_client_input(&mut self, bytes: &[u8], sender: SocketAddr, now: SystemTime) {
         if tracing::enabled!(target: "wire", tracing::Level::TRACE) {
             let hex_bytes = hex::encode(bytes);
@@ -299,19 +299,19 @@ where
     }
 
     /// Process the bytes received from an allocation.
-    #[tracing::instrument(skip_all, fields(%sender, %allocation_id, recipient, channel), level = "error")]
+    #[tracing::instrument(skip_all, fields(%sender, %allocation, recipient, channel), level = "error")]
     pub fn handle_peer_traffic(
         &mut self,
         bytes: &[u8],
         sender: SocketAddr,
-        allocation_id: AllocationId,
+        allocation: AllocationId,
     ) {
         if tracing::enabled!(target: "wire", tracing::Level::TRACE) {
             let hex_bytes = hex::encode(bytes);
             tracing::trace!(target: "wire", %hex_bytes, "receiving bytes");
         }
 
-        let Some(recipient) = self.clients_by_allocation.get(&allocation_id) else {
+        let Some(recipient) = self.clients_by_allocation.get(&allocation) else {
             tracing::debug!(target: "relay", "unknown allocation");
             return;
         };
@@ -338,7 +338,7 @@ where
             return;
         }
 
-        if channel.allocation != allocation_id {
+        if channel.allocation != allocation {
             tracing::debug!(target: "relay", "channel is not associated with allocation");
             return;
         }
@@ -402,9 +402,9 @@ where
     }
 
     /// An allocation failed.
-    #[tracing::instrument(skip(self), fields(%allocation_id), level = "error")]
-    pub fn handle_allocation_failed(&mut self, allocation_id: AllocationId) {
-        self.delete_allocation(allocation_id)
+    #[tracing::instrument(skip(self), fields(%allocation), level = "error")]
+    pub fn handle_allocation_failed(&mut self, allocation: AllocationId) {
+        self.delete_allocation(allocation)
     }
 
     /// Return the next command to be executed.
@@ -718,7 +718,7 @@ where
             return;
         }
 
-        Span::current().record("allocation_id", field::display(&channel.allocation));
+        Span::current().record("allocation", field::display(&channel.allocation));
         Span::current().record("recipient", field::display(&channel.peer_address));
         Span::current().record("channel", field::display(&channel_number));
 
