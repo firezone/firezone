@@ -89,9 +89,6 @@ where
 
     let (channel, init_message) = loop {
         match future::poll_fn(|cx| channel.poll(cx)).await? {
-            Event::JoinedRoom { topic } if topic == login_topic => {
-                tracing::info!("Joined {login_topic} room on portal")
-            }
             Event::InboundMessage {
                 topic,
                 msg: InitMessage::Init(msg),
@@ -328,7 +325,7 @@ where
                                 return Poll::Ready(Ok(Event::InboundMessage {
                                     topic: message.topic,
                                     msg,
-                                }))
+                                }));
                             }
                             Some(reference) => {
                                 return Poll::Ready(Ok(Event::InboundReq {
@@ -355,6 +352,8 @@ where
                                 OutboundRequestId(message.reference.ok_or(Error::MissingReplyId)?);
 
                             if self.pending_join_requests.remove(&req_id) {
+                                tracing::info!("Joined {} room on portal", message.topic);
+
                                 // For `phx_join` requests, `reply` is empty so we can safely ignore it.
                                 return Poll::Ready(Ok(Event::JoinedRoom {
                                     topic: message.topic,
