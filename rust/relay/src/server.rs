@@ -213,7 +213,7 @@ where
     /// Process the bytes received from a client.
     ///
     /// After calling this method, you should call [`Server::next_command`] until it returns `None`.
-    #[tracing::instrument(skip_all, fields(transaction_id, %sender, allocation, channel, recipient), level = "error")]
+    #[tracing::instrument(skip_all, fields(transaction_id, %sender, allocation, channel, recipient, peer), level = "error")]
     pub fn handle_client_input(&mut self, bytes: &[u8], sender: SocketAddr, now: SystemTime) {
         if tracing::enabled!(target: "wire", tracing::Level::TRACE) {
             let hex_bytes = hex::encode(bytes);
@@ -596,7 +596,6 @@ where
     /// Handle a TURN channel bind request.
     ///
     /// See <https://www.rfc-editor.org/rfc/rfc8656#name-receiving-a-channelbind-req> for details.
-    #[tracing::instrument(skip(self, request, now), fields(%sender, peer_address = %request.xor_peer_address().address(), requested_channel = %request.channel_number().value(), allocation), level = "error")]
     fn handle_channel_bind_request(
         &mut self,
         request: ChannelBind,
@@ -610,11 +609,13 @@ where
             .get_mut(&sender)
             .ok_or(error_response(AllocationMismatch, &request))?;
 
-        Span::current().record("allocation", display(&allocation.id));
-
         // Note: `channel_number` is enforced to be in the correct range.
         let requested_channel = request.channel_number().value();
         let peer_address = request.xor_peer_address().address();
+
+        Span::current().record("allocation", display(&allocation.id));
+        Span::current().record("peer", display(&peer_address));
+        Span::current().record("channel", display(&requested_channel));
 
         // Check that our allocation can handle the requested peer addr.
         if !allocation.can_relay_to(peer_address) {
@@ -624,6 +625,8 @@ where
         // Ensure the same address isn't already bound to a different channel.
         if let Some(number) = self.channel_numbers_by_peer.get(&peer_address) {
             if number != &requested_channel {
+                tracing::error!(target: "relay", existing_channel = %number, "Peer is already bound to another channel");
+
                 return Err(error_response(BadRequest, &request));
             }
         }
@@ -634,6 +637,8 @@ where
             .get_mut(&(sender, requested_channel))
         {
             if channel.peer_address != peer_address {
+                tracing::error!(target: "relay", existing_peer = %channel.peer_address, "Channel is already bound to a different peer");
+
                 return Err(error_response(BadRequest, &request));
             }
 
