@@ -463,7 +463,7 @@ impl Controller {
     }
 }
 
-// TODO: After PR #2960 lands, move some of this into `impl Controller`
+// TODO: Move some of this into `impl Controller`
 async fn run_controller(
     app: tauri::AppHandle,
     ctlr_tx: CtlrTx,
@@ -482,6 +482,7 @@ async fn run_controller(
     let mut com_worker = network_changes::Worker::new()?;
 
     loop {
+        // TODO: Extract a step function so this loop isn't so long and so indented
         tokio::select! {
             () = controller.notify_controller.notified() => if let Err(e) = controller.refresh_system_tray_menu() {
                 tracing::error!("couldn't reload resource list: {e:#?}");

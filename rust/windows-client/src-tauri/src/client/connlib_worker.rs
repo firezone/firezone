@@ -87,13 +87,13 @@ impl ConnlibWorker {
             // Note: Make sure these are all cancel-safe
             tokio::select! {
                 // Cancel safe per <https://docs.rs/tokio/latest/tokio/sync/mpsc/struct.Receiver.html#cancel-safety>
-                req = self.client.request_rx.recv() => {
-                    let Some(req) = req else {
+                req = self.client.recv() => {
+                    let Ok(req) = req else {
                         tracing::info!("named pipe dropped");
                         break;
                     };
                     let resp = self.handle_manager_msg(&req).await.context("handle_manager_msg failed")?;
-                    self.client.send(ipc::WorkerMsg::Response(resp)).await.context("ipc::Client::send failed")?;
+                    self.client.send(&ipc::WorkerMsg::Response(resp)).await.context("ipc::Client::send failed")?;
                     if let ipc::ManagerMsg::Disconnect = req {
                         break;
                     }
@@ -103,7 +103,7 @@ impl ConnlibWorker {
                 // Cancel safe per <https://docs.rs/tokio/latest/tokio/sync/mpsc/struct.Receiver.html#cancel-safety>
                 msg = self.rx.recv() => {
                     tracing::debug!(?msg, "trying to send message over IPC");
-                    self.client.send(msg.ok_or_else(|| anyhow::anyhow!("should have received a message over mpsc"))?).await.context("ipc::Client::send failed")?;
+                    self.client.send(&msg.ok_or_else(|| anyhow::anyhow!("should have received a message over mpsc"))?).await.context("ipc::Client::send failed")?;
                 },
             }
         }
@@ -151,7 +151,7 @@ impl ConnlibWorker {
     async fn refresh(&mut self) -> Result<()> {
         let resources = Vec::clone(&self.callback_handler.resources.load());
         self.client
-            .send(ipc::WorkerMsg::Callback(ipc::Callback::OnUpdateResources(
+            .send(&ipc::WorkerMsg::Callback(ipc::Callback::OnUpdateResources(
                 resources,
             )))
             .await?;

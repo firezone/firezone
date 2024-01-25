@@ -108,7 +108,7 @@ impl Subprocess {
 
 /// A server that accepts only one client
 pub(crate) struct UnconnectedServer {
-    pipe: named_pipe::NamedPipeServer,
+    pub(crate) pipe: named_pipe::NamedPipeServer,
 }
 
 impl UnconnectedServer {

@@ -128,22 +128,20 @@ async fn test_api_worker(pipe_id: String) -> Result<()> {
     let mut client = Client::new(&pipe_id).await?;
 
     client
-        .send(WorkerMsg::Callback(Callback::TunnelReady))
+        .send(&WorkerMsg::Callback(Callback::TunnelReady))
         .await?;
 
     client
-        .send(WorkerMsg::Callback(Callback::OnUpdateResources(
+        .send(&WorkerMsg::Callback(Callback::OnUpdateResources(
             sample_resources(),
         )))
         .await?;
 
     tracing::trace!("Worker connected to named pipe");
     loop {
-        let Some(req) = client.request_rx.recv().await else {
-            anyhow::bail!("named pipe closed unexpectedly");
-        };
+        let req = client.recv().await?;
         tracing::trace!(?req, "worker got request");
-        client.send(WorkerMsg::Response(req.clone())).await?;
+        client.send(&WorkerMsg::Response(req.clone())).await?;
         tracing::trace!(?req, "worker replied");
         if let ManagerMsg::Disconnect = req {
             break;
@@ -213,13 +211,13 @@ async fn security_worker(pipe_id: String) -> Result<()> {
     let mut cookie = String::new();
     std::io::stdin().read_line(&mut cookie)?;
     let cookie = WorkerMsg::Callback(Callback::Cookie(cookie.trim().to_string()));
-    client.send(cookie).await?;
+    client.send(&cookie).await?;
     tracing::debug!("Worker connected to named pipe");
     loop {
-        let Some(req) = client.request_rx.recv().await else {
+        let Ok(req) = client.recv().await else {
             break;
         };
-        client.send(WorkerMsg::Response(req.clone())).await?;
+        client.send(&WorkerMsg::Response(req.clone())).await?;
         if let ManagerMsg::Disconnect = req {
             break;
         }
@@ -333,10 +331,8 @@ async fn leak_worker(pipe_id: String) -> Result<()> {
     let mut client = Client::new_unsecured(&pipe_id)?;
     tracing::debug!("Worker connected to named pipe");
     loop {
-        let Some(req) = client.request_rx.recv().await else {
-            anyhow::bail!("named pipe closed unexpectedly");
-        };
-        client.send(WorkerMsg::Response(req.clone())).await?;
+        let req = client.recv().await?;
+        client.send(&WorkerMsg::Response(req.clone())).await?;
         if let ManagerMsg::Disconnect = req {
             break;
         }

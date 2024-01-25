@@ -68,7 +68,7 @@ pub(crate) use client::Client;
 pub(crate) use server::{LeakGuard, ServerReadHalf, ServerWriteHalf, SubcommandChild, Subprocess};
 
 #[derive(Debug, thiserror::Error)]
-enum Error {
+pub(crate) enum Error {
     /// Used to detected graceful named pipe closes
     #[error("EOF")]
     Eof,
@@ -201,20 +201,20 @@ mod tests {
                 let mut client = Client::new_unsecured(&server_id)?;
 
                 client
-                    .send(WorkerMsg::Callback(Callback::OnUpdateResources(
+                    .send(&WorkerMsg::Callback(Callback::OnUpdateResources(
                         sample_resources(),
                     )))
                     .await?;
 
                 // Handle requests from the main process
                 loop {
-                    let Some(req) = client.request_rx.recv().await else {
+                    let Ok(req) = client.recv().await else {
                         tracing::debug!("shutting down worker_task");
                         break;
                     };
                     tracing::debug!(?req, "worker_task got request");
                     let resp = WorkerMsg::Response(req.clone());
-                    client.send(resp).await?;
+                    client.send(&resp).await?;
 
                     if let ManagerMsg::Disconnect = req {
                         break;
@@ -272,5 +272,42 @@ mod tests {
                 address: "*.example.com".to_string(),
             }),
         ]
+    }
+
+    #[test]
+    fn split_pipe() -> Result<()> {
+        tracing_subscriber::fmt::try_init().ok();
+
+        let rt = Runtime::new()?;
+        rt.block_on(async move {
+            // Pretend we're in the main process
+            let (server, server_id) = UnconnectedServer::new()?;
+
+            let _worker_task = tokio::spawn(async move {
+                // Pretend we're in a worker process
+                let mut client = Client::new_unsecured(&server_id)?;
+
+                // Handle requests from the main process
+                loop {
+                    let Ok(req) = client.recv().await else {
+                        break;
+                    };
+                    let resp = WorkerMsg::Response(req.clone());
+                    client.send(&resp).await?;
+
+                    if let ManagerMsg::Disconnect = req {
+                        break;
+                    }
+                }
+                client.close().await?;
+                Ok::<_, anyhow::Error>(())
+            });
+
+            server.pipe.connect().await?;
+            let (_pipe_reader, _pipe_writer) = tokio::io::split(server.pipe);
+
+            Ok::<_, anyhow::Error>(())
+        })?;
+        Ok(())
     }
 }
