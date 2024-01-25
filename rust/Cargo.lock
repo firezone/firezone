@@ -4612,6 +4612,7 @@ dependencies = [
 name = "phoenix-channel"
 version = "1.0.0"
 dependencies = [
+ "anyhow",
  "backoff",
  "base64 0.21.7",
  "futures",

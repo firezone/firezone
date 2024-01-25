@@ -246,7 +246,7 @@ async fn connect_to_portal(
     token: &SecretString,
     mut url: Url,
     stamp_secret: &SecretString,
-) -> Result<Option<PhoenixChannel<(), ()>>> {
+) -> Result<Option<PhoenixChannel<JoinMessage, (), ()>>> {
     use secrecy::ExposeSecret;
 
     if !url.path().is_empty() {
@@ -266,7 +266,7 @@ async fn connect_to_portal(
             .append_pair("ipv6", &public_ip6_addr.to_string());
     }
 
-    let (channel, Init {}) = phoenix_channel::init::<Init, _, _>(
+    let (channel, Init {}) = phoenix_channel::init::<_, Init, _, _>(
         Secret::from(SecureUrl::from_url(url)),
         format!("relay/{}", env!("CARGO_PKG_VERSION")),
         "relay",
@@ -285,7 +285,7 @@ async fn connect_to_portal(
 #[derive(serde::Deserialize, Debug)]
 struct Init {}
 
-#[derive(serde::Serialize, PartialEq, Debug)]
+#[derive(serde::Serialize, PartialEq, Debug, Clone)]
 struct JoinMessage {
     stamp_secret: String,
 }
@@ -315,7 +315,7 @@ struct Eventloop<R> {
     outbound_ip4_data_sender: mpsc::Sender<(Vec<u8>, SocketAddr)>,
     outbound_ip6_data_sender: mpsc::Sender<(Vec<u8>, SocketAddr)>,
     server: Server<R>,
-    channel: Option<PhoenixChannel<(), ()>>,
+    channel: Option<PhoenixChannel<JoinMessage, (), ()>>,
     allocations: HashMap<(AllocationId, AddressFamily), Allocation>,
     relay_data_sender: mpsc::Sender<(Vec<u8>, SocketAddr, AllocationId)>,
     relay_data_receiver: mpsc::Receiver<(Vec<u8>, SocketAddr, AllocationId)>,
@@ -328,7 +328,7 @@ where
 {
     fn new(
         server: Server<R>,
-        channel: Option<PhoenixChannel<(), ()>>,
+        channel: Option<PhoenixChannel<JoinMessage, (), ()>>,
         public_address: IpStack,
     ) -> Result<Self> {
         let (relay_data_sender, relay_data_receiver) = mpsc::channel(1);

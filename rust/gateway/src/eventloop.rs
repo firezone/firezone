@@ -17,7 +17,7 @@ pub const PHOENIX_TOPIC: &str = "gateway";
 
 pub struct Eventloop {
     tunnel: Arc<Tunnel<CallbackHandler, GatewayState>>,
-    portal: PhoenixChannel<IngressMessages, EgressMessages>,
+    portal: PhoenixChannel<(), IngressMessages, EgressMessages>,
 
     // TODO: Strongly type request reference (currently `String`)
     connection_request_tasks:
@@ -31,7 +31,7 @@ pub struct Eventloop {
 impl Eventloop {
     pub(crate) fn new(
         tunnel: Arc<Tunnel<CallbackHandler, GatewayState>>,
-        portal: PhoenixChannel<IngressMessages, EgressMessages>,
+        portal: PhoenixChannel<(), IngressMessages, EgressMessages>,
     ) -> Self {
         Self {
             tunnel,
@@ -232,6 +232,13 @@ impl Eventloop {
                             tracing::debug!("Received too many ICE candidates, dropping some");
                         }
                     }
+                    continue;
+                }
+                Poll::Ready(phoenix_channel::Event::InboundMessage {
+                    msg: IngressMessages::Init(_),
+                    ..
+                }) => {
+                    // TODO: Handle `init` message during operation.
                     continue;
                 }
                 _ => {}
