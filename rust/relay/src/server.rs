@@ -433,7 +433,6 @@ where
     /// Handle a TURN allocate request.
     ///
     /// See <https://www.rfc-editor.org/rfc/rfc8656#name-receiving-an-allocate-reque> for details.
-    #[tracing::instrument(skip(self, request, now), fields(%sender, effective_lifetime = ?request.effective_lifetime().lifetime()), level = "error")]
     fn handle_allocate_request(
         &mut self,
         request: Allocate,
@@ -531,12 +530,14 @@ where
                 target: "relay",
                 first_relay_address = field::display(first_relay_address),
                 second_relay_address = field::display(second_relay_addr),
+                lifetime = field::debug(effective_lifetime.lifetime()),
                 "Created new allocation",
             )
         } else {
             tracing::info!(
                 target: "relay",
                 first_relay_address = field::display(first_relay_address),
+                lifetime = field::debug(effective_lifetime.lifetime()),
                 "Created new allocation",
             )
         }
