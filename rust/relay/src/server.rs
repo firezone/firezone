@@ -619,6 +619,8 @@ where
 
         // Check that our allocation can handle the requested peer addr.
         if !allocation.can_relay_to(peer_address) {
+            tracing::error!(target: "relay", "Allocation cannot relay to peer");
+
             return Err(error_response(PeerAddressFamilyMismatch, &request));
         }
 
