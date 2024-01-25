@@ -5,7 +5,7 @@ defmodule API.Client.Views.Interface do
   def render(%Clients.Client{} = client) do
     upstream_dns =
       Clients.fetch_client_config!(client)
-      |> Keyword.fetch!(:upstream_dns)
+      |> Map.fetch!(:clients_upstream_dns)
       |> Enum.map(fn dns_config ->
         addr = ClientsUpstreamDNS.normalize_dns_address(dns_config)
         Map.from_struct(%{dns_config | address: addr})

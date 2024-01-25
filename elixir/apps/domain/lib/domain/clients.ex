@@ -153,7 +153,7 @@ defmodule Domain.Clients do
   def upsert_client(attrs \\ %{}, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_own_clients_permission()) do
       assoc = subject.identity || subject.actor
-      changeset = Client.Changeset.upsert(assoc, subject.context, attrs)
+      changeset = Client.Changeset.upsert(assoc, subject, attrs)
 
       Ecto.Multi.new()
       |> Ecto.Multi.insert(:client, changeset,
@@ -292,15 +292,12 @@ defmodule Domain.Clients do
   defp actor_topic(%Actors.Actor{} = actor), do: actor_topic(actor.id)
   defp actor_topic(actor_id), do: "actor_clients:#{actor_id}"
 
-  # defp identity_topic(%Auth.Identity{} = identity), do: identity_topic(identity.id)
-  # defp identity_topic(identity_id), do: "identity_clients:#{identity_id}"
-
-  def subscribe_for_clients_presence_in_account(%Accounts.Account{} = account) do
-    PubSub.subscribe(account_topic(account))
+  def subscribe_for_clients_presence_in_account(account_or_id) do
+    PubSub.subscribe(account_topic(account_or_id))
   end
 
-  def subscribe_for_clients_presence_for_actor(%Actors.Actor{} = actor) do
-    PubSub.subscribe(actor_topic(actor))
+  def subscribe_for_clients_presence_for_actor(actor_or_id) do
+    PubSub.subscribe(actor_topic(actor_or_id))
   end
 
   def broadcast_to_client(client_or_id, payload) do

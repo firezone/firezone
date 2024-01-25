@@ -22,6 +22,10 @@ defmodule Domain.Clients.Client.Query do
     where(queryable, [clients: clients], clients.account_id == ^account_id)
   end
 
+  def by_last_used_token_id(queryable \\ not_deleted(), last_used_token_id) do
+    where(queryable, [clients: clients], clients.last_used_token_id == ^last_used_token_id)
+  end
+
   def returning_not_deleted(queryable \\ not_deleted()) do
     select(queryable, [clients: clients], clients)
   end
