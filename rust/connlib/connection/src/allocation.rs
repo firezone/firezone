@@ -339,7 +339,7 @@ impl Allocation {
         let msg = make_channel_bind_request(peer, channel);
 
         if !self.has_allocation() {
-            tracing::debug!("No allocation yet, buffering channel binding");
+            tracing::debug!(relay = %self.server, %peer, "No allocation yet, buffering channel binding");
 
             self.buffered_channel_bindings.push_back(msg);
             return;
