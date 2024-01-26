@@ -371,6 +371,10 @@ impl<T> Eventloop<T> {
         while let Some(transmit) = self.pool.poll_transmit() {
             tracing::trace!(target = "wire::out", to = %transmit.dst, packet = %hex::encode(&transmit.payload));
 
+            if let Some(src) = transmit.src {
+                assert_eq!(src, self.socket.local_addr()?);
+            }
+
             self.socket.try_send_to(&transmit.payload, transmit.dst)?;
         }
 
