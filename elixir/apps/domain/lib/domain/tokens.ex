@@ -275,11 +275,9 @@ defmodule Domain.Tokens do
   end
 
   defp broadcast_disconnect_message(token) do
-    Phoenix.PubSub.broadcast(
-      Domain.PubSub,
-      socket_id(token),
-      %Phoenix.Socket.Broadcast{event: "disconnect"}
-    )
+    topic = socket_id(token)
+    payload = %Phoenix.Socket.Broadcast{topic: topic, event: "disconnect"}
+    Phoenix.PubSub.broadcast(Domain.PubSub, topic, payload)
   end
 
   defp fetch_config! do

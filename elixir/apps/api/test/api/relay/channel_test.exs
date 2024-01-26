@@ -42,7 +42,7 @@ defmodule API.Relay.ChannelTest do
         })
         |> subscribe_and_join(API.Relay.Channel, "relay", %{stamp_secret: stamp_secret})
 
-      presence = Relays.Presence.list(Relays.global_group_presence_topic())
+      presence = Relays.Presence.list(Relays.global_groups_presence_topic())
 
       assert %{metas: [%{online_at: online_at, phx_ref: _ref}]} = Map.fetch!(presence, relay.id)
       assert is_number(online_at)

@@ -147,7 +147,7 @@ defmodule Web.RelayGroups.Index do
     """
   end
 
-  def handle_info(%Phoenix.Socket.Broadcast{topic: "relays" <> _account_id_or_nothing}, socket) do
+  def handle_info(%Phoenix.Socket.Broadcast{topic: "presences:" <> _rest}, socket) do
     subject = socket.assigns.subject
     {:ok, groups} = Relays.list_groups(subject, preload: [:relays])
     {:noreply, assign(socket, groups: groups)}

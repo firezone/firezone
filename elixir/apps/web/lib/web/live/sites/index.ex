@@ -131,7 +131,10 @@ defmodule Web.Sites.Index do
     """
   end
 
-  def handle_info(%Phoenix.Socket.Broadcast{topic: "gateways:" <> _account_id}, socket) do
+  def handle_info(
+        %Phoenix.Socket.Broadcast{topic: "presences:account_gateways:" <> _account_id},
+        socket
+      ) do
     subject = socket.assigns.subject
     {:ok, groups} = Gateways.list_groups(subject, preload: [:gateways, connections: [:resource]])
     {:noreply, assign(socket, groups: groups)}

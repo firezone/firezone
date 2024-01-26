@@ -57,7 +57,10 @@ defmodule Web.Clients.Index do
     """
   end
 
-  def handle_info(%Phoenix.Socket.Broadcast{topic: "clients:" <> _account_id}, socket) do
+  def handle_info(
+        %Phoenix.Socket.Broadcast{topic: "presences:account_clients:" <> _account_id},
+        socket
+      ) do
     {:ok, clients} = Clients.list_clients(socket.assigns.subject, preload: :actor)
     {:noreply, assign(socket, clients: clients)}
   end

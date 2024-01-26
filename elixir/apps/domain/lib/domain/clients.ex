@@ -287,11 +287,11 @@ defmodule Domain.Clients do
   defp actor_topic(actor_id), do: "actor_clients:#{actor_id}"
 
   def subscribe_for_clients_presence_in_account(account_or_id) do
-    PubSub.subscribe(account_topic(account_or_id))
+    PubSub.subscribe(account_presence_topic(account_or_id))
   end
 
   def subscribe_for_clients_presence_for_actor(actor_or_id) do
-    PubSub.subscribe(actor_topic(actor_or_id))
+    PubSub.subscribe(actor_presence_topic(actor_or_id))
   end
 
   def broadcast_to_client(client_or_id, payload) do

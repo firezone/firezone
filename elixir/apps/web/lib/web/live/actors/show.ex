@@ -344,7 +344,10 @@ defmodule Web.Actors.Show do
     """
   end
 
-  def handle_info(%Phoenix.Socket.Broadcast{topic: "actor_clients:" <> _account_id}, socket) do
+  def handle_info(
+        %Phoenix.Socket.Broadcast{topic: "presences:actor_clients:" <> _actor_id},
+        socket
+      ) do
     {:ok, actor} =
       Actors.fetch_actor_by_id(socket.assigns.actor.id, socket.assigns.subject,
         preload: [clients: []]

@@ -112,7 +112,10 @@ defmodule Web.RelayGroups.Show do
     """
   end
 
-  def handle_info(%Phoenix.Socket.Broadcast{topic: "relay_groups:" <> _account_id}, socket) do
+  def handle_info(
+        %Phoenix.Socket.Broadcast{topic: "presences:relay_groups:" <> _account_id},
+        socket
+      ) do
     {:ok, group} =
       Relays.fetch_group_by_id(socket.assigns.group.id, socket.assigns.subject,
         preload: [

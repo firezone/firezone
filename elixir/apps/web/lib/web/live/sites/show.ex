@@ -221,7 +221,10 @@ defmodule Web.Sites.Show do
     """
   end
 
-  def handle_info(%Phoenix.Socket.Broadcast{topic: "gateway_groups:" <> _group_id}, socket) do
+  def handle_info(
+        %Phoenix.Socket.Broadcast{topic: "presences:group_gateways:" <> _group_id},
+        socket
+      ) do
     {:ok, gateways} =
       Gateways.list_connected_gateways_for_group(socket.assigns.group, socket.assigns.subject)
 

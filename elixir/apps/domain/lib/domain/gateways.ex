@@ -541,11 +541,11 @@ defmodule Domain.Gateways do
   defp group_topic(group_id), do: "group_gateways:#{group_id}"
 
   def subscribe_for_gateways_presence_in_account(%Accounts.Account{} = account) do
-    PubSub.subscribe(account_topic(account))
+    PubSub.subscribe(account_presence_topic(account))
   end
 
   def subscribe_for_gateways_presence_in_group(%Group{} = group) do
-    PubSub.subscribe(group_topic(group))
+    PubSub.subscribe(group_presence_topic(group))
   end
 
   def broadcast_to_gateway(gateway_or_id, payload) do

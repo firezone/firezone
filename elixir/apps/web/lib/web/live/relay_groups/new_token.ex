@@ -335,7 +335,10 @@ defmodule Web.RelayGroups.NewToken do
     {:noreply, assign(socket, selected_tab: id)}
   end
 
-  def handle_info(%Phoenix.Socket.Broadcast{topic: "relay_groups:" <> _group_id}, socket) do
+  def handle_info(
+        %Phoenix.Socket.Broadcast{topic: "presences:group_relays:" <> _group_id},
+        socket
+      ) do
     {:noreply, assign(socket, connected?: true)}
   end
 end

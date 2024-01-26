@@ -80,7 +80,7 @@ defmodule Domain.Relays do
   defp maybe_preload_online_statuses([]), do: []
 
   defp maybe_preload_online_statuses([group | _] = groups) do
-    connected_global_relays = global_group_presence_topic() |> Presence.list()
+    connected_global_relays = global_groups_presence_topic() |> Presence.list()
     connected_relays = group.account_id |> account_presence_topic() |> Presence.list()
 
     if Ecto.assoc_loaded?(group.relays) do
@@ -281,7 +281,7 @@ defmodule Domain.Relays do
   end
 
   defp preload_online_statuses(relays, account_id) do
-    connected_global_relays = global_group_presence_topic() |> Presence.list()
+    connected_global_relays = global_groups_presence_topic() |> Presence.list()
     connected_relays = account_id |> account_presence_topic() |> Presence.list()
 
     Enum.map(relays, fn relay ->
@@ -294,7 +294,7 @@ defmodule Domain.Relays do
   end
 
   def list_connected_relays_for_resource(%Resources.Resource{} = _resource, :managed) do
-    connected_relays = global_group_presence_topic() |> Presence.list()
+    connected_relays = global_groups_presence_topic() |> Presence.list()
     filter = &Relay.Query.public(&1)
     list_relays_for_resource(connected_relays, filter)
   end
@@ -418,12 +418,12 @@ defmodule Domain.Relays do
   ### Presence
 
   defp presence_topic(%Relay{account_id: nil}),
-    do: global_group_presence_topic()
+    do: global_groups_presence_topic()
 
   defp presence_topic(%Relay{account_id: account_id}),
     do: account_presence_topic(account_id)
 
-  def global_group_presence_topic,
+  def global_groups_presence_topic,
     do: "presences:#{global_groups_topic()}}"
 
   def account_presence_topic(account_or_id),
@@ -446,12 +446,12 @@ defmodule Domain.Relays do
   defp group_topic(group_id), do: "group_relays:#{group_id}"
 
   def subscribe_for_relays_presence_in_account(%Accounts.Account{} = account) do
-    PubSub.subscribe(global_groups_topic())
-    PubSub.subscribe(account_topic(account))
+    PubSub.subscribe(global_groups_presence_topic())
+    PubSub.subscribe(account_presence_topic(account))
   end
 
   def subscribe_for_relays_presence_in_group(%Group{} = group) do
-    PubSub.subscribe(group_topic(group))
+    PubSub.subscribe(group_presence_topic(group))
   end
 
   def broadcast_to_relay(relay_or_id, payload) do
