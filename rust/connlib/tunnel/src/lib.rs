@@ -486,7 +486,8 @@ pub struct TunnelStats {
 impl<CB, TRoleState, TRole, TId> Tunnel<CB, TRoleState, TRole, TId>
 where
     CB: Callbacks + 'static,
-    TRoleState: RoleState,
+    TRoleState: RoleState<Id = TId>,
+    TId: Eq + Hash + Copy + fmt::Display,
 {
     pub fn stats(&self) -> TunnelStats {
         // TODO:
@@ -532,6 +533,10 @@ where
                 if let Err(e) = device.refresh_mtu() {
                     tracing::error!(error = ?e, "refresh_mtu");
                 }
+            }
+
+            if let Poll::Ready(event) = self.connections.lock().poll_next_event(cx) {
+                return Poll::Ready(event);
             }
 
             if let Poll::Ready(event) = self.role_state.lock().poll_next_event(cx) {
