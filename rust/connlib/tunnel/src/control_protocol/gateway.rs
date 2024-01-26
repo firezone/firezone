@@ -51,7 +51,7 @@ where
     /// # Returns
     /// The connection details
     pub async fn set_peer_connection_request(
-        self: &Arc<Self>,
+        &self,
         client_payload: ClientPayload,
         ips: Vec<IpNetwork>,
         public_key: PublicKey,
@@ -112,47 +112,13 @@ where
             ResourceDescription::Cidr(ref cidr) => vec![cidr.address],
         };
 
-        {
-            // TODO:
-            // let resource_addresses = resource_addresses.clone();
-            // let tunnel = self.clone();
-            // tokio::spawn(async move {
-            //     if let Err(e) = ice
-            //         .start(&client_payload.ice_parameters, Some(RTCIceRole::Controlled))
-            //         .await
-            //         .map_err(Into::into)
-            //         .and_then(|_| {
-            //             tunnel.new_tunnel(
-            //                 peer,
-            //                 client_id,
-            //                 resource,
-            //                 expires_at,
-            //                 ice.clone(),
-            //                 resource_addresses,
-            //             )
-            //         })
-            //     {
-            //         tracing::warn!(%client_id, err = ?e, "Can't start tunnel: {e:#}");
-            //         {
-            //             let mut peer_connections = tunnel.peer_connections.lock();
-            //             if let Some(peer_connection) = peer_connections.get(&client_id).cloned() {
-            //                 // We need to re-check this since it might have been replaced in between.
-            //                 if matches!(
-            //                     peer_connection.state(),
-            //                     RTCIceTransportState::Failed
-            //                         | RTCIceTransportState::Disconnected
-            //                         | RTCIceTransportState::Closed
-            //                 ) {
-            //                     peer_connections.remove(&client_id);
-            //                 }
-            //             }
-            //         }
-
-            //         // We only need to stop here because in case tunnel.new_tunnel failed.
-            //         let _ = ice.stop().await;
-            //     }
-            // });
-        }
+        self.new_peer(
+            ips,
+            client_id,
+            resource,
+            expires_at,
+            resource_addresses.clone(),
+        )?;
 
         Ok(ConnectionAccepted {
             ice_parameters: Answer {
@@ -221,14 +187,12 @@ where
         None
     }
 
-    fn new_tunnel(
-        self: &Arc<Self>,
+    fn new_peer(
+        &self,
         ips: Vec<IpNetwork>,
         client_id: ClientId,
         resource: ResourceDescription,
         expires_at: Option<DateTime<Utc>>,
-        // TODO:
-        // ice: Arc<RTCIceTransport>,
         resource_addresses: Vec<IpNetwork>,
     ) -> Result<()> {
         tracing::trace!(?ips, "new_data_channel_open");
