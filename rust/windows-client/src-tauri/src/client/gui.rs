@@ -72,6 +72,7 @@ pub(crate) fn run(params: client::GuiParams) -> Result<()> {
 
     let client::GuiParams {
         crash_on_purpose,
+        crash_connlib_on_purpose,
         flag_elevated: _,
         inject_faults,
     } = params;
@@ -90,11 +91,11 @@ pub(crate) fn run(params: client::GuiParams) -> Result<()> {
     let _guard = rt.enter();
 
     if crash_on_purpose {
-        tokio::spawn(async {
+        rt.spawn(async {
             let delay = 10;
-            tracing::info!("Will crash on purpose in {delay} seconds to test crash handling.");
+            tracing::warn!("Will crash on purpose in {delay} seconds to test crash handling.");
             tokio::time::sleep(std::time::Duration::from_secs(delay)).await;
-            tracing::info!("Crashing on purpose because of `--crash-on-purpose` flag");
+            tracing::warn!("Crashing on purpose because of `--crash-on-purpose` flag");
             unsafe { sadness_generator::raise_segfault() }
         });
     }
@@ -164,9 +165,17 @@ pub(crate) fn run(params: client::GuiParams) -> Result<()> {
 
             let app_handle = app.handle();
             let _ctlr_task: tokio::task::JoinHandle<Result<()>> = tokio::spawn(async move {
-                let mut controller = Controller::new(app_handle.clone(), advanced_settings)
-                    .await
-                    .context("couldn't create Controller")?;
+                let mut controller = Controller {
+                    advanced_settings,
+                    app: app_handle.clone(),
+                    auth: client::auth::Auth::new()?,
+                    crash_connlib_on_purpose,
+                    session: None,
+                    leak_guard: ipc::LeakGuard::new()?,
+                    resources: vec![],
+                    running: true,
+                    tunnel_ready: false,
+                };
 
                 let result = controller.run(ctlr_rx).await;
 
@@ -276,6 +285,7 @@ struct Controller {
     app: tauri::AppHandle,
     // Sign-in state with the portal / deep links
     auth: client::auth::Auth,
+    crash_connlib_on_purpose: bool,
     /// connlib session for the currently signed-in user, if there is one
     session: Option<Session>,
     /// Kills subprocesses when our own process exits
@@ -308,28 +318,6 @@ impl Session {
 }
 
 impl Controller {
-    async fn new(app: tauri::AppHandle, advanced_settings: AdvancedSettings) -> Result<Self> {
-        let mut this = Self {
-            advanced_settings,
-            app,
-            auth: client::auth::Auth::new()?,
-            session: None,
-            leak_guard: ipc::LeakGuard::new()?,
-            resources: vec![],
-            running: true,
-            tunnel_ready: false,
-        };
-
-        if let Some(_token) = this.auth.token()? {
-            // Connect immediately if we reloaded the token
-            if let Err(error) = this.start_session().await {
-                tracing::error!(?error, "couldn't restart session on app start");
-            }
-        }
-
-        Ok(this)
-    }
-
     // TODO: Figure out how re-starting sessions automatically will work
     /// Pre-req: the auth module must be signed in
     async fn start_session(&mut self) -> Result<()> {
@@ -337,7 +325,12 @@ impl Controller {
             bail!("can't start session, we're already in a session");
         }
 
-        let args = ["connlib-worker"];
+        let mut args = vec![];
+        if self.crash_connlib_on_purpose {
+            args.push("--crash-connlib-on-purpose");
+        }
+        args.push("connlib-worker");
+
         let mut subprocess = timeout(
             Duration::from_secs(10),
             ipc::Subprocess::new(&mut self.leak_guard, &args),
@@ -451,8 +444,14 @@ impl Controller {
     async fn run(&mut self, mut rx: mpsc::Receiver<ControllerRequest>) -> Result<()> {
         let mut have_internet = network_changes::check_internet()?;
         tracing::debug!(?have_internet);
-
         let mut com_worker = network_changes::Worker::new()?;
+
+        if let Some(_token) = self.auth.token()? {
+            // Connect immediately if we reloaded the token
+            if let Err(error) = self.start_session().await {
+                tracing::error!(?error, "couldn't restart session on app start");
+            }
+        }
 
         while self.running {
             // Note: Make sure everything in `select!` stays cancel-safe

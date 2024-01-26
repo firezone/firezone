@@ -43,6 +43,8 @@ pub const GIT_VERSION: &str =
 /// GuiParams prevents a problem where changing the args to `gui::run` breaks static analysis on non-Windows targets, where the gui is stubbed out
 #[allow(dead_code)]
 pub(crate) struct GuiParams {
+    /// If true, purposely crash the connlib worker process
+    crash_connlib_on_purpose: bool,
     /// If true, purposely crash the program to test the crash handler
     crash_on_purpose: bool,
     /// If true, we were re-launched with elevated permissions. If the user launched us directly with elevated permissions, this is false.
@@ -88,6 +90,7 @@ pub(crate) fn run() -> Result<()> {
             if elevation::check()? {
                 // We're already elevated, just run the GUI
                 gui::run(GuiParams {
+                    crash_connlib_on_purpose: cli.crash_connlib_on_purpose,
                     crash_on_purpose: cli.crash_on_purpose,
                     flag_elevated: false,
                     inject_faults: cli.inject_faults,
@@ -112,11 +115,14 @@ pub(crate) fn run() -> Result<()> {
                 Ok(())
             }
         }
-        Some(Cmd::ConnlibWorker { pipe_id }) => connlib_worker::run(pipe_id),
+        Some(Cmd::ConnlibWorker { pipe_id }) => {
+            connlib_worker::run(pipe_id, cli.crash_connlib_on_purpose)
+        }
         Some(Cmd::CrashHandlerServer { pipe_id }) => crash_handling::server(&pipe_id),
         Some(Cmd::Debug { command }) => debug_commands::run(command),
         // If we already tried to elevate ourselves, don't try again
         Some(Cmd::Elevated) => gui::run(GuiParams {
+            crash_connlib_on_purpose: cli.crash_connlib_on_purpose,
             crash_on_purpose: cli.crash_on_purpose,
             flag_elevated: true,
             inject_faults: cli.inject_faults,
@@ -134,6 +140,8 @@ pub(crate) fn run() -> Result<()> {
 struct Cli {
     #[command(subcommand)]
     command: Option<Cmd>,
+    #[arg(long, hide = true)]
+    crash_connlib_on_purpose: bool,
     #[arg(long, hide = true)]
     crash_on_purpose: bool,
     #[arg(long, hide = true)]

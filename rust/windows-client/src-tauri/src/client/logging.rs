@@ -200,8 +200,13 @@ impl ZipBuilder {
 pub(crate) async fn count_logs_inner() -> Result<FileCount> {
     let mut file_count = FileCount::default();
 
+    count_file(&mut file_count, CONNLIB_CRASH_DUMP).await?;
     count_logs_in_dir(&mut file_count, CONNLIB_DIR).await?;
+
+    count_file(&mut file_count, GUI_CRASH_DUMP).await?;
     count_logs_in_dir(&mut file_count, GUI_DIR).await?;
+
+    count_file(&mut file_count, UNKNOWN_CRASH_DUMP).await?;
 
     Ok(file_count)
 }
@@ -213,5 +218,15 @@ async fn count_logs_in_dir(file_count: &mut FileCount, path: &str) -> Result<()>
         file_count.files += 1;
         file_count.bytes += md.len();
     }
+    Ok(())
+}
+
+async fn count_file(file_count: &mut FileCount, name: &str) -> Result<()> {
+    let Ok(md) = tokio::fs::metadata(name).await else {
+        // It's okay if the file doesn't exist
+        return Ok(());
+    };
+    file_count.files += 1;
+    file_count.bytes += md.len();
     Ok(())
 }

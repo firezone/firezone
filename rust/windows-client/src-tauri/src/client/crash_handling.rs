@@ -5,7 +5,7 @@
 //! TODO: Capture crash dumps on panic.
 
 use crate::client::{logging, BUNDLE_ID};
-use anyhow::{anyhow, bail, Context};
+use anyhow::{anyhow, bail, Context, Result};
 use known_folders::{get_known_folder_path, KnownFolder};
 use parking_lot::Mutex;
 use std::{fs::File, io::Write, path::PathBuf};
@@ -20,13 +20,13 @@ use std::{fs::File, io::Write, path::PathBuf};
 /// Linux has a special `set_ptracer` call that is handy
 /// MacOS needs a special `ping` call to flush messages inside the crash handler
 #[cfg(all(debug_assertions, target_os = "windows"))]
-pub(crate) fn attach_handler(crash_file_name: &str) -> anyhow::Result<crash_handler::CrashHandler> {
+pub(crate) fn attach_handler(crash_dump_name: &str) -> Result<crash_handler::CrashHandler> {
     // Can't have any slashes at all, apparently.
-    let pipe_id = format!(r"{BUNDLE_ID}.crash.{}", crash_file_name);
+    let pipe_id = format!(r"{BUNDLE_ID}.crash.{}", crash_dump_name);
     // Attempt to connect to the server
     let (client, _server) = start_server_and_connect(&pipe_id)?;
 
-    client.send_message(KIND_SET_FILENAME, crash_file_name.as_bytes())?;
+    client.send_message(KIND_SET_FILENAME, crash_dump_name.as_bytes())?;
 
     // SAFETY: Unsafe is required here because this will run after the program
     // has crashed. We should try to do as little as possible, basically just
@@ -43,7 +43,7 @@ pub(crate) fn attach_handler(crash_file_name: &str) -> anyhow::Result<crash_hand
 }
 
 #[cfg(not(debug_assertions))]
-pub(crate) fn attach_handler() -> anyhow::Result<crash_handler::CrashHandler> {
+pub(crate) fn attach_handler(_crash_dump_name: &str) -> Result<crash_handler::CrashHandler> {
     bail!("crash handling is disabled in release builds for now");
 }
 
@@ -55,7 +55,7 @@ pub(crate) fn attach_handler() -> anyhow::Result<crash_handler::CrashHandler> {
 ///
 /// <https://jake-shadle.github.io/crash-reporting/#implementation>
 /// <https://chromium.googlesource.com/breakpad/breakpad/+/master/docs/getting_started_with_breakpad.md#terminology>
-pub(crate) fn server(pipe_id: &str) -> anyhow::Result<()> {
+pub(crate) fn server(pipe_id: &str) -> Result<()> {
     // We don't have a place to log things from the crash handler, but at least
     // in debug mode they can go to the parent's stderr/stdout
     tracing_subscriber::fmt::try_init().ok();

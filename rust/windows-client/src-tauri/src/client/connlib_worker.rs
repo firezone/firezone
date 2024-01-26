@@ -18,7 +18,7 @@ use tokio::sync::{mpsc, Notify};
 /// been a partition.
 const MAX_PARTITION_TIME: Duration = Duration::from_secs(60 * 60 * 24 * 30);
 
-pub(crate) fn run(pipe_id: String) -> Result<()> {
+pub(crate) fn run(pipe_id: String, crash_connlib_on_purpose: bool) -> Result<()> {
     let advanced_settings = settings::load_advanced_settings().unwrap_or_default();
     let logger = logging::setup(&advanced_settings.log_filter, logging::CONNLIB_DIR)?;
     tracing::info!("started connlib log");
@@ -34,6 +34,19 @@ pub(crate) fn run(pipe_id: String) -> Result<()> {
     };
 
     let rt = tokio::runtime::Runtime::new()?;
+
+    if crash_connlib_on_purpose {
+        rt.spawn(async {
+            let delay = 10;
+            tracing::warn!(
+                "Will crash connlib on purpose in {delay} seconds to test crash handling."
+            );
+            tokio::time::sleep(std::time::Duration::from_secs(delay)).await;
+            tracing::warn!("Crashing connlib on purpose because of `--crash-on-purpose` flag");
+            unsafe { sadness_generator::raise_segfault() }
+        });
+    }
+
     if let Err(error) = rt.block_on(async move {
         let cw = ConnlibWorker::new(advanced_settings, logger.logger, pipe_id).await?;
         cw.run_async().await
