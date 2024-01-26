@@ -81,6 +81,14 @@ defmodule API.Client.Channel do
     end
   end
 
+  def handle_info("disconnect", socket) do
+    OpenTelemetry.Tracer.with_span "client.disconnect" do
+      push(socket, "disconnect", %{"reason" => "token_expired"})
+      send(socket.transport_pid, %Phoenix.Socket.Broadcast{event: "disconnect"})
+      {:stop, :shutdown, socket}
+    end
+  end
+
   def handle_info(
         {:ice_candidates, gateway_id, candidates, {opentelemetry_ctx, opentelemetry_span_ctx}},
         socket
