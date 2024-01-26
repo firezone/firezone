@@ -496,6 +496,24 @@ impl Controller {
             .tray_handle()
             .set_menu(self.build_system_tray_menu())?)
     }
+
+    /// Deletes the auth token, stops connlib, and refreshes the tray menu
+    fn sign_out(&mut self) -> Result<()> {
+        self.auth.sign_out()?;
+        self.tunnel_ready = false;
+        if let Some(mut session) = self.session.take() {
+            tracing::debug!("disconnecting connlib");
+            // This is redundant if the token is expired, in that case
+            // connlib already disconnected itself.
+            session.connlib.disconnect(None);
+        } else {
+            // Might just be because we got a double sign-out or
+            // the user canceled the sign-in or something innocent.
+            tracing::warn!("tried to sign out but there's no session");
+        }
+        self.refresh_system_tray_menu()?;
+        Ok(())
+    }
 }
 
 // TODO: After PR #2960 lands, move some of this into `impl Controller`
@@ -553,22 +571,14 @@ async fn run_controller(
                         }
                         controller.refresh_system_tray_menu()?;
                     }
-                    Req::CancelSignIn | Req::DisconnectedTokenExpired | Req::SignOut => {
-                        tracing::debug!("Token expired, user signed out, or user canceled sign-in");
-                        controller.auth.sign_out()?;
-                        controller.tunnel_ready = false;
-                        if let Some(mut session) = controller.session.take() {
-                            tracing::debug!("disconnecting connlib");
-                            // This is redundant if the token is expired, in that case
-                            // connlib already disconnected itself.
-                            session.connlib.disconnect(None);
-                        }
-                        else {
-                            // Might just be because we got a double sign-out or
-                            // the user canceled the sign-in or something innocent.
-                            tracing::warn!("tried to sign out but there's no session");
-                        }
-                        controller.refresh_system_tray_menu()?;
+                    Req::CancelSignIn | Req::SignOut => {
+                        tracing::info!("User signed out or canceled sign-in");
+                        controller.sign_out()?;
+                    }
+                    Req::DisconnectedTokenExpired => {
+                        tracing::info!("Token expired");
+                        controller.sign_out()?;
+                        show_notification("Firezone disconnected", "To access resources, sign in again.")?;
                     }
                     Req::ExportLogs{path, stem} => logging::export_logs_to(path, stem).await?,
                     Req::GetAdvancedSettings(tx) => {
@@ -593,12 +603,7 @@ async fn run_controller(
                         controller.tunnel_ready = true;
                         controller.refresh_system_tray_menu()?;
 
-                        // May say "Windows Powershell" in dev mode
-                        // See https://github.com/tauri-apps/tauri/issues/3700
-                        Notification::new(&controller.app.config().tauri.bundle.identifier)
-                            .title("Firezone connected")
-                            .body("You are now signed in and able to access resources.")
-                            .show()?;
+                        show_notification("Firezone connected", "You are now signed in and able to access resources.")?;
                     },
                 }
             }
@@ -611,5 +616,17 @@ async fn run_controller(
 
     // Last chance to do any drops / cleanup before the process crashes.
 
+    Ok(())
+}
+
+/// Show a notification in the bottom right of the screen
+///
+/// May say "Windows Powershell" and have the wrong icon in dev mode
+/// See <https://github.com/tauri-apps/tauri/issues/3700>
+fn show_notification(title: &str, body: &str) -> Result<()> {
+    Notification::new(BUNDLE_ID)
+        .title(title)
+        .body(body)
+        .show()?;
     Ok(())
 }
