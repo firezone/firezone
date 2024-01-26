@@ -539,7 +539,7 @@ where
 
                 let avg_throughput = bytes_relayed_since_last_tick / STATS_LOG_INTERVAL.as_secs();
 
-                tracing::info!(target: "relay", %num_allocations, %num_channels, throughput = %fmt_human_throughput(avg_throughput as f64));
+                tracing::info!(target: "relay", "Allocations = {num_allocations} Channels = {num_channels} Throughput = {}", fmt_human_throughput(avg_throughput as f64));
             }
 
             return Poll::Pending;
