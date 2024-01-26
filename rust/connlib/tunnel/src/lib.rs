@@ -9,8 +9,8 @@ use futures_util::future::BoxFuture;
 use futures_util::FutureExt;
 use if_watch::tokio::IfWatcher;
 use ip_network_table::IpNetworkTable;
-use pnet_packet::Packet;
-use snownet::{Client, Node, Server, IpPacket};
+use pnet_packet::{MutablePacket, Packet};
+use snownet::{Client, IpPacket, Node, Server};
 
 use hickory_resolver::proto::rr::RecordType;
 use parking_lot::Mutex;
@@ -81,6 +81,7 @@ struct Connections<TRole, TId> {
     if_watcher: IfWatcher,
     udp_sockets: UdpSockets<MAX_UDP_SIZE>,
     relay_socket: Socket<MAX_UDP_SIZE>,
+    write_buf: Box<[u8; MAX_UDP_SIZE]>,
 }
 
 impl<TRole, TId> Connections<TRole, TId>
@@ -120,6 +121,7 @@ where
             if_watcher,
             udp_sockets,
             relay_socket,
+            write_buf: Box::new([0; MAX_UDP_SIZE]),
         }
     }
 
@@ -143,10 +145,9 @@ where
     }
 
     fn poll_sockets<'a>(
-        &mut self,
-        write_buf: &'a mut [u8],
+        &'a mut self,
         cx: &mut Context<'_>,
-    ) -> Poll<Option<firezone_connection::IpPacket<'a>>> {
+    ) -> Poll<Option<snownet::MutableIpPacket<'a>>> {
         match self.udp_sockets.poll_recv_from(cx) {
             Poll::Ready((local, Ok((from, packet)))) => {
                 match self.connection_pool.decapsulate(
@@ -154,7 +155,7 @@ where
                     from,
                     packet.filled(),
                     std::time::Instant::now(),
-                    write_buf,
+                    self.write_buf.as_mut(),
                 ) {
                     Ok(Some((conn_id, packet))) => {
                         tracing::trace!(target: "wire", %local, %from, bytes = %packet.packet().len(), "read new packet");
@@ -181,7 +182,7 @@ where
                     from,
                     packet.filled(),
                     std::time::Instant::now(),
-                    write_buf,
+                    self.write_buf.as_mut(),
                 ) {
                     Ok(Some((conn_id, packet))) => {
                         tracing::trace!(target: "wire", %from, bytes = %packet.packet().len(), "read new relay packet");
@@ -230,11 +231,11 @@ where
                     });
                 }
                 Some(snownet::Event::ConnectionEstablished(id)) => {
-                    tracing::info!(gateway_id = %id, "Connection established with peer");
+                    tracing::info!(%id, "Connection established with peer");
                     // TODO (We probably don't need to do anything here)
                 }
                 Some(snownet::Event::ConnectionFailed(id)) => {
-                    tracing::info!(gateway_id = %id, "Connection failed with peer");
+                    tracing::info!(%id, "Connection failed with peer");
                     // TODO (We need to cleanup the peer since we create it before we get establish the connection)
                 }
                 None => {}
@@ -301,7 +302,6 @@ pub struct Tunnel<CB: Callbacks, TRoleState: RoleState, TRole, TId> {
     no_device_waker: AtomicWaker,
 
     connections: Mutex<Connections<TRole, TId>>,
-    write_buf: Mutex<Box<[u8; MAX_UDP_SIZE]>>,
 }
 
 impl<CB> Tunnel<CB, ClientState, Client, GatewayId>
@@ -342,12 +342,12 @@ where
             match ready!(self
                 .connections
                 .lock()
-                .poll_sockets(self.write_buf.lock().as_mut(), cx))
+                .poll_sockets(cx))
             {
-                Some(p) => {
+                Some(mut p) => {
                     if let Some(peer) = peer_by_ip(&self.role_state.lock().peers_by_ip, p.source())
                     {
-                        match peer.untransform(p.source(), self.write_buf.lock().as_mut()) {
+                        match peer.untransform(p.source(), p.packet_mut()) {
                             Ok(p) => {
                                 let dev = self.device.load();
                                 let Some(dev) = dev.as_ref() else {
@@ -455,15 +455,12 @@ where
             }
 
             // TODO: we can get better about these multiple locks
-            match ready!(self
-                .connections
-                .lock()
-                .poll_sockets(self.write_buf.lock().as_mut(), cx))
-            {
-                Some(p) => {
+            // if we move device and peer_by_ip to connections this problem goes away
+            match ready!(self.connections.lock().poll_sockets(cx)) {
+                Some(mut p) => {
                     if let Some(peer) = peer_by_ip(&self.role_state.lock().peers_by_ip, p.source())
                     {
-                        match peer.untransform(p.source(), self.write_buf.lock().as_mut()) {
+                        match peer.untransform(p.source(), p.packet_mut()) {
                             Ok(p) => {
                                 let dev = self.device.load();
                                 let Some(dev) = dev.as_ref() else {
@@ -661,7 +658,6 @@ where
             peers_to_stop: Default::default(),
             no_device_waker: Default::default(),
             connections: Mutex::new(Connections::new(private_key)),
-            write_buf: Mutex::new(Box::new([0; MAX_UDP_SIZE])),
         })
     }
 
