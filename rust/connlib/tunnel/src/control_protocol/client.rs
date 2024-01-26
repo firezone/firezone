@@ -202,7 +202,7 @@ where
             },
         );
 
-        self.new_peer(resource_id, gateway_id, domain_response);
+        self.new_peer(resource_id, gateway_id, domain_response)?;
 
         Ok(())
 
