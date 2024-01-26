@@ -104,7 +104,7 @@ pub enum ConnlibError {
     Panic(String),
     /// A panic occurred with a non-string payload.
     #[error("Panicked with a non-string payload")]
-    PanicNonStringPayload,
+    PanicNonStringPayload(Option<String>),
     /// Received connection details that might be stale
     #[error("Unexpected connection details")]
     UnexpectedConnectionDetails,

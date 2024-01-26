@@ -111,9 +111,6 @@ where
 
         let relay_socket = Socket::bind((IpAddr::from(Ipv4Addr::UNSPECIFIED), 0))
             .expect("Program should be able to bind to 0.0.0.0:0 to be able to connect to relays");
-        // TODO: right now the connection pool expects a socket address that it has already seen
-        // this will be relaxed on a later PR.
-        connection_pool.add_local_interface(relay_socket.local_addr());
 
         Connections {
             connection_pool,

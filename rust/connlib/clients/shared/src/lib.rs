@@ -106,7 +106,9 @@ where
                         .payload()
                         .downcast_ref::<&str>()
                         .map(|s| Error::Panic(s.to_string()))
-                        .unwrap_or(Error::PanicNonStringPayload);
+                        .unwrap_or(Error::PanicNonStringPayload(
+                            info.location().map(ToString::to_string),
+                        ));
                     Self::disconnect_inner(tx, &callbacks, Some(err));
                     default_panic_hook(info);
                 }
