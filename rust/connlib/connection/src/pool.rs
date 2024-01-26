@@ -446,6 +446,19 @@ where
             self.rate_limiter.reset_count();
             self.next_rate_limiter_reset = Some(now + Duration::from_secs(1));
         }
+
+        let stale_connections = self
+            .initial_connections
+            .iter()
+            .filter_map(|(id, conn)| {
+                (now.duration_since(conn.created_at) >= Duration::from_secs(10)).then_some(*id)
+            })
+            .collect::<Vec<_>>();
+
+        for conn in stale_connections {
+            self.initial_connections.remove(&conn);
+            self.pending_events.push_back(Event::ConnectionFailed(conn));
+        }
     }
 
     /// Returns buffered data that needs to be sent on the socket.
@@ -566,6 +579,7 @@ where
                 session_key,
                 stun_servers: allowed_stun_servers,
                 turn_servers: allowed_turn_servers,
+                created_at: self.last_now,
             },
         );
 
@@ -889,6 +903,7 @@ pub struct Credentials {
     pub password: String,
 }
 
+#[derive(Debug, PartialEq)]
 pub enum Event<TId> {
     /// Signal the ICE candidate to the remote via the signalling channel.
     ///
@@ -935,6 +950,8 @@ struct InitialConnection {
     session_key: Secret<[u8; 32]>,
     stun_servers: HashSet<SocketAddr>,
     turn_servers: HashSet<SocketAddr>,
+
+    created_at: Instant,
 }
 
 struct Connection {
