@@ -163,8 +163,6 @@ where
             return Ok(());
         };
 
-        tracing::trace!(target: "wire", action = "writing", to = %transmit.dst, src = ?transmit.src, bytes = %transmit.payload.len());
-
         match transmit.src {
             Some(src) => self
                 .udp_sockets
@@ -173,6 +171,8 @@ where
                 .relay_socket
                 .try_send_to(transmit.dst, &transmit.payload)?,
         };
+
+        tracing::trace!(target: "wire", action = "write", to = %transmit.dst, src = ?transmit.src, bytes = %transmit.payload.len());
 
         Ok(())
     }
@@ -399,7 +399,7 @@ where
                 continue;
             };
 
-            self.encapsulate(write_buf, packet, peer);
+            self.send_peer(packet, peer);
 
             continue;
         }
@@ -412,10 +412,7 @@ where
 {
     pub fn poll_next_event(&self, cx: &mut Context<'_>) -> Poll<Result<Event<ClientId>>> {
         let mut read_guard = self.read_buf.lock();
-        let mut write_guard = self.write_buf.lock();
-
         let read_buf = read_guard.as_mut_slice();
-        let write_buf = write_guard.as_mut_slice();
 
         loop {
             {
@@ -430,7 +427,7 @@ where
                             continue;
                         };
 
-                        self.encapsulate(write_buf, packet, peer);
+                        self.send_peer(packet, peer)?;
 
                         continue;
                     }
@@ -530,21 +527,20 @@ where
         }
     }
 
-    fn encapsulate<TTransform: PacketTransform>(
+    fn send_peer<TTransform: PacketTransform>(
         &self,
-        write_buf: &mut [u8],
         packet: MutableIpPacket,
         peer: &Peer<TRoleState::Id, TTransform>,
-    ) {
-        let peer_id = peer.conn_id;
-
-        match peer.transform(packet) {
-            None => {}
-            Some(p) => {
-                tracing::trace!(target: "wire", action = "writing", to = "peer");
-                // self.connections.lock().send(peer_id, p);
-            }
+    ) -> Result<()> {
+        let Some(p) = peer.transform(packet) else {
+            return Ok(());
         };
+
+        self.connections
+            .lock()
+            .send(peer.conn_id, p.as_immutable().into())?;
+
+        Ok(())
     }
 }
 

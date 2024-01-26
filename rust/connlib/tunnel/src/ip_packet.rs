@@ -193,11 +193,20 @@ pub(crate) enum Version {
     Ipv6,
 }
 
-// TODO: simply get rid of this implementation of IpPacket in favor of firezone_connection's
 #[derive(Debug, PartialEq)]
 pub enum IpPacket<'a> {
     Ipv4Packet(Ipv4Packet<'a>),
     Ipv6Packet(Ipv6Packet<'a>),
+}
+
+// TODO: simply get rid of this implementation of IpPacket
+impl<'a> From<IpPacket<'a>> for firezone_connection::IpPacket<'a> {
+    fn from(value: IpPacket<'a>) -> Self {
+        match value {
+            IpPacket::Ipv4Packet(p) => Self::Ipv4(p),
+            IpPacket::Ipv6Packet(p) => Self::Ipv6(p),
+        }
+    }
 }
 
 impl<'a> IpPacket<'a> {
