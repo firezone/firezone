@@ -21,6 +21,7 @@ use str0m::{Candidate, CandidateKind, IceConnectionState};
 
 use crate::allocation::Allocation;
 use crate::index::IndexLfsr;
+use crate::info::ConnectionInfo;
 use crate::stun_binding::StunBinding;
 use crate::IpPacket;
 use boringtun::noise::errors::WireGuardError;
@@ -29,6 +30,9 @@ use stun_codec::rfc5389::attributes::{Realm, Username};
 
 // Note: Taken from boringtun
 const HANDSHAKE_RATE_LIMIT: u64 = 100;
+
+/// How often wireguard will send a keep-alive packet.
+pub(crate) const WIREGUARD_KEEP_ALIVE: u16 = 5;
 
 const MAX_UDP_SIZE: usize = (1 << 16) - 1;
 
@@ -99,6 +103,19 @@ where
             allocations: HashMap::default(),
             last_now: now,
         }
+    }
+
+    /// Lazily retrieve stats of all connections.
+    pub fn stats(&self) -> impl Iterator<Item = (TId, ConnectionInfo)> + '_ {
+        self.negotiated_connections.iter().map(|(id, c)| {
+            (
+                *id,
+                ConnectionInfo {
+                    last_seen: c.last_seen,
+                    generated_at: self.last_now,
+                },
+            )
+        })
     }
 
     pub fn add_local_interface(&mut self, local_addr: SocketAddr) {
@@ -516,7 +533,7 @@ where
                 self.private_key.clone(),
                 remote,
                 Some(key),
-                None,
+                Some(WIREGUARD_KEEP_ALIVE),
                 self.index.next(),
                 Some(self.rate_limiter.clone()),
             ),
@@ -525,6 +542,7 @@ where
             next_timer_update: self.last_now,
             remote_socket: None,
             possible_sockets: HashSet::default(),
+            last_seen: None,
         }
     }
 }
@@ -961,6 +979,8 @@ struct Connection {
     tunnel: Tunn,
     next_timer_update: Instant,
 
+    last_seen: Option<Instant>,
+
     // When this is `Some`, we are connected.
     remote_socket: Option<RemoteSocket>,
     // Socket addresses from which we might receive data (even before we are connected).
@@ -1033,6 +1053,12 @@ impl Connection {
         allocations: &mut HashMap<SocketAddr, Allocation>,
     ) -> Result<Option<Transmit<'static>>, WireGuardError> {
         self.agent.handle_timeout(now);
+
+        // TODO: `boringtun` is impure because it calls `Instant::now`.
+        self.last_seen = self
+            .tunnel
+            .time_since_last_received()
+            .and_then(|d| now.checked_sub(d));
 
         if now >= self.next_timer_update {
             self.next_timer_update = now + Duration::from_secs(1);
