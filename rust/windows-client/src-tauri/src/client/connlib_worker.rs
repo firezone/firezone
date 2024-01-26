@@ -1,6 +1,7 @@
 //! Worker subprocess for connlib, to work around <https://github.com/firezone/firezone/issues/2975>
 
 use crate::client::{
+    crash_handling,
     ipc::{self, ManagerMsg, WorkerMsg},
     logging, resolvers,
     settings::{self, AdvancedSettings},
@@ -19,9 +20,18 @@ const MAX_PARTITION_TIME: Duration = Duration::from_secs(60 * 60 * 24 * 30);
 
 pub(crate) fn run(pipe_id: String) -> Result<()> {
     let advanced_settings = settings::load_advanced_settings().unwrap_or_default();
-    let logger = logging::setup(&advanced_settings.log_filter)?;
+    let logger = logging::setup(&advanced_settings.log_filter, logging::CONNLIB_DIR)?;
     tracing::info!("started connlib log");
     tracing::info!("GIT_VERSION = {}", crate::client::GIT_VERSION);
+
+    // Need to keep this alive so crashes will be handled. Dropping detaches it.
+    let _crash_handler = match crash_handling::attach_handler(logging::CONNLIB_CRASH_DUMP) {
+        Ok(x) => Some(x),
+        Err(error) => {
+            tracing::warn!(?error, "Did not set up crash handler");
+            None
+        }
+    };
 
     let rt = tokio::runtime::Runtime::new()?;
     if let Err(error) = rt.block_on(async move {

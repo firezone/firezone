@@ -47,6 +47,7 @@ zip = { version = "0.6.6", features = ["deflate", "time"], default-features = fa
 rand = "0.8.5"
 windows-implement = "0.52.0"
 sadness-generator = "0.5.0"
+parking_lot = "0.12.1"
 
 # These dependencies are locked behind `cfg(windows)` because they either can't compile at all on Linux, or they need native dependencies like glib that are difficult to get. Try not to add more here.
 

@@ -66,7 +66,7 @@ pub(crate) fn run(params: client::GuiParams) -> Result<()> {
     let advanced_settings = settings::load_advanced_settings().unwrap_or_default();
 
     // Start logging
-    let _logging_handles = client::logging::setup(&advanced_settings.log_filter)?;
+    let _logging_handles = logging::setup(&advanced_settings.log_filter, logging::GUI_DIR)?;
     tracing::info!("started log");
     tracing::info!("GIT_VERSION = {}", crate::client::GIT_VERSION);
 
@@ -77,11 +77,9 @@ pub(crate) fn run(params: client::GuiParams) -> Result<()> {
     } = params;
 
     // Need to keep this alive so crashes will be handled. Dropping detaches it.
-    let _crash_handler = match client::crash_handling::attach_handler() {
+    let _crash_handler = match client::crash_handling::attach_handler(logging::GUI_CRASH_DUMP) {
         Ok(x) => Some(x),
         Err(error) => {
-            // TODO: None of these logs are actually written yet
-            // <https://github.com/firezone/firezone/issues/3211>
             tracing::warn!(?error, "Did not set up crash handler");
             None
         }
@@ -446,7 +444,7 @@ impl Controller {
             session.ipc_server.cb_rx.recv().await
         } else {
             futures::future::pending::<()>().await;
-            None
+            unreachable!()
         }
     }
 
@@ -474,7 +472,8 @@ impl Controller {
                         self.handle_connlib_callback(cb).await?;
                     }
                     else {
-                        tracing::warn!("This is gonna break isn't it");
+                        tracing::error!("Connlib is up but we got `None` for the next callback");
+                        self.stop_connlib().await?;
                     }
                 }
                 // Receiving from mpsc is cancel-safe <https://docs.rs/tokio/latest/tokio/sync/mpsc/struct.Receiver.html#cancel-safety>
@@ -562,15 +561,20 @@ impl Controller {
     }
 
     async fn sign_out(&mut self) -> Result<()> {
-        tracing::debug!("Signing out and stopping connlib");
+        tracing::info!("Signing out");
         self.auth.sign_out()?;
+        self.stop_connlib().await
+    }
+
+    async fn stop_connlib(&mut self) -> Result<()> {
+        tracing::info!("Stopping connlib");
         self.tunnel_ready = false;
         if let Some(session) = self.session.take() {
             session.close().await?;
         } else {
             // Might just be because we got a double sign-out or
             // the user canceled the sign-in or something innocent.
-            tracing::info!("tried to sign out but there's no session");
+            tracing::info!("Tried to stop connlib but there's no session");
         }
         self.refresh_system_tray_menu()?;
         Ok(())

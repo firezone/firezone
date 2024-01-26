@@ -1,7 +1,7 @@
 //! A module for registering, catching, and parsing deep links that are sent over to the app's already-running instance
 //! Based on reading some of the Windows code from <https://github.com/FabianLars/tauri-plugin-deep-link>, which is licensed "MIT OR Apache-2.0"
 
-use crate::client::{auth::Response as AuthResponse, BUNDLE_ID};
+use crate::client::{auth::Response as AuthResponse, ipc::named_pipe_path, BUNDLE_ID};
 use secrecy::SecretString;
 use std::{ffi::c_void, io, path::Path};
 use tokio::{io::AsyncReadExt, io::AsyncWriteExt, net::windows::named_pipe};
@@ -219,21 +219,6 @@ fn set_registry_values(id: &str, exe: &str) -> Result<(), io::Error> {
     cmd.set_value("", &format!("{} open-deep-link \"%1\"", &exe))?;
 
     Ok(())
-}
-
-/// Returns a valid name for a Windows named pipe
-///
-/// # Returns
-///
-/// A named pipe path with our bundle ID in front, e.g. `\\.\pipe\dev.firezone.client\id`
-///
-/// # Arguments
-///
-/// * `id` - a non-empty string, e.g. `deep_link`
-fn named_pipe_path(id: &str) -> String {
-    // TODO: DRY with `ipc.rs`
-    assert!(!id.is_empty());
-    format!(r"\\.\pipe\{BUNDLE_ID}\{}", id)
 }
 
 #[cfg(test)]

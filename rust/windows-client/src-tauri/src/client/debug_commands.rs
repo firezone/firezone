@@ -28,7 +28,7 @@ pub fn run(cmd: Cmd) -> Result<()> {
 
 fn crash() -> Result<()> {
     // `_` doesn't seem to work here, the log files end up empty
-    let _handles = client::logging::setup("debug")?;
+    let _handles = client::logging::setup("debug", client::logging::GUI_DIR)?;
     tracing::info!("started log (DebugCrash)");
 
     panic!("purposely crashing to see if it shows up in logs");

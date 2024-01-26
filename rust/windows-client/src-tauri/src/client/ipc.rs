@@ -6,6 +6,21 @@
 //! RUST_LOG=debug cargo run -p firezone-windows-client debug test-ipc
 //! ```
 //!
+//! # Security
+//!
+//! The IPC module uses Windows' named pipes primitive.
+//!
+//! These seem relatively secure. Privileged applications with admin powers or kernel
+//! modules, like Wireshark, can snoop on named pipes, because they're running as root.
+//!
+//! Non-privileged processes can enumerate the names of named pipes. To prevent
+//! a process that isn't our child from connecting to our named pipe, I check the
+//! process ID before communicating, and then require the first message to be a cookie
+//! echoed to the child's stdin and back through the pipe, similar to a CSRF token.
+//!
+//! Also by default, non-elevated processes cannot connect to named pipe servers
+//! inside elevated processes.
+//!
 //! # Design
 //!
 //! The IPC module is specialized for Firezone, but it could be made generic by
@@ -53,6 +68,7 @@
 //!
 //! Since this is all async, it can and should be wrapped with a `tokio::time::timeout`.
 
+use crate::client::BUNDLE_ID;
 use anyhow::Result;
 use connlib_shared::messages::ResourceDescription;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
@@ -118,6 +134,24 @@ pub(crate) enum Callback {
     OnDisconnect,
     OnUpdateResources(Vec<ResourceDescription>),
     TunnelReady,
+}
+
+/// Returns a random valid named pipe ID based on a UUIDv4
+///
+/// e.g. "\\.\pipe\dev.firezone.client\9508e87c-1c92-4630-bb20-839325d169bd"
+///
+/// Normally you don't need to call this directly. Tests may need it to inject
+/// a known pipe ID into a process controlled by the test.
+pub(crate) fn random_pipe_id() -> String {
+    named_pipe_path(&uuid::Uuid::new_v4().to_string())
+}
+
+/// Returns a valid named pipe ID
+///
+/// e.g. "\\.\pipe\dev.firezone.client\{path}"
+pub(crate) fn named_pipe_path(path: &str) -> String {
+    // TODO: DRY with `deep_link.rs`
+    format!(r"\\.\pipe\{BUNDLE_ID}\{}", path)
 }
 
 /// Reads a message from an async reader, with a 32-bit little-endian length prefix

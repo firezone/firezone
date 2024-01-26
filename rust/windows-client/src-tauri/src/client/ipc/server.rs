@@ -1,4 +1,3 @@
-use crate::client::BUNDLE_ID;
 use anyhow::{bail, Context, Result};
 use std::{
     ffi::c_void,
@@ -114,7 +113,7 @@ pub(crate) struct UnconnectedServer {
 impl UnconnectedServer {
     /// Requires a Tokio context
     pub(crate) fn new() -> Result<(Self, String)> {
-        let id = random_pipe_id();
+        let id = super::random_pipe_id();
         let this = Self::new_with_id(&id)?;
         Ok((this, id))
     }
@@ -139,17 +138,6 @@ impl UnconnectedServer {
         self.pipe.connect().await?;
         Server::new(self.pipe)
     }
-}
-
-/// Returns a random valid named pipe ID based on a UUIDv4
-///
-/// e.g. "\\.\pipe\dev.firezone.client\9508e87c-1c92-4630-bb20-839325d169bd"
-///
-/// Normally you don't need to call this directly. Tests may need it to inject
-/// a known pipe ID into a process controlled by the test.
-fn random_pipe_id() -> String {
-    // TODO: DRY with `deep_link.rs`
-    format!("\\\\.\\pipe\\{BUNDLE_ID}\\{}", uuid::Uuid::new_v4())
 }
 
 /// A server that's connected to a client

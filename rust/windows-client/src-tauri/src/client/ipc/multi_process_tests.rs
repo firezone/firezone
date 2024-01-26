@@ -1,5 +1,8 @@
 //! Integration and unit tests for IPC security, leak guard, etc.
 
+// TODO: Try making these into no-harness integration tests, if the IPC module
+// ends up living long enough. See <https://doc.rust-lang.org/cargo/commands/cargo-test.html>
+
 use anyhow::{bail, Context, Result};
 use connlib_shared::messages::{
     ResourceDescription, ResourceDescriptionCidr, ResourceDescriptionDns, ResourceId,

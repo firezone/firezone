@@ -113,7 +113,7 @@ pub(crate) fn run() -> Result<()> {
             }
         }
         Some(Cmd::ConnlibWorker { pipe_id }) => connlib_worker::run(pipe_id),
-        Some(Cmd::CrashHandlerServer) => crash_handling::server(),
+        Some(Cmd::CrashHandlerServer { pipe_id }) => crash_handling::server(&pipe_id),
         Some(Cmd::Debug { command }) => debug_commands::run(command),
         // If we already tried to elevate ourselves, don't try again
         Some(Cmd::Elevated) => gui::run(GuiParams {
@@ -145,7 +145,9 @@ pub enum Cmd {
     ConnlibWorker {
         pipe_id: String,
     },
-    CrashHandlerServer,
+    CrashHandlerServer {
+        pipe_id: String,
+    },
     Debug {
         #[command(subcommand)]
         command: debug_commands::Cmd,
