@@ -1,6 +1,6 @@
 defmodule API.Relay.Channel do
   use API, :channel
-  alias Domain.{Tokens, Relays}
+  alias Domain.Relays
   require OpenTelemetry.Tracer
 
   @impl true

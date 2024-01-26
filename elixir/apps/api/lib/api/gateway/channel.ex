@@ -1,7 +1,7 @@
 defmodule API.Gateway.Channel do
   use API, :channel
   alias API.Gateway.Views
-  alias Domain.{Tokens, Clients, Resources, Relays, Gateways, Flows}
+  alias Domain.{Clients, Resources, Relays, Gateways, Flows}
   require Logger
   require OpenTelemetry.Tracer
 
