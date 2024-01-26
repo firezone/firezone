@@ -19,12 +19,14 @@ use std::convert::Infallible;
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::pin::Pin;
 use std::task::{ready, Poll};
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
 use tracing::{level_filters::LevelFilter, Instrument, Subscriber};
 use tracing_core::Dispatch;
 use tracing_stackdriver::CloudTraceConfiguration;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Layer};
 use url::Url;
+
+const STATS_LOG_INTERVAL: Duration = Duration::from_secs(10);
 
 #[derive(Parser, Debug)]
 struct Args {
@@ -320,6 +322,9 @@ struct Eventloop<R> {
     relay_data_sender: mpsc::Sender<(Vec<u8>, SocketAddr, AllocationId)>,
     relay_data_receiver: mpsc::Receiver<(Vec<u8>, SocketAddr, AllocationId)>,
     sleep: Sleep,
+
+    stats_log_interval: tokio::time::Interval,
+    last_num_bytes_relayed: u64,
 }
 
 impl<R> Eventloop<R>
@@ -363,6 +368,8 @@ where
             relay_data_sender,
             relay_data_receiver,
             sleep: Sleep::default(),
+            stats_log_interval: tokio::time::interval(STATS_LOG_INTERVAL),
+            last_num_bytes_relayed: 0,
         })
     }
 
@@ -522,9 +529,36 @@ where
                 | None => {}
             }
 
+            if self.stats_log_interval.poll_tick(cx).is_ready() {
+                let num_allocations = self.server.num_allocations();
+                let num_channels = self.server.num_channels();
+
+                let bytes_relayed_since_last_tick =
+                    self.server.num_relayed_bytes() - self.last_num_bytes_relayed;
+                self.last_num_bytes_relayed = self.server.num_relayed_bytes();
+
+                let avg_throughput = bytes_relayed_since_last_tick / STATS_LOG_INTERVAL.as_secs();
+
+                tracing::info!(%num_allocations, %num_channels, throughput = %fmt_human_throughput(avg_throughput as f64));
+            }
+
             return Poll::Pending;
         }
     }
+}
+
+fn fmt_human_throughput(mut throughput: f64) -> String {
+    let units = ["B/s", "kB/s", "MB/s", "GB/s", "TB/s"];
+
+    for unit in units {
+        if throughput < 1000.0 {
+            return format!("{throughput:.2} {unit}");
+        }
+
+        throughput /= 1000.0;
+    }
+
+    format!("{throughput:.2} TB/s")
 }
 
 async fn main_udp_socket_task(
@@ -545,5 +579,18 @@ async fn main_udp_socket_task(
                 socket.send_to(data.as_ref(), recipient).await?;
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn prints_humanfriendly_throughput() {
+        assert_eq!(fmt_human_throughput(42.0), "42.00 B/s");
+        assert_eq!(fmt_human_throughput(1_234.0), "1.23 kB/s");
+        assert_eq!(fmt_human_throughput(955_333_999.0), "955.33 MB/s");
+        assert_eq!(fmt_human_throughput(100_000_000_000.0), "100.00 GB/s");
     }
 }
