@@ -187,11 +187,11 @@ where
                 }
                 Some(snownet::Event::ConnectionEstablished(id)) => {
                     tracing::info!(gateway_id = %id, "Connection established with peer");
-                    // TODO
+                    // TODO (We probably don't need to do anything here)
                 }
                 Some(snownet::Event::ConnectionFailed(id)) => {
                     tracing::info!(gateway_id = %id, "Connection failed with peer");
-                    // TODO
+                    // TODO (We need to cleanup the peer since we create it before we get establish the connection)
                 }
                 None => {}
             }
