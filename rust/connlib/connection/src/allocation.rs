@@ -48,6 +48,8 @@ pub struct Allocation {
     sent_requests: HashMap<TransactionId, (Message<Attribute>, Instant)>,
 
     channel_bindings: ChannelBindings,
+    buffered_channel_bindings: VecDeque<Message<Attribute>>,
+
     last_now: Option<Instant>,
 
     username: Username,
@@ -73,6 +75,7 @@ impl Allocation {
             allocation_lifetime: Default::default(),
             channel_bindings: Default::default(),
             last_now: Default::default(),
+            buffered_channel_bindings: Default::default(),
         }
     }
 
@@ -196,6 +199,10 @@ impl Allocation {
                     ?lifetime,
                     "Updated candidates of allocation"
                 );
+
+                while let Some(buffered) = self.buffered_channel_bindings.pop_front() {
+                    self.authenticate_and_queue(buffered, now);
+                }
             }
             REFRESH => {
                 let Some(lifetime) = message.get_attribute::<Lifetime>() else {
@@ -225,8 +232,6 @@ impl Allocation {
                 if !self.channel_bindings.set_confirmed(channel, now) {
                     tracing::warn!(%channel, "Unknown channel");
                 };
-
-                return true;
             }
             _ => {}
         }
@@ -331,7 +336,16 @@ impl Allocation {
             return;
         };
 
-        self.authenticate_and_queue(make_channel_bind_request(peer, channel), now);
+        let msg = make_channel_bind_request(peer, channel);
+
+        if !self.has_allocation() {
+            tracing::debug!("No allocation yet, buffering channel binding");
+
+            self.buffered_channel_bindings.push_back(msg);
+            return;
+        }
+
+        self.authenticate_and_queue(msg, now);
     }
 
     pub fn encode_to_slice(
@@ -913,7 +927,11 @@ mod tests {
             "no messages to be sent if we don't have an allocation"
         );
 
-        allocation.handle_input(RELAY, &encode(allocate_response()), Instant::now());
+        allocation.handle_input(
+            RELAY,
+            &encode(allocate_response(message.transaction_id())),
+            Instant::now(),
+        );
         let message = next_stun_message(&mut allocation).unwrap();
         assert_eq!(message.method(), CHANNEL_BIND);
     }
@@ -933,13 +951,11 @@ mod tests {
         Some(decode(&transmit.payload).unwrap().unwrap())
     }
 
-    fn allocate_response() -> stun_codec::Message<Attribute> {
-        let mut message = stun_codec::Message::new(
-            MessageClass::SuccessResponse,
-            ALLOCATE,
-            TransactionId::new(random()),
-        );
+    fn allocate_response(id: TransactionId) -> stun_codec::Message<Attribute> {
+        let mut message = stun_codec::Message::new(MessageClass::SuccessResponse, ALLOCATE, id);
+        message.add_attribute(XorMappedAddress::new(PEER1));
         message.add_attribute(XorRelayAddress::new(RELAY_ADDR));
+        message.add_attribute(Lifetime::new(Duration::from_secs(600)).unwrap());
 
         message
     }
