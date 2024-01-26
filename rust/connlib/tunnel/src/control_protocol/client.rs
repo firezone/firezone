@@ -205,25 +205,6 @@ where
         self.new_peer(resource_id, gateway_id, domain_response)?;
 
         Ok(())
-
-        // TODO:
-        // tokio::spawn(async move {
-        //     if let Err(e) = peer_connection
-        //         .start(&rtc_ice_params, Some(RTCIceRole::Controlling))
-        //         .await
-        //         .map_err(Into::into)
-        //         .and_then(|_| {
-        //             tunnel.new_tunnel(resource_id, gateway_id, peer_connection, domain_response)
-        //         })
-        //     {
-        //         tracing::warn!(%gateway_id, err = ?e, "Can't start tunnel: {e:#}");
-        //         tunnel.role_state.lock().on_connection_failed(resource_id);
-        //         let peer_connection = tunnel.peer_connections.lock().remove(&gateway_id);
-        //         if let Some(peer_connection) = peer_connection {
-        //             let _ = peer_connection.stop().await;
-        //         }
-        //     }
-        // });
     }
 
     fn dns_response(
