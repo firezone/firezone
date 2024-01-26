@@ -281,19 +281,23 @@ where
     }
 
     fn queue_error_response(&mut self, sender: SocketAddr, mut error_response: Message<Attribute>) {
+        let Some(error) = error_response.get_attribute::<ErrorCode>().cloned() else {
+            debug_assert!(false, "Error response without an `ErrorCode`");
+            return;
+        };
+
         // In case of a 401 or 438 response, attach a realm and nonce.
-        if error_response
-            .get_attribute::<ErrorCode>()
-            .map_or(false, |error| {
-                error == &ErrorCode::from(Unauthorized) || error == &ErrorCode::from(StaleNonce)
-            })
-        {
+        if error == ErrorCode::from(Unauthorized) || error == ErrorCode::from(StaleNonce) {
             let new_nonce = Uuid::from_u128(self.rng.gen());
 
             self.add_nonce(new_nonce);
 
             error_response.add_attribute(Nonce::new(new_nonce.to_string()).unwrap());
             error_response.add_attribute((*FIREZONE).clone());
+
+            tracing::debug!(target: "relay", "{} failed: {}", error_response.method(), error.reason_phrase());
+        } else {
+            tracing::warn!(target: "relay", "{} failed: {}", error_response.method(), error.reason_phrase());
         }
 
         self.send_message(error_response, sender);
