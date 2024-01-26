@@ -8,7 +8,6 @@ use connlib_shared::{messages::ReuseConnection, CallbackErrorFacade, Callbacks, 
 use futures_util::future::BoxFuture;
 use futures_util::FutureExt;
 use if_watch::tokio::IfWatcher;
-use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
 use ip_packet::IpPacket;
 use pnet_packet::Packet;
@@ -441,18 +440,6 @@ where
     }
 }
 
-pub struct ConnectedPeer<TId, TTransform> {
-    inner: Arc<Peer<TId, TTransform>>,
-}
-
-impl<TId, TTranform> Clone for ConnectedPeer<TId, TTranform> {
-    fn clone(&self) -> Self {
-        Self {
-            inner: Arc::clone(&self.inner),
-        }
-    }
-}
-
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct TunnelStats {
@@ -529,11 +516,11 @@ where
         &self,
         write_buf: &mut [u8],
         packet: MutableIpPacket,
-        peer: &ConnectedPeer<TRoleState::Id, TTransform>,
+        peer: &Peer<TRoleState::Id, TTransform>,
     ) {
-        let peer_id = peer.inner.conn_id;
+        let peer_id = peer.conn_id;
 
-        match peer.inner.encapsulate(packet, write_buf) {
+        match peer.encapsulate(packet, write_buf) {
             Ok(None) => {}
             Ok(Some(b)) => {
                 tracing::trace!(target: "wire", action = "writing", to = "peer");
@@ -551,10 +538,10 @@ where
 }
 
 pub(crate) fn peer_by_ip<Id, TTransform>(
-    peers_by_ip: &IpNetworkTable<ConnectedPeer<Id, TTransform>>,
+    peers_by_ip: &IpNetworkTable<Arc<Peer<Id, TTransform>>>,
     ip: IpAddr,
-) -> Option<&ConnectedPeer<Id, TTransform>> {
-    peers_by_ip.longest_match(ip).map(|(_, peer)| peer)
+) -> Option<&Peer<Id, TTransform>> {
+    peers_by_ip.longest_match(ip).map(|(_, peer)| peer.as_ref())
 }
 
 #[derive(Debug)]

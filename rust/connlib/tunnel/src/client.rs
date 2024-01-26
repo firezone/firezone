@@ -1,8 +1,8 @@
 use crate::bounded_queue::BoundedQueue;
 use crate::device_channel::{Device, Packet};
 use crate::ip_packet::{IpPacket, MutableIpPacket};
-use crate::peer::PacketTransformClient;
-use crate::{dns, ConnectedPeer, DnsQuery, Event, RoleState, Tunnel, DNS_QUERIES_QUEUE_SIZE};
+use crate::peer::{PacketTransformClient, Peer};
+use crate::{dns, DnsQuery, Event, RoleState, Tunnel, DNS_QUERIES_QUEUE_SIZE};
 use bimap::BiMap;
 use connlib_shared::error::{ConnlibError as Error, ConnlibError};
 use connlib_shared::messages::{
@@ -215,7 +215,7 @@ pub struct ClientState {
     pub deferred_dns_queries: HashMap<(DnsResource, Rtype), IpPacket<'static>>,
 
     #[allow(clippy::type_complexity)]
-    pub peers_by_ip: IpNetworkTable<ConnectedPeer<GatewayId, PacketTransformClient>>,
+    pub peers_by_ip: IpNetworkTable<Arc<Peer<GatewayId, PacketTransformClient>>>,
 
     forwarded_dns_queries: BoundedQueue<DnsQuery<'static>>,
 
@@ -330,11 +330,11 @@ impl ClientState {
 
         self.resources_gateways.insert(resource, gateway);
 
-        let Some(peer) = self.peers_by_ip.iter().find_map(|(_, p)| {
-            (p.inner.conn_id == gateway).then_some(ConnectedPeer {
-                inner: p.inner.clone(),
-            })
-        }) else {
+        let Some(peer) = self
+            .peers_by_ip
+            .iter()
+            .find_map(|(_, p)| (p.conn_id == gateway).then_some(p.clone()))
+        else {
             match self
                 .gateway_awaiting_connection_timers
                 // Note: we don't need to set a timer here because
@@ -356,13 +356,8 @@ impl ClientState {
         };
 
         for ip in self.get_resource_ip(desc, &domain) {
-            peer.inner.add_allowed_ip(ip);
-            self.peers_by_ip.insert(
-                ip,
-                ConnectedPeer {
-                    inner: peer.inner.clone(),
-                },
-            );
+            peer.add_allowed_ip(ip);
+            self.peers_by_ip.insert(ip, peer.clone());
         }
         self.awaiting_connection.remove(&resource);
         self.awaiting_connection_timers.remove(resource);
@@ -528,7 +523,7 @@ impl ClientState {
     fn is_connected_to(
         &self,
         resource: ResourceId,
-        connected_peers: &IpNetworkTable<ConnectedPeer<GatewayId, PacketTransformClient>>,
+        connected_peers: &IpNetworkTable<Arc<Peer<GatewayId, PacketTransformClient>>>,
         domain: &Option<Dname>,
     ) -> bool {
         let Some(resource) = self.resource_ids.get(&resource) else {
@@ -672,7 +667,7 @@ impl RoleState for ClientState {
 
                 self.peers_by_ip
                     .iter()
-                    .for_each(|p| p.1.inner.transform.expire_dns_track());
+                    .for_each(|p| p.1.transform.expire_dns_track());
 
                 for resource in self.dns_resources_internal_ips.keys() {
                     let Some(gateway_id) = self.resources_gateways.get(&resource.id) else {
@@ -682,7 +677,7 @@ impl RoleState for ClientState {
                     if !self
                         .peers_by_ip
                         .iter()
-                        .any(|(_, p)| &p.inner.conn_id == gateway_id)
+                        .any(|(_, p)| &p.conn_id == gateway_id)
                     {
                         continue;
                     }
@@ -701,13 +696,13 @@ impl RoleState for ClientState {
     }
 
     fn remove_peers(&mut self, conn_id: GatewayId) {
-        self.peers_by_ip.retain(|_, p| p.inner.conn_id != conn_id);
+        self.peers_by_ip.retain(|_, p| p.conn_id != conn_id);
     }
 
     fn refresh_peers(&mut self) -> VecDeque<Self::Id> {
         let mut peers_to_stop = VecDeque::new();
-        for (_, peer) in self.peers_by_ip.iter().unique_by(|(_, p)| p.inner.conn_id) {
-            let conn_id = peer.inner.conn_id;
+        for (_, peer) in self.peers_by_ip.iter().unique_by(|(_, p)| p.conn_id) {
+            let conn_id = peer.conn_id;
 
             // TODO:
             // let bytes = match peer.inner.update_timers() {

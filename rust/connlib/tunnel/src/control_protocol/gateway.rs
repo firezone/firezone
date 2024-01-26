@@ -2,7 +2,7 @@ use crate::{
     control_protocol::insert_peers,
     dns::is_subdomain,
     peer::{PacketTransformGateway, Peer},
-    ConnectedPeer, GatewayState, Tunnel,
+    GatewayState, Tunnel,
 };
 
 use boringtun::x25519::PublicKey;
@@ -145,7 +145,7 @@ where
             .lock()
             .peers_by_ip
             .iter_mut()
-            .find_map(|(_, p)| (p.inner.conn_id == client_id).then_some(p.inner.clone()))
+            .find_map(|(_, p)| (p.conn_id == client_id).then_some(p.clone()))
         else {
             return None;
         };
@@ -206,11 +206,7 @@ where
                 .add_resource(address, resource.clone(), expires_at);
         }
 
-        insert_peers(
-            &mut self.role_state.lock().peers_by_ip,
-            &ips,
-            ConnectedPeer { inner: peer },
-        );
+        insert_peers(&mut self.role_state.lock().peers_by_ip, &ips, peer);
 
         Ok(())
     }

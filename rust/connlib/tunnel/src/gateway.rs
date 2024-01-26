@@ -1,6 +1,6 @@
 use crate::device_channel::Device;
-use crate::peer::PacketTransformGateway;
-use crate::{ConnectedPeer, Event, RoleState, Tunnel};
+use crate::peer::{PacketTransformGateway, Peer};
+use crate::{Event, RoleState, Tunnel};
 use connlib_shared::messages::{ClientId, Interface as InterfaceConfig};
 use connlib_shared::Callbacks;
 use ip_network_table::IpNetworkTable;
@@ -46,7 +46,7 @@ where
 /// [`Tunnel`] state specific to gateways.
 pub struct GatewayState {
     #[allow(clippy::type_complexity)]
-    pub peers_by_ip: IpNetworkTable<ConnectedPeer<ClientId, PacketTransformGateway>>,
+    pub peers_by_ip: IpNetworkTable<Arc<Peer<ClientId, PacketTransformGateway>>>,
 }
 
 impl Default for GatewayState {
@@ -67,17 +67,17 @@ impl RoleState for GatewayState {
     }
 
     fn remove_peers(&mut self, conn_id: ClientId) {
-        self.peers_by_ip.retain(|_, p| p.inner.conn_id != conn_id);
+        self.peers_by_ip.retain(|_, p| p.conn_id != conn_id);
     }
 
     fn refresh_peers(&mut self) -> VecDeque<Self::Id> {
         let mut peers_to_stop = VecDeque::new();
-        for (_, peer) in self.peers_by_ip.iter().unique_by(|(_, p)| p.inner.conn_id) {
-            let conn_id = peer.inner.conn_id;
+        for (_, peer) in self.peers_by_ip.iter().unique_by(|(_, p)| p.conn_id) {
+            let conn_id = peer.conn_id;
 
-            peer.inner.transform.expire_resources();
+            peer.transform.expire_resources();
 
-            if peer.inner.transform.is_emptied() {
+            if peer.transform.is_emptied() {
                 tracing::trace!(%conn_id, "peer_expired");
                 peers_to_stop.push_back(conn_id);
 

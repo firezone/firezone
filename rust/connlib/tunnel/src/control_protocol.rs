@@ -1,13 +1,13 @@
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
-use std::{collections::HashSet, fmt, hash::Hash, net::SocketAddr};
+use std::{collections::HashSet, fmt, hash::Hash, net::SocketAddr, sync::Arc};
 
 use connlib_shared::{
     messages::{Relay, RequestConnection, ReuseConnection},
     Callbacks,
 };
 
-use crate::{ConnectedPeer, RoleState, Tunnel, REALM};
+use crate::{peer::Peer, RoleState, Tunnel, REALM};
 
 mod client;
 mod gateway;
@@ -41,9 +41,9 @@ where
 }
 
 fn insert_peers<TId: Copy, TTransform>(
-    peers_by_ip: &mut IpNetworkTable<ConnectedPeer<TId, TTransform>>,
+    peers_by_ip: &mut IpNetworkTable<Arc<Peer<TId, TTransform>>>,
     ips: &Vec<IpNetwork>,
-    peer: ConnectedPeer<TId, TTransform>,
+    peer: Arc<Peer<TId, TTransform>>,
 ) {
     for ip in ips {
         peers_by_ip.insert(*ip, peer.clone());

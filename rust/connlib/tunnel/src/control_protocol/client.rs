@@ -21,7 +21,7 @@ use crate::{
     dns,
     peer::PacketTransformClient,
 };
-use crate::{peer::Peer, ClientState, ConnectedPeer, Error, Request, Result, Tunnel};
+use crate::{peer::Peer, ClientState, Error, Request, Result, Tunnel};
 
 use super::insert_peers;
 
@@ -165,11 +165,7 @@ where
 
         // Partial reads of peers_by_ip can be problematic in the very unlikely case of an expiration
         // before inserting finishes.
-        insert_peers(
-            &mut self.role_state.lock().peers_by_ip,
-            &peer_ips,
-            ConnectedPeer { inner: peer },
-        );
+        insert_peers(&mut self.role_state.lock().peers_by_ip, &peer_ips, peer);
 
         Ok(())
     }
@@ -287,12 +283,12 @@ where
             .lock()
             .peers_by_ip
             .iter_mut()
-            .find_map(|(_, p)| (p.inner.conn_id == gateway_id).then_some(p.clone()))
+            .find_map(|(_, p)| (p.conn_id == gateway_id).then_some(p.clone()))
         else {
             return Err(Error::ControlProtocolError);
         };
 
-        let peer_ips = self.dns_response(&resource_id, &domain_response, &peer.inner)?;
+        let peer_ips = self.dns_response(&resource_id, &domain_response, &peer)?;
         insert_peers(&mut self.role_state.lock().peers_by_ip, &peer_ips, peer);
         Ok(())
     }
