@@ -483,23 +483,29 @@ where
     /// Returns buffered data that needs to be sent on the socket.
     pub fn poll_transmit(&mut self) -> Option<Transmit<'static>> {
         for conn in self.negotiated_connections.values_mut() {
-            if let Some(transmit) = conn.agent.poll_transmit() {
+            while let Some(transmit) = conn.agent.poll_transmit() {
                 let relay = SocketAddr::new(transmit.source.ip(), 3478); // TODO: Don't hardcode this.
 
-                let transmit = encode_as_channel_data(
+                match encode_as_channel_data(
                     relay,
                     transmit.destination,
                     &transmit.contents,
                     &mut self.allocations,
                     self.last_now,
-                )
-                .unwrap_or(Transmit {
-                    src: Some(transmit.source),
-                    dst: transmit.destination,
-                    payload: Cow::Owned(transmit.contents.into()),
-                });
-
-                return Some(transmit);
+                ) {
+                    Ok(transmit) => return Some(transmit),
+                    Err(EncodeError::NoAllocation) => {
+                        return Some(Transmit {
+                            src: Some(transmit.source),
+                            dst: transmit.destination,
+                            payload: Cow::Owned(transmit.contents.into()),
+                        })
+                    }
+                    Err(EncodeError::NoChannel) => {
+                        tracing::debug!(%relay, peer = %transmit.destination, "Got allocation on relay but no channel to peer");
+                        continue;
+                    }
+                }
             }
         }
 
@@ -823,15 +829,25 @@ fn encode_as_channel_data(
     contents: &[u8],
     allocations: &mut HashMap<SocketAddr, Allocation>,
     now: Instant,
-) -> Option<Transmit<'static>> {
-    let allocation = allocations.get_mut(&relay)?;
-    let payload = allocation.encode_to_vec(dest, contents, now)?;
+) -> Result<Transmit<'static>, EncodeError> {
+    let allocation = allocations
+        .get_mut(&relay)
+        .ok_or(EncodeError::NoAllocation)?;
+    let payload = allocation
+        .encode_to_vec(dest, contents, now)
+        .ok_or(EncodeError::NoChannel)?;
 
-    Some(Transmit {
+    Ok(Transmit {
         src: None,
         dst: relay,
         payload: Cow::Owned(payload),
     })
+}
+
+#[derive(Debug)]
+enum EncodeError {
+    NoAllocation,
+    NoChannel,
 }
 
 fn drain_and_add_candidates<TId>(
@@ -1104,7 +1120,7 @@ impl Connection {
                 payload: Cow::Owned(message.into()),
             }),
             RemoteSocket::Relay { relay, dest: peer } => {
-                encode_as_channel_data(relay, peer, message, allocations, now)
+                encode_as_channel_data(relay, peer, message, allocations, now).ok()
             }
         }
     }
