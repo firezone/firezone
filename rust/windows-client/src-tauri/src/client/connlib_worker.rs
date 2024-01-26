@@ -10,6 +10,7 @@ use anyhow::{Context, Result};
 use arc_swap::ArcSwap;
 use connlib_client_shared::{file_logger, ResourceDescription};
 use std::{net::IpAddr, path::PathBuf, sync::Arc, time::Duration};
+use subzone::ManagerMsgInternal;
 use tokio::sync::{mpsc, Notify};
 
 /// The Windows client doesn't use platform APIs to detect network connectivity changes,
@@ -61,7 +62,7 @@ pub(crate) fn run(pipe_id: String, crash_connlib_on_purpose: bool) -> Result<()>
 struct ConnlibWorker {
     advanced_settings: AdvancedSettings,
     callback_handler: CallbackHandler,
-    client: ipc::Client,
+    client: subzone::Client<ManagerMsg, WorkerMsg>,
     connlib: Option<connlib_client_shared::Session<CallbackHandler>>,
     /// Tells us when to wake up and look for a new resource list. Tokio docs say that memory reads and writes are synchronized when notifying, so we don't need an extra mutex on the resources.
     notify: Arc<Notify>,
@@ -82,7 +83,7 @@ impl ConnlibWorker {
         logger: file_logger::Handle,
         pipe_id: String,
     ) -> Result<Self> {
-        let client = ipc::Client::new(&pipe_id).await?;
+        let client = subzone::Client::new(&pipe_id).await?;
         // TODO: Replace this with some atomics or something
         let (ipc_tx, rx) = mpsc::channel(10);
 
@@ -110,14 +111,13 @@ impl ConnlibWorker {
             // Note: Make sure these are all cancel-safe
             tokio::select! {
                 // Cancel safe per <https://docs.rs/tokio/latest/tokio/sync/mpsc/struct.Receiver.html#cancel-safety>
-                req = self.client.recv() => {
+                req = self.client.next() => {
                     let Ok(req) = req else {
                         tracing::info!("named pipe dropped");
                         break;
                     };
-                    let resp = self.handle_manager_msg(&req).await.context("handle_manager_msg failed")?;
-                    self.client.send(&ipc::WorkerMsg::Response(resp)).await.context("ipc::Client::send failed")?;
-                    if let ipc::ManagerMsg::Disconnect = req {
+                    self.handle_manager_msg(&req).await.context("handle_manager_msg failed")?;
+                    if let ManagerMsgInternal::Shutdown = req {
                         break;
                     }
                 },
@@ -125,8 +125,7 @@ impl ConnlibWorker {
                 () = self.notify.notified() => self.refresh().await.context("ConnlibWorker::refresh failed")?,
                 // Cancel safe per <https://docs.rs/tokio/latest/tokio/sync/mpsc/struct.Receiver.html#cancel-safety>
                 msg = self.rx.recv() => {
-                    tracing::debug!(?msg, "trying to send message over IPC");
-                    self.client.send(&msg.ok_or_else(|| anyhow::anyhow!("should have received a message over mpsc"))?).await.context("ipc::Client::send failed")?;
+                    self.client.send(msg.ok_or_else(|| anyhow::anyhow!("should have received a message over mpsc"))?).await.context("ipc::Client::send failed")?;
                 },
             }
         }
@@ -145,9 +144,9 @@ impl ConnlibWorker {
         Ok::<_, anyhow::Error>(())
     }
 
-    async fn handle_manager_msg(&mut self, msg: &ipc::ManagerMsg) -> Result<ipc::ManagerMsg> {
+    async fn handle_manager_msg(&mut self, msg: &ManagerMsgInternal<ManagerMsg>) -> Result<()> {
         match msg {
-            ManagerMsg::Connect => {
+            ManagerMsgInternal::User(ManagerMsg::Connect) => {
                 let auth = crate::client::auth::Auth::new()?;
                 let token = auth
                     .token()?
@@ -166,19 +165,17 @@ impl ConnlibWorker {
                     Some(MAX_PARTITION_TIME),
                 )?;
                 self.connlib = Some(connlib);
-                Ok(ipc::ManagerMsg::Connect)
             }
-            ManagerMsg::Disconnect => Ok(ipc::ManagerMsg::Disconnect),
+            ManagerMsgInternal::Shutdown => {}
         }
+        Ok(())
     }
 
     // TODO: Better name
     async fn refresh(&mut self) -> Result<()> {
         let resources = Vec::clone(&self.callback_handler.resources.load());
         self.client
-            .send(&ipc::WorkerMsg::Callback(ipc::Callback::OnUpdateResources(
-                resources,
-            )))
+            .send(ipc::WorkerMsg::OnUpdateResources(resources))
             .await?;
         Ok(())
     }
@@ -204,16 +201,15 @@ impl connlib_client_shared::Callbacks for CallbackHandler {
         // TODO: This is suspicious
         self.ipc_tx.try_send(match error {
             Some(connlib_client_shared::Error::TokenExpired) => {
-                ipc::WorkerMsg::Callback(ipc::Callback::DisconnectedTokenExpired)
+                ipc::WorkerMsg::DisconnectedTokenExpired
             }
-            _ => ipc::WorkerMsg::Callback(ipc::Callback::OnDisconnect),
+            _ => ipc::WorkerMsg::OnDisconnect,
         })?;
         Ok(())
     }
 
     fn on_tunnel_ready(&self) -> Result<(), Self::Error> {
-        self.ipc_tx
-            .try_send(ipc::WorkerMsg::Callback(ipc::Callback::TunnelReady))?;
+        self.ipc_tx.try_send(ipc::WorkerMsg::TunnelReady)?;
         tracing::info!("Sent on_tunnel_ready");
         Ok(())
     }

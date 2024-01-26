@@ -1,6 +1,8 @@
 use anyhow::{bail, Context, Result};
+use serde::{de::DeserializeOwned, Serialize};
 use std::{
     ffi::c_void,
+    marker::PhantomData,
     os::windows::io::{AsHandle, AsRawHandle},
     process::Stdio,
     time::Duration,
@@ -10,7 +12,6 @@ use tokio::{
     net::windows::named_pipe::{self, NamedPipeServer},
     process::{self, Child},
     sync::mpsc,
-    task::JoinHandle,
     time::timeout,
 };
 use windows::Win32::{
@@ -23,20 +24,20 @@ use windows::Win32::{
     System::Pipes::GetNamedPipeClientProcessId,
 };
 
-use super::{read_deserialize, write_serialize, Callback, Error, ManagerMsg, WorkerMsg};
+use crate::{read_deserialize, write_serialize, Error, ManagerMsgInternal, WorkerMsgInternal};
 
 /// A named pipe server linked to a worker subprocess
-pub(crate) struct Subprocess {
-    pub server: Server,
+pub struct Subprocess<M, W> {
+    pub server: Server<M, W>,
     pub worker: SubcommandChild,
 }
 
-impl Subprocess {
+impl<M: Serialize, W: DeserializeOwned> Subprocess<M, W> {
     /// Returns a linked named pipe server and worker subprocess
     ///
     /// The process ID and cookie have already been checked for security
     /// when this function returns.
-    pub(crate) async fn new(leak_guard: &mut LeakGuard, args: &[&str]) -> Result<Self> {
+    pub async fn new(leak_guard: &mut LeakGuard, args: &[&str]) -> Result<Self> {
         let (mut server, pipe_id) =
             UnconnectedServer::new().context("couldn't create UnconnectedServer")?;
         let mut process = process::Command::new(
@@ -87,11 +88,9 @@ impl Subprocess {
             .await
             .context("couldn't write cookie to subprocess stdin")?;
 
-        let WorkerMsg::Callback(Callback::Cookie(echoed_cookie)) =
-            read_deserialize(&mut server.pipe)
-                .await
-                .context("couldn't read cookie back from subprocess")?
-        else {
+        let buf = read_deserialize(&mut server.pipe).await?;
+        let buf = std::str::from_utf8(&buf)?;
+        let WorkerMsgInternal::<W>::Cookie(echoed_cookie) = serde_json::from_str(buf)? else {
             bail!("didn't receive cookie from pipe client");
         };
         tracing::trace!(?echoed_cookie, "Got cookie back");
@@ -134,7 +133,7 @@ impl UnconnectedServer {
     ///
     /// This will wait forever if the client never shows up.
     /// Try pairing it with `tokio::time:timeout`
-    pub(crate) async fn accept(self) -> Result<Server> {
+    pub(crate) async fn accept<M: Serialize, W: DeserializeOwned>(self) -> Result<Server<M, W>> {
         self.pipe.connect().await?;
         Server::new(self.pipe)
     }
@@ -144,57 +143,81 @@ impl UnconnectedServer {
 ///
 /// Manual testing shows that if the corresponding Client's process crashes, Windows will
 /// be nice and return errors for anything trying to read from the Server
-pub(crate) struct Server {
-    pub cb_rx: mpsc::Receiver<Callback>,
+pub struct Server<M, W> {
     client_pid: u32,
     pipe_writer: WriteHalf<NamedPipeServer>,
-    reader_task: JoinHandle<Result<()>>,
-    pub response_rx: mpsc::Receiver<ManagerMsg>,
+    /// Needed to make `next` cancel-safe
+    read_rx: mpsc::Receiver<Vec<u8>>,
+    /// Needed to make `next` cancel-safe
+    _reader_task: tokio::task::JoinHandle<Result<()>>,
+    _manager_msg: PhantomData<M>,
+    _worker_msg: PhantomData<W>,
 }
 
-impl Server {
+impl<M: Serialize, W: DeserializeOwned> Server<M, W> {
     #[tracing::instrument(skip_all)]
     fn new(pipe: named_pipe::NamedPipeServer) -> Result<Self> {
-        let (cb_tx, cb_rx) = mpsc::channel(5);
-        let (response_tx, response_rx) = mpsc::channel(5);
-
         let client_pid = get_client_pid(&pipe)?;
-
         let (mut pipe_reader, pipe_writer) = tokio::io::split(pipe);
-
-        let reader_task = tokio::task::spawn(async move {
-            while let Ok(msg) = read_deserialize(&mut pipe_reader).await {
-                match msg {
-                    WorkerMsg::Response(x) => response_tx.send(x).await?,
-                    WorkerMsg::Callback(x) => cb_tx.send(x).await?,
-                }
+        let (read_tx, read_rx) = mpsc::channel(1);
+        let _reader_task = tokio::spawn(async move {
+            loop {
+                let msg = read_deserialize(&mut pipe_reader).await?;
+                read_tx.send(msg).await?;
             }
-            tracing::debug!("ipc::Server reader_task exiting gracefully");
-            Ok(())
         });
 
         Ok(Self {
-            cb_rx,
             client_pid,
             pipe_writer,
-            reader_task,
-            response_rx,
+            read_rx,
+            _reader_task,
+            _manager_msg: Default::default(),
+            _worker_msg: Default::default(),
         })
     }
 
-    pub(crate) async fn close(mut self) -> Result<()> {
-        self.send(&ManagerMsg::Disconnect).await?;
+    /// Tells the pipe client to shutdown.
+    ///
+    /// Should be wrapped in a Tokio timeout in case the pipe client isn't responding.
+    pub async fn close(mut self) -> Result<()> {
+        write_serialize(&mut self.pipe_writer, &ManagerMsgInternal::<M>::Shutdown).await?;
+        loop {
+            // Pump out the read half until it errors
+            match self.next().await {
+                Ok(_) => {}
+                Err(Error::Eof) => break,
+                Err(error) => {
+                    tracing::error!(?error, "Error while shutting down the named pipe");
+                    break;
+                }
+            }
+        }
         self.pipe_writer.shutdown().await?;
-        self.reader_task.await??;
         Ok(())
     }
 
-    pub(crate) fn client_pid(&self) -> u32 {
+    pub fn client_pid(&self) -> u32 {
         self.client_pid
     }
 
-    pub async fn send(&mut self, msg: &ManagerMsg) -> Result<(), Error> {
-        write_serialize(&mut self.pipe_writer, msg).await
+    /// Receives a message from the client
+    ///
+    /// # Cancel safety
+    ///
+    /// This method is cancel-safe, internally it calls `tokio::sync::mpsc::Receiver::recv`
+    pub async fn next(&mut self) -> Result<W, Error> {
+        let buf = self.read_rx.recv().await.ok_or_else(|| Error::Eof)?;
+        let buf = std::str::from_utf8(&buf)?;
+        let msg = serde_json::from_str(buf)?;
+        let WorkerMsgInternal::User(msg) = msg else {
+            return Err(Error::Protocol);
+        };
+        Ok(msg)
+    }
+
+    pub async fn send(&mut self, msg: M) -> Result<(), Error> {
+        write_serialize(&mut self.pipe_writer, &ManagerMsgInternal::User(msg)).await
     }
 }
 
@@ -214,14 +237,18 @@ pub(crate) fn get_client_pid(pipe: &named_pipe::NamedPipeServer) -> Result<u32> 
 ///
 /// Unlike `std::process::Child`, `Drop` tries to join the process, and kills it
 /// if it can't.
-pub(crate) struct SubcommandChild {
+pub struct SubcommandChild {
     pub(crate) process: Child,
 }
 
+///
 #[derive(Debug, PartialEq)]
-pub(crate) enum SubcommandExit {
+pub enum SubcommandExit {
+    /// The process exited gracefully
     Success,
+    /// The process didn't crash, but it returned a non-success exit code
     Failure,
+    /// The process had to be killed
     Killed,
 }
 
@@ -264,7 +291,7 @@ impl SubcommandChild {
     }
 
     /// Waits `dur` for process to exit gracefully, and then `dur` to kill process if needed
-    pub(crate) async fn wait_then_kill(&mut self, dur: Duration) -> Result<SubcommandExit> {
+    pub async fn wait_then_kill(&mut self, dur: Duration) -> Result<SubcommandExit> {
         if let Ok(status) = timeout(dur, self.process.wait()).await {
             return if status?.success() {
                 Ok(SubcommandExit::Success)
@@ -290,7 +317,10 @@ impl Drop for SubcommandChild {
 }
 
 /// Uses a Windows job object to kill child processes when the parent exits
-pub(crate) struct LeakGuard {
+///
+/// This contains a Windows handle that always leaks. Try to create one LeakGuard
+/// and use it throughout your whole main process.
+pub struct LeakGuard {
     // Technically this job object handle does leak
     job_object: HANDLE,
 }
@@ -315,6 +345,7 @@ impl LeakGuard {
         Ok(Self { job_object })
     }
 
+    /// Registers a child process with the LeakGuard so that Windows will kill the child if the manager exits or crashes
     pub fn add_process(&mut self, process: &Child) -> Result<()> {
         // Process IDs are not the same as handles, so get our handle to the process.
         let process_handle = process

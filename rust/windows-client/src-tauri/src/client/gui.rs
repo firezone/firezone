@@ -171,7 +171,7 @@ pub(crate) fn run(params: client::GuiParams) -> Result<()> {
                     auth: client::auth::Auth::new()?,
                     crash_connlib_on_purpose,
                     session: None,
-                    leak_guard: ipc::LeakGuard::new()?,
+                    leak_guard: subzone::LeakGuard::new()?,
                     resources: vec![],
                     running: true,
                     tunnel_ready: false,
@@ -289,7 +289,7 @@ struct Controller {
     /// connlib session for the currently signed-in user, if there is one
     session: Option<Session>,
     /// Kills subprocesses when our own process exits
-    leak_guard: ipc::LeakGuard,
+    leak_guard: subzone::LeakGuard,
     resources: Vec<ResourceDescription>,
     running: bool,
     tunnel_ready: bool,
@@ -297,8 +297,8 @@ struct Controller {
 
 /// Everything related to a signed-in user session
 struct Session {
-    ipc_server: ipc::Server,
-    worker: ipc::SubcommandChild,
+    ipc_server: subzone::Server<ipc::ManagerMsg, ipc::WorkerMsg>,
+    worker: subzone::SubcommandChild,
 }
 
 impl Session {
@@ -333,27 +333,18 @@ impl Controller {
 
         let mut subprocess = timeout(
             Duration::from_secs(10),
-            ipc::Subprocess::new(&mut self.leak_guard, &args),
+            subzone::Subprocess::new(&mut self.leak_guard, &args),
         )
         .await
         .context("timed out while starting subprocess")?
         .context("error while starting subprocess")?;
         subprocess
             .server
-            .send(&ipc::ManagerMsg::Connect)
+            .send(ipc::ManagerMsg::Connect)
             .await
             .context("couldn't send Connect request to worker")?;
-        let ipc::ManagerMsg::Connect = subprocess
-            .server
-            .response_rx
-            .recv()
-            .await
-            .context("didn't get response from worker")?
-        else {
-            anyhow::bail!("Expected Connected back from connlib worker");
-        };
 
-        let ipc::Subprocess { server, worker } = subprocess;
+        let subzone::Subprocess { server, worker } = subprocess;
 
         self.session = Some(Session {
             ipc_server: server,
@@ -432,9 +423,9 @@ impl Controller {
     /// # Cancel safety
     ///
     /// Receiving from mpsc is cancel-safe <https://docs.rs/tokio/latest/tokio/sync/mpsc/struct.Receiver.html#cancel-safety>
-    async fn next_connlib_callback(&mut self) -> Option<ipc::Callback> {
+    async fn next_connlib_callback(&mut self) -> Result<ipc::WorkerMsg, subzone::Error> {
         if let Some(session) = &mut self.session {
-            session.ipc_server.cb_rx.recv().await
+            session.ipc_server.next().await
         } else {
             futures::future::pending::<()>().await;
             unreachable!()
@@ -467,11 +458,11 @@ impl Controller {
                 },
                 // Ultimately receives from mpsc, which is cancel-safe
                 cb = self.next_connlib_callback() => {
-                    if let Some(cb) = cb {
+                    if let Ok(cb) = cb {
                         self.handle_connlib_callback(cb).await?;
                     }
                     else {
-                        tracing::error!("Connlib is up but we got `None` for the next callback");
+                        tracing::error!("Connlib is up but we got an error for the next callback");
                         self.stop_connlib().await?;
                     }
                 }
@@ -498,18 +489,16 @@ impl Controller {
         Ok(())
     }
 
-    async fn handle_connlib_callback(&mut self, cb: ipc::Callback) -> Result<()> {
+    async fn handle_connlib_callback(&mut self, cb: ipc::WorkerMsg) -> Result<()> {
         match cb {
-            // TODO: Make this impossible
-            ipc::Callback::Cookie(_) => bail!("Cookie isn't supposed to show up here"),
-            ipc::Callback::DisconnectedTokenExpired | ipc::Callback::OnDisconnect => {
+            ipc::WorkerMsg::DisconnectedTokenExpired | ipc::WorkerMsg::OnDisconnect => {
                 self.sign_out().await?
             }
-            ipc::Callback::OnUpdateResources(resources) => {
+            ipc::WorkerMsg::OnUpdateResources(resources) => {
                 self.resources = resources;
                 self.refresh_system_tray_menu()?;
             }
-            ipc::Callback::TunnelReady => {
+            ipc::WorkerMsg::TunnelReady => {
                 self.tunnel_ready = true;
                 self.refresh_system_tray_menu()?;
 

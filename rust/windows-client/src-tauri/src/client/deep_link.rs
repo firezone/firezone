@@ -1,7 +1,7 @@
 //! A module for registering, catching, and parsing deep links that are sent over to the app's already-running instance
 //! Based on reading some of the Windows code from <https://github.com/FabianLars/tauri-plugin-deep-link>, which is licensed "MIT OR Apache-2.0"
 
-use crate::client::{auth::Response as AuthResponse, ipc::named_pipe_path, BUNDLE_ID};
+use crate::client::{auth::Response as AuthResponse, BUNDLE_ID};
 use secrecy::SecretString;
 use std::{ffi::c_void, io, path::Path};
 use tokio::{io::AsyncReadExt, io::AsyncWriteExt, net::windows::named_pipe};
@@ -181,6 +181,10 @@ pub async fn open(url: &url::Url) -> Result<(), Error> {
         .await
         .map_err(Error::ClientCommunications)?;
     Ok(())
+}
+
+pub(crate) fn named_pipe_path(path: &str) -> String {
+    format!(r"\\.\pipe\{BUNDLE_ID}\{path}")
 }
 
 /// Registers the current exe as the handler for our deep link scheme.

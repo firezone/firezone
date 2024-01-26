@@ -3,20 +3,14 @@
 // TODO: Try making these into no-harness integration tests, if the IPC module
 // ends up living long enough. See <https://doc.rust-lang.org/cargo/commands/cargo-test.html>
 
-use anyhow::{bail, Context, Result};
-use connlib_shared::messages::{
-    ResourceDescription, ResourceDescriptionCidr, ResourceDescriptionDns, ResourceId,
-};
-use std::{
-    str::FromStr,
-    time::{Duration, Instant},
-};
-use tokio::{io::AsyncWriteExt, time::timeout};
+use anyhow::{Context, Result};
+use serde::{Deserialize, Serialize};
+use std::time::{Duration, Instant};
+use tokio::time::timeout;
 
-use super::{
-    client::Client,
-    server::{LeakGuard, SubcommandChild, SubcommandExit, Subprocess, UnconnectedServer},
-    Callback, ManagerMsg, WorkerMsg,
+use crate::{
+    server::UnconnectedServer, Client, LeakGuard, ManagerMsgInternal, Server, SubcommandChild,
+    SubcommandExit, Subprocess,
 };
 
 #[derive(clap::Subcommand)]
@@ -30,9 +24,6 @@ pub(crate) enum Subcommand {
         pipe_id: String,
     },
 
-    SecurityWorker {
-        pipe_id: String,
-    },
     ApiWorker {
         pipe_id: String,
     },
@@ -46,8 +37,6 @@ pub(crate) fn run(cmd: Option<Subcommand>) -> Result<()> {
             None => {
                 test_api().await.context("test_api failed")?;
                 tracing::info!("test_api passed");
-                test_security().await.context("test_security failed")?;
-                tracing::info!("test_security passed");
                 test_leak(false).await.context("test_leak(false) failed")?;
                 test_leak(true).await.context("test_leak(true) failed")?;
                 tracing::info!("test_leak passed");
@@ -59,11 +48,34 @@ pub(crate) fn run(cmd: Option<Subcommand>) -> Result<()> {
                 pipe_id,
             }) => leak_manager(pipe_id, enable_protection),
             Some(Subcommand::LeakWorker { pipe_id }) => leak_worker(pipe_id).await,
-            Some(Subcommand::SecurityWorker { pipe_id }) => security_worker(pipe_id).await,
             Some(Subcommand::ApiWorker { pipe_id }) => test_api_worker(pipe_id).await,
         }
     })?;
     Ok(())
+}
+
+/// A message from the manager process
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub(crate) enum ManagerMsg {
+    Connect,
+}
+
+/// A message from the worker process
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+pub(crate) enum WorkerMsg {
+    Callback(Callback),
+    Response(ManagerMsg), // For debugging, just say what manager request we're responding to
+}
+
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+pub(crate) enum Callback {
+    /// Cookie for named pipe security
+    Cookie(String),
+    DisconnectedTokenExpired,
+    /// Connlib disconnected and we should gracefully join the worker process
+    OnDisconnect,
+    OnUpdateResources(Vec<String>),
+    TunnelReady,
 }
 
 #[tracing::instrument(skip_all)]
@@ -71,7 +83,7 @@ async fn test_api() -> Result<()> {
     let start_time = Instant::now();
 
     let mut leak_guard = LeakGuard::new()?;
-    let args = ["debug", "test-ipc", "api-worker"];
+    let args = ["api-worker"];
     let Subprocess {
         mut server,
         mut worker,
@@ -82,27 +94,27 @@ async fn test_api() -> Result<()> {
     .await??;
     tracing::debug!("Manager got connection from worker");
 
-    server.send(&ManagerMsg::Connect).await?;
-    let resp = server
-        .response_rx
-        .recv()
-        .await
-        .context("should have gotten a response to Connect")?;
-    anyhow::ensure!(resp == ManagerMsg::Connect);
-
-    let cb = server
-        .cb_rx
-        .recv()
+    let msg = server
+        .next()
         .await
         .context("should have gotten a TunnelReady callback")?;
-    assert_eq!(cb, Callback::TunnelReady);
+    assert_eq!(msg, WorkerMsg::Callback(Callback::TunnelReady));
 
-    let cb = server
-        .cb_rx
-        .recv()
+    let msg = server
+        .next()
         .await
         .context("should have gotten a OnUpdateResources callback")?;
-    assert_eq!(cb, Callback::OnUpdateResources(sample_resources()));
+    assert_eq!(
+        msg,
+        WorkerMsg::Callback(Callback::OnUpdateResources(sample_resources()))
+    );
+
+    server.send(ManagerMsg::Connect).await?;
+    let msg: WorkerMsg = server
+        .next()
+        .await
+        .context("should have gotten a response to Connect")?;
+    anyhow::ensure!(msg == WorkerMsg::Response(ManagerMsg::Connect));
 
     let elapsed = start_time.elapsed();
     anyhow::ensure!(
@@ -131,24 +143,21 @@ async fn test_api_worker(pipe_id: String) -> Result<()> {
     let mut client = Client::new(&pipe_id).await?;
 
     client
-        .send(&WorkerMsg::Callback(Callback::TunnelReady))
+        .send(WorkerMsg::Callback(Callback::TunnelReady))
         .await?;
 
     client
-        .send(&WorkerMsg::Callback(Callback::OnUpdateResources(
+        .send(WorkerMsg::Callback(Callback::OnUpdateResources(
             sample_resources(),
         )))
         .await?;
 
     tracing::trace!("Worker connected to named pipe");
     loop {
-        let req = client.recv().await?;
-        tracing::trace!(?req, "worker got request");
-        client.send(&WorkerMsg::Response(req.clone())).await?;
-        tracing::trace!(?req, "worker replied");
-        if let ManagerMsg::Disconnect = req {
+        let ManagerMsgInternal::User(req) = client.next().await? else {
             break;
-        }
+        };
+        client.send(WorkerMsg::Response(req)).await?;
     }
 
     let timer = Instant::now();
@@ -158,74 +167,6 @@ async fn test_api_worker(pipe_id: String) -> Result<()> {
         elapsed < Duration::from_millis(5),
         "Client took too long to close: {elapsed:?}"
     );
-    Ok(())
-}
-
-#[tracing::instrument(skip_all)]
-async fn test_security() -> Result<()> {
-    let start_time = Instant::now();
-
-    let mut leak_guard = LeakGuard::new()?;
-    let (server, pipe_id) = UnconnectedServer::new()?;
-    let args = ["debug", "test-ipc", "security-worker", &pipe_id];
-    let mut worker = SubcommandChild::new(&args)?;
-    leak_guard.add_process(&worker.process)?;
-    let mut server = timeout(Duration::from_secs(5), server.accept()).await??;
-
-    let client_pid = server.client_pid();
-    let child_pid = worker.process.id().unwrap();
-    assert_eq!(child_pid, client_pid);
-
-    let mut child_stdin = worker
-        .process
-        .stdin
-        .take()
-        .ok_or_else(|| anyhow::anyhow!("couldn't get stdin of child process"))?;
-    let cookie = uuid::Uuid::new_v4().to_string();
-    let line = format!("{}\n", cookie);
-    child_stdin.write_all(line.as_bytes()).await?;
-
-    let Callback::Cookie(echoed_cookie) = server
-        .cb_rx
-        .recv()
-        .await
-        .context("should have gotten the cookie back")?
-    else {
-        bail!("callback should have been a cookie");
-    };
-    assert_eq!(echoed_cookie, cookie);
-
-    server.close().await?;
-
-    let elapsed = start_time.elapsed();
-    assert!(elapsed < Duration::from_millis(200), "{:?}", elapsed);
-
-    assert_eq!(
-        worker.wait_then_kill(Duration::from_secs(5)).await?,
-        SubcommandExit::Success
-    );
-
-    Ok(())
-}
-
-#[tracing::instrument(skip_all)]
-async fn security_worker(pipe_id: String) -> Result<()> {
-    let mut client = Client::new_unsecured(&pipe_id)?;
-    let mut cookie = String::new();
-    std::io::stdin().read_line(&mut cookie)?;
-    let cookie = WorkerMsg::Callback(Callback::Cookie(cookie.trim().to_string()));
-    client.send(&cookie).await?;
-    tracing::debug!("Worker connected to named pipe");
-    loop {
-        let Ok(req) = client.recv().await else {
-            break;
-        };
-        client.send(&WorkerMsg::Response(req.clone())).await?;
-        if let ManagerMsg::Disconnect = req {
-            break;
-        }
-    }
-    client.close().await?;
     Ok(())
 }
 
@@ -248,27 +189,25 @@ async fn security_worker(pipe_id: String) -> Result<()> {
 async fn test_leak(enable_protection: bool) -> Result<()> {
     let (server, pipe_id) = UnconnectedServer::new()?;
     let args = [
-        "debug",
-        "test-ipc",
         "leak-manager",
         "--enable-protection",
         &enable_protection.to_string(),
         &pipe_id,
     ];
     let mut manager = SubcommandChild::new(&args)?;
-    let mut server = timeout(Duration::from_secs(5), server.accept()).await??;
+    let mut server: Server<ManagerMsg, WorkerMsg> =
+        timeout(Duration::from_secs(5), server.accept()).await??;
 
     tracing::debug!("Actual pipe client PID = {}", server.client_pid());
     tracing::debug!("Harness accepted connection from Worker");
 
     // Send a few requests to make sure the worker is connected and good
     for _ in 0..3 {
-        server.send(&ManagerMsg::Connect).await?;
+        server.send(ManagerMsg::Connect).await?;
         server
-            .response_rx
-            .recv()
+            .next()
             .await
-            .context("should have gotten a response to Connect")?;
+            .expect("should have gotten a response to Connect");
     }
 
     timeout(Duration::from_secs(5), manager.process.kill()).await??;
@@ -277,11 +216,11 @@ async fn test_leak(enable_protection: bool) -> Result<()> {
     // I can't think of a good way to synchronize with the worker process stopping,
     // so just give it 10 seconds for Windows to stop it.
     for _ in 0..5 {
-        if server.send(&ManagerMsg::Connect).await.is_err() {
+        if server.send(ManagerMsg::Connect).await.is_err() {
             tracing::info!("confirmed worker stopped responding");
             break;
         }
-        if server.response_rx.recv().await.is_none() {
+        if server.next().await.is_err() {
             tracing::info!("confirmed worker stopped responding");
             break;
         }
@@ -290,21 +229,21 @@ async fn test_leak(enable_protection: bool) -> Result<()> {
 
     if enable_protection {
         assert!(
-            server.send(&ManagerMsg::Connect).await.is_err(),
+            server.send(ManagerMsg::Connect).await.is_err(),
             "worker shouldn't be able to respond here, it should have stopped when the manager stopped"
         );
         assert!(
-            server.response_rx.recv().await.is_none(),
+            server.next().await.is_err(),
             "worker shouldn't be able to respond here, it should have stopped when the manager stopped"
         );
         tracing::info!("enabling leak protection worked");
     } else {
         assert!(
-            server.send(&ManagerMsg::Connect).await.is_ok(),
+            server.send(ManagerMsg::Connect).await.is_ok(),
             "worker should still respond here, this failure means the test is invalid"
         );
         assert!(
-            server.response_rx.recv().await.is_some(),
+            server.next().await.is_ok(),
             "worker should still respond here, this failure means the test is invalid"
         );
         tracing::info!("not enabling leak protection worked");
@@ -316,7 +255,7 @@ async fn test_leak(enable_protection: bool) -> Result<()> {
 fn leak_manager(pipe_id: String, enable_protection: bool) -> Result<()> {
     let mut leak_guard = LeakGuard::new()?;
 
-    let worker = SubcommandChild::new(&["debug", "test-ipc", "leak-worker", &pipe_id])?;
+    let worker = SubcommandChild::new(&["leak-worker", &pipe_id])?;
     tracing::debug!("Expected worker PID = {}", worker.process.id().unwrap());
 
     if enable_protection {
@@ -334,28 +273,20 @@ async fn leak_worker(pipe_id: String) -> Result<()> {
     let mut client = Client::new_unsecured(&pipe_id)?;
     tracing::debug!("Worker connected to named pipe");
     loop {
-        let req = client.recv().await?;
-        client.send(&WorkerMsg::Response(req.clone())).await?;
-        if let ManagerMsg::Disconnect = req {
+        let ManagerMsgInternal::User(req) = client.next().await? else {
             break;
-        }
+        };
+        let resp = WorkerMsg::Response(req);
+        client.send(resp).await?;
     }
     client.close().await?;
     Ok(())
 }
 
 // Duplicated because I want this to be private in both test modules
-fn sample_resources() -> Vec<ResourceDescription> {
+fn sample_resources() -> Vec<String> {
     vec![
-        ResourceDescription::Cidr(ResourceDescriptionCidr {
-            id: ResourceId::from_str("2efe9c25-bd92-49a0-99d7-8b92da014dd5").unwrap(),
-            name: "Cloudflare DNS".to_string(),
-            address: ip_network::IpNetwork::from_str("1.1.1.1/32").unwrap(),
-        }),
-        ResourceDescription::Dns(ResourceDescriptionDns {
-            id: ResourceId::from_str("613eaf56-6efa-45e5-88aa-ea4ad64d8c18").unwrap(),
-            name: "Example".to_string(),
-            address: "*.example.com".to_string(),
-        }),
+        "2efe9c25-bd92-49a0-99d7-8b92da014dd5".into(),
+        "613eaf56-6efa-45e5-88aa-ea4ad64d8c18".into(),
     ]
 }

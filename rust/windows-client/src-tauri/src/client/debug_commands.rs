@@ -9,10 +9,6 @@ pub enum Cmd {
     Crash,
     Hostname,
     NetworkChanges,
-    TestIpc {
-        #[command(subcommand)]
-        cmd: Option<client::ipc::multi_process_tests::Subcommand>,
-    },
     Wintun,
 }
 
@@ -21,7 +17,6 @@ pub fn run(cmd: Cmd) -> Result<()> {
         Cmd::Crash => crash(),
         Cmd::Hostname => hostname(),
         Cmd::NetworkChanges => client::network_changes::run_debug(),
-        Cmd::TestIpc { cmd } => client::ipc::multi_process_tests::run(cmd),
         Cmd::Wintun => wintun(),
     }
 }
