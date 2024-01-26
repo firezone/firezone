@@ -147,10 +147,6 @@ where
         now: Instant,
         buffer: &'s mut [u8],
     ) -> Result<Option<(TId, IpPacket<'s>)>, Error> {
-        if !self.local_interfaces.contains(&local) {
-            return Err(Error::UnknownInterface);
-        }
-
         // First, check if a `StunBinding` wants the packet
         if let Some(binding) = self.bindings.get_mut(&from) {
             if binding.handle_input(from, packet, now) {
@@ -194,6 +190,11 @@ where
 
         // Next: If we can parse the message as a STUN message, cycle through all agents to check which one it is for.
         if let Ok(message) = StunMessage::parse(packet) {
+            // `str0m` panics if you feed it traffic from an interface it doesn't know about. (TODO: Fix upstream)
+            if !self.local_interfaces.contains(&local) {
+                return Err(Error::UnknownInterface);
+            }
+
             for agent in self.agents_mut() {
                 // TODO: `accepts_message` cannot demultiplexing multiple connections until https://github.com/algesten/str0m/pull/418 is merged.
                 if agent.accepts_message(&message) {
@@ -446,6 +447,19 @@ where
             self.rate_limiter.reset_count();
             self.next_rate_limiter_reset = Some(now + Duration::from_secs(1));
         }
+
+        let stale_connections = self
+            .initial_connections
+            .iter()
+            .filter_map(|(id, conn)| {
+                (now.duration_since(conn.created_at) >= Duration::from_secs(10)).then_some(*id)
+            })
+            .collect::<Vec<_>>();
+
+        for conn in stale_connections {
+            self.initial_connections.remove(&conn);
+            self.pending_events.push_back(Event::ConnectionFailed(conn));
+        }
     }
 
     /// Returns buffered data that needs to be sent on the socket.
@@ -566,6 +580,7 @@ where
                 session_key,
                 stun_servers: allowed_stun_servers,
                 turn_servers: allowed_turn_servers,
+                created_at: self.last_now,
             },
         );
 
@@ -889,6 +904,7 @@ pub struct Credentials {
     pub password: String,
 }
 
+#[derive(Debug, PartialEq)]
 pub enum Event<TId> {
     /// Signal the ICE candidate to the remote via the signalling channel.
     ///
@@ -935,6 +951,8 @@ struct InitialConnection {
     session_key: Secret<[u8; 32]>,
     stun_servers: HashSet<SocketAddr>,
     turn_servers: HashSet<SocketAddr>,
+
+    created_at: Instant,
 }
 
 struct Connection {
