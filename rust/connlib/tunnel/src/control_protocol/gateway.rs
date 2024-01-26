@@ -61,22 +61,6 @@ where
         expires_at: Option<DateTime<Utc>>,
         resource: ResourceDescription,
     ) -> Result<ConnectionAccepted> {
-        let mut stun_servers: HashSet<_> = turn(&relays).iter().map(|r| r.0).collect();
-        stun_servers.extend(stun(&relays));
-        let answer = self.connections.lock().connection_pool.accept_connection(
-            client_id,
-            Offer {
-                session_key: preshared_key.expose_secret().0.into(),
-                credentials: Credentials {
-                    username: client_payload.ice_parameters.username,
-                    password: client_payload.ice_parameters.password,
-                },
-            },
-            public_key,
-            stun_servers,
-            turn(&relays),
-        );
-
         // TODO:
         // set_connection_state_update(&ice, client_id);
 
@@ -101,9 +85,7 @@ where
                 };
 
                 if !is_subdomain(&domain, &r.address) {
-                    // TODO:
-                    // let _ = ice.stop().await;
-                    // return Err(Error::InvalidResource);
+                    return Err(Error::InvalidResource);
                 }
 
                 tokio::task::spawn_blocking(move || resolve_addresses(&domain.to_string()))
@@ -111,6 +93,22 @@ where
             }
             ResourceDescription::Cidr(ref cidr) => vec![cidr.address],
         };
+
+        let mut stun_servers: HashSet<_> = turn(&relays).iter().map(|r| r.0).collect();
+        stun_servers.extend(stun(&relays));
+        let answer = self.connections.lock().connection_pool.accept_connection(
+            client_id,
+            Offer {
+                session_key: preshared_key.expose_secret().0.into(),
+                credentials: Credentials {
+                    username: client_payload.ice_parameters.username,
+                    password: client_payload.ice_parameters.password,
+                },
+            },
+            public_key,
+            stun_servers,
+            turn(&relays),
+        );
 
         self.new_peer(
             ips,
