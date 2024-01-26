@@ -160,6 +160,7 @@ pub enum ConnlibError {
     JoinError(#[from] JoinError),
     #[error(transparent)]
     FirezoneConnectionError(#[from] snownet::Error),
+    UnallowedPacket,
 }
 
 impl ConnlibError {

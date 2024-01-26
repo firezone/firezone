@@ -54,7 +54,6 @@ mod dns;
 mod gateway;
 mod ip_packet;
 mod peer;
-mod peer_handler;
 mod sockets;
 
 const MAX_UDP_SIZE: usize = (1 << 16) - 1;
@@ -79,7 +78,6 @@ pub(crate) fn get_v6(ip: IpAddr) -> Option<Ipv6Addr> {
 struct Connections<TRole, TId> {
     pub connection_pool: Node<TRole, TId>,
     connection_pool_timeout: BoxFuture<'static, std::time::Instant>,
-    write_buf: Box<[u8; MAX_UDP_SIZE]>,
     if_watcher: IfWatcher,
     udp_sockets: UdpSockets<MAX_UDP_SIZE>,
     relay_socket: Socket<MAX_UDP_SIZE>,
@@ -116,7 +114,6 @@ where
         Connections {
             connection_pool,
             connection_pool_timeout: sleep_until(std::time::Instant::now()).boxed(),
-            write_buf: Box::new([0; MAX_UDP_SIZE]),
             if_watcher,
             udp_sockets,
             relay_socket,
@@ -140,6 +137,67 @@ where
         tracing::trace!(target: "wire", action = "write", to = %transmit.dst, src = ?transmit.src, bytes = %transmit.payload.len());
 
         Ok(())
+    }
+
+    fn poll_sockets<'a>(
+        &mut self,
+        write_buf: &'a mut [u8],
+        cx: &mut Context<'_>,
+    ) -> Poll<Option<firezone_connection::IpPacket<'a>>> {
+        match self.udp_sockets.poll_recv_from(cx) {
+            Poll::Ready((local, Ok((from, packet)))) => {
+                match self.connection_pool.decapsulate(
+                    local,
+                    from,
+                    packet.filled(),
+                    std::time::Instant::now(),
+                    write_buf,
+                ) {
+                    Ok(Some((conn_id, packet))) => {
+                        tracing::trace!(target: "wire", %local, %from, bytes = %packet.packet().len(), "read new packet");
+                        return Poll::Ready(Some(packet));
+                    }
+                    Ok(None) => return Poll::Ready(None),
+                    Err(e) => {
+                        tracing::error!(%local, %from, "Failed to decapsulate incoming packet: {e:#?}");
+                        return Poll::Ready(None);
+                    }
+                }
+            }
+            Poll::Ready((addr, Err(e))) => {
+                tracing::error!(%addr, "Failed to read socket: {e:#?}");
+                return Poll::Ready(None);
+            }
+            Poll::Pending => {}
+        }
+
+        match ready!(self.relay_socket.poll_recv_from(cx)) {
+            (local, Ok((from, packet))) => {
+                match self.connection_pool.decapsulate(
+                    local,
+                    from,
+                    packet.filled(),
+                    std::time::Instant::now(),
+                    write_buf,
+                ) {
+                    Ok(Some((conn_id, packet))) => {
+                        tracing::trace!(target: "wire", %from, bytes = %packet.packet().len(), "read new relay packet");
+                        return Poll::Ready(Some(packet));
+                    }
+                    Ok(None) => {
+                        return Poll::Ready(None);
+                    }
+                    Err(e) => {
+                        tracing::error!(%from, "Failed to decapsulate incoming relay packet: {e:#?}");
+                        return Poll::Ready(None);
+                    }
+                }
+            }
+            (_, Err(e)) => {
+                tracing::error!("Failed to read relay socket: {e:#?}");
+                return Poll::Ready(None);
+            }
+        }
     }
 
     fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Event<TId>> {
@@ -185,60 +243,6 @@ where
                 }
 
                 continue;
-            }
-
-            match self.udp_sockets.poll_recv_from(cx) {
-                Poll::Ready((local, Ok((from, packet)))) => {
-                    match self.connection_pool.decapsulate(
-                        local,
-                        from,
-                        packet.filled(),
-                        std::time::Instant::now(),
-                        self.write_buf.as_mut(),
-                    ) {
-                        Ok(Some((conn_id, packet))) => {
-                            tracing::trace!(target: "wire", %local, %from, bytes = %packet.packet().len(), "read new packet");
-                            // TODO: this is just a sanity check but we might keep a map between ids and peers and ips and ids?
-                        }
-                        Ok(None) => {}
-                        Err(e) => {
-                            tracing::error!(%local, %from, "Failed to decapsulate incoming packet: {e:#?}");
-                        }
-                    }
-
-                    continue;
-                }
-                Poll::Ready((addr, Err(e))) => {
-                    tracing::error!(%addr, "Failed to read socket: {e:#?}");
-                }
-                Poll::Pending => {}
-            }
-
-            match self.relay_socket.poll_recv_from(cx) {
-                Poll::Ready((local, Ok((from, packet)))) => {
-                    match self.connection_pool.decapsulate(
-                        local,
-                        from,
-                        packet.filled(),
-                        std::time::Instant::now(),
-                        self.write_buf.as_mut(),
-                    ) {
-                        Ok(Some((conn_id, packet))) => {
-                            tracing::trace!(target: "wire", %from, bytes = %packet.packet().len(), "read new relay packet");
-                            // TODO
-                        }
-                        Ok(None) => {}
-                        Err(e) => {
-                            tracing::error!(%from, "Failed to decapsulate incoming relay packet: {e:#?}");
-                        }
-                    }
-
-                    continue;
-                }
-                Poll::Ready((_, Err(e))) => {
-                    tracing::error!("Failed to read relay socket: {e:#?}");
-                }
-                Poll::Pending => {}
             }
 
             match self.if_watcher.poll_if_event(cx) {
@@ -290,6 +294,7 @@ pub struct Tunnel<CB: Callbacks, TRoleState: RoleState, TRole, TId> {
     no_device_waker: AtomicWaker,
 
     connections: Mutex<Connections<TRole, TId>>,
+    write_buf: Mutex<Box<[u8; MAX_UDP_SIZE]>>,
 }
 
 impl<CB> Tunnel<CB, ClientState, Client, GatewayId>
@@ -412,7 +417,35 @@ where
                 Poll::Pending => {}
             }
 
-            return Poll::Pending;
+            // TODO: we can get better about these multiple locks
+            match ready!(self
+                .connections
+                .lock()
+                .poll_sockets(self.write_buf.lock().as_mut(), cx))
+            {
+                Some(p) => {
+                    if let Some(peer) = peer_by_ip(&self.role_state.lock().peers_by_ip, p.source())
+                    {
+                        match peer.untransform(p.source(), self.write_buf.lock().as_mut()) {
+                            Ok(p) => {
+                                let dev = self.device.load();
+                                let Some(dev) = dev.as_ref() else {
+                                    continue;
+                                };
+
+                                if let Err(e) = dev.write(p) {
+                                    tracing::error!("Error writing packet to device: {e:?}");
+                                }
+                            }
+                            Err(e) => {
+                                tracing::error!(from = %p.source(), to = %p.destination(), "Error handling packet: {e:#?}");
+                            }
+                        }
+                    }
+                }
+
+                None => {}
+            }
         }
     }
 }
@@ -477,6 +510,7 @@ where
                 }
             }
 
+            // TODO: we are holding 2 mutexes here. Fix this.
             if let Poll::Ready(event) = self.connections.lock().poll_next_event(cx) {
                 return Poll::Ready(event);
             }
@@ -588,6 +622,7 @@ where
             peers_to_stop: Default::default(),
             no_device_waker: Default::default(),
             connections: Mutex::new(Connections::new(private_key)),
+            write_buf: Mutex::new(Box::new([0; MAX_UDP_SIZE])),
         })
     }
 

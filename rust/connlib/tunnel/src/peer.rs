@@ -82,52 +82,18 @@ where
         self.transform.packet_transform(packet)
     }
 
-    pub(crate) fn decapsulate<'b>(
-        &self,
-        src: &[u8],
-        dst: &'b mut [u8],
-    ) -> Result<Option<WriteTo<'b>>> {
-        todo!()
-        // let mut tunnel = self.tunnel.lock();
-
-        // match tunnel.decapsulate(None, src, dst) {
-        //     TunnResult::Done => Ok(None),
-        //     TunnResult::Err(e) => Err(e.into()),
-        //     TunnResult::WriteToNetwork(packet) => {
-        //         let mut packets = VecDeque::from([Bytes::copy_from_slice(packet)]);
-
-        //         let mut buf = [0u8; MAX_UDP_SIZE];
-
-        //         while let TunnResult::WriteToNetwork(packet) =
-        //             tunnel.decapsulate(None, &[], &mut buf)
-        //         {
-        //             packets.push_back(Bytes::copy_from_slice(packet));
-        //         }
-
-        //         Ok(Some(WriteTo::Network(packets)))
-        //     }
-        //     TunnResult::WriteToTunnelV4(packet, addr) => {
-        //         self.make_packet_for_resource(addr.into(), packet)
-        //     }
-        //     TunnResult::WriteToTunnelV6(packet, addr) => {
-        //         self.make_packet_for_resource(addr.into(), packet)
-        //     }
-        // }
-    }
-
-    fn make_packet_for_resource<'a>(
+    pub(crate) fn untransform<'b>(
         &self,
         addr: IpAddr,
-        packet: &'a mut [u8],
-    ) -> Result<Option<WriteTo<'a>>> {
+        packet: &'b mut [u8],
+    ) -> Result<device_channel::Packet<'b>> {
         let (packet, addr) = self.transform.packet_untransform(&addr, packet)?;
 
         if !self.is_allowed(addr) {
-            tracing::debug!("A packet was seen from the tunnel with a destination address we didn't expect: {addr}");
-            return Ok(None);
+            return Err(Error::UnallowedPacket);
         }
 
-        Ok(Some(WriteTo::Resource(packet)))
+        Ok(packet)
     }
 }
 
