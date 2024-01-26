@@ -475,7 +475,7 @@ where
             if let Poll::Ready(Some((data, sender, allocation))) =
                 self.relay_data_receiver.poll_next_unpin(cx)
             {
-                self.server.handle_relay_input(&data, sender, allocation);
+                self.server.handle_peer_traffic(&data, sender, allocation);
                 continue; // Handle potentially new commands.
             }
 
