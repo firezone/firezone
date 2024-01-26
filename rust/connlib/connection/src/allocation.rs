@@ -719,6 +719,8 @@ mod tests {
     use std::net::{IpAddr, Ipv4Addr};
 
     const PEER1: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 10000);
+    const RELAY: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 3478);
+    const RELAY_ADDR: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 9999);
     const MINUTE: Duration = Duration::from_secs(60);
 
     #[test]
@@ -887,6 +889,35 @@ mod tests {
         assert!(can_rebind)
     }
 
+    #[test]
+    fn buffer_channel_bind_requests_until_we_have_allocation() {
+        let mut allocation = Allocation::new(
+            RELAY,
+            Username::new("foobar".to_owned()).unwrap(),
+            "baz".to_owned(),
+            Realm::new("firezone".to_owned()).unwrap(),
+        );
+
+        allocation.bind_channel(PEER1, Instant::now());
+        assert!(
+            next_stun_message(&mut allocation).is_none(),
+            "no messages to be sent if we don't have an allocation"
+        );
+
+        allocation.handle_timeout(Instant::now());
+        let message = next_stun_message(&mut allocation).unwrap();
+        assert_eq!(message.method(), ALLOCATE);
+
+        assert!(
+            next_stun_message(&mut allocation).is_none(),
+            "no messages to be sent if we don't have an allocation"
+        );
+
+        allocation.handle_input(RELAY, &encode(allocate_response()), Instant::now());
+        let message = next_stun_message(&mut allocation).unwrap();
+        assert_eq!(message.method(), CHANNEL_BIND);
+    }
+
     fn ch(peer: SocketAddr, now: Instant) -> Channel {
         Channel {
             peer,
@@ -894,5 +925,22 @@ mod tests {
             bound_at: now,
             last_received: now,
         }
+    }
+
+    fn next_stun_message(allocation: &mut Allocation) -> Option<stun_codec::Message<Attribute>> {
+        let transmit = allocation.poll_transmit()?;
+
+        Some(decode(&transmit.payload).unwrap().unwrap())
+    }
+
+    fn allocate_response() -> stun_codec::Message<Attribute> {
+        let mut message = stun_codec::Message::new(
+            MessageClass::SuccessResponse,
+            ALLOCATE,
+            TransactionId::new(random()),
+        );
+        message.add_attribute(XorRelayAddress::new(RELAY_ADDR));
+
+        message
     }
 }
