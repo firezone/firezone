@@ -132,14 +132,13 @@ where
         }))
     }
 
-    fn new_connection(
-        self: &Arc<Self>,
-        ips: Vec<IpNetwork>,
+    fn new_peer(
+        &self,
         resource_id: ResourceId,
         gateway_id: GatewayId,
         domain_response: Option<DomainResponse>,
     ) -> Result<()> {
-        let peer_config = self
+        let ips = self
             .role_state
             .lock()
             .create_peer_config_for_new_connection(
@@ -148,11 +147,7 @@ where
                 &domain_response.as_ref().map(|d| d.domain.clone()),
             )?;
 
-        let peer = Arc::new(Peer::new(
-            peer_config.clone(),
-            gateway_id,
-            Default::default(),
-        ));
+        let peer = Arc::new(Peer::new(ips.clone(), gateway_id, Default::default()));
 
         let peer_ips = if let Some(domain_response) = domain_response {
             self.dns_response(&resource_id, &domain_response, &peer)?
@@ -179,7 +174,7 @@ where
     /// Once this is called, if everything goes fine, a new tunnel should be started between the 2 peers.
     #[tracing::instrument(level = "trace", skip(self))]
     pub fn received_offer_response(
-        self: &Arc<Self>,
+        &self,
         resource_id: ResourceId,
         rtc_ice_params: Answer,
         domain_response: Option<DomainResponse>,
@@ -201,6 +196,8 @@ where
                 },
             },
         );
+
+        self.new_peer(resource_id, gateway_id, domain_response);
 
         Ok(())
 
@@ -225,7 +222,7 @@ where
     }
 
     fn dns_response(
-        self: &Arc<Self>,
+        &self,
         resource_id: &ResourceId,
         domain_response: &DomainResponse,
         peer: &Peer<GatewayId, PacketTransformClient>,
