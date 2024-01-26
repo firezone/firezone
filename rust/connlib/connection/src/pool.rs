@@ -147,10 +147,6 @@ where
         now: Instant,
         buffer: &'s mut [u8],
     ) -> Result<Option<(TId, IpPacket<'s>)>, Error> {
-        if !self.local_interfaces.contains(&local) {
-            return Err(Error::UnknownInterface);
-        }
-
         // First, check if a `StunBinding` wants the packet
         if let Some(binding) = self.bindings.get_mut(&from) {
             if binding.handle_input(from, packet, now) {
@@ -194,6 +190,11 @@ where
 
         // Next: If we can parse the message as a STUN message, cycle through all agents to check which one it is for.
         if let Ok(message) = StunMessage::parse(packet) {
+            // `str0m` panics if you feed it traffic from an interface it doesn't know about. (TODO: Fix upstream)
+            if !self.local_interfaces.contains(&local) {
+                return Err(Error::UnknownInterface);
+            }
+
             for agent in self.agents_mut() {
                 // TODO: `accepts_message` cannot demultiplexing multiple connections until https://github.com/algesten/str0m/pull/418 is merged.
                 if agent.accepts_message(&message) {
