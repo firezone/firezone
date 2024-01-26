@@ -6,15 +6,6 @@ defmodule API.Client.Channel do
   require Logger
   require OpenTelemetry.Tracer
 
-  def broadcast(%Clients.Client{} = client, payload) do
-    broadcast(client.id, payload)
-  end
-
-  def broadcast(client_id, payload) do
-    Logger.debug("Client message is being dispatched", client_id: client_id)
-    Domain.PubSub.broadcast("client:#{client_id}", payload)
-  end
-
   @impl true
   def join("client", _payload, socket) do
     OpenTelemetry.Ctx.attach(socket.assigns.opentelemetry_ctx)
@@ -58,11 +49,17 @@ defmodule API.Client.Channel do
     OpenTelemetry.Tracer.set_current_span(opentelemetry_span_ctx)
 
     OpenTelemetry.Tracer.with_span "client.after_join" do
-      :ok = Domain.PubSub.subscribe("client:#{socket.assigns.client.id}")
-      :ok = Resources.subscribe_for_resource_events_in_account(socket.assigns.client.account_id)
-      :ok = Clients.connect_client(socket.assigns.client)
-
       {:ok, resources} = Resources.list_authorized_resources(socket.assigns.subject)
+      # {:ok, actor_group_ids} = Actors.list_actor_group_ids(socket.assigns.subject.actor)
+
+      # We subscribe the channel to deletion messages too
+      # :ok = Domain.PubSub.subscribe(Tokens.socket_id(socket.assigns.subject.token_id))
+
+      # :ok = Domain.PubSub.subscribe("client:#{socket.assigns.client.id}")
+      # We don't care about resources, just policies
+      # :ok = Resources.subscribe_for_events_for_account(socket.assigns.client.account_id)
+      # :ok = Enum.each(actor_group_ids, &Policies.subscribe_for_events_for_actor_group(&1))
+      :ok = Clients.connect_client(socket.assigns.client)
 
       :ok =
         push(socket, "init", %{
@@ -276,7 +273,7 @@ defmodule API.Client.Channel do
         opentelemetry_span_ctx = OpenTelemetry.Tracer.current_span_ctx()
 
         :ok =
-          API.Gateway.Channel.broadcast(
+          Gateways.broadcast_to_gateway(
             gateway,
             {:allow_access, {self(), socket_ref(socket)},
              %{
@@ -330,7 +327,7 @@ defmodule API.Client.Channel do
         opentelemetry_span_ctx = OpenTelemetry.Tracer.current_span_ctx()
 
         :ok =
-          API.Gateway.Channel.broadcast(
+          Gateways.broadcast_to_gateway(
             gateway,
             {:request_connection, {self(), socket_ref(socket)},
              %{
@@ -370,7 +367,7 @@ defmodule API.Client.Channel do
 
       :ok =
         Enum.each(gateway_ids, fn gateway_id ->
-          API.Gateway.Channel.broadcast(
+          Gateways.broadcast_to_gateway(
             gateway_id,
             {:ice_candidates, socket.assigns.client.id, candidates,
              {opentelemetry_ctx, opentelemetry_span_ctx}}

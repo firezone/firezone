@@ -229,21 +229,6 @@ defmodule Domain.Resources do
 
   defp account_topic(%Accounts.Account{} = account), do: account_topic(account.id)
   defp account_topic(account_id), do: "account_policies:#{account_id}"
-  defp broadcast_resource_events(:created, %Resource{} = resource) do
-    payload = {:resource_created, resource.id}
-    PubSub.broadcast("account_resources:#{resource.account_id}", payload)
-  end
-
-  defp broadcast_resource_events(kind, %Resource{} = resource) do
-    payload = {:"resource_#{kind}", resource.id}
-
-    for topic <- [
-          "account_resources:#{resource.account_id}",
-          "resources:#{resource.id}"
-        ] do
-      PubSub.broadcast(topic, payload)
-    end
-
 
   def subscribe_for_events_for_resource(resource_or_id) do
     resource_or_id |> resource_topic() |> PubSub.subscribe()

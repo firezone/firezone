@@ -1,5 +1,6 @@
 defmodule API.Relay.ChannelTest do
-  use API.ChannelCase
+  use API.ChannelCase, async: true
+  alias Domain.Relays
 
   setup do
     relay = Fixtures.Relays.create_relay()
@@ -20,7 +21,7 @@ defmodule API.Relay.ChannelTest do
 
   describe "join/3" do
     test "tracks presence after join of an account relay", %{relay: relay} do
-      presence = Domain.Relays.Presence.list("relays:#{relay.account_id}")
+      presence = Relays.Presence.list(Relays.account_presence_topic(relay.account_id))
 
       assert %{metas: [%{online_at: online_at, phx_ref: _ref}]} = Map.fetch!(presence, relay.id)
       assert is_number(online_at)
@@ -41,7 +42,7 @@ defmodule API.Relay.ChannelTest do
         })
         |> subscribe_and_join(API.Relay.Channel, "relay", %{stamp_secret: stamp_secret})
 
-      presence = Domain.Relays.Presence.list("relays")
+      presence = Relays.Presence.list(Relays.global_group_presence_topic())
 
       assert %{metas: [%{online_at: online_at, phx_ref: _ref}]} = Map.fetch!(presence, relay.id)
       assert is_number(online_at)

@@ -260,15 +260,9 @@ defmodule Domain.Clients do
            }),
          {:ok, _} <- Presence.track(self(), actor_presence_topic(client.actor_id), client.id, %{}) do
       :ok = PubSub.subscribe(client_topic(client))
-    {:ok, _} =
-      Presence.track(self(), "clients:#{client.account_id}", client.id, %{
-        online_at: System.system_time(:second)
-      })
-
-    {:ok, _} = Presence.track(self(), "actor_clients:#{client.actor_id}", client.id, %{})
-
-    :ok
-  end
+      # :ok = PubSub.subscribe(actor_topic(client.actor_id))
+      # :ok = PubSub.subscribe(identity_topic(client.actor_id))
+      # :ok = PubSub.subscribe(account_topic(client.account_id))
       :ok
     end
   end

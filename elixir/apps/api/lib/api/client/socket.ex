@@ -28,8 +28,6 @@ defmodule API.Client.Socket do
           account_id: subject.account.id
         })
 
-        dbg({:connected, subject.token_id})
-
         socket =
           socket
           |> assign(:subject, subject)

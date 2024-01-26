@@ -1,18 +1,9 @@
 defmodule API.Gateway.Channel do
   use API, :channel
   alias API.Gateway.Views
-  alias Domain.{Clients, Resources, Relays, Gateways, Flows}
+  alias Domain.{Tokens, Clients, Resources, Relays, Gateways, Flows}
   require Logger
   require OpenTelemetry.Tracer
-
-  def broadcast(%Gateways.Gateway{} = gateway, payload) do
-    broadcast(gateway.id, payload)
-  end
-
-  def broadcast(gateway_id, payload) do
-    Logger.debug("Gateway message is being dispatched", gateway_id: gateway_id)
-    Domain.PubSub.broadcast("gateway:#{gateway_id}", payload)
-  end
 
   @impl true
   def join("gateway", _payload, socket) do
@@ -72,7 +63,7 @@ defmodule API.Gateway.Channel do
     OpenTelemetry.Tracer.set_current_span(socket.assigns.opentelemetry_span_ctx)
 
     OpenTelemetry.Tracer.with_span "gateway.resource_deleted", %{resource_id: resource_id} do
-      :ok = Resources.unsubscribe_from_resource_events(resource_id)
+      # :ok = Resources.unsubscribe_from_resource_events(resource_id)
       push(socket, "resource_deleted", resource_id)
       {:noreply, socket}
     end
@@ -117,7 +108,7 @@ defmodule API.Gateway.Channel do
       } = attrs
 
       resource = Resources.fetch_resource_by_id!(resource_id)
-      :ok = Resources.subscribe_for_resource_events(resource)
+      :ok = Resources.subscribe_for_events_for_resource(resource)
 
       ref = Ecto.UUID.generate()
 
@@ -202,7 +193,7 @@ defmodule API.Gateway.Channel do
 
       {:ok, relays} = Relays.list_connected_relays_for_resource(resource, relay_hosting_type)
 
-      :ok = Resources.subscribe_for_resource_events(resource)
+      # :ok = Resources.subscribe_for_events_for_resource(resource)
 
       ref = Ecto.UUID.generate()
 
@@ -287,7 +278,7 @@ defmodule API.Gateway.Channel do
 
       :ok =
         Enum.each(client_ids, fn client_id ->
-          API.Client.Channel.broadcast(
+          Clients.broadcast_to_client(
             client_id,
             {:ice_candidates, socket.assigns.gateway.id, candidates,
              {opentelemetry_ctx, opentelemetry_span_ctx}}
