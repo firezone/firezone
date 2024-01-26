@@ -93,6 +93,11 @@ where
             gateway_id,
             reference,
         )? {
+            // TODO: now we send reuse connections before connection is established but after
+            // response is offered.
+            // We need to consider new race conditions, such as connection failed after
+            // reuse connection is sent.
+            // Though I believe everything will work just fine like this.
             return Ok(Request::ReuseConnection(connection));
         }
 
