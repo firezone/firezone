@@ -20,11 +20,10 @@ use crate::{
     device_channel::Device,
     dns,
     peer::PacketTransformClient,
-    PEER_QUEUE_SIZE,
 };
 use crate::{peer::Peer, ClientState, ConnectedPeer, Error, Request, Result, Tunnel};
 
-use super::{insert_peers, start_handlers};
+use super::insert_peers;
 
 // TODO: connection timeout heartbeat
 // #[tracing::instrument(level = "trace", skip(tunnel, ice))]
@@ -133,12 +132,11 @@ where
         }))
     }
 
-    fn new_tunnel(
+    fn new_connection(
         self: &Arc<Self>,
+        ips: Vec<IpNetwork>,
         resource_id: ResourceId,
         gateway_id: GatewayId,
-        // TODO:
-        // ice: Arc<RTCIceTransport>,
         domain_response: Option<DomainResponse>,
     ) -> Result<()> {
         let peer_config = self
@@ -159,31 +157,18 @@ where
         let peer_ips = if let Some(domain_response) = domain_response {
             self.dns_response(&resource_id, &domain_response, &peer)?
         } else {
-            peer_config.ips
+            ips
         };
-
-        let (peer_sender, peer_receiver) = tokio::sync::mpsc::channel(PEER_QUEUE_SIZE);
 
         peer.transform
             .set_dns(self.role_state.lock().dns_mapping.clone());
-
-        start_handlers(
-            Arc::clone(self),
-            Arc::clone(&self.device),
-            peer.clone(),
-            // ice,
-            peer_receiver,
-        );
 
         // Partial reads of peers_by_ip can be problematic in the very unlikely case of an expiration
         // before inserting finishes.
         insert_peers(
             &mut self.role_state.lock().peers_by_ip,
             &peer_ips,
-            ConnectedPeer {
-                inner: peer,
-                channel: peer_sender,
-            },
+            ConnectedPeer { inner: peer },
         );
 
         Ok(())

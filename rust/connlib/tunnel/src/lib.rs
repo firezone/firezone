@@ -2,9 +2,8 @@
 //!
 //! This is both the wireguard and ICE implementation that should work in tandem.
 //! [Tunnel] is the main entry-point for this crate.
-use boringtun::x25519::{PublicKey, StaticSecret};
+use boringtun::x25519::StaticSecret;
 
-use bytes::Bytes;
 use connlib_shared::{messages::ReuseConnection, CallbackErrorFacade, Callbacks, Error};
 use futures_util::future::BoxFuture;
 use futures_util::FutureExt;
@@ -47,7 +46,7 @@ pub use control_protocol::Request;
 pub use gateway::GatewayState;
 
 use crate::ip_packet::MutableIpPacket;
-use connlib_shared::messages::{ClientId, SecretKey};
+use connlib_shared::messages::ClientId;
 use device_channel::Device;
 
 mod bounded_queue;
@@ -103,27 +102,6 @@ pub(crate) fn get_v6(ip: IpAddr) -> Option<Ipv6Addr> {
     match ip {
         IpAddr::V4(_) => None,
         IpAddr::V6(v6) => Some(v6),
-    }
-}
-
-/// Represent's the tunnel actual peer's config
-/// Obtained from connlib_shared's Peer
-#[derive(Clone)]
-pub struct PeerConfig {
-    pub(crate) persistent_keepalive: Option<u16>,
-    pub(crate) public_key: PublicKey,
-    pub(crate) ips: Vec<IpNetwork>,
-    pub(crate) preshared_key: SecretKey,
-}
-
-impl From<connlib_shared::messages::Peer> for PeerConfig {
-    fn from(value: connlib_shared::messages::Peer) -> Self {
-        Self {
-            persistent_keepalive: value.persistent_keepalive,
-            public_key: value.public_key.0.into(),
-            ips: vec![value.ipv4.into(), value.ipv6.into()],
-            preshared_key: value.preshared_key,
-        }
     }
 }
 
@@ -237,9 +215,10 @@ where
                         std::time::Instant::now(),
                         self.write_buf.as_mut(),
                     ) {
-                        Ok(_) => {
+                        Ok(Some((conn_id, packet))) => {
                             // TODO
                         }
+                        Ok(None) => {}
                         Err(e) => {
                             tracing::error!(%local, %from, "Failed to decapsulate incoming packet: {e:#?}");
                         }
@@ -263,9 +242,10 @@ where
                         std::time::Instant::now(),
                         self.write_buf.as_mut(),
                     ) {
-                        Ok(_) => {
+                        Ok(Some((conn_id, packet))) => {
                             // TODO
                         }
+                        Ok(None) => {}
                         Err(e) => {
                             tracing::error!(%from, "Failed to decapsulate incoming relay packet: {e:#?}");
                         }
@@ -463,14 +443,12 @@ where
 
 pub struct ConnectedPeer<TId, TTransform> {
     inner: Arc<Peer<TId, TTransform>>,
-    channel: tokio::sync::mpsc::Sender<Bytes>,
 }
 
 impl<TId, TTranform> Clone for ConnectedPeer<TId, TTranform> {
     fn clone(&self) -> Self {
         Self {
             inner: Arc::clone(&self.inner),
-            channel: self.channel.clone(),
         }
     }
 }
@@ -559,9 +537,7 @@ where
             Ok(None) => {}
             Ok(Some(b)) => {
                 tracing::trace!(target: "wire", action = "writing", to = "peer");
-                if peer.channel.try_send(b).is_err() {
-                    tracing::warn!(target: "wire", action = "dropped", to = "peer");
-                }
+                // TODO: try_send to peer
             }
             Err(e) => {
                 tracing::error!(err = ?e, "failed to handle packet {e:#}");

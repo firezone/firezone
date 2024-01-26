@@ -1,19 +1,13 @@
-use arc_swap::ArcSwapOption;
-use bytes::Bytes;
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
-use std::{collections::HashSet, fmt, hash::Hash, net::SocketAddr, sync::Arc};
+use std::{collections::HashSet, fmt, hash::Hash, net::SocketAddr};
 
 use connlib_shared::{
     messages::{Relay, RequestConnection, ReuseConnection},
     Callbacks,
 };
 
-use crate::{
-    device_channel::Device,
-    peer::{PacketTransform, Peer},
-    peer_handler, ConnectedPeer, RoleState, Tunnel, REALM,
-};
+use crate::{ConnectedPeer, RoleState, Tunnel, REALM};
 
 mod client;
 mod gateway;
@@ -54,39 +48,6 @@ fn insert_peers<TId: Copy, TTransform>(
     for ip in ips {
         peers_by_ip.insert(*ip, peer.clone());
     }
-}
-
-fn start_handlers<TId, TTransform, TRoleState, TRole>(
-    tunnel: Arc<Tunnel<impl Callbacks + 'static, TRoleState, TRole, TId>>,
-    device: Arc<ArcSwapOption<Device>>,
-    peer: Arc<Peer<TId, TTransform>>,
-    // TODO:
-    // ice: Arc<RTCIceTransport>,
-    peer_receiver: tokio::sync::mpsc::Receiver<Bytes>,
-) where
-    TId: Copy + Send + Sync + fmt::Debug + 'static,
-    TTransform: Send + Sync + PacketTransform + 'static,
-    TRoleState: RoleState<Id = TId>,
-{
-    let conn_id = peer.conn_id;
-    //TODO:
-    // ice.on_connection_state_change(Box::new(move |state| {
-    //     let tunnel = tunnel.clone();
-    //     Box::pin(async move {
-    //         if state == RTCIceTransportState::Failed {
-    //             tunnel.peers_to_stop.lock().push_back(conn_id);
-    //         }
-    //     })
-    // }));
-
-    tokio::spawn({
-        async move {
-            // If this fails receiver will be dropped and the connection will expire at some point
-            // this will not fail though, since this is always called after start ice
-            tokio::spawn(peer_handler::start_peer_handler(device, peer, todo!()));
-            tokio::spawn(peer_handler::handle_packet(todo!(), peer_receiver));
-        }
-    });
 }
 
 fn stun(relays: &[Relay]) -> HashSet<SocketAddr> {

@@ -2,15 +2,12 @@ use crate::bounded_queue::BoundedQueue;
 use crate::device_channel::{Device, Packet};
 use crate::ip_packet::{IpPacket, MutableIpPacket};
 use crate::peer::PacketTransformClient;
-use crate::{
-    dns, ConnectedPeer, DnsQuery, Event, PeerConfig, RoleState, Tunnel, DNS_QUERIES_QUEUE_SIZE,
-};
+use crate::{dns, ConnectedPeer, DnsQuery, Event, RoleState, Tunnel, DNS_QUERIES_QUEUE_SIZE};
 use bimap::BiMap;
-use boringtun::x25519::{PublicKey, StaticSecret};
 use connlib_shared::error::{ConnlibError as Error, ConnlibError};
 use connlib_shared::messages::{
-    DnsServer, GatewayId, Interface as InterfaceConfig, Key, ResourceDescription,
-    ResourceDescriptionCidr, ResourceDescriptionDns, ResourceId, ReuseConnection, SecretKey,
+    DnsServer, GatewayId, Interface as InterfaceConfig, ResourceDescription,
+    ResourceDescriptionCidr, ResourceDescriptionDns, ResourceId, ReuseConnection,
 };
 use connlib_shared::{Callbacks, Dname, IpProvider};
 use domain::base::Rtype;
@@ -209,8 +206,6 @@ pub struct ClientState {
     // then the old peer will expire, this might take ~180 seconds. This is an even worse experience but the likelihood of this happen is infinitesimaly small, again correctness is the only important part.
     gateway_awaiting_connection_timers: FuturesMap<GatewayId, ()>,
 
-    pub gateway_public_keys: HashMap<GatewayId, PublicKey>,
-    pub gateway_preshared_keys: HashMap<GatewayId, StaticSecret>,
     resources_gateways: HashMap<ResourceId, GatewayId>,
 
     pub dns_resources_internal_ips: HashMap<DnsResource, HashSet<IpAddr>>,
@@ -338,7 +333,6 @@ impl ClientState {
         let Some(peer) = self.peers_by_ip.iter().find_map(|(_, p)| {
             (p.inner.conn_id == gateway).then_some(ConnectedPeer {
                 inner: p.inner.clone(),
-                channel: p.channel.clone(),
             })
         }) else {
             match self
@@ -367,7 +361,6 @@ impl ClientState {
                 ip,
                 ConnectedPeer {
                     inner: peer.inner.clone(),
-                    channel: peer.channel.clone(),
                 },
             );
         }
@@ -504,20 +497,7 @@ impl ClientState {
         resource: ResourceId,
         gateway: GatewayId,
         domain: &Option<Dname>,
-    ) -> Result<PeerConfig, ConnlibError> {
-        let shared_key = self
-            .gateway_preshared_keys
-            .get(&gateway)
-            .ok_or(Error::ControlProtocolError)?
-            .clone();
-
-        let Some(public_key) = self.gateway_public_keys.remove(&gateway) else {
-            self.awaiting_connection.remove(&resource);
-            self.gateway_awaiting_connection.remove(&gateway);
-
-            return Err(Error::ControlProtocolError);
-        };
-
+    ) -> Result<Vec<IpNetwork>, ConnlibError> {
         let desc = self
             .resource_ids
             .get(&resource)
@@ -525,27 +505,16 @@ impl ClientState {
 
         let ips = self.get_resource_ip(desc, domain);
 
-        let config = PeerConfig {
-            persistent_keepalive: None,
-            public_key,
-            ips,
-            preshared_key: SecretKey::new(Key(shared_key.to_bytes())),
-        };
-
         // Tidy up state once everything succeeded.
         self.gateway_awaiting_connection.remove(&gateway);
         self.gateway_awaiting_connection_timers.remove(gateway);
         self.awaiting_connection.remove(&resource);
 
-        Ok(config)
+        Ok(ips)
     }
 
     pub fn gateway_by_resource(&self, resource: &ResourceId) -> Option<GatewayId> {
         self.resources_gateways.get(resource).copied()
-    }
-
-    pub fn activate_ice_candidate_receiver(&mut self, id: GatewayId, key: PublicKey) {
-        self.gateway_public_keys.insert(id, key);
     }
 
     fn is_awaiting_connection_to_cidr(&self, destination: IpAddr) -> bool {
@@ -627,10 +596,8 @@ impl Default for ClientState {
             gateway_awaiting_connection: Default::default(),
             gateway_awaiting_connection_timers: FuturesMap::new(MAX_CONNECTION_REQUEST_DELAY, 100),
 
-            gateway_public_keys: Default::default(),
             resources_gateways: Default::default(),
             forwarded_dns_queries: BoundedQueue::with_capacity(DNS_QUERIES_QUEUE_SIZE),
-            gateway_preshared_keys: Default::default(),
             // TODO: decide ip ranges
             ip_provider: IpProvider::new(
                 IPV4_RESOURCES.parse().unwrap(),
@@ -755,14 +722,6 @@ impl RoleState for ClientState {
             //         continue;
             //     }
             // };
-
-            let peer_channel = peer.channel.clone();
-
-            tokio::spawn(async move {
-                if let Err(e) = peer_channel.send(todo!()).await {
-                    tracing::error!("Failed to send packet to peer: {e:#}");
-                }
-            });
         }
 
         peers_to_stop

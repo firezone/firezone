@@ -6,8 +6,7 @@ use std::time::Instant;
 
 use arc_swap::ArcSwap;
 use bimap::BiMap;
-use boringtun::noise::{Tunn, TunnResult};
-use boringtun::x25519::StaticSecret;
+use boringtun::noise::Tunn;
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
 use connlib_shared::messages::DnsServer;
@@ -17,10 +16,8 @@ use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
 use parking_lot::{Mutex, RwLock};
 use pnet_packet::Packet;
-use secrecy::ExposeSecret;
 
-use crate::MAX_UDP_SIZE;
-use crate::{device_channel, ip_packet::MutableIpPacket, PeerConfig};
+use crate::{device_channel, ip_packet::MutableIpPacket};
 
 type ExpiryingResource = (ResourceDescription, Option<DateTime<Utc>>);
 
@@ -55,12 +52,12 @@ where
     }
 
     pub(crate) fn new(
-        peer_config: PeerConfig,
+        ips: Vec<IpNetwork>,
         conn_id: TId,
         transform: TTransform,
     ) -> Peer<TId, TTransform> {
         let mut allowed_ips = IpNetworkTable::new();
-        for ip in peer_config.ips {
+        for ip in ips {
             allowed_ips.insert(ip, ());
         }
         let allowed_ips = RwLock::new(allowed_ips);

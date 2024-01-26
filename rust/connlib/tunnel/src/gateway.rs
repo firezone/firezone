@@ -97,14 +97,6 @@ impl RoleState for GatewayState {
             //         continue;
             //     }
             // };
-
-            let peer_channel = peer.channel.clone();
-
-            tokio::spawn(async move {
-                if let Err(e) = peer_channel.send(todo!()).await {
-                    tracing::error!("Failed to send packet to peer: {e:#}");
-                }
-            });
         }
 
         peers_to_stop

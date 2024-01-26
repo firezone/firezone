@@ -74,6 +74,12 @@ pub struct Peer {
     pub preshared_key: SecretKey,
 }
 
+impl Peer {
+    pub fn ips(&self) -> Vec<IpNetwork> {
+        vec![self.ipv4.into(), self.ipv6.into()]
+    }
+}
+
 impl PartialEq for Peer {
     fn eq(&self, other: &Self) -> bool {
         self.persistent_keepalive.eq(&other.persistent_keepalive)

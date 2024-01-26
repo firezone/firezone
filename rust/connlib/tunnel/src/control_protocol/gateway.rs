@@ -1,15 +1,16 @@
 use crate::{
-    control_protocol::{insert_peers, start_handlers},
+    control_protocol::insert_peers,
     dns::is_subdomain,
     peer::{PacketTransformGateway, Peer},
-    ConnectedPeer, GatewayState, PeerConfig, Tunnel, PEER_QUEUE_SIZE,
+    ConnectedPeer, GatewayState, Tunnel,
 };
 
+use boringtun::x25519::PublicKey;
 use chrono::{DateTime, Utc};
 use connlib_shared::{
     messages::{
         Answer, ClientId, ClientPayload, ConnectionAccepted, DomainResponse, Relay,
-        ResourceAccepted, ResourceDescription,
+        ResourceAccepted, ResourceDescription, SecretKey,
     },
     Callbacks, Dname, Error, Result,
 };
@@ -52,7 +53,9 @@ where
     pub async fn set_peer_connection_request(
         self: &Arc<Self>,
         client_payload: ClientPayload,
-        peer: PeerConfig,
+        ips: Vec<IpNetwork>,
+        public_key: PublicKey,
+        preshared_key: SecretKey,
         relays: Vec<Relay>,
         client_id: ClientId,
         expires_at: Option<DateTime<Utc>>,
@@ -63,13 +66,13 @@ where
         let answer = self.connections.lock().connection_pool.accept_connection(
             client_id,
             Offer {
-                session_key: peer.preshared_key.expose_secret().0.into(),
+                session_key: preshared_key.expose_secret().0.into(),
                 credentials: Credentials {
                     username: client_payload.ice_parameters.username,
                     password: client_payload.ice_parameters.password,
                 },
             },
-            peer.public_key,
+            public_key,
             stun_servers,
             turn(&relays),
         );
@@ -220,7 +223,7 @@ where
 
     fn new_tunnel(
         self: &Arc<Self>,
-        peer_config: PeerConfig,
+        ips: Vec<IpNetwork>,
         client_id: ClientId,
         resource: ResourceDescription,
         expires_at: Option<DateTime<Utc>>,
@@ -228,10 +231,10 @@ where
         // ice: Arc<RTCIceTransport>,
         resource_addresses: Vec<IpNetwork>,
     ) -> Result<()> {
-        tracing::trace!(?peer_config.ips, "new_data_channel_open");
+        tracing::trace!(?ips, "new_data_channel_open");
 
         let peer = Arc::new(Peer::new(
-            peer_config.clone(),
+            ips.clone(),
             client_id,
             PacketTransformGateway::default(),
         ));
@@ -241,24 +244,10 @@ where
                 .add_resource(address, resource.clone(), expires_at);
         }
 
-        let (peer_sender, peer_receiver) = tokio::sync::mpsc::channel(PEER_QUEUE_SIZE);
-
-        start_handlers(
-            Arc::clone(self),
-            Arc::clone(&self.device),
-            peer.clone(),
-            // TODO:
-            // ice,
-            peer_receiver,
-        );
-
         insert_peers(
             &mut self.role_state.lock().peers_by_ip,
-            &peer_config.ips,
-            ConnectedPeer {
-                inner: peer,
-                channel: peer_sender,
-            },
+            &ips,
+            ConnectedPeer { inner: peer },
         );
 
         Ok(())
