@@ -4,11 +4,12 @@
 //!
 //! TODO: Capture crash dumps on panic.
 
-use crate::client::{logging, BUNDLE_ID};
-use anyhow::{anyhow, bail, Context, Result};
+use crate::client::BUNDLE_ID;
+use anyhow::{anyhow, bail, Context};
 use known_folders::{get_known_folder_path, KnownFolder};
-use parking_lot::Mutex;
 use std::{fs::File, io::Write, path::PathBuf};
+
+const SOCKET_NAME: &str = "dev.firezone.client.crash_handler";
 
 /// Attaches a crash handler to the client process
 ///
@@ -20,13 +21,9 @@ use std::{fs::File, io::Write, path::PathBuf};
 /// Linux has a special `set_ptracer` call that is handy
 /// MacOS needs a special `ping` call to flush messages inside the crash handler
 #[cfg(all(debug_assertions, target_os = "windows"))]
-pub(crate) fn attach_handler(crash_dump_name: &str) -> Result<crash_handler::CrashHandler> {
-    // Can't have any slashes at all, apparently.
-    let pipe_id = format!(r"{BUNDLE_ID}.crash.{}", crash_dump_name);
+pub(crate) fn attach_handler() -> anyhow::Result<crash_handler::CrashHandler> {
     // Attempt to connect to the server
-    let (client, _server) = start_server_and_connect(&pipe_id)?;
-
-    client.send_message(KIND_SET_FILENAME, crash_dump_name.as_bytes())?;
+    let (client, _server) = start_server_and_connect()?;
 
     // SAFETY: Unsafe is required here because this will run after the program
     // has crashed. We should try to do as little as possible, basically just
@@ -43,7 +40,7 @@ pub(crate) fn attach_handler(crash_dump_name: &str) -> Result<crash_handler::Cra
 }
 
 #[cfg(not(debug_assertions))]
-pub(crate) fn attach_handler(_crash_dump_name: &str) -> Result<crash_handler::CrashHandler> {
+pub(crate) fn attach_handler() -> anyhow::Result<crash_handler::CrashHandler> {
     bail!("crash handling is disabled in release builds for now");
 }
 
@@ -55,23 +52,14 @@ pub(crate) fn attach_handler(_crash_dump_name: &str) -> Result<crash_handler::Cr
 ///
 /// <https://jake-shadle.github.io/crash-reporting/#implementation>
 /// <https://chromium.googlesource.com/breakpad/breakpad/+/master/docs/getting_started_with_breakpad.md#terminology>
-pub(crate) fn server(pipe_id: &str) -> Result<()> {
-    // We don't have a place to log things from the crash handler, but at least
-    // in debug mode they can go to the parent's stderr/stdout
-    tracing_subscriber::fmt::try_init().ok();
-    tracing::info!(?pipe_id, "crash_handling::server");
-
-    let mut server = minidumper::Server::with_name(pipe_id)?;
+pub(crate) fn server() -> anyhow::Result<()> {
+    let mut server = minidumper::Server::with_name(SOCKET_NAME)?;
     let ab = std::sync::atomic::AtomicBool::new(false);
-    server.run(Box::<Handler>::default(), &ab, None)?;
+    server.run(Box::new(Handler), &ab, None)?;
     Ok(())
 }
 
-fn start_server_and_connect(
-    pipe_id: &str,
-) -> anyhow::Result<(minidumper::Client, std::process::Child)> {
-    tracing::info!(?pipe_id, "crash_handling::start_server_and_connect");
-
+fn start_server_and_connect() -> anyhow::Result<(minidumper::Client, std::process::Child)> {
     let exe = std::env::current_exe().context("unable to find our own exe path")?;
     let mut server = None;
 
@@ -81,7 +69,7 @@ fn start_server_and_connect(
     for _ in 0..10 {
         // Create the crash client first so we can error out if another instance of
         // the Firezone client is already using this socket for crash handling.
-        if let Ok(client) = minidumper::Client::with_name(pipe_id) {
+        if let Ok(client) = minidumper::Client::with_name(SOCKET_NAME) {
             return Ok((
                 client,
                 server.ok_or_else(|| {
@@ -95,7 +83,6 @@ fn start_server_and_connect(
         server = Some(
             std::process::Command::new(&exe)
                 .arg("crash-handler-server")
-                .arg(pipe_id)
                 .spawn()
                 .context("unable to spawn server process")?,
         );
@@ -111,29 +98,17 @@ fn start_server_and_connect(
 ///
 /// The minidumper docs call this the "server" process because it's an IPC server,
 /// not to be confused with network servers for Firezone itself.
-struct Handler {
-    crash_dump_name: Mutex<String>,
-}
-
-impl Default for Handler {
-    fn default() -> Self {
-        Self {
-            crash_dump_name: Mutex::new(logging::UNKNOWN_CRASH_DUMP.into()),
-        }
-    }
-}
+struct Handler;
 
 impl minidumper::ServerHandler for Handler {
     /// Called when a crash has been received and a backing file needs to be
     /// created to store it.
     fn create_minidump_file(&self) -> Result<(File, PathBuf), std::io::Error> {
-        let crash_dump_name = self.crash_dump_name.lock().clone();
-
-        let dump_path = get_known_folder_path(KnownFolder::LocalAppData)
-            .expect("should be able to find AppData/Local")
+        let dump_path = get_known_folder_path(KnownFolder::ProgramData)
+            .expect("should be able to find C:/ProgramData")
             .join(BUNDLE_ID)
-            .join("data")
-            .join(crash_dump_name);
+            .join("dumps")
+            .join("last_crash.dmp");
 
         if let Some(dir) = dump_path.parent() {
             if !dir.try_exists()? {
@@ -165,12 +140,10 @@ impl minidumper::ServerHandler for Handler {
     }
 
     fn on_message(&self, kind: u32, buffer: Vec<u8>) {
-        let message = String::from_utf8(buffer).expect("message should be valid UTF-8");
-        tracing::info!(?kind, ?message, "on_message");
-
-        if kind == KIND_SET_FILENAME {
-            *self.crash_dump_name.lock() = message;
-        }
+        tracing::info!(
+            "kind: {kind}, message: {}",
+            String::from_utf8(buffer).expect("message should be valid UTF-8")
+        );
     }
 
     fn on_client_disconnected(&self, num_clients: usize) -> minidumper::LoopAction {
@@ -181,5 +154,3 @@ impl minidumper::ServerHandler for Handler {
         }
     }
 }
-
-const KIND_SET_FILENAME: u32 = 0;

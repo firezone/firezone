@@ -2147,22 +2147,20 @@ dependencies = [
  "anyhow",
  "arboard",
  "arc-swap",
+ "bincode",
  "chrono",
  "clap",
  "connlib-client-shared",
  "connlib-shared",
  "crash-handler",
  "firezone-cli-utils",
- "futures",
  "git-version",
  "hex",
  "hostname",
- "ip_network",
  "ipconfig",
  "keyring",
  "known-folders",
  "minidumper",
- "parking_lot",
  "rand 0.8.5",
  "ring 0.17.7",
  "sadness-generator",
@@ -2170,7 +2168,6 @@ dependencies = [
  "serde",
  "serde_json",
  "subtle",
- "subzone",
  "tauri",
  "tauri-build",
  "tauri-utils",
@@ -6200,22 +6197,6 @@ name = "subtle"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "81cdd64d312baedb58e21336b31bc043b77e01cc99033ce76ef539f78e965ebc"
-
-[[package]]
-name = "subzone"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "clap",
- "serde",
- "serde_json",
- "thiserror",
- "tokio",
- "tracing",
- "tracing-subscriber",
- "uuid",
- "windows 0.52.0",
-]
 
 [[package]]
 name = "swift-bridge"

@@ -9,6 +9,10 @@ pub enum Cmd {
     Crash,
     Hostname,
     NetworkChanges,
+    TestIpc {
+        #[command(subcommand)]
+        cmd: Option<client::ipc::Subcommand>,
+    },
     Wintun,
 }
 
@@ -17,13 +21,14 @@ pub fn run(cmd: Cmd) -> Result<()> {
         Cmd::Crash => crash(),
         Cmd::Hostname => hostname(),
         Cmd::NetworkChanges => client::network_changes::run_debug(),
+        Cmd::TestIpc { cmd } => client::ipc::test_subcommand(cmd),
         Cmd::Wintun => wintun(),
     }
 }
 
 fn crash() -> Result<()> {
     // `_` doesn't seem to work here, the log files end up empty
-    let _handles = client::logging::setup("debug", client::logging::GUI_DIR)?;
+    let _handles = client::logging::setup("debug")?;
     tracing::info!("started log (DebugCrash)");
 
     panic!("purposely crashing to see if it shows up in logs");

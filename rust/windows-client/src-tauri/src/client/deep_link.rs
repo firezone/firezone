@@ -126,8 +126,7 @@ impl Server {
             bInheritHandle: false.into(),
         };
 
-        let path = named_pipe_path("deep_link");
-
+        let path = named_pipe_path(BUNDLE_ID);
         let server = unsafe {
             server_options
                 .create_with_security_attributes_raw(path, &mut sa as *mut _ as *mut c_void)
@@ -172,7 +171,7 @@ impl Server {
 
 /// Open a deep link by sending it to the already-running instance of the app
 pub async fn open(url: &url::Url) -> Result<(), Error> {
-    let path = named_pipe_path("deep_link");
+    let path = named_pipe_path(BUNDLE_ID);
     let mut client = named_pipe::ClientOptions::new()
         .open(path)
         .map_err(Error::Connect)?;
@@ -181,10 +180,6 @@ pub async fn open(url: &url::Url) -> Result<(), Error> {
         .await
         .map_err(Error::ClientCommunications)?;
     Ok(())
-}
-
-pub(crate) fn named_pipe_path(path: &str) -> String {
-    format!(r"\\.\pipe\{BUNDLE_ID}\{path}")
 }
 
 /// Registers the current exe as the handler for our deep link scheme.
@@ -223,6 +218,15 @@ fn set_registry_values(id: &str, exe: &str) -> Result<(), io::Error> {
     cmd.set_value("", &format!("{} open-deep-link \"%1\"", &exe))?;
 
     Ok(())
+}
+
+/// Returns a valid name for a Windows named pipe
+///
+/// # Arguments
+///
+/// * `id` - BUNDLE_ID, e.g. `dev.firezone.client`
+fn named_pipe_path(id: &str) -> String {
+    format!(r"\\.\pipe\{}", id)
 }
 
 #[cfg(test)]
