@@ -200,7 +200,7 @@ pub enum IpPacket<'a> {
 }
 
 // TODO: simply get rid of this implementation of IpPacket
-impl<'a> From<IpPacket<'a>> for firezone_connection::IpPacket<'a> {
+impl<'a> From<IpPacket<'a>> for snownet::IpPacket<'a> {
     fn from(value: IpPacket<'a>) -> Self {
         match value {
             IpPacket::Ipv4Packet(p) => Self::Ipv4(p),

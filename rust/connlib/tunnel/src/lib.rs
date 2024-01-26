@@ -15,7 +15,6 @@ use snownet::{Client, Node, Server, IpPacket};
 use hickory_resolver::proto::rr::RecordType;
 use parking_lot::Mutex;
 use peer::{PacketTransform, Peer};
-use rand_core::OsRng;
 use sockets::{Socket, UdpSockets};
 use tokio::time::MissedTickBehavior;
 
@@ -60,32 +59,6 @@ mod sockets;
 
 const MAX_UDP_SIZE: usize = (1 << 16) - 1;
 const DNS_QUERIES_QUEUE_SIZE: usize = 100;
-// Why do we need such big channel? I have not the slightless idea
-// but if we make it smaller things get quite slower.
-// Since eventually we will have a UDP socket with try_send
-// I don't think there's a point to having this.
-const PEER_QUEUE_SIZE: usize = 1_000;
-
-/// For how long we will attempt to gather ICE candidates before aborting.
-///
-/// Chosen arbitrarily.
-/// Very likely, the actual WebRTC connection will timeout before this.
-/// This timeout is just here to eventually clean-up tasks if they are somehow broken.
-const ICE_GATHERING_TIMEOUT_SECONDS: u64 = 5 * 60;
-
-/// How many concurrent ICE gathering attempts we are allow.
-///
-/// Chosen arbitrarily,
-const MAX_CONCURRENT_ICE_GATHERING: usize = 100;
-
-// Note: Taken from boringtun
-const HANDSHAKE_RATE_LIMIT: u64 = 100;
-
-// These 2 are the default timeouts
-const ICE_DISCONNECTED_TIMEOUT: Duration = Duration::from_secs(5);
-const ICE_KEEPALIVE: Duration = Duration::from_secs(2);
-// This is approximately how long failoever will take :)
-const ICE_FAILED_TIMEOUT: Duration = Duration::from_secs(10);
 
 const REALM: &str = "firezone";
 
@@ -112,19 +85,16 @@ struct Connections<TRole, TId> {
     relay_socket: Socket<MAX_UDP_SIZE>,
 }
 
-impl<TRole, TId> Default for Connections<TRole, TId>
+impl<TRole, TId> Connections<TRole, TId>
 where
     TId: Eq + Hash + Copy + fmt::Display,
 {
-    fn default() -> Self {
+    fn new(private_key: StaticSecret) -> Self {
         let if_watcher = IfWatcher::new().expect(
             "Program should be able to list interfaces on the system. Check binary's permissions",
         );
 
-        let mut connection_pool = Node::new(
-            StaticSecret::random_from_rng(OsRng),
-            std::time::Instant::now(),
-        );
+        let mut connection_pool = Node::new(private_key, std::time::Instant::now());
         let mut udp_sockets = UdpSockets::default();
 
         for ip in if_watcher.iter() {
@@ -152,12 +122,7 @@ where
             relay_socket,
         }
     }
-}
 
-impl<TRole, TId> Connections<TRole, TId>
-where
-    TId: Eq + Hash + Copy + fmt::Display,
-{
     fn send(&mut self, id: TId, packet: IpPacket) -> Result<()> {
         let Some(transmit) = self.connection_pool.encapsulate(id, packet)? else {
             return Ok(());
@@ -224,7 +189,6 @@ where
 
             match self.udp_sockets.poll_recv_from(cx) {
                 Poll::Ready((local, Ok((from, packet)))) => {
-                    tracing::trace!(target: "wire", %local, %from, bytes = %packet.filled().len(), "read new packet");
                     match self.connection_pool.decapsulate(
                         local,
                         from,
@@ -233,7 +197,8 @@ where
                         self.write_buf.as_mut(),
                     ) {
                         Ok(Some((conn_id, packet))) => {
-                            // TODO
+                            tracing::trace!(target: "wire", %local, %from, bytes = %packet.packet().len(), "read new packet");
+                            // TODO: this is just a sanity check but we might keep a map between ids and peers and ips and ids?
                         }
                         Ok(None) => {}
                         Err(e) => {
@@ -251,7 +216,6 @@ where
 
             match self.relay_socket.poll_recv_from(cx) {
                 Poll::Ready((local, Ok((from, packet)))) => {
-                    tracing::trace!(target: "wire", %from, bytes = %packet.filled().len(), "read new relay packet");
                     match self.connection_pool.decapsulate(
                         local,
                         from,
@@ -260,6 +224,7 @@ where
                         self.write_buf.as_mut(),
                     ) {
                         Ok(Some((conn_id, packet))) => {
+                            tracing::trace!(target: "wire", %from, bytes = %packet.packet().len(), "read new relay packet");
                             // TODO
                         }
                         Ok(None) => {}
@@ -322,7 +287,6 @@ pub struct Tunnel<CB: Callbacks, TRoleState: RoleState, TRole, TId> {
 
     device: Arc<ArcSwapOption<Device>>,
     read_buf: Mutex<Box<[u8; MAX_UDP_SIZE]>>,
-    write_buf: Mutex<Box<[u8; MAX_UDP_SIZE]>>,
     no_device_waker: AtomicWaker,
 
     connections: Mutex<Connections<TRole, TId>>,
@@ -375,9 +339,7 @@ where
             let mut role_state = self.role_state.lock();
 
             let mut read_guard = self.read_buf.lock();
-            let mut write_guard = self.write_buf.lock();
             let read_buf = read_guard.as_mut_slice();
-            let write_buf = write_guard.as_mut_slice();
 
             let Some(packet) = ready!(device.poll_read(read_buf, cx))? else {
                 return Poll::Ready(Ok(None));
@@ -399,7 +361,7 @@ where
                 continue;
             };
 
-            self.send_peer(packet, peer);
+            self.send_peer(packet, peer)?;
 
             continue;
         }
@@ -619,30 +581,19 @@ where
             // peer_connections,
             device: Default::default(),
             read_buf: Mutex::new(Box::new([0u8; MAX_UDP_SIZE])),
-            write_buf: Mutex::new(Box::new([0u8; MAX_UDP_SIZE])),
             callbacks: CallbackErrorFacade(callbacks),
             role_state: Default::default(),
             peer_refresh_interval: Mutex::new(peer_refresh_interval()),
             mtu_refresh_interval: Mutex::new(mtu_refresh_interval()),
             peers_to_stop: Default::default(),
             no_device_waker: Default::default(),
-            connections: Default::default(),
+            connections: Mutex::new(Connections::new(private_key)),
         })
     }
 
     pub fn callbacks(&self) -> &CallbackErrorFacade<CB> {
         &self.callbacks
     }
-}
-
-/// Constructs the interval for resetting the rate limit count.
-///
-/// As per documentation on [`RateLimiter::reset_count`], this is configured to run every second.
-fn rate_limit_reset_interval() -> Interval {
-    let mut interval = tokio::time::interval(Duration::from_secs(1));
-    interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
-
-    interval
 }
 
 /// Constructs the interval for "refreshing" peers.
