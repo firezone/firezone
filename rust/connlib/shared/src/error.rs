@@ -158,6 +158,8 @@ pub enum ConnlibError {
     ClosedByPortal,
     #[error(transparent)]
     JoinError(#[from] JoinError),
+    #[error(transparent)]
+    FirezoneConnectionError(#[from] snownet::Error),
 }
 
 impl ConnlibError {

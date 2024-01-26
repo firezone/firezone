@@ -9,9 +9,8 @@ use futures_util::future::BoxFuture;
 use futures_util::FutureExt;
 use if_watch::tokio::IfWatcher;
 use ip_network_table::IpNetworkTable;
-use ip_packet::IpPacket;
 use pnet_packet::Packet;
-use snownet::{Client, Node, Server};
+use snownet::{Client, Node, Server, IpPacket};
 
 use hickory_resolver::proto::rr::RecordType;
 use parking_lot::Mutex;
@@ -159,6 +158,25 @@ impl<TRole, TId> Connections<TRole, TId>
 where
     TId: Eq + Hash + Copy + fmt::Display,
 {
+    fn send(&mut self, id: TId, packet: IpPacket) -> Result<()> {
+        let Some(transmit) = self.connection_pool.encapsulate(id, packet)? else {
+            return Ok(());
+        };
+
+        tracing::trace!(target: "wire", action = "writing", to = %transmit.dst, src = ?transmit.src, bytes = %transmit.payload.len());
+
+        match transmit.src {
+            Some(src) => self
+                .udp_sockets
+                .try_send_to(src, transmit.dst, &transmit.payload)?,
+            None => self
+                .relay_socket
+                .try_send_to(transmit.dst, &transmit.payload)?,
+        };
+
+        Ok(())
+    }
+
     fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Event<TId>> {
         loop {
             while let Some(transmit) = self.connection_pool.poll_transmit() {
@@ -520,18 +538,11 @@ where
     ) {
         let peer_id = peer.conn_id;
 
-        match peer.encapsulate(packet, write_buf) {
-            Ok(None) => {}
-            Ok(Some(b)) => {
+        match peer.transform(packet) {
+            None => {}
+            Some(p) => {
                 tracing::trace!(target: "wire", action = "writing", to = "peer");
-                // TODO: try_send to peer
-            }
-            Err(e) => {
-                tracing::error!(err = ?e, "failed to handle packet {e:#}");
-
-                if e.is_fatal_connection_error() {
-                    self.peers_to_stop.lock().push_back(peer_id);
-                }
+                // self.connections.lock().send(peer_id, p);
             }
         };
     }
@@ -550,7 +561,7 @@ pub struct DnsQuery<'a> {
     pub record_type: RecordType,
     // We could be much more efficient with this field,
     // we only need the header to create the response.
-    pub query: IpPacket<'a>,
+    pub query: crate::ip_packet::IpPacket<'a>,
 }
 
 impl<'a> DnsQuery<'a> {
@@ -561,8 +572,8 @@ impl<'a> DnsQuery<'a> {
             query,
         } = self;
         let buf = query.packet().to_vec();
-        let query =
-            IpPacket::owned(buf).expect("We are constructing the ip packet from an ip packet");
+        let query = ip_packet::IpPacket::owned(buf)
+            .expect("We are constructing the ip packet from an ip packet");
 
         DnsQuery {
             name,

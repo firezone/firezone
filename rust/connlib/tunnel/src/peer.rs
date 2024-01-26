@@ -78,25 +78,8 @@ where
     }
 
     /// Sends the given packet to this peer by encapsulating it in a wireguard packet.
-    pub(crate) fn encapsulate(
-        &self,
-        packet: MutableIpPacket,
-        buf: &mut [u8],
-    ) -> Result<Option<Bytes>> {
-        let Some(packet) = self.transform.packet_transform(packet) else {
-            return Ok(None);
-        };
-
-        // TODO
-        // let packet = match self.tunnel.lock().encapsulate(packet.packet(), buf) {
-        //     TunnResult::Done => return Ok(None),
-        //     TunnResult::Err(e) => return Err(e.into()),
-        //     TunnResult::WriteToNetwork(b) => b,
-        //     _ => panic!("Unexpected result from `encapsulate`"),
-        // };
-
-        // Ok(Some(Bytes::copy_from_slice(packet)))
-        todo!()
+    pub(crate) fn transform<'a>(&self, packet: MutableIpPacket<'a>) -> Option<MutableIpPacket<'a>> {
+        self.transform.packet_transform(packet)
     }
 
     pub(crate) fn decapsulate<'b>(

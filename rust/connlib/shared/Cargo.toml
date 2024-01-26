@@ -38,6 +38,7 @@ domain = { workspace = true }
 libc = "0.2"
 dns-lookup = { workspace = true }
 known-folders = "1.1.0"
+snownet = { workspace = true }
 
 # Needed for Android logging until tracing is working
 log = "0.4"
