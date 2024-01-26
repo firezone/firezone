@@ -36,6 +36,7 @@ use stun_codec::rfc8656::attributes::{
 use stun_codec::rfc8656::errors::{AddressFamilyNotSupported, PeerAddressFamilyMismatch};
 use stun_codec::{Message, MessageClass, MessageEncoder, Method, TransactionId};
 use tracing::{field, log, Span};
+use tracing_core::field::display;
 use uuid::Uuid;
 
 /// A sans-IO STUN & TURN server.
@@ -89,7 +90,7 @@ pub enum Command {
     },
     /// Listen for traffic on the provided port [AddressFamily].
     ///
-    /// Any incoming data should be handed to the [`Server`] via [`Server::handle_relay_input`].
+    /// Any incoming data should be handed to the [`Server`] via [`Server::handle_peer_traffic`].
     /// A single allocation can reference one of either [AddressFamily]s or both.
     /// Only the combination of [AllocationId] and [AddressFamily] is unique.
     CreateAllocation {
@@ -212,7 +213,7 @@ where
     /// Process the bytes received from a client.
     ///
     /// After calling this method, you should call [`Server::next_command`] until it returns `None`.
-    #[tracing::instrument(skip_all, fields(transaction_id, %sender), level = "error")]
+    #[tracing::instrument(skip_all, fields(transaction_id, %sender, allocation, channel, recipient, peer), level = "error")]
     pub fn handle_client_input(&mut self, bytes: &[u8], sender: SocketAddr, now: SystemTime) {
         if tracing::enabled!(target: "wire", tracing::Level::TRACE) {
             let hex_bytes = hex::encode(bytes);
@@ -299,19 +300,19 @@ where
     }
 
     /// Process the bytes received from an allocation.
-    #[tracing::instrument(skip_all, fields(%sender, %allocation_id, recipient, channel), level = "error")]
-    pub fn handle_relay_input(
+    #[tracing::instrument(skip_all, fields(%sender, %allocation, recipient, channel), level = "error")]
+    pub fn handle_peer_traffic(
         &mut self,
         bytes: &[u8],
         sender: SocketAddr,
-        allocation_id: AllocationId,
+        allocation: AllocationId,
     ) {
         if tracing::enabled!(target: "wire", tracing::Level::TRACE) {
             let hex_bytes = hex::encode(bytes);
             tracing::trace!(target: "wire", %hex_bytes, "receiving bytes");
         }
 
-        let Some(recipient) = self.clients_by_allocation.get(&allocation_id) else {
+        let Some(recipient) = self.clients_by_allocation.get(&allocation) else {
             tracing::debug!(target: "relay", "unknown allocation");
             return;
         };
@@ -338,7 +339,7 @@ where
             return;
         }
 
-        if channel.allocation != allocation_id {
+        if channel.allocation != allocation {
             tracing::debug!(target: "relay", "channel is not associated with allocation");
             return;
         }
@@ -402,9 +403,9 @@ where
     }
 
     /// An allocation failed.
-    #[tracing::instrument(skip(self), fields(%allocation_id), level = "error")]
-    pub fn handle_allocation_failed(&mut self, allocation_id: AllocationId) {
-        self.delete_allocation(allocation_id)
+    #[tracing::instrument(skip(self), fields(%allocation), level = "error")]
+    pub fn handle_allocation_failed(&mut self, allocation: AllocationId) {
+        self.delete_allocation(allocation)
     }
 
     /// Return the next command to be executed.
@@ -432,7 +433,6 @@ where
     /// Handle a TURN allocate request.
     ///
     /// See <https://www.rfc-editor.org/rfc/rfc8656#name-receiving-an-allocate-reque> for details.
-    #[tracing::instrument(skip(self, request, now), fields(%sender, effective_lifetime = ?request.effective_lifetime().lifetime()), level = "error")]
     fn handle_allocate_request(
         &mut self,
         request: Allocate,
@@ -441,15 +441,24 @@ where
     ) -> Result<(), Message<Attribute>> {
         self.verify_auth(&request, now)?;
 
-        if self.allocations.contains_key(&sender) {
+        if let Some(allocation) = self.allocations.get(&sender) {
+            Span::current().record("allocation", display(&allocation.id));
+            tracing::warn!(target: "relay", "Client already has an allocation");
+
             return Err(error_response(AllocationMismatch, &request));
         }
 
-        if self.allocations_by_port.len() == self.max_available_ports() as usize {
+        let max_available_ports = self.max_available_ports() as usize;
+        if self.allocations_by_port.len() == max_available_ports {
+            tracing::warn!(target: "relay", %max_available_ports, "No more ports available");
+
             return Err(error_response(InsufficientCapacity, &request));
         }
 
-        if request.requested_transport().protocol() != UDP_TRANSPORT {
+        let requested_protocol = request.requested_transport().protocol();
+        if requested_protocol != UDP_TRANSPORT {
+            tracing::warn!(target: "relay", %requested_protocol, "Unsupported protocol");
+
             return Err(error_response(BadRequest, &request));
         }
 
@@ -514,17 +523,21 @@ where
         }
         self.send_message(message, sender);
 
+        Span::current().record("allocation", display(&allocation.id));
+
         if let Some(second_relay_addr) = maybe_second_relay_addr {
             tracing::info!(
                 target: "relay",
                 first_relay_address = field::display(first_relay_address),
                 second_relay_address = field::display(second_relay_addr),
+                lifetime = field::debug(effective_lifetime.lifetime()),
                 "Created new allocation",
             )
         } else {
             tracing::info!(
                 target: "relay",
                 first_relay_address = field::display(first_relay_address),
+                lifetime = field::debug(effective_lifetime.lifetime()),
                 "Created new allocation",
             )
         }
@@ -539,7 +552,6 @@ where
     /// Handle a TURN refresh request.
     ///
     /// See <https://www.rfc-editor.org/rfc/rfc8656#name-receiving-a-refresh-request> for details.
-    #[tracing::instrument(skip(self, request, now), fields(%sender, lifetime = ?request.effective_lifetime().lifetime()), level = "error")]
     fn handle_refresh_request(
         &mut self,
         request: Refresh,
@@ -553,6 +565,8 @@ where
             .allocations
             .get_mut(&sender)
             .ok_or(error_response(AllocationMismatch, &request))?;
+
+        Span::current().record("allocation", display(&allocation.id));
 
         let effective_lifetime = request.effective_lifetime();
 
@@ -594,7 +608,6 @@ where
     /// Handle a TURN channel bind request.
     ///
     /// See <https://www.rfc-editor.org/rfc/rfc8656#name-receiving-a-channelbind-req> for details.
-    #[tracing::instrument(skip(self, request, now), fields(%sender, peer_address = %request.xor_peer_address().address(), requested_channel = %request.channel_number().value(), allocation), level = "error")]
     fn handle_channel_bind_request(
         &mut self,
         request: ChannelBind,
@@ -608,20 +621,26 @@ where
             .get_mut(&sender)
             .ok_or(error_response(AllocationMismatch, &request))?;
 
-        Span::current().record("allocation", allocation.id.to_string());
-
         // Note: `channel_number` is enforced to be in the correct range.
         let requested_channel = request.channel_number().value();
         let peer_address = request.xor_peer_address().address();
 
+        Span::current().record("allocation", display(&allocation.id));
+        Span::current().record("peer", display(&peer_address));
+        Span::current().record("channel", display(&requested_channel));
+
         // Check that our allocation can handle the requested peer addr.
         if !allocation.can_relay_to(peer_address) {
+            tracing::warn!(target: "relay", "Allocation cannot relay to peer");
+
             return Err(error_response(PeerAddressFamilyMismatch, &request));
         }
 
         // Ensure the same address isn't already bound to a different channel.
         if let Some(number) = self.channel_numbers_by_peer.get(&peer_address) {
             if number != &requested_channel {
+                tracing::warn!(target: "relay", existing_channel = %number, "Peer is already bound to another channel");
+
                 return Err(error_response(BadRequest, &request));
             }
         }
@@ -632,6 +651,8 @@ where
             .get_mut(&(sender, requested_channel))
         {
             if channel.peer_address != peer_address {
+                tracing::warn!(target: "relay", existing_peer = %channel.peer_address, "Channel is already bound to a different peer");
+
                 return Err(error_response(BadRequest, &request));
             }
 
@@ -693,7 +714,6 @@ where
         Ok(())
     }
 
-    #[tracing::instrument(skip(self, message), fields(allocation_id, %sender, channel = %message.channel(), recipient), level = "error")]
     fn handle_channel_data_message(
         &mut self,
         message: ChannelData,
@@ -707,7 +727,7 @@ where
             .channels_by_client_and_number
             .get(&(sender, channel_number))
         else {
-            tracing::debug!(target: "relay", "Channel does not exist, refusing to forward data");
+            tracing::debug!(target: "relay", channel = %channel_number, "Channel does not exist, refusing to forward data");
             return;
         };
 
@@ -715,12 +735,13 @@ where
         // The sender of a UDP packet can be spoofed, so why would we bother?
 
         if !channel.bound {
-            tracing::debug!(target: "relay", "Channel exists but is unbound");
+            tracing::debug!(target: "relay", channel = %channel_number, "Channel exists but is unbound");
             return;
         }
 
-        let recipient = channel.peer_address;
-        Span::current().record("recipient", field::display(&recipient));
+        Span::current().record("allocation", field::display(&channel.allocation));
+        Span::current().record("recipient", field::display(&channel.peer_address));
+        Span::current().record("channel", field::display(&channel_number));
 
         tracing::debug!(target: "relay", "Relaying {} bytes", data.len());
 
@@ -734,7 +755,7 @@ where
         self.pending_commands.push_back(Command::ForwardData {
             id: channel.allocation,
             data: data.to_vec(),
-            receiver: recipient,
+            receiver: channel.peer_address,
         });
     }
 
@@ -881,7 +902,7 @@ where
 
     fn delete_allocation(&mut self, id: AllocationId) {
         let Some(client) = self.clients_by_allocation.remove(&id) else {
-            tracing::debug!("Unknown allocation");
+            tracing::debug!("Unable to delete unknown allocation");
 
             return;
         };
@@ -1050,9 +1071,44 @@ fn derive_relay_addresses(
         (IpStack::Dual { ip4, ip6 }, None, Some(AddressFamily::V6)) => {
             Ok((ip4.into(), Some(ip6.into())))
         }
-        (_, Some(_), Some(_)) => Err(BadRequest.into()),
-        (_, _, Some(AddressFamily::V4)) => Err(BadRequest.into()),
-        _ => Err(AddressFamilyNotSupported.into()),
+        (IpStack::Ip4(ip4), None, Some(AddressFamily::V6)) => {
+            // TODO: The spec says to also include an error code here.
+            // For now, we will just partially satisfy the request.
+            // We expect clients to gracefully handle this by only extracting the relay addresses they receive.
+
+            tracing::warn!(target: "relay", "Partially fulfilling allocation using only an IPv4 address");
+
+            Ok((ip4.into(), None))
+        }
+        (IpStack::Ip6(ip6), None, Some(AddressFamily::V6)) => {
+            // TODO: The spec says to also include an error code here.
+            // For now, we will just partially satisfy the request.
+            // We expect clients to gracefully handle this by only extracting the relay addresses they receive.
+
+            tracing::warn!(target: "relay", "Partially fulfilling allocation using only an IPv6 address");
+
+            Ok((ip6.into(), None))
+        }
+        (_, Some(_), Some(_)) => {
+            tracing::warn!(target: "relay", "Specifying `REQUESTED-ADDRESS-FAMILY` and `ADDITIONAL-ADDRESS-FAMILY` is against the spec");
+
+            Err(BadRequest.into())
+        }
+        (_, _, Some(AddressFamily::V4)) => {
+            tracing::warn!(target: "relay", "Specifying `IPv4` for `ADDITIONAL-ADDRESS-FAMILY` is against the spec");
+
+            Err(BadRequest.into())
+        }
+        (IpStack::Ip6(_), None | Some(AddressFamily::V4), None) => {
+            tracing::warn!(target: "relay", "Cannot provide an IPv4 allocation on an IPv6-only relay");
+
+            Err(AddressFamilyNotSupported.into())
+        }
+        (IpStack::Ip4(_), Some(AddressFamily::V6), _) => {
+            tracing::warn!(target: "relay", "Cannot provide an IPv6 allocation on an IPv4-only relay");
+
+            Err(AddressFamilyNotSupported.into())
+        }
     }
 }
 
