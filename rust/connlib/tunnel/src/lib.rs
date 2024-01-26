@@ -98,7 +98,10 @@ where
         for ip in if_watcher.iter() {
             tracing::info!(address = %ip.addr(), "New local interface address found");
             match udp_sockets.bind((ip.addr(), 0)) {
-                Ok(addr) => connection_pool.add_local_interface(addr),
+                Ok(addr) => {
+                    tracing::debug!(%addr, "Adding address to connection pool");
+                    connection_pool.add_local_interface(addr)
+                }
                 Err(e) => {
                     tracing::debug!(address = %ip.addr(), err = ?e, "Couldn't bind socket to interface: {e:#?}")
                 }
@@ -220,10 +223,11 @@ where
                     connection,
                     candidate,
                 }) => {
+                    tracing::debug!(%candidate, %connection, "New local candidate");
                     return Poll::Ready(Event::SignalIceCandidate {
                         conn_id: connection,
                         candidate,
-                    })
+                    });
                 }
                 Some(snownet::Event::ConnectionEstablished(id)) => {
                     tracing::info!(gateway_id = %id, "Connection established with peer");
@@ -250,7 +254,10 @@ where
                     if_watch::IfEvent::Up(ip) => {
                         tracing::info!(address = %ip.addr(), "New local interface address found");
                         match self.udp_sockets.bind((ip.addr(), 0)) {
-                            Ok(addr) => self.connection_pool.add_local_interface(addr),
+                            Ok(addr) => {
+                                tracing::debug!(%addr, "Adding address to connection pool");
+                                self.connection_pool.add_local_interface(addr)
+                            }
                             Err(e) => {
                                 tracing::debug!(address = %ip.addr(), err = ?e, "Couldn't bind socket to interface: {e:#?}")
                             }
@@ -330,7 +337,37 @@ where
                 Poll::Pending => {}
             }
 
-            return Poll::Pending;
+            // TODO: we can get better about these multiple locks
+            // if we move device and peer_by_ip to connections this problem goes away
+            match ready!(self
+                .connections
+                .lock()
+                .poll_sockets(self.write_buf.lock().as_mut(), cx))
+            {
+                Some(p) => {
+                    if let Some(peer) = peer_by_ip(&self.role_state.lock().peers_by_ip, p.source())
+                    {
+                        match peer.untransform(p.source(), self.write_buf.lock().as_mut()) {
+                            Ok(p) => {
+                                let dev = self.device.load();
+                                let Some(dev) = dev.as_ref() else {
+                                    continue;
+                                };
+
+                                if let Err(e) = dev.write(p) {
+                                    tracing::error!("Error writing packet to device: {e:?}");
+                                }
+                            }
+                            Err(e) => {
+                                tracing::error!(from = %p.source(), to = %p.destination(), "Error handling packet: {e:#?}");
+                            }
+                        }
+                    }
+                }
+
+                None => {}
+            }
+
         })
         .await
     }
@@ -366,7 +403,7 @@ where
                 continue;
             };
 
-            self.send_peer(packet, peer)?;
+            self.send_peer(packet, peer);
 
             continue;
         }
@@ -394,7 +431,7 @@ where
                             continue;
                         };
 
-                        self.send_peer(packet, peer)?;
+                        self.send_peer(packet, peer);
 
                         continue;
                     }
@@ -527,16 +564,18 @@ where
         &self,
         packet: MutableIpPacket,
         peer: &Peer<TRoleState::Id, TTransform>,
-    ) -> Result<()> {
+    ) {
         let Some(p) = peer.transform(packet) else {
-            return Ok(());
+            return;
         };
 
-        self.connections
+        if let Err(e) = self
+            .connections
             .lock()
-            .send(peer.conn_id, p.as_immutable().into())?;
-
-        Ok(())
+            .send(peer.conn_id, p.as_immutable().into())
+        {
+            tracing::error!(to = %p.destination(), conn_id = %peer.conn_id, "Failed to send packet: {e:#?}");
+        }
     }
 }
 
