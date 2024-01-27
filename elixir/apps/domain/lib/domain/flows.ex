@@ -1,5 +1,5 @@
 defmodule Domain.Flows do
-  alias Domain.{Repo, Validator}
+  alias Domain.{Repo, Validator, PubSub}
   alias Domain.{Auth, Accounts, Actors, Clients, Gateways, Resources, Policies, Tokens}
   alias Domain.Flows.{Authorizer, Flow, Activity}
   require Ecto.Query
@@ -18,7 +18,7 @@ defmodule Domain.Flows do
           last_seen_remote_ip: gateway_remote_ip,
           account_id: account_id
         },
-        id,
+        resource_id,
         %Auth.Subject{
           account: %{id: account_id},
           actor: %{id: actor_id},
@@ -32,7 +32,8 @@ defmodule Domain.Flows do
         opts
       ) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.create_flows_permission()),
-         {:ok, resource} <- Resources.fetch_and_authorize_resource_by_id(id, subject, opts) do
+         {:ok, resource} <-
+           Resources.fetch_and_authorize_resource_by_id(resource_id, subject, opts) do
       flow =
         Flow.Changeset.create(%{
           token_id: token_id,
@@ -215,7 +216,31 @@ defmodule Domain.Flows do
         |> Flow.Query.expire()
         |> Repo.update_all([])
 
+      :ok =
+        Enum.each(flows, fn flow ->
+          :ok = broadcast_flow_expiration_event(flow)
+        end)
+
       {:ok, flows}
     end
+  end
+
+  ### PubSub
+
+  defp flow_topic(%Flow{} = flow), do: flow_topic(flow.id)
+  defp flow_topic(flow_id), do: "flows:#{flow_id}"
+
+  def subscribe_to_flow_expiration_events(flow_or_id) do
+    flow_or_id |> flow_topic() |> PubSub.subscribe()
+  end
+
+  def unsubscribe_to_flow_expiration_events(flow_or_id) do
+    flow_or_id |> flow_topic() |> PubSub.subscribe()
+  end
+
+  defp broadcast_flow_expiration_event(flow) do
+    flow
+    |> flow_topic()
+    |> PubSub.broadcast({:expire_flow, flow.id, flow.client_id, flow.resource_id})
   end
 end

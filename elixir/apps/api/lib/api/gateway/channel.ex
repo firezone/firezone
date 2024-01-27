@@ -33,7 +33,6 @@ defmodule API.Gateway.Channel do
 
     OpenTelemetry.Tracer.with_span "gateway.after_join" do
       :ok = Gateways.connect_gateway(socket.assigns.gateway)
-      :ok = Domain.PubSub.subscribe("gateway:#{socket.assigns.gateway.id}")
 
       config = Domain.Config.fetch_env!(:domain, Domain.Gateways)
       ipv4_masquerade_enabled = Keyword.fetch!(config, :gateway_ipv4_masquerade)
@@ -55,25 +54,6 @@ defmodule API.Gateway.Channel do
       push(socket, "disconnect", %{"reason" => "token_expired"})
       send(socket.transport_pid, %Phoenix.Socket.Broadcast{event: "disconnect"})
       {:stop, :shutdown, socket}
-    end
-  end
-
-  def handle_info({:resource_created, _resource_id}, socket) do
-    {:noreply, socket}
-  end
-
-  def handle_info({:resource_updated, _resource_id}, socket) do
-    {:noreply, socket}
-  end
-
-  def handle_info({:resource_deleted, resource_id}, socket) do
-    OpenTelemetry.Ctx.attach(socket.assigns.opentelemetry_ctx)
-    OpenTelemetry.Tracer.set_current_span(socket.assigns.opentelemetry_span_ctx)
-
-    OpenTelemetry.Tracer.with_span "gateway.resource_deleted", %{resource_id: resource_id} do
-      # :ok = Resources.unsubscribe_from_resource_events(resource_id)
-      push(socket, "resource_deleted", resource_id)
-      {:noreply, socket}
     end
   end
 
@@ -106,18 +86,23 @@ defmodule API.Gateway.Channel do
     OpenTelemetry.Ctx.attach(opentelemetry_ctx)
     OpenTelemetry.Tracer.set_current_span(opentelemetry_span_ctx)
 
-    OpenTelemetry.Tracer.with_span "gateway.allow_access" do
-      %{
-        client_id: client_id,
-        resource_id: resource_id,
+    %{
+      client_id: client_id,
+      resource_id: resource_id,
+      flow_id: flow_id,
+      authorization_expires_at: authorization_expires_at,
+      client_payload: payload
+    } = attrs
+
+    OpenTelemetry.Tracer.with_span "gateway.allow_access",
+      attributes: %{
         flow_id: flow_id,
-        authorization_expires_at: authorization_expires_at,
-        client_payload: payload
-      } = attrs
+        client_id: client_id,
+        resource_id: resource_id
+      } do
+      :ok = Flows.subscribe_to_flow_expiration_events(flow_id)
 
       resource = Resources.fetch_resource_by_id!(resource_id)
-      :ok = Resources.subscribe_for_events_for_resource(resource)
-
       ref = Ecto.UUID.generate()
 
       push(socket, "allow_access", %{
@@ -144,6 +129,31 @@ defmodule API.Gateway.Channel do
         )
 
       socket = assign(socket, :refs, refs)
+
+      {:noreply, socket}
+    end
+  end
+
+  # Flows context broadcasts this message when flow is expired,
+  # which happens when policy, resource, actor, group, identity or provider were
+  # disabled or deleted
+  def handle_info({:expire_flow, flow_id, client_id, resource_id}, socket) do
+    OpenTelemetry.Ctx.attach(socket.assigns.opentelemetry_ctx)
+    OpenTelemetry.Tracer.set_current_span(socket.assigns.opentelemetry_span_ctx)
+
+    OpenTelemetry.Tracer.with_span "gateway.reject_access",
+      attributes: %{
+        flow_id: flow_id,
+        client_id: client_id,
+        resource_id: resource_id
+      } do
+      :ok = Flows.unsubscribe_to_flow_expiration_events(flow_id)
+
+      push(socket, "reject_access", %{
+        flow_id: flow_id,
+        client_id: client_id,
+        resource_id: resource_id
+      })
 
       {:noreply, socket}
     end
@@ -200,8 +210,6 @@ defmodule API.Gateway.Channel do
         Gateways.relay_strategy([socket.assigns.gateway_group])
 
       {:ok, relays} = Relays.list_connected_relays_for_resource(resource, relay_hosting_type)
-
-      # :ok = Resources.subscribe_for_events_for_resource(resource)
 
       ref = Ecto.UUID.generate()
 

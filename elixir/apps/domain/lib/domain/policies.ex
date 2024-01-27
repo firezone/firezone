@@ -246,4 +246,3 @@ defmodule Domain.Policies do
     |> PubSub.broadcast(payload)
   end
 end
-
