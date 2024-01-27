@@ -93,6 +93,7 @@ defmodule API.Client.ChannelTest do
       subject: subject,
       client: client,
       gateway_group_token: gateway_group_token,
+      gateway_group: gateway_group,
       gateway: gateway,
       dns_resource: dns_resource,
       cidr_resource: cidr_resource,
@@ -229,14 +230,14 @@ defmodule API.Client.ChannelTest do
     end
   end
 
-  describe "handle_info/2 :resource_created" do
+  describe "handle_info/2 :update_resource" do
     test "pushes message to the socket for authorized clients", %{
       dns_resource: resource,
       socket: socket
     } do
-      send(socket.channel_pid, {:resource_created, resource.id})
+      send(socket.channel_pid, {:update_resource, resource.id})
 
-      assert_push "resource_created", payload
+      assert_push "resource_created_or_updated", payload
 
       assert payload == %{
                id: resource.id,
@@ -245,91 +246,141 @@ defmodule API.Client.ChannelTest do
                address: resource.address
              }
     end
-
-    test "ignores message to the socket for unauthorized clients", %{
-      unauthorized_resource: resource,
-      socket: socket
-    } do
-      send(socket.channel_pid, {:resource_created, resource.id})
-      refute_push "resource_created", %{}
-    end
   end
 
-  describe "handle_info/2 :resource_updated" do
-    test "pushes message to the socket for authorized clients", %{
+  describe "handle_info/2 :delete_resource" do
+    test "does nothing", %{
       dns_resource: resource,
       socket: socket
     } do
-      send(socket.channel_pid, {:resource_updated, resource.id})
-
-      assert_push "resource_updated", payload
-
-      assert payload == %{
-               id: resource.id,
-               type: :dns,
-               name: resource.name,
-               address: resource.address
-             }
-    end
-
-    test "ignores message to the socket for unauthorized clients", %{
-      unauthorized_resource: resource,
-      socket: socket
-    } do
-      send(socket.channel_pid, {:resource_updated, resource.id})
-      refute_push "resource_updated", %{}
-    end
-  end
-
-  describe "handle_info/2 :resource_deleted" do
-    test "pushes message to the socket for authorized clients", %{
-      dns_resource: resource,
-      socket: socket
-    } do
-      send(socket.channel_pid, {:resource_deleted, resource.id})
-
-      assert_push "resource_deleted", payload
-      assert payload == resource.id
-    end
-
-    test "ignores message to the socket for unauthorized clients", %{
-      unauthorized_resource: resource,
-      socket: socket
-    } do
-      send(socket.channel_pid, {:resource_deleted, resource.id})
+      send(socket.channel_pid, {:delete_resource, resource.id})
       refute_push "resource_deleted", %{}
     end
   end
 
-  # describe "handle_info/2 :allow_access" do
-  #   test "pushes message to the socket", %{
-  #     dns_resource: resource,
-  #     socket: socket
-  #   } do
-  #     send(socket.channel_pid, {:allow_access, resource.id})
+  describe "handle_info/2 :create_membership" do
+    test "subscribes for policy events for actor group", %{
+      account: account,
+      gateway_group: gateway_group,
+      actor: actor,
+      socket: socket
+    } do
+      resource =
+        Fixtures.Resources.create_resource(
+          type: :ip,
+          address: "192.168.100.2",
+          account: account,
+          connections: [%{gateway_group_id: gateway_group.id}]
+        )
 
-  #     assert_push "resource_created", payload
+      group = Fixtures.Actors.create_group(account: account)
 
-  #     assert payload == %{
-  #              id: resource.id,
-  #              type: :dns,
-  #              name: resource.name,
-  #              address: resource.address
-  #            }
-  #   end
-  # end
+      policy =
+        Fixtures.Policies.create_policy(
+          account: account,
+          actor_group: group,
+          resource: resource
+        )
 
-  # describe "handle_info/2 :reject_access" do
-  #   test "pushes message to the socket", %{
-  #     dns_resource: resource,
-  #     socket: socket
-  #   } do
-  #     send(socket.channel_pid, {:reject_access, resource.id})
+      send(socket.channel_pid, {:create_membership, actor.id, group.id})
 
-  #     assert_push "resource_deleted", payload
-  #     assert payload == resource.id
-  #   end
-  # end
+      Fixtures.Policies.disable_policy(policy)
+
+      assert_push "resource_deleted", resource_id
+      assert resource_id == resource.id
+
+      refute_push "resource_created_or_updated", %{}
+    end
+  end
+
+  describe "handle_info/2 :allow_access" do
+    test "pushes message to the socket", %{
+      account: account,
+      dns_resource: resource,
+      socket: socket
+    } do
+      group = Fixtures.Actors.create_group(account: account)
+
+      policy =
+        Fixtures.Policies.create_policy(
+          account: account,
+          actor_group: group,
+          resource: resource
+        )
+
+      send(socket.channel_pid, {:allow_access, policy.id, group.id, resource.id})
+
+      assert_push "resource_created_or_updated", payload
+
+      assert payload == %{
+               id: resource.id,
+               type: :dns,
+               name: resource.name,
+               address: resource.address
+             }
+    end
+  end
+
+  describe "handle_info/2 :reject_access" do
+    test "pushes message to the socket", %{
+      account: account,
+      gateway_group: gateway_group,
+      socket: socket
+    } do
+      resource =
+        Fixtures.Resources.create_resource(
+          type: :ip,
+          address: "192.168.100.3",
+          account: account,
+          connections: [%{gateway_group_id: gateway_group.id}]
+        )
+
+      group = Fixtures.Actors.create_group(account: account)
+
+      policy =
+        Fixtures.Policies.create_policy(
+          account: account,
+          actor_group: group,
+          resource: resource
+        )
+
+      send(socket.channel_pid, {:reject_access, policy.id, group.id, resource.id})
+
+      assert_push "resource_deleted", resource_id
+      assert resource_id == resource.id
+
+      refute_push "resource_created_or_updated", %{}
+    end
+
+    test "broadcasts a message to re-add the resource if other policy is found", %{
+      account: account,
+      dns_resource: resource,
+      socket: socket
+    } do
+      group = Fixtures.Actors.create_group(account: account)
+
+      policy =
+        Fixtures.Policies.create_policy(
+          account: account,
+          actor_group: group,
+          resource: resource
+        )
+
+      send(socket.channel_pid, {:reject_access, policy.id, group.id, resource.id})
+
+      assert_push "resource_deleted", resource_id
+      assert resource_id == resource.id
+
+      assert_push "resource_created_or_updated", payload
+
+      assert payload == %{
+               id: resource.id,
+               type: :dns,
+               name: resource.name,
+               address: resource.address
+             }
+    end
+  end
 
   describe "handle_in/3 create_log_sink" do
     test "returns error when feature is disabled", %{socket: socket} do

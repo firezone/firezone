@@ -244,9 +244,6 @@ defmodule Domain.Actors do
   def list_actor_group_ids(%Actor{} = actor) do
     Membership.Query.by_actor_id(actor.id)
     |> Membership.Query.select_distinct_group_ids()
-    # Lock is needed to prevent race conditions while client is subscribing to
-    # to membership updates for the actor.
-    |> Membership.Query.lock()
     |> Repo.list()
   end
 
