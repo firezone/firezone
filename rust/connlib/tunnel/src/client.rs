@@ -214,7 +214,6 @@ pub struct ClientState {
     pub resource_ids: HashMap<ResourceId, ResourceDescription>,
     pub deferred_dns_queries: HashMap<(DnsResource, Rtype), IpPacket<'static>>,
 
-    #[allow(clippy::type_complexity)]
     pub peers_by_ip: IpNetworkTable<Arc<Peer<GatewayId, PacketTransformClient>>>,
 
     forwarded_dns_queries: BoundedQueue<DnsQuery<'static>>,

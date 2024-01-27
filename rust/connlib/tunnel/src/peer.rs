@@ -1,5 +1,5 @@
 use std::borrow::Cow;
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
 use std::net::IpAddr;
 use std::sync::Arc;
 use std::time::Instant;
@@ -7,7 +7,6 @@ use std::time::Instant;
 use arc_swap::ArcSwap;
 use bimap::BiMap;
 use boringtun::noise::Tunn;
-use bytes::Bytes;
 use chrono::{DateTime, Utc};
 use connlib_shared::messages::DnsServer;
 use connlib_shared::IpProvider;
@@ -97,11 +96,6 @@ where
     }
 }
 
-pub enum WriteTo<'a> {
-    Network(VecDeque<Bytes>),
-    Resource(device_channel::Packet<'a>),
-}
-
 pub struct PacketTransformGateway {
     resources: RwLock<IpNetworkTable<ExpiryingResource>>,
 }
@@ -117,7 +111,6 @@ impl Default for PacketTransformGateway {
 #[derive(Default)]
 pub struct PacketTransformClient {
     translations: RwLock<BiMap<IpAddr, IpAddr>>,
-    // TODO: Upstream dns could be something that's not an ip
     dns_mapping: ArcSwap<BiMap<IpAddr, DnsServer>>,
     mangled_dns_ids: Mutex<HashMap<u16, std::time::Instant>>,
 }
