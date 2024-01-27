@@ -1,7 +1,7 @@
 defmodule Domain.Actors do
   alias Domain.Actors.Membership
   alias Web.Clients
-  alias Domain.{Repo, Validator}
+  alias Domain.{Repo, Validator, PubSub}
   alias Domain.{Accounts, Auth, Tokens, Clients, Policies}
   alias Domain.Actors.{Authorizer, Actor, Group}
   require Ecto.Query
@@ -92,9 +92,16 @@ defmodule Domain.Actors do
 
   def create_group(attrs, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
-      subject.account
-      |> Group.Changeset.create(attrs, subject)
-      |> Repo.insert()
+      changeset = Group.Changeset.create(subject.account, attrs, subject)
+
+      case Repo.insert(changeset) do
+        {:ok, group} ->
+          :ok = broadcast_group_memberships_events(group, changeset)
+          {:ok, group}
+
+        {:error, reason} ->
+          {:error, reason}
+      end
     end
   end
 
@@ -110,9 +117,16 @@ defmodule Domain.Actors do
 
   def update_group(%Group{provider_id: nil} = group, attrs, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
-      group
-      |> Group.Changeset.update(attrs)
-      |> Repo.update()
+      Group.Query.by_id(group.id)
+      |> Authorizer.for_subject(subject)
+      |> Repo.fetch_and_update(
+        with: fn group ->
+          group = Repo.preload(group, :memberships)
+          changeset = Group.Changeset.update(group, attrs)
+          :ok = broadcast_memberships_events(changeset)
+          changeset
+        end
+      )
     end
   end
 
@@ -127,9 +141,12 @@ defmodule Domain.Actors do
       {:ok, [group]} ->
         {:ok, _policies} = Policies.delete_policies_for(group, subject)
 
-        {_count, nil} =
+        {_count, memberships} =
           Membership.Query.by_group_id(group.id)
+          |> Membership.Query.returning_all()
           |> Repo.delete_all()
+
+        :ok = broadcast_membership_removal_events(memberships)
 
         {:ok, group}
 
@@ -150,9 +167,12 @@ defmodule Domain.Actors do
       Group.Query.by_provider_id(provider.id)
       |> Group.Query.by_account_id(provider.account_id)
 
-    {_count, nil} =
+    {_count, memberships} =
       Membership.Query.by_group_provider_id(provider.id)
+      |> Membership.Query.returning_all()
       |> Repo.delete_all()
+
+    :ok = broadcast_membership_removal_events(memberships)
 
     with {:ok, groups} <- delete_groups(queryable, subject) do
       {:ok, _policies} = Policies.delete_policies_for(provider, subject)
@@ -221,16 +241,13 @@ defmodule Domain.Actors do
     |> Repo.fetch!()
   end
 
-  # TODO: this should be replaced with list_groups(..., filter: %{actor_id: actor.id})
   def list_actor_group_ids(%Actor{} = actor) do
-    actor = Repo.preload(actor, :memberships)
-
-    group_ids =
-      actor.memberships
-      |> Enum.map(& &1.group_id)
-      |> Enum.uniq()
-
-    {:ok, group_ids}
+    Membership.Query.by_actor_id(actor.id)
+    |> Membership.Query.select_distinct_group_ids()
+    # Lock is needed to prevent race conditions while client is subscribing to
+    # to membership updates for the actor.
+    |> Membership.Query.lock()
+    |> Repo.list()
   end
 
   def list_actors(%Auth.Subject{} = subject, opts \\ []) do
@@ -279,12 +296,15 @@ defmodule Domain.Actors do
 
           cond do
             changeset.data.type != :account_admin_user ->
+              :ok = broadcast_memberships_events(changeset)
               changeset
 
             Map.get(changeset.changes, :type) == :account_admin_user ->
+              :ok = broadcast_memberships_events(changeset)
               changeset
 
             other_enabled_admins_exist?(actor) ->
+              :ok = broadcast_memberships_events(changeset)
               changeset
 
             true ->
@@ -295,7 +315,7 @@ defmodule Domain.Actors do
     end
   end
 
-  defp maybe_preload_not_synced_memberships(actor, attrs) do
+  defp maybe_preload_not_synced_memberships(%Actor{} = actor, attrs) do
     if Map.has_key?(attrs, "memberships") || Map.has_key?(attrs, :memberships) do
       memberships =
         Membership.Query.by_actor_id(actor.id)
@@ -364,10 +384,12 @@ defmodule Domain.Actors do
             :ok = Auth.delete_identities_for(actor, subject)
             :ok = Clients.delete_clients_for(actor, subject)
 
-            {_count, nil} =
+            {_count, memberships} =
               Membership.Query.by_actor_id(actor.id)
+              |> Membership.Query.returning_all()
               |> Repo.delete_all()
 
+            :ok = broadcast_membership_removal_events(memberships)
             {:ok, _tokens} = Tokens.delete_tokens_for(actor, subject)
 
             Actor.Changeset.delete_actor(actor)
@@ -403,5 +425,91 @@ defmodule Domain.Actors do
 
   defp other_enabled_admins_exist?(%Actor{}) do
     false
+  end
+
+  ### PubSub
+
+  defp actor_memberships_topic(%Actor{} = actor), do: actor_memberships_topic(actor.id)
+  defp actor_memberships_topic(actor_id), do: "actor_memberships:#{actor_id}"
+
+  def subscribe_for_membership_updates_for_actor(actor_or_id) do
+    actor_or_id |> actor_memberships_topic() |> PubSub.subscribe()
+  end
+
+  def unsubscribe_from_membership_updates_for_actor(actor_or_id) do
+    actor_or_id |> actor_memberships_topic() |> PubSub.unsubscribe()
+  end
+
+  defp broadcast_memberships_events(changeset) do
+    if changeset.valid? and Validator.changed?(changeset, :memberships) do
+      case Ecto.Changeset.apply_action(changeset, :update) do
+        {:ok, %Actor{} = actor} ->
+          broadcast_actor_memberships_events(actor, changeset)
+
+        {:ok, %Group{} = group} ->
+          broadcast_group_memberships_events(group, changeset)
+
+        {:error, _reason} ->
+          :ok
+      end
+    else
+      :ok
+    end
+  end
+
+  defp broadcast_actor_memberships_events(actor, changeset) do
+    previous_group_ids =
+      Map.get(changeset.data, :memberships, [])
+      |> Enum.map(& &1.group_id)
+      |> Enum.uniq()
+
+    current_group_ids =
+      Map.get(actor, :memberships, [])
+      |> Enum.map(& &1.group_id)
+      |> Enum.uniq()
+
+    :ok =
+      Enum.each(current_group_ids -- previous_group_ids, fn group_id ->
+        broadcast_membership_event(:create, actor.id, group_id)
+      end)
+
+    :ok =
+      Enum.each(previous_group_ids -- current_group_ids, fn group_id ->
+        broadcast_membership_event(:delete, actor.id, group_id)
+      end)
+  end
+
+  defp broadcast_group_memberships_events(group, changeset) do
+    previous_actor_ids =
+      Map.get(changeset.data, :memberships, [])
+      |> Enum.map(& &1.actor_id)
+      |> Enum.uniq()
+
+    current_actor_ids =
+      Map.get(group, :memberships, [])
+      |> Enum.map(& &1.actor_id)
+      |> Enum.uniq()
+
+    :ok =
+      Enum.each(current_actor_ids -- previous_actor_ids, fn actor_id ->
+        broadcast_membership_event(:create, actor_id, group.id)
+      end)
+
+    :ok =
+      Enum.each(previous_actor_ids -- current_actor_ids, fn actor_id ->
+        broadcast_membership_event(:delete, actor_id, group.id)
+      end)
+  end
+
+  defp broadcast_membership_removal_events(memberships) do
+    Enum.each(memberships, fn membership ->
+      broadcast_membership_event(:delete, membership.actor_id, membership.group_id)
+    end)
+  end
+
+  defp broadcast_membership_event(action, actor_id, group_id) do
+    actor_id
+    |> actor_memberships_topic()
+    |> PubSub.broadcast({:"#{action}_membership", actor_id, group_id})
   end
 end

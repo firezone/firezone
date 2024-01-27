@@ -234,6 +234,10 @@ defmodule Domain.Resources do
     resource_or_id |> resource_topic() |> PubSub.subscribe()
   end
 
+  def unsubscribe_from_events_for_resource(resource_or_id) do
+    resource_or_id |> resource_topic() |> PubSub.unsubscribe()
+  end
+
   def subscribe_for_events_for_account(account_or_id) do
     account_or_id |> account_topic() |> PubSub.subscribe()
   end

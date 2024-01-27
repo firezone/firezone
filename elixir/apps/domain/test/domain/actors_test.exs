@@ -904,6 +904,8 @@ defmodule Domain.ActorsTest do
           ]
         )
 
+      :ok = subscribe_for_membership_updates_for_actor(actor)
+
       assert {:ok, group} = create_group(attrs, subject)
       assert group.id
       assert group.name == attrs.name
@@ -913,6 +915,10 @@ defmodule Domain.ActorsTest do
       assert membership.actor_id == actor.id
       assert membership.account_id == account.id
       assert membership.group_id == group.id
+
+      assert_receive {:create_membership, actor_id, group_id}
+      assert actor_id == actor.id
+      assert group_id == group.id
     end
 
     test "returns error when subject has no permission to manage groups", %{
@@ -977,9 +983,10 @@ defmodule Domain.ActorsTest do
     end
 
     test "does not allow to reset required fields to empty values", %{
+      account: account,
       subject: subject
     } do
-      group = Fixtures.Actors.create_group()
+      group = Fixtures.Actors.create_group(account: account)
       attrs = %{name: nil}
 
       assert {:error, changeset} = update_group(group, attrs, subject)
@@ -1008,27 +1015,60 @@ defmodule Domain.ActorsTest do
       assert group.name == attrs.name
     end
 
-    test "updates group memberships", %{account: account, actor: actor, subject: subject} do
-      group = Fixtures.Actors.create_group(account: account, memberships: [%{actor_id: actor.id}])
+    test "updates group memberships", %{account: account, actor: actor1, subject: subject} do
+      group = Fixtures.Actors.create_group(account: account, memberships: [])
+      actor2 = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
 
-      other_actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+      group_id = group.id
+      actor1_id = actor1.id
+      actor2_id = actor2.id
+      :ok = subscribe_for_membership_updates_for_actor(actor1)
+      :ok = subscribe_for_membership_updates_for_actor(actor2)
 
-      attrs =
-        Fixtures.Actors.group_attrs(
-          memberships: [
-            %{actor_id: other_actor.id}
-          ]
-        )
+      attrs = %{memberships: []}
+      assert {:ok, %{memberships: []}} = update_group(group, attrs, subject)
 
-      assert {:ok, group} = update_group(group, attrs, subject)
-      assert group.id
-      assert group.name == attrs.name
+      # Add a membership
+      attrs = %{memberships: [%{actor_id: actor1.id}]}
+      assert {:ok, %{memberships: [membership]}} = update_group(group, attrs, subject)
+      assert membership.actor_id == actor1.id
+      assert Repo.one(Actors.Membership).actor_id == membership.actor_id
 
-      group = Repo.preload(group, :memberships)
-      assert [%Actors.Membership{} = membership] = group.memberships
-      assert membership.actor_id == other_actor.id
-      assert membership.account_id == account.id
-      assert membership.group_id == group.id
+      assert_receive {:create_membership, ^actor1_id, ^group_id}
+
+      # Delete existing membership and create a new one
+      attrs = %{memberships: [%{actor_id: actor2.id}]}
+      assert {:ok, %{memberships: [membership]}} = update_group(group, attrs, subject)
+      assert membership.actor_id == actor2.id
+      assert Repo.one(Actors.Membership).actor_id == membership.actor_id
+
+      assert_receive {:delete_membership, ^actor1_id, ^group_id}
+      assert_receive {:create_membership, ^actor2_id, ^group_id}
+
+      # Doesn't produce changes when membership is not changed
+      attrs = %{memberships: [Map.from_struct(membership)]}
+      assert {:ok, %{memberships: [membership]}} = update_group(group, attrs, subject)
+      assert membership.actor_id == actor2.id
+      assert Repo.one(Actors.Membership).actor_id == membership.actor_id
+
+      refute_received {:create_membership, _, _}
+
+      # Add one more membership
+      attrs = %{memberships: [%{actor_id: actor1.id}, %{actor_id: actor2.id}]}
+      assert {:ok, %{memberships: memberships}} = update_group(group, attrs, subject)
+      assert [membership1, membership2] = memberships
+      assert membership1.actor_id == actor1.id
+      assert membership2.actor_id == actor2.id
+      assert Repo.aggregate(Actors.Membership, :count, :actor_id) == 2
+
+      assert_receive {:create_membership, ^actor1_id, ^group_id}
+
+      # Delete all memberships
+      assert {:ok, %{memberships: []}} = update_group(group, %{memberships: []}, subject)
+      assert Repo.aggregate(Actors.Membership, :count, :actor_id) == 0
+
+      assert_receive {:delete_membership, ^actor1_id, ^group_id}
+      assert_receive {:delete_membership, ^actor2_id, ^group_id}
     end
 
     test "returns error when subject has no permission to manage groups", %{
@@ -1180,12 +1220,19 @@ defmodule Domain.ActorsTest do
       provider: provider,
       subject: subject
     } do
+      actor = Fixtures.Actors.create_actor(account: account)
       group = Fixtures.Actors.create_group(account: account, provider: provider)
-      Fixtures.Actors.create_membership(account: account, group: group)
+      Fixtures.Actors.create_membership(account: account, actor: actor, group: group)
+
+      :ok = subscribe_for_membership_updates_for_actor(actor)
 
       assert {:ok, _deleted} = delete_groups_for(provider, subject)
 
       refute Repo.get_by(Actors.Membership, group_id: group.id)
+
+      assert_receive {:delete_membership, actor_id, group_id}
+      assert actor_id == actor.id
+      assert group_id == group.id
     end
 
     test "deletes policies that use deleted groups", %{
@@ -1681,24 +1728,40 @@ defmodule Domain.ActorsTest do
       group1 = Fixtures.Actors.create_group(account: account)
       group2 = Fixtures.Actors.create_group(account: account)
 
+      actor_id = actor.id
+      group1_id = group1.id
+      group2_id = group2.id
+      :ok = subscribe_for_membership_updates_for_actor(actor)
+
       attrs = %{memberships: []}
       assert {:ok, %{memberships: []}} = update_actor(actor, attrs, subject)
 
+      # Add a membership
       attrs = %{memberships: [%{group_id: group1.id}]}
       assert {:ok, %{memberships: [membership]}} = update_actor(actor, attrs, subject)
       assert membership.group_id == group1.id
       assert Repo.one(Actors.Membership).group_id == membership.group_id
 
+      assert_receive {:create_membership, ^actor_id, ^group1_id}
+
+      # Delete existing membership and create a new one
       attrs = %{memberships: [%{group_id: group2.id}]}
       assert {:ok, %{memberships: [membership]}} = update_actor(actor, attrs, subject)
       assert membership.group_id == group2.id
       assert Repo.one(Actors.Membership).group_id == membership.group_id
 
+      assert_receive {:delete_membership, ^actor_id, ^group1_id}
+      assert_receive {:create_membership, ^actor_id, ^group2_id}
+
+      # Doesn't produce changes when membership is not changed
       attrs = %{memberships: [Map.from_struct(membership)]}
       assert {:ok, %{memberships: [membership]}} = update_actor(actor, attrs, subject)
       assert membership.group_id == group2.id
       assert Repo.one(Actors.Membership).group_id == membership.group_id
 
+      refute_received {:create_membership, _, _}
+
+      # Add one more membership
       attrs = %{memberships: [%{group_id: group1.id}, %{group_id: group2.id}]}
       assert {:ok, %{memberships: memberships}} = update_actor(actor, attrs, subject)
       assert [membership1, membership2] = memberships
@@ -1706,8 +1769,14 @@ defmodule Domain.ActorsTest do
       assert membership2.group_id == group2.id
       assert Repo.aggregate(Actors.Membership, :count, :group_id) == 2
 
+      assert_receive {:create_membership, ^actor_id, ^group1_id}
+
+      # Delete all memberships
       assert {:ok, %{memberships: []}} = update_actor(actor, %{memberships: []}, subject)
       assert Repo.aggregate(Actors.Membership, :count, :group_id) == 0
+
+      assert_receive {:delete_membership, ^actor_id, ^group1_id}
+      assert_receive {:delete_membership, ^actor_id, ^group2_id}
     end
 
     test "returns error on invalid membership", %{account: account, subject: subject} do
@@ -2017,9 +2086,14 @@ defmodule Domain.ActorsTest do
     } do
       Fixtures.Actors.create_membership(account: account, actor: actor)
 
+      :ok = subscribe_for_membership_updates_for_actor(actor)
+
       assert {:ok, _actor} = delete_actor(actor, subject)
 
       assert Repo.aggregate(Actors.Membership, :count) == 0
+
+      assert_receive {:delete_membership, actor_id, _group_id}
+      assert actor_id == actor.id
     end
 
     test "expires actor flows", %{
