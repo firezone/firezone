@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -e
 
 cargo build --package firezone-relay --bin firezone-relay --example client --example gateway
