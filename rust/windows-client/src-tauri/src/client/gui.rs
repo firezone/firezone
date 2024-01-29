@@ -3,12 +3,12 @@
 
 // TODO: `git grep` for unwraps before 1.0, especially this gui module
 
-use crate::client::{self, deep_link, network_changes, AppLocalDataDir, BUNDLE_ID};
+use crate::client::{self, deep_link, network_changes, BUNDLE_ID};
 use anyhow::{anyhow, bail, Context, Result};
 use arc_swap::ArcSwap;
 use client::{
     about, logging,
-    settings::{self, AdvancedSettings},
+    settings::{self, app_local_data_dir, AdvancedSettings},
 };
 use connlib_client_shared::{file_logger, ResourceDescription};
 use connlib_shared::messages::ResourceId;
@@ -28,14 +28,6 @@ mod system_tray_menu;
 const MAX_PARTITION_TIME: Duration = Duration::from_secs(60 * 60 * 24 * 30);
 
 pub(crate) type CtlrTx = mpsc::Sender<ControllerRequest>;
-
-// TODO: Move out of GUI module, shouldn't be here
-pub(crate) fn app_local_data_dir() -> Result<AppLocalDataDir> {
-    let path = known_folders::get_known_folder_path(known_folders::KnownFolder::LocalAppData)
-        .context("should be able to ask Windows where AppData/Local is")?
-        .join(BUNDLE_ID);
-    Ok(AppLocalDataDir(path))
-}
 
 /// All managed state that we might need to access from odd places like Tauri commands.
 ///
@@ -63,7 +55,9 @@ impl Managed {
 /// Runs the Tauri GUI and returns on exit or unrecoverable error
 pub(crate) fn run(params: client::GuiParams) -> Result<()> {
     // Change to data dir so the file logger will write there and not in System32 if we're launching from an app link
-    let cwd = app_local_data_dir()?.0.join("data");
+    let cwd = app_local_data_dir()
+        .ok_or_else(|| anyhow!("app_local_data_dir() failed"))?
+        .join("data");
     std::fs::create_dir_all(&cwd)?;
     std::env::set_current_dir(&cwd)?;
 
