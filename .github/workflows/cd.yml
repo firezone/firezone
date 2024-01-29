@@ -259,6 +259,7 @@ jobs:
       - uses: ./.github/actions/setup-rust
         with:
           targets: x86_64-pc-windows-msvc
+      - uses: ./.github/actions/setup-node
       - name: Build release binaries
         run: |
           pnpm install
