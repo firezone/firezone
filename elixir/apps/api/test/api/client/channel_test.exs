@@ -53,11 +53,12 @@ defmodule API.Client.ChannelTest do
         connections: [%{gateway_group_id: gateway_group.id}]
       )
 
-    Fixtures.Policies.create_policy(
-      account: account,
-      actor_group: actor_group,
-      resource: dns_resource
-    )
+    dns_resource_policy =
+      Fixtures.Policies.create_policy(
+        account: account,
+        actor_group: actor_group,
+        resource: dns_resource
+      )
 
     Fixtures.Policies.create_policy(
       account: account,
@@ -99,6 +100,7 @@ defmodule API.Client.ChannelTest do
       cidr_resource: cidr_resource,
       ip_resource: ip_resource,
       unauthorized_resource: unauthorized_resource,
+      dns_resource_policy: dns_resource_policy,
       socket: socket
     }
   end
@@ -174,23 +176,41 @@ defmodule API.Client.ChannelTest do
              }
     end
 
-    # test "subscribes for client events", %{
-    #   client: client
-    # } do
-    #   assert_push "init", %{}
-    #   Process.flag(:trap_exit, true)
-    #   broadcast(client, :token_expired)
-    #   assert_push "disconnect", %{"reason" => "token_expired"}, 250
-    # end
+    test "subscribes for client events", %{
+      client: client
+    } do
+      assert_push "init", %{}
+      Process.flag(:trap_exit, true)
+      Domain.Clients.broadcast_to_client(client, :token_expired)
+      assert_push "disconnect", %{"reason" => "token_expired"}, 250
+    end
 
-    # test "subscribes for resource events", %{
-    #   dns_resource: resource,
-    #   subject: subject
-    # } do
-    #   assert_push "init", %{}
-    #   {:ok, _resource} = Domain.Resources.update_resource(resource, %{name: "foobar"}, subject)
-    #   assert_push "resource_updated", %{name: "foobar"}
-    # end
+    test "subscribes for resource events", %{
+      dns_resource: resource,
+      subject: subject
+    } do
+      assert_push "init", %{}
+      {:ok, _resource} = Domain.Resources.update_resource(resource, %{name: "foobar"}, subject)
+      assert_push "resource_created_or_updated", %{}
+    end
+
+    test "subscribes for membership/policy access events", %{
+      actor: actor,
+      subject: subject
+    } do
+      assert_push "init", %{}
+      {:ok, _resource} = Domain.Actors.update_actor(actor, %{memberships: []}, subject)
+      assert_push "resource_deleted", _payload
+    end
+
+    test "subscribes for policy events", %{
+      dns_resource_policy: dns_resource_policy,
+      subject: subject
+    } do
+      assert_push "init", %{}
+      {:ok, _resource} = Domain.Policies.disable_policy(dns_resource_policy, subject)
+      assert_push "resource_deleted", _payload
+    end
   end
 
   describe "handle_info/2 :token_expired" do
