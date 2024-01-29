@@ -42,13 +42,12 @@ fn hostname() -> Result<()> {
     Ok(())
 }
 
+/// Try to load wintun.dll and throw an error if it's not in the right place
 fn wintun() -> Result<()> {
     tracing_subscriber::fmt::init();
+    let path = crate::client::wintun_install::dll_path()?;
+    unsafe { wintun::load_from_path(path) }?;
+    tracing::info!("Loaded wintun from somewhere.");
 
-    if client::elevation::check()? {
-        tracing::info!("Elevated");
-    } else {
-        tracing::warn!("Not elevated")
-    }
     Ok(())
 }
