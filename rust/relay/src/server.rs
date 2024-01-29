@@ -76,6 +76,7 @@ pub struct Server<R> {
 
     allocations_up_down_counter: UpDownCounter<i64>,
     data_relayed_counter: Counter<u64>,
+    data_relayed: u64, // Keep a separate counter because `Counter` doesn't expose the current value :(
     responses_counter: Counter<u64>,
 }
 
@@ -173,7 +174,7 @@ where
         let data_relayed_counter = meter
             .u64_counter("data_relayed_bytes")
             .with_description("The number of bytes relayed")
-            .with_unit(Unit::new("kB"))
+            .with_unit(Unit::new("b"))
             .init();
 
         Self {
@@ -196,6 +197,7 @@ where
             allocations_up_down_counter,
             responses_counter,
             data_relayed_counter,
+            data_relayed: 0,
         }
     }
 
@@ -208,6 +210,18 @@ where
     /// Each nonce is valid for 10 requests.
     pub fn add_nonce(&mut self, nonce: Uuid) {
         self.nonces.add_new(nonce);
+    }
+
+    pub fn num_relayed_bytes(&self) -> u64 {
+        self.data_relayed
+    }
+
+    pub fn num_allocations(&self) -> usize {
+        self.allocations.len()
+    }
+
+    pub fn num_channels(&self) -> usize {
+        self.channels_by_client_and_number.len()
     }
 
     /// Process the bytes received from a client.
@@ -351,6 +365,7 @@ where
         tracing::debug!(target: "relay", "Relaying {} bytes", bytes.len());
 
         self.data_relayed_counter.add(bytes.len() as u64, &[]);
+        self.data_relayed += bytes.len() as u64;
 
         let data = ChannelData::new(*channel_number, bytes).to_bytes();
 
@@ -750,6 +765,7 @@ where
         tracing::debug!(target: "relay", "Relaying {} bytes", data.len());
 
         self.data_relayed_counter.add(data.len() as u64, &[]);
+        self.data_relayed += data.len() as u64;
 
         if tracing::enabled!(target: "wire", tracing::Level::TRACE) {
             let hex_bytes = hex::encode(data);
