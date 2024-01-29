@@ -25,4 +25,21 @@ defmodule Domain.Ops do
         })
     end)
   end
+
+  def provision_support_by_account_slug(account_slug) do
+    Domain.Repo.transaction(fn ->
+      {:ok, account} = Domain.Accounts.fetch_account_by_id_or_slug(account_slug)
+      {:ok, providers} = Domain.Auth.list_active_providers_for_account(account)
+      magic_link_provider = Enum.find(providers, fn provider -> provider.adapter == :email end)
+
+      {:ok, actor} =
+        Domain.Actors.create_actor(account, %{type: :account_admin_user, name: "Firezone Support"})
+
+      {:ok, _identity} =
+        Domain.Auth.upsert_identity(actor, magic_link_provider, %{
+          provider_identifier: "ent-support@firezone.dev",
+          provider_identifier_confirmation: "ent-support@firezone.dev"
+        })
+    end)
+  end
 end

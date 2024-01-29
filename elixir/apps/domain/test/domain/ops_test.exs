@@ -2,12 +2,30 @@ defmodule Domain.OpsTest do
   use Domain.DataCase, async: true
   import Domain.Ops
 
+  describe "provision_support_by_account_slug/1" do
+    setup do
+      Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
+    end
+
+    test "provisions support account by slug" do
+      params = %{
+        account_name: "Test Account",
+        account_slug: "test_account",
+        account_admin_name: "Test Admin",
+        account_admin_email: "test_admin@firezone.local"
+      }
+
+      assert {:ok, _} = provision_account(params)
+      assert {:ok, _} = provision_support_by_account_slug("test_account")
+    end
+  end
+
   describe "provision_account/1" do
     setup do
       Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
     end
 
-    test "provisions an account when valid input is provider" do
+    test "provisions an account when valid input is provided" do
       params = %{
         account_name: "Test Account",
         account_slug: "test_account",
