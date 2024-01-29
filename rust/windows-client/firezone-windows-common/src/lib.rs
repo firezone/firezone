@@ -2,6 +2,11 @@
 // the Windows-only code from other platforms
 pub use detail::*;
 
+/// Not compiled for non-Windows platforms
+#[cfg(not(target_os = "windows"))]
+mod detail {}
+
+#[cfg(target_os = "windows")]
 mod detail {
     use std::path::PathBuf;
 
