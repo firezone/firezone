@@ -1,10 +1,7 @@
 // We usually don't use asterisks but this makes it easier to hide
 // the Windows-only code from other platforms
+#[cfg(target_os = "windows")]
 pub use detail::*;
-
-/// Not compiled for non-Windows platforms
-#[cfg(not(target_os = "windows"))]
-mod detail {}
 
 #[cfg(target_os = "windows")]
 mod detail {
