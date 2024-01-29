@@ -21,6 +21,7 @@ use str0m::{Candidate, CandidateKind, IceConnectionState};
 
 use crate::allocation::Allocation;
 use crate::index::IndexLfsr;
+use crate::info::ConnectionInfo;
 use crate::stun_binding::StunBinding;
 use crate::IpPacket;
 use boringtun::noise::errors::WireGuardError;
@@ -29,6 +30,9 @@ use stun_codec::rfc5389::attributes::{Realm, Username};
 
 // Note: Taken from boringtun
 const HANDSHAKE_RATE_LIMIT: u64 = 100;
+
+/// How often wireguard will send a keep-alive packet.
+pub(crate) const WIREGUARD_KEEP_ALIVE: u16 = 5;
 
 const MAX_UDP_SIZE: usize = (1 << 16) - 1;
 
@@ -101,6 +105,19 @@ where
         }
     }
 
+    /// Lazily retrieve stats of all connections.
+    pub fn stats(&self) -> impl Iterator<Item = (TId, ConnectionInfo)> + '_ {
+        self.negotiated_connections.iter().map(|(id, c)| {
+            (
+                *id,
+                ConnectionInfo {
+                    last_seen: c.last_seen,
+                    generated_at: self.last_now,
+                },
+            )
+        })
+    }
+
     pub fn add_local_interface(&mut self, local_addr: SocketAddr) {
         self.local_interfaces.insert(local_addr);
 
@@ -147,10 +164,6 @@ where
         now: Instant,
         buffer: &'s mut [u8],
     ) -> Result<Option<(TId, IpPacket<'s>)>, Error> {
-        if !self.local_interfaces.contains(&local) {
-            return Err(Error::UnknownInterface);
-        }
-
         // First, check if a `StunBinding` wants the packet
         if let Some(binding) = self.bindings.get_mut(&from) {
             if binding.handle_input(from, packet, now) {
@@ -194,6 +207,11 @@ where
 
         // Next: If we can parse the message as a STUN message, cycle through all agents to check which one it is for.
         if let Ok(message) = StunMessage::parse(packet) {
+            // `str0m` panics if you feed it traffic from an interface it doesn't know about. (TODO: Fix upstream)
+            if !self.local_interfaces.contains(&local) {
+                return Err(Error::UnknownInterface);
+            }
+
             for agent in self.agents_mut() {
                 // TODO: `accepts_message` cannot demultiplexing multiple connections until https://github.com/algesten/str0m/pull/418 is merged.
                 if agent.accepts_message(&message) {
@@ -446,6 +464,19 @@ where
             self.rate_limiter.reset_count();
             self.next_rate_limiter_reset = Some(now + Duration::from_secs(1));
         }
+
+        let stale_connections = self
+            .initial_connections
+            .iter()
+            .filter_map(|(id, conn)| {
+                (now.duration_since(conn.created_at) >= Duration::from_secs(10)).then_some(*id)
+            })
+            .collect::<Vec<_>>();
+
+        for conn in stale_connections {
+            self.initial_connections.remove(&conn);
+            self.pending_events.push_back(Event::ConnectionFailed(conn));
+        }
     }
 
     /// Returns buffered data that needs to be sent on the socket.
@@ -502,7 +533,7 @@ where
                 self.private_key.clone(),
                 remote,
                 Some(key),
-                None,
+                Some(WIREGUARD_KEEP_ALIVE),
                 self.index.next(),
                 Some(self.rate_limiter.clone()),
             ),
@@ -511,6 +542,7 @@ where
             next_timer_update: self.last_now,
             remote_socket: None,
             possible_sockets: HashSet::default(),
+            last_seen: None,
         }
     }
 }
@@ -566,6 +598,7 @@ where
                 session_key,
                 stun_servers: allowed_stun_servers,
                 turn_servers: allowed_turn_servers,
+                created_at: self.last_now,
             },
         );
 
@@ -889,6 +922,7 @@ pub struct Credentials {
     pub password: String,
 }
 
+#[derive(Debug, PartialEq)]
 pub enum Event<TId> {
     /// Signal the ICE candidate to the remote via the signalling channel.
     ///
@@ -935,6 +969,8 @@ struct InitialConnection {
     session_key: Secret<[u8; 32]>,
     stun_servers: HashSet<SocketAddr>,
     turn_servers: HashSet<SocketAddr>,
+
+    created_at: Instant,
 }
 
 struct Connection {
@@ -942,6 +978,8 @@ struct Connection {
 
     tunnel: Tunn,
     next_timer_update: Instant,
+
+    last_seen: Option<Instant>,
 
     // When this is `Some`, we are connected.
     remote_socket: Option<RemoteSocket>,
@@ -1015,6 +1053,12 @@ impl Connection {
         allocations: &mut HashMap<SocketAddr, Allocation>,
     ) -> Result<Option<Transmit<'static>>, WireGuardError> {
         self.agent.handle_timeout(now);
+
+        // TODO: `boringtun` is impure because it calls `Instant::now`.
+        self.last_seen = self
+            .tunnel
+            .time_since_last_received()
+            .and_then(|d| now.checked_sub(d));
 
         if now >= self.next_timer_update {
             self.next_timer_update = now + Duration::from_secs(1);

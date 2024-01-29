@@ -744,7 +744,7 @@ dependencies = [
 [[package]]
 name = "boringtun"
 version = "0.6.0"
-source = "git+https://github.com/cloudflare/boringtun?branch=master#f672bb6c1e1e371240a8d151f15854687eb740bb"
+source = "git+https://github.com/thomaseizinger/boringtun?branch=feat/expose-last-seen#6fd54c027e6b78192a02de3e77d00552ec36968d"
 dependencies = [
  "aead",
  "base64 0.13.1",
@@ -4612,6 +4612,7 @@ dependencies = [
 name = "phoenix-channel"
 version = "1.0.0"
 dependencies = [
+ "anyhow",
  "backoff",
  "base64 0.21.7",
  "futures",
@@ -6080,7 +6081,7 @@ checksum = "9e08d8363704e6c71fc928674353e6b7c23dcea9d82d7012c8faf2a3a025f8d0"
 [[package]]
 name = "str0m"
 version = "0.4.1"
-source = "git+https://github.com/algesten/str0m?branch=main#e6fa6808dfcdac23e0d1f61d405f938035e4eaf9"
+source = "git+https://github.com/algesten/str0m?branch=main#30ba27e4fb683d45559e5a821c0c2c084e02463a"
 dependencies = [
  "combine",
  "crc",

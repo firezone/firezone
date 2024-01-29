@@ -5,6 +5,7 @@ use tauri::{CustomMenuItem, SystemTrayMenu, SystemTrayMenuItem, SystemTraySubmen
 #[derive(Debug, PartialEq)]
 pub(crate) enum Event {
     About,
+    CancelSignIn,
     Resource { id: String },
     Settings,
     SignIn,
@@ -24,6 +25,7 @@ impl FromStr for Event {
     fn from_str(s: &str) -> Result<Self, Error> {
         Ok(match s {
             "/about" => Self::About,
+            "/cancel_sign_in" => Self::CancelSignIn,
             "/settings" => Self::Settings,
             "/sign_in" => Self::SignIn,
             "/sign_out" => Self::SignOut,
@@ -70,6 +72,10 @@ pub(crate) fn signing_in() -> SystemTrayMenu {
     // TODO: Check this layout with Jamil, I lost track of the Figma for it.
     SystemTrayMenu::new()
         .add_item(CustomMenuItem::new("".to_string(), "Signing In...").disabled())
+        .add_item(CustomMenuItem::new(
+            "/cancel_sign_in".to_string(),
+            "Cancel sign-in",
+        ))
         .add_native_item(SystemTrayMenuItem::Separator)
         .add_item(CustomMenuItem::new("/about".to_string(), "About"))
         .add_item(CustomMenuItem::new("/settings".to_string(), "Settings"))
