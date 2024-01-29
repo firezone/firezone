@@ -3,8 +3,6 @@
 set -e
 
 TARGET_IMAGE="ghcr.io/firezone/gateway:1"
-REPO=$(dirname "$TARGET_IMAGE")
-IMAGE=$(basename "$TARGET_IMAGE")
 
 CURRENTLY_RUNNING=$(docker ps --format "{{.Names}} {{.Image}}" | grep -e "$TARGET_IMAGE" | awk '{print $1}')
 if [ "$CURRENTLY_RUNNING" == "" ]; then
@@ -40,7 +38,6 @@ do
           --sysctl net.ipv6.conf.all.disable_ipv6=0 \
           --sysctl net.ipv6.conf.all.forwarding=1 \
           --sysctl net.ipv6.conf.default.forwarding=1 \
-          --device="/dev/net/tun:/dev/net/tun" \
           "$TARGET_IMAGE"
         rm variables.env
         echo "Container upgraded"

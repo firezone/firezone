@@ -107,7 +107,7 @@ write_files:
       TimeoutStartSec=0
       Restart=always
       ExecStartPre=/usr/bin/docker pull ${container_image}
-      ExecStart=/bin/sh -c 'docker run --rm --name=${container_name} --cap-add=NET_ADMIN --volume /etc/firezone --device="/dev/net/tun:/dev/net/tun" --env FIREZONE_NAME=$(hostname) --env FIREZONE_ID=$(echo $RANDOM$(hostname) | md5sum | head -c 20; echo;) --env-file="/etc/firezone-gateway/.env" ${container_image}'
+      ExecStart=/bin/sh -c 'docker run --rm --name=${container_name} --cap-add=NET_ADMIN --volume /etc/firezone --env FIREZONE_NAME=$(hostname) --env FIREZONE_ID=$(echo $RANDOM$(hostname) | md5sum | head -c 20; echo;) --env-file="/etc/firezone-gateway/.env" ${container_image}'
       ExecStop=/usr/bin/docker stop gateway
       ExecStopPost=/usr/bin/docker rm gateway
 

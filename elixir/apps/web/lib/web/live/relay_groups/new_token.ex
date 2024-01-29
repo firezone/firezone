@@ -265,7 +265,6 @@ defmodule Web.RelayGroups.NewToken do
       "--sysctl net.ipv6.conf.all.disable_ipv6=0",
       "--sysctl net.ipv6.conf.all.forwarding=1",
       "--sysctl net.ipv6.conf.default.forwarding=1",
-      "--device=\"/dev/net/tun:/dev/net/tun\"",
       Enum.map(env, fn {key, value} -> "--env #{key}=\"#{value}\"" end),
       "--env FIREZONE_NAME=$(hostname)",
       "#{Domain.Config.fetch_env!(:domain, :docker_registry)}/relay:#{major_minor_version()}"
