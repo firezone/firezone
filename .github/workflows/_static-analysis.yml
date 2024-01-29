@@ -26,7 +26,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.9"
-      - uses: actions/cache/restore@v3
+      - uses: actions/cache/restore@v4
         name: Restore Python Cache
         with:
           path: ~/.cache/pip
@@ -40,7 +40,7 @@ jobs:
         run: |
           pre-commit install
           SKIP=no-commit-to-branch pre-commit run --all-files
-      - uses: actions/cache/save@v3
+      - uses: actions/cache/save@v4
         if: ${{ github.ref == 'refs/heads/main' }}
         name: Save Python Cache
         with:

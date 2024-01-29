@@ -31,7 +31,7 @@ jobs:
       - uses: ./.github/actions/setup-rust
         with:
           targets: aarch64-apple-darwin aarch64-apple-ios
-      - uses: actions/cache/restore@v3
+      - uses: actions/cache/restore@v4
         name: Restore Swift DerivedData Cache
         with:
           path: ~/Library/Developer/Xcode/DerivedData
@@ -166,7 +166,7 @@ jobs:
             -t ${{ matrix.platform }} \
             --apiKey $API_KEY_ID \
             --apiIssuer $ISSUER_ID
-      - uses: actions/cache/save@v3
+      - uses: actions/cache/save@v4
         if: ${{ github.ref == 'refs/heads/main' }}
         name: Save Swift DerivedData Cache
         with:
