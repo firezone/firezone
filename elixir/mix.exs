@@ -68,8 +68,8 @@ defmodule Firezone.MixProject do
         validate_compile_env: true,
         applications: [
           web: :permanent,
-          opentelemetry: :temporary,
-          opentelemetry_exporter: :permanent
+          opentelemetry_exporter: :permanent,
+          opentelemetry: :temporary
         ]
       ],
       api: [
@@ -77,8 +77,8 @@ defmodule Firezone.MixProject do
         validate_compile_env: true,
         applications: [
           api: :permanent,
-          opentelemetry: :temporary,
-          opentelemetry_exporter: :permanent
+          opentelemetry_exporter: :permanent,
+          opentelemetry: :temporary
         ]
       ]
     ]
