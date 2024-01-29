@@ -26,7 +26,8 @@ public final class AppLogger {
     }
     self.logger = logger
     self.folderURL = folderURL
-    self.logWriter = LogWriter(process: process, folderURL: folderURL, logger: self.logger)
+    let target = LogWriter.Target(process: process)
+    self.logWriter = LogWriter(target: target, folderURL: folderURL, logger: self.logger)
 
     let dateFormatter = DateFormatter()
     dateFormatter.dateFormat = "yyyy-MM-dd HH:mm:ss.SSS Z"
@@ -47,12 +48,12 @@ public final class AppLogger {
 
   public func log(_ message: String) {
     self.logger.log("\(message, privacy: .public)")
-    logWriter?.writeLogEntry("\(dateFormatter.string(from: Date())): Debug: \(message)\n")
+    logWriter?.writeLogEntry(severity: .debug, message: message)
   }
 
   public func error(_ message: String) {
     self.logger.error("\(message, privacy: .public)")
-    logWriter?.writeLogEntry("\(dateFormatter.string(from: Date())): Error: \(message)\n")
+    logWriter?.writeLogEntry(severity: .error, message: message)
   }
 }
 
@@ -71,6 +72,18 @@ private final class LogWriter {
     }
   }
 
+  enum Severity: String, Codable {
+    case debug = "DEBUG"
+    case error = "ERROR"
+  }
+
+  struct LogEntry: Codable {
+    let time: String
+    let target: Target
+    let severity: Severity
+    let message: String
+  }
+
   private enum LogDestination {
     // Normally, write log entries to disk
     case disk(DiskLog?)
@@ -80,6 +93,28 @@ private final class LogWriter {
     case memory(MemoryLog)
   }
 
+  enum Target: String, Codable {
+    case appMacOS = "app_macos"
+    case appiOS = "app_ios"
+    case tunnelMacOS = "tunnel_macos"
+    case tunneliOS = "tunnel_ios"
+
+    init(process: AppLogger.Process) {
+      #if os(iOS)
+        switch process {
+        case .app: self = .appiOS
+        case .tunnel: self = .tunneliOS
+        }
+      #elseif os(macOS)
+        switch process {
+        case .app: self = .appMacOS
+        case .tunnel: self = .tunnelMacOS
+        }
+      #endif
+    }
+  }
+
+  private let target: Target
   private let folderURL: URL
   private let logger: Logger
 
@@ -91,6 +126,9 @@ private final class LogWriter {
 
   private var logDestination: LogDestination
   private var fileSizeAddendum: UInt64 = 0
+  private let dateFormatter: ISO8601DateFormatter
+  private let jsonEncoder: JSONEncoder
+  private let newlineData: Data
 
   private let logFileNameBase: String
   private let currentIndexFileURL: URL
@@ -100,16 +138,27 @@ private final class LogWriter {
   private static let maxLogFileSize = 1024 * 1024 * 1024  // 1 MB
   private static let maxLogFilesCount = 5
 
-  init?(process: AppLogger.Process, folderURL: URL?, logger: Logger) {
+  init?(target: Target, folderURL: URL?, logger: Logger) {
     guard let folderURL = folderURL else {
       logger.error("LogWriter.init: folderURL is nil")
       return nil
     }
 
+    self.target = target
     self.folderURL = folderURL
     self.logger = logger
-    self.logFileNameBase = "\(process.rawValue)."
+    self.logFileNameBase = "\(target.rawValue)."
     self.currentIndexFileURL = self.folderURL.appendingPathComponent(Self.currentIndexFileName)
+
+    let dateFormatter = ISO8601DateFormatter()
+    dateFormatter.formatOptions = [.withFullDate, .withFullTime, .withFractionalSeconds]
+    self.dateFormatter = dateFormatter
+
+    let jsonEncoder = JSONEncoder()
+    jsonEncoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+    self.jsonEncoder = jsonEncoder
+
+    self.newlineData = "\n".data(using: .utf8)!
 
     workQueue = DispatchQueue(label: "LogWriter.workQueue", qos: .utility)
     diskLogSwitchingQueue = DispatchQueue(
@@ -232,17 +281,34 @@ private final class LogWriter {
     }
   }
 
-  func writeLogEntry(_ entry: String) {
-    guard let cStr = entry.cString(using: .utf8) else { return }
+  func writeLogEntry(severity: Severity, message: String) {
+    let logEntry = LogEntry(
+      time: self.dateFormatter.string(from: Date()),
+      target: self.target,
+      severity: severity,
+      message: message)
+    var jsonData = Data()
+    do {
+      jsonData = try jsonEncoder.encode(logEntry)
+      jsonData.append(self.newlineData)
+    } catch {
+      self.logger.error(
+        "LogWriter.writeLogEntry: Error encoding log entry to JSON: \(error, privacy: .public)"
+      )
+    }
 
     workQueue.async {
       switch self.logDestination {
       case .disk(let diskLogNullable):
         guard let diskLog = diskLogNullable else { return }
-        let bytesWritten = fwrite(
-          cStr, MemoryLayout<CChar>.size, cStr.count - 1, diskLog.filePointer
-        )
-        fflush(diskLog.filePointer)
+        var bytesWritten = 0
+        do {
+          bytesWritten = try Self.writeDataToDisk(data: jsonData, diskLog: diskLog)
+        } catch {
+          self.logger.error(
+            "LogWriter.writeLogEntry: Error writing log entry to disk: \(error, privacy: .public)"
+          )
+        }
         self.fileSizeAddendum += UInt64(bytesWritten)
 
         if (diskLog.fileSizeAtOpen + self.fileSizeAddendum) > Self.maxLogFileSize {
@@ -290,7 +356,7 @@ private final class LogWriter {
           }
         }
       case .memory(let memoryLog):
-        memoryLog.data.append(Data(bytes: cStr, count: cStr.count - 1))
+        memoryLog.data.append(jsonData)
       }
     }
   }
@@ -302,21 +368,32 @@ private final class LogWriter {
       logger.error("LogWriter.writeMemoryLogToDisk: diskLog is nil")
       return 0
     }
-    var bytesWritten = 0
-    if memoryLog.data.count > 0 {
+
+    guard memoryLog.data.count > 0 else {
+      return 0
+    }
+
+    do {
       logger.log(
         "LogWriter.writeMemoryLogToDisk: Writing memory log to disk (\(memoryLog.data.count, privacy: .public) bytes)"
       )
-      do {
-        bytesWritten = try memoryLog.data.withUnsafeBytes<Int> { pointer -> Int in
-          fwrite(
-            pointer.baseAddress, MemoryLayout<CChar>.size, memoryLog.data.count,
-            diskLog.filePointer
-          )
-        }
-      } catch {
-        logger.error(
-          "LogWriter.writeLogEntry: Error writing memory log to disk: \(error, privacy: .public)"
+      return try writeDataToDisk(data: memoryLog.data, diskLog: diskLog)
+    } catch {
+      logger.error(
+        "LogWriter.writeMemoryLogToDisk: Error writing memory log to disk: \(error, privacy: .public)"
+      )
+    }
+
+    return 0
+  }
+
+  private static func writeDataToDisk(data: Data, diskLog: DiskLog) throws -> Int {
+    var bytesWritten = 0
+    if data.count > 0 {
+      bytesWritten = try data.withUnsafeBytes<Int> { pointer -> Int in
+        fwrite(
+          pointer.baseAddress, MemoryLayout<CChar>.size, data.count,
+          diskLog.filePointer
         )
       }
       fflush(diskLog.filePointer)
