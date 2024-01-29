@@ -61,7 +61,7 @@ fn start_server_and_connect() -> Result<(minidumper::Client, std::process::Child
     let exe = std::env::current_exe().context("unable to find our own exe path")?;
     let mut server = None;
 
-    // Path of a Unix domain socket for IPC with the crash hander server
+    // Path of a Unix domain socket for IPC with the crash handler server
     // <https://github.com/EmbarkStudios/crash-handling/issues/10>
     let socket_path = app_local_data_dir()
         .ok_or_else(|| anyhow!("couldn't compute crash handler socket path"))?
