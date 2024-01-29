@@ -103,6 +103,8 @@ defmodule API.Gateway.Channel do
       :ok = Flows.subscribe_to_flow_expiration_events(flow_id)
 
       resource = Resources.fetch_resource_by_id!(resource_id)
+      :ok = Resources.subscribe_for_events_for_resource(resource_id)
+
       ref = Ecto.UUID.generate()
 
       push(socket, "allow_access", %{
@@ -132,6 +134,26 @@ defmodule API.Gateway.Channel do
 
       {:noreply, socket}
     end
+  end
+
+  # Resource is updated, eg. traffic filters are changed
+  def handle_info({:update_resource, resource_id}, socket) do
+    OpenTelemetry.Ctx.attach(socket.assigns.opentelemetry_ctx)
+    OpenTelemetry.Tracer.set_current_span(socket.assigns.opentelemetry_span_ctx)
+
+    OpenTelemetry.Tracer.with_span "gateway.resource_updated",
+      attributes: %{resource_id: resource_id} do
+      resource = Resources.fetch_resource_by_id!(resource_id)
+      push(socket, "resource_updated", Views.Resource.render(resource))
+      {:noreply, socket}
+    end
+  end
+
+  # This event is ignored because we will receive a reject_access message from
+  # the Flows which will trigger a reject_access event
+  def handle_info({:delete_resource, resource_id}, socket) do
+    :ok = Resources.unsubscribe_from_events_for_resource(resource_id)
+    {:noreply, socket}
   end
 
   # Flows context broadcasts this message when flow is expired,
@@ -189,6 +211,7 @@ defmodule API.Gateway.Channel do
 
       client = Clients.fetch_client_by_id!(client_id, preload: [:actor])
       resource = Resources.fetch_resource_by_id!(resource_id)
+      :ok = Resources.subscribe_for_events_for_resource(resource_id)
 
       {relay_hosting_type, relay_connection_type} =
         Gateways.relay_strategy([socket.assigns.gateway_group])
