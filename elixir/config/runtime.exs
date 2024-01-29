@@ -88,6 +88,8 @@ if config_env() == :prod do
     ],
     secret_key_base: compile_config!(:secret_key_base),
     check_origin: [
+      "#{external_url_scheme}://#{external_url_host}:#{external_url_port}",
+      "#{external_url_scheme}://*.#{external_url_host}:#{external_url_port}",
       "#{external_url_scheme}://#{external_url_host}",
       "#{external_url_scheme}://*.#{external_url_host}"
     ],
