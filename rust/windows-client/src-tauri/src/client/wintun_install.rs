@@ -1,6 +1,6 @@
 //! "Installs" wintun.dll at runtime by copying it into whatever folder the exe is in
 
-use crate::client::settings::app_local_data_dir;
+use firezone_windows_common::wintun_dll_path;
 use ring::digest;
 use std::{
     fs,
@@ -17,8 +17,8 @@ struct DllBytes {
 
 #[derive(thiserror::Error, Debug)]
 pub(crate) enum Error {
-    #[error("Can't find %LOCALAPPDATA%")]
-    CantFindLocalAppData,
+    #[error("Can't compute path where wintun.dll should be installed")]
+    CantComputeWintunPath,
     #[error("create_dir_all failed")]
     CreateDirAll,
     #[error("permission denied")]
@@ -35,7 +35,7 @@ pub(crate) enum Error {
 pub(crate) fn ensure_dll() -> Result<PathBuf, Error> {
     let dll_bytes = get_dll_bytes().ok_or(Error::PlatformNotSupported)?;
 
-    let path = dll_path()?;
+    let path = wintun_dll_path().ok_or(Error::CantComputeWintunPath)?;
     std::fs::create_dir_all(path.with_file_name("")).map_err(|_| Error::CreateDirAll)?;
     tracing::info!(?path, "wintun.dll path");
 
@@ -46,17 +46,6 @@ pub(crate) fn ensure_dll() -> Result<PathBuf, Error> {
             _ => Error::WriteFailed(e),
         })?;
     }
-    Ok(path)
-}
-
-/// Returns the absolute path where the DLL should be
-///
-/// e.g. `C:\Users\User\AppData\Local\dev.firezone.client\data\wintun.dll`
-pub(crate) fn dll_path() -> Result<PathBuf, Error> {
-    let path = app_local_data_dir()
-        .ok_or_else(|| Error::CantFindLocalAppData)?
-        .join("data")
-        .join("wintun.dll");
     Ok(path)
 }
 

@@ -3,15 +3,15 @@
 
 // TODO: `git grep` for unwraps before 1.0, especially this gui module
 
-use crate::client::{self, deep_link, network_changes, BUNDLE_ID};
+use crate::client::{
+    self, about, deep_link, logging, network_changes,
+    settings::{self, AdvancedSettings},
+};
 use anyhow::{anyhow, bail, Context, Result};
 use arc_swap::ArcSwap;
-use client::{
-    about, logging,
-    settings::{self, app_local_data_dir, AdvancedSettings},
-};
 use connlib_client_shared::{file_logger, ResourceDescription};
 use connlib_shared::messages::ResourceId;
+use firezone_windows_common::BUNDLE_ID;
 use secrecy::{ExposeSecret, SecretString};
 use std::{net::IpAddr, path::PathBuf, str::FromStr, sync::Arc, time::Duration};
 use system_tray_menu::Event as TrayMenuEvent;
@@ -54,13 +54,6 @@ impl Managed {
 
 /// Runs the Tauri GUI and returns on exit or unrecoverable error
 pub(crate) fn run(params: client::GuiParams) -> Result<()> {
-    // Change to data dir so the file logger will write there and not in System32 if we're launching from an app link
-    let cwd = app_local_data_dir()
-        .ok_or_else(|| anyhow!("app_local_data_dir() failed"))?
-        .join("data");
-    std::fs::create_dir_all(&cwd)?;
-    std::env::set_current_dir(&cwd)?;
-
     let advanced_settings = settings::load_advanced_settings().unwrap_or_default();
 
     // Start logging

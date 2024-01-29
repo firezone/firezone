@@ -3,21 +3,11 @@
 
 use crate::client::gui::{ControllerRequest, Managed};
 use anyhow::{anyhow, Result};
+use firezone_windows_common::app_local_data_dir;
 use serde::{Deserialize, Serialize};
 use std::{path::PathBuf, time::Duration};
 use tokio::sync::oneshot;
 use url::Url;
-
-/// Returns e.g. `C:/Users/User/AppData/Local/dev.firezone.client
-///
-/// This is where we can save config, logs, crash dumps, etc.
-/// It's per-user and doesn't roam across different PCs in the same domain.
-/// It's read-write for non-elevated processes.
-pub(crate) fn app_local_data_dir() -> Option<PathBuf> {
-    let path = known_folders::get_known_folder_path(known_folders::KnownFolder::LocalAppData)?
-        .join(crate::client::BUNDLE_ID);
-    Some(path)
-}
 
 #[derive(Clone, Deserialize, Serialize)]
 pub(crate) struct AdvancedSettings {

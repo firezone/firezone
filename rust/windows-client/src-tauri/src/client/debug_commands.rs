@@ -2,7 +2,7 @@
 //! them with the GUI, or to exercise features programmatically.
 
 use crate::client;
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 
 #[derive(clap::Subcommand)]
 pub enum Cmd {
@@ -45,7 +45,8 @@ fn hostname() -> Result<()> {
 /// Try to load wintun.dll and throw an error if it's not in the right place
 fn wintun() -> Result<()> {
     tracing_subscriber::fmt::init();
-    let path = crate::client::wintun_install::dll_path()?;
+    let path = firezone_windows_common::wintun_dll_path()
+        .ok_or_else(|| anyhow!("can't compute wintun_dll_path"))?;
     unsafe { wintun::load_from_path(path) }?;
     tracing::info!("Loaded wintun from somewhere.");
 
