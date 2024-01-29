@@ -5,16 +5,21 @@ use futures_util::future::BoxFuture;
 use futures_util::FutureExt;
 use ip_network::IpNetwork;
 use libc::{
-    close, fcntl, open, F_GETFL, F_SETFL, IFF_MULTI_QUEUE, IFF_NO_PI, IFF_TUN, O_NONBLOCK, O_RDWR,
+    close, fcntl, makedev, mknod, open, F_GETFL, F_SETFL, IFF_MULTI_QUEUE, IFF_NO_PI, IFF_TUN,
+    O_NONBLOCK, O_RDWR, S_IFCHR,
 };
 use netlink_packet_route::RT_SCOPE_UNIVERSE;
 use parking_lot::Mutex;
 use rtnetlink::{new_connection, Error::NetlinkError, Handle};
 use std::net::IpAddr;
+use std::path::Path;
 use std::task::{Context, Poll};
 use std::{
-    fmt, io,
-    os::fd::{AsRawFd, RawFd},
+    fmt, fs, io,
+    os::{
+        fd::{AsRawFd, RawFd},
+        unix::fs::PermissionsExt,
+    },
 };
 use tokio::io::unix::AsyncFd;
 
@@ -25,6 +30,8 @@ pub(crate) const SIOCGIFMTU: libc::c_ulong = libc::SIOCGIFMTU;
 const IFACE_NAME: &str = "tun-firezone";
 const TUNSETIFF: libc::c_ulong = 0x4004_54ca;
 const TUN_FILE: &[u8] = b"/dev/net/tun\0";
+const TUN_DEV_MAJOR: u32 = 10;
+const TUN_DEV_MINOR: u32 = 200;
 const RT_PROT_STATIC: u8 = 4;
 const DEFAULT_MTU: u32 = 1280;
 const FILE_ALREADY_EXISTS: i32 = -17;
@@ -82,6 +89,8 @@ impl Tun {
     }
 
     pub fn new(config: &InterfaceConfig, _: Vec<IpAddr>, _: &impl Callbacks) -> Result<Self> {
+        create_tun_device()?;
+
         let fd = match unsafe { open(TUN_FILE.as_ptr() as _, O_RDWR) } {
             -1 => return Err(get_last_error()),
             fd => fd,
@@ -230,6 +239,31 @@ fn set_non_blocking(fd: RawFd) -> Result<()> {
             _ => Ok(()),
         },
     }
+}
+
+fn create_tun_device() -> Result<()> {
+    let path = Path::new(std::str::from_utf8(TUN_FILE).unwrap());
+
+    if path.exists() {
+        return Ok(());
+    }
+
+    let parent_dir = path.parent().unwrap();
+    fs::create_dir_all(parent_dir)?;
+    let permissions = fs::Permissions::from_mode(0o751);
+    fs::set_permissions(parent_dir, permissions)?;
+    if unsafe {
+        mknod(
+            TUN_FILE.as_ptr() as _,
+            S_IFCHR,
+            makedev(TUN_DEV_MAJOR, TUN_DEV_MINOR),
+        )
+    } != 0
+    {
+        return Err(get_last_error());
+    }
+
+    Ok(())
 }
 
 /// Read from the given file descriptor in the buffer.
