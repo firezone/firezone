@@ -30,7 +30,7 @@ defmodule Domain.Ops do
     Domain.Repo.transaction(fn ->
       {:ok, account} = Domain.Accounts.fetch_account_by_id_or_slug(account_slug)
       {:ok, providers} = Domain.Auth.list_active_providers_for_account(account)
-      magic_link_provider = Enum.find(providers, fn provider -> provider.type == :email end)
+      magic_link_provider = Enum.find(providers, fn provider -> provider.adapter == :email end)
 
       {:ok, actor} =
         Domain.Actors.create_actor(account, %{type: :account_admin_user, name: "Firezone Support"})
