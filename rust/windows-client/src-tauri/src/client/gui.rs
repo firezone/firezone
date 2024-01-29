@@ -3,7 +3,7 @@
 
 // TODO: `git grep` for unwraps before 1.0, especially this gui module
 
-use crate::client::{self, deep_link, network_changes, AppLocalDataDir, BUNDLE_ID};
+use crate::client::{self, deep_link, network_changes, BUNDLE_ID};
 use anyhow::{anyhow, bail, Context, Result};
 use arc_swap::ArcSwap;
 use client::{
@@ -28,14 +28,6 @@ mod system_tray_menu;
 const MAX_PARTITION_TIME: Duration = Duration::from_secs(60 * 60 * 24 * 30);
 
 pub(crate) type CtlrTx = mpsc::Sender<ControllerRequest>;
-
-// TODO: Move out of GUI module, shouldn't be here
-pub(crate) fn app_local_data_dir() -> Result<AppLocalDataDir> {
-    let path = known_folders::get_known_folder_path(known_folders::KnownFolder::LocalAppData)
-        .context("should be able to ask Windows where AppData/Local is")?
-        .join(BUNDLE_ID);
-    Ok(AppLocalDataDir(path))
-}
 
 /// All managed state that we might need to access from odd places like Tauri commands.
 ///

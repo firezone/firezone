@@ -1,7 +1,10 @@
 //! Everything for logging to files, zipping up the files for export, and counting the files
 
-use crate::client::gui::{app_local_data_dir, ControllerRequest, CtlrTx, Managed};
-use anyhow::{bail, Result};
+use crate::client::{
+    gui::{ControllerRequest, CtlrTx, Managed},
+    settings::app_local_data_dir,
+};
+use anyhow::{anyhow, bail, Result};
 use connlib_client_shared::file_logger;
 use serde::Serialize;
 use std::{
@@ -24,7 +27,9 @@ pub(crate) struct Handles {
 
 pub(crate) fn change_dir_and_start(log_filter: &str) -> Result<Handles> {
     // Change to data dir so the file logger will write there and not in System32 if we're launching from an app link
-    let cwd = app_local_data_dir()?.0.join("data");
+    let cwd = app_local_data_dir()
+        .ok_or_else(|| anyhow!("app_local_data_dir() failed"))?
+        .join("data");
     std::fs::create_dir_all(&cwd)?;
     std::env::set_current_dir(&cwd)?;
 

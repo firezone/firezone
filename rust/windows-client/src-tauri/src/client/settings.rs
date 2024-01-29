@@ -1,12 +1,23 @@
 //! Everything related to the Settings window, including
 //! advanced settings and code for manipulating diagnostic logs.
 
-use crate::client::gui::{self, ControllerRequest, Managed};
-use anyhow::Result;
+use crate::client::gui::{ControllerRequest, Managed};
+use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
-use std::{path::PathBuf, result::Result as StdResult, time::Duration};
+use std::{path::PathBuf, time::Duration};
 use tokio::sync::oneshot;
 use url::Url;
+
+/// Returns e.g. `C:/Users/User/AppData/Local/dev.firezone.client
+///
+/// This is where we can save config, logs, crash dumps, etc.
+/// It's per-user and doesn't roam across different PCs in the same domain.
+/// It's read-write for non-elevated processes.
+pub(crate) fn app_local_data_dir() -> Option<PathBuf> {
+    let path = known_folders::get_known_folder_path(known_folders::KnownFolder::LocalAppData)?
+        .join(crate::client::BUNDLE_ID);
+    Some(path)
+}
 
 #[derive(Clone, Deserialize, Serialize)]
 pub(crate) struct AdvancedSettings {
@@ -43,7 +54,9 @@ struct DirAndPath {
 }
 
 fn advanced_settings_path() -> Result<DirAndPath> {
-    let dir = gui::app_local_data_dir()?.0.join("config");
+    let dir = app_local_data_dir()
+        .ok_or_else(|| anyhow!("app_local_data_dir() failed"))?
+        .join("config");
     let path = dir.join("advanced_settings.json");
     Ok(DirAndPath { dir, path })
 }
@@ -52,7 +65,7 @@ fn advanced_settings_path() -> Result<DirAndPath> {
 pub(crate) async fn apply_advanced_settings(
     managed: tauri::State<'_, Managed>,
     settings: AdvancedSettings,
-) -> StdResult<(), String> {
+) -> Result<(), String> {
     apply_advanced_settings_inner(managed.inner(), &settings)
         .await
         .map_err(|e| e.to_string())
@@ -61,7 +74,7 @@ pub(crate) async fn apply_advanced_settings(
 #[tauri::command]
 pub(crate) async fn reset_advanced_settings(
     managed: tauri::State<'_, Managed>,
-) -> StdResult<AdvancedSettings, String> {
+) -> Result<AdvancedSettings, String> {
     let settings = AdvancedSettings::default();
 
     apply_advanced_settings_inner(managed.inner(), &settings)
@@ -74,7 +87,7 @@ pub(crate) async fn reset_advanced_settings(
 #[tauri::command]
 pub(crate) async fn get_advanced_settings(
     managed: tauri::State<'_, Managed>,
-) -> StdResult<AdvancedSettings, String> {
+) -> Result<AdvancedSettings, String> {
     let (tx, rx) = oneshot::channel();
     if let Err(e) = managed
         .ctlr_tx

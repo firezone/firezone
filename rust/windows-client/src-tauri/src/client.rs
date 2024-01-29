@@ -52,10 +52,6 @@ pub(crate) struct GuiParams {
     logging_handles: logging::Handles,
 }
 
-/// Newtype for our per-user directory in AppData, e.g.
-/// `C:/Users/$USER/AppData/Local/dev.firezone.client`
-pub(crate) struct AppLocalDataDir(std::path::PathBuf);
-
 // Hides Powershell's console on Windows
 // <https://stackoverflow.com/questions/59692146/is-it-possible-to-use-the-standard-library-to-spawn-a-process-without-showing-th#60958956>
 const CREATE_NO_WINDOW: u32 = 0x08000000;
