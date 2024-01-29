@@ -147,7 +147,7 @@ private final class LogWriter {
     self.target = target
     self.folderURL = folderURL
     self.logger = logger
-    self.logFileNameBase = "\(target.rawValue)."
+    self.logFileNameBase = target.rawValue
     self.currentIndexFileURL = self.folderURL.appendingPathComponent(Self.currentIndexFileName)
 
     let dateFormatter = ISO8601DateFormatter()
@@ -224,60 +224,111 @@ private final class LogWriter {
     logIndex: Int, shouldRemoveExistingFile: Bool, logger: Logger
   ) -> DiskLog? {
 
-    let logFileURL = folderURL.appendingPathComponent(
-      "\(logFileNameBase)\(logIndex).\(Self.logFileNameExtension)")
-    let logFilePath = logFileURL.path
-
     let fileManager = FileManager.default
 
-    if shouldRemoveExistingFile {
-      do {
-        logger.error("LogWriter.openDiskLog: Removing file at '\(logFilePath, privacy: .public)'")
-        try fileManager.removeItem(atPath: logFilePath)
-      } catch {
-        logger.error(
-          "LogWriter.openDiskLog: Error removing file '\(logFilePath, privacy: .public)'"
-        )
+    // Look for an existing log file with this log index
+    var existingLogFiles: [URL] = []
+    if let enumerator = fileManager.enumerator(
+      at: folderURL,
+      includingPropertiesForKeys: [.isRegularFileKey, .nameKey],
+      options: [.skipsHiddenFiles, .skipsPackageDescendants, .skipsSubdirectoryDescendants],
+      errorHandler: nil
+    ) {
+      for item in enumerator.enumerated() {
+        guard let url = item.element as? URL else { continue }
+        do {
+          let resourceValues = try url.resourceValues(forKeys: [.isRegularFileKey, .nameKey])
+          if resourceValues.isRegularFile ?? false {
+            if let fileName = resourceValues.name {
+              if fileName.hasPrefix("\(logFileNameBase).")
+                && fileName.hasSuffix(".\(logIndex).\(Self.logFileNameExtension)")
+              {
+                existingLogFiles.append(url)
+              }
+            }
+          }
+        } catch {
+          logger.error(
+            "LogWriter.openDiskLog: Unable to get resource value for '\(url.path, privacy: .public)': \(error, privacy: .public)"
+          )
+        }
       }
     }
 
-    if !shouldRemoveExistingFile && fileManager.fileExists(atPath: logFilePath) {
-      logger.error("LogWriter.openDiskLog: File exists at '\(logFilePath, privacy: .public)'")
+    if !shouldRemoveExistingFile && existingLogFiles.count > 0 {
+      // Open the existing log file in append mode
+      if existingLogFiles.count > 1 {
+        // In case there are multiple log files at this index (there shouldn't be),
+        // pick something predictably, so we pick the same one each time.
+        existingLogFiles.sort(by: { $0.lastPathComponent > $1.lastPathComponent })
+      }
+
+      let existingLogFile = existingLogFiles.first!
+      let existingLogFilePath = existingLogFile.path
+
+      logger.error(
+        "LogWriter.openDiskLog: File exists at '\(existingLogFilePath, privacy: .public)'"
+      )
       var fileSize: UInt64? = nil
       do {
-        let attr = try fileManager.attributesOfItem(atPath: logFilePath)
+        let attr = try fileManager.attributesOfItem(atPath: existingLogFilePath)
         fileSize = attr[FileAttributeKey.size] as? UInt64
       } catch {
         logger.error(
-          "LogWriter.openDiskLog: Error getting file attributes of '\(logFilePath, privacy: .public)': \(error, privacy: .public)"
+          "LogWriter.openDiskLog: Error getting file attributes of '\(existingLogFilePath, privacy: .public)': \(error, privacy: .public)"
         )
         return nil
       }
       if let fileSize = fileSize {
-        if let filePointer = fopen(logFilePath, "a") {
+        if let filePointer = fopen(existingLogFilePath, "a") {
           return DiskLog(logIndex: logIndex, filePointer: filePointer, fileSizeAtOpen: fileSize)
         } else {
           logger.error(
-            "LogWriter.openDiskLog: Can't open file '\(logFilePath, privacy: .public)' for appending"
+            "LogWriter.openDiskLog: Can't open file '\(existingLogFilePath, privacy: .public)' for appending"
           )
           return nil
         }
       } else {
         logger.error(
-          "LogWriter.openDiskLog: Can't figure out file size for '\(logFilePath, privacy: .public)'"
+          "LogWriter.openDiskLog: Can't figure out file size for '\(existingLogFilePath, privacy: .public)'"
         )
         return nil
       }
+    }
+
+    if shouldRemoveExistingFile {
+      // Remove the existing log file
+      for existingLogFile in existingLogFiles {
+        // In case there are multiple log files at this index (there shouldn't be),
+        // remove all of them.
+        do {
+          logger.error(
+            "LogWriter.openDiskLog: Removing file at '\(existingLogFile.path, privacy: .public)'"
+          )
+          try fileManager.removeItem(at: existingLogFile)
+        } catch {
+          logger.error(
+            "LogWriter.openDiskLog: Error removing file '\(existingLogFile.path, privacy: .public)'"
+          )
+        }
+      }
+    }
+
+    // There's no log file at this log index. Create a new log file in write mode.
+    let dateFormatter = DateFormatter()
+    dateFormatter.dateFormat = "yyyy-MM-dd-HH-mm-ss"
+    let timestamp = dateFormatter.string(from: Date())
+    let logFileURL = folderURL.appendingPathComponent(
+      "\(logFileNameBase).\(timestamp).\(logIndex).\(Self.logFileNameExtension)")
+    let logFilePath = logFileURL.path
+    logger.error("LogWriter.openDiskLog: Creating file at '\(logFilePath, privacy: .public)'")
+    if let filePointer = fopen(logFilePath, "w") {
+      return DiskLog(logIndex: logIndex, filePointer: filePointer, fileSizeAtOpen: 0)
     } else {
-      logger.error("LogWriter.openDiskLog: Creating file at '\(logFilePath, privacy: .public)'")
-      if let filePointer = fopen(logFilePath, "w") {
-        return DiskLog(logIndex: logIndex, filePointer: filePointer, fileSizeAtOpen: 0)
-      } else {
-        logger.error(
-          "LogWriter.openDiskLog: Can't open file '\(logFilePath, privacy: .public)' for writing"
-        )
-        return nil
-      }
+      logger.error(
+        "LogWriter.openDiskLog: Can't open file '\(logFilePath, privacy: .public)' for writing"
+      )
+      return nil
     }
   }
 
