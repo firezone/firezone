@@ -42,12 +42,14 @@ pub const GIT_VERSION: &str =
 /// GuiParams prevents a problem where changing the args to `gui::run` breaks static analysis on non-Windows targets, where the gui is stubbed out
 #[allow(dead_code)]
 pub(crate) struct GuiParams {
+    advanced_settings: settings::AdvancedSettings,
     /// If true, purposely crash the program to test the crash handler
     crash_on_purpose: bool,
     /// If true, we were re-launched with elevated permissions. If the user launched us directly with elevated permissions, this is false.
     flag_elevated: bool,
     /// If true, slow down I/O operations to test how the GUI handles slow I/O
     inject_faults: bool,
+    logging_handles: logging::Handles,
 }
 
 /// Newtype for our per-user directory in AppData, e.g.
@@ -84,12 +86,17 @@ pub(crate) fn run() -> Result<()> {
 
     match cli.command {
         None => {
+            let advanced_settings = settings::load_advanced_settings().unwrap_or_default();
+            let logging_handles = logging::change_dir_and_start(&advanced_settings.log_filter)?;
+
             if elevation::check()? {
                 // We're already elevated, just run the GUI
                 gui::run(GuiParams {
+                    advanced_settings,
                     crash_on_purpose: cli.crash_on_purpose,
                     flag_elevated: false,
                     inject_faults: cli.inject_faults,
+                    logging_handles,
                 })
             } else {
                 // We're not elevated, ask Powershell to re-launch us, then exit
@@ -114,11 +121,18 @@ pub(crate) fn run() -> Result<()> {
         Some(Cmd::CrashHandlerServer) => crash_handling::server(),
         Some(Cmd::Debug { command }) => debug_commands::run(command),
         // If we already tried to elevate ourselves, don't try again
-        Some(Cmd::Elevated) => gui::run(GuiParams {
-            crash_on_purpose: cli.crash_on_purpose,
-            flag_elevated: true,
-            inject_faults: cli.inject_faults,
-        }),
+        Some(Cmd::Elevated) => {
+            let advanced_settings = settings::load_advanced_settings().unwrap_or_default();
+            let logging_handles = logging::change_dir_and_start(&advanced_settings.log_filter)?;
+
+            gui::run(GuiParams {
+                advanced_settings,
+                crash_on_purpose: cli.crash_on_purpose,
+                flag_elevated: true,
+                inject_faults: cli.inject_faults,
+                logging_handles,
+            })
+        }
         Some(Cmd::OpenDeepLink(deep_link)) => {
             let rt = tokio::runtime::Runtime::new()?;
             rt.block_on(deep_link::open(&deep_link.url))?;

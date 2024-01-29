@@ -4,7 +4,7 @@ use ring::digest;
 use std::{
     fs,
     io::{self, Read},
-    path::Path,
+    path::{Path, PathBuf},
 };
 
 struct DllBytes {
@@ -33,13 +33,16 @@ pub(crate) enum Error {
 /// setup is difficult.
 /// The reason not to do it in `C:\Program Files` is that running in portable mode
 /// is useful for development, even though it's not supported for production.
-pub(crate) fn ensure_dll() -> Result<(), Error> {
+pub(crate) fn ensure_dll() -> Result<PathBuf, Error> {
     let dll_bytes = get_dll_bytes().ok_or(Error::PlatformNotSupported)?;
 
     let path = tauri_utils::platform::current_exe()
         .map_err(|_| Error::CurrentExePathUnknown)?
         .with_file_name("wintun.dll");
-    tracing::debug!("wintun.dll path = {path:?}");
+    tracing::info!(
+        "wintun.dll path = {path:?}, current_dir = {:?}",
+        std::env::current_dir()
+    );
 
     // This hash check is not meant to protect against attacks. It only lets us skip redundant disk writes, and it updates the DLL if needed.
     if !dll_already_exists(&path, &dll_bytes) {
@@ -47,8 +50,9 @@ pub(crate) fn ensure_dll() -> Result<(), Error> {
             io::ErrorKind::PermissionDenied => Error::PermissionDenied,
             _ => Error::WriteFailed(e),
         })?;
+        tracing::info!("Unpacked wintun.dll");
     }
-    Ok(())
+    Ok(path)
 }
 
 fn dll_already_exists(path: &Path, dll_bytes: &DllBytes) -> bool {

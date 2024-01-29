@@ -1,13 +1,12 @@
 //! Everything for logging to files, zipping up the files for export, and counting the files
 
-use crate::client::gui::{ControllerRequest, CtlrTx, Managed};
+use crate::client::gui::{app_local_data_dir, ControllerRequest, CtlrTx, Managed};
 use anyhow::{bail, Result};
 use connlib_client_shared::file_logger;
 use serde::Serialize;
 use std::{
     fs, io,
     path::{Path, PathBuf},
-    result::Result as StdResult,
     str::FromStr,
 };
 use tokio::task::spawn_blocking;
@@ -23,17 +22,29 @@ pub(crate) struct Handles {
     pub _reloader: reload::Handle<EnvFilter, Registry>,
 }
 
+pub(crate) fn change_dir_and_start(log_filter: &str) -> Result<Handles> {
+    // Change to data dir so the file logger will write there and not in System32 if we're launching from an app link
+    let cwd = app_local_data_dir()?.0.join("data");
+    std::fs::create_dir_all(&cwd)?;
+    std::env::set_current_dir(&cwd)?;
+
+    setup(log_filter)
+}
+
 /// Set up logs for the first time.
-/// Must be called inside Tauri's `setup` callback, after the app has changed directory
-pub(crate) fn setup(log_filter: &str) -> Result<Handles> {
+///
+/// Must be called after the app has changed directory
+fn setup(log_filter: &str) -> Result<Handles> {
     let (layer, logger) = file_logger::layer(Path::new("logs"));
     let filter = EnvFilter::from_str(log_filter)?;
     let (filter, reloader) = reload::Layer::new(filter);
+    // TODO: Comment why we call `EnvFilter::from_str(log_filter)` twice
     let subscriber = Registry::default()
         .with(layer.with_filter(filter))
         .with(fmt::layer().with_filter(EnvFilter::from_str(log_filter)?));
     set_global_default(subscriber)?;
     LogTracer::init()?;
+    tracing::info!("GIT_VERSION = {}", crate::client::GIT_VERSION);
     Ok(Handles {
         logger,
         _reloader: reloader,
@@ -41,12 +52,12 @@ pub(crate) fn setup(log_filter: &str) -> Result<Handles> {
 }
 
 #[tauri::command]
-pub(crate) async fn clear_logs(managed: tauri::State<'_, Managed>) -> StdResult<(), String> {
+pub(crate) async fn clear_logs(managed: tauri::State<'_, Managed>) -> Result<(), String> {
     clear_logs_inner(&managed).await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub(crate) async fn export_logs(managed: tauri::State<'_, Managed>) -> StdResult<(), String> {
+pub(crate) async fn export_logs(managed: tauri::State<'_, Managed>) -> Result<(), String> {
     export_logs_inner(managed.ctlr_tx.clone())
         .await
         .map_err(|e| e.to_string())
@@ -59,7 +70,7 @@ pub(crate) struct FileCount {
 }
 
 #[tauri::command]
-pub(crate) async fn count_logs() -> StdResult<FileCount, String> {
+pub(crate) async fn count_logs() -> Result<FileCount, String> {
     count_logs_inner().await.map_err(|e| e.to_string())
 }
 

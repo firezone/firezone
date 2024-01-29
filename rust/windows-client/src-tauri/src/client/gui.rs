@@ -62,22 +62,12 @@ impl Managed {
 
 /// Runs the Tauri GUI and returns on exit or unrecoverable error
 pub(crate) fn run(params: client::GuiParams) -> Result<()> {
-    // Change to data dir so the file logger will write there and not in System32 if we're launching from an app link
-    let cwd = app_local_data_dir()?.0.join("data");
-    std::fs::create_dir_all(&cwd)?;
-    std::env::set_current_dir(&cwd)?;
-
-    let advanced_settings = settings::load_advanced_settings().unwrap_or_default();
-
-    // Start logging
-    let logging_handles = client::logging::setup(&advanced_settings.log_filter)?;
-    tracing::info!("started log");
-    tracing::info!("GIT_VERSION = {}", crate::client::GIT_VERSION);
-
     let client::GuiParams {
+        advanced_settings,
         crash_on_purpose,
         flag_elevated: _,
         inject_faults,
+        logging_handles,
     } = params;
 
     // Need to keep this alive so crashes will be handled. Dropping detaches it.
