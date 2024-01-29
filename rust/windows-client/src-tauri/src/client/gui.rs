@@ -3,15 +3,15 @@
 
 // TODO: `git grep` for unwraps before 1.0, especially this gui module
 
-use crate::client::{self, deep_link, network_changes, BUNDLE_ID};
-use anyhow::{anyhow, bail, Context, Result};
-use arc_swap::ArcSwap;
-use client::{
-    about, logging,
+use crate::client::{
+    self, about, deep_link, logging, network_changes,
     settings::{self, AdvancedSettings},
 };
+use anyhow::{anyhow, bail, Context, Result};
+use arc_swap::ArcSwap;
 use connlib_client_shared::{file_logger, ResourceDescription};
 use connlib_shared::messages::ResourceId;
+use firezone_windows_common::BUNDLE_ID;
 use secrecy::{ExposeSecret, SecretString};
 use std::{net::IpAddr, path::PathBuf, str::FromStr, sync::Arc, time::Duration};
 use system_tray_menu::Event as TrayMenuEvent;

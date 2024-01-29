@@ -4,8 +4,8 @@
 //!
 //! TODO: Capture crash dumps on panic.
 
-use crate::client::settings::app_local_data_dir;
 use anyhow::{anyhow, bail, Context};
+use firezone_windows_common::app_local_data_dir;
 use std::{fs::File, io::Write, path::PathBuf};
 
 const SOCKET_NAME: &str = "dev.firezone.client.crash_handler";

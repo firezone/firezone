@@ -150,6 +150,9 @@ pub enum ConnlibError {
     #[cfg(target_os = "windows")]
     #[error(transparent)]
     Wintun(#[from] wintun::Error),
+    #[cfg(target_os = "windows")]
+    #[error("Can't compute path for wintun.dll")]
+    WintunDllPath,
     #[error("Token has expired")]
     TokenExpired,
     #[error("Too many concurrent gateway connection requests")]

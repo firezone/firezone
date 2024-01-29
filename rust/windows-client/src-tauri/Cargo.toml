@@ -50,6 +50,7 @@ bincode = "1.3.3"
 # These dependencies are locked behind `cfg(windows)` because they either can't compile at all on Linux, or they need native dependencies like glib that are difficult to get. Try not to add more here.
 
 [target.'cfg(windows)'.dependencies]
+firezone-windows-common = { path = "../firezone-windows-common" }
 # Tauri works fine on Linux, but it requires a lot of build-time deps like glib and gdk, so I've blocked it out for now.
 tauri = { version = "1.5", features = [ "dialog", "notification", "shell-open-api", "system-tray" ] }
 tauri-utils = "1.5.1"

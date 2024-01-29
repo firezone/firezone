@@ -2112,6 +2112,7 @@ dependencies = [
  "connlib-shared",
  "dns-lookup",
  "domain",
+ "firezone-windows-common",
  "futures",
  "futures-bounded",
  "futures-util",
@@ -2154,6 +2155,7 @@ dependencies = [
  "connlib-shared",
  "crash-handler",
  "firezone-cli-utils",
+ "firezone-windows-common",
  "git-version",
  "hex",
  "hostname",
@@ -2184,6 +2186,13 @@ dependencies = [
  "winreg 0.52.0",
  "wintun",
  "zip",
+]
+
+[[package]]
+name = "firezone-windows-common"
+version = "0.1.0"
+dependencies = [
+ "known-folders",
 ]
 
 [[package]]

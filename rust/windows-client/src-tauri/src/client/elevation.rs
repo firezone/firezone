@@ -26,11 +26,10 @@ pub(crate) fn check() -> Result<bool, Error> {
         Err(wintun_install::Error::PermissionDenied) => return Ok(false),
         Err(e) => return Err(Error::DllInstall(e)),
     };
-    tracing::info!(?path, "wintun.dll path");
 
     // The unsafe is here because we're loading a DLL from disk and it has arbitrary C code in it.
     // TODO: As a defense, we could verify the hash before loading it. This would protect against accidental corruption, but not against attacks. (Because of TOCTOU)
-    let wintun = unsafe { wintun::load_from_path(r".\wintun.dll") }.map_err(|_| Error::DllLoad)?;
+    let wintun = unsafe { wintun::load_from_path(path) }.map_err(|_| Error::DllLoad)?;
     let uuid = uuid::Uuid::from_str(TUNNEL_UUID).map_err(|_| Error::Uuid)?;
 
     // Wintun hides the exact Windows error, so let's assume the only way Adapter::create can fail is if we're not elevated.

@@ -1,11 +1,9 @@
 //! Everything for logging to files, zipping up the files for export, and counting the files
 
-use crate::client::{
-    gui::{ControllerRequest, CtlrTx, Managed},
-    settings::app_local_data_dir,
-};
+use crate::client::gui::{ControllerRequest, CtlrTx, Managed};
 use anyhow::{anyhow, bail, Result};
 use connlib_client_shared::file_logger;
+use firezone_windows_common::app_local_data_dir;
 use serde::Serialize;
 use std::{
     fs, io,
@@ -37,10 +35,14 @@ pub(crate) fn change_dir_and_start(log_filter: &str) -> Result<Handles> {
 }
 
 /// Set up logs for the first time.
-///
-/// Must be called after the app has changed directory
-fn setup(log_filter: &str) -> Result<Handles> {
-    let (layer, logger) = file_logger::layer(Path::new("logs"));
+pub(crate) fn setup(log_filter: &str) -> Result<Handles> {
+    let log_path = app_local_data_dir()
+        .ok_or_else(|| anyhow!("app_local_data_dir() failed"))?
+        .join("data")
+        .join("logs");
+
+    std::fs::create_dir_all(&log_path)?;
+    let (layer, logger) = file_logger::layer(&log_path);
     let filter = EnvFilter::from_str(log_filter)?;
     let (filter, reloader) = reload::Layer::new(filter);
     // TODO: Comment why we call `EnvFilter::from_str(log_filter)` twice
