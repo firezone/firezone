@@ -4,9 +4,8 @@
 //!
 //! TODO: Capture crash dumps on panic.
 
-use crate::client::BUNDLE_ID;
+use crate::client::settings::app_local_data_dir;
 use anyhow::{anyhow, bail, Context};
-use known_folders::{get_known_folder_path, KnownFolder};
 use std::{fs::File, io::Write, path::PathBuf};
 
 const SOCKET_NAME: &str = "dev.firezone.client.crash_handler";
@@ -104,10 +103,10 @@ impl minidumper::ServerHandler for Handler {
     /// Called when a crash has been received and a backing file needs to be
     /// created to store it.
     fn create_minidump_file(&self) -> Result<(File, PathBuf), std::io::Error> {
-        let dump_path = get_known_folder_path(KnownFolder::ProgramData)
-            .expect("should be able to find C:/ProgramData")
-            .join(BUNDLE_ID)
-            .join("dumps")
+        let dump_path = app_local_data_dir()
+            .expect("app_local_data_dir() failed")
+            .join("data")
+            .join("logs")
             .join("last_crash.dmp");
 
         if let Some(dir) = dump_path.parent() {
