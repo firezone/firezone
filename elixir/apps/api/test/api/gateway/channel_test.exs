@@ -505,44 +505,59 @@ defmodule API.Gateway.ChannelTest do
       assert DateTime.from_unix!(payload.expires_at) == DateTime.truncate(expires_at, :second)
     end
 
-    # test "subscribes for resource events", %{
-    #   client: client,
-    #   resource: resource,
-    #   relay: relay,
-    #   subject: subject,
-    #   socket: socket
-    # } do
-    #   channel_pid = self()
-    #   socket_ref = make_ref()
-    #   expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
-    #   preshared_key = "PSK"
-    #   client_payload = "RTC_SD"
-    #   flow_id = Ecto.UUID.generate()
+    test "subscribes for flow expiration event", %{
+      account: account,
+      client: client,
+      resource: resource,
+      relay: relay,
+      socket: socket,
+      subject: subject
+    } do
+      channel_pid = self()
+      socket_ref = make_ref()
+      expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
+      otel_ctx = {OpenTelemetry.Ctx.new(), OpenTelemetry.Tracer.start_span("connect")}
+      client_payload = "RTC_SD_or_DNS_Q"
+      preshared_key = "PSK"
 
-    #   otel_ctx = {OpenTelemetry.Ctx.new(), OpenTelemetry.Tracer.start_span("connect")}
+      stamp_secret = Ecto.UUID.generate()
+      :ok = Domain.Relays.connect_relay(relay, stamp_secret)
 
-    #   stamp_secret = Ecto.UUID.generate()
-    #   :ok = Domain.Relays.connect_relay(relay, stamp_secret)
+      flow =
+        Fixtures.Flows.create_flow(
+          account: account,
+          subject: subject,
+          client: client,
+          resource: resource
+        )
 
-    #   send(
-    #     socket.channel_pid,
-    #     {:request_connection, {channel_pid, socket_ref},
-    #      %{
-    #        client_id: client.id,
-    #        resource_id: resource.id,
-    #        flow_id: flow_id,
-    #        authorization_expires_at: expires_at,
-    #        client_payload: client_payload,
-    #        client_preshared_key: preshared_key
-    #      }, otel_ctx}
-    #   )
+      send(
+        socket.channel_pid,
+        {:request_connection, {channel_pid, socket_ref},
+         %{
+           client_id: client.id,
+           resource_id: resource.id,
+           flow_id: flow.id,
+           authorization_expires_at: expires_at,
+           client_payload: client_payload,
+           client_preshared_key: preshared_key
+         }, otel_ctx}
+      )
 
-    #   assert_push "request_connection", %{}
+      assert_push "request_connection", %{}
 
-    #   {:ok, _resource} = Domain.Resources.delete_resource(resource, subject)
-    #   resource_id = resource.id
-    #   assert_push "resource_deleted", ^resource_id
-    # end
+      {:ok, [_flow]} = Domain.Flows.expire_flows_for(resource, subject)
+
+      assert_push "reject_access", %{
+        flow_id: flow_id,
+        client_id: client_id,
+        resource_id: resource_id
+      }
+
+      assert flow_id == flow.id
+      assert client_id == client.id
+      assert resource_id == resource.id
+    end
   end
 
   describe "handle_in/3 connection_ready" do

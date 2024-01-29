@@ -120,12 +120,13 @@ Now you can verify that it's working by connecting to a websocket:
 {"ref":null,"topic":"client","event":"init","payload":{"interface":{"ipv6":"fd00:2021:1111::11:f4bd","upstream_dns":[],"ipv4":"100.71.71.245"},"resources":[{"id":"4429d3aa-53ea-4c03-9435-4dee2899672b","name":"172.20.0.1/16","type":"cidr","address":"172.20.0.0/16"},{"id":"85a1cffc-70d3-46dd-aa6b-776192af7b06","name":"gitlab.mycorp.com","type":"dns","address":"gitlab.mycorp.com","ipv6":"fd00:2021:1111::5:b370","ipv4":"100.85.109.146"}]}}
 
 # List online relays for a Resource
-❯ {"event":"prepare_connection","topic":"client","payload":{"resource_id":"116c62dc-bae5-45b0-afa2-4afe7f195144"},"ref":"unique_prepare_connection_ref"}
+❯ {"event":"prepare_connection","topic":"client","payload":{"resource_id":"1f27735f-651d-49e8-840c-8f1ba581d88e"},"ref":"unique_prepare_connection_ref"}
 
-{"ref":"unique_prepare_connection_ref","topic":"client","event":"phx_reply","payload":{"status":"ok","response":{"relays":[{"type":"stun","uri":"stun:172.28.0.101:3478"},{"type":"turn","username":"1719090081:UVxHhieTJWaD8_Sg","password":"Ml65XDZyYpuBiEIvk/q0Zy6EEJ1ZwGa4pWztXFP+tOo","uri":"turn:172.28.0.101:3478","expires_at":1719090081}],"resource_id":"4429d3aa-53ea-4c03-9435-4dee2899672b"}}}
+{"ref":"unique_prepare_connection_ref","payload":{"status":"ok","response":{"relays":[{"type":"turn","uri":"turn:189.172.72.111:3478","username":"1738022400:4ZxvSNDzU98MJiEjsR8DOA","password":"TVZvSgIGFK0TtNDXFVU9gv9a1WDz2Ou7RTEUis4E6To","expires_at":1738022400},{"type":"turn","uri":"turn:[::1]:3478","username":"1738022400:KCYrRTRmfGNAEEe7KyjHkA","password":"8KYplQOKBf5smJRZDhC54kiKKNVmUxsVxH1V8xfY/do","expires_at":1738022400}],"resource_id":"1f27735f-651d-49e8-840c-8f1ba581d88e","gateway_remote_ip":"127.0.0.1","gateway_id":"6e52c0ce-ccd9-46d9-8715-796ec9812719"}},"topic":"client","event":"phx_reply"}
+{"event":"request_connection","topic":"client","payload":{"resource_id":"1f27735f-651d-49e8-840c-8f1ba581d88e","client_payload":"RTC_SD","client_preshared_key":"+HapiGI5UdeRjKuKTwk4ZPPYpCnlXHvvqebcIevL+2A="},"ref":"unique_request_connection_ref"}
 
 # Initiate connection to a resource
-❯ {"event":"request_connection","topic":"client","payload":{"resource_id":"4429d3aa-53ea-4c03-9435-4dee2899672b","client_payload":"RTC_SD","client_preshared_key":"+HapiGI5UdeRjKuKTwk4ZPPYpCnlXHvvqebcIevL+2A="},"ref":"unique_request_connection_ref"}
+❯ {"event":"request_connection","topic":"client","payload":{"gateway_id":"6e52c0ce-ccd9-46d9-8715-796ec9812719","resource_id":"1f27735f-651d-49e8-840c-8f1ba581d88e","client_payload":"RTC_SD","client_preshared_key":"+HapiGI5UdeRjKuKTwk4ZPPYpCnlXHvvqebcIevL+2A="},"ref":"unique_request_connection_ref"}
 
 ```
 

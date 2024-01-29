@@ -60,9 +60,10 @@ defmodule API.Client.Channel do
       # We subscribe for membership updates for all actor groups the client is a member of,
       :ok = Actors.subscribe_for_membership_updates_for_actor(socket.assigns.subject.actor)
 
-      # We subscribe for all policy events for the actor groups the client is a member of,
+      # We subscribe for policy access events for the actor and the groups the client is a member of,
       {:ok, actor_group_ids} = Actors.list_actor_group_ids(socket.assigns.subject.actor)
       :ok = Enum.each(actor_group_ids, &Policies.subscribe_for_events_for_actor_group/1)
+      :ok = Policies.subscribe_for_events_for_actor(socket.assigns.subject.actor)
 
       :ok =
         push(socket, "init", %{

@@ -184,12 +184,19 @@ defmodule Domain.Policies do
   defp actor_group_topic(%Actors.Group{} = actor_group), do: actor_group_topic(actor_group.id)
   defp actor_group_topic(actor_group_id), do: "actor_group_policies:#{actor_group_id}"
 
+  defp actor_topic(%Actors.Actor{} = actor), do: actor_topic(actor.id)
+  defp actor_topic(actor_id), do: "actor_policies:#{actor_id}"
+
   def subscribe_for_events_for_policy(policy_or_id) do
     policy_or_id |> policy_topic() |> PubSub.subscribe()
   end
 
   def subscribe_for_events_for_account(account_or_id) do
     account_or_id |> account_topic() |> PubSub.subscribe()
+  end
+
+  def subscribe_for_events_for_actor(actor_or_id) do
+    actor_or_id |> actor_topic() |> PubSub.subscribe()
   end
 
   def subscribe_for_events_for_actor_group(actor_group_or_id) do
@@ -204,28 +211,28 @@ defmodule Domain.Policies do
     payload = {:"#{action}_policy", policy.id}
     :ok = broadcast_to_policy(policy, payload)
     :ok = broadcast_to_account(policy.account_id, payload)
-    :ok = broadcast_access_event(action, policy)
+    :ok = broadcast_to_actor_group(policy.actor_group_id, access_event(action, policy))
     :ok
   end
 
-  defp broadcast_access_event(action, %Policy{} = policy)
-       when action in [:create, :enable] do
-    broadcast_to_actor_group(
-      policy.actor_group_id,
-      {:allow_access, policy.id, policy.actor_group_id, policy.resource_id}
-    )
+  def broadcast_access_events_for(action, actor_id, group_id) do
+    Policy.Query.by_actor_group_id(group_id)
+    |> Repo.all()
+    |> Enum.each(fn policy ->
+      :ok = broadcast_to_actor(actor_id, access_event(action, policy))
+    end)
   end
 
-  defp broadcast_access_event(action, %Policy{} = policy)
-       when action in [:delete, :disable] do
-    broadcast_to_actor_group(
-      policy.actor_group_id,
-      {:reject_access, policy.id, policy.actor_group_id, policy.resource_id}
-    )
+  defp access_event(action, %Policy{} = policy) when action in [:create, :enable] do
+    {:allow_access, policy.id, policy.actor_group_id, policy.resource_id}
   end
 
-  defp broadcast_access_event(:update, %Policy{}) do
-    :ok
+  defp access_event(action, %Policy{} = policy) when action in [:delete, :disable] do
+    {:reject_access, policy.id, policy.actor_group_id, policy.resource_id}
+  end
+
+  defp access_event(:update, %Policy{}) do
+    nil
   end
 
   defp broadcast_to_policy(policy_or_id, payload) do
@@ -238,6 +245,16 @@ defmodule Domain.Policies do
     account_or_id
     |> account_topic()
     |> PubSub.broadcast(payload)
+  end
+
+  defp broadcast_to_actor(actor_or_id, payload) do
+    actor_or_id
+    |> actor_topic()
+    |> PubSub.broadcast(payload)
+  end
+
+  defp broadcast_to_actor_group(_actor_group_or_id, nil) do
+    :ok
   end
 
   defp broadcast_to_actor_group(actor_group_or_id, payload) do

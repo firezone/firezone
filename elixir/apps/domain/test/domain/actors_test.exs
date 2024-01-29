@@ -1015,15 +1015,32 @@ defmodule Domain.ActorsTest do
       assert group.name == attrs.name
     end
 
-    test "updates group memberships", %{account: account, actor: actor1, subject: subject} do
+    test "updates group memberships and triggers policy access events", %{
+      account: account,
+      actor: actor1,
+      subject: subject
+    } do
       group = Fixtures.Actors.create_group(account: account, memberships: [])
       actor2 = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
 
+      resource = Fixtures.Resources.create_resource(account: account)
+
+      policy =
+        Fixtures.Policies.create_policy(
+          account: account,
+          actor_group: group,
+          resource: resource
+        )
+
+      resource_id = resource.id
+      policy_id = policy.id
       group_id = group.id
       actor1_id = actor1.id
       actor2_id = actor2.id
       :ok = subscribe_for_membership_updates_for_actor(actor1)
       :ok = subscribe_for_membership_updates_for_actor(actor2)
+      :ok = Domain.Policies.subscribe_for_events_for_actor(actor1)
+      :ok = Domain.Policies.subscribe_for_events_for_actor(actor2)
 
       attrs = %{memberships: []}
       assert {:ok, %{memberships: []}} = update_group(group, attrs, subject)
@@ -1035,6 +1052,7 @@ defmodule Domain.ActorsTest do
       assert Repo.one(Actors.Membership).actor_id == membership.actor_id
 
       assert_receive {:create_membership, ^actor1_id, ^group_id}
+      assert_receive {:allow_access, ^policy_id, ^group_id, ^resource_id}
 
       # Delete existing membership and create a new one
       attrs = %{memberships: [%{actor_id: actor2.id}]}
@@ -1043,7 +1061,9 @@ defmodule Domain.ActorsTest do
       assert Repo.one(Actors.Membership).actor_id == membership.actor_id
 
       assert_receive {:delete_membership, ^actor1_id, ^group_id}
+      assert_receive {:reject_access, ^policy_id, ^group_id, ^resource_id}
       assert_receive {:create_membership, ^actor2_id, ^group_id}
+      assert_receive {:allow_access, ^policy_id, ^group_id, ^resource_id}
 
       # Doesn't produce changes when membership is not changed
       attrs = %{memberships: [Map.from_struct(membership)]}
@@ -1052,6 +1072,8 @@ defmodule Domain.ActorsTest do
       assert Repo.one(Actors.Membership).actor_id == membership.actor_id
 
       refute_received {:create_membership, _, _}
+      refute_received {:allow_access, _, _, _}
+      refute_received {:reject_access, _, _, _}
 
       # Add one more membership
       attrs = %{memberships: [%{actor_id: actor1.id}, %{actor_id: actor2.id}]}
@@ -1062,6 +1084,7 @@ defmodule Domain.ActorsTest do
       assert Repo.aggregate(Actors.Membership, :count, :actor_id) == 2
 
       assert_receive {:create_membership, ^actor1_id, ^group_id}
+      assert_receive {:allow_access, ^policy_id, ^group_id, ^resource_id}
 
       # Delete all memberships
       assert {:ok, %{memberships: []}} = update_group(group, %{memberships: []}, subject)
@@ -1069,6 +1092,8 @@ defmodule Domain.ActorsTest do
 
       assert_receive {:delete_membership, ^actor1_id, ^group_id}
       assert_receive {:delete_membership, ^actor2_id, ^group_id}
+      assert_receive {:reject_access, ^policy_id, ^group_id, ^resource_id}
+      assert_receive {:reject_access, ^policy_id, ^group_id, ^resource_id}
     end
 
     test "returns error when subject has no permission to manage groups", %{
@@ -1723,15 +1748,38 @@ defmodule Domain.ActorsTest do
                  missing_permissions: [Actors.Authorizer.manage_actors_permission()]}}
     end
 
-    test "allows changing not synced memberships", %{account: account, subject: subject} do
+    test "allows changing not synced memberships and triggers policy access events", %{
+      account: account,
+      subject: subject
+    } do
       actor = Fixtures.Actors.create_actor(account: account)
       group1 = Fixtures.Actors.create_group(account: account)
       group2 = Fixtures.Actors.create_group(account: account)
 
+      resource = Fixtures.Resources.create_resource(account: account)
+
+      policy1 =
+        Fixtures.Policies.create_policy(
+          account: account,
+          actor_group: group1,
+          resource: resource
+        )
+
+      policy2 =
+        Fixtures.Policies.create_policy(
+          account: account,
+          actor_group: group2,
+          resource: resource
+        )
+
+      resource_id = resource.id
+      policy1_id = policy1.id
+      policy2_id = policy2.id
       actor_id = actor.id
       group1_id = group1.id
       group2_id = group2.id
       :ok = subscribe_for_membership_updates_for_actor(actor)
+      :ok = Domain.Policies.subscribe_for_events_for_actor(actor)
 
       attrs = %{memberships: []}
       assert {:ok, %{memberships: []}} = update_actor(actor, attrs, subject)
@@ -1743,6 +1791,7 @@ defmodule Domain.ActorsTest do
       assert Repo.one(Actors.Membership).group_id == membership.group_id
 
       assert_receive {:create_membership, ^actor_id, ^group1_id}
+      assert_receive {:allow_access, ^policy1_id, ^group1_id, ^resource_id}
 
       # Delete existing membership and create a new one
       attrs = %{memberships: [%{group_id: group2.id}]}
@@ -1751,7 +1800,9 @@ defmodule Domain.ActorsTest do
       assert Repo.one(Actors.Membership).group_id == membership.group_id
 
       assert_receive {:delete_membership, ^actor_id, ^group1_id}
+      assert_receive {:reject_access, ^policy1_id, ^group1_id, ^resource_id}
       assert_receive {:create_membership, ^actor_id, ^group2_id}
+      assert_receive {:allow_access, ^policy2_id, ^group2_id, ^resource_id}
 
       # Doesn't produce changes when membership is not changed
       attrs = %{memberships: [Map.from_struct(membership)]}
@@ -1760,6 +1811,8 @@ defmodule Domain.ActorsTest do
       assert Repo.one(Actors.Membership).group_id == membership.group_id
 
       refute_received {:create_membership, _, _}
+      refute_received {:allow_access, _, _, _}
+      refute_received {:reject_access, _, _, _}
 
       # Add one more membership
       attrs = %{memberships: [%{group_id: group1.id}, %{group_id: group2.id}]}
@@ -1770,13 +1823,16 @@ defmodule Domain.ActorsTest do
       assert Repo.aggregate(Actors.Membership, :count, :group_id) == 2
 
       assert_receive {:create_membership, ^actor_id, ^group1_id}
+      assert_receive {:allow_access, ^policy1_id, ^group1_id, ^resource_id}
 
       # Delete all memberships
       assert {:ok, %{memberships: []}} = update_actor(actor, %{memberships: []}, subject)
       assert Repo.aggregate(Actors.Membership, :count, :group_id) == 0
 
       assert_receive {:delete_membership, ^actor_id, ^group1_id}
+      assert_receive {:reject_access, ^policy1_id, ^group1_id, ^resource_id}
       assert_receive {:delete_membership, ^actor_id, ^group2_id}
+      assert_receive {:reject_access, ^policy2_id, ^group2_id, ^resource_id}
     end
 
     test "returns error on invalid membership", %{account: account, subject: subject} do

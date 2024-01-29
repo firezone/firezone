@@ -123,8 +123,8 @@ defmodule Domain.Actors do
         with: fn group ->
           group = Repo.preload(group, :memberships)
           changeset = Group.Changeset.update(group, attrs)
-          :ok = broadcast_memberships_events(changeset)
-          changeset
+          after_commit_cb = fn _group -> :ok = broadcast_memberships_events(changeset) end
+          {changeset, execute_after_commit: after_commit_cb}
         end
       )
     end
@@ -291,18 +291,17 @@ defmodule Domain.Actors do
           blacklisted_groups = list_blacklisted_groups(attrs)
           changeset = Actor.Changeset.update(actor, attrs, blacklisted_groups, subject)
 
+          after_commit_cb = fn _group -> :ok = broadcast_memberships_events(changeset) end
+
           cond do
             changeset.data.type != :account_admin_user ->
-              :ok = broadcast_memberships_events(changeset)
-              changeset
+              {changeset, execute_after_commit: after_commit_cb}
 
             Map.get(changeset.changes, :type) == :account_admin_user ->
-              :ok = broadcast_memberships_events(changeset)
-              changeset
+              {changeset, execute_after_commit: after_commit_cb}
 
             other_enabled_admins_exist?(actor) ->
-              :ok = broadcast_memberships_events(changeset)
-              changeset
+              {changeset, execute_after_commit: after_commit_cb}
 
             true ->
               :cant_remove_admin_type
@@ -505,6 +504,8 @@ defmodule Domain.Actors do
   end
 
   defp broadcast_membership_event(action, actor_id, group_id) do
+    :ok = Policies.broadcast_access_events_for(action, actor_id, group_id)
+
     actor_id
     |> actor_memberships_topic()
     |> PubSub.broadcast({:"#{action}_membership", actor_id, group_id})

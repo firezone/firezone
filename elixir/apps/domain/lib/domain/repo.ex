@@ -50,15 +50,33 @@ defmodule Domain.Repo do
         schema
         |> changeset_fun.()
         |> case do
-          %Ecto.Changeset{} = changeset -> update(changeset, mode: :savepoint)
-          reason -> {:error, reason}
+          {%Ecto.Changeset{} = changeset, execute_after_commit: cb} when is_function(cb, 1) ->
+            {update(changeset, mode: :savepoint), cb}
+
+          %Ecto.Changeset{} = changeset ->
+            {update(changeset, mode: :savepoint), nil}
+
+          reason ->
+            {:error, reason}
         end
       end
     end)
     |> case do
-      {:ok, {:ok, schema}} -> {:ok, schema}
-      {:ok, {:error, reason}} -> {:error, reason}
-      {:error, reason} -> {:error, reason}
+      {:ok, {{:ok, schema}, nil}} ->
+        {:ok, schema}
+
+      {:ok, {{:ok, schema}, cb}} ->
+        cb.(schema)
+        {:ok, schema}
+
+      {:ok, {{:error, reason}, _cb}} ->
+        {:error, reason}
+
+      {:ok, {:error, reason}} ->
+        {:error, reason}
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
