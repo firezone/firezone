@@ -9,8 +9,6 @@ use anyhow::{anyhow, bail, Context, Result};
 use crash_handler::CrashHandler;
 use std::{fs::File, io::Write, path::PathBuf};
 
-const SOCKET_NAME: &str = "dev.firezone.client.crash_handler";
-
 /// Attaches a crash handler to the client process
 ///
 /// Returns a CrashHandler that must be kept alive until the program exits.
@@ -46,8 +44,8 @@ pub(crate) fn attach_handler() -> Result<CrashHandler> {
 ///
 /// <https://jake-shadle.github.io/crash-reporting/#implementation>
 /// <https://chromium.googlesource.com/breakpad/breakpad/+/master/docs/getting_started_with_breakpad.md#terminology>
-pub(crate) fn server() -> Result<()> {
-    let mut server = minidumper::Server::with_name(SOCKET_NAME)?;
+pub(crate) fn server(socket_path: PathBuf) -> Result<()> {
+    let mut server = minidumper::Server::with_name(&*socket_path)?;
     let ab = std::sync::atomic::AtomicBool::new(false);
     server.run(Box::new(Handler), &ab, None)?;
     Ok(())
@@ -55,6 +53,13 @@ pub(crate) fn server() -> Result<()> {
 
 fn start_server_and_connect() -> Result<(minidumper::Client, std::process::Child)> {
     let exe = std::env::current_exe().context("unable to find our own exe path")?;
+    // Path of a Unix domain socket for IPC with the crash handler server
+    // <https://github.com/EmbarkStudios/crash-handling/issues/10>
+    let socket_path = app_local_data_dir()
+        .context("couldn't compute crash handler socket path")?
+        .join("data")
+        .join("crash_handler_pipe");
+
     let mut server = None;
 
     // I don't understand why there's a loop here. The original was an infinite loop,
@@ -63,7 +68,7 @@ fn start_server_and_connect() -> Result<(minidumper::Client, std::process::Child
     for _ in 0..10 {
         // Create the crash client first so we can error out if another instance of
         // the Firezone client is already using this socket for crash handling.
-        if let Ok(client) = minidumper::Client::with_name(SOCKET_NAME) {
+        if let Ok(client) = minidumper::Client::with_name(&*socket_path) {
             return Ok((
                 client,
                 server.ok_or_else(|| {
@@ -77,6 +82,7 @@ fn start_server_and_connect() -> Result<(minidumper::Client, std::process::Child
         server = Some(
             std::process::Command::new(&exe)
                 .arg("crash-handler-server")
+                .arg(&socket_path)
                 .spawn()
                 .context("unable to spawn server process")?,
         );
