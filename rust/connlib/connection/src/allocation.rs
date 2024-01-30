@@ -466,7 +466,9 @@ fn make_allocate_request() -> Message<Attribute> {
     );
 
     message.add_attribute(RequestedTransport::new(17));
-    // message.add_attribute(AdditionalAddressFamily::new(AddressFamily::V6)); TODO: Request IPv6 binding.
+    message.add_attribute(AdditionalAddressFamily::new(
+        stun_codec::rfc8656::attributes::AddressFamily::V6,
+    ));
 
     message
 }
@@ -475,7 +477,9 @@ fn make_refresh_request() -> Message<Attribute> {
     let mut message = Message::new(MessageClass::Request, REFRESH, TransactionId::new(random()));
 
     message.add_attribute(RequestedTransport::new(17));
-    // message.add_attribute(AdditionalAddressFamily::new(AddressFamily::V6)); TODO: Request IPv6 binding.
+    message.add_attribute(AdditionalAddressFamily::new(
+        stun_codec::rfc8656::attributes::AddressFamily::V6,
+    ));
 
     message
 }
