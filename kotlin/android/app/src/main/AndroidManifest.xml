@@ -70,6 +70,9 @@
             android:name="dev.firezone.android.features.settings.ui.SettingsActivity"
             android:exported="false" />
 
+        <meta-data android:name="android.content.APP_RESTRICTIONS"
+            android:resource="@xml/app_restrictions" />
+
         <service
             android:name="dev.firezone.android.tunnel.TunnelService"
             android:exported="true"

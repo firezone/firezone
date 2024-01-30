@@ -33,4 +33,8 @@
 	<string name="vpn_permission_description">Firezone requires the VPN permission in order to route packets from your device to protected resources in a secure manner. All communication is end-to-end encrypted; we can never decrypt or otherwise monitor your communication. Please grant the VPN permission by tapping the button below.</string>
 	<string name="request_permission">Request Permission</string>
 	<string name="signing_in_requires_chrome_browser">Signing in requires Chrome browser</string>
+
+	<!-- Managed Configuration -->
+	<string name="config_session_token_title">Session Token</string>
+	<string name="config_session_token_description">The session token used to authenticate the user.</string>
 </resources>
