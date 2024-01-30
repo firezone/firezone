@@ -86,7 +86,6 @@ fn start_server_and_connect() -> Result<(minidumper::Client, std::process::Child
         }
 
         server = Some(
-            //
             std::process::Command::new(&exe)
                 .arg("crash-handler-server")
                 .arg(&socket_path)
