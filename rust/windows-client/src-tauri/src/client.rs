@@ -1,6 +1,6 @@
 use anyhow::Result;
 use clap::{Args, Parser};
-use std::{os::windows::process::CommandExt, process::Command};
+use std::{os::windows::process::CommandExt, path::PathBuf, process::Command};
 
 mod about;
 mod auth;
@@ -107,7 +107,7 @@ pub(crate) fn run() -> Result<()> {
                 Ok(())
             }
         }
-        Some(Cmd::CrashHandlerServer) => crash_handling::server(),
+        Some(Cmd::CrashHandlerServer { socket_path }) => crash_handling::server(socket_path),
         Some(Cmd::Debug { command }) => debug_commands::run(command),
         // If we already tried to elevate ourselves, don't try again
         Some(Cmd::Elevated) => gui::run(GuiParams {
@@ -136,7 +136,9 @@ struct Cli {
 
 #[derive(clap::Subcommand)]
 pub enum Cmd {
-    CrashHandlerServer,
+    CrashHandlerServer {
+        socket_path: PathBuf,
+    },
     Debug {
         #[command(subcommand)]
         command: debug_commands::Cmd,
