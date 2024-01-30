@@ -14,12 +14,12 @@ jobs:
             runs-on: macos-14
             platform: macOS
             destination: platform=macOS
-            xcode: "15"
+            xcode: "15.2"
           - sdk: iphoneos
             runs-on: macos-14
             platform: iOS
             destination: generic/platform=iOS
-            xcode: "15"
+            xcode: "15.2"
     permissions:
       contents: read
       id-token: 'write'
