@@ -215,58 +215,20 @@ async fn accept_deep_links(mut server: deep_link::Server, ctlr_tx: CtlrTx) -> Re
 }
 
 fn handle_system_tray_event(app: &tauri::AppHandle, event: TrayMenuEvent) -> Result<()> {
-    let ctlr_tx = &app
-        .try_state::<Managed>()
-        .ok_or_else(|| anyhow!("can't get Managed struct from Tauri"))?
-        .ctlr_tx;
-
-    // TODO: Just handle these in Controller directly: <https://github.com/firezone/firezone/issues/2983>
-    match event {
-        TrayMenuEvent::About => {
-            let win = app
-                .get_window("about")
-                .ok_or_else(|| anyhow!("getting handle to About window"))?;
-
-            if win.is_visible()? {
-                win.hide()?;
-            } else {
-                win.show()?;
-            }
-        }
-        TrayMenuEvent::CancelSignIn => ctlr_tx.blocking_send(ControllerRequest::CancelSignIn)?,
-        TrayMenuEvent::Resource { id } => {
-            ctlr_tx.blocking_send(ControllerRequest::CopyResource(id))?
-        }
-        TrayMenuEvent::Settings => {
-            let win = app
-                .get_window("settings")
-                .ok_or_else(|| anyhow!("getting handle to Settings window"))?;
-
-            if win.is_visible()? {
-                // If we close the window here, we can't re-open it, we'd have to fully re-create it. Not needed for MVP - We agreed 100 MB is fine for the GUI client.
-                win.hide()?;
-            } else {
-                win.show()?;
-            }
-        }
-        TrayMenuEvent::SignIn => ctlr_tx.blocking_send(ControllerRequest::SignIn)?,
-        TrayMenuEvent::SignOut => ctlr_tx.blocking_send(ControllerRequest::SignOut)?,
-        TrayMenuEvent::Quit => ctlr_tx.blocking_send(ControllerRequest::Quit)?,
-    }
+    app.try_state::<Managed>()
+        .context("can't get Managed struct from Tauri")?
+        .ctlr_tx
+        .blocking_send(ControllerRequest::SystemTrayMenu(event))?;
     Ok(())
 }
 
 pub(crate) enum ControllerRequest {
-    CancelSignIn,
-    CopyResource(String),
     Disconnected,
     DisconnectedTokenExpired,
     ExportLogs { path: PathBuf, stem: PathBuf },
     GetAdvancedSettings(oneshot::Sender<AdvancedSettings>),
-    Quit,
     SchemeRequest(url::Url),
-    SignIn,
-    SignOut,
+    SystemTrayMenu(TrayMenuEvent),
     TunnelReady,
 }
 
@@ -502,6 +464,26 @@ impl Controller {
         self.refresh_system_tray_menu()?;
         Ok(())
     }
+
+    fn toggle_window(&self, window: system_tray_menu::Window) -> Result<()> {
+        let id = match window {
+            system_tray_menu::Window::About => "about",
+            system_tray_menu::Window::Settings => "settings",
+        };
+
+        let win = self
+            .app
+            .get_window(id)
+            .ok_or_else(|| anyhow!("getting handle to `{id}` window"))?;
+
+        if win.is_visible()? {
+            // If we close the window here, we can't re-open it, we'd have to fully re-create it. Not needed for MVP - We agreed 100 MB is fine for the GUI client.
+            win.hide()?;
+        } else {
+            win.show()?;
+        }
+        Ok(())
+    }
 }
 
 // TODO: After PR #2960 lands, move some of this into `impl Controller`
@@ -546,9 +528,6 @@ async fn run_controller(
                     break;
                 };
                 match req {
-                    Req::CopyResource(id) => if let Err(e) = controller.copy_resource(&id) {
-                        tracing::error!("couldn't copy resource to clipboard: {e:#?}");
-                    }
                     Req::Disconnected => {
                         tracing::debug!("connlib disconnected, tearing down Session");
                         controller.tunnel_ready = false;
@@ -559,10 +538,6 @@ async fn run_controller(
                         }
                         controller.refresh_system_tray_menu()?;
                     }
-                    Req::CancelSignIn | Req::SignOut => {
-                        tracing::info!("User signed out or canceled sign-in");
-                        controller.sign_out()?;
-                    }
                     Req::DisconnectedTokenExpired => {
                         tracing::info!("Token expired");
                         controller.sign_out()?;
@@ -572,11 +547,18 @@ async fn run_controller(
                     Req::GetAdvancedSettings(tx) => {
                         tx.send(controller.advanced_settings.clone()).ok();
                     }
-                    Req::Quit => break,
                     Req::SchemeRequest(url) => if let Err(e) = controller.handle_deep_link(&url).await {
                         tracing::error!("couldn't handle deep link: {e:#?}");
                     }
-                    Req::SignIn => {
+                    Req::SystemTrayMenu(TrayMenuEvent::ToggleWindow(window)) => controller.toggle_window(window)?,
+                    Req::SystemTrayMenu(TrayMenuEvent::CancelSignIn | TrayMenuEvent::SignOut) => {
+                        tracing::info!("User signed out or canceled sign-in");
+                        controller.sign_out()?;
+                    }
+                    Req::SystemTrayMenu(TrayMenuEvent::Resource { id }) => if let Err(e) = controller.copy_resource(&id) {
+                        tracing::error!("couldn't copy resource to clipboard: {e:#?}");
+                    }
+                    Req::SystemTrayMenu(TrayMenuEvent::SignIn) => {
                         if let Some(req) = controller.auth.start_sign_in()? {
                             let url = req.to_url(&controller.advanced_settings.auth_base_url);
                             controller.refresh_system_tray_menu()?;
@@ -587,6 +569,7 @@ async fn run_controller(
                             )?;
                         }
                     }
+                    Req::SystemTrayMenu(TrayMenuEvent::Quit) => break,
                     Req::TunnelReady => {
                         controller.tunnel_ready = true;
                         controller.refresh_system_tray_menu()?;
