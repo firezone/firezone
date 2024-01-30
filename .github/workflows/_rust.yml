@@ -90,22 +90,25 @@ jobs:
         run: |
           # Build Windows Tauri GUI
 
-          git config core.autocrlf false
+          echo "Before pnpm install"
           git status
           git diff
 
           pnpm install
 
+          echo "Before cargo build"
           git status
           git diff
 
           cargo build -p firezone-windows-client --release
 
+          echo "Before pnpm build"
           git status
           git diff
 
           pnpm build
 
+          echo "Before upload artifacts"
           git status
           git diff
 
