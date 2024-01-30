@@ -3,12 +3,9 @@ mod channel_data;
 mod index;
 mod info;
 mod ip_packet;
-mod pool;
+mod node;
 mod stun_binding;
 
 pub use info::ConnectionInfo;
 pub use ip_packet::IpPacket;
-pub use pool::{
-    Answer, ClientConnectionPool, ConnectionPool, Credentials, Error, Event, Offer,
-    ServerConnectionPool, Transmit,
-};
+pub use node::{Answer, ClientNode, Credentials, Error, Event, Node, Offer, ServerNode, Transmit};

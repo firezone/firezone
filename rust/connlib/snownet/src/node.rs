@@ -37,14 +37,14 @@ pub(crate) const WIREGUARD_KEEP_ALIVE: u16 = 5;
 const MAX_UDP_SIZE: usize = (1 << 16) - 1;
 
 /// Manages a set of wireguard connections for a server.
-pub type ServerConnectionPool<TId> = ConnectionPool<Server, TId>;
+pub type ServerNode<TId> = Node<Server, TId>;
 /// Manages a set of wireguard connections for a client.
-pub type ClientConnectionPool<TId> = ConnectionPool<Client, TId>;
+pub type ClientNode<TId> = Node<Client, TId>;
 
 pub enum Server {}
 pub enum Client {}
 
-pub struct ConnectionPool<T, TId> {
+pub struct Node<T, TId> {
     private_key: StaticSecret,
     index: IndexLfsr,
     rate_limiter: Arc<RateLimiter>,
@@ -81,7 +81,7 @@ pub enum Error {
     NotConnected,
 }
 
-impl<T, TId> ConnectionPool<T, TId>
+impl<T, TId> Node<T, TId>
 where
     TId: Eq + Hash + Copy + fmt::Display,
 {
@@ -547,7 +547,7 @@ where
     }
 }
 
-impl<TId> ConnectionPool<Client, TId>
+impl<TId> Node<Client, TId>
 where
     TId: Eq + Hash + Copy + fmt::Display,
 {
@@ -629,7 +629,7 @@ where
     }
 }
 
-impl<TId> ConnectionPool<Server, TId>
+impl<TId> Node<Server, TId>
 where
     TId: Eq + Hash + Copy + fmt::Display,
 {
@@ -690,7 +690,7 @@ where
     }
 }
 
-impl<T, TId> ConnectionPool<T, TId>
+impl<T, TId> Node<T, TId>
 where
     TId: Eq + Hash + Copy + fmt::Display,
 {
