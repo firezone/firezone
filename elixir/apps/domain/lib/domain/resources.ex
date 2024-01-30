@@ -177,8 +177,6 @@ defmodule Domain.Resources do
       |> Authorizer.for_subject(Resource, subject)
       |> Repo.fetch_and_update(
         with: fn resource ->
-          {:ok, _policies} = Policies.delete_policies_for(resource, subject)
-
           {_count, nil} =
             Connection.Query.by_resource_id(resource.id)
             |> Repo.delete_all()
@@ -189,6 +187,7 @@ defmodule Domain.Resources do
       |> case do
         {:ok, resource} ->
           :ok = broadcast_resource_events(:delete, resource)
+          {:ok, _policies} = Policies.delete_policies_for(resource, subject)
           {:ok, resource}
 
         {:error, reason} ->
