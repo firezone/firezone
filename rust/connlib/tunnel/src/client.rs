@@ -19,7 +19,6 @@ use futures::channel::mpsc::Receiver;
 use futures::stream;
 use futures_bounded::{FuturesMap, PushError, StreamMap};
 use hickory_resolver::lookup::Lookup;
-use hickory_resolver::proto::rr::resource;
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
 use itertools::Itertools;
