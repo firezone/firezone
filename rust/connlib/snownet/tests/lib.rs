@@ -1,5 +1,5 @@
 use boringtun::x25519::StaticSecret;
-use firezone_connection::{ClientConnectionPool, Event};
+use snownet::{ClientConnectionPool, Event};
 use std::{
     collections::HashSet,
     time::{Duration, Instant},

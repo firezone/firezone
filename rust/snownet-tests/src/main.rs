@@ -8,14 +8,14 @@ use std::{
 
 use anyhow::{bail, Context as _, Result};
 use boringtun::x25519::{PublicKey, StaticSecret};
-use firezone_connection::{
-    Answer, ClientConnectionPool, ConnectionPool, Credentials, IpPacket, Offer,
-    ServerConnectionPool,
-};
 use futures::{channel::mpsc, future::BoxFuture, FutureExt, SinkExt, StreamExt};
 use pnet_packet::{ip::IpNextHeaderProtocols, ipv4::Ipv4Packet};
 use redis::{aio::MultiplexedConnection, AsyncCommands};
 use secrecy::{ExposeSecret as _, Secret};
+use snownet::{
+    Answer, ClientConnectionPool, ConnectionPool, Credentials, IpPacket, Offer,
+    ServerConnectionPool,
+};
 use tokio::{io::ReadBuf, net::UdpSocket};
 use tracing_subscriber::EnvFilter;
 
@@ -25,8 +25,7 @@ const MAX_UDP_SIZE: usize = (1 << 16) - 1;
 async fn main() -> Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
-            EnvFilter::builder()
-                .parse("info,boringtun=debug,str0m=debug,firezone_connection=debug")?,
+            EnvFilter::builder().parse("info,boringtun=debug,str0m=debug,snownet=debug")?,
         )
         .init();
 
@@ -379,7 +378,7 @@ impl<T> Eventloop<T> {
         }
 
         match self.pool.poll_event() {
-            Some(firezone_connection::Event::SignalIceCandidate {
+            Some(snownet::Event::SignalIceCandidate {
                 connection,
                 candidate,
             }) => {
@@ -388,10 +387,10 @@ impl<T> Eventloop<T> {
                     candidate,
                 }))
             }
-            Some(firezone_connection::Event::ConnectionEstablished(conn)) => {
+            Some(snownet::Event::ConnectionEstablished(conn)) => {
                 return Poll::Ready(Ok(Event::ConnectionEstablished { conn }))
             }
-            Some(firezone_connection::Event::ConnectionFailed(conn)) => {
+            Some(snownet::Event::ConnectionFailed(conn)) => {
                 return Poll::Ready(Ok(Event::ConnectionFailed { conn }))
             }
             None => {}

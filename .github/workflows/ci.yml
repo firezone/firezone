@@ -63,11 +63,11 @@ jobs:
             context: rust
             build-args: |
               PACKAGE=firezone-linux-client
-          - image_name: connection-tests
+          - image_name: snownet-tests
             target: debug
             context: rust
             build-args: |
-              PACKAGE=firezone-connection-tests
+              PACKAGE=snownet-tests
           - image_name: elixir
             target: compiler
             context: elixir
@@ -139,7 +139,7 @@ jobs:
           target: ${{ matrix.target }}
           tags: ${{ steps.build_docker_tags.outputs.tags }}
 
-  connection-integration-tests:
+  snownet-integration-tests:
     needs: build-images
     runs-on: ubuntu-22.04
     permissions:
@@ -165,7 +165,7 @@ jobs:
       - name: Run ${{ matrix.file }} test
         run: |
           sudo sysctl -w vm.overcommit_memory=1
-          timeout 600 docker compose -f rust/connection-tests/${{ matrix.file }} up --exit-code-from dialer --abort-on-container-exit
+          timeout 600 docker compose -f rust/snownet-tests/${{ matrix.file }} up --exit-code-from dialer --abort-on-container-exit
 
   integration-tests:
     needs: build-images
