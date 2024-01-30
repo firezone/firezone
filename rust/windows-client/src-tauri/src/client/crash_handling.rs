@@ -5,7 +5,8 @@
 //! TODO: Capture crash dumps on panic.
 
 use crate::client::settings::app_local_data_dir;
-use anyhow::{anyhow, bail, Context};
+use anyhow::{anyhow, bail, Context, Result};
+use crash_handler::CrashHandler;
 use std::{fs::File, io::Write, path::PathBuf};
 
 const SOCKET_NAME: &str = "dev.firezone.client.crash_handler";
@@ -19,7 +20,7 @@ const SOCKET_NAME: &str = "dev.firezone.client.crash_handler";
 /// <https://github.com/EmbarkStudios/crash-handling/blob/main/minidumper/examples/diskwrite.rs>
 /// Linux has a special `set_ptracer` call that is handy
 /// MacOS needs a special `ping` call to flush messages inside the crash handler
-pub(crate) fn attach_handler() -> anyhow::Result<crash_handler::CrashHandler> {
+pub(crate) fn attach_handler() -> Result<CrashHandler> {
     // Attempt to connect to the server
     let (client, _server) = start_server_and_connect()?;
 
@@ -27,7 +28,7 @@ pub(crate) fn attach_handler() -> anyhow::Result<crash_handler::CrashHandler> {
     // has crashed. We should try to do as little as possible, basically just
     // tell the crash handler process to get our minidump and then return.
     // https://docs.rs/crash-handler/0.6.0/crash_handler/trait.CrashEvent.html#safety
-    let handler = crash_handler::CrashHandler::attach(unsafe {
+    let handler = CrashHandler::attach(unsafe {
         crash_handler::make_crash_event(move |crash_context| {
             crash_handler::CrashEventResult::Handled(client.request_dump(crash_context).is_ok())
         })
@@ -45,14 +46,14 @@ pub(crate) fn attach_handler() -> anyhow::Result<crash_handler::CrashHandler> {
 ///
 /// <https://jake-shadle.github.io/crash-reporting/#implementation>
 /// <https://chromium.googlesource.com/breakpad/breakpad/+/master/docs/getting_started_with_breakpad.md#terminology>
-pub(crate) fn server() -> anyhow::Result<()> {
+pub(crate) fn server() -> Result<()> {
     let mut server = minidumper::Server::with_name(SOCKET_NAME)?;
     let ab = std::sync::atomic::AtomicBool::new(false);
     server.run(Box::new(Handler), &ab, None)?;
     Ok(())
 }
 
-fn start_server_and_connect() -> anyhow::Result<(minidumper::Client, std::process::Child)> {
+fn start_server_and_connect() -> Result<(minidumper::Client, std::process::Child)> {
     let exe = std::env::current_exe().context("unable to find our own exe path")?;
     let mut server = None;
 
