@@ -13,7 +13,7 @@ Download the 64-bit ISO from <https://www.microsoft.com/en-us/evalcenter/downloa
 
 You should get this file: `SERVER_EVAL_x64FRE_en-us.iso`
 
-This will last for 6-12 months more or less.
+The Windows license is valid for 180 days
 
 ## Install Windows Server
 
@@ -23,3 +23,18 @@ This will last for 6-12 months more or less.
 1. Choose "Custom" to delete the old Windows install, if any, and re-install
 1. If there's any partition from a previous install, delete and recreate it
 1. Tell Windows to install on the primary partition
+
+## Windows first-time config
+
+1. Allow the PC to be "discoverable by other PCs and devices on this network", this might be needed for Firezone to work
+1. In the Server Manager, click "Manage", click "Server Manager Properties", check "Do not start Server Manager automatically at logon", and click "OK". Close Server Manager.
+1. Make any quality-of-life changes you want such as fixing the taskbar
+1. Open `https://ifconfig.net/` in Edge and clear out the Edge first-time setup
+1. In the VirtualBox menu, click "Devices", click "Insert Guest Additions CD image", and then install the VirtualBox guest additions, so you can drag-and-drop files into the VM easily.
+1. Perform a clean shutdown from within the Windows VM.
+1. In VirtualBox, take a snapshot of the VM so you can roll back to this state after installing Firezone.
+
+## Testing Firezone
+
+1. Copy-paste an MSI built from CI/CD into the VM and install Firezone
+1. Test Firezone as usual
