@@ -425,8 +425,7 @@ where
                                 tokio::time::sleep(backoff).await;
 
                                 let (stream, _) =
-                                    connect_async(make_request(secret_url, user_agent)?)
-                                        .await?;
+                                    connect_async(make_request(secret_url, user_agent)?).await?;
 
                                 Ok(stream)
                             }));
