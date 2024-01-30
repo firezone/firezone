@@ -537,6 +537,8 @@ defmodule Domain.ConfigTest do
         ]
       }
 
+      :ok = subscribe_to_events_in_account(account)
+
       assert {:ok, config} = update_config(config, attrs)
 
       assert config.clients_upstream_dns == [
@@ -549,6 +551,8 @@ defmodule Domain.ConfigTest do
                  address: "8.8.8.8"
                }
              ]
+
+      assert_receive :config_changed
     end
 
     test "changes database config value when it existed", %{account: account} do

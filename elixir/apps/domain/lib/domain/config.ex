@@ -1,5 +1,5 @@
 defmodule Domain.Config do
-  alias Domain.{Repo, Auth}
+  alias Domain.{Repo, Auth, PubSub}
   alias Domain.Config.Authorizer
   alias Domain.Config.{Definition, Definitions, Validator, Errors, Fetcher}
   alias Domain.Config.Configuration
@@ -83,13 +83,28 @@ defmodule Domain.Config do
 
   def update_config(%Configuration{} = configuration, attrs, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_permission()) do
-      update_config(configuration, attrs)
+      case update_config(configuration, attrs) do
+        {:ok, configuration} ->
+          :ok = broadcast_update_to_account(configuration)
+          {:ok, configuration}
+
+        {:error, changeset} ->
+          {:error, changeset}
+      end
     end
   end
 
   def update_config(%Configuration{} = configuration, attrs) do
     Configuration.Changeset.changeset(configuration, attrs)
     |> Repo.insert_or_update()
+    |> case do
+      {:ok, configuration} ->
+        :ok = broadcast_update_to_account(configuration)
+        {:ok, configuration}
+
+      {:error, changeset} ->
+        {:error, changeset}
+    end
   end
 
   def config_changeset(changeset, schema_key, config_key \\ nil) do
@@ -199,5 +214,24 @@ defmodule Domain.Config do
     end
 
     defp pdict_key_function(app, key), do: {app, key}
+  end
+
+  ### PubSub
+
+  defp account_topic(%Domain.Accounts.Account{} = account), do: account_topic(account.id)
+  defp account_topic(account_id), do: "configs:#{account_id}"
+
+  def subscribe_to_events_in_account(account_or_id) do
+    PubSub.subscribe(account_topic(account_or_id))
+  end
+
+  defp broadcast_update_to_account(configuration) do
+    broadcast_to_account(configuration.account_id, :config_changed)
+  end
+
+  defp broadcast_to_account(account_or_id, payload) do
+    account_or_id
+    |> account_topic()
+    |> PubSub.broadcast(payload)
   end
 end

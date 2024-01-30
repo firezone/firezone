@@ -215,6 +215,27 @@ defmodule API.Client.ChannelTest do
     end
   end
 
+  describe "handle_info/2 :config_changed" do
+    test "sends updated configuration", %{
+      client: client,
+      socket: socket
+    } do
+      channel_pid = socket.channel_pid
+      send(channel_pid, :config_changed)
+
+      assert_push "config_changed", %{interface: interface}
+
+      assert interface == %{
+               ipv4: client.ipv4,
+               ipv6: client.ipv6,
+               upstream_dns: [
+                 %{protocol: :ip_port, address: "1.1.1.1:53"},
+                 %{protocol: :ip_port, address: "8.8.8.8:53"}
+               ]
+             }
+    end
+  end
+
   describe "handle_info/2 :token_expired" do
     test "sends a token_expired messages and closes the socket", %{
       socket: socket
