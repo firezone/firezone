@@ -46,8 +46,8 @@ fn hostname() -> Result<()> {
 fn wintun() -> Result<()> {
     tracing_subscriber::fmt::init();
     let path = crate::client::wintun_install::dll_path()?;
-    unsafe { wintun::load_from_path(path) }?;
-    tracing::info!("Loaded wintun from {path}.");
+    unsafe { wintun::load_from_path(&path) }?;
+    tracing::info!(?path, "Loaded wintun.dll");
 
     Ok(())
 }

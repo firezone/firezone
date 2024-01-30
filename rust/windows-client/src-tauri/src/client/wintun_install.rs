@@ -21,6 +21,8 @@ pub(crate) enum Error {
     CantFindLocalAppData,
     #[error("create_dir_all failed")]
     CreateDirAll,
+    #[error("Computed DLL path is invalid")]
+    DllPathInvalid,
     #[error("permission denied")]
     PermissionDenied,
     #[error("platform not supported")]
@@ -36,7 +38,9 @@ pub(crate) fn ensure_dll() -> Result<PathBuf, Error> {
     let dll_bytes = get_dll_bytes().ok_or(Error::PlatformNotSupported)?;
 
     let path = dll_path()?;
-    std::fs::create_dir_all(path.parent()).map_err(|_| Error::CreateDirAll)?;
+    // The DLL path should always have a parent
+    let dir = path.parent().ok_or(Error::DllPathInvalid)?;
+    std::fs::create_dir_all(dir).map_err(|_| Error::CreateDirAll)?;
     tracing::info!(?path, "wintun.dll path");
 
     // This hash check is not meant to protect against attacks. It only lets us skip redundant disk writes, and it updates the DLL if needed.
