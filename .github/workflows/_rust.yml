@@ -88,6 +88,8 @@ jobs:
           targets: x86_64-pc-windows-msvc
       - name: Build release binaries
         run: |
+          # Build Windows Tauri GUI
+
           pnpm install
 
           # Set logs to debug
@@ -107,6 +109,10 @@ jobs:
 
           Get-FileHash ${{ env.BINARY_DEST_PATH }}-x64.exe -Algorithm SHA256 | Select-Object Hash > ${{ env.BINARY_DEST_PATH }}-x64.exe.sha256sum.txt
           Get-FileHash ${{ env.BINARY_DEST_PATH }}-x64.msi -Algorithm SHA256 | Select-Object Hash > ${{ env.BINARY_DEST_PATH }}-x64.msi.sha256sum.txt
+
+          # This might catch regressions in #3384, depending how CI runners
+          # handle exit codes
+          git diff --exit-code
       - name: Save Windows client
         uses: actions/upload-artifact@v4
         with:
