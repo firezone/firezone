@@ -66,9 +66,6 @@ jobs:
           # TODO: See https://github.com/firezone/firezone/issues/2311
           # TODO: See https://github.com/firezone/firezone/issues/2309
           ./gradlew testReleaseUnitTest
-      - name: Android Test Report
-        uses: asadmansr/android-test-report-action@v1.2.0
-        if: "!cancelled()"
       - name: Upload release
         if: ${{ github.event_name == 'workflow_dispatch' || (github.ref == 'refs/heads/main' && contains(github.event.head_commit.modified, 'elixir/VERSION')) }}
         env:
