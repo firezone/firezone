@@ -400,7 +400,7 @@ defmodule Domain.ActorsTest do
       assert {:ok,
               %{
                 plan_groups: {upsert, []},
-                delete_groups: {0, nil},
+                delete_groups: [],
                 upsert_groups: [_group1, _group2],
                 group_ids_by_provider_identifier: group_ids_by_provider_identifier
               }} = Repo.transaction(multi)
@@ -450,7 +450,7 @@ defmodule Domain.ActorsTest do
       assert {:ok,
               %{
                 plan_groups: {upsert, []},
-                delete_groups: {0, nil},
+                delete_groups: [],
                 upsert_groups: [_group1, _group2],
                 group_ids_by_provider_identifier: group_ids_by_provider_identifier
               }} = Repo.transaction(multi)
@@ -474,18 +474,42 @@ defmodule Domain.ActorsTest do
       assert Enum.count(group_ids_by_provider_identifier) == 2
     end
 
-    test "deletes removed groups", %{account: account, provider: provider} do
-      Fixtures.Actors.create_group(
-        account: account,
-        provider: provider,
-        provider_identifier: "G:GROUP_ID1"
-      )
+    test "deletes removed groups and broadcasts events for them", %{
+      account: account,
+      provider: provider
+    } do
+      group1 =
+        Fixtures.Actors.create_group(
+          account: account,
+          provider: provider,
+          provider_identifier: "G:GROUP_ID1"
+        )
 
-      Fixtures.Actors.create_group(
-        account: account,
-        provider: provider,
-        provider_identifier: "OU:OU_ID1"
-      )
+      group1_policy = Fixtures.Policies.create_policy(account: account, actor_group: group1)
+
+      actor = Fixtures.Actors.create_actor(account: account)
+      Fixtures.Actors.create_membership(account: account, actor: actor, group: group1)
+
+      group1_flow =
+        Fixtures.Flows.create_flow(
+          account: account,
+          actor_group: group1,
+          resource_id: group1_policy.resource_id,
+          policy: group1_policy
+        )
+
+      group2 =
+        Fixtures.Actors.create_group(
+          account: account,
+          provider: provider,
+          provider_identifier: "OU:OU_ID1"
+        )
+
+      :ok = subscribe_for_membership_updates_for_actor(actor)
+      :ok = Domain.Policies.subscribe_for_events_for_actor(actor)
+      :ok = Domain.Policies.subscribe_for_events_for_actor_group(group1)
+      :ok = Domain.Policies.subscribe_for_events_for_actor_group(group2)
+      :ok = Domain.Flows.subscribe_to_flow_expiration_events(group1_flow)
 
       attrs_list = []
 
@@ -495,16 +519,31 @@ defmodule Domain.ActorsTest do
               %{
                 groups: [_group1, _group2],
                 plan_groups: {[], delete},
-                delete_groups: {2, nil},
+                delete_groups: [deleted_group1, deleted_group2],
                 upsert_groups: [],
                 group_ids_by_provider_identifier: group_ids_by_provider_identifier
               }} = Repo.transaction(multi)
 
       assert Enum.all?(["G:GROUP_ID1", "OU:OU_ID1"], &(&1 in delete))
+      assert deleted_group1.provider_identifier in ["G:GROUP_ID1", "OU:OU_ID1"]
+      assert deleted_group2.provider_identifier in ["G:GROUP_ID1", "OU:OU_ID1"]
       assert Repo.aggregate(Actors.Group, :count) == 2
       assert Repo.aggregate(Actors.Group.Query.not_deleted(), :count) == 0
 
       assert Enum.empty?(group_ids_by_provider_identifier)
+
+      actor_id = actor.id
+
+      group1_id = group1.id
+      group1_policy_id = group1_policy.id
+      group1_flow_id = group1_flow.id
+      assert_receive {:delete_membership, ^actor_id, ^group1_id}
+      assert_receive {:reject_access, ^group1_policy_id, ^group1_id, _resource_id}
+      assert_receive {:expire_flow, ^group1_flow_id, _client_id, _resource_id}
+
+      group2_id = group2.id
+      refute_receive {:delete_membership, _actor_id, ^group2_id}
+      refute_receive {:reject_access, _policy_id, ^group2_id, _resource_id}
     end
 
     test "ignores groups that are not synced from the provider", %{
@@ -534,7 +573,7 @@ defmodule Domain.ActorsTest do
                 %{
                   groups: [],
                   plan_groups: {[], []},
-                  delete_groups: {0, nil},
+                  delete_groups: [],
                   upsert_groups: [],
                   group_ids_by_provider_identifier: %{}
                 }}
@@ -555,6 +594,8 @@ defmodule Domain.ActorsTest do
           provider_identifier: "G:GROUP_ID1"
         )
 
+      group1_policy = Fixtures.Policies.create_policy(account: account, actor_group: group1)
+
       group2 =
         Fixtures.Actors.create_group(
           account: account,
@@ -562,16 +603,24 @@ defmodule Domain.ActorsTest do
           provider_identifier: "OU:OU_ID1"
         )
 
+      group2_policy = Fixtures.Policies.create_policy(account: account, actor_group: group2)
+
+      actor1 = Fixtures.Actors.create_actor(account: account)
+
       identity1 =
         Fixtures.Auth.create_identity(
           account: account,
+          actor: actor1,
           provider: provider,
           provider_identifier: "USER_ID1"
         )
 
+      actor2 = Fixtures.Actors.create_actor(account: account)
+
       identity2 =
         Fixtures.Auth.create_identity(
           account: account,
+          actor: actor2,
           provider: provider,
           provider_identifier: "USER_ID2"
         )
@@ -581,7 +630,11 @@ defmodule Domain.ActorsTest do
         provider: provider,
         group1: group1,
         group2: group2,
+        group1_policy: group1_policy,
+        group2_policy: group2_policy,
+        actor1: actor1,
         identity1: identity1,
+        actor2: actor2,
         identity2: identity2,
         bypass: bypass
       }
@@ -589,6 +642,8 @@ defmodule Domain.ActorsTest do
 
     test "creates new memberships", %{
       provider: provider,
+      actor1: actor1,
+      actor2: actor2,
       group1: group1,
       group2: group2,
       identity1: identity1,
@@ -615,11 +670,18 @@ defmodule Domain.ActorsTest do
         |> Ecto.Multi.put(:group_ids_by_provider_identifier, group_ids_by_provider_identifier)
         |> sync_provider_memberships_multi(provider, tuples_list)
 
+      :ok = subscribe_for_membership_updates_for_actor(actor1)
+      :ok = subscribe_for_membership_updates_for_actor(actor2)
+      :ok = Domain.Policies.subscribe_for_events_for_actor(actor1)
+      :ok = Domain.Policies.subscribe_for_events_for_actor(actor2)
+      :ok = Domain.Policies.subscribe_for_events_for_actor_group(group1)
+      :ok = Domain.Policies.subscribe_for_events_for_actor_group(group2)
+
       assert {:ok,
               %{
                 plan_memberships: {insert, []},
                 delete_memberships: {0, nil},
-                upsert_memberships: [_membership1, _membership2]
+                insert_memberships: [_membership1, _membership2]
               }} = Repo.transaction(multi)
 
       assert {group1.id, identity1.actor_id} in insert
@@ -630,10 +692,15 @@ defmodule Domain.ActorsTest do
 
       for membership <- memberships do
         assert {membership.group_id, membership.actor_id} in insert
+
+        actor_id = membership.actor_id
+        group_id = membership.group_id
+        assert_receive {:create_membership, ^actor_id, ^group_id}
+        assert_receive {:allow_access, _policy_id, ^group_id, _resource_id}
       end
     end
 
-    test "updates existing memberships", %{
+    test "ignores existing memberships", %{
       account: account,
       provider: provider,
       group1: group1,
@@ -674,21 +741,27 @@ defmodule Domain.ActorsTest do
         |> Ecto.Multi.put(:group_ids_by_provider_identifier, group_ids_by_provider_identifier)
         |> sync_provider_memberships_multi(provider, tuples_list)
 
+      :ok = subscribe_for_membership_updates_for_actor(identity1.actor_id)
+      :ok = subscribe_for_membership_updates_for_actor(identity2.actor_id)
+      :ok = Domain.Policies.subscribe_for_events_for_actor(identity1.actor_id)
+      :ok = Domain.Policies.subscribe_for_events_for_actor(identity2.actor_id)
+      :ok = Domain.Policies.subscribe_for_events_for_actor_group(group1)
+      :ok = Domain.Policies.subscribe_for_events_for_actor_group(group2)
+
       assert {:ok,
               %{
-                plan_memberships: {upsert, []},
+                plan_memberships: {[], []},
                 delete_memberships: {0, nil},
-                upsert_memberships: [membership1, membership2]
+                insert_memberships: []
               }} = Repo.transaction(multi)
-
-      assert length(upsert) == 2
-      assert {group1.id, identity1.actor_id} in upsert
-      assert {group2.id, identity2.actor_id} in upsert
-      assert {membership1.group_id, membership1.actor_id} in upsert
-      assert {membership2.group_id, membership2.actor_id} in upsert
 
       assert Repo.aggregate(Actors.Membership, :count) == 2
       assert Repo.aggregate(Actors.Membership.Query.all(), :count) == 2
+
+      refute_receive {:create_membership, _actor_id, _group_id}
+      refute_receive {:delete_membership, _actor_id, _group_id}
+      refute_receive {:allow_access, _policy_id, _group_id, _resource_id}
+      refute_receive {:reject_access, _policy_id, _group_id, _resource_id}
     end
 
     test "deletes removed memberships", %{
@@ -696,9 +769,28 @@ defmodule Domain.ActorsTest do
       provider: provider,
       group1: group1,
       group2: group2,
+      actor1: actor1,
       identity1: identity1,
       identity2: identity2
     } do
+      policy = Fixtures.Policies.create_policy(account: account, actor_group: group1)
+
+      client =
+        Fixtures.Clients.create_client(
+          account: account,
+          actor: actor1,
+          identity: identity1
+        )
+
+      flow =
+        Fixtures.Flows.create_flow(
+          account: account,
+          actor_group: group1,
+          client: client,
+          resource_id: policy.resource_id,
+          policy: policy
+        )
+
       Fixtures.Actors.create_membership(
         account: account,
         group: group1,
@@ -729,11 +821,19 @@ defmodule Domain.ActorsTest do
         |> Ecto.Multi.put(:group_ids_by_provider_identifier, group_ids_by_provider_identifier)
         |> sync_provider_memberships_multi(provider, tuples_list)
 
+      :ok = subscribe_for_membership_updates_for_actor(identity1.actor_id)
+      :ok = subscribe_for_membership_updates_for_actor(identity2.actor_id)
+      :ok = Domain.Policies.subscribe_for_events_for_actor(identity1.actor_id)
+      :ok = Domain.Policies.subscribe_for_events_for_actor(identity2.actor_id)
+      :ok = Domain.Policies.subscribe_for_events_for_actor_group(group1)
+      :ok = Domain.Policies.subscribe_for_events_for_actor_group(group2)
+      :ok = Domain.Flows.subscribe_to_flow_expiration_events(flow)
+
       assert {:ok,
               %{
                 plan_memberships: {[], delete},
                 delete_memberships: {2, nil},
-                upsert_memberships: []
+                insert_memberships: []
               }} = Repo.transaction(multi)
 
       assert {group1.id, identity1.actor_id} in delete
@@ -741,6 +841,19 @@ defmodule Domain.ActorsTest do
 
       assert Repo.aggregate(Actors.Membership, :count) == 0
       assert Repo.aggregate(Actors.Membership.Query.all(), :count) == 0
+
+      actor1_id = identity1.actor_id
+      group1_id = group1.id
+      assert_receive {:delete_membership, ^actor1_id, ^group1_id}
+      assert_receive {:reject_access, _policy_id, ^group1_id, _resource_id}
+
+      actor2_id = identity2.actor_id
+      group2_id = group2.id
+      assert_receive {:delete_membership, ^actor2_id, ^group2_id}
+      assert_receive {:reject_access, _policy_id, ^group2_id, _resource_id}
+
+      flow_id = flow.id
+      assert_receive {:expire_flow, ^flow_id, _client_id, _resource_id}
     end
 
     test "deletes memberships of removed groups", %{
@@ -784,12 +897,11 @@ defmodule Domain.ActorsTest do
 
       assert {:ok,
               %{
-                plan_memberships: {upsert, delete},
-                delete_memberships: {1, nil},
-                upsert_memberships: [_membership]
+                plan_memberships: {[], delete},
+                insert_memberships: [],
+                delete_memberships: {1, nil}
               }} = Repo.transaction(multi)
 
-      assert upsert == [{group1.id, identity1.actor_id}]
       assert delete == [{group2.id, identity2.actor_id}]
 
       assert Repo.aggregate(Actors.Membership, :count) == 1
@@ -828,7 +940,7 @@ defmodule Domain.ActorsTest do
               %{
                 plan_memberships: {[], []},
                 delete_memberships: {0, nil},
-                upsert_memberships: []
+                insert_memberships: []
               }} = Repo.transaction(multi)
     end
   end

@@ -192,6 +192,29 @@ defmodule Domain.Actors do
     end
   end
 
+  @doc false
+  # used in sync workers
+  def delete_groups(queryable) do
+    {_count, groups} =
+      queryable
+      |> Group.Query.delete()
+      |> Repo.update_all([])
+
+    :ok =
+      Enum.each(groups, fn group ->
+        {:ok, _policies} = Domain.Policies.delete_policies_for(group)
+      end)
+
+    {_count, memberships} =
+      Membership.Query.by_group_id({:in, Enum.map(groups, & &1.id)})
+      |> Membership.Query.returning_all()
+      |> Repo.delete_all()
+
+    :ok = broadcast_membership_removal_events(memberships)
+
+    {:ok, groups}
+  end
+
   def group_synced?(%Group{provider_id: nil}), do: false
   def group_synced?(%Group{}), do: true
 
@@ -503,7 +526,7 @@ defmodule Domain.Actors do
     end)
   end
 
-  defp broadcast_membership_event(action, actor_id, group_id) do
+  def broadcast_membership_event(action, actor_id, group_id) do
     :ok = Policies.broadcast_access_events_for(action, actor_id, group_id)
 
     actor_id

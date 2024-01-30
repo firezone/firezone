@@ -315,10 +315,13 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.JobsTest do
         }
       ]
 
+      actor = Fixtures.Actors.create_actor(account: account)
+
       identity =
         Fixtures.Auth.create_identity(
           account: account,
           provider: provider,
+          actor: actor,
           provider_identifier: "USER_ID1"
         )
 
@@ -358,6 +361,23 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.JobsTest do
           "organizations" => [],
           "phones" => [],
           "primaryEmail" => "b@firez.xxx"
+        },
+        %{
+          "agreedToTerms" => true,
+          "archived" => false,
+          "creationTime" => "2023-06-10T17:32:06.000Z",
+          "id" => "USER_ID2",
+          "kind" => "admin#directory#user",
+          "lastLoginTime" => "2023-06-26T13:53:30.000Z",
+          "name" => %{
+            "familyName" => "Jamil",
+            "fullName" => "Jamil Bou Kheir",
+            "givenName" => "Bou Kheir"
+          },
+          "orgUnitPath" => "/",
+          "organizations" => [],
+          "phones" => [],
+          "primaryEmail" => "j@firez.xxx"
         }
       ]
 
@@ -370,6 +390,22 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.JobsTest do
           "name" => "Infrastructure",
           "directMembersCount" => "5",
           "description" => "Group to handle infrastructure alerts and management",
+          "adminCreated" => true,
+          "aliases" => [
+            "pnr@firez.one"
+          ],
+          "nonEditableAliases" => [
+            "i@ext.fiez.xxx"
+          ]
+        },
+        %{
+          "kind" => "admin#directory#group",
+          "id" => "GROUP_ID2",
+          "etag" => "\"ET\"",
+          "email" => "i@fiez.xxx",
+          "name" => "Devs",
+          "directMembersCount" => "1",
+          "description" => "Group for devs",
           "adminCreated" => true,
           "aliases" => [
             "pnr@firez.one"
@@ -394,7 +430,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.JobsTest do
         }
       ]
 
-      members = [
+      one_member = [
         %{
           "kind" => "admin#directory#member",
           "etag" => "\"ET\"",
@@ -406,6 +442,20 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.JobsTest do
         }
       ]
 
+      two_members =
+        one_member ++
+          [
+            %{
+              "kind" => "admin#directory#member",
+              "etag" => "\"ET\"",
+              "id" => "USER_ID2",
+              "email" => "j@firez.xxx",
+              "role" => "MEMBER",
+              "type" => "USER",
+              "status" => "ACTIVE"
+            }
+          ]
+
       actor = Fixtures.Actors.create_actor(account: account)
 
       Fixtures.Auth.create_identity(
@@ -414,6 +464,44 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.JobsTest do
         actor: actor,
         provider_identifier: "USER_ID1"
       )
+
+      other_actor = Fixtures.Actors.create_actor(account: account)
+
+      Fixtures.Auth.create_identity(
+        account: account,
+        provider: provider,
+        actor: other_actor,
+        provider_identifier: "USER_ID2"
+      )
+
+      deleted_identity =
+        Fixtures.Auth.create_identity(
+          account: account,
+          provider: provider,
+          actor: other_actor,
+          provider_identifier: "USER_ID2_2"
+        )
+
+      deleted_identity_token =
+        Fixtures.Tokens.create_token(
+          account: account,
+          actor: other_actor,
+          identity: deleted_identity
+        )
+
+      deleted_identity_client =
+        Fixtures.Clients.create_client(
+          account: account,
+          actor: other_actor,
+          identity: deleted_identity
+        )
+
+      deleted_identity_flow =
+        Fixtures.Flows.create_flow(
+          account: account,
+          client: deleted_identity_client,
+          token_id: deleted_identity_token.id
+        )
 
       group =
         Fixtures.Actors.create_group(
@@ -436,19 +524,42 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.JobsTest do
           provider_identifier: "OU:OU_ID1"
         )
 
+      policy = Fixtures.Policies.create_policy(account: account, actor_group: group)
+
+      deleted_policy =
+        Fixtures.Policies.create_policy(account: account, actor_group: deleted_group)
+
+      deleted_group_flow =
+        Fixtures.Flows.create_flow(
+          account: account,
+          actor_group: deleted_group,
+          resource_id: deleted_policy.resource_id,
+          policy: deleted_policy
+        )
+
       Fixtures.Actors.create_membership(account: account, actor: actor)
       Fixtures.Actors.create_membership(account: account, actor: actor, group: group)
+      deleted_membership = Fixtures.Actors.create_membership(account: account, group: group)
       Fixtures.Actors.create_membership(account: account, actor: actor, group: deleted_group)
       Fixtures.Actors.create_membership(account: account, actor: actor, group: org_unit)
+
+      :ok = Domain.Actors.subscribe_for_membership_updates_for_actor(actor)
+      :ok = Domain.Actors.subscribe_for_membership_updates_for_actor(other_actor)
+      :ok = Domain.Actors.subscribe_for_membership_updates_for_actor(deleted_membership.actor_id)
+      :ok = Domain.Policies.subscribe_for_events_for_actor(actor)
+      :ok = Domain.Policies.subscribe_for_events_for_actor(other_actor)
+      :ok = Domain.Policies.subscribe_for_events_for_actor_group(deleted_group)
+      :ok = Domain.Flows.subscribe_to_flow_expiration_events(deleted_group_flow)
+      :ok = Domain.Flows.subscribe_to_flow_expiration_events(deleted_identity_flow)
+      :ok = Phoenix.PubSub.subscribe(Domain.PubSub, "sessions:#{deleted_identity_token.id}")
 
       GoogleWorkspaceDirectory.override_endpoint_url("http://localhost:#{bypass.port}/")
       GoogleWorkspaceDirectory.mock_groups_list_endpoint(bypass, groups)
       GoogleWorkspaceDirectory.mock_organization_units_list_endpoint(bypass, organization_units)
       GoogleWorkspaceDirectory.mock_users_list_endpoint(bypass, users)
 
-      Enum.each(groups, fn group ->
-        GoogleWorkspaceDirectory.mock_group_members_list_endpoint(bypass, group["id"], members)
-      end)
+      GoogleWorkspaceDirectory.mock_group_members_list_endpoint(bypass, "GROUP_ID1", two_members)
+      GoogleWorkspaceDirectory.mock_group_members_list_endpoint(bypass, "GROUP_ID2", one_member)
 
       assert sync_directory(%{}) == :ok
 
@@ -458,13 +569,70 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.JobsTest do
       assert updated_org_unit = Repo.get(Domain.Actors.Group, org_unit.id)
       assert updated_org_unit.name == "OrgUnit:Engineering"
 
+      assert created_group = Repo.get_by(Domain.Actors.Group, provider_identifier: "G:GROUP_ID2")
+      assert created_group.name == "Group:Devs"
+
+      assert memberships = Repo.all(Domain.Actors.Membership.Query.all())
+      assert length(memberships) == 5
+
       assert memberships = Repo.all(Domain.Actors.Membership.Query.with_joined_groups())
-      assert length(memberships) == 3
+      assert length(memberships) == 5
 
       membership_group_ids = Enum.map(memberships, & &1.group_id)
       assert group.id in membership_group_ids
       assert org_unit.id in membership_group_ids
       assert deleted_group.id not in membership_group_ids
+
+      # Deletes membership for a deleted group
+      actor_id = actor.id
+      group_id = deleted_group.id
+      assert_receive {:delete_membership, ^actor_id, ^group_id}
+
+      # Created membership for a new group
+      actor_id = actor.id
+      group_id = created_group.id
+      assert_receive {:create_membership, ^actor_id, ^group_id}
+
+      # Created membership for a member of existing group
+      other_actor_id = other_actor.id
+      group_id = group.id
+      assert_receive {:create_membership, ^other_actor_id, ^group_id}
+
+      # Broadcasts allow_access for it
+      policy_id = policy.id
+      group_id = group.id
+      resource_id = policy.resource_id
+      assert_receive {:allow_access, ^policy_id, ^group_id, ^resource_id}
+
+      # Deletes membership that is not found on IdP end
+      actor_id = deleted_membership.actor_id
+      group_id = deleted_membership.group_id
+      assert_receive {:delete_membership, ^actor_id, ^group_id}
+
+      # Signs out users which identity has been deleted
+      topic = "sessions:#{deleted_identity_token.id}"
+      assert_receive %Phoenix.Socket.Broadcast{topic: ^topic, event: "disconnect", payload: nil}
+
+      # Deleted group deletes all policies and broadcasts reject access events for them
+      policy_id = deleted_policy.id
+      group_id = deleted_group.id
+      resource_id = deleted_policy.resource_id
+      assert_receive {:reject_access, ^policy_id, ^group_id, ^resource_id}
+
+      # Deleted policies expire all flows authorized by them
+      flow_id = deleted_group_flow.id
+      assert_receive {:expire_flow, ^flow_id, _client_id, ^resource_id}
+
+      # Expires flows for signed out user
+      flow_id = deleted_identity_flow.id
+      assert_receive {:expire_flow, ^flow_id, _client_id, _resource_id}
+
+      # Should not do anything else
+      refute_receive {:create_membership, _actor_id, _group_id}
+      refute_received {:remove_membership, _actor_id, _group_id}
+      refute_received {:allow_access, _policy_id, _group_id, _resource_id}
+      refute_received {:reject_access, _policy_id, _group_id, _resource_id}
+      refute_received {:expire_flow, _flow_id, _client_id, _resource_id}
     end
 
     test "persists the sync error on the provider", %{provider: provider} do

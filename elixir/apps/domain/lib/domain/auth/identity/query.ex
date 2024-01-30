@@ -116,6 +116,17 @@ defmodule Domain.Auth.Identity.Query do
     })
   end
 
+  def delete(queryable \\ not_deleted()) do
+    queryable
+    |> Ecto.Query.select([identities: identities], identities)
+    |> Ecto.Query.update([identities: identities],
+      set: [
+        deleted_at: fragment("COALESCE(?, NOW())", identities.deleted_at),
+        provider_state: ^%{}
+      ]
+    )
+  end
+
   def with_preloaded_assoc(queryable \\ not_deleted(), type \\ :left, assoc) do
     queryable
     |> with_assoc(type, assoc)

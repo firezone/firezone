@@ -1,6 +1,6 @@
 defmodule Domain.Policies do
   alias Domain.{Repo, Validator, PubSub}
-  alias Domain.{Auth, Accounts, Actors, Resources}
+  alias Domain.{Auth, Accounts, Actors, Resources, Flows}
   alias Domain.Policies.{Authorizer, Policy}
 
   def fetch_policy_by_id(id, %Auth.Subject{} = subject, opts \\ []) do
@@ -91,7 +91,7 @@ defmodule Domain.Policies do
       |> Repo.fetch_and_update(with: &Policy.Changeset.disable(&1, subject))
       |> case do
         {:ok, policy} ->
-          {:ok, _flows} = Domain.Flows.expire_flows_for(policy, subject)
+          {:ok, _flows} = Flows.expire_flows_for(policy, subject)
           :ok = broadcast_policy_events(:disable, policy)
           {:ok, policy}
 
@@ -143,7 +143,7 @@ defmodule Domain.Policies do
   end
 
   def delete_policies_for(%Actors.Group{} = actor_group) do
-    {:ok, _flows} = Domain.Flows.expire_flows_for(actor_group)
+    {:ok, _flows} = Flows.expire_flows_for(actor_group)
 
     Policy.Query.by_actor_group_id(actor_group.id)
     |> delete_policies()
@@ -151,7 +151,7 @@ defmodule Domain.Policies do
 
   defp delete_policies(queryable, assoc, subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_policies_permission()) do
-      {:ok, _flows} = Domain.Flows.expire_flows_for(assoc, subject)
+      {:ok, _flows} = Flows.expire_flows_for(assoc, subject)
 
       queryable
       |> Authorizer.for_subject(subject)
@@ -228,6 +228,8 @@ defmodule Domain.Policies do
   end
 
   def broadcast_access_events_for(action, actor_id, group_id) do
+    {:ok, _flows} = maybe_expire_flows(action, actor_id, group_id)
+
     Policy.Query.by_actor_group_id(group_id)
     |> Repo.all()
     |> Enum.each(fn policy ->
@@ -245,6 +247,14 @@ defmodule Domain.Policies do
 
   defp access_event(:update, %Policy{}) do
     nil
+  end
+
+  defp maybe_expire_flows(action, actor_id, group_id) when action in [:delete, :disable] do
+    Flows.expire_flows_for(actor_id, group_id)
+  end
+
+  defp maybe_expire_flows(_action, _actor_id, _group_id) do
+    {:ok, []}
   end
 
   defp broadcast_to_policy(policy_or_id, payload) do

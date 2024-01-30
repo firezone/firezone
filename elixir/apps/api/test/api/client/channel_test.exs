@@ -201,6 +201,7 @@ defmodule API.Client.ChannelTest do
       assert_push "init", %{}
       {:ok, _resource} = Domain.Actors.update_actor(actor, %{memberships: []}, subject)
       assert_push "resource_deleted", _payload
+      refute_push "resource_created_or_updated", _payload
     end
 
     test "subscribes for policy events", %{
@@ -210,6 +211,7 @@ defmodule API.Client.ChannelTest do
       assert_push "init", %{}
       {:ok, _resource} = Domain.Policies.disable_policy(dns_resource_policy, subject)
       assert_push "resource_deleted", _payload
+      refute_push "resource_created_or_updated", _payload
     end
   end
 

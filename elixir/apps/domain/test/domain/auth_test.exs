@@ -1,5 +1,5 @@
 defmodule Domain.AuthTest do
-  use Domain.DataCase
+  use Domain.DataCase, async: true
   import Domain.Auth
   alias Domain.{Auth, Tokens}
   alias Domain.Auth.Authorizer
@@ -1485,7 +1485,7 @@ defmodule Domain.AuthTest do
                 identities: [],
                 plan_identities: {insert, [], []},
                 insert_identities: [_actor1, _actor2],
-                delete_identities: {0, nil},
+                delete_identities: [],
                 actor_ids_by_provider_identifier: actor_ids_by_provider_identifier
               }} = Repo.transaction(multi)
 
@@ -1509,7 +1509,7 @@ defmodule Domain.AuthTest do
       assert Enum.count(actor_ids_by_provider_identifier) == 2
     end
 
-    test "update to existing actors", %{account: account, provider: provider} do
+    test "updates existing actors", %{account: account, provider: provider} do
       identity1 =
         Fixtures.Auth.create_identity(
           account: account,
@@ -1548,7 +1548,7 @@ defmodule Domain.AuthTest do
               %{
                 identities: [_identity1, _identity2],
                 plan_identities: {[], update, []},
-                delete_identities: {0, nil},
+                delete_identities: [],
                 insert_identities: [],
                 actor_ids_by_provider_identifier: actor_ids_by_provider_identifier
               }} = Repo.transaction(multi)
@@ -1573,17 +1573,45 @@ defmodule Domain.AuthTest do
     test "deletes removed identities", %{account: account, provider: provider} do
       provider_identifiers = ["USER_ID1", "USER_ID2"]
 
-      Fixtures.Auth.create_identity(
-        account: account,
-        provider: provider,
-        provider_identifier: Enum.at(provider_identifiers, 0)
-      )
+      deleted_identity_actor = Fixtures.Actors.create_actor(account: account)
+
+      deleted_identity =
+        Fixtures.Auth.create_identity(
+          account: account,
+          provider: provider,
+          actor: deleted_identity_actor,
+          provider_identifier: Enum.at(provider_identifiers, 0)
+        )
+
+      deleted_identity_token =
+        Fixtures.Tokens.create_token(
+          account: account,
+          actor: deleted_identity_actor,
+          identity: deleted_identity
+        )
+
+      deleted_identity_client =
+        Fixtures.Clients.create_client(
+          account: account,
+          actor: deleted_identity_actor,
+          identity: deleted_identity
+        )
+
+      deleted_identity_flow =
+        Fixtures.Flows.create_flow(
+          account: account,
+          client: deleted_identity_client,
+          token_id: deleted_identity_token.id
+        )
 
       Fixtures.Auth.create_identity(
         account: account,
         provider: provider,
         provider_identifier: Enum.at(provider_identifiers, 1)
       )
+
+      :ok = Phoenix.PubSub.subscribe(Domain.PubSub, "sessions:#{deleted_identity_token.id}")
+      :ok = Domain.Flows.subscribe_to_flow_expiration_events(deleted_identity_flow)
 
       attrs_list = []
 
@@ -1593,16 +1621,26 @@ defmodule Domain.AuthTest do
               %{
                 identities: [_identity1, _identity2],
                 plan_identities: {[], [], delete},
-                delete_identities: {2, nil},
+                delete_identities: [deleted_identity1, deleted_identity2],
                 insert_identities: [],
                 actor_ids_by_provider_identifier: actor_ids_by_provider_identifier
               }} = Repo.transaction(multi)
 
       assert Enum.all?(provider_identifiers, &(&1 in delete))
-      assert Repo.aggregate(Auth.Identity, :count) == 2
-      assert Repo.aggregate(Auth.Identity.Query.not_deleted(), :count) == 0
+      assert deleted_identity1.provider_identifier in delete
+      assert deleted_identity2.provider_identifier in delete
+      assert Repo.aggregate(Auth.Identity, :count) == 6
+      assert Repo.aggregate(Auth.Identity.Query.not_deleted(), :count) == 4
 
       assert Enum.empty?(actor_ids_by_provider_identifier)
+
+      # Signs out users which identity has been deleted
+      topic = "sessions:#{deleted_identity_token.id}"
+      assert_receive %Phoenix.Socket.Broadcast{topic: ^topic, event: "disconnect", payload: nil}
+
+      # Expires flows for signed out user
+      flow_id = deleted_identity_flow.id
+      assert_receive {:expire_flow, ^flow_id, _client_id, _resource_id}
     end
 
     test "ignores identities that are not synced from the provider", %{
@@ -1632,7 +1670,7 @@ defmodule Domain.AuthTest do
                 %{
                   identities: [],
                   plan_identities: {[], [], []},
-                  delete_identities: {0, nil},
+                  delete_identities: [],
                   insert_identities: [],
                   update_identities_and_actors: [],
                   actor_ids_by_provider_identifier: %{}
