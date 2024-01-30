@@ -941,6 +941,7 @@ mod tests {
 
         allocation.handle_input(
             RELAY,
+            PEER1,
             &encode(allocate_response(message.transaction_id())),
             Instant::now(),
         );
