@@ -44,6 +44,7 @@ pub type ClientNode<TId> = Node<Client, TId>;
 pub enum Server {}
 pub enum Client {}
 
+/// A node within a `snownet` network maintains connections to several other nodes.
 pub struct Node<T, TId> {
     private_key: StaticSecret,
     index: IndexLfsr,
