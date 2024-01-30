@@ -58,7 +58,7 @@ use super::insert_peers;
 //     }));
 // }
 
-impl<CB> Tunnel<CB, ClientState, Client, GatewayId>
+impl<CB> Tunnel<CB, ClientState, Client, GatewayId, PacketTransformClient>
 where
     CB: Callbacks + 'static,
 {
@@ -165,6 +165,10 @@ where
 
         // Partial reads of peers_by_ip can be problematic in the very unlikely case of an expiration
         // before inserting finishes.
+        self.connections
+            .lock()
+            .peers_by_id
+            .insert(gateway_id, Arc::clone(&peer));
         insert_peers(&mut self.role_state.lock().peers_by_ip, &peer_ips, peer);
 
         Ok(())

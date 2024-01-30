@@ -13,7 +13,7 @@ use std::task::{Context, Poll};
 const PEERS_IPV4: &str = "100.64.0.0/11";
 const PEERS_IPV6: &str = "fd00:2021:1111::/107";
 
-impl<CB> Tunnel<CB, GatewayState, Server, ClientId>
+impl<CB> Tunnel<CB, GatewayState, Server, ClientId, PacketTransformGateway>
 where
     CB: Callbacks + 'static,
 {

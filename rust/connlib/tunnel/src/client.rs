@@ -47,7 +47,7 @@ impl DnsResource {
     }
 }
 
-impl<CB> Tunnel<CB, ClientState, Client, GatewayId>
+impl<CB> Tunnel<CB, ClientState, Client, GatewayId, PacketTransformClient>
 where
     CB: Callbacks + 'static,
 {

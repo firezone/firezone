@@ -164,7 +164,7 @@ impl PacketTransformGateway {
     }
 }
 
-pub(crate) trait PacketTransform {
+pub trait PacketTransform {
     fn packet_untransform<'a>(
         &self,
         addr: &IpAddr,

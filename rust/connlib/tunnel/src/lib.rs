@@ -9,17 +9,18 @@ use futures_util::future::BoxFuture;
 use futures_util::FutureExt;
 use if_watch::tokio::IfWatcher;
 use ip_network_table::IpNetworkTable;
-use pnet_packet::{MutablePacket, Packet};
+use pnet_packet::Packet;
 use snownet::{Client, IpPacket, Node, Server};
 
 use hickory_resolver::proto::rr::RecordType;
 use parking_lot::Mutex;
-use peer::{PacketTransform, Peer};
+use peer::{PacketTransform, PacketTransformClient, PacketTransformGateway, Peer};
 use sockets::{Socket, UdpSockets};
 use tokio::time::MissedTickBehavior;
 
 use arc_swap::ArcSwapOption;
 use futures_util::task::AtomicWaker;
+use std::collections::HashMap;
 use std::{collections::HashSet, hash::Hash};
 use std::{
     collections::VecDeque,
@@ -75,18 +76,20 @@ pub(crate) fn get_v6(ip: IpAddr) -> Option<Ipv6Addr> {
     }
 }
 
-struct Connections<TRole, TId> {
+struct Connections<TRole, TId, TTransform> {
     pub connection_pool: Node<TRole, TId>,
     connection_pool_timeout: BoxFuture<'static, std::time::Instant>,
     if_watcher: IfWatcher,
     udp_sockets: UdpSockets<MAX_UDP_SIZE>,
     relay_socket: Socket<MAX_UDP_SIZE>,
     write_buf: Box<[u8; MAX_UDP_SIZE]>,
+    peers_by_id: HashMap<TId, Arc<Peer<TId, TTransform>>>,
 }
 
-impl<TRole, TId> Connections<TRole, TId>
+impl<TRole, TId, TTransform> Connections<TRole, TId, TTransform>
 where
     TId: Eq + Hash + Copy + fmt::Display,
+    TTransform: PacketTransform,
 {
     fn new(private_key: StaticSecret) -> Self {
         let if_watcher = IfWatcher::new().expect(
@@ -119,6 +122,7 @@ where
             udp_sockets,
             relay_socket,
             write_buf: Box::new([0; MAX_UDP_SIZE]),
+            peers_by_id: HashMap::new(),
         }
     }
 
@@ -144,7 +148,7 @@ where
     fn poll_sockets<'a>(
         &'a mut self,
         cx: &mut Context<'_>,
-    ) -> Poll<Option<snownet::MutableIpPacket<'a>>> {
+    ) -> Poll<Option<device_channel::Packet<'a>>> {
         match self.udp_sockets.poll_recv_from(cx) {
             Poll::Ready((local, Ok((from, packet)))) => {
                 match self.connection_pool.decapsulate(
@@ -156,7 +160,16 @@ where
                 ) {
                     Ok(Some((conn_id, packet))) => {
                         tracing::trace!(target: "wire", %local, %from, bytes = %packet.packet().len(), "read new packet");
-                        return Poll::Ready(Some(packet));
+                        let Some(peer) = self.peers_by_id.get(&conn_id) else {
+                            tracing::error!(%conn_id, %local, %from, "Couldn't find connection");
+                            return Poll::Ready(None);
+                        };
+                        return Poll::Ready(
+                            peer.transform
+                                .packet_untransform(&packet.source(), self.write_buf.as_mut())
+                                .map(|p| p.0)
+                                .ok(),
+                        );
                     }
                     Ok(None) => return Poll::Ready(None),
                     Err(e) => {
@@ -183,7 +196,16 @@ where
                 ) {
                     Ok(Some((conn_id, packet))) => {
                         tracing::trace!(target: "wire", %from, bytes = %packet.packet().len(), "read new relay packet");
-                        return Poll::Ready(Some(packet));
+                        let Some(peer) = self.peers_by_id.get(&conn_id) else {
+                            tracing::error!(%conn_id, %local, %from, "Couldn't find connection");
+                            return Poll::Ready(None);
+                        };
+                        return Poll::Ready(
+                            peer.transform
+                                .packet_untransform(&packet.source(), self.write_buf.as_mut())
+                                .map(|p| p.0)
+                                .ok(),
+                        );
                     }
                     Ok(None) => {
                         return Poll::Ready(None);
@@ -277,11 +299,11 @@ where
     }
 }
 
-pub type GatewayTunnel<CB> = Tunnel<CB, GatewayState, Server, ClientId>;
-pub type ClientTunnel<CB> = Tunnel<CB, ClientState, Client, GatewayId>;
+pub type GatewayTunnel<CB> = Tunnel<CB, GatewayState, Server, ClientId, PacketTransformGateway>;
+pub type ClientTunnel<CB> = Tunnel<CB, ClientState, Client, GatewayId, PacketTransformClient>;
 
 /// Tunnel is a wireguard state machine that uses webrtc's ICE channels instead of UDP sockets to communicate between peers.
-pub struct Tunnel<CB: Callbacks, TRoleState: RoleState, TRole, TId> {
+pub struct Tunnel<CB: Callbacks, TRoleState: RoleState, TRole, TId, TTransform> {
     // TODO: these are used to stop connections
     // peer_connections: Mutex<HashMap<TRoleState::Id, Arc<RTCIceTransport>>>,
     callbacks: CallbackErrorFacade<CB>,
@@ -298,10 +320,10 @@ pub struct Tunnel<CB: Callbacks, TRoleState: RoleState, TRole, TId> {
     read_buf: Mutex<Box<[u8; MAX_UDP_SIZE]>>,
     no_device_waker: AtomicWaker,
 
-    connections: Mutex<Connections<TRole, TId>>,
+    connections: Mutex<Connections<TRole, TId, TTransform>>,
 }
 
-impl<CB> Tunnel<CB, ClientState, Client, GatewayId>
+impl<CB> Tunnel<CB, ClientState, Client, GatewayId, PacketTransformClient>
 where
     CB: Callbacks + 'static,
 {
@@ -329,42 +351,7 @@ where
                 }
             }
 
-            match self.poll_next_event_common(cx) {
-                Poll::Ready(event) => return Poll::Ready(Ok(event)),
-                Poll::Pending => {}
-            }
-
-            // TODO: we can get better about these multiple locks
-            // if we move device and peer_by_ip to connections this problem goes away
-            match ready!(self
-                .connections
-                .lock()
-                .poll_sockets(cx))
-            {
-                Some(mut p) => {
-                    if let Some(peer) = peer_by_ip(&self.role_state.lock().peers_by_ip, p.source())
-                    {
-                        match peer.untransform(p.source(), p.packet_mut()) {
-                            Ok(p) => {
-                                let dev = self.device.load();
-                                let Some(dev) = dev.as_ref() else {
-                                    continue;
-                                };
-
-                                if let Err(e) = dev.write(p) {
-                                    tracing::error!("Error writing packet to device: {e:?}");
-                                }
-                            }
-                            Err(e) => {
-                                tracing::error!(from = %p.source(), to = %p.destination(), "Error handling packet: {e:#?}");
-                            }
-                        }
-                    }
-                }
-
-                None => {}
-            }
-
+            return Poll::Ready(Ok(ready!(self.poll_next_event_common(cx))));
         })
         .await
     }
@@ -384,7 +371,7 @@ where
                 return Poll::Ready(Ok(None));
             };
 
-            tracing::trace!(target: "wire", action = "read", from = "device", dest = %packet.destination());
+            tracing::trace!(target: "wire", action = "read", from = "device", dest = %packet.destination(), bytes = %packet.packet().len());
 
             let (packet, dest) = match role_state.handle_dns(packet) {
                 Ok(Some(response)) => {
@@ -407,7 +394,7 @@ where
     }
 }
 
-impl<CB> Tunnel<CB, GatewayState, Server, ClientId>
+impl<CB> Tunnel<CB, GatewayState, Server, ClientId, PacketTransformGateway>
 where
     CB: Callbacks + 'static,
 {
@@ -446,37 +433,7 @@ where
                 }
             }
 
-            match self.poll_next_event_common(cx) {
-                Poll::Ready(e) => return Poll::Ready(Ok(e)),
-                Poll::Pending => {}
-            }
-
-            // TODO: we can get better about these multiple locks
-            // if we move device and peer_by_ip to connections this problem goes away
-            match ready!(self.connections.lock().poll_sockets(cx)) {
-                Some(mut p) => {
-                    if let Some(peer) = peer_by_ip(&self.role_state.lock().peers_by_ip, p.source())
-                    {
-                        match peer.untransform(p.source(), p.packet_mut()) {
-                            Ok(p) => {
-                                let dev = self.device.load();
-                                let Some(dev) = dev.as_ref() else {
-                                    continue;
-                                };
-
-                                if let Err(e) = dev.write(p) {
-                                    tracing::error!("Error writing packet to device: {e:?}");
-                                }
-                            }
-                            Err(e) => {
-                                tracing::error!(from = %p.source(), to = %p.destination(), "Error handling packet: {e:#?}");
-                            }
-                        }
-                    }
-                }
-
-                None => {}
-            }
+            return Poll::Ready(Ok(ready!(self.poll_next_event_common(cx))));
         }
     }
 }
@@ -489,11 +446,12 @@ pub struct TunnelStats {
     // peer_connections: Vec<TId>,
 }
 
-impl<CB, TRoleState, TRole, TId> Tunnel<CB, TRoleState, TRole, TId>
+impl<CB, TRoleState, TRole, TId, TTransform> Tunnel<CB, TRoleState, TRole, TId, TTransform>
 where
     CB: Callbacks + 'static,
     TRoleState: RoleState<Id = TId>,
     TId: Eq + Hash + Copy + fmt::Display,
+    TTransform: PacketTransform,
 {
     pub fn stats(&self) -> TunnelStats {
         // TODO:
@@ -541,7 +499,6 @@ where
                 }
             }
 
-            // TODO: we are holding 2 mutexes here. Fix this.
             if let Poll::Ready(event) = self.connections.lock().poll_next_event(cx) {
                 return Poll::Ready(event);
             }
@@ -550,15 +507,23 @@ where
                 return Poll::Ready(event);
             }
 
-            return Poll::Pending;
+            let mut connections = self.connections.lock();
+            let Some(p) = ready!(connections.poll_sockets(cx)) else {
+                continue;
+            };
+
+            let dev = self.device.load();
+            let Some(dev) = dev.as_ref() else {
+                continue;
+            };
+
+            if let Err(e) = dev.write(p) {
+                tracing::error!("Error writing packet to device: {e:?}");
+            }
         }
     }
 
-    fn send_peer<TTransform: PacketTransform>(
-        &self,
-        packet: MutableIpPacket,
-        peer: &Peer<TRoleState::Id, TTransform>,
-    ) {
+    fn send_peer(&self, packet: MutableIpPacket, peer: &Peer<TRoleState::Id, TTransform>) {
         let Some(p) = peer.transform(packet) else {
             return;
         };
@@ -624,11 +589,12 @@ pub enum Event<TId> {
     DnsQuery(DnsQuery<'static>),
 }
 
-impl<CB, TRoleState, TRole, TId> Tunnel<CB, TRoleState, TRole, TId>
+impl<CB, TRoleState, TRole, TId, TTransform> Tunnel<CB, TRoleState, TRole, TId, TTransform>
 where
     CB: Callbacks + 'static,
     TRoleState: RoleState<Id = TId>,
     TId: Eq + Hash + Copy + fmt::Display,
+    TTransform: PacketTransform,
 {
     /// Creates a new tunnel.
     ///

@@ -25,7 +25,7 @@ pub enum Request {
     ReuseConnection(ReuseConnection),
 }
 
-impl<CB, TRoleState, TRole, TId> Tunnel<CB, TRoleState, TRole, TId>
+impl<CB, TRoleState, TRole, TId, TTransform> Tunnel<CB, TRoleState, TRole, TId, TTransform>
 where
     CB: Callbacks + 'static,
     TRoleState: RoleState<Id = TId>,

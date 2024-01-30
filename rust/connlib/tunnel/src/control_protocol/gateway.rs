@@ -39,7 +39,7 @@ use std::{collections::HashSet, sync::Arc};
 //     });
 // }
 
-impl<CB> Tunnel<CB, GatewayState, Server, ClientId>
+impl<CB> Tunnel<CB, GatewayState, Server, ClientId, PacketTransformGateway>
 where
     CB: Callbacks + 'static,
 {
@@ -206,6 +206,10 @@ where
                 .add_resource(address, resource.clone(), expires_at);
         }
 
+        self.connections
+            .lock()
+            .peers_by_id
+            .insert(client_id, Arc::clone(&peer));
         insert_peers(&mut self.role_state.lock().peers_by_ip, &ips, peer);
 
         Ok(())
