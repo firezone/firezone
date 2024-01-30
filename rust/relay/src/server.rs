@@ -1070,6 +1070,9 @@ fn error_response(
 /// In a nutshell, the requirements constrain the use such that there is only one way of doing things.
 /// For example, it is disallowed to use [RequestedAddressFamily] for IPv6 and requested and an IPv4 address via [AdditionalAddressFamily].
 /// If this is desired, clients should simply use [AdditionalAddressFamily] for IPv6.
+///
+/// Note: To be fully compliant with TURN, we would need to set `ADDRESS-ERROR-CODE` in the response for partially filled requests.
+/// We chose to omit this for now because our clients don't check for it.
 fn derive_relay_addresses(
     public_address: IpStack,
     requested_addr_family: Option<&RequestedAddressFamily>,

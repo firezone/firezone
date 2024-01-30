@@ -3,6 +3,7 @@
 //  (c) 2023 Firezone, Inc.
 //  LICENSE: Apache-2.0
 
+import FirezoneKit
 import Foundation
 import NetworkExtension
 import os.log
@@ -65,7 +66,7 @@ class NetworkSettings {
 
   func apply(
     on packetTunnelProvider: NEPacketTunnelProvider?,
-    logger: Logger,
+    logger: AppLogger,
     completionHandler: ((Error?) -> Void)?
   ) {
     guard let packetTunnelProvider = packetTunnelProvider else {
@@ -87,7 +88,7 @@ class NetworkSettings {
     for route in routes {
       let components = route.split(separator: "/")
       guard components.count == 2 else {
-        logger.error("NetworkSettings.apply: Ignoring invalid route '\(route, privacy: .public)'")
+        logger.error("NetworkSettings.apply: Ignoring invalid route '\(route)'")
         continue
       }
       let address = String(components[0])
@@ -96,33 +97,29 @@ class NetworkSettings {
         if groupSeparator == "." {  // IPv4 address
           if IPv4Address(address) == nil {
             logger.error(
-              "NetworkSettings.apply: Ignoring invalid IPv4 address '\(address, privacy: .public)'")
+              "NetworkSettings.apply: Ignoring invalid IPv4 address '\(address)'")
             continue
           }
           let validNetworkPrefixLength = Self.validNetworkPrefixLength(
             fromString: networkPrefixLengthString, maximumValue: 32)
           let ipv4SubnetMask = Self.ipv4SubnetMask(networkPrefixLength: validNetworkPrefixLength)
           logger.log(
-            """
-            NetworkSettings.apply:
-              Adding IPv4 route: \(address, privacy: .public) (subnet mask: \(ipv4SubnetMask, privacy: .public)
-            """)
+            "NetworkSettings.apply: Adding IPv4 route: \(address) (subnet mask: \(ipv4SubnetMask))"
+          )
           tunnelIPv4Routes.append(
             NEIPv4Route(destinationAddress: address, subnetMask: ipv4SubnetMask))
         }
         if groupSeparator == ":" {  // IPv6 address
           if IPv6Address(address) == nil {
             logger.error(
-              "NetworkSettings.apply: Ignoring invalid IPv6 address '\(address, privacy: .public)'")
+              "NetworkSettings.apply: Ignoring invalid IPv6 address '\(address)'")
             continue
           }
           let validNetworkPrefixLength = Self.validNetworkPrefixLength(
             fromString: networkPrefixLengthString, maximumValue: 128)
           logger.log(
-            """
-            NetworkSettings.apply:
-              Adding IPv6 route: \(address, privacy: .public) (prefix length: \(validNetworkPrefixLength, privacy: .public)
-            """)
+            "NetworkSettings.apply: Adding IPv6 route: \(address) (prefix length: \(validNetworkPrefixLength))"
+          )
 
           tunnelIPv6Routes.append(
             NEIPv6Route(
@@ -130,7 +127,7 @@ class NetworkSettings {
               networkPrefixLength: NSNumber(integerLiteral: validNetworkPrefixLength)))
         }
       } else {
-        logger.error("NetworkSettings.apply: Ignoring invalid route '\(route, privacy: .public)'")
+        logger.error("NetworkSettings.apply: Ignoring invalid route '\(route)'")
       }
     }
 
@@ -161,7 +158,7 @@ class NetworkSettings {
     logger.log("Attempting to set network settings")
     packetTunnelProvider.setTunnelNetworkSettings(tunnelNetworkSettings) { error in
       if let error = error {
-        logger.error("NetworkSettings.apply: Error: \(error, privacy: .public)")
+        logger.error("NetworkSettings.apply: Error: \(error)")
       } else {
         guard !self.hasUnappliedChanges else {
           // Changes were made while the packetTunnelProvider was setting the network settings
