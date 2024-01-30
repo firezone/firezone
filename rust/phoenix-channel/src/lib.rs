@@ -420,7 +420,7 @@ where
                             let secret_url = self.secret_url.clone();
                             let user_agent = self.user_agent.clone();
 
-                            // If we recieve a close message we close the socket and try to reconnect.
+                            // If we receive a close message we close the socket and try to reconnect.
                             self.state = State::Connecting(Box::pin(async move {
                                 tokio::time::sleep(backoff).await;
 
