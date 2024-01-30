@@ -12,7 +12,7 @@ defmodule Web.Clients.Show do
            Flows.list_flows_for(client, socket.assigns.subject,
              preload: [gateway: [:group], policy: [:resource, :actor_group]]
            ) do
-      :ok = Clients.subscribe_for_clients_presence_in_account(client.account_id)
+      :ok = Clients.subscribe_to_clients_presence_in_account(client.account_id)
 
       socket =
         assign(

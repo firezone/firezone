@@ -11,7 +11,7 @@ defmodule Web.Sites.Gateways.Index do
          {:ok, gateways} <-
            Gateways.list_gateways_for_group(group, subject) do
       gateways = Enum.sort_by(gateways, & &1.online?, :desc)
-      :ok = Gateways.subscribe_for_gateways_presence_in_group(group)
+      :ok = Gateways.subscribe_to_gateways_presence_in_group(group)
       socket = assign(socket, group: group, gateways: gateways, page_title: "Site Gateways")
       {:ok, socket}
     else

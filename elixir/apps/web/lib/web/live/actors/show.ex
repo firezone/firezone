@@ -22,7 +22,7 @@ defmodule Web.Actors.Show do
              preload: [gateway: [:group], client: [], policy: [:resource, :actor_group]]
            ) do
       actor = %{actor | clients: Clients.preload_online_statuses(actor.clients)}
-      :ok = Clients.subscribe_for_clients_presence_for_actor(actor)
+      :ok = Clients.subscribe_to_clients_presence_for_actor(actor)
 
       {:ok,
        assign(socket,
@@ -62,7 +62,7 @@ defmodule Web.Actors.Show do
           style="warning"
           icon="hero-lock-closed"
           phx-click="disable"
-          data-confirm={"Are you sure want to disable this #{actor_type(@actor.type)} and revoke all it's tokens?"}
+          data-confirm={"Are you sure want to disable this #{actor_type(@actor.type)} and revoke all its tokens?"}
         >
           Disable <%= actor_type(@actor.type) %>
         </.button>

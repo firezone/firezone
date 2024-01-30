@@ -1029,7 +1029,7 @@ defmodule Domain.ResourcesTest do
           ]
         )
 
-      :ok = subscribe_for_events_for_account(account)
+      :ok = subscribe_to_events_for_account(account)
 
       assert {:ok, resource} = create_resource(attrs, subject)
 
@@ -1081,7 +1081,7 @@ defmodule Domain.ResourcesTest do
       resource: resource,
       subject: subject
     } do
-      :ok = subscribe_for_events_for_account(account)
+      :ok = subscribe_to_events_for_account(account)
 
       attrs = %{"name" => "foo"}
       assert {:ok, resource} = update_resource(resource, attrs, subject)
@@ -1094,7 +1094,7 @@ defmodule Domain.ResourcesTest do
       resource: resource,
       subject: subject
     } do
-      :ok = subscribe_for_events_for_resource(resource)
+      :ok = subscribe_to_events_for_resource(resource)
 
       attrs = %{"name" => "foo"}
       assert {:ok, resource} = update_resource(resource, attrs, subject)
@@ -1232,7 +1232,7 @@ defmodule Domain.ResourcesTest do
       resource: resource,
       subject: subject
     } do
-      :ok = subscribe_for_events_for_account(account)
+      :ok = subscribe_to_events_for_account(account)
 
       assert {:ok, resource} = delete_resource(resource, subject)
 
@@ -1244,7 +1244,7 @@ defmodule Domain.ResourcesTest do
       resource: resource,
       subject: subject
     } do
-      :ok = subscribe_for_events_for_resource(resource)
+      :ok = subscribe_to_events_for_resource(resource)
 
       assert {:ok, resource} = delete_resource(resource, subject)
 

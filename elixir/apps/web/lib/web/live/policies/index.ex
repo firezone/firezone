@@ -4,7 +4,7 @@ defmodule Web.Policies.Index do
 
   def mount(_params, _session, socket) do
     with {:ok, socket} <- load_policies_with_assocs(socket) do
-      :ok = Policies.subscribe_for_events_for_account(socket.assigns.account)
+      :ok = Policies.subscribe_to_events_for_account(socket.assigns.account)
       {:ok, assign(socket, page_title: "Policies")}
     else
       _other -> raise Web.LiveErrors.NotFoundError

@@ -7,7 +7,7 @@ defmodule Web.Sites.Index do
 
     with {:ok, groups} <-
            Gateways.list_groups(subject, preload: [:gateways, connections: [:resource]]) do
-      :ok = Gateways.subscribe_for_gateways_presence_in_account(socket.assigns.account)
+      :ok = Gateways.subscribe_to_gateways_presence_in_account(socket.assigns.account)
 
       socket =
         assign(socket,

@@ -199,19 +199,19 @@ defmodule Domain.Policies do
   defp actor_topic(%Actors.Actor{} = actor), do: actor_topic(actor.id)
   defp actor_topic(actor_id), do: "actor_policies:#{actor_id}"
 
-  def subscribe_for_events_for_policy(policy_or_id) do
+  def subscribe_to_events_for_policy(policy_or_id) do
     policy_or_id |> policy_topic() |> PubSub.subscribe()
   end
 
-  def subscribe_for_events_for_account(account_or_id) do
+  def subscribe_to_events_for_account(account_or_id) do
     account_or_id |> account_topic() |> PubSub.subscribe()
   end
 
-  def subscribe_for_events_for_actor(actor_or_id) do
+  def subscribe_to_events_for_actor(actor_or_id) do
     actor_or_id |> actor_topic() |> PubSub.subscribe()
   end
 
-  def subscribe_for_events_for_actor_group(actor_group_or_id) do
+  def subscribe_to_events_for_actor_group(actor_group_or_id) do
     actor_group_or_id |> actor_group_topic() |> PubSub.subscribe()
   end
 

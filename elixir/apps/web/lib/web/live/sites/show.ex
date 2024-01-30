@@ -19,7 +19,7 @@ defmodule Web.Sites.Show do
            |> Enum.map(& &1.resource),
          {:ok, resource_actor_groups_peek} <-
            Resources.peek_resource_actor_groups(resources, 3, socket.assigns.subject) do
-      :ok = Gateways.subscribe_for_gateways_presence_in_group(group)
+      :ok = Gateways.subscribe_to_gateways_presence_in_group(group)
 
       {:ok,
        assign(socket,

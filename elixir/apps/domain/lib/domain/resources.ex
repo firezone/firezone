@@ -229,7 +229,7 @@ defmodule Domain.Resources do
   defp account_topic(%Accounts.Account{} = account), do: account_topic(account.id)
   defp account_topic(account_id), do: "account_policies:#{account_id}"
 
-  def subscribe_for_events_for_resource(resource_or_id) do
+  def subscribe_to_events_for_resource(resource_or_id) do
     resource_or_id |> resource_topic() |> PubSub.subscribe()
   end
 
@@ -237,7 +237,7 @@ defmodule Domain.Resources do
     resource_or_id |> resource_topic() |> PubSub.unsubscribe()
   end
 
-  def subscribe_for_events_for_account(account_or_id) do
+  def subscribe_to_events_for_account(account_or_id) do
     account_or_id |> account_topic() |> PubSub.subscribe()
   end
 

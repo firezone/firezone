@@ -12,7 +12,7 @@ defmodule Web.Policies.Show do
            Flows.list_flows_for(policy, socket.assigns.subject,
              preload: [client: [:actor], gateway: [:group]]
            ) do
-      :ok = Policies.subscribe_for_events_for_policy(policy)
+      :ok = Policies.subscribe_to_events_for_policy(policy)
 
       socket =
         assign(socket,

@@ -50,7 +50,7 @@ defmodule API.Gateway.Channel do
   end
 
   def handle_info("disconnect", socket) do
-    OpenTelemetry.Tracer.with_span "client.disconnect" do
+    OpenTelemetry.Tracer.with_span "gateway.disconnect" do
       push(socket, "disconnect", %{"reason" => "token_expired"})
       send(socket.transport_pid, %Phoenix.Socket.Broadcast{event: "disconnect"})
       {:stop, :shutdown, socket}
@@ -103,7 +103,7 @@ defmodule API.Gateway.Channel do
       :ok = Flows.subscribe_to_flow_expiration_events(flow_id)
 
       resource = Resources.fetch_resource_by_id!(resource_id)
-      :ok = Resources.subscribe_for_events_for_resource(resource_id)
+      :ok = Resources.subscribe_to_events_for_resource(resource_id)
 
       ref = Ecto.UUID.generate()
 
@@ -211,7 +211,7 @@ defmodule API.Gateway.Channel do
 
       client = Clients.fetch_client_by_id!(client_id, preload: [:actor])
       resource = Resources.fetch_resource_by_id!(resource_id)
-      :ok = Resources.subscribe_for_events_for_resource(resource_id)
+      :ok = Resources.subscribe_to_events_for_resource(resource_id)
 
       {relay_hosting_type, relay_connection_type} =
         Gateways.relay_strategy([socket.assigns.gateway_group])

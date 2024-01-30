@@ -55,15 +55,15 @@ defmodule API.Client.Channel do
 
       # We subscribe for all resource events but only care about update events,
       # where resource might be renamed which should be propagated to the UI.
-      :ok = Enum.each(resources, &Resources.subscribe_for_events_for_resource/1)
+      :ok = Enum.each(resources, &Resources.subscribe_to_events_for_resource/1)
 
       # We subscribe for membership updates for all actor groups the client is a member of,
-      :ok = Actors.subscribe_for_membership_updates_for_actor(socket.assigns.subject.actor)
+      :ok = Actors.subscribe_to_membership_updates_for_actor(socket.assigns.subject.actor)
 
       # We subscribe for policy access events for the actor and the groups the client is a member of,
       {:ok, actor_group_ids} = Actors.list_actor_group_ids(socket.assigns.subject.actor)
-      :ok = Enum.each(actor_group_ids, &Policies.subscribe_for_events_for_actor_group/1)
-      :ok = Policies.subscribe_for_events_for_actor(socket.assigns.subject.actor)
+      :ok = Enum.each(actor_group_ids, &Policies.subscribe_to_events_for_actor_group/1)
+      :ok = Policies.subscribe_to_events_for_actor(socket.assigns.subject.actor)
 
       :ok =
         push(socket, "init", %{
@@ -171,7 +171,7 @@ defmodule API.Client.Channel do
 
   # Those events are broadcasted by Actors whenever a membership is created or deleted
   def handle_info({:create_membership, _actor_id, group_id}, socket) do
-    :ok = Policies.subscribe_for_events_for_actor_group(group_id)
+    :ok = Policies.subscribe_to_events_for_actor_group(group_id)
     {:noreply, socket}
   end
 
@@ -192,7 +192,7 @@ defmodule API.Client.Channel do
         actor_group_id: actor_group_id,
         resource_id: resource_id
       } do
-      :ok = Resources.subscribe_for_events_for_resource(resource_id)
+      :ok = Resources.subscribe_to_events_for_resource(resource_id)
 
       case Resources.fetch_and_authorize_resource_by_id(resource_id, socket.assigns.subject) do
         {:ok, resource} ->

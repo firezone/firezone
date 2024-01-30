@@ -24,7 +24,7 @@ defmodule API.Relay.Channel do
   end
 
   def handle_info("disconnect", socket) do
-    OpenTelemetry.Tracer.with_span "client.disconnect" do
+    OpenTelemetry.Tracer.with_span "relay.disconnect" do
       push(socket, "disconnect", %{"reason" => "token_expired"})
       send(socket.transport_pid, %Phoenix.Socket.Broadcast{event: "disconnect"})
       {:stop, :shutdown, socket}

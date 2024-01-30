@@ -11,7 +11,7 @@ defmodule Web.RelayGroups.Show do
                created_by_identity: [:actor]
              ]
            ) do
-      :ok = Relays.subscribe_for_relays_presence_in_group(group)
+      :ok = Relays.subscribe_to_relays_presence_in_group(group)
       socket = assign(socket, group: group, page_title: "Relay Group #{group.name}")
       {:ok, socket}
     else

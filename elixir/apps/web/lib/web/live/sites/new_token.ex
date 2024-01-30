@@ -7,7 +7,7 @@ defmodule Web.Sites.NewToken do
       {group, env} =
         if connected?(socket) do
           {:ok, encoded_token} = Gateways.create_token(group, %{}, socket.assigns.subject)
-          :ok = Gateways.subscribe_for_gateways_presence_in_group(group)
+          :ok = Gateways.subscribe_to_gateways_presence_in_group(group)
           {group, env(encoded_token)}
         else
           {group, nil}

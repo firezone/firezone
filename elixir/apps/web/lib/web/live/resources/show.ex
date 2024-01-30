@@ -14,7 +14,7 @@ defmodule Web.Resources.Show do
            Flows.list_flows_for(resource, socket.assigns.subject,
              preload: [client: [:actor], gateway: [:group], policy: [:resource, :actor_group]]
            ) do
-      :ok = Resources.subscribe_for_events_for_resource(resource)
+      :ok = Resources.subscribe_to_events_for_resource(resource)
 
       socket =
         assign(

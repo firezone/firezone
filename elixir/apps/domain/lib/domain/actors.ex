@@ -451,7 +451,7 @@ defmodule Domain.Actors do
   defp actor_memberships_topic(%Actor{} = actor), do: actor_memberships_topic(actor.id)
   defp actor_memberships_topic(actor_id), do: "actor_memberships:#{actor_id}"
 
-  def subscribe_for_membership_updates_for_actor(actor_or_id) do
+  def subscribe_to_membership_updates_for_actor(actor_or_id) do
     actor_or_id |> actor_memberships_topic() |> PubSub.subscribe()
   end
 

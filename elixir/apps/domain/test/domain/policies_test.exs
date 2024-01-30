@@ -244,7 +244,7 @@ defmodule Domain.PoliciesTest do
         resource_id: resource.id
       }
 
-      :ok = subscribe_for_events_for_account(account)
+      :ok = subscribe_to_events_for_account(account)
 
       assert {:ok, policy} = create_policy(attrs, subject)
 
@@ -264,7 +264,7 @@ defmodule Domain.PoliciesTest do
         resource_id: resource.id
       }
 
-      :ok = subscribe_for_events_for_actor_group(actor_group)
+      :ok = subscribe_to_events_for_actor_group(actor_group)
 
       assert {:ok, policy} = create_policy(attrs, subject)
 
@@ -309,7 +309,7 @@ defmodule Domain.PoliciesTest do
       subject: subject,
       policy: policy
     } do
-      :ok = subscribe_for_events_for_account(account)
+      :ok = subscribe_to_events_for_account(account)
 
       attrs = %{description: "updated policy description"}
       assert {:ok, policy} = update_policy(policy, attrs, subject)
@@ -322,7 +322,7 @@ defmodule Domain.PoliciesTest do
       subject: subject,
       policy: policy
     } do
-      :ok = subscribe_for_events_for_policy(policy)
+      :ok = subscribe_to_events_for_policy(policy)
 
       attrs = %{description: "updated policy description"}
       assert {:ok, policy} = update_policy(policy, attrs, subject)
@@ -335,7 +335,7 @@ defmodule Domain.PoliciesTest do
       subject: subject,
       policy: policy
     } do
-      :ok = subscribe_for_events_for_actor_group(policy.actor_group_id)
+      :ok = subscribe_to_events_for_actor_group(policy.actor_group_id)
 
       attrs = %{description: "updated policy description"}
       assert {:ok, _policy} = update_policy(policy, attrs, subject)
@@ -454,7 +454,7 @@ defmodule Domain.PoliciesTest do
       subject: subject,
       policy: policy
     } do
-      :ok = subscribe_for_events_for_account(account)
+      :ok = subscribe_to_events_for_account(account)
 
       assert {:ok, policy} = disable_policy(policy, subject)
 
@@ -466,7 +466,7 @@ defmodule Domain.PoliciesTest do
       subject: subject,
       policy: policy
     } do
-      :ok = subscribe_for_events_for_policy(policy)
+      :ok = subscribe_to_events_for_policy(policy)
 
       assert {:ok, policy} = disable_policy(policy, subject)
 
@@ -478,7 +478,7 @@ defmodule Domain.PoliciesTest do
       subject: subject,
       policy: policy
     } do
-      :ok = subscribe_for_events_for_actor_group(policy.actor_group_id)
+      :ok = subscribe_to_events_for_actor_group(policy.actor_group_id)
 
       assert {:ok, policy} = disable_policy(policy, subject)
 
@@ -548,7 +548,7 @@ defmodule Domain.PoliciesTest do
       subject: subject,
       policy: policy
     } do
-      :ok = subscribe_for_events_for_account(account)
+      :ok = subscribe_to_events_for_account(account)
 
       assert {:ok, policy} = enable_policy(policy, subject)
 
@@ -560,7 +560,7 @@ defmodule Domain.PoliciesTest do
       subject: subject,
       policy: policy
     } do
-      :ok = subscribe_for_events_for_policy(policy)
+      :ok = subscribe_to_events_for_policy(policy)
 
       assert {:ok, policy} = enable_policy(policy, subject)
 
@@ -572,7 +572,7 @@ defmodule Domain.PoliciesTest do
       subject: subject,
       policy: policy
     } do
-      :ok = subscribe_for_events_for_actor_group(policy.actor_group_id)
+      :ok = subscribe_to_events_for_actor_group(policy.actor_group_id)
 
       assert {:ok, policy} = enable_policy(policy, subject)
 
@@ -633,7 +633,7 @@ defmodule Domain.PoliciesTest do
       subject: subject,
       policy: policy
     } do
-      :ok = subscribe_for_events_for_account(account)
+      :ok = subscribe_to_events_for_account(account)
 
       assert {:ok, policy} = delete_policy(policy, subject)
 
@@ -645,7 +645,7 @@ defmodule Domain.PoliciesTest do
       subject: subject,
       policy: policy
     } do
-      :ok = subscribe_for_events_for_policy(policy)
+      :ok = subscribe_to_events_for_policy(policy)
 
       assert {:ok, policy} = delete_policy(policy, subject)
 
@@ -657,7 +657,7 @@ defmodule Domain.PoliciesTest do
       subject: subject,
       policy: policy
     } do
-      :ok = subscribe_for_events_for_actor_group(policy.actor_group_id)
+      :ok = subscribe_to_events_for_actor_group(policy.actor_group_id)
 
       assert {:ok, policy} = delete_policy(policy, subject)
 
@@ -831,7 +831,7 @@ defmodule Domain.PoliciesTest do
       resource: resource,
       subject: subject
     } do
-      :ok = subscribe_for_events_for_account(account)
+      :ok = subscribe_to_events_for_account(account)
 
       assert {:ok, [policy]} = delete_policies_for(resource, subject)
 
@@ -844,7 +844,7 @@ defmodule Domain.PoliciesTest do
       policy: policy,
       subject: subject
     } do
-      :ok = subscribe_for_events_for_policy(policy)
+      :ok = subscribe_to_events_for_policy(policy)
 
       assert {:ok, [policy]} = delete_policies_for(resource, subject)
 
@@ -857,7 +857,7 @@ defmodule Domain.PoliciesTest do
       actor_group: actor_group,
       subject: subject
     } do
-      :ok = subscribe_for_events_for_actor_group(actor_group)
+      :ok = subscribe_to_events_for_actor_group(actor_group)
 
       assert {:ok, [policy]} = delete_policies_for(resource, subject)
 

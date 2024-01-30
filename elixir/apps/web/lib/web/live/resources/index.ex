@@ -4,7 +4,7 @@ defmodule Web.Resources.Index do
 
   def mount(_params, _session, socket) do
     with {:ok, socket} <- load_resources_with_assocs(socket) do
-      :ok = Resources.subscribe_for_events_for_account(socket.assigns.account)
+      :ok = Resources.subscribe_to_events_for_account(socket.assigns.account)
       {:ok, assign(socket, page_title: "Resources")}
     else
       {:error, _reason} -> raise Web.LiveErrors.NotFoundError

@@ -505,10 +505,10 @@ defmodule Domain.ActorsTest do
           provider_identifier: "OU:OU_ID1"
         )
 
-      :ok = subscribe_for_membership_updates_for_actor(actor)
-      :ok = Domain.Policies.subscribe_for_events_for_actor(actor)
-      :ok = Domain.Policies.subscribe_for_events_for_actor_group(group1)
-      :ok = Domain.Policies.subscribe_for_events_for_actor_group(group2)
+      :ok = subscribe_to_membership_updates_for_actor(actor)
+      :ok = Domain.Policies.subscribe_to_events_for_actor(actor)
+      :ok = Domain.Policies.subscribe_to_events_for_actor_group(group1)
+      :ok = Domain.Policies.subscribe_to_events_for_actor_group(group2)
       :ok = Domain.Flows.subscribe_to_flow_expiration_events(group1_flow)
 
       attrs_list = []
@@ -670,12 +670,12 @@ defmodule Domain.ActorsTest do
         |> Ecto.Multi.put(:group_ids_by_provider_identifier, group_ids_by_provider_identifier)
         |> sync_provider_memberships_multi(provider, tuples_list)
 
-      :ok = subscribe_for_membership_updates_for_actor(actor1)
-      :ok = subscribe_for_membership_updates_for_actor(actor2)
-      :ok = Domain.Policies.subscribe_for_events_for_actor(actor1)
-      :ok = Domain.Policies.subscribe_for_events_for_actor(actor2)
-      :ok = Domain.Policies.subscribe_for_events_for_actor_group(group1)
-      :ok = Domain.Policies.subscribe_for_events_for_actor_group(group2)
+      :ok = subscribe_to_membership_updates_for_actor(actor1)
+      :ok = subscribe_to_membership_updates_for_actor(actor2)
+      :ok = Domain.Policies.subscribe_to_events_for_actor(actor1)
+      :ok = Domain.Policies.subscribe_to_events_for_actor(actor2)
+      :ok = Domain.Policies.subscribe_to_events_for_actor_group(group1)
+      :ok = Domain.Policies.subscribe_to_events_for_actor_group(group2)
 
       assert {:ok,
               %{
@@ -741,12 +741,12 @@ defmodule Domain.ActorsTest do
         |> Ecto.Multi.put(:group_ids_by_provider_identifier, group_ids_by_provider_identifier)
         |> sync_provider_memberships_multi(provider, tuples_list)
 
-      :ok = subscribe_for_membership_updates_for_actor(identity1.actor_id)
-      :ok = subscribe_for_membership_updates_for_actor(identity2.actor_id)
-      :ok = Domain.Policies.subscribe_for_events_for_actor(identity1.actor_id)
-      :ok = Domain.Policies.subscribe_for_events_for_actor(identity2.actor_id)
-      :ok = Domain.Policies.subscribe_for_events_for_actor_group(group1)
-      :ok = Domain.Policies.subscribe_for_events_for_actor_group(group2)
+      :ok = subscribe_to_membership_updates_for_actor(identity1.actor_id)
+      :ok = subscribe_to_membership_updates_for_actor(identity2.actor_id)
+      :ok = Domain.Policies.subscribe_to_events_for_actor(identity1.actor_id)
+      :ok = Domain.Policies.subscribe_to_events_for_actor(identity2.actor_id)
+      :ok = Domain.Policies.subscribe_to_events_for_actor_group(group1)
+      :ok = Domain.Policies.subscribe_to_events_for_actor_group(group2)
 
       assert {:ok,
               %{
@@ -821,12 +821,12 @@ defmodule Domain.ActorsTest do
         |> Ecto.Multi.put(:group_ids_by_provider_identifier, group_ids_by_provider_identifier)
         |> sync_provider_memberships_multi(provider, tuples_list)
 
-      :ok = subscribe_for_membership_updates_for_actor(identity1.actor_id)
-      :ok = subscribe_for_membership_updates_for_actor(identity2.actor_id)
-      :ok = Domain.Policies.subscribe_for_events_for_actor(identity1.actor_id)
-      :ok = Domain.Policies.subscribe_for_events_for_actor(identity2.actor_id)
-      :ok = Domain.Policies.subscribe_for_events_for_actor_group(group1)
-      :ok = Domain.Policies.subscribe_for_events_for_actor_group(group2)
+      :ok = subscribe_to_membership_updates_for_actor(identity1.actor_id)
+      :ok = subscribe_to_membership_updates_for_actor(identity2.actor_id)
+      :ok = Domain.Policies.subscribe_to_events_for_actor(identity1.actor_id)
+      :ok = Domain.Policies.subscribe_to_events_for_actor(identity2.actor_id)
+      :ok = Domain.Policies.subscribe_to_events_for_actor_group(group1)
+      :ok = Domain.Policies.subscribe_to_events_for_actor_group(group2)
       :ok = Domain.Flows.subscribe_to_flow_expiration_events(flow)
 
       assert {:ok,
@@ -1016,7 +1016,7 @@ defmodule Domain.ActorsTest do
           ]
         )
 
-      :ok = subscribe_for_membership_updates_for_actor(actor)
+      :ok = subscribe_to_membership_updates_for_actor(actor)
 
       assert {:ok, group} = create_group(attrs, subject)
       assert group.id
@@ -1149,10 +1149,10 @@ defmodule Domain.ActorsTest do
       group_id = group.id
       actor1_id = actor1.id
       actor2_id = actor2.id
-      :ok = subscribe_for_membership_updates_for_actor(actor1)
-      :ok = subscribe_for_membership_updates_for_actor(actor2)
-      :ok = Domain.Policies.subscribe_for_events_for_actor(actor1)
-      :ok = Domain.Policies.subscribe_for_events_for_actor(actor2)
+      :ok = subscribe_to_membership_updates_for_actor(actor1)
+      :ok = subscribe_to_membership_updates_for_actor(actor2)
+      :ok = Domain.Policies.subscribe_to_events_for_actor(actor1)
+      :ok = Domain.Policies.subscribe_to_events_for_actor(actor2)
 
       attrs = %{memberships: []}
       assert {:ok, %{memberships: []}} = update_group(group, attrs, subject)
@@ -1361,7 +1361,7 @@ defmodule Domain.ActorsTest do
       group = Fixtures.Actors.create_group(account: account, provider: provider)
       Fixtures.Actors.create_membership(account: account, actor: actor, group: group)
 
-      :ok = subscribe_for_membership_updates_for_actor(actor)
+      :ok = subscribe_to_membership_updates_for_actor(actor)
 
       assert {:ok, _deleted} = delete_groups_for(provider, subject)
 
@@ -1890,8 +1890,8 @@ defmodule Domain.ActorsTest do
       actor_id = actor.id
       group1_id = group1.id
       group2_id = group2.id
-      :ok = subscribe_for_membership_updates_for_actor(actor)
-      :ok = Domain.Policies.subscribe_for_events_for_actor(actor)
+      :ok = subscribe_to_membership_updates_for_actor(actor)
+      :ok = Domain.Policies.subscribe_to_events_for_actor(actor)
 
       attrs = %{memberships: []}
       assert {:ok, %{memberships: []}} = update_actor(actor, attrs, subject)
@@ -2254,7 +2254,7 @@ defmodule Domain.ActorsTest do
     } do
       Fixtures.Actors.create_membership(account: account, actor: actor)
 
-      :ok = subscribe_for_membership_updates_for_actor(actor)
+      :ok = subscribe_to_membership_updates_for_actor(actor)
 
       assert {:ok, _actor} = delete_actor(actor, subject)
 
