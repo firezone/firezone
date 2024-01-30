@@ -222,12 +222,10 @@ async fn accept_deep_links(mut server: deep_link::Server, ctlr_tx: CtlrTx) -> Re
 }
 
 fn handle_system_tray_event(app: &tauri::AppHandle, event: TrayMenuEvent) -> Result<()> {
-    let ctlr_tx = &app
-        .try_state::<Managed>()
-        .ok_or_else(|| anyhow!("can't get Managed struct from Tauri"))?
-        .ctlr_tx;
-
-    ctlr_tx.blocking_send(ControllerRequest::SystemTrayMenu(event))?;
+    app.try_state::<Managed>()
+        .context("can't get Managed struct from Tauri")?
+        .ctlr_tx
+        .blocking_send(ControllerRequest::SystemTrayMenu(event))?;
     Ok(())
 }
 
@@ -474,7 +472,12 @@ impl Controller {
         Ok(())
     }
 
-    fn toggle_window(&self, id: &str) -> Result<()> {
+    fn toggle_window(&self, window: system_tray_menu::Window) -> Result<()> {
+        let id = match window {
+            system_tray_menu::Window::About => "about",
+            system_tray_menu::Window::Settings => "settings",
+        };
+
         let win = self
             .app
             .get_window(id)
@@ -554,7 +557,7 @@ async fn run_controller(
                     Req::SchemeRequest(url) => if let Err(e) = controller.handle_deep_link(&url).await {
                         tracing::error!("couldn't handle deep link: {e:#?}");
                     }
-                    Req::SystemTrayMenu(TrayMenuEvent::About) => controller.toggle_window("about")?,
+                    Req::SystemTrayMenu(TrayMenuEvent::ToggleWindow(window)) => controller.toggle_window(window)?,
                     Req::SystemTrayMenu(TrayMenuEvent::CancelSignIn | TrayMenuEvent::SignOut) => {
                         tracing::info!("User signed out or canceled sign-in");
                         controller.sign_out()?;
@@ -562,7 +565,6 @@ async fn run_controller(
                     Req::SystemTrayMenu(TrayMenuEvent::Resource { id }) => if let Err(e) = controller.copy_resource(&id) {
                         tracing::error!("couldn't copy resource to clipboard: {e:#?}");
                     }
-                    Req::SystemTrayMenu(TrayMenuEvent::Settings) => controller.toggle_window("settings")?,
                     Req::SystemTrayMenu(TrayMenuEvent::SignIn) => {
                         if let Some(req) = controller.auth.start_sign_in()? {
                             let url = req.to_url(&controller.advanced_settings.auth_base_url);
