@@ -201,6 +201,13 @@ defmodule Domain.Tokens do
     end
   end
 
+  def delete_tokens_for(%Auth.Identity{} = identity) do
+    {:ok, _flows} = Domain.Flows.expire_flows_for(identity)
+
+    Token.Query.by_identity_id(identity.id)
+    |> delete_tokens()
+  end
+
   def delete_tokens_for(%Actors.Actor{} = actor, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_tokens_permission()) do
       {:ok, _flows} = Domain.Flows.expire_flows_for(actor, subject)

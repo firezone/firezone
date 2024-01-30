@@ -694,6 +694,38 @@ defmodule Domain.PoliciesTest do
     end
   end
 
+  describe "delete_policies_for/1" do
+    setup %{account: account, subject: subject} do
+      resource = Fixtures.Resources.create_resource(account: account)
+      actor_group = Fixtures.Actors.create_group(account: account)
+
+      policy =
+        Fixtures.Policies.create_policy(
+          account: account,
+          resource: resource,
+          actor_group: actor_group,
+          subject: subject
+        )
+
+      %{
+        resource: resource,
+        actor_group: actor_group,
+        policy: policy
+      }
+    end
+
+    test "deletes policies for actor group provider", %{
+      actor_group: actor_group,
+      policy: policy
+    } do
+      assert {:ok, [deleted_policy]} = delete_policies_for(actor_group)
+      refute is_nil(deleted_policy.deleted_at)
+      assert deleted_policy.id == policy.id
+
+      refute is_nil(Repo.get(Policies.Policy, policy.id).deleted_at)
+    end
+  end
+
   describe "delete_policies_for/2" do
     setup %{account: account, subject: subject} do
       resource = Fixtures.Resources.create_resource(account: account)

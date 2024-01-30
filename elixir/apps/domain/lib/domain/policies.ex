@@ -142,23 +142,35 @@ defmodule Domain.Policies do
     |> delete_policies(provider, subject)
   end
 
+  def delete_policies_for(%Actors.Group{} = actor_group) do
+    {:ok, _flows} = Domain.Flows.expire_flows_for(actor_group)
+
+    Policy.Query.by_actor_group_id(actor_group.id)
+    |> delete_policies()
+  end
+
   defp delete_policies(queryable, assoc, subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_policies_permission()) do
       {:ok, _flows} = Domain.Flows.expire_flows_for(assoc, subject)
 
-      {_count, policies} =
-        queryable
-        |> Authorizer.for_subject(subject)
-        |> Policy.Query.delete()
-        |> Repo.update_all([])
-
-      :ok =
-        Enum.each(policies, fn policy ->
-          :ok = broadcast_policy_events(:delete, policy)
-        end)
-
-      {:ok, policies}
+      queryable
+      |> Authorizer.for_subject(subject)
+      |> delete_policies()
     end
+  end
+
+  defp delete_policies(queryable) do
+    {_count, policies} =
+      queryable
+      |> Policy.Query.delete()
+      |> Repo.update_all([])
+
+    :ok =
+      Enum.each(policies, fn policy ->
+        :ok = broadcast_policy_events(:delete, policy)
+      end)
+
+    {:ok, policies}
   end
 
   def new_policy(attrs, %Auth.Subject{} = subject) do

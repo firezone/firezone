@@ -538,6 +538,20 @@ defmodule Domain.TokensTest do
     end
   end
 
+  describe "delete_tokens_for/1" do
+    test "deletes browser tokens for given identity", %{account: account} do
+      actor = Fixtures.Actors.create_actor(account: account)
+      identity = Fixtures.Auth.create_identity(account: account, actor: actor)
+      token = Fixtures.Tokens.create_token(type: :browser, account: account, identity: identity)
+      Phoenix.PubSub.subscribe(Domain.PubSub, "sessions:#{token.id}")
+
+      assert {:ok, [_token]} = delete_tokens_for(identity)
+
+      assert Repo.get(Tokens.Token, token.id).deleted_at
+      assert_receive %Phoenix.Socket.Broadcast{event: "disconnect"}
+    end
+  end
+
   describe "delete_tokens_for/2" do
     test "deletes browser tokens for given actor", %{account: account, subject: subject} do
       actor = Fixtures.Actors.create_actor(account: account)

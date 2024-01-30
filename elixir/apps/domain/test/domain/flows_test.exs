@@ -639,6 +639,49 @@ defmodule Domain.FlowsTest do
     end
   end
 
+  describe "expire_flows_for/1" do
+    setup %{
+      account: account,
+      client: client,
+      gateway: gateway,
+      resource: resource,
+      policy: policy,
+      subject: subject
+    } do
+      subject = %{subject | expires_at: DateTime.utc_now() |> DateTime.add(1, :day)}
+
+      flow =
+        Fixtures.Flows.create_flow(
+          account: account,
+          subject: subject,
+          client: client,
+          policy: policy,
+          resource: resource,
+          gateway: gateway
+        )
+
+      %{flow: flow}
+    end
+
+    test "expires flows for policy actor group", %{
+      flow: flow,
+      actor_group: actor_group
+    } do
+      assert {:ok, [expired_flow]} = expire_flows_for(actor_group)
+      assert DateTime.diff(expired_flow.expires_at, DateTime.utc_now()) < 1
+      assert expired_flow.id == flow.id
+    end
+
+    test "expires flows for client identity", %{
+      flow: flow,
+      identity: identity
+    } do
+      assert {:ok, [expired_flow]} = expire_flows_for(identity)
+      assert DateTime.diff(expired_flow.expires_at, DateTime.utc_now()) < 1
+      assert expired_flow.id == flow.id
+    end
+  end
+
   describe "expire_flows_for/2" do
     setup %{
       account: account,

@@ -173,6 +173,16 @@ defmodule Domain.Flows do
     end
   end
 
+  def expire_flows_for(%Auth.Identity{} = identity) do
+    Flow.Query.by_identity_id(identity.id)
+    |> expire_flows()
+  end
+
+  def expire_flows_for(%Actors.Group{} = actor_group) do
+    Flow.Query.by_policy_actor_group_id(actor_group.id)
+    |> expire_flows()
+  end
+
   def expire_flows_for(%Tokens.Token{} = token, %Auth.Subject{} = subject) do
     Flow.Query.by_token_id(token.id)
     |> expire_flows(subject)
@@ -183,8 +193,8 @@ defmodule Domain.Flows do
     |> expire_flows(subject)
   end
 
-  def expire_flows_for(%Auth.Identity{} = actor, %Auth.Subject{} = subject) do
-    Flow.Query.by_identity_id(actor.id)
+  def expire_flows_for(%Auth.Identity{} = identity, %Auth.Subject{} = subject) do
+    Flow.Query.by_identity_id(identity.id)
     |> expire_flows(subject)
   end
 
@@ -210,19 +220,24 @@ defmodule Domain.Flows do
 
   defp expire_flows(queryable, subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.create_flows_permission()) do
-      {_count, flows} =
-        queryable
-        |> Authorizer.for_subject(Flow, subject)
-        |> Flow.Query.expire()
-        |> Repo.update_all([])
-
-      :ok =
-        Enum.each(flows, fn flow ->
-          :ok = broadcast_flow_expiration_event(flow)
-        end)
-
-      {:ok, flows}
+      queryable
+      |> Authorizer.for_subject(Flow, subject)
+      |> expire_flows()
     end
+  end
+
+  defp expire_flows(queryable) do
+    {_count, flows} =
+      queryable
+      |> Flow.Query.expire()
+      |> Repo.update_all([])
+
+    :ok =
+      Enum.each(flows, fn flow ->
+        :ok = broadcast_flow_expiration_event(flow)
+      end)
+
+    {:ok, flows}
   end
 
   ### PubSub
