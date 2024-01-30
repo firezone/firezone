@@ -1,26 +1,25 @@
+mod heartbeat;
+
 use std::collections::HashSet;
-use std::{fmt, future, marker::PhantomData, time::Duration};
+use std::{fmt, future, marker::PhantomData};
 
 use backoff::backoff::Backoff;
 use backoff::ExponentialBackoff;
 use base64::Engine;
 use futures::future::BoxFuture;
 use futures::{FutureExt, SinkExt, StreamExt};
+use heartbeat::{Heartbeat, MissedLastHeartbeat};
 use rand_core::{OsRng, RngCore};
 use secrecy::{CloneableSecret, Secret};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use std::pin::Pin;
 use std::task::{ready, Context, Poll};
 use tokio::net::TcpStream;
-use tokio::time::Instant;
 use tokio_tungstenite::{
     connect_async,
     tungstenite::{handshake::client::Request, Message},
     MaybeTlsStream, WebSocketStream,
 };
 use url::Url;
-
-const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(30);
 
 // TODO: Refactor this PhoenixChannel to be compatible with the needs of the client and gateway
 // See https://github.com/firezone/firezone/issues/2158
@@ -29,7 +28,7 @@ pub struct PhoenixChannel<TInitReq, TInboundMsg, TOutboundRes> {
     pending_messages: Vec<Message>,
     next_request_id: u64,
 
-    next_heartbeat: Pin<Box<tokio::time::Sleep>>,
+    heartbeat: Heartbeat,
 
     _phantom: PhantomData<(TInboundMsg, TOutboundRes)>,
 
@@ -125,10 +124,19 @@ pub enum Error {
     Serde(#[from] serde_json::Error),
     #[error("server sent a reply without a reference")]
     MissingReplyId,
+    #[error("server did not reply to our heartbeat")]
+    MissedHeartbeat,
 }
 
 #[derive(Debug, PartialEq, Eq, Hash)]
 pub struct OutboundRequestId(u64);
+
+impl OutboundRequestId {
+    #[cfg(test)]
+    pub(crate) fn new(id: u64) -> Self {
+        Self(id)
+    }
+}
 
 impl fmt::Display for OutboundRequestId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -196,7 +204,7 @@ where
             pending_messages: vec![],
             _phantom: PhantomData,
             next_request_id: 0,
-            next_heartbeat: Box::pin(tokio::time::sleep(HEARTBEAT_INTERVAL)),
+            heartbeat: Default::default(),
             pending_join_requests: Default::default(),
             login,
             init_req: init_req.clone(),
@@ -378,10 +386,18 @@ where
                         Payload::Reply(ReplyMessage::PhxReply(PhxReply::Ok(
                             OkReply::NoMessage(Empty {}),
                         ))) => {
+                            let id =
+                                OutboundRequestId(message.reference.ok_or(Error::MissingReplyId)?);
+
+                            if self.heartbeat.maybe_handle_reply(id) {
+                                continue;
+                            }
+
                             tracing::trace!(
                                 "Received empty reply for request {:?}",
                                 message.reference
                             );
+
                             continue;
                         }
                         Payload::Reply(ReplyMessage::PhxError(Empty {})) => {
@@ -403,13 +419,18 @@ where
             }
 
             // Priority 3: Handle heartbeats.
-            if self.next_heartbeat.poll_unpin(cx).is_ready() {
-                self.send_message("phoenix", EgressControlMessage::<()>::Heartbeat(Empty {}));
-                self.next_heartbeat
-                    .as_mut()
-                    .reset(Instant::now() + HEARTBEAT_INTERVAL);
+            match self.heartbeat.poll(cx) {
+                Poll::Ready(Ok(msg)) => {
+                    let id = self.send_message("phoenix", msg);
+                    self.heartbeat.set_id(id);
 
-                return Poll::Ready(Ok(Event::HeartbeatSent));
+                    return Poll::Ready(Ok(Event::HeartbeatSent));
+                }
+                Poll::Ready(Err(MissedLastHeartbeat {})) => {
+                    self.reconnect_on_transient_error(Error::MissedHeartbeat);
+                    continue;
+                }
+                _ => (),
             }
 
             // Priority 4: Flush out.
@@ -466,7 +487,7 @@ where
             state: self.state,
             pending_messages: self.pending_messages,
             next_request_id: self.next_request_id,
-            next_heartbeat: self.next_heartbeat,
+            heartbeat: self.heartbeat,
             _phantom: PhantomData,
             pending_join_requests: self.pending_join_requests,
             secret_url: self.secret_url,
