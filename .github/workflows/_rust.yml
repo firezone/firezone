@@ -90,23 +90,21 @@ jobs:
         run: |
           # Build Windows Tauri GUI
 
-          echo "Before pnpm install"
-          git status
-          git diff
-
           pnpm install
 
-          echo "Before cargo build"
+          echo "Before frontend build"
           git status
           git diff
 
-          cargo build -p firezone-windows-client --release
+          cp node_modules/flowbite/dist/flowbite.min.js src/
+          pnpm tsc
+          pnpm tailwindcss -i src/input.css -o src/output.css
 
-          echo "Before pnpm build"
+          echo "Before tauri build"
           git status
           git diff
 
-          pnpm build
+          pnpm tauri build
 
           echo "Before upload artifacts"
           git status
