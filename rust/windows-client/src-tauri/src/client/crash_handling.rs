@@ -20,7 +20,6 @@ const SOCKET_NAME: &str = "dev.firezone.client.crash_handler";
 /// <https://github.com/EmbarkStudios/crash-handling/blob/main/minidumper/examples/diskwrite.rs>
 /// Linux has a special `set_ptracer` call that is handy
 /// MacOS needs a special `ping` call to flush messages inside the crash handler
-#[cfg(all(debug_assertions, target_os = "windows"))]
 pub(crate) fn attach_handler() -> Result<CrashHandler> {
     // Attempt to connect to the server
     let (client, _server) = start_server_and_connect()?;
@@ -37,11 +36,6 @@ pub(crate) fn attach_handler() -> Result<CrashHandler> {
     .context("failed to attach signal handler")?;
 
     Ok(handler)
-}
-
-#[cfg(not(debug_assertions))]
-pub(crate) fn attach_handler() -> Result<CrashHandler> {
-    bail!("crash handling is disabled in release builds for now");
 }
 
 /// Main function for the server process, for out-of-process crash handling.
