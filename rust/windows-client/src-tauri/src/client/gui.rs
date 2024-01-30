@@ -265,7 +265,8 @@ impl connlib_client_shared::Callbacks for CallbackHandler {
     ) -> Result<(), Self::Error> {
         tracing::debug!("on_disconnect {error:?}");
         self.ctlr_tx.try_send(match error {
-            Some(connlib_client_shared::Error::TokenExpired) => {
+            Some(connlib_client_shared::Error::ClosedByPortal) => {
+                // TODO: this can happen for other reasons
                 ControllerRequest::DisconnectedTokenExpired
             }
             _ => ControllerRequest::Disconnected,

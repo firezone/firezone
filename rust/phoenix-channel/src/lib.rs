@@ -409,6 +409,32 @@ where
                                 reason: "unknown error (bad event?)".to_owned(),
                             }))
                         }
+                        Payload::ControlMessage(ControlMessage::PhxClose(_)) => {
+                            let Some(backoff) = self.reconnect_backoff.next_backoff() else {
+                                tracing::warn!("Reconnect backoff expired");
+                                return Poll::Ready(Ok(Event::Disconnect(
+                                    "topic closed".to_string(),
+                                )));
+                            };
+
+                            let secret_url = self.secret_url.clone();
+                            let user_agent = self.user_agent.clone();
+
+                            // If we recieve a close message we close the socket and try to reconnect.
+                            self.state = State::Connecting(Box::pin(async move {
+                                tokio::time::sleep(backoff).await;
+
+                                let (stream, _) =
+                                    connect_async(make_request(secret_url, user_agent)?)
+                                        .await?;
+
+                                Ok(stream)
+                            }));
+                            continue;
+                        }
+                        Payload::ControlMessage(ControlMessage::Disconnect { reason }) => {
+                            return Poll::Ready(Ok(Event::Disconnect(reason)));
+                        }
                     }
                 }
                 Poll::Ready(Some(Err(e))) => {
@@ -526,6 +552,7 @@ pub enum Event<TInboundMsg, TOutboundRes> {
         req_id: InboundRequestId,
         req: TInboundMsg,
     },
+    Disconnect(String),
 }
 
 #[derive(Debug, PartialEq, Eq, Deserialize, Serialize, Clone)]
@@ -535,7 +562,15 @@ enum Payload<T, R> {
     // but that makes everything even more convoluted!
     // and we need to think how to make this whole mess less convoluted.
     Reply(ReplyMessage<R>),
+    ControlMessage(ControlMessage),
     Message(T),
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "snake_case", tag = "event", content = "payload")]
+enum ControlMessage {
+    PhxClose(Empty),
+    Disconnect { reason: String },
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Deserialize, Serialize)]

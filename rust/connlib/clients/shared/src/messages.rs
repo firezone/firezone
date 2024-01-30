@@ -17,9 +17,7 @@ pub struct InitClient {
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
-pub struct RemoveResource {
-    pub id: ResourceId,
-}
+pub struct RemoveResource(pub ResourceId);
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct ConnectionDetails {
@@ -56,9 +54,8 @@ pub enum IngressMessages {
     Init(InitClient),
 
     // Resources: arrive in an orderly fashion
-    ResourceAdded(ResourceDescription),
-    ResourceRemoved(RemoveResource),
-    ResourceUpdated(ResourceDescription),
+    ResourceCreatedOrUpdated(ResourceDescription),
+    ResourceDeleted(RemoveResource),
 
     IceCandidates(GatewayIceCandidates),
 }
@@ -102,9 +99,8 @@ pub enum Messages {
     SignedLogUrl(Url),
 
     // Resources: arrive in an orderly fashion
-    ResourceAdded(ResourceDescription),
-    ResourceRemoved(RemoveResource),
-    ResourceUpdated(ResourceDescription),
+    ResourceCreatedOrUpdated(ResourceDescription),
+    ResourceDeleted(RemoveResource),
 
     IceCandidates(GatewayIceCandidates),
 }
@@ -113,9 +109,8 @@ impl From<IngressMessages> for Messages {
     fn from(value: IngressMessages) -> Self {
         match value {
             IngressMessages::Init(m) => Self::Init(m),
-            IngressMessages::ResourceAdded(m) => Self::ResourceAdded(m),
-            IngressMessages::ResourceRemoved(m) => Self::ResourceRemoved(m),
-            IngressMessages::ResourceUpdated(m) => Self::ResourceUpdated(m),
+            IngressMessages::ResourceCreatedOrUpdated(m) => Self::ResourceCreatedOrUpdated(m),
+            IngressMessages::ResourceDeleted(m) => Self::ResourceDeleted(m),
             IngressMessages::IceCandidates(m) => Self::IceCandidates(m),
         }
     }

@@ -19,6 +19,7 @@ use futures::channel::mpsc::Receiver;
 use futures::stream;
 use futures_bounded::{FuturesMap, PushError, StreamMap};
 use hickory_resolver::lookup::Lookup;
+use hickory_resolver::proto::rr::resource;
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
 use itertools::Itertools;
@@ -66,6 +67,17 @@ where
         &self,
         resource_description: ResourceDescription,
     ) -> connlib_shared::Result<()> {
+        if self
+            .role_state
+            .lock()
+            .resource_ids
+            .contains_key(&resource_description.id())
+        {
+            // TODO
+            tracing::info!("Resource updates aren't implemented yet");
+            return Ok(());
+        }
+
         match &resource_description {
             ResourceDescription::Dns(dns) => {
                 self.role_state
