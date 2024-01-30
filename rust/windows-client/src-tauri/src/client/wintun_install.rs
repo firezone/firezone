@@ -1,10 +1,11 @@
 //! "Installs" wintun.dll at runtime by copying it into whatever folder the exe is in
 
+use crate::client::settings::app_local_data_dir;
 use ring::digest;
 use std::{
     fs,
     io::{self, Read},
-    path::Path,
+    path::{Path, PathBuf},
 };
 
 struct DllBytes {
@@ -16,8 +17,12 @@ struct DllBytes {
 
 #[derive(thiserror::Error, Debug)]
 pub(crate) enum Error {
-    #[error("current exe path unknown")]
-    CurrentExePathUnknown,
+    #[error("Can't find %LOCALAPPDATA%")]
+    CantFindLocalAppData,
+    #[error("create_dir_all failed")]
+    CreateDirAll,
+    #[error("Computed DLL path is invalid")]
+    DllPathInvalid,
     #[error("permission denied")]
     PermissionDenied,
     #[error("platform not supported")]
@@ -26,20 +31,17 @@ pub(crate) enum Error {
     WriteFailed(io::Error),
 }
 
-/// Installs the DLL alongside the current exe, if needed
-/// The reason not to do it in the current working dir is that deep links may launch
-/// with a current working dir of `C:\Windows\System32`
-/// The reason not to do it in AppData is that learning our AppData path before Tauri
-/// setup is difficult.
-/// The reason not to do it in `C:\Program Files` is that running in portable mode
-/// is useful for development, even though it's not supported for production.
-pub(crate) fn ensure_dll() -> Result<(), Error> {
+/// Installs the DLL in %LOCALAPPDATA% and returns the DLL's absolute path
+///
+/// e.g. `C:\Users\User\AppData\Local\dev.firezone.client\data\wintun.dll`
+pub(crate) fn ensure_dll() -> Result<PathBuf, Error> {
     let dll_bytes = get_dll_bytes().ok_or(Error::PlatformNotSupported)?;
 
-    let path = tauri_utils::platform::current_exe()
-        .map_err(|_| Error::CurrentExePathUnknown)?
-        .with_file_name("wintun.dll");
-    tracing::debug!("wintun.dll path = {path:?}");
+    let path = dll_path()?;
+    // The DLL path should always have a parent
+    let dir = path.parent().ok_or(Error::DllPathInvalid)?;
+    std::fs::create_dir_all(dir).map_err(|_| Error::CreateDirAll)?;
+    tracing::info!(?path, "wintun.dll path");
 
     // This hash check is not meant to protect against attacks. It only lets us skip redundant disk writes, and it updates the DLL if needed.
     if !dll_already_exists(&path, &dll_bytes) {
@@ -48,7 +50,18 @@ pub(crate) fn ensure_dll() -> Result<(), Error> {
             _ => Error::WriteFailed(e),
         })?;
     }
-    Ok(())
+    Ok(path)
+}
+
+/// Returns the absolute path where the DLL should be
+///
+/// e.g. `C:\Users\User\AppData\Local\dev.firezone.client\data\wintun.dll`
+pub(crate) fn dll_path() -> Result<PathBuf, Error> {
+    let path = app_local_data_dir()
+        .ok_or_else(|| Error::CantFindLocalAppData)?
+        .join("data")
+        .join("wintun.dll");
+    Ok(path)
 }
 
 fn dll_already_exists(path: &Path, dll_bytes: &DllBytes) -> bool {
