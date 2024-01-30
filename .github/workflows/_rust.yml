@@ -90,11 +90,16 @@ jobs:
         run: |
           # Build Windows Tauri GUI
 
-          git config core.autocrlf
+          git config core.autocrlf false
           git status
           git diff
 
           pnpm install
+
+          git status
+          git diff
+
+          cargo build -p firezone-windows-client --release
 
           git status
           git diff
