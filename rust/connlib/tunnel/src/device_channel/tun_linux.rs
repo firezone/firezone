@@ -15,6 +15,7 @@ use std::net::IpAddr;
 use std::path::Path;
 use std::task::{Context, Poll};
 use std::{
+    ffi::CStr,
     fmt, fs, io,
     os::{
         fd::{AsRawFd, RawFd},
@@ -29,12 +30,13 @@ pub(crate) const SIOCGIFMTU: libc::c_ulong = libc::SIOCGIFMTU;
 
 const IFACE_NAME: &str = "tun-firezone";
 const TUNSETIFF: libc::c_ulong = 0x4004_54ca;
-const TUN_FILE: &[u8] = b"/dev/net/tun\0";
 const TUN_DEV_MAJOR: u32 = 10;
 const TUN_DEV_MINOR: u32 = 200;
 const RT_PROT_STATIC: u8 = 4;
 const DEFAULT_MTU: u32 = 1280;
 const FILE_ALREADY_EXISTS: i32 = -17;
+
+const TUN_FILE: &CStr = unsafe { CStr::from_bytes_with_nul_unchecked(b"/dev/net/tun\0") };
 
 pub struct Tun {
     handle: Handle,
@@ -242,7 +244,7 @@ fn set_non_blocking(fd: RawFd) -> Result<()> {
 }
 
 fn create_tun_device() -> Result<()> {
-    let path = Path::new(std::str::from_utf8(TUN_FILE).unwrap());
+    let path = Path::new(TUN_FILE.to_str().unwrap());
 
     if path.exists() {
         return Ok(());
