@@ -31,6 +31,7 @@ futures-bounded = "0.2.1"
 domain = { version = "0.9", features = ["serde"] }
 dns-lookup = "2.0"
 tokio-tungstenite = "0.21"
+rtnetlink = { version = "0.14", default-features = false, features = ["tokio_socket"] }
 
 connlib-client-android = { path = "connlib/clients/android"}
 connlib-client-apple = { path = "connlib/clients/apple"}

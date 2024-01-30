@@ -1,11 +1,12 @@
+use socket2::{SockAddr, Type};
 use std::{
     io,
     net::SocketAddr,
     task::{ready, Context, Poll, Waker},
 };
-
-use futures::FutureExt;
 use tokio::{io::ReadBuf, net::UdpSocket};
+
+use crate::FIREZONE_MARK;
 
 pub struct Socket<const N: usize> {
     local: SocketAddr,
@@ -13,17 +14,24 @@ pub struct Socket<const N: usize> {
     buffer: Box<[u8; N]>,
 }
 
+fn make_socket(addr: impl Into<SocketAddr>) -> io::Result<std::net::UdpSocket> {
+    let addr: SockAddr = addr.into().into();
+    let socket = socket2::Socket::new(addr.domain(), Type::DGRAM, None)?;
+    socket.set_nonblocking(true)?;
+    socket.bind(&addr)?;
+    socket.set_mark(FIREZONE_MARK)?;
+    Ok(socket.into())
+}
+
 impl<const N: usize> Socket<N> {
     pub fn bind(addr: impl Into<SocketAddr>) -> io::Result<Socket<N>> {
-        let socket = UdpSocket::bind(addr.into())
-            .now_or_never()
-            .expect("binding to `SocketAddr` is not actually async")?;
+        let socket = make_socket(addr)?;
 
         let local = socket.local_addr()?;
 
         Ok(Socket {
             local,
-            socket,
+            socket: tokio::net::UdpSocket::from_std(socket)?,
             buffer: Box::new([0u8; N]),
         })
     }

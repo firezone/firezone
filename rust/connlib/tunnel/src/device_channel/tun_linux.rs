@@ -1,4 +1,5 @@
 use crate::device_channel::ioctl;
+use crate::FIREZONE_MARK;
 use connlib_shared::{messages::Interface as InterfaceConfig, Callbacks, Error, Result};
 use futures::TryStreamExt;
 use futures_util::future::BoxFuture;
@@ -8,8 +9,10 @@ use libc::{
     close, fcntl, makedev, mknod, open, F_GETFL, F_SETFL, IFF_MULTI_QUEUE, IFF_NO_PI, IFF_TUN,
     O_NONBLOCK, O_RDWR, S_IFCHR,
 };
-use netlink_packet_route::RT_SCOPE_UNIVERSE;
+use netlink_packet_route::route::{RouteProtocol, RouteScope};
+use netlink_packet_route::rule::RuleAction;
 use parking_lot::Mutex;
+use rtnetlink::RuleAddRequest;
 use rtnetlink::{new_connection, Error::NetlinkError, Handle};
 use std::net::IpAddr;
 use std::path::Path;
@@ -32,9 +35,9 @@ const IFACE_NAME: &str = "tun-firezone";
 const TUNSETIFF: libc::c_ulong = 0x4004_54ca;
 const TUN_DEV_MAJOR: u32 = 10;
 const TUN_DEV_MINOR: u32 = 200;
-const RT_PROT_STATIC: u8 = 4;
 const DEFAULT_MTU: u32 = 1280;
 const FILE_ALREADY_EXISTS: i32 = -17;
+const FIREZONE_TABLE: u32 = 0x2021_fd00;
 
 // Safety: We know that this is a valid C string.
 const TUN_FILE: &CStr = unsafe { CStr::from_bytes_with_nul_unchecked(b"/dev/net/tun\0") };
@@ -136,8 +139,9 @@ impl Tun {
                 .route()
                 .add()
                 .output_interface(index)
-                .protocol(RT_PROT_STATIC)
-                .scope(RT_SCOPE_UNIVERSE);
+                .protocol(RouteProtocol::Static)
+                .scope(RouteScope::Universe)
+                .table_id(FIREZONE_TABLE);
             let res = match route {
                 IpNetwork::V4(ipnet) => {
                     req.v4()
@@ -226,8 +230,39 @@ async fn set_iface_config(config: InterfaceConfig, handle: Handle) -> Result<()>
 
     handle.link().set(index).up().execute().await?;
 
+    if res_v4.is_ok() {
+        if let Err(e) = make_rule(&handle).v4().execute().await {
+            tracing::debug!("Couldn't add ip rule for ipv4: {e:#?}, ipv4 packets won't be routed");
+            // TODO: Be smarter about this
+        }
+    }
+
+    if res_v6.is_ok() {
+        if let Err(e) = make_rule(&handle).v6().execute().await {
+            tracing::debug!("Couldn't add ip rule for ipv6: {e:#?}, ipv6 packets won't be routed");
+            // TODO: Be smarter about this
+        }
+    }
+
     res_v4.or(res_v6)?;
+
     Ok(())
+}
+
+fn make_rule(handle: &Handle) -> RuleAddRequest {
+    let mut rule = handle
+        .rule()
+        .add()
+        .fw_mark(FIREZONE_MARK)
+        .table_id(FIREZONE_TABLE)
+        .action(RuleAction::ToTable);
+
+    rule.message_mut()
+        .header
+        .flags
+        .push(netlink_packet_route::rule::RuleFlag::Invert);
+
+    rule
 }
 
 fn get_last_error() -> Error {
