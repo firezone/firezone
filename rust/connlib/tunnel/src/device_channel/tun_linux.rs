@@ -36,6 +36,7 @@ const RT_PROT_STATIC: u8 = 4;
 const DEFAULT_MTU: u32 = 1280;
 const FILE_ALREADY_EXISTS: i32 = -17;
 
+// Safety: We know that this is a valid C string.
 const TUN_FILE: &CStr = unsafe { CStr::from_bytes_with_nul_unchecked(b"/dev/net/tun\0") };
 
 pub struct Tun {
