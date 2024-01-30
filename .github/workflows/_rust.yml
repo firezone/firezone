@@ -88,10 +88,10 @@ jobs:
           targets: x86_64-pc-windows-msvc
       - name: Build release binaries
         run: |
-          git status
+          git diff
           pnpm install
           pnpm build
-          git status
+          git diff
 
           # Used for release artifact
           # In release mode the name comes from tauri.conf.json
