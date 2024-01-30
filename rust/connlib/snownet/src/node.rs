@@ -413,7 +413,7 @@ where
         self.pending_events.pop_front()
     }
 
-    /// Returns, when [`ConnectionPool::handle_timeout`] should be called next.
+    /// Returns, when [`Node::handle_timeout`] should be called next.
     ///
     /// This function only takes `&mut self` because it caches certain computations internally.
     /// The returned timestamp will **not** change unless other state is modified.
@@ -430,7 +430,7 @@ where
         earliest(connection_timeout, self.next_rate_limiter_reset)
     }
 
-    /// Advances time within the [`ConnectionPool`].
+    /// Advances time within the [`Node`].
     ///
     /// This advances time within the ICE agent, updates timers within all wireguard connections as well as resets wireguard's rate limiter (if necessary).
     pub fn handle_timeout(&mut self, now: Instant) {
@@ -606,7 +606,7 @@ where
         params
     }
 
-    /// Accept an [`Answer`] from the remote for a connection previously created via [`ConnectionPool::new_connection`].
+    /// Accept an [`Answer`] from the remote for a connection previously created via [`Node::new_connection`].
     pub fn accept_answer(&mut self, id: TId, remote: PublicKey, answer: Answer) {
         let Some(initial) = self.initial_connections.remove(&id) else {
             return; // TODO: Better error handling
