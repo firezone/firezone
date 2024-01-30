@@ -53,7 +53,7 @@ config :logger,
 config :logger_json, :backend,
   json_encoder: Jason,
   formatter: LoggerJSON.Formatters.GoogleCloudLogger,
-  metadata: :all
+  metadata: {:all_except, [:socket, :conn]}
 
 config :logger, level: :info
 
