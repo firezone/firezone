@@ -272,6 +272,7 @@ where
             match self.if_watcher.poll_if_event(cx) {
                 Poll::Ready(Ok(ev)) => match ev {
                     if_watch::IfEvent::Up(ip) => {
+                        // TODO: filter firezone-tun candidates(we could retrieve the ip or just ignore CGNAT)
                         tracing::info!(address = %ip.addr(), "New local interface address found");
                         match self.udp_sockets.bind((ip.addr(), 0)) {
                             Ok(addr) => {
