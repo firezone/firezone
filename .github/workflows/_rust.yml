@@ -93,8 +93,14 @@ jobs:
           git config core.autocrlf
           git status
           git diff
+
           pnpm install
+
+          git status
+          git diff
+
           pnpm build
+
           git status
           git diff
 
