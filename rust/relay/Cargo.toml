@@ -34,7 +34,7 @@ derive_more = { version = "0.99.17", features = ["from"] }
 uuid = { version = "1.7.0", features = ["v4"] }
 phoenix-channel = { path = "../phoenix-channel" }
 url = "2.4.1"
-serde = { version = "1.0.190", features = ["derive"] }
+serde = { version = "1.0.196", features = ["derive"] }
 trackable = "1.3.0"
 socket2 = "0.5.5"
 axum = { version = "0.7.3", default-features = false, features = ["http1", "tokio"] }
