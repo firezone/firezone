@@ -167,7 +167,7 @@ where
     ) -> Result<Option<(TId, IpPacket<'s>)>, Error> {
         // First, check if a `StunBinding` wants the packet
         if let Some(binding) = self.bindings.get_mut(&from) {
-            if binding.handle_input(from, packet, now) {
+            if binding.handle_input(from, local, packet, now) {
                 // If it handled the packet, drain its events to ensure we update the candidates of all connections.
                 drain_and_add_candidates(
                     from,
@@ -182,7 +182,7 @@ where
 
         // Next, check if an `Allocation` wants the packet
         if let Some(allocation) = self.allocations.get_mut(&from) {
-            if allocation.handle_input(from, packet, now) {
+            if allocation.handle_input(from, local, packet, now) {
                 // If it handled the packet, drain its events to ensure we update the candidates of all connections.
                 drain_and_add_candidates(
                     from,
