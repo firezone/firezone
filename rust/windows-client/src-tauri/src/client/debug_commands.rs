@@ -47,8 +47,8 @@ fn wintun() -> Result<()> {
     tracing_subscriber::fmt::init();
     let path = firezone_windows_common::wintun_dll_path()
         .ok_or_else(|| anyhow!("can't compute wintun_dll_path"))?;
-    unsafe { wintun::load_from_path(path) }?;
-    tracing::info!("Loaded wintun from {path}.");
+    unsafe { wintun::load_from_path(&path) }?;
+    tracing::info!(?path, "Loaded wintun.dll");
 
     Ok(())
 }
