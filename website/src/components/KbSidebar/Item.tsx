@@ -29,9 +29,10 @@ export default function Item({
       }
     >
       {!topLevel && <HiMinus className="w-2 h-2" />}
+      {nested && <HiMinus className="w-2 h-2 -ml-1" />}
       <span
         className={
-          (nested ? "ml-4 " : "") +
+          (nested ? "ml-3 " : "") +
           (active(href) ? "font-medium " : "") +
           "ml-2" +
           ((topLevel && " pl-0.5") || "")

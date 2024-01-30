@@ -1,3 +1,8 @@
+"use client";
+
+import { DocSearch } from "@docsearch/react";
+import "@docsearch/css";
+
 export default function SupportOptions() {
   return (
     <div>
@@ -17,6 +22,16 @@ export default function SupportOptions() {
           : join discussions, meet other users, and meet the contributors
         </li>
       </ul>
+      <div className="flex">
+        <span className="self-center">Or try searching the docs:</span>
+        <span className="ml-2">
+          <DocSearch
+            appId="XXPZ9QVGFB"
+            apiKey="66664e8765e1645ea0b500acebb0b0c2"
+            indexName="firezone"
+          />
+        </span>
+      </div>
     </div>
   );
 }

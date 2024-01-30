@@ -28,6 +28,9 @@ export default function KbSidebar() {
             <Item topLevel href="/kb" label="Overview" />
           </li>
           <li>
+            <Item topLevel href="/kb/faq" label="FAQ" />
+          </li>
+          <li>
             <Item topLevel href="/kb/quickstart" label="Quickstart" />
           </li>
           <li>
@@ -151,9 +154,6 @@ export default function KbSidebar() {
                 />
               </li>
             </Collapse>
-          </li>
-          <li>
-            <Item topLevel href="/kb/faq" label="FAQ" />
           </li>
         </ul>
       </div>
