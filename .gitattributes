@@ -1,2 +1,3 @@
 # Don't allow Git to mess up line endings, ever
+# https://github.com/actions/checkout/issues/135#issuecomment-613329879
 * -text
