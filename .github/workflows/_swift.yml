@@ -11,15 +11,15 @@ jobs:
       matrix:
         include:
           - sdk: macosx
-            runs-on: macos-13
+            runs-on: macos-14
             platform: macOS
             destination: platform=macOS
-            xcode: "15.0"
+            xcode: "15"
           - sdk: iphoneos
-            runs-on: macos-13
+            runs-on: macos-14
             platform: iOS
             destination: generic/platform=iOS
-            xcode: "15.0"
+            xcode: "15"
     permissions:
       contents: read
       id-token: 'write'
