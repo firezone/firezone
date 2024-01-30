@@ -47,6 +47,28 @@ public struct SharedAccess {
     return nil
   }
 
+  public static var appLogFolderURL: URL? {
+    if let url = logFolderURL?.appendingPathComponent("app") {
+      guard ensureDirectoryExists(at: url.path) else {
+        return nil
+      }
+      return url
+    }
+    NSLog("Can't access logFolderURL to create appLogFolderURL")
+    return nil
+  }
+
+  public static var tunnelLogFolderURL: URL? {
+    if let url = logFolderURL?.appendingPathComponent("tunnel") {
+      guard ensureDirectoryExists(at: url.path) else {
+        return nil
+      }
+      return url
+    }
+    NSLog("Can't access logFolderURL to create tunnelLogFolderURL")
+    return nil
+  }
+
   public static var tunnelShutdownEventFileURL: URL {
     baseFolderURL.appendingPathComponent("tunnel_shutdown_event_data.json")
   }
