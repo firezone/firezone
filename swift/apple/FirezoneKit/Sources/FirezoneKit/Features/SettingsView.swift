@@ -16,8 +16,6 @@ enum SettingsViewError: Error {
 }
 
 public final class SettingsViewModel: ObservableObject {
-  private let logger = Logger.make(for: SettingsViewModel.self)
-
   let authStore: AuthStore
 
   var tunnelAuthStatus: TunnelAuthStatus {
@@ -26,11 +24,13 @@ public final class SettingsViewModel: ObservableObject {
 
   @Published var advancedSettings: AdvancedSettings
 
+  let logger: AppLogger
   public var onSettingsSaved: () -> Void = unimplemented()
   private var cancellables = Set<AnyCancellable>()
 
-  public init(authStore: AuthStore) {
+  public init(authStore: AuthStore, logger: AppLogger) {
     self.authStore = authStore
+    self.logger = logger
     advancedSettings = AdvancedSettings.defaultValue
     loadSettings()
   }
@@ -62,14 +62,14 @@ public final class SettingsViewModel: ObservableObject {
       let authBaseURLString = advancedSettings.authBaseURLString
       guard URL(string: authBaseURLString) != nil else {
         logger.error(
-          "Not saving advanced settings because authBaseURL '\(authBaseURLString, privacy: .public)' is invalid"
+          "Not saving advanced settings because authBaseURL '\(authBaseURLString)' is invalid"
         )
         return
       }
       do {
         try await authStore.tunnelStore.saveAdvancedSettings(advancedSettings)
       } catch {
-        logger.error("Error saving advanced settings to tunnel store: \(error, privacy: .public)")
+        logger.error("Error saving advanced settings to tunnel store: \(error)")
       }
       await MainActor.run {
         advancedSettings.isSavedToDisk = true
@@ -77,7 +77,7 @@ public final class SettingsViewModel: ObservableObject {
     }
   }
 
-  func calculateLogDirSize(logger: Logger) -> String? {
+  func calculateLogDirSize(logger: AppLogger) -> String? {
     logger.log("\(#function)")
 
     let startTime = DispatchTime.now()
@@ -118,7 +118,7 @@ public final class SettingsViewModel: ObservableObject {
     return byteCountFormatter.string(fromByteCount: Int64(totalSize))
   }
 
-  func clearAllLogs(logger: Logger) throws {
+  func clearAllLogs(logger: AppLogger) throws {
     logger.log("\(#function)")
 
     let startTime = DispatchTime.now()
@@ -160,7 +160,7 @@ extension FileManager {
   func forEachFileUnder(
     _ dirURL: URL,
     including resourceKeys: Set<URLResourceKey>,
-    logger: Logger,
+    logger: AppLogger,
     handler: (URL, URLResourceValues) -> Void
   ) {
     // Deep-traverses the directory at dirURL
@@ -189,7 +189,7 @@ extension FileManager {
 }
 
 public struct SettingsView: View {
-  private let logger = Logger.make(for: SettingsView.self)
+  private let logger: AppLogger
 
   @ObservedObject var model: SettingsViewModel
   @Environment(\.dismiss) var dismiss
@@ -241,6 +241,7 @@ public struct SettingsView: View {
 
   public init(model: SettingsViewModel) {
     self.model = model
+    self.logger = model.logger
   }
 
   public var body: some View {

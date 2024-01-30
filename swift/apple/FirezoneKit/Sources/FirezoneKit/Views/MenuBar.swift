@@ -13,7 +13,6 @@
 
   @MainActor
   public final class MenuBar: NSObject {
-    let logger = Logger.make(for: MenuBar.self)
     @Dependency(\.mainQueue) private var mainQueue
 
     private var cancellables: Set<AnyCancellable> = []
@@ -37,12 +36,15 @@
     private var settingsViewModel: SettingsViewModel
     private var loginStatus: AuthStore.LoginStatus = .signedOut
     private var tunnelStatus: NEVPNStatus = .invalid
+    private var logger: AppLogger
 
     public init(appStore: AppStore) {
       self.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
 
       self.appStore = appStore
       self.settingsViewModel = appStore.settingsViewModel
+
+      self.logger = appStore.logger
 
       super.init()
       createMenu()

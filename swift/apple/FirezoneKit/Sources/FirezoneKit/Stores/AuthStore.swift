@@ -12,8 +12,6 @@ import OSLog
 
 @MainActor
 public final class AuthStore: ObservableObject {
-  private let logger = Logger.make(for: AuthStore.self)
-
   enum LoginStatus: CustomStringConvertible {
     case uninitialized
     case needsTunnelCreationPermission
@@ -40,6 +38,7 @@ public final class AuthStore: ObservableObject {
 
   let tunnelStore: TunnelStore
 
+  private let logger: AppLogger
   private var cancellables = Set<AnyCancellable>()
 
   @Published private(set) var loginStatus: LoginStatus {
@@ -55,8 +54,9 @@ public final class AuthStore: ObservableObject {
   private let reconnectDelaySecs = 1
   private var reconnectionAttemptsRemaining = maxReconnectionAttemptCount
 
-  init(tunnelStore: TunnelStore) {
+  init(tunnelStore: TunnelStore, logger: AppLogger) {
     self.tunnelStore = tunnelStore
+    self.logger = logger
     self.loginStatus = .uninitialized
 
     Task {
@@ -99,7 +99,9 @@ public final class AuthStore: ObservableObject {
 
   private func upateLoginStatus() {
     Task {
+      logger.log("\(#function): Tunnel auth status is \(self.tunnelStore.tunnelAuthStatus)")
       let loginStatus = await self.getLoginStatus(from: self.tunnelStore.tunnelAuthStatus)
+      logger.log("\(#function): Corresponding login status is \(loginStatus)")
       await MainActor.run {
         self.loginStatus = loginStatus
       }
@@ -129,7 +131,7 @@ public final class AuthStore: ObservableObject {
   }
 
   func signIn() async throws {
-    logger.trace("\(#function)")
+    logger.log("\(#function)")
 
     let authResponse = try await auth.signIn(self.authBaseURL)
     let attributes = Keychain.TokenAttributes(
@@ -141,10 +143,10 @@ public final class AuthStore: ObservableObject {
   }
 
   func signOut() async {
-    logger.trace("\(#function)")
+    logger.log("\(#function)")
 
     guard case .signedIn = self.tunnelStore.tunnelAuthStatus else {
-      logger.trace("\(#function): Not signed in, so can't signout.")
+      logger.log("\(#function): Not signed in, so can't signout.")
       return
     }
 
@@ -154,7 +156,7 @@ public final class AuthStore: ObservableObject {
         try await keychain.delete(tokenRef)
       }
     } catch {
-      logger.error("\(#function): Error signing out: \(error, privacy: .public)")
+      logger.error("\(#function): Error signing out: \(error)")
     }
 
     resetReconnectionAttemptsRemaining()
@@ -165,10 +167,10 @@ public final class AuthStore: ObservableObject {
   }
 
   func startTunnel() {
-    logger.trace("\(#function)")
+    logger.log("\(#function)")
 
     guard case .signedIn = self.tunnelStore.tunnelAuthStatus else {
-      logger.trace("\(#function): Not signed in, so can't start the tunnel.")
+      logger.log("\(#function): Not signed in, so can't start the tunnel.")
       return
     }
 
@@ -191,9 +193,9 @@ public final class AuthStore: ObservableObject {
 
   func handleTunnelDisconnectionEvent() {
     logger.log("\(#function)")
-    if let tsEvent = TunnelShutdownEvent.loadFromDisk() {
+    if let tsEvent = TunnelShutdownEvent.loadFromDisk(logger: logger) {
       self.logger.log(
-        "\(#function): Tunnel shutdown event: \(tsEvent, privacy: .public)"
+        "\(#function): Tunnel shutdown event: \(tsEvent)"
       )
       switch tsEvent.action {
       case .signoutImmediately:
