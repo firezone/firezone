@@ -421,6 +421,7 @@ impl Controller {
             callback_handler,
             connlib,
         });
+        self.refresh_system_tray_menu()?;
 
         Ok(())
     }
