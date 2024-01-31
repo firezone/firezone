@@ -307,11 +307,11 @@ jobs:
             relay \
             gateway \
             iperf3
-      - name: Setup test: ${{ matrix.test_name }}
+      - name: 'Setup test: ${{ matrix.test_name }}'
         run: ${{ matrix.setup }}
-      - name: Execute test: ${{ matrix.test_name }}
+      - name: 'Execute test: ${{ matrix.test_name }}'
         run: ${{ matrix.execute }}
-      - name: Performance test: ${{ matrix.test_name }}
+      - name: 'Performance test: ${{ matrix.test_name }}'
         if: ${{ matrix.perf_test_artifact_name }}
         id: perfomance-test
         timeout-minutes: 5
@@ -352,13 +352,13 @@ jobs:
           cat /tmp/iperf3results/udp_client2server.json | jq -r '"udp_client2server_sum_bits_per_second=" + (.end.sum.bits_per_second|tostring)' >> "$GITHUB_OUTPUT"
           cat /tmp/iperf3results/udp_client2server.json | jq -r '"udp_client2server_sum_jitter_ms=" + (.end.sum.jitter_ms|tostring)' >> "$GITHUB_OUTPUT"
           cat /tmp/iperf3results/udp_client2server.json | jq -r '"udp_client2server_sum_lost_percent=" + (.end.sum.lost_percent|tostring)' >> "$GITHUB_OUTPUT"
-      - name: Save performance test results: ${{ matrix.test_name }}
+      - name: 'Save performance test results: ${{ matrix.test_name }}'
         if: ${{ matrix.perf_test_artifact_name }}
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.perf_test_artifact_name }}-iperf3results
           path: /tmp/iperf3results
-      - name: Download main branch performance test results: ${{ matrix.test_name }}
+      - name: 'Download main branch performance test results: ${{ matrix.test_name }}'
         id: download-artifact
         if: ${{ github.event_name == 'pull_request' && matrix.perf_test_artifact_name }}
         env:
