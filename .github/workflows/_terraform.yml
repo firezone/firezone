@@ -8,6 +8,7 @@ env:
 
 jobs:
   plan-deploy:
+    name: Plan Deploy
     runs-on: ubuntu-22.04
     permissions:
       contents: read

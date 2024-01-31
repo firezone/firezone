@@ -5,6 +5,7 @@ on:
 
 jobs:
   build:
+    name: Build
     runs-on: ${{ matrix.runs-on }}
     strategy:
       fail-fast: false

@@ -12,6 +12,7 @@ permissions:
 
 jobs:
   static-analysis:
+    name: Static Analysis
     strategy:
       fail-fast: false
       matrix:
@@ -41,6 +42,7 @@ jobs:
           cargo clippy --all-targets --all-features ${{ matrix.packages }} -- -D warnings
 
   test:
+    name: Test
     strategy:
       fail-fast: false
       matrix:
@@ -68,6 +70,7 @@ jobs:
 
   # This should be identical to `build-push-windows-release-artifacts` in `cd.yml` except for the Github permissions, needs tag, and uploading step
   build-tauri:
+    name: Build Tauri
     runs-on: windows-2019
     defaults:
       run:
@@ -131,6 +134,7 @@ jobs:
             ${{ github.workspace }}/rust/windows-client/windows-client-x64.msi.sha256sum.txt
 
   smoke-test-relay:
+    name: Smoke Test Relay
     runs-on: ubuntu-22.04
     defaults:
       run:

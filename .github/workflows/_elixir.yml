@@ -4,6 +4,7 @@ on:
 
 jobs:
   unit-test:
+    name: Unit Test
     runs-on: ubuntu-22.04
     defaults:
       run:
@@ -83,6 +84,7 @@ jobs:
           reporter: java-junit
 
   type-check:
+    name: Type Check
     runs-on: ubuntu-22.04
     defaults:
       run:
@@ -151,6 +153,7 @@ jobs:
         run: mix dialyzer --format dialyxir
 
   static-analysis:
+    name: Static Analysis
     runs-on: ubuntu-22.04
     defaults:
       run:
@@ -211,6 +214,7 @@ jobs:
         run: mix deps.unlock --check-unused
 
   migrations-and-seed-test:
+    name: Migrations and Seed Test
     runs-on: ubuntu-22.04
     defaults:
       run:
@@ -342,6 +346,7 @@ jobs:
         run: mix ecto.seed
 
   acceptance-test:
+    name: Acceptance Test
     permissions:
       checks: write
     runs-on: ubuntu-22.04

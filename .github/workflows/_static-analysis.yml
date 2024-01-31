@@ -4,6 +4,7 @@ on:
 
 jobs:
   version-check:
+    name: Version Check
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
@@ -20,6 +21,7 @@ jobs:
             exit 1
           fi
   global-linter:
+    name: Global Linter
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
