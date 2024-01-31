@@ -26,7 +26,7 @@ runs:
         echo "SCCACHE_GCS_RW_MODE=READ_WRITE" >> $GITHUB_ENV
       shell: bash
     - if: ${{ inputs.sccache_enabled == 'true' }}
-      uses: mozilla-actions/sccache-action@v0.0.3
+      uses: mozilla-actions/sccache-action@v0.0.4
     - if: ${{ inputs.sccache_enabled }}
       run: echo "RUSTC_WRAPPER=$SCCACHE_PATH" >> $GITHUB_ENV
       shell: bash
