@@ -37,14 +37,15 @@ pub(crate) const WIREGUARD_KEEP_ALIVE: u16 = 5;
 const MAX_UDP_SIZE: usize = (1 << 16) - 1;
 
 /// Manages a set of wireguard connections for a server.
-pub type ServerConnectionPool<TId> = ConnectionPool<Server, TId>;
+pub type ServerNode<TId> = Node<Server, TId>;
 /// Manages a set of wireguard connections for a client.
-pub type ClientConnectionPool<TId> = ConnectionPool<Client, TId>;
+pub type ClientNode<TId> = Node<Client, TId>;
 
 pub enum Server {}
 pub enum Client {}
 
-pub struct ConnectionPool<T, TId> {
+/// A node within a `snownet` network maintains connections to several other nodes.
+pub struct Node<T, TId> {
     private_key: StaticSecret,
     index: IndexLfsr,
     rate_limiter: Arc<RateLimiter>,
@@ -81,7 +82,7 @@ pub enum Error {
     NotConnected,
 }
 
-impl<T, TId> ConnectionPool<T, TId>
+impl<T, TId> Node<T, TId>
 where
     TId: Eq + Hash + Copy + fmt::Display,
 {
@@ -412,7 +413,7 @@ where
         self.pending_events.pop_front()
     }
 
-    /// Returns, when [`ConnectionPool::handle_timeout`] should be called next.
+    /// Returns, when [`Node::handle_timeout`] should be called next.
     ///
     /// This function only takes `&mut self` because it caches certain computations internally.
     /// The returned timestamp will **not** change unless other state is modified.
@@ -429,7 +430,7 @@ where
         earliest(connection_timeout, self.next_rate_limiter_reset)
     }
 
-    /// Advances time within the [`ConnectionPool`].
+    /// Advances time within the [`Node`].
     ///
     /// This advances time within the ICE agent, updates timers within all wireguard connections as well as resets wireguard's rate limiter (if necessary).
     pub fn handle_timeout(&mut self, now: Instant) {
@@ -547,7 +548,7 @@ where
     }
 }
 
-impl<TId> ConnectionPool<Client, TId>
+impl<TId> Node<Client, TId>
 where
     TId: Eq + Hash + Copy + fmt::Display,
 {
@@ -605,7 +606,7 @@ where
         params
     }
 
-    /// Accept an [`Answer`] from the remote for a connection previously created via [`ConnectionPool::new_connection`].
+    /// Accept an [`Answer`] from the remote for a connection previously created via [`Node::new_connection`].
     pub fn accept_answer(&mut self, id: TId, remote: PublicKey, answer: Answer) {
         let Some(initial) = self.initial_connections.remove(&id) else {
             return; // TODO: Better error handling
@@ -629,7 +630,7 @@ where
     }
 }
 
-impl<TId> ConnectionPool<Server, TId>
+impl<TId> Node<Server, TId>
 where
     TId: Eq + Hash + Copy + fmt::Display,
 {
@@ -690,7 +691,7 @@ where
     }
 }
 
-impl<T, TId> ConnectionPool<T, TId>
+impl<T, TId> Node<T, TId>
 where
     TId: Eq + Hash + Copy + fmt::Display,
 {
