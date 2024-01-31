@@ -28,57 +28,59 @@ defmodule Web.Sites.New do
               <div>
                 <.input label="Name" field={@form[:name]} placeholder="Name of this Site" required />
               </div>
-              <div>
-                <p class="text-lg text-neutral-900 mb-2">
-                  Data Routing -
-                  <a
-                    class={[link_style(), "text-sm"]}
-                    href="https://www.firezone.dev/kb?utm_source=product"
-                    target="_blank"
-                  >
-                    Read about routing in Firezone
-                  </a>
-                </p>
+              <%!-- TODO: Remove when we remove routing in favor of tiered Relays
                 <div>
-                  <div>
-                    <.input
-                      id="routing-option-managed"
-                      type="radio"
-                      field={@form[:routing]}
-                      value="managed"
-                      label={pretty_print_routing(:managed)}
-                      checked={@form[:routing].value == :managed}
-                      required
+                  <p class="text-lg text-neutral-900 mb-2">
+                    Data Routing -
+                    <a
+                      class={[link_style(), "text-sm"]}
+                      href="https://www.firezone.dev/kb?utm_source=product"
+                      target="_blank"
                     >
-                      <.badge
-                        class="ml-2"
-                        type="primary"
-                        title="Feature available on the Enterprise plan"
-                      >
-                        ENTERPRISE
-                      </.badge>
-                    </.input>
-                    <p class="ml-6 mb-4 text-sm text-neutral-500">
-                      Firezone will route connections through our managed Relays only if a direct connection to a Gateway is not possible.
-                      Firezone can never decrypt the contents of your traffic.
-                    </p>
-                  </div>
+                      Read about routing in Firezone
+                    </a>
+                  </p>
                   <div>
-                    <.input
-                      id="routing-option-stun-only"
-                      type="radio"
-                      field={@form[:routing]}
-                      value="stun_only"
-                      label={pretty_print_routing(:stun_only)}
-                      checked={@form[:routing].value == :stun_only}
-                      required
-                    />
-                    <p class="ml-6 mb-4 text-sm text-neutral-500">
-                      Firezone will enforce direct connections to all Gateways in this Site. This could cause connectivity issues in rare cases.
-                    </p>
+                    <div>
+                      <.input
+                        id="routing-option-managed"
+                        type="radio"
+                        field={@form[:routing]}
+                        value="managed"
+                        label={pretty_print_routing(:managed)}
+                        checked={@form[:routing].value == :managed}
+                        required
+                      >
+                        <.badge
+                          class="ml-2"
+                          type="primary"
+                          title="Feature available on the Enterprise plan"
+                        >
+                          ENTERPRISE
+                        </.badge>
+                      </.input>
+                      <p class="ml-6 mb-4 text-sm text-neutral-500">
+                        Firezone will route connections through our managed Relays only if a direct connection to a Gateway is not possible.
+                        Firezone can never decrypt the contents of your traffic.
+                      </p>
+                    </div>
+                    <div>
+                      <.input
+                        id="routing-option-stun-only"
+                        type="radio"
+                        field={@form[:routing]}
+                        value="stun_only"
+                        label={pretty_print_routing(:stun_only)}
+                        checked={@form[:routing].value == :stun_only}
+                        required
+                      />
+                      <p class="ml-6 mb-4 text-sm text-neutral-500">
+                        Firezone will enforce direct connections to all Gateways in this Site. This could cause connectivity issues in rare cases.
+                      </p>
+                    </div>
                   </div>
-                </div>
               </div>
+                --%>
             </div>
             <.submit_button>
               Create

@@ -79,8 +79,7 @@ defmodule Web.Live.Sites.EditTest do
     form = form(lv, "form")
 
     assert find_inputs(form) == [
-             "group[name]",
-             "group[routing]"
+             "group[name]"
            ]
   end
 
@@ -139,8 +138,8 @@ defmodule Web.Live.Sites.EditTest do
     group: group,
     conn: conn
   } do
-    attrs = Fixtures.Gateways.group_attrs() |> Map.take([:name, :routing])
-    attrs = %{attrs | routing: "stun_only"}
+    attrs = Fixtures.Gateways.group_attrs() |> Map.take([:name])
+    attrs = %{attrs | name: "new_test_name"}
 
     {:ok, lv, _html} =
       conn

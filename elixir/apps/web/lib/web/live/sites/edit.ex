@@ -36,6 +36,7 @@ defmodule Web.Sites.Edit do
               <div>
                 <.input label="Name" field={@form[:name]} placeholder="Name of this Site" required />
               </div>
+              <%!-- TODO: Remove when we remove routing in favor of tiered Relays
               <div>
                 <p class="text-lg text-neutral-900 mb-2">
                   Data Routing -
@@ -91,6 +92,7 @@ defmodule Web.Sites.Edit do
                   </div>
                 </div>
               </div>
+              --%>
             </div>
             <.submit_button>
               Save

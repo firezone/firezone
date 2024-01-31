@@ -49,7 +49,7 @@ defmodule Web.Live.Sites.NewTest do
     identity: identity,
     conn: conn
   } do
-    {:ok, lv, html} =
+    {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
       |> live(~p"/#{account}/sites/new")
@@ -57,12 +57,8 @@ defmodule Web.Live.Sites.NewTest do
     form = form(lv, "form")
 
     assert find_inputs(form) == [
-             "group[name]",
-             "group[routing]"
+             "group[name]"
            ]
-
-    assert html =~ "Feature available on the Enterprise plan"
-    assert html =~ "ENTERPRISE"
   end
 
   test "renders changeset errors on input change", %{
@@ -92,7 +88,7 @@ defmodule Web.Live.Sites.NewTest do
     conn: conn
   } do
     other_gateway = Fixtures.Gateways.create_group(account: account)
-    attrs = %{name: other_gateway.name, routing: "managed"}
+    attrs = %{name: other_gateway.name}
 
     {:ok, lv, _html} =
       conn
@@ -112,7 +108,7 @@ defmodule Web.Live.Sites.NewTest do
     identity: identity,
     conn: conn
   } do
-    attrs = Fixtures.Gateways.group_attrs() |> Map.take([:name, :routing])
+    attrs = Fixtures.Gateways.group_attrs() |> Map.take([:name])
 
     {:ok, lv, _html} =
       conn
