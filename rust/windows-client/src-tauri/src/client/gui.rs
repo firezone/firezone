@@ -3,12 +3,12 @@
 
 // TODO: `git grep` for unwraps before 1.0, especially this gui module
 
-use crate::client::{self, deep_link, network_changes, AppLocalDataDir, BUNDLE_ID};
+use crate::client::{self, deep_link, network_changes, BUNDLE_ID};
 use anyhow::{anyhow, bail, Context, Result};
 use arc_swap::ArcSwap;
 use client::{
     about, logging,
-    settings::{self, AdvancedSettings},
+    settings::{self, app_local_data_dir, AdvancedSettings},
 };
 use connlib_client_shared::{file_logger, ResourceDescription};
 use connlib_shared::messages::ResourceId;
@@ -28,14 +28,6 @@ mod system_tray_menu;
 const MAX_PARTITION_TIME: Duration = Duration::from_secs(60 * 60 * 24 * 30);
 
 pub(crate) type CtlrTx = mpsc::Sender<ControllerRequest>;
-
-// TODO: Move out of GUI module, shouldn't be here
-pub(crate) fn app_local_data_dir() -> Result<AppLocalDataDir> {
-    let path = known_folders::get_known_folder_path(known_folders::KnownFolder::LocalAppData)
-        .context("should be able to ask Windows where AppData/Local is")?
-        .join(BUNDLE_ID);
-    Ok(AppLocalDataDir(path))
-}
 
 /// All managed state that we might need to access from odd places like Tauri commands.
 ///
@@ -63,7 +55,9 @@ impl Managed {
 /// Runs the Tauri GUI and returns on exit or unrecoverable error
 pub(crate) fn run(params: client::GuiParams) -> Result<()> {
     // Change to data dir so the file logger will write there and not in System32 if we're launching from an app link
-    let cwd = app_local_data_dir()?.0.join("data");
+    let cwd = app_local_data_dir()
+        .ok_or_else(|| anyhow!("app_local_data_dir() failed"))?
+        .join("data");
     std::fs::create_dir_all(&cwd)?;
     std::env::set_current_dir(&cwd)?;
 
@@ -228,55 +222,20 @@ async fn accept_deep_links(mut server: deep_link::Server, ctlr_tx: CtlrTx) -> Re
 }
 
 fn handle_system_tray_event(app: &tauri::AppHandle, event: TrayMenuEvent) -> Result<()> {
-    let ctlr_tx = &app
-        .try_state::<Managed>()
-        .ok_or_else(|| anyhow!("can't get Managed struct from Tauri"))?
-        .ctlr_tx;
-
-    match event {
-        TrayMenuEvent::About => {
-            let win = app
-                .get_window("about")
-                .ok_or_else(|| anyhow!("getting handle to About window"))?;
-
-            if win.is_visible()? {
-                win.hide()?;
-            } else {
-                win.show()?;
-            }
-        }
-        TrayMenuEvent::Resource { id } => {
-            ctlr_tx.blocking_send(ControllerRequest::CopyResource(id))?
-        }
-        TrayMenuEvent::Settings => {
-            let win = app
-                .get_window("settings")
-                .ok_or_else(|| anyhow!("getting handle to Settings window"))?;
-
-            if win.is_visible()? {
-                // If we close the window here, we can't re-open it, we'd have to fully re-create it. Not needed for MVP - We agreed 100 MB is fine for the GUI client.
-                win.hide()?;
-            } else {
-                win.show()?;
-            }
-        }
-        TrayMenuEvent::SignIn => ctlr_tx.blocking_send(ControllerRequest::SignIn)?,
-        TrayMenuEvent::SignOut => ctlr_tx.blocking_send(ControllerRequest::SignOut)?,
-        TrayMenuEvent::Quit => ctlr_tx.blocking_send(ControllerRequest::Quit)?,
-    }
+    app.try_state::<Managed>()
+        .context("can't get Managed struct from Tauri")?
+        .ctlr_tx
+        .blocking_send(ControllerRequest::SystemTrayMenu(event))?;
     Ok(())
 }
 
 pub(crate) enum ControllerRequest {
-    CopyResource(String),
     Disconnected,
     DisconnectedTokenExpired,
     ExportLogs { path: PathBuf, stem: PathBuf },
     GetAdvancedSettings(oneshot::Sender<AdvancedSettings>),
-    Quit,
     SchemeRequest(url::Url),
-    SignIn,
-    SignOut,
+    SystemTrayMenu(TrayMenuEvent),
     TunnelReady,
 }
 
@@ -417,13 +376,14 @@ impl Controller {
             None, // TODO: Send device name here (windows computer name)
             None,
             callback_handler.clone(),
-            MAX_PARTITION_TIME,
+            Some(MAX_PARTITION_TIME),
         )?;
 
         self.session = Some(Session {
             callback_handler,
             connlib,
         });
+        self.refresh_system_tray_menu()?;
 
         Ok(())
     }
@@ -493,6 +453,44 @@ impl Controller {
             .tray_handle()
             .set_menu(self.build_system_tray_menu())?)
     }
+
+    /// Deletes the auth token, stops connlib, and refreshes the tray menu
+    fn sign_out(&mut self) -> Result<()> {
+        self.auth.sign_out()?;
+        self.tunnel_ready = false;
+        if let Some(mut session) = self.session.take() {
+            tracing::debug!("disconnecting connlib");
+            // This is redundant if the token is expired, in that case
+            // connlib already disconnected itself.
+            session.connlib.disconnect(None);
+        } else {
+            // Might just be because we got a double sign-out or
+            // the user canceled the sign-in or something innocent.
+            tracing::warn!("tried to sign out but there's no session");
+        }
+        self.refresh_system_tray_menu()?;
+        Ok(())
+    }
+
+    fn toggle_window(&self, window: system_tray_menu::Window) -> Result<()> {
+        let id = match window {
+            system_tray_menu::Window::About => "about",
+            system_tray_menu::Window::Settings => "settings",
+        };
+
+        let win = self
+            .app
+            .get_window(id)
+            .ok_or_else(|| anyhow!("getting handle to `{id}` window"))?;
+
+        if win.is_visible()? {
+            // If we close the window here, we can't re-open it, we'd have to fully re-create it. Not needed for MVP - We agreed 100 MB is fine for the GUI client.
+            win.hide()?;
+        } else {
+            win.show()?;
+        }
+        Ok(())
+    }
 }
 
 // TODO: After PR #2960 lands, move some of this into `impl Controller`
@@ -537,9 +535,6 @@ async fn run_controller(
                     break;
                 };
                 match req {
-                    Req::CopyResource(id) => if let Err(e) = controller.copy_resource(&id) {
-                        tracing::error!("couldn't copy resource to clipboard: {e:#?}");
-                    }
                     Req::Disconnected => {
                         tracing::debug!("connlib disconnected, tearing down Session");
                         controller.tunnel_ready = false;
@@ -550,30 +545,27 @@ async fn run_controller(
                         }
                         controller.refresh_system_tray_menu()?;
                     }
-                    Req::DisconnectedTokenExpired | Req::SignOut => {
-                        tracing::debug!("Token expired or user signed out");
-                        controller.auth.sign_out()?;
-                        controller.tunnel_ready = false;
-                        if let Some(mut session) = controller.session.take() {
-                            tracing::debug!("disconnecting connlib");
-                            // This is redundant if the token is expired, in that case
-                            // connlib already disconnected itself.
-                            session.connlib.disconnect(None);
-                        }
-                        else {
-                            tracing::error!("tried to sign out but there's no session");
-                        }
-                        controller.refresh_system_tray_menu()?;
+                    Req::DisconnectedTokenExpired => {
+                        tracing::info!("Token expired");
+                        controller.sign_out()?;
+                        show_notification("Firezone disconnected", "To access resources, sign in again.")?;
                     }
                     Req::ExportLogs{path, stem} => logging::export_logs_to(path, stem).await?,
                     Req::GetAdvancedSettings(tx) => {
                         tx.send(controller.advanced_settings.clone()).ok();
                     }
-                    Req::Quit => break,
                     Req::SchemeRequest(url) => if let Err(e) = controller.handle_deep_link(&url).await {
                         tracing::error!("couldn't handle deep link: {e:#?}");
                     }
-                    Req::SignIn => {
+                    Req::SystemTrayMenu(TrayMenuEvent::ToggleWindow(window)) => controller.toggle_window(window)?,
+                    Req::SystemTrayMenu(TrayMenuEvent::CancelSignIn | TrayMenuEvent::SignOut) => {
+                        tracing::info!("User signed out or canceled sign-in");
+                        controller.sign_out()?;
+                    }
+                    Req::SystemTrayMenu(TrayMenuEvent::Resource { id }) => if let Err(e) = controller.copy_resource(&id) {
+                        tracing::error!("couldn't copy resource to clipboard: {e:#?}");
+                    }
+                    Req::SystemTrayMenu(TrayMenuEvent::SignIn) => {
                         if let Some(req) = controller.auth.start_sign_in()? {
                             let url = req.to_url(&controller.advanced_settings.auth_base_url);
                             controller.refresh_system_tray_menu()?;
@@ -584,16 +576,12 @@ async fn run_controller(
                             )?;
                         }
                     }
+                    Req::SystemTrayMenu(TrayMenuEvent::Quit) => break,
                     Req::TunnelReady => {
                         controller.tunnel_ready = true;
                         controller.refresh_system_tray_menu()?;
 
-                        // May say "Windows Powershell" in dev mode
-                        // See https://github.com/tauri-apps/tauri/issues/3700
-                        Notification::new(&controller.app.config().tauri.bundle.identifier)
-                            .title("Firezone connected")
-                            .body("You are now signed in and able to access resources.")
-                            .show()?;
+                        show_notification("Firezone connected", "You are now signed in and able to access resources.")?;
                     },
                 }
             }
@@ -606,5 +594,17 @@ async fn run_controller(
 
     // Last chance to do any drops / cleanup before the process crashes.
 
+    Ok(())
+}
+
+/// Show a notification in the bottom right of the screen
+///
+/// May say "Windows Powershell" and have the wrong icon in dev mode
+/// See <https://github.com/tauri-apps/tauri/issues/3700>
+fn show_notification(title: &str, body: &str) -> Result<()> {
+    Notification::new(BUNDLE_ID)
+        .title(title)
+        .body(body)
+        .show()?;
     Ok(())
 }

@@ -25,7 +25,7 @@ module "gateways" {
   image      = "gateway"
   image_tag  = var.image_tag
 
-  observability_log_level = "firezone_gateway=trace,wire=trace,connlib_gateway_shared=trace,firezone_tunnel=trace,connlib_shared=trace,warn"
+  observability_log_level = "debug"
 
   application_name    = "gateway"
   application_version = replace(var.image_tag, ".", "-")

@@ -4,12 +4,18 @@ use tauri::{CustomMenuItem, SystemTrayMenu, SystemTrayMenuItem, SystemTraySubmen
 
 #[derive(Debug, PartialEq)]
 pub(crate) enum Event {
-    About,
+    CancelSignIn,
     Resource { id: String },
-    Settings,
     SignIn,
     SignOut,
+    ToggleWindow(Window),
     Quit,
+}
+
+#[derive(Debug, PartialEq)]
+pub(crate) enum Window {
+    About,
+    Settings,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -23,8 +29,9 @@ impl FromStr for Event {
 
     fn from_str(s: &str) -> Result<Self, Error> {
         Ok(match s {
-            "/about" => Self::About,
-            "/settings" => Self::Settings,
+            "/about" => Self::ToggleWindow(Window::About),
+            "/cancel_sign_in" => Self::CancelSignIn,
+            "/settings" => Self::ToggleWindow(Window::Settings),
             "/sign_in" => Self::SignIn,
             "/sign_out" => Self::SignOut,
             "/quit" => Self::Quit,
@@ -70,6 +77,10 @@ pub(crate) fn signing_in() -> SystemTrayMenu {
     // TODO: Check this layout with Jamil, I lost track of the Figma for it.
     SystemTrayMenu::new()
         .add_item(CustomMenuItem::new("".to_string(), "Signing In...").disabled())
+        .add_item(CustomMenuItem::new(
+            "/cancel_sign_in".to_string(),
+            "Cancel sign-in",
+        ))
         .add_native_item(SystemTrayMenuItem::Separator)
         .add_item(CustomMenuItem::new("/about".to_string(), "About"))
         .add_item(CustomMenuItem::new("/settings".to_string(), "Settings"))
@@ -87,12 +98,15 @@ pub(crate) fn signed_out() -> SystemTrayMenu {
 
 #[cfg(test)]
 mod tests {
-    use super::Event;
+    use super::{Event, Window};
     use std::str::FromStr;
 
     #[test]
     fn systray_parse() {
-        assert_eq!(Event::from_str("/about").unwrap(), Event::About);
+        assert_eq!(
+            Event::from_str("/about").unwrap(),
+            Event::ToggleWindow(Window::About)
+        );
         assert_eq!(
             Event::from_str("/resource/1234").unwrap(),
             Event::Resource {

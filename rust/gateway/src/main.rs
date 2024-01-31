@@ -26,7 +26,19 @@ mod messages;
 const ID_PATH: &str = "/var/lib/firezone/gateway_id";
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() {
+    // Enforce errors only being printed on a single line using the technique recommended in the anyhow docs:
+    // https://docs.rs/anyhow/latest/anyhow/struct.Error.html#display-representations
+    //
+    // By default, `anyhow` prints a stacktrace when it exits.
+    // That looks like a "crash" but we "just" exit with a fatal error.
+    if let Err(e) = try_main().await {
+        tracing::error!("{e:#}");
+        std::process::exit(1);
+    }
+}
+
+async fn try_main() -> Result<()> {
     let cli = Cli::parse();
     setup_global_subscriber(layer::Identity::new());
 
@@ -82,7 +94,7 @@ async fn run(connect_url: Url, private_key: StaticSecret) -> Result<Infallible> 
     let tunnel: Arc<Tunnel<_, GatewayState>> =
         Arc::new(Tunnel::new(private_key, CallbackHandler).await?);
 
-    let (portal, init) = phoenix_channel::init::<InitGateway, _, _>(
+    let (portal, init) = phoenix_channel::init::<_, InitGateway, _, _>(
         Secret::new(SecureUrl::from_url(connect_url.clone())),
         get_user_agent(None),
         PHOENIX_TOPIC,

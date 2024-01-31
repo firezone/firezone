@@ -1,18 +1,19 @@
+mod heartbeat;
+
 use std::collections::HashSet;
-use std::{fmt, future, marker::PhantomData, time::Duration};
+use std::{fmt, future, marker::PhantomData};
 
 use backoff::backoff::Backoff;
 use backoff::ExponentialBackoff;
 use base64::Engine;
 use futures::future::BoxFuture;
 use futures::{FutureExt, SinkExt, StreamExt};
+use heartbeat::{Heartbeat, MissedLastHeartbeat};
 use rand_core::{OsRng, RngCore};
 use secrecy::{CloneableSecret, Secret};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use std::pin::Pin;
 use std::task::{ready, Context, Poll};
 use tokio::net::TcpStream;
-use tokio::time::Instant;
 use tokio_tungstenite::{
     connect_async,
     tungstenite::{handshake::client::Request, Message},
@@ -20,16 +21,14 @@ use tokio_tungstenite::{
 };
 use url::Url;
 
-const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(30);
-
 // TODO: Refactor this PhoenixChannel to be compatible with the needs of the client and gateway
 // See https://github.com/firezone/firezone/issues/2158
-pub struct PhoenixChannel<TInboundMsg, TOutboundRes> {
+pub struct PhoenixChannel<TInitReq, TInboundMsg, TOutboundRes> {
     state: State,
     pending_messages: Vec<Message>,
     next_request_id: u64,
 
-    next_heartbeat: Pin<Box<tokio::time::Sleep>>,
+    heartbeat: Heartbeat,
 
     _phantom: PhantomData<(TInboundMsg, TOutboundRes)>,
 
@@ -39,6 +38,9 @@ pub struct PhoenixChannel<TInboundMsg, TOutboundRes> {
     secret_url: Secret<SecureUrl>,
     user_agent: String,
     reconnect_backoff: ExponentialBackoff,
+
+    login: &'static str,
+    init_req: TInitReq,
 }
 
 enum State {
@@ -52,35 +54,40 @@ enum State {
 /// Additionally, you must already provide any query parameters required for authentication.
 #[tracing::instrument(level = "debug", skip(payload, secret_url, reconnect_backoff))]
 #[allow(clippy::type_complexity)]
-pub async fn init<TInitM, TInboundMsg, TOutboundRes>(
+pub async fn init<TInitReq, TInitRes, TInboundMsg, TOutboundRes>(
     secret_url: Secret<SecureUrl>,
     user_agent: String,
     login_topic: &'static str,
-    payload: impl Serialize,
+    payload: TInitReq,
     reconnect_backoff: ExponentialBackoff,
 ) -> Result<
-    Result<(PhoenixChannel<TInboundMsg, TOutboundRes>, TInitM), UnexpectedEventDuringInit>,
+    Result<
+        (
+            PhoenixChannel<TInitReq, TInboundMsg, TOutboundRes>,
+            TInitRes,
+        ),
+        UnexpectedEventDuringInit,
+    >,
     Error,
 >
 where
-    TInitM: DeserializeOwned + fmt::Debug,
+    TInitReq: Serialize + Clone,
+    TInitRes: DeserializeOwned + fmt::Debug,
     TInboundMsg: DeserializeOwned,
     TOutboundRes: DeserializeOwned,
 {
-    let mut channel = PhoenixChannel::<InitMessage<TInitM>, ()>::connect(
+    let mut channel = PhoenixChannel::<_, InitMessage<TInitRes>, ()>::connect(
         secret_url,
         user_agent,
+        login_topic,
+        payload,
         reconnect_backoff,
-    ); // No reconnection on `init`.
-    channel.join(login_topic, payload);
+    );
 
     tracing::info!("Connected to portal, waiting for `init` message");
 
     let (channel, init_message) = loop {
         match future::poll_fn(|cx| channel.poll(cx)).await? {
-            Event::JoinedRoom { topic } if topic == login_topic => {
-                tracing::info!("Joined {login_topic} room on portal")
-            }
             Event::InboundMessage {
                 topic,
                 msg: InitMessage::Init(msg),
@@ -117,10 +124,19 @@ pub enum Error {
     Serde(#[from] serde_json::Error),
     #[error("server sent a reply without a reference")]
     MissingReplyId,
+    #[error("server did not reply to our heartbeat")]
+    MissedHeartbeat,
 }
 
 #[derive(Debug, PartialEq, Eq, Hash)]
 pub struct OutboundRequestId(u64);
+
+impl OutboundRequestId {
+    #[cfg(test)]
+    pub(crate) fn new(id: u64) -> Self {
+        Self(id)
+    }
+}
 
 impl fmt::Display for OutboundRequestId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -157,8 +173,9 @@ impl secrecy::Zeroize for SecureUrl {
     }
 }
 
-impl<TInboundMsg, TOutboundRes> PhoenixChannel<TInboundMsg, TOutboundRes>
+impl<TInitReq, TInboundMsg, TOutboundRes> PhoenixChannel<TInitReq, TInboundMsg, TOutboundRes>
 where
+    TInitReq: Serialize + Clone,
     TInboundMsg: DeserializeOwned,
     TOutboundRes: DeserializeOwned,
 {
@@ -166,12 +183,16 @@ where
     ///
     /// The provided URL must contain a host.
     /// Additionally, you must already provide any query parameters required for authentication.
+    ///
+    /// Once the connection is established,
     pub fn connect(
         secret_url: Secret<SecureUrl>,
         user_agent: String,
+        login: &'static str,
+        init_req: TInitReq,
         reconnect_backoff: ExponentialBackoff,
     ) -> Self {
-        Self {
+        let mut phoenix_channel = Self {
             reconnect_backoff,
             secret_url: secret_url.clone(),
             user_agent: user_agent.clone(),
@@ -183,9 +204,14 @@ where
             pending_messages: vec![],
             _phantom: PhantomData,
             next_request_id: 0,
-            next_heartbeat: Box::pin(tokio::time::sleep(HEARTBEAT_INTERVAL)),
+            heartbeat: Default::default(),
             pending_join_requests: Default::default(),
-        }
+            login,
+            init_req: init_req.clone(),
+        };
+        phoenix_channel.join(login, init_req);
+
+        phoenix_channel
     }
 
     /// Join the provided room.
@@ -216,6 +242,7 @@ where
                         self.state = State::Connected(stream);
 
                         tracing::info!("Connected to portal");
+                        self.join(self.login, self.init_req.clone());
 
                         continue;
                     }
@@ -243,10 +270,11 @@ where
                             tracing::warn!("Reconnect backoff expired");
                             return Poll::Ready(Err(e));
                         };
+
                         let secret_url = self.secret_url.clone();
                         let user_agent = self.user_agent.clone();
 
-                        tracing::debug!(?backoff, max_elapsed_time = ?self.reconnect_backoff.max_elapsed_time, "Reconnecting to portal");
+                        tracing::debug!(?backoff, max_elapsed_time = ?self.reconnect_backoff.max_elapsed_time, "Reconnecting to portal on transient client error: {:#}", anyhow::Error::from(e));
 
                         self.state = State::Connecting(Box::pin(async move {
                             tokio::time::sleep(backoff).await;
@@ -267,7 +295,7 @@ where
                     match stream.start_send_unpin(message) {
                         Ok(()) => {}
                         Err(e) => {
-                            self.reconnect_on_transient_error(e);
+                            self.reconnect_on_transient_error(Error::WebSocket(e));
                         }
                     }
                     continue;
@@ -289,6 +317,10 @@ where
                     >(&text)
                     {
                         Ok(m) => m,
+                        Err(e) if e.is_io() || e.is_eof() => {
+                            self.reconnect_on_transient_error(Error::Serde(e));
+                            continue;
+                        }
                         Err(e) => {
                             tracing::warn!("Failed to deserialize message {text}: {e}");
                             continue;
@@ -301,7 +333,7 @@ where
                                 return Poll::Ready(Ok(Event::InboundMessage {
                                     topic: message.topic,
                                     msg,
-                                }))
+                                }));
                             }
                             Some(reference) => {
                                 return Poll::Ready(Ok(Event::InboundReq {
@@ -328,6 +360,8 @@ where
                                 OutboundRequestId(message.reference.ok_or(Error::MissingReplyId)?);
 
                             if self.pending_join_requests.remove(&req_id) {
+                                tracing::info!("Joined {} room on portal", message.topic);
+
                                 // For `phx_join` requests, `reply` is empty so we can safely ignore it.
                                 return Poll::Ready(Ok(Event::JoinedRoom {
                                     topic: message.topic,
@@ -352,10 +386,18 @@ where
                         Payload::Reply(ReplyMessage::PhxReply(PhxReply::Ok(
                             OkReply::NoMessage(Empty {}),
                         ))) => {
+                            let id =
+                                OutboundRequestId(message.reference.ok_or(Error::MissingReplyId)?);
+
+                            if self.heartbeat.maybe_handle_reply(id) {
+                                continue;
+                            }
+
                             tracing::trace!(
                                 "Received empty reply for request {:?}",
                                 message.reference
                             );
+
                             continue;
                         }
                         Payload::Reply(ReplyMessage::PhxError(Empty {})) => {
@@ -370,20 +412,25 @@ where
                     }
                 }
                 Poll::Ready(Some(Err(e))) => {
-                    self.reconnect_on_transient_error(e);
+                    self.reconnect_on_transient_error(Error::WebSocket(e));
                     continue;
                 }
                 _ => (),
             }
 
             // Priority 3: Handle heartbeats.
-            if self.next_heartbeat.poll_unpin(cx).is_ready() {
-                self.send_message("phoenix", EgressControlMessage::<()>::Heartbeat(Empty {}));
-                self.next_heartbeat
-                    .as_mut()
-                    .reset(Instant::now() + HEARTBEAT_INTERVAL);
+            match self.heartbeat.poll(cx) {
+                Poll::Ready(Ok(msg)) => {
+                    let id = self.send_message("phoenix", msg);
+                    self.heartbeat.set_id(id);
 
-                return Poll::Ready(Ok(Event::HeartbeatSent));
+                    return Poll::Ready(Ok(Event::HeartbeatSent));
+                }
+                Poll::Ready(Err(MissedLastHeartbeat {})) => {
+                    self.reconnect_on_transient_error(Error::MissedHeartbeat);
+                    continue;
+                }
+                _ => (),
             }
 
             // Priority 4: Flush out.
@@ -392,7 +439,7 @@ where
                     tracing::trace!("Flushed websocket");
                 }
                 Poll::Ready(Err(e)) => {
-                    self.reconnect_on_transient_error(e);
+                    self.reconnect_on_transient_error(Error::WebSocket(e));
                     continue;
                 }
                 Poll::Pending => {}
@@ -405,8 +452,8 @@ where
     /// Sets the channels state to [`State::Connecting`] with the given error.
     ///
     /// The [`PhoenixChannel::poll`] function will handle the reconnect if appropriate for the given error.
-    fn reconnect_on_transient_error(&mut self, e: tokio_tungstenite::tungstenite::Error) {
-        self.state = State::Connecting(future::ready(Err(Error::WebSocket(e))).boxed())
+    fn reconnect_on_transient_error(&mut self, e: Error) {
+        self.state = State::Connecting(future::ready(Err(e)).boxed())
     }
 
     fn send_message(
@@ -435,17 +482,19 @@ where
     /// Cast this instance of [PhoenixChannel] to new message types.
     fn cast<TInboundMsgNew, TOutboundResNew>(
         self,
-    ) -> PhoenixChannel<TInboundMsgNew, TOutboundResNew> {
+    ) -> PhoenixChannel<TInitReq, TInboundMsgNew, TOutboundResNew> {
         PhoenixChannel {
             state: self.state,
             pending_messages: self.pending_messages,
             next_request_id: self.next_request_id,
-            next_heartbeat: self.next_heartbeat,
+            heartbeat: self.heartbeat,
             _phantom: PhantomData,
             pending_join_requests: self.pending_join_requests,
             secret_url: self.secret_url,
             user_agent: self.user_agent,
             reconnect_backoff: self.reconnect_backoff,
+            login: self.login,
+            init_req: self.init_req,
         }
     }
 }

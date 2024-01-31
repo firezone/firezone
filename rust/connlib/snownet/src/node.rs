@@ -21,6 +21,7 @@ use str0m::{Candidate, CandidateKind, IceConnectionState};
 
 use crate::allocation::Allocation;
 use crate::index::IndexLfsr;
+use crate::info::ConnectionInfo;
 use crate::stun_binding::StunBinding;
 use crate::IpPacket;
 use boringtun::noise::errors::WireGuardError;
@@ -30,17 +31,21 @@ use stun_codec::rfc5389::attributes::{Realm, Username};
 // Note: Taken from boringtun
 const HANDSHAKE_RATE_LIMIT: u64 = 100;
 
+/// How often wireguard will send a keep-alive packet.
+pub(crate) const WIREGUARD_KEEP_ALIVE: u16 = 5;
+
 const MAX_UDP_SIZE: usize = (1 << 16) - 1;
 
 /// Manages a set of wireguard connections for a server.
-pub type ServerConnectionPool<TId> = ConnectionPool<Server, TId>;
+pub type ServerNode<TId> = Node<Server, TId>;
 /// Manages a set of wireguard connections for a client.
-pub type ClientConnectionPool<TId> = ConnectionPool<Client, TId>;
+pub type ClientNode<TId> = Node<Client, TId>;
 
 pub enum Server {}
 pub enum Client {}
 
-pub struct ConnectionPool<T, TId> {
+/// A node within a `snownet` network maintains connections to several other nodes.
+pub struct Node<T, TId> {
     private_key: StaticSecret,
     index: IndexLfsr,
     rate_limiter: Arc<RateLimiter>,
@@ -77,7 +82,7 @@ pub enum Error {
     NotConnected,
 }
 
-impl<T, TId> ConnectionPool<T, TId>
+impl<T, TId> Node<T, TId>
 where
     TId: Eq + Hash + Copy + fmt::Display,
 {
@@ -99,6 +104,19 @@ where
             allocations: HashMap::default(),
             last_now: now,
         }
+    }
+
+    /// Lazily retrieve stats of all connections.
+    pub fn stats(&self) -> impl Iterator<Item = (TId, ConnectionInfo)> + '_ {
+        self.negotiated_connections.iter().map(|(id, c)| {
+            (
+                *id,
+                ConnectionInfo {
+                    last_seen: c.last_seen,
+                    generated_at: self.last_now,
+                },
+            )
+        })
     }
 
     pub fn add_local_interface(&mut self, local_addr: SocketAddr) {
@@ -147,13 +165,9 @@ where
         now: Instant,
         buffer: &'s mut [u8],
     ) -> Result<Option<(TId, IpPacket<'s>)>, Error> {
-        if !self.local_interfaces.contains(&local) {
-            return Err(Error::UnknownInterface);
-        }
-
         // First, check if a `StunBinding` wants the packet
         if let Some(binding) = self.bindings.get_mut(&from) {
-            if binding.handle_input(from, packet, now) {
+            if binding.handle_input(from, local, packet, now) {
                 // If it handled the packet, drain its events to ensure we update the candidates of all connections.
                 drain_and_add_candidates(
                     from,
@@ -168,7 +182,7 @@ where
 
         // Next, check if an `Allocation` wants the packet
         if let Some(allocation) = self.allocations.get_mut(&from) {
-            if allocation.handle_input(from, packet, now) {
+            if allocation.handle_input(from, local, packet, now) {
                 // If it handled the packet, drain its events to ensure we update the candidates of all connections.
                 drain_and_add_candidates(
                     from,
@@ -194,6 +208,11 @@ where
 
         // Next: If we can parse the message as a STUN message, cycle through all agents to check which one it is for.
         if let Ok(message) = StunMessage::parse(packet) {
+            // `str0m` panics if you feed it traffic from an interface it doesn't know about. (TODO: Fix upstream)
+            if !self.local_interfaces.contains(&local) {
+                return Err(Error::UnknownInterface);
+            }
+
             for agent in self.agents_mut() {
                 // TODO: `accepts_message` cannot demultiplexing multiple connections until https://github.com/algesten/str0m/pull/418 is merged.
                 if agent.accepts_message(&message) {
@@ -394,7 +413,7 @@ where
         self.pending_events.pop_front()
     }
 
-    /// Returns, when [`ConnectionPool::handle_timeout`] should be called next.
+    /// Returns, when [`Node::handle_timeout`] should be called next.
     ///
     /// This function only takes `&mut self` because it caches certain computations internally.
     /// The returned timestamp will **not** change unless other state is modified.
@@ -411,7 +430,7 @@ where
         earliest(connection_timeout, self.next_rate_limiter_reset)
     }
 
-    /// Advances time within the [`ConnectionPool`].
+    /// Advances time within the [`Node`].
     ///
     /// This advances time within the ICE agent, updates timers within all wireguard connections as well as resets wireguard's rate limiter (if necessary).
     pub fn handle_timeout(&mut self, now: Instant) {
@@ -446,28 +465,47 @@ where
             self.rate_limiter.reset_count();
             self.next_rate_limiter_reset = Some(now + Duration::from_secs(1));
         }
+
+        let stale_connections = self
+            .initial_connections
+            .iter()
+            .filter_map(|(id, conn)| {
+                (now.duration_since(conn.created_at) >= Duration::from_secs(10)).then_some(*id)
+            })
+            .collect::<Vec<_>>();
+
+        for conn in stale_connections {
+            self.initial_connections.remove(&conn);
+            self.pending_events.push_back(Event::ConnectionFailed(conn));
+        }
     }
 
     /// Returns buffered data that needs to be sent on the socket.
     pub fn poll_transmit(&mut self) -> Option<Transmit<'static>> {
         for conn in self.negotiated_connections.values_mut() {
-            if let Some(transmit) = conn.agent.poll_transmit() {
+            while let Some(transmit) = conn.agent.poll_transmit() {
                 let relay = SocketAddr::new(transmit.source.ip(), 3478); // TODO: Don't hardcode this.
 
-                let transmit = encode_as_channel_data(
+                match encode_as_channel_data(
                     relay,
                     transmit.destination,
                     &transmit.contents,
                     &mut self.allocations,
                     self.last_now,
-                )
-                .unwrap_or(Transmit {
-                    src: Some(transmit.source),
-                    dst: transmit.destination,
-                    payload: Cow::Owned(transmit.contents.into()),
-                });
-
-                return Some(transmit);
+                ) {
+                    Ok(transmit) => return Some(transmit),
+                    Err(EncodeError::NoAllocation) => {
+                        return Some(Transmit {
+                            src: Some(transmit.source),
+                            dst: transmit.destination,
+                            payload: Cow::Owned(transmit.contents.into()),
+                        })
+                    }
+                    Err(EncodeError::NoChannel) => {
+                        tracing::debug!(%relay, peer = %transmit.destination, "Got allocation on relay but no channel to peer");
+                        continue;
+                    }
+                }
             }
         }
 
@@ -502,7 +540,7 @@ where
                 self.private_key.clone(),
                 remote,
                 Some(key),
-                None,
+                Some(WIREGUARD_KEEP_ALIVE),
                 self.index.next(),
                 Some(self.rate_limiter.clone()),
             ),
@@ -511,11 +549,12 @@ where
             next_timer_update: self.last_now,
             remote_socket: None,
             possible_sockets: HashSet::default(),
+            last_seen: None,
         }
     }
 }
 
-impl<TId> ConnectionPool<Client, TId>
+impl<TId> Node<Client, TId>
 where
     TId: Eq + Hash + Copy + fmt::Display,
 {
@@ -566,13 +605,14 @@ where
                 session_key,
                 stun_servers: allowed_stun_servers,
                 turn_servers: allowed_turn_servers,
+                created_at: self.last_now,
             },
         );
 
         params
     }
 
-    /// Accept an [`Answer`] from the remote for a connection previously created via [`ConnectionPool::new_connection`].
+    /// Accept an [`Answer`] from the remote for a connection previously created via [`Node::new_connection`].
     pub fn accept_answer(&mut self, id: TId, remote: PublicKey, answer: Answer) {
         let Some(initial) = self.initial_connections.remove(&id) else {
             return; // TODO: Better error handling
@@ -596,7 +636,7 @@ where
     }
 }
 
-impl<TId> ConnectionPool<Server, TId>
+impl<TId> Node<Server, TId>
 where
     TId: Eq + Hash + Copy + fmt::Display,
 {
@@ -657,7 +697,7 @@ where
     }
 }
 
-impl<T, TId> ConnectionPool<T, TId>
+impl<T, TId> Node<T, TId>
 where
     TId: Eq + Hash + Copy + fmt::Display,
 {
@@ -789,15 +829,25 @@ fn encode_as_channel_data(
     contents: &[u8],
     allocations: &mut HashMap<SocketAddr, Allocation>,
     now: Instant,
-) -> Option<Transmit<'static>> {
-    let allocation = allocations.get_mut(&relay)?;
-    let payload = allocation.encode_to_vec(dest, contents, now)?;
+) -> Result<Transmit<'static>, EncodeError> {
+    let allocation = allocations
+        .get_mut(&relay)
+        .ok_or(EncodeError::NoAllocation)?;
+    let payload = allocation
+        .encode_to_vec(dest, contents, now)
+        .ok_or(EncodeError::NoChannel)?;
 
-    Some(Transmit {
+    Ok(Transmit {
         src: None,
         dst: relay,
         payload: Cow::Owned(payload),
     })
+}
+
+#[derive(Debug)]
+enum EncodeError {
+    NoAllocation,
+    NoChannel,
 }
 
 fn drain_and_add_candidates<TId>(
@@ -889,6 +939,7 @@ pub struct Credentials {
     pub password: String,
 }
 
+#[derive(Debug, PartialEq)]
 pub enum Event<TId> {
     /// Signal the ICE candidate to the remote via the signalling channel.
     ///
@@ -935,6 +986,8 @@ struct InitialConnection {
     session_key: Secret<[u8; 32]>,
     stun_servers: HashSet<SocketAddr>,
     turn_servers: HashSet<SocketAddr>,
+
+    created_at: Instant,
 }
 
 struct Connection {
@@ -942,6 +995,8 @@ struct Connection {
 
     tunnel: Tunn,
     next_timer_update: Instant,
+
+    last_seen: Option<Instant>,
 
     // When this is `Some`, we are connected.
     remote_socket: Option<RemoteSocket>,
@@ -1016,6 +1071,12 @@ impl Connection {
     ) -> Result<Option<Transmit<'static>>, WireGuardError> {
         self.agent.handle_timeout(now);
 
+        // TODO: `boringtun` is impure because it calls `Instant::now`.
+        self.last_seen = self
+            .tunnel
+            .time_since_last_received()
+            .and_then(|d| now.checked_sub(d));
+
         if now >= self.next_timer_update {
             self.next_timer_update = now + Duration::from_secs(1);
 
@@ -1059,7 +1120,7 @@ impl Connection {
                 payload: Cow::Owned(message.into()),
             }),
             RemoteSocket::Relay { relay, dest: peer } => {
-                encode_as_channel_data(relay, peer, message, allocations, now)
+                encode_as_channel_data(relay, peer, message, allocations, now).ok()
             }
         }
     }

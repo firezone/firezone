@@ -14,8 +14,6 @@ import OSLog
 
 @MainActor
 public final class AppStore: ObservableObject {
-  private let logger = Logger.make(for: AppStore.self)
-
   #if os(macOS)
     public enum WindowDefinition: String, CaseIterable {
       case askPermission = "ask-permission"
@@ -68,15 +66,18 @@ public final class AppStore: ObservableObject {
   public let settingsViewModel: SettingsViewModel
 
   private var cancellables: Set<AnyCancellable> = []
+  let logger: AppLogger
 
   public init() {
-    let tunnelStore = TunnelStore()
-    let authStore = AuthStore(tunnelStore: tunnelStore)
-    let settingsViewModel = SettingsViewModel(authStore: authStore)
+    let logger = AppLogger(process: .app, folderURL: SharedAccess.appLogFolderURL)
+    let tunnelStore = TunnelStore(logger: logger)
+    let authStore = AuthStore(tunnelStore: tunnelStore, logger: logger)
+    let settingsViewModel = SettingsViewModel(authStore: authStore, logger: logger)
 
     self.authStore = authStore
     self.tunnelStore = tunnelStore
     self.settingsViewModel = settingsViewModel
+    self.logger = logger
 
     #if os(macOS)
       tunnelStore.$tunnelAuthStatus

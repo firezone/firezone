@@ -11,7 +11,7 @@ secrecy = { workspace = true }
 tokio-tungstenite = { workspace = true, features = ["rustls-tls-webpki-roots"] }
 futures = "0.3.29"
 base64 = "0.21.7"
-serde = { version = "1.0.190", features = ["derive"] }
+serde = { version = "1.0.196", features = ["derive"] }
 tracing = { workspace = true }
 rand_core = "0.6.4"
 url = "2.4.1"
@@ -19,3 +19,7 @@ serde_json = "1.0.108"
 thiserror = "1.0.50"
 tokio = { version = "1.33.0", features = ["net", "time"] }
 backoff = "0.4.0"
+anyhow = "1"
+
+[dev-dependencies]
+tokio = { version = "1.33.0", features = ["macros", "rt"] }

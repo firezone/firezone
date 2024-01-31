@@ -1,6 +1,6 @@
 use anyhow::Result;
 use clap::{Args, Parser};
-use std::{os::windows::process::CommandExt, process::Command};
+use std::{os::windows::process::CommandExt, path::PathBuf, process::Command};
 
 mod about;
 mod auth;
@@ -49,10 +49,6 @@ pub(crate) struct GuiParams {
     /// If true, slow down I/O operations to test how the GUI handles slow I/O
     inject_faults: bool,
 }
-
-/// Newtype for our per-user directory in AppData, e.g.
-/// `C:/Users/$USER/AppData/Local/dev.firezone.client`
-pub(crate) struct AppLocalDataDir(std::path::PathBuf);
 
 // Hides Powershell's console on Windows
 // <https://stackoverflow.com/questions/59692146/is-it-possible-to-use-the-standard-library-to-spawn-a-process-without-showing-th#60958956>
@@ -111,7 +107,7 @@ pub(crate) fn run() -> Result<()> {
                 Ok(())
             }
         }
-        Some(Cmd::CrashHandlerServer) => crash_handling::server(),
+        Some(Cmd::CrashHandlerServer { socket_path }) => crash_handling::server(socket_path),
         Some(Cmd::Debug { command }) => debug_commands::run(command),
         // If we already tried to elevate ourselves, don't try again
         Some(Cmd::Elevated) => gui::run(GuiParams {
@@ -140,7 +136,9 @@ struct Cli {
 
 #[derive(clap::Subcommand)]
 pub enum Cmd {
-    CrashHandlerServer,
+    CrashHandlerServer {
+        socket_path: PathBuf,
+    },
     Debug {
         #[command(subcommand)]
         command: debug_commands::Cmd,

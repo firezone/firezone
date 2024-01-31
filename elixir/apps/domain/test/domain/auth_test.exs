@@ -2324,7 +2324,7 @@ defmodule Domain.AuthTest do
       user_agent: user_agent,
       remote_ip: remote_ip
     } do
-      nonce = "foo"
+      nonce = "test_nonce_for_firezone"
       context = %Auth.Context{type: :browser, user_agent: user_agent, remote_ip: remote_ip}
 
       identity = Fixtures.Auth.create_identity(account: account, provider: provider)
@@ -2358,7 +2358,7 @@ defmodule Domain.AuthTest do
       user_agent: user_agent,
       remote_ip: remote_ip
     } do
-      nonce = "foo"
+      nonce = "test_nonce_for_firezone"
       context = %Auth.Context{type: :browser, user_agent: user_agent, remote_ip: remote_ip}
 
       identity = Fixtures.Auth.create_identity(account: account, provider: provider)
@@ -2394,7 +2394,7 @@ defmodule Domain.AuthTest do
       user_agent: user_agent,
       remote_ip: remote_ip
     } do
-      nonce = "foo"
+      nonce = "test_nonce_for_firezone"
       context = %Auth.Context{type: :browser, user_agent: user_agent, remote_ip: remote_ip}
 
       identity = Fixtures.Auth.create_identity(account: account, provider: provider)
@@ -2411,7 +2411,7 @@ defmodule Domain.AuthTest do
       user_agent: user_agent,
       remote_ip: remote_ip
     } do
-      nonce = "foo"
+      nonce = "test_nonce_for_firezone"
       context = %Auth.Context{type: :client, user_agent: user_agent, remote_ip: remote_ip}
 
       identity = Fixtures.Auth.create_identity(account: account, provider: provider)
@@ -2433,7 +2433,7 @@ defmodule Domain.AuthTest do
       user_agent: user_agent,
       remote_ip: remote_ip
     } do
-      nonce = "foo"
+      nonce = "test_nonce_for_firezone"
 
       for type <- [:relay, :gateway, :api_client, :email] do
         context = %Auth.Context{type: type, user_agent: user_agent, remote_ip: remote_ip}
@@ -2454,7 +2454,7 @@ defmodule Domain.AuthTest do
       user_agent: user_agent,
       remote_ip: remote_ip
     } do
-      nonce = "foo"
+      nonce = "test_nonce_for_firezone"
 
       # Browser session
       context = %Auth.Context{type: :browser, user_agent: user_agent, remote_ip: remote_ip}
@@ -2524,7 +2524,7 @@ defmodule Domain.AuthTest do
       user_agent: user_agent,
       remote_ip: remote_ip
     } do
-      nonce = "foo"
+      nonce = "test_nonce_for_firezone"
       actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
       identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
       subject = Fixtures.Auth.create_subject(identity: identity)
@@ -2546,7 +2546,7 @@ defmodule Domain.AuthTest do
       user_agent: user_agent,
       remote_ip: remote_ip
     } do
-      nonce = "foo"
+      nonce = "test_nonce_for_firezone"
       actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
       identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
 
@@ -2567,7 +2567,7 @@ defmodule Domain.AuthTest do
       user_agent: user_agent,
       remote_ip: remote_ip
     } do
-      nonce = "foo"
+      nonce = "test_nonce_for_firezone"
 
       actor =
         Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
@@ -2589,7 +2589,7 @@ defmodule Domain.AuthTest do
       user_agent: user_agent,
       remote_ip: remote_ip
     } do
-      nonce = "foo"
+      nonce = "test_nonce_for_firezone"
 
       actor =
         Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
@@ -2611,7 +2611,7 @@ defmodule Domain.AuthTest do
       user_agent: user_agent,
       remote_ip: remote_ip
     } do
-      nonce = "foo"
+      nonce = "test_nonce_for_firezone"
 
       actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
       identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)

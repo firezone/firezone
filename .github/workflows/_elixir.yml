@@ -35,7 +35,7 @@ jobs:
         with:
           otp-version: ${{ steps.versions.outputs.erlang }}
           elixir-version: ${{ steps.versions.outputs.elixir }}
-      - uses: actions/cache/restore@v3
+      - uses: actions/cache/restore@v4
         name: Restore Elixir Deps Cache
         id: cache
         env:
@@ -51,7 +51,7 @@ jobs:
       - name: Compile Dependencies
         if: ${{ steps.cache.outputs.cache-hit != 'true' }}
         run: mix deps.compile --skip-umbrella-children
-      - uses: actions/cache/save@v3
+      - uses: actions/cache/save@v4
         name: Save Elixir Deps Cache
         if: ${{ steps.cache.outputs.cache-hit != 'true' }}
         env:
@@ -101,7 +101,7 @@ jobs:
         with:
           otp-version: ${{ steps.versions.outputs.erlang }}
           elixir-version: ${{ steps.versions.outputs.elixir }}
-      - uses: actions/cache/restore@v3
+      - uses: actions/cache/restore@v4
         name: Restore Elixir Deps Cache
         id: cache
         env:
@@ -117,7 +117,7 @@ jobs:
       - name: Compile Dependencies
         if: ${{ steps.cache.outputs.cache-hit != 'true' }}
         run: mix deps.compile --skip-umbrella-children
-      - uses: actions/cache/save@v3
+      - uses: actions/cache/save@v4
         name: Save Elixir Deps Cache
         if: ${{ steps.cache.outputs.cache-hit != 'true' }}
         env:
@@ -129,7 +129,7 @@ jobs:
           key: ubuntu-22.04-${{ runner.arch }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-${{ hashFiles('elixir/mix.lock') }}
       - name: Compile Application
         run: mix compile --warnings-as-errors
-      - uses: actions/cache/restore@v3
+      - uses: actions/cache/restore@v4
         name: Restore PLT cache
         id: plt_cache
         with:
@@ -141,7 +141,7 @@ jobs:
       - name: Create PLTs
         if: ${{ steps.plt_cache.outputs.cache-hit != 'true' }}
         run: mix dialyzer --plt
-      - uses: actions/cache/save@v3
+      - uses: actions/cache/save@v4
         if: ${{ steps.plt_cache.outputs.cache-hit != 'true' && github.ref == 'refs/heads/main' }}
         name: Save PLT cache
         with:
@@ -168,7 +168,7 @@ jobs:
         with:
           otp-version: ${{ steps.versions.outputs.erlang }}
           elixir-version: ${{ steps.versions.outputs.elixir }}
-      - uses: actions/cache/restore@v3
+      - uses: actions/cache/restore@v4
         name: Restore Elixir Deps Cache
         id: cache
         env:
@@ -184,7 +184,7 @@ jobs:
       - name: Compile Dependencies
         if: ${{ steps.cache.outputs.cache-hit != 'true' }}
         run: mix deps.compile --skip-umbrella-children
-      - uses: actions/cache/save@v3
+      - uses: actions/cache/save@v4
         name: Save Elixir Deps Cache
         if: ${{ steps.cache.outputs.cache-hit != 'true' }}
         env:
@@ -247,7 +247,7 @@ jobs:
         with:
           otp-version: ${{ steps.versions.outputs.erlang }}
           elixir-version: ${{ steps.versions.outputs.elixir }}
-      - uses: actions/cache/restore@v3
+      - uses: actions/cache/restore@v4
         name: Restore Elixir Deps Cache
         id: cache
         env:
@@ -263,7 +263,7 @@ jobs:
       - name: Compile Dependencies
         if: ${{ steps.cache.outputs.cache-hit != 'true' }}
         run: mix deps.compile --skip-umbrella-children
-      - uses: actions/cache/save@v3
+      - uses: actions/cache/save@v4
         name: Save Elixir Deps Cache
         if: ${{ steps.cache.outputs.cache-hit != 'true' }}
         env:
@@ -395,7 +395,7 @@ jobs:
         with:
           node-version: ${{ steps.versions.outputs.nodejs }}
       # Elixir cache
-      - uses: actions/cache/restore@v3
+      - uses: actions/cache/restore@v4
         name: Restore Elixir Deps Cache
         id: cache
         env:
@@ -411,7 +411,7 @@ jobs:
       - name: Compile Dependencies
         if: ${{ steps.cache.outputs.cache-hit != 'true' }}
         run: mix deps.compile --skip-umbrella-children
-      - uses: actions/cache/save@v3
+      - uses: actions/cache/save@v4
         name: Save Elixir Deps Cache
         if: ${{ steps.cache.outputs.cache-hit != 'true' }}
         env:
@@ -424,7 +424,7 @@ jobs:
       - name: Compile Application
         run: mix compile --warnings-as-errors
       # Front-End deps cache
-      - uses: actions/cache/restore@v3
+      - uses: actions/cache/restore@v4
         name: pnpm Web Deps Cache
         id: pnpm-web-deps-cache
         env:
@@ -440,7 +440,7 @@ jobs:
         run: |
           cd apps/web
           mix assets.setup
-      - uses: actions/cache/save@v3
+      - uses: actions/cache/save@v4
         name: Save pnpm Deps Cache
         if: ${{ steps.pnpm-web-deps-cache.outputs.cache-hit != 'true' }}
         env:
@@ -451,8 +451,8 @@ jobs:
             elixir/esbuild-*
             elixir/tailwind-*
           key: ubuntu-22.04-${{ runner.arch }}-${{ env.cache-name }}-${{ hashFiles('elixir/apps/web/assets/pnpm-lock.yaml') }}
-      # Front-End build cache, it rarely changes so we cache it agressively too
-      - uses: actions/cache/restore@v3
+      # Front-End build cache, it rarely changes so we cache it aggressively too
+      - uses: actions/cache/restore@v4
         name: Web Assets Cache
         id: pnpm-web-build-cache
         env:
@@ -467,7 +467,7 @@ jobs:
         run: |
           cd apps/web
           mix assets.build
-      - uses: actions/cache/save@v3
+      - uses: actions/cache/save@v4
         name: Save Web Assets Cache
         if: ${{ steps.pnpm-web-build-cache.outputs.cache-hit != 'true' }}
         env:

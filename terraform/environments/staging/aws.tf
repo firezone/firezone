@@ -68,7 +68,7 @@ module "aws_bastion" {
 
   associate_public_ip_address = true
   instance_type               = "t3.micro"
-  key_name                    = local.ssh_keypair_name
+  key_name                    = aws_key_pair.staging.id
   vpc_security_group_ids = [
     module.sg_allow_all_egress.security_group_id,
     module.sg_allow_ssh_ingress.security_group_id
@@ -86,7 +86,7 @@ module "aws_nat" {
 
   associate_public_ip_address = true
   instance_type               = "t3.micro"
-  key_name                    = local.ssh_keypair_name
+  key_name                    = aws_key_pair.staging.id
   subnet_id                   = element(module.vpc.public_subnets, 0)
 
   vpc_security_group_ids = [
@@ -105,7 +105,7 @@ module "aws_httpbin" {
 
   associate_public_ip_address = false
   instance_type               = "t3.micro"
-  key_name                    = local.ssh_keypair_name
+  key_name                    = aws_key_pair.staging.id
   subnet_id                   = element(module.vpc.private_subnets, 0)
   private_ip                  = cidrhost(element(module.vpc.private_subnets_cidr_blocks, 0), 100)
 
@@ -125,7 +125,7 @@ module "aws_iperf" {
 
   associate_public_ip_address = false
   instance_type               = "t3.micro"
-  key_name                    = local.ssh_keypair_name
+  key_name                    = aws_key_pair.staging.id
   subnet_id                   = element(module.vpc.private_subnets, 0)
   private_ip                  = cidrhost(element(module.vpc.private_subnets_cidr_blocks, 0), 101)
 
@@ -145,7 +145,7 @@ module "aws_gateway" {
 
   associate_public_ip_address = false
   instance_type               = "t3.micro"
-  key_name                    = local.ssh_keypair_name
+  key_name                    = aws_key_pair.staging.id
   subnet_id                   = element(module.vpc.private_subnets, 0)
   private_ip                  = cidrhost(element(module.vpc.private_subnets_cidr_blocks, 0), 50)
 
@@ -159,7 +159,7 @@ module "aws_gateway" {
   image_repo              = module.google-artifact-registry.repo
   image                   = "gateway"
   image_tag               = var.image_tag
-  observability_log_level = "firezone_gateway=trace,wire=trace,connlib_gateway_shared=trace,firezone_tunnel=trace,connlib_shared=trace,warn"
+  observability_log_level = "phoenix_channel=debug,firezone_gateway=trace,wire=trace,connlib_gateway_shared=trace,firezone_tunnel=trace,connlib_shared=trace,warn"
   application_name        = "gateway"
   application_version     = replace(var.image_tag, ".", "-")
   api_url                 = "wss://api.${local.tld}"
@@ -176,7 +176,7 @@ module "aws_coredns" {
 
   associate_public_ip_address = false
   instance_type               = "t3.micro"
-  key_name                    = local.ssh_keypair_name
+  key_name                    = aws_key_pair.staging.id
   subnet_id                   = element(module.vpc.private_subnets, 0)
   private_ip                  = cidrhost(element(module.vpc.private_subnets_cidr_blocks, 0), 10)
 
@@ -266,4 +266,15 @@ module "sg_allow_ssh_ingress" {
       cidr_blocks = "0.0.0.0/0"
     }
   ]
+}
+
+################################################################################
+# SSH Keys
+################################################################################
+
+resource "aws_key_pair" "staging" {
+  key_name   = "fz-staging"
+  public_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBI0vUtLcJqkqIK7xRgfu68fLnP+x7r+W4Bs2bCUxq8F fz-staging-aws"
+
+  tags = local.tags
 }
