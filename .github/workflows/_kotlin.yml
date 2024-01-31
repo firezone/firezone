@@ -52,7 +52,8 @@ jobs:
           build-root-directory: ./kotlin/android
           # https://github.com/gradle/gradle-build-action#overwriting-an-existing-gradle-user-home
           cache-overwrite-existing: ${{ github.ref == 'refs/heads/main' }}
-      - run: echo 'sdk.dir=/Users/runner/Library/Android/sdk' > local.properties
+      - run: |
+          echo 'sdk.dir=/Users/runner/Library/Android/sdk' > local.properties
       - name: Bundle and sign release
         env:
           KEYSTORE_BASE64: ${{ secrets.GOOGLE_UPLOAD_KEYSTORE_BASE64 }}
