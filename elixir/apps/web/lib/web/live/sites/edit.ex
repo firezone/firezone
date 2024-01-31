@@ -31,7 +31,7 @@ defmodule Web.Sites.Edit do
       <:content>
         <div class="py-8 px-4 mx-auto max-w-2xl lg:py-16">
           <.form for={@form} phx-change={:change} phx-submit={:submit}>
-            <.input type="hidden" name="group[routing]" value="managed" />
+            <.input type="hidden" field={@form[:routing]} value="managed" />
             <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
               <.input label="Name" field={@form[:name]} placeholder="Name of this Site" required />
             </div>
