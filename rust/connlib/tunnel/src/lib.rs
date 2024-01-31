@@ -111,6 +111,7 @@ where
             }
         }
 
+        // TODO: I believe this only binds to IPv4, we should add an ipv4 socket
         let relay_socket = Socket::bind((IpAddr::from(Ipv4Addr::UNSPECIFIED), 0))
             .expect("Program should be able to bind to 0.0.0.0:0 to be able to connect to relays");
 
