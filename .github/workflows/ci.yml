@@ -168,6 +168,7 @@ jobs:
           timeout 600 docker compose -f rust/snownet-tests/${{ matrix.file }} up --exit-code-from dialer --abort-on-container-exit
 
   integration-tests:
+    name: Integration Test ${{ matrix.test_name }}
     needs: build-images
     runs-on: ubuntu-22.04
     permissions:
@@ -181,13 +182,13 @@ jobs:
       matrix:
         include:
           # Define new integration tests here. These are executed in parallel in our CI.
-          # If you define the `perf_test_artifact_name` key, the throughput test will
+          # If you set `perf_test` to true, the throughput test will
           # be activated and performance results will be uploaded as artifacts.
-          # If you leave `perf_test_artifact_name` blank, the performance test will
+          # If you leave `perf_test` blank or set it to false, the performance test will
           # be skipped.
 
           # Basic connectivity tests
-          - test_name: Client can ping a resource after portal restarts (Direct)
+          - test_name: direct-ping-portal-restart
             setup: echo 'Noop'
             execute: |
               docker compose exec -it client timeout 60 \
@@ -202,7 +203,7 @@ jobs:
               # Ping again
               docker compose exec -it client timeout 60 \
               sh -c 'until ping -W 1 -c 1 172.20.0.100 &>/dev/null; do true; done'
-          - test_name: Client can ping a resource after portal restarts (Relayed)
+          - test_name: relayed-ping-portal-restart
             setup: |
               #  Disallow traffic between gateway and client container
               sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
@@ -220,7 +221,7 @@ jobs:
               # Ping again
               docker compose exec -it client timeout 60 \
               sh -c 'until ping -W 1 -c 1 172.20.0.100 &>/dev/null; do true; done'
-          - test_name: Client can ping a resource when portal is down (Direct)
+          - test_name: direct-ping-portal-down
             setup: echo 'Noop'
             execute: |
               docker compose exec -it client timeout 60 \
@@ -235,7 +236,7 @@ jobs:
               # Ping again
               docker compose exec -it client timeout 60 \
               sh -c 'until ping -W 1 -c 1 172.20.0.100 &>/dev/null; do true; done'
-          - test_name: Client can ping a resource after portal restarts (Relayed)
+          - test_name: relayed-ping-portal-down
             setup: |
               #  Disallow traffic between gateway and client container
               sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
@@ -253,7 +254,7 @@ jobs:
               # Ping again
               docker compose exec -it client timeout 60 \
               sh -c 'until ping -W 1 -c 1 172.20.0.100 &>/dev/null; do true; done'
-          - test_name: Client can ping a connected resource when api and relay are down (Direct)
+          - test_name: direct-ping-portal-relay-down
             setup: echo 'Noop'
             execute: |
               docker compose exec -it client timeout 60 \
@@ -270,17 +271,17 @@ jobs:
               sh -c 'until ping -W 1 -c 1 172.20.0.100 &>/dev/null; do true; done'
 
           # Performance Tests
-          - test_name: Client can ping a resource (Direct)
+          - test_name: direct-perf
             # Set this to enable performance testing for this test
-            pert_test_artifact_name: direct
+            perf_test: true
             setup: echo 'Noop'
             execute: |
               # Establish a channel
               docker compose exec -it client timeout 60 \
               sh -c 'until ping -W 1 -c 1 172.20.0.100 &>/dev/null; do true; done'
-          - test_name: Client can ping a resource (Relayed)
+          - test_name: relayed-perf
             # Set this to enable performance testing for this test
-            pert_test_artifact_name: relayed
+            perf_test: true
             setup: |
               #  Disallow traffic between gateway and client container
               sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
@@ -314,7 +315,7 @@ jobs:
       - name: 'Execute test: ${{ matrix.test_name }}'
         run: ${{ matrix.execute }}
       - name: 'Performance test: ${{ matrix.test_name }}'
-        if: ${{ matrix.perf_test_artifact_name != '' }}
+        if: matrix.perf_test
         id: perfomance-test
         timeout-minutes: 5
         run: |
@@ -355,14 +356,14 @@ jobs:
           cat /tmp/iperf3results/udp_client2server.json | jq -r '"udp_client2server_sum_jitter_ms=" + (.end.sum.jitter_ms|tostring)' >> "$GITHUB_OUTPUT"
           cat /tmp/iperf3results/udp_client2server.json | jq -r '"udp_client2server_sum_lost_percent=" + (.end.sum.lost_percent|tostring)' >> "$GITHUB_OUTPUT"
       - name: 'Save performance test results: ${{ matrix.test_name }}'
-        if: ${{ matrix.perf_test_artifact_name != '' }}
+        if: matrix.perf_test
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.perf_test_artifact_name }}-iperf3results
+          name: '${{ matrix.test_name }}-iperf3results'
           path: /tmp/iperf3results
       - name: 'Download main branch performance test results: ${{ matrix.test_name }}'
         id: download-artifact
-        if: ${{ github.event_name == 'pull_request' && matrix.perf_test_artifact_name != '' }}
+        if: ${{ github.event_name == 'pull_request' && matrix.perf_test }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -370,7 +371,7 @@ jobs:
 
           REPO="${{ github.repository }}"
           WORKFLOW="cd.yml"
-          ARTIFACT_NAME="${{ matrix.perf_test_artifact_name }}-iperf3results"
+          ARTIFACT_NAME="${{ matrix.test_name }}-iperf3results"
           DESTINATION="/tmp/iperf3results-main"
 
           ARTIFACTS_URL=$(
@@ -397,7 +398,7 @@ jobs:
           rm "${DESTINATION}.zip"
       - name: "Generate main branch metrics"
         id: main-perfomance-test
-        if: ${{ github.event_name == 'pull_request' && matrix.perf_test_artifact_name != '' }}
+        if: ${{ github.event_name == 'pull_request' && matrix.perf_test }}
         run: |
           cat /tmp/iperf3results-main/tcp_server2client.json | jq -r '"tcp_server2client_sum_received_bits_per_second=" + (.end.sum_received.bits_per_second|tostring)' >> "$GITHUB_OUTPUT"
           cat /tmp/iperf3results-main/tcp_server2client.json | jq -r '"tcp_server2client_sum_sent_bits_per_second=" + (.end.sum_sent.bits_per_second|tostring)' >> "$GITHUB_OUTPUT"
@@ -417,7 +418,7 @@ jobs:
       - name: Update PR
         uses: actions/github-script@v7
         id: perf-comment
-        if: ${{ github.event_name == 'pull_request' && matrix.perf_test_artifact_name != '' }}
+        if: ${{ github.event_name == 'pull_request' && matrix.perf_test }}
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
@@ -480,9 +481,7 @@ jobs:
             let udp_client2server_sum_jitter_ms = (${{ steps.perfomance-test.outputs.udp_client2server_sum_jitter_ms }}).toFixed(2) + "ms (" + getDiffPercents(${{ steps.main-perfomance-test.outputs.udp_client2server_sum_jitter_ms }}, ${{ steps.perfomance-test.outputs.udp_client2server_sum_jitter_ms }}) + ')';
             let udp_client2server_sum_lost_percent = (${{ steps.perfomance-test.outputs.udp_client2server_sum_lost_percent }}).toFixed(2) + "% (" + getDiffPercents(${{ steps.main-perfomance-test.outputs.udp_client2server_sum_lost_percent }}, ${{ steps.perfomance-test.outputs.udp_client2server_sum_lost_percent }}) + ')';
 
-            const output = `## Performance Test Results: ${{ matrix.perf_test_artifact_name }}
-
-            Test: ${{ matrix.test_name }}
+            const output = `## Performance Test Results: ${{ matrix.test_name }}
 
             ### TCP
 
