@@ -153,13 +153,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - file: docker-compose.lan.yml
-            name: lan
-          - file: docker-compose.wan-hp.yml
-            name: wan-hp
-          - file: docker-compose.wan-relay.yml
-            name: wan-relay
+        file: [
+          'docker-compose.lan.yml',
+          'docker-compose.wan-hp.yml',
+          'docker-compose.wan-relay.yml',
+        ]
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/gcp-docker-login
