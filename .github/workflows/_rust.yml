@@ -137,7 +137,7 @@ jobs:
       - name: Save Windows debug symbols
         uses: actions/upload-artifact@v4
         with:
-          name: windows-client-x64-msi
+          name: windows-client-x64-pdb
           path: |
             ${{ github.workspace }}/rust/windows-client/windows-client-x64.pdb
             ${{ github.workspace }}/rust/windows-client/windows-client-x64.pdb.sha256sum.txt
