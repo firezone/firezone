@@ -4,8 +4,8 @@ on:
 
 jobs:
   analyze:
-    name: Analyze
-    runs-on: ${{ (matrix.language == 'swift' && 'macos-13') || 'ubuntu-22.04' }}
+    name: analyze-${{ matrix.working-directory }}
+    runs-on: ${{ (matrix.language == 'swift' && 'macos-14') || 'ubuntu-22.04' }}
     timeout-minutes: ${{ (matrix.language == 'swift' && 120) || 360 }}
     permissions:
       actions: read

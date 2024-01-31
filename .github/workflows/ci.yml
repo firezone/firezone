@@ -34,6 +34,7 @@ jobs:
   # less overhead to keep things in GH actions. See work on building these
   # in GCP with Cloud Build: https://github.com/firezone/firezone/pull/2234
   build-images:
+    name: build-images-${{ matrix.image_name }}
     runs-on: ubuntu-22.04
     strategy:
       matrix:
@@ -140,6 +141,7 @@ jobs:
           tags: ${{ steps.build_docker_tags.outputs.tags }}
 
   snownet-integration-tests:
+    name: snownet-integration-tests-${{ matrix.name }}
     needs: build-images
     runs-on: ubuntu-22.04
     permissions:
@@ -151,11 +153,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        file: [
-          'docker-compose.lan.yml',
-          'docker-compose.wan-hp.yml',
-          'docker-compose.wan-relay.yml',
-        ]
+        include:
+          - file: docker-compose.lan.yml
+            name: lan
+          - file: docker-compose.wan-hp.yml
+            name: wan-hp
+          - file: docker-compose.wan-relay.yml
+            name: wan-relay
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/gcp-docker-login
@@ -168,7 +172,7 @@ jobs:
           timeout 600 docker compose -f rust/snownet-tests/${{ matrix.file }} up --exit-code-from dialer --abort-on-container-exit
 
   integration-tests:
-    name: Integration Test ${{ matrix.test_name }}
+    name: integration-tests-${{ matrix.test_name }}
     needs: build-images
     runs-on: ubuntu-22.04
     permissions:

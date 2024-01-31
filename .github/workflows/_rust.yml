@@ -12,19 +12,20 @@ permissions:
 
 jobs:
   static-analysis:
+    name: static-analysis-${{ matrix.runs-on }}
     strategy:
       fail-fast: false
       matrix:
         runs-on:
           # We only need to run static analysis checks per OS family
           - ubuntu-22.04
-          - macos-13
+          - macos-14
           - windows-2022
         # TODO: https://github.com/rust-lang/cargo/issues/5220
         include:
           - runs-on: ubuntu-22.04
             packages: # Intentionally blank as a package catch-all linter
-          - runs-on: macos-13
+          - runs-on: macos-14
             packages: -p connlib-client-apple -p snownet
           - runs-on: windows-2022
             packages: -p connlib-client-shared -p firezone-windows-client -p snownet
@@ -41,6 +42,7 @@ jobs:
           cargo clippy --all-targets --all-features ${{ matrix.packages }} -- -D warnings
 
   test:
+    name: test-${{ matrix.runs-on }}
     strategy:
       fail-fast: false
       matrix:
@@ -54,6 +56,8 @@ jobs:
             packages: -p connlib-client-apple -p snownet
           - runs-on: macos-13
             packages: -p connlib-client-apple -p snownet
+          - runs-on: macos-14
+            packages: -p connlib-client-apple -p snownet
           - runs-on: windows-2019
             packages: -p firezone-windows-client -p connlib-client-shared -p snownet
           - runs-on: windows-2022
@@ -66,6 +70,7 @@ jobs:
 
   # This should be identical to `build-push-windows-release-artifacts` in `cd.yml` except for the Github permissions, needs tag, and uploading step
   build-tauri:
+    name: build-tauri-${{ matrix.artifact }}
     runs-on: windows-2019
     defaults:
       run:
@@ -75,11 +80,11 @@ jobs:
       # The matrix is 1x1 to match the style of build-push-linux-release-artifacts
       # In the future we could try to cross-compile aarch64-windows here.
       matrix:
-        name:
+        include:
           - package: firezone-windows-client
             artifact: windows-client
     env:
-      BINARY_DEST_PATH: ${{ matrix.name.artifact }}
+      BINARY_DEST_PATH: ${{ matrix.artifact }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node
@@ -98,7 +103,7 @@ jobs:
           # I'm running the multi-process test here because I don't think it can be
           # embedded in a test binary. It requires the client to call subcommands
           # from its own exe.
-          cargo run -p firezone-windows-client -- debug test-ipc
+          cargo run -p ${{ matrix.package }} -- debug test-ipc
 
           pnpm build
 

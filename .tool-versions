@@ -6,4 +6,4 @@ erlang 26.1.2
 terraform 1.6.6
 
 # Used for static analysis
-python 3.9.13
+python 3.11.7

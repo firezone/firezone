@@ -342,6 +342,7 @@ jobs:
         run: mix ecto.seed
 
   acceptance-test:
+    name: acceptance-test-${{ matrix.MIX_TEST_PARTITION }}
     permissions:
       checks: write
     runs-on: ubuntu-22.04
