@@ -126,6 +126,8 @@ pub enum Error {
     MissingReplyId,
     #[error("server did not reply to our heartbeat")]
     MissedHeartbeat,
+    #[error("connection close message")]
+    CloseMessage,
 }
 
 #[derive(Debug, PartialEq, Eq, Hash)]
@@ -410,25 +412,7 @@ where
                             }))
                         }
                         Payload::ControlMessage(ControlMessage::PhxClose(_)) => {
-                            let Some(backoff) = self.reconnect_backoff.next_backoff() else {
-                                tracing::warn!("Reconnect backoff expired");
-                                return Poll::Ready(Ok(Event::Disconnect(
-                                    "topic closed".to_string(),
-                                )));
-                            };
-
-                            let secret_url = self.secret_url.clone();
-                            let user_agent = self.user_agent.clone();
-
-                            // If we receive a close message we close the socket and try to reconnect.
-                            self.state = State::Connecting(Box::pin(async move {
-                                tokio::time::sleep(backoff).await;
-
-                                let (stream, _) =
-                                    connect_async(make_request(secret_url, user_agent)?).await?;
-
-                                Ok(stream)
-                            }));
+                            self.reconnect_on_transient_error(Error::CloseMessage);
                             continue;
                         }
                         Payload::ControlMessage(ControlMessage::Disconnect { reason }) => {
