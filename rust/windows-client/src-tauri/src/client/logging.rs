@@ -3,7 +3,7 @@
 use crate::client::gui::{ControllerRequest, CtlrTx, Managed};
 use anyhow::{anyhow, bail, Result};
 use connlib_client_shared::file_logger;
-use firezone_windows_common::app_local_data_dir;
+use connlib_shared::windows::app_local_data_dir;
 use serde::Serialize;
 use std::{fs, io, path::PathBuf, result::Result as StdResult, str::FromStr};
 use tokio::task::spawn_blocking;

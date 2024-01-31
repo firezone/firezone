@@ -12,7 +12,6 @@ members = [
   "snownet-tests",
   "phoenix-channel",
   "relay",
-  "windows-client/firezone-windows-common",
   "windows-client/src-tauri",
 ]
 

@@ -5,8 +5,8 @@
 //! TODO: Capture crash dumps on panic.
 
 use anyhow::{anyhow, bail, Context, Result};
+use connlib_shared::windows::app_local_data_dir;
 use crash_handler::CrashHandler;
-use firezone_windows_common::app_local_data_dir;
 use std::{fs::File, io::Write, path::PathBuf};
 
 /// Attaches a crash handler to the client process
@@ -61,13 +61,6 @@ fn start_server_and_connect() -> Result<(minidumper::Client, std::process::Child
         .join("crash_handler_pipe");
 
     let mut server = None;
-
-    // Path of a Unix domain socket for IPC with the crash handler server
-    // <https://github.com/EmbarkStudios/crash-handling/issues/10>
-    let socket_path = app_local_data_dir()
-        .ok_or_else(|| anyhow!("couldn't compute crash handler socket path"))?
-        .join("data")
-        .join("crash_handler_pipe");
 
     // I don't understand why there's a loop here. The original was an infinite loop,
     // so I reduced it to 10 and it still worked.

@@ -1,6 +1,6 @@
 //! "Installs" wintun.dll at runtime by copying it into whatever folder the exe is in
 
-use firezone_windows_common::wintun_dll_path;
+use connlib_shared::windows::wintun_dll_path;
 use ring::digest;
 use std::{
     fs,

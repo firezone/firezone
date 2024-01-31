@@ -3,7 +3,7 @@
 
 use crate::client::gui::{ControllerRequest, Managed};
 use anyhow::{anyhow, Result};
-use firezone_windows_common::app_local_data_dir;
+use connlib_shared::windows::app_local_data_dir;
 use serde::{Deserialize, Serialize};
 use std::{path::PathBuf, time::Duration};
 use tokio::sync::oneshot;

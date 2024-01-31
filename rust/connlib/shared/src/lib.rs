@@ -8,6 +8,7 @@ mod callbacks_error_facade;
 pub mod control;
 pub mod error;
 pub mod messages;
+pub mod windows;
 
 pub use callbacks::Callbacks;
 pub use callbacks_error_facade::CallbackErrorFacade;

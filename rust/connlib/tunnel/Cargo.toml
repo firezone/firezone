@@ -52,7 +52,6 @@ tracing-android = "0.2"
 
 # Windows tunnel dependencies
 [target.'cfg(target_os = "windows")'.dependencies]
-firezone-windows-common = { path = "../../windows-client/firezone-windows-common" }
 uuid = { version = "1.7.0", features = ["v4"] }
 wintun = "0.4.0"
 
