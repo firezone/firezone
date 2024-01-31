@@ -221,6 +221,6 @@ cargo {
 }
 
 tasks.matching { it.name.matches(Regex("merge.*JniLibFolders")) }.configureEach {
-    inputs.dir(File(buildDir, "rustJniLibs/android"))
+    inputs.dir(layout.buildDirectory.file("rustJniLibs/android"))
     dependsOn("cargoBuild")
 }
