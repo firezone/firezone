@@ -279,6 +279,9 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
     ) -> Result<()> {
         match msg {
             Messages::Init(init) => self.init(init).await?,
+            Messages::ConfigChanged(_update) => {
+                tracing::info!("Runtime config updates not yet implemented");
+            }
             Messages::ConnectionDetails(connection_details) => {
                 self.connection_details(connection_details, reference)
             }
