@@ -9,7 +9,8 @@ permissions:
 
 jobs:
   static-analysis:
-    runs-on: macos-14
+    # Android SDK tools hardware accel is available only on Linux runners
+    runs-on: ubuntu-22.04
     defaults:
       run:
         working-directory: ./kotlin/android
@@ -31,7 +32,8 @@ jobs:
         run: ./gradlew spotlessCheck
 
   build:
-    runs-on: macos-14
+    # Android SDK tools hardware accel is available only on Linux runners
+    runs-on: ubuntu-22.04
     defaults:
       run:
         working-directory: ./kotlin/android
@@ -42,7 +44,7 @@ jobs:
           targets: armv7-linux-androideabi aarch64-linux-android x86_64-linux-android i686-linux-android
       - uses: actions/setup-java@v4
         with:
-          distribution: oracle
+          distribution: temurin
           java-version: 17
       - name: Setup Gradle
         uses: gradle/gradle-build-action@v2
@@ -60,7 +62,7 @@ jobs:
         run: |
           KEYSTORE_PATH=$(pwd)/app/keystore.jks
           echo -n "$KEYSTORE_BASE64" | base64 --decode > $KEYSTORE_PATH
-          ./gradlew --info bundleRelease
+          ./gradlew bundleRelease
       - name: Run Test
         run: |
           # TODO: See https://github.com/firezone/firezone/issues/2311

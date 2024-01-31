@@ -94,7 +94,6 @@ jobs:
       - name: Build release binaries
         run: |
           # Build Windows Tauri GUI
-
           pnpm install
           pnpm build
 
