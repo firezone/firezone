@@ -34,10 +34,12 @@ where
     }
 
     /// Clean up a connection to a resource.
-    // FIXME: this cleanup connection is wrong!
     pub fn cleanup_connection(&self, id: ClientId) {
-        // TODO:
-        // self.peer_connections.lock().remove(&id);
+        self.connections.lock().peers_by_id.remove(&id);
+        self.role_state
+            .lock()
+            .peers_by_ip
+            .retain(|_, p| p.conn_id != id);
     }
 }
 
