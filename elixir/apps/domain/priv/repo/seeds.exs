@@ -539,6 +539,7 @@ IO.puts("")
       type: :dns,
       name: "google.com",
       address: "google.com",
+      client_address: "https://google.com/",
       connections: [%{gateway_group_id: gateway_group.id}],
       filters: [%{protocol: :all}]
     },
@@ -551,6 +552,7 @@ IO.puts("")
       type: :dns,
       name: "*.firez.one",
       address: "*.firez.one",
+      client_address: "https://firez.one/",
       connections: [%{gateway_group_id: gateway_group.id}],
       filters: [%{protocol: :all}]
     },
@@ -563,6 +565,7 @@ IO.puts("")
       type: :dns,
       name: "?.firezone.dev",
       address: "?.firezone.dev",
+      client_address: "https://firezone.dev/",
       connections: [%{gateway_group_id: gateway_group.id}],
       filters: [%{protocol: :all}]
     },
@@ -575,6 +578,7 @@ IO.puts("")
       type: :dns,
       name: "example.com",
       address: "example.com",
+      client_address: "https://example.com/",
       connections: [%{gateway_group_id: gateway_group.id}],
       filters: [%{protocol: :all}]
     },
@@ -587,6 +591,7 @@ IO.puts("")
       type: :dns,
       name: "ip6only",
       address: "ip6only.me",
+      client_address: "https://ip6only.me/",
       connections: [%{gateway_group_id: gateway_group.id}],
       filters: [%{protocol: :all}]
     },
@@ -599,6 +604,24 @@ IO.puts("")
       type: :dns,
       name: "gitlab.mycorp.com",
       address: "gitlab.mycorp.com",
+      client_address: "https://gitlab.mycorp.com/",
+      connections: [%{gateway_group_id: gateway_group.id}],
+      filters: [
+        %{ports: ["80", "433"], protocol: :tcp},
+        %{ports: ["53"], protocol: :udp},
+        %{protocol: :icmp}
+      ]
+    },
+    admin_subject
+  )
+
+{:ok, ip_resource} =
+  Resources.create_resource(
+    %{
+      type: :dns,
+      name: "CloudFlare DNS",
+      address: "1.1.1.1",
+      client_address: "http://1.1.1.1/",
       connections: [%{gateway_group_id: gateway_group.id}],
       filters: [
         %{ports: ["80", "433"], protocol: :tcp},
@@ -615,6 +638,7 @@ IO.puts("")
       type: :cidr,
       name: "MyCorp Network",
       address: "172.20.0.1/16",
+      client_address: "172.20.0.1/16",
       connections: [%{gateway_group_id: gateway_group.id}],
       filters: [%{protocol: :all}]
     },
@@ -627,6 +651,7 @@ IO.puts("  #{dns_gitlab_resource.address} - DNS - gateways: #{gateway_name}")
 IO.puts("  #{firez_one.address} - DNS - gateways: #{gateway_name}")
 IO.puts("  #{firezone_dev.address} - DNS - gateways: #{gateway_name}")
 IO.puts("  #{example_dns.address} - DNS - gateways: #{gateway_name}")
+IO.puts("  #{ip_resource.address} - IP - gateways: #{gateway_name}")
 IO.puts("  #{cidr_resource.address} - CIDR - gateways: #{gateway_name}")
 IO.puts("")
 

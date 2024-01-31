@@ -985,6 +985,26 @@ defmodule Domain.ResourcesTest do
              ] = resource.filters
     end
 
+    test "creates a DNS resource client address must contain the address", %{
+      subject: subject
+    } do
+      attrs = Fixtures.Resources.resource_attrs(client_address: "foo")
+      assert {:error, changeset} = create_resource(attrs, subject)
+      assert "should contain \"#{attrs.address}\"" in errors_on(changeset).client_address
+
+      attrs = Fixtures.Resources.resource_attrs(address: "bar.com", client_address: "bar.com")
+      assert {:error, changeset} = create_resource(attrs, subject)
+      refute Map.has_key?(errors_on(changeset), :client_address)
+
+      attrs = Fixtures.Resources.resource_attrs(address: "?.bar.com", client_address: "x.bar.com")
+      assert {:error, changeset} = create_resource(attrs, subject)
+      refute Map.has_key?(errors_on(changeset), :client_address)
+
+      attrs = Fixtures.Resources.resource_attrs(address: "*.bar.com", client_address: "bar.com")
+      assert {:error, changeset} = create_resource(attrs, subject)
+      refute Map.has_key?(errors_on(changeset), :client_address)
+    end
+
     test "creates a cidr resource", %{account: account, subject: subject} do
       gateway = Fixtures.Gateways.create_gateway(account: account)
       address_count = Repo.aggregate(Domain.Network.Address, :count)

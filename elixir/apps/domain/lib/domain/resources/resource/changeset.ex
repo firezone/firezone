@@ -152,10 +152,21 @@ defmodule Domain.Resources.Resource.Changeset do
     changeset
     |> validate_length(:name, min: 1, max: 255)
     |> validate_length(:client_address, min: 1, max: 253)
-    |> validate_contains(:client_address, field: :address)
+    |> validate_client_address()
     |> cast_embed(:filters, with: &cast_filter/2)
     |> unique_constraint(:ipv4, name: :resources_account_id_ipv4_index)
     |> unique_constraint(:ipv6, name: :resources_account_id_ipv6_index)
+  end
+
+  defp validate_client_address(changeset) do
+    with {_data_or_changes, :dns} <- fetch_field(changeset, :type),
+         {_data_or_changes, address} when is_binary(address) <- fetch_field(changeset, :address) do
+      address = String.replace_leading(address, "?.", "")
+      address = String.replace_leading(address, "*.", "")
+      validate_contains(changeset, :client_address, address)
+    else
+      _ -> validate_contains(changeset, :client_address, field: :address)
+    end
   end
 
   def delete(%Resource{} = resource) do
