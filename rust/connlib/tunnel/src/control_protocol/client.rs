@@ -76,11 +76,12 @@ where
 
         let mut stun_relays = stun(&relays);
         stun_relays.extend(turn(&relays).iter().map(|r| r.0).collect::<HashSet<_>>());
-        let offer = self.connections.lock().connection_pool.new_connection(
-            gateway_id,
-            stun_relays,
-            turn(&relays),
-        );
+        let offer = self
+            .connections_state
+            .lock()
+            .connections
+            .node
+            .new_connection(gateway_id, stun_relays, turn(&relays));
 
         Ok(Request::NewConnection(RequestConnection {
             resource_id,
@@ -124,8 +125,9 @@ where
 
         // Partial reads of peers_by_ip can be problematic in the very unlikely case of an expiration
         // before inserting finishes.
-        self.connections
+        self.connections_state
             .lock()
+            .connections
             .peers_by_id
             .insert(gateway_id, Arc::clone(&peer));
         insert_peers(&mut self.role_state.lock().peers_by_ip, &peer_ips, peer);
@@ -150,16 +152,20 @@ where
             .gateway_by_resource(&resource_id)
             .ok_or(Error::UnknownResource)?;
 
-        self.connections.lock().connection_pool.accept_answer(
-            gateway_id,
-            gateway_public_key,
-            snownet::Answer {
-                credentials: snownet::Credentials {
-                    username: rtc_ice_params.username,
-                    password: rtc_ice_params.password,
+        self.connections_state
+            .lock()
+            .connections
+            .node
+            .accept_answer(
+                gateway_id,
+                gateway_public_key,
+                snownet::Answer {
+                    credentials: snownet::Credentials {
+                        username: rtc_ice_params.username,
+                        password: rtc_ice_params.password,
+                    },
                 },
-            },
-        );
+            );
 
         self.new_peer(resource_id, gateway_id, domain_response)?;
 

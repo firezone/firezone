@@ -20,6 +20,12 @@ fn make_socket(addr: impl Into<SocketAddr>) -> io::Result<std::net::UdpSocket> {
     socket.set_nonblocking(true)?;
     socket.bind(&addr)?;
     socket.set_mark(FIREZONE_MARK)?;
+
+    // Note: for AF_INET sockets IPV6_V6ONLY is not a valid flag
+    if addr.is_ipv6() {
+        socket.set_only_v6(true)?;
+    }
+
     Ok(socket.into())
 }
 

@@ -73,19 +73,24 @@ where
 
         let mut stun_servers: HashSet<_> = turn(&relays).iter().map(|r| r.0).collect();
         stun_servers.extend(stun(&relays));
-        let answer = self.connections.lock().connection_pool.accept_connection(
-            client_id,
-            Offer {
-                session_key: preshared_key.expose_secret().0.into(),
-                credentials: Credentials {
-                    username: client_payload.ice_parameters.username,
-                    password: client_payload.ice_parameters.password,
+        let answer = self
+            .connections_state
+            .lock()
+            .connections
+            .node
+            .accept_connection(
+                client_id,
+                Offer {
+                    session_key: preshared_key.expose_secret().0.into(),
+                    credentials: Credentials {
+                        username: client_payload.ice_parameters.username,
+                        password: client_payload.ice_parameters.password,
+                    },
                 },
-            },
-            public_key,
-            stun_servers,
-            turn(&relays),
-        );
+                public_key,
+                stun_servers,
+                turn(&relays),
+            );
 
         self.new_peer(
             ips,
@@ -183,8 +188,9 @@ where
                 .add_resource(address, resource.clone(), expires_at);
         }
 
-        self.connections
+        self.connections_state
             .lock()
+            .connections
             .peers_by_id
             .insert(client_id, Arc::clone(&peer));
         insert_peers(&mut self.role_state.lock().peers_by_ip, &ips, peer);

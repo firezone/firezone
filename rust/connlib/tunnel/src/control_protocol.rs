@@ -25,9 +25,10 @@ where
 {
     pub fn add_ice_candidate(&self, conn_id: TId, ice_candidate: String) {
         tracing::info!(%ice_candidate, %conn_id, "new remote candidate");
-        self.connections
+        self.connections_state
             .lock()
-            .connection_pool
+            .connections
+            .node
             .add_remote_candidate(conn_id, ice_candidate);
     }
 }

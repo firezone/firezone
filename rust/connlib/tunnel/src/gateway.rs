@@ -35,7 +35,11 @@ where
 
     /// Clean up a connection to a resource.
     pub fn cleanup_connection(&self, id: ClientId) {
-        self.connections.lock().peers_by_id.remove(&id);
+        self.connections_state
+            .lock()
+            .connections
+            .peers_by_id
+            .remove(&id);
         self.role_state
             .lock()
             .peers_by_ip
