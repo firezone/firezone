@@ -5,6 +5,6 @@
         android:description="@string/config_token_description"
         android:key="token"
         android:restrictionType="string"
-        android:title="@string/config_session_token_title" />
+        android:title="@string/config_token_title" />
 
 </restrictions>
