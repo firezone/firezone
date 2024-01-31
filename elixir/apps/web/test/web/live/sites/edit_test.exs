@@ -139,8 +139,7 @@ defmodule Web.Live.Sites.EditTest do
     group: group,
     conn: conn
   } do
-    attrs = Fixtures.Gateways.group_attrs() |> Map.take([:name, :routing])
-    attrs = %{attrs | routing: "stun_only"}
+    attrs = Fixtures.Gateways.group_attrs() |> Map.take([:name])
 
     {:ok, lv, _html} =
       conn

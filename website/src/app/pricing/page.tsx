@@ -258,11 +258,10 @@ export default function Page() {
           </blockquote>
           <p className="mb-8">
             Network traffic is always end-to-end encrypted, and by default,
-            routes directly to gateways running on your infrastructure. If you
-            have managed relays enabled (Enterprise plan only), encrypted data
-            may pass through our global relay network if a direct connection
-            cannot be established. Firezone can never decrypt the contents of
-            your traffic.
+            routes directly to gateways running on your infrastructure. In rare
+            circumstances, encrypted traffic can pass through our global relay
+            network if a direct connection cannot be established. Firezone can
+            never decrypt the contents of your traffic.
           </p>
 
           <a id="change-plan" className="pt-8"></a>

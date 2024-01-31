@@ -63,16 +63,6 @@ step will be to create a Site by clicking the 'Add Site' button. We'll
 auto-generate a name for the site, but you should consider renaming it something
 relevant like `Production`, `US-West`, or `Chicago-office`.
 
-When creating a Site, you're presented with the option to select the routing
-policy. Firezone uses industry-standard techniques to automatically holepunch
-direct, peer-to-peer connections between clients and gateways. In nearly all
-cases, this works fine, but in certain hostile network environments, a Relay
-must be used to ensure connectivity. Select `Firezone-managed Relays` to allow
-encrypted packets to traverse Firezone's managed global relay network, or select
-`Direct only` to force all packets to flow peer-to-peer _only_. Keep in mind
-`Direct only` can prevent connections in some rare circumstances based on the
-NAT topology of your gateway environment.
-
 After the site is created, you'll be forwarded to the Site Details page where
 you can continue the setup process.
 

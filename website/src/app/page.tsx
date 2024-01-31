@@ -75,9 +75,9 @@ export default function Page() {
             </h4>
             <p className="text-xl text-neutral-800 my-4">
               Replace your legacy VPN with a modern zero trust solution.
-              Firezone supports the workflows you're already familiar with, so
-              you can get started in minutes and incrementally adopt zero trust
-              over time.
+              Firezone supports the workflows and access patterns you're already
+              familiar with, so you can get started in minutes and incrementally
+              adopt zero trust over time.
             </p>
             <ul role="list" className="my-6 lg:mb-0 space-y-4">
               <li className="flex space-x-2.5">
@@ -216,7 +216,8 @@ export default function Page() {
               <li className="flex space-x-2.5">
                 <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
                 <span className="leading-tight text-lg text-neutral-900 ">
-                  Enforce direct connections between users and resources
+                  Permit access with group-based policies to specific hosts,
+                  applications, or subnets
                 </span>
               </li>
             </ul>
@@ -257,16 +258,16 @@ export default function Page() {
                 <strong>NAT hole punching</strong> means{" "}
                 <strong className="text-primary-450">no</strong> exposed attack
                 surface and <strong className="text-primary-450">zero</strong>{" "}
-                firewall configuration required.
+                firewall configuration needed.
               </p>
             </li>
             <li className="flex space-x-5">
               <HiShieldCheck className="text-accent-600 flex-shrink-0 w-7 h-7" />
               <p>
-                <strong>Self-hosted gateways</strong> and configurable routing
-                rules ensure data-plane traffic passes{" "}
-                <strong className="text-primary-450">only</strong> through your
-                infrastructure.
+                <strong>Self-hosted gateways</strong>, and end-to-end encryption
+                ensure we
+                <strong className="text-primary-450">can never</strong> see your
+                data.
               </p>
             </li>
           </ul>
@@ -420,14 +421,14 @@ export default function Page() {
             </div>
             <p className="mt-8 text-neutral-900 text-xl">
               Empower engineers and DevOps to manage their team’s access to
-              technical resources like test/prod servers both on-prem, and in
-              the cloud.
+              technical resources like test/prod servers both on-prem and in the
+              cloud.
             </p>
             <ul role="list" className="my-6 lg:mb-0 space-y-4">
               <li className="flex space-x-2.5">
                 <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
                 <span className="leading-tight text-lg text-neutral-900 ">
-                  Admin REST API
+                  Service accounts and headless clients
                 </span>
               </li>
               <li className="flex space-x-2.5">
@@ -484,7 +485,7 @@ export default function Page() {
               <li className="flex space-x-2.5">
                 <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
                 <span className="leading-tight text-lg text-neutral-900 ">
-                  Monitor and audit authorized connections
+                  Monitor and audit each attempted connection
                 </span>
               </li>
             </ul>

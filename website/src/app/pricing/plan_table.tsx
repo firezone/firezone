@@ -255,10 +255,8 @@ export default function PlanTable() {
         </tr>
         <tr className="border-b border-1 border-neutral-200">
           <td className="px-6 py-4">Global relay network</td>
-          <td className="px-6 py-4">&#8212;</td>
-          <td className="px-6 py-4">
-            <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
-          </td>
+          <td className="px-6 py-4 flex-wrap">Standard throughput</td>
+          <td className="px-6 py-4 flex-wrap">Premium throughput</td>
         </tr>
         <tr>
           <td
@@ -327,7 +325,7 @@ export default function PlanTable() {
           </td>
         </tr>
         <tr className="border-b border-1 border-neutral-200">
-          <td className="px-6 py-4">Geomapped IPs</td>
+          <td className="px-6 py-4">GeoIP Mapping</td>
           <td className="px-6 py-4">
             <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
