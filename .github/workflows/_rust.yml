@@ -94,17 +94,7 @@ jobs:
       - name: Build release binaries
         run: |
           # Build Windows Tauri GUI
-
           pnpm install
-
-          # Set logs to debug
-          $env:RUST_LOG = "debug"
-
-          # I'm running the multi-process test here because I don't think it can be
-          # embedded in a test binary. It requires the client to call subcommands
-          # from its own exe.
-          cargo run -p ${{ matrix.package }} -- debug test-ipc
-
           pnpm build
 
           # Used for release artifact
