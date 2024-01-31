@@ -4,7 +4,7 @@ use crate::client::{
     gui::{ControllerRequest, CtlrTx, Managed},
     settings::app_local_data_dir,
 };
-use anyhow::{anyhow, bail, Result};
+use anyhow::{bail, Result};
 use connlib_client_shared::file_logger;
 use serde::Serialize;
 use std::{fs, io, path::PathBuf, result::Result as StdResult, str::FromStr};
@@ -21,12 +21,23 @@ pub(crate) struct Handles {
     pub _reloader: reload::Handle<EnvFilter, Registry>,
 }
 
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum Error {
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
+    #[error(transparent)]
+    Parse(#[from] tracing_subscriber::filter::ParseError),
+    #[error(transparent)]
+    SetGlobalDefault(#[from] tracing::subscriber::SetGlobalDefaultError),
+    #[error(transparent)]
+    SetLogger(#[from] tracing_log::log_tracer::SetLoggerError),
+    #[error(transparent)]
+    Settings(#[from] crate::client::settings::Error),
+}
+
 /// Set up logs for the first time.
-pub(crate) fn setup(log_filter: &str) -> Result<Handles> {
-    let log_path = app_local_data_dir()
-        .ok_or_else(|| anyhow!("app_local_data_dir() failed"))?
-        .join("data")
-        .join("logs");
+pub(crate) fn setup(log_filter: &str) -> Result<Handles, Error> {
+    let log_path = app_local_data_dir()?.join("data").join("logs");
 
     std::fs::create_dir_all(&log_path)?;
     let (layer, logger) = file_logger::layer(&log_path);

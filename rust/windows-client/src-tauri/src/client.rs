@@ -50,6 +50,20 @@ pub(crate) struct GuiParams {
     inject_faults: bool,
 }
 
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum Error {
+    #[error(transparent)]
+    DeepLink(#[from] deep_link::Error),
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
+    #[error(transparent)]
+    Logging(#[from] logging::Error),
+    #[error(transparent)]
+    Settings(#[from] settings::Error),
+    #[error(transparent)]
+    Tauri(#[from] tauri::Error),
+}
+
 // Hides Powershell's console on Windows
 // <https://stackoverflow.com/questions/59692146/is-it-possible-to-use-the-standard-library-to-spawn-a-process-without-showing-th#60958956>
 const CREATE_NO_WINDOW: u32 = 0x08000000;
@@ -82,7 +96,7 @@ pub(crate) fn run() -> Result<()> {
         None => {
             if elevation::check()? {
                 // We're already elevated, just run the GUI
-                gui::run(GuiParams {
+                run_gui(GuiParams {
                     crash_on_purpose: cli.crash_on_purpose,
                     flag_elevated: false,
                     inject_faults: cli.inject_faults,
@@ -110,7 +124,7 @@ pub(crate) fn run() -> Result<()> {
         Some(Cmd::CrashHandlerServer { socket_path }) => crash_handling::server(socket_path),
         Some(Cmd::Debug { command }) => debug_commands::run(command),
         // If we already tried to elevate ourselves, don't try again
-        Some(Cmd::Elevated) => gui::run(GuiParams {
+        Some(Cmd::Elevated) => run_gui(GuiParams {
             crash_on_purpose: cli.crash_on_purpose,
             flag_elevated: true,
             inject_faults: cli.inject_faults,
@@ -121,6 +135,13 @@ pub(crate) fn run() -> Result<()> {
             Ok(())
         }
     }
+}
+
+/// `gui::run` but wrapped in `anyhow::Result`
+///
+/// Error handling can go here soon
+fn run_gui(params: GuiParams) -> Result<()> {
+    Ok(gui::run(params)?)
 }
 
 #[derive(Parser)]

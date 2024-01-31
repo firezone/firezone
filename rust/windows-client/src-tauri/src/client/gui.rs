@@ -53,11 +53,9 @@ impl Managed {
 }
 
 /// Runs the Tauri GUI and returns on exit or unrecoverable error
-pub(crate) fn run(params: client::GuiParams) -> Result<()> {
+pub(crate) fn run(params: client::GuiParams) -> Result<(), crate::client::Error> {
     // Change to data dir so the file logger will write there and not in System32 if we're launching from an app link
-    let cwd = app_local_data_dir()
-        .ok_or_else(|| anyhow!("app_local_data_dir() failed"))?
-        .join("data");
+    let cwd = app_local_data_dir()?.join("data");
     std::fs::create_dir_all(&cwd)?;
     std::env::set_current_dir(&cwd)?;
 
