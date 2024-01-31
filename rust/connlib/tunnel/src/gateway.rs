@@ -5,6 +5,7 @@ use connlib_shared::messages::{ClientId, Interface as InterfaceConfig};
 use connlib_shared::Callbacks;
 use snownet::Server;
 use ip_network_table::IpNetworkTable;
+use itertools::Itertools;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 
@@ -47,6 +48,22 @@ pub struct GatewayState {
     pub peers_by_ip: IpNetworkTable<Arc<Peer<ClientId, PacketTransformGateway>>>,
 }
 
+impl GatewayState {
+    pub fn expire_resources(&mut self) -> impl Iterator<Item = ClientId> + '_ {
+        self.peers_by_ip
+            .iter()
+            .unique_by(|(_, p)| p.conn_id)
+            .for_each(|(_, p)| p.transform.expire_resources());
+        self.peers_by_ip.iter().filter_map(|(_, p)| {
+            if p.transform.is_emptied() {
+                Some(p.conn_id)
+            } else {
+                None
+            }
+        })
+    }
+}
+
 impl Default for GatewayState {
     fn default() -> Self {
         Self {
@@ -63,37 +80,4 @@ impl RoleState for GatewayState {
             return Poll::Pending;
         }
     }
-
-    // TODO: expire resources and remove empty peers
-    // fn refresh_peers(&mut self) -> VecDeque<Self::Id> {
-    //     let mut peers_to_stop = VecDeque::new();
-    //     for (_, peer) in self.peers_by_ip.iter().unique_by(|(_, p)| p.conn_id) {
-    //         let conn_id = peer.conn_id;
-
-    //         peer.transform.expire_resources();
-
-    //         if peer.transform.is_emptied() {
-    //             tracing::trace!(%conn_id, "peer_expired");
-    //             peers_to_stop.push_back(conn_id);
-
-    //             continue;
-    //         }
-
-    //         // TODO:
-    //         // let bytes = match peer.inner.update_timers() {
-    //         //     Ok(Some(bytes)) => bytes,
-    //         //     Ok(None) => continue,
-    //         //     Err(e) => {
-    //         //         tracing::error!("Failed to update timers for peer: {e}");
-    //         //         if e.is_fatal_connection_error() {
-    //         //             peers_to_stop.push_back(conn_id);
-    //         //         }
-
-    //         //         continue;
-    //         //     }
-    //         // };
-    //     }
-
-    //     peers_to_stop
-    // }
 }

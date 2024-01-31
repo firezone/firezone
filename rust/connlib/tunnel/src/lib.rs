@@ -296,7 +296,8 @@ where
                     }
                     if_watch::IfEvent::Down(ip) => {
                         tracing::info!(address = %ip.addr(), "Interface IP no longer available");
-                        todo!()
+                        self.udp_sockets.unbind(ip.addr());
+                        // TODO: remove local interface
                     }
                 },
                 Poll::Ready(Err(e)) => {
@@ -369,7 +370,6 @@ where
                     .lock()
                     .peers_by_ip
                     .retain(|_, p| !cleanup_ids.contains(&p.conn_id));
-                self.role_state.lock()
                 continue;
             }
 
@@ -416,7 +416,7 @@ where
                 continue;
             };
 
-            // TODO: we're holding 2 mutexes here
+            // TODO: we're holding 3 mutexes here
             self.send_peer(packet, peer);
 
             continue;
@@ -445,7 +445,7 @@ where
                             continue;
                         };
 
-                        // TODO: we're holding 2 mutexes here
+                        // TODO: we're holding 3 mutexes here
                         self.send_peer(packet, peer);
 
                         continue;
@@ -472,6 +472,11 @@ where
                     .lock()
                     .peers_by_ip
                     .retain(|_, p| !cleanup_ids.contains(&p.conn_id));
+                let peers_to_stop: Vec<_> = self.role_state.lock().expire_resources().collect();
+                self.connections
+                    .lock()
+                    .peers_by_id
+                    .retain(|id, _| !peers_to_stop.contains(id));
                 continue;
             }
 

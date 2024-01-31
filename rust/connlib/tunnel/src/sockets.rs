@@ -1,7 +1,7 @@
 use socket2::{SockAddr, Type};
 use std::{
     io,
-    net::SocketAddr,
+    net::{IpAddr, SocketAddr},
     task::{ready, Context, Poll, Waker},
 };
 use tokio::{io::ReadBuf, net::UdpSocket};
@@ -85,8 +85,9 @@ impl<const N: usize> UdpSockets<N> {
         Ok(local)
     }
 
-    pub fn unbind(&mut self, addr: SocketAddr) {
-        self.sockets.retain(|Socket { local, .. }| *local != addr);
+    pub fn unbind(&mut self, addr: IpAddr) {
+        self.sockets
+            .retain(|Socket { local, .. }| local.ip() != addr);
     }
 
     pub fn try_send_to(
