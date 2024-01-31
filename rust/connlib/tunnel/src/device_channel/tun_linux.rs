@@ -245,7 +245,7 @@ fn set_non_blocking(fd: RawFd) -> Result<()> {
 }
 
 fn create_tun_device() -> Result<()> {
-    let path = Path::new(TUN_FILE.to_str().unwrap());
+    let path = Path::new(TUN_FILE.to_str().expect("path is valid utf-8"));
 
     if path.exists() {
         return Ok(());
