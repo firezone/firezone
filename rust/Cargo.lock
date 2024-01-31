@@ -1972,48 +1972,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "firezone-connection"
-version = "1.0.0"
-dependencies = [
- "anyhow",
- "boringtun",
- "bytecodec",
- "bytes",
- "firezone-relay",
- "once_cell",
- "pnet_packet",
- "rand 0.8.5",
- "secrecy",
- "str0m",
- "stun_codec",
- "thiserror",
- "tracing",
-]
-
-[[package]]
-name = "firezone-connection-tests"
-version = "1.0.0"
-dependencies = [
- "anyhow",
- "boringtun",
- "firezone-connection",
- "futures",
- "hex",
- "pnet_packet",
- "rand 0.8.5",
- "redis 0.24.0",
- "redis-macros",
- "secrecy",
- "serde",
- "serde-hex",
- "serde_json",
- "system-info",
- "tokio",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
 name = "firezone-gateway"
 version = "1.0.0"
 dependencies = [
@@ -5991,6 +5949,48 @@ dependencies = [
 ]
 
 [[package]]
+name = "snownet"
+version = "1.0.0"
+dependencies = [
+ "anyhow",
+ "boringtun",
+ "bytecodec",
+ "bytes",
+ "firezone-relay",
+ "once_cell",
+ "pnet_packet",
+ "rand 0.8.5",
+ "secrecy",
+ "str0m",
+ "stun_codec",
+ "thiserror",
+ "tracing",
+]
+
+[[package]]
+name = "snownet-tests"
+version = "1.0.0"
+dependencies = [
+ "anyhow",
+ "boringtun",
+ "futures",
+ "hex",
+ "pnet_packet",
+ "rand 0.8.5",
+ "redis 0.24.0",
+ "redis-macros",
+ "secrecy",
+ "serde",
+ "serde-hex",
+ "serde_json",
+ "snownet",
+ "system-info",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "socket2"
 version = "0.4.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6090,7 +6090,7 @@ checksum = "9e08d8363704e6c71fc928674353e6b7c23dcea9d82d7012c8faf2a3a025f8d0"
 [[package]]
 name = "str0m"
 version = "0.4.1"
-source = "git+https://github.com/algesten/str0m?branch=main#30ba27e4fb683d45559e5a821c0c2c084e02463a"
+source = "git+https://github.com/thomaseizinger/str0m?branch=feat/base-is-host-for-srflx#86a5851874802244c3cff00754ea1c5e71badee1"
 dependencies = [
  "combine",
  "crc",

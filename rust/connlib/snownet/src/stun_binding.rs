@@ -1,4 +1,4 @@
-use crate::pool::Transmit;
+use crate::node::Transmit;
 use bytecodec::{DecodeExt, EncodeExt};
 use std::{
     collections::VecDeque,
@@ -42,7 +42,13 @@ impl StunBinding {
         self.last_candidate.clone()
     }
 
-    pub fn handle_input(&mut self, from: SocketAddr, packet: &[u8], now: Instant) -> bool {
+    pub fn handle_input(
+        &mut self,
+        from: SocketAddr,
+        local: SocketAddr,
+        packet: &[u8],
+        now: Instant,
+    ) -> bool {
         self.last_now = Some(now); // TODO: Do we need to do any other updates here?
 
         if from != self.server {
@@ -72,13 +78,14 @@ impl StunBinding {
 
         let observed_address = mapped_address.address();
 
-        let new_candidate = match Candidate::server_reflexive(observed_address, Protocol::Udp) {
-            Ok(c) => c,
-            Err(e) => {
-                tracing::debug!("Observed address is not a valid candidate: {e}");
-                return true; // We still handled the packet correctly.
-            }
-        };
+        let new_candidate =
+            match Candidate::server_reflexive(observed_address, local, Protocol::Udp) {
+                Ok(c) => c,
+                Err(e) => {
+                    tracing::debug!("Observed address is not a valid candidate: {e}");
+                    return true; // We still handled the packet correctly.
+                }
+            };
 
         match &self.last_candidate {
             Some(candidate) if candidate != &new_candidate => {
@@ -143,9 +150,10 @@ impl StunBinding {
     }
 
     #[cfg(test)]
-    fn set_received_at(&mut self, address: SocketAddr, now: Instant) {
+    fn set_received_at(&mut self, address: SocketAddr, local: SocketAddr, now: Instant) {
         self.last_now = Some(now);
-        self.last_candidate = Some(Candidate::server_reflexive(address, Protocol::Udp).unwrap());
+        self.last_candidate =
+            Some(Candidate::server_reflexive(address, local, Protocol::Udp).unwrap());
         self.state = State::ReceivedResponse { at: now };
     }
 }
@@ -251,8 +259,12 @@ mod tests {
         let request = stun_binding.poll_transmit().unwrap();
         let response = generate_stun_response(request, MAPPED_ADDRESS);
 
-        let handled =
-            stun_binding.handle_input(SERVER1, &response, start + Duration::from_millis(200));
+        let handled = stun_binding.handle_input(
+            SERVER1,
+            MAPPED_ADDRESS,
+            &response,
+            start + Duration::from_millis(200),
+        );
         assert!(handled);
 
         let candidate = stun_binding.poll_candidate().unwrap();
@@ -265,7 +277,7 @@ mod tests {
         let start = Instant::now();
 
         let mut stun_binding = StunBinding::new(SERVER1);
-        stun_binding.set_received_at(MAPPED_ADDRESS, start);
+        stun_binding.set_received_at(MAPPED_ADDRESS, MAPPED_ADDRESS, start);
         assert!(stun_binding.poll_transmit().is_none());
 
         stun_binding.handle_timeout(start + Duration::from_secs(5 * 60));
@@ -283,8 +295,12 @@ mod tests {
         let request = stun_binding.poll_transmit().unwrap();
         let response = generate_stun_response(request, MAPPED_ADDRESS);
 
-        let handled =
-            stun_binding.handle_input(SERVER2, &response, start + Duration::from_millis(200));
+        let handled = stun_binding.handle_input(
+            SERVER2,
+            MAPPED_ADDRESS,
+            &response,
+            start + Duration::from_millis(200),
+        );
 
         assert!(!handled);
         assert!(stun_binding.poll_candidate().is_none());
