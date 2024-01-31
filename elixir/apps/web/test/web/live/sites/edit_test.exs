@@ -140,7 +140,6 @@ defmodule Web.Live.Sites.EditTest do
     conn: conn
   } do
     attrs = Fixtures.Gateways.group_attrs() |> Map.take([:name])
-    attrs = %{attrs | name: "new_test_name"}
 
     {:ok, lv, _html} =
       conn
