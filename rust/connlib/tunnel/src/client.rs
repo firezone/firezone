@@ -20,7 +20,7 @@ use itertools::Itertools;
 use snownet::Client;
 
 use std::collections::hash_map::Entry;
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, HashSet};
 use std::net::IpAddr;
 use std::sync::Arc;
 use std::task::{Context, Poll};
@@ -692,33 +692,6 @@ impl RoleState for ClientState {
 
             return self.forwarded_dns_queries.poll(cx).map(Event::DnsQuery);
         }
-    }
-
-    fn remove_peers(&mut self, conn_id: GatewayId) {
-        self.peers_by_ip.retain(|_, p| p.conn_id != conn_id);
-    }
-
-    fn refresh_peers(&mut self) -> VecDeque<Self::Id> {
-        let mut peers_to_stop = VecDeque::new();
-        for (_, peer) in self.peers_by_ip.iter().unique_by(|(_, p)| p.conn_id) {
-            let conn_id = peer.conn_id;
-
-            // TODO:
-            // let bytes = match peer.inner.update_timers() {
-            //     Ok(Some(bytes)) => bytes,
-            //     Ok(None) => continue,
-            //     Err(e) => {
-            //         tracing::error!("Failed to update timers for peer: {e}");
-            //         if e.is_fatal_connection_error() {
-            //             peers_to_stop.push_back(conn_id);
-            //         }
-
-            //         continue;
-            //     }
-            // };
-        }
-
-        peers_to_stop
     }
 }
 

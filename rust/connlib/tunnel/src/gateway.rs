@@ -3,10 +3,8 @@ use crate::peer::{PacketTransformGateway, Peer};
 use crate::{Event, RoleState, Tunnel};
 use connlib_shared::messages::{ClientId, Interface as InterfaceConfig};
 use connlib_shared::Callbacks;
-use ip_network_table::IpNetworkTable;
-use itertools::Itertools;
 use snownet::Server;
-use std::collections::VecDeque;
+use ip_network_table::IpNetworkTable;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 
@@ -66,39 +64,36 @@ impl RoleState for GatewayState {
         }
     }
 
-    fn remove_peers(&mut self, conn_id: ClientId) {
-        self.peers_by_ip.retain(|_, p| p.conn_id != conn_id);
-    }
+    // TODO: expire resources and remove empty peers
+    // fn refresh_peers(&mut self) -> VecDeque<Self::Id> {
+    //     let mut peers_to_stop = VecDeque::new();
+    //     for (_, peer) in self.peers_by_ip.iter().unique_by(|(_, p)| p.conn_id) {
+    //         let conn_id = peer.conn_id;
 
-    fn refresh_peers(&mut self) -> VecDeque<Self::Id> {
-        let mut peers_to_stop = VecDeque::new();
-        for (_, peer) in self.peers_by_ip.iter().unique_by(|(_, p)| p.conn_id) {
-            let conn_id = peer.conn_id;
+    //         peer.transform.expire_resources();
 
-            peer.transform.expire_resources();
+    //         if peer.transform.is_emptied() {
+    //             tracing::trace!(%conn_id, "peer_expired");
+    //             peers_to_stop.push_back(conn_id);
 
-            if peer.transform.is_emptied() {
-                tracing::trace!(%conn_id, "peer_expired");
-                peers_to_stop.push_back(conn_id);
+    //             continue;
+    //         }
 
-                continue;
-            }
+    //         // TODO:
+    //         // let bytes = match peer.inner.update_timers() {
+    //         //     Ok(Some(bytes)) => bytes,
+    //         //     Ok(None) => continue,
+    //         //     Err(e) => {
+    //         //         tracing::error!("Failed to update timers for peer: {e}");
+    //         //         if e.is_fatal_connection_error() {
+    //         //             peers_to_stop.push_back(conn_id);
+    //         //         }
 
-            // TODO:
-            // let bytes = match peer.inner.update_timers() {
-            //     Ok(Some(bytes)) => bytes,
-            //     Ok(None) => continue,
-            //     Err(e) => {
-            //         tracing::error!("Failed to update timers for peer: {e}");
-            //         if e.is_fatal_connection_error() {
-            //             peers_to_stop.push_back(conn_id);
-            //         }
+    //         //         continue;
+    //         //     }
+    //         // };
+    //     }
 
-            //         continue;
-            //     }
-            // };
-        }
-
-        peers_to_stop
-    }
+    //     peers_to_stop
+    // }
 }

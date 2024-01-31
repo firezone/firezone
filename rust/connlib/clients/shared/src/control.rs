@@ -431,6 +431,10 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                     }
                 });
             }
+            Ok(firezone_tunnel::Event::StopPeer(_)) => {
+                // This should never bubbled up
+                // TODO: we might want to segregate events further
+            }
             Err(e) => {
                 tracing::error!("Tunnel failed: {e:#?}");
             }

@@ -21,11 +21,8 @@ use tokio::time::MissedTickBehavior;
 use arc_swap::ArcSwapOption;
 use futures_util::task::AtomicWaker;
 use std::collections::HashMap;
+use std::net::{Ipv4Addr, Ipv6Addr};
 use std::{collections::HashSet, hash::Hash};
-use std::{
-    collections::VecDeque,
-    net::{Ipv4Addr, Ipv6Addr},
-};
 use std::{fmt, net::IpAddr, sync::Arc, time::Duration};
 use std::{
     task::{ready, Context, Poll},
@@ -167,9 +164,7 @@ where
                             return Poll::Ready(None);
                         };
                         return Poll::Ready(
-                            peer.transform
-                                .packet_untransform(&packet.source(), self.write_buf.as_mut())
-                                .map(|p| p.0)
+                            peer.untransform(packet.source(), self.write_buf.as_mut())
                                 .ok(),
                         );
                     }
@@ -257,7 +252,8 @@ where
                 }
                 Some(snownet::Event::ConnectionFailed(id)) => {
                     tracing::info!(%id, "Connection failed with peer");
-                    // TODO (We need to cleanup the peer since we create it before we get establish the connection)
+                    self.peers_by_id.remove(&id);
+                    return Poll::Ready(Event::StopPeer(id));
                 }
                 None => {}
             }
@@ -314,10 +310,7 @@ pub struct Tunnel<CB: Callbacks, TRoleState: RoleState, TRole, TId, TTransform> 
     /// State that differs per role, i.e. clients vs gateways.
     role_state: Mutex<TRoleState>,
 
-    peer_refresh_interval: Mutex<Interval>,
     mtu_refresh_interval: Mutex<Interval>,
-
-    peers_to_stop: Mutex<VecDeque<TRoleState::Id>>,
 
     device: Arc<ArcSwapOption<Device>>,
     read_buf: Mutex<Box<[u8; MAX_UDP_SIZE]>>,
@@ -354,7 +347,14 @@ where
                 }
             }
 
-            return Poll::Ready(Ok(ready!(self.poll_next_event_common(cx))));
+            match ready!(self.poll_next_event_common(cx)) {
+                Event::StopPeer(id) => self
+                    .role_state
+                    .lock()
+                    .peers_by_ip
+                    .retain(|_, p| p.conn_id != id),
+                e => return Poll::Ready(Ok(e)),
+            }
         })
         .await
     }
@@ -436,7 +436,14 @@ where
                 }
             }
 
-            return Poll::Ready(Ok(ready!(self.poll_next_event_common(cx))));
+            match ready!(self.poll_next_event_common(cx)) {
+                Event::StopPeer(id) => self
+                    .role_state
+                    .lock()
+                    .peers_by_ip
+                    .retain(|_, p| p.conn_id != id),
+                e => return Poll::Ready(Ok(e)),
+            }
         }
     }
 }
@@ -469,28 +476,6 @@ where
 
     fn poll_next_event_common(&self, cx: &mut Context<'_>) -> Poll<Event<TRoleState::Id>> {
         loop {
-            if let Some(conn_id) = self.peers_to_stop.lock().pop_front() {
-                self.role_state.lock().remove_peers(conn_id);
-
-                // TODO: Stop the connection
-                // if let Some(conn) = self.peer_connections.lock().remove(&conn_id) {
-                //     tokio::spawn({
-                //         async move {
-                //             if let Err(e) = conn.stop().await {
-                //                 tracing::warn!(%conn_id, error = ?e, "Can't close peer");
-                //             }
-                //         }
-                //     });
-                // }
-            }
-
-            if self.peer_refresh_interval.lock().poll_tick(cx).is_ready() {
-                let mut peers_to_stop = self.role_state.lock().refresh_peers();
-                self.peers_to_stop.lock().append(&mut peers_to_stop);
-
-                continue;
-            }
-
             if self.mtu_refresh_interval.lock().poll_tick(cx).is_ready() {
                 let Some(device) = self.device.load().clone() else {
                     tracing::debug!("Device temporarily not available");
@@ -590,6 +575,7 @@ pub enum Event<TId> {
         connections: Vec<ReuseConnection>,
     },
     DnsQuery(DnsQuery<'static>),
+    StopPeer(TId),
 }
 
 impl<CB, TRoleState, TRole, TId, TTransform> Tunnel<CB, TRoleState, TRole, TId, TTransform>
@@ -607,9 +593,6 @@ where
     #[tracing::instrument(level = "trace", skip(private_key, callbacks))]
     pub async fn new(private_key: StaticSecret, callbacks: CB) -> Result<Self> {
         // TODO:
-        // let peer_connections = Default::default();
-
-        // TODO:
         // setting_engine.set_interface_filter(Box::new(|name| !name.contains("tun")));
 
         Ok(Self {
@@ -619,9 +602,7 @@ where
             read_buf: Mutex::new(Box::new([0u8; MAX_UDP_SIZE])),
             callbacks: CallbackErrorFacade(callbacks),
             role_state: Default::default(),
-            peer_refresh_interval: Mutex::new(peer_refresh_interval()),
             mtu_refresh_interval: Mutex::new(mtu_refresh_interval()),
-            peers_to_stop: Default::default(),
             no_device_waker: Default::default(),
             connections: Mutex::new(Connections::new(private_key)),
         })
@@ -630,16 +611,6 @@ where
     pub fn callbacks(&self) -> &CallbackErrorFacade<CB> {
         &self.callbacks
     }
-}
-
-/// Constructs the interval for "refreshing" peers.
-///
-/// On each tick, we remove expired peers from our map, update wireguard timers and send packets, if any.
-fn peer_refresh_interval() -> Interval {
-    let mut interval = tokio::time::interval(Duration::from_secs(1));
-    interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
-
-    interval
 }
 
 /// Constructs the interval for refreshing the MTU of our TUN device.
@@ -658,8 +629,6 @@ pub trait RoleState: Default + Send + 'static {
     type Id: fmt::Debug + fmt::Display + Eq + Hash + Copy + Unpin + Send + Sync + 'static;
 
     fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Event<Self::Id>>;
-    fn remove_peers(&mut self, conn_id: Self::Id);
-    fn refresh_peers(&mut self) -> VecDeque<Self::Id>;
 }
 
 async fn sleep_until(deadline: Instant) -> Instant {
