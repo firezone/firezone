@@ -89,7 +89,7 @@ public final class TunnelStore: ObservableObject {
       return
     }
     let tunnel = NETunnelProviderManager()
-    tunnel.localizedDescription = "Firezone"
+    tunnel.localizedDescription = NETunnelProviderManager.firezoneNetworkExtensionDescription()
     tunnel.protocolConfiguration = basicProviderProtocol()
     try await tunnel.saveToPreferences()
     logger.log("\(#function): Tunnel created")
@@ -501,7 +501,7 @@ extension NETunnelProviderManager {
       protocolConfiguration.serverAddress = "unknown-server"
     }
     if localizedDescription?.isEmpty ?? true {
-      localizedDescription = "Firezone"
+      localizedDescription = Self.firezoneNetworkExtensionDescription()
     }
   }
 
@@ -510,6 +510,14 @@ extension NETunnelProviderManager {
       Bundle.main.bundleIdentifier.map { "\($0).debug.network-extension" }
     #else
       Bundle.main.bundleIdentifier.map { "\($0).network-extension" }
+    #endif
+  }
+
+  static func firezoneNetworkExtensionDescription() -> String {
+    #if DEBUG
+      "Firezone (Debug)"
+    #else
+      "Firezone"
     #endif
   }
 }
