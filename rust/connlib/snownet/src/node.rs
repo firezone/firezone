@@ -37,14 +37,15 @@ pub(crate) const WIREGUARD_KEEP_ALIVE: u16 = 5;
 const MAX_UDP_SIZE: usize = (1 << 16) - 1;
 
 /// Manages a set of wireguard connections for a server.
-pub type ServerConnectionPool<TId> = ConnectionPool<Server, TId>;
+pub type ServerNode<TId> = Node<Server, TId>;
 /// Manages a set of wireguard connections for a client.
-pub type ClientConnectionPool<TId> = ConnectionPool<Client, TId>;
+pub type ClientNode<TId> = Node<Client, TId>;
 
 pub enum Server {}
 pub enum Client {}
 
-pub struct ConnectionPool<T, TId> {
+/// A node within a `snownet` network maintains connections to several other nodes.
+pub struct Node<T, TId> {
     private_key: StaticSecret,
     index: IndexLfsr,
     rate_limiter: Arc<RateLimiter>,
@@ -81,7 +82,7 @@ pub enum Error {
     NotConnected,
 }
 
-impl<T, TId> ConnectionPool<T, TId>
+impl<T, TId> Node<T, TId>
 where
     TId: Eq + Hash + Copy + fmt::Display,
 {
@@ -166,7 +167,7 @@ where
     ) -> Result<Option<(TId, IpPacket<'s>)>, Error> {
         // First, check if a `StunBinding` wants the packet
         if let Some(binding) = self.bindings.get_mut(&from) {
-            if binding.handle_input(from, packet, now) {
+            if binding.handle_input(from, local, packet, now) {
                 // If it handled the packet, drain its events to ensure we update the candidates of all connections.
                 drain_and_add_candidates(
                     from,
@@ -181,7 +182,7 @@ where
 
         // Next, check if an `Allocation` wants the packet
         if let Some(allocation) = self.allocations.get_mut(&from) {
-            if allocation.handle_input(from, packet, now) {
+            if allocation.handle_input(from, local, packet, now) {
                 // If it handled the packet, drain its events to ensure we update the candidates of all connections.
                 drain_and_add_candidates(
                     from,
@@ -412,7 +413,7 @@ where
         self.pending_events.pop_front()
     }
 
-    /// Returns, when [`ConnectionPool::handle_timeout`] should be called next.
+    /// Returns, when [`Node::handle_timeout`] should be called next.
     ///
     /// This function only takes `&mut self` because it caches certain computations internally.
     /// The returned timestamp will **not** change unless other state is modified.
@@ -429,7 +430,7 @@ where
         earliest(connection_timeout, self.next_rate_limiter_reset)
     }
 
-    /// Advances time within the [`ConnectionPool`].
+    /// Advances time within the [`Node`].
     ///
     /// This advances time within the ICE agent, updates timers within all wireguard connections as well as resets wireguard's rate limiter (if necessary).
     pub fn handle_timeout(&mut self, now: Instant) {
@@ -482,23 +483,29 @@ where
     /// Returns buffered data that needs to be sent on the socket.
     pub fn poll_transmit(&mut self) -> Option<Transmit<'static>> {
         for conn in self.negotiated_connections.values_mut() {
-            if let Some(transmit) = conn.agent.poll_transmit() {
+            while let Some(transmit) = conn.agent.poll_transmit() {
                 let relay = SocketAddr::new(transmit.source.ip(), 3478); // TODO: Don't hardcode this.
 
-                let transmit = encode_as_channel_data(
+                match encode_as_channel_data(
                     relay,
                     transmit.destination,
                     &transmit.contents,
                     &mut self.allocations,
                     self.last_now,
-                )
-                .unwrap_or(Transmit {
-                    src: Some(transmit.source),
-                    dst: transmit.destination,
-                    payload: Cow::Owned(transmit.contents.into()),
-                });
-
-                return Some(transmit);
+                ) {
+                    Ok(transmit) => return Some(transmit),
+                    Err(EncodeError::NoAllocation) => {
+                        return Some(Transmit {
+                            src: Some(transmit.source),
+                            dst: transmit.destination,
+                            payload: Cow::Owned(transmit.contents.into()),
+                        })
+                    }
+                    Err(EncodeError::NoChannel) => {
+                        tracing::debug!(%relay, peer = %transmit.destination, "Got allocation on relay but no channel to peer");
+                        continue;
+                    }
+                }
             }
         }
 
@@ -547,7 +554,7 @@ where
     }
 }
 
-impl<TId> ConnectionPool<Client, TId>
+impl<TId> Node<Client, TId>
 where
     TId: Eq + Hash + Copy + fmt::Display,
 {
@@ -605,7 +612,7 @@ where
         params
     }
 
-    /// Accept an [`Answer`] from the remote for a connection previously created via [`ConnectionPool::new_connection`].
+    /// Accept an [`Answer`] from the remote for a connection previously created via [`Node::new_connection`].
     pub fn accept_answer(&mut self, id: TId, remote: PublicKey, answer: Answer) {
         let Some(initial) = self.initial_connections.remove(&id) else {
             return; // TODO: Better error handling
@@ -629,7 +636,7 @@ where
     }
 }
 
-impl<TId> ConnectionPool<Server, TId>
+impl<TId> Node<Server, TId>
 where
     TId: Eq + Hash + Copy + fmt::Display,
 {
@@ -690,7 +697,7 @@ where
     }
 }
 
-impl<T, TId> ConnectionPool<T, TId>
+impl<T, TId> Node<T, TId>
 where
     TId: Eq + Hash + Copy + fmt::Display,
 {
@@ -822,15 +829,25 @@ fn encode_as_channel_data(
     contents: &[u8],
     allocations: &mut HashMap<SocketAddr, Allocation>,
     now: Instant,
-) -> Option<Transmit<'static>> {
-    let allocation = allocations.get_mut(&relay)?;
-    let payload = allocation.encode_to_vec(dest, contents, now)?;
+) -> Result<Transmit<'static>, EncodeError> {
+    let allocation = allocations
+        .get_mut(&relay)
+        .ok_or(EncodeError::NoAllocation)?;
+    let payload = allocation
+        .encode_to_vec(dest, contents, now)
+        .ok_or(EncodeError::NoChannel)?;
 
-    Some(Transmit {
+    Ok(Transmit {
         src: None,
         dst: relay,
         payload: Cow::Owned(payload),
     })
+}
+
+#[derive(Debug)]
+enum EncodeError {
+    NoAllocation,
+    NoChannel,
 }
 
 fn drain_and_add_candidates<TId>(
@@ -1103,7 +1120,7 @@ impl Connection {
                 payload: Cow::Owned(message.into()),
             }),
             RemoteSocket::Relay { relay, dest: peer } => {
-                encode_as_channel_data(relay, peer, message, allocations, now)
+                encode_as_channel_data(relay, peer, message, allocations, now).ok()
             }
         }
     }

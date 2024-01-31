@@ -5,10 +5,9 @@
 //! TODO: Capture crash dumps on panic.
 
 use crate::client::settings::app_local_data_dir;
-use anyhow::{anyhow, bail, Context};
+use anyhow::{anyhow, bail, Context, Result};
+use crash_handler::CrashHandler;
 use std::{fs::File, io::Write, path::PathBuf};
-
-const SOCKET_NAME: &str = "dev.firezone.client.crash_handler";
 
 /// Attaches a crash handler to the client process
 ///
@@ -19,8 +18,7 @@ const SOCKET_NAME: &str = "dev.firezone.client.crash_handler";
 /// <https://github.com/EmbarkStudios/crash-handling/blob/main/minidumper/examples/diskwrite.rs>
 /// Linux has a special `set_ptracer` call that is handy
 /// MacOS needs a special `ping` call to flush messages inside the crash handler
-#[cfg(all(debug_assertions, target_os = "windows"))]
-pub(crate) fn attach_handler() -> anyhow::Result<crash_handler::CrashHandler> {
+pub(crate) fn attach_handler() -> Result<CrashHandler> {
     // Attempt to connect to the server
     let (client, _server) = start_server_and_connect()?;
 
@@ -28,7 +26,7 @@ pub(crate) fn attach_handler() -> anyhow::Result<crash_handler::CrashHandler> {
     // has crashed. We should try to do as little as possible, basically just
     // tell the crash handler process to get our minidump and then return.
     // https://docs.rs/crash-handler/0.6.0/crash_handler/trait.CrashEvent.html#safety
-    let handler = crash_handler::CrashHandler::attach(unsafe {
+    let handler = CrashHandler::attach(unsafe {
         crash_handler::make_crash_event(move |crash_context| {
             crash_handler::CrashEventResult::Handled(client.request_dump(crash_context).is_ok())
         })
@@ -36,11 +34,6 @@ pub(crate) fn attach_handler() -> anyhow::Result<crash_handler::CrashHandler> {
     .context("failed to attach signal handler")?;
 
     Ok(handler)
-}
-
-#[cfg(not(debug_assertions))]
-pub(crate) fn attach_handler() -> anyhow::Result<crash_handler::CrashHandler> {
-    bail!("crash handling is disabled in release builds for now");
 }
 
 /// Main function for the server process, for out-of-process crash handling.
@@ -51,15 +44,22 @@ pub(crate) fn attach_handler() -> anyhow::Result<crash_handler::CrashHandler> {
 ///
 /// <https://jake-shadle.github.io/crash-reporting/#implementation>
 /// <https://chromium.googlesource.com/breakpad/breakpad/+/master/docs/getting_started_with_breakpad.md#terminology>
-pub(crate) fn server() -> anyhow::Result<()> {
-    let mut server = minidumper::Server::with_name(SOCKET_NAME)?;
+pub(crate) fn server(socket_path: PathBuf) -> Result<()> {
+    let mut server = minidumper::Server::with_name(&*socket_path)?;
     let ab = std::sync::atomic::AtomicBool::new(false);
     server.run(Box::new(Handler), &ab, None)?;
     Ok(())
 }
 
-fn start_server_and_connect() -> anyhow::Result<(minidumper::Client, std::process::Child)> {
+fn start_server_and_connect() -> Result<(minidumper::Client, std::process::Child)> {
     let exe = std::env::current_exe().context("unable to find our own exe path")?;
+    // Path of a Unix domain socket for IPC with the crash handler server
+    // <https://github.com/EmbarkStudios/crash-handling/issues/10>
+    let socket_path = app_local_data_dir()
+        .context("couldn't compute crash handler socket path")?
+        .join("data")
+        .join("crash_handler_pipe");
+
     let mut server = None;
 
     // I don't understand why there's a loop here. The original was an infinite loop,
@@ -68,7 +68,7 @@ fn start_server_and_connect() -> anyhow::Result<(minidumper::Client, std::proces
     for _ in 0..10 {
         // Create the crash client first so we can error out if another instance of
         // the Firezone client is already using this socket for crash handling.
-        if let Ok(client) = minidumper::Client::with_name(SOCKET_NAME) {
+        if let Ok(client) = minidumper::Client::with_name(&*socket_path) {
             return Ok((
                 client,
                 server.ok_or_else(|| {
@@ -82,6 +82,7 @@ fn start_server_and_connect() -> anyhow::Result<(minidumper::Client, std::proces
         server = Some(
             std::process::Command::new(&exe)
                 .arg("crash-handler-server")
+                .arg(&socket_path)
                 .spawn()
                 .context("unable to spawn server process")?,
         );

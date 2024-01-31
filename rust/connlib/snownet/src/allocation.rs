@@ -1,4 +1,4 @@
-use crate::pool::Transmit;
+use crate::node::Transmit;
 use bytecodec::{DecodeExt as _, EncodeExt as _};
 use rand::random;
 use std::{
@@ -89,7 +89,13 @@ impl Allocation {
         .flatten()
     }
 
-    pub fn handle_input(&mut self, from: SocketAddr, packet: &[u8], now: Instant) -> bool {
+    pub fn handle_input(
+        &mut self,
+        from: SocketAddr,
+        local: SocketAddr,
+        packet: &[u8],
+        now: Instant,
+    ) -> bool {
         if Some(now) > self.last_now {
             self.last_now = Some(now);
         }
@@ -167,7 +173,9 @@ impl Allocation {
                     return true;
                 };
 
-                let maybe_srflx_candidate = message.attributes().find_map(srflx_candidate);
+                let maybe_srflx_candidate = message
+                    .attributes()
+                    .find_map(|addr| srflx_candidate(local, addr));
                 let maybe_ip4_relay_candidate = message
                     .attributes()
                     .find_map(relay_candidate(|s| s.is_ipv4()));
@@ -466,7 +474,9 @@ fn make_allocate_request() -> Message<Attribute> {
     );
 
     message.add_attribute(RequestedTransport::new(17));
-    // message.add_attribute(AdditionalAddressFamily::new(AddressFamily::V6)); TODO: Request IPv6 binding.
+    message.add_attribute(AdditionalAddressFamily::new(
+        stun_codec::rfc8656::attributes::AddressFamily::V6,
+    ));
 
     message
 }
@@ -475,7 +485,9 @@ fn make_refresh_request() -> Message<Attribute> {
     let mut message = Message::new(MessageClass::Request, REFRESH, TransactionId::new(random()));
 
     message.add_attribute(RequestedTransport::new(17));
-    // message.add_attribute(AdditionalAddressFamily::new(AddressFamily::V6)); TODO: Request IPv6 binding.
+    message.add_attribute(AdditionalAddressFamily::new(
+        stun_codec::rfc8656::attributes::AddressFamily::V6,
+    ));
 
     message
 }
@@ -493,13 +505,13 @@ fn make_channel_bind_request(target: SocketAddr, channel: u16) -> Message<Attrib
     message
 }
 
-fn srflx_candidate(attr: &Attribute) -> Option<Candidate> {
+fn srflx_candidate(local: SocketAddr, attr: &Attribute) -> Option<Candidate> {
     let addr = match attr {
         Attribute::XorMappedAddress(a) => a.address(),
         _ => return None,
     };
 
-    let new_candidate = match Candidate::server_reflexive(addr, Protocol::Udp) {
+    let new_candidate = match Candidate::server_reflexive(addr, local, Protocol::Udp) {
         Ok(c) => c,
         Err(e) => {
             tracing::debug!("Observed address is not a valid candidate: {e}");
@@ -929,6 +941,7 @@ mod tests {
 
         allocation.handle_input(
             RELAY,
+            PEER1,
             &encode(allocate_response(message.transaction_id())),
             Instant::now(),
         );

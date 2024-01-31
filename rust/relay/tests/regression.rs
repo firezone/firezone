@@ -7,7 +7,7 @@ use rand::rngs::mock::StepRng;
 use secrecy::SecretString;
 use std::collections::HashMap;
 use std::iter;
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
 use std::time::{Duration, SystemTime};
 use stun_codec::rfc5389::attributes::{ErrorCode, Nonce, Realm, Username, XorMappedAddress};
 use stun_codec::rfc5389::errors::Unauthorized;
@@ -377,28 +377,36 @@ fn ping_pong_relay(
 }
 
 #[proptest]
-fn can_make_ipv6_allocation(
-    #[strategy(firezone_relay::proptest::transaction_id())] transaction_id: TransactionId,
+fn ping_pong_ip6_relay(
+    #[strategy(firezone_relay::proptest::transaction_id())] allocate_transaction_id: TransactionId,
+    #[strategy(firezone_relay::proptest::transaction_id())]
+    channel_bind_transaction_id: TransactionId,
     #[strategy(firezone_relay::proptest::allocation_lifetime())] lifetime: Lifetime,
     #[strategy(firezone_relay::proptest::username_salt())] username_salt: String,
-    source: SocketAddrV4,
+    #[strategy(firezone_relay::proptest::channel_number())] channel: ChannelNumber,
+    source: SocketAddrV6,
+    peer: SocketAddrV6,
     public_relay_ip4_addr: Ipv4Addr,
     public_relay_ip6_addr: Ipv6Addr,
     #[strategy(firezone_relay::proptest::now())] now: SystemTime,
+    peer_to_client_ping: [u8; 32],
+    client_to_peer_ping: [u8; 32],
     #[strategy(firezone_relay::proptest::nonce())] nonce: Uuid,
 ) {
+    let _ = env_logger::try_init();
+
     let mut server =
         TestServer::new((public_relay_ip4_addr, public_relay_ip6_addr)).with_nonce(nonce);
-    let secret = server.auth_secret();
+    let secret = server.auth_secret().to_owned();
 
     server.assert_commands(
         from_client(
             source,
             Allocate::new_authenticated_udp_ip6(
-                transaction_id,
+                allocate_transaction_id,
                 Some(lifetime.clone()),
                 valid_username(now, &username_salt),
-                secret,
+                &secret,
                 nonce,
             ),
             now,
@@ -409,7 +417,7 @@ fn can_make_ipv6_allocation(
             send_message(
                 source,
                 allocate_response(
-                    transaction_id,
+                    allocate_transaction_id,
                     public_relay_ip6_addr,
                     49152,
                     source,
@@ -417,6 +425,46 @@ fn can_make_ipv6_allocation(
                 ),
             ),
         ],
+    );
+
+    let now = now + Duration::from_secs(1);
+
+    server.assert_commands(
+        from_client(
+            source,
+            ChannelBind::new(
+                channel_bind_transaction_id,
+                channel,
+                XorPeerAddress::new(peer.into()),
+                valid_username(now, &username_salt),
+                &secret,
+                nonce,
+            ),
+            now,
+        ),
+        [send_message(
+            source,
+            channel_bind_response(channel_bind_transaction_id),
+        )],
+    );
+
+    let now = now + Duration::from_secs(1);
+
+    server.assert_commands(
+        from_client(
+            source,
+            ChannelData::new(channel.value(), client_to_peer_ping.as_ref()),
+            now,
+        ),
+        [forward(peer, &client_to_peer_ping, 49152)],
+    );
+
+    server.assert_commands(
+        from_peer(peer, peer_to_client_ping.as_ref(), 49152),
+        [send_channel_data(
+            source,
+            ChannelData::new(channel.value(), peer_to_client_ping.as_ref()),
+        )],
     );
 }
 
@@ -590,7 +638,7 @@ fn allocate_response(
     transaction_id: TransactionId,
     public_relay_addr: impl Into<IpAddr>,
     port: u16,
-    source: SocketAddrV4,
+    source: impl Into<SocketAddr>,
     lifetime: &Lifetime,
 ) -> Message<Attribute> {
     let mut message =

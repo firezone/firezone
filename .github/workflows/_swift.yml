@@ -5,21 +5,20 @@ on:
 
 jobs:
   build:
+    name: build-${{ matrix.sdk }}
     runs-on: ${{ matrix.runs-on }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - sdk: macosx
-            runs-on: macos-13
+            runs-on: macos-14
             platform: macOS
             destination: platform=macOS
-            xcode: "15.0"
           - sdk: iphoneos
-            runs-on: macos-13
+            runs-on: macos-14
             platform: iOS
             destination: generic/platform=iOS
-            xcode: "15.0"
     permissions:
       contents: read
       id-token: 'write'
@@ -30,7 +29,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-rust
         with:
-          targets: aarch64-apple-darwin aarch64-apple-ios
+          targets: aarch64-apple-darwin aarch64-apple-ios x86_64-apple-darwin
       - uses: actions/cache/restore@v4
         name: Restore Swift DerivedData Cache
         with:
@@ -95,11 +94,7 @@ jobs:
           ONLY_ACTIVE_ARCH: no
           # Needed because `productbuild` doesn't support picking this up automatically like Xcode does
           INSTALLER_CODE_SIGN_IDENTITY: "3rd Party Mac Developer Installer: Firezone, Inc. (47R2M6779T)"
-          REQUESTED_XCODE_VERSION: ${{ matrix.xcode }}
         run: |
-          # Set Xcode version to use if provided
-          [[ ! -z "$REQUESTED_XCODE_VERSION" ]] && sudo xcode-select -s /Applications/Xcode_$REQUESTED_XCODE_VERSION.app
-
           # Copy xcconfig
           cp Firezone/xcconfig/release.xcconfig Firezone/xcconfig/config.xcconfig
 

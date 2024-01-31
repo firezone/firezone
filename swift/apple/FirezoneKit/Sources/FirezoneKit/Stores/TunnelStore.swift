@@ -24,13 +24,11 @@ public struct TunnelProviderKeys {
 }
 
 public final class TunnelStore: ObservableObject {
-  private static let logger = Logger.make(for: TunnelStore.self)
-
   @Published private var tunnel: NETunnelProviderManager?
   @Published private(set) var tunnelAuthStatus: TunnelAuthStatus = .uninitialized
 
   @Published private(set) var status: NEVPNStatus {
-    didSet { TunnelStore.logger.info("status changed: \(self.status.description)") }
+    didSet { self.logger.log("status changed: \(self.status.description)") }
   }
 
   @Published private(set) var resources = DisplayableResources()
@@ -39,15 +37,17 @@ public final class TunnelStore: ObservableObject {
     didSet(oldValue) { oldValue?.invalidate() }
   }
 
+  private let logger: AppLogger
   private var tunnelObservingTasks: [Task<Void, Never>] = []
   private var startTunnelContinuation: CheckedContinuation<(), Error>?
   private var stopTunnelContinuation: CheckedContinuation<(), Error>?
   private var cancellables = Set<AnyCancellable>()
 
-  public init() {
+  public init(logger: AppLogger) {
     self.tunnel = nil
     self.tunnelAuthStatus = .uninitialized
     self.status = .invalid
+    self.logger = logger
 
     Task {
       await initializeTunnel()
@@ -57,17 +57,17 @@ public final class TunnelStore: ObservableObject {
   func initializeTunnel() async {
     do {
       let managers = try await NETunnelProviderManager.loadAllFromPreferences()
-      Self.logger.log("\(#function): \(managers.count) tunnel managers found")
+      logger.log("\(#function): \(managers.count) tunnel managers found")
       if let tunnel = managers.first {
-        Self.logger.log("\(#function): Tunnel already exists")
+        logger.log("\(#function): Tunnel already exists")
         if let protocolConfig = (tunnel.protocolConfiguration as? NETunnelProviderProtocol) {
-          Self.logger.log(
+          logger.log(
             "  serverAddress = \(protocolConfig.serverAddress ?? "")"
           )
-          Self.logger.log(
+          logger.log(
             "  providerConfig = \(protocolConfig.providerConfiguration ?? [:])"
           )
-          Self.logger.log(
+          logger.log(
             "  passwordReference = \(String(describing: protocolConfig.passwordReference))"
           )
         }
@@ -78,9 +78,9 @@ public final class TunnelStore: ObservableObject {
         self.tunnelAuthStatus = .noTunnelFound
       }
       setupTunnelObservers()
-      Self.logger.log("\(#function): TunnelStore initialized")
+      logger.log("\(#function): TunnelStore initialized")
     } catch {
-      Self.logger.error("Error (\(#function)): \(error)")
+      logger.error("Error (\(#function)): \(error)")
     }
   }
 
@@ -89,16 +89,16 @@ public final class TunnelStore: ObservableObject {
       return
     }
     let tunnel = NETunnelProviderManager()
-    tunnel.localizedDescription = "Firezone"
+    tunnel.localizedDescription = NETunnelProviderManager.firezoneNetworkExtensionDescription()
     tunnel.protocolConfiguration = basicProviderProtocol()
     try await tunnel.saveToPreferences()
-    Self.logger.log("\(#function): Tunnel created")
+    logger.log("\(#function): Tunnel created")
     self.tunnel = tunnel
     self.tunnelAuthStatus = tunnel.authStatus()
   }
 
   func saveAuthStatus(_ tunnelAuthStatus: TunnelAuthStatus) async throws {
-    Self.logger.log("TunnelStore.\(#function) \(tunnelAuthStatus, privacy: .public)")
+    logger.log("TunnelStore.\(#function) \(tunnelAuthStatus)")
     guard let tunnel = tunnel else {
       fatalError("No tunnel yet. Can't save auth status.")
     }
@@ -114,7 +114,7 @@ public final class TunnelStore: ObservableObject {
   }
 
   func saveAdvancedSettings(_ advancedSettings: AdvancedSettings) async throws {
-    Self.logger.log("TunnelStore.\(#function) \(advancedSettings, privacy: .public)")
+    logger.log("TunnelStore.\(#function) \(advancedSettings)")
     guard let tunnel = tunnel else {
       fatalError("No tunnel yet. Can't save advanced settings.")
     }
@@ -131,7 +131,7 @@ public final class TunnelStore: ObservableObject {
 
   func advancedSettings() -> AdvancedSettings? {
     guard let tunnel = tunnel else {
-      Self.logger.log("\(#function): No tunnel created yet")
+      logger.log("\(#function): No tunnel created yet")
       return nil
     }
 
@@ -140,9 +140,8 @@ public final class TunnelStore: ObservableObject {
 
   func basicProviderProtocol() -> NETunnelProviderProtocol {
     let protocolConfiguration = NETunnelProviderProtocol()
-    protocolConfiguration.providerBundleIdentifier = Bundle.main.bundleIdentifier.map {
-      "\($0).network-extension"
-    }
+    protocolConfiguration.providerBundleIdentifier =
+      NETunnelProviderManager.firezoneNetworkExtensionBundleIdentifier()
     protocolConfiguration.serverAddress = AdvancedSettings.defaultValue.apiURLString
     protocolConfiguration.providerConfiguration = [
       TunnelProviderKeys.keyConnlibLogFilter:
@@ -153,11 +152,11 @@ public final class TunnelStore: ObservableObject {
 
   func start() async throws {
     guard let tunnel = tunnel else {
-      Self.logger.log("\(#function): No tunnel created yet")
+      logger.log("\(#function): No tunnel created yet")
       return
     }
 
-    TunnelStore.logger.trace("\(#function)")
+    logger.log("\(#function)")
 
     if tunnel.connection.status == .connected || tunnel.connection.status == .connecting {
       return
@@ -184,7 +183,7 @@ public final class TunnelStore: ObservableObject {
 
   func stop() async throws {
     guard let tunnel = tunnel else {
-      Self.logger.log("\(#function): No tunnel created yet")
+      logger.log("\(#function): No tunnel created yet")
       return
     }
 
@@ -192,7 +191,7 @@ public final class TunnelStore: ObservableObject {
       throw TunnelStoreError.stopAlreadyBeingAttempted
     }
 
-    TunnelStore.logger.trace("\(#function)")
+    logger.log("\(#function)")
 
     let status = tunnel.connection.status
     if status == .connected || status == .connecting {
@@ -206,7 +205,7 @@ public final class TunnelStore: ObservableObject {
 
   func signOut() async throws -> Keychain.PersistentRef? {
     guard let tunnel = tunnel else {
-      Self.logger.log("\(#function): No tunnel created yet")
+      logger.log("\(#function): No tunnel created yet")
       return nil
     }
 
@@ -219,7 +218,7 @@ public final class TunnelStore: ObservableObject {
       do {
         try await saveAuthStatus(.signedOut)
       } catch {
-        TunnelStore.logger.trace(
+        logger.log(
           "\(#function): Error saving signed out auth status: \(error)"
         )
       }
@@ -254,7 +253,7 @@ public final class TunnelStore: ObservableObject {
 
   private func updateResources() {
     guard let tunnel = tunnel else {
-      Self.logger.log("\(#function): No tunnel created yet")
+      logger.log("\(#function): No tunnel created yet")
       return
     }
 
@@ -273,21 +272,12 @@ public final class TunnelStore: ObservableObject {
         }
       }
     } catch {
-      TunnelStore.logger.error("Error: sendProviderMessage: \(error)")
+      logger.error("Error: sendProviderMessage: \(error)")
     }
   }
 
-  private static func makeManager() -> NETunnelProviderManager {
-    logger.trace("\(#function)")
-
-    let manager = NETunnelProviderManager()
-    manager.localizedDescription = "Firezone"
-
-    return manager
-  }
-
   private func setupTunnelObservers() {
-    TunnelStore.logger.trace("\(#function)")
+    logger.log("\(#function)")
 
     for task in tunnelObservingTasks { task.cancel() }
     tunnelObservingTasks.removeAll()
@@ -336,9 +326,9 @@ public final class TunnelStore: ObservableObject {
   }
 
   func removeProfile() async throws {
-    TunnelStore.logger.trace("\(#function)")
+    logger.log("\(#function)")
     guard let tunnel = tunnel else {
-      Self.logger.log("\(#function): No tunnel created yet")
+      logger.log("\(#function): No tunnel created yet")
       return
     }
 
@@ -499,21 +489,35 @@ extension NETunnelProviderManager {
     // Ensure the tunnel config has required values populated, because
     // to even sign out, we need saveToPreferences() to succeed.
     if let protocolConfiguration = protocolConfiguration as? NETunnelProviderProtocol {
-      protocolConfiguration.providerBundleIdentifier = Bundle.main.bundleIdentifier.map {
-        "\($0).network-extension"
-      }
+      protocolConfiguration.providerBundleIdentifier =
+        Self.firezoneNetworkExtensionBundleIdentifier()
       if protocolConfiguration.serverAddress?.isEmpty ?? true {
         protocolConfiguration.serverAddress = "unknown-server"
       }
     } else {
       let protocolConfiguration = NETunnelProviderProtocol()
-      protocolConfiguration.providerBundleIdentifier = Bundle.main.bundleIdentifier.map {
-        "\($0).network-extension"
-      }
+      protocolConfiguration.providerBundleIdentifier =
+        Self.firezoneNetworkExtensionBundleIdentifier()
       protocolConfiguration.serverAddress = "unknown-server"
     }
     if localizedDescription?.isEmpty ?? true {
-      localizedDescription = "Firezone"
+      localizedDescription = Self.firezoneNetworkExtensionDescription()
     }
+  }
+
+  static func firezoneNetworkExtensionBundleIdentifier() -> String? {
+    #if DEBUG
+      Bundle.main.bundleIdentifier.map { "\($0).debug.network-extension" }
+    #else
+      Bundle.main.bundleIdentifier.map { "\($0).network-extension" }
+    #endif
+  }
+
+  static func firezoneNetworkExtensionDescription() -> String {
+    #if DEBUG
+      "Firezone (Debug)"
+    #else
+      "Firezone"
+    #endif
   }
 }

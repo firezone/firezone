@@ -13,7 +13,7 @@ import SwiftUI
 #if os(iOS)
   @MainActor
   final class MainViewModel: ObservableObject {
-    private let logger = Logger.make(for: MainViewModel.self)
+    private let logger: AppLogger
     private var cancellables: Set<AnyCancellable> = []
 
     let appStore: AppStore
@@ -25,6 +25,7 @@ import SwiftUI
 
     init(appStore: AppStore) {
       self.appStore = appStore
+      self.logger = appStore.logger
       setupObservers()
     }
 

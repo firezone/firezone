@@ -1027,9 +1027,18 @@ impl Channel {
 }
 
 impl Allocation {
+    /// Checks whether this [`Allocation`] can relay to the given address.
+    ///
+    /// This is called in the context of a channel binding with the requested peer address.
+    /// We can only relay to the address if the allocation supports the same version of the IP protocol.
     fn can_relay_to(&self, addr: SocketAddr) -> bool {
-        // Currently, we only support IPv4, thus any IPv6 address is invalid.
-        addr.is_ipv4()
+        match addr {
+            SocketAddr::V4(_) => self.first_relay_addr.is_ipv4(), // If we have an IPv4 address, it is in `first_relay_addr`, no need to check `second_relay_addr`.
+            SocketAddr::V6(_) => {
+                self.first_relay_addr.is_ipv6()
+                    || self.second_relay_addr.is_some_and(|a| a.is_ipv6())
+            }
+        }
     }
 }
 
@@ -1070,6 +1079,9 @@ fn error_response(
 /// In a nutshell, the requirements constrain the use such that there is only one way of doing things.
 /// For example, it is disallowed to use [RequestedAddressFamily] for IPv6 and requested and an IPv4 address via [AdditionalAddressFamily].
 /// If this is desired, clients should simply use [AdditionalAddressFamily] for IPv6.
+///
+/// Note: To be fully compliant with TURN, we would need to set `ADDRESS-ERROR-CODE` in the response for partially filled requests.
+/// We chose to omit this for now because our clients don't check for it.
 fn derive_relay_addresses(
     public_address: IpStack,
     requested_addr_family: Option<&RequestedAddressFamily>,
