@@ -31,7 +31,9 @@ jobs:
           build-root-directory: ./kotlin/android
       - run: echo 'sdk.dir=/Users/runner/Library/Android/sdk' > local.properties
       - name: Run linter
-        run: ./gradlew spotlessCheck
+        run: |
+          ls -al $ANDROID_HOME
+          ./gradlew spotlessCheck
 
   build:
     runs-on: macos-14
@@ -63,6 +65,7 @@ jobs:
         run: |
           KEYSTORE_PATH=$(pwd)/app/keystore.jks
           echo -n "$KEYSTORE_BASE64" | base64 --decode > $KEYSTORE_PATH
+          ls -al $ANDROID_HOME
           ./gradlew --info bundleRelease
       - name: Run Test
         run: |
