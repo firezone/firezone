@@ -117,7 +117,7 @@ pub(crate) fn run(params: client::GuiParams) -> Result<(), crate::client::Error>
 
     let tray = SystemTray::new().with_menu(system_tray_menu::signed_out());
 
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         .manage(managed)
         .on_window_event(|event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event.event() {
@@ -191,15 +191,30 @@ pub(crate) fn run(params: client::GuiParams) -> Result<(), crate::client::Error>
 
             Ok(())
         })
-        .build(tauri::generate_context!())?
-        .run(|_app_handle, event| {
-            if let tauri::RunEvent::ExitRequested { api, .. } = event {
-                // Don't exit if we close our main window
-                // https://tauri.app/v1/guides/features/system-tray/#preventing-the-app-from-closing
+        .build(tauri::generate_context!());
 
-                api.prevent_exit();
+    let app = match app {
+        Ok(x) => x,
+        Err(error) => {
+            match &error {
+                tauri::Error::Runtime(tauri_runtime::Error::CreateWebview(error)) => {
+                    // TODO: Wording
+                    tracing::error!(?error, "CreateWebview error detected. Make sure you are using the official Firezone MSI installer, which should install Webview2 automatically. <https://github.com/firezone/firezone/issues/3451>")
+                }
+                error => tracing::error!(?error, "Tauri error"),
             }
-        });
+            Err(error)?
+        }
+    };
+
+    app.run(|_app_handle, event| {
+        if let tauri::RunEvent::ExitRequested { api, .. } = event {
+            // Don't exit if we close our main window
+            // https://tauri.app/v1/guides/features/system-tray/#preventing-the-app-from-closing
+
+            api.prevent_exit();
+        }
+    });
     Ok(())
 }
 
