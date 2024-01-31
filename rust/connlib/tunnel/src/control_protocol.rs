@@ -7,7 +7,7 @@ use connlib_shared::{
     Callbacks,
 };
 
-use crate::{peer::Peer, RoleState, Tunnel, REALM};
+use crate::{peer::Peer, Tunnel, REALM};
 
 mod client;
 mod gateway;
@@ -21,10 +21,9 @@ pub enum Request {
 impl<CB, TRoleState, TRole, TId, TTransform> Tunnel<CB, TRoleState, TRole, TId, TTransform>
 where
     CB: Callbacks + 'static,
-    TRoleState: RoleState<Id = TId>,
     TId: Eq + Hash + Copy + fmt::Display,
 {
-    pub fn add_ice_candidate(&self, conn_id: TRoleState::Id, ice_candidate: String) {
+    pub fn add_ice_candidate(&self, conn_id: TId, ice_candidate: String) {
         tracing::info!(%ice_candidate, %conn_id, "new remote candidate");
         self.connections
             .lock()

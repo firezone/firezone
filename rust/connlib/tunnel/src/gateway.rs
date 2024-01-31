@@ -1,13 +1,12 @@
 use crate::device_channel::Device;
 use crate::peer::{PacketTransformGateway, Peer};
-use crate::{Event, RoleState, Tunnel};
+use crate::Tunnel;
 use connlib_shared::messages::{ClientId, Interface as InterfaceConfig};
 use connlib_shared::Callbacks;
-use snownet::Server;
 use ip_network_table::IpNetworkTable;
 use itertools::Itertools;
+use snownet::Server;
 use std::sync::Arc;
-use std::task::{Context, Poll};
 
 const PEERS_IPV4: &str = "100.64.0.0/11";
 const PEERS_IPV6: &str = "fd00:2021:1111::/107";
@@ -68,16 +67,6 @@ impl Default for GatewayState {
     fn default() -> Self {
         Self {
             peers_by_ip: IpNetworkTable::new(),
-        }
-    }
-}
-
-impl RoleState for GatewayState {
-    type Id = ClientId;
-
-    fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Event<Self::Id>> {
-        loop {
-            return Poll::Pending;
         }
     }
 }

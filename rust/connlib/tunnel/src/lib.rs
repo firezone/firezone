@@ -316,7 +316,7 @@ pub type GatewayTunnel<CB> = Tunnel<CB, GatewayState, Server, ClientId, PacketTr
 pub type ClientTunnel<CB> = Tunnel<CB, ClientState, Client, GatewayId, PacketTransformClient>;
 
 /// Tunnel is a wireguard state machine that uses webrtc's ICE channels instead of UDP sockets to communicate between peers.
-pub struct Tunnel<CB: Callbacks, TRoleState: RoleState, TRole, TId, TTransform> {
+pub struct Tunnel<CB: Callbacks, TRoleState, TRole, TId, TTransform> {
     // TODO: these are used to stop connections
     // peer_connections: Mutex<HashMap<TRoleState::Id, Arc<RTCIceTransport>>>,
     callbacks: CallbackErrorFacade<CB>,
@@ -372,6 +372,10 @@ where
                     .peers_by_ip
                     .retain(|_, p| !cleanup_ids.contains(&p.conn_id));
                 continue;
+            }
+
+            if let Poll::Ready(event) = self.role_state.lock().poll_next_event(cx) {
+                return Poll::Ready(Ok(event));
             }
 
             match ready!(self.poll_next_event_common(cx)) {
@@ -504,7 +508,6 @@ pub struct TunnelStats {
 impl<CB, TRoleState, TRole, TId, TTransform> Tunnel<CB, TRoleState, TRole, TId, TTransform>
 where
     CB: Callbacks + 'static,
-    TRoleState: RoleState<Id = TId>,
     TId: Eq + Hash + Copy + fmt::Display,
     TTransform: PacketTransform,
 {
@@ -519,7 +522,7 @@ where
         }
     }
 
-    fn poll_next_event_common(&self, cx: &mut Context<'_>) -> Poll<Event<TRoleState::Id>> {
+    fn poll_next_event_common(&self, cx: &mut Context<'_>) -> Poll<Event<TId>> {
         loop {
             if self.mtu_refresh_interval.lock().poll_tick(cx).is_ready() {
                 let Some(device) = self.device.load().clone() else {
@@ -533,10 +536,6 @@ where
             }
 
             if let Poll::Ready(event) = self.connections.lock().poll_next_event(cx) {
-                return Poll::Ready(event);
-            }
-
-            if let Poll::Ready(event) = self.role_state.lock().poll_next_event(cx) {
                 return Poll::Ready(event);
             }
 
@@ -556,7 +555,7 @@ where
         }
     }
 
-    fn send_peer(&self, packet: MutableIpPacket, peer: &Peer<TRoleState::Id, TTransform>) {
+    fn send_peer(&self, packet: MutableIpPacket, peer: &Peer<TId, TTransform>) {
         let Some(p) = peer.transform(packet) else {
             return;
         };
@@ -626,9 +625,9 @@ pub enum Event<TId> {
 impl<CB, TRoleState, TRole, TId, TTransform> Tunnel<CB, TRoleState, TRole, TId, TTransform>
 where
     CB: Callbacks + 'static,
-    TRoleState: RoleState<Id = TId>,
     TId: Eq + Hash + Copy + fmt::Display,
     TTransform: PacketTransform,
+    TRoleState: Default,
 {
     /// Creates a new tunnel.
     ///
@@ -668,16 +667,6 @@ fn mtu_refresh_interval() -> Interval {
     interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
     interval
-}
-
-/// Dedicated trait for abstracting over the different ICE states.
-///
-/// By design, this trait does not allow any operations apart from advancing via [`RoleState::poll_next_event`].
-/// The state should only be modified when the concrete type is known, e.g. [`ClientState`] or [`GatewayState`].
-pub trait RoleState: Default + Send + 'static {
-    type Id: fmt::Debug + fmt::Display + Eq + Hash + Copy + Unpin + Send + Sync + 'static;
-
-    fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Event<Self::Id>>;
 }
 
 async fn sleep_until(deadline: Instant) -> Instant {

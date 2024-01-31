@@ -2,7 +2,7 @@ use crate::bounded_queue::BoundedQueue;
 use crate::device_channel::{Device, Packet};
 use crate::ip_packet::{IpPacket, MutableIpPacket};
 use crate::peer::{PacketTransformClient, Peer};
-use crate::{dns, DnsQuery, Event, RoleState, Tunnel, DNS_QUERIES_QUEUE_SIZE};
+use crate::{dns, DnsQuery, Event, Tunnel, DNS_QUERIES_QUEUE_SIZE};
 use bimap::BiMap;
 use connlib_shared::error::{ConnlibError as Error, ConnlibError};
 use connlib_shared::messages::{
@@ -573,46 +573,8 @@ impl ClientState {
             tracing::warn!("Too many DNS queries, dropping new ones");
         }
     }
-}
 
-impl Default for ClientState {
-    fn default() -> Self {
-        // With this single timer this might mean that some DNS are refreshed too often
-        // however... this also mean any resource is refresh within a 5 mins interval
-        // therefore, only the first time it's added that happens, after that it doesn't matter.
-        let mut interval = tokio::time::interval(Duration::from_secs(300));
-        interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
-
-        Self {
-            awaiting_connection: Default::default(),
-            awaiting_connection_timers: StreamMap::new(Duration::from_secs(60), 100),
-
-            gateway_awaiting_connection: Default::default(),
-            gateway_awaiting_connection_timers: FuturesMap::new(MAX_CONNECTION_REQUEST_DELAY, 100),
-
-            resources_gateways: Default::default(),
-            forwarded_dns_queries: BoundedQueue::with_capacity(DNS_QUERIES_QUEUE_SIZE),
-            // TODO: decide ip ranges
-            ip_provider: IpProvider::new(
-                IPV4_RESOURCES.parse().unwrap(),
-                IPV6_RESOURCES.parse().unwrap(),
-            ),
-            dns_resources_internal_ips: Default::default(),
-            dns_resources: Default::default(),
-            cidr_resources: IpNetworkTable::new(),
-            resource_ids: Default::default(),
-            peers_by_ip: IpNetworkTable::new(),
-            deferred_dns_queries: Default::default(),
-            refresh_dns_timer: interval,
-            dns_mapping: Default::default(),
-        }
-    }
-}
-
-impl RoleState for ClientState {
-    type Id = GatewayId;
-
-    fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Event<Self::Id>> {
+    pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Event<GatewayId>> {
         loop {
             if let Poll::Ready((gateway_id, _)) =
                 self.gateway_awaiting_connection_timers.poll_unpin(cx)
@@ -691,6 +653,40 @@ impl RoleState for ClientState {
             }
 
             return self.forwarded_dns_queries.poll(cx).map(Event::DnsQuery);
+        }
+    }
+}
+
+impl Default for ClientState {
+    fn default() -> Self {
+        // With this single timer this might mean that some DNS are refreshed too often
+        // however... this also mean any resource is refresh within a 5 mins interval
+        // therefore, only the first time it's added that happens, after that it doesn't matter.
+        let mut interval = tokio::time::interval(Duration::from_secs(300));
+        interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
+
+        Self {
+            awaiting_connection: Default::default(),
+            awaiting_connection_timers: StreamMap::new(Duration::from_secs(60), 100),
+
+            gateway_awaiting_connection: Default::default(),
+            gateway_awaiting_connection_timers: FuturesMap::new(MAX_CONNECTION_REQUEST_DELAY, 100),
+
+            resources_gateways: Default::default(),
+            forwarded_dns_queries: BoundedQueue::with_capacity(DNS_QUERIES_QUEUE_SIZE),
+            // TODO: decide ip ranges
+            ip_provider: IpProvider::new(
+                IPV4_RESOURCES.parse().unwrap(),
+                IPV6_RESOURCES.parse().unwrap(),
+            ),
+            dns_resources_internal_ips: Default::default(),
+            dns_resources: Default::default(),
+            cidr_resources: IpNetworkTable::new(),
+            resource_ids: Default::default(),
+            peers_by_ip: IpNetworkTable::new(),
+            deferred_dns_queries: Default::default(),
+            refresh_dns_timer: interval,
+            dns_mapping: Default::default(),
         }
     }
 }
