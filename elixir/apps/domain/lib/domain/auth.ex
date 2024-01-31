@@ -682,6 +682,7 @@ defmodule Domain.Auth do
       {:error, :invalid_remote_ip} -> {:error, :unauthorized}
       {:error, :invalid_user_agent} -> {:error, :unauthorized}
       {:error, :not_found} -> {:error, :unauthorized}
+      {:error, changeset} -> {:error, changeset}
     end
   end
 
