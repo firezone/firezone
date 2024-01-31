@@ -14,7 +14,7 @@ use snownet::{Client, IpPacket, Node, Server, Transmit};
 
 use hickory_resolver::proto::rr::RecordType;
 use parking_lot::Mutex;
-use peer::{PacketTransform, PacketTransformClient, PacketTransformGateway, Peer};
+use peer::{PacketTransform, PacketTransformClient, PacketTransformGateway, Peer, PeerStats};
 use sockets::{Socket, UdpSockets};
 use tokio::io::ReadBuf;
 use tokio::time::MissedTickBehavior;
@@ -526,10 +526,8 @@ where
 
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
-pub struct TunnelStats {
-    // public_key: String,
-    // TODO:
-    // peer_connections: Vec<TId>,
+pub struct TunnelStats<TId> {
+    peer_connections: HashMap<TId, PeerStats<TId>>,
 }
 
 impl<CB, TRoleState, TRole, TId, TTransform> Tunnel<CB, TRoleState, TRole, TId, TTransform>
@@ -538,15 +536,14 @@ where
     TId: Eq + Hash + Copy + fmt::Display,
     TTransform: PacketTransform,
 {
-    pub fn stats(&self) -> TunnelStats {
-        // TODO:
-        // let peer_connections = self.peer_connections.lock().keys().cloned().collect();
-
-        TunnelStats {
-            // public_key: Key::from(self.public_key).to_string(),
-            // TODO:
-            // peer_connections,
-        }
+    pub fn stats(&self) -> HashMap<TId, PeerStats<TId>> {
+        self.connections_state
+            .lock()
+            .connections
+            .peers_by_id
+            .iter()
+            .map(|(&id, p)| (id, p.stats()))
+            .collect()
     }
 
     fn poll_next_event_common(&self, cx: &mut Context<'_>) -> Poll<Event<TId>> {
