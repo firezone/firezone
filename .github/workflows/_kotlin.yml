@@ -26,7 +26,7 @@ jobs:
         with:
           cache-read-only: ${{ github.ref != 'refs/heads/main' }}
           build-root-directory: ./kotlin/android
-      - run: touch local.properties
+      - run: echo 'sdk.dir=/Users/runner/Library/Android/sdk' > local.properties
       - name: Run linter
         run: ./gradlew spotlessCheck
 
