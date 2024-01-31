@@ -41,7 +41,6 @@ axum = { version = "0.7.3", default-features = false, features = ["http1", "toki
 backoff = "0.4"
 
 [dev-dependencies]
-webrtc = "0.9"
 redis = { version = "0.24.0", default-features = false, features = ["tokio-comp"] }
 difference = "2.0.0"
 

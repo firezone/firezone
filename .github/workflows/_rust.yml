@@ -171,13 +171,3 @@ jobs:
           path: |
             ${{ github.workspace }}/rust/windows-client/windows-client-x64.pdb
             ${{ github.workspace }}/rust/windows-client/windows-client-x64.pdb.sha256sum.txt
-
-  smoke-test-relay:
-    runs-on: ubuntu-22.04
-    defaults:
-      run:
-        working-directory: ./rust/relay
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/setup-rust
-      - run: ./run_smoke_test.sh
