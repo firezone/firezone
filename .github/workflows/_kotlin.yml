@@ -7,6 +7,9 @@ permissions:
   contents: 'read'
   id-token: 'write'
 
+env:
+  ANDROID_HOME: /Users/runner/Library/Android/sdk
+
 jobs:
   static-analysis:
     runs-on: macos-14
