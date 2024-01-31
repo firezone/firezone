@@ -1,6 +1,5 @@
 defmodule Web.Sites.Edit do
   use Web, :live_view
-  import Web.Sites.Components
   alias Domain.Gateways
 
   def mount(%{"id" => id}, _session, socket) do
