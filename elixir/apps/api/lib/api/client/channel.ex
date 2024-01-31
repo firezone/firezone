@@ -326,6 +326,7 @@ defmodule API.Client.Channel do
                  relay_connection_type
                ),
              resource_id: resource_id,
+             gateway_group_id: gateway.group_id,
              gateway_id: gateway.id,
              gateway_remote_ip: gateway.last_seen_remote_ip
            }}

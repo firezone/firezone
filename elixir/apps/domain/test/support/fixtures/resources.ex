@@ -2,7 +2,8 @@ defmodule Domain.Fixtures.Resources do
   use Domain.Fixture
 
   def resource_attrs(attrs \\ %{}) do
-    address = "admin-#{unique_integer()}.mycorp.com"
+    attrs = Enum.into(attrs, %{})
+    address = Map.get(attrs, :address, "admin-#{unique_integer()}.mycorp.com")
 
     Enum.into(attrs, %{
       address: address,

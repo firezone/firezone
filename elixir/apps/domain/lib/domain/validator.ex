@@ -39,8 +39,11 @@ defmodule Domain.Validator do
 
   def validate_contains(changeset, field, [{:field, source_field} | opts]) do
     case fetch_field(changeset, source_field) do
-      {_data_or_changes, value} -> validate_contains(changeset, field, value, opts)
-      _ -> changeset
+      {_data_or_changes, value} when is_binary(value) ->
+        validate_contains(changeset, field, value, opts)
+
+      _ ->
+        changeset
     end
   end
 

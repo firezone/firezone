@@ -997,7 +997,7 @@ defmodule Domain.ResourcesTest do
           type: :cidr,
           name: "mycidr",
           address: "192.168.1.1/28",
-          client_address: "http://192.168.1.1"
+          client_address: "192.168.1.1/28"
         )
 
       assert {:ok, resource} = create_resource(attrs, subject)
@@ -1088,7 +1088,10 @@ defmodule Domain.ResourcesTest do
 
       assert errors_on(changeset) == %{
                name: ["should be at most 255 character(s)"],
-               client_address: ["should be at most 253 character(s)"],
+               client_address: [
+                 "should contain \"#{resource.address}\"",
+                 "should be at most 253 character(s)"
+               ],
                filters: ["is invalid"],
                connections: ["is invalid"]
              }
@@ -1128,9 +1131,9 @@ defmodule Domain.ResourcesTest do
     end
 
     test "allows to update client address", %{resource: resource, subject: subject} do
-      attrs = %{"client_address" => "foo"}
+      attrs = %{"client_address" => "http://#{resource.address}:1234/foo"}
       assert {:ok, resource} = update_resource(resource, attrs, subject)
-      assert resource.client_address == "foo"
+      assert resource.client_address == attrs["client_address"]
     end
 
     test "allows to update filters", %{resource: resource, subject: subject} do
