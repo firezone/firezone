@@ -83,12 +83,22 @@ where
             }
         }
 
-        let mut role_state = self.role_state.lock();
-        role_state
-            .resource_ids
-            .insert(resource_description.id(), resource_description);
-        self.callbacks
-            .on_update_resources(role_state.resource_ids.values().cloned().collect())?;
+        let mut resource_descriptions = {
+            let mut role_state = self.role_state.lock();
+            role_state
+                .resource_ids
+                .insert(resource_description.id(), resource_description);
+            role_state
+                .resource_ids
+                .values()
+                .cloned()
+                .collect::<Vec<_>>()
+        };
+        // Unstable sort is slightly faster, and we use the ID as a tie-break
+        // if the display name is identical for some reason, so it should still be stable overall
+        resource_descriptions.sort_unstable_by(|a, b| (a.name(), a.id()).cmp(&(b.name(), b.id())));
+
+        self.callbacks.on_update_resources(resource_descriptions)?;
         Ok(())
     }
 
