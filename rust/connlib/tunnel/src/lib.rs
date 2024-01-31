@@ -279,8 +279,8 @@ where
                 continue;
             }
 
-            match self.if_watcher.poll_if_event(cx) {
-                Poll::Ready(Ok(ev)) => match ev {
+            match ready!(self.if_watcher.poll_if_event(cx)) {
+                Ok(ev) => match ev {
                     if_watch::IfEvent::Up(ip) => {
                         // TODO: filter firezone-tun candidates(we could retrieve the ip or just ignore CGNAT)
                         tracing::info!(address = %ip.addr(), "New local interface address found");
@@ -300,13 +300,10 @@ where
                         // TODO: remove local interface
                     }
                 },
-                Poll::Ready(Err(e)) => {
+                Err(e) => {
                     tracing::debug!("Error while polling interfces: {e:#?}");
                 }
-                Poll::Pending => {}
             }
-
-            return Poll::Pending;
         }
     }
 }
