@@ -7,9 +7,6 @@ permissions:
   contents: 'read'
   id-token: 'write'
 
-env:
-  ANDROID_HOME: /Users/runner/Library/Android/sdk
-
 jobs:
   static-analysis:
     runs-on: macos-14
@@ -29,11 +26,9 @@ jobs:
         with:
           cache-read-only: ${{ github.ref != 'refs/heads/main' }}
           build-root-directory: ./kotlin/android
-      - run: echo 'sdk.dir=/Users/runner/Library/Android/sdk' > local.properties
+      - run: touch local.properties
       - name: Run linter
-        run: |
-          ls -al $ANDROID_HOME
-          ./gradlew spotlessCheck
+        run: ./gradlew spotlessCheck
 
   build:
     runs-on: macos-14
@@ -56,7 +51,7 @@ jobs:
           build-root-directory: ./kotlin/android
           # https://github.com/gradle/gradle-build-action#overwriting-an-existing-gradle-user-home
           cache-overwrite-existing: ${{ github.ref == 'refs/heads/main' }}
-      - run: echo 'sdk.dir=/Users/runner/Library/Android/sdk' > local.properties
+      - run: touch local.properties
       - name: Bundle and sign release
         env:
           KEYSTORE_BASE64: ${{ secrets.GOOGLE_UPLOAD_KEYSTORE_BASE64 }}
@@ -65,7 +60,6 @@ jobs:
         run: |
           KEYSTORE_PATH=$(pwd)/app/keystore.jks
           echo -n "$KEYSTORE_BASE64" | base64 --decode > $KEYSTORE_PATH
-          ls -al $ANDROID_HOME
           ./gradlew --info bundleRelease
       - name: Run Test
         run: |
