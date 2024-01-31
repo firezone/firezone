@@ -70,9 +70,6 @@
             android:name="dev.firezone.android.features.settings.ui.SettingsActivity"
             android:exported="false" />
 
-        <meta-data android:name="android.content.APP_RESTRICTIONS"
-            android:resource="@xml/app_restrictions" />
-
         <service
             android:name="dev.firezone.android.tunnel.TunnelService"
             android:exported="true"
@@ -100,6 +97,10 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths" />
         </provider>
+
+        <meta-data android:name="android.content.APP_RESTRICTIONS"
+            android:resource="@xml/app_restrictions" />
+
         <meta-data
             android:name="preloaded_fonts"
             android:resource="@array/preloaded_fonts" />

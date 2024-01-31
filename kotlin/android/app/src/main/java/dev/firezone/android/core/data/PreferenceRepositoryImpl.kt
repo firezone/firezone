@@ -16,7 +16,7 @@ import javax.inject.Inject
 internal class PreferenceRepositoryImpl
     @Inject
     constructor(
-        @ApplicationContext private val context: Context,
+        private val context: Context,
         private val coroutineDispatcher: CoroutineDispatcher,
         private val sharedPreferences: SharedPreferences,
     ) : PreferenceRepository {
