@@ -138,6 +138,7 @@ defmodule API.Client.ChannelTest do
 
     test "sends list of resources after join", %{
       client: client,
+      gateway_group: gateway_group,
       dns_resource: dns_resource,
       cidr_resource: cidr_resource,
       ip_resource: ip_resource
@@ -149,21 +150,45 @@ defmodule API.Client.ChannelTest do
                id: dns_resource.id,
                type: :dns,
                name: dns_resource.name,
-               address: dns_resource.address
+               address: dns_resource.address,
+               client_address: dns_resource.client_address,
+               gateway_groups: [
+                 %{
+                   id: gateway_group.id,
+                   name: gateway_group.name,
+                   routing: gateway_group.routing
+                 }
+               ]
              } in resources
 
       assert %{
                id: cidr_resource.id,
                type: :cidr,
                name: cidr_resource.name,
-               address: cidr_resource.address
+               address: cidr_resource.address,
+               client_address: cidr_resource.client_address,
+               gateway_groups: [
+                 %{
+                   id: gateway_group.id,
+                   name: gateway_group.name,
+                   routing: gateway_group.routing
+                 }
+               ]
              } in resources
 
       assert %{
                id: ip_resource.id,
                type: :cidr,
                name: ip_resource.name,
-               address: "#{ip_resource.address}/32"
+               address: "#{ip_resource.address}/32",
+               client_address: ip_resource.client_address,
+               gateway_groups: [
+                 %{
+                   id: gateway_group.id,
+                   name: gateway_group.name,
+                   routing: gateway_group.routing
+                 }
+               ]
              } in resources
 
       assert interface == %{
@@ -275,6 +300,7 @@ defmodule API.Client.ChannelTest do
 
   describe "handle_info/2 :update_resource" do
     test "pushes message to the socket for authorized clients", %{
+      gateway_group: gateway_group,
       dns_resource: resource,
       socket: socket
     } do
@@ -286,7 +312,11 @@ defmodule API.Client.ChannelTest do
                id: resource.id,
                type: :dns,
                name: resource.name,
-               address: resource.address
+               address: resource.address,
+               client_address: resource.client_address,
+               gateway_groups: [
+                 %{id: gateway_group.id, name: gateway_group.name, routing: gateway_group.routing}
+               ]
              }
     end
   end
@@ -339,6 +369,7 @@ defmodule API.Client.ChannelTest do
   describe "handle_info/2 :allow_access" do
     test "pushes message to the socket", %{
       account: account,
+      gateway_group: gateway_group,
       dns_resource: resource,
       socket: socket
     } do
@@ -359,7 +390,11 @@ defmodule API.Client.ChannelTest do
                id: resource.id,
                type: :dns,
                name: resource.name,
-               address: resource.address
+               address: resource.address,
+               client_address: resource.client_address,
+               gateway_groups: [
+                 %{id: gateway_group.id, name: gateway_group.name, routing: gateway_group.routing}
+               ]
              }
     end
   end
@@ -397,6 +432,7 @@ defmodule API.Client.ChannelTest do
 
     test "broadcasts a message to re-add the resource if other policy is found", %{
       account: account,
+      gateway_group: gateway_group,
       dns_resource: resource,
       socket: socket
     } do
@@ -420,7 +456,11 @@ defmodule API.Client.ChannelTest do
                id: resource.id,
                type: :dns,
                name: resource.name,
-               address: resource.address
+               address: resource.address,
+               client_address: resource.client_address,
+               gateway_groups: [
+                 %{id: gateway_group.id, name: gateway_group.name, routing: gateway_group.routing}
+               ]
              }
     end
   end

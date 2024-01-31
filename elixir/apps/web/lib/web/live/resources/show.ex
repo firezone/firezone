@@ -75,6 +75,27 @@ defmodule Web.Resources.Show do
             </.vertical_table_row>
             <.vertical_table_row>
               <:label>
+                Client Address
+              </:label>
+              <:value>
+                <a
+                  href={
+                    if String.starts_with?(@resource.client_address, ["http", "ftp", "//"]) do
+                      @resource.client_address
+                    else
+                      "//" <> @resource.client_address
+                    end
+                  }
+                  target="_blank"
+                  class={link_style()}
+                >
+                  <%= @resource.client_address %>
+                  <.icon name="hero-arrow-top-right-on-square" class="mb-3 w-3 h-3" />
+                </a>
+              </:value>
+            </.vertical_table_row>
+            <.vertical_table_row>
+              <:label>
                 Connected Sites
               </:label>
               <:value>

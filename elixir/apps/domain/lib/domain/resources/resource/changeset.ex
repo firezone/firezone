@@ -3,9 +3,9 @@ defmodule Domain.Resources.Resource.Changeset do
   alias Domain.{Auth, Accounts, Network}
   alias Domain.Resources.{Resource, Connection}
 
-  @fields ~w[address name type]a
-  @update_fields ~w[name]a
-  @required_fields ~w[address type]a
+  @fields ~w[address client_address name type]a
+  @update_fields ~w[name client_address]a
+  @required_fields ~w[address client_address type]a
 
   def create(%Accounts.Account{} = account, attrs, %Auth.Subject{} = subject) do
     %Resource{connections: []}
@@ -151,6 +151,8 @@ defmodule Domain.Resources.Resource.Changeset do
   defp changeset(changeset) do
     changeset
     |> validate_length(:name, min: 1, max: 255)
+    |> validate_length(:client_address, min: 1, max: 253)
+    |> validate_contains(:client_address, field: :address)
     |> cast_embed(:filters, with: &cast_filter/2)
     |> unique_constraint(:ipv4, name: :resources_account_id_ipv4_index)
     |> unique_constraint(:ipv6, name: :resources_account_id_ipv6_index)

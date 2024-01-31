@@ -37,6 +37,24 @@ defmodule Domain.Validator do
     end)
   end
 
+  def validate_contains(changeset, field, [{:field, source_field} | opts]) do
+    case fetch_field(changeset, source_field) do
+      {_data_or_changes, value} -> validate_contains(changeset, field, value, opts)
+      _ -> changeset
+    end
+  end
+
+  def validate_contains(changeset, field, substring, opts \\ []) do
+    validate_change(changeset, field, fn _current_field, value ->
+      if String.contains?(value, substring) do
+        []
+      else
+        message = Keyword.get(opts, :message, "should contain #{inspect(substring)}")
+        [{field, message}]
+      end
+    end)
+  end
+
   def validate_does_not_end_with(changeset, field, suffix, opts \\ []) do
     validate_change(changeset, field, fn _current_field, value ->
       if String.ends_with?(value, suffix) do

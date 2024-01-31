@@ -3,6 +3,7 @@ defmodule Domain.Resources.Resource do
 
   schema "resources" do
     field :address, :string
+    field :client_address, :string
     field :name, :string
 
     field :type, Ecto.Enum, values: [:cidr, :ip, :dns]

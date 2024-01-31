@@ -11,7 +11,7 @@ defmodule Domain.Resources.Resource.ChangesetTest do
             {"192.168.1.255/32", "192.168.1.255/32"},
             {"2607:f8b0:4012:0::200e/128", "2607:f8b0:4012::200e/128"}
           ] do
-        changeset = create(%{type: :cidr, address: string})
+        changeset = create(%{type: :cidr, address: string, client_address: string})
         assert changeset.changes[:address] == cidr
         assert changeset.valid?
       end
@@ -36,7 +36,7 @@ defmodule Domain.Resources.Resource.ChangesetTest do
             {"192.168.1.255", "192.168.1.255"},
             {"2607:f8b0:4012:0::200e", "2607:f8b0:4012::200e"}
           ] do
-        changeset = create(%{type: :ip, address: string})
+        changeset = create(%{type: :ip, address: string, client_address: string})
         assert changeset.changes[:address] == ip
         assert changeset.valid?
       end
@@ -63,7 +63,7 @@ defmodule Domain.Resources.Resource.ChangesetTest do
             "такі.справи",
             "subdomain.subdomain2.example.space"
           ] do
-        changeset = create(%{type: :dns, address: valid_address})
+        changeset = create(%{type: :dns, address: valid_address, client_address: valid_address})
         assert changeset.valid?
       end
 

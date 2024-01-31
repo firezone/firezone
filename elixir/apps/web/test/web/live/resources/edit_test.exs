@@ -100,6 +100,7 @@ defmodule Web.Live.Resources.EditTest do
     expected_inputs =
       (connection_inputs ++
          [
+           "resource[client_address]",
            "resource[filters][all][enabled]",
            "resource[filters][all][protocol]",
            "resource[filters][icmp][enabled]",
@@ -132,6 +133,7 @@ defmodule Web.Live.Resources.EditTest do
     form = form(lv, "form")
 
     assert find_inputs(form) == [
+             "resource[client_address]",
              "resource[filters][all][enabled]",
              "resource[filters][all][protocol]",
              "resource[filters][icmp][enabled]",
@@ -333,7 +335,10 @@ defmodule Web.Live.Resources.EditTest do
 
     form = form(lv, "form")
 
-    assert find_inputs(form) == ["resource[name]"]
+    assert find_inputs(form) == [
+             "resource[client_address]",
+             "resource[name]"
+           ]
   end
 
   test "updates a resource on valid attrs when traffic filters disabled", %{
