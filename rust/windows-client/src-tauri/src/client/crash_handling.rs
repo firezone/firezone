@@ -18,7 +18,6 @@ use std::{fs::File, io::Write, path::PathBuf};
 /// <https://github.com/EmbarkStudios/crash-handling/blob/main/minidumper/examples/diskwrite.rs>
 /// Linux has a special `set_ptracer` call that is handy
 /// MacOS needs a special `ping` call to flush messages inside the crash handler
-#[cfg(all(debug_assertions, target_os = "windows"))]
 pub(crate) fn attach_handler() -> Result<CrashHandler> {
     // Attempt to connect to the server
     let (client, _server) = start_server_and_connect()?;
@@ -35,11 +34,6 @@ pub(crate) fn attach_handler() -> Result<CrashHandler> {
     .context("failed to attach signal handler")?;
 
     Ok(handler)
-}
-
-#[cfg(not(debug_assertions))]
-pub(crate) fn attach_handler() -> Result<CrashHandler> {
-    bail!("crash handling is disabled in release builds for now");
 }
 
 /// Main function for the server process, for out-of-process crash handling.
@@ -59,6 +53,13 @@ pub(crate) fn server(socket_path: PathBuf) -> Result<()> {
 
 fn start_server_and_connect() -> Result<(minidumper::Client, std::process::Child)> {
     let exe = std::env::current_exe().context("unable to find our own exe path")?;
+    // Path of a Unix domain socket for IPC with the crash handler server
+    // <https://github.com/EmbarkStudios/crash-handling/issues/10>
+    let socket_path = app_local_data_dir()
+        .context("couldn't compute crash handler socket path")?
+        .join("data")
+        .join("crash_handler_pipe");
+
     let mut server = None;
 
     // Path of a Unix domain socket for IPC with the crash handler server
