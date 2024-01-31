@@ -196,14 +196,13 @@ pub(crate) fn run(params: client::GuiParams) -> Result<(), crate::client::Error>
     let app = match app {
         Ok(x) => x,
         Err(error) => {
-            match &error {
-                tauri::Error::Runtime(tauri_runtime::Error::CreateWebview(error)) => {
-                    // TODO: Wording
-                    tracing::error!(?error, "CreateWebview error detected. Make sure you are using the official Firezone MSI installer, which should install Webview2 automatically. <https://github.com/firezone/firezone/issues/3451>")
+            tracing::error!(?error, "Failed to build Tauri app instance");
+            match error {
+                tauri::Error::Runtime(tauri_runtime::Error::CreateWebview(_)) => {
+                    return Err(crate::client::Error::WebViewNotInstalled);
                 }
-                error => tracing::error!(?error, "Tauri error"),
+                error => Err(error)?,
             }
-            Err(error)?
         }
     };
 

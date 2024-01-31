@@ -62,6 +62,8 @@ pub(crate) enum Error {
     Settings(#[from] settings::Error),
     #[error(transparent)]
     Tauri(#[from] tauri::Error),
+    #[error("Firezone cannot start because WebView2 is not installed. Follow the instructions at <https://www.firezone.dev/kb/user-guides/windows-client>.")]
+    WebViewNotInstalled,
 }
 
 // Hides Powershell's console on Windows
