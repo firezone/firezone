@@ -35,6 +35,6 @@
 	<string name="signing_in_requires_chrome_browser">Signing in requires Chrome browser</string>
 
 	<!-- Managed Configuration -->
-	<string name="config_session_token_title">Session Token</string>
-	<string name="config_session_token_description">The session token used to authenticate the user.</string>
+	<string name="config_token_title">Token</string>
+	<string name="config_token_description">The token used for authentication. Set this to a service account token to achieve headless operation.</string>
 </resources>
