@@ -32,7 +32,6 @@ bimap = "0.6"
 dns-lookup = { workspace = true }
 if-watch = { version = "3.2", features = ["tokio"] }
 socket2 = { version = "0.5" }
-
 snownet = { workspace = true }
 
 # Needed for Android logging until tracing is fixed
