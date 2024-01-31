@@ -10,7 +10,7 @@ services:
       target: debug
       context: ..
       args:
-        PACKAGE: firezone-connection-tests
+        PACKAGE: snownet-tests
       cache_from:
         - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/cache/connection-tests:main
     image: us-east1-docker.pkg.dev/firezone-staging/firezone/connection-tests:${VERSION:-main}
@@ -32,7 +32,7 @@ services:
         export TURN_SERVER=$$(curl --fail --silent --unix-socket /var/run/docker.sock http://localhost/containers/wan-relay-integration-test-relay-1/json | jq -r '.NetworkSettings.Networks."wan-relay-integration-test_wan".IPAddress')
         export REDIS_HOST=$$(curl --fail --silent --unix-socket /var/run/docker.sock http://localhost/containers/wan-relay-integration-test-redis-1/json | jq -r '.NetworkSettings.Networks."wan-relay-integration-test_wan".IPAddress')
 
-        firezone-connection-tests
+        snownet-tests
     depends_on:
       - dialer_router
       - redis
@@ -58,7 +58,7 @@ services:
       target: debug
       context: ..
       args:
-        PACKAGE: firezone-connection-tests
+        PACKAGE: snownet-tests
       cache_from:
         - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/cache/connection-tests:main
     image: us-east1-docker.pkg.dev/firezone-staging/firezone/connection-tests:${VERSION:-main}
@@ -79,7 +79,7 @@ services:
         export TURN_SERVER=$$(curl --fail --silent --unix-socket /var/run/docker.sock http://localhost/containers/wan-relay-integration-test-relay-1/json | jq -r '.NetworkSettings.Networks."wan-relay-integration-test_wan".IPAddress')
         export REDIS_HOST=$$(curl --fail --silent --unix-socket /var/run/docker.sock http://localhost/containers/wan-relay-integration-test-redis-1/json | jq -r '.NetworkSettings.Networks."wan-relay-integration-test_wan".IPAddress')
 
-        firezone-connection-tests
+        snownet-tests
     cap_add:
       - NET_ADMIN
     depends_on:

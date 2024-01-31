@@ -1,4 +1,4 @@
-use crate::pool::WIREGUARD_KEEP_ALIVE;
+use crate::node::WIREGUARD_KEEP_ALIVE;
 use std::time::Instant;
 
 #[derive(Debug)]

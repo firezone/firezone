@@ -1,5 +1,5 @@
 [package]
-name = "firezone-connection-tests"
+name = "snownet-tests"
 # mark:automatic-version
 version = "1.0.0"
 edition = "2021"
@@ -7,7 +7,7 @@ edition = "2021"
 [dependencies]
 anyhow = "1"
 boringtun = { workspace = true }
-firezone-connection = { workspace = true }
+snownet = { workspace = true }
 futures = "0.3"
 hex = "0.4"
 pnet_packet = { version = "0.34" }

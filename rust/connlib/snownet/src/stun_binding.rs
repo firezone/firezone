@@ -1,4 +1,4 @@
-use crate::pool::Transmit;
+use crate::node::Transmit;
 use bytecodec::{DecodeExt, EncodeExt};
 use std::{
     collections::VecDeque,

@@ -1,4 +1,4 @@
-use crate::pool::Transmit;
+use crate::node::Transmit;
 use bytecodec::{DecodeExt as _, EncodeExt as _};
 use rand::random;
 use std::{

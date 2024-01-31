@@ -1972,48 +1972,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "firezone-connection"
-version = "1.0.0"
-dependencies = [
- "anyhow",
- "boringtun",
- "bytecodec",
- "bytes",
- "firezone-relay",
- "once_cell",
- "pnet_packet",
- "rand 0.8.5",
- "secrecy",
- "str0m",
- "stun_codec",
- "thiserror",
- "tracing",
-]
-
-[[package]]
-name = "firezone-connection-tests"
-version = "1.0.0"
-dependencies = [
- "anyhow",
- "boringtun",
- "firezone-connection",
- "futures",
- "hex",
- "pnet_packet",
- "rand 0.8.5",
- "redis 0.24.0",
- "redis-macros",
- "secrecy",
- "serde",
- "serde-hex",
- "serde_json",
- "system-info",
- "tokio",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
 name = "firezone-gateway"
 version = "1.0.0"
 dependencies = [
@@ -5979,6 +5937,48 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "74212e6bbe9a4352329b2f68ba3130c15a3f26fe88ff22dbdc6cdd58fa85e99c"
 dependencies = [
  "serde",
+]
+
+[[package]]
+name = "snownet"
+version = "1.0.0"
+dependencies = [
+ "anyhow",
+ "boringtun",
+ "bytecodec",
+ "bytes",
+ "firezone-relay",
+ "once_cell",
+ "pnet_packet",
+ "rand 0.8.5",
+ "secrecy",
+ "str0m",
+ "stun_codec",
+ "thiserror",
+ "tracing",
+]
+
+[[package]]
+name = "snownet-tests"
+version = "1.0.0"
+dependencies = [
+ "anyhow",
+ "boringtun",
+ "futures",
+ "hex",
+ "pnet_packet",
+ "rand 0.8.5",
+ "redis 0.24.0",
+ "redis-macros",
+ "secrecy",
+ "serde",
+ "serde-hex",
+ "serde_json",
+ "snownet",
+ "system-info",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
