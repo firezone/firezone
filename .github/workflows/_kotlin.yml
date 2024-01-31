@@ -9,7 +9,8 @@ permissions:
 
 jobs:
   static-analysis:
-    runs-on: macos-14
+    # Android SDK tools hardware accel is available only on Linux runners
+    runs-on: ubuntu-22.04
     defaults:
       run:
         working-directory: ./kotlin/android
@@ -31,7 +32,8 @@ jobs:
         run: ./gradlew spotlessCheck
 
   build:
-    runs-on: macos-14
+    # Android SDK tools hardware accel is available only on Linux runners
+    runs-on: ubuntu-22.04
     defaults:
       run:
         working-directory: ./kotlin/android
