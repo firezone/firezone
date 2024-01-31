@@ -4,13 +4,18 @@ use tauri::{CustomMenuItem, SystemTrayMenu, SystemTrayMenuItem, SystemTraySubmen
 
 #[derive(Debug, PartialEq)]
 pub(crate) enum Event {
-    About,
     CancelSignIn,
     Resource { id: String },
-    Settings,
     SignIn,
     SignOut,
+    ToggleWindow(Window),
     Quit,
+}
+
+#[derive(Debug, PartialEq)]
+pub(crate) enum Window {
+    About,
+    Settings,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -24,9 +29,9 @@ impl FromStr for Event {
 
     fn from_str(s: &str) -> Result<Self, Error> {
         Ok(match s {
-            "/about" => Self::About,
+            "/about" => Self::ToggleWindow(Window::About),
             "/cancel_sign_in" => Self::CancelSignIn,
-            "/settings" => Self::Settings,
+            "/settings" => Self::ToggleWindow(Window::Settings),
             "/sign_in" => Self::SignIn,
             "/sign_out" => Self::SignOut,
             "/quit" => Self::Quit,
@@ -93,12 +98,15 @@ pub(crate) fn signed_out() -> SystemTrayMenu {
 
 #[cfg(test)]
 mod tests {
-    use super::Event;
+    use super::{Event, Window};
     use std::str::FromStr;
 
     #[test]
     fn systray_parse() {
-        assert_eq!(Event::from_str("/about").unwrap(), Event::About);
+        assert_eq!(
+            Event::from_str("/about").unwrap(),
+            Event::ToggleWindow(Window::About)
+        );
         assert_eq!(
             Event::from_str("/resource/1234").unwrap(),
             Event::Resource {

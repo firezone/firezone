@@ -25,9 +25,9 @@ jobs:
           - runs-on: ubuntu-22.04
             packages: # Intentionally blank as a package catch-all linter
           - runs-on: macos-14
-            packages: -p connlib-client-apple -p firezone-connection
+            packages: -p connlib-client-apple -p snownet
           - runs-on: windows-2022
-            packages: -p connlib-client-shared -p firezone-windows-client -p firezone-connection
+            packages: -p connlib-client-shared -p firezone-windows-client -p snownet
     runs-on: ${{ matrix.runs-on }}
     steps:
       - uses: actions/checkout@v4
@@ -47,19 +47,19 @@ jobs:
         # TODO: https://github.com/rust-lang/cargo/issues/5220
         include:
           - runs-on: ubuntu-20.04
-            packages: -p firezone-linux-client -p firezone-gateway -p connlib-client-android -p firezone-connection
+            packages: -p firezone-linux-client -p firezone-gateway -p connlib-client-android -p snownet
           - runs-on: ubuntu-22.04
-            packages: -p firezone-linux-client -p firezone-gateway -p connlib-client-android -p firezone-connection
+            packages: -p firezone-linux-client -p firezone-gateway -p connlib-client-android -p snownet
           - runs-on: macos-12
-            packages: -p connlib-client-apple -p firezone-connection
+            packages: -p connlib-client-apple -p snownet
           - runs-on: macos-13
-            packages: -p connlib-client-apple -p firezone-connection
+            packages: -p connlib-client-apple -p snownet
           - runs-on: macos-14
-            packages: -p connlib-client-apple -p firezone-connection
+            packages: -p connlib-client-apple -p snownet
           - runs-on: windows-2019
-            packages: -p firezone-windows-client -p connlib-client-shared -p firezone-connection
+            packages: -p firezone-windows-client -p connlib-client-shared -p snownet
           - runs-on: windows-2022
-            packages: -p firezone-windows-client -p connlib-client-shared -p firezone-connection
+            packages: -p firezone-windows-client -p connlib-client-shared -p snownet
     runs-on: ${{ matrix.runs-on }}
     steps:
       - uses: actions/checkout@v4
@@ -90,6 +90,8 @@ jobs:
           targets: x86_64-pc-windows-msvc
       - name: Build release binaries
         run: |
+          # Build Windows Tauri GUI
+
           pnpm install
 
           # Set logs to debug
@@ -109,6 +111,10 @@ jobs:
 
           Get-FileHash ${{ env.BINARY_DEST_PATH }}-x64.exe -Algorithm SHA256 | Select-Object Hash > ${{ env.BINARY_DEST_PATH }}-x64.exe.sha256sum.txt
           Get-FileHash ${{ env.BINARY_DEST_PATH }}-x64.msi -Algorithm SHA256 | Select-Object Hash > ${{ env.BINARY_DEST_PATH }}-x64.msi.sha256sum.txt
+
+          # This might catch regressions in #3384, depending how CI runners
+          # handle exit codes
+          git diff --exit-code
       - name: Save Windows client
         uses: actions/upload-artifact@v4
         with:
