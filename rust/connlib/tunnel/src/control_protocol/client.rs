@@ -25,39 +25,6 @@ use crate::{peer::Peer, ClientState, Error, Request, Result, Tunnel};
 
 use super::insert_peers;
 
-// TODO: connection timeout heartbeat
-// #[tracing::instrument(level = "trace", skip(tunnel, ice))]
-// fn set_connection_state_update<CB>(
-//     tunnel: &Arc<Tunnel<CB, ClientState>>,
-//     ice: &Arc<RTCIceTransport>,
-//     gateway_id: GatewayId,
-//     resource_id: ResourceId,
-// ) where
-//     CB: Callbacks + 'static,
-// {
-//     let tunnel = Arc::clone(tunnel);
-//     ice.on_connection_state_change(Box::new(move |state| {
-//         let tunnel = Arc::clone(&tunnel);
-//         tracing::trace!(%state, "peer_state");
-//         Box::pin(async move {
-//             if state == RTCIceTransportState::Failed {
-//                 // There's a really unlikely race condition but this line needs to be before on_connection_failed.
-//                 // if we clear up the gateway awaiting flag before removing the connection a new connection could be
-//                 // established that replaces this one and this line removes it.
-//                 let ice = tunnel.peer_connections.lock().remove(&gateway_id);
-
-//                 if let Some(ice) = ice {
-//                     if let Err(err) = ice.stop().await {
-//                         tracing::warn!(%err, "couldn't stop ice transport: {err:#}");
-//                     }
-//                 }
-
-//                 tunnel.role_state.lock().on_connection_failed(resource_id);
-//             }
-//         })
-//     }));
-// }
-
 impl<CB> Tunnel<CB, ClientState, Client, GatewayId, PacketTransformClient>
 where
     CB: Callbacks + 'static,
@@ -114,14 +81,6 @@ where
             stun_relays,
             turn(&relays),
         );
-
-        // TODO: track connection
-        // self.peer_connections
-        //     .lock()
-        //     .insert(gateway_id, Arc::clone(&ice_transport));
-
-        // TODO: set connection cleanup
-        // set_connection_state_update(self, &ice_transport, gateway_id, resource_id);
 
         Ok(Request::NewConnection(RequestConnection {
             resource_id,

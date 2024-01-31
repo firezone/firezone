@@ -261,7 +261,6 @@ where
                 }
                 Some(snownet::Event::ConnectionEstablished(id)) => {
                     tracing::info!(%id, "Connection established with peer");
-                    // TODO (We probably don't need to do anything here)
                 }
                 Some(snownet::Event::ConnectionFailed(id)) => {
                     tracing::info!(%id, "Connection failed with peer");
@@ -317,8 +316,6 @@ pub type ClientTunnel<CB> = Tunnel<CB, ClientState, Client, GatewayId, PacketTra
 
 /// Tunnel is a wireguard state machine that uses webrtc's ICE channels instead of UDP sockets to communicate between peers.
 pub struct Tunnel<CB: Callbacks, TRoleState, TRole, TId, TTransform> {
-    // TODO: these are used to stop connections
-    // peer_connections: Mutex<HashMap<TRoleState::Id, Arc<RTCIceTransport>>>,
     callbacks: CallbackErrorFacade<CB>,
 
     /// State that differs per role, i.e. clients vs gateways.
@@ -636,15 +633,10 @@ where
     /// -  `control_signaler`: this is used to send SDP from the tunnel to the control plane.
     #[tracing::instrument(level = "trace", skip(private_key, callbacks))]
     pub async fn new(private_key: StaticSecret, callbacks: CB) -> Result<Self> {
-        // TODO:
-        // setting_engine.set_interface_filter(Box::new(|name| !name.contains("tun")));
-
         let mut cleanup_interval = tokio::time::interval(std::time::Duration::from_secs(1));
         cleanup_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
 
         Ok(Self {
-            // TODO:
-            // peer_connections,
             device: Default::default(),
             read_buf: Mutex::new(Box::new([0u8; MAX_UDP_SIZE])),
             callbacks: CallbackErrorFacade(callbacks),

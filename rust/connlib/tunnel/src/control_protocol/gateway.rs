@@ -19,26 +19,6 @@ use secrecy::ExposeSecret;
 use snownet::{Credentials, Offer, Server};
 use std::{collections::HashSet, sync::Arc};
 
-// TODO:
-// #[tracing::instrument(level = "trace", skip(ice))]
-// fn set_connection_state_update(ice: &Arc<RTCIceTransport>, client_id: ClientId) {
-//     let ice = ice.clone();
-//     ice.on_connection_state_change({
-//         let ice = ice.clone();
-//         Box::new(move |state| {
-//             tracing::trace!(%state, "peer_state");
-//             let ice = ice.clone();
-//             Box::pin(async move {
-//                 if state == RTCIceTransportState::Failed {
-//                     if let Err(e) = ice.stop().await {
-//                         tracing::warn!(err = ?e, "Couldn't stop ice client: {e:#}");
-//                     }
-//                 }
-//             })
-//         })
-//     });
-// }
-
 impl<CB> Tunnel<CB, GatewayState, Server, ClientId, PacketTransformGateway>
 where
     CB: Callbacks + 'static,
@@ -61,9 +41,6 @@ where
         expires_at: Option<DateTime<Utc>>,
         resource: ResourceDescription,
     ) -> Result<ConnectionAccepted> {
-        // TODO:
-        // set_connection_state_update(&ice, client_id);
-
         // TODO:
         // let previous_ice = self
         //     .peer_connections
