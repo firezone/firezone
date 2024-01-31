@@ -5,11 +5,11 @@ members = [
   "connlib/clients/shared",
   "connlib/shared",
   "connlib/tunnel",
-  "connlib/connection",
+  "connlib/snownet",
   "gateway",
   "linux-client",
   "firezone-cli-utils",
-  "connection-tests",
+  "snownet-tests",
   "phoenix-channel",
   "relay",
   "windows-client/src-tauri",
@@ -40,7 +40,7 @@ firezone-gateway = { path = "gateway"}
 firezone-linux-client = { path = "linux-client"}
 firezone-windows-client = { path = "windows-client/src-tauri"}
 firezone-cli-utils = { path = "firezone-cli-utils"}
-firezone-connection = { path = "connlib/connection"}
+snownet = { path = "connlib/snownet"}
 firezone-relay = { path = "relay"}
 connlib-shared = { path = "connlib/shared"}
 firezone-tunnel = { path = "connlib/tunnel"}
