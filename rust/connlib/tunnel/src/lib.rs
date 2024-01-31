@@ -125,6 +125,18 @@ where
         }
     }
 
+    fn cleanup(&mut self) -> impl Iterator<Item = TId> + '_ {
+        self.connection_pool.stats().filter_map(|(id, info)| {
+            if info.missed_keep_alives() >= 2 {
+                // TODO: do some ice-restart strategy here
+                self.peers_by_id.remove(&id);
+                Some(id)
+            } else {
+                None
+            }
+        })
+    }
+
     fn send(&mut self, id: TId, packet: IpPacket) -> Result<()> {
         let Some(transmit) = self.connection_pool.encapsulate(id, packet)? else {
             return Ok(());
@@ -317,6 +329,8 @@ pub struct Tunnel<CB: Callbacks, TRoleState: RoleState, TRole, TId, TTransform> 
     no_device_waker: AtomicWaker,
 
     connections: Mutex<Connections<TRole, TId, TTransform>>,
+
+    cleanup_interval: Mutex<Interval>,
 }
 
 impl<CB> Tunnel<CB, ClientState, Client, GatewayId, PacketTransformClient>
@@ -345,6 +359,18 @@ where
                 } else {
                     self.no_device_waker.register(cx.waker());
                 }
+            }
+
+            // Note: we get the value into a variable to prevent holding the mutex.
+            let cleanup = self.cleanup_interval.lock().poll_tick(cx).is_ready();
+            if cleanup {
+                let cleanup_ids: Vec<_> = self.connections.lock().cleanup().collect();
+                self.role_state
+                    .lock()
+                    .peers_by_ip
+                    .retain(|_, p| !cleanup_ids.contains(&p.conn_id));
+                self.role_state.lock()
+                continue;
             }
 
             match ready!(self.poll_next_event_common(cx)) {
@@ -390,6 +416,7 @@ where
                 continue;
             };
 
+            // TODO: we're holding 2 mutexes here
             self.send_peer(packet, peer);
 
             continue;
@@ -418,6 +445,7 @@ where
                             continue;
                         };
 
+                        // TODO: we're holding 2 mutexes here
                         self.send_peer(packet, peer);
 
                         continue;
@@ -434,6 +462,17 @@ where
                         self.no_device_waker.register(cx.waker());
                     }
                 }
+            }
+            // Note: we get the value into a variable to prevent holding the mutex.
+
+            let cleanup = self.cleanup_interval.lock().poll_tick(cx).is_ready();
+            if cleanup {
+                let cleanup_ids: Vec<_> = self.connections.lock().cleanup().collect();
+                self.role_state
+                    .lock()
+                    .peers_by_ip
+                    .retain(|_, p| !cleanup_ids.contains(&p.conn_id));
+                continue;
             }
 
             match ready!(self.poll_next_event_common(cx)) {
@@ -595,6 +634,9 @@ where
         // TODO:
         // setting_engine.set_interface_filter(Box::new(|name| !name.contains("tun")));
 
+        let mut cleanup_interval = tokio::time::interval(std::time::Duration::from_secs(1));
+        cleanup_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+
         Ok(Self {
             // TODO:
             // peer_connections,
@@ -605,6 +647,7 @@ where
             mtu_refresh_interval: Mutex::new(mtu_refresh_interval()),
             no_device_waker: Default::default(),
             connections: Mutex::new(Connections::new(private_key)),
+            cleanup_interval: Mutex::new(cleanup_interval),
         })
     }
 
