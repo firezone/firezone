@@ -89,7 +89,7 @@ public final class TunnelStore: ObservableObject {
       return
     }
     let tunnel = NETunnelProviderManager()
-    tunnel.localizedDescription = "Firezone"
+    tunnel.localizedDescription = NETunnelProviderManager.firezoneNetworkExtensionDescription()
     tunnel.protocolConfiguration = basicProviderProtocol()
     try await tunnel.saveToPreferences()
     logger.log("\(#function): Tunnel created")
@@ -140,9 +140,8 @@ public final class TunnelStore: ObservableObject {
 
   func basicProviderProtocol() -> NETunnelProviderProtocol {
     let protocolConfiguration = NETunnelProviderProtocol()
-    protocolConfiguration.providerBundleIdentifier = Bundle.main.bundleIdentifier.map {
-      "\($0).network-extension"
-    }
+    protocolConfiguration.providerBundleIdentifier =
+      NETunnelProviderManager.firezoneNetworkExtensionBundleIdentifier()
     protocolConfiguration.serverAddress = AdvancedSettings.defaultValue.apiURLString
     protocolConfiguration.providerConfiguration = [
       TunnelProviderKeys.keyConnlibLogFilter:
@@ -490,21 +489,35 @@ extension NETunnelProviderManager {
     // Ensure the tunnel config has required values populated, because
     // to even sign out, we need saveToPreferences() to succeed.
     if let protocolConfiguration = protocolConfiguration as? NETunnelProviderProtocol {
-      protocolConfiguration.providerBundleIdentifier = Bundle.main.bundleIdentifier.map {
-        "\($0).network-extension"
-      }
+      protocolConfiguration.providerBundleIdentifier =
+        Self.firezoneNetworkExtensionBundleIdentifier()
       if protocolConfiguration.serverAddress?.isEmpty ?? true {
         protocolConfiguration.serverAddress = "unknown-server"
       }
     } else {
       let protocolConfiguration = NETunnelProviderProtocol()
-      protocolConfiguration.providerBundleIdentifier = Bundle.main.bundleIdentifier.map {
-        "\($0).network-extension"
-      }
+      protocolConfiguration.providerBundleIdentifier =
+        Self.firezoneNetworkExtensionBundleIdentifier()
       protocolConfiguration.serverAddress = "unknown-server"
     }
     if localizedDescription?.isEmpty ?? true {
-      localizedDescription = "Firezone"
+      localizedDescription = Self.firezoneNetworkExtensionDescription()
     }
+  }
+
+  static func firezoneNetworkExtensionBundleIdentifier() -> String? {
+    #if DEBUG
+      Bundle.main.bundleIdentifier.map { "\($0).debug.network-extension" }
+    #else
+      Bundle.main.bundleIdentifier.map { "\($0).network-extension" }
+    #endif
+  }
+
+  static func firezoneNetworkExtensionDescription() -> String {
+    #if DEBUG
+      "Firezone (Debug)"
+    #else
+      "Firezone"
+    #endif
   }
 }
