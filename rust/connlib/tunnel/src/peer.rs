@@ -24,7 +24,7 @@ type ExpiryingResource = (ResourceDescription, Option<DateTime<Utc>>);
 // is 30 seconds. See resolvconf(5) timeout.
 const IDS_EXPIRE: std::time::Duration = std::time::Duration::from_secs(60);
 
-pub(crate) struct Peer<TId, TTransform> {
+pub struct Peer<TId, TTransform> {
     allowed_ips: RwLock<IpNetworkTable<()>>,
     pub conn_id: TId,
     pub transform: TTransform,

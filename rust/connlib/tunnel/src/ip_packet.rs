@@ -14,7 +14,7 @@ use pnet_packet::{
 const DNS_PORT: u16 = 53;
 
 #[derive(Debug, PartialEq)]
-pub(crate) enum MutableIpPacket<'a> {
+pub enum MutableIpPacket<'a> {
     MutableIpv4Packet(MutableIpv4Packet<'a>),
     MutableIpv6Packet(MutableIpv6Packet<'a>),
 }
