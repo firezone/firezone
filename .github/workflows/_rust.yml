@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   static-analysis:
-    name: Static Analysis
+    name: static-analysis-${{ matrix.runs-on }}
     strategy:
       fail-fast: false
       matrix:
@@ -42,7 +42,7 @@ jobs:
           cargo clippy --all-targets --all-features ${{ matrix.packages }} -- -D warnings
 
   test:
-    name: Test
+    name: test-${{ matrix.runs-on }}
     strategy:
       fail-fast: false
       matrix:
@@ -70,7 +70,7 @@ jobs:
 
   # This should be identical to `build-push-windows-release-artifacts` in `cd.yml` except for the Github permissions, needs tag, and uploading step
   build-tauri:
-    name: Build Tauri
+    name: build-tauri-${{ matrix.artifact }}
     runs-on: windows-2019
     defaults:
       run:
@@ -80,11 +80,11 @@ jobs:
       # The matrix is 1x1 to match the style of build-push-linux-release-artifacts
       # In the future we could try to cross-compile aarch64-windows here.
       matrix:
-        name:
+        include:
           - package: firezone-windows-client
             artifact: windows-client
     env:
-      BINARY_DEST_PATH: ${{ matrix.name.artifact }}
+      BINARY_DEST_PATH: ${{ matrix.artifact }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node
@@ -103,7 +103,7 @@ jobs:
           # I'm running the multi-process test here because I don't think it can be
           # embedded in a test binary. It requires the client to call subcommands
           # from its own exe.
-          cargo run -p firezone-windows-client -- debug test-ipc
+          cargo run -p ${{ matrix.package }} -- debug test-ipc
 
           pnpm build
 
@@ -134,7 +134,6 @@ jobs:
             ${{ github.workspace }}/rust/windows-client/windows-client-x64.msi.sha256sum.txt
 
   smoke-test-relay:
-    name: Smoke Test Relay
     runs-on: ubuntu-22.04
     defaults:
       run:
