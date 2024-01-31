@@ -292,13 +292,6 @@ export default function PlanTable() {
           </td>
         </tr>
         <tr className="border-b border-1 border-neutral-200">
-          <td className="px-6 py-4">Microsoft Entra ID integration</td>
-          <td className="px-6 py-4">&#8212;</td>
-          <td className="px-6 py-4">
-            <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
-          </td>
-        </tr>
-        <tr className="border-b border-1 border-neutral-200">
           <td className="px-6 py-4">User / group sync</td>
           <td className="px-6 py-4">&#8212;</td>
           <td className="px-6 py-4">
