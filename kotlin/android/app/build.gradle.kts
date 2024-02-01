@@ -140,7 +140,7 @@ android {
 
 dependencies {
     val coreVersion = "1.12.0"
-    val navVersion = "2.7.4"
+    val navVersion = "2.7.6"
 
     // AndroidX
     implementation("androidx.core:core-ktx:$coreVersion")
