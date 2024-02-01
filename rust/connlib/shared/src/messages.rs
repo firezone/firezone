@@ -19,7 +19,7 @@ use crate::Dname;
 
 #[derive(Hash, Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq)]
 pub struct GatewayId(Uuid);
-#[derive(Hash, Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq)]
+#[derive(Hash, Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ResourceId(Uuid);
 #[derive(Hash, Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq)]
 pub struct ClientId(Uuid);
