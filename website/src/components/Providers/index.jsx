@@ -7,10 +7,8 @@ export default function Provider({ children }) {
   const host = "https://t.firez.one";
 
   return (
-    <>
-      <MixpanelProvider token={token} config={{ api_host: host }}>
-        <HubspotProvider>{children}</HubspotProvider>
-      </MixpanelProvider>
-    </>
+    <MixpanelProvider token={token} config={{ api_host: host }}>
+      <HubspotProvider>{children}</HubspotProvider>
+    </MixpanelProvider>
   );
 }

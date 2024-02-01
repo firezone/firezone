@@ -48,7 +48,7 @@ export default function RootLayout({
     <html lang="en">
       <Script
         src="https://app.termly.io/embed.min.js"
-        data-auto-block="on"
+        data-auto-block="off"
         data-website-uuid="c4df1a31-22d9-4000-82e6-a86cbec0bba0"
       ></Script>
       <body className={source_sans_3.className}>
@@ -58,6 +58,7 @@ export default function RootLayout({
           <Footer />
         </div>
         <Script
+          strategy="lazyOnload"
           id="hs-script-loader"
           async
           defer
