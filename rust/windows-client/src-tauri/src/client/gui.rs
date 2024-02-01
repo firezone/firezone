@@ -58,6 +58,8 @@ pub(crate) enum Error {
     CreateDataDir(std::io::Error),
     #[error("Deep-link module error: {0}")]
     DeepLink(#[from] deep_link::Error),
+    #[error("Can't show log filter error dialog: {0}")]
+    LogFilterErrorDialog(native_dialog::Error),
     #[error("Logging module error: {0}")]
     Logging(#[from] logging::Error),
     #[error("std::env::set_current_dir failed: {0}")]
@@ -92,7 +94,8 @@ pub(crate) fn run(params: client::GuiParams) -> Result<(), Error> {
                         "The custom log filter is not parsable. Using the default log filter.",
                     )
                     .set_type(native_dialog::MessageType::Error)
-                    .show_alert()?;
+                    .show_alert()
+                    .map_err(Error::LogFilterErrorDialog)?;
 
                 AdvancedSettings {
                     log_filter: AdvancedSettings::default().log_filter,
