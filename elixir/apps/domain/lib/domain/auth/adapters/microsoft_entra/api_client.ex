@@ -3,6 +3,27 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.APIClient do
 
   @pool_name __MODULE__.Finch
 
+  @user_fields ~w[
+    id
+    accountEnabled
+    displayName
+    givenName
+    surname
+    mail
+    userPrincipalName
+  ]
+
+  @group_fields ~w[
+    id
+    description
+    displayName
+  ]
+
+  @group_member_fields ~w[
+    id
+    accountEnabled
+  ]
+
   def start_link(_init_arg) do
     Supervisor.start_link(__MODULE__, nil, name: __MODULE__)
   end
@@ -37,19 +58,7 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.APIClient do
       URI.parse("#{endpoint}/v1.0/users")
       |> URI.append_query(
         URI.encode_query(%{
-          "$select" =>
-            Enum.join(
-              ~w[
-                id
-                accountEnabled
-                displayName
-                givenName
-                surname
-                mail
-                userPrincipalName
-              ],
-              ","
-            ),
+          "$select" => Enum.join(@user_fields, ","),
           "$filter" => "accountEnabled eq true"
         })
       )
@@ -66,15 +75,7 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.APIClient do
       URI.parse("#{endpoint}/v1.0/groups")
       |> URI.append_query(
         URI.encode_query(%{
-          "$select" =>
-            Enum.join(
-              ~w[
-                id
-                description
-                displayName
-              ],
-              ","
-            )
+          "$select" => Enum.join(@group_fields, ",")
         })
       )
 
@@ -86,27 +87,26 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.APIClient do
       Domain.Config.fetch_env!(:domain, __MODULE__)
       |> Keyword.fetch!(:endpoint)
 
+    # NOTE: In order to enabled the $filter=accountEnabled eq true the
+    # `ConsistencyLevel` parameter and $count=true are required to be enabled as well.
+    # The ConsistencyLevel=eventual means that it may take some time before changes in Microsoft Entra
+    # are reflected in the response, which may be acceptable, but for now we'll manually filter the
+    # accountEnabled field in the response.
+    #      "$filter" => "accountEnabled eq true",
+    #      "$count" => "true",
+    #      "ConsistencyLevel" => "eventual"
     uri =
-      URI.parse("#{endpoint}/v1.0/groups/#{group_id}/members")
+      URI.parse("#{endpoint}/v1.0/groups/#{group_id}/transitiveMembers/microsoft.graph.user")
       |> URI.append_query(
         URI.encode_query(%{
-          "$select" =>
-            Enum.join(
-              ~w[
-                id
-                accountEnabled
-                description
-                displayName
-              ],
-              ","
-            )
+          "$select" => Enum.join(@group_member_fields, ",")
         })
       )
 
     with {:ok, members} <- list_all(uri, api_token) do
       enabled_members =
         Enum.filter(members, fn member ->
-          member["accountEnabled"] == true and member["@odata.type"] == "#microsoft.graph.user"
+          member["accountEnabled"] == true
         end)
 
       {:ok, enabled_members}

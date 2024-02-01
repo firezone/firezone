@@ -7,7 +7,7 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.Jobs do
   every minutes(5), :refresh_access_tokens do
     with {:ok, providers} <-
            Domain.Auth.list_providers_pending_token_refresh_by_adapter(:microsoft_entra) do
-      Logger.debug("Refreshing access tokens for #{length(providers)} providers")
+      Logger.debug("Refreshing access tokens for #{length(providers)} Microsoft Entra providers")
 
       Enum.each(providers, fn provider ->
         Logger.debug("Refreshing access token",
@@ -137,7 +137,7 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.Jobs do
         "provider_identifier" => user["id"],
         "provider_state" => %{
           "userinfo" => %{
-            "email" => user["mail"]
+            "email" => user["userPrincipalName"]
           }
         },
         "actor" => %{
