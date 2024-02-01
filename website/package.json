@@ -13,7 +13,7 @@
     "@docsearch/react": "^3.5.2",
     "@mdx-js/loader": "^2.3.0",
     "@mdx-js/react": "^3.0.0",
-    "@next/mdx": "~14.0.4",
+    "@next/mdx": "~14.1.0",
     "@types/mdx": "^2.0.10",
     "@types/mixpanel-browser": "^2.48.1",
     "@types/node": "20.11.0",
