@@ -14,7 +14,7 @@ import kotlinx.coroutines.launch
 
 class LogSettingsFragment : Fragment(R.layout.fragment_settings_logs) {
     private var _binding: FragmentSettingsLogsBinding? = null
-    private val binding get() = _binding!!
+    val binding: FragmentSettingsLogBinding get() = _binding!!
     private val viewModel: SettingsViewModel by activityViewModels()
 
     override fun onViewCreated(
