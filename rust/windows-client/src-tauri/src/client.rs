@@ -124,6 +124,9 @@ fn run_gui(cli: Cli) -> Result<()> {
     Ok(result?)
 }
 
+/// The debug / test flags like `crash_on_purpose` and `test_update_notification`
+/// don't propagate when we use `RunAs` to elevate ourselves. So those must be run
+/// from an admin terminal, or with "Run as administrator" in the right-click menu.
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 struct Cli {
