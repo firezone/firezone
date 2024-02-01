@@ -67,18 +67,27 @@ defmodule Domain.Auth.Identity.Sync do
         identities,
         {provider_identifiers, [], []},
         fn identity, {insert, update, delete} ->
-          if identity.provider_identifier in provider_identifiers do
-            {
-              insert -- [identity.provider_identifier],
-              [identity.provider_identifier] ++ update,
-              delete
-            }
-          else
-            {
-              insert -- [identity.provider_identifier],
-              update,
-              [identity.provider_identifier] ++ delete
-            }
+          cond do
+            identity.provider_identifier in provider_identifiers ->
+              {
+                insert -- [identity.provider_identifier],
+                [identity.provider_identifier] ++ update,
+                delete
+              }
+
+            not is_nil(identity.deleted_at) ->
+              {
+                insert -- [identity.provider_identifier],
+                update,
+                delete
+              }
+
+            true ->
+              {
+                insert -- [identity.provider_identifier],
+                update,
+                [identity.provider_identifier] ++ delete
+              }
           end
         end
       )

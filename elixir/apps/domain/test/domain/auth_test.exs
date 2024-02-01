@@ -1615,6 +1615,37 @@ defmodule Domain.AuthTest do
       assert actor.name == "Brian Manifold"
     end
 
+    test "does not attempt to delete identities that are already deleted", %{
+      account: account,
+      provider: provider
+    } do
+      identity =
+        Fixtures.Auth.create_identity(
+          account: account,
+          provider: provider,
+          provider_identifier: "USER_ID1",
+          actor: [type: :account_admin_user]
+        )
+        |> Fixtures.Auth.delete_identity()
+
+      attrs_list = []
+      multi = sync_provider_identities_multi(provider, attrs_list)
+
+      assert {:ok,
+              %{
+                identities: [fetched_identity],
+                plan_identities: {[], [], []},
+                delete_identities: [],
+                insert_identities: [],
+                actor_ids_by_provider_identifier: %{}
+              }} = Repo.transaction(multi)
+
+      assert fetched_identity.id == identity.id
+
+      identity = Repo.get(Auth.Identity, identity.id)
+      assert identity.deleted_at
+    end
+
     test "deletes removed identities", %{account: account, provider: provider} do
       provider_identifiers = ["USER_ID1", "USER_ID2"]
 
