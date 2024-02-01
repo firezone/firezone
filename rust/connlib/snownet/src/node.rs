@@ -530,6 +530,7 @@ where
                         })
                     }
                     Err(EncodeError::NoChannel) => {
+                        // TODO: Should we buffer these?
                         tracing::debug!(%relay, peer = %transmit.destination, "Got allocation on relay but no channel to peer");
                         continue;
                     }

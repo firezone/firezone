@@ -123,7 +123,7 @@ where
                     }
                     Ok(None) => None,
                     Err(e) => {
-                        tracing::error!(%local, %from, "Failed to decapsulate incoming packet: {e:#?}");
+                        tracing::error!(%local, %from, "Failed to decapsulate incoming packet: {e}");
                         None
                     }
                 }
@@ -285,7 +285,6 @@ where
                     connection,
                     candidate,
                 }) => {
-                    tracing::debug!(%candidate, %connection, "New local candidate");
                     return Poll::Ready(Event::SignalIceCandidate {
                         conn_id: connection,
                         candidate,
@@ -590,7 +589,7 @@ where
             .lock()
             .send(peer.conn_id, p.as_immutable().into())
         {
-            tracing::error!(to = %p.destination(), conn_id = %peer.conn_id, "Failed to send packet: {e:#?}");
+            tracing::error!(to = %p.destination(), conn_id = %peer.conn_id, "Failed to send packet: {e}");
         }
     }
 }

@@ -160,7 +160,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
         Ok(())
     }
 
-    #[tracing::instrument(level = "trace", skip(self))]
+    #[tracing::instrument(level = "trace", skip_all, fields(%resource_id, %gateway_public_key))]
     pub fn connect(
         &mut self,
         Connect {
@@ -258,6 +258,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
         });
     }
 
+    #[tracing::instrument(level = "trace", skip_all, fields(gateway = %gateway_id))]
     fn add_ice_candidate(
         &self,
         GatewayIceCandidates {
@@ -270,7 +271,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
         }
     }
 
-    #[tracing::instrument(level = "trace", skip(self))]
+    #[tracing::instrument(level = "trace", skip(self, msg))]
     pub async fn handle_message(
         &mut self,
         msg: Messages,
