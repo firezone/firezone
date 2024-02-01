@@ -957,7 +957,13 @@ where
 
         let addr = channel.peer_address;
 
-        self.channel_numbers_by_peer.remove(&addr);
+        let _peer_channel = self.channel_numbers_by_peer.remove(&addr);
+        debug_assert_eq!(
+            _peer_channel,
+            Some(chan),
+            "Channel state should be consistent"
+        );
+
         self.channels_by_client_and_number.remove(&(client, chan));
     }
 }
