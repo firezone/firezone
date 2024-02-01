@@ -142,6 +142,8 @@ pub(crate) fn run(params: client::GuiParams) -> Result<(), Error> {
             tracing::info!("Will crash on purpose in {delay} seconds to test crash handling.");
             tokio::time::sleep(std::time::Duration::from_secs(delay)).await;
             tracing::info!("Crashing on purpose because of `--crash-on-purpose` flag");
+
+            // SAFETY: Crashing is unsafe
             unsafe { sadness_generator::raise_segfault() }
         });
     }

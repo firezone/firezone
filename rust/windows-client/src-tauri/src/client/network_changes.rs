@@ -33,6 +33,7 @@
 //!
 //! Raymond Chen also explains it on his blog: <https://devblogs.microsoft.com/oldnewthing/20191125-00/?p=103135>
 
+use anyhow::Result;
 use std::sync::Arc;
 use tokio::{runtime::Runtime, sync::Notify};
 use windows::{
@@ -48,14 +49,20 @@ use windows::{
 
 #[derive(thiserror::Error, Debug)]
 pub(crate) enum Error {
-    #[error(transparent)]
-    Windows(#[from] windows::core::Error),
-    #[error("couldn't stop worker thread")]
+    #[error("Couldn't initialize COM: {0}")]
+    ComInitialize(windows::core::Error),
+    #[error("Couldn't stop worker thread")]
     CouldntStopWorkerThread,
+    #[error("Couldn't creat NetworkListManager")]
+    CreateNetworkListManager(windows::core::Error),
+    #[error("Couldn't start listening to network events: {0}")]
+    Listening(windows::core::Error),
+    #[error("Couldn't stop listening to network events: {0}")]
+    Unadvise(windows::core::Error),
 }
 
 /// Debug subcommand to test network connectivity events
-pub(crate) fn run_debug() -> anyhow::Result<()> {
+pub(crate) fn run_debug() -> Result<()> {
     tracing_subscriber::fmt::init();
 
     // Returns Err before COM is initialized
@@ -98,8 +105,12 @@ pub fn check_internet() -> WinResult<bool> {
     // Retrieving the INetworkListManager takes less than half a millisecond, and this
     // makes the lifetimes and Send+Sync much simpler for callers, so just retrieve it
     // every single time.
+    // SAFETY: No lifetime problems. TODO: Could threading be a problem?
+    // I think in practice we'll never call this from two threads, but what if we did?
     let network_list_manager: INetworkListManager =
         unsafe { Com::CoCreateInstance(&NetworkListManager, None, Com::CLSCTX_ALL) }?;
+    // SAFETY: `network_list_manager` isn't shared between threads, and the lifetime
+    // should be good.
     let have_internet = unsafe { network_list_manager.IsConnectedToInternet() }?.as_bool();
 
     Ok(have_internet)
@@ -113,7 +124,7 @@ pub(crate) struct Worker {
 
 /// Needed so that `Drop` can consume the oneshot Sender and the thread's JoinHandle
 struct WorkerInner {
-    thread: std::thread::JoinHandle<WinResult<()>>,
+    thread: std::thread::JoinHandle<Result<(), Error>>,
     stopper: tokio::sync::oneshot::Sender<()>,
 }
 
@@ -171,17 +182,31 @@ impl Drop for Worker {
 }
 
 /// Enforces the initialize-use-uninitialize order for `Listener` and COM
+///
+/// COM is meant to be initialized for a thread, and un-initialized for the same thread,
+/// so don't pass this between threads.
 struct ComGuard {
     dropped: bool,
+    _unsend_unsync: PhantomUnsendUnsync,
 }
+
+/// Marks a type as !Send and !Sync without nightly / unstable features
+///
+/// <https://stackoverflow.com/questions/62713667/how-to-implement-send-or-sync-for-a-type>
+type PhantomUnsendUnsync = std::marker::PhantomData<*const ()>;
 
 impl ComGuard {
     /// Initialize a "Multi-threaded apartment" so that Windows COM stuff
     /// can be called, and COM callbacks can work.
-    pub fn new() -> WinResult<Self> {
-        // SAFETY: TODO, not sure if anything can go wrong here
-        unsafe { Com::CoInitializeEx(None, Com::COINIT_MULTITHREADED) }?;
-        Ok(Self { dropped: false })
+    pub fn new() -> Result<Self, Error> {
+        // SAFETY: Threading shouldn't be a problem since this is meant to initialize
+        // COM per-thread anyway.
+        unsafe { Com::CoInitializeEx(None, Com::COINIT_MULTITHREADED) }
+            .map_err(Error::ComInitialize)?;
+        Ok(Self {
+            dropped: false,
+            _unsend_unsync: Default::default(),
+        })
     }
 }
 
@@ -237,14 +262,19 @@ impl<'a> Listener<'a> {
     ///   on the same thread as `new` is called on.
     /// * `notify` - A Tokio `Notify` that will be notified when Windows detects
     ///   connectivity changes. Some notifications may be spurious.
-    fn new(com: &'a ComGuard, notify: Arc<Notify>) -> WinResult<Self> {
+    fn new(com: &'a ComGuard, notify: Arc<Notify>) -> Result<Self, Error> {
         // `windows-rs` automatically releases (de-refs) COM objects on Drop:
         // https://github.com/microsoft/windows-rs/issues/2123#issuecomment-1293194755
         // https://github.com/microsoft/windows-rs/blob/cefdabd15e4a7a7f71b7a2d8b12d5dc148c99adb/crates/samples/windows/wmi/src/main.rs#L22
+        // SAFETY: TODO
         let network_list_manager: INetworkListManager =
-            unsafe { Com::CoCreateInstance(&NetworkListManager, None, Com::CLSCTX_ALL) }?;
-        let cpc: Com::IConnectionPointContainer = network_list_manager.cast()?;
-        let cxn_point_net = unsafe { cpc.FindConnectionPoint(&INetworkEvents::IID) }?;
+            unsafe { Com::CoCreateInstance(&NetworkListManager, None, Com::CLSCTX_ALL) }
+                .map_err(Error::CreateNetworkListManager)?;
+        let cpc: Com::IConnectionPointContainer =
+            network_list_manager.cast().map_err(Error::Listening)?;
+        // SAFETY: TODO
+        let cxn_point_net =
+            unsafe { cpc.FindConnectionPoint(&INetworkEvents::IID) }.map_err(Error::Listening)?;
 
         let mut this = Listener {
             advise_cookie_net: None,
@@ -258,7 +288,8 @@ impl<'a> Listener<'a> {
         // SAFETY: What happens if Windows sends us a network change event while
         // we're dropping Listener?
         // Is it safe to Advise on `this` and then immediately move it?
-        this.advise_cookie_net = Some(unsafe { this.cxn_point_net.Advise(&callbacks) }?);
+        this.advise_cookie_net =
+            Some(unsafe { this.cxn_point_net.Advise(&callbacks) }.map_err(Error::Listening)?);
 
         // After we call `Advise`, notify. This should avoid a problem if this happens:
         //
@@ -274,10 +305,10 @@ impl<'a> Listener<'a> {
     /// Like `drop` but you can catch errors
     ///
     /// Unregisters the network change callbacks
-    pub fn close(&mut self) -> WinResult<()> {
+    pub fn close(&mut self) -> Result<(), Error> {
         if let Some(cookie) = self.advise_cookie_net.take() {
             // SAFETY: I don't see any memory safety issues.
-            unsafe { self.cxn_point_net.Unadvise(cookie) }?;
+            unsafe { self.cxn_point_net.Unadvise(cookie) }.map_err(Error::Unadvise)?;
             tracing::debug!("Unadvised");
         }
         Ok(())

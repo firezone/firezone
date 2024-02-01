@@ -25,6 +25,8 @@ pub enum Error {
     LinkNotUtf8(std::string::FromUtf8Error),
     #[error("named pipe server couldn't start listening, we are probably the second instance")]
     Listen,
+    #[error("Couldn't set up security descriptor for deep link server")]
+    SecurityDescriptor,
     /// Error from server's POV
     #[error(transparent)]
     ServerCommunications(io::Error),
@@ -107,14 +109,18 @@ impl Server {
         // This will allow non-admin clients to connect to us even if we're running as admin
         let mut sd = WinSec::SECURITY_DESCRIPTOR::default();
         let psd = WinSec::PSECURITY_DESCRIPTOR(&mut sd as *mut _ as *mut c_void);
+        // SAFETY: Unsafe needed to call Win32 API. There shouldn't be any threading
+        // or lifetime problems beacuse we only pass pointers to our local vars to
+        // Win32, and Win32 shouldn't save them anywhere.
         unsafe {
             // ChatGPT pointed me to these functions, it's better than the official MS docs
             WinSec::InitializeSecurityDescriptor(
                 psd,
                 windows::Win32::System::SystemServices::SECURITY_DESCRIPTOR_REVISION,
             )
-            .map_err(|_| Error::Listen)?;
-            WinSec::SetSecurityDescriptorDacl(psd, true, None, false).map_err(|_| Error::Listen)?;
+            .map_err(|_| Error::SecurityDescriptor)?;
+            WinSec::SetSecurityDescriptorDacl(psd, true, None, false)
+                .map_err(|_| Error::SecurityDescriptor)?;
         }
 
         let mut sa = WinSec::SECURITY_ATTRIBUTES {
@@ -127,11 +133,12 @@ impl Server {
         };
 
         let path = named_pipe_path(BUNDLE_ID);
-        let server = unsafe {
-            server_options
-                .create_with_security_attributes_raw(path, &mut sa as *mut _ as *mut c_void)
-        }
-        .map_err(|_| Error::Listen)?;
+        let sa_ptr = &mut sa as *mut _ as *mut c_void;
+        // SAFETY: Unsafe needed to call Win32 API. There shouldn't be any threading
+        // or lifetime problems beacuse we only pass pointers to our local vars to
+        // Win32, and Win32 shouldn't save them anywhere.
+        let server = unsafe { server_options.create_with_security_attributes_raw(path, sa_ptr) }
+            .map_err(|_| Error::Listen)?;
 
         tracing::debug!("server is bound");
         Ok(Server { inner: server })
