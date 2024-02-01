@@ -62,6 +62,7 @@ const DNS_QUERIES_QUEUE_SIZE: usize = 100;
 
 const REALM: &str = "firezone";
 
+#[cfg(target_os = "linux")]
 const FIREZONE_MARK: u32 = 0xfd002021;
 
 pub(crate) fn get_v4(ip: IpAddr) -> Option<Ipv4Addr> {

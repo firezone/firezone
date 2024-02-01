@@ -6,8 +6,6 @@ use std::{
 };
 use tokio::{io::ReadBuf, net::UdpSocket};
 
-use crate::FIREZONE_MARK;
-
 pub struct Socket<const N: usize> {
     local: SocketAddr,
     socket: UdpSocket,
@@ -22,7 +20,7 @@ fn make_socket(addr: impl Into<SocketAddr>) -> io::Result<std::net::UdpSocket> {
 
     // TODO: for android protect file descriptor
     #[cfg(target_os = "linux")]
-    socket.set_mark(FIREZONE_MARK)?;
+    socket.set_mark(crate::FIREZONE_MARK)?;
 
     // Note: for AF_INET sockets IPV6_V6ONLY is not a valid flag
     if addr.is_ipv6() {
