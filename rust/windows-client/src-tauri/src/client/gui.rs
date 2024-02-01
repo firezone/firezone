@@ -14,7 +14,7 @@ use connlib_shared::{messages::ResourceId, windows::BUNDLE_ID};
 use secrecy::{ExposeSecret, SecretString};
 use std::{net::IpAddr, path::PathBuf, str::FromStr, sync::Arc, time::Duration};
 use system_tray_menu::Event as TrayMenuEvent;
-use tauri::{api::notification::Notification, Manager, SystemTray, SystemTrayEvent};
+use tauri::{Manager, SystemTray, SystemTrayEvent};
 use tokio::sync::{mpsc, oneshot, Notify};
 use ControllerRequest as Req;
 
@@ -53,12 +53,16 @@ impl Managed {
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum Error {
+    #[error(r#"Couldn't show clickable notification titled "{0}""#)]
+    ClickableNotification(String),
     #[error("Deep-link module error: {0}")]
     DeepLink(#[from] deep_link::Error),
     #[error("Can't show log filter error dialog: {0}")]
     LogFilterErrorDialog(native_dialog::Error),
     #[error("Logging module error: {0}")]
     Logging(#[from] logging::Error),
+    #[error(r#"Couldn't show notification titled "{0}""#)]
+    Notification(String),
     #[error(transparent)]
     Tauri(#[from] tauri::Error),
     #[error("tokio::runtime::Runtime::new failed: {0}")]
@@ -103,11 +107,7 @@ pub(crate) fn run(params: client::GuiParams) -> Result<(), Error> {
     tracing::info!("started log");
     tracing::info!("GIT_VERSION = {}", crate::client::GIT_VERSION);
 
-    let client::GuiParams {
-        crash_on_purpose,
-        flag_elevated: _,
-        inject_faults,
-    } = params;
+    let client::GuiParams { cli } = params;
 
     // Need to keep this alive so crashes will be handled. Dropping detaches it.
     let _crash_handler = match client::crash_handling::attach_handler() {
@@ -124,7 +124,10 @@ pub(crate) fn run(params: client::GuiParams) -> Result<(), Error> {
     let rt = tokio::runtime::Runtime::new().map_err(Error::TokioRuntimeNew)?;
     let _guard = rt.enter();
 
-    if crash_on_purpose {
+    let (ctlr_tx, ctlr_rx) = mpsc::channel(5);
+    let notify_controller = Arc::new(Notify::new());
+
+    if cli.crash_on_purpose {
         tokio::spawn(async {
             let delay = 10;
             tracing::info!("Will crash on purpose in {delay} seconds to test crash handling.");
@@ -134,8 +137,17 @@ pub(crate) fn run(params: client::GuiParams) -> Result<(), Error> {
         });
     }
 
-    let (ctlr_tx, ctlr_rx) = mpsc::channel(5);
-    let notify_controller = Arc::new(Notify::new());
+    if cli.test_update_notification {
+        // TODO: Clicking doesn't work if the notification times out and hides first.
+        // See docs for `show_clickable_notification`.
+
+        show_clickable_notification(
+            "Firezone update",
+            "Click here to open the release page.",
+            ctlr_tx.clone(),
+            Req::NotificationClicked,
+        )?;
+    }
 
     // Make sure we're single-instance
     // We register our deep links to call the `open-deep-link` subcommand,
@@ -149,7 +161,7 @@ pub(crate) fn run(params: client::GuiParams) -> Result<(), Error> {
 
     let managed = Managed {
         ctlr_tx: ctlr_tx.clone(),
-        inject_faults,
+        inject_faults: cli.inject_faults,
     };
 
     let tray = SystemTray::new().with_menu(system_tray_menu::signed_out());
@@ -283,6 +295,7 @@ pub(crate) enum ControllerRequest {
     DisconnectedTokenExpired,
     ExportLogs { path: PathBuf, stem: PathBuf },
     GetAdvancedSettings(oneshot::Sender<AdvancedSettings>),
+    NotificationClicked,
     SchemeRequest(url::Url),
     SystemTrayMenu(TrayMenuEvent),
     TunnelReady,
@@ -604,6 +617,14 @@ async fn run_controller(
                     Req::GetAdvancedSettings(tx) => {
                         tx.send(controller.advanced_settings.clone()).ok();
                     }
+                    Req::NotificationClicked => {
+                        tracing::info!("NotificationClicked in run_controller!");
+                        tauri::api::shell::open(
+                            &app.shell_scope(),
+                            "https://example.com/notification_clicked",
+                            None,
+                        )?;
+                    }
                     Req::SchemeRequest(url) => if let Err(e) = controller.handle_deep_link(&url).await {
                         tracing::error!("couldn't handle deep link: {e:#?}");
                     }
@@ -651,10 +672,55 @@ async fn run_controller(
 ///
 /// May say "Windows Powershell" and have the wrong icon in dev mode
 /// See <https://github.com/tauri-apps/tauri/issues/3700>
-fn show_notification(title: &str, body: &str) -> Result<()> {
-    Notification::new(BUNDLE_ID)
+fn show_notification(title: &str, body: &str) -> Result<(), Error> {
+    tauri_winrt_notification::Toast::new(BUNDLE_ID)
         .title(title)
-        .body(body)
-        .show()?;
+        .text1(body)
+        .show()
+        .map_err(|_| Error::Notification(title.to_string()))?;
+
+    Ok(())
+}
+
+/// Show a notification that signals `Controller` when clicked
+///
+/// May say "Windows Powershell" and have the wrong icon in dev mode
+/// See <https://github.com/tauri-apps/tauri/issues/3700>
+///
+/// Known issue: If the notification times out and goes into the notification center
+/// (the little thing that pops up when you click the bell icon), then we may not get the
+/// click signal.
+///
+/// I've seen this reported by people using Powershell, C#, etc., so I think it might
+/// be a Windows bug:
+/// - <https://superuser.com/questions/1488763/windows-10-notifications-not-activating-the-associated-app-when-clicking-on-it>
+/// - <https://stackoverflow.com/questions/65835196/windows-toast-notification-com-not-working>
+/// - <https://answers.microsoft.com/en-us/windows/forum/all/notifications-not-activating-the-associated-app/7a3b31b0-3a20-4426-9c88-c6e3f2ac62c6>
+fn show_clickable_notification(
+    title: &str,
+    body: &str,
+    tx: CtlrTx,
+    req: ControllerRequest,
+) -> Result<(), Error> {
+    // For some reason `on_activated` is FnMut
+    let mut req = Some(req);
+
+    tauri_winrt_notification::Toast::new(BUNDLE_ID)
+        .title(title)
+        .text1(body)
+        .scenario(tauri_winrt_notification::Scenario::Reminder)
+        .on_activated(move || {
+            if let Some(req) = req.take() {
+                if let Err(error) = tx.blocking_send(req) {
+                    tracing::error!(
+                        ?error,
+                        "User clicked on notification, but we couldn't tell `Controller`"
+                    );
+                }
+            }
+            Ok(())
+        })
+        .show()
+        .map_err(|_| Error::ClickableNotification(title.to_string()))?;
     Ok(())
 }
