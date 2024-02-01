@@ -55,7 +55,8 @@ defmodule Domain.Auth.Identity.Sync do
   end
 
   defp fetch_and_lock_provider_identities_query(provider) do
-    Identity.Query.by_account_id(provider.account_id)
+    Identity.Query.all()
+    |> Identity.Query.by_account_id(provider.account_id)
     |> Identity.Query.by_provider_id(provider.id)
     |> Identity.Query.lock()
   end

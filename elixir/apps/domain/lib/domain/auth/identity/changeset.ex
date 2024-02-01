@@ -57,6 +57,7 @@ defmodule Domain.Auth.Identity.Changeset do
         Actors.Actor.Changeset.sync(actor, attrs)
       end
     )
+    |> put_change(:deleted_at, nil)
     |> changeset()
   end
 
