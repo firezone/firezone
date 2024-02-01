@@ -18,8 +18,8 @@ dependencies:
     specifier: ~14.1.0
     version: 14.1.0(@mdx-js/loader@2.3.0)(@mdx-js/react@3.0.0)
   '@types/mdx':
-    specifier: ^2.0.10
-    version: 2.0.10
+    specifier: ^2.0.11
+    version: 2.0.11
   '@types/mixpanel-browser':
     specifier: ^2.48.1
     version: 2.48.1
@@ -409,7 +409,7 @@ packages:
     resolution: {integrity: sha512-jLuwRlz8DQfQNiUCJR50Y09CGPq3fLtmtUQfVrj79E0JWu3dvsVcxVIcfhR5h0iXu+/z++zDrYeiJqifRynJkA==}
     dependencies:
       '@types/estree-jsx': 1.0.3
-      '@types/mdx': 2.0.10
+      '@types/mdx': 2.0.11
       estree-util-build-jsx: 2.2.2
       estree-util-is-identifier-name: 2.1.0
       estree-util-to-js: 1.2.0
@@ -435,7 +435,7 @@ packages:
       '@types/react': '>=16'
       react: '>=16'
     dependencies:
-      '@types/mdx': 2.0.10
+      '@types/mdx': 2.0.11
       '@types/react': 18.2.51
       react: 18.2.0
     dev: false
@@ -642,8 +642,8 @@ packages:
       '@types/unist': 3.0.2
     dev: false
 
-  /@types/mdx@2.0.10:
-    resolution: {integrity: sha512-Rllzc5KHk0Al5/WANwgSPl1/CwjqCy+AZrGd78zuK+jO9aDM6ffblZ+zIjgPNAaEBmlO0RYDvLNh7wD0zKVgEg==}
+  /@types/mdx@2.0.11:
+    resolution: {integrity: sha512-HM5bwOaIQJIQbAYfax35HCKxx7a3KrK3nBtIqJgSOitivTD1y3oW9P3rxY9RkXYPUk7y/AjAohfHKmFpGE79zw==}
     dev: false
 
   /@types/mixpanel-browser@2.48.1:
