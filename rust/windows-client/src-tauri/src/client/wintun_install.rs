@@ -17,8 +17,6 @@ struct DllBytes {
 
 #[derive(thiserror::Error, Debug)]
 pub(crate) enum Error {
-    #[error("Can't find %LOCALAPPDATA%")]
-    CantFindLocalAppData,
     #[error("create_dir_all failed")]
     CreateDirAll,
     #[error("Computed DLL path is invalid")]
@@ -27,6 +25,8 @@ pub(crate) enum Error {
     PermissionDenied,
     #[error("platform not supported")]
     PlatformNotSupported,
+    #[error(transparent)]
+    Settings(#[from] crate::client::settings::Error),
     #[error("write failed: `{0:?}`")]
     WriteFailed(io::Error),
 }
@@ -57,10 +57,7 @@ pub(crate) fn ensure_dll() -> Result<PathBuf, Error> {
 ///
 /// e.g. `C:\Users\User\AppData\Local\dev.firezone.client\data\wintun.dll`
 pub(crate) fn dll_path() -> Result<PathBuf, Error> {
-    let path = app_local_data_dir()
-        .ok_or_else(|| Error::CantFindLocalAppData)?
-        .join("data")
-        .join("wintun.dll");
+    let path = app_local_data_dir()?.join("data").join("wintun.dll");
     Ok(path)
 }
 

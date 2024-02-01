@@ -50,8 +50,6 @@ use windows::{
 pub(crate) enum Error {
     #[error(transparent)]
     Windows(#[from] windows::core::Error),
-    #[error(transparent)]
-    Io(#[from] std::io::Error),
     #[error("couldn't stop worker thread")]
     CouldntStopWorkerThread,
 }
