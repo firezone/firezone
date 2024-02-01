@@ -192,7 +192,7 @@ dependencies {
     // JUnit
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
-    implementation("androidx.browser:browser:1.5.0")
+    implementation("androidx.browser:browser:1.7.0")
 
     // Import the BoM for the Firebase platform
     implementation(platform("com.google.firebase:firebase-bom:32.3.1"))
