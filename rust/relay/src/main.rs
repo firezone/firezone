@@ -2,8 +2,8 @@ use anyhow::{anyhow, bail, Context, Result};
 use backoff::ExponentialBackoffBuilder;
 use clap::Parser;
 use firezone_relay::{
-    AddressFamily, Allocation, AllocationId, Command, IpStack, Server, Sleep, SocketAddrExt,
-    UdpSocket,
+    AddressFamily, Allocation, AllocationId, ClientSocket, Command, IpStack, PeerSocket, Server,
+    Sleep, UdpSocket,
 };
 use futures::channel::mpsc;
 use futures::{future, FutureExt, SinkExt, StreamExt};
@@ -313,14 +313,14 @@ fn make_rng(seed: Option<u64>) -> StdRng {
 }
 
 struct Eventloop<R> {
-    inbound_data_receiver: mpsc::Receiver<(Vec<u8>, SocketAddr)>,
-    outbound_ip4_data_sender: mpsc::Sender<(Vec<u8>, SocketAddr)>,
-    outbound_ip6_data_sender: mpsc::Sender<(Vec<u8>, SocketAddr)>,
+    inbound_data_receiver: mpsc::Receiver<(Vec<u8>, ClientSocket)>,
+    outbound_ip4_data_sender: mpsc::Sender<(Vec<u8>, ClientSocket)>,
+    outbound_ip6_data_sender: mpsc::Sender<(Vec<u8>, ClientSocket)>,
     server: Server<R>,
     channel: Option<PhoenixChannel<JoinMessage, (), ()>>,
     allocations: HashMap<(AllocationId, AddressFamily), Allocation>,
-    relay_data_sender: mpsc::Sender<(Vec<u8>, SocketAddr, AllocationId)>,
-    relay_data_receiver: mpsc::Receiver<(Vec<u8>, SocketAddr, AllocationId)>,
+    relay_data_sender: mpsc::Sender<(Vec<u8>, PeerSocket, AllocationId)>,
+    relay_data_receiver: mpsc::Receiver<(Vec<u8>, PeerSocket, AllocationId)>,
     sleep: Sleep,
 
     stats_log_interval: tokio::time::Interval,
@@ -338,10 +338,8 @@ where
     ) -> Result<Self> {
         let (relay_data_sender, relay_data_receiver) = mpsc::channel(1);
         let (inbound_data_sender, inbound_data_receiver) = mpsc::channel(1000);
-        let (outbound_ip4_data_sender, outbound_ip4_data_receiver) =
-            mpsc::channel::<(Vec<u8>, SocketAddr)>(1000);
-        let (outbound_ip6_data_sender, outbound_ip6_data_receiver) =
-            mpsc::channel::<(Vec<u8>, SocketAddr)>(1000);
+        let (outbound_ip4_data_sender, outbound_ip4_data_receiver) = mpsc::channel(1000);
+        let (outbound_ip6_data_sender, outbound_ip6_data_receiver) = mpsc::channel(1000);
 
         if public_address.as_v4().is_some() {
             tokio::spawn(main_udp_socket_task(
@@ -563,8 +561,8 @@ fn fmt_human_throughput(mut throughput: f64) -> String {
 
 async fn main_udp_socket_task(
     family: AddressFamily,
-    mut inbound_data_sender: mpsc::Sender<(Vec<u8>, SocketAddr)>,
-    mut outbound_data_receiver: mpsc::Receiver<(Vec<u8>, SocketAddr)>,
+    mut inbound_data_sender: mpsc::Sender<(Vec<u8>, ClientSocket)>,
+    mut outbound_data_receiver: mpsc::Receiver<(Vec<u8>, ClientSocket)>,
 ) -> Result<Infallible> {
     let mut socket = UdpSocket::bind(family, 3478)?;
 
@@ -572,11 +570,11 @@ async fn main_udp_socket_task(
         tokio::select! {
             result = socket.recv() => {
                 let (data, sender) = result?;
-                inbound_data_sender.send((data.to_vec(), sender)).await?;
+                inbound_data_sender.send((data.to_vec(), ClientSocket::new(sender))).await?;
             }
             maybe_item = outbound_data_receiver.next() => {
                 let (data, recipient) = maybe_item.context("Outbound data channel closed")?;
-                socket.send_to(data.as_ref(), recipient).await?;
+                socket.send_to(data.as_ref(), recipient.into_socket()).await?;
             }
         }
     }

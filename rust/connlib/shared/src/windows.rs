@@ -1,5 +1,7 @@
 //! Windows-specific things like the well-known appdata path, bundle ID, etc.
 
+use crate::Error;
+use known_folders::{get_known_folder_path, KnownFolder};
 use std::path::PathBuf;
 
 /// Bundle ID / App ID that we use to distinguish ourself from other programs on the system
@@ -18,16 +20,17 @@ pub const BUNDLE_ID: &str = "dev.firezone.client";
 /// This is where we can save config, logs, crash dumps, etc.
 /// It's per-user and doesn't roam across different PCs in the same domain.
 /// It's read-write for non-elevated processes.
-pub fn app_local_data_dir() -> Option<PathBuf> {
-    let path = known_folders::get_known_folder_path(known_folders::KnownFolder::LocalAppData)?
+pub fn app_local_data_dir() -> Result<PathBuf, Error> {
+    let path = get_known_folder_path(KnownFolder::LocalAppData)
+        .ok_or(Error::CantFindLocalAppDataFolder)?
         .join(BUNDLE_ID);
-    Some(path)
+    Ok(path)
 }
 
 /// Returns the absolute path for installing and loading `wintun.dll`
 ///
 /// e.g. `C:\Users\User\AppData\Local\dev.firezone.client\data\wintun.dll`
-pub fn wintun_dll_path() -> Option<PathBuf> {
+pub fn wintun_dll_path() -> Result<PathBuf, Error> {
     let path = app_local_data_dir()?.join("data").join("wintun.dll");
-    Some(path)
+    Ok(path)
 }

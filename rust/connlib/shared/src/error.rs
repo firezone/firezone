@@ -153,6 +153,9 @@ pub enum ConnlibError {
     #[cfg(target_os = "windows")]
     #[error("Can't compute path for wintun.dll")]
     WintunDllPath,
+    #[cfg(target_os = "windows")]
+    #[error("Can't find AppData/Local folder")]
+    CantFindLocalAppDataFolder,
     #[error("Token has expired")]
     TokenExpired,
     #[error("Too many concurrent gateway connection requests")]

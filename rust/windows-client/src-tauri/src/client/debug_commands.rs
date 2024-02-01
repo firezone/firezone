@@ -2,17 +2,13 @@
 //! them with the GUI, or to exercise features programmatically.
 
 use crate::client;
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 
 #[derive(clap::Subcommand)]
 pub enum Cmd {
     Crash,
     Hostname,
     NetworkChanges,
-    TestIpc {
-        #[command(subcommand)]
-        cmd: Option<client::ipc::Subcommand>,
-    },
     Wintun,
 }
 
@@ -21,7 +17,6 @@ pub fn run(cmd: Cmd) -> Result<()> {
         Cmd::Crash => crash(),
         Cmd::Hostname => hostname(),
         Cmd::NetworkChanges => client::network_changes::run_debug(),
-        Cmd::TestIpc { cmd } => client::ipc::test_subcommand(cmd),
         Cmd::Wintun => wintun(),
     }
 }
@@ -45,8 +40,7 @@ fn hostname() -> Result<()> {
 /// Try to load wintun.dll and throw an error if it's not in the right place
 fn wintun() -> Result<()> {
     tracing_subscriber::fmt::init();
-    let path = connlib_shared::windows::wintun_dll_path()
-        .ok_or_else(|| anyhow!("can't compute wintun_dll_path"))?;
+    let path = connlib_shared::windows::wintun_dll_path()?;
     unsafe { wintun::load_from_path(&path) }?;
     tracing::info!(?path, "Loaded wintun.dll");
 

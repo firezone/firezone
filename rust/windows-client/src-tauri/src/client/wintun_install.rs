@@ -37,7 +37,7 @@ pub(crate) enum Error {
 pub(crate) fn ensure_dll() -> Result<PathBuf, Error> {
     let dll_bytes = get_dll_bytes().ok_or(Error::PlatformNotSupported)?;
 
-    let path = wintun_dll_path().ok_or(Error::CantComputeWintunPath)?;
+    let path = wintun_dll_path().map_err(|_| Error::CantComputeWintunPath)?;
     // The DLL path should always have a parent
     let dir = path.parent().ok_or(Error::DllPathInvalid)?;
     std::fs::create_dir_all(dir).map_err(|_| Error::CreateDirAll)?;

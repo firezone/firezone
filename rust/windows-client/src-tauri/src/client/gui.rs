@@ -51,11 +51,54 @@ impl Managed {
     pub async fn fault_msleep(&self, _millis: u64) {}
 }
 
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum Error {
+    #[error("Deep-link module error: {0}")]
+    DeepLink(#[from] deep_link::Error),
+    #[error("Can't show log filter error dialog: {0}")]
+    LogFilterErrorDialog(native_dialog::Error),
+    #[error("Logging module error: {0}")]
+    Logging(#[from] logging::Error),
+    #[error(transparent)]
+    Tauri(#[from] tauri::Error),
+    #[error("tokio::runtime::Runtime::new failed: {0}")]
+    TokioRuntimeNew(std::io::Error),
+
+    // `client.rs` provides a more user-friendly message when showing the error dialog box
+    #[error("WebViewNotInstalled")]
+    WebViewNotInstalled,
+}
+
 /// Runs the Tauri GUI and returns on exit or unrecoverable error
-pub(crate) fn run(params: client::GuiParams) -> Result<()> {
+pub(crate) fn run(params: client::GuiParams) -> Result<(), Error> {
     let advanced_settings = settings::load_advanced_settings().unwrap_or_default();
 
+    // If the log filter is unparsable, show an error and use the default
+    // Fixes <https://github.com/firezone/firezone/issues/3452>
+    let advanced_settings =
+        match tracing_subscriber::EnvFilter::from_str(&advanced_settings.log_filter) {
+            Ok(_) => advanced_settings,
+            Err(_) => {
+                native_dialog::MessageDialog::new()
+                    // TODO: Wording
+                    .set_title("Log filter error")
+                    .set_text(
+                        "The custom log filter is not parsable. Using the default log filter.",
+                    )
+                    .set_type(native_dialog::MessageType::Error)
+                    .show_alert()
+                    .map_err(Error::LogFilterErrorDialog)?;
+
+                AdvancedSettings {
+                    log_filter: AdvancedSettings::default().log_filter,
+                    ..advanced_settings
+                }
+            }
+        };
+
     // Start logging
+    // TODO: After <https://github.com/firezone/firezone/pull/3430> lands, try using an
+    // Arc to keep the file logger alive even if Tauri bails out
     let logging_handles = client::logging::setup(&advanced_settings.log_filter)?;
     tracing::info!("started log");
     tracing::info!("GIT_VERSION = {}", crate::client::GIT_VERSION);
@@ -78,7 +121,7 @@ pub(crate) fn run(params: client::GuiParams) -> Result<()> {
     };
 
     // Needed for the deep link server
-    let rt = tokio::runtime::Runtime::new()?;
+    let rt = tokio::runtime::Runtime::new().map_err(Error::TokioRuntimeNew)?;
     let _guard = rt.enter();
 
     if crash_on_purpose {
@@ -111,7 +154,7 @@ pub(crate) fn run(params: client::GuiParams) -> Result<()> {
 
     let tray = SystemTray::new().with_menu(system_tray_menu::signed_out());
 
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         .manage(managed)
         .on_window_event(|event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event.event() {
@@ -185,15 +228,29 @@ pub(crate) fn run(params: client::GuiParams) -> Result<()> {
 
             Ok(())
         })
-        .build(tauri::generate_context!())?
-        .run(|_app_handle, event| {
-            if let tauri::RunEvent::ExitRequested { api, .. } = event {
-                // Don't exit if we close our main window
-                // https://tauri.app/v1/guides/features/system-tray/#preventing-the-app-from-closing
+        .build(tauri::generate_context!());
 
-                api.prevent_exit();
+    let app = match app {
+        Ok(x) => x,
+        Err(error) => {
+            tracing::error!(?error, "Failed to build Tauri app instance");
+            match error {
+                tauri::Error::Runtime(tauri_runtime::Error::CreateWebview(_)) => {
+                    return Err(Error::WebViewNotInstalled);
+                }
+                error => Err(error)?,
             }
-        });
+        }
+    };
+
+    app.run(|_app_handle, event| {
+        if let tauri::RunEvent::ExitRequested { api, .. } = event {
+            // Don't exit if we close our main window
+            // https://tauri.app/v1/guides/features/system-tray/#preventing-the-app-from-closing
+
+            api.prevent_exit();
+        }
+    });
     Ok(())
 }
 

@@ -1,4 +1,4 @@
-use connlib_shared::{error::ConnlibError, messages::Interface as InterfaceConfig, Result};
+use connlib_shared::{messages::Interface as InterfaceConfig, Result};
 use ip_network::IpNetwork;
 use std::{
     io,
@@ -55,7 +55,7 @@ impl Tun {
 
         // The unsafe is here because we're loading a DLL from disk and it has arbitrary C code in it.
         // The Windows client, in `wintun_install` hashes the DLL at startup, before calling connlib, so it's unlikely for the DLL to be accidentally corrupted by the time we get here.
-        let path = connlib_shared::windows::wintun_dll_path().ok_or(ConnlibError::WintunDllPath)?;
+        let path = connlib_shared::windows::wintun_dll_path()?;
         let wintun = unsafe { wintun::load_from_path(path) }?;
         let uuid = uuid::Uuid::from_str(TUNNEL_UUID)?;
         let adapter =

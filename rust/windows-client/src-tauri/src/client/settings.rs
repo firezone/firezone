@@ -2,7 +2,7 @@
 //! advanced settings and code for manipulating diagnostic logs.
 
 use crate::client::gui::{ControllerRequest, Managed};
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use connlib_shared::windows::app_local_data_dir;
 use serde::{Deserialize, Serialize};
 use std::{path::PathBuf, time::Duration};
@@ -44,9 +44,7 @@ struct DirAndPath {
 }
 
 fn advanced_settings_path() -> Result<DirAndPath> {
-    let dir = app_local_data_dir()
-        .ok_or_else(|| anyhow!("app_local_data_dir() failed"))?
-        .join("config");
+    let dir = app_local_data_dir()?.join("config");
     let path = dir.join("advanced_settings.json");
     Ok(DirAndPath { dir, path })
 }
