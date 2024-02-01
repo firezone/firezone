@@ -1,7 +1,7 @@
 use bytecodec::{DecodeExt, EncodeExt};
 use firezone_relay::{
     AddressFamily, Allocate, AllocationId, Attribute, Binding, ChannelBind, ChannelData,
-    ClientMessage, Command, IpStack, Refresh, Server,
+    ClientMessage, ClientSocket, Command, IpStack, PeerSocket, Refresh, Server,
 };
 use rand::rngs::mock::StepRng;
 use secrecy::SecretString;
@@ -686,8 +686,8 @@ fn parse_message(message: &[u8]) -> Message<Attribute> {
 }
 
 enum Input<'a> {
-    Client(SocketAddr, ClientMessage<'a>, SystemTime),
-    Peer(SocketAddr, Vec<u8>, u16),
+    Client(ClientSocket, ClientMessage<'a>, SystemTime),
+    Peer(PeerSocket, Vec<u8>, u16),
     Time(SystemTime),
 }
 
@@ -696,11 +696,11 @@ fn from_client<'a>(
     message: impl Into<ClientMessage<'a>>,
     now: SystemTime,
 ) -> Input<'a> {
-    Input::Client(from.into(), message.into(), now)
+    Input::Client(ClientSocket::new(from.into()), message.into(), now)
 }
 
 fn from_peer<'a>(from: impl Into<SocketAddr>, data: &[u8], port: u16) -> Input<'a> {
-    Input::Peer(from.into(), data.to_vec(), port)
+    Input::Peer(PeerSocket::new(from.into()), data.to_vec(), port)
 }
 
 fn forward_time_to<'a>(when: SystemTime) -> Input<'a> {
@@ -709,22 +709,22 @@ fn forward_time_to<'a>(when: SystemTime) -> Input<'a> {
 
 #[derive(Debug)]
 enum Output<'a> {
-    SendMessage((SocketAddr, Message<Attribute>)),
-    SendChannelData((SocketAddr, ChannelData<'a>)),
-    Forward((SocketAddr, Vec<u8>, u16)),
+    SendMessage((ClientSocket, Message<Attribute>)),
+    SendChannelData((ClientSocket, ChannelData<'a>)),
+    Forward((PeerSocket, Vec<u8>, u16)),
     Wake(SystemTime),
     CreateAllocation(u16, AddressFamily),
     FreeAllocation(u16, AddressFamily),
 }
 
 fn send_message<'a>(source: impl Into<SocketAddr>, message: Message<Attribute>) -> Output<'a> {
-    Output::SendMessage((source.into(), message))
+    Output::SendMessage((ClientSocket::new(source.into()), message))
 }
 
 fn send_channel_data(source: impl Into<SocketAddr>, message: ChannelData) -> Output {
-    Output::SendChannelData((source.into(), message))
+    Output::SendChannelData((ClientSocket::new(source.into()), message))
 }
 
 fn forward(source: impl Into<SocketAddr>, data: &[u8], port: u16) -> Output {
-    Output::Forward((source.into(), data.to_vec(), port))
+    Output::Forward((PeerSocket::new(source.into()), data.to_vec(), port))
 }
