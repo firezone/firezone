@@ -170,8 +170,7 @@ mod test {
                     "payload": {
                         "ice_parameters": {
                             "username": "PvCPFevCOgkvVCtH",
-                            "password": "xEwoXEzHuSyrcgOCSRnwOXQVnbnbeGeF",
-                            "session_key": "OR2dYCLwMEtwqtjOxSm4SU7BbHJDfM8ZCqK7HKXXxDw="
+                            "password": "xEwoXEzHuSyrcgOCSRnwOXQVnbnbeGeF"
                         }
                     }
                 },
@@ -189,13 +188,13 @@ mod test {
                 "relays": [
                     {
                         "type": "stun",
-                        "uri": "stun:172.28.0.101:3478"
+                        "addr": "172.28.0.101:3478"
                     },
                     {
                         "type": "turn",
                         "username": "1719367575:ZQHcVGkdnfgGmcP1",
                         "password": "ZWYiBeFHOJyYq0mcwAXjRpcuXIJJpzWlOXVdxwttrWg",
-                        "uri": "turn:172.28.0.101:3478",
+                        "addr": "172.28.0.101:3478",
                         "expires_at": 1719367575
                     }
                 ]
