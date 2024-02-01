@@ -176,27 +176,6 @@ impl ConnlibError {
             if e.status().is_client_error()
         )
     }
-
-    /// Whether this error is fatal to the underlying connection.
-    pub fn is_fatal_connection_error(&self) -> bool {
-        if let Self::WireguardError(e) = self {
-            return matches!(
-                e,
-                WireGuardError::ConnectionExpired | WireGuardError::NoCurrentSession
-            );
-        }
-
-        // TODO:!
-        // if let Self::IceDataError(e) = self {
-        //     return matches!(
-        //         e,
-        //         webrtc::data::Error::ErrStreamClosed
-        //             | webrtc::data::Error::Sctp(webrtc::sctp::Error::ErrStreamClosed)
-        //     );
-        // }
-
-        false
-    }
 }
 
 #[cfg(target_os = "linux")]

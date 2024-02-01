@@ -191,8 +191,7 @@ where
 
 /// [`Tunnel`] state specific to clients.
 pub struct ClientState {
-    // TODO: Make private
-    pub awaiting_connection: HashMap<ResourceId, AwaitingConnectionDetails>,
+    awaiting_connection: HashMap<ResourceId, AwaitingConnectionDetails>,
     awaiting_connection_timers: StreamMap<ResourceId, Instant>,
 
     pub gateway_awaiting_connection: HashSet<GatewayId>,
@@ -674,7 +673,6 @@ impl Default for ClientState {
 
             resources_gateways: Default::default(),
             forwarded_dns_queries: BoundedQueue::with_capacity(DNS_QUERIES_QUEUE_SIZE),
-            // TODO: decide ip ranges
             ip_provider: IpProvider::new(
                 IPV4_RESOURCES.parse().unwrap(),
                 IPV6_RESOURCES.parse().unwrap(),
