@@ -3,6 +3,15 @@
 //! Mostly copied from <https://github.com/EmbarkStudios/crash-handling/blob/main/minidumper/examples/diskwrite.rs>
 //!
 //! TODO: Capture crash dumps on panic.
+//!
+//! To get human-usable stack traces out of a dump, do this:
+//! (Copied from <https://github.com/firezone/firezone/issues/3111#issuecomment-1887975171>)
+//!
+//! - Get the pdb corresponding to the client exe
+//! - `cargo install dump_syms`
+//! - Use dump_syms to convert the pdb to a syms file
+//! - Compile `minidump-stackwalk` with PR 891 merged
+//! - `minidump-stackwalker --symbols-path firezone.syms crash.dmp`
 
 use crate::client::settings::app_local_data_dir;
 use anyhow::{anyhow, bail, Context, Result};
