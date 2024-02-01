@@ -41,6 +41,7 @@
 		8DCC021D28D512AC007E12D2 /* FirezoneApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8DCC021C28D512AC007E12D2 /* FirezoneApp.swift */; };
 		8DCC022628D512AE007E12D2 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 8DCC022528D512AE007E12D2 /* Assets.xcassets */; };
 		8DCC022A28D512AE007E12D2 /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 8DCC022928D512AE007E12D2 /* Preview Assets.xcassets */; };
+		E555B3822B6B3FE10043A3B6 /* SystemConfiguration.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E555B3812B6B3FE10043A3B6 /* SystemConfiguration.framework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -128,6 +129,7 @@
 		8DCC022928D512AE007E12D2 /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
 		8DD2C4C3297B37BA00F984BF /* FirezoneKit */ = {isa = PBXFileReference; lastKnownFileType = wrapper; path = FirezoneKit; sourceTree = "<group>"; };
 		8DDD0E8B2ADC6657001FA7E9 /* config.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; name = config.xcconfig; path = xcconfig/config.xcconfig; sourceTree = "<group>"; };
+		E555B3812B6B3FE10043A3B6 /* SystemConfiguration.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SystemConfiguration.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS16.4.sdk/System/Library/Frameworks/SystemConfiguration.framework; sourceTree = DEVELOPER_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -135,6 +137,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				E555B3822B6B3FE10043A3B6 /* SystemConfiguration.framework in Frameworks */,
 				8DC08BD42B297B8200675F46 /* libresolv.tbd in Frameworks */,
 				8DC08BCB2B296C4500675F46 /* libresolv.9.tbd in Frameworks */,
 				794C38152970A2660029F38F /* FirezoneKit in Frameworks */,
@@ -203,6 +206,7 @@
 		8D3F90C328D64FAD00980124 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
+				E555B3812B6B3FE10043A3B6 /* SystemConfiguration.framework */,
 				8DC08BD12B297B7B00675F46 /* libresolv.tbd */,
 				8DC08BD32B297B8200675F46 /* libresolv.tbd */,
 				8DC08BCA2B296C4500675F46 /* libresolv.9.tbd */,
