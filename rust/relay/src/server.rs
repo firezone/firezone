@@ -858,7 +858,7 @@ where
         id: AllocationId,
         now: SystemTime,
     ) {
-        self.channels_by_client_and_number.insert(
+        let existing = self.channels_by_client_and_number.insert(
             (client, requested_channel),
             Channel {
                 expiry: now + CHANNEL_BINDING_DURATION,
@@ -867,8 +867,13 @@ where
                 bound: true,
             },
         );
-        self.channel_numbers_by_peer
+        debug_assert!(existing.is_none());
+
+        let existing = self
+            .channel_numbers_by_peer
             .insert(peer_address, requested_channel);
+
+        debug_assert!(existing.is_none());
     }
 
     fn send_message(&mut self, message: Message<Attribute>, recipient: SocketAddr) {
