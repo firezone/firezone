@@ -44,8 +44,11 @@ updates:
     schedule:
       interval: monthly
     groups:
+      com.squareup.moshi:
+        patterns:
+          - com.squareup.moshi.*
       com.android:
-        patters:
+        patterns:
           - com.android.*
     ignore:
       # Depends on JDK version which is bundled with Android Studio (JDK 17)
