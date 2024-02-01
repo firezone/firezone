@@ -6,7 +6,7 @@ defmodule Web.Relays.Show do
     with true <- Config.self_hosted_relays_enabled?(),
          {:ok, relay} <-
            Relays.fetch_relay_by_id(id, socket.assigns.subject, preload: :group) do
-      :ok = Relays.subscribe_for_relays_presence_in_group(relay.group)
+      :ok = Relays.subscribe_to_relays_presence_in_group(relay.group)
       socket = assign(socket, relay: relay, page_title: "Relay #{relay.name}")
       {:ok, socket}
     else

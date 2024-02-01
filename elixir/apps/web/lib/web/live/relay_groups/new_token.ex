@@ -8,7 +8,7 @@ defmodule Web.RelayGroups.NewToken do
       {group, env} =
         if connected?(socket) do
           {:ok, encoded_token} = Relays.create_token(group, %{}, socket.assigns.subject)
-          :ok = Relays.subscribe_for_relays_presence_in_group(group)
+          :ok = Relays.subscribe_to_relays_presence_in_group(group)
           {group, env(encoded_token)}
         else
           {group, nil}
@@ -76,7 +76,10 @@ defmodule Web.RelayGroups.NewToken do
               >sudo nano /etc/systemd/system/firezone-relay.service</.code_block>
 
               <p class="p-4">
-                3. Copy-paste the following contents into the file:
+                3. Copy-paste the following contents into the file and replace
+                <code>PUBLIC_IP4_ADDR</code>
+                and <code>PUBLIC_IP6_ADDR</code>
+                with your public IP addresses:
               </p>
 
               <.code_block
@@ -332,7 +335,10 @@ defmodule Web.RelayGroups.NewToken do
     {:noreply, assign(socket, selected_tab: id)}
   end
 
-  def handle_info(%Phoenix.Socket.Broadcast{topic: "relay_groups:" <> _group_id}, socket) do
+  def handle_info(
+        %Phoenix.Socket.Broadcast{topic: "presences:group_relays:" <> _group_id},
+        socket
+      ) do
     {:noreply, assign(socket, connected?: true)}
   end
 end

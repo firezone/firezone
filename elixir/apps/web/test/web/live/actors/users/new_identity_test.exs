@@ -186,10 +186,9 @@ defmodule Web.Live.Actors.User.NewIdentityTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/actors/users/#{actor}/new_identity")
 
-    assert lv
-           |> form("form", identity: attrs)
-           |> render_submit()
-           |> form_validation_errors() == %{}
+    lv
+    |> form("form", identity: attrs)
+    |> render_submit()
 
     assert identity =
              Repo.get_by(Domain.Auth.Identity, provider_identifier: attrs.provider_identifier)

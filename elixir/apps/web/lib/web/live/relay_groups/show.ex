@@ -11,7 +11,7 @@ defmodule Web.RelayGroups.Show do
                created_by_identity: [:actor]
              ]
            ) do
-      :ok = Relays.subscribe_for_relays_presence_in_group(group)
+      :ok = Relays.subscribe_to_relays_presence_in_group(group)
       socket = assign(socket, group: group, page_title: "Relay Group #{group.name}")
       {:ok, socket}
     else
@@ -112,7 +112,10 @@ defmodule Web.RelayGroups.Show do
     """
   end
 
-  def handle_info(%Phoenix.Socket.Broadcast{topic: "relay_groups:" <> _account_id}, socket) do
+  def handle_info(
+        %Phoenix.Socket.Broadcast{topic: "presences:relay_groups:" <> _account_id},
+        socket
+      ) do
     {:ok, group} =
       Relays.fetch_group_by_id(socket.assigns.group.id, socket.assigns.subject,
         preload: [
@@ -126,11 +129,11 @@ defmodule Web.RelayGroups.Show do
 
   def handle_event("revoke_all_tokens", _params, socket) do
     group = socket.assigns.group
-    {:ok, deleted_count} = Tokens.delete_tokens_for(group, socket.assigns.subject)
+    {:ok, deleted_tokens} = Tokens.delete_tokens_for(group, socket.assigns.subject)
 
     socket =
       socket
-      |> put_flash(:info, "#{deleted_count} token(s) were revoked.")
+      |> put_flash(:info, "#{length(deleted_tokens)} token(s) were revoked.")
 
     {:noreply, socket}
   end

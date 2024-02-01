@@ -140,7 +140,7 @@ android {
 
 dependencies {
     val coreVersion = "1.12.0"
-    val navVersion = "2.7.4"
+    val navVersion = "2.7.6"
 
     // AndroidX
     implementation("androidx.core:core-ktx:$coreVersion")
@@ -148,10 +148,10 @@ dependencies {
     implementation("androidx.preference:preference-ktx:1.2.0")
 
     // Material
-    implementation("com.google.android.material:material:1.8.0")
+    implementation("com.google.android.material:material:1.11.0")
 
     // Lifecycle
-    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.6.1")
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
     implementation("androidx.lifecycle:lifecycle-extensions:2.2.0")
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.6.1")
     implementation("androidx.lifecycle:lifecycle-livedata-ktx:2.6.1")
@@ -180,8 +180,8 @@ dependencies {
     implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
 
     // Moshi
-    implementation("com.squareup.moshi:moshi-kotlin:1.15.0")
-    implementation("com.squareup.moshi:moshi:1.15.0")
+    implementation("com.squareup.moshi:moshi-kotlin:1.15.1")
+    implementation("com.squareup.moshi:moshi:1.15.1")
 
     // Gson
     implementation("com.google.code.gson:gson:2.10.1")
@@ -192,7 +192,7 @@ dependencies {
     // JUnit
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
-    implementation("androidx.browser:browser:1.5.0")
+    implementation("androidx.browser:browser:1.7.0")
 
     // Import the BoM for the Firebase platform
     implementation(platform("com.google.firebase:firebase-bom:32.3.1"))

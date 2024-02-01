@@ -242,24 +242,4 @@ defmodule Web.Live.Clients.ShowTest do
              {:error,
               {:live_redirect, %{to: ~p"/#{account}/clients/#{client}/edit", kind: :push}}}
   end
-
-  test "allows deleting clients", %{
-    account: account,
-    client: client,
-    identity: identity,
-    conn: conn
-  } do
-    {:ok, lv, _html} =
-      conn
-      |> authorize_conn(identity)
-      |> live(~p"/#{account}/clients/#{client}")
-
-    lv
-    |> element("button", "Delete Client")
-    |> render_click()
-
-    assert_redirected(lv, ~p"/#{account}/clients")
-
-    assert Repo.get(Domain.Clients.Client, client.id).deleted_at
-  end
 end

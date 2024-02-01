@@ -42,6 +42,16 @@ defmodule Domain.Actors.Group.Query do
     where(queryable, [groups: groups], groups.provider_identifier == ^provider_identifier)
   end
 
+  def delete(queryable \\ not_deleted()) do
+    queryable
+    |> Ecto.Query.select([groups: groups], groups)
+    |> Ecto.Query.update([groups: groups],
+      set: [
+        deleted_at: fragment("COALESCE(?, NOW())", groups.deleted_at)
+      ]
+    )
+  end
+
   def group_by_provider_id(queryable \\ not_deleted()) do
     queryable
     |> group_by([groups: groups], groups.provider_id)

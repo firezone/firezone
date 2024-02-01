@@ -78,8 +78,8 @@ dependencies:
     specifier: 18.2.0
     version: 18.2.0(react@18.2.0)
   react-fast-marquee:
-    specifier: ^1.6.2
-    version: 1.6.2(react-dom@18.2.0)(react@18.2.0)
+    specifier: ^1.6.3
+    version: 1.6.3(react-dom@18.2.0)(react@18.2.0)
   react-icons:
     specifier: ^5.0.1
     version: 5.0.1(react@18.2.0)
@@ -119,8 +119,8 @@ devDependencies:
     specifier: ^1.0.3
     version: 1.0.3(tailwindcss@3.4.1)
   hastscript:
-    specifier: ^8.0.0
-    version: 8.0.0
+    specifier: ^9.0.0
+    version: 9.0.0
   typescript:
     specifier: 5.3.3
     version: 5.3.3
@@ -1586,6 +1586,17 @@ packages:
       hast-util-parse-selector: 4.0.0
       property-information: 6.4.0
       space-separated-tokens: 2.0.2
+    dev: false
+
+  /hastscript@9.0.0:
+    resolution: {integrity: sha512-jzaLBGavEDKHrc5EfFImKN7nZKKBdSLIdGvCwDZ9TfzbF2ffXiov8CKE445L2Z1Ek2t/m4SKQ2j6Ipv7NyUolw==}
+    dependencies:
+      '@types/hast': 3.0.3
+      comma-separated-tokens: 2.0.3
+      hast-util-parse-selector: 4.0.0
+      property-information: 6.4.0
+      space-separated-tokens: 2.0.2
+    dev: true
 
   /highlight.js@10.7.3:
     resolution: {integrity: sha512-tzcUFauisWKNHaRkN4Wjl/ZA07gENAjFl3J/c480dprkGTg5EQstgaNFqBfUqCq54kZRIEcreTsAgF/m2quD7A==}
@@ -2962,8 +2973,8 @@ packages:
       scheduler: 0.23.0
     dev: false
 
-  /react-fast-marquee@1.6.2(react-dom@18.2.0)(react@18.2.0):
-    resolution: {integrity: sha512-bXUuW1r+Yzd8ZjsPmMDy8WJMubHAZd/7n0W/IzUQHtd0iBfxWohP6hzCFnEHWMCOtC9wxSAq/BiEnig4kdI2Vw==}
+  /react-fast-marquee@1.6.3(react-dom@18.2.0)(react@18.2.0):
+    resolution: {integrity: sha512-oEISmNElv6lua/4i4uPYIteUKDxU0hAKKjH/tY2icje4GCns1rX6pIrkwVhjX0FMCIepUVqeyCchvqkiO/s2vw==}
     peerDependencies:
       react: '>= 16.8.0 || 18.0.0'
       react-dom: '>= 16.8.0 || 18.0.0'

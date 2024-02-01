@@ -172,10 +172,10 @@ defmodule API.Client.SocketTest do
 
   describe "id/1" do
     test "creates a channel for a client" do
-      client = Fixtures.Clients.create_client()
-      socket = socket(API.Client.Socket, "", %{client: client})
+      subject = Fixtures.Auth.create_subject(type: :client)
+      socket = socket(API.Client.Socket, "", %{subject: subject})
 
-      assert id(socket) == "client:#{client.id}"
+      assert id(socket) == "sessions:#{subject.token_id}"
     end
   end
 

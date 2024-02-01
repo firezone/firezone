@@ -98,10 +98,10 @@ defmodule API.Gateway.SocketTest do
 
   describe "id/1" do
     test "creates a channel for a gateway" do
-      gateway = Fixtures.Gateways.create_gateway()
-      socket = socket(API.Gateway.Socket, "", %{gateway: gateway})
+      subject = Fixtures.Auth.create_subject(type: :client)
+      socket = socket(API.Gateway.Socket, "", %{token_id: subject.token_id})
 
-      assert id(socket) == "gateway:#{gateway.id}"
+      assert id(socket) == "sessions:#{subject.token_id}"
     end
   end
 

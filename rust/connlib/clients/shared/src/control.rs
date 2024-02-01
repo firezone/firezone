@@ -199,13 +199,8 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    fn remove_resource(&self, id: ResourceId) {
-        todo!()
-    }
-
-    #[tracing::instrument(level = "trace", skip(self))]
-    fn update_resource(&self, resource_description: ResourceDescription) {
-        todo!()
+    fn resource_deleted(&self, id: ResourceId) {
+        // TODO
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
@@ -284,13 +279,15 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
     ) -> Result<()> {
         match msg {
             Messages::Init(init) => self.init(init).await?,
+            Messages::ConfigChanged(_update) => {
+                tracing::info!("Runtime config updates not yet implemented");
+            }
             Messages::ConnectionDetails(connection_details) => {
                 self.connection_details(connection_details, reference)
             }
             Messages::Connect(connect) => self.connect(connect),
-            Messages::ResourceAdded(resource) => self.add_resource(resource),
-            Messages::ResourceRemoved(resource) => self.remove_resource(resource.id),
-            Messages::ResourceUpdated(resource) => self.update_resource(resource),
+            Messages::ResourceCreatedOrUpdated(resource) => self.add_resource(resource),
+            Messages::ResourceDeleted(resource) => self.resource_deleted(resource.0),
             Messages::IceCandidates(ice_candidate) => self.add_ice_candidate(ice_candidate).await,
             Messages::SignedLogUrl(url) => {
                 let Some(path) = self.tunnel.callbacks().roll_log_file() else {
@@ -343,8 +340,8 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                 ))),
                 _,
             )
-            | (ChannelError::ErrorMsg(Error::TokenExpired), _) => {
-                return Err(Error::TokenExpired);
+            | (ChannelError::ErrorMsg(Error::ClosedByPortal), _) => {
+                return Err(Error::ClosedByPortal);
             }
             _ => {}
         }

@@ -29,6 +29,9 @@ config :api, API.Endpoint, server: true
 config :phoenix, :filter_parameters, [
   "password",
   "secret",
+  "nonce",
+  "fragment",
+  "state",
   "token",
   "public_key",
   "private_key",
@@ -50,7 +53,7 @@ config :logger,
 config :logger_json, :backend,
   json_encoder: Jason,
   formatter: LoggerJSON.Formatters.GoogleCloudLogger,
-  metadata: :all
+  metadata: {:all_except, [:socket, :conn]}
 
 config :logger, level: :info
 

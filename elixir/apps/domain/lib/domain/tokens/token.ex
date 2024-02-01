@@ -48,6 +48,8 @@ defmodule Domain.Tokens.Token do
     field :created_by_user_agent, :string
     field :created_by_remote_ip, Domain.Types.IP
 
+    has_many :clients, Domain.Clients.Client, foreign_key: :last_used_token_id
+
     field :expires_at, :utc_datetime_usec
     field :deleted_at, :utc_datetime_usec
     timestamps()

@@ -103,6 +103,10 @@ defmodule Domain.Auth.Identity.Query do
     lock(queryable, "FOR UPDATE")
   end
 
+  def returning_ids(queryable \\ not_deleted()) do
+    select(queryable, [identities: identities], identities.id)
+  end
+
   def group_by_provider_id(queryable \\ not_deleted()) do
     queryable
     |> group_by([identities: identities], identities.provider_id)
@@ -110,6 +114,17 @@ defmodule Domain.Auth.Identity.Query do
       provider_id: identities.provider_id,
       count: count(identities.id)
     })
+  end
+
+  def delete(queryable \\ not_deleted()) do
+    queryable
+    |> Ecto.Query.select([identities: identities], identities)
+    |> Ecto.Query.update([identities: identities],
+      set: [
+        deleted_at: fragment("COALESCE(?, NOW())", identities.deleted_at),
+        provider_state: ^%{}
+      ]
+    )
   end
 
   def with_preloaded_assoc(queryable \\ not_deleted(), type \\ :left, assoc) do
