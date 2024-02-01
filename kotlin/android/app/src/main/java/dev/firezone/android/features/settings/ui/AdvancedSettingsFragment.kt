@@ -13,7 +13,7 @@ import dev.firezone.android.databinding.FragmentSettingsAdvancedBinding
 class AdvancedSettingsFragment : Fragment(R.layout.fragment_settings_advanced) {
     private var _binding: FragmentSettingsAdvancedBinding? = null
 
-    private val binding get() = _binding!!
+    val binding get() = _binding!!
 
     private val viewModel: SettingsViewModel by activityViewModels()
 
