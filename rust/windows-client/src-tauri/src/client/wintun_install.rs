@@ -1,6 +1,6 @@
 //! "Installs" wintun.dll at runtime by copying it into whatever folder the exe is in
 
-use crate::client::settings::app_local_data_dir;
+use connlib_shared::windows::wintun_dll_path;
 use ring::digest;
 use std::{
     fs,
@@ -17,6 +17,8 @@ struct DllBytes {
 
 #[derive(thiserror::Error, Debug)]
 pub(crate) enum Error {
+    #[error("Can't compute path where wintun.dll should be installed")]
+    CantComputeWintunPath,
     #[error("create_dir_all failed")]
     CreateDirAll,
     #[error("Computed DLL path is invalid")]
@@ -25,8 +27,6 @@ pub(crate) enum Error {
     PermissionDenied,
     #[error("platform not supported")]
     PlatformNotSupported,
-    #[error(transparent)]
-    Settings(#[from] crate::client::settings::Error),
     #[error("write failed: `{0:?}`")]
     WriteFailed(io::Error),
 }
@@ -37,7 +37,7 @@ pub(crate) enum Error {
 pub(crate) fn ensure_dll() -> Result<PathBuf, Error> {
     let dll_bytes = get_dll_bytes().ok_or(Error::PlatformNotSupported)?;
 
-    let path = dll_path()?;
+    let path = wintun_dll_path().map_err(|_| Error::CantComputeWintunPath)?;
     // The DLL path should always have a parent
     let dir = path.parent().ok_or(Error::DllPathInvalid)?;
     std::fs::create_dir_all(dir).map_err(|_| Error::CreateDirAll)?;
@@ -50,14 +50,6 @@ pub(crate) fn ensure_dll() -> Result<PathBuf, Error> {
             _ => Error::WriteFailed(e),
         })?;
     }
-    Ok(path)
-}
-
-/// Returns the absolute path where the DLL should be
-///
-/// e.g. `C:\Users\User\AppData\Local\dev.firezone.client\data\wintun.dll`
-pub(crate) fn dll_path() -> Result<PathBuf, Error> {
-    let path = app_local_data_dir()?.join("data").join("wintun.dll");
     Ok(path)
 }
 

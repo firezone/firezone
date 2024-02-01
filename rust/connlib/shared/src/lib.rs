@@ -9,6 +9,9 @@ pub mod control;
 pub mod error;
 pub mod messages;
 
+#[cfg(target_os = "windows")]
+pub mod windows;
+
 pub use callbacks::Callbacks;
 pub use callbacks_error_facade::CallbackErrorFacade;
 pub use error::ConnlibError as Error;
