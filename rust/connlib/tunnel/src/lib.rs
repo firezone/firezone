@@ -214,8 +214,20 @@ where
             }
         }
 
-        let relay_socket_v4 = Socket::bind((IpAddr::from(Ipv4Addr::UNSPECIFIED), 0));
-        let relay_socket_v6 = Socket::bind((IpAddr::from(Ipv6Addr::UNSPECIFIED), 0));
+        // TODO: We need to make this dynamic and cannot fail on missing IPv4 or IPv6.
+        let ip4_addr = if_watcher
+            .iter()
+            .map(|ip| ip.addr())
+            .find(|addr| addr.is_ipv4() && !addr.is_loopback())
+            .expect("must have a non-loopback IPv4 interface");
+        let ip6_addr = if_watcher
+            .iter()
+            .map(|ip| ip.addr())
+            .find(|addr| addr.is_ipv6() && !addr.is_loopback())
+            .expect("must have a non-loopback IPv6 interface");
+
+        let relay_socket_v4 = Socket::bind((ip4_addr, 0));
+        let relay_socket_v6 = Socket::bind((ip6_addr, 0));
 
         relay_socket_v4
             .as_ref()
