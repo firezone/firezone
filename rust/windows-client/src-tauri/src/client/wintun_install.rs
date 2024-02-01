@@ -34,6 +34,7 @@ pub(crate) enum Error {
 /// Installs the DLL in %LOCALAPPDATA% and returns the DLL's absolute path
 ///
 /// e.g. `C:\Users\User\AppData\Local\dev.firezone.client\data\wintun.dll`
+/// Also verifies the SHA256 of the DLL on-disk with the expected bytes packed into the exe
 pub(crate) fn ensure_dll() -> Result<PathBuf, Error> {
     let dll_bytes = get_dll_bytes().ok_or(Error::PlatformNotSupported)?;
 
@@ -44,6 +45,7 @@ pub(crate) fn ensure_dll() -> Result<PathBuf, Error> {
     tracing::info!(?path, "wintun.dll path");
 
     // This hash check is not meant to protect against attacks. It only lets us skip redundant disk writes, and it updates the DLL if needed.
+    // `tun_windows.rs` in connlib, and `elevation.rs`, rely on thia.
     if !dll_already_exists(&path, &dll_bytes) {
         fs::write(&path, dll_bytes.bytes).map_err(|e| match e.kind() {
             io::ErrorKind::PermissionDenied => Error::PermissionDenied,

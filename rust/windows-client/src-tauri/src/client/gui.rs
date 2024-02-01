@@ -1,7 +1,7 @@
 //! The Tauri GUI for Windows
 //! This is not checked or compiled on other platforms.
 
-// TODO: `git grep` for unwraps before 1.0, especially this gui module
+// TODO: `git grep` for unwraps before 1.0, especially this gui module <https://github.com/firezone/firezone/issues/3521>
 
 use crate::client::{
     self, about, deep_link, logging, network_changes,
@@ -80,7 +80,6 @@ pub(crate) fn run(params: client::GuiParams) -> Result<(), Error> {
             Ok(_) => advanced_settings,
             Err(_) => {
                 native_dialog::MessageDialog::new()
-                    // TODO: Wording
                     .set_title("Log filter error")
                     .set_text(
                         "The custom log filter is not parsable. Using the default log filter.",
@@ -130,6 +129,8 @@ pub(crate) fn run(params: client::GuiParams) -> Result<(), Error> {
             tracing::info!("Will crash on purpose in {delay} seconds to test crash handling.");
             tokio::time::sleep(std::time::Duration::from_secs(delay)).await;
             tracing::info!("Crashing on purpose because of `--crash-on-purpose` flag");
+
+            // SAFETY: Crashing is unsafe
             unsafe { sadness_generator::raise_segfault() }
         });
     }
@@ -423,7 +424,7 @@ impl Controller {
             self.advanced_settings.api_url.clone(),
             token,
             self.device_id.clone(),
-            None, // TODO: Send device name here (windows computer name)
+            None, // `get_host_name` over in connlib gets the system's name automatically
             None,
             callback_handler.clone(),
             Some(MAX_PARTITION_TIME),
@@ -457,16 +458,12 @@ impl Controller {
     }
 
     async fn handle_deep_link(&mut self, url: &url::Url) -> Result<()> {
-        let Some(auth_response) = client::deep_link::parse_auth_callback(url) else {
-            // TODO: `bail` is redundant here, just do `.context("")?;` since it's `anyhow`
-            bail!("couldn't parse scheme request");
-        };
+        let auth_response =
+            client::deep_link::parse_auth_callback(url).context("Couldn't parse scheme request")?;
 
         let token = self.auth.handle_response(auth_response)?;
-        if let Err(e) = self.start_session(token) {
-            // TODO: Replace `bail` with `context` here too
-            bail!("couldn't start session: {e:#?}");
-        }
+        self.start_session(token)
+            .context("Couldn't start connlib session")?;
         Ok(())
     }
 
@@ -474,6 +471,8 @@ impl Controller {
     fn build_system_tray_menu(&self) -> tauri::SystemTrayMenu {
         // TODO: Refactor this and the auth module so that "Are we logged in"
         // doesn't require such complicated control flow to answer.
+        // TODO: Show some "Waiting for portal..." state if we got the deep link but
+        // haven't got `on_tunnel_ready` yet.
         if let Some(auth_session) = self.auth.session() {
             if let Some(connlib_session) = &self.session {
                 if self.tunnel_ready {
@@ -543,7 +542,7 @@ impl Controller {
     }
 }
 
-// TODO: After PR #2960 lands, move some of this into `impl Controller`
+// TODO: Move this into `impl Controller`
 async fn run_controller(
     app: tauri::AppHandle,
     ctlr_tx: CtlrTx,
