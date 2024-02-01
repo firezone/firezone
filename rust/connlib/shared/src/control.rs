@@ -210,7 +210,6 @@ where
         Ok(())
     }
 
-    #[tracing::instrument(level = "trace", skip(handler))]
     async fn message_process(handler: &F, message: tungstenite::Message) -> Result<()> {
         tracing::trace!("{message:?}");
 
