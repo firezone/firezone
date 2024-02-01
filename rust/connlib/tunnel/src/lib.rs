@@ -312,7 +312,7 @@ where
 
             match ready!(self.if_watcher.poll_if_event(cx)) {
                 Ok(ev) => match ev {
-                    if_watch::IfEvent::Up(ip) => {
+                    if_watch::IfEvent::Up(ip) if !ip.addr().is_loopback() => {
                         // TODO: filter firezone-tun candidates(we could retrieve the ip or just ignore CGNAT)
                         tracing::info!(address = %ip.addr(), "New local interface address found");
                         match self.sockets.udp_sockets.bind((ip.addr(), 0)) {
@@ -325,11 +325,12 @@ where
                             }
                         }
                     }
-                    if_watch::IfEvent::Down(ip) => {
+                    if_watch::IfEvent::Down(ip) if !ip.addr().is_loopback() => {
                         tracing::info!(address = %ip.addr(), "Interface IP no longer available");
                         self.sockets.udp_sockets.unbind(ip.addr());
                         // TODO: remove local interface
                     }
+                    _ => {}
                 },
                 Err(e) => {
                     tracing::debug!("Error while polling interfces: {e:#?}");
