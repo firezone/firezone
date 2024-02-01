@@ -53,7 +53,7 @@ impl Tun {
         // wintun automatically appends " Tunnel" to this
         const TUNNEL_NAME: &str = "Firezone";
 
-        // The unsafe is here because we're loading a DLL from disk and it has arbitrary C code in it.
+        // SAFETY: we're loading a DLL from disk and it has arbitrary C code in it.
         // The Windows client, in `wintun_install` hashes the DLL at startup, before calling connlib, so it's unlikely for the DLL to be accidentally corrupted by the time we get here.
         let wintun = unsafe { wintun::load_from_path("./wintun.dll") }?;
         let uuid = uuid::Uuid::from_str(TUNNEL_UUID)?;
@@ -116,7 +116,10 @@ impl Tun {
         set_iface_config(adapter.get_luid(), DEFAULT_MTU)?;
 
         // Set our DNS IP as the DNS server for our interface
-        // TODO: Lots of issues with this. Windows does seem to use it, but I'm not sure why. And there's a delay before some Firefox windows pick it up. Curl might be picking it up faster because its DNS cache starts cold every time.
+        // TODO: Known issue where web browsers will keep a connection open to a site,
+        // using QUIC, HTTP/2, or even HTTP/1.1, and so they won't resolve the DNS
+        // again unless you let that connection time out:
+        // <https://github.com/firezone/firezone/issues/3113#issuecomment-1882096111>
         Command::new("powershell")
             .creation_flags(CREATE_NO_WINDOW)
             .arg("-Command")
@@ -151,7 +154,7 @@ impl Tun {
     pub fn add_route(&self, route: IpNetwork) -> Result<()> {
         tracing::debug!("add_route {route}");
         let mut row = MIB_IPFORWARD_ROW2::default();
-        // Safety: Windows shouldn't store the reference anywhere, it's just setting defaults
+        // SAFETY: Windows shouldn't store the reference anywhere, it's just setting defaults
         unsafe { InitializeIpForwardEntry(&mut row) };
 
         let prefix = &mut row.DestinationPrefix;
@@ -169,7 +172,7 @@ impl Tun {
         row.InterfaceIndex = self.iface_idx;
         row.Metric = 0;
 
-        // Safety: Windows shouldn't store the reference anywhere, it's just a way to pass lots of arguments at once.
+        // SAFETY: Windows shouldn't store the reference anywhere, it's just a way to pass lots of arguments at once. And no other thread sees this variable.
         match unsafe { CreateIpForwardEntry2(&row) } {
             Ok(_) => {}
             Err(e) => {
@@ -218,8 +221,9 @@ impl Tun {
     }
 
     fn write(&self, bytes: &[u8]) -> io::Result<usize> {
-        // TODO: If the ring buffer is full, don't panic, just return Ok(None) or an error or whatever the Unix impls do
-        // Don't block.
+        // TODO: If the ring buffer is full, don't panic, just return Ok(None) or an error or whatever the Unix impls do.
+        // <https://github.com/firezone/firezone/issues/3518>
+        // Make sure this doesn't block.
         let mut pkt = self
             .session
             .allocate_send_packet(bytes.len().try_into().unwrap())
@@ -240,7 +244,6 @@ fn start_recv_thread(
             loop {
                 match session.receive_blocking() {
                     Ok(pkt) => {
-                        // TODO: Don't allocate here if we can help it
                         if packet_tx.blocking_send(pkt).is_err() {
                             // Most likely the receiver was dropped and we're closing down the connlib session.
                             break;
@@ -260,7 +263,7 @@ fn start_recv_thread(
 /// Sets MTU on the interface
 /// TODO: Set IP and other things in here too, so the code is more organized
 fn set_iface_config(luid: wintun::NET_LUID_LH, mtu: u32) -> Result<()> {
-    // Safety: Both NET_LUID_LH unions should be the same. We're just copying out
+    // SAFETY: Both NET_LUID_LH unions should be the same. We're just copying out
     // the u64 value and re-wrapping it, since wintun doesn't refer to the windows
     // crate's version of NET_LUID_LH.
     let luid = NET_LUID_LH {
@@ -275,6 +278,7 @@ fn set_iface_config(luid: wintun::NET_LUID_LH, mtu: u32) -> Result<()> {
             ..Default::default()
         };
 
+        // SAFETY: TODO
         unsafe { GetIpInterfaceEntry(&mut row) }?;
 
         // https://stackoverflow.com/questions/54857292/setipinterfaceentry-returns-error-invalid-parameter
@@ -282,6 +286,8 @@ fn set_iface_config(luid: wintun::NET_LUID_LH, mtu: u32) -> Result<()> {
 
         // Set MTU for IPv4
         row.NlMtu = mtu;
+
+        // SAFETY: TODO
         unsafe { SetIpInterfaceEntry(&mut row) }?;
     }
 
@@ -293,6 +299,7 @@ fn set_iface_config(luid: wintun::NET_LUID_LH, mtu: u32) -> Result<()> {
             ..Default::default()
         };
 
+        // SAFETY: TODO
         unsafe { GetIpInterfaceEntry(&mut row) }?;
 
         // https://stackoverflow.com/questions/54857292/setipinterfaceentry-returns-error-invalid-parameter
@@ -300,6 +307,8 @@ fn set_iface_config(luid: wintun::NET_LUID_LH, mtu: u32) -> Result<()> {
 
         // Set MTU for IPv4
         row.NlMtu = mtu;
+
+        // SAFETY: TODO
         unsafe { SetIpInterfaceEntry(&mut row) }?;
     }
     Ok(())
