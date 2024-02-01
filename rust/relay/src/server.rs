@@ -61,7 +61,7 @@ pub struct Server<R> {
     highest_port: u16,
 
     channels_by_client_and_number: HashMap<(SocketAddr, u16), Channel>,
-    channel_numbers_by_peer: HashMap<SocketAddr, u16>,
+    channel_numbers_by_client_and_peer: HashMap<(SocketAddr, SocketAddr), u16>,
 
     pending_commands: VecDeque<Command>,
     next_allocation_id: AllocationId,
@@ -187,7 +187,7 @@ where
             lowest_port,
             highest_port,
             channels_by_client_and_number: Default::default(),
-            channel_numbers_by_peer: Default::default(),
+            channel_numbers_by_client_and_peer: Default::default(),
             pending_commands: Default::default(),
             next_allocation_id: AllocationId(1),
             auth_secret: SecretString::from(hex::encode(rng.gen::<[u8; 32]>())),
@@ -337,7 +337,10 @@ where
 
         Span::current().record("recipient", field::display(&recipient));
 
-        let Some(channel_number) = self.channel_numbers_by_peer.get(&sender) else {
+        let Some(channel_number) = self
+            .channel_numbers_by_client_and_peer
+            .get(&(*recipient, sender))
+        else {
             tracing::debug!(target: "relay", "no active channel, refusing to relay {} bytes", bytes.len());
             return;
         };
@@ -656,7 +659,10 @@ where
         }
 
         // Ensure the same address isn't already bound to a different channel.
-        if let Some(number) = self.channel_numbers_by_peer.get(&peer_address) {
+        if let Some(number) = self
+            .channel_numbers_by_client_and_peer
+            .get(&(sender, peer_address))
+        {
             if number != &requested_channel {
                 tracing::warn!(target: "relay", existing_channel = %number, "Peer is already bound to another channel");
 
@@ -870,8 +876,8 @@ where
         debug_assert!(existing.is_none());
 
         let existing = self
-            .channel_numbers_by_peer
-            .insert(peer_address, requested_channel);
+            .channel_numbers_by_client_and_peer
+            .insert((client, peer_address), requested_channel);
 
         debug_assert!(existing.is_none());
     }
@@ -962,7 +968,9 @@ where
 
         let addr = channel.peer_address;
 
-        let _peer_channel = self.channel_numbers_by_peer.remove(&addr);
+        let _peer_channel = self
+            .channel_numbers_by_client_and_peer
+            .remove(&(client, addr));
         debug_assert_eq!(
             _peer_channel,
             Some(chan),
