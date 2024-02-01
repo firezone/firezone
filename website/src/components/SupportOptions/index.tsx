@@ -26,6 +26,7 @@ export default function SupportOptions() {
         <span className="self-center">Or try searching the docs:</span>
         <span className="ml-2">
           <DocSearch
+            insights
             appId="XXPZ9QVGFB"
             apiKey="66664e8765e1645ea0b500acebb0b0c2"
             indexName="firezone"
