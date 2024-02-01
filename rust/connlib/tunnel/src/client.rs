@@ -94,9 +94,7 @@ where
                 .cloned()
                 .collect::<Vec<_>>()
         };
-        // Unstable sort is slightly faster, and we use the ID as a tie-break
-        // if the display name is identical for some reason, so it should still be stable overall
-        resource_descriptions.sort_unstable_by(|a, b| (a.name(), a.id()).cmp(&(b.name(), b.id())));
+        sort_resources(&mut resource_descriptions);
 
         self.callbacks.on_update_resources(resource_descriptions)?;
         Ok(())
@@ -808,5 +806,80 @@ impl RoleState for ClientState {
         }
 
         peers_to_stop
+    }
+}
+
+/// Sorts `resource_descriptions` in-place alphabetically
+fn sort_resources(resource_descriptions: &mut [ResourceDescription]) {
+    // Unstable sort is slightly faster, and we use the ID as a tie-break,
+    // so stability should not matter much
+    resource_descriptions.sort_unstable_by(|a, b| (a.name(), a.id()).cmp(&(b.name(), b.id())));
+}
+
+#[cfg(test)]
+mod tests {
+    use connlib_shared::messages::{ResourceDescription, ResourceDescriptionDns, ResourceId};
+    use std::str::FromStr;
+
+    fn fake_resource(name: &str, uuid: &str) -> ResourceDescription {
+        ResourceDescription::Dns(ResourceDescriptionDns {
+            id: ResourceId::from_str(uuid).unwrap(),
+            name: name.to_string(),
+            address: "unused.example.com".to_string(),
+        })
+    }
+
+    #[test]
+    fn sort_resources_normal() {
+        let cloudflare = fake_resource("Cloudflare DNS", "2efe9c25-bd92-49a0-99d7-8b92da014dd5");
+        let example = fake_resource("Example", "613eaf56-6efa-45e5-88aa-ea4ad64d8c18");
+        let fast = fake_resource("Fast.com", "624b7154-08f6-4c9e-bac0-c3a587fc9322");
+        let metabase_1 = fake_resource("Metabase", "98ee1682-8192-4f15-b4a6-03178dfa7f95");
+        let metabase_2 = fake_resource("Metabase", "e431d1b8-afc2-4f93-95c2-0d15413f5422");
+        let ifconfig = fake_resource("ifconfig.net", "6b7188f5-00ac-41dc-9ddd-57e2384f31ef");
+        let ten = fake_resource("10", "9d1907cc-0693-4063-b388-4d29524e2514");
+        let nine = fake_resource("9", "a7b66f28-9cd1-40fc-bdc4-4763ed92ea41");
+        let emoji = fake_resource("🫠", "7d08cfca-8737-4c5e-a88e-e92574657217");
+
+        let mut resource_descriptions = vec![
+            nine.clone(),
+            ten.clone(),
+            fast.clone(),
+            ifconfig.clone(),
+            emoji.clone(),
+            example.clone(),
+            cloudflare.clone(),
+            metabase_2.clone(),
+            metabase_1.clone(),
+        ];
+
+        super::sort_resources(&mut resource_descriptions);
+
+        let expected = vec![
+            // Numbers first
+            // Numbers are sorted byte-wise, if they don't use leading zeroes
+            // they won't be in numeric order
+            ten.clone(),
+            nine.clone(),
+            // Then uppercase, in alphabetical order
+            cloudflare.clone(),
+            example.clone(),
+            fast.clone(),
+            // UUIDs tie-break if the names are identical
+            metabase_1.clone(),
+            metabase_2.clone(),
+            // Lowercase comes after all uppercase are done
+            ifconfig.clone(),
+            // Emojis start with a leading '1' bit, so they come after all
+            // [Basic Latin](https://en.wikipedia.org/wiki/Basic_Latin_\(Unicode_block\)) chars
+            emoji.clone(),
+        ];
+
+        assert!(
+            resource_descriptions == expected,
+            "Actual: {:#?}\nExpected: {:#?}",
+            resource_descriptions,
+            expected
+        );
     }
 }
