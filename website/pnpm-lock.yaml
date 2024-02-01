@@ -7,16 +7,16 @@ settings:
 dependencies:
   '@docsearch/react':
     specifier: ^3.5.2
-    version: 3.5.2(@algolia/client-search@4.22.0)(@types/react@18.2.47)(react-dom@18.2.0)(react@18.2.0)(search-insights@2.13.0)
+    version: 3.5.2(@algolia/client-search@4.22.0)(@types/react@18.2.51)(react-dom@18.2.0)(react@18.2.0)(search-insights@2.13.0)
   '@mdx-js/loader':
     specifier: ^2.3.0
     version: 2.3.0(webpack@5.89.0)
   '@mdx-js/react':
     specifier: ^3.0.0
-    version: 3.0.0(@types/react@18.2.47)(react@18.2.0)
+    version: 3.0.0(@types/react@18.2.51)(react@18.2.0)
   '@next/mdx':
-    specifier: ~14.0.4
-    version: 14.0.4(@mdx-js/loader@2.3.0)(@mdx-js/react@3.0.0)
+    specifier: ~14.1.0
+    version: 14.1.0(@mdx-js/loader@2.3.0)(@mdx-js/react@3.0.0)
   '@types/mdx':
     specifier: ^2.0.10
     version: 2.0.10
@@ -27,8 +27,8 @@ dependencies:
     specifier: 20.11.0
     version: 20.11.0
   '@types/react':
-    specifier: 18.2.47
-    version: 18.2.47
+    specifier: 18.2.51
+    version: 18.2.51
   '@types/react-dom':
     specifier: 18.2.18
     version: 18.2.18
@@ -85,7 +85,7 @@ dependencies:
     version: 5.0.1(react@18.2.0)
   react-markdown:
     specifier: ^9.0.1
-    version: 9.0.1(@types/react@18.2.47)(react@18.2.0)
+    version: 9.0.1(@types/react@18.2.51)(react@18.2.0)
   react-mixpanel-browser:
     specifier: ^4.1.0
     version: 4.1.0(react@18.2.0)
@@ -280,7 +280,7 @@ packages:
     resolution: {integrity: sha512-SPiDHaWKQZpwR2siD0KQUwlStvIAnEyK6tAE2h2Wuoq8ue9skzhlyVQ1ddzOxX6khULnAALDiR/isSF3bnuciA==}
     dev: false
 
-  /@docsearch/react@3.5.2(@algolia/client-search@4.22.0)(@types/react@18.2.47)(react-dom@18.2.0)(react@18.2.0)(search-insights@2.13.0):
+  /@docsearch/react@3.5.2(@algolia/client-search@4.22.0)(@types/react@18.2.51)(react-dom@18.2.0)(react@18.2.0)(search-insights@2.13.0):
     resolution: {integrity: sha512-9Ahcrs5z2jq/DcAvYtvlqEBHImbm4YJI8M9y0x6Tqg598P40HTEkX7hsMcIuThI+hTFxRGZ9hll0Wygm2yEjng==}
     peerDependencies:
       '@types/react': '>= 16.8.0 < 19.0.0'
@@ -300,7 +300,7 @@ packages:
       '@algolia/autocomplete-core': 1.9.3(@algolia/client-search@4.22.0)(algoliasearch@4.22.0)(search-insights@2.13.0)
       '@algolia/autocomplete-preset-algolia': 1.9.3(@algolia/client-search@4.22.0)(algoliasearch@4.22.0)
       '@docsearch/css': 3.5.2
-      '@types/react': 18.2.47
+      '@types/react': 18.2.51
       algoliasearch: 4.22.0
       react: 18.2.0
       react-dom: 18.2.0(react@18.2.0)
@@ -429,14 +429,14 @@ packages:
       - supports-color
     dev: false
 
-  /@mdx-js/react@3.0.0(@types/react@18.2.47)(react@18.2.0):
+  /@mdx-js/react@3.0.0(@types/react@18.2.51)(react@18.2.0):
     resolution: {integrity: sha512-nDctevR9KyYFyV+m+/+S4cpzCWHqj+iHDHq3QrsWezcC+B17uZdIWgCguESUkwFhM3n/56KxWVE3V6EokrmONQ==}
     peerDependencies:
       '@types/react': '>=16'
       react: '>=16'
     dependencies:
       '@types/mdx': 2.0.10
-      '@types/react': 18.2.47
+      '@types/react': 18.2.51
       react: 18.2.0
     dev: false
 
@@ -448,8 +448,8 @@ packages:
     resolution: {integrity: sha512-irQnbMLbUNQpP1wcE5NstJtbuA/69kRfzBrpAD7Gsn8zm/CY6YQYc3HQBz8QPxwISG26tIm5afvvVbu508oBeQ==}
     dev: false
 
-  /@next/mdx@14.0.4(@mdx-js/loader@2.3.0)(@mdx-js/react@3.0.0):
-    resolution: {integrity: sha512-w0b+A2LRdlqqTIzmaeqPOaafid2cYYYjETA+G+3ZFwkNbBQjvZp57P1waOexF3MGHzcCEoXEnhYpAc+FO6S0Rg==}
+  /@next/mdx@14.1.0(@mdx-js/loader@2.3.0)(@mdx-js/react@3.0.0):
+    resolution: {integrity: sha512-YLYsViq91+H8+3oCtK1iuMWdeN14K70Hy6/tYScY+nfo5bQ84A/A+vA6UdNC9MkbWQ/373hQubx2p4JvUjlb2Q==}
     peerDependencies:
       '@mdx-js/loader': '>=0.15.0'
       '@mdx-js/react': '>=0.15.0'
@@ -460,7 +460,7 @@ packages:
         optional: true
     dependencies:
       '@mdx-js/loader': 2.3.0(webpack@5.89.0)
-      '@mdx-js/react': 3.0.0(@types/react@18.2.47)(react@18.2.0)
+      '@mdx-js/react': 3.0.0(@types/react@18.2.51)(react@18.2.0)
       source-map: 0.7.4
     dev: false
 
@@ -667,17 +667,17 @@ packages:
   /@types/react-dom@18.2.18:
     resolution: {integrity: sha512-TJxDm6OfAX2KJWJdMEVTwWke5Sc/E/RlnPGvGfS0W7+6ocy2xhDVQVh/KvC2Uf7kACs+gDytdusDSdWfWkaNzw==}
     dependencies:
-      '@types/react': 18.2.47
+      '@types/react': 18.2.51
     dev: false
 
   /@types/react-syntax-highlighter@15.5.11:
     resolution: {integrity: sha512-ZqIJl+Pg8kD+47kxUjvrlElrraSUrYa4h0dauY/U/FTUuprSCqvUj+9PNQNQzVc6AJgIWUUxn87/gqsMHNbRjw==}
     dependencies:
-      '@types/react': 18.2.47
+      '@types/react': 18.2.51
     dev: false
 
-  /@types/react@18.2.47:
-    resolution: {integrity: sha512-xquNkkOirwyCgoClNk85BjP+aqnIS+ckAJ8i37gAbDs14jfW/J23f2GItAf33oiUPQnqNMALiFeoM9Y5mbjpVQ==}
+  /@types/react@18.2.51:
+    resolution: {integrity: sha512-XeoMaU4CzyjdRr3c4IQQtiH7Rpo18V07rYZUucEZQwOUEtGgTXv7e6igQiQ+xnV6MbMe1qjEmKdgMNnfppnXfg==}
     dependencies:
       '@types/prop-types': 15.7.11
       '@types/scheduler': 0.16.8
@@ -3013,14 +3013,14 @@ packages:
       react-dom: 18.2.0(react@18.2.0)
     dev: false
 
-  /react-markdown@9.0.1(@types/react@18.2.47)(react@18.2.0):
+  /react-markdown@9.0.1(@types/react@18.2.51)(react@18.2.0):
     resolution: {integrity: sha512-186Gw/vF1uRkydbsOIkcGXw7aHq0sZOCRFFjGrr7b9+nVZg4UfA4enXCaxm4fUzecU38sWfrNDitGhshuU7rdg==}
     peerDependencies:
       '@types/react': '>=18'
       react: '>=18'
     dependencies:
       '@types/hast': 3.0.3
-      '@types/react': 18.2.47
+      '@types/react': 18.2.51
       devlop: 1.1.0
       hast-util-to-jsx-runtime: 2.3.0
       html-url-attributes: 3.0.0
