@@ -120,6 +120,9 @@ defmodule Web.Resources.New do
                 placeholder={@form[:address].value || "http://example.com/"}
                 required
               />
+              <p class="mt-2 text-xs text-neutral-500">
+                This will be displayed in client applications to assist users in understanding how to access the resource.
+              </p>
             </div>
 
             <.input
@@ -214,8 +217,24 @@ defmodule Web.Resources.New do
 
   defp maybe_put_default_address_description(attrs, address_description_changed? \\ true)
 
+  defp maybe_put_default_address_description(
+         %{"type" => "dns", "address" => address} = attrs,
+         false
+       )
+       when is_binary(address) do
+    Map.put(attrs, "address_description", "http://#{address}/")
+  end
+
+  defp maybe_put_default_address_description(
+         %{"type" => "ip", "address" => address} = attrs,
+         false
+       )
+       when is_binary(address) do
+    Map.put(attrs, "address_description", "http://#{address}/")
+  end
+
   defp maybe_put_default_address_description(attrs, false) do
-    Map.put(attrs, "address_description", attrs["address"])
+    Map.put(attrs, "address_description", "")
   end
 
   defp maybe_put_default_address_description(attrs, true) do

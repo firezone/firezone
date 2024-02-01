@@ -59,12 +59,12 @@ defmodule Web.Resources.Edit do
               <.input
                 field={@form[:address_description]}
                 type="text"
-                label="Client Address"
+                label="Address Description"
                 placeholder={@form[:address].value || "http://example.com/"}
                 required
               />
               <p class="mt-2 text-xs text-neutral-500">
-                This is the address that will be shown in the client applications.
+                This will be displayed in client applications to assist users in understanding how to access the resource.
               </p>
             </div>
 
