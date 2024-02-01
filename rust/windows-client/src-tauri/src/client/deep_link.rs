@@ -110,7 +110,7 @@ impl Server {
         let mut sd = WinSec::SECURITY_DESCRIPTOR::default();
         let psd = WinSec::PSECURITY_DESCRIPTOR(&mut sd as *mut _ as *mut c_void);
         // SAFETY: Unsafe needed to call Win32 API. There shouldn't be any threading
-        // or lifetime problems beacuse we only pass pointers to our local vars to
+        // or lifetime problems because we only pass pointers to our local vars to
         // Win32, and Win32 shouldn't save them anywhere.
         unsafe {
             // ChatGPT pointed me to these functions, it's better than the official MS docs
@@ -135,7 +135,7 @@ impl Server {
         let path = named_pipe_path(BUNDLE_ID);
         let sa_ptr = &mut sa as *mut _ as *mut c_void;
         // SAFETY: Unsafe needed to call Win32 API. There shouldn't be any threading
-        // or lifetime problems beacuse we only pass pointers to our local vars to
+        // or lifetime problems because we only pass pointers to our local vars to
         // Win32, and Win32 shouldn't save them anywhere.
         let server = unsafe { server_options.create_with_security_attributes_raw(path, sa_ptr) }
             .map_err(|_| Error::Listen)?;
