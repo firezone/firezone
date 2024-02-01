@@ -27,10 +27,6 @@ mod wintun_install;
 pub const GIT_VERSION: &str =
     git_version::git_version!(args = ["--always", "--dirty=-modified", "--tags"]);
 
-pub(crate) struct GuiParams {
-    cli: Cli,
-}
-
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum Error {
     #[error("GUI module error: {0}")]
@@ -69,7 +65,7 @@ pub(crate) fn run() -> Result<()> {
         None => {
             if elevation::check()? {
                 // We're already elevated, just run the GUI
-                run_gui(GuiParams { cli })
+                run_gui(cli)
             } else {
                 // We're not elevated, ask Powershell to re-launch us, then exit
                 let current_exe = tauri_utils::platform::current_exe()?;
@@ -93,7 +89,7 @@ pub(crate) fn run() -> Result<()> {
         Some(Cmd::CrashHandlerServer { socket_path }) => crash_handling::server(socket_path),
         Some(Cmd::Debug { command }) => debug_commands::run(command),
         // If we already tried to elevate ourselves, don't try again
-        Some(Cmd::Elevated) => run_gui(GuiParams { cli }),
+        Some(Cmd::Elevated) => run_gui(cli),
         Some(Cmd::OpenDeepLink(deep_link)) => {
             let rt = tokio::runtime::Runtime::new()?;
             rt.block_on(deep_link::open(&deep_link.url))?;
@@ -105,8 +101,8 @@ pub(crate) fn run() -> Result<()> {
 /// `gui::run` but wrapped in `anyhow::Result`
 ///
 /// Automatically logs or shows error dialogs for important user-actionable errors
-fn run_gui(params: GuiParams) -> Result<()> {
-    let result = gui::run(params);
+fn run_gui(cli: Cli) -> Result<()> {
+    let result = gui::run(cli);
 
     // Make sure errors get logged, at least to stderr
     if let Err(error) = &result {

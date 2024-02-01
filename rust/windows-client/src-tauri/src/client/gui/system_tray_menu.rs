@@ -79,7 +79,6 @@ pub(crate) fn signed_in(user_name: &str, resources: &[ResourceDescription]) -> S
 }
 
 pub(crate) fn signing_in() -> SystemTrayMenu {
-    // TODO: Check this layout with Jamil, I lost track of the Figma for it.
     SystemTrayMenu::new()
         .add_item(CustomMenuItem::new("".to_string(), "Signing In...").disabled())
         .add_item(CustomMenuItem::new(
