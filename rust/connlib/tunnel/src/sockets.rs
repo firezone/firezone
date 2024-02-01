@@ -20,6 +20,7 @@ fn make_socket(addr: impl Into<SocketAddr>) -> io::Result<std::net::UdpSocket> {
     socket.set_nonblocking(true)?;
     socket.bind(&addr)?;
 
+    // TODO: for android protect file descriptor
     #[cfg(target_os = "linux")]
     socket.set_mark(FIREZONE_MARK)?;
 
