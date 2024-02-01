@@ -49,7 +49,7 @@
   },
   "devDependencies": {
     "flowbite-typography": "^1.0.3",
-    "hastscript": "^8.0.0",
+    "hastscript": "^9.0.0",
     "typescript": "5.3.3"
   }
 }
