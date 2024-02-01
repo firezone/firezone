@@ -27,9 +27,9 @@ export default function Page() {
           </h1>
           <h2 className="mb-8 text-xl tracking-tight justify-center font-medium text-neutral-900 sm:px-16 xl:px-48 inline-block">
             Firezone is a fast, flexible VPN replacement built on WireGuard®
-            that integrates with your identity provider and requires{" "}
-            <span className="text-primary-450 font-bold">zero</span> firewall
-            configuration. Oh, and it's{" "}
+            that <span className="text-primary-450 font-bold">eliminates</span>{" "}
+            tedious configuration and integrates with your identity provider.
+            Oh, and it's{" "}
             <Link
               href="https://github.com/firezone/firezone"
               className="hover:underline text-accent-500 inline-block"
