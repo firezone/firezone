@@ -3,11 +3,11 @@ defmodule Domain.Repo.Migrations.AddResourcesClientAddress do
 
   def change do
     alter table(:resources) do
-      add(:client_address, :string)
+      add(:address_description, :text)
     end
 
-    execute("UPDATE resources SET client_address = address")
+    execute("UPDATE resources SET address_description = address")
 
-    execute("ALTER TABLE resources ALTER COLUMN client_address SET NOT NULL")
+    execute("ALTER TABLE resources ALTER COLUMN address_description SET NOT NULL")
   end
 end

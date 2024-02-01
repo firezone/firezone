@@ -539,7 +539,7 @@ IO.puts("")
       type: :dns,
       name: "google.com",
       address: "google.com",
-      client_address: "https://google.com/",
+      address_description: "https://google.com/",
       connections: [%{gateway_group_id: gateway_group.id}],
       filters: [%{protocol: :all}]
     },
@@ -552,7 +552,7 @@ IO.puts("")
       type: :dns,
       name: "*.firez.one",
       address: "*.firez.one",
-      client_address: "https://firez.one/",
+      address_description: "https://firez.one/",
       connections: [%{gateway_group_id: gateway_group.id}],
       filters: [%{protocol: :all}]
     },
@@ -565,7 +565,7 @@ IO.puts("")
       type: :dns,
       name: "?.firezone.dev",
       address: "?.firezone.dev",
-      client_address: "https://firezone.dev/",
+      address_description: "https://firezone.dev/",
       connections: [%{gateway_group_id: gateway_group.id}],
       filters: [%{protocol: :all}]
     },
@@ -578,7 +578,7 @@ IO.puts("")
       type: :dns,
       name: "example.com",
       address: "example.com",
-      client_address: "https://example.com/",
+      address_description: "https://example.com/",
       connections: [%{gateway_group_id: gateway_group.id}],
       filters: [%{protocol: :all}]
     },
@@ -591,7 +591,7 @@ IO.puts("")
       type: :dns,
       name: "ip6only",
       address: "ip6only.me",
-      client_address: "https://ip6only.me/",
+      address_description: "https://ip6only.me/",
       connections: [%{gateway_group_id: gateway_group.id}],
       filters: [%{protocol: :all}]
     },
@@ -604,7 +604,7 @@ IO.puts("")
       type: :dns,
       name: "gitlab.mycorp.com",
       address: "gitlab.mycorp.com",
-      client_address: "https://gitlab.mycorp.com/",
+      address_description: "https://gitlab.mycorp.com/",
       connections: [%{gateway_group_id: gateway_group.id}],
       filters: [
         %{ports: ["80", "433"], protocol: :tcp},
@@ -621,7 +621,7 @@ IO.puts("")
       type: :dns,
       name: "CloudFlare DNS",
       address: "1.1.1.1",
-      client_address: "http://1.1.1.1/",
+      address_description: "http://1.1.1.1/",
       connections: [%{gateway_group_id: gateway_group.id}],
       filters: [
         %{ports: ["80", "433"], protocol: :tcp},
@@ -638,7 +638,7 @@ IO.puts("")
       type: :cidr,
       name: "MyCorp Network",
       address: "172.20.0.1/16",
-      client_address: "172.20.0.1/16",
+      address_description: "172.20.0.1/16",
       connections: [%{gateway_group_id: gateway_group.id}],
       filters: [%{protocol: :all}]
     },

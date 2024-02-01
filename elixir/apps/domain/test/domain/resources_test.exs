@@ -870,7 +870,7 @@ defmodule Domain.ResourcesTest do
 
       assert errors_on(changeset) == %{
                address: ["can't be blank"],
-               client_address: ["can't be blank"],
+               address_description: ["can't be blank"],
                type: ["can't be blank"],
                connections: ["can't be blank"]
              }
@@ -879,7 +879,7 @@ defmodule Domain.ResourcesTest do
     test "returns error on invalid attrs", %{subject: subject} do
       attrs = %{
         "name" => String.duplicate("a", 256),
-        "client_address" => String.duplicate("a", 256),
+        "address_description" => String.duplicate("a", 513),
         "filters" => :foo,
         "connections" => :bar
       }
@@ -888,7 +888,7 @@ defmodule Domain.ResourcesTest do
 
       assert errors_on(changeset) == %{
                address: ["can't be blank"],
-               client_address: ["should be at most 253 character(s)"],
+               address_description: ["should be at most 512 character(s)"],
                name: ["should be at most 255 character(s)"],
                type: ["can't be blank"],
                filters: ["is invalid"],
@@ -965,7 +965,7 @@ defmodule Domain.ResourcesTest do
       assert {:ok, resource} = create_resource(attrs, subject)
 
       assert resource.address == attrs.address
-      assert resource.client_address == attrs.client_address
+      assert resource.address_description == attrs.address_description
       assert resource.name == attrs.address
       assert resource.account_id == account.id
 
@@ -985,26 +985,6 @@ defmodule Domain.ResourcesTest do
              ] = resource.filters
     end
 
-    test "creates a DNS resource client address must contain the address", %{
-      subject: subject
-    } do
-      attrs = Fixtures.Resources.resource_attrs(client_address: "foo")
-      assert {:error, changeset} = create_resource(attrs, subject)
-      assert "should contain \"#{attrs.address}\"" in errors_on(changeset).client_address
-
-      attrs = Fixtures.Resources.resource_attrs(address: "bar.com", client_address: "bar.com")
-      assert {:error, changeset} = create_resource(attrs, subject)
-      refute Map.has_key?(errors_on(changeset), :client_address)
-
-      attrs = Fixtures.Resources.resource_attrs(address: "?.bar.com", client_address: "x.bar.com")
-      assert {:error, changeset} = create_resource(attrs, subject)
-      refute Map.has_key?(errors_on(changeset), :client_address)
-
-      attrs = Fixtures.Resources.resource_attrs(address: "*.bar.com", client_address: "bar.com")
-      assert {:error, changeset} = create_resource(attrs, subject)
-      refute Map.has_key?(errors_on(changeset), :client_address)
-    end
-
     test "creates a cidr resource", %{account: account, subject: subject} do
       gateway = Fixtures.Gateways.create_gateway(account: account)
       address_count = Repo.aggregate(Domain.Network.Address, :count)
@@ -1017,13 +997,13 @@ defmodule Domain.ResourcesTest do
           type: :cidr,
           name: "mycidr",
           address: "192.168.1.1/28",
-          client_address: "192.168.1.1/28"
+          address_description: "192.168.1.1/28"
         )
 
       assert {:ok, resource} = create_resource(attrs, subject)
 
       assert resource.address == "192.168.1.0/28"
-      assert resource.client_address == attrs.client_address
+      assert resource.address_description == attrs.address_description
       assert resource.name == attrs.name
       assert resource.account_id == account.id
 
@@ -1099,7 +1079,7 @@ defmodule Domain.ResourcesTest do
     test "returns error on invalid attrs", %{resource: resource, subject: subject} do
       attrs = %{
         "name" => String.duplicate("a", 256),
-        "client_address" => String.duplicate("a", 256),
+        "address_description" => String.duplicate("a", 513),
         "filters" => :foo,
         "connections" => :bar
       }
@@ -1108,10 +1088,7 @@ defmodule Domain.ResourcesTest do
 
       assert errors_on(changeset) == %{
                name: ["should be at most 255 character(s)"],
-               client_address: [
-                 "should contain \"#{resource.address}\"",
-                 "should be at most 253 character(s)"
-               ],
+               address_description: ["should be at most 512 character(s)"],
                filters: ["is invalid"],
                connections: ["is invalid"]
              }
@@ -1151,9 +1128,9 @@ defmodule Domain.ResourcesTest do
     end
 
     test "allows to update client address", %{resource: resource, subject: subject} do
-      attrs = %{"client_address" => "http://#{resource.address}:1234/foo"}
+      attrs = %{"address_description" => "http://#{resource.address}:1234/foo"}
       assert {:ok, resource} = update_resource(resource, attrs, subject)
-      assert resource.client_address == attrs["client_address"]
+      assert resource.address_description == attrs["address_description"]
     end
 
     test "allows to update filters", %{resource: resource, subject: subject} do

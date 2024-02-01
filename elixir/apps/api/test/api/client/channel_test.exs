@@ -151,7 +151,7 @@ defmodule API.Client.ChannelTest do
                type: :dns,
                name: dns_resource.name,
                address: dns_resource.address,
-               client_address: dns_resource.client_address,
+               address_description: dns_resource.address_description,
                gateway_groups: [
                  %{
                    id: gateway_group.id,
@@ -166,7 +166,7 @@ defmodule API.Client.ChannelTest do
                type: :cidr,
                name: cidr_resource.name,
                address: cidr_resource.address,
-               client_address: cidr_resource.client_address,
+               address_description: cidr_resource.address_description,
                gateway_groups: [
                  %{
                    id: gateway_group.id,
@@ -181,7 +181,7 @@ defmodule API.Client.ChannelTest do
                type: :cidr,
                name: ip_resource.name,
                address: "#{ip_resource.address}/32",
-               client_address: ip_resource.client_address,
+               address_description: ip_resource.address_description,
                gateway_groups: [
                  %{
                    id: gateway_group.id,
@@ -313,7 +313,7 @@ defmodule API.Client.ChannelTest do
                type: :dns,
                name: resource.name,
                address: resource.address,
-               client_address: resource.client_address,
+               address_description: resource.address_description,
                gateway_groups: [
                  %{id: gateway_group.id, name: gateway_group.name, routing: gateway_group.routing}
                ]
@@ -391,7 +391,7 @@ defmodule API.Client.ChannelTest do
                type: :dns,
                name: resource.name,
                address: resource.address,
-               client_address: resource.client_address,
+               address_description: resource.address_description,
                gateway_groups: [
                  %{id: gateway_group.id, name: gateway_group.name, routing: gateway_group.routing}
                ]
@@ -457,7 +457,7 @@ defmodule API.Client.ChannelTest do
                type: :dns,
                name: resource.name,
                address: resource.address,
-               client_address: resource.client_address,
+               address_description: resource.address_description,
                gateway_groups: [
                  %{id: gateway_group.id, name: gateway_group.name, routing: gateway_group.routing}
                ]

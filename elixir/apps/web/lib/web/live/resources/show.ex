@@ -75,21 +75,21 @@ defmodule Web.Resources.Show do
             </.vertical_table_row>
             <.vertical_table_row>
               <:label>
-                Client Address
+                Address Description
               </:label>
               <:value>
                 <a
                   href={
-                    if String.starts_with?(@resource.client_address, ["http", "ftp", "//"]) do
-                      @resource.client_address
+                    if String.starts_with?(@resource.address_description, ["http", "ftp", "//"]) do
+                      @resource.address_description
                     else
-                      "//" <> @resource.client_address
+                      "//" <> @resource.address_description
                     end
                   }
                   target="_blank"
                   class={link_style()}
                 >
-                  <%= @resource.client_address %>
+                  <%= @resource.address_description %>
                   <.icon name="hero-arrow-top-right-on-square" class="mb-3 w-3 h-3" />
                 </a>
               </:value>

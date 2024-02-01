@@ -57,7 +57,7 @@ defmodule Web.Resources.Edit do
 
             <div>
               <.input
-                field={@form[:client_address]}
+                field={@form[:address_description]}
                 type="text"
                 label="Client Address"
                 placeholder={@form[:address].value || "http://example.com/"}

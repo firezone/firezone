@@ -7,7 +7,7 @@ defmodule Domain.Fixtures.Resources do
 
     Enum.into(attrs, %{
       address: address,
-      client_address: "http://#{address}/",
+      address_description: "http://#{address}/",
       name: address,
       type: :dns,
       filters: [

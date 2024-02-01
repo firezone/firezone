@@ -3,9 +3,9 @@ defmodule Domain.Resources.Resource.Changeset do
   alias Domain.{Auth, Accounts, Network}
   alias Domain.Resources.{Resource, Connection}
 
-  @fields ~w[address client_address name type]a
-  @update_fields ~w[name client_address]a
-  @required_fields ~w[address client_address type]a
+  @fields ~w[address address_description name type]a
+  @update_fields ~w[name address_description]a
+  @required_fields ~w[address address_description type]a
 
   def create(%Accounts.Account{} = account, attrs, %Auth.Subject{} = subject) do
     %Resource{connections: []}
@@ -151,22 +151,10 @@ defmodule Domain.Resources.Resource.Changeset do
   defp changeset(changeset) do
     changeset
     |> validate_length(:name, min: 1, max: 255)
-    |> validate_length(:client_address, min: 1, max: 253)
-    |> validate_client_address()
+    |> validate_length(:address_description, min: 1, max: 512)
     |> cast_embed(:filters, with: &cast_filter/2)
     |> unique_constraint(:ipv4, name: :resources_account_id_ipv4_index)
     |> unique_constraint(:ipv6, name: :resources_account_id_ipv6_index)
-  end
-
-  defp validate_client_address(changeset) do
-    with {_data_or_changes, :dns} <- fetch_field(changeset, :type),
-         {_data_or_changes, address} when is_binary(address) <- fetch_field(changeset, :address) do
-      address = String.replace_leading(address, "?.", "")
-      address = String.replace_leading(address, "*.", "")
-      validate_contains(changeset, :client_address, address)
-    else
-      _ -> validate_contains(changeset, :client_address, field: :address)
-    end
   end
 
   def delete(%Resource{} = resource) do

@@ -70,7 +70,7 @@ defmodule Web.Live.Resources.NewTest do
       (connection_inputs ++
          [
            "resource[address]",
-           "resource[client_address]",
+           "resource[address_description]",
            "resource[filters][all][enabled]",
            "resource[filters][all][protocol]",
            "resource[filters][icmp][enabled]",
@@ -104,7 +104,7 @@ defmodule Web.Live.Resources.NewTest do
 
     assert find_inputs(form) == [
              "resource[address]",
-             "resource[client_address]",
+             "resource[address_description]",
              "resource[filters][all][enabled]",
              "resource[filters][all][protocol]",
              "resource[filters][icmp][enabled]",
@@ -186,7 +186,7 @@ defmodule Web.Live.Resources.NewTest do
            |> form_validation_errors() == %{
              "resource[name]" => ["should be at most 255 character(s)"],
              "connections" => ["can't be blank"],
-             "resource[client_address]" => ["can't be blank"]
+             "resource[address_description]" => ["can't be blank"]
            }
   end
 
@@ -221,7 +221,7 @@ defmodule Web.Live.Resources.NewTest do
            |> render_submit()
            |> form_validation_errors() == %{
              "resource[address]" => ["can't be blank"],
-             "resource[client_address]" => ["can't be blank"]
+             "resource[address_description]" => ["can't be blank"]
            }
   end
 
@@ -235,7 +235,7 @@ defmodule Web.Live.Resources.NewTest do
 
     attrs = %{
       address: "foobar.com",
-      client_address: "http://foobar.com:3000/",
+      address_description: "http://foobar.com:3000/",
       connections: %{connection.gateway_group_id => %{enabled: false}}
     }
 
@@ -267,7 +267,7 @@ defmodule Web.Live.Resources.NewTest do
       name: "foobar.com",
       type: "dns",
       address: "foobar.com",
-      client_address: "http://foobar.com:3000/",
+      address_description: "http://foobar.com:3000/",
       filters: %{
         icmp: %{enabled: true},
         tcp: %{ports: "80, 443"},
@@ -303,7 +303,7 @@ defmodule Web.Live.Resources.NewTest do
     attrs = %{
       name: "foobar.com",
       address: "foobar.com",
-      client_address: "http://foobar.com:3000/",
+      address_description: "http://foobar.com:3000/",
       filters: %{
         icmp: %{enabled: true},
         tcp: %{ports: "80, 443"},
@@ -346,7 +346,7 @@ defmodule Web.Live.Resources.NewTest do
 
     assert find_inputs(form) == [
              "resource[address]",
-             "resource[client_address]",
+             "resource[address_description]",
              "resource[name]",
              "resource[type]"
            ]
@@ -361,7 +361,7 @@ defmodule Web.Live.Resources.NewTest do
     attrs = %{
       name: "foobar.com",
       address: "foobar.com",
-      client_address: "foobar.com"
+      address_description: "foobar.com"
     }
 
     {:ok, lv, _html} =

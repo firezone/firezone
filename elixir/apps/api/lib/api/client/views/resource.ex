@@ -15,7 +15,7 @@ defmodule API.Client.Views.Resource do
       id: resource.id,
       type: :cidr,
       address: address,
-      client_address: resource.client_address,
+      address_description: resource.address_description,
       name: resource.name,
       gateway_groups: Views.GatewayGroup.render_many(resource.gateway_groups)
     }
@@ -26,7 +26,7 @@ defmodule API.Client.Views.Resource do
       id: resource.id,
       type: resource.type,
       address: resource.address,
-      client_address: resource.client_address,
+      address_description: resource.address_description,
       name: resource.name,
       gateway_groups: Views.GatewayGroup.render_many(resource.gateway_groups)
     }
