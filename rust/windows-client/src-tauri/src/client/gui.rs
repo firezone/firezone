@@ -689,10 +689,12 @@ fn show_notification(title: &str, body: &str) -> Result<(), Error> {
 /// click signal.
 ///
 /// I've seen this reported by people using Powershell, C#, etc., so I think it might
-/// be a Windows bug:
+/// be a Windows bug?
 /// - <https://superuser.com/questions/1488763/windows-10-notifications-not-activating-the-associated-app-when-clicking-on-it>
 /// - <https://stackoverflow.com/questions/65835196/windows-toast-notification-com-not-working>
 /// - <https://answers.microsoft.com/en-us/windows/forum/all/notifications-not-activating-the-associated-app/7a3b31b0-3a20-4426-9c88-c6e3f2ac62c6>
+///
+/// Firefox doesn't have this problem. Maybe they're using a different API.
 fn show_clickable_notification(
     title: &str,
     body: &str,
