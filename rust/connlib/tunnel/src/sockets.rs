@@ -48,6 +48,7 @@ impl<const N: usize> Socket<N> {
         })
     }
 
+    #[allow(clippy::type_complexity)]
     pub fn poll_recv_from<'b>(
         &'b mut self,
         cx: &mut Context<'_>,
@@ -144,6 +145,7 @@ impl<const N: usize> UdpSockets<N> {
             .try_send_to(dest, buf)
     }
 
+    #[allow(clippy::type_complexity)]
     pub fn poll_recv_from<'b>(
         &'b mut self,
         cx: &mut Context<'_>,

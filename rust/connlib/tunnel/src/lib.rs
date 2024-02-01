@@ -160,6 +160,7 @@ impl IceSockets {
         }
     }
 
+    #[allow(clippy::type_complexity)]
     fn poll_recv_from<'a>(
         &'a mut self,
         cx: &mut Context<'_>,
