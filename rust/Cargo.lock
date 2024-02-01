@@ -1252,6 +1252,7 @@ dependencies = [
  "hickory-resolver",
  "hostname",
  "ip_network",
+ "known-folders",
  "libc",
  "log",
  "os_info",

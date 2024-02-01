@@ -40,7 +40,7 @@ fn hostname() -> Result<()> {
 /// Try to load wintun.dll and throw an error if it's not in the right place
 fn wintun() -> Result<()> {
     tracing_subscriber::fmt::init();
-    let path = crate::client::wintun_install::dll_path()?;
+    let path = connlib_shared::windows::wintun_dll_path()?;
     // SAFETY: Loading a DLL from disk is unsafe. We're responsible for making sure
     // we're using the DLL's API correctly.
     unsafe { wintun::load_from_path(&path) }?;

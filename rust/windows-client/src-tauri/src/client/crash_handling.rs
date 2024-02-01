@@ -13,8 +13,8 @@
 //! - Compile `minidump-stackwalk` with PR 891 merged
 //! - `minidump-stackwalker --symbols-path firezone.syms crash.dmp`
 
-use crate::client::settings::app_local_data_dir;
 use anyhow::{anyhow, bail, Context, Result};
+use connlib_shared::windows::app_local_data_dir;
 use crash_handler::CrashHandler;
 use std::{fs::File, io::Write, path::PathBuf};
 

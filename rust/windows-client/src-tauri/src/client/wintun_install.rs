@@ -1,6 +1,6 @@
 //! "Installs" wintun.dll at runtime by copying it into whatever folder the exe is in
 
-use crate::client::settings::app_local_data_dir;
+use connlib_shared::windows::wintun_dll_path;
 use ring::digest;
 use std::{
     fs,
@@ -17,6 +17,8 @@ struct DllBytes {
 
 #[derive(thiserror::Error, Debug)]
 pub(crate) enum Error {
+    #[error("Can't compute path where wintun.dll should be installed")]
+    CantComputeWintunPath,
     #[error("create_dir_all failed")]
     CreateDirAll,
     #[error("Computed DLL path is invalid")]
@@ -25,8 +27,6 @@ pub(crate) enum Error {
     PermissionDenied,
     #[error("platform not supported")]
     PlatformNotSupported,
-    #[error(transparent)]
-    Settings(#[from] crate::client::settings::Error),
     #[error("write failed: `{0:?}`")]
     WriteFailed(io::Error),
 }
@@ -34,10 +34,11 @@ pub(crate) enum Error {
 /// Installs the DLL in %LOCALAPPDATA% and returns the DLL's absolute path
 ///
 /// e.g. `C:\Users\User\AppData\Local\dev.firezone.client\data\wintun.dll`
+/// Also verifies the SHA256 of the DLL on-disk with the expected bytes packed into the exe
 pub(crate) fn ensure_dll() -> Result<PathBuf, Error> {
     let dll_bytes = get_dll_bytes().ok_or(Error::PlatformNotSupported)?;
 
-    let path = dll_path()?;
+    let path = wintun_dll_path().map_err(|_| Error::CantComputeWintunPath)?;
     // The DLL path should always have a parent
     let dir = path.parent().ok_or(Error::DllPathInvalid)?;
     std::fs::create_dir_all(dir).map_err(|_| Error::CreateDirAll)?;
@@ -54,15 +55,6 @@ pub(crate) fn ensure_dll() -> Result<PathBuf, Error> {
     Ok(path)
 }
 
-/// Returns the absolute path where the DLL should be
-///
-/// e.g. `C:\Users\User\AppData\Local\dev.firezone.client\data\wintun.dll`
-pub(crate) fn dll_path() -> Result<PathBuf, Error> {
-    let path = app_local_data_dir()?.join("data").join("wintun.dll");
-    Ok(path)
-}
-
-/// Verifies the SHA256 of the DLL on-disk with the expected bytes packed into the exe
 fn dll_already_exists(path: &Path, dll_bytes: &DllBytes) -> bool {
     let mut f = match fs::File::open(path) {
         Err(_) => return false,

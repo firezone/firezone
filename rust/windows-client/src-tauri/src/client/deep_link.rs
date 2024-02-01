@@ -1,7 +1,8 @@
 //! A module for registering, catching, and parsing deep links that are sent over to the app's already-running instance
 //! Based on reading some of the Windows code from <https://github.com/FabianLars/tauri-plugin-deep-link>, which is licensed "MIT OR Apache-2.0"
 
-use crate::client::{auth::Response as AuthResponse, BUNDLE_ID};
+use crate::client::auth::Response as AuthResponse;
+use connlib_shared::windows::BUNDLE_ID;
 use secrecy::SecretString;
 use std::{ffi::c_void, io, path::Path};
 use tokio::{io::AsyncReadExt, io::AsyncWriteExt, net::windows::named_pipe};
@@ -132,6 +133,8 @@ impl Server {
             bInheritHandle: false.into(),
         };
 
+        // TODO: On the IPC branch I found that this will cause prefix issues
+        // with other named pipes. Change it.
         let path = named_pipe_path(BUNDLE_ID);
         let sa_ptr = &mut sa as *mut _ as *mut c_void;
         // SAFETY: Unsafe needed to call Win32 API. There shouldn't be any threading
