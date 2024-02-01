@@ -4,7 +4,7 @@ on:
 
 jobs:
   version-check:
-    runs-on: ubuntu-22.04
+    runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
       - name: Check version is up to date
@@ -20,19 +20,19 @@ jobs:
             exit 1
           fi
   global-linter:
-    runs-on: ubuntu-22.04
+    runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.9"
+          python-version: "3.11"
       - uses: actions/cache/restore@v4
         name: Restore Python Cache
         with:
           path: ~/.cache/pip
-          key: ubuntu-22.04-${{ runner.arch }}-pip-${{ hashFiles('requirements.txt') }}
+          key: macos-14-${{ runner.arch }}-pip-${{ hashFiles('requirements.txt') }}
           restore-keys: |
-            ubuntu-22.04-${{ runner.arch }}-pip-
+            macos-14-${{ runner.arch }}-pip-
       - name: Install Python Dependencies
         run: |
           pip install -r requirements.txt
@@ -45,4 +45,4 @@ jobs:
         name: Save Python Cache
         with:
           path: ~/.cache/pip
-          key: ubuntu-22.04-${{ runner.arch }}-pip-${{ hashFiles('requirements.txt') }}
+          key: macos-14-${{ runner.arch }}-pip-${{ hashFiles('requirements.txt') }}

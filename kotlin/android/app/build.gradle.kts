@@ -4,7 +4,7 @@ plugins {
     id("com.google.dagger.hilt.android")
     id("com.google.gms.google-services")
     id("com.google.firebase.crashlytics")
-    id("com.diffplug.spotless") version "6.23.3"
+    id("com.diffplug.spotless") version "6.25.0"
     id("com.google.firebase.appdistribution")
     id("kotlin-parcelize")
     id("androidx.navigation.safeargs")
@@ -221,6 +221,6 @@ cargo {
 }
 
 tasks.matching { it.name.matches(Regex("merge.*JniLibFolders")) }.configureEach {
-    inputs.dir(File(buildDir, "rustJniLibs/android"))
+    inputs.dir(layout.buildDirectory.file("rustJniLibs/android"))
     dependsOn("cargoBuild")
 }

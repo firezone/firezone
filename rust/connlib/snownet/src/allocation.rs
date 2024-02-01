@@ -142,11 +142,27 @@ impl Allocation {
                 return true;
             }
 
+            #[allow(clippy::single_match)] // There will be more eventually.
+            match message.method() {
+                CHANNEL_BIND => {
+                    let Some(channel) = original_request
+                        .get_attribute::<ChannelNumber>()
+                        .map(|c| c.value())
+                    else {
+                        tracing::warn!("Request did not contain a `CHANNEL-NUMBER`");
+                        return true;
+                    };
+
+                    self.channel_bindings.handle_failed_binding(channel);
+                }
+                _ => {}
+            }
+
             // TODO: Handle error codes such as:
             // - Failed allocations
-            // - Failed channel bindings
 
-            tracing::warn!(method = %original_request.method(), error = %error.reason_phrase(), "STUN request failed");
+            tracing::warn!(id = ?original_request.transaction_id(), method = %original_request.method(), error = %error.reason_phrase(), "STUN request failed");
+
             return true;
         }
 
@@ -339,6 +355,11 @@ impl Allocation {
     // }
 
     pub fn bind_channel(&mut self, peer: SocketAddr, now: Instant) {
+        if self.channel_bindings.channel_to_peer(peer, now).is_some() {
+            tracing::debug!(relay = %self.server, %peer, "Already got a channel");
+            return;
+        }
+
         let Some(channel) = self.channel_bindings.new_channel_to_peer(peer, now) else {
             tracing::warn!(relay = %self.server, "All channels are exhausted");
             return;
@@ -655,6 +676,15 @@ impl ChannelBindings {
             .map(|(n, _)| *n)
     }
 
+    fn handle_failed_binding(&mut self, c: u16) {
+        let Some(channel) = self.inner.remove(&c) else {
+            debug_assert!(false, "No channel binding for {c}");
+            return;
+        };
+
+        debug_assert!(!channel.bound, "Channel should not yet be bound")
+    }
+
     fn set_confirmed(&mut self, c: u16, now: Instant) -> bool {
         let Some(channel) = self.inner.get_mut(&c) else {
             return false;
@@ -688,7 +718,7 @@ impl Channel {
     ///
     /// In case the channel is older than its lifetime (10 minutes), this returns false because the relay will have de-allocated the channel.
     fn connected_to_peer(&self, peer: SocketAddr, now: Instant) -> bool {
-        self.peer == peer && self.age(now) < Self::CHANNEL_LIFETIME
+        self.peer == peer && self.age(now) < Self::CHANNEL_LIFETIME && self.bound
     }
 
     fn can_rebind(&self, now: Instant) -> bool {
@@ -743,8 +773,10 @@ impl Channel {
 mod tests {
     use super::*;
     use std::net::{IpAddr, Ipv4Addr};
+    use stun_codec::rfc5389::errors::BadRequest;
 
     const PEER1: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 10000);
+    const PEER2: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 20000);
     const RELAY: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 3478);
     const RELAY_ADDR: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 9999);
     const MINUTE: Duration = Duration::from_secs(60);
@@ -930,23 +962,84 @@ mod tests {
             "no messages to be sent if we don't have an allocation"
         );
 
-        allocation.handle_timeout(Instant::now());
-        let message = next_stun_message(&mut allocation).unwrap();
-        assert_eq!(message.method(), ALLOCATE);
+        make_allocation(&mut allocation, PEER1);
 
-        assert!(
-            next_stun_message(&mut allocation).is_none(),
-            "no messages to be sent if we don't have an allocation"
+        let message = next_stun_message(&mut allocation).unwrap();
+        assert_eq!(message.method(), CHANNEL_BIND);
+    }
+
+    #[test]
+    fn does_not_relay_to_with_unbound_channel() {
+        let mut allocation = Allocation::new(
+            RELAY,
+            Username::new("foobar".to_owned()).unwrap(),
+            "baz".to_owned(),
+            Realm::new("firezone".to_owned()).unwrap(),
         );
+
+        make_allocation(&mut allocation, PEER1);
+        allocation.bind_channel(PEER2, Instant::now());
+
+        let message = allocation.encode_to_vec(PEER2, b"foobar", Instant::now());
+
+        assert!(message.is_none())
+    }
+
+    #[test]
+    fn failed_channel_binding_removes_state() {
+        let mut allocation = Allocation::new(
+            RELAY,
+            Username::new("foobar".to_owned()).unwrap(),
+            "baz".to_owned(),
+            Realm::new("firezone".to_owned()).unwrap(),
+        );
+
+        make_allocation(&mut allocation, PEER1);
+        allocation.bind_channel(PEER2, Instant::now());
+
+        let channel_bind_msg = next_stun_message(&mut allocation).unwrap();
 
         allocation.handle_input(
             RELAY,
             PEER1,
-            &encode(allocate_response(message.transaction_id())),
+            &encode(channel_bind_bad_request(channel_bind_msg.transaction_id())),
             Instant::now(),
         );
-        let message = next_stun_message(&mut allocation).unwrap();
-        assert_eq!(message.method(), CHANNEL_BIND);
+
+        // TODO: Not the best assertion because we are reaching into private state but better than nothing for now.
+        let channel = allocation
+            .channel_bindings
+            .inner
+            .values()
+            .find(|c| c.peer == PEER2);
+
+        assert!(channel.is_none());
+    }
+
+    #[test]
+    fn rebinding_existing_channel_send_no_message() {
+        let mut allocation = Allocation::new(
+            RELAY,
+            Username::new("foobar".to_owned()).unwrap(),
+            "baz".to_owned(),
+            Realm::new("firezone".to_owned()).unwrap(),
+        );
+
+        make_allocation(&mut allocation, PEER1);
+        allocation.bind_channel(PEER2, Instant::now());
+
+        let channel_bind_msg = next_stun_message(&mut allocation).unwrap();
+        allocation.handle_input(
+            RELAY,
+            PEER1,
+            &encode(channel_bind_success(channel_bind_msg.transaction_id())),
+            Instant::now(),
+        );
+
+        allocation.bind_channel(PEER2, Instant::now());
+        let next_msg = next_stun_message(&mut allocation);
+
+        assert!(next_msg.is_none())
     }
 
     fn ch(peer: SocketAddr, now: Instant) -> Channel {
@@ -964,6 +1057,17 @@ mod tests {
         Some(decode(&transmit.payload).unwrap().unwrap())
     }
 
+    fn make_allocation(allocation: &mut Allocation, local: SocketAddr) {
+        allocation.handle_timeout(Instant::now());
+        let message = next_stun_message(allocation).unwrap();
+        allocation.handle_input(
+            RELAY,
+            local,
+            &encode(allocate_response(message.transaction_id())),
+            Instant::now(),
+        );
+    }
+
     fn allocate_response(id: TransactionId) -> stun_codec::Message<Attribute> {
         let mut message = stun_codec::Message::new(MessageClass::SuccessResponse, ALLOCATE, id);
         message.add_attribute(XorMappedAddress::new(PEER1));
@@ -971,5 +1075,16 @@ mod tests {
         message.add_attribute(Lifetime::new(Duration::from_secs(600)).unwrap());
 
         message
+    }
+
+    fn channel_bind_bad_request(id: TransactionId) -> stun_codec::Message<Attribute> {
+        let mut message = stun_codec::Message::new(MessageClass::ErrorResponse, CHANNEL_BIND, id);
+        message.add_attribute(ErrorCode::from(BadRequest));
+
+        message
+    }
+
+    fn channel_bind_success(id: TransactionId) -> stun_codec::Message<Attribute> {
+        stun_codec::Message::new(MessageClass::SuccessResponse, CHANNEL_BIND, id)
     }
 }
