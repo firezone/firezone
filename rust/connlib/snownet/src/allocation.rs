@@ -355,6 +355,11 @@ impl Allocation {
     // }
 
     pub fn bind_channel(&mut self, peer: SocketAddr, now: Instant) {
+        if self.channel_bindings.channel_to_peer(peer, now).is_some() {
+            tracing::debug!(relay = %self.server, %peer, "Already got a channel");
+            return;
+        }
+
         let Some(channel) = self.channel_bindings.new_channel_to_peer(peer, now) else {
             tracing::warn!(relay = %self.server, "All channels are exhausted");
             return;
@@ -1011,6 +1016,32 @@ mod tests {
         assert!(channel.is_none());
     }
 
+    #[test]
+    fn rebinding_existing_channel_send_no_message() {
+        let mut allocation = Allocation::new(
+            RELAY,
+            Username::new("foobar".to_owned()).unwrap(),
+            "baz".to_owned(),
+            Realm::new("firezone".to_owned()).unwrap(),
+        );
+
+        make_allocation(&mut allocation, PEER1);
+        allocation.bind_channel(PEER2, Instant::now());
+
+        let channel_bind_msg = next_stun_message(&mut allocation).unwrap();
+        allocation.handle_input(
+            RELAY,
+            PEER1,
+            &encode(channel_bind_success(channel_bind_msg.transaction_id())),
+            Instant::now(),
+        );
+
+        allocation.bind_channel(PEER2, Instant::now());
+        let next_msg = next_stun_message(&mut allocation);
+
+        assert!(next_msg.is_none())
+    }
+
     fn ch(peer: SocketAddr, now: Instant) -> Channel {
         Channel {
             peer,
@@ -1051,5 +1082,9 @@ mod tests {
         message.add_attribute(ErrorCode::from(BadRequest));
 
         message
+    }
+
+    fn channel_bind_success(id: TransactionId) -> stun_codec::Message<Attribute> {
+        stun_codec::Message::new(MessageClass::SuccessResponse, CHANNEL_BIND, id)
     }
 }
