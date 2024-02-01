@@ -26,7 +26,6 @@ where
     TId: Eq + Hash + Copy + fmt::Display,
 {
     pub fn add_ice_candidate(&self, conn_id: TId, ice_candidate: String) {
-        tracing::info!(%ice_candidate, %conn_id, "new remote candidate");
         self.connections_state
             .lock()
             .connections

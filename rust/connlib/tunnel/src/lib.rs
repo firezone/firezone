@@ -213,7 +213,7 @@ where
                     connection_pool.add_local_interface(addr)
                 }
                 Err(e) => {
-                    tracing::debug!(address = %ip.addr(), err = ?e, "Couldn't bind socket to interface: {e:#?}")
+                    tracing::debug!(address = %ip.addr(), "Couldn't bind socket to interface: {e}")
                 }
             }
         }
@@ -276,7 +276,7 @@ where
         loop {
             while let Some(transmit) = self.connections.node.poll_transmit() {
                 if let Err(e) = self.sockets.socket_send(&transmit) {
-                    tracing::warn!(src = ?transmit.src, dst = %transmit.dst, "Failed to send UDP packet: {e:#?}");
+                    tracing::warn!(src = ?transmit.src, dst = %transmit.dst, "Failed to send UDP packet: {e}");
                 }
             }
 
@@ -322,7 +322,7 @@ where
                                 self.connections.node.add_local_interface(addr)
                             }
                             Err(e) => {
-                                tracing::debug!(address = %ip.addr(), err = ?e, "Couldn't bind socket to interface: {e:#?}")
+                                tracing::debug!(address = %ip.addr(), "Couldn't bind socket to interface: {e}")
                             }
                         }
                     }
