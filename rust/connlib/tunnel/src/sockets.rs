@@ -80,7 +80,9 @@ pub struct UdpSockets<const N: usize> {
 
 impl<const N: usize> UdpSockets<N> {
     pub fn bind(&mut self, addr: impl Into<SocketAddr>) -> io::Result<SocketAddr> {
-        let socket = Socket::bind(addr.into())?;
+        let addr = addr.into();
+
+        let socket = Socket::bind(addr)?;
         let local = socket.local_addr();
 
         self.sockets.push(socket);
@@ -88,6 +90,8 @@ impl<const N: usize> UdpSockets<N> {
         if let Some(waker) = self.empty_waker.take() {
             waker.wake();
         }
+
+        tracing::info!(%addr, "Created new socket");
 
         Ok(local)
     }

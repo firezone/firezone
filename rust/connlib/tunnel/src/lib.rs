@@ -206,12 +206,8 @@ where
         let mut udp_sockets = UdpSockets::default();
 
         for ip in if_watcher.iter() {
-            tracing::info!(address = %ip.addr(), "New local interface address found");
             match udp_sockets.bind((ip.addr(), 0)) {
-                Ok(addr) => {
-                    tracing::debug!(%addr, "Adding address to connection pool");
-                    connection_pool.add_local_interface(addr)
-                }
+                Ok(addr) => connection_pool.add_local_interface(addr),
                 Err(e) => {
                     tracing::debug!(address = %ip.addr(), "Couldn't bind socket to interface: {e}")
                 }
@@ -314,12 +310,8 @@ where
                 Ok(ev) => match ev {
                     if_watch::IfEvent::Up(ip) if !ip.addr().is_loopback() => {
                         // TODO: filter firezone-tun candidates(we could retrieve the ip or just ignore CGNAT)
-                        tracing::info!(address = %ip.addr(), "New local interface address found");
                         match self.sockets.udp_sockets.bind((ip.addr(), 0)) {
-                            Ok(addr) => {
-                                tracing::debug!(%addr, "Adding address to connection pool");
-                                self.connections.node.add_local_interface(addr)
-                            }
+                            Ok(addr) => self.connections.node.add_local_interface(addr),
                             Err(e) => {
                                 tracing::debug!(address = %ip.addr(), "Couldn't bind socket to interface: {e}")
                             }

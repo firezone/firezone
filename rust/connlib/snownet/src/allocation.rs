@@ -109,7 +109,7 @@ impl Allocation {
         .flatten()
     }
 
-    #[tracing::instrument(level = "debug", skip(self, packet, now), fields(relay = %self.server, id, method, class))]
+    #[tracing::instrument(level = "debug", skip(self, packet, now), fields(relay = %self.server, id, method, class, rtt))]
     pub fn handle_input(
         &mut self,
         from: SocketAddr,
@@ -140,7 +140,7 @@ impl Allocation {
         self.backoff.reset();
 
         let rtt = now.duration_since(sent_at);
-        tracing::debug!(?rtt);
+        Span::current().record("rtt", field::debug(rtt));
 
         if let Some(error) = message.get_attribute::<ErrorCode>() {
             // Check if we need to re-authenticate the original request

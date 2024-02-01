@@ -141,7 +141,7 @@ where
     /// Called when a response to [Tunnel::request_connection] is ready.
     ///
     /// Once this is called, if everything goes fine, a new tunnel should be started between the 2 peers.
-    #[tracing::instrument(level = "trace", skip(self))]
+    #[tracing::instrument(level = "trace", skip(self, gateway_public_key, resource_id))]
     pub fn received_offer_response(
         &self,
         resource_id: ResourceId,
@@ -238,7 +238,7 @@ where
         Ok(ips)
     }
 
-    #[tracing::instrument(level = "trace", skip(self))]
+    #[tracing::instrument(level = "trace", skip(self, resource_id))]
     pub fn received_domain_parameters(
         self: &Arc<Self>,
         resource_id: ResourceId,
