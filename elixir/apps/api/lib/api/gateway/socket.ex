@@ -1,6 +1,6 @@
 defmodule API.Gateway.Socket do
   use Phoenix.Socket
-  alias Domain.Gateways
+  alias Domain.{Tokens, Gateways}
   require Logger
   require OpenTelemetry.Tracer
 
@@ -18,11 +18,10 @@ defmodule API.Gateway.Socket do
       context = API.Sockets.auth_context(connect_info, :gateway_group)
       attrs = Map.take(attrs, ~w[external_id name public_key])
 
-      with {:ok, group} <- Gateways.authenticate(encoded_token, context),
+      with {:ok, group, token} <- Gateways.authenticate(encoded_token, context),
            {:ok, gateway} <- Gateways.upsert_gateway(group, attrs, context) do
-        :ok = API.Endpoint.subscribe("gateway_group_sessions:#{group.id}")
-
         OpenTelemetry.Tracer.set_attributes(%{
+          token_id: token.id,
           gateway_id: gateway.id,
           account_id: gateway.account_id,
           version: gateway.last_seen_version
@@ -30,6 +29,7 @@ defmodule API.Gateway.Socket do
 
         socket =
           socket
+          |> assign(:token_id, token.id)
           |> assign(:gateway_group, group)
           |> assign(:gateway, gateway)
           |> assign(:opentelemetry_span_ctx, OpenTelemetry.Tracer.current_span_ctx())
@@ -54,6 +54,5 @@ defmodule API.Gateway.Socket do
   end
 
   @impl true
-  def id(%Gateways.Gateway{} = gateway), do: "gateway:#{gateway.id}"
-  def id(socket), do: id(socket.assigns.gateway)
+  def id(socket), do: Tokens.socket_id(socket.assigns.token_id)
 end

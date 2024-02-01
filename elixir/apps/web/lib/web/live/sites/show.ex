@@ -18,7 +18,7 @@ defmodule Web.Sites.Show do
            |> Enum.map(& &1.resource),
          {:ok, resource_actor_groups_peek} <-
            Resources.peek_resource_actor_groups(resources, 3, socket.assigns.subject) do
-      :ok = Gateways.subscribe_for_gateways_presence_in_group(group)
+      :ok = Gateways.subscribe_to_gateways_presence_in_group(group)
 
       {:ok,
        assign(socket,
@@ -216,7 +216,10 @@ defmodule Web.Sites.Show do
     """
   end
 
-  def handle_info(%Phoenix.Socket.Broadcast{topic: "gateway_groups:" <> _group_id}, socket) do
+  def handle_info(
+        %Phoenix.Socket.Broadcast{topic: "presences:group_gateways:" <> _group_id},
+        socket
+      ) do
     {:ok, gateways} =
       Gateways.list_connected_gateways_for_group(socket.assigns.group, socket.assigns.subject)
 
@@ -225,11 +228,11 @@ defmodule Web.Sites.Show do
 
   def handle_event("revoke_all_tokens", _params, socket) do
     group = socket.assigns.group
-    {:ok, deleted_count} = Tokens.delete_tokens_for(group, socket.assigns.subject)
+    {:ok, deleted_tokens} = Tokens.delete_tokens_for(group, socket.assigns.subject)
 
     socket =
       socket
-      |> put_flash(:info, "#{deleted_count} token(s) were revoked.")
+      |> put_flash(:info, "#{length(deleted_tokens)} token(s) were revoked.")
 
     {:noreply, socket}
   end

@@ -3,6 +3,15 @@ defmodule Web.Resources.Index do
   alias Domain.Resources
 
   def mount(_params, _session, socket) do
+    with {:ok, socket} <- load_resources_with_assocs(socket) do
+      :ok = Resources.subscribe_to_events_for_account(socket.assigns.account)
+      {:ok, assign(socket, page_title: "Resources")}
+    else
+      {:error, _reason} -> raise Web.LiveErrors.NotFoundError
+    end
+  end
+
+  defp load_resources_with_assocs(socket) do
     with {:ok, resources} <-
            Resources.list_resources(socket.assigns.subject,
              preload: [:gateway_groups]
@@ -12,13 +21,10 @@ defmodule Web.Resources.Index do
       socket =
         assign(socket,
           resources: resources,
-          resource_actor_groups_peek: resource_actor_groups_peek,
-          page_title: "Resources"
+          resource_actor_groups_peek: resource_actor_groups_peek
         )
 
       {:ok, socket}
-    else
-      {:error, _reason} -> raise Web.LiveErrors.NotFoundError
     end
   end
 
@@ -109,5 +115,19 @@ defmodule Web.Resources.Index do
       </:content>
     </.section>
     """
+  end
+
+  def handle_info({:create_resource, _resource_id}, socket) do
+    {:ok, socket} = load_resources_with_assocs(socket)
+    {:noreply, socket}
+  end
+
+  def handle_info({_action, resource_id}, socket) do
+    if Enum.find(socket.assigns.resources, fn resource -> resource.id == resource_id end) do
+      {:ok, socket} = load_resources_with_assocs(socket)
+      {:noreply, socket}
+    else
+      {:noreply, socket}
+    end
   end
 end

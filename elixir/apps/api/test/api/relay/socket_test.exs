@@ -112,9 +112,10 @@ defmodule API.Relay.SocketTest do
   describe "id/1" do
     test "creates a channel for a relay" do
       relay = Fixtures.Relays.create_relay()
-      socket = socket(API.Relay.Socket, "", %{relay: relay})
+      token_id = Ecto.UUID.generate()
+      socket = socket(API.Relay.Socket, "", %{relay: relay, token_id: token_id})
 
-      assert id(socket) == "relay:#{relay.id}"
+      assert id(socket) == "sessions:#{token_id}"
     end
   end
 

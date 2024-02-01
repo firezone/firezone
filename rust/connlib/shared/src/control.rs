@@ -242,9 +242,10 @@ where
                     Payload::ControlMessage(ControlMessage::PhxClose(_)) => {
                         return Err(Error::ClosedByPortal)
                     }
-                    Payload::ControlMessage(ControlMessage::TokenExpired(_)) => {
+                    Payload::ControlMessage(ControlMessage::Disconnect { reason: _reason }) => {
+                        // TODO: pass the _reason up to the client so it can print a pertinent user message
                         handler(
-                            Err(ChannelError::ErrorMsg(Error::TokenExpired)),
+                            Err(ChannelError::ErrorMsg(Error::ClosedByPortal)),
                             m.reference,
                             m.topic,
                         )
@@ -331,7 +332,7 @@ enum Payload<T, R> {
 #[serde(rename_all = "snake_case", tag = "event", content = "payload")]
 enum ControlMessage {
     PhxClose(Empty),
-    TokenExpired(Empty),
+    Disconnect { reason: String },
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Deserialize, Serialize)]
@@ -588,15 +589,16 @@ mod tests {
     fn token_expired() {
         let actual_reply = r#"
         {
-          "event": "token_expired",
+          "event": "disconnect",
           "ref": null,
           "topic": "client",
-          "payload": {}
+          "payload": { "reason": "token_expired" }
         }
         "#;
         let actual_reply: Payload<(), ()> = serde_json::from_str(actual_reply).unwrap();
-        let expected_reply =
-            Payload::<(), ()>::ControlMessage(ControlMessage::TokenExpired(Empty {}));
+        let expected_reply = Payload::<(), ()>::ControlMessage(ControlMessage::Disconnect {
+            reason: "token_expired".to_string(),
+        });
         assert_eq!(actual_reply, expected_reply);
     }
 

@@ -12,7 +12,7 @@ defmodule Domain.Actors.Group.Changeset do
   def upsert_on_conflict, do: {:replace, ~w[name updated_at]a}
 
   def create(%Accounts.Account{} = account, attrs, %Auth.Subject{} = subject) do
-    %Actors.Group{}
+    %Actors.Group{memberships: []}
     |> cast(attrs, ~w[name]a)
     |> validate_required(~w[name]a)
     |> changeset()
@@ -25,7 +25,7 @@ defmodule Domain.Actors.Group.Changeset do
   end
 
   def create(%Auth.Provider{} = provider, attrs) do
-    %Actors.Group{}
+    %Actors.Group{memberships: []}
     |> cast(attrs, ~w[name provider_identifier]a)
     |> validate_required(~w[name provider_identifier]a)
     |> changeset()
@@ -49,11 +49,5 @@ defmodule Domain.Actors.Group.Changeset do
     |> trim_change(:name)
     |> validate_length(:name, min: 1, max: 64)
     |> unique_constraint(:name, name: :actor_groups_account_id_name_index)
-  end
-
-  def delete(%Actors.Group{} = group) do
-    group
-    |> change()
-    |> put_default_value(:deleted_at, DateTime.utc_now())
   end
 end

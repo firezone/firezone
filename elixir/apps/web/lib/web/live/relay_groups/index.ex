@@ -7,7 +7,7 @@ defmodule Web.RelayGroups.Index do
 
     with true <- Domain.Config.self_hosted_relays_enabled?(),
          {:ok, groups} <- Relays.list_groups(subject, preload: [:relays]) do
-      :ok = Relays.subscribe_for_relays_presence_in_account(socket.assigns.account)
+      :ok = Relays.subscribe_to_relays_presence_in_account(socket.assigns.account)
 
       socket =
         assign(socket,
@@ -147,7 +147,7 @@ defmodule Web.RelayGroups.Index do
     """
   end
 
-  def handle_info(%Phoenix.Socket.Broadcast{topic: "relays" <> _account_id_or_nothing}, socket) do
+  def handle_info(%Phoenix.Socket.Broadcast{topic: "presences:" <> _rest}, socket) do
     subject = socket.assigns.subject
     {:ok, groups} = Relays.list_groups(subject, preload: [:relays])
     {:noreply, assign(socket, groups: groups)}

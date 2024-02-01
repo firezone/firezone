@@ -16,8 +16,7 @@ if config_env() == :prod do
     pool_size: compile_config!(:database_pool_size),
     ssl: compile_config!(:database_ssl_enabled),
     ssl_opts: compile_config!(:database_ssl_opts),
-    parameters: compile_config!(:database_parameters),
-    show_sensitive_data_on_connection_error: false
+    parameters: compile_config!(:database_parameters)
 
   external_url = compile_config!(:external_url)
 
@@ -88,6 +87,8 @@ if config_env() == :prod do
     ],
     secret_key_base: compile_config!(:secret_key_base),
     check_origin: [
+      "#{external_url_scheme}://#{external_url_host}:#{external_url_port}",
+      "#{external_url_scheme}://*.#{external_url_host}:#{external_url_port}",
       "#{external_url_scheme}://#{external_url_host}",
       "#{external_url_scheme}://*.#{external_url_host}"
     ],

@@ -59,7 +59,7 @@ defmodule Domain.Fixtures.Flows do
         |> Fixtures.Actors.create_group()
       end)
 
-    {policy_id, _attrs} =
+    {policy_id, attrs} =
       pop_assoc_fixture_id(attrs, :policy, fn assoc_attrs ->
         assoc_attrs
         |> Enum.into(%{
@@ -71,7 +71,10 @@ defmodule Domain.Fixtures.Flows do
         |> Fixtures.Policies.create_policy()
       end)
 
+    {token_id, _attrs} = Map.pop(attrs, :token_id, subject.token_id)
+
     Flows.Flow.Changeset.create(%{
+      token_id: token_id,
       policy_id: policy_id,
       client_id: client.id,
       gateway_id: gateway.id,

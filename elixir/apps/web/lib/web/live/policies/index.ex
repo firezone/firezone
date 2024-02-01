@@ -3,12 +3,20 @@ defmodule Web.Policies.Index do
   alias Domain.Policies
 
   def mount(_params, _session, socket) do
-    with {:ok, policies} <-
-           Policies.list_policies(socket.assigns.subject, preload: [:actor_group, :resource]) do
-      socket = assign(socket, policies: policies, page_title: "Policies")
-      {:ok, socket}
+    with {:ok, socket} <- load_policies_with_assocs(socket) do
+      :ok = Policies.subscribe_to_events_for_account(socket.assigns.account)
+      {:ok, assign(socket, page_title: "Policies")}
     else
       _other -> raise Web.LiveErrors.NotFoundError
+    end
+  end
+
+  defp load_policies_with_assocs(socket) do
+    with {:ok, policies} <-
+           Policies.list_policies(socket.assigns.subject,
+             preload: [:actor_group, :resource]
+           ) do
+      {:ok, assign(socket, policies: policies)}
     end
   end
 
@@ -33,9 +41,11 @@ defmodule Web.Policies.Index do
             </.link>
           </:col>
           <:col :let={policy} label="GROUP">
-            <.badge>
-              <%= policy.actor_group.name %>
-            </.badge>
+            <.link class={link_style()} navigate={~p"/#{@account}/groups/#{policy.actor_group_id}"}>
+              <.badge>
+                <%= policy.actor_group.name %>
+              </.badge>
+            </.link>
           </:col>
           <:col :let={policy} label="RESOURCE">
             <.link class={link_style()} navigate={~p"/#{@account}/resources/#{policy.resource_id}"}>
@@ -68,5 +78,19 @@ defmodule Web.Policies.Index do
       </:content>
     </.section>
     """
+  end
+
+  def handle_info({:create_policy, _policy_id}, socket) do
+    {:ok, socket} = load_policies_with_assocs(socket)
+    {:noreply, socket}
+  end
+
+  def handle_info({_action, policy_id}, socket) do
+    if Enum.find(socket.assigns.policies, fn policy -> policy.id == policy_id end) do
+      {:ok, socket} = load_policies_with_assocs(socket)
+      {:noreply, socket}
+    else
+      {:noreply, socket}
+    end
   end
 end

@@ -22,8 +22,22 @@ defmodule Domain.Clients.Client.Query do
     where(queryable, [clients: clients], clients.account_id == ^account_id)
   end
 
+  def by_last_used_token_id(queryable \\ not_deleted(), last_used_token_id) do
+    where(queryable, [clients: clients], clients.last_used_token_id == ^last_used_token_id)
+  end
+
   def returning_not_deleted(queryable \\ not_deleted()) do
     select(queryable, [clients: clients], clients)
+  end
+
+  def delete(queryable \\ not_deleted()) do
+    queryable
+    |> Ecto.Query.select([clients: clients], clients)
+    |> Ecto.Query.update([clients: clients],
+      set: [
+        deleted_at: fragment("COALESCE(?, NOW())", clients.deleted_at)
+      ]
+    )
   end
 
   def with_preloaded_actor(queryable \\ not_deleted()) do

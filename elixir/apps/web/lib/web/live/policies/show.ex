@@ -12,6 +12,8 @@ defmodule Web.Policies.Show do
            Flows.list_flows_for(policy, socket.assigns.subject,
              preload: [client: [:actor], gateway: [:group]]
            ) do
+      :ok = Policies.subscribe_to_events_for_policy(policy)
+
       socket =
         assign(socket,
           policy: policy,
@@ -82,7 +84,9 @@ defmodule Web.Policies.Show do
             </:label>
             <:value>
               <.link navigate={~p"/#{@account}/groups/#{@policy.actor_group_id}"} class={link_style()}>
-                <%= @policy.actor_group.name %>
+                <.badge>
+                  <%= @policy.actor_group.name %>
+                </.badge>
               </.link>
               <span :if={not is_nil(@policy.actor_group.deleted_at)} class="text-red-600">
                 (deleted)
@@ -183,6 +187,15 @@ defmodule Web.Policies.Show do
       </:action>
     </.danger_zone>
     """
+  end
+
+  def handle_info({_action, _policy_id}, socket) do
+    {:ok, policy} =
+      Policies.fetch_policy_by_id(socket.assigns.policy.id, socket.assigns.subject,
+        preload: [:actor_group, :resource, [created_by_identity: :actor]]
+      )
+
+    {:noreply, assign(socket, policy: policy)}
   end
 
   def handle_event("disable", _params, socket) do

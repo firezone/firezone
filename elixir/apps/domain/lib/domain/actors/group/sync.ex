@@ -1,10 +1,9 @@
 defmodule Domain.Actors.Group.Sync do
   alias Domain.Auth
+  alias Domain.Actors
   alias Domain.Actors.Group
 
   def sync_provider_groups_multi(%Auth.Provider{} = provider, attrs_list) do
-    now = DateTime.utc_now()
-
     attrs_by_provider_identifier =
       for attrs <- attrs_list, into: %{} do
         {Map.fetch!(attrs, "provider_identifier"), attrs}
@@ -19,12 +18,11 @@ defmodule Domain.Actors.Group.Sync do
     |> Ecto.Multi.run(:plan_groups, fn _repo, %{groups: groups} ->
       plan_groups_update(groups, provider_identifiers)
     end)
-    |> Ecto.Multi.update_all(
+    |> Ecto.Multi.run(
       :delete_groups,
-      fn %{plan_groups: {_upsert, delete}} ->
-        delete_groups_query(provider, delete)
-      end,
-      set: [deleted_at: now]
+      fn repo, %{plan_groups: {_upsert, delete}} ->
+        delete_groups(repo, provider, delete)
+      end
     )
     |> Ecto.Multi.run(:upsert_groups, fn repo, %{plan_groups: {upsert, _delete}} ->
       upsert_groups(repo, provider, attrs_by_provider_identifier, upsert)
@@ -68,10 +66,11 @@ defmodule Domain.Actors.Group.Sync do
     {:ok, {upsert, delete}}
   end
 
-  defp delete_groups_query(provider, provider_identifiers_to_delete) do
+  defp delete_groups(_repo, provider, provider_identifiers_to_delete) do
     Group.Query.by_account_id(provider.account_id)
     |> Group.Query.by_provider_id(provider.id)
     |> Group.Query.by_provider_identifier({:in, provider_identifiers_to_delete})
+    |> Actors.delete_groups()
   end
 
   defp upsert_groups(repo, provider, attrs_by_provider_identifier, provider_identifiers_to_upsert) do

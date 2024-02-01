@@ -126,6 +126,8 @@ pub enum Error {
     MissingReplyId,
     #[error("server did not reply to our heartbeat")]
     MissedHeartbeat,
+    #[error("connection close message")]
+    CloseMessage,
 }
 
 #[derive(Debug, PartialEq, Eq, Hash)]
@@ -409,6 +411,13 @@ where
                                 reason: "unknown error (bad event?)".to_owned(),
                             }))
                         }
+                        Payload::ControlMessage(ControlMessage::PhxClose(_)) => {
+                            self.reconnect_on_transient_error(Error::CloseMessage);
+                            continue;
+                        }
+                        Payload::ControlMessage(ControlMessage::Disconnect { reason }) => {
+                            return Poll::Ready(Ok(Event::Disconnect(reason)));
+                        }
                     }
                 }
                 Poll::Ready(Some(Err(e))) => {
@@ -526,6 +535,7 @@ pub enum Event<TInboundMsg, TOutboundRes> {
         req_id: InboundRequestId,
         req: TInboundMsg,
     },
+    Disconnect(String),
 }
 
 #[derive(Debug, PartialEq, Eq, Deserialize, Serialize, Clone)]
@@ -535,7 +545,15 @@ enum Payload<T, R> {
     // but that makes everything even more convoluted!
     // and we need to think how to make this whole mess less convoluted.
     Reply(ReplyMessage<R>),
+    ControlMessage(ControlMessage),
     Message(T),
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "snake_case", tag = "event", content = "payload")]
+enum ControlMessage {
+    PhxClose(Empty),
+    Disconnect { reason: String },
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Deserialize, Serialize)]

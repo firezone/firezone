@@ -400,7 +400,7 @@ defmodule Domain.ActorsTest do
       assert {:ok,
               %{
                 plan_groups: {upsert, []},
-                delete_groups: {0, nil},
+                delete_groups: [],
                 upsert_groups: [_group1, _group2],
                 group_ids_by_provider_identifier: group_ids_by_provider_identifier
               }} = Repo.transaction(multi)
@@ -450,7 +450,7 @@ defmodule Domain.ActorsTest do
       assert {:ok,
               %{
                 plan_groups: {upsert, []},
-                delete_groups: {0, nil},
+                delete_groups: [],
                 upsert_groups: [_group1, _group2],
                 group_ids_by_provider_identifier: group_ids_by_provider_identifier
               }} = Repo.transaction(multi)
@@ -474,18 +474,42 @@ defmodule Domain.ActorsTest do
       assert Enum.count(group_ids_by_provider_identifier) == 2
     end
 
-    test "deletes removed groups", %{account: account, provider: provider} do
-      Fixtures.Actors.create_group(
-        account: account,
-        provider: provider,
-        provider_identifier: "G:GROUP_ID1"
-      )
+    test "deletes removed groups and broadcasts events for them", %{
+      account: account,
+      provider: provider
+    } do
+      group1 =
+        Fixtures.Actors.create_group(
+          account: account,
+          provider: provider,
+          provider_identifier: "G:GROUP_ID1"
+        )
 
-      Fixtures.Actors.create_group(
-        account: account,
-        provider: provider,
-        provider_identifier: "OU:OU_ID1"
-      )
+      group1_policy = Fixtures.Policies.create_policy(account: account, actor_group: group1)
+
+      actor = Fixtures.Actors.create_actor(account: account)
+      Fixtures.Actors.create_membership(account: account, actor: actor, group: group1)
+
+      group1_flow =
+        Fixtures.Flows.create_flow(
+          account: account,
+          actor_group: group1,
+          resource_id: group1_policy.resource_id,
+          policy: group1_policy
+        )
+
+      group2 =
+        Fixtures.Actors.create_group(
+          account: account,
+          provider: provider,
+          provider_identifier: "OU:OU_ID1"
+        )
+
+      :ok = subscribe_to_membership_updates_for_actor(actor)
+      :ok = Domain.Policies.subscribe_to_events_for_actor(actor)
+      :ok = Domain.Policies.subscribe_to_events_for_actor_group(group1)
+      :ok = Domain.Policies.subscribe_to_events_for_actor_group(group2)
+      :ok = Domain.Flows.subscribe_to_flow_expiration_events(group1_flow)
 
       attrs_list = []
 
@@ -495,16 +519,31 @@ defmodule Domain.ActorsTest do
               %{
                 groups: [_group1, _group2],
                 plan_groups: {[], delete},
-                delete_groups: {2, nil},
+                delete_groups: [deleted_group1, deleted_group2],
                 upsert_groups: [],
                 group_ids_by_provider_identifier: group_ids_by_provider_identifier
               }} = Repo.transaction(multi)
 
       assert Enum.all?(["G:GROUP_ID1", "OU:OU_ID1"], &(&1 in delete))
+      assert deleted_group1.provider_identifier in ["G:GROUP_ID1", "OU:OU_ID1"]
+      assert deleted_group2.provider_identifier in ["G:GROUP_ID1", "OU:OU_ID1"]
       assert Repo.aggregate(Actors.Group, :count) == 2
       assert Repo.aggregate(Actors.Group.Query.not_deleted(), :count) == 0
 
       assert Enum.empty?(group_ids_by_provider_identifier)
+
+      actor_id = actor.id
+
+      group1_id = group1.id
+      group1_policy_id = group1_policy.id
+      group1_flow_id = group1_flow.id
+      assert_receive {:delete_membership, ^actor_id, ^group1_id}
+      assert_receive {:reject_access, ^group1_policy_id, ^group1_id, _resource_id}
+      assert_receive {:expire_flow, ^group1_flow_id, _client_id, _resource_id}
+
+      group2_id = group2.id
+      refute_receive {:delete_membership, _actor_id, ^group2_id}
+      refute_receive {:reject_access, _policy_id, ^group2_id, _resource_id}
     end
 
     test "ignores groups that are not synced from the provider", %{
@@ -534,7 +573,7 @@ defmodule Domain.ActorsTest do
                 %{
                   groups: [],
                   plan_groups: {[], []},
-                  delete_groups: {0, nil},
+                  delete_groups: [],
                   upsert_groups: [],
                   group_ids_by_provider_identifier: %{}
                 }}
@@ -555,6 +594,8 @@ defmodule Domain.ActorsTest do
           provider_identifier: "G:GROUP_ID1"
         )
 
+      group1_policy = Fixtures.Policies.create_policy(account: account, actor_group: group1)
+
       group2 =
         Fixtures.Actors.create_group(
           account: account,
@@ -562,16 +603,24 @@ defmodule Domain.ActorsTest do
           provider_identifier: "OU:OU_ID1"
         )
 
+      group2_policy = Fixtures.Policies.create_policy(account: account, actor_group: group2)
+
+      actor1 = Fixtures.Actors.create_actor(account: account)
+
       identity1 =
         Fixtures.Auth.create_identity(
           account: account,
+          actor: actor1,
           provider: provider,
           provider_identifier: "USER_ID1"
         )
 
+      actor2 = Fixtures.Actors.create_actor(account: account)
+
       identity2 =
         Fixtures.Auth.create_identity(
           account: account,
+          actor: actor2,
           provider: provider,
           provider_identifier: "USER_ID2"
         )
@@ -581,7 +630,11 @@ defmodule Domain.ActorsTest do
         provider: provider,
         group1: group1,
         group2: group2,
+        group1_policy: group1_policy,
+        group2_policy: group2_policy,
+        actor1: actor1,
         identity1: identity1,
+        actor2: actor2,
         identity2: identity2,
         bypass: bypass
       }
@@ -589,6 +642,8 @@ defmodule Domain.ActorsTest do
 
     test "creates new memberships", %{
       provider: provider,
+      actor1: actor1,
+      actor2: actor2,
       group1: group1,
       group2: group2,
       identity1: identity1,
@@ -615,11 +670,18 @@ defmodule Domain.ActorsTest do
         |> Ecto.Multi.put(:group_ids_by_provider_identifier, group_ids_by_provider_identifier)
         |> sync_provider_memberships_multi(provider, tuples_list)
 
+      :ok = subscribe_to_membership_updates_for_actor(actor1)
+      :ok = subscribe_to_membership_updates_for_actor(actor2)
+      :ok = Domain.Policies.subscribe_to_events_for_actor(actor1)
+      :ok = Domain.Policies.subscribe_to_events_for_actor(actor2)
+      :ok = Domain.Policies.subscribe_to_events_for_actor_group(group1)
+      :ok = Domain.Policies.subscribe_to_events_for_actor_group(group2)
+
       assert {:ok,
               %{
                 plan_memberships: {insert, []},
                 delete_memberships: {0, nil},
-                upsert_memberships: [_membership1, _membership2]
+                insert_memberships: [_membership1, _membership2]
               }} = Repo.transaction(multi)
 
       assert {group1.id, identity1.actor_id} in insert
@@ -630,10 +692,15 @@ defmodule Domain.ActorsTest do
 
       for membership <- memberships do
         assert {membership.group_id, membership.actor_id} in insert
+
+        actor_id = membership.actor_id
+        group_id = membership.group_id
+        assert_receive {:create_membership, ^actor_id, ^group_id}
+        assert_receive {:allow_access, _policy_id, ^group_id, _resource_id}
       end
     end
 
-    test "updates existing memberships", %{
+    test "ignores existing memberships", %{
       account: account,
       provider: provider,
       group1: group1,
@@ -674,21 +741,27 @@ defmodule Domain.ActorsTest do
         |> Ecto.Multi.put(:group_ids_by_provider_identifier, group_ids_by_provider_identifier)
         |> sync_provider_memberships_multi(provider, tuples_list)
 
+      :ok = subscribe_to_membership_updates_for_actor(identity1.actor_id)
+      :ok = subscribe_to_membership_updates_for_actor(identity2.actor_id)
+      :ok = Domain.Policies.subscribe_to_events_for_actor(identity1.actor_id)
+      :ok = Domain.Policies.subscribe_to_events_for_actor(identity2.actor_id)
+      :ok = Domain.Policies.subscribe_to_events_for_actor_group(group1)
+      :ok = Domain.Policies.subscribe_to_events_for_actor_group(group2)
+
       assert {:ok,
               %{
-                plan_memberships: {upsert, []},
+                plan_memberships: {[], []},
                 delete_memberships: {0, nil},
-                upsert_memberships: [membership1, membership2]
+                insert_memberships: []
               }} = Repo.transaction(multi)
-
-      assert length(upsert) == 2
-      assert {group1.id, identity1.actor_id} in upsert
-      assert {group2.id, identity2.actor_id} in upsert
-      assert {membership1.group_id, membership1.actor_id} in upsert
-      assert {membership2.group_id, membership2.actor_id} in upsert
 
       assert Repo.aggregate(Actors.Membership, :count) == 2
       assert Repo.aggregate(Actors.Membership.Query.all(), :count) == 2
+
+      refute_receive {:create_membership, _actor_id, _group_id}
+      refute_receive {:delete_membership, _actor_id, _group_id}
+      refute_receive {:allow_access, _policy_id, _group_id, _resource_id}
+      refute_receive {:reject_access, _policy_id, _group_id, _resource_id}
     end
 
     test "deletes removed memberships", %{
@@ -696,9 +769,28 @@ defmodule Domain.ActorsTest do
       provider: provider,
       group1: group1,
       group2: group2,
+      actor1: actor1,
       identity1: identity1,
       identity2: identity2
     } do
+      policy = Fixtures.Policies.create_policy(account: account, actor_group: group1)
+
+      client =
+        Fixtures.Clients.create_client(
+          account: account,
+          actor: actor1,
+          identity: identity1
+        )
+
+      flow =
+        Fixtures.Flows.create_flow(
+          account: account,
+          actor_group: group1,
+          client: client,
+          resource_id: policy.resource_id,
+          policy: policy
+        )
+
       Fixtures.Actors.create_membership(
         account: account,
         group: group1,
@@ -729,11 +821,19 @@ defmodule Domain.ActorsTest do
         |> Ecto.Multi.put(:group_ids_by_provider_identifier, group_ids_by_provider_identifier)
         |> sync_provider_memberships_multi(provider, tuples_list)
 
+      :ok = subscribe_to_membership_updates_for_actor(identity1.actor_id)
+      :ok = subscribe_to_membership_updates_for_actor(identity2.actor_id)
+      :ok = Domain.Policies.subscribe_to_events_for_actor(identity1.actor_id)
+      :ok = Domain.Policies.subscribe_to_events_for_actor(identity2.actor_id)
+      :ok = Domain.Policies.subscribe_to_events_for_actor_group(group1)
+      :ok = Domain.Policies.subscribe_to_events_for_actor_group(group2)
+      :ok = Domain.Flows.subscribe_to_flow_expiration_events(flow)
+
       assert {:ok,
               %{
                 plan_memberships: {[], delete},
                 delete_memberships: {2, nil},
-                upsert_memberships: []
+                insert_memberships: []
               }} = Repo.transaction(multi)
 
       assert {group1.id, identity1.actor_id} in delete
@@ -741,6 +841,19 @@ defmodule Domain.ActorsTest do
 
       assert Repo.aggregate(Actors.Membership, :count) == 0
       assert Repo.aggregate(Actors.Membership.Query.all(), :count) == 0
+
+      actor1_id = identity1.actor_id
+      group1_id = group1.id
+      assert_receive {:delete_membership, ^actor1_id, ^group1_id}
+      assert_receive {:reject_access, _policy_id, ^group1_id, _resource_id}
+
+      actor2_id = identity2.actor_id
+      group2_id = group2.id
+      assert_receive {:delete_membership, ^actor2_id, ^group2_id}
+      assert_receive {:reject_access, _policy_id, ^group2_id, _resource_id}
+
+      flow_id = flow.id
+      assert_receive {:expire_flow, ^flow_id, _client_id, _resource_id}
     end
 
     test "deletes memberships of removed groups", %{
@@ -784,12 +897,11 @@ defmodule Domain.ActorsTest do
 
       assert {:ok,
               %{
-                plan_memberships: {upsert, delete},
-                delete_memberships: {1, nil},
-                upsert_memberships: [_membership]
+                plan_memberships: {[], delete},
+                insert_memberships: [],
+                delete_memberships: {1, nil}
               }} = Repo.transaction(multi)
 
-      assert upsert == [{group1.id, identity1.actor_id}]
       assert delete == [{group2.id, identity2.actor_id}]
 
       assert Repo.aggregate(Actors.Membership, :count) == 1
@@ -828,7 +940,7 @@ defmodule Domain.ActorsTest do
               %{
                 plan_memberships: {[], []},
                 delete_memberships: {0, nil},
-                upsert_memberships: []
+                insert_memberships: []
               }} = Repo.transaction(multi)
     end
   end
@@ -904,6 +1016,8 @@ defmodule Domain.ActorsTest do
           ]
         )
 
+      :ok = subscribe_to_membership_updates_for_actor(actor)
+
       assert {:ok, group} = create_group(attrs, subject)
       assert group.id
       assert group.name == attrs.name
@@ -913,6 +1027,10 @@ defmodule Domain.ActorsTest do
       assert membership.actor_id == actor.id
       assert membership.account_id == account.id
       assert membership.group_id == group.id
+
+      assert_receive {:create_membership, actor_id, group_id}
+      assert actor_id == actor.id
+      assert group_id == group.id
     end
 
     test "returns error when subject has no permission to manage groups", %{
@@ -977,9 +1095,10 @@ defmodule Domain.ActorsTest do
     end
 
     test "does not allow to reset required fields to empty values", %{
+      account: account,
       subject: subject
     } do
-      group = Fixtures.Actors.create_group()
+      group = Fixtures.Actors.create_group(account: account)
       attrs = %{name: nil}
 
       assert {:error, changeset} = update_group(group, attrs, subject)
@@ -1008,27 +1127,85 @@ defmodule Domain.ActorsTest do
       assert group.name == attrs.name
     end
 
-    test "updates group memberships", %{account: account, actor: actor, subject: subject} do
-      group = Fixtures.Actors.create_group(account: account, memberships: [%{actor_id: actor.id}])
+    test "updates group memberships and triggers policy access events", %{
+      account: account,
+      actor: actor1,
+      subject: subject
+    } do
+      group = Fixtures.Actors.create_group(account: account, memberships: [])
+      actor2 = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
 
-      other_actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+      resource = Fixtures.Resources.create_resource(account: account)
 
-      attrs =
-        Fixtures.Actors.group_attrs(
-          memberships: [
-            %{actor_id: other_actor.id}
-          ]
+      policy =
+        Fixtures.Policies.create_policy(
+          account: account,
+          actor_group: group,
+          resource: resource
         )
 
-      assert {:ok, group} = update_group(group, attrs, subject)
-      assert group.id
-      assert group.name == attrs.name
+      resource_id = resource.id
+      policy_id = policy.id
+      group_id = group.id
+      actor1_id = actor1.id
+      actor2_id = actor2.id
+      :ok = subscribe_to_membership_updates_for_actor(actor1)
+      :ok = subscribe_to_membership_updates_for_actor(actor2)
+      :ok = Domain.Policies.subscribe_to_events_for_actor(actor1)
+      :ok = Domain.Policies.subscribe_to_events_for_actor(actor2)
 
-      group = Repo.preload(group, :memberships)
-      assert [%Actors.Membership{} = membership] = group.memberships
-      assert membership.actor_id == other_actor.id
-      assert membership.account_id == account.id
-      assert membership.group_id == group.id
+      attrs = %{memberships: []}
+      assert {:ok, %{memberships: []}} = update_group(group, attrs, subject)
+
+      # Add a membership
+      attrs = %{memberships: [%{actor_id: actor1.id}]}
+      assert {:ok, %{memberships: [membership]}} = update_group(group, attrs, subject)
+      assert membership.actor_id == actor1.id
+      assert Repo.one(Actors.Membership).actor_id == membership.actor_id
+
+      assert_receive {:create_membership, ^actor1_id, ^group_id}
+      assert_receive {:allow_access, ^policy_id, ^group_id, ^resource_id}
+
+      # Delete existing membership and create a new one
+      attrs = %{memberships: [%{actor_id: actor2.id}]}
+      assert {:ok, %{memberships: [membership]}} = update_group(group, attrs, subject)
+      assert membership.actor_id == actor2.id
+      assert Repo.one(Actors.Membership).actor_id == membership.actor_id
+
+      assert_receive {:delete_membership, ^actor1_id, ^group_id}
+      assert_receive {:reject_access, ^policy_id, ^group_id, ^resource_id}
+      assert_receive {:create_membership, ^actor2_id, ^group_id}
+      assert_receive {:allow_access, ^policy_id, ^group_id, ^resource_id}
+
+      # Doesn't produce changes when membership is not changed
+      attrs = %{memberships: [Map.from_struct(membership)]}
+      assert {:ok, %{memberships: [membership]}} = update_group(group, attrs, subject)
+      assert membership.actor_id == actor2.id
+      assert Repo.one(Actors.Membership).actor_id == membership.actor_id
+
+      refute_received {:create_membership, _, _}
+      refute_received {:allow_access, _, _, _}
+      refute_received {:reject_access, _, _, _}
+
+      # Add one more membership
+      attrs = %{memberships: [%{actor_id: actor1.id}, %{actor_id: actor2.id}]}
+      assert {:ok, %{memberships: memberships}} = update_group(group, attrs, subject)
+      assert [membership1, membership2] = memberships
+      assert membership1.actor_id == actor1.id
+      assert membership2.actor_id == actor2.id
+      assert Repo.aggregate(Actors.Membership, :count, :actor_id) == 2
+
+      assert_receive {:create_membership, ^actor1_id, ^group_id}
+      assert_receive {:allow_access, ^policy_id, ^group_id, ^resource_id}
+
+      # Delete all memberships
+      assert {:ok, %{memberships: []}} = update_group(group, %{memberships: []}, subject)
+      assert Repo.aggregate(Actors.Membership, :count, :actor_id) == 0
+
+      assert_receive {:delete_membership, ^actor1_id, ^group_id}
+      assert_receive {:delete_membership, ^actor2_id, ^group_id}
+      assert_receive {:reject_access, ^policy_id, ^group_id, ^resource_id}
+      assert_receive {:reject_access, ^policy_id, ^group_id, ^resource_id}
     end
 
     test "returns error when subject has no permission to manage groups", %{
@@ -1087,6 +1264,30 @@ defmodule Domain.ActorsTest do
       assert deleted.deleted_at
     end
 
+    test "deletes group memberships", %{account: account, subject: subject} do
+      group = Fixtures.Actors.create_group(account: account)
+      Fixtures.Actors.create_membership(account: account, group: group)
+
+      assert {:ok, _deleted} = delete_group(group, subject)
+
+      assert Repo.aggregate(Actors.Membership, :count) == 0
+    end
+
+    test "deletes policies that use this group", %{
+      account: account,
+      subject: subject
+    } do
+      group = Fixtures.Actors.create_group(account: account)
+
+      policy = Fixtures.Policies.create_policy(account: account, actor_group: group)
+      other_policy = Fixtures.Policies.create_policy(account: account)
+
+      assert {:ok, _resource} = delete_group(group, subject)
+
+      refute is_nil(Repo.get_by(Domain.Policies.Policy, id: policy.id).deleted_at)
+      assert is_nil(Repo.get_by(Domain.Policies.Policy, id: other_policy.id).deleted_at)
+    end
+
     test "returns error when subject has no permission to delete groups", %{
       subject: subject
     } do
@@ -1109,6 +1310,95 @@ defmodule Domain.ActorsTest do
       group = Fixtures.Actors.create_group(account: account, provider: provider)
 
       assert delete_group(group, subject) == {:error, :synced_group}
+    end
+  end
+
+  describe "delete_groups_for/2" do
+    setup do
+      account = Fixtures.Accounts.create_account()
+      actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+      Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
+      provider = Fixtures.Auth.create_email_provider(account: account)
+      identity = Fixtures.Auth.create_identity(account: account, actor: actor, provider: provider)
+      subject = Fixtures.Auth.create_subject(identity: identity)
+
+      %{
+        account: account,
+        actor: actor,
+        provider: provider,
+        identity: identity,
+        subject: subject
+      }
+    end
+
+    test "does nothing on state conflict", %{
+      account: account,
+      provider: provider,
+      subject: subject
+    } do
+      Fixtures.Actors.create_group(account: account, provider: provider)
+
+      assert {:ok, [_deleted]} = delete_groups_for(provider, subject)
+      assert delete_groups_for(provider, subject) == {:ok, []}
+      assert delete_groups_for(provider, subject) == {:ok, []}
+    end
+
+    test "deletes provider groups", %{account: account, provider: provider, subject: subject} do
+      group = Fixtures.Actors.create_group(account: account, provider: provider)
+
+      assert {:ok, [deleted]} = delete_groups_for(provider, subject)
+      assert deleted.deleted_at
+
+      refute is_nil(Repo.get(Actors.Group, group.id).deleted_at)
+    end
+
+    test "deletes provider group memberships", %{
+      account: account,
+      provider: provider,
+      subject: subject
+    } do
+      actor = Fixtures.Actors.create_actor(account: account)
+      group = Fixtures.Actors.create_group(account: account, provider: provider)
+      Fixtures.Actors.create_membership(account: account, actor: actor, group: group)
+
+      :ok = subscribe_to_membership_updates_for_actor(actor)
+
+      assert {:ok, _deleted} = delete_groups_for(provider, subject)
+
+      refute Repo.get_by(Actors.Membership, group_id: group.id)
+
+      assert_receive {:delete_membership, actor_id, group_id}
+      assert actor_id == actor.id
+      assert group_id == group.id
+    end
+
+    test "deletes policies that use deleted groups", %{
+      account: account,
+      provider: provider,
+      subject: subject
+    } do
+      group = Fixtures.Actors.create_group(account: account, provider: provider)
+
+      policy = Fixtures.Policies.create_policy(account: account, actor_group: group)
+      other_policy = Fixtures.Policies.create_policy(account: account)
+
+      assert {:ok, _resource} = delete_groups_for(provider, subject)
+
+      refute is_nil(Repo.get_by(Domain.Policies.Policy, id: policy.id).deleted_at)
+      assert is_nil(Repo.get_by(Domain.Policies.Policy, id: other_policy.id).deleted_at)
+    end
+
+    test "returns error when subject has no permission to delete groups", %{
+      provider: provider,
+      subject: subject
+    } do
+      subject = Fixtures.Auth.remove_permissions(subject)
+
+      assert delete_groups_for(provider, subject) ==
+               {:error,
+                {:unauthorized,
+                 reason: :missing_permissions,
+                 missing_permissions: [Actors.Authorizer.manage_actors_permission()]}}
     end
   end
 
@@ -1570,29 +1860,73 @@ defmodule Domain.ActorsTest do
                  missing_permissions: [Actors.Authorizer.manage_actors_permission()]}}
     end
 
-    test "allows changing not synced memberships", %{account: account, subject: subject} do
+    test "allows changing not synced memberships and triggers policy access events", %{
+      account: account,
+      subject: subject
+    } do
       actor = Fixtures.Actors.create_actor(account: account)
       group1 = Fixtures.Actors.create_group(account: account)
       group2 = Fixtures.Actors.create_group(account: account)
 
+      resource = Fixtures.Resources.create_resource(account: account)
+
+      policy1 =
+        Fixtures.Policies.create_policy(
+          account: account,
+          actor_group: group1,
+          resource: resource
+        )
+
+      policy2 =
+        Fixtures.Policies.create_policy(
+          account: account,
+          actor_group: group2,
+          resource: resource
+        )
+
+      resource_id = resource.id
+      policy1_id = policy1.id
+      policy2_id = policy2.id
+      actor_id = actor.id
+      group1_id = group1.id
+      group2_id = group2.id
+      :ok = subscribe_to_membership_updates_for_actor(actor)
+      :ok = Domain.Policies.subscribe_to_events_for_actor(actor)
+
       attrs = %{memberships: []}
       assert {:ok, %{memberships: []}} = update_actor(actor, attrs, subject)
 
+      # Add a membership
       attrs = %{memberships: [%{group_id: group1.id}]}
       assert {:ok, %{memberships: [membership]}} = update_actor(actor, attrs, subject)
       assert membership.group_id == group1.id
       assert Repo.one(Actors.Membership).group_id == membership.group_id
 
+      assert_receive {:create_membership, ^actor_id, ^group1_id}
+      assert_receive {:allow_access, ^policy1_id, ^group1_id, ^resource_id}
+
+      # Delete existing membership and create a new one
       attrs = %{memberships: [%{group_id: group2.id}]}
       assert {:ok, %{memberships: [membership]}} = update_actor(actor, attrs, subject)
       assert membership.group_id == group2.id
       assert Repo.one(Actors.Membership).group_id == membership.group_id
 
+      assert_receive {:delete_membership, ^actor_id, ^group1_id}
+      assert_receive {:reject_access, ^policy1_id, ^group1_id, ^resource_id}
+      assert_receive {:create_membership, ^actor_id, ^group2_id}
+      assert_receive {:allow_access, ^policy2_id, ^group2_id, ^resource_id}
+
+      # Doesn't produce changes when membership is not changed
       attrs = %{memberships: [Map.from_struct(membership)]}
       assert {:ok, %{memberships: [membership]}} = update_actor(actor, attrs, subject)
       assert membership.group_id == group2.id
       assert Repo.one(Actors.Membership).group_id == membership.group_id
 
+      refute_received {:create_membership, _, _}
+      refute_received {:allow_access, _, _, _}
+      refute_received {:reject_access, _, _, _}
+
+      # Add one more membership
       attrs = %{memberships: [%{group_id: group1.id}, %{group_id: group2.id}]}
       assert {:ok, %{memberships: memberships}} = update_actor(actor, attrs, subject)
       assert [membership1, membership2] = memberships
@@ -1600,8 +1934,17 @@ defmodule Domain.ActorsTest do
       assert membership2.group_id == group2.id
       assert Repo.aggregate(Actors.Membership, :count, :group_id) == 2
 
+      assert_receive {:create_membership, ^actor_id, ^group1_id}
+      assert_receive {:allow_access, ^policy1_id, ^group1_id, ^resource_id}
+
+      # Delete all memberships
       assert {:ok, %{memberships: []}} = update_actor(actor, %{memberships: []}, subject)
       assert Repo.aggregate(Actors.Membership, :count, :group_id) == 0
+
+      assert_receive {:delete_membership, ^actor_id, ^group1_id}
+      assert_receive {:reject_access, ^policy1_id, ^group1_id, ^resource_id}
+      assert_receive {:delete_membership, ^actor_id, ^group2_id}
+      assert_receive {:reject_access, ^policy2_id, ^group2_id, ^resource_id}
     end
 
     test "returns error on invalid membership", %{account: account, subject: subject} do
@@ -1667,6 +2010,41 @@ defmodule Domain.ActorsTest do
       assert is_nil(other_actor.disabled_at)
     end
 
+    test "deletes token and broadcasts message to disconnect the actor sessions" do
+      account = Fixtures.Accounts.create_account()
+      actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+      Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+      identity = Fixtures.Auth.create_identity(account: account, actor: actor)
+      subject = Fixtures.Auth.create_subject(identity: identity)
+
+      Phoenix.PubSub.subscribe(Domain.PubSub, "sessions:#{subject.token_id}")
+
+      assert {:ok, _actor} = disable_actor(actor, subject)
+
+      assert token = Repo.get(Domain.Tokens.Token, subject.token_id)
+      assert token.deleted_at
+      assert_receive %Phoenix.Socket.Broadcast{event: "disconnect"}
+    end
+
+    test "expires actor flows" do
+      account = Fixtures.Accounts.create_account()
+      actor = Fixtures.Actors.create_actor(account: account, type: :account_admin_user)
+      identity = Fixtures.Auth.create_identity(account: account, actor: actor)
+      subject = Fixtures.Auth.create_subject(identity: identity)
+      client = Fixtures.Clients.create_client(account: account, identity: identity)
+
+      Fixtures.Flows.create_flow(
+        account: account,
+        subject: subject,
+        client: client
+      )
+
+      assert {:ok, _actor} = disable_actor(actor, subject)
+
+      expires_at = Repo.one(Domain.Flows.Flow).expires_at
+      assert DateTime.diff(expires_at, DateTime.utc_now()) < 1
+    end
+
     test "returns error when trying to disable the last admin actor" do
       account = Fixtures.Accounts.create_account()
       actor = Fixtures.Actors.create_actor(account: account, type: :account_admin_user)
@@ -1695,67 +2073,6 @@ defmodule Domain.ActorsTest do
       {:ok, _other_actor} = disable_actor(other_actor, subject)
 
       assert disable_actor(actor, subject) == {:error, :cant_disable_the_last_admin}
-    end
-
-    test "returns error when trying to disable the last admin actor using a race condition" do
-      for _ <- 0..50 do
-        test_pid = self()
-
-        Task.async(fn ->
-          allow_child_sandbox_access(test_pid)
-
-          Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
-
-          account = Fixtures.Accounts.create_account()
-          provider = Fixtures.Auth.create_email_provider(account: account)
-
-          actor_one =
-            Fixtures.Actors.create_actor(
-              type: :account_admin_user,
-              account: account,
-              provider: provider
-            )
-
-          actor_two =
-            Fixtures.Actors.create_actor(
-              type: :account_admin_user,
-              account: account,
-              provider: provider
-            )
-
-          identity_one =
-            Fixtures.Auth.create_identity(
-              account: account,
-              actor: actor_one,
-              provider: provider
-            )
-
-          identity_two =
-            Fixtures.Auth.create_identity(
-              account: account,
-              actor: actor_two,
-              provider: provider
-            )
-
-          subject_one = Fixtures.Auth.create_subject(identity: identity_one)
-          subject_two = Fixtures.Auth.create_subject(identity: identity_two)
-
-          for {actor, subject} <- [{actor_two, subject_one}, {actor_one, subject_two}] do
-            Task.async(fn ->
-              allow_child_sandbox_access(test_pid)
-              disable_actor(actor, subject)
-            end)
-          end
-          |> Task.await_many()
-
-          queryable =
-            Actors.Actor.Query.by_account_id(account.id)
-            |> Actors.Actor.Query.not_disabled()
-
-          assert Repo.aggregate(queryable, :count) == 1
-        end)
-      end
-      |> Task.await_many()
     end
 
     test "does not do anything when an actor is disabled twice" do
@@ -1857,12 +2174,26 @@ defmodule Domain.ActorsTest do
   end
 
   describe "delete_actor/2" do
-    test "deletes a given actor" do
+    setup do
       account = Fixtures.Accounts.create_account()
       actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
-      other_actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
       identity = Fixtures.Auth.create_identity(account: account, actor: actor)
       subject = Fixtures.Auth.create_subject(identity: identity)
+
+      %{
+        account: account,
+        actor: actor,
+        identity: identity,
+        subject: subject
+      }
+    end
+
+    test "deletes a given actor", %{
+      account: account,
+      actor: actor,
+      subject: subject
+    } do
+      other_actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
 
       assert {:ok, actor} = delete_actor(actor, subject)
       assert actor.deleted_at
@@ -1874,63 +2205,127 @@ defmodule Domain.ActorsTest do
       assert is_nil(other_actor.deleted_at)
     end
 
-    test "deletes actor identities and clients" do
-      account = Fixtures.Accounts.create_account()
-      actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
-      identity = Fixtures.Auth.create_identity(account: account, actor: actor)
-      subject = Fixtures.Auth.create_subject(identity: identity)
+    test "deletes token and broadcasts message to disconnect the actor sessions", %{
+      account: account,
+      actor: actor,
+      subject: subject
+    } do
+      Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
 
+      Phoenix.PubSub.subscribe(Domain.PubSub, "sessions:#{subject.token_id}")
+
+      assert {:ok, _actor} = delete_actor(actor, subject)
+
+      assert token = Repo.get(Domain.Tokens.Token, subject.token_id)
+      assert token.deleted_at
+      assert_receive %Phoenix.Socket.Broadcast{event: "disconnect"}
+    end
+
+    test "deletes actor identities", %{
+      account: account,
+      subject: subject
+    } do
       actor_to_delete = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
       Fixtures.Auth.create_identity(account: account, actor: actor_to_delete)
+
+      assert {:ok, actor} = delete_actor(actor_to_delete, subject)
+      assert actor.deleted_at
+
+      assert Repo.aggregate(Domain.Auth.Identity.Query.not_deleted(), :count) == 1
+    end
+
+    test "deletes actor clients", %{
+      account: account,
+      subject: subject
+    } do
+      actor_to_delete = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
       Fixtures.Clients.create_client(account: account, actor: actor_to_delete)
 
       assert {:ok, actor} = delete_actor(actor_to_delete, subject)
       assert actor.deleted_at
 
       assert Repo.aggregate(Domain.Clients.Client.Query.not_deleted(), :count) == 0
-      assert Repo.aggregate(Domain.Auth.Identity.Query.not_deleted(), :count) == 1
     end
 
-    test "returns error when trying to delete the last admin actor" do
-      account = Fixtures.Accounts.create_account()
-      actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
-      identity = Fixtures.Auth.create_identity(account: account, actor: actor)
-      subject = Fixtures.Auth.create_subject(identity: identity)
+    test "deletes actor memberships", %{
+      account: account,
+      actor: actor,
+      subject: subject
+    } do
+      Fixtures.Actors.create_membership(account: account, actor: actor)
 
+      :ok = subscribe_to_membership_updates_for_actor(actor)
+
+      assert {:ok, _actor} = delete_actor(actor, subject)
+
+      assert Repo.aggregate(Actors.Membership, :count) == 0
+
+      assert_receive {:delete_membership, actor_id, _group_id}
+      assert actor_id == actor.id
+    end
+
+    test "expires actor flows", %{
+      account: account,
+      actor: actor,
+      identity: identity,
+      subject: subject
+    } do
+      client = Fixtures.Clients.create_client(account: account, identity: identity)
+
+      Fixtures.Flows.create_flow(
+        account: account,
+        subject: subject,
+        client: client
+      )
+
+      assert {:ok, _actor} = delete_actor(actor, subject)
+
+      expires_at = Repo.one(Domain.Flows.Flow).expires_at
+      assert DateTime.diff(expires_at, DateTime.utc_now()) < 1
+    end
+
+    test "returns error when trying to delete the last admin actor", %{
+      actor: actor,
+      subject: subject
+    } do
       assert delete_actor(actor, subject) == {:error, :cant_delete_the_last_admin}
     end
 
-    test "last admin check ignores admins in other accounts" do
-      account = Fixtures.Accounts.create_account()
-      actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+    test "last admin check ignores admins in other accounts", %{
+      actor: actor,
+      subject: subject
+    } do
       Fixtures.Actors.create_actor(type: :account_admin_user)
-      identity = Fixtures.Auth.create_identity(account: account, actor: actor)
-      subject = Fixtures.Auth.create_subject(identity: identity)
 
       assert delete_actor(actor, subject) == {:error, :cant_delete_the_last_admin}
     end
 
-    test "last admin check ignores disabled admins" do
-      account = Fixtures.Accounts.create_account()
-      actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+    test "last admin check ignores disabled admins", %{
+      account: account,
+      actor: actor,
+      subject: subject
+    } do
       other_actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
-      identity = Fixtures.Auth.create_identity(account: account, actor: actor)
-      subject = Fixtures.Auth.create_subject(identity: identity)
       {:ok, _other_actor} = disable_actor(other_actor, subject)
 
       assert delete_actor(actor, subject) == {:error, :cant_delete_the_last_admin}
     end
 
-    test "last admin check ignores service accounts" do
-      account = Fixtures.Accounts.create_account()
-      actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
-      identity = Fixtures.Auth.create_identity(account: account, actor: actor)
-      subject = Fixtures.Auth.create_subject(identity: identity)
+    test "last admin check ignores service accounts", %{
+      account: account,
+      actor: actor,
+      subject: subject
+    } do
+      service_account_actor =
+        Fixtures.Actors.create_actor(
+          type: :service_account,
+          account: account
+        )
 
-      actor = Fixtures.Actors.create_actor(type: :service_account, account: account)
+      assert delete_actor(actor, subject) == {:error, :cant_delete_the_last_admin}
 
-      assert {:ok, actor} = delete_actor(actor, subject)
-      assert actor.deleted_at
+      assert {:ok, service_account_actor} = delete_actor(service_account_actor, subject)
+      assert service_account_actor.deleted_at
     end
 
     test "returns error when trying to delete the last admin actor using a race condition" do
@@ -1990,23 +2385,20 @@ defmodule Domain.ActorsTest do
       |> Task.await_many()
     end
 
-    test "does not allow to delete an actor twice" do
-      account = Fixtures.Accounts.create_account()
-      actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+    test "does not allow to delete an actor twice", %{
+      account: account,
+      subject: subject
+    } do
       other_actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
-      identity = Fixtures.Auth.create_identity(account: account, actor: actor)
-      subject = Fixtures.Auth.create_subject(identity: identity)
 
       assert {:ok, _actor} = delete_actor(other_actor, subject)
       assert delete_actor(other_actor, subject) == {:error, :not_found}
     end
 
-    test "does not allow to delete actors in other accounts" do
-      account = Fixtures.Accounts.create_account()
-      actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+    test "does not allow to delete actors in other accounts", %{
+      subject: subject
+    } do
       other_actor = Fixtures.Actors.create_actor(type: :account_admin_user)
-      identity = Fixtures.Auth.create_identity(account: account, actor: actor)
-      subject = Fixtures.Auth.create_subject(identity: identity)
 
       assert delete_actor(other_actor, subject) == {:error, :not_found}
     end

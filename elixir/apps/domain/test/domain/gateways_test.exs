@@ -1,7 +1,7 @@
 defmodule Domain.GatewaysTest do
   use Domain.DataCase, async: true
   import Domain.Gateways
-  alias Domain.{Gateways, Tokens}
+  alias Domain.{Gateways, Tokens, Resources}
 
   setup do
     account = Fixtures.Accounts.create_account()
@@ -279,6 +279,20 @@ defmodule Domain.GatewaysTest do
       assert group.routing == :stun_only
     end
 
+    test "broadcasts disconnect message to all gateway sockets", %{
+      account: account,
+      subject: subject
+    } do
+      group = Fixtures.Gateways.create_group(account: account)
+      gateway = Fixtures.Gateways.create_gateway(account: account, group: group)
+
+      :ok = Gateways.connect_gateway(gateway)
+
+      assert {:ok, _group} = update_group(group, %{routing: "stun_only"}, subject)
+
+      assert_receive "disconnect"
+    end
+
     test "returns error when subject has no permission to manage groups", %{
       account: account,
       subject: subject
@@ -329,6 +343,69 @@ defmodule Domain.GatewaysTest do
       assert Enum.all?(tokens, & &1.deleted_at)
     end
 
+    test "deletes all gateways when group is deleted", %{account: account, subject: subject} do
+      group = Fixtures.Gateways.create_group(account: account)
+      Fixtures.Gateways.create_gateway(account: account, group: group)
+
+      assert {:ok, _group} = delete_group(group, subject)
+
+      gateways =
+        Domain.Gateways.Gateway.Query.all()
+        |> Domain.Gateways.Gateway.Query.by_group_id(group.id)
+        |> Repo.all()
+
+      assert length(gateways) > 0
+      assert Enum.all?(gateways, & &1.deleted_at)
+    end
+
+    test "deletes all connections when group is deleted", %{account: account, subject: subject} do
+      group = Fixtures.Gateways.create_group(account: account)
+
+      Fixtures.Resources.create_resource(
+        account: account,
+        connections: [%{gateway_group_id: group.id}]
+      )
+
+      assert {:ok, _group} = delete_group(group, subject)
+
+      assert Repo.aggregate(Resources.Resource.Query.by_gateway_group_id(group.id), :count) == 0
+    end
+
+    test "broadcasts disconnect message to all connected gateway sockets", %{
+      account: account,
+      subject: subject
+    } do
+      group = Fixtures.Gateways.create_group(account: account)
+
+      token1 = Fixtures.Gateways.create_token(account: account, group: group)
+      Domain.PubSub.subscribe(Tokens.socket_id(token1))
+
+      token2 = Fixtures.Gateways.create_token(account: account, group: group)
+      Domain.PubSub.subscribe(Tokens.socket_id(token2))
+
+      Fixtures.Gateways.create_gateway(account: account, group: group)
+
+      assert {:ok, _group} = delete_group(group, subject)
+
+      assert_receive %Phoenix.Socket.Broadcast{event: "disconnect"}
+      assert_receive %Phoenix.Socket.Broadcast{event: "disconnect"}
+    end
+
+    test "broadcasts disconnect message to all connected gateways", %{
+      account: account,
+      subject: subject
+    } do
+      group = Fixtures.Gateways.create_group(account: account)
+      Fixtures.Gateways.create_gateway(account: account, group: group)
+      token = Fixtures.Gateways.create_token(account: account, group: group)
+
+      Phoenix.PubSub.subscribe(Domain.PubSub, "sessions:#{token.id}")
+
+      assert {:ok, _group} = delete_group(group, subject)
+
+      assert_receive %Phoenix.Socket.Broadcast{event: "disconnect"}
+    end
+
     test "returns error when subject has no permission to delete groups", %{
       subject: subject
     } do
@@ -371,10 +448,11 @@ defmodule Domain.GatewaysTest do
 
       assert {:ok, encoded_token} = create_token(group, %{}, subject)
 
-      assert {:ok, fetched_group} = authenticate(encoded_token, context)
+      assert {:ok, fetched_group, fetched_token} = authenticate(encoded_token, context)
       assert fetched_group.id == group.id
 
       assert token = Repo.get_by(Tokens.Token, gateway_group_id: fetched_group.id)
+      assert token.id == fetched_token.id
       assert token.type == :gateway_group
       assert token.account_id == account.id
       assert token.gateway_group_id == group.id
@@ -445,7 +523,7 @@ defmodule Domain.GatewaysTest do
       group = Fixtures.Gateways.create_group(account: account)
       assert {:ok, encoded_token} = create_token(group, %{}, subject)
 
-      assert {:ok, fetched_group} = authenticate(encoded_token, context)
+      assert {:ok, fetched_group, _fetched_token} = authenticate(encoded_token, context)
       assert fetched_group.id == group.id
       assert fetched_group.account_id == account.id
     end
