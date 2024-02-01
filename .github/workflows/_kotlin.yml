@@ -9,6 +9,7 @@ permissions:
 
 jobs:
   static-analysis:
+    # Android SDK tools hardware accel is available only on Linux runners
     runs-on: ubuntu-22.04
     defaults:
       run:
@@ -31,6 +32,7 @@ jobs:
         run: ./gradlew spotlessCheck
 
   build:
+    # Android SDK tools hardware accel is available only on Linux runners
     runs-on: ubuntu-22.04
     defaults:
       run:
@@ -42,7 +44,7 @@ jobs:
           targets: armv7-linux-androideabi aarch64-linux-android x86_64-linux-android i686-linux-android
       - uses: actions/setup-java@v4
         with:
-          distribution: oracle
+          distribution: temurin
           java-version: 17
       - name: Setup Gradle
         uses: gradle/gradle-build-action@v2
@@ -60,15 +62,12 @@ jobs:
         run: |
           KEYSTORE_PATH=$(pwd)/app/keystore.jks
           echo -n "$KEYSTORE_BASE64" | base64 --decode > $KEYSTORE_PATH
-          ./gradlew --info bundleRelease
+          ./gradlew bundleRelease
       - name: Run Test
         run: |
           # TODO: See https://github.com/firezone/firezone/issues/2311
           # TODO: See https://github.com/firezone/firezone/issues/2309
           ./gradlew testReleaseUnitTest
-      - name: Android Test Report
-        uses: asadmansr/android-test-report-action@v1.2.0
-        if: "!cancelled()"
       - name: Upload release
         if: ${{ github.event_name == 'workflow_dispatch' || (github.ref == 'refs/heads/main' && contains(github.event.head_commit.modified, 'elixir/VERSION')) }}
         env:

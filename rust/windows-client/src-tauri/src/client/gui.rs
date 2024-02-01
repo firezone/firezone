@@ -79,6 +79,28 @@ pub(crate) fn run(params: client::GuiParams) -> Result<(), Error> {
 
     let advanced_settings = settings::load_advanced_settings().unwrap_or_default();
 
+    // If the log filter is unparsable, show an error and use the default
+    // Fixes <https://github.com/firezone/firezone/issues/3452>
+    let advanced_settings =
+        match tracing_subscriber::EnvFilter::from_str(&advanced_settings.log_filter) {
+            Ok(_) => advanced_settings,
+            Err(_) => {
+                native_dialog::MessageDialog::new()
+                    // TODO: Wording
+                    .set_title("Log filter error")
+                    .set_text(
+                        "The custom log filter is not parsable. Using the default log filter.",
+                    )
+                    .set_type(native_dialog::MessageType::Error)
+                    .show_alert()?;
+
+                AdvancedSettings {
+                    log_filter: AdvancedSettings::default().log_filter,
+                    ..advanced_settings
+                }
+            }
+        };
+
     // Start logging
     let logging_handles = client::logging::setup(&advanced_settings.log_filter)?;
     tracing::info!("started log");
