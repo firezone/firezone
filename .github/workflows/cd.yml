@@ -269,18 +269,14 @@ jobs:
 
           # Used for release artifact
           # This should match 'build-tauri' in _rust.yml
-          cp "../target/release/Firezone.exe" "${{ env.BINARY_DEST_PATH }}-x64.exe"
           cp "../target/release/bundle/msi/*.msi" "${{ env.BINARY_DEST_PATH }}-x64.msi"
 
-          Get-FileHash ${{ env.BINARY_DEST_PATH }}-x64.exe -Algorithm SHA256 | Select-Object Hash > ${{ env.BINARY_DEST_PATH }}-x64.exe.sha256sum.txt
           Get-FileHash ${{ env.BINARY_DEST_PATH }}-x64.msi -Algorithm SHA256 | Select-Object Hash > ${{ env.BINARY_DEST_PATH }}-x64.msi.sha256sum.txt
       - name: Upload Release Assets
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release upload ${{ needs.update-release-draft.outputs.tag_name }} `
-            ${{ env.BINARY_DEST_PATH }}-x64.exe `
-            ${{ env.BINARY_DEST_PATH }}-x64.exe.sha256sum.txt `
             ${{ env.BINARY_DEST_PATH }}-x64.msi `
             ${{ env.BINARY_DEST_PATH }}-x64.msi.sha256sum.txt `
             --clobber `
