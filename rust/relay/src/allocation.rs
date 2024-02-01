@@ -1,11 +1,10 @@
 use crate::server::AllocationId;
 use crate::udp_socket::UdpSocket;
-use crate::AddressFamily;
+use crate::{AddressFamily, PeerSocket};
 use anyhow::{bail, Result};
 use futures::channel::mpsc;
 use futures::{SinkExt, StreamExt};
 use std::convert::Infallible;
-use std::net::SocketAddr;
 use tokio::task;
 
 /// The maximum amount of items that can be buffered in the channel to the allocation task.
@@ -18,12 +17,12 @@ pub struct Allocation {
     ///
     /// Stored here to make resource-cleanup easy.
     handle: task::JoinHandle<()>,
-    sender: mpsc::Sender<(Vec<u8>, SocketAddr)>,
+    sender: mpsc::Sender<(Vec<u8>, PeerSocket)>,
 }
 
 impl Allocation {
     pub fn new(
-        relay_data_sender: mpsc::Sender<(Vec<u8>, SocketAddr, AllocationId)>,
+        relay_data_sender: mpsc::Sender<(Vec<u8>, PeerSocket, AllocationId)>,
         id: AllocationId,
         family: AddressFamily,
         port: u16,
@@ -62,7 +61,7 @@ impl Allocation {
     ///
     /// All our data is relayed over UDP which by design is an unreliable protocol.
     /// Thus, any application running on top of this relay must already account for potential packet loss.
-    pub fn send(&mut self, data: Vec<u8>, recipient: SocketAddr) -> Result<()> {
+    pub fn send(&mut self, data: Vec<u8>, recipient: PeerSocket) -> Result<()> {
         match self.sender.try_send((data, recipient)) {
             Ok(()) => Ok(()),
             Err(e) if e.is_disconnected() => {
@@ -89,8 +88,8 @@ impl Drop for Allocation {
 }
 
 async fn forward_incoming_relay_data(
-    mut relayed_data_sender: mpsc::Sender<(Vec<u8>, SocketAddr, AllocationId)>,
-    mut client_to_peer_receiver: mpsc::Receiver<(Vec<u8>, SocketAddr)>,
+    mut relayed_data_sender: mpsc::Sender<(Vec<u8>, PeerSocket, AllocationId)>,
+    mut client_to_peer_receiver: mpsc::Receiver<(Vec<u8>, PeerSocket)>,
     id: AllocationId,
     family: AddressFamily,
     port: u16,
@@ -101,11 +100,11 @@ async fn forward_incoming_relay_data(
         tokio::select! {
             result = socket.recv() => {
                 let (data, sender) = result?;
-                relayed_data_sender.send((data.to_vec(), sender, id)).await?;
+                relayed_data_sender.send((data.to_vec(), PeerSocket::new(sender), id)).await?;
             }
 
             Some((data, recipient)) = client_to_peer_receiver.next() => {
-                socket.send_to(&data, recipient).await?;
+                socket.send_to(&data, recipient.into_socket()).await?;
             }
         }
     }

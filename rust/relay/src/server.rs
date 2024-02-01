@@ -8,7 +8,7 @@ pub use crate::server::client_message::{
 
 use crate::auth::{MessageIntegrityExt, Nonces, FIREZONE};
 use crate::net_ext::IpAddrExt;
-use crate::{IpStack, TimeEvents};
+use crate::{ClientSocket, IpStack, PeerSocket, TimeEvents};
 use anyhow::Result;
 use bytecodec::EncodeExt;
 use core::fmt;
@@ -53,15 +53,17 @@ pub struct Server<R> {
     public_address: IpStack,
 
     /// All client allocations, indexed by client's socket address.
-    allocations: HashMap<SocketAddr, Allocation>,
-    clients_by_allocation: HashMap<AllocationId, SocketAddr>,
+    allocations: HashMap<ClientSocket, Allocation>,
+    clients_by_allocation: HashMap<AllocationId, ClientSocket>,
     allocations_by_port: HashMap<u16, AllocationId>,
 
     lowest_port: u16,
     highest_port: u16,
 
-    channels_by_client_and_number: HashMap<(SocketAddr, u16), Channel>,
-    channel_numbers_by_client_and_peer: HashMap<(SocketAddr, SocketAddr), u16>,
+    /// Channel numbers are unique by client, thus indexed by both.
+    channels_by_client_and_number: HashMap<(ClientSocket, u16), Channel>,
+    /// Channel numbers are unique between clients and peers, thus indexed by both.
+    channel_numbers_by_client_and_peer: HashMap<(ClientSocket, PeerSocket), u16>,
 
     pending_commands: VecDeque<Command>,
     next_allocation_id: AllocationId,
@@ -87,7 +89,7 @@ pub struct Server<R> {
 pub enum Command {
     SendMessage {
         payload: Vec<u8>,
-        recipient: SocketAddr,
+        recipient: ClientSocket,
     },
     /// Listen for traffic on the provided port [AddressFamily].
     ///
@@ -108,7 +110,7 @@ pub enum Command {
     ForwardData {
         id: AllocationId,
         data: Vec<u8>,
-        receiver: SocketAddr,
+        receiver: PeerSocket,
     },
     /// At the latest, the [`Server`] needs to be woken at the specified deadline to execute time-based actions correctly.
     Wake { deadline: SystemTime },
@@ -228,7 +230,7 @@ where
     ///
     /// After calling this method, you should call [`Server::next_command`] until it returns `None`.
     #[tracing::instrument(skip_all, fields(transaction_id, %sender, allocation, channel, recipient, peer), level = "error")]
-    pub fn handle_client_input(&mut self, bytes: &[u8], sender: SocketAddr, now: SystemTime) {
+    pub fn handle_client_input(&mut self, bytes: &[u8], sender: ClientSocket, now: SystemTime) {
         if tracing::enabled!(target: "wire", tracing::Level::TRACE) {
             let hex_bytes = hex::encode(bytes);
             tracing::trace!(target: "wire", %hex_bytes, "receiving bytes");
@@ -265,7 +267,7 @@ where
     pub fn handle_client_message(
         &mut self,
         message: ClientMessage,
-        sender: SocketAddr,
+        sender: ClientSocket,
         now: SystemTime,
     ) {
         let result = match message {
@@ -294,7 +296,11 @@ where
         self.queue_error_response(sender, error_response)
     }
 
-    fn queue_error_response(&mut self, sender: SocketAddr, mut error_response: Message<Attribute>) {
+    fn queue_error_response(
+        &mut self,
+        sender: ClientSocket,
+        mut error_response: Message<Attribute>,
+    ) {
         let Some(error) = error_response.get_attribute::<ErrorCode>().cloned() else {
             debug_assert!(false, "Error response without an `ErrorCode`");
             return;
@@ -322,7 +328,7 @@ where
     pub fn handle_peer_traffic(
         &mut self,
         bytes: &[u8],
-        sender: SocketAddr,
+        sender: PeerSocket,
         allocation: AllocationId,
     ) {
         if tracing::enabled!(target: "wire", tracing::Level::TRACE) {
@@ -330,16 +336,16 @@ where
             tracing::trace!(target: "wire", %hex_bytes, "receiving bytes");
         }
 
-        let Some(recipient) = self.clients_by_allocation.get(&allocation) else {
+        let Some(client) = self.clients_by_allocation.get(&allocation).copied() else {
             tracing::debug!(target: "relay", "unknown allocation");
             return;
         };
 
-        Span::current().record("recipient", field::display(&recipient));
+        Span::current().record("recipient", field::display(&client));
 
         let Some(channel_number) = self
             .channel_numbers_by_client_and_peer
-            .get(&(*recipient, sender))
+            .get(&(client, sender))
         else {
             tracing::debug!(target: "relay", "no active channel, refusing to relay {} bytes", bytes.len());
             return;
@@ -349,7 +355,7 @@ where
 
         let Some(channel) = self
             .channels_by_client_and_number
-            .get(&(*recipient, *channel_number))
+            .get(&(client, *channel_number))
         else {
             debug_assert!(false, "unknown channel {}", channel_number);
             return;
@@ -379,7 +385,7 @@ where
 
         self.pending_commands.push_back(Command::SendMessage {
             payload: data,
-            recipient: *recipient,
+            recipient: client,
         })
     }
 
@@ -441,13 +447,13 @@ where
         self.pending_commands.pop_front()
     }
 
-    fn handle_binding_request(&mut self, message: Binding, sender: SocketAddr) {
+    fn handle_binding_request(&mut self, message: Binding, sender: ClientSocket) {
         let mut message = Message::new(
             MessageClass::SuccessResponse,
             BINDING,
             message.transaction_id(),
         );
-        message.add_attribute(XorMappedAddress::new(sender));
+        message.add_attribute(XorMappedAddress::new(sender.0));
 
         self.send_message(message, sender);
     }
@@ -458,7 +464,7 @@ where
     fn handle_allocate_request(
         &mut self,
         request: Allocate,
-        sender: SocketAddr,
+        sender: ClientSocket,
         now: SystemTime,
     ) -> Result<(), Message<Attribute>> {
         self.verify_auth(&request, now)?;
@@ -521,7 +527,7 @@ where
             )));
         }
 
-        message.add_attribute(XorMappedAddress::new(sender));
+        message.add_attribute(XorMappedAddress::new(sender.0));
         message.add_attribute(effective_lifetime.clone());
 
         let wake_deadline = self.time_events.add(
@@ -577,7 +583,7 @@ where
     fn handle_refresh_request(
         &mut self,
         request: Refresh,
-        sender: SocketAddr,
+        sender: ClientSocket,
         now: SystemTime,
     ) -> Result<(), Message<Attribute>> {
         self.verify_auth(&request, now)?;
@@ -633,7 +639,7 @@ where
     fn handle_channel_bind_request(
         &mut self,
         request: ChannelBind,
-        sender: SocketAddr,
+        sender: ClientSocket,
         now: SystemTime,
     ) -> Result<(), Message<Attribute>> {
         self.verify_auth(&request, now)?;
@@ -645,7 +651,7 @@ where
 
         // Note: `channel_number` is enforced to be in the correct range.
         let requested_channel = request.channel_number().value();
-        let peer_address = request.xor_peer_address().address();
+        let peer_address = PeerSocket(request.xor_peer_address().address());
 
         Span::current().record("allocation", display(&allocation.id));
         Span::current().record("peer", display(&peer_address));
@@ -726,7 +732,7 @@ where
     fn handle_create_permission_request(
         &mut self,
         message: CreatePermission,
-        sender: SocketAddr,
+        sender: ClientSocket,
         now: SystemTime,
     ) -> Result<(), Message<Attribute>> {
         self.verify_auth(&message, now)?;
@@ -742,7 +748,7 @@ where
     fn handle_channel_data_message(
         &mut self,
         message: ChannelData,
-        sender: SocketAddr,
+        sender: ClientSocket,
         _: SystemTime,
     ) {
         let channel_number = message.channel();
@@ -858,9 +864,9 @@ where
 
     fn create_channel_binding(
         &mut self,
-        client: SocketAddr,
+        client: ClientSocket,
         requested_channel: u16,
-        peer_address: SocketAddr,
+        peer: PeerSocket,
         id: AllocationId,
         now: SystemTime,
     ) {
@@ -868,7 +874,7 @@ where
             (client, requested_channel),
             Channel {
                 expiry: now + CHANNEL_BINDING_DURATION,
-                peer_address,
+                peer_address: peer,
                 allocation: id,
                 bound: true,
             },
@@ -877,12 +883,12 @@ where
 
         let existing = self
             .channel_numbers_by_client_and_peer
-            .insert((client, peer_address), requested_channel);
+            .insert((client, peer), requested_channel);
 
         debug_assert!(existing.is_none());
     }
 
-    fn send_message(&mut self, message: Message<Attribute>, recipient: SocketAddr) {
+    fn send_message(&mut self, message: Message<Attribute>, recipient: ClientSocket) {
         let method = message.method();
         let class = message.class();
         tracing::trace!(target: "relay",  method = %message.method(), class = %message.class(), "Sending message");
@@ -961,7 +967,7 @@ where
         tracing::info!(target: "relay", %port, "Deleted allocation");
     }
 
-    fn delete_channel_binding(&mut self, client: SocketAddr, chan: u16) {
+    fn delete_channel_binding(&mut self, client: ClientSocket, chan: u16) {
         let Some(channel) = self.channels_by_client_and_number.get(&(client, chan)) else {
             return;
         };
@@ -1018,7 +1024,7 @@ struct Channel {
     expiry: SystemTime,
 
     /// The address of the peer that the channel is bound to.
-    peer_address: SocketAddr,
+    peer_address: PeerSocket,
 
     /// The allocation this channel belongs to.
     allocation: AllocationId,
@@ -1050,8 +1056,8 @@ impl Allocation {
     ///
     /// This is called in the context of a channel binding with the requested peer address.
     /// We can only relay to the address if the allocation supports the same version of the IP protocol.
-    fn can_relay_to(&self, addr: SocketAddr) -> bool {
-        match addr {
+    fn can_relay_to(&self, addr: PeerSocket) -> bool {
+        match addr.0 {
             SocketAddr::V4(_) => self.first_relay_addr.is_ipv4(), // If we have an IPv4 address, it is in `first_relay_addr`, no need to check `second_relay_addr`.
             SocketAddr::V6(_) => {
                 self.first_relay_addr.is_ipv6()
@@ -1070,8 +1076,8 @@ impl Allocation {
 #[derive(PartialEq)]
 enum TimedAction {
     ExpireAllocation(AllocationId),
-    UnbindChannel((SocketAddr, u16)),
-    DeleteChannel((SocketAddr, u16)),
+    UnbindChannel((ClientSocket, u16)),
+    DeleteChannel((ClientSocket, u16)),
 }
 
 fn error_response(
