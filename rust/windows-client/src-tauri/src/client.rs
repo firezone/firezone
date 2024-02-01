@@ -16,17 +16,6 @@ mod resolvers;
 mod settings;
 mod wintun_install;
 
-/// Bundle ID / App ID that we use to distinguish ourself from other programs on the system
-///
-/// e.g. In ProgramData and AppData we use this to name our subdirectories for configs and data,
-/// and Windows may use it to track things like the MSI installer, notification titles,
-/// deep link registration, etc.
-///
-/// This should be identical to the `tauri.bundle.identifier` over in `tauri.conf.json`,
-/// but sometimes I need to use this before Tauri has booted up, or in a place where
-/// getting the Tauri app handle would be awkward.
-pub const BUNDLE_ID: &str = "dev.firezone.client";
-
 /// Output of `git describe` at compile time
 /// e.g. `1.0.0-pre.4-20-ged5437c88-modified` where:
 ///

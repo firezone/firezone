@@ -3,15 +3,14 @@
 
 // TODO: `git grep` for unwraps before 1.0, especially this gui module
 
-use crate::client::{self, deep_link, network_changes, BUNDLE_ID};
+use crate::client::{
+    self, about, deep_link, logging, network_changes,
+    settings::{self, AdvancedSettings},
+};
 use anyhow::{anyhow, bail, Context, Result};
 use arc_swap::ArcSwap;
-use client::{
-    about, logging,
-    settings::{self, app_local_data_dir, AdvancedSettings},
-};
 use connlib_client_shared::{file_logger, ResourceDescription};
-use connlib_shared::messages::ResourceId;
+use connlib_shared::{messages::ResourceId, windows::BUNDLE_ID};
 use secrecy::{ExposeSecret, SecretString};
 use std::{net::IpAddr, path::PathBuf, str::FromStr, sync::Arc, time::Duration};
 use system_tray_menu::Event as TrayMenuEvent;
@@ -54,18 +53,12 @@ impl Managed {
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum Error {
-    #[error("create_dir_all failed when creating data dir inside local AppData dir: {0}")]
-    CreateDataDir(std::io::Error),
     #[error("Deep-link module error: {0}")]
     DeepLink(#[from] deep_link::Error),
     #[error("Can't show log filter error dialog: {0}")]
     LogFilterErrorDialog(native_dialog::Error),
     #[error("Logging module error: {0}")]
     Logging(#[from] logging::Error),
-    #[error("std::env::set_current_dir failed: {0}")]
-    SetCurrentDir(std::io::Error),
-    #[error("Settings module error: {0}")]
-    Settings(#[from] settings::Error),
     #[error(transparent)]
     Tauri(#[from] tauri::Error),
     #[error("tokio::runtime::Runtime::new failed: {0}")]
@@ -78,11 +71,6 @@ pub(crate) enum Error {
 
 /// Runs the Tauri GUI and returns on exit or unrecoverable error
 pub(crate) fn run(params: client::GuiParams) -> Result<(), Error> {
-    // Change to data dir so the file logger will write there and not in System32 if we're launching from an app link
-    let cwd = app_local_data_dir()?.join("data");
-    std::fs::create_dir_all(&cwd).map_err(Error::CreateDataDir)?;
-    std::env::set_current_dir(&cwd).map_err(Error::SetCurrentDir)?;
-
     let advanced_settings = settings::load_advanced_settings().unwrap_or_default();
 
     // If the log filter is unparsable, show an error and use the default

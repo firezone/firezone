@@ -1,11 +1,9 @@
 //! Everything for logging to files, zipping up the files for export, and counting the files
 
-use crate::client::{
-    gui::{ControllerRequest, CtlrTx, Managed},
-    settings::app_local_data_dir,
-};
+use crate::client::gui::{ControllerRequest, CtlrTx, Managed};
 use anyhow::{bail, Result};
 use connlib_client_shared::file_logger;
+use connlib_shared::windows::app_local_data_dir;
 use serde::Serialize;
 use std::{fs, io, path::PathBuf, result::Result as StdResult, str::FromStr};
 use tokio::task::spawn_blocking;
@@ -23,8 +21,8 @@ pub(crate) struct Handles {
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum Error {
-    #[error("Couldn't compute our local AppData path: {0}")]
-    AppLocalDataDir(crate::client::settings::Error),
+    #[error("Couldn't compute our local AppData path")]
+    CantFindLocalAppDataFolder,
     #[error("Couldn't create logs dir: {0}")]
     CreateDirAll(std::io::Error),
     #[error("Log filter couldn't be parsed")]
@@ -38,7 +36,7 @@ pub(crate) enum Error {
 /// Set up logs for the first time.
 pub(crate) fn setup(log_filter: &str) -> Result<Handles, Error> {
     let log_path = app_local_data_dir()
-        .map_err(Error::AppLocalDataDir)?
+        .map_err(|_| Error::CantFindLocalAppDataFolder)?
         .join("data")
         .join("logs");
 
