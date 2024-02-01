@@ -130,9 +130,28 @@ pub(crate) fn run() -> Result<()> {
 
 /// `gui::run` but wrapped in `anyhow::Result`
 ///
-/// Error handling can go here soon
+/// Automatically logs or shows error dialogs for important user-actionable errors
 fn run_gui(params: GuiParams) -> Result<()> {
-    Ok(gui::run(params)?)
+    let result = gui::run(params);
+
+    // Make sure errors get logged, at least to stderr
+    if let Err(error) = &result {
+        tracing::error!(?error, "gui::run error");
+        let error_msg = match &error {
+            gui::Error::WebViewNotInstalled => "Firezone cannot start because WebView2 is not installed. Follow the instructions at <https://www.firezone.dev/kb/user-guides/windows-client>.".to_string(),
+            error => format!("{}", error),
+        };
+
+        native_dialog::MessageDialog::new()
+            .set_title("Firezone Error")
+            .set_text(&error_msg)
+            .set_type(native_dialog::MessageType::Error)
+            .show_alert()?;
+    }
+
+    // `Error` refers to Tauri types, so it shouldn't be used in main.
+    // Make it into an anyhow.
+    Ok(result?)
 }
 
 #[derive(Parser)]
