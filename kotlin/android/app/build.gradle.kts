@@ -148,7 +148,7 @@ dependencies {
     implementation("androidx.preference:preference-ktx:1.2.0")
 
     // Material
-    implementation("com.google.android.material:material:1.8.0")
+    implementation("com.google.android.material:material:1.11.0")
 
     // Lifecycle
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
