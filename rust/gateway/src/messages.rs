@@ -29,6 +29,18 @@ pub struct Client {
     pub peer: Peer,
 }
 
+impl From<Client> for firezone_tunnel::Client {
+    fn from(value: Client) -> Self {
+        Self {
+            payload: value.payload,
+            ips: value.peer.ips(),
+            public_key: value.peer.public_key.0.into(),
+            preshared_key: value.peer.preshared_key,
+            id: value.id,
+        }
+    }
+}
+
 // rtc_sdp is ignored from eq since RTCSessionDescription doesn't implement this
 // this will probably be changed in the future.
 impl PartialEq for Client {

@@ -19,6 +19,8 @@ fn make_socket(addr: impl Into<SocketAddr>) -> io::Result<std::net::UdpSocket> {
     let socket = socket2::Socket::new(addr.domain(), Type::DGRAM, None)?;
     socket.set_nonblocking(true)?;
     socket.bind(&addr)?;
+
+    #[cfg(target_os = "linux")]
     socket.set_mark(FIREZONE_MARK)?;
 
     // Note: for AF_INET sockets IPV6_V6ONLY is not a valid flag

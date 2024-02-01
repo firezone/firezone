@@ -10,7 +10,7 @@ use futures_util::FutureExt;
 use if_watch::tokio::IfWatcher;
 use ip_network_table::IpNetworkTable;
 use pnet_packet::Packet;
-use snownet::{Client, IpPacket, Node, Server, Transmit};
+use snownet::{IpPacket, Node, Server, Transmit};
 
 use hickory_resolver::proto::rr::RecordType;
 use parking_lot::Mutex;
@@ -39,6 +39,7 @@ use connlib_shared::{
 
 pub use client::ClientState;
 use connlib_shared::error::ConnlibError;
+pub use control_protocol::Client;
 pub use control_protocol::Request;
 pub use gateway::GatewayState;
 
@@ -119,18 +120,16 @@ where
                             .untransform(packet.source(), self.write_buf.as_mut())
                             .ok();
                     }
-                    Ok(None) => {
-                        return None;
-                    }
+                    Ok(None) => None,
                     Err(e) => {
                         tracing::error!(%from, "Failed to decapsulate incoming packet: {e:#?}");
-                        return None;
+                        None
                     }
                 }
             }
             (_, Err(e)) => {
                 tracing::error!("Failed to read socket: {e:#?}");
-                return None;
+                None
             }
         }
     }
@@ -341,7 +340,8 @@ where
 }
 
 pub type GatewayTunnel<CB> = Tunnel<CB, GatewayState, Server, ClientId, PacketTransformGateway>;
-pub type ClientTunnel<CB> = Tunnel<CB, ClientState, Client, GatewayId, PacketTransformClient>;
+pub type ClientTunnel<CB> =
+    Tunnel<CB, ClientState, snownet::Client, GatewayId, PacketTransformClient>;
 
 /// Tunnel is a wireguard state machine that uses webrtc's ICE channels instead of UDP sockets to communicate between peers.
 pub struct Tunnel<CB: Callbacks, TRoleState, TRole, TId, TTransform> {
@@ -361,7 +361,7 @@ pub struct Tunnel<CB: Callbacks, TRoleState, TRole, TId, TTransform> {
     cleanup_interval: Mutex<Interval>,
 }
 
-impl<CB> Tunnel<CB, ClientState, Client, GatewayId, PacketTransformClient>
+impl<CB> Tunnel<CB, ClientState, snownet::Client, GatewayId, PacketTransformClient>
 where
     CB: Callbacks + 'static,
 {

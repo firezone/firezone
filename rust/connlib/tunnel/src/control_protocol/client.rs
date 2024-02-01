@@ -123,8 +123,11 @@ where
         peer.transform
             .set_dns(self.role_state.lock().dns_mapping.clone());
 
-        // Partial reads of peers_by_ip can be problematic in the very unlikely case of an expiration
-        // before inserting finishes.
+        // cleaning up old state
+        self.role_state
+            .lock()
+            .peers_by_ip
+            .retain(|_, p| p.conn_id != gateway_id);
         self.connections_state
             .lock()
             .connections

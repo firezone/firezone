@@ -143,12 +143,8 @@ impl Eventloop {
                         async move {
                             let conn = tunnel
                                 .set_peer_connection_request(
-                                    req.client.payload,
-                                    req.client.peer.ips(),
-                                    req.client.peer.public_key.0.into(),
-                                    req.client.peer.preshared_key,
+                                    req.client.into(),
                                     req.relays,
-                                    req.client.id,
                                     req.expires_at,
                                     req.resource,
                                 )

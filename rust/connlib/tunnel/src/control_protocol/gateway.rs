@@ -19,6 +19,14 @@ use secrecy::ExposeSecret;
 use snownet::{Credentials, Offer, Server};
 use std::{collections::HashSet, sync::Arc};
 
+pub struct Client {
+    pub payload: ClientPayload,
+    pub ips: Vec<IpNetwork>,
+    pub public_key: PublicKey,
+    pub preshared_key: SecretKey,
+    pub id: ClientId,
+}
+
 impl<CB> Tunnel<CB, GatewayState, Server, ClientId, PacketTransformGateway>
 where
     CB: Callbacks + 'static,
@@ -32,32 +40,14 @@ where
     /// The connection details
     pub async fn set_peer_connection_request(
         &self,
-        client_payload: ClientPayload,
-        ips: Vec<IpNetwork>,
-        public_key: PublicKey,
-        preshared_key: SecretKey,
+        client: Client,
         relays: Vec<Relay>,
-        client_id: ClientId,
         expires_at: Option<DateTime<Utc>>,
         resource: ResourceDescription,
     ) -> Result<ConnectionAccepted> {
-        // TODO:
-        // let previous_ice = self
-        //     .peer_connections
-        //     .lock()
-        //     .insert(client_id, Arc::clone(&ice));
-        // if let Some(ice) = previous_ice {
-        //     // If we had a previous on-going connection we stop it.
-        //     // Note that ice.stop also closes the gatherer.
-        //     // we only have to do this on the gateway because clients can query
-        //     // twice for initiating connections since they can close/reopen suddenly
-        //     // however, gateways never initiate connection requests
-        //     let _ = ice.stop().await;
-        // }
-
         let resource_addresses = match &resource {
             ResourceDescription::Dns(r) => {
-                let Some(domain) = client_payload.domain.clone() else {
+                let Some(domain) = client.payload.domain.clone() else {
                     return Err(Error::ControlProtocolError);
                 };
 
@@ -79,22 +69,22 @@ where
             .connections
             .node
             .accept_connection(
-                client_id,
+                client.id,
                 Offer {
-                    session_key: preshared_key.expose_secret().0.into(),
+                    session_key: client.preshared_key.expose_secret().0.into(),
                     credentials: Credentials {
-                        username: client_payload.ice_parameters.username,
-                        password: client_payload.ice_parameters.password,
+                        username: client.payload.ice_parameters.username,
+                        password: client.payload.ice_parameters.password,
                     },
                 },
-                public_key,
+                client.public_key,
                 stun_servers,
                 turn(&relays),
             );
 
         self.new_peer(
-            ips,
-            client_id,
+            client.ips,
+            client.id,
             resource,
             expires_at,
             resource_addresses.clone(),
@@ -105,7 +95,7 @@ where
                 username: answer.credentials.username,
                 password: answer.credentials.password,
             },
-            domain_response: client_payload.domain.map(|domain| DomainResponse {
+            domain_response: client.payload.domain.map(|domain| DomainResponse {
                 domain,
                 address: resource_addresses
                     .into_iter()
@@ -188,6 +178,11 @@ where
                 .add_resource(address, resource.clone(), expires_at);
         }
 
+        // cleaning up old state
+        self.role_state
+            .lock()
+            .peers_by_ip
+            .retain(|_, p| p.conn_id != client_id);
         self.connections_state
             .lock()
             .connections

@@ -9,6 +9,8 @@ use connlib_shared::{
 
 use crate::{peer::Peer, Tunnel, REALM};
 
+pub use gateway::Client;
+
 mod client;
 mod gateway;
 
