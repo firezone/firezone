@@ -2,21 +2,28 @@
 //! advanced settings and code for manipulating diagnostic logs.
 
 use crate::client::gui::{ControllerRequest, Managed};
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::{path::PathBuf, time::Duration};
 use tokio::sync::oneshot;
 use url::Url;
+
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum Error {
+    #[error("Can't find %LOCALAPPDATA%")]
+    LocalAppDataMissing,
+}
 
 /// Returns e.g. `C:/Users/User/AppData/Local/dev.firezone.client
 ///
 /// This is where we can save config, logs, crash dumps, etc.
 /// It's per-user and doesn't roam across different PCs in the same domain.
 /// It's read-write for non-elevated processes.
-pub(crate) fn app_local_data_dir() -> Option<PathBuf> {
-    let path = known_folders::get_known_folder_path(known_folders::KnownFolder::LocalAppData)?
+pub(crate) fn app_local_data_dir() -> Result<PathBuf, Error> {
+    let path = known_folders::get_known_folder_path(known_folders::KnownFolder::LocalAppData)
+        .ok_or(Error::LocalAppDataMissing)?
         .join(crate::client::BUNDLE_ID);
-    Some(path)
+    Ok(path)
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -54,9 +61,7 @@ struct DirAndPath {
 }
 
 fn advanced_settings_path() -> Result<DirAndPath> {
-    let dir = app_local_data_dir()
-        .ok_or_else(|| anyhow!("app_local_data_dir() failed"))?
-        .join("config");
+    let dir = app_local_data_dir()?.join("config");
     let path = dir.join("advanced_settings.json");
     Ok(DirAndPath { dir, path })
 }

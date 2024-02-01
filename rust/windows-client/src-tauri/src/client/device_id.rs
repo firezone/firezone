@@ -3,10 +3,12 @@ use tokio::fs;
 
 #[derive(thiserror::Error, Debug)]
 pub(crate) enum Error {
-    #[error(transparent)]
-    Io(#[from] std::io::Error),
+    #[error("Couldn't create app-specific dir in `ProgramData`: {0}")]
+    CreateProgramDataDir(std::io::Error),
     #[error("Can't find well-known folder")]
     KnownFolder,
+    #[error("Couldn't write device ID file: {0}")]
+    WriteDeviceIdFile(std::io::Error),
 }
 
 /// Returns the device ID, generating it and saving it to disk if needed.
@@ -44,12 +46,15 @@ pub(crate) async fn device_id(identifier: &str) -> Result<String, Error> {
     let j = DeviceIdJson { id };
     // TODO: This file write has the same possible problems with power loss as described here https://github.com/firezone/firezone/pull/2757#discussion_r1416374516
     // Since the device ID is random, typically only written once in the device's lifetime, and the read will error out if it's corrupted, it's low-risk.
-    fs::create_dir_all(&dir).await?;
+    fs::create_dir_all(&dir)
+        .await
+        .map_err(Error::CreateProgramDataDir)?;
     fs::write(
         &path,
         serde_json::to_string(&j).expect("Device ID should always be serializable"),
     )
-    .await?;
+    .await
+    .map_err(Error::WriteDeviceIdFile)?;
 
     let device_id = j.device_id();
     tracing::debug!(?device_id, "Saved device ID to disk");
