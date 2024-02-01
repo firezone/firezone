@@ -745,6 +745,7 @@ mod tests {
     use std::net::{IpAddr, Ipv4Addr};
 
     const PEER1: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 10000);
+    const PEER2: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 20000);
     const RELAY: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 3478);
     const RELAY_ADDR: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 9999);
     const MINUTE: Duration = Duration::from_secs(60);
@@ -930,23 +931,27 @@ mod tests {
             "no messages to be sent if we don't have an allocation"
         );
 
-        allocation.handle_timeout(Instant::now());
-        let message = next_stun_message(&mut allocation).unwrap();
-        assert_eq!(message.method(), ALLOCATE);
+        make_allocation(&mut allocation, PEER1);
 
-        assert!(
-            next_stun_message(&mut allocation).is_none(),
-            "no messages to be sent if we don't have an allocation"
-        );
-
-        allocation.handle_input(
-            RELAY,
-            PEER1,
-            &encode(allocate_response(message.transaction_id())),
-            Instant::now(),
-        );
         let message = next_stun_message(&mut allocation).unwrap();
         assert_eq!(message.method(), CHANNEL_BIND);
+    }
+
+    #[test]
+    fn does_not_relay_to_with_unbound_channel() {
+        let mut allocation = Allocation::new(
+            RELAY,
+            Username::new("foobar".to_owned()).unwrap(),
+            "baz".to_owned(),
+            Realm::new("firezone".to_owned()).unwrap(),
+        );
+
+        make_allocation(&mut allocation, PEER1);
+        allocation.bind_channel(PEER2, Instant::now());
+
+        let message = allocation.encode_to_vec(PEER2, b"foobar", Instant::now());
+
+        assert!(message.is_none())
     }
 
     fn ch(peer: SocketAddr, now: Instant) -> Channel {
@@ -962,6 +967,17 @@ mod tests {
         let transmit = allocation.poll_transmit()?;
 
         Some(decode(&transmit.payload).unwrap().unwrap())
+    }
+
+    fn make_allocation(allocation: &mut Allocation, local: SocketAddr) {
+        allocation.handle_timeout(Instant::now());
+        let message = next_stun_message(allocation).unwrap();
+        allocation.handle_input(
+            RELAY,
+            local,
+            &encode(allocate_response(message.transaction_id())),
+            Instant::now(),
+        );
     }
 
     fn allocate_response(id: TransactionId) -> stun_codec::Message<Attribute> {
