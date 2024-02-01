@@ -1902,6 +1902,7 @@ dependencies = [
  "netlink-packet-route 0.18.1",
  "parking_lot",
  "pnet_packet",
+ "quinn-udp",
  "rand_core 0.6.4",
  "rtnetlink 0.14.0",
  "secrecy",
@@ -4747,6 +4748,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1004a344b30a54e2ee58d66a71b32d2db2feb0a31f9a2d302bf0536f15de2a33"
 dependencies = [
  "memchr",
+]
+
+[[package]]
+name = "quinn-udp"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "055b4e778e8feb9f93c4e439f71dc2156ef13360b432b799e179a8c4cdf0b1d7"
+dependencies = [
+ "bytes",
+ "libc",
+ "socket2 0.5.5",
+ "tracing",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]

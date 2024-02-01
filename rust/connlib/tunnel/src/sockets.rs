@@ -1,12 +1,14 @@
+use quinn_udp::{RecvMeta, UdpSockRef, UdpSocketState};
 use socket2::{SockAddr, Type};
 use std::{
-    io,
+    io::{self, IoSliceMut},
     net::{IpAddr, SocketAddr},
     task::{ready, Context, Poll, Waker},
 };
-use tokio::{io::ReadBuf, net::UdpSocket};
+use tokio::{io::Interest, net::UdpSocket};
 
 pub struct Socket<const N: usize> {
+    state: UdpSocketState,
     local: SocketAddr,
     socket: UdpSocket,
     buffer: Box<[u8; N]>,
@@ -36,7 +38,10 @@ impl<const N: usize> Socket<N> {
 
         let local = socket.local_addr()?;
 
+        UdpSocketState::configure(UdpSockRef::from(&socket))?;
+
         Ok(Socket {
+            state: UdpSocketState::new(),
             local,
             socket: tokio::net::UdpSocket::from_std(socket)?,
             buffer: Box::new([0u8; N]),
@@ -46,21 +51,34 @@ impl<const N: usize> Socket<N> {
     pub fn poll_recv_from<'b>(
         &'b mut self,
         cx: &mut Context<'_>,
-    ) -> Poll<(SocketAddr, io::Result<(SocketAddr, ReadBuf<'b>)>)> {
+    ) -> Poll<(SocketAddr, io::Result<(SocketAddr, &'b mut [u8])>)> {
         let Socket {
             local: addr,
             socket,
             buffer,
+            state,
         } = self;
 
-        let mut buf = ReadBuf::new(buffer.as_mut());
+        let bufs = &mut [IoSliceMut::new(buffer.as_mut())];
+        let meta = RecvMeta::default();
 
-        let from = match ready!(socket.poll_recv_from(cx, &mut buf)) {
-            Ok(from) => from,
-            Err(e) => return Poll::Ready((*addr, Err(e))),
-        };
+        loop {
+            match ready!(socket.poll_recv_ready(cx)) {
+                Ok(()) => {}
+                Err(e) => return Poll::Ready((*addr, Err(e))),
+            };
 
-        Poll::Ready((*addr, Ok((from, buf))))
+            if let Ok(len) = socket.try_io(Interest::READABLE, || {
+                state.recv((&socket).into(), bufs, &mut [meta])
+            }) {
+                return Poll::Ready((
+                    meta.dst_ip
+                        .map(|ip| SocketAddr::new(ip, addr.port()))
+                        .unwrap_or(*addr),
+                    Ok((meta.addr, &mut buffer[..len])),
+                ));
+            }
+        }
     }
 
     pub fn try_send_to(&self, dest: SocketAddr, buf: &[u8]) -> io::Result<usize> {
@@ -121,7 +139,7 @@ impl<const N: usize> UdpSockets<N> {
     pub fn poll_recv_from<'b>(
         &'b mut self,
         cx: &mut Context<'_>,
-    ) -> Poll<(SocketAddr, io::Result<(SocketAddr, ReadBuf<'b>)>)> {
+    ) -> Poll<(SocketAddr, io::Result<(SocketAddr, &'b mut [u8])>)> {
         if self.sockets.is_empty() {
             self.empty_waker = Some(cx.waker().clone());
             return Poll::Pending;

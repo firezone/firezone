@@ -16,7 +16,6 @@ use hickory_resolver::proto::rr::RecordType;
 use parking_lot::Mutex;
 use peer::{PacketTransform, PacketTransformClient, PacketTransformGateway, Peer, PeerStats};
 use sockets::{Socket, UdpSockets};
-use tokio::io::ReadBuf;
 use tokio::time::MissedTickBehavior;
 
 use arc_swap::ArcSwapOption;
@@ -100,14 +99,14 @@ where
 
     fn handle_socket_packet<'a>(
         &'a mut self,
-        packet: (SocketAddr, io::Result<(SocketAddr, ReadBuf<'a>)>),
+        packet: (SocketAddr, io::Result<(SocketAddr, &'a mut [u8])>),
     ) -> Option<device_channel::Packet<'a>> {
         match packet {
             (local, Ok((from, packet))) => {
                 match self.node.decapsulate(
                     local,
                     from,
-                    packet.filled(),
+                    packet,
                     std::time::Instant::now(),
                     self.write_buf.as_mut(),
                 ) {
@@ -164,7 +163,7 @@ impl IceSockets {
     fn poll_recv_from<'a>(
         &'a mut self,
         cx: &mut Context<'_>,
-    ) -> Poll<(SocketAddr, io::Result<(SocketAddr, ReadBuf<'a>)>)> {
+    ) -> Poll<(SocketAddr, io::Result<(SocketAddr, &'a mut [u8])>)> {
         if let Poll::Ready(packet) = self.udp_sockets.poll_recv_from(cx) {
             return Poll::Ready(packet);
         }
@@ -214,20 +213,8 @@ where
             }
         }
 
-        // TODO: We need to make this dynamic and cannot fail on missing IPv4 or IPv6.
-        let ip4_addr = if_watcher
-            .iter()
-            .map(|ip| ip.addr())
-            .find(|addr| addr.is_ipv4() && !addr.is_loopback())
-            .expect("must have a non-loopback IPv4 interface");
-        let ip6_addr = if_watcher
-            .iter()
-            .map(|ip| ip.addr())
-            .find(|addr| addr.is_ipv6() && !addr.is_loopback())
-            .expect("must have a non-loopback IPv6 interface");
-
-        let relay_socket_v4 = Socket::bind((ip4_addr, 0));
-        let relay_socket_v6 = Socket::bind((ip6_addr, 0));
+        let relay_socket_v4 = Socket::bind((IpAddr::from(Ipv4Addr::UNSPECIFIED), 0));
+        let relay_socket_v6 = Socket::bind((IpAddr::from(Ipv6Addr::UNSPECIFIED), 0));
 
         relay_socket_v4
             .as_ref()
