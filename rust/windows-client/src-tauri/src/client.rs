@@ -52,16 +52,8 @@ pub(crate) struct GuiParams {
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum Error {
-    #[error(transparent)]
-    DeepLink(#[from] deep_link::Error),
-    #[error(transparent)]
-    Io(#[from] std::io::Error),
-    #[error(transparent)]
-    Logging(#[from] logging::Error),
-    #[error(transparent)]
-    Settings(#[from] settings::Error),
-    #[error(transparent)]
-    Tauri(#[from] tauri::Error),
+    #[error("GUI module error: {0}")]
+    Gui(#[from] gui::Error),
 }
 
 // Hides Powershell's console on Windows

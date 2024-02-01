@@ -23,23 +23,26 @@ pub(crate) struct Handles {
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum Error {
-    #[error(transparent)]
-    Io(#[from] std::io::Error),
-    #[error(transparent)]
+    #[error("Couldn't compute our local AppData path: {0}")]
+    AppLocalDataDir(#[from] crate::client::settings::Error),
+    #[error("Couldn't create logs dir: {0}")]
+    CreateDirAll(std::io::Error),
+    #[error("Log filter couldn't be parsed")]
     Parse(#[from] tracing_subscriber::filter::ParseError),
     #[error(transparent)]
     SetGlobalDefault(#[from] tracing::subscriber::SetGlobalDefaultError),
     #[error(transparent)]
     SetLogger(#[from] tracing_log::log_tracer::SetLoggerError),
-    #[error(transparent)]
-    Settings(#[from] crate::client::settings::Error),
 }
 
 /// Set up logs for the first time.
 pub(crate) fn setup(log_filter: &str) -> Result<Handles, Error> {
-    let log_path = app_local_data_dir()?.join("data").join("logs");
+    let log_path = app_local_data_dir()
+        .map_err(Error::AppLocalDataDir)?
+        .join("data")
+        .join("logs");
 
-    std::fs::create_dir_all(&log_path)?;
+    std::fs::create_dir_all(&log_path).map_err(Error::CreateDirAll)?;
     let (layer, logger) = file_logger::layer(&log_path);
     let filter = EnvFilter::from_str(log_filter)?;
     let (filter, reloader) = reload::Layer::new(filter);
