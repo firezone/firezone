@@ -123,7 +123,7 @@ where
                     }
                     Ok(None) => None,
                     Err(e) => {
-                        tracing::error!(%from, "Failed to decapsulate incoming packet: {e:#?}");
+                        tracing::error!(%local, %from, "Failed to decapsulate incoming packet: {e:#?}");
                         None
                     }
                 }
