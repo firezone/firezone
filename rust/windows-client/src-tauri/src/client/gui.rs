@@ -102,12 +102,6 @@ pub(crate) fn run(cli: client::Cli) -> Result<(), Error> {
     tracing::info!("started log");
     tracing::info!("GIT_VERSION = {}", crate::client::GIT_VERSION);
 
-    let client::Cli {
-        command: _,
-        crash_on_purpose,
-        inject_faults,
-    } = cli;
-
     // Need to keep this alive so crashes will be handled. Dropping detaches it.
     let _crash_handler = match client::crash_handling::attach_handler() {
         Ok(x) => Some(x),
@@ -123,7 +117,7 @@ pub(crate) fn run(cli: client::Cli) -> Result<(), Error> {
     let rt = tokio::runtime::Runtime::new().map_err(Error::TokioRuntimeNew)?;
     let _guard = rt.enter();
 
-    if crash_on_purpose {
+    if cli.crash_on_purpose {
         tokio::spawn(async {
             let delay = 10;
             tracing::info!("Will crash on purpose in {delay} seconds to test crash handling.");
@@ -150,7 +144,7 @@ pub(crate) fn run(cli: client::Cli) -> Result<(), Error> {
 
     let managed = Managed {
         ctlr_tx: ctlr_tx.clone(),
-        inject_faults,
+        inject_faults: cli.inject_faults,
     };
 
     let tray = SystemTray::new().with_menu(system_tray_menu::signed_out());
