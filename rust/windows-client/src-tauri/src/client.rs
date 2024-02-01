@@ -27,17 +27,6 @@ mod wintun_install;
 pub const GIT_VERSION: &str =
     git_version::git_version!(args = ["--always", "--dirty=-modified", "--tags"]);
 
-/// GuiParams prevents a problem where changing the args to `gui::run` breaks static analysis on non-Windows targets, where the gui is stubbed out
-#[allow(dead_code)]
-pub(crate) struct GuiParams {
-    /// If true, purposely crash the program to test the crash handler
-    crash_on_purpose: bool,
-    /// If true, we were re-launched with elevated permissions. If the user launched us directly with elevated permissions, this is false.
-    flag_elevated: bool,
-    /// If true, slow down I/O operations to test how the GUI handles slow I/O
-    inject_faults: bool,
-}
-
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum Error {
     #[error("GUI module error: {0}")]
@@ -76,11 +65,7 @@ pub(crate) fn run() -> Result<()> {
         None => {
             if elevation::check()? {
                 // We're already elevated, just run the GUI
-                run_gui(GuiParams {
-                    crash_on_purpose: cli.crash_on_purpose,
-                    flag_elevated: false,
-                    inject_faults: cli.inject_faults,
-                })
+                run_gui(cli)
             } else {
                 // We're not elevated, ask Powershell to re-launch us, then exit
                 let current_exe = tauri_utils::platform::current_exe()?;
@@ -104,11 +89,7 @@ pub(crate) fn run() -> Result<()> {
         Some(Cmd::CrashHandlerServer { socket_path }) => crash_handling::server(socket_path),
         Some(Cmd::Debug { command }) => debug_commands::run(command),
         // If we already tried to elevate ourselves, don't try again
-        Some(Cmd::Elevated) => run_gui(GuiParams {
-            crash_on_purpose: cli.crash_on_purpose,
-            flag_elevated: true,
-            inject_faults: cli.inject_faults,
-        }),
+        Some(Cmd::Elevated) => run_gui(cli),
         Some(Cmd::OpenDeepLink(deep_link)) => {
             let rt = tokio::runtime::Runtime::new()?;
             rt.block_on(deep_link::open(&deep_link.url))?;
@@ -120,8 +101,8 @@ pub(crate) fn run() -> Result<()> {
 /// `gui::run` but wrapped in `anyhow::Result`
 ///
 /// Automatically logs or shows error dialogs for important user-actionable errors
-fn run_gui(params: GuiParams) -> Result<()> {
-    let result = gui::run(params);
+fn run_gui(cli: Cli) -> Result<()> {
+    let result = gui::run(cli);
 
     // Make sure errors get logged, at least to stderr
     if let Err(error) = &result {

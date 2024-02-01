@@ -70,7 +70,7 @@ pub(crate) enum Error {
 }
 
 /// Runs the Tauri GUI and returns on exit or unrecoverable error
-pub(crate) fn run(params: client::GuiParams) -> Result<(), Error> {
+pub(crate) fn run(cli: client::Cli) -> Result<(), Error> {
     let advanced_settings = settings::load_advanced_settings().unwrap_or_default();
 
     // If the log filter is unparsable, show an error and use the default
@@ -102,11 +102,11 @@ pub(crate) fn run(params: client::GuiParams) -> Result<(), Error> {
     tracing::info!("started log");
     tracing::info!("GIT_VERSION = {}", crate::client::GIT_VERSION);
 
-    let client::GuiParams {
+    let client::Cli {
+        command: _,
         crash_on_purpose,
-        flag_elevated: _,
         inject_faults,
-    } = params;
+    } = cli;
 
     // Need to keep this alive so crashes will be handled. Dropping detaches it.
     let _crash_handler = match client::crash_handling::attach_handler() {
