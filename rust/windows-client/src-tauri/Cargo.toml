@@ -53,6 +53,7 @@ native-dialog = "0.7.0"
 [target.'cfg(windows)'.dependencies]
 # Tauri works fine on Linux, but it requires a lot of build-time deps like glib and gdk, so I've blocked it out for now.
 tauri = { version = "1.5", features = [ "dialog", "notification", "shell-open-api", "system-tray" ] }
+tauri-runtime = "0.14.2"
 tauri-utils = "1.5.1"
 winreg = "0.52.0"
 wintun = "0.4.0"

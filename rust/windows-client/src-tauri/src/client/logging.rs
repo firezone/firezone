@@ -24,7 +24,7 @@ pub(crate) struct Handles {
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum Error {
     #[error("Couldn't compute our local AppData path: {0}")]
-    AppLocalDataDir(#[from] crate::client::settings::Error),
+    AppLocalDataDir(crate::client::settings::Error),
     #[error("Couldn't create logs dir: {0}")]
     CreateDirAll(std::io::Error),
     #[error("Log filter couldn't be parsed")]

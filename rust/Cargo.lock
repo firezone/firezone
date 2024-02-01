@@ -2164,6 +2164,7 @@ dependencies = [
  "subtle",
  "tauri",
  "tauri-build",
+ "tauri-runtime",
  "tauri-utils",
  "thiserror",
  "tokio",
