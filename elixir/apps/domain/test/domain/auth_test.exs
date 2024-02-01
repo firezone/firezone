@@ -1570,7 +1570,7 @@ defmodule Domain.AuthTest do
       assert Enum.count(actor_ids_by_provider_identifier) == 2
     end
 
-    test "does not re-created actors for deleted identities", %{
+    test "does not re-create actors for deleted identities", %{
       account: account,
       provider: provider
     } do
