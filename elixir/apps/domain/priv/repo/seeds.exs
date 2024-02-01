@@ -578,7 +578,7 @@ IO.puts("")
       type: :dns,
       name: "example.com",
       address: "example.com",
-      address_description: "https://example.com/",
+      address_description: "https://example.com:1234/",
       connections: [%{gateway_group_id: gateway_group.id}],
       filters: [%{protocol: :all}]
     },
@@ -621,7 +621,7 @@ IO.puts("")
       type: :dns,
       name: "CloudFlare DNS",
       address: "1.1.1.1",
-      address_description: "http://1.1.1.1/",
+      address_description: "http://1.1.1.1:3000/",
       connections: [%{gateway_group_id: gateway_group.id}],
       filters: [
         %{ports: ["80", "433"], protocol: :tcp},
