@@ -355,6 +355,11 @@ impl Allocation {
     // }
 
     pub fn bind_channel(&mut self, peer: SocketAddr, now: Instant) {
+        if self.channel_bindings.channel_to_peer(peer, now).is_some() {
+            tracing::debug!(relay = %self.server, %peer, "Already got a channel");
+            return;
+        }
+
         let Some(channel) = self.channel_bindings.new_channel_to_peer(peer, now) else {
             tracing::warn!(relay = %self.server, "All channels are exhausted");
             return;
