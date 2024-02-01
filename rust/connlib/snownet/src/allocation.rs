@@ -743,6 +743,7 @@ impl Channel {
 mod tests {
     use super::*;
     use std::net::{IpAddr, Ipv4Addr};
+    use stun_codec::rfc5389::errors::BadRequest;
 
     const PEER1: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 10000);
     const PEER2: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 20000);
@@ -954,6 +955,37 @@ mod tests {
         assert!(message.is_none())
     }
 
+    #[test]
+    fn failed_channel_binding_removes_state() {
+        let mut allocation = Allocation::new(
+            RELAY,
+            Username::new("foobar".to_owned()).unwrap(),
+            "baz".to_owned(),
+            Realm::new("firezone".to_owned()).unwrap(),
+        );
+
+        make_allocation(&mut allocation, PEER1);
+        allocation.bind_channel(PEER2, Instant::now());
+
+        let channel_bind_msg = next_stun_message(&mut allocation).unwrap();
+
+        allocation.handle_input(
+            RELAY,
+            PEER1,
+            &encode(channel_bind_bad_request(channel_bind_msg.transaction_id())),
+            Instant::now(),
+        );
+
+        // TODO: Not the best assertion because we are reaching into private state but better than nothing for now.
+        let channel = allocation
+            .channel_bindings
+            .inner
+            .values()
+            .find(|c| c.peer == PEER2);
+
+        assert!(channel.is_none());
+    }
+
     fn ch(peer: SocketAddr, now: Instant) -> Channel {
         Channel {
             peer,
@@ -985,6 +1017,13 @@ mod tests {
         message.add_attribute(XorMappedAddress::new(PEER1));
         message.add_attribute(XorRelayAddress::new(RELAY_ADDR));
         message.add_attribute(Lifetime::new(Duration::from_secs(600)).unwrap());
+
+        message
+    }
+
+    fn channel_bind_bad_request(id: TransactionId) -> stun_codec::Message<Attribute> {
+        let mut message = stun_codec::Message::new(MessageClass::ErrorResponse, CHANNEL_BIND, id);
+        message.add_attribute(ErrorCode::from(BadRequest));
 
         message
     }
