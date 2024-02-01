@@ -142,11 +142,27 @@ impl Allocation {
                 return true;
             }
 
+            #[allow(clippy::single_match)] // There will be more eventually.
+            match message.method() {
+                CHANNEL_BIND => {
+                    let Some(channel) = original_request
+                        .get_attribute::<ChannelNumber>()
+                        .map(|c| c.value())
+                    else {
+                        tracing::warn!("Request did not contain a `CHANNEL-NUMBER`");
+                        return true;
+                    };
+
+                    self.channel_bindings.handle_failed_binding(channel);
+                }
+                _ => {}
+            }
+
             // TODO: Handle error codes such as:
             // - Failed allocations
-            // - Failed channel bindings
 
-            tracing::warn!(method = %original_request.method(), error = %error.reason_phrase(), "STUN request failed");
+            tracing::warn!(id = ?original_request.transaction_id(), method = %original_request.method(), error = %error.reason_phrase(), "STUN request failed");
+
             return true;
         }
 
@@ -653,6 +669,15 @@ impl ChannelBindings {
             .iter()
             .find(|(_, c)| c.connected_to_peer(peer, now))
             .map(|(n, _)| *n)
+    }
+
+    fn handle_failed_binding(&mut self, c: u16) {
+        let Some(channel) = self.inner.remove(&c) else {
+            debug_assert!(false, "No channel binding for {c}");
+            return;
+        };
+
+        debug_assert!(!channel.bound, "Channel should not yet be bound")
     }
 
     fn set_confirmed(&mut self, c: u16, now: Instant) -> bool {
