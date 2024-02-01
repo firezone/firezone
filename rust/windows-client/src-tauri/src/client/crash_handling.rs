@@ -2,7 +2,7 @@
 //!
 //! Mostly copied from <https://github.com/EmbarkStudios/crash-handling/blob/main/minidumper/examples/diskwrite.rs>
 //!
-//! TODO: Capture crash dumps on panic.
+//! TODO: Capture crash dumps on panic. <https://github.com/firezone/firezone/issues/3520>
 //!
 //! To get human-usable stack traces out of a dump, do this:
 //! (Copied from <https://github.com/firezone/firezone/issues/3111#issuecomment-1887975171>)

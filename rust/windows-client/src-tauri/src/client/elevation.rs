@@ -27,7 +27,7 @@ pub(crate) fn check() -> Result<bool, Error> {
     };
 
     // SAFETY: Unsafe needed because we're loading a DLL from disk and it has arbitrary C code in it.
-    // TODO: As a defense, we could verify the hash before loading it. This would protect against accidental corruption, but not against attacks. (Because of TOCTOU)
+    // `wintun_install::ensure_dll` checks the hash before we get here. This protects against accidental corruption, but not against attacks. (Because of TOCTOU)
     let wintun = unsafe { wintun::load_from_path(path) }.map_err(|_| Error::DllLoad)?;
     let uuid = uuid::Uuid::from_str(TUNNEL_UUID).map_err(|_| Error::Uuid)?;
 

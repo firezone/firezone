@@ -29,7 +29,6 @@ pub(crate) struct Auth {
 
 pub(crate) enum State {
     SignedOut,
-    // TODO: Need a way to time out this state if the server never signs us in
     NeedResponse(Request),
     SignedIn(Session),
 }
@@ -78,6 +77,7 @@ impl Auth {
         if this.get_token_from_disk()?.is_some() {
             this.state = State::SignedIn(Session {
                 // TODO: Save and reload actor name to/from disk
+                // <https://github.com/firezone/firezone/issues/3519>
                 actor_name: "TODO".to_string(),
             });
             tracing::debug!("Reloaded token");
@@ -99,6 +99,7 @@ impl Auth {
     /// Performs I/O.
     pub fn sign_out(&mut self) -> Result<()> {
         // TODO: After we store the actor name on disk, clear the actor name here too.
+        // <https://github.com/firezone/firezone/issues/3519>
         match self.keyring_entry()?.delete_password() {
             Ok(_) | Err(keyring::Error::NoEntry) => {}
             Err(e) => Err(e)?,

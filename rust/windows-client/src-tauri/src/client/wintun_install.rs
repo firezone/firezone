@@ -44,7 +44,7 @@ pub(crate) fn ensure_dll() -> Result<PathBuf, Error> {
     tracing::info!(?path, "wintun.dll path");
 
     // This hash check is not meant to protect against attacks. It only lets us skip redundant disk writes, and it updates the DLL if needed.
-    // `tun_windows.rs` in connlib relies on thia.
+    // `tun_windows.rs` in connlib, and `elevation.rs`, rely on thia.
     if !dll_already_exists(&path, &dll_bytes) {
         fs::write(&path, dll_bytes.bytes).map_err(|e| match e.kind() {
             io::ErrorKind::PermissionDenied => Error::PermissionDenied,
@@ -62,6 +62,7 @@ pub(crate) fn dll_path() -> Result<PathBuf, Error> {
     Ok(path)
 }
 
+/// Verifies the SHA256 of the DLL on-disk with the expected bytes packed into the exe
 fn dll_already_exists(path: &Path, dll_bytes: &DllBytes) -> bool {
     let mut f = match fs::File::open(path) {
         Err(_) => return false,

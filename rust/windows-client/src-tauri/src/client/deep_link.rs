@@ -157,7 +157,7 @@ impl Server {
         tracing::debug!("server got connection");
 
         // TODO: Limit the read size here. Our typical callback is 350 bytes, so 4,096 bytes should be more than enough.
-        // Also, I think `read_to_end` can do partial reads because this is a network socket,
+        // Also, I think `read_to_end` can do partial reads because this is a named pipe,
         // not a file. We might need a length-prefixed or newline-terminated format for IPC.
         let mut bytes = vec![];
         self.inner

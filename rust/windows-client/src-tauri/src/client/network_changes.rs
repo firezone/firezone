@@ -9,7 +9,7 @@
 //! Connecting to Wi-Fi usually notifies while Windows is showing the progress bar
 //! in the Wi-Fi menu.
 //!
-//! DNS server changes are (TODO?)
+//! DNS server changes are (TODO <https://github.com/firezone/firezone/issues/3343>)
 //!
 //! # Worker thread
 //!
@@ -107,6 +107,7 @@ pub fn check_internet() -> WinResult<bool> {
     // every single time.
     // SAFETY: No lifetime problems. TODO: Could threading be a problem?
     // I think in practice we'll never call this from two threads, but what if we did?
+    // Maybe make it a method on a `!Send + !Sync` guard struct?
     let network_list_manager: INetworkListManager =
         unsafe { Com::CoCreateInstance(&NetworkListManager, None, Com::CLSCTX_ALL) }?;
     // SAFETY: `network_list_manager` isn't shared between threads, and the lifetime
