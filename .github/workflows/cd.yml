@@ -262,6 +262,8 @@ jobs:
       - uses: ./.github/actions/setup-node
       - name: Build release binaries
         run: |
+          # Build Windows Tauri GUI
+
           pnpm install
           pnpm build
 
