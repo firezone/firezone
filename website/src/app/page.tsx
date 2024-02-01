@@ -19,14 +19,24 @@ export default function Page() {
     <>
       <section className="bg-neutral-100 pt-24">
         <div className="px-4 py-8 mx-auto max-w-screen-xl text-center lg:py-16 lg:px-12">
-          <h1 className="mb-4 md:text-6xl text-5xl justify-center font-extrabold tracking-tight leading-none text-neutral-900">
-            Blazing-fast alternative to legacy VPNs
+          <h1 className="mb-8 md:text-6xl text-5xl justify-center inline-block font-extrabold tracking-tight leading-none text-neutral-900">
+            Secure remote access.
+            <span className="ml-2 text-primary-450 underline inline-block">
+              That scales.
+            </span>
           </h1>
-          <h2 className="mb-8 text-xl tracking-tight text-neutral-800 sm:px-16 xl:px-48">
-            Manage secure remote access to your company’s most valuable services
-            and resources with Firezone. We’re open source, and built on
-            WireGuard®, a modern protocol that’s up to 4-6x faster than
-            OpenVPN.
+          <h2 className="mb-8 text-xl tracking-tight justify-center font-medium text-neutral-900 sm:px-16 xl:px-48 inline-block">
+            Firezone is a fast, flexible VPN replacement built on WireGuard®
+            that <span className="text-primary-450 font-bold">eliminates</span>{" "}
+            tedious configuration and integrates with your identity provider.
+            Oh, and it's{" "}
+            <Link
+              href="https://github.com/firezone/firezone"
+              className="hover:underline text-accent-500 inline-block"
+            >
+              100% open source
+            </Link>
+            .
           </h2>
           <div className="flex mb-8 lg:mb-16 flex-row justify-center space-y-0 space-x-4">
             <Link href="/contact/sales">
@@ -73,16 +83,16 @@ export default function Page() {
             <h4 className="mb-8 text-lg font-semibold tracking-tight text-primary-450 ">
               EFFORTLESS SETUP
             </h4>
-            <p className="text-xl text-neutral-800 my-4">
-              Replace your legacy VPN with a modern zero trust solution.
+            <p className="text-xl text-neutral-900 my-4">
+              Replace your obsolete VPN with a modern zero trust upgrade.
               Firezone supports the workflows and access patterns you're already
               familiar with, so you can get started in minutes and incrementally
               adopt zero trust over time.
             </p>
-            <ul role="list" className="my-6 lg:mb-0 space-y-4">
+            <ul role="list" className="font-medium my-6 lg:mb-0 space-y-4">
               <li className="flex space-x-2.5">
-                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
-                <span className="leading-tight text-lg text-neutral-900 ">
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
+                <span className="text-lg text-neutral-900 ">
                   Create a{" "}
                   <Link
                     className="text-accent-500 underline hover:no-underline"
@@ -93,7 +103,7 @@ export default function Page() {
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
                 <span className="leading-tight text-lg text-neutral-900 ">
                   Deploy one or more{" "}
                   <Link
@@ -105,7 +115,7 @@ export default function Page() {
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
                 <span className="leading-tight text-lg text-neutral-900 ">
                   Add a{" "}
                   <Link
@@ -118,7 +128,7 @@ export default function Page() {
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
                 <span className="leading-tight text-lg text-neutral-900 ">
                   Choose which{" "}
                   <Link
@@ -154,32 +164,32 @@ export default function Page() {
             <h4 className="mb-8 text-lg font-semibold tracking-tight text-primary-450 ">
               RELIABLE ACCESS
             </h4>
-            <p className="text-xl text-neutral-800 my-4">
+            <p className="text-xl text-neutral-900 my-4">
               Firezone is fast and dependable so your team is always connected
               to the resources they need most. It works on all major platforms
               and stays connected even when switching WiFi networks.
             </p>
-            <ul role="list" className="my-6 lg:mb-0 space-y-4">
+            <ul role="list" className="font-medium my-6 lg:mb-0 space-y-4">
               <li className="flex space-x-2.5">
-                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
                 <span className="leading-tight text-lg text-neutral-900 ">
                   Automatic NAT traversal
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
                 <span className="leading-tight text-lg text-neutral-900 ">
                   Global relay network
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
                 <span className="leading-tight text-lg text-neutral-900 ">
                   Automatic gateway failover and load balancing
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
                 <span className="leading-tight text-lg text-neutral-900 ">
                   Native clients for all major platforms
                 </span>
@@ -194,27 +204,27 @@ export default function Page() {
             <h4 className="mb-8 text-lg font-semibold tracking-tight text-primary-450 ">
               MAINTAIN CONTROL
             </h4>
-            <p className="text-xl text-neutral-800 my-4">
+            <p className="text-xl text-neutral-900 my-4">
               Firezone establishes secure, direct tunnels between your users and
               gateways, then gets out of the way. Gateways are deployed on your
               infrastructure, so you retain full control over your data at all
               times.
             </p>
-            <ul role="list" className="my-6 lg:mb-0 space-y-4">
+            <ul role="list" className="my-6 font-medium lg:mb-0 space-y-4">
               <li className="flex space-x-2.5">
-                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
                 <span className="leading-tight text-lg text-neutral-900 ">
                   Deploy gateways as Docker containers or standalone binaries
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
                 <span className="leading-tight text-lg text-neutral-900 ">
                   Connect VPC, data center, on-prem, and cloud resources
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
                 <span className="leading-tight text-lg text-neutral-900 ">
                   Permit access with group-based policies to specific hosts,
                   applications, or subnets
@@ -233,12 +243,12 @@ export default function Page() {
 
       <section className="border-t border-neutral-200 bg-neutral-100 py-24">
         <div className="mx-4 flex flex-col justify-center items-center">
-          <h2 className="mb-4 text-4xl justify-center text-center tracking-tight font-bold text-neutral-900 ">
-            Next-Gen security
+          <h2 className="mb-8 underline text-5xl justify-center text-center tracking-tight font-bold text-neutral-900 ">
+            Next-Gen security...
           </h2>
-          <h3 className="my-4 text-xl tracking-tight max-w-screen-lg text-center text-neutral-800 ">
-            Firezone is built from the ground up with modern security best
-            practices in mind.
+          <h3 className="my-4 text-xl font-medium tracking-tight max-w-screen-lg text-center text-neutral-900 ">
+            Built from the ground up with modern security best practices in
+            mind:
           </h3>
           <ul
             role="list"
@@ -264,8 +274,8 @@ export default function Page() {
             <li className="flex space-x-5">
               <HiShieldCheck className="text-accent-600 flex-shrink-0 w-7 h-7" />
               <p>
-                <strong>Self-hosted gateways</strong>, and end-to-end encryption
-                ensure we
+                <strong>Self-hosted gateways</strong> and end-to-end encryption
+                ensure we{" "}
                 <strong className="text-primary-450">can never</strong> see your
                 data.
               </p>
@@ -273,8 +283,9 @@ export default function Page() {
           </ul>
         </div>
         <div className="mx-4 mb-8 flex flex-col justify-center items-center">
-          <h2 className="inline-block mb-4 text-4xl justify-center text-center tracking-tight font-bold text-neutral-900 ">
-            That works <span className="text-primary-450">with</span> your IdP
+          <h2 className="inline-block mb-8 underline text-5xl justify-center text-center tracking-tight font-bold text-neutral-900 ">
+            ...that works <span className="text-primary-450">with</span> your
+            IdP
           </h2>
           <div className="mx-auto gap-4 max-w-screen-md grid justify-items-center sm:grid-cols-2 pt-8 px-8">
             <div className="text-center">
@@ -288,7 +299,7 @@ export default function Page() {
               <h3 className="justify-center text-xl tracking-tight font-bold text-neutral-900 ">
                 Enforce 2FA / MFA
               </h3>
-              <p className="mt-4 text-neutral-900 text-lg">
+              <p className="mt-4 font-medium text-neutral-900 text-lg">
                 Add SSO with any OIDC-compatible identity provider (IdP) to
                 limit connections to current and authenticated users only.
               </p>
@@ -304,7 +315,7 @@ export default function Page() {
               <h3 className="justify-center text-xl tracking-tight font-bold text-neutral-900 ">
                 Sync users & groups<sup className="text-xs">*</sup>
               </h3>
-              <p className="mt-4 text-neutral-900 text-lg">
+              <p className="mt-4 font-medium text-neutral-900 text-lg">
                 Sync IdP users and groups to ensure active employees can access
                 your network, and revoke access when employees leave.
               </p>
@@ -376,7 +387,7 @@ export default function Page() {
           <div className="bg-neutral-100 p-8 border border-neutral-200">
             <div className="flex items-center space-x-2.5">
               <HiShieldCheck className=" lex-shrink-0 w-6 h-6 text-accent-600" />
-              <h3 className="text-xl tracking-tight font-bold text-neutral-900 ">
+              <h3 className="text-xl tracking-tight font-bold text-neutral-900">
                 VPN Replacement
               </h3>
             </div>
@@ -387,25 +398,25 @@ export default function Page() {
             </p>
             <ul role="list" className="my-6 lg:mb-0 space-y-4">
               <li className="flex space-x-2.5">
-                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
                 <span className="leading-tight text-lg text-neutral-900 ">
                   Easy to use, no training required
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
                 <span className="leading-tight text-lg text-neutral-900 ">
                   Authenticate with virtually any IdP
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
                 <span className="leading-tight text-lg text-neutral-900 ">
                   Highly available gateways
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
                 <span className="leading-tight text-lg text-neutral-900 ">
                   Modern encryption and authentication
                 </span>
@@ -426,25 +437,25 @@ export default function Page() {
             </p>
             <ul role="list" className="my-6 lg:mb-0 space-y-4">
               <li className="flex space-x-2.5">
-                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
                 <span className="leading-tight text-lg text-neutral-900 ">
                   Service accounts and headless clients
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
                 <span className="leading-tight text-lg text-neutral-900 ">
                   Multiple admins per account
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
                 <span className="leading-tight text-lg text-neutral-900 ">
                   Docker and Terraform integrations
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
                 <span className="leading-tight text-lg text-neutral-900 ">
                   Automatically sync users and groups from your IdP
                 </span>
@@ -465,25 +476,25 @@ export default function Page() {
             </p>
             <ul role="list" className="my-6 lg:mb-0 space-y-4">
               <li className="flex space-x-2.5">
-                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
                 <span className="leading-tight text-lg text-neutral-900 ">
                   Native clients for all major platforms
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
                 <span className="leading-tight text-lg text-neutral-900 ">
                   Enforce MFA / 2FA
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
                 <span className="leading-tight text-lg text-neutral-900 ">
                   Filter malicious or unwanted DNS requests
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
                 <span className="leading-tight text-lg text-neutral-900 ">
                   Monitor and audit each attempted connection
                 </span>
@@ -504,25 +515,25 @@ export default function Page() {
             </p>
             <ul role="list" className="my-6 lg:mb-0 space-y-4">
               <li className="flex space-x-2.5">
-                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
                 <span className="leading-tight text-lg text-neutral-900 ">
                   Easy to setup and simple to manage
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
                 <span className="leading-tight text-lg text-neutral-900 ">
                   Authenticate with Magic link or OIDC
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
                 <span className="leading-tight text-lg text-neutral-900 ">
                   Reliable NAT traversal
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900 font-bold " />
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
                 <span className="leading-tight text-lg text-neutral-900 ">
                   Invite friends and family to your private network
                 </span>
