@@ -4,12 +4,15 @@ defmodule Web.Clients.Show do
   alias Domain.{Clients, Flows, Config}
 
   def mount(%{"id" => id}, _session, socket) do
-    with {:ok, client} <- Clients.fetch_client_by_id(id, socket.assigns.subject, preload: :actor),
+    with {:ok, client} <-
+           Clients.fetch_client_by_id(id, socket.assigns.subject,
+             preload: [:actor, last_used_token: [identity: [:provider]]]
+           ),
          {:ok, flows} <-
            Flows.list_flows_for(client, socket.assigns.subject,
              preload: [gateway: [:group], policy: [:resource, :actor_group]]
            ) do
-      :ok = Clients.subscribe_for_clients_presence_in_account(client.account_id)
+      :ok = Clients.subscribe_to_clients_presence_in_account(client.account_id)
 
       socket =
         assign(
@@ -58,6 +61,36 @@ defmodule Web.Clients.Show do
           <.vertical_table_row>
             <:label>Status</:label>
             <:value><.connection_status schema={@client} /></:value>
+          </.vertical_table_row>
+          <.vertical_table_row>
+            <:label>Last used sign in method</:label>
+            <:value>
+              <span :if={@client.actor.type != :service_account}>
+                <.identity_identifier account={@account} identity={@client.last_used_token.identity} />
+                <.link
+                  navigate={
+                    ~p"/#{@account}/actors/#{@client.actor_id}?#tokens-#{@client.last_used_token_id}"
+                  }
+                  class={[link_style(), "text-xs"]}
+                >
+                  show tokens
+                </.link>
+              </span>
+              <span :if={@client.actor.type == :service_account}>
+                token
+                <.link
+                  navigate={
+                    ~p"/#{@account}/actors/#{@client.actor_id}?#tokens-#{@client.last_used_token_id}"
+                  }
+                  class={[link_style()]}
+                >
+                  <%= @client.last_used_token.name %>
+                </.link>
+                <span :if={not is_nil(@client.last_used_token.deleted_at)}>
+                  (deleted)
+                </span>
+              </span>
+            </:value>
           </.vertical_table_row>
           <.vertical_table_row>
             <:label>Owner</:label>
@@ -135,21 +168,6 @@ defmodule Web.Clients.Show do
         </.table>
       </:content>
     </.section>
-
-    <.danger_zone :if={is_nil(@client.deleted_at)}>
-      <:action>
-        <.delete_button
-          phx-click="delete"
-          data-confirm={
-            "Are you sure want to delete this client? " <>
-            "User still will be able to create a new one by reconnecting to the Firezone."
-          }
-        >
-          Delete Client
-        </.delete_button>
-      </:action>
-      <:content></:content>
-    </.danger_zone>
     """
   end
 
@@ -172,10 +190,5 @@ defmodule Web.Clients.Show do
       end
 
     {:noreply, socket}
-  end
-
-  def handle_event("delete", _params, socket) do
-    {:ok, _client} = Clients.delete_client(socket.assigns.client, socket.assigns.subject)
-    {:noreply, push_navigate(socket, to: ~p"/#{socket.assigns.account}/clients")}
   end
 end

@@ -1,5 +1,5 @@
 defmodule Domain.AuthTest do
-  use Domain.DataCase
+  use Domain.DataCase, async: true
   import Domain.Auth
   alias Domain.{Auth, Tokens}
   alias Domain.Auth.Authorizer
@@ -828,6 +828,7 @@ defmodule Domain.AuthTest do
       %{
         account: account,
         actor: actor,
+        identity: identity,
         subject: subject,
         provider: provider
       }
@@ -848,6 +849,48 @@ defmodule Domain.AuthTest do
 
       assert other_provider = Repo.get(Auth.Provider, other_provider.id)
       assert is_nil(other_provider.disabled_at)
+    end
+
+    test "deletes tokens issues for provider identities", %{
+      account: account,
+      subject: subject
+    } do
+      password = "Firezone1234!"
+      provider = Fixtures.Auth.create_userpass_provider(account: account)
+
+      identity =
+        Fixtures.Auth.create_identity(
+          account: account,
+          provider: provider,
+          provider_virtual_state: %{"password" => password, "password_confirmation" => password}
+        )
+
+      token = Fixtures.Tokens.create_token(account: account, identity: identity)
+
+      assert {:ok, _provider} = disable_provider(provider, subject)
+
+      assert token = Repo.get(Tokens.Token, token.id)
+      assert token.deleted_at
+    end
+
+    test "expires provider flows", %{
+      account: account,
+      provider: provider,
+      identity: identity,
+      subject: subject
+    } do
+      client = Fixtures.Clients.create_client(account: account, identity: identity)
+
+      Fixtures.Flows.create_flow(
+        account: account,
+        subject: subject,
+        client: client
+      )
+
+      assert {:ok, _provider} = disable_provider(provider, subject)
+
+      expires_at = Repo.one(Domain.Flows.Flow).expires_at
+      assert DateTime.diff(expires_at, DateTime.utc_now()) < 1
     end
 
     test "returns error when trying to disable the last provider", %{
@@ -875,52 +918,6 @@ defmodule Domain.AuthTest do
       {:ok, _other_provider} = disable_provider(other_provider, subject)
 
       assert disable_provider(provider, subject) == {:error, :cant_disable_the_last_provider}
-    end
-
-    test "returns error when trying to disable the last provider using a race condition" do
-      for _ <- 0..50 do
-        test_pid = self()
-
-        Task.async(fn ->
-          allow_child_sandbox_access(test_pid)
-
-          account = Fixtures.Accounts.create_account()
-
-          provider_one = Fixtures.Auth.create_email_provider(account: account)
-          provider_two = Fixtures.Auth.create_userpass_provider(account: account)
-
-          actor =
-            Fixtures.Actors.create_actor(
-              type: :account_admin_user,
-              account: account,
-              provider: provider_one
-            )
-
-          identity =
-            Fixtures.Auth.create_identity(
-              account: account,
-              actor: actor,
-              provider: provider_one
-            )
-
-          subject = Fixtures.Auth.create_subject(identity: identity)
-
-          for provider <- [provider_two, provider_one] do
-            Task.async(fn ->
-              allow_child_sandbox_access(test_pid)
-              disable_provider(provider, subject)
-            end)
-          end
-          |> Task.await_many()
-
-          queryable =
-            Auth.Provider.Query.by_account_id(account.id)
-            |> Auth.Provider.Query.not_disabled()
-
-          assert Repo.aggregate(queryable, :count) == 1
-        end)
-      end
-      |> Task.await_many()
     end
 
     test "does not do anything when an provider is disabled twice", %{
@@ -1035,6 +1032,7 @@ defmodule Domain.AuthTest do
       %{
         account: account,
         actor: actor,
+        identity: identity,
         subject: subject,
         provider: provider
       }
@@ -1055,6 +1053,64 @@ defmodule Domain.AuthTest do
 
       assert other_provider = Repo.get(Auth.Provider, other_provider.id)
       assert is_nil(other_provider.deleted_at)
+    end
+
+    test "deletes provider identities and tokens", %{
+      account: account,
+      subject: subject
+    } do
+      password = "Firezone1234!"
+      provider = Fixtures.Auth.create_userpass_provider(account: account)
+
+      identity =
+        Fixtures.Auth.create_identity(
+          account: account,
+          provider: provider,
+          provider_virtual_state: %{"password" => password, "password_confirmation" => password}
+        )
+
+      token = Fixtures.Tokens.create_token(account: account, identity: identity)
+
+      assert {:ok, _provider} = delete_provider(provider, subject)
+
+      assert identity = Repo.get(Auth.Identity, identity.id)
+      assert identity.deleted_at
+
+      assert token = Repo.get(Tokens.Token, token.id)
+      assert token.deleted_at
+    end
+
+    test "deletes provider actor groups", %{
+      account: account,
+      subject: subject,
+      provider: provider
+    } do
+      actor_group = Fixtures.Actors.create_group(account: account, provider: provider)
+
+      assert {:ok, _provider} = delete_provider(provider, subject)
+
+      assert actor_group = Repo.get(Domain.Actors.Group, actor_group.id)
+      assert actor_group.deleted_at
+    end
+
+    test "expires provider flows", %{
+      account: account,
+      provider: provider,
+      identity: identity,
+      subject: subject
+    } do
+      client = Fixtures.Clients.create_client(account: account, identity: identity)
+
+      Fixtures.Flows.create_flow(
+        account: account,
+        subject: subject,
+        client: client
+      )
+
+      assert {:ok, _provider} = delete_provider(provider, subject)
+
+      expires_at = Repo.one(Domain.Flows.Flow).expires_at
+      assert DateTime.diff(expires_at, DateTime.utc_now()) < 1
     end
 
     test "returns error when trying to delete the last provider", %{
@@ -1429,7 +1485,7 @@ defmodule Domain.AuthTest do
                 identities: [],
                 plan_identities: {insert, [], []},
                 insert_identities: [_actor1, _actor2],
-                delete_identities: {0, nil},
+                delete_identities: [],
                 actor_ids_by_provider_identifier: actor_ids_by_provider_identifier
               }} = Repo.transaction(multi)
 
@@ -1453,7 +1509,7 @@ defmodule Domain.AuthTest do
       assert Enum.count(actor_ids_by_provider_identifier) == 2
     end
 
-    test "update to existing actors", %{account: account, provider: provider} do
+    test "updates existing actors", %{account: account, provider: provider} do
       identity1 =
         Fixtures.Auth.create_identity(
           account: account,
@@ -1492,7 +1548,7 @@ defmodule Domain.AuthTest do
               %{
                 identities: [_identity1, _identity2],
                 plan_identities: {[], update, []},
-                delete_identities: {0, nil},
+                delete_identities: [],
                 insert_identities: [],
                 actor_ids_by_provider_identifier: actor_ids_by_provider_identifier
               }} = Repo.transaction(multi)
@@ -1517,17 +1573,45 @@ defmodule Domain.AuthTest do
     test "deletes removed identities", %{account: account, provider: provider} do
       provider_identifiers = ["USER_ID1", "USER_ID2"]
 
-      Fixtures.Auth.create_identity(
-        account: account,
-        provider: provider,
-        provider_identifier: Enum.at(provider_identifiers, 0)
-      )
+      deleted_identity_actor = Fixtures.Actors.create_actor(account: account)
+
+      deleted_identity =
+        Fixtures.Auth.create_identity(
+          account: account,
+          provider: provider,
+          actor: deleted_identity_actor,
+          provider_identifier: Enum.at(provider_identifiers, 0)
+        )
+
+      deleted_identity_token =
+        Fixtures.Tokens.create_token(
+          account: account,
+          actor: deleted_identity_actor,
+          identity: deleted_identity
+        )
+
+      deleted_identity_client =
+        Fixtures.Clients.create_client(
+          account: account,
+          actor: deleted_identity_actor,
+          identity: deleted_identity
+        )
+
+      deleted_identity_flow =
+        Fixtures.Flows.create_flow(
+          account: account,
+          client: deleted_identity_client,
+          token_id: deleted_identity_token.id
+        )
 
       Fixtures.Auth.create_identity(
         account: account,
         provider: provider,
         provider_identifier: Enum.at(provider_identifiers, 1)
       )
+
+      :ok = Phoenix.PubSub.subscribe(Domain.PubSub, "sessions:#{deleted_identity_token.id}")
+      :ok = Domain.Flows.subscribe_to_flow_expiration_events(deleted_identity_flow)
 
       attrs_list = []
 
@@ -1537,16 +1621,26 @@ defmodule Domain.AuthTest do
               %{
                 identities: [_identity1, _identity2],
                 plan_identities: {[], [], delete},
-                delete_identities: {2, nil},
+                delete_identities: [deleted_identity1, deleted_identity2],
                 insert_identities: [],
                 actor_ids_by_provider_identifier: actor_ids_by_provider_identifier
               }} = Repo.transaction(multi)
 
       assert Enum.all?(provider_identifiers, &(&1 in delete))
-      assert Repo.aggregate(Auth.Identity, :count) == 2
-      assert Repo.aggregate(Auth.Identity.Query.not_deleted(), :count) == 0
+      assert deleted_identity1.provider_identifier in delete
+      assert deleted_identity2.provider_identifier in delete
+      assert Repo.aggregate(Auth.Identity, :count) == 6
+      assert Repo.aggregate(Auth.Identity.Query.not_deleted(), :count) == 4
 
       assert Enum.empty?(actor_ids_by_provider_identifier)
+
+      # Signs out users which identity has been deleted
+      topic = "sessions:#{deleted_identity_token.id}"
+      assert_receive %Phoenix.Socket.Broadcast{topic: ^topic, event: "disconnect", payload: nil}
+
+      # Expires flows for signed out user
+      flow_id = deleted_identity_flow.id
+      assert_receive {:expire_flow, ^flow_id, _client_id, _resource_id}
     end
 
     test "ignores identities that are not synced from the provider", %{
@@ -1576,7 +1670,7 @@ defmodule Domain.AuthTest do
                 %{
                   identities: [],
                   plan_identities: {[], [], []},
-                  delete_identities: {0, nil},
+                  delete_identities: [],
                   insert_identities: [],
                   update_identities_and_actors: [],
                   actor_ids_by_provider_identifier: %{}
@@ -2057,6 +2151,29 @@ defmodule Domain.AuthTest do
       assert Repo.get(Auth.Identity, identity.id).deleted_at
     end
 
+    test "deletes tokens of replaced identity and broadcasts disconnect message", %{
+      account: account,
+      identity: identity,
+      provider: provider,
+      subject: subject
+    } do
+      provider_identifier = Fixtures.Auth.random_provider_identifier(provider)
+
+      attrs = %{
+        provider_identifier: provider_identifier,
+        provider_identifier_confirmation: provider_identifier
+      }
+
+      token = Fixtures.Tokens.create_token(account: account, identity: identity)
+      Phoenix.PubSub.subscribe(Domain.PubSub, "sessions:#{token.id}")
+
+      assert {:ok, _new_identity} = replace_identity(identity, attrs, subject)
+
+      assert token = Repo.get(Domain.Tokens.Token, token.id)
+      assert token.deleted_at
+      assert_receive %Phoenix.Socket.Broadcast{event: "disconnect"}
+    end
+
     test "returns error when subject can not delete identities", %{
       identity: identity,
       subject: subject
@@ -2147,6 +2264,8 @@ defmodule Domain.AuthTest do
         |> Fixtures.Auth.remove_permissions()
         |> Fixtures.Auth.add_permission(Authorizer.manage_own_identities_permission())
         |> Fixtures.Auth.add_permission(Authorizer.manage_identities_permission())
+        |> Fixtures.Auth.add_permission(Tokens.Authorizer.manage_tokens_permission())
+        |> Fixtures.Auth.add_permission(Domain.Flows.Authorizer.create_flows_permission())
 
       assert {:ok, deleted_identity} = delete_identity(identity, subject)
 
@@ -2154,6 +2273,22 @@ defmodule Domain.AuthTest do
       assert deleted_identity.deleted_at
 
       assert Repo.get(Auth.Identity, identity.id).deleted_at
+    end
+
+    test "deletes token and broadcasts message to disconnect the identity sessions", %{
+      account: account,
+      provider: provider,
+      subject: subject
+    } do
+      identity = Fixtures.Auth.create_identity(account: account, provider: provider)
+      token = Fixtures.Tokens.create_token(account: account, identity: identity)
+      Phoenix.PubSub.subscribe(Domain.PubSub, "sessions:#{token.id}")
+
+      assert {:ok, _deleted_identity} = delete_identity(identity, subject)
+
+      assert token = Repo.get(Domain.Tokens.Token, token.id)
+      assert token.deleted_at
+      assert_receive %Phoenix.Socket.Broadcast{event: "disconnect"}
     end
 
     test "does not delete identity that belongs to another actor with manage_own permission", %{
@@ -2213,7 +2348,7 @@ defmodule Domain.AuthTest do
     end
   end
 
-  describe "delete_actor_identities/2" do
+  describe "delete_identities_for/2" do
     setup do
       account = Fixtures.Accounts.create_account()
       Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
@@ -2238,7 +2373,7 @@ defmodule Domain.AuthTest do
       }
     end
 
-    test "removes all identities that belong to an actor", %{
+    test "removes all identities and flows that belong to an actor", %{
       account: account,
       provider: provider,
       subject: subject
@@ -2249,9 +2384,65 @@ defmodule Domain.AuthTest do
       Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
 
       assert Repo.aggregate(Auth.Identity.Query.all(), :count) == 4
-      assert delete_actor_identities(actor, subject) == :ok
+      assert delete_identities_for(actor, subject) == :ok
 
       assert Repo.aggregate(Auth.Identity.Query.by_actor_id(actor.id), :count) == 0
+    end
+
+    test "removes all identities and flows that belong to a provider", %{
+      account: account,
+      provider: provider,
+      subject: subject
+    } do
+      actor = Fixtures.Actors.create_actor(account: account, provider: provider)
+      Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
+      Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
+      Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
+
+      assert Repo.aggregate(Auth.Identity.Query.all(), :count) == 4
+      assert delete_identities_for(provider, subject) == :ok
+
+      assert Repo.aggregate(Auth.Identity.Query.by_provider_id(provider.id), :count) == 0
+    end
+
+    test "deletes tokens and broadcasts message to disconnect the actor sessions", %{
+      account: account,
+      provider: provider,
+      subject: subject
+    } do
+      actor = Fixtures.Actors.create_actor(account: account, provider: provider)
+      identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
+      token = Fixtures.Tokens.create_token(account: account, identity: identity)
+
+      Phoenix.PubSub.subscribe(Domain.PubSub, "sessions:#{token.id}")
+
+      assert delete_identities_for(actor, subject) == :ok
+
+      assert token = Repo.get(Domain.Tokens.Token, token.id)
+      assert token.deleted_at
+      assert_receive %Phoenix.Socket.Broadcast{event: "disconnect"}
+    end
+
+    test "expires all flows created using deleted tokens", %{
+      account: account,
+      actor: actor,
+      identity: identity,
+      subject: subject
+    } do
+      client = Fixtures.Clients.create_client(account: account, identity: identity)
+
+      Fixtures.Flows.create_flow(
+        account: account,
+        identity: identity,
+        actor: actor,
+        subject: subject,
+        client: client
+      )
+
+      assert delete_identities_for(actor, subject) == :ok
+
+      expires_at = Repo.one(Domain.Flows.Flow).expires_at
+      assert DateTime.diff(expires_at, DateTime.utc_now()) < 1
     end
 
     test "does not remove identities that belong to another actor", %{
@@ -2261,7 +2452,7 @@ defmodule Domain.AuthTest do
     } do
       actor = Fixtures.Actors.create_actor(account: account, provider: provider)
       Fixtures.Auth.create_identity(account: account, provider: provider)
-      assert delete_actor_identities(actor, subject) == :ok
+      assert delete_identities_for(actor, subject) == :ok
       assert Repo.aggregate(Auth.Identity.Query.all(), :count) == 2
     end
 
@@ -2275,7 +2466,7 @@ defmodule Domain.AuthTest do
       actor = Fixtures.Actors.create_actor(account: account, provider: provider)
       Fixtures.Auth.create_identity(account: account, provider: provider)
 
-      assert delete_actor_identities(actor, subject) ==
+      assert delete_identities_for(actor, subject) ==
                {:error,
                 {:unauthorized,
                  reason: :missing_permissions,

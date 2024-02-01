@@ -68,6 +68,16 @@ defmodule Domain.Actors.Membership.Query do
     })
   end
 
+  def select_distinct_group_ids(queryable \\ all()) do
+    queryable
+    |> select([memberships: memberships], memberships.group_id)
+    |> distinct(true)
+  end
+
+  def returning_all(queryable \\ all()) do
+    select(queryable, [memberships: memberships], memberships)
+  end
+
   def with_joined_actors(queryable \\ all()) do
     join(queryable, :inner, [memberships: memberships], actors in ^Actor.Query.not_deleted(),
       on: actors.id == memberships.actor_id,

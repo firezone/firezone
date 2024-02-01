@@ -1,6 +1,6 @@
 defmodule Domain.Flows do
-  alias Domain.{Repo, Validator}
-  alias Domain.{Auth, Accounts, Actors, Clients, Gateways, Resources, Policies}
+  alias Domain.{Repo, Validator, PubSub}
+  alias Domain.{Auth, Accounts, Actors, Clients, Gateways, Resources, Policies, Tokens}
   alias Domain.Flows.{Authorizer, Flow, Activity}
   require Ecto.Query
   require Logger
@@ -18,11 +18,12 @@ defmodule Domain.Flows do
           last_seen_remote_ip: gateway_remote_ip,
           account_id: account_id
         },
-        id,
+        resource_id,
         %Auth.Subject{
           account: %{id: account_id},
           actor: %{id: actor_id},
           expires_at: expires_at,
+          token_id: token_id,
           context: %Auth.Context{
             remote_ip: client_remote_ip,
             user_agent: client_user_agent
@@ -31,9 +32,11 @@ defmodule Domain.Flows do
         opts
       ) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.create_flows_permission()),
-         {:ok, resource} <- Resources.fetch_and_authorize_resource_by_id(id, subject, opts) do
+         {:ok, resource} <-
+           Resources.fetch_and_authorize_resource_by_id(resource_id, subject, opts) do
       flow =
         Flow.Changeset.create(%{
+          token_id: token_id,
           policy_id: resource.authorized_by_policy.id,
           client_id: client_id,
           gateway_id: gateway_id,
@@ -74,7 +77,7 @@ defmodule Domain.Flows do
   end
 
   def fetch_flow_by_id(id, %Auth.Subject{} = subject, opts \\ []) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.view_flows_permission()),
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_flows_permission()),
          true <- Validator.valid_uuid?(id) do
       {preload, _opts} = Keyword.pop(opts, :preload, [])
 
@@ -119,7 +122,7 @@ defmodule Domain.Flows do
   end
 
   defp list_flows(queryable, subject, opts) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.view_flows_permission()) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_flows_permission()) do
       {preload, _opts} = Keyword.pop(opts, :preload, [])
 
       {:ok, flows} =
@@ -160,7 +163,7 @@ defmodule Domain.Flows do
   end
 
   defp list_activities(queryable, ended_after, started_before, subject) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.view_flows_permission()) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_flows_permission()) do
       queryable
       |> Activity.Query.by_window_ended_at({:greater_than, ended_after})
       |> Activity.Query.by_window_started_at({:less_than, started_before})
@@ -168,5 +171,97 @@ defmodule Domain.Flows do
       |> Ecto.Query.order_by([activities: activities], asc: activities.window_started_at)
       |> Repo.list()
     end
+  end
+
+  def expire_flows_for(%Auth.Identity{} = identity) do
+    Flow.Query.by_identity_id(identity.id)
+    |> expire_flows()
+  end
+
+  def expire_flows_for(%Actors.Group{} = actor_group) do
+    Flow.Query.by_policy_actor_group_id(actor_group.id)
+    |> expire_flows()
+  end
+
+  def expire_flows_for(%Tokens.Token{} = token, %Auth.Subject{} = subject) do
+    Flow.Query.by_token_id(token.id)
+    |> expire_flows(subject)
+  end
+
+  def expire_flows_for(%Actors.Actor{} = actor, %Auth.Subject{} = subject) do
+    Flow.Query.by_actor_id(actor.id)
+    |> expire_flows(subject)
+  end
+
+  def expire_flows_for(%Auth.Identity{} = identity, %Auth.Subject{} = subject) do
+    Flow.Query.by_identity_id(identity.id)
+    |> expire_flows(subject)
+  end
+
+  def expire_flows_for(%Policies.Policy{} = policy, %Auth.Subject{} = subject) do
+    Flow.Query.by_policy_id(policy.id)
+    |> expire_flows(subject)
+  end
+
+  def expire_flows_for(%Resources.Resource{} = resource, %Auth.Subject{} = subject) do
+    Flow.Query.by_resource_id(resource.id)
+    |> expire_flows(subject)
+  end
+
+  def expire_flows_for(%Actors.Group{} = actor_group, %Auth.Subject{} = subject) do
+    Flow.Query.by_policy_actor_group_id(actor_group.id)
+    |> expire_flows(subject)
+  end
+
+  def expire_flows_for(%Auth.Provider{} = provider, %Auth.Subject{} = subject) do
+    Flow.Query.by_identity_provider_id(provider.id)
+    |> expire_flows(subject)
+  end
+
+  def expire_flows_for(actor_id, group_id) do
+    Flow.Query.by_actor_id(actor_id)
+    |> Flow.Query.by_policy_actor_group_id(group_id)
+    |> expire_flows()
+  end
+
+  defp expire_flows(queryable, subject) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.create_flows_permission()) do
+      queryable
+      |> Authorizer.for_subject(Flow, subject)
+      |> expire_flows()
+    end
+  end
+
+  defp expire_flows(queryable) do
+    {_count, flows} =
+      queryable
+      |> Flow.Query.expire()
+      |> Repo.update_all([])
+
+    :ok =
+      Enum.each(flows, fn flow ->
+        :ok = broadcast_flow_expiration_event(flow)
+      end)
+
+    {:ok, flows}
+  end
+
+  ### PubSub
+
+  defp flow_topic(%Flow{} = flow), do: flow_topic(flow.id)
+  defp flow_topic(flow_id), do: "flows:#{flow_id}"
+
+  def subscribe_to_flow_expiration_events(flow_or_id) do
+    flow_or_id |> flow_topic() |> PubSub.subscribe()
+  end
+
+  def unsubscribe_to_flow_expiration_events(flow_or_id) do
+    flow_or_id |> flow_topic() |> PubSub.subscribe()
+  end
+
+  defp broadcast_flow_expiration_event(flow) do
+    flow
+    |> flow_topic()
+    |> PubSub.broadcast({:expire_flow, flow.id, flow.client_id, flow.resource_id})
   end
 end

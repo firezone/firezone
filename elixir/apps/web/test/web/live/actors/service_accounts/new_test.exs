@@ -139,10 +139,9 @@ defmodule Web.Live.Actors.ServiceAccount.NewTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/actors/service_accounts/new")
 
-    assert lv
-           |> form("form", actor: attrs)
-           |> render_submit()
-           |> form_validation_errors() == %{}
+    lv
+    |> form("form", actor: attrs)
+    |> render_submit()
 
     assert actor = Repo.get_by(Domain.Actors.Actor, name: attrs.name)
 

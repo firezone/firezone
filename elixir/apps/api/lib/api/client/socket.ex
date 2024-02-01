@@ -1,6 +1,6 @@
 defmodule API.Client.Socket do
   use Phoenix.Socket
-  alias Domain.{Auth, Clients}
+  alias Domain.{Auth, Tokens, Clients}
   require Logger
   require OpenTelemetry.Tracer
 
@@ -19,9 +19,8 @@ defmodule API.Client.Socket do
 
       with {:ok, subject} <- Auth.authenticate(token, context),
            {:ok, client} <- Clients.upsert_client(attrs, subject) do
-        :ok = API.Endpoint.subscribe("sessions:#{subject.token_id}")
-
         OpenTelemetry.Tracer.set_attributes(%{
+          token_id: subject.token_id,
           client_id: client.id,
           lat: client.last_seen_remote_ip_location_lat,
           lon: client.last_seen_remote_ip_location_lon,
@@ -55,6 +54,5 @@ defmodule API.Client.Socket do
   end
 
   @impl true
-  def id(%Clients.Client{} = client), do: "client:#{client.id}"
-  def id(socket), do: id(socket.assigns.client)
+  def id(socket), do: Tokens.socket_id(socket.assigns.subject.token_id)
 end

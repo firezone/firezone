@@ -150,8 +150,6 @@ pub enum ConnlibError {
     #[cfg(target_os = "windows")]
     #[error(transparent)]
     Wintun(#[from] wintun::Error),
-    #[error("Token has expired")]
-    TokenExpired,
     #[error("Too many concurrent gateway connection requests")]
     TooManyConnectionRequests,
     #[error("Channel connection closed by portal")]

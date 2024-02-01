@@ -66,6 +66,17 @@ where
         &self,
         resource_description: ResourceDescription,
     ) -> connlib_shared::Result<()> {
+        if self
+            .role_state
+            .lock()
+            .resource_ids
+            .contains_key(&resource_description.id())
+        {
+            // TODO
+            tracing::info!("Resource updates aren't implemented yet");
+            return Ok(());
+        }
+
         match &resource_description {
             ResourceDescription::Dns(dns) => {
                 self.role_state

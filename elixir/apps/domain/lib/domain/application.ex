@@ -24,7 +24,7 @@ defmodule Domain.Application do
     [
       # Core services
       Domain.Repo,
-      {Phoenix.PubSub, name: Domain.PubSub},
+      Domain.PubSub,
 
       # Infrastructure services
       # Note: only one of platform adapters will be actually started.

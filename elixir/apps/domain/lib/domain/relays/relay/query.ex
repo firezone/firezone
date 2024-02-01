@@ -18,6 +18,10 @@ defmodule Domain.Relays.Relay.Query do
     where(queryable, [relays: relays], relays.id in ^ids)
   end
 
+  def by_group_id(queryable \\ not_deleted(), group_id) do
+    where(queryable, [relays: relays], relays.group_id == ^group_id)
+  end
+
   def by_user_id(queryable \\ not_deleted(), user_id) do
     where(queryable, [relays: relays], relays.user_id == ^user_id)
   end

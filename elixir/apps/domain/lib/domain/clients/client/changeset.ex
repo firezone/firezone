@@ -3,9 +3,10 @@ defmodule Domain.Clients.Client.Changeset do
   alias Domain.{Version, Auth, Actors}
   alias Domain.Clients
 
-  @upsert_fields ~w[external_id name public_key]a
+  @upsert_fields ~w[external_id last_used_token_id name public_key]a
   @conflict_replace_fields ~w[name
                               public_key
+                              last_used_token_id
                               last_seen_user_agent
                               last_seen_remote_ip
                               last_seen_remote_ip_location_region
@@ -26,17 +27,18 @@ defmodule Domain.Clients.Client.Changeset do
 
   def upsert_on_conflict, do: {:replace, @conflict_replace_fields}
 
-  def upsert(actor_or_identity, %Auth.Context{} = context, attrs) do
+  def upsert(actor_or_identity, %Auth.Subject{} = subject, attrs) do
     %Clients.Client{}
     |> cast(attrs, @upsert_fields)
     |> put_default_value(:name, &generate_name/0)
     |> put_assocs(actor_or_identity)
-    |> put_change(:last_seen_user_agent, context.user_agent)
-    |> put_change(:last_seen_remote_ip, %Postgrex.INET{address: context.remote_ip})
-    |> put_change(:last_seen_remote_ip_location_region, context.remote_ip_location_region)
-    |> put_change(:last_seen_remote_ip_location_city, context.remote_ip_location_city)
-    |> put_change(:last_seen_remote_ip_location_lat, context.remote_ip_location_lat)
-    |> put_change(:last_seen_remote_ip_location_lon, context.remote_ip_location_lon)
+    |> put_change(:last_used_token_id, subject.token_id)
+    |> put_change(:last_seen_user_agent, subject.context.user_agent)
+    |> put_change(:last_seen_remote_ip, %Postgrex.INET{address: subject.context.remote_ip})
+    |> put_change(:last_seen_remote_ip_location_region, subject.context.remote_ip_location_region)
+    |> put_change(:last_seen_remote_ip_location_city, subject.context.remote_ip_location_city)
+    |> put_change(:last_seen_remote_ip_location_lat, subject.context.remote_ip_location_lat)
+    |> put_change(:last_seen_remote_ip_location_lon, subject.context.remote_ip_location_lon)
     |> changeset()
     |> validate_required(@required_fields)
     |> validate_base64(:public_key)
@@ -74,12 +76,6 @@ defmodule Domain.Clients.Client.Changeset do
     |> cast(attrs, @update_fields)
     |> validate_required(@required_fields)
     |> changeset()
-  end
-
-  def delete(%Clients.Client{} = client) do
-    client
-    |> change()
-    |> put_default_value(:deleted_at, DateTime.utc_now())
   end
 
   defp changeset(changeset) do

@@ -3,8 +3,8 @@ defmodule Domain.Actors.Membership do
 
   @primary_key false
   schema "actor_group_memberships" do
-    belongs_to :group, Domain.Actors.Group, primary_key: true, where: [deleted_at: nil]
-    belongs_to :actor, Domain.Actors.Actor, primary_key: true, where: [deleted_at: nil]
+    belongs_to :group, Domain.Actors.Group, primary_key: true
+    belongs_to :actor, Domain.Actors.Actor, primary_key: true
 
     belongs_to :account, Domain.Accounts.Account
   end

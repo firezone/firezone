@@ -44,7 +44,7 @@ defmodule API.MixProject do
 
       # Phoenix deps
       {:phoenix, "~> 1.7.0"},
-      {:plug_cowboy, "~> 2.5"},
+      {:plug_cowboy, "~> 2.7"},
 
       # Observability deps
       {:telemetry_metrics, "~> 0.6"},

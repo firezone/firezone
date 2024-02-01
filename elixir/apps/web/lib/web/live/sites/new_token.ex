@@ -7,7 +7,7 @@ defmodule Web.Sites.NewToken do
       {group, env} =
         if connected?(socket) do
           {:ok, encoded_token} = Gateways.create_token(group, %{}, socket.assigns.subject)
-          :ok = Gateways.subscribe_for_gateways_presence_in_group(group)
+          :ok = Gateways.subscribe_to_gateways_presence_in_group(group)
           {group, env(encoded_token)}
         else
           {group, nil}
@@ -306,7 +306,10 @@ defmodule Web.Sites.NewToken do
     {:noreply, assign(socket, selected_tab: id)}
   end
 
-  def handle_info(%Phoenix.Socket.Broadcast{topic: "gateway_groups:" <> _group_id}, socket) do
+  def handle_info(
+        %Phoenix.Socket.Broadcast{topic: "presences:group_gateways:" <> _group_id},
+        socket
+      ) do
     {:noreply, assign(socket, connected?: true)}
   end
 end

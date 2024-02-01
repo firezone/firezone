@@ -15,14 +15,14 @@ defmodule Web.Actors.Show do
            ),
          {:ok, tokens} <-
            Tokens.list_tokens_for(actor, socket.assigns.subject,
-             preload: [identity: [:provider], created_by_identity: [:actor]]
+             preload: [identity: [:provider], created_by_identity: [:actor], clients: []]
            ),
          {:ok, flows} <-
            Flows.list_flows_for(actor, socket.assigns.subject,
              preload: [gateway: [:group], client: [], policy: [:resource, :actor_group]]
            ) do
       actor = %{actor | clients: Clients.preload_online_statuses(actor.clients)}
-      :ok = Clients.subscribe_for_clients_presence_for_actor(actor)
+      :ok = Clients.subscribe_to_clients_presence_for_actor(actor)
 
       {:ok,
        assign(socket,
@@ -62,7 +62,7 @@ defmodule Web.Actors.Show do
           style="warning"
           icon="hero-lock-closed"
           phx-click="disable"
-          data-confirm={"Are you sure want to disable this #{actor_type(@actor.type)}?"}
+          data-confirm={"Are you sure want to disable this #{actor_type(@actor.type)} and revoke all its tokens?"}
         >
           Disable <%= actor_type(@actor.type) %>
         </.button>
@@ -236,6 +236,20 @@ defmodule Web.Actors.Show do
           <:col :let={token} label="EXPIRES">
             <.relative_datetime datetime={token.expires_at} />
           </:col>
+          <:col :let={token} label="LAST USED BY CLIENTS">
+            <.intersperse_blocks :if={token.type == :client}>
+              <:separator>,&nbsp;</:separator>
+
+              <:empty>None</:empty>
+
+              <:item :for={client <- token.clients}>
+                <.link navigate={~p"/#{@account}/clients/#{client.id}"} class={[link_style()]}>
+                  <%= client.name %>
+                </.link>
+              </:item>
+            </.intersperse_blocks>
+            <span :if={token.type != :client}>N/A</span>
+          </:col>
           <:action :let={token}>
             <.delete_button
               phx-click="revoke_token"
@@ -318,20 +332,22 @@ defmodule Web.Actors.Show do
     </.section>
 
     <.danger_zone :if={is_nil(@actor.deleted_at)}>
-      <:action :if={not Actors.actor_synced?(@actor)}>
+      <:action :if={not Actors.actor_synced?(@actor) or @actor.identities == []}>
         <.delete_button
           phx-click="delete"
-          data-confirm={"Are you sure want to delete this #{actor_type(@actor.type)} and all associated identities?"}
+          data-confirm={"Are you sure want to delete this #{actor_type(@actor.type)} along with all associated identities?"}
         >
           Delete <%= actor_type(@actor.type) %>
         </.delete_button>
       </:action>
-      <:content></:content>
     </.danger_zone>
     """
   end
 
-  def handle_info(%Phoenix.Socket.Broadcast{topic: "actor_clients:" <> _account_id}, socket) do
+  def handle_info(
+        %Phoenix.Socket.Broadcast{topic: "presences:actor_clients:" <> _actor_id},
+        socket
+      ) do
     {:ok, actor} =
       Actors.fetch_actor_by_id(socket.assigns.actor.id, socket.assigns.subject,
         preload: [clients: []]
@@ -434,7 +450,7 @@ defmodule Web.Actors.Show do
   end
 
   def handle_event("revoke_all_tokens", _params, socket) do
-    {:ok, deleted_count} = Tokens.delete_tokens_for(socket.assigns.actor, socket.assigns.subject)
+    {:ok, deleted_tokens} = Tokens.delete_tokens_for(socket.assigns.actor, socket.assigns.subject)
 
     {:ok, tokens} =
       Tokens.list_tokens_for(socket.assigns.actor, socket.assigns.subject,
@@ -443,7 +459,7 @@ defmodule Web.Actors.Show do
 
     socket =
       socket
-      |> put_flash(:info, "#{deleted_count} token(s) were revoked.")
+      |> put_flash(:info, "#{length(deleted_tokens)} token(s) were revoked.")
       |> assign(tokens: tokens)
 
     {:noreply, socket}

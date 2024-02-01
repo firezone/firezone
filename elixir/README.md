@@ -81,7 +81,7 @@ Now you can verify that it's working by connecting to a websocket:
 
 ```bash
 # Note: The token value below is an example. The token value you will need is generated and printed out when seeding the database, as described earlier in the document.
-❯ export RELAY_TOKEN_FROM_SEEDS=".SFMyNTY.g2gDaAN3A25pbG0AAAAkZTgyZmNkYzEtMDU3YS00MDE1LWI5MGItM2IxOGYwZjI4MDUzbQAAADhDMTROR0E4N0VKUlIwM0c0UVBSMDdBOUM2Rzc4NFRTU1RIU0Y0VEk1VDBHRDhENkwwVlJHPT09PW4GADXgLBONAWIAAVGA.dShU17FgnvO2GLcTSnBBTDoqQ2tScuG7qjiyKhhlq8s"
+❯ export RELAY_TOKEN_FROM_SEEDS=".SFMyNTY.g2gDaANtAAAAJGM4OWJjYzhjLTkzOTItNGRhZS1hNDBkLTg4OGFlZjZkMjhlMG0AAAAkNTQ5YzQxMDctMTQ5Mi00ZjhmLWE0ZWMtYTlkMmE2NmQ4YWE5bQAAADhQVTVBSVRFMU84VkRWTk1ITU9BQzc3RElLTU9HVERJQTY3MlM2RzFBQjAyT1MzNEg1TUUwPT09PW4GAJeo1TONAWIAAVGA.Vi3gCkFKoWH03uSUshAYYzRhw7eKQxYw1piFnkFPGtA"
 
 ❯ websocat --header="User-Agent: Linux/5.2.6 (Debian; x86_64) relay/0.7.412" "ws://127.0.0.1:8081/relay/websocket?token=${RELAY_TOKEN_FROM_SEEDS}&ipv4=24.12.79.100&ipv6=4d36:aa7f:473c:4c61:6b9e:2416:9917:55cc"
 
@@ -120,12 +120,13 @@ Now you can verify that it's working by connecting to a websocket:
 {"ref":null,"topic":"client","event":"init","payload":{"interface":{"ipv6":"fd00:2021:1111::11:f4bd","upstream_dns":[],"ipv4":"100.71.71.245"},"resources":[{"id":"4429d3aa-53ea-4c03-9435-4dee2899672b","name":"172.20.0.1/16","type":"cidr","address":"172.20.0.0/16"},{"id":"85a1cffc-70d3-46dd-aa6b-776192af7b06","name":"gitlab.mycorp.com","type":"dns","address":"gitlab.mycorp.com","ipv6":"fd00:2021:1111::5:b370","ipv4":"100.85.109.146"}]}}
 
 # List online relays for a Resource
-❯ {"event":"prepare_connection","topic":"client","payload":{"resource_id":"116c62dc-bae5-45b0-afa2-4afe7f195144"},"ref":"unique_prepare_connection_ref"}
+❯ {"event":"prepare_connection","topic":"client","payload":{"resource_id":"1f27735f-651d-49e8-840c-8f1ba581d88e"},"ref":"unique_prepare_connection_ref"}
 
-{"ref":"unique_prepare_connection_ref","topic":"client","event":"phx_reply","payload":{"status":"ok","response":{"relays":[{"type":"stun","uri":"stun:172.28.0.101:3478"},{"type":"turn","username":"1719090081:UVxHhieTJWaD8_Sg","password":"Ml65XDZyYpuBiEIvk/q0Zy6EEJ1ZwGa4pWztXFP+tOo","uri":"turn:172.28.0.101:3478","expires_at":1719090081}],"resource_id":"4429d3aa-53ea-4c03-9435-4dee2899672b"}}}
+{"ref":"unique_prepare_connection_ref","payload":{"status":"ok","response":{"relays":[{"type":"turn","uri":"turn:189.172.72.111:3478","username":"1738022400:4ZxvSNDzU98MJiEjsR8DOA","password":"TVZvSgIGFK0TtNDXFVU9gv9a1WDz2Ou7RTEUis4E6To","expires_at":1738022400},{"type":"turn","uri":"turn:[::1]:3478","username":"1738022400:KCYrRTRmfGNAEEe7KyjHkA","password":"8KYplQOKBf5smJRZDhC54kiKKNVmUxsVxH1V8xfY/do","expires_at":1738022400}],"resource_id":"1f27735f-651d-49e8-840c-8f1ba581d88e","gateway_remote_ip":"127.0.0.1","gateway_id":"6e52c0ce-ccd9-46d9-8715-796ec9812719"}},"topic":"client","event":"phx_reply"}
+{"event":"request_connection","topic":"client","payload":{"resource_id":"1f27735f-651d-49e8-840c-8f1ba581d88e","client_payload":"RTC_SD","client_preshared_key":"+HapiGI5UdeRjKuKTwk4ZPPYpCnlXHvvqebcIevL+2A="},"ref":"unique_request_connection_ref"}
 
 # Initiate connection to a resource
-❯ {"event":"request_connection","topic":"client","payload":{"resource_id":"4429d3aa-53ea-4c03-9435-4dee2899672b","client_payload":"RTC_SD","client_preshared_key":"+HapiGI5UdeRjKuKTwk4ZPPYpCnlXHvvqebcIevL+2A="},"ref":"unique_request_connection_ref"}
+❯ {"event":"request_connection","topic":"client","payload":{"gateway_id":"6e52c0ce-ccd9-46d9-8715-796ec9812719","resource_id":"1f27735f-651d-49e8-840c-8f1ba581d88e","client_payload":"RTC_SD","client_preshared_key":"+HapiGI5UdeRjKuKTwk4ZPPYpCnlXHvvqebcIevL+2A="},"ref":"unique_request_connection_ref"}
 
 ```
 

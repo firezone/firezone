@@ -1,5 +1,6 @@
 defmodule Domain.Actors.Membership.Sync do
   alias Domain.Auth
+  alias Domain.Actors
   alias Domain.Actors.Membership
 
   def sync_provider_memberships_multi(multi, %Auth.Provider{} = provider, tuples) do
@@ -24,11 +25,25 @@ defmodule Domain.Actors.Membership.Sync do
         plan_memberships_update(tuples, memberships)
       end
     )
-    |> Ecto.Multi.delete_all(:delete_memberships, fn %{plan_memberships: {_upsert, delete}} ->
+    |> Ecto.Multi.delete_all(:delete_memberships, fn %{plan_memberships: {_insert, delete}} ->
       delete_memberships_query(delete)
     end)
-    |> Ecto.Multi.run(:upsert_memberships, fn repo, %{plan_memberships: {upsert, _delete}} ->
-      upsert_memberships(repo, provider, upsert)
+    |> Ecto.Multi.run(:insert_memberships, fn repo, %{plan_memberships: {insert, _delete}} ->
+      insert_memberships(repo, provider, insert)
+    end)
+    |> Ecto.Multi.run(:broadcast_membership_updates, fn
+      _repo, %{plan_memberships: {insert, delete}} ->
+        :ok =
+          Enum.each(insert, fn {group_id, actor_id} ->
+            Actors.broadcast_membership_event(:create, actor_id, group_id)
+          end)
+
+        :ok =
+          Enum.each(delete, fn {group_id, actor_id} ->
+            Actors.broadcast_membership_event(:delete, actor_id, group_id)
+          end)
+
+        {:ok, :ok}
     end)
   end
 
@@ -39,30 +54,30 @@ defmodule Domain.Actors.Membership.Sync do
   end
 
   defp plan_memberships_update(tuples, memberships) do
-    {upsert, delete} =
+    {insert, _update, delete} =
       Enum.reduce(
         memberships,
-        {tuples, []},
-        fn membership, {upsert, delete} ->
+        {tuples, [], []},
+        fn membership, {insert, update, delete} ->
           tuple = {membership.group_id, membership.actor_id}
 
           if tuple in tuples do
-            {upsert, delete}
+            {insert -- [tuple], [tuple] ++ update, delete}
           else
-            {upsert -- [tuple], [tuple] ++ delete}
+            {insert -- [tuple], update, [tuple] ++ delete}
           end
         end
       )
 
-    {:ok, {upsert, delete}}
+    {:ok, {insert, delete}}
   end
 
   defp delete_memberships_query(provider_identifiers_to_delete) do
     Membership.Query.by_group_id_and_actor_id({:in, provider_identifiers_to_delete})
   end
 
-  defp upsert_memberships(repo, provider, provider_identifiers_to_upsert) do
-    provider_identifiers_to_upsert
+  defp insert_memberships(repo, provider, provider_identifiers_to_insert) do
+    provider_identifiers_to_insert
     |> Enum.reduce_while({:ok, []}, fn {group_id, actor_id}, {:ok, acc} ->
       attrs = %{group_id: group_id, actor_id: actor_id}
 

@@ -2,8 +2,6 @@ defmodule Domain.Auth.Identity.Sync do
   alias Domain.Auth.{Identity, Provider}
 
   def sync_provider_identities_multi(%Provider{} = provider, attrs_list) do
-    now = DateTime.utc_now()
-
     attrs_by_provider_identifier =
       for attrs <- attrs_list, into: %{} do
         {Map.fetch!(attrs, "provider_identifier"), attrs}
@@ -18,12 +16,11 @@ defmodule Domain.Auth.Identity.Sync do
     |> Ecto.Multi.run(:plan_identities, fn _repo, %{identities: identities} ->
       plan_identities_update(identities, provider_identifiers)
     end)
-    |> Ecto.Multi.update_all(
+    |> Ecto.Multi.run(
       :delete_identities,
-      fn %{plan_identities: {_insert, _update, delete}} ->
-        delete_identities_query(provider, delete)
-      end,
-      set: [deleted_at: now]
+      fn repo, %{plan_identities: {_insert, _update, delete}} ->
+        delete_identities(repo, provider, delete)
+      end
     )
     |> Ecto.Multi.run(
       :insert_identities,
@@ -88,10 +85,20 @@ defmodule Domain.Auth.Identity.Sync do
     {:ok, {insert, update, delete}}
   end
 
-  defp delete_identities_query(provider, provider_identifiers_to_delete) do
-    Identity.Query.by_account_id(provider.account_id)
-    |> Identity.Query.by_provider_id(provider.id)
-    |> Identity.Query.by_provider_identifier({:in, provider_identifiers_to_delete})
+  defp delete_identities(repo, provider, provider_identifiers_to_delete) do
+    {_count, identities} =
+      Identity.Query.by_account_id(provider.account_id)
+      |> Identity.Query.by_provider_id(provider.id)
+      |> Identity.Query.by_provider_identifier({:in, provider_identifiers_to_delete})
+      |> Identity.Query.delete()
+      |> repo.update_all([])
+
+    :ok =
+      Enum.each(identities, fn identity ->
+        {:ok, _tokens} = Domain.Tokens.delete_tokens_for(identity)
+      end)
+
+    {:ok, identities}
   end
 
   defp upsert_identities(

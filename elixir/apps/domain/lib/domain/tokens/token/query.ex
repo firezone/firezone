@@ -48,6 +48,12 @@ defmodule Domain.Tokens.Token.Query do
     where(queryable, [tokens: tokens], tokens.identity_id == ^identity_id)
   end
 
+  def by_provider_id(queryable \\ not_deleted(), provider_id) do
+    queryable
+    |> with_joined_identity()
+    |> where([identity: identity], identity.provider_id == ^provider_id)
+  end
+
   def by_relay_group_id(queryable \\ not_deleted(), relay_group_id) do
     where(queryable, [tokens: tokens], tokens.relay_group_id == ^relay_group_id)
   end
@@ -56,9 +62,25 @@ defmodule Domain.Tokens.Token.Query do
     where(queryable, [tokens: tokens], tokens.gateway_group_id == ^gateway_group_id)
   end
 
+  def delete(queryable \\ not_deleted()) do
+    queryable
+    |> Ecto.Query.select([tokens: tokens], tokens)
+    |> Ecto.Query.update([tokens: tokens],
+      set: [
+        deleted_at: fragment("COALESCE(?, NOW())", tokens.deleted_at)
+      ]
+    )
+  end
+
   def with_joined_account(queryable \\ not_deleted()) do
     with_named_binding(queryable, :account, fn queryable, binding ->
       join(queryable, :inner, [tokens: tokens], account in assoc(tokens, ^binding), as: ^binding)
+    end)
+  end
+
+  def with_joined_identity(queryable \\ not_deleted()) do
+    with_named_binding(queryable, :identity, fn queryable, binding ->
+      join(queryable, :inner, [tokens: tokens], identity in assoc(tokens, ^binding), as: ^binding)
     end)
   end
 end

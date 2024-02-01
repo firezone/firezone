@@ -7,7 +7,7 @@ defmodule Web.Sites.Index do
 
     with {:ok, groups} <-
            Gateways.list_groups(subject, preload: [:gateways, connections: [:resource]]) do
-      :ok = Gateways.subscribe_for_gateways_presence_in_account(socket.assigns.account)
+      :ok = Gateways.subscribe_to_gateways_presence_in_account(socket.assigns.account)
 
       socket =
         assign(socket,
@@ -131,7 +131,10 @@ defmodule Web.Sites.Index do
     """
   end
 
-  def handle_info(%Phoenix.Socket.Broadcast{topic: "gateways:" <> _account_id}, socket) do
+  def handle_info(
+        %Phoenix.Socket.Broadcast{topic: "presences:account_gateways:" <> _account_id},
+        socket
+      ) do
     subject = socket.assigns.subject
     {:ok, groups} = Gateways.list_groups(subject, preload: [:gateways, connections: [:resource]])
     {:noreply, assign(socket, groups: groups)}

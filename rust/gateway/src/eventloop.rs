@@ -3,7 +3,7 @@ use crate::messages::{
     EgressMessages, IngressMessages,
 };
 use crate::CallbackHandler;
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use connlib_shared::messages::{ClientId, GatewayResponse, ResourceAccepted};
 use connlib_shared::Error;
 use firezone_tunnel::{Event, GatewayState, Tunnel};
@@ -240,6 +240,9 @@ impl Eventloop {
                 }) => {
                     // TODO: Handle `init` message during operation.
                     continue;
+                }
+                Poll::Ready(phoenix_channel::Event::Disconnect(reason)) => {
+                    return Poll::Ready(Err(anyhow!("Disconnected by portal: {reason}")));
                 }
                 _ => {}
             }

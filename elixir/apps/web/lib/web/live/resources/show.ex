@@ -14,6 +14,8 @@ defmodule Web.Resources.Show do
            Flows.list_flows_for(resource, socket.assigns.subject,
              preload: [client: [:actor], gateway: [:group], policy: [:resource, :actor_group]]
            ) do
+      :ok = Resources.subscribe_to_events_for_resource(resource)
+
       socket =
         assign(
           socket,
@@ -227,7 +229,7 @@ defmodule Web.Resources.Show do
     <.danger_zone :if={is_nil(@resource.deleted_at)}>
       <:action>
         <.delete_button
-          data-confirm="Are you sure want to delete this resource?"
+          data-confirm="Are you sure want to delete this resource along with all associated policies?"
           phx-click="delete"
           phx-value-id={@resource.id}
         >
@@ -237,6 +239,15 @@ defmodule Web.Resources.Show do
       <:content></:content>
     </.danger_zone>
     """
+  end
+
+  def handle_info({_action, _resource_id}, socket) do
+    {:ok, resource} =
+      Resources.fetch_resource_by_id(socket.assigns.resource.id, socket.assigns.subject,
+        preload: [:gateway_groups, :policies, created_by_identity: [:actor]]
+      )
+
+    {:noreply, assign(socket, resource: resource)}
   end
 
   def handle_event("delete", %{"id" => _resource_id}, socket) do

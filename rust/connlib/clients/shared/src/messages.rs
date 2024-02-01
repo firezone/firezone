@@ -16,10 +16,13 @@ pub struct InitClient {
     pub resources: Vec<ResourceDescription>,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
-pub struct RemoveResource {
-    pub id: ResourceId,
+#[derive(Debug, PartialEq, Eq, Deserialize, Serialize, Clone)]
+pub struct ConfigUpdate {
+    pub interface: Interface,
 }
+
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+pub struct RemoveResource(pub ResourceId);
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct ConnectionDetails {
@@ -56,11 +59,12 @@ pub enum IngressMessages {
     Init(InitClient),
 
     // Resources: arrive in an orderly fashion
-    ResourceAdded(ResourceDescription),
-    ResourceRemoved(RemoveResource),
-    ResourceUpdated(ResourceDescription),
+    ResourceCreatedOrUpdated(ResourceDescription),
+    ResourceDeleted(RemoveResource),
 
     IceCandidates(GatewayIceCandidates),
+
+    ConfigChanged(ConfigUpdate),
 }
 
 /// A gateway's ice candidate message.
@@ -102,21 +106,22 @@ pub enum Messages {
     SignedLogUrl(Url),
 
     // Resources: arrive in an orderly fashion
-    ResourceAdded(ResourceDescription),
-    ResourceRemoved(RemoveResource),
-    ResourceUpdated(ResourceDescription),
+    ResourceCreatedOrUpdated(ResourceDescription),
+    ResourceDeleted(RemoveResource),
 
     IceCandidates(GatewayIceCandidates),
+
+    ConfigChanged(ConfigUpdate),
 }
 
 impl From<IngressMessages> for Messages {
     fn from(value: IngressMessages) -> Self {
         match value {
             IngressMessages::Init(m) => Self::Init(m),
-            IngressMessages::ResourceAdded(m) => Self::ResourceAdded(m),
-            IngressMessages::ResourceRemoved(m) => Self::ResourceRemoved(m),
-            IngressMessages::ResourceUpdated(m) => Self::ResourceUpdated(m),
+            IngressMessages::ResourceCreatedOrUpdated(m) => Self::ResourceCreatedOrUpdated(m),
+            IngressMessages::ResourceDeleted(m) => Self::ResourceDeleted(m),
             IngressMessages::IceCandidates(m) => Self::IceCandidates(m),
+            IngressMessages::ConfigChanged(m) => Self::ConfigChanged(m),
         }
     }
 }
@@ -155,8 +160,8 @@ mod test {
     use connlib_shared::{
         control::PhoenixMessage,
         messages::{
-            Interface, Relay, ResourceDescription, ResourceDescriptionCidr, ResourceDescriptionDns,
-            Stun, Turn,
+            DnsServer, Interface, IpDnsServer, Relay, ResourceDescription, ResourceDescriptionCidr,
+            ResourceDescriptionDns, Stun, Turn,
         },
     };
 
@@ -165,7 +170,7 @@ mod test {
 
     use crate::messages::{ConnectionDetails, EgressMessages, ReplyMessages};
 
-    use super::{IngressMessages, InitClient};
+    use super::{ConfigUpdate, IngressMessages, InitClient};
 
     // TODO: request_connection tests
 
@@ -203,6 +208,46 @@ mod test {
         let _: PhoenixMessage<IngressMessages, ReplyMessages> =
             serde_json::from_str(message).unwrap();
     }
+
+    #[test]
+    fn config_updated() {
+        let m = PhoenixMessage::new(
+            "client",
+            IngressMessages::ConfigChanged(ConfigUpdate {
+                interface: Interface {
+                    ipv4: "100.67.138.25".parse().unwrap(),
+                    ipv6: "fd00:2021:1111::e:65ea".parse().unwrap(),
+                    upstream_dns: vec![DnsServer::IpPort(IpDnsServer {
+                        address: "1.1.1.1:53".parse().unwrap(),
+                    })],
+                },
+            }),
+            None,
+        );
+        let message = r#"
+        {
+            "event": "config_changed",
+            "ref": null,
+            "topic": "client",
+            "payload": {
+              "interface": {
+                "ipv6": "fd00:2021:1111::e:65ea",
+                "upstream_dns": [
+                  {
+                    "protocol": "ip_port",
+                    "address": "1.1.1.1:53"
+                  }
+                ],
+                "ipv4": "100.67.138.25"
+              }
+            }
+          }
+        "#;
+        let ingress_message: PhoenixMessage<IngressMessages, ReplyMessages> =
+            serde_json::from_str(message).unwrap();
+        assert_eq!(m, ingress_message);
+    }
+
     #[test]
     fn init_phoenix_message() {
         let m = PhoenixMessage::new(

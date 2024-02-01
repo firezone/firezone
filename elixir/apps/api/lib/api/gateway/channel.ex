@@ -5,15 +5,6 @@ defmodule API.Gateway.Channel do
   require Logger
   require OpenTelemetry.Tracer
 
-  def broadcast(%Gateways.Gateway{} = gateway, payload) do
-    broadcast(gateway.id, payload)
-  end
-
-  def broadcast(gateway_id, payload) do
-    Logger.debug("Gateway message is being dispatched", gateway_id: gateway_id)
-    Phoenix.PubSub.broadcast(Domain.PubSub, "gateway:#{gateway_id}", payload)
-  end
-
   @impl true
   def join("gateway", _payload, socket) do
     OpenTelemetry.Ctx.attach(socket.assigns.opentelemetry_ctx)
@@ -42,7 +33,6 @@ defmodule API.Gateway.Channel do
 
     OpenTelemetry.Tracer.with_span "gateway.after_join" do
       :ok = Gateways.connect_gateway(socket.assigns.gateway)
-      :ok = API.Endpoint.subscribe("gateway:#{socket.assigns.gateway.id}")
 
       config = Domain.Config.fetch_env!(:domain, Domain.Gateways)
       ipv4_masquerade_enabled = Keyword.fetch!(config, :gateway_ipv4_masquerade)
@@ -56,6 +46,14 @@ defmodule API.Gateway.Channel do
       })
 
       {:noreply, socket}
+    end
+  end
+
+  def handle_info("disconnect", socket) do
+    OpenTelemetry.Tracer.with_span "gateway.disconnect" do
+      push(socket, "disconnect", %{"reason" => "token_expired"})
+      send(socket.transport_pid, %Phoenix.Socket.Broadcast{event: "disconnect"})
+      {:stop, :shutdown, socket}
     end
   end
 
@@ -88,16 +86,24 @@ defmodule API.Gateway.Channel do
     OpenTelemetry.Ctx.attach(opentelemetry_ctx)
     OpenTelemetry.Tracer.set_current_span(opentelemetry_span_ctx)
 
-    OpenTelemetry.Tracer.with_span "gateway.allow_access" do
-      %{
-        client_id: client_id,
-        resource_id: resource_id,
+    %{
+      client_id: client_id,
+      resource_id: resource_id,
+      flow_id: flow_id,
+      authorization_expires_at: authorization_expires_at,
+      client_payload: payload
+    } = attrs
+
+    OpenTelemetry.Tracer.with_span "gateway.allow_access",
+      attributes: %{
         flow_id: flow_id,
-        authorization_expires_at: authorization_expires_at,
-        client_payload: payload
-      } = attrs
+        client_id: client_id,
+        resource_id: resource_id
+      } do
+      :ok = Flows.subscribe_to_flow_expiration_events(flow_id)
 
       resource = Resources.fetch_resource_by_id!(resource_id)
+      :ok = Resources.subscribe_to_events_for_resource(resource_id)
 
       ref = Ecto.UUID.generate()
 
@@ -130,16 +136,43 @@ defmodule API.Gateway.Channel do
     end
   end
 
-  def handle_info({:reject_access, client_id, resource_id}, socket) do
+  # Resource is updated, eg. traffic filters are changed
+  def handle_info({:update_resource, resource_id}, socket) do
+    OpenTelemetry.Ctx.attach(socket.assigns.opentelemetry_ctx)
+    OpenTelemetry.Tracer.set_current_span(socket.assigns.opentelemetry_span_ctx)
+
+    OpenTelemetry.Tracer.with_span "gateway.resource_updated",
+      attributes: %{resource_id: resource_id} do
+      resource = Resources.fetch_resource_by_id!(resource_id)
+      push(socket, "resource_updated", Views.Resource.render(resource))
+      {:noreply, socket}
+    end
+  end
+
+  # This event is ignored because we will receive a reject_access message from
+  # the Flows which will trigger a reject_access event
+  def handle_info({:delete_resource, resource_id}, socket) do
+    :ok = Resources.unsubscribe_from_events_for_resource(resource_id)
+    {:noreply, socket}
+  end
+
+  # Flows context broadcasts this message when flow is expired,
+  # which happens when policy, resource, actor, group, identity or provider were
+  # disabled or deleted
+  def handle_info({:expire_flow, flow_id, client_id, resource_id}, socket) do
     OpenTelemetry.Ctx.attach(socket.assigns.opentelemetry_ctx)
     OpenTelemetry.Tracer.set_current_span(socket.assigns.opentelemetry_span_ctx)
 
     OpenTelemetry.Tracer.with_span "gateway.reject_access",
       attributes: %{
+        flow_id: flow_id,
         client_id: client_id,
         resource_id: resource_id
       } do
+      :ok = Flows.unsubscribe_to_flow_expiration_events(flow_id)
+
       push(socket, "reject_access", %{
+        flow_id: flow_id,
         client_id: client_id,
         resource_id: resource_id
       })
@@ -156,18 +189,20 @@ defmodule API.Gateway.Channel do
     OpenTelemetry.Ctx.attach(opentelemetry_ctx)
     OpenTelemetry.Tracer.set_current_span(opentelemetry_span_ctx)
 
+    %{
+      client_id: client_id,
+      resource_id: resource_id,
+      flow_id: flow_id,
+      authorization_expires_at: authorization_expires_at,
+      client_payload: payload,
+      client_preshared_key: preshared_key
+    } = attrs
+
     OpenTelemetry.Tracer.with_span "gateway.request_connection" do
+      :ok = Flows.subscribe_to_flow_expiration_events(flow_id)
+
       opentelemetry_ctx = OpenTelemetry.Ctx.get_current()
       opentelemetry_span_ctx = OpenTelemetry.Tracer.current_span_ctx()
-
-      %{
-        client_id: client_id,
-        resource_id: resource_id,
-        flow_id: flow_id,
-        authorization_expires_at: authorization_expires_at,
-        client_payload: payload,
-        client_preshared_key: preshared_key
-      } = attrs
 
       Logger.debug("Gateway received connection request message",
         client_id: client_id,
@@ -176,6 +211,7 @@ defmodule API.Gateway.Channel do
 
       client = Clients.fetch_client_by_id!(client_id, preload: [:actor])
       resource = Resources.fetch_resource_by_id!(resource_id)
+      :ok = Resources.subscribe_to_events_for_resource(resource_id)
 
       {relay_hosting_type, relay_connection_type} =
         Gateways.relay_strategy([socket.assigns.gateway_group])
@@ -265,7 +301,7 @@ defmodule API.Gateway.Channel do
 
       :ok =
         Enum.each(client_ids, fn client_id ->
-          API.Client.Channel.broadcast(
+          Clients.broadcast_to_client(
             client_id,
             {:ice_candidates, socket.assigns.gateway.id, candidates,
              {opentelemetry_ctx, opentelemetry_span_ctx}}

@@ -6,12 +6,8 @@ defmodule Domain.Policies.Policy.Query do
   end
 
   def not_deleted do
-    from(policies in Domain.Policies.Policy, as: :policies)
+    all()
     |> where([policies: policies], is_nil(policies.deleted_at))
-    |> with_joined_actor_group()
-    |> where([actor_group: actor_group], is_nil(actor_group.deleted_at))
-    |> with_joined_resource()
-    |> where([resource: resource], is_nil(resource.deleted_at))
   end
 
   def not_disabled(queryable \\ not_deleted()) do
@@ -34,6 +30,17 @@ defmodule Domain.Policies.Policy.Query do
     where(queryable, [policies: policies], policies.resource_id in ^resource_ids)
   end
 
+  def by_actor_group_id(queryable \\ not_deleted(), actor_group_id) do
+    queryable
+    |> where([policies: policies], policies.actor_group_id == ^actor_group_id)
+  end
+
+  def by_actor_group_provider_id(queryable \\ not_deleted(), provider_id) do
+    queryable
+    |> with_joined_actor_group()
+    |> where([actor_group: actor_group], actor_group.provider_id == ^provider_id)
+  end
+
   def by_actor_id(queryable \\ not_deleted(), actor_id) do
     queryable
     |> with_joined_memberships()
@@ -47,6 +54,16 @@ defmodule Domain.Policies.Policy.Query do
       resource_id: policies.resource_id,
       count: count(policies.id)
     })
+  end
+
+  def delete(queryable \\ not_deleted()) do
+    queryable
+    |> Ecto.Query.select([policies: policies], policies)
+    |> Ecto.Query.update([policies: policies],
+      set: [
+        deleted_at: fragment("COALESCE(?, NOW())", policies.deleted_at)
+      ]
+    )
   end
 
   def with_joined_actor_group(queryable \\ not_deleted()) do

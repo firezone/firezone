@@ -1,6 +1,6 @@
 defmodule Web.Auth do
   use Web, :verified_routes
-  alias Domain.{Auth, Accounts}
+  alias Domain.{Auth, Accounts, Tokens}
 
   # This is the cookie which will store recent account ids
   # that the user has signed in to.
@@ -195,7 +195,6 @@ defmodule Web.Auth do
          params
        ) do
     post_sign_out_url = post_sign_out_url(account_or_slug, params)
-    conn.private.phoenix_endpoint.broadcast("sessions:#{subject.token_id}", "disconnect", %{})
     {:ok, _identity, redirect_url} = Auth.sign_out(subject, post_sign_out_url)
     Phoenix.Controller.redirect(conn, external: redirect_url)
   end
@@ -312,7 +311,7 @@ defmodule Web.Auth do
            {:ok, subject} <- Auth.authenticate(encoded_fragment, context),
            true <- subject.account.id == account.id do
         conn
-        |> Plug.Conn.put_session(:live_socket_id, "sessions:#{subject.token_id}")
+        |> Plug.Conn.put_session(:live_socket_id, Tokens.socket_id(subject.token_id))
         |> Plug.Conn.assign(:subject, subject)
       else
         {:error, :unauthorized} ->

@@ -5,7 +5,7 @@ defmodule Web.Gateways.Show do
   def mount(%{"id" => id}, _session, socket) do
     with {:ok, gateway} <-
            Gateways.fetch_gateway_by_id(id, socket.assigns.subject, preload: :group) do
-      :ok = Gateways.subscribe_for_gateways_presence_in_group(gateway.group)
+      :ok = Gateways.subscribe_to_gateways_presence_in_group(gateway.group)
 
       socket =
         assign(

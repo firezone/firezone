@@ -4,7 +4,7 @@ defmodule Web.Clients.Index do
 
   def mount(_params, _session, socket) do
     with {:ok, clients} <- Clients.list_clients(socket.assigns.subject, preload: :actor) do
-      :ok = Clients.subscribe_for_clients_presence_in_account(socket.assigns.subject.account)
+      :ok = Clients.subscribe_to_clients_presence_in_account(socket.assigns.subject.account)
 
       socket =
         assign(socket,
@@ -57,7 +57,10 @@ defmodule Web.Clients.Index do
     """
   end
 
-  def handle_info(%Phoenix.Socket.Broadcast{topic: "clients:" <> _account_id}, socket) do
+  def handle_info(
+        %Phoenix.Socket.Broadcast{topic: "presences:account_clients:" <> _account_id},
+        socket
+      ) do
     {:ok, clients} = Clients.list_clients(socket.assigns.subject, preload: :actor)
     {:noreply, assign(socket, clients: clients)}
   end

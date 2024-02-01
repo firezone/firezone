@@ -252,28 +252,6 @@ defmodule Domain.ResourcesTest do
       assert fetch_and_authorize_resource_by_id(resource.id, subject) == {:error, :not_found}
     end
 
-    test "does not authorize using deleted group", %{
-      account: account,
-      actor: actor,
-      subject: subject
-    } do
-      resource = Fixtures.Resources.create_resource(account: account)
-
-      actor_group =
-        Fixtures.Actors.create_group(account: account)
-        |> Fixtures.Actors.delete_group()
-
-      Fixtures.Actors.create_membership(account: account, actor: actor, group: actor_group)
-
-      Fixtures.Policies.create_policy(
-        account: account,
-        actor_group: actor_group,
-        resource: resource
-      )
-
-      assert fetch_and_authorize_resource_by_id(resource.id, subject) == {:error, :not_found}
-    end
-
     test "does not authorize using disabled policies", %{
       account: account,
       actor: actor,
@@ -1038,6 +1016,27 @@ defmodule Domain.ResourcesTest do
       assert Repo.aggregate(Domain.Network.Address, :count) == address_count
     end
 
+    test "broadcasts an account message when resource is created", %{
+      account: account,
+      subject: subject
+    } do
+      gateway = Fixtures.Gateways.create_gateway(account: account)
+
+      attrs =
+        Fixtures.Resources.resource_attrs(
+          connections: [
+            %{gateway_group_id: gateway.group_id}
+          ]
+        )
+
+      :ok = subscribe_to_events_for_account(account)
+
+      assert {:ok, resource} = create_resource(attrs, subject)
+
+      assert_receive {:create_resource, resource_id}
+      assert resource_id == resource.id
+    end
+
     test "returns error when subject has no permission to create resources", %{
       subject: subject
     } do
@@ -1075,6 +1074,33 @@ defmodule Domain.ResourcesTest do
                filters: ["is invalid"],
                connections: ["is invalid"]
              }
+    end
+
+    test "broadcasts an account message when resource is updated", %{
+      account: account,
+      resource: resource,
+      subject: subject
+    } do
+      :ok = subscribe_to_events_for_account(account)
+
+      attrs = %{"name" => "foo"}
+      assert {:ok, resource} = update_resource(resource, attrs, subject)
+
+      assert_receive {:update_resource, resource_id}
+      assert resource_id == resource.id
+    end
+
+    test "broadcasts a resource message when resource is updated", %{
+      resource: resource,
+      subject: subject
+    } do
+      :ok = subscribe_to_events_for_resource(resource)
+
+      attrs = %{"name" => "foo"}
+      assert {:ok, resource} = update_resource(resource, attrs, subject)
+
+      assert_receive {:update_resource, resource_id}
+      assert resource_id == resource.id
     end
 
     test "allows to update name", %{resource: resource, subject: subject} do
@@ -1146,14 +1172,14 @@ defmodule Domain.ResourcesTest do
   end
 
   describe "delete_resource/2" do
-    setup context do
+    setup %{account: account, subject: subject} do
       resource =
         Fixtures.Resources.create_resource(
-          account: context.account,
-          subject: context.subject
+          account: account,
+          subject: subject
         )
 
-      Map.put(context, :resource, resource)
+      %{resource: resource}
     end
 
     test "returns error on state conflict", %{
@@ -1165,9 +1191,65 @@ defmodule Domain.ResourcesTest do
       assert delete_resource(resource, subject) == {:error, :not_found}
     end
 
-    test "deletes gateways", %{resource: resource, subject: subject} do
+    test "deletes resources", %{resource: resource, subject: subject} do
       assert {:ok, deleted} = delete_resource(resource, subject)
       assert deleted.deleted_at
+    end
+
+    test "deletes policies that use this resource", %{
+      account: account,
+      resource: resource,
+      subject: subject
+    } do
+      other_policy = Fixtures.Policies.create_policy(account: account)
+      policy = Fixtures.Policies.create_policy(account: account, resource: resource)
+
+      assert {:ok, _resource} = delete_resource(resource, subject)
+
+      refute is_nil(Repo.get_by(Domain.Policies.Policy, id: policy.id).deleted_at)
+      assert is_nil(Repo.get_by(Domain.Policies.Policy, id: other_policy.id).deleted_at)
+    end
+
+    test "deletes connections that use this resource", %{
+      account: account,
+      subject: subject
+    } do
+      group = Fixtures.Gateways.create_group(account: account, subject: subject)
+
+      resource =
+        Fixtures.Resources.create_resource(
+          account: account,
+          connections: [%{gateway_group_id: group.id}]
+        )
+
+      assert {:ok, _resource} = delete_resource(resource, subject)
+
+      assert Repo.aggregate(Resources.Connection.Query.by_gateway_group_id(group.id), :count) == 0
+    end
+
+    test "broadcasts an account message when resource is deleted", %{
+      account: account,
+      resource: resource,
+      subject: subject
+    } do
+      :ok = subscribe_to_events_for_account(account)
+
+      assert {:ok, resource} = delete_resource(resource, subject)
+
+      assert_receive {:delete_resource, resource_id}
+      assert resource_id == resource.id
+    end
+
+    test "broadcasts a resource message when resource is deleted", %{
+      resource: resource,
+      subject: subject
+    } do
+      :ok = subscribe_to_events_for_resource(resource)
+
+      assert {:ok, resource} = delete_resource(resource, subject)
+
+      assert_receive {:delete_resource, resource_id}
+      assert resource_id == resource.id
     end
 
     test "returns error when subject has no permission to delete resources", %{
@@ -1177,6 +1259,49 @@ defmodule Domain.ResourcesTest do
       subject = Fixtures.Auth.remove_permissions(subject)
 
       assert delete_resource(resource, subject) ==
+               {:error,
+                {:unauthorized,
+                 reason: :missing_permissions,
+                 missing_permissions: [Resources.Authorizer.manage_resources_permission()]}}
+    end
+  end
+
+  describe "delete_connections_for/2" do
+    setup %{account: account, subject: subject} do
+      group = Fixtures.Gateways.create_group(account: account, subject: subject)
+
+      resource =
+        Fixtures.Resources.create_resource(
+          account: account,
+          connections: [%{gateway_group_id: group.id}]
+        )
+
+      %{
+        group: group,
+        resource: resource
+      }
+    end
+
+    test "does nothing on state conflict", %{
+      group: group,
+      subject: subject
+    } do
+      assert delete_connections_for(group, subject) == {:ok, 1}
+      assert delete_connections_for(group, subject) == {:ok, 0}
+    end
+
+    test "deletes connections for actor group", %{group: group, subject: subject} do
+      assert delete_connections_for(group, subject) == {:ok, 1}
+      assert Repo.aggregate(Resources.Connection.Query.by_gateway_group_id(group.id), :count) == 0
+    end
+
+    test "returns error when subject has no permission to manage resources", %{
+      group: group,
+      subject: subject
+    } do
+      subject = Fixtures.Auth.remove_permissions(subject)
+
+      assert delete_connections_for(group, subject) ==
                {:error,
                 {:unauthorized,
                  reason: :missing_permissions,
