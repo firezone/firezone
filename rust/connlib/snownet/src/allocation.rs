@@ -688,7 +688,7 @@ impl Channel {
     ///
     /// In case the channel is older than its lifetime (10 minutes), this returns false because the relay will have de-allocated the channel.
     fn connected_to_peer(&self, peer: SocketAddr, now: Instant) -> bool {
-        self.peer == peer && self.age(now) < Self::CHANNEL_LIFETIME
+        self.peer == peer && self.age(now) < Self::CHANNEL_LIFETIME && self.bound
     }
 
     fn can_rebind(&self, now: Instant) -> bool {
