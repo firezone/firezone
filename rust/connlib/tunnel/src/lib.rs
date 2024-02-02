@@ -15,7 +15,7 @@ use snownet::{IpPacket, Node, Server, Transmit};
 use hickory_resolver::proto::rr::RecordType;
 use parking_lot::Mutex;
 use peer::{PacketTransform, PacketTransformClient, PacketTransformGateway, Peer, PeerStats};
-use sockets::{Socket, UdpSockets};
+use sockets::{Received, Socket};
 use tokio::time::MissedTickBehavior;
 
 use arc_swap::ArcSwapOption;
@@ -99,10 +99,14 @@ where
 
     fn handle_socket_packet<'a>(
         &'a mut self,
-        packet: (SocketAddr, io::Result<(SocketAddr, &'a mut [u8])>),
+        packet: io::Result<Received<'a>>,
     ) -> Option<device_channel::Packet<'a>> {
         match packet {
-            (local, Ok((from, packet))) => {
+            Ok(Received {
+                local,
+                from,
+                packet,
+            }) => {
                 match self.node.decapsulate(
                     local,
                     from,
@@ -127,7 +131,7 @@ where
                     }
                 }
             }
-            (_, Err(e)) => {
+            Err(e) => {
                 tracing::error!("Failed to read socket: {e:#?}");
                 None
             }
@@ -136,48 +140,31 @@ where
 }
 
 struct IceSockets {
-    udp_sockets: UdpSockets<MAX_UDP_SIZE>,
-    relay_socket_v4: Option<Socket<MAX_UDP_SIZE>>,
-    relay_socket_v6: Option<Socket<MAX_UDP_SIZE>>,
+    socket_v4: Option<Socket<MAX_UDP_SIZE>>,
+    socket_v6: Option<Socket<MAX_UDP_SIZE>>,
 }
 
 impl IceSockets {
     fn socket_send(&mut self, transmit: &Transmit) -> Result<usize> {
-        match (transmit.src, transmit.dst) {
-            (Some(src), _) => {
-                Ok(self
-                    .udp_sockets
-                    .try_send_to(src, transmit.dst, &transmit.payload)?)
+        match transmit.dst {
+            SocketAddr::V4(_) => {
+                let socket = self.socket_v4.as_ref().ok_or(Error::NoIpv4)?;
+                Ok(socket.try_send_to(transmit.src, transmit.dst, &transmit.payload)?)
             }
-            (None, SocketAddr::V4(_)) => {
-                let socket = self.relay_socket_v4.as_ref().ok_or(Error::NoIpv4)?;
-                Ok(socket.try_send_to(transmit.dst, &transmit.payload)?)
-            }
-            (None, SocketAddr::V6(_)) => {
-                let socket = self.relay_socket_v6.as_ref().ok_or(Error::NoIpv6)?;
-                Ok(socket.try_send_to(transmit.dst, &transmit.payload)?)
+            SocketAddr::V6(_) => {
+                let socket = self.socket_v6.as_ref().ok_or(Error::NoIpv6)?;
+                Ok(socket.try_send_to(transmit.src, transmit.dst, &transmit.payload)?)
             }
         }
     }
 
     #[allow(clippy::type_complexity)]
-    fn poll_recv_from<'a>(
-        &'a mut self,
-        cx: &mut Context<'_>,
-    ) -> Poll<(SocketAddr, io::Result<(SocketAddr, &'a mut [u8])>)> {
-        if let Poll::Ready(packet) = self.udp_sockets.poll_recv_from(cx) {
+    fn poll_recv_from<'a>(&'a mut self, cx: &mut Context<'_>) -> Poll<io::Result<Received<'a>>> {
+        if let Some(Poll::Ready(packet)) = self.socket_v4.as_mut().map(|s| s.poll_recv_from(cx)) {
             return Poll::Ready(packet);
         }
 
-        if let Some(Poll::Ready(packet)) =
-            self.relay_socket_v4.as_mut().map(|s| s.poll_recv_from(cx))
-        {
-            return Poll::Ready(packet);
-        }
-
-        if let Some(Poll::Ready(packet)) =
-            self.relay_socket_v6.as_mut().map(|s| s.poll_recv_from(cx))
-        {
+        if let Some(Poll::Ready(packet)) = self.socket_v6.as_mut().map(|s| s.poll_recv_from(cx)) {
             return Poll::Ready(packet);
         }
 
@@ -188,7 +175,7 @@ impl IceSockets {
 struct ConnectionState<TRole, TId, TTransform> {
     connections: Connections<TRole, TId, TTransform>,
     connection_pool_timeout: BoxFuture<'static, std::time::Instant>,
-    if_watcher: IfWatcher,
+    // if_watcher: IfWatcher,
     sockets: IceSockets,
 }
 
@@ -203,33 +190,34 @@ where
         );
 
         let mut connection_pool = Node::new(private_key, std::time::Instant::now());
-        let mut udp_sockets = UdpSockets::default();
 
-        for ip in if_watcher.iter() {
-            match udp_sockets.bind((ip.addr(), 0)) {
-                Ok(addr) => connection_pool.add_local_interface(addr),
-                Err(e) => {
-                    tracing::debug!(address = %ip.addr(), "Couldn't bind socket to interface: {e}")
-                }
-            }
-        }
-
-        let relay_socket_v4 = Socket::bind((IpAddr::from(Ipv4Addr::UNSPECIFIED), 0));
-        let relay_socket_v6 = Socket::bind((IpAddr::from(Ipv6Addr::UNSPECIFIED), 0));
+        let relay_socket_v4 = Socket::ip4();
+        let relay_socket_v6 = Socket::ip6();
 
         relay_socket_v4
             .as_ref()
             .or(relay_socket_v6.as_ref())
             .expect("We must be able to bind to 0.0.0.0:0 or [::]:0 to connect to relays");
 
+        let ip4_port = relay_socket_v4.as_ref().map(|s| s.port()).ok();
+        let ip6_port = relay_socket_v6.as_ref().map(|s| s.port()).ok();
+
+        for ip in if_watcher.iter() {
+            if let Some(port) = ip4_port {
+                connection_pool.add_local_interface(SocketAddr::new(ip.addr(), port));
+            }
+            if let Some(port) = ip6_port {
+                connection_pool.add_local_interface(SocketAddr::new(ip.addr(), port));
+            }
+        }
+
         ConnectionState {
             connections: Connections::new(connection_pool),
             connection_pool_timeout: sleep_until(std::time::Instant::now()).boxed(),
-            if_watcher,
+            // if_watcher,
             sockets: IceSockets {
-                udp_sockets,
-                relay_socket_v4: relay_socket_v4.ok(),
-                relay_socket_v6: relay_socket_v6.ok(),
+                socket_v4: relay_socket_v4.ok(),
+                socket_v6: relay_socket_v6.ok(),
             },
         }
     }
@@ -306,28 +294,30 @@ where
                 continue;
             }
 
-            match ready!(self.if_watcher.poll_if_event(cx)) {
-                Ok(ev) => match ev {
-                    if_watch::IfEvent::Up(ip) if !ip.addr().is_loopback() => {
-                        // TODO: filter firezone-tun candidates(we could retrieve the ip or just ignore CGNAT)
-                        match self.sockets.udp_sockets.bind((ip.addr(), 0)) {
-                            Ok(addr) => self.connections.node.add_local_interface(addr),
-                            Err(e) => {
-                                tracing::debug!(address = %ip.addr(), "Couldn't bind socket to interface: {e}")
-                            }
-                        }
-                    }
-                    if_watch::IfEvent::Down(ip) if !ip.addr().is_loopback() => {
-                        tracing::info!(address = %ip.addr(), "Interface IP no longer available");
-                        self.sockets.udp_sockets.unbind(ip.addr());
-                        // TODO: remove local interface
-                    }
-                    _ => {}
-                },
-                Err(e) => {
-                    tracing::debug!("Error while polling interfces: {e:#?}");
-                }
-            }
+            return Poll::Pending;
+
+            // match ready!(self.if_watcher.poll_if_event(cx)) {
+            //     Ok(ev) => match ev {
+            //         if_watch::IfEvent::Up(ip) if !ip.addr().is_loopback() => {
+            //             // TODO: filter firezone-tun candidates(we could retrieve the ip or just ignore CGNAT)
+            //             match self.sockets.udp_sockets.bind((ip.addr(), 0)) {
+            //                 Ok(addr) => self.connections.node.add_local_interface(addr),
+            //                 Err(e) => {
+            //                     tracing::debug!(address = %ip.addr(), "Couldn't bind socket to interface: {e}")
+            //                 }
+            //             }
+            //         }
+            //         if_watch::IfEvent::Down(ip) if !ip.addr().is_loopback() => {
+            //             tracing::info!(address = %ip.addr(), "Interface IP no longer available");
+            //             self.sockets.udp_sockets.unbind(ip.addr());
+            //             // TODO: remove local interface
+            //         }
+            //         _ => {}
+            //     },
+            //     Err(e) => {
+            //         tracing::debug!("Error while polling interfces: {e:#?}");
+            //     }
+            // }
         }
     }
 }

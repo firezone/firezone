@@ -1,18 +1,116 @@
+use bytes::Bytes;
 use core::slice;
-use quinn_udp::{RecvMeta, UdpSockRef, UdpSocketState};
+use quinn_udp::{RecvMeta, Transmit, UdpSockRef, UdpSocketState};
 use socket2::{SockAddr, Type};
 use std::{
     io::{self, IoSliceMut},
-    net::{IpAddr, SocketAddr},
-    task::{ready, Context, Poll, Waker},
+    net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
+    task::{ready, Context, Poll},
 };
 use tokio::{io::Interest, net::UdpSocket};
 
 pub struct Socket<const N: usize> {
     state: UdpSocketState,
-    local: SocketAddr,
+    port: u16,
     socket: UdpSocket,
     buffer: Box<[u8; N]>,
+}
+
+impl<const N: usize> Socket<N> {
+    pub fn ip4() -> io::Result<Socket<N>> {
+        let socket = make_socket(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0))?;
+        let port = socket.local_addr()?.port();
+
+        Ok(Socket {
+            state: UdpSocketState::new(UdpSockRef::from(&socket))?,
+            port,
+            socket: tokio::net::UdpSocket::from_std(socket)?,
+            buffer: Box::new([0u8; N]),
+        })
+    }
+
+    pub fn ip6() -> io::Result<Socket<N>> {
+        let socket = make_socket(SocketAddrV6::new(Ipv6Addr::UNSPECIFIED, 0, 0, 0))?;
+        let port = socket.local_addr()?.port();
+
+        Ok(Socket {
+            state: UdpSocketState::new(UdpSockRef::from(&socket))?,
+            port,
+            socket: tokio::net::UdpSocket::from_std(socket)?,
+            buffer: Box::new([0u8; N]),
+        })
+    }
+
+    #[allow(clippy::type_complexity)]
+    pub fn poll_recv_from<'b>(
+        &'b mut self,
+        cx: &mut Context<'_>,
+    ) -> Poll<io::Result<Received<'b>>> {
+        let Socket {
+            port,
+            socket,
+            buffer,
+            state,
+        } = self;
+
+        let bufs = &mut [IoSliceMut::new(buffer.as_mut())];
+        let mut meta = RecvMeta::default();
+
+        loop {
+            ready!(socket.poll_recv_ready(cx))?;
+
+            if let Ok(len) = socket.try_io(Interest::READABLE, || {
+                state.recv((&socket).into(), bufs, slice::from_mut(&mut meta))
+            }) {
+                debug_assert_eq!(len, 1);
+
+                if meta.len == 0 {
+                    continue;
+                }
+
+                let Some(local_ip) = meta.dst_ip else {
+                    tracing::warn!("Skipping packet without local IP");
+                    continue;
+                };
+
+                let local = SocketAddr::new(local_ip, *port);
+
+                return Poll::Ready(Ok(Received {
+                    local,
+                    from: meta.addr,
+                    packet: &mut buffer[..meta.len],
+                }));
+            }
+        }
+    }
+
+    pub fn port(&self) -> u16 {
+        self.port
+    }
+
+    pub fn try_send_to(
+        &self,
+        local: Option<SocketAddr>,
+        dest: SocketAddr,
+        buf: &[u8],
+    ) -> io::Result<usize> {
+        self.state.send(
+            (&self.socket).into(),
+            &[Transmit {
+                destination: dest,
+                ecn: None,
+                contents: Bytes::copy_from_slice(buf),
+                segment_size: None,
+                src_ip: local.map(|s| s.ip()),
+            }],
+        )
+    }
+}
+
+pub struct Received<'a> {
+    pub local: SocketAddr,
+    pub from: SocketAddr,
+    pub packet: &'a [u8],
 }
 
 fn make_socket(addr: impl Into<SocketAddr>) -> io::Result<std::net::UdpSocket> {
@@ -31,149 +129,4 @@ fn make_socket(addr: impl Into<SocketAddr>) -> io::Result<std::net::UdpSocket> {
     }
 
     Ok(socket.into())
-}
-
-impl<const N: usize> Socket<N> {
-    pub fn bind(addr: impl Into<SocketAddr>) -> io::Result<Socket<N>> {
-        let socket = make_socket(addr)?;
-
-        let local = socket.local_addr()?;
-
-        Ok(Socket {
-            state: UdpSocketState::new(UdpSockRef::from(&socket))?,
-            local,
-            socket: tokio::net::UdpSocket::from_std(socket)?,
-            buffer: Box::new([0u8; N]),
-        })
-    }
-
-    #[allow(clippy::type_complexity)]
-    pub fn poll_recv_from<'b>(
-        &'b mut self,
-        cx: &mut Context<'_>,
-    ) -> Poll<(SocketAddr, io::Result<(SocketAddr, &'b mut [u8])>)> {
-        let Socket {
-            local: addr,
-            socket,
-            buffer,
-            state,
-        } = self;
-
-        let bufs = &mut [IoSliceMut::new(buffer.as_mut())];
-        let mut meta = RecvMeta::default();
-
-        loop {
-            match ready!(socket.poll_recv_ready(cx)) {
-                Ok(()) => {}
-                Err(e) => return Poll::Ready((*addr, Err(e))),
-            };
-
-            if let Ok(len) = socket.try_io(Interest::READABLE, || {
-                state.recv((&socket).into(), bufs, slice::from_mut(&mut meta))
-            }) {
-                debug_assert_eq!(len, 1);
-
-                tracing::trace!("recv packet {}", meta.len);
-
-                if meta.len == 0 {
-                    continue;
-                }
-
-                return Poll::Ready((
-                    meta.dst_ip
-                        .map(|ip| SocketAddr::new(ip, addr.port()))
-                        .unwrap_or(*addr),
-                    Ok((meta.addr, &mut buffer[..meta.len])),
-                ));
-            }
-        }
-    }
-
-    pub fn try_send_to(&self, dest: SocketAddr, buf: &[u8]) -> io::Result<usize> {
-        self.socket.try_send_to(buf, dest)
-    }
-
-    pub fn local_addr(&self) -> SocketAddr {
-        self.local
-    }
-}
-
-#[derive(Default)]
-pub struct UdpSockets<const N: usize> {
-    sockets: Vec<Socket<N>>,
-    empty_waker: Option<Waker>,
-}
-
-impl<const N: usize> UdpSockets<N> {
-    pub fn bind(&mut self, addr: impl Into<SocketAddr>) -> io::Result<SocketAddr> {
-        let addr = addr.into();
-
-        let socket = Socket::bind(addr)?;
-        let local = socket.local_addr();
-
-        self.sockets.push(socket);
-
-        if let Some(waker) = self.empty_waker.take() {
-            waker.wake();
-        }
-
-        tracing::info!(%addr, "Created new socket");
-
-        Ok(local)
-    }
-
-    pub fn unbind(&mut self, addr: IpAddr) {
-        self.sockets
-            .retain(|Socket { local, .. }| local.ip() != addr);
-    }
-
-    pub fn try_send_to(
-        &mut self,
-        local: SocketAddr,
-        dest: SocketAddr,
-        buf: &[u8],
-    ) -> io::Result<usize> {
-        self.sockets
-            .iter()
-            .find(
-                |Socket {
-                     local: sock_local, ..
-                 }| *sock_local == local,
-            )
-            .ok_or(io::ErrorKind::NotConnected)?
-            .try_send_to(dest, buf)
-    }
-
-    #[allow(clippy::type_complexity)]
-    pub fn poll_recv_from<'b>(
-        &'b mut self,
-        cx: &mut Context<'_>,
-    ) -> Poll<(SocketAddr, io::Result<(SocketAddr, &'b mut [u8])>)> {
-        if self.sockets.is_empty() {
-            self.empty_waker = Some(cx.waker().clone());
-            return Poll::Pending;
-        }
-
-        let last_index = self.sockets.len() - 1;
-        let ready_index = match self.sockets.iter().enumerate().find_map(
-            |(i, Socket { socket, .. })| match socket.poll_recv_ready(cx) {
-                Poll::Pending => None,
-                Poll::Ready(Ok(())) => Some((i, Ok(()))),
-                Poll::Ready(Err(e)) => Some((i, Err(e))),
-            },
-        ) {
-            Some((ready_index, Ok(()))) => ready_index,
-            Some((ready_index, Err(e))) => {
-                return Poll::Ready((self.sockets[ready_index].local, Err(e)))
-            }
-            None => return Poll::Pending,
-        };
-
-        self.sockets.swap(ready_index, last_index); // Swap with last element to ensure "fair" polling.
-
-        self.sockets
-            .last_mut()
-            .expect("not empty")
-            .poll_recv_from(cx)
-    }
 }
