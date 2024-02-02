@@ -7,7 +7,6 @@ use boringtun::x25519::StaticSecret;
 use connlib_shared::{messages::ReuseConnection, CallbackErrorFacade, Callbacks, Error};
 use futures_util::future::BoxFuture;
 use futures_util::FutureExt;
-use if_watch::tokio::IfWatcher;
 use ip_network_table::IpNetworkTable;
 use pnet_packet::Packet;
 use snownet::{IpPacket, Node, Server};
@@ -22,7 +21,7 @@ use arc_swap::ArcSwapOption;
 use futures_util::task::AtomicWaker;
 use std::collections::HashMap;
 use std::io;
-use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::net::{Ipv4Addr, Ipv6Addr};
 use std::{collections::HashSet, hash::Hash};
 use std::{fmt, net::IpAddr, sync::Arc, time::Duration};
 use std::{
@@ -142,7 +141,6 @@ where
 struct ConnectionState<TRole, TId, TTransform> {
     connections: Connections<TRole, TId, TTransform>,
     connection_pool_timeout: BoxFuture<'static, std::time::Instant>,
-    if_watcher: IfWatcher,
     sockets: Sockets,
 }
 
@@ -155,7 +153,6 @@ where
         Ok(ConnectionState {
             connections: Connections::new(Node::new(private_key, std::time::Instant::now())),
             connection_pool_timeout: sleep_until(std::time::Instant::now()).boxed(),
-            if_watcher: IfWatcher::new()?,
             sockets: Sockets::new()?,
         })
     }
@@ -230,32 +227,6 @@ where
                 }
 
                 continue;
-            }
-
-            match self.if_watcher.poll_if_event(cx) {
-                Poll::Ready(Ok(ev)) => match ev {
-                    if_watch::IfEvent::Up(ip) if !ip.addr().is_loopback() => {
-                        if let Some(port) = self.sockets.ip4_port() {
-                            self.connections
-                                .node
-                                .add_local_interface(SocketAddr::new(ip.addr(), port))
-                        }
-                        if let Some(port) = self.sockets.ip6_port() {
-                            self.connections
-                                .node
-                                .add_local_interface(SocketAddr::new(ip.addr(), port))
-                        }
-                    }
-                    if_watch::IfEvent::Down(ip) if !ip.addr().is_loopback() => {
-                        tracing::info!(address = %ip.addr(), "Interface IP no longer available");
-                        // TODO: remove local interface
-                    }
-                    _ => {}
-                },
-                Poll::Ready(Err(e)) => {
-                    tracing::debug!("Error while polling interfces: {e:#?}");
-                }
-                Poll::Pending => {}
             }
 
             return Poll::Pending;

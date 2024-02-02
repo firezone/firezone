@@ -47,14 +47,6 @@ impl Sockets {
         })
     }
 
-    pub fn ip4_port(&self) -> Option<u16> {
-        Some(self.socket_v4.as_ref()?.port())
-    }
-
-    pub fn ip6_port(&self) -> Option<u16> {
-        Some(self.socket_v6.as_ref()?.port())
-    }
-
     pub fn try_send(&mut self, transmit: &Transmit) -> Result<usize> {
         match transmit.dst {
             SocketAddr::V4(_) => {
@@ -160,10 +152,6 @@ impl<const N: usize> Socket<N> {
                 }));
             }
         }
-    }
-
-    fn port(&self) -> u16 {
-        self.port
     }
 
     fn try_send_to(
