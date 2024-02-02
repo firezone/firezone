@@ -46,7 +46,8 @@ android {
 
     defaultConfig {
         applicationId = "dev.firezone.android"
-        minSdk = 30
+        // Android 8
+        minSdk = 26
         targetSdk = 33
         versionCode = (System.currentTimeMillis() / 1000 / 10).toInt()
         // mark:automatic-version
