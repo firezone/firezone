@@ -222,14 +222,19 @@ impl Tun {
     }
 
     fn write(&self, bytes: &[u8]) -> io::Result<usize> {
-        // TODO: If the ring buffer is full, don't panic, just return Ok(None) or an error or whatever the Unix impls do.
-        // <https://github.com/firezone/firezone/issues/3518>
-        // Make sure this doesn't block.
-        let mut pkt = self
-            .session
-            .allocate_send_packet(bytes.len().try_into().unwrap())
-            .unwrap();
+        let len = bytes
+            .len()
+            .try_into()
+            .expect("Packet length should fit into u16");
+
+        let Ok(mut pkt) = self.session.allocate_send_packet(len) else {
+            // Ring buffer is full, just drop the packet since we're at the IP layer
+            return Ok(0);
+        };
+
         pkt.bytes_mut().copy_from_slice(bytes);
+        // `send_packet` cannot fail to enqueue the packet, since we already allocated
+        // space in the ring buffer.
         self.session.send_packet(pkt);
         Ok(bytes.len())
     }
