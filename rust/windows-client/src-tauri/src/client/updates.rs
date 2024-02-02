@@ -11,10 +11,6 @@ pub(crate) struct Release {
     ///
     /// e.g. <https://github.com/firezone/firezone/releases/download/1.0.0-pre.8/windows-client-x64.msi>
     pub browser_download_url: Url,
-    /// URL that a browser can open to view the changelog and everything
-    ///
-    /// e.g. <https://github.com/firezone/firezone/releases/tag/1.0.0-pre.8>
-    pub html_url: Url,
     /// Git tag name
     ///
     /// e.g. 1.0.0-pre.8
@@ -24,11 +20,7 @@ pub(crate) struct Release {
 impl Release {
     /// Parses the release JSON, finds the MSI asset, and returns info about the latest MSI
     fn from_str(s: &str) -> Result<Self, Error> {
-        let ReleaseDetails {
-            assets,
-            html_url,
-            tag_name,
-        } = serde_json::from_str(s)?;
+        let ReleaseDetails { assets, tag_name } = serde_json::from_str(s)?;
         let asset = assets
             .into_iter()
             .find(|asset| asset.name == MSI_ASSET_NAME)
@@ -36,7 +28,6 @@ impl Release {
 
         Ok(Release {
             browser_download_url: asset.browser_download_url,
-            html_url,
             tag_name,
         })
     }
@@ -49,7 +40,6 @@ impl fmt::Debug for Release {
                 "browser_download_url",
                 &self.browser_download_url.to_string(),
             )
-            .field("html_url", &self.html_url.to_string())
             .field("tag_name", &self.tag_name.to_string())
             .finish()
     }
@@ -114,7 +104,6 @@ pub(crate) fn current_version() -> Result<semver::Version, Error> {
 #[derive(serde::Deserialize)]
 struct ReleaseDetails {
     assets: Vec<Asset>,
-    html_url: Url,
     tag_name: semver::Version,
 }
 
@@ -212,10 +201,6 @@ mod tests {
     fn test() {
         let release = super::Release::from_str(RELEASES_LATEST_JSON).unwrap();
         assert_eq!(release.browser_download_url.to_string(), "https://github.com/firezone/firezone/releases/download/1.0.0-pre.8/windows-client-x64.msi");
-        assert_eq!(
-            release.html_url.to_string(),
-            "https://github.com/firezone/firezone/releases/tag/1.0.0-pre.8"
-        );
         assert_eq!(release.tag_name.to_string(), "1.0.0-pre.8");
 
         assert!(
