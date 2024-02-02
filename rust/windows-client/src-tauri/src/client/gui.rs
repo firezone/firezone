@@ -431,8 +431,13 @@ impl Controller {
             resources: Default::default(),
         };
 
+        let api_url = self.advanced_settings.api_url.clone();
+        tracing::info!(
+            api_url = api_url.to_string(),
+            "Calling connlib Session::connect"
+        );
         let connlib = connlib_client_shared::Session::connect(
-            self.advanced_settings.api_url.clone(),
+            api_url,
             token,
             self.device_id.clone(),
             None, // `get_host_name` over in connlib gets the system's name automatically
@@ -573,7 +578,7 @@ async fn run_controller(
     .context("couldn't create Controller")?;
 
     let mut have_internet = network_changes::check_internet()?;
-    tracing::debug!(?have_internet);
+    tracing::info!(?have_internet);
 
     let mut com_worker = network_changes::Worker::new()?;
 
@@ -587,7 +592,7 @@ async fn run_controller(
                 if new_have_internet != have_internet {
                     have_internet = new_have_internet;
                     // TODO: Stop / start / restart connlib as needed here
-                    tracing::debug!(?have_internet);
+                    tracing::info!(?have_internet);
                 }
             },
             req = rx.recv() => {
