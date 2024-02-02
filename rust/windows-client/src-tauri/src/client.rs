@@ -89,7 +89,7 @@ pub(crate) fn run() -> Result<()> {
         Some(Cmd::CrashHandlerServer { socket_path }) => crash_handling::server(socket_path),
         Some(Cmd::Debug { command }) => debug_commands::run(command),
         // If we already tried to elevate ourselves, don't try again
-        Some(Cmd::Elevated) => run_gui(cli),
+        Some(Cmd::Elevated | Cmd::SmokeTest) => run_gui(cli),
         Some(Cmd::OpenDeepLink(deep_link)) => {
             let rt = tokio::runtime::Runtime::new()?;
             rt.block_on(deep_link::open(&deep_link.url))?;
@@ -154,6 +154,14 @@ pub enum Cmd {
     },
     Elevated,
     OpenDeepLink(DeepLink),
+    /// SmokeTest gets its own subcommand because elevating would start a new process and trash the exit code
+    ///
+    /// We could solve that by keeping the un-elevated process around, blocking on the elevated
+    /// child process, but then we'd always have an extra process hanging around.
+    ///
+    /// It's also invalid for release builds, because we build the exe as a GUI app,
+    /// so Windows won't give us a valid exit code, it'll just detach from the terminal instantly.
+    SmokeTest,
 }
 
 #[derive(Args)]
