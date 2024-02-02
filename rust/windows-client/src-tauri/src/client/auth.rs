@@ -11,8 +11,12 @@ const NONCE_LENGTH: usize = 32;
 
 #[derive(thiserror::Error, Debug)]
 pub(crate) enum Error {
+    #[error("`actor_name_path` has no parent, this should be impossible")]
+    ActorNamePathWrong,
     #[error("`app_local_data_dir` failed")]
     CantFindLocalAppDataFolder,
+    #[error("`create_dir_all` failed while writing `actor_name_path`")]
+    CreateDirAll(std::io::Error),
     #[error("Couldn't delete actor_name from disk: {0}")]
     DeleteActorName(std::io::Error),
     #[error(transparent)]
@@ -158,8 +162,10 @@ impl Auth {
         // This must be the only place the GUI can call `set_password`, since
         // the actor name is also saved here.
         self.keyring_entry()?.set_password(&token)?;
-        std::fs::write(actor_name_path()?, resp.actor_name.as_bytes())
-            .map_err(Error::WriteActorName)?;
+        let path = actor_name_path()?;
+        std::fs::create_dir_all(path.parent().ok_or(Error::ActorNamePathWrong)?)
+            .map_err(Error::CreateDirAll)?;
+        std::fs::write(path, resp.actor_name.as_bytes()).map_err(Error::WriteActorName)?;
         self.state = State::SignedIn(Session {
             actor_name: resp.actor_name,
         });
@@ -184,14 +190,6 @@ impl Auth {
     ///
     /// Performs I/O
     fn get_token_from_disk(&self) -> Result<Option<SessionAndToken>> {
-        // This must be the only place the GUI can call `get_password`, since the
-        // actor name is also loaded here.
-        let token = match self.keyring_entry()?.get_password() {
-            Err(keyring::Error::NoEntry) => return Ok(None),
-            Err(e) => return Err(e.into()),
-            Ok(token) => SecretString::from(token),
-        };
-
         let actor_name = match std::fs::read_to_string(actor_name_path()?) {
             Ok(x) => x,
             Err(error) => {
@@ -204,6 +202,14 @@ impl Auth {
                     return Err(Error::ReadActorName(error));
                 }
             }
+        };
+
+        // This must be the only place the GUI can call `get_password`, since the
+        // actor name is also loaded here.
+        let token = match self.keyring_entry()?.get_password() {
+            Err(keyring::Error::NoEntry) => return Ok(None),
+            Err(e) => return Err(e.into()),
+            Ok(token) => SecretString::from(token),
         };
 
         Ok(Some(SessionAndToken {
@@ -271,8 +277,9 @@ mod tests {
     /// This should work around a bug we had <https://github.com/firezone/firezone/issues/3256>
     #[test]
     fn everything() -> anyhow::Result<()> {
-        utils();
+        // Run `happy_path` first to make sure it reacts okay if our `data` dir is missing
         happy_path();
+        utils();
         no_inflight_request();
         states_dont_match();
         test_keyring()?;
