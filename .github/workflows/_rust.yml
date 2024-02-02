@@ -91,6 +91,17 @@ jobs:
         run: |
           # Run smoke test
 
+          # Install WebView2
+
+          # This is the "Evergreen" bootstrapper from Microsoft
+          # <https://developer.microsoft.com/en-us/microsoft-edge/webview2/?form=MA13LH#download>
+          # This makes the test non-deterministic, but controlling the version is difficult.
+          Invoke-WebRequest -Uri https://go.microsoft.com/fwlink/p/?LinkId=2124703 -OutFile WebView2Installer.exe
+
+          # This downloads about 200 MB and takes about 5 minutes on my VM
+          # So we could fault in WebView2 without the MSI if we needed.
+          .\WebView2Installer.exe /install
+
           # Copied from `build.bat`, but I don't want to run `tauri build`
           pnpm install
           cp "node_modules/flowbite/dist/flowbite.min.js" "src/"
