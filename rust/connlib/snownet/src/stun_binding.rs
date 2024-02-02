@@ -300,6 +300,51 @@ mod tests {
     }
 
     #[test]
+    fn backoff_resets_after_successful_response() {
+        let mut now = Instant::now();
+
+        let mut stun_binding = StunBinding::new(SERVER1, now);
+
+        assert!(
+            stun_binding.poll_transmit().is_some(),
+            "Expect initial STUN binding"
+        );
+
+        now += Duration::from_secs(1);
+
+        stun_binding.handle_timeout(now);
+        assert!(
+            stun_binding.poll_transmit().is_none(),
+            "Expect no retry after 1 second"
+        );
+
+        now += Duration::from_secs(4);
+
+        stun_binding.handle_timeout(now);
+        let request = stun_binding
+            .poll_transmit()
+            .expect("expect retry after 5 seconds");
+
+        now += Duration::from_secs(1);
+
+        let response = generate_stun_response(request, MAPPED_ADDRESS);
+        stun_binding.handle_input(SERVER1, MAPPED_ADDRESS, &response, now);
+
+        now += Duration::from_secs(5 * 60);
+
+        // Refresh after 5 minutes
+        assert_eq!(stun_binding.poll_timeout().unwrap(), now);
+        stun_binding.handle_timeout(now);
+        assert!(stun_binding.poll_transmit().is_some());
+
+        assert_eq!(
+            stun_binding.poll_timeout().unwrap(),
+            now + Duration::from_secs(5),
+            "backoff should be back to 5 seconds timeout"
+        );
+    }
+
+    #[test]
     fn mapped_address_is_emitted_as_event() {
         let start = Instant::now();
 
