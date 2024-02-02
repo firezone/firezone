@@ -35,13 +35,16 @@ defmodule Web.Groups.Show do
       </:title>
       <:action :if={is_nil(@group.deleted_at)}>
         <.edit_button
-          :if={not Actors.group_synced?(@group)}
+          :if={Actors.group_editable?(@group)}
           navigate={~p"/#{@account}/groups/#{@group}/edit"}
         >
           Edit Group
         </.edit_button>
       </:action>
       <:content>
+        <.flash :if={Actors.group_managed?(@group)} kind={:info}>
+          This group is managed by Firezone and cannot be edited.
+        </.flash>
         <.flash :if={Actors.group_synced?(@group)} kind={:info}>
           This group is synced from an external source and cannot be edited.
         </.flash>
@@ -63,7 +66,7 @@ defmodule Web.Groups.Show do
       <:title>Actors</:title>
       <:action :if={is_nil(@group.deleted_at)}>
         <.edit_button
-          :if={not Actors.group_synced?(@group)}
+          :if={not Actors.group_synced?(@group) and not Actors.group_managed?(@group)}
           navigate={~p"/#{@account}/groups/#{@group}/edit_actors"}
         >
           Edit Actors
@@ -88,7 +91,7 @@ defmodule Web.Groups.Show do
                   There are no actors in this group.
                 </div>
                 <.edit_button
-                  :if={is_nil(@group.deleted_at)}
+                  :if={not Actors.group_synced?(@group) and not Actors.group_managed?(@group)}
                   navigate={~p"/#{@account}/groups/#{@group}/edit_actors"}
                 >
                   Edit Actors
@@ -100,7 +103,7 @@ defmodule Web.Groups.Show do
       </:content>
     </.section>
 
-    <.danger_zone :if={is_nil(@group.deleted_at) and not Actors.group_synced?(@group)}>
+    <.danger_zone :if={is_nil(@group.deleted_at) and Actors.group_editable?(@group)}>
       <:action>
         <.delete_button
           phx-click="delete"

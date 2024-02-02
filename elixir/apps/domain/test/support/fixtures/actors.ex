@@ -4,8 +4,21 @@ defmodule Domain.Fixtures.Actors do
 
   def group_attrs(attrs \\ %{}) do
     Enum.into(attrs, %{
-      name: "group-#{unique_integer()}"
+      name: "group-#{unique_integer()}",
+      type: :static
     })
+  end
+
+  def create_managed_group(attrs \\ %{}) do
+    attrs = group_attrs(attrs) |> Map.put(:type, :managed)
+
+    {account, attrs} =
+      pop_assoc_fixture(attrs, :account, fn assoc_attrs ->
+        Fixtures.Accounts.create_account(assoc_attrs)
+      end)
+
+    {:ok, group} = Actors.create_managed_group(account, attrs)
+    group
   end
 
   def create_group(attrs \\ %{}) do

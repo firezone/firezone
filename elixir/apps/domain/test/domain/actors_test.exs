@@ -980,6 +980,69 @@ defmodule Domain.ActorsTest do
     end
   end
 
+  describe "group_editable?/1" do
+    test "returns false for synced groups" do
+      account = Fixtures.Accounts.create_account()
+      provider = Fixtures.Auth.create_userpass_provider(account: account)
+      group = Fixtures.Actors.create_group(account: account, provider: provider)
+      assert group_editable?(group) == false
+    end
+
+    test "returns false for managed groups" do
+      account = Fixtures.Accounts.create_account()
+      group = Fixtures.Actors.create_managed_group(account: account)
+      assert group_editable?(group) == false
+    end
+
+    test "returns false for manually created groups" do
+      group = Fixtures.Actors.create_group()
+      assert group_editable?(group) == true
+    end
+  end
+
+  describe "create_managed_group/2" do
+    setup do
+      account = Fixtures.Accounts.create_account()
+
+      %{
+        account: account
+      }
+    end
+
+    test "returns error on empty attrs", %{account: account} do
+      assert {:error, changeset} = create_managed_group(account, %{})
+
+      assert errors_on(changeset) == %{
+               name: ["can't be blank"]
+             }
+    end
+
+    test "returns error on invalid attrs", %{account: account} do
+      attrs = %{name: String.duplicate("A", 65)}
+      assert {:error, changeset} = create_managed_group(account, attrs)
+
+      assert errors_on(changeset) == %{
+               name: ["should be at most 64 character(s)"]
+             }
+
+      Fixtures.Actors.create_managed_group(account: account, name: "foo")
+      attrs = %{name: "foo", type: :static, tokens: [%{}]}
+      assert {:error, changeset} = create_managed_group(account, attrs)
+      assert "has already been taken" in errors_on(changeset).name
+    end
+
+    test "creates a group", %{account: account} do
+      attrs = Fixtures.Actors.group_attrs()
+
+      assert {:ok, group} = create_managed_group(account, attrs)
+      assert group.id
+      assert group.name == attrs.name
+
+      group = Repo.preload(group, :memberships)
+      assert group.memberships == []
+    end
+  end
+
   describe "create_group/2" do
     setup do
       account = Fixtures.Accounts.create_account()
@@ -997,16 +1060,24 @@ defmodule Domain.ActorsTest do
 
     test "returns error on empty attrs", %{subject: subject} do
       assert {:error, changeset} = create_group(%{}, subject)
-      assert errors_on(changeset) == %{name: ["can't be blank"]}
+
+      assert errors_on(changeset) == %{
+               name: ["can't be blank"],
+               type: ["can't be blank"]
+             }
     end
 
     test "returns error on invalid attrs", %{account: account, subject: subject} do
-      attrs = %{name: String.duplicate("A", 65)}
+      attrs = %{name: String.duplicate("A", 65), type: :foo}
       assert {:error, changeset} = create_group(attrs, subject)
-      assert errors_on(changeset) == %{name: ["should be at most 64 character(s)"]}
+
+      assert errors_on(changeset) == %{
+               name: ["should be at most 64 character(s)"],
+               type: ["is invalid"]
+             }
 
       Fixtures.Actors.create_group(account: account, name: "foo")
-      attrs = %{name: "foo", tokens: [%{}]}
+      attrs = %{name: "foo", type: :static, tokens: [%{}]}
       assert {:error, changeset} = create_group(attrs, subject)
       assert "has already been taken" in errors_on(changeset).name
     end
@@ -1035,6 +1106,7 @@ defmodule Domain.ActorsTest do
       assert {:ok, group} = create_group(attrs, subject)
       assert group.id
       assert group.name == attrs.name
+      assert group.type == attrs.type
 
       group = Repo.preload(group, :memberships)
       assert [%Actors.Membership{} = membership] = group.memberships
@@ -1091,6 +1163,16 @@ defmodule Domain.ActorsTest do
         change_group(group, %{})
       end
     end
+
+    test "raises if group is managed" do
+      account = Fixtures.Accounts.create_account()
+      provider = Fixtures.Auth.create_userpass_provider(account: account)
+      group = Fixtures.Actors.create_managed_group(account: account, provider: provider)
+
+      assert_raise ArgumentError, "can't change managed groups", fn ->
+        change_group(group, %{})
+      end
+    end
   end
 
   describe "update_group/3" do
@@ -1139,6 +1221,27 @@ defmodule Domain.ActorsTest do
       attrs = Fixtures.Actors.group_attrs()
       assert {:ok, group} = update_group(group, attrs, subject)
       assert group.name == attrs.name
+    end
+
+    test "updates dynamic group membership rules", %{account: account, subject: subject} do
+      group = Fixtures.Actors.create_group(type: :dynamic, account: account)
+
+      attrs =
+        Fixtures.Actors.group_attrs(
+          membership_rules: [
+            %{jsonpath: "$.claims.group", operator: "contains", value: "admin"}
+          ]
+        )
+
+      assert {:ok, group} = update_group(group, attrs, subject)
+
+      assert group.membership_rules == [
+               %Domain.Actors.MembershipRule{
+                 jsonpath: "$.claims.group",
+                 operator: :contains,
+                 value: "admin"
+               }
+             ]
     end
 
     test "updates group memberships and triggers policy access events", %{
@@ -1245,6 +1348,16 @@ defmodule Domain.ActorsTest do
       group = Fixtures.Actors.create_group(account: account, provider: provider)
 
       assert update_group(group, %{}, subject) == {:error, :synced_group}
+    end
+
+    test "returns error if group is managed", %{
+      account: account,
+      subject: subject
+    } do
+      provider = Fixtures.Auth.create_userpass_provider(account: account)
+      group = Fixtures.Actors.create_managed_group(account: account, provider: provider)
+
+      assert update_group(group, %{}, subject) == {:error, :managed_group}
     end
   end
 

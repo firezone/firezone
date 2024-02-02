@@ -108,6 +108,19 @@ defmodule Domain.Actors do
     change_group(%Group{}, attrs)
   end
 
+  def create_managed_group(%Accounts.Account{} = account, attrs) do
+    Group.Changeset.create(account, attrs)
+    |> Repo.insert()
+    |> case do
+      {:ok, group} ->
+        # :ok = broadcast_group_memberships_events(group, changeset)
+        {:ok, group}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
   def create_group(attrs, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
       changeset = Group.Changeset.create(subject.account, attrs, subject)
@@ -125,12 +138,20 @@ defmodule Domain.Actors do
 
   def change_group(group, attrs \\ %{})
 
+  def change_group(%Group{type: :managed}, _attrs) do
+    raise ArgumentError, "can't change managed groups"
+  end
+
   def change_group(%Group{provider_id: nil} = group, attrs) do
     Group.Changeset.update(group, attrs)
   end
 
   def change_group(%Group{}, _attrs) do
     raise ArgumentError, "can't change synced groups"
+  end
+
+  def update_group(%Group{type: :managed}, _attrs, %Auth.Subject{}) do
+    {:error, :managed_group}
   end
 
   def update_group(%Group{provider_id: nil} = group, attrs, %Auth.Subject{} = subject) do
@@ -236,6 +257,12 @@ defmodule Domain.Actors do
   def group_synced?(%Group{provider_id: nil}), do: false
   def group_synced?(%Group{}), do: true
 
+  def group_managed?(%Group{type: :managed}), do: true
+  def group_managed?(%Group{}), do: false
+
+  def group_editable?(%Group{} = group),
+    do: not group_synced?(group) and not group_managed?(group)
+
   def group_deleted?(%Group{deleted_at: nil}), do: false
   def group_deleted?(%Group{}), do: true
 
@@ -329,6 +356,7 @@ defmodule Domain.Actors do
       |> Repo.fetch_and_update(
         with: fn actor ->
           actor = maybe_preload_not_synced_memberships(actor, attrs)
+          # TODO: list_editable_groups
           synced_groups = list_synced_groups(attrs)
           changeset = Actor.Changeset.update(actor, attrs, synced_groups, subject)
 

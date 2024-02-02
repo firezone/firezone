@@ -17,12 +17,14 @@ defmodule Web.Groups.Components do
   defp options_index_and_label(group) do
     index =
       cond do
+        Actors.group_managed?(group) -> 1
         Actors.group_synced?(group) -> 9
         true -> 2
       end
 
     label =
       cond do
+        Actors.group_managed?(group) -> nil
         Actors.group_synced?(group) -> group.provider.name
         true -> nil
       end
