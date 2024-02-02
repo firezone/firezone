@@ -33,12 +33,9 @@ pub(crate) enum Error {
     SetLogger(#[from] tracing_log::log_tracer::SetLoggerError),
 }
 
-/// Set up logs for the first time.
+/// Set up logs after the process has started
 pub(crate) fn setup(log_filter: &str) -> Result<Handles, Error> {
-    let log_path = app_local_data_dir()
-        .map_err(|_| Error::CantFindLocalAppDataFolder)?
-        .join("data")
-        .join("logs");
+    let log_path = log_path()?;
 
     std::fs::create_dir_all(&log_path).map_err(Error::CreateDirAll)?;
     let (layer, logger) = file_logger::layer(&log_path);
@@ -83,7 +80,7 @@ pub(crate) async fn count_logs() -> StdResult<FileCount, String> {
 /// This includes the current log file, so we won't write any more logs to disk
 /// until the file rolls over or the app restarts.
 pub(crate) async fn clear_logs_inner(managed: &Managed) -> Result<()> {
-    let mut dir = tokio::fs::read_dir("logs").await?;
+    let mut dir = tokio::fs::read_dir(log_path()?).await?;
     while let Some(entry) = dir.next_entry().await? {
         tokio::fs::remove_file(entry.path()).await?;
     }
@@ -132,7 +129,7 @@ pub(crate) async fn export_logs_to(path: PathBuf, stem: PathBuf) -> Result<()> {
         let mut zip = zip::ZipWriter::new(f);
         // All files will have the same modified time. Doing otherwise seems to be difficult
         let options = zip::write::FileOptions::default();
-        for entry in fs::read_dir("logs")? {
+        for entry in fs::read_dir(log_path()?)? {
             let entry = entry?;
             let Some(path) = stem.join(entry.file_name()).to_str().map(|x| x.to_owned()) else {
                 bail!("log filename isn't valid Unicode")
@@ -152,7 +149,7 @@ pub(crate) async fn export_logs_to(path: PathBuf, stem: PathBuf) -> Result<()> {
 
 /// Count log files and their sizes
 pub(crate) async fn count_logs_inner() -> Result<FileCount> {
-    let mut dir = tokio::fs::read_dir("logs").await?;
+    let mut dir = tokio::fs::read_dir(log_path()?).await?;
     let mut file_count = FileCount::default();
 
     while let Some(entry) = dir.next_entry().await? {
@@ -162,4 +159,15 @@ pub(crate) async fn count_logs_inner() -> Result<FileCount> {
     }
 
     Ok(file_count)
+}
+
+/// Returns the well-known log path
+///
+/// e.g. %LOCALAPPDATA%/dev.firezone.client/data/logs/
+pub(crate) fn log_path() -> Result<PathBuf, Error> {
+    let path = app_local_data_dir()
+        .map_err(|_| Error::CantFindLocalAppDataFolder)?
+        .join("data")
+        .join("logs");
+    Ok(path)
 }
