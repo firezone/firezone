@@ -107,15 +107,16 @@ fn run_gui(cli: Cli) -> Result<()> {
     // Make sure errors get logged, at least to stderr
     if let Err(error) = result {
         tracing::error!(?error, "gui::run error");
-        let error_msg = match &error {
-            gui::Error::WebViewNotInstalled => "Firezone cannot start because WebView2 is not installed. Follow the instructions at <https://www.firezone.dev/kb/user-guides/windows-client>.".to_string(),
-            error => format!("{}", error),
-        };
 
         if let Some(Cmd::SmokeTest) = &cli.command {
             // In smoke-test mode, don't show the dialog, since it might be running
             // unattended and the dialog would hang forever
         } else {
+            let error_msg = match &error {
+                gui::Error::WebViewNotInstalled => "Firezone cannot start because WebView2 is not installed. Follow the instructions at <https://www.firezone.dev/kb/user-guides/windows-client>.".to_string(),
+                error => format!("{}", error),
+            };
+
             native_dialog::MessageDialog::new()
                 .set_title("Firezone Error")
                 .set_text(&error_msg)
