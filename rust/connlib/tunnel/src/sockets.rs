@@ -22,14 +22,23 @@ impl Sockets {
         let socket_v4 = Socket::ip4();
         let socket_v6 = Socket::ip6();
 
-        if let (Err(e4), Err(e6)) = (socket_v4.as_ref(), socket_v6.as_ref()) {
-            tracing::error!("Failed to bind to IPv4 address: {e4}");
-            tracing::error!("Failed to bind to IPv6 address: {e6}");
+        match (socket_v4.as_ref(), socket_v6.as_ref()) {
+            (Err(e), Ok(_)) => {
+                tracing::warn!("Failed to bind IPv4 socket: {e}");
+            }
+            (Ok(_), Err(e)) => {
+                tracing::warn!("Failed to bind IPv6 socket: {e}");
+            }
+            (Err(e4), Err(e6)) => {
+                tracing::error!("Failed to bind IPv4 socket: {e4}");
+                tracing::error!("Failed to bind IPv6 socket: {e6}");
 
-            return Err(Error::Io(io::Error::new(
-                io::ErrorKind::AddrNotAvailable,
-                "Unable to bind to interfaces",
-            )));
+                return Err(Error::Io(io::Error::new(
+                    io::ErrorKind::AddrNotAvailable,
+                    "Unable to bind to interfaces",
+                )));
+            }
+            _ => (),
         }
 
         Ok(Self {
