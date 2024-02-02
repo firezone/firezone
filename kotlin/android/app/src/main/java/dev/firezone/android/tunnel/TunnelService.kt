@@ -250,8 +250,14 @@ class TunnelService : VpnService() {
             activeTunnel?.let { tunnel ->
                 allowFamily(OsConstants.AF_INET)
                 allowFamily(OsConstants.AF_INET6)
-                setMetered(false); // Inherit the metered status from the underlying networks.
-                setUnderlyingNetworks(null); // Use all available networks.
+                // Allow traffic to bypass the VPN interface when Always-on VPN is enabled.
+                allowBypass()
+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    setMetered(false) // Inherit the metered status from the underlying networks.
+                }
+
+                setUnderlyingNetworks(null) // Use all available networks.
 
                 addAddress(tunnel.config.tunnelAddressIPv4, 32)
                 addAddress(tunnel.config.tunnelAddressIPv6, 128)

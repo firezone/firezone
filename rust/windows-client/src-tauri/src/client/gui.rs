@@ -682,7 +682,7 @@ async fn run_controller(
                         )?;
                     }
                     Req::UpdateNotificationClicked(release) => {
-                        tracing::info!("NotificationClicked in run_controller!");
+                        tracing::info!("UpdateNotificationClicked in run_controller!");
                         tauri::api::shell::open(
                             &app.shell_scope(),
                             release.html_url,
