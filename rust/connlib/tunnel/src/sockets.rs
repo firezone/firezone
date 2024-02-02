@@ -71,11 +71,19 @@ impl<const N: usize> Socket<N> {
             if let Ok(len) = socket.try_io(Interest::READABLE, || {
                 state.recv((&socket).into(), bufs, &mut [meta])
             }) {
+                debug_assert_eq!(len, 1);
+
+                tracing::trace!("recv packet {}", meta.len);
+
+                if meta.len == 0 {
+                    continue;
+                }
+
                 return Poll::Ready((
                     meta.dst_ip
                         .map(|ip| SocketAddr::new(ip, addr.port()))
                         .unwrap_or(*addr),
-                    Ok((meta.addr, &mut buffer[..len])),
+                    Ok((meta.addr, &mut buffer[..meta.len])),
                 ));
             }
         }
