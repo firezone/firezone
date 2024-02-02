@@ -28,7 +28,7 @@ fn check_for_updates() -> Result<()> {
 
     let rt = tokio::runtime::Runtime::new().unwrap();
     let release = rt.block_on(client::updates::check());
-    tracing::info!("{:?}", release);
+    tracing::info!("{:?}", release.as_ref().map(serde_json::to_string));
 
     Ok(())
 }

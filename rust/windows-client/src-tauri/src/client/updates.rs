@@ -1,15 +1,58 @@
 //! Module to check the Github repo for new releases
 
 use crate::client::about::get_cargo_version;
-use std::str::FromStr;
+use std::{fmt, str::FromStr};
 use url::Url;
 
-#[derive(Debug, serde::Deserialize)]
+/// GUI-friendly release struct
+#[derive(serde::Serialize)]
 pub(crate) struct Release {
+    /// URL that will instantly try to download the MSI to disk
+    ///
+    /// e.g. <https://github.com/firezone/firezone/releases/download/1.0.0-pre.8/windows-client-x64.msi>
+    pub browser_download_url: Url,
+    /// URL that a browser can open to view the changelog and everything
+    ///
     /// e.g. <https://github.com/firezone/firezone/releases/tag/1.0.0-pre.8>
     pub html_url: Url,
+    /// Git tag name
+    ///
     /// e.g. 1.0.0-pre.8
     pub tag_name: semver::Version,
+}
+
+impl Release {
+    /// Parses the release JSON, finds the MSI asset, and returns info about the latest MSI
+    fn from_str(s: &str) -> Result<Self, Error> {
+        let ReleaseDetails {
+            assets,
+            html_url,
+            tag_name,
+        } = serde_json::from_str(s)?;
+        let asset = assets
+            .into_iter()
+            .find(|asset| asset.name == MSI_ASSET_NAME)
+            .ok_or(Error::NoSuchAsset)?;
+
+        Ok(Release {
+            browser_download_url: asset.browser_download_url,
+            html_url,
+            tag_name,
+        })
+    }
+}
+
+impl fmt::Debug for Release {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Release")
+            .field(
+                "browser_download_url",
+                &self.browser_download_url.to_string(),
+            )
+            .field("html_url", &self.html_url.to_string())
+            .field("tag_name", &self.tag_name.to_string())
+            .finish()
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -18,6 +61,8 @@ pub(crate) enum Error {
     HttpStatus(reqwest::StatusCode),
     #[error(transparent)]
     JsonParse(#[from] serde_json::Error),
+    #[error("No such asset `{MSI_ASSET_NAME}` in the latest release")]
+    NoSuchAsset,
     #[error("Our own semver in the exe is invalid, this should be impossible")]
     OurVersionIsInvalid(semver::Error),
     #[error(transparent)]
@@ -29,6 +74,11 @@ const LATEST_RELEASE_API_URL: &str =
 
 /// <https://docs.github.com/en/rest/about-the-rest-api/api-versions?apiVersion=2022-11-28>
 const GITHUB_API_VERSION: &str = "2022-11-28";
+
+/// The name of the Windows MSI asset.
+///
+/// This ultimately comes from `cd.yml`
+const MSI_ASSET_NAME: &str = "windows-client-x64.msi";
 
 /// <https://docs.github.com/en/rest/using-the-rest-api/getting-started-with-the-rest-api?apiVersion=2022-11-28#user-agent-required>
 const USER_AGENT: &str = "Firezone Windows Client";
@@ -52,14 +102,27 @@ pub(crate) async fn check() -> Result<Release, Error> {
     }
 
     let response = response.text().await?;
-
-    let release = serde_json::from_str(&response)?;
-    Ok(release)
+    Release::from_str(&response)
 }
 
 // TODO: DRY with about.rs
 pub(crate) fn current_version() -> Result<semver::Version, Error> {
     semver::Version::from_str(&get_cargo_version()).map_err(Error::OurVersionIsInvalid)
+}
+
+/// Deserializable struct that matches Github's JSON
+#[derive(serde::Deserialize)]
+struct ReleaseDetails {
+    assets: Vec<Asset>,
+    html_url: Url,
+    tag_name: semver::Version,
+}
+
+#[derive(serde::Deserialize)]
+struct Asset {
+    browser_download_url: Url,
+    /// Name of the asset, e.g. `windows-client-x64.msi`
+    name: String,
 }
 
 #[cfg(test)]
@@ -106,12 +169,49 @@ mod tests {
         "draft": false,
         "prerelease": false,
         "created_at": "2024-01-24T00:23:23Z",
-        "published_at": "2024-01-24T04:34:44Z"
+        "published_at": "2024-01-24T04:34:44Z",
+        "assets": [
+            {
+                "url": "https://api.github.com/repos/firezone/firezone/releases/assets/147443612",
+                "id": 147443612,
+                "node_id": "RA_kwDOD12Hpc4Iyc-c",
+                "name": "windows-client-x64.msi",
+                "label": "",
+                "uploader": {
+                    "login": "github-actions[bot]",
+                    "id": 41898282,
+                    "node_id": "MDM6Qm90NDE4OTgyODI=",
+                    "avatar_url": "https://avatars.githubusercontent.com/in/15368?v=4",
+                    "gravatar_id": "",
+                    "url": "https://api.github.com/users/github-actions%5Bbot%5D",
+                    "html_url": "https://github.com/apps/github-actions",
+                    "followers_url": "https://api.github.com/users/github-actions%5Bbot%5D/followers",
+                    "following_url": "https://api.github.com/users/github-actions%5Bbot%5D/following{/other_user}",
+                    "gists_url": "https://api.github.com/users/github-actions%5Bbot%5D/gists{/gist_id}",
+                    "starred_url": "https://api.github.com/users/github-actions%5Bbot%5D/starred{/owner}{/repo}",
+                    "subscriptions_url": "https://api.github.com/users/github-actions%5Bbot%5D/subscriptions",
+                    "organizations_url": "https://api.github.com/users/github-actions%5Bbot%5D/orgs",
+                    "repos_url": "https://api.github.com/users/github-actions%5Bbot%5D/repos",
+                    "events_url": "https://api.github.com/users/github-actions%5Bbot%5D/events{/privacy}",
+                    "received_events_url": "https://api.github.com/users/github-actions%5Bbot%5D/received_events",
+                    "type": "Bot",
+                    "site_admin": false
+                },
+                "content_type": "application/octet-stream",
+                "state": "uploaded",
+                "size": 8376320,
+                "download_count": 10,
+                "created_at": "2024-01-24T04:33:53Z",
+                "updated_at": "2024-01-24T04:33:53Z",
+                "browser_download_url": "https://github.com/firezone/firezone/releases/download/1.0.0-pre.8/windows-client-x64.msi"
+            }
+        ]
     }"#;
 
     #[test]
     fn test() {
-        let release: super::Release = serde_json::from_str(RELEASES_LATEST_JSON).unwrap();
+        let release = super::Release::from_str(RELEASES_LATEST_JSON).unwrap();
+        assert_eq!(release.browser_download_url.to_string(), "https://github.com/firezone/firezone/releases/download/1.0.0-pre.8/windows-client-x64.msi");
         assert_eq!(
             release.html_url.to_string(),
             "https://github.com/firezone/firezone/releases/tag/1.0.0-pre.8"

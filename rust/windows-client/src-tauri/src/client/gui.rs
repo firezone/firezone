@@ -672,11 +672,11 @@ async fn run_controller(
                         show_notification("Firezone connected", "You are now signed in and able to access resources.")?;
                     }
                     Req::UpdateAvailable(release) => {
-                        let title = format!("Firezone update {}", release.tag_name);
+                        let title = format!("Firezone {} available for download", release.tag_name);
 
                         show_clickable_notification(
                             &title,
-                            "Click here to open the release page.",
+                            "Click here to download the new version.",
                             controller.ctlr_tx.clone(),
                             Req::UpdateNotificationClicked(release),
                         )?;
