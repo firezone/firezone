@@ -90,7 +90,9 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.APIClient do
       Domain.Config.fetch_env!(:domain, __MODULE__)
       |> Keyword.fetch!(:endpoint)
 
+    params = %{"includeDerivedMembership" => true}
     uri = URI.parse("#{endpoint}/admin/directory/v1/groups/#{group_id}/members")
+    uri = URI.append_query(uri, URI.encode_query(params))
 
     with {:ok, members} <- list_all(uri, api_token, "members") do
       members =
