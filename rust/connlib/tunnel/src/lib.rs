@@ -139,12 +139,40 @@ where
     }
 }
 
-struct IceSockets {
+struct Sockets {
     socket_v4: Option<Socket<MAX_UDP_SIZE>>,
     socket_v6: Option<Socket<MAX_UDP_SIZE>>,
 }
 
-impl IceSockets {
+impl Sockets {
+    fn new() -> Result<Self> {
+        let socket_v4 = Socket::ip4();
+        let socket_v6 = Socket::ip6();
+
+        if let (Err(e4), Err(e6)) = (socket_v4.as_ref(), socket_v6.as_ref()) {
+            tracing::error!("Failed to bind to IPv4 address: {e4}");
+            tracing::error!("Failed to bind to IPv6 address: {e6}");
+
+            return Err(Error::Io(io::Error::new(
+                io::ErrorKind::AddrNotAvailable,
+                "Unable to bind to interfaces",
+            )));
+        }
+
+        Ok(Self {
+            socket_v4: socket_v4.ok(),
+            socket_v6: socket_v6.ok(),
+        })
+    }
+
+    fn ip4_port(&self) -> Option<u16> {
+        Some(self.socket_v4.as_ref()?.port())
+    }
+
+    fn ip6_port(&self) -> Option<u16> {
+        Some(self.socket_v6.as_ref()?.port())
+    }
+
     fn socket_send(&mut self, transmit: &Transmit) -> Result<usize> {
         match transmit.dst {
             SocketAddr::V4(_) => {
@@ -175,8 +203,8 @@ impl IceSockets {
 struct ConnectionState<TRole, TId, TTransform> {
     connections: Connections<TRole, TId, TTransform>,
     connection_pool_timeout: BoxFuture<'static, std::time::Instant>,
-    // if_watcher: IfWatcher,
-    sockets: IceSockets,
+    if_watcher: IfWatcher,
+    sockets: Sockets,
 }
 
 impl<TRole, TId, TTransform> ConnectionState<TRole, TId, TTransform>
@@ -184,42 +212,13 @@ where
     TId: Eq + Hash + Copy + fmt::Display,
     TTransform: PacketTransform,
 {
-    fn new(private_key: StaticSecret) -> Self {
-        let if_watcher = IfWatcher::new().expect(
-            "Program should be able to list interfaces on the system. Check binary's permissions",
-        );
-
-        let mut connection_pool = Node::new(private_key, std::time::Instant::now());
-
-        let relay_socket_v4 = Socket::ip4();
-        let relay_socket_v6 = Socket::ip6();
-
-        relay_socket_v4
-            .as_ref()
-            .or(relay_socket_v6.as_ref())
-            .expect("We must be able to bind to 0.0.0.0:0 or [::]:0 to connect to relays");
-
-        let ip4_port = relay_socket_v4.as_ref().map(|s| s.port()).ok();
-        let ip6_port = relay_socket_v6.as_ref().map(|s| s.port()).ok();
-
-        for ip in if_watcher.iter() {
-            if let Some(port) = ip4_port {
-                connection_pool.add_local_interface(SocketAddr::new(ip.addr(), port));
-            }
-            if let Some(port) = ip6_port {
-                connection_pool.add_local_interface(SocketAddr::new(ip.addr(), port));
-            }
-        }
-
-        ConnectionState {
-            connections: Connections::new(connection_pool),
+    fn new(private_key: StaticSecret) -> Result<Self> {
+        Ok(ConnectionState {
+            connections: Connections::new(Node::new(private_key, std::time::Instant::now())),
             connection_pool_timeout: sleep_until(std::time::Instant::now()).boxed(),
-            // if_watcher,
-            sockets: IceSockets {
-                socket_v4: relay_socket_v4.ok(),
-                socket_v6: relay_socket_v6.ok(),
-            },
-        }
+            if_watcher: IfWatcher::new()?,
+            sockets: Sockets::new()?,
+        })
     }
 
     fn cleanup(&mut self) -> impl Iterator<Item = TId> + '_ {
@@ -294,30 +293,33 @@ where
                 continue;
             }
 
-            return Poll::Pending;
+            match self.if_watcher.poll_if_event(cx) {
+                Poll::Ready(Ok(ev)) => match ev {
+                    if_watch::IfEvent::Up(ip) if !ip.addr().is_loopback() => {
+                        if let Some(port) = self.sockets.ip4_port() {
+                            self.connections
+                                .node
+                                .add_local_interface(SocketAddr::new(ip.addr(), port))
+                        }
+                        if let Some(port) = self.sockets.ip6_port() {
+                            self.connections
+                                .node
+                                .add_local_interface(SocketAddr::new(ip.addr(), port))
+                        }
+                    }
+                    if_watch::IfEvent::Down(ip) if !ip.addr().is_loopback() => {
+                        tracing::info!(address = %ip.addr(), "Interface IP no longer available");
+                        // TODO: remove local interface
+                    }
+                    _ => {}
+                },
+                Poll::Ready(Err(e)) => {
+                    tracing::debug!("Error while polling interfces: {e:#?}");
+                }
+                Poll::Pending => {}
+            }
 
-            // match ready!(self.if_watcher.poll_if_event(cx)) {
-            //     Ok(ev) => match ev {
-            //         if_watch::IfEvent::Up(ip) if !ip.addr().is_loopback() => {
-            //             // TODO: filter firezone-tun candidates(we could retrieve the ip or just ignore CGNAT)
-            //             match self.sockets.udp_sockets.bind((ip.addr(), 0)) {
-            //                 Ok(addr) => self.connections.node.add_local_interface(addr),
-            //                 Err(e) => {
-            //                     tracing::debug!(address = %ip.addr(), "Couldn't bind socket to interface: {e}")
-            //                 }
-            //             }
-            //         }
-            //         if_watch::IfEvent::Down(ip) if !ip.addr().is_loopback() => {
-            //             tracing::info!(address = %ip.addr(), "Interface IP no longer available");
-            //             self.sockets.udp_sockets.unbind(ip.addr());
-            //             // TODO: remove local interface
-            //         }
-            //         _ => {}
-            //     },
-            //     Err(e) => {
-            //         tracing::debug!("Error while polling interfces: {e:#?}");
-            //     }
-            // }
+            return Poll::Pending;
         }
     }
 }
@@ -655,7 +657,7 @@ where
             role_state: Default::default(),
             mtu_refresh_interval: Mutex::new(mtu_refresh_interval()),
             no_device_waker: Default::default(),
-            connections_state: Mutex::new(ConnectionState::new(private_key)),
+            connections_state: Mutex::new(ConnectionState::new(private_key)?),
             cleanup_interval: Mutex::new(cleanup_interval),
         })
     }
