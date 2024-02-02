@@ -74,7 +74,7 @@ pub(crate) enum Error {
 }
 
 /// Runs the Tauri GUI and returns on exit or unrecoverable error
-pub(crate) fn run(cli: client::Cli) -> Result<(), Error> {
+pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
     let advanced_settings = settings::load_advanced_settings().unwrap_or_default();
 
     // If the log filter is unparsable, show an error and use the default
