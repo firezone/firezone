@@ -124,15 +124,23 @@ fn run_gui(cli: Cli) -> Result<()> {
     Ok(result?)
 }
 
+/// The debug / test flags like `crash_on_purpose` and `test_update_notification`
+/// don't propagate when we use `RunAs` to elevate ourselves. So those must be run
+/// from an admin terminal, or with "Run as administrator" in the right-click menu.
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 struct Cli {
     #[command(subcommand)]
     command: Option<Cmd>,
+    /// If true, purposely crash the program to test the crash handler
     #[arg(long, hide = true)]
     crash_on_purpose: bool,
+    /// If true, slow down I/O operations to test how the GUI handles slow I/O
     #[arg(long, hide = true)]
     inject_faults: bool,
+    /// If true, show a fake update notification that opens the Firezone release page when clicked
+    #[arg(long, hide = true)]
+    test_update_notification: bool,
 }
 
 #[derive(clap::Subcommand)]
