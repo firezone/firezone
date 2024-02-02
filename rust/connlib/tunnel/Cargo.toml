@@ -33,7 +33,7 @@ dns-lookup = { workspace = true }
 if-watch = { version = "3.2", features = ["tokio"] }
 socket2 = { version = "0.5" }
 snownet = { workspace = true }
-quinn-udp = "0.4.1"
+quinn-udp = { git = "https://github.com/quinn-rs/quinn", branch = "main"}
 
 # Needed for Android logging until tracing is fixed
 log = "0.4"

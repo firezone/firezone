@@ -38,10 +38,8 @@ impl<const N: usize> Socket<N> {
 
         let local = socket.local_addr()?;
 
-        UdpSocketState::configure(UdpSockRef::from(&socket))?;
-
         Ok(Socket {
-            state: UdpSocketState::new(),
+            state: UdpSocketState::new(UdpSockRef::from(&socket))?,
             local,
             socket: tokio::net::UdpSocket::from_std(socket)?,
             buffer: Box::new([0u8; N]),

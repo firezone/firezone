@@ -4752,15 +4752,15 @@ dependencies = [
 
 [[package]]
 name = "quinn-udp"
-version = "0.4.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "055b4e778e8feb9f93c4e439f71dc2156ef13360b432b799e179a8c4cdf0b1d7"
+version = "0.5.0"
+source = "git+https://github.com/quinn-rs/quinn?branch=main#1c7c46049c55939764d32754bf22080f1f648d5a"
 dependencies = [
  "bytes",
  "libc",
+ "once_cell",
  "socket2 0.5.5",
  "tracing",
- "windows-sys 0.48.0",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
