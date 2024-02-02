@@ -6,6 +6,7 @@ use anyhow::Result;
 
 #[derive(clap::Subcommand)]
 pub enum Cmd {
+    CheckForUpdates,
     Crash,
     Hostname,
     NetworkChanges,
@@ -14,11 +15,21 @@ pub enum Cmd {
 
 pub fn run(cmd: Cmd) -> Result<()> {
     match cmd {
+        Cmd::CheckForUpdates => check_for_updates(),
         Cmd::Crash => crash(),
         Cmd::Hostname => hostname(),
         Cmd::NetworkChanges => client::network_changes::run_debug(),
         Cmd::Wintun => wintun(),
     }
+}
+
+fn check_for_updates() -> Result<()> {
+    tracing_subscriber::fmt::init();
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let release = rt.block_on(client::updates::check());
+    println!("{:?}", release);
+
+    Ok(())
 }
 
 fn crash() -> Result<()> {

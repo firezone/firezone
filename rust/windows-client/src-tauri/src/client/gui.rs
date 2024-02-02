@@ -136,17 +136,12 @@ pub(crate) fn run(cli: client::Cli) -> Result<(), Error> {
         });
     }
 
-    if cli.test_update_notification {
-        // TODO: Clicking doesn't work if the notification times out and hides first.
-        // See docs for `show_clickable_notification`.
-
-        show_clickable_notification(
-            "Firezone update",
-            "Click here to open the release page.",
-            ctlr_tx.clone(),
-            Req::NotificationClicked,
-        )?;
-    }
+    // Check for updates
+    let ctlr_tx_clone = ctlr_tx.clone();
+    let always_show_update_notification = cli.always_show_update_notification;
+    tokio::spawn(
+        async move { check_for_updates(ctlr_tx_clone, always_show_update_notification).await },
+    );
 
     // Make sure we're single-instance
     // We register our deep links to call the `open-deep-link` subcommand,
@@ -265,6 +260,38 @@ pub(crate) fn run(cli: client::Cli) -> Result<(), Error> {
     Ok(())
 }
 
+async fn check_for_updates(ctlr_tx: CtlrTx, always_show_update_notification: bool) -> Result<()> {
+    let release = match client::updates::check().await {
+        Ok(x) => x,
+        Err(error) => {
+            tracing::error!(?error, "Error while checking for updates");
+            return Ok(());
+        }
+    };
+
+    let our_version = client::updates::get_our_version()?;
+    let github_version = &release.tag_name;
+
+    if always_show_update_notification || (our_version < release.tag_name) {
+        tracing::info!(?our_version, ?github_version, "Github has a new release");
+        if let Err(error) = ctlr_tx
+            .send(ControllerRequest::UpdateAvailable(release))
+            .await
+        {
+            tracing::error!(?error, "Couldn't send UpdateAvailable to Controller");
+        }
+
+        return Ok(());
+    }
+
+    tracing::info!(
+        ?our_version,
+        ?github_version,
+        "Our release is newer than, or the same as Github's latest"
+    );
+    Ok(())
+}
+
 /// Worker task to accept deep links from a named pipe forever
 ///
 /// * `server` An initial named pipe server to consume before making new servers. This lets us also use the named pipe to enforce single-instance
@@ -294,10 +321,11 @@ pub(crate) enum ControllerRequest {
     DisconnectedTokenExpired,
     ExportLogs { path: PathBuf, stem: PathBuf },
     GetAdvancedSettings(oneshot::Sender<AdvancedSettings>),
-    NotificationClicked,
     SchemeRequest(url::Url),
     SystemTrayMenu(TrayMenuEvent),
     TunnelReady,
+    UpdateAvailable(client::updates::Release),
+    UpdateNotificationClicked(client::updates::Release),
 }
 
 #[derive(Clone)]
@@ -614,14 +642,6 @@ async fn run_controller(
                     Req::GetAdvancedSettings(tx) => {
                         tx.send(controller.advanced_settings.clone()).ok();
                     }
-                    Req::NotificationClicked => {
-                        tracing::info!("NotificationClicked in run_controller!");
-                        tauri::api::shell::open(
-                            &app.shell_scope(),
-                            "https://example.com/notification_clicked",
-                            None,
-                        )?;
-                    }
                     Req::SchemeRequest(url) => if let Err(e) = controller.handle_deep_link(&url).await {
                         tracing::error!("couldn't handle deep link: {e:#?}");
                     }
@@ -650,7 +670,25 @@ async fn run_controller(
                         controller.refresh_system_tray_menu()?;
 
                         show_notification("Firezone connected", "You are now signed in and able to access resources.")?;
-                    },
+                    }
+                    Req::UpdateAvailable(release) => {
+                        let title = format!("Firezone update {}", release.tag_name);
+
+                        show_clickable_notification(
+                            &title,
+                            "Click here to open the release page.",
+                            controller.ctlr_tx.clone(),
+                            Req::UpdateNotificationClicked(release),
+                        )?;
+                    }
+                    Req::UpdateNotificationClicked(release) => {
+                        tracing::info!("NotificationClicked in run_controller!");
+                        tauri::api::shell::open(
+                            &app.shell_scope(),
+                            release.html_url,
+                            None,
+                        )?;
+                    }
                 }
             }
         }

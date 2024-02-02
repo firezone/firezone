@@ -14,6 +14,7 @@ mod logging;
 mod network_changes;
 mod resolvers;
 mod settings;
+mod updates;
 mod wintun_install;
 
 /// Output of `git describe` at compile time
@@ -130,6 +131,8 @@ fn run_gui(cli: Cli) -> Result<()> {
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 struct Cli {
+    #[arg(long, hide = true)]
+    always_show_update_notification: bool,
     #[command(subcommand)]
     command: Option<Cmd>,
     /// If true, purposely crash the program to test the crash handler
