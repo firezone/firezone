@@ -1,4 +1,8 @@
-use crate::node::Transmit;
+use crate::{
+    backoff::{self, ExponentialBackoff},
+    node::Transmit,
+};
+use ::backoff::backoff::Backoff;
 use bytecodec::{DecodeExt as _, EncodeExt as _};
 use rand::random;
 use std::{
@@ -45,12 +49,13 @@ pub struct Allocation {
     buffered_transmits: VecDeque<Transmit<'static>>,
     new_candidates: VecDeque<Candidate>,
 
-    sent_requests: HashMap<TransactionId, (Message<Attribute>, Instant)>,
+    backoff: ExponentialBackoff,
+    sent_requests: HashMap<TransactionId, (Message<Attribute>, Instant, Duration)>,
 
     channel_bindings: ChannelBindings,
     buffered_channel_bindings: VecDeque<Message<Attribute>>,
 
-    last_now: Option<Instant>,
+    last_now: Instant,
 
     username: Username,
     password: String,
@@ -59,7 +64,13 @@ pub struct Allocation {
 }
 
 impl Allocation {
-    pub fn new(server: SocketAddr, username: Username, password: String, realm: Realm) -> Self {
+    pub fn new(
+        server: SocketAddr,
+        username: Username,
+        password: String,
+        realm: Realm,
+        now: Instant,
+    ) -> Self {
         Self {
             server,
             last_srflx_candidate: Default::default(),
@@ -74,8 +85,9 @@ impl Allocation {
             nonce: Default::default(),
             allocation_lifetime: Default::default(),
             channel_bindings: Default::default(),
-            last_now: Default::default(),
+            last_now: now,
             buffered_channel_bindings: Default::default(),
+            backoff: backoff::new(now, REQUEST_TIMEOUT),
         }
     }
 
@@ -96,9 +108,7 @@ impl Allocation {
         packet: &[u8],
         now: Instant,
     ) -> bool {
-        if Some(now) > self.last_now {
-            self.last_now = Some(now);
-        }
+        self.update_now(now);
 
         if from != self.server {
             return false;
@@ -108,11 +118,13 @@ impl Allocation {
             return false;
         };
 
-        let Some((original_request, sent_at)) =
+        let Some((original_request, sent_at, _)) =
             self.sent_requests.remove(&message.transaction_id())
         else {
             return false;
         };
+
+        self.backoff.reset();
 
         let rtt = now.duration_since(sent_at);
         tracing::debug!(id = ?original_request.transaction_id(), method = %original_request.method(), ?rtt);
@@ -295,9 +307,7 @@ impl Allocation {
     }
 
     pub fn handle_timeout(&mut self, now: Instant) {
-        if Some(now) > self.last_now {
-            self.last_now = Some(now);
-        }
+        self.update_now(now);
 
         if !self.has_allocation() && !self.allocate_in_flight() {
             tracing::debug!(server = %self.server, "Request new allocation");
@@ -306,11 +316,13 @@ impl Allocation {
         }
 
         while let Some(timed_out_request) =
-            self.sent_requests.iter().find_map(|(id, (_, sent_at))| {
-                (now.duration_since(*sent_at) >= REQUEST_TIMEOUT).then_some(*id)
-            })
+            self.sent_requests
+                .iter()
+                .find_map(|(id, (_, sent_at, backoff))| {
+                    (now.duration_since(*sent_at) >= *backoff).then_some(*id)
+                })
         {
-            let (request, _) = self
+            let (request, _, _) = self
                 .sent_requests
                 .remove(&timed_out_request)
                 .expect("ID is from list");
@@ -410,11 +422,11 @@ impl Allocation {
     fn allocate_in_flight(&self) -> bool {
         self.sent_requests
             .values()
-            .any(|(r, _)| r.method() == ALLOCATE)
+            .any(|(r, _, _)| r.method() == ALLOCATE)
     }
 
     fn channel_binding_in_flight(&self, channel: u16) -> bool {
-        self.sent_requests.values().any(|(r, _)| {
+        self.sent_requests.values().any(|(r, _, _)| {
             r.method() == BINDING
                 && r.get_attribute::<ChannelNumber>()
                     .is_some_and(|n| n.value() == channel)
@@ -456,16 +468,31 @@ impl Allocation {
     }
 
     fn authenticate_and_queue(&mut self, message: Message<Attribute>, now: Instant) {
+        let Some(backoff) = self.backoff.next_backoff() else {
+            tracing::warn!(
+                "Unable to queue {} because we've exceeded our backoffs",
+                message.method()
+            );
+            return;
+        };
+
         let authenticated_message = self.authenticate(message);
         let id = authenticated_message.transaction_id();
 
         self.sent_requests
-            .insert(id, (authenticated_message.clone(), now));
+            .insert(id, (authenticated_message.clone(), now, backoff));
         self.buffered_transmits.push_back(Transmit {
             src: None,
             dst: self.server,
             payload: encode(authenticated_message).into(),
         });
+    }
+
+    fn update_now(&mut self, now: Instant) {
+        if now > self.last_now {
+            self.last_now = now;
+            self.backoff.clock.now = now;
+        }
     }
 }
 
@@ -954,6 +981,7 @@ mod tests {
             Username::new("foobar".to_owned()).unwrap(),
             "baz".to_owned(),
             Realm::new("firezone".to_owned()).unwrap(),
+            Instant::now(),
         );
 
         allocation.bind_channel(PEER1, Instant::now());
@@ -975,6 +1003,7 @@ mod tests {
             Username::new("foobar".to_owned()).unwrap(),
             "baz".to_owned(),
             Realm::new("firezone".to_owned()).unwrap(),
+            Instant::now(),
         );
 
         make_allocation(&mut allocation, PEER1);
@@ -992,6 +1021,7 @@ mod tests {
             Username::new("foobar".to_owned()).unwrap(),
             "baz".to_owned(),
             Realm::new("firezone".to_owned()).unwrap(),
+            Instant::now(),
         );
 
         make_allocation(&mut allocation, PEER1);
@@ -1023,6 +1053,7 @@ mod tests {
             Username::new("foobar".to_owned()).unwrap(),
             "baz".to_owned(),
             Realm::new("firezone".to_owned()).unwrap(),
+            Instant::now(),
         );
 
         make_allocation(&mut allocation, PEER1);

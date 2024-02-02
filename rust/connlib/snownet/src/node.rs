@@ -809,7 +809,7 @@ where
 
                 self.allocations.insert(
                     *server,
-                    Allocation::new(*server, username, password.clone(), realm),
+                    Allocation::new(*server, username, password.clone(), realm, self.last_now),
                 );
             }
         }
