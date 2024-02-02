@@ -24,10 +24,11 @@ pub fn run(cmd: Cmd) -> Result<()> {
 }
 
 fn check_for_updates() -> Result<()> {
-    tracing_subscriber::fmt::init();
+    client::logging::debug_command_setup()?;
+
     let rt = tokio::runtime::Runtime::new().unwrap();
     let release = rt.block_on(client::updates::check());
-    println!("{:?}", release);
+    tracing::info!("{:?}", release);
 
     Ok(())
 }

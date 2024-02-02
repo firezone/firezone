@@ -55,6 +55,17 @@ pub(crate) fn setup(log_filter: &str) -> Result<Handles, Error> {
     })
 }
 
+/// Sets up logging for stderr only, with INFO level by default
+pub(crate) fn debug_command_setup() -> Result<(), Error> {
+    let filter = EnvFilter::builder()
+        .with_default_directive(tracing_subscriber::filter::LevelFilter::INFO.into())
+        .from_env_lossy();
+    let layer = fmt::layer().with_filter(filter);
+    let subscriber = Registry::default().with(layer);
+    set_global_default(subscriber)?;
+    Ok(())
+}
+
 #[tauri::command]
 pub(crate) async fn clear_logs(managed: tauri::State<'_, Managed>) -> StdResult<(), String> {
     clear_logs_inner(&managed).await.map_err(|e| e.to_string())
