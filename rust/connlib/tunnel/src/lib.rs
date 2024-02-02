@@ -346,7 +346,6 @@ pub struct Tunnel<CB: Callbacks, TRoleState, TRole, TId, TTransform> {
     mtu_refresh_interval: Mutex<Interval>,
 
     device: Arc<ArcSwapOption<Device>>,
-    read_buf: Mutex<Box<[u8; MAX_UDP_SIZE]>>,
     no_device_waker: AtomicWaker,
 
     connections_state: Mutex<ConnectionState<TRole, TId, TTransform>>,
@@ -414,36 +413,39 @@ where
         device: &Device,
         cx: &mut Context<'_>,
     ) -> Poll<Result<Option<Event<GatewayId>>>> {
+        let mut read_buf = [0; MAX_UDP_SIZE];
+
         loop {
-            let mut role_state = self.role_state.lock();
-
-            let mut read_guard = self.read_buf.lock();
-            let read_buf = read_guard.as_mut_slice();
-
-            let Some(packet) = ready!(device.poll_read(read_buf, cx))? else {
+            let Some(packet) = ready!(device.poll_read(&mut read_buf, cx))? else {
                 return Poll::Ready(Ok(None));
             };
 
             tracing::trace!(target: "wire", action = "read", from = "device", dest = %packet.destination(), bytes = %packet.packet().len());
 
-            let (packet, dest) = match role_state.handle_dns(packet) {
-                Ok(Some(response)) => {
-                    device.write(response)?;
-                    continue;
-                }
-                Ok(None) => continue,
-                Err(non_dns_packet) => non_dns_packet,
-            };
+            let (packet, peer_id) = {
+                let mut role_state = self.role_state.lock();
+                let (packet, dest) = match role_state.handle_dns(packet) {
+                    Ok(Some(response)) => {
+                        device.write(response)?;
+                        continue;
+                    }
+                    Ok(None) => continue,
+                    Err(non_dns_packet) => non_dns_packet,
+                };
 
-            let Some(peer) = peer_by_ip(&role_state.peers_by_ip, dest) else {
-                role_state.on_connection_intent_ip(dest);
-                continue;
+                let Some(peer) = peer_by_ip(&role_state.peers_by_ip, dest) else {
+                    role_state.on_connection_intent_ip(dest);
+                    continue;
+                };
+
+                let Some(packet) = peer.transform(packet) else {
+                    continue;
+                };
+                (packet, peer.conn_id)
             };
 
             // TODO: we're holding 3 mutexes here
-            self.send_peer(packet, peer);
-
-            continue;
+            self.send_peer(packet, peer_id);
         }
     }
 }
@@ -453,24 +455,29 @@ where
     CB: Callbacks + 'static,
 {
     pub fn poll_next_event(&self, cx: &mut Context<'_>) -> Poll<Result<Event<ClientId>>> {
-        let mut read_guard = self.read_buf.lock();
-        let read_buf = read_guard.as_mut_slice();
+        let mut read_buf = [0; MAX_UDP_SIZE];
 
         loop {
             {
                 let device = self.device.load();
 
-                match device.as_ref().map(|d| d.poll_read(read_buf, cx)) {
+                match device.as_ref().map(|d| d.poll_read(&mut read_buf, cx)) {
                     Some(Poll::Ready(Ok(Some(packet)))) => {
-                        let dest = packet.destination();
+                        let (packet, peer_id) = {
+                            let dest = packet.destination();
 
-                        let role_state = self.role_state.lock();
-                        let Some(peer) = peer_by_ip(&role_state.peers_by_ip, dest) else {
-                            continue;
+                            let role_state = self.role_state.lock();
+                            let Some(peer) = peer_by_ip(&role_state.peers_by_ip, dest) else {
+                                continue;
+                            };
+
+                            // TODO: we're holding 3 mutexes here
+                            let Some(packet) = peer.transform(packet) else {
+                                continue;
+                            };
+                            (packet, peer.conn_id)
                         };
-
-                        // TODO: we're holding 3 mutexes here
-                        self.send_peer(packet, peer);
+                        self.send_peer(packet, peer_id);
 
                         continue;
                     }
@@ -572,17 +579,13 @@ where
         }
     }
 
-    fn send_peer(&self, packet: MutableIpPacket, peer: &Peer<TId, TTransform>) {
-        let Some(p) = peer.transform(packet) else {
-            return;
-        };
-
+    fn send_peer(&self, packet: MutableIpPacket, peer_id: TId) {
         if let Err(e) = self
             .connections_state
             .lock()
-            .send(peer.conn_id, p.as_immutable().into())
+            .send(peer_id, packet.as_immutable().into())
         {
-            tracing::error!(to = %p.destination(), conn_id = %peer.conn_id, "Failed to send packet: {e}");
+            tracing::error!(to = %packet.destination(), %peer_id, "Failed to send packet: {e}");
         }
     }
 }
@@ -658,7 +661,6 @@ where
 
         Ok(Self {
             device: Default::default(),
-            read_buf: Mutex::new(Box::new([0u8; MAX_UDP_SIZE])),
             callbacks: CallbackErrorFacade(callbacks),
             role_state: Default::default(),
             mtu_refresh_interval: Mutex::new(mtu_refresh_interval()),
