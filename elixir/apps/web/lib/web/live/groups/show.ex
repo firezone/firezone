@@ -1,6 +1,5 @@
 defmodule Web.Groups.Show do
   use Web, :live_view
-  import Web.Groups.Components
   import Web.Actors.Components
   alias Domain.Actors
 
@@ -43,16 +42,18 @@ defmodule Web.Groups.Show do
         </.edit_button>
       </:action>
       <:content>
+        <.flash :if={Actors.group_synced?(@group)} kind={:info}>
+          This group is synced from an external source and cannot be edited.
+        </.flash>
+
         <.vertical_table id="group">
           <.vertical_table_row>
             <:label>Name</:label>
             <:value><%= @group.name %></:value>
           </.vertical_table_row>
           <.vertical_table_row>
-            <:label>Source</:label>
-            <:value>
-              <.source account={@account} group={@group} />
-            </:value>
+            <:label>Created</:label>
+            <:value><.created_by account={@account} schema={@group} /></:value>
           </.vertical_table_row>
         </.vertical_table>
       </:content>
@@ -84,17 +85,14 @@ defmodule Web.Groups.Show do
             <div class="flex justify-center text-center text-neutral-500 p-4">
               <div :if={not Actors.group_synced?(@group)} class="w-auto">
                 <div class="pb-4">
-                  No actors in group
+                  There are no actors in this group.
                 </div>
                 <.edit_button
                   :if={is_nil(@group.deleted_at)}
-                  navigate={~p"/#{@account}/groups/#{@group}/edit"}
+                  navigate={~p"/#{@account}/groups/#{@group}/edit_actors"}
                 >
-                  Edit Group
+                  Edit Actors
                 </.edit_button>
-              </div>
-              <div :if={Actors.group_synced?(@group)} class="w-auto">
-                No actors in synced group
               </div>
             </div>
           </:empty>

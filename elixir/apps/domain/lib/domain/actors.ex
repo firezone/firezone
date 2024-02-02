@@ -75,6 +75,24 @@ defmodule Domain.Actors do
       |> Actor.Query.preload_few_groups_for_each_actor(limit)
       |> Authorizer.for_subject(subject)
       |> Repo.peek(actors)
+      |> case do
+        {:ok, peek} ->
+          group_by_ids =
+            Enum.flat_map(peek, fn {_id, %{items: items}} -> items end)
+            |> Repo.preload(:provider)
+            |> Enum.map(&{&1.id, &1})
+            |> Enum.into(%{})
+
+          peek =
+            for {id, %{items: items} = map} <- peek, into: %{} do
+              {id, %{map | items: Enum.map(items, &Map.fetch!(group_by_ids, &1.id))}}
+            end
+
+          {:ok, peek}
+
+        {:error, reason} ->
+          {:error, reason}
+      end
     end
   end
 
@@ -311,8 +329,8 @@ defmodule Domain.Actors do
       |> Repo.fetch_and_update(
         with: fn actor ->
           actor = maybe_preload_not_synced_memberships(actor, attrs)
-          blacklisted_groups = list_blacklisted_groups(attrs)
-          changeset = Actor.Changeset.update(actor, attrs, blacklisted_groups, subject)
+          synced_groups = list_synced_groups(attrs)
+          changeset = Actor.Changeset.update(actor, attrs, synced_groups, subject)
 
           after_commit_cb = fn _group -> :ok = broadcast_memberships_events(changeset) end
 
@@ -348,7 +366,7 @@ defmodule Domain.Actors do
     end
   end
 
-  defp list_blacklisted_groups(attrs) do
+  defp list_synced_groups(attrs) do
     (Map.get(attrs, "memberships") || Map.get(attrs, :memberships) || [])
     |> Enum.flat_map(fn membership ->
       if group_id = Map.get(membership, "group_id") || Map.get(membership, :group_id) do

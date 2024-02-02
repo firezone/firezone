@@ -1,24 +1,36 @@
 defmodule Web.Groups.Components do
   use Web, :component_library
+  alias Domain.Actors
 
-  attr :account, :any, required: true
-  attr :group, :any, required: true
+  def select_options(groups) do
+    groups
+    |> Enum.group_by(&options_index_and_label/1)
+    |> Enum.sort_by(fn {{priority, label}, _groups} ->
+      {priority, label}
+    end)
+    |> Enum.map(fn {{_priority, label}, groups} ->
+      options = groups |> Enum.sort_by(& &1.name) |> Enum.map(&group_option/1)
+      {label, options}
+    end)
+  end
 
-  def source(assigns) do
-    ~H"""
-    <span :if={not is_nil(@group.provider_id)}>
-      Synced from
-      <.link
-        class="text-accent-500 hover:underline"
-        navigate={Web.Settings.IdentityProviders.Components.view_provider(@account, @group.provider)}
-      >
-        <%= @group.provider.name %>
-      </.link>
-      <.relative_datetime datetime={@group.provider.last_synced_at} />
-    </span>
-    <span :if={is_nil(@group.provider_id)}>
-      <.created_by account={@account} schema={@group} />
-    </span>
-    """
+  defp options_index_and_label(group) do
+    index =
+      cond do
+        Actors.group_synced?(group) -> 9
+        true -> 2
+      end
+
+    label =
+      cond do
+        Actors.group_synced?(group) -> group.provider.name
+        true -> nil
+      end
+
+    {index, label}
+  end
+
+  defp group_option(group) do
+    [key: group.name, value: group.id]
   end
 end

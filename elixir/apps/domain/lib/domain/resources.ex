@@ -133,6 +133,24 @@ defmodule Domain.Resources do
       |> Authorizer.for_subject(Resource, subject)
       |> Resource.Query.preload_few_actor_groups_for_each_resource(limit)
       |> Repo.peek(resources)
+      |> case do
+        {:ok, peek} ->
+          group_by_ids =
+            Enum.flat_map(peek, fn {_id, %{items: items}} -> items end)
+            |> Repo.preload(:provider)
+            |> Enum.map(&{&1.id, &1})
+            |> Enum.into(%{})
+
+          peek =
+            for {id, %{items: items} = map} <- peek, into: %{} do
+              {id, %{map | items: Enum.map(items, &Map.fetch!(group_by_ids, &1.id))}}
+            end
+
+          {:ok, peek}
+
+        {:error, reason} ->
+          {:error, reason}
+      end
     end
   end
 

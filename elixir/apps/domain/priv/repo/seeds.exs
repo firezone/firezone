@@ -136,6 +136,12 @@ _unprivileged_actor_userpass_identity =
     }
   })
 
+{:ok, _admin_actor_oidc_identity} =
+  Auth.create_identity(admin_actor, oidc_provider, %{
+    provider_identifier: admin_actor_email,
+    provider_identifier_confirmation: admin_actor_email
+  })
+
 # Other Account Users
 other_unprivileged_actor_email = "other-unprivileged-1@localhost"
 other_admin_actor_email = "other@localhost"

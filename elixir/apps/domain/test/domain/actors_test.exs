@@ -298,6 +298,20 @@ defmodule Domain.ActorsTest do
       assert Enum.empty?(peek[actor2.id].items)
     end
 
+    test "preloads group providers", %{
+      account: account,
+      subject: subject
+    } do
+      actor = Fixtures.Actors.create_actor(account: account)
+      provider = Fixtures.Auth.create_userpass_provider(account: account)
+      group = Fixtures.Actors.create_group(account: account, provider: provider)
+      Fixtures.Actors.create_membership(account: account, actor: actor, group: group)
+
+      assert {:ok, peek} = peek_actor_groups([actor], 3, subject)
+      assert [%Actors.Group{} = group] = peek[actor.id].items
+      assert Ecto.assoc_loaded?(group.provider)
+    end
+
     test "returns count of actors per group and first LIMIT actors", %{
       account: account,
       subject: subject
@@ -1052,18 +1066,18 @@ defmodule Domain.ActorsTest do
       actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
       group = Fixtures.Actors.create_group(account: account) |> Repo.preload(:memberships)
 
-      group_attrs =
+      attrs =
         Fixtures.Actors.group_attrs(
           memberships: [
             %{actor_id: actor.id}
           ]
         )
 
-      assert changeset = change_group(group, group_attrs)
+      assert changeset = change_group(group, attrs)
       assert changeset.valid?
 
       assert %{name: name, memberships: [membership]} = changeset.changes
-      assert name == group_attrs.name
+      assert name == attrs.name
       assert membership.changes.account_id == account.id
       assert membership.changes.actor_id == actor.id
     end
@@ -1223,7 +1237,7 @@ defmodule Domain.ActorsTest do
                  missing_permissions: [Actors.Authorizer.manage_actors_permission()]}}
     end
 
-    test "raises if group is synced", %{
+    test "returns error if group is synced", %{
       account: account,
       subject: subject
     } do
