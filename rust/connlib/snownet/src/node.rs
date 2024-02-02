@@ -726,7 +726,8 @@ where
             if !self.bindings.contains_key(server) {
                 tracing::debug!(address = %server, "Adding new STUN server");
 
-                self.bindings.insert(*server, StunBinding::new(*server));
+                self.bindings
+                    .insert(*server, StunBinding::new(*server, self.last_now));
             }
         }
     }

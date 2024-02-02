@@ -1,4 +1,6 @@
-use crate::node::Transmit;
+use crate::{backoff, node::Transmit};
+use ::backoff::backoff::Backoff;
+use backoff::ExponentialBackoff;
 use bytecodec::{DecodeExt, EncodeExt};
 use std::{
     collections::VecDeque,
@@ -20,21 +22,32 @@ pub struct StunBinding {
     server: SocketAddr,
     last_candidate: Option<Candidate>,
     state: State,
-    last_now: Option<Instant>,
+    last_now: Instant,
+
+    backoff: ExponentialBackoff,
 
     buffered_transmits: VecDeque<Transmit<'static>>,
     new_candidates: VecDeque<Candidate>,
 }
 
 impl StunBinding {
-    pub fn new(server: SocketAddr) -> Self {
+    pub fn new(server: SocketAddr, now: Instant) -> Self {
+        let mut backoff = backoff::new(now, STUN_TIMEOUT);
+
+        let (state, transmit) = new_binding_request(
+            server,
+            now,
+            backoff.next_backoff().expect("to have an initial backoff"),
+        );
+
         Self {
             server,
             last_candidate: None,
-            state: State::Initial,
-            last_now: None,
-            buffered_transmits: Default::default(),
+            state,
+            last_now: now,
+            buffered_transmits: VecDeque::from([transmit]),
             new_candidates: Default::default(),
+            backoff,
         }
     }
 
@@ -49,7 +62,7 @@ impl StunBinding {
         packet: &[u8],
         now: Instant,
     ) -> bool {
-        self.last_now = Some(now); // TODO: Do we need to do any other updates here?
+        self.last_now = now; // TODO: Do we need to do any other updates here?
 
         if from != self.server {
             return false;
@@ -70,6 +83,8 @@ impl StunBinding {
                 return false;
             }
         }
+
+        self.backoff.reset(); // Reset the backoff on response from the server.
 
         let Some(mapped_address) = message.get_attribute::<XorMappedAddress>() else {
             tracing::warn!("STUN server replied but is missing `XOR-MAPPED-ADDRESS");
@@ -104,33 +119,38 @@ impl StunBinding {
     }
 
     pub fn handle_timeout(&mut self, now: Instant) {
-        self.last_now = Some(now);
+        self.last_now = now;
+        self.backoff.clock.now = now;
 
-        match self.state {
-            State::Initial => {
-                tracing::debug!(server = %self.server, "Sending new STUN request");
-            }
-            State::SentRequest { id, at } if at + STUN_TIMEOUT <= now => {
-                tracing::debug!(?id, "STUN request timed out, sending new one");
+        let backoff = match self.state {
+            State::SentRequest { id, at, backoff } if at + backoff <= now => {
+                match self.backoff.next_backoff() {
+                    Some(backoff) => {
+                        tracing::debug!(?id, "STUN request timed out, sending new one");
+
+                        backoff
+                    }
+                    None => {
+                        tracing::info!(server = %self.server, "Giving up on attempting STUN binding");
+                        self.state = State::Failed;
+
+                        return;
+                    }
+                }
             }
             State::ReceivedResponse { at } if at + STUN_REFRESH <= now => {
                 tracing::debug!("Refreshing STUN binding");
+
+                self.backoff
+                    .next_backoff()
+                    .expect("to have initial backoff when we have received at least one response")
             }
             _ => return,
-        }
-
-        let request = new_stun_request();
-
-        self.state = State::SentRequest {
-            id: request.transaction_id(),
-            at: now,
         };
 
-        self.buffered_transmits.push_back(Transmit {
-            src: None,
-            dst: self.server,
-            payload: encode(request).into(),
-        });
+        let (state, transmit) = new_binding_request(self.server, now, backoff);
+        self.state = state;
+        self.buffered_transmits.push_back(transmit);
     }
 
     pub fn poll_candidate(&mut self) -> Option<Candidate> {
@@ -139,9 +159,9 @@ impl StunBinding {
 
     pub fn poll_timeout(&mut self) -> Option<Instant> {
         match self.state {
-            State::Initial => None,
-            State::SentRequest { at, .. } => Some(at + STUN_TIMEOUT),
+            State::SentRequest { at, backoff, .. } => Some(at + backoff),
             State::ReceivedResponse { at } => Some(at + STUN_REFRESH),
+            State::Failed => None,
         }
     }
 
@@ -151,19 +171,41 @@ impl StunBinding {
 
     #[cfg(test)]
     fn set_received_at(&mut self, address: SocketAddr, local: SocketAddr, now: Instant) {
-        self.last_now = Some(now);
+        self.last_now = now;
+
+        self.backoff.clock.now = now;
+        self.backoff.reset();
+
         self.last_candidate =
             Some(Candidate::server_reflexive(address, local, Protocol::Udp).unwrap());
         self.state = State::ReceivedResponse { at: now };
     }
 }
 
-fn new_stun_request() -> Message<rfc5389::Attribute> {
-    Message::new(
+fn new_binding_request(
+    server: SocketAddr,
+    now: Instant,
+    backoff: Duration,
+) -> (State, Transmit<'static>) {
+    let request = Message::<rfc5389::Attribute>::new(
         stun_codec::MessageClass::Request,
         rfc5389::methods::BINDING,
         TransactionId::new(rand::random()),
-    )
+    );
+
+    let state = State::SentRequest {
+        id: request.transaction_id(),
+        at: now,
+        backoff,
+    };
+
+    let transmit = Transmit {
+        src: None,
+        dst: server,
+        payload: encode(request).into(),
+    };
+
+    (state, transmit)
 }
 
 fn encode<A>(message: Message<A>) -> Vec<u8>
@@ -177,9 +219,15 @@ where
 
 #[derive(Debug)]
 enum State {
-    Initial,
-    SentRequest { id: TransactionId, at: Instant },
-    ReceivedResponse { at: Instant },
+    SentRequest {
+        id: TransactionId,
+        at: Instant,
+        backoff: Duration,
+    },
+    ReceivedResponse {
+        at: Instant,
+    },
+    Failed,
 }
 
 #[cfg(test)]
@@ -203,9 +251,8 @@ mod tests {
 
     #[test]
     fn initial_binding_sends_request() {
-        let mut stun_binding = StunBinding::new(SERVER1);
+        let mut stun_binding = StunBinding::new(SERVER1, Instant::now());
 
-        stun_binding.handle_timeout(Instant::now());
         let transmit = stun_binding.poll_transmit().unwrap();
 
         assert_eq!(transmit.dst, SERVER1);
@@ -213,20 +260,17 @@ mod tests {
 
     #[test]
     fn repeated_polling_does_not_generate_more_requests() {
-        let mut stun_binding = StunBinding::new(SERVER1);
-
-        stun_binding.handle_timeout(Instant::now());
+        let mut stun_binding = StunBinding::new(SERVER1, Instant::now());
 
         assert!(stun_binding.poll_transmit().is_some());
         assert!(stun_binding.poll_transmit().is_none());
     }
 
     #[test]
-    fn request_times_out_after_5_seconds_and_generates_new_request() {
-        let mut stun_binding = StunBinding::new(SERVER1);
-
+    fn request_times_out_after_5_seconds_and_generates_new_request_using_backoff() {
         let start = Instant::now();
-        stun_binding.handle_timeout(start);
+
+        let mut stun_binding = StunBinding::new(SERVER1, start);
 
         assert!(stun_binding.poll_transmit().is_some());
         assert!(stun_binding.poll_transmit().is_none());
@@ -247,14 +291,19 @@ mod tests {
         stun_binding.handle_timeout(start + Duration::from_secs(5));
         assert!(stun_binding.poll_transmit().is_some());
         assert!(stun_binding.poll_transmit().is_none());
+
+        // Exponential backoff should kick in.
+        assert_eq!(
+            stun_binding.poll_timeout().unwrap(),
+            start + Duration::from_secs(12) + Duration::from_nanos(500000000)
+        );
     }
 
     #[test]
     fn mapped_address_is_emitted_as_event() {
-        let mut stun_binding = StunBinding::new(SERVER1);
         let start = Instant::now();
 
-        stun_binding.handle_timeout(start);
+        let mut stun_binding = StunBinding::new(SERVER1, start);
 
         let request = stun_binding.poll_transmit().unwrap();
         let response = generate_stun_response(request, MAPPED_ADDRESS);
@@ -276,7 +325,8 @@ mod tests {
     fn stun_binding_is_refreshed_every_five_minutes() {
         let start = Instant::now();
 
-        let mut stun_binding = StunBinding::new(SERVER1);
+        let mut stun_binding = StunBinding::new(SERVER1, start);
+        assert!(stun_binding.poll_transmit().is_some());
         stun_binding.set_received_at(MAPPED_ADDRESS, MAPPED_ADDRESS, start);
         assert!(stun_binding.poll_transmit().is_none());
 
@@ -287,10 +337,9 @@ mod tests {
 
     #[test]
     fn response_from_other_server_is_discarded() {
-        let mut stun_binding = StunBinding::new(SERVER1);
         let start = Instant::now();
 
-        stun_binding.handle_timeout(start);
+        let mut stun_binding = StunBinding::new(SERVER1, start);
 
         let request = stun_binding.poll_transmit().unwrap();
         let response = generate_stun_response(request, MAPPED_ADDRESS);
