@@ -252,7 +252,11 @@ class TunnelService : VpnService() {
                 allowFamily(OsConstants.AF_INET6)
                 // Allow traffic to bypass the VPN interface when Always-on VPN is enabled.
                 allowBypass()
-                setMetered(false) // Inherit the metered status from the underlying networks.
+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    setMetered(false) // Inherit the metered status from the underlying networks.
+                }
+
                 setUnderlyingNetworks(null) // Use all available networks.
 
                 addAddress(tunnel.config.tunnelAddressIPv4, 32)
