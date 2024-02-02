@@ -269,7 +269,7 @@ async fn check_for_updates(ctlr_tx: CtlrTx, always_show_update_notification: boo
         }
     };
 
-    let our_version = client::updates::get_our_version()?;
+    let our_version = client::updates::current_version()?;
     let github_version = &release.tag_name;
 
     if always_show_update_notification || (our_version < release.tag_name) {

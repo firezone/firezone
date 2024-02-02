@@ -53,12 +53,12 @@ pub(crate) async fn check() -> Result<Release, Error> {
 
     let response = response.text().await?;
 
-    let release: Release = serde_json::from_str(&response)?;
+    let release = serde_json::from_str(&response)?;
     Ok(release)
 }
 
 // TODO: DRY with about.rs
-pub(crate) fn get_our_version() -> Result<semver::Version, Error> {
+pub(crate) fn current_version() -> Result<semver::Version, Error> {
     semver::Version::from_str(&get_cargo_version()).map_err(Error::OurVersionIsInvalid)
 }
 
@@ -127,6 +127,6 @@ mod tests {
                 > semver::Version::from_str("0.7.0").unwrap()
         );
 
-        assert!(super::get_our_version().is_ok());
+        assert!(super::current_version().is_ok());
     }
 }
