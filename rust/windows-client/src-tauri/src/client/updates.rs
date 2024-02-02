@@ -70,19 +70,23 @@ const GITHUB_API_VERSION: &str = "2022-11-28";
 /// This ultimately comes from `cd.yml`
 const MSI_ASSET_NAME: &str = "windows-client-x64.msi";
 
-/// <https://docs.github.com/en/rest/using-the-rest-api/getting-started-with-the-rest-api?apiVersion=2022-11-28#user-agent-required>
-const USER_AGENT: &str = "Firezone Windows Client";
-
 /// Returns the latest release, even if ours is already newer
 pub(crate) async fn check() -> Result<Release, Error> {
     let client = reqwest::Client::builder().build()?;
+
+    // <https://docs.github.com/en/rest/using-the-rest-api/getting-started-with-the-rest-api?apiVersion=2022-11-28#user-agent-required>
+    // This would change for aarch64 support
+    let user_agent = format!(
+        "Firezone Client/{:?} (Windows; Win64; x64)",
+        current_version()
+    );
 
     // Reqwest follows up to 10 redirects by default
     // https://docs.rs/reqwest/latest/reqwest/struct.ClientBuilder.html#method.redirect
     // https://docs.github.com/en/rest/using-the-rest-api/best-practices-for-using-the-rest-api?apiVersion=2022-11-28#follow-redirects
     let response = client
         .get(LATEST_RELEASE_API_URL)
-        .header("User-Agent", USER_AGENT)
+        .header("User-Agent", user_agent)
         .header("X-GitHub-Api-Version", GITHUB_API_VERSION)
         .send()
         .await?;
