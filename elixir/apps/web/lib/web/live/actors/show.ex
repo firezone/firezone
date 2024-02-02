@@ -119,6 +119,9 @@ defmodule Web.Actors.Show do
 
     <.section :if={@actor.type != :service_account}>
       <:title>Authentication Identities</:title>
+      <:help>
+        Each authentication identity is associated with an identity provider and is used to identify the actor upon successful authentication.
+      </:help>
 
       <:action :if={is_nil(@actor.deleted_at)}>
         <.add_button
@@ -192,6 +195,9 @@ defmodule Web.Actors.Show do
 
     <.section>
       <:title>Authentication Tokens</:title>
+      <:help>
+        Authentication tokens are used to authenticate the actor. Revoke tokens to sign the actor out of all associated client sessions.
+      </:help>
 
       <:action :if={is_nil(@actor.deleted_at) and @actor.type == :service_account}>
         <.add_button
