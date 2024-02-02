@@ -15,7 +15,6 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.APIClient do
 
   @group_fields ~w[
     id
-    description
     displayName
   ]
 

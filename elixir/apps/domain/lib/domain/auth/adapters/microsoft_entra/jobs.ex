@@ -76,6 +76,15 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.Jobs do
             account_id: provider.account_id,
             reason: inspect(reason)
           )
+
+        {:error, op, value, changes_so_far} ->
+          Logger.error("Failed to sync provider",
+            provider_id: provider.id,
+            account_id: provider.account_id,
+            op: op,
+            value: inspect(value),
+            changes_so_far: inspect(changes_so_far)
+          )
       end
     else
       {:error, {status, %{"error" => %{"message" => message}}}} ->
@@ -83,10 +92,10 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.Jobs do
           Auth.Provider.Changeset.sync_failed(provider, message)
           |> Domain.Repo.update!()
 
-        log_sync_error(provider, "Microsoft Entra API returned #{status}: #{message}")
+        log_sync_error(provider, "Microsoft Graph API returned #{status}: #{message}")
 
       {:error, :retry_later} ->
-        message = "Microsoft Entra API is temporarily unavailable"
+        message = "Microsoft Graph API is temporarily unavailable"
 
         provider =
           Auth.Provider.Changeset.sync_failed(provider, message)
@@ -165,14 +174,14 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.Jobs do
       plan_identities: {identities_insert_ids, identities_update_ids, identities_delete_ids},
       insert_identities: identities_inserted,
       update_identities_and_actors: identities_updated,
-      delete_identities: {deleted_identities_count, _},
+      delete_identities: identities_deleted,
       # Groups
       plan_groups: {groups_upsert_ids, groups_delete_ids},
       upsert_groups: groups_upserted,
-      delete_groups: {deleted_groups_count, _},
+      delete_groups: groups_deleted,
       # Memberships
-      plan_memberships: {memberships_upsert_tuples, memberships_delete_tuples},
-      upsert_memberships: memberships_upserted,
+      plan_memberships: {memberships_insert_tuples, memberships_delete_tuples},
+      insert_memberships: memberships_inserted,
       delete_memberships: {deleted_memberships_count, _}
     } = effects
 
@@ -185,16 +194,16 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.Jobs do
       plan_identities_delete: length(identities_delete_ids),
       identities_inserted: length(identities_inserted),
       identities_and_actors_updated: length(identities_updated),
-      identities_deleted: deleted_identities_count,
+      identities_deleted: length(identities_deleted),
       # Groups
       plan_groups_upsert: length(groups_upsert_ids),
       plan_groups_delete: length(groups_delete_ids),
       groups_upserted: length(groups_upserted),
-      groups_deleted: deleted_groups_count,
+      groups_deleted: length(groups_deleted),
       # Memberships
-      plan_memberships_upsert: length(memberships_upsert_tuples),
+      plan_memberships_insert: length(memberships_insert_tuples),
       plan_memberships_delete: length(memberships_delete_tuples),
-      memberships_upserted: length(memberships_upserted),
+      memberships_inserted: length(memberships_inserted),
       memberships_deleted: deleted_memberships_count
     )
   end
