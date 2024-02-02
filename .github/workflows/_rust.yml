@@ -80,7 +80,7 @@ jobs:
     strategy:
       fail-fast: false
     env:
-      RUST_LOG=firezone_windows_client=info
+      RUST_LOG: firezone_windows_client=info
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node
