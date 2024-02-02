@@ -1,6 +1,6 @@
 use bytes::Bytes;
 use core::slice;
-use quinn_udp::{RecvMeta, Transmit, UdpSockRef, UdpSocketState};
+use quinn_udp::{RecvMeta, UdpSockRef, UdpSocketState};
 use socket2::{SockAddr, Type};
 use std::{
     io::{self, IoSliceMut},
@@ -9,7 +9,79 @@ use std::{
 };
 use tokio::{io::Interest, net::UdpSocket};
 
-pub struct Socket<const N: usize> {
+use crate::{Error, Result, MAX_UDP_SIZE};
+use snownet::Transmit;
+
+pub struct Sockets {
+    socket_v4: Option<Socket<MAX_UDP_SIZE>>,
+    socket_v6: Option<Socket<MAX_UDP_SIZE>>,
+}
+
+impl Sockets {
+    pub fn new() -> crate::Result<Self> {
+        let socket_v4 = Socket::ip4();
+        let socket_v6 = Socket::ip6();
+
+        if let (Err(e4), Err(e6)) = (socket_v4.as_ref(), socket_v6.as_ref()) {
+            tracing::error!("Failed to bind to IPv4 address: {e4}");
+            tracing::error!("Failed to bind to IPv6 address: {e6}");
+
+            return Err(Error::Io(io::Error::new(
+                io::ErrorKind::AddrNotAvailable,
+                "Unable to bind to interfaces",
+            )));
+        }
+
+        Ok(Self {
+            socket_v4: socket_v4.ok(),
+            socket_v6: socket_v6.ok(),
+        })
+    }
+
+    pub fn ip4_port(&self) -> Option<u16> {
+        Some(self.socket_v4.as_ref()?.port())
+    }
+
+    pub fn ip6_port(&self) -> Option<u16> {
+        Some(self.socket_v6.as_ref()?.port())
+    }
+
+    pub fn try_send(&mut self, transmit: &Transmit) -> Result<usize> {
+        match transmit.dst {
+            SocketAddr::V4(_) => {
+                let socket = self.socket_v4.as_ref().ok_or(Error::NoIpv4)?;
+                Ok(socket.try_send_to(transmit.src, transmit.dst, &transmit.payload)?)
+            }
+            SocketAddr::V6(_) => {
+                let socket = self.socket_v6.as_ref().ok_or(Error::NoIpv6)?;
+                Ok(socket.try_send_to(transmit.src, transmit.dst, &transmit.payload)?)
+            }
+        }
+    }
+
+    pub fn poll_recv_from<'a>(
+        &'a mut self,
+        cx: &mut Context<'_>,
+    ) -> Poll<io::Result<Received<'a>>> {
+        if let Some(Poll::Ready(packet)) = self.socket_v4.as_mut().map(|s| s.poll_recv_from(cx)) {
+            return Poll::Ready(packet);
+        }
+
+        if let Some(Poll::Ready(packet)) = self.socket_v6.as_mut().map(|s| s.poll_recv_from(cx)) {
+            return Poll::Ready(packet);
+        }
+
+        Poll::Pending
+    }
+}
+
+pub struct Received<'a> {
+    pub local: SocketAddr,
+    pub from: SocketAddr,
+    pub packet: &'a [u8],
+}
+
+struct Socket<const N: usize> {
     state: UdpSocketState,
     port: u16,
     socket: UdpSocket,
@@ -17,7 +89,7 @@ pub struct Socket<const N: usize> {
 }
 
 impl<const N: usize> Socket<N> {
-    pub fn ip4() -> io::Result<Socket<N>> {
+    fn ip4() -> io::Result<Socket<N>> {
         let socket = make_socket(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0))?;
         let port = socket.local_addr()?.port();
 
@@ -29,7 +101,7 @@ impl<const N: usize> Socket<N> {
         })
     }
 
-    pub fn ip6() -> io::Result<Socket<N>> {
+    fn ip6() -> io::Result<Socket<N>> {
         let socket = make_socket(SocketAddrV6::new(Ipv6Addr::UNSPECIFIED, 0, 0, 0))?;
         let port = socket.local_addr()?.port();
 
@@ -42,10 +114,7 @@ impl<const N: usize> Socket<N> {
     }
 
     #[allow(clippy::type_complexity)]
-    pub fn poll_recv_from<'b>(
-        &'b mut self,
-        cx: &mut Context<'_>,
-    ) -> Poll<io::Result<Received<'b>>> {
+    fn poll_recv_from<'b>(&'b mut self, cx: &mut Context<'_>) -> Poll<io::Result<Received<'b>>> {
         let Socket {
             port,
             socket,
@@ -84,11 +153,11 @@ impl<const N: usize> Socket<N> {
         }
     }
 
-    pub fn port(&self) -> u16 {
+    fn port(&self) -> u16 {
         self.port
     }
 
-    pub fn try_send_to(
+    fn try_send_to(
         &self,
         local: Option<SocketAddr>,
         dest: SocketAddr,
@@ -96,7 +165,7 @@ impl<const N: usize> Socket<N> {
     ) -> io::Result<usize> {
         self.state.send(
             (&self.socket).into(),
-            &[Transmit {
+            &[quinn_udp::Transmit {
                 destination: dest,
                 ecn: None,
                 contents: Bytes::copy_from_slice(buf),
@@ -105,12 +174,6 @@ impl<const N: usize> Socket<N> {
             }],
         )
     }
-}
-
-pub struct Received<'a> {
-    pub local: SocketAddr,
-    pub from: SocketAddr,
-    pub packet: &'a [u8],
 }
 
 fn make_socket(addr: impl Into<SocketAddr>) -> io::Result<std::net::UdpSocket> {

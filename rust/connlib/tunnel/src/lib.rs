@@ -10,12 +10,12 @@ use futures_util::FutureExt;
 use if_watch::tokio::IfWatcher;
 use ip_network_table::IpNetworkTable;
 use pnet_packet::Packet;
-use snownet::{IpPacket, Node, Server, Transmit};
+use snownet::{IpPacket, Node, Server};
 
 use hickory_resolver::proto::rr::RecordType;
 use parking_lot::Mutex;
 use peer::{PacketTransform, PacketTransformClient, PacketTransformGateway, Peer, PeerStats};
-use sockets::{Received, Socket};
+use sockets::{Received, Sockets};
 use tokio::time::MissedTickBehavior;
 
 use arc_swap::ArcSwapOption;
@@ -139,67 +139,6 @@ where
     }
 }
 
-struct Sockets {
-    socket_v4: Option<Socket<MAX_UDP_SIZE>>,
-    socket_v6: Option<Socket<MAX_UDP_SIZE>>,
-}
-
-impl Sockets {
-    fn new() -> Result<Self> {
-        let socket_v4 = Socket::ip4();
-        let socket_v6 = Socket::ip6();
-
-        if let (Err(e4), Err(e6)) = (socket_v4.as_ref(), socket_v6.as_ref()) {
-            tracing::error!("Failed to bind to IPv4 address: {e4}");
-            tracing::error!("Failed to bind to IPv6 address: {e6}");
-
-            return Err(Error::Io(io::Error::new(
-                io::ErrorKind::AddrNotAvailable,
-                "Unable to bind to interfaces",
-            )));
-        }
-
-        Ok(Self {
-            socket_v4: socket_v4.ok(),
-            socket_v6: socket_v6.ok(),
-        })
-    }
-
-    fn ip4_port(&self) -> Option<u16> {
-        Some(self.socket_v4.as_ref()?.port())
-    }
-
-    fn ip6_port(&self) -> Option<u16> {
-        Some(self.socket_v6.as_ref()?.port())
-    }
-
-    fn socket_send(&mut self, transmit: &Transmit) -> Result<usize> {
-        match transmit.dst {
-            SocketAddr::V4(_) => {
-                let socket = self.socket_v4.as_ref().ok_or(Error::NoIpv4)?;
-                Ok(socket.try_send_to(transmit.src, transmit.dst, &transmit.payload)?)
-            }
-            SocketAddr::V6(_) => {
-                let socket = self.socket_v6.as_ref().ok_or(Error::NoIpv6)?;
-                Ok(socket.try_send_to(transmit.src, transmit.dst, &transmit.payload)?)
-            }
-        }
-    }
-
-    #[allow(clippy::type_complexity)]
-    fn poll_recv_from<'a>(&'a mut self, cx: &mut Context<'_>) -> Poll<io::Result<Received<'a>>> {
-        if let Some(Poll::Ready(packet)) = self.socket_v4.as_mut().map(|s| s.poll_recv_from(cx)) {
-            return Poll::Ready(packet);
-        }
-
-        if let Some(Poll::Ready(packet)) = self.socket_v6.as_mut().map(|s| s.poll_recv_from(cx)) {
-            return Poll::Ready(packet);
-        }
-
-        Poll::Pending
-    }
-}
-
 struct ConnectionState<TRole, TId, TTransform> {
     connections: Connections<TRole, TId, TTransform>,
     connection_pool_timeout: BoxFuture<'static, std::time::Instant>,
@@ -238,7 +177,7 @@ where
             return Ok(());
         };
 
-        self.sockets.socket_send(&transmit)?;
+        self.sockets.try_send(&transmit)?;
 
         tracing::trace!(target: "wire", action = "write", to = %transmit.dst, src = ?transmit.src, bytes = %transmit.payload.len());
 
@@ -258,7 +197,7 @@ where
     fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Event<TId>> {
         loop {
             while let Some(transmit) = self.connections.node.poll_transmit() {
-                if let Err(e) = self.sockets.socket_send(&transmit) {
+                if let Err(e) = self.sockets.try_send(&transmit) {
                     tracing::warn!(src = ?transmit.src, dst = %transmit.dst, "Failed to send UDP packet: {e}");
                 }
             }
