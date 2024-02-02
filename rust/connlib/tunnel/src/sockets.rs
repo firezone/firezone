@@ -1,3 +1,4 @@
+use core::slice;
 use quinn_udp::{RecvMeta, UdpSockRef, UdpSocketState};
 use socket2::{SockAddr, Type};
 use std::{
@@ -59,7 +60,7 @@ impl<const N: usize> Socket<N> {
         } = self;
 
         let bufs = &mut [IoSliceMut::new(buffer.as_mut())];
-        let meta = RecvMeta::default();
+        let mut meta = RecvMeta::default();
 
         loop {
             match ready!(socket.poll_recv_ready(cx)) {
@@ -68,7 +69,7 @@ impl<const N: usize> Socket<N> {
             };
 
             if let Ok(len) = socket.try_io(Interest::READABLE, || {
-                state.recv((&socket).into(), bufs, &mut [meta])
+                state.recv((&socket).into(), bufs, slice::from_mut(&mut meta))
             }) {
                 debug_assert_eq!(len, 1);
 
