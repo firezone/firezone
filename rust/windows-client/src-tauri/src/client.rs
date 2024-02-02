@@ -131,6 +131,7 @@ fn run_gui(cli: Cli) -> Result<()> {
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 struct Cli {
+    /// If true, always show the update notification at startup, even if our version is newer than Github's
     #[arg(long, hide = true)]
     always_show_update_notification: bool,
     #[command(subcommand)]
@@ -141,9 +142,6 @@ struct Cli {
     /// If true, slow down I/O operations to test how the GUI handles slow I/O
     #[arg(long, hide = true)]
     inject_faults: bool,
-    /// If true, show a fake update notification that opens the Firezone release page when clicked
-    #[arg(long, hide = true)]
-    test_update_notification: bool,
 }
 
 #[derive(clap::Subcommand)]
