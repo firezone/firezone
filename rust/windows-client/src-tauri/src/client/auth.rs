@@ -278,7 +278,8 @@ mod tests {
     #[test]
     fn everything() -> anyhow::Result<()> {
         // Run `happy_path` first to make sure it reacts okay if our `data` dir is missing
-        happy_path();
+        happy_path("");
+        happy_path("Jane Doe");
         utils();
         no_inflight_request();
         states_dont_match();
@@ -312,38 +313,53 @@ mod tests {
         );
     }
 
-    fn happy_path() {
-        // Start the program
-        let mut state =
-            Auth::new_with_key("dev.firezone.client/test_DMRCZ67A_happy_path/token").unwrap();
+    fn happy_path(actor_name: &str) {
+        // Key for credential manager. This is not what we use in production
+        let key = "dev.firezone.client/test_DMRCZ67A_happy_path/token";
 
-        // Delete any token on disk from previous test runs
-        state.sign_out().unwrap();
-        assert!(state.token().unwrap().is_none());
+        {
+            // Start the program
+            let mut state = Auth::new_with_key(key).unwrap();
 
-        // User clicks "Sign In", build a fake server response
-        let req = state.start_sign_in().unwrap().unwrap();
+            // Delete any token on disk from previous test runs
+            state.sign_out().unwrap();
+            assert!(state.token().unwrap().is_none());
 
-        let resp = Response {
-            actor_name: "Jane Doe".into(),
-            fragment: bogus_secret("fragment"),
-            state: req.state.clone(),
-        };
-        assert!(state.token().unwrap().is_none());
+            // User clicks "Sign In", build a fake server response
+            let req = state.start_sign_in().unwrap().unwrap();
+            let resp = Response {
+                actor_name: actor_name.into(),
+                fragment: bogus_secret("fragment"),
+                state: req.state.clone(),
+            };
 
-        // Handle deep link from the server, now we are signed in and have a token
-        state.handle_response(resp).unwrap();
-        assert!(state.token().unwrap().is_some());
+            // Handle deep link from the server, now we are signed in and have a token
+            assert!(state.token().unwrap().is_none());
+            state.handle_response(resp).unwrap();
+            assert!(state.token().unwrap().is_some());
 
-        // Accidentally sign in again, this can happen if the user holds the systray menu open while a sign in is succeeding.
-        // For now, we treat that like signing out and back in immediately, so it wipes the old token.
-        // TODO: That sounds wrong.
-        assert!(state.start_sign_in().unwrap().is_some());
-        assert!(state.token().unwrap().is_none());
+            // Make sure we loaded the actor_name
+            assert_eq!(state.session().unwrap().actor_name, actor_name);
+        }
 
-        // Sign out again, now the token is gone
-        state.sign_out().unwrap();
-        assert!(state.token().unwrap().is_none());
+        // Recreate the state to simulate closing and re-opening the app
+        {
+            let mut state = Auth::new_with_key(key).unwrap();
+
+            // Make sure we automatically got the token and actor_name back
+            assert!(state.token().unwrap().is_some());
+            assert_eq!(state.session().unwrap().actor_name, actor_name);
+
+            // Accidentally sign in again, this can happen if the user holds the systray menu open while a sign in is succeeding.
+            // For now, we treat that like signing out and back in immediately, so it wipes the old token.
+            // TODO: That sounds wrong.
+            assert!(state.start_sign_in().unwrap().is_some());
+            assert!(state.token().unwrap().is_none());
+
+            // Sign out again, now the token is gone
+            state.sign_out().unwrap();
+            assert!(state.token().unwrap().is_none());
+        }
     }
 
     fn no_inflight_request() {
