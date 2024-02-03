@@ -109,6 +109,8 @@ fn run_gui(cli: Cli) -> Result<()> {
         tracing::error!(?error, "gui::run error");
         let error_msg = match &error {
             gui::Error::WebViewNotInstalled => "Firezone cannot start because WebView2 is not installed. Follow the instructions at <https://www.firezone.dev/kb/user-guides/windows-client>.".to_string(),
+            // TODO: Wording
+            gui::Error::DeepLink(deep_link::Error::CantListen) => "Firezone is already running. If it's not responding, force-stop it.".to_string(),
             error => format!("{}", error),
         };
 
