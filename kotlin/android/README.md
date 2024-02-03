@@ -49,7 +49,6 @@ locally.
    aarch64-linux-android
    arm-linux-androideabi
    armv7-linux-androideabi
-   i686-linux-android
    x86_64-linux-android
    ```
 
@@ -58,7 +57,7 @@ locally.
    `/rust/rust-toolchain.toml` file), then run:
 
    ```
-   rustup target add aarch64-linux-android arm-linux-androideabi armv7-linux-androideabi i686-linux-android x86_64-linux-android
+   rustup target add aarch64-linux-android arm-linux-androideabi armv7-linux-androideabi x86_64-linux-android
    ```
 
 1. Perform a test build: `./gradlew assembleDebug`.
