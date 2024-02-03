@@ -2156,6 +2156,7 @@ dependencies = [
  "known-folders",
  "minidumper",
  "native-dialog",
+ "output_vt100",
  "rand 0.8.5",
  "reqwest",
  "ring 0.17.7",
@@ -4382,6 +4383,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "006e42d5b888366f1880eda20371fedde764ed2213dc8496f49622fa0c99cd5e"
 dependencies = [
  "log",
+ "winapi",
+]
+
+[[package]]
+name = "output_vt100"
+version = "0.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "628223faebab4e3e40667ee0b2336d34a5b960ff60ea743ddfdbcf7770bcfb66"
+dependencies = [
  "winapi",
 ]
 
