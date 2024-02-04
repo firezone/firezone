@@ -114,7 +114,7 @@ fn run_gui(cli: Cli) -> Result<()> {
         } else {
             let error_msg = match &error {
                 gui::Error::WebViewNotInstalled => "Firezone cannot start because WebView2 is not installed. Follow the instructions at <https://www.firezone.dev/kb/user-guides/windows-client>.".to_string(),
-                error => format!("{}", error),
+                error => error.to_string(),
             };
 
             native_dialog::MessageDialog::new()
