@@ -127,7 +127,7 @@ where
     /// However, in topologies like the one below, we cannot discover that there is a more optimal link between BACKEND and DB.
     /// For those situations, users need to manually add the address of the direct link in order for [`snownet`](crate) to establish a connection.
     ///
-    /// ```no_run
+    /// ```ignore
     ///        ┌──────┐          ┌──────┐
     ///        │ STUN ├─┐      ┌─┤ TURN │
     ///        └──────┘ │      │ └──────┘
