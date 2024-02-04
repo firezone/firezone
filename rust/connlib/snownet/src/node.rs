@@ -698,9 +698,6 @@ where
 {
     /// Accept a new connection indexed by the given ID.
     ///
-    /// The `local_server_socket` is the socket from which you are planning to send all required traffic to the (relay) servers.
-    /// It will be returned as part of [`Transmit`]'s `src` field.
-    ///
     /// Out of all configured STUN and TURN servers, the connection will only use the ones provided here.
     /// The returned [`Answer`] must be passed to the remote via a signalling channel.
     pub fn accept_connection(
