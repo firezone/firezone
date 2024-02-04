@@ -295,7 +295,7 @@ mod tests {
         // Exponential backoff should kick in.
         assert_eq!(
             stun_binding.poll_timeout().unwrap(),
-            start + Duration::from_secs(12) + Duration::from_nanos(500000000)
+            start + Duration::from_millis(12_500)
         );
     }
 
@@ -342,6 +342,22 @@ mod tests {
             now + Duration::from_secs(5),
             "backoff should be back to 5 seconds timeout"
         );
+    }
+
+    #[test]
+    fn backoff_eventually_give_up() {
+        let mut stun_binding = StunBinding::new(SERVER1, Instant::now());
+
+        loop {
+            let Some(timeout) = stun_binding.poll_timeout() else {
+                break;
+            };
+
+            assert!(stun_binding.poll_transmit().is_some());
+            assert!(stun_binding.poll_transmit().is_none());
+
+            stun_binding.handle_timeout(timeout);
+        }
     }
 
     #[test]
