@@ -84,8 +84,6 @@ impl StunBinding {
             }
         }
 
-        self.backoff.reset(); // Reset the backoff on response from the server.
-
         let Some(mapped_address) = message.get_attribute::<XorMappedAddress>() else {
             tracing::warn!("STUN server replied but is missing `XOR-MAPPED-ADDRESS");
             return true;
@@ -141,9 +139,10 @@ impl StunBinding {
             State::ReceivedResponse { at } if at + STUN_REFRESH <= now => {
                 tracing::debug!("Refreshing STUN binding");
 
+                self.backoff.reset(); // We have received a response previously, reset the backoff for the next request.
                 self.backoff
                     .next_backoff()
-                    .expect("to have initial backoff when we have received at least one response")
+                    .expect("we just reset the backoff")
             }
             _ => return,
         };
