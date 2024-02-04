@@ -123,9 +123,9 @@ where
 
     /// Add an address as a `host` candidate.
     ///
-    /// For most network topologies, [`snownet`] will automatically discover host candidates via the traffic to the configured STUN and TURN servers.
+    /// For most network topologies, [`snownet`](crate) will automatically discover host candidates via the traffic to the configured STUN and TURN servers.
     /// However, in topologies like the one below, we cannot discover that there is a more optimal link between BACKEND and DB.
-    /// For those situations, users need to manually add the address of the direct link in order for [`snownet`] to establish a connection.
+    /// For those situations, users need to manually add the address of the direct link in order for [`snownet`](crate) to establish a connection.
     ///
     /// ```no_run
     ///        ┌──────┐          ┌──────┐
