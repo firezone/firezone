@@ -57,6 +57,8 @@ pub(crate) enum Error {
     ClickableNotification(String),
     #[error("Deep-link module error: {0}")]
     DeepLink(#[from] deep_link::Error),
+    #[error("Fake error for testing")]
+    Fake,
     #[error("Can't show log filter error dialog: {0}")]
     LogFilterErrorDialog(native_dialog::Error),
     #[error("Logging module error: {0}")]
@@ -74,7 +76,7 @@ pub(crate) enum Error {
 }
 
 /// Runs the Tauri GUI and returns on exit or unrecoverable error
-pub(crate) fn run(cli: client::Cli) -> Result<(), Error> {
+pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
     let advanced_settings = settings::load_advanced_settings().unwrap_or_default();
 
     // If the log filter is unparsable, show an error and use the default
@@ -100,8 +102,8 @@ pub(crate) fn run(cli: client::Cli) -> Result<(), Error> {
         };
 
     // Start logging
-    // TODO: After <https://github.com/firezone/firezone/pull/3430> lands, try using an
-    // Arc to keep the file logger alive even if Tauri bails out
+    // TODO: Try using an Arc to keep the file logger alive even if Tauri bails out
+    // That may fix <https://github.com/firezone/firezone/issues/3567>
     let logging_handles = client::logging::setup(&advanced_settings.log_filter)?;
     tracing::info!("started log");
     tracing::info!("GIT_VERSION = {}", crate::client::GIT_VERSION);
@@ -125,10 +127,10 @@ pub(crate) fn run(cli: client::Cli) -> Result<(), Error> {
     let notify_controller = Arc::new(Notify::new());
 
     if cli.crash_on_purpose {
-        tokio::spawn(async {
+        tokio::spawn(async move {
             let delay = 10;
             tracing::info!("Will crash on purpose in {delay} seconds to test crash handling.");
-            tokio::time::sleep(std::time::Duration::from_secs(delay)).await;
+            tokio::time::sleep(Duration::from_secs(delay)).await;
             tracing::info!("Crashing on purpose because of `--crash-on-purpose` flag");
 
             // SAFETY: Crashing is unsafe
@@ -145,6 +147,16 @@ pub(crate) fn run(cli: client::Cli) -> Result<(), Error> {
             tracing::error!(?error, "Error in check_for_updates");
         }
     });
+
+    if let Some(client::Cmd::SmokeTest) = &cli.command {
+        let ctlr_tx = ctlr_tx.clone();
+        tokio::spawn(async move {
+            if let Err(error) = smoke_test(ctlr_tx).await {
+                tracing::error!(?error, "Error during smoke test");
+                std::process::exit(1);
+            }
+        });
+    }
 
     // Make sure we're single-instance
     // We register our deep links to call the `open-deep-link` subcommand,
@@ -252,6 +264,10 @@ pub(crate) fn run(cli: client::Cli) -> Result<(), Error> {
         }
     };
 
+    if cli.error_on_purpose {
+        return Err(Error::Fake);
+    }
+
     app.run(|_app_handle, event| {
         if let tauri::RunEvent::ExitRequested { api, .. } = event {
             // Don't exit if we close our main window
@@ -261,6 +277,54 @@ pub(crate) fn run(cli: client::Cli) -> Result<(), Error> {
         }
     });
     Ok(())
+}
+
+/// Runs a smoke test and then asks Controller to exit gracefully
+///
+/// You can purposely fail this test by deleting the exported zip file during
+/// the 10-second sleep.
+async fn smoke_test(ctlr_tx: CtlrTx) -> Result<()> {
+    let delay = 10;
+    tracing::info!("Will quit on purpose in {delay} seconds as part of the smoke test.");
+    let quit_time = tokio::time::Instant::now() + Duration::from_secs(delay);
+
+    // Test log exporting
+    let path = connlib_shared::windows::app_local_data_dir()?
+        .join("data")
+        .join("smoke_test_log_export.zip");
+    let stem = "connlib-smoke-test".into();
+    match tokio::fs::remove_file(&path).await {
+        Ok(()) => {}
+        Err(error) => {
+            if error.kind() != std::io::ErrorKind::NotFound {
+                bail!("Error while removing old zip file")
+            }
+        }
+    }
+    ctlr_tx
+        .send(ControllerRequest::ExportLogs {
+            path: path.clone(),
+            stem,
+        })
+        .await?;
+
+    // Give the app some time to export the zip and reach steady state
+    tokio::time::sleep_until(quit_time).await;
+
+    // Check results of tests
+    let zip_len = tokio::fs::metadata(&path).await?.len();
+    if zip_len == 0 {
+        bail!("Exported log zip has 0 bytes");
+    }
+    tokio::fs::remove_file(&path).await?;
+    tracing::info!(?path, ?zip_len, "Exported log zip looks okay");
+
+    tracing::info!("Quitting on purpose because of `smoke-test` subcommand");
+    ctlr_tx
+        .send(ControllerRequest::SystemTrayMenu(TrayMenuEvent::Quit))
+        .await?;
+
+    Ok::<_, anyhow::Error>(())
 }
 
 async fn check_for_updates(ctlr_tx: CtlrTx, always_show_update_notification: bool) -> Result<()> {
@@ -317,7 +381,11 @@ fn handle_system_tray_event(app: &tauri::AppHandle, event: TrayMenuEvent) -> Res
 pub(crate) enum ControllerRequest {
     Disconnected,
     DisconnectedTokenExpired,
-    ExportLogs { path: PathBuf, stem: PathBuf },
+    /// The same as the arguments to `client::logging::export_logs_to`
+    ExportLogs {
+        path: PathBuf,
+        stem: PathBuf,
+    },
     GetAdvancedSettings(oneshot::Sender<AdvancedSettings>),
     SchemeRequest(url::Url),
     SystemTrayMenu(TrayMenuEvent),
