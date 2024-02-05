@@ -65,6 +65,28 @@ pub struct Allocation {
     nonce: Option<Nonce>,
 }
 
+/// A socket that has been allocated on a TURN server.
+///
+/// Note that any combination of IP versions is possible here.
+/// We might have allocated an IPv6 address on a TURN server that we are talking to IPv4 and vice versa.
+#[derive(Debug)]
+pub struct Socket {
+    /// The server this socket was allocated on.
+    server: SocketAddr,
+    /// The address of the socket that was allocated.
+    address: SocketAddr,
+}
+
+impl Socket {
+    pub fn server(&self) -> SocketAddr {
+        self.server
+    }
+
+    pub fn address(&self) -> SocketAddr {
+        self.address
+    }
+}
+
 impl Allocation {
     pub fn new(
         server: SocketAddr,
@@ -294,7 +316,7 @@ impl Allocation {
         from: SocketAddr,
         packet: &'p [u8],
         now: Instant,
-    ) -> Option<(SocketAddr, &'p [u8], SocketAddr)> {
+    ) -> Option<(SocketAddr, &'p [u8], Socket)> {
         if from != self.server {
             return None;
         }
@@ -304,14 +326,14 @@ impl Allocation {
         // Our socket on the relay.
         // If the remote sent from an IP4 address, it must have been received on our IP4 allocation.
         // Same thing for IP6.
-        let relay_socket = match peer {
-            SocketAddr::V4(_) => self.ip4_allocation.as_ref()?.addr(),
-            SocketAddr::V6(_) => self.ip6_allocation.as_ref()?.addr(),
+        let socket = match peer {
+            SocketAddr::V4(_) => self.ip4_socket()?,
+            SocketAddr::V6(_) => self.ip6_socket()?,
         };
 
-        tracing::trace!(server = %self.server, %peer, %relay_socket, "Decapsulated channel-data message");
+        tracing::trace!(%peer, ?socket, "Decapsulated channel-data message");
 
-        Some((peer, payload, relay_socket))
+        Some((peer, payload, socket))
     }
 
     pub fn handle_timeout(&mut self, now: Instant) {
@@ -429,6 +451,36 @@ impl Allocation {
         let refresh_after = lifetime / 2;
 
         Some(received_at + refresh_after)
+    }
+
+    /// Checks whether the given socket is part of this allocation.
+    pub fn has_socket(&self, socket: SocketAddr) -> bool {
+        let is_ip4 = self.ip4_socket().is_some_and(|s| s.address() == socket);
+        let is_ip6 = self.ip6_socket().is_some_and(|s| s.address() == socket);
+
+        is_ip4 || is_ip6
+    }
+
+    pub fn ip4_socket(&self) -> Option<Socket> {
+        let address = self.ip4_allocation.as_ref().map(|c| c.addr())?;
+
+        debug_assert!(address.is_ipv4());
+
+        Some(Socket {
+            server: self.server,
+            address,
+        })
+    }
+
+    pub fn ip6_socket(&self) -> Option<Socket> {
+        let address = self.ip6_allocation.as_ref().map(|c| c.addr())?;
+
+        debug_assert!(address.is_ipv6());
+
+        Some(Socket {
+            server: self.server,
+            address,
+        })
     }
 
     fn has_allocation(&self) -> bool {
