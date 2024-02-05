@@ -1161,5 +1161,11 @@ defmodule Web.CoreComponents do
     """
   end
 
+  def provider_icon(%{adapter: :okta} = assigns) do
+    ~H"""
+    <img src={~p"/images/okta-logo.svg"} alt="Okta Logo" {@rest} />
+    """
+  end
+
   def provider_icon(assigns), do: ~H""
 end
