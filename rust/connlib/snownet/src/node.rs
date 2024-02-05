@@ -23,6 +23,7 @@ use crate::allocation::Allocation;
 use crate::index::IndexLfsr;
 use crate::info::ConnectionInfo;
 use crate::stun_binding::StunBinding;
+use crate::utils::earliest;
 use crate::{IpPacket, MutableIpPacket};
 use boringtun::noise::errors::WireGuardError;
 use std::borrow::Cow;
@@ -449,6 +450,9 @@ where
         }
         for b in self.bindings.values_mut() {
             connection_timeout = earliest(connection_timeout, b.poll_timeout());
+        }
+        for a in self.allocations.values_mut() {
+            connection_timeout = earliest(connection_timeout, a.poll_timeout());
         }
 
         earliest(connection_timeout, self.next_rate_limiter_reset)
@@ -1166,14 +1170,5 @@ impl Connection {
                 encode_as_channel_data(relay, peer, message, allocations, now).ok()
             }
         }
-    }
-}
-
-fn earliest(left: Option<Instant>, right: Option<Instant>) -> Option<Instant> {
-    match (left, right) {
-        (None, None) => None,
-        (Some(left), Some(right)) => Some(std::cmp::min(left, right)),
-        (Some(left), None) => Some(left),
-        (None, Some(right)) => Some(right),
     }
 }

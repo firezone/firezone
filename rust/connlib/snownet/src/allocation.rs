@@ -1,6 +1,7 @@
 use crate::{
     backoff::{self, ExponentialBackoff},
     node::Transmit,
+    utils::earliest,
 };
 use ::backoff::backoff::Backoff;
 use bytecodec::{DecodeExt as _, EncodeExt as _};
@@ -332,11 +333,9 @@ impl Allocation {
             self.authenticate_and_queue(request);
         }
 
-        if let Some((received_at, lifetime)) = self.allocation_lifetime {
-            let refresh_after = lifetime / 2;
-
-            if now > received_at + refresh_after {
-                tracing::debug!("Allocation is at 50% of its lifetime, refreshing");
+        if let Some(refresh_at) = self.refresh_allocation_at() {
+            if now > refresh_at {
+                tracing::debug!("Allocation is due for a refresh");
                 self.authenticate_and_queue(make_refresh_request());
             }
         }
@@ -362,9 +361,15 @@ impl Allocation {
         self.buffered_transmits.pop_front()
     }
 
-    // pub fn poll_timeout(&self) -> Option<Instant> {
-    //     None // TODO: Implement this.
-    // }
+    pub fn poll_timeout(&self) -> Option<Instant> {
+        let mut earliest_timeout = self.refresh_allocation_at();
+
+        for (_, (_, sent_at, backoff)) in self.sent_requests.iter() {
+            earliest_timeout = earliest(earliest_timeout, Some(*sent_at + *backoff));
+        }
+
+        earliest_timeout
+    }
 
     pub fn bind_channel(&mut self, peer: SocketAddr, now: Instant) {
         self.update_now(now);
@@ -415,6 +420,14 @@ impl Allocation {
         let channel_data = crate::channel_data::encode(channel_number, packet);
 
         Some(channel_data)
+    }
+
+    fn refresh_allocation_at(&self) -> Option<Instant> {
+        let (received_at, lifetime) = self.allocation_lifetime?;
+
+        let refresh_after = lifetime / 2;
+
+        Some(received_at + refresh_after)
     }
 
     fn has_allocation(&self) -> bool {
@@ -1073,6 +1086,35 @@ mod tests {
         let next_msg = next_stun_message(&mut allocation);
 
         assert!(next_msg.is_none())
+    }
+
+    #[test]
+    fn retries_requests_using_backoff_and_gives_up_eventually() {
+        let start = Instant::now();
+        let mut allocation = Allocation::new(
+            RELAY,
+            Username::new("foobar".to_owned()).unwrap(),
+            "baz".to_owned(),
+            Realm::new("firezone".to_owned()).unwrap(),
+            start,
+        );
+
+        let mut expected_backoffs = VecDeque::from(backoff::steps(start));
+
+        loop {
+            let Some(timeout) = allocation.poll_timeout() else {
+                break;
+            };
+
+            assert_eq!(expected_backoffs.pop_front().unwrap(), timeout);
+
+            assert!(allocation.poll_transmit().is_some());
+            assert!(allocation.poll_transmit().is_none());
+
+            allocation.handle_timeout(timeout);
+        }
+
+        assert!(expected_backoffs.is_empty())
     }
 
     fn ch(peer: SocketAddr, now: Instant) -> Channel {
