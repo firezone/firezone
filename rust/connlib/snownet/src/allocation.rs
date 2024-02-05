@@ -811,7 +811,21 @@ struct BufferedChannelBindings {
 }
 
 impl BufferedChannelBindings {
+    /// Adds a new `CHANNEL-BIND` message to this buffer.
+    ///
+    /// The buffer has a fixed size of 10 to avoid unbounded memory growth.
+    /// All prior messages are cleared once we outgrow the buffer.
+    /// Very likely, we buffer `CHANNEL-BIND` messages only for a brief period of time.
+    /// However, it might also happen that we can only re-connect to a TURN server after an extended period of downtime.
+    /// Chances are that we don't need any of the old channels any more, and that the new ones are much more relevant.
     fn push_back(&mut self, msg: Message<Attribute>) {
+        debug_assert_eq!(msg.method(), CHANNEL_BIND);
+
+        if self.inner.len() == 10 {
+            tracing::debug!("Clearing buffered channel-data messages");
+            self.inner.clear()
+        }
+
         self.inner.push_back(msg);
     }
 
