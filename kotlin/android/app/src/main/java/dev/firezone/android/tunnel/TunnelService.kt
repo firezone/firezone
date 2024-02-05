@@ -21,6 +21,7 @@ import dev.firezone.android.R
 import dev.firezone.android.core.data.PreferenceRepository
 import dev.firezone.android.core.domain.preference.GetConfigUseCase
 import dev.firezone.android.core.presentation.MainActivity
+import dev.firezone.android.features.auth.backend.UnauthorizedReceiver
 import dev.firezone.android.tunnel.callback.ConnlibCallback
 import dev.firezone.android.tunnel.data.TunnelRepository
 import dev.firezone.android.tunnel.model.Cidr
@@ -209,17 +210,30 @@ class TunnelService : VpnService() {
     }
 
     private fun onSessionDisconnected(error: String?) {
+        Log.d(TAG, "onSessionDisconnected: $error")
         sessionPtr = null
         onTunnelStateUpdate(Tunnel.State.Down)
 
-        if (shouldReconnect && error == null) {
+        // At the moment, the FFI swallows the error.
+        // We check if it's 401 by checking if the error is null.
+        val is401Unauthorized = error != null
+
+        if (shouldReconnect && !is401Unauthorized) {
+            Log.d(TAG, "onSessionDisconnected: Reconnecting...")
             shouldReconnect = false
             connect()
         } else {
+            Log.d(TAG, "onSessionDisconnected: Clearing session data")
             tunnelRepository.clearAll()
             preferenceRepository.clearToken()
             onTunnelStateUpdate(Tunnel.State.Closed)
             stopForeground(STOP_FOREGROUND_REMOVE)
+            if (is401Unauthorized) {
+                Log.d(TAG, "onSessionDisconnected: Unauthorized")
+                val intent = Intent(this, UnauthorizedReceiver::class.java)
+                intent.action = "dev.firezone.android.action.UNAUTHORIZED"
+                sendBroadcast(intent)
+            }
         }
     }
 
