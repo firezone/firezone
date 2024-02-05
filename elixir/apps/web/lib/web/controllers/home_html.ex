@@ -40,7 +40,7 @@ defmodule Web.HomeHTML do
                 required
                 autofocus
               />
-              <p>As shown in your "Welcome to Firezone" email</p>
+              <p>Enter the account ID or slug as shown in your "Welcome to Firezone" email</p>
 
               <.button class="w-full">
                 Go to Sign In page
