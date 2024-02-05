@@ -51,6 +51,7 @@ impl Managed {
     pub async fn fault_msleep(&self, _millis: u64) {}
 }
 
+// TODO: Replace with `anyhow` gradually per <https://github.com/firezone/firezone/pull/3546#discussion_r1477114789>
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum Error {
     #[error(r#"Couldn't show clickable notification titled "{0}""#)]
