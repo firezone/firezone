@@ -51,6 +51,7 @@ impl Managed {
     pub async fn fault_msleep(&self, _millis: u64) {}
 }
 
+// TODO: Replace with `anyhow` gradually per <https://github.com/firezone/firezone/pull/3546#discussion_r1477114789>
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum Error {
     #[error(r#"Couldn't show clickable notification titled "{0}""#)]
@@ -540,6 +541,7 @@ impl Controller {
         let auth_response =
             client::deep_link::parse_auth_callback(url).context("Couldn't parse scheme request")?;
 
+        // Uses `std::fs`
         let token = self.auth.handle_response(auth_response)?;
         self.start_session(token)
             .context("Couldn't start connlib session")?;
@@ -740,6 +742,8 @@ async fn run_controller(
         controller
             .start_session(token)
             .context("Failed to restart session during app start")?;
+    } else {
+        tracing::info!("No token / actor_name on disk, starting in signed-out state");
     }
 
     let mut have_internet =

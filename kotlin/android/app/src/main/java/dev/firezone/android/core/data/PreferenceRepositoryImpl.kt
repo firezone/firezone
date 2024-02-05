@@ -59,6 +59,14 @@ internal class PreferenceRepositoryImpl
                 )
             }.flowOn(coroutineDispatcher)
 
+        override fun getDeviceIdSync(): String? = sharedPreferences.getString(DEVICE_ID_KEY, null)
+
+        override fun saveDeviceIdSync(value: String): Unit =
+            sharedPreferences
+                .edit()
+                .putString(DEVICE_ID_KEY, value)
+                .apply()
+
         override fun saveToken(value: String): Flow<Unit> =
             flow {
                 val nonce = sharedPreferences.getString(NONCE_KEY, "").orEmpty()
@@ -85,10 +93,6 @@ internal class PreferenceRepositoryImpl
             }
         }
 
-        override fun clearAll() {
-            sharedPreferences.edit().clear().apply()
-        }
-
         companion object {
             private const val AUTH_BASE_URL_KEY = "authBaseUrl"
             private const val API_URL_KEY = "apiUrl"
@@ -96,5 +100,6 @@ internal class PreferenceRepositoryImpl
             private const val TOKEN_KEY = "token"
             private const val NONCE_KEY = "nonce"
             private const val STATE_KEY = "state"
+            private const val DEVICE_ID_KEY = "deviceId"
         }
     }
