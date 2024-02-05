@@ -123,6 +123,7 @@ defmodule Web.Settings.IdentityProviders.Components do
   def adapter_name(:email), do: "Email"
   def adapter_name(:userpass), do: "Username & Password"
   def adapter_name(:google_workspace), do: "Google Workspace"
+  def adapter_name(:microsoft_entra), do: "Microsoft Entra"
   def adapter_name(:openid_connect), do: "OpenID Connect"
 
   def view_provider(account, %{adapter: adapter} = provider)
@@ -134,6 +135,9 @@ defmodule Web.Settings.IdentityProviders.Components do
 
   def view_provider(account, %{adapter: :google_workspace} = provider),
     do: ~p"/#{account}/settings/identity_providers/google_workspace/#{provider}"
+
+  def view_provider(account, %{adapter: :microsoft_entra} = provider),
+    do: ~p"/#{account}/settings/identity_providers/microsoft_entra/#{provider}"
 
   def sync_status(%{provider: %{provisioner: :custom}} = assigns) do
     ~H"""
