@@ -49,7 +49,7 @@ phoenix-channel = { path = "phoenix-channel"}
 [patch.crates-io]
 boringtun = { git = "https://github.com/thomaseizinger/boringtun", branch = "feat/expose-last-seen" }
 webrtc = { git = "https://github.com/firezone/webrtc", branch = "expose-new-endpoint" }
-str0m = { git = "https://github.com/thomaseizinger/str0m", branch = "feat/base-is-host-for-srflx" }
+str0m = { git = "https://github.com/algesten/str0m", branch = "main" }
 
 [profile.release]
 strip = true
