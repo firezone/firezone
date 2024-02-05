@@ -15,11 +15,13 @@ internal interface PreferenceRepository {
         logFilter: String,
     ): Flow<Unit>
 
+    fun saveDeviceIdSync(value: String): Unit
+
+    fun getDeviceIdSync(): String?
+
     fun saveToken(value: String): Flow<Unit>
 
     fun validateState(value: String): Flow<Boolean>
 
     fun clearToken()
-
-    fun clearAll()
 }
