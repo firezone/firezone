@@ -13,7 +13,6 @@ import android.os.Build
 import android.system.OsConstants
 import android.util.Log
 import androidx.core.app.NotificationCompat
-import com.google.firebase.installations.FirebaseInstallations
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.adapter
 import dagger.hilt.android.AndroidEntryPoint
@@ -30,6 +29,7 @@ import dev.firezone.android.tunnel.model.TunnelConfig
 import dev.firezone.android.tunnel.util.DnsServersDetector
 import java.nio.file.Files
 import java.nio.file.Paths
+import java.util.UUID
 import javax.inject.Inject
 
 @AndroidEntryPoint
@@ -224,10 +224,16 @@ class TunnelService : VpnService() {
     }
 
     private fun deviceId(): String {
-        val deviceId = FirebaseInstallations.getInstance().id
+        // Get the deviceId from the preferenceRepository, or save a new UUIDv4 and return that if it doesn't exist
+        val deviceId =
+            preferenceRepository.getDeviceIdSync() ?: run {
+                val newDeviceId = UUID.randomUUID().toString()
+                preferenceRepository.saveDeviceIdSync(newDeviceId)
+                newDeviceId
+            } ?: throw IllegalStateException("Device ID is null")
         Log.d(TAG, "Device ID: $deviceId")
 
-        return deviceId.toString()
+        return deviceId
     }
 
     private fun getLogDir(): String {
