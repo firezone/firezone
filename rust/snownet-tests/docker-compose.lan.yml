@@ -1,3 +1,7 @@
+# This test environment partitions has dialer and listener on the same subnet.
+# The relay acts only as a STUN server and sits in a different network.
+# This allows us to test that our automatic discovery of host candidates makes a local connection possible.
+
 version: "3.8"
 name: lan-integration-test
 
@@ -9,9 +13,8 @@ services:
       args:
         PACKAGE: snownet-tests
       cache_from:
-        - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/cache/connection-tests:main
-    image: us-east1-docker.pkg.dev/firezone-staging/firezone/connection-tests:${VERSION:-main}
-    init: true
+        - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/cache/snownet-tests:main
+    image: us-east1-docker.pkg.dev/firezone-staging/firezone/snownet-tests:${VERSION:-main}
     environment:
       ROLE: "dialer"
     cap_add:
@@ -22,15 +25,32 @@ services:
       - |
         set -ex
 
-        export REDIS_HOST=$$(curl --fail --silent --unix-socket /var/run/docker.sock http://localhost/containers/lan-integration-test-redis-1/json | jq -r '.NetworkSettings.Networks."lan-integration-test_app".IPAddress')
+        ROUTER_IP=$$(dig +short router)
+        INTERNET_SUBNET=$$(curl --fail --silent --unix-socket /var/run/docker.sock http://localhost/networks/lan-integration-test_wan | jq -r '.IPAM.Config[0].Subnet')
+
+        ip route add $$INTERNET_SUBNET via $$ROUTER_IP dev eth0
+
+        export STUN_SERVER=$$(curl --fail --silent --unix-socket /var/run/docker.sock http://localhost/containers/lan-integration-test-relay-1/json | jq -r '.NetworkSettings.Networks."lan-integration-test_wan".IPAddress')
+        export REDIS_HOST=$$(curl --fail --silent --unix-socket /var/run/docker.sock http://localhost/containers/lan-integration-test-redis-1/json | jq -r '.NetworkSettings.Networks."lan-integration-test_wan".IPAddress')
 
         snownet-tests
     depends_on:
+      - router
       - redis
     networks:
-      - app
+      - lan
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+
+  router:
+    init: true
+    build:
+      context: ./router
+    cap_add:
+      - NET_ADMIN
+    networks:
+      - lan
+      - wan
 
   listener:
     build:
@@ -39,36 +59,82 @@ services:
       args:
         PACKAGE: snownet-tests
       cache_from:
-        - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/cache/connection-tests:main
-    image: us-east1-docker.pkg.dev/firezone-staging/firezone/connection-tests:${VERSION:-main}
+        - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/cache/snownet-tests:main
+    image: us-east1-docker.pkg.dev/firezone-staging/firezone/snownet-tests:${VERSION:-main}
     init: true
     environment:
       ROLE: "listener"
-    cap_add:
-      - NET_ADMIN
     entrypoint: /bin/sh
     command:
       - -c
       - |
         set -ex
 
-        export REDIS_HOST=$$(curl --fail --silent --unix-socket /var/run/docker.sock http://localhost/containers/lan-integration-test-redis-1/json | jq -r '.NetworkSettings.Networks."lan-integration-test_app".IPAddress')
+        ROUTER_IP=$$(dig +short router)
+        INTERNET_SUBNET=$$(curl --fail --silent --unix-socket /var/run/docker.sock http://localhost/networks/lan-integration-test_wan | jq -r '.IPAM.Config[0].Subnet')
+
+        ip route add $$INTERNET_SUBNET via $$ROUTER_IP dev eth0
+
+        export STUN_SERVER=$$(curl --fail --silent --unix-socket /var/run/docker.sock http://localhost/containers/lan-integration-test-relay-1/json | jq -r '.NetworkSettings.Networks."lan-integration-test_wan".IPAddress')
+        export REDIS_HOST=$$(curl --fail --silent --unix-socket /var/run/docker.sock http://localhost/containers/lan-integration-test-redis-1/json | jq -r '.NetworkSettings.Networks."lan-integration-test_wan".IPAddress')
 
         snownet-tests
+    cap_add:
+      - NET_ADMIN
     depends_on:
+      - router
       - redis
     networks:
-      - app
+      - lan
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+
+  relay:
+    environment:
+      LOWEST_PORT: 55555
+      HIGHEST_PORT: 55666
+      RUST_LOG: "debug"
+      RUST_BACKTRACE: 1
+    build:
+      target: debug
+      context: ..
+      cache_from:
+        - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/cache/relay:main
+      args:
+        PACKAGE: firezone-relay
+    image: us-east1-docker.pkg.dev/firezone-staging/firezone/relay:${VERSION:-main}
+    init: true
+    healthcheck:
+      test: ["CMD-SHELL", "lsof -i UDP | grep firezone-relay"]
+      start_period: 20s
+      interval: 30s
+      retries: 5
+      timeout: 5s
+    entrypoint: /bin/sh
+    command:
+      - -c
+      - |
+        set -ex;
+        export PUBLIC_IP4_ADDR=$(ip -json addr show eth0 | jq '.[0].addr_info[0].local' -r)
+
+        firezone-relay
+    ports:
+      # XXX: Only 111 ports are used for local dev / testing because Docker Desktop
+      # allocates a userland proxy process for each forwarded port X_X.
+      #
+      # Large ranges here will bring your machine to its knees.
+      - "55555-55666:55555-55666/udp"
+      - 3478:3478/udp
+    networks:
+      - wan
 
   redis:
     image: "redis:7-alpine"
     healthcheck:
       test: ["CMD-SHELL", "echo 'ready';"]
     networks:
-      - app
+      - wan
 
 networks:
-  app:
-   # enable_ipv6: true Disable until we find a workaround for https://github.com/moby/moby/issues/41438.
+  lan:
+  wan:

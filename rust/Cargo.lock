@@ -2157,9 +2157,11 @@ dependencies = [
  "minidumper",
  "native-dialog",
  "rand 0.8.5",
+ "reqwest",
  "ring 0.17.7",
  "sadness-generator",
  "secrecy",
+ "semver",
  "serde",
  "serde_json",
  "subtle",
@@ -5623,9 +5625,9 @@ dependencies = [
 
 [[package]]
 name = "sctp-proto"
-version = "0.1.6"
+version = "0.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "514eb06a3f6b1f119b6a00a9a87afac072894817d3283b0d36adc8f8a135886a"
+checksum = "8f64cef148d3295c730c3cb340b0b252a4d570b1c7d4bf0808f88540b0a888bc"
 dependencies = [
  "bytes",
  "crc",
@@ -6022,6 +6024,7 @@ name = "snownet"
 version = "1.0.0"
 dependencies = [
  "anyhow",
+ "backoff",
  "boringtun",
  "bytecodec",
  "bytes",
@@ -6159,7 +6162,7 @@ checksum = "9e08d8363704e6c71fc928674353e6b7c23dcea9d82d7012c8faf2a3a025f8d0"
 [[package]]
 name = "str0m"
 version = "0.4.1"
-source = "git+https://github.com/thomaseizinger/str0m?branch=feat/base-is-host-for-srflx#86a5851874802244c3cff00754ea1c5e71badee1"
+source = "git+https://github.com/algesten/str0m?branch=main#18f56ebf6266c8df5d9dcf9699695e59b717d30a"
 dependencies = [
  "combine",
  "crc",
