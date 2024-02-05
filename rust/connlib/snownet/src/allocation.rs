@@ -837,10 +837,7 @@ impl BufferedChannelBindings {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::{
-        iter,
-        net::{IpAddr, Ipv4Addr},
-    };
+    use std::net::{IpAddr, Ipv4Addr};
     use stun_codec::rfc5389::errors::BadRequest;
 
     const PEER1: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 10000);
