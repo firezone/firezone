@@ -246,19 +246,44 @@ mod tests {
 
     #[test]
     fn parse_auth_callback() -> Result<()> {
+        // Positive cases
         let input = "firezone://handle_client_sign_in_callback/?actor_name=Reactor+Scram&fragment=a_very_secret_string&state=a_less_secret_string&identity_provider_identifier=12345";
-        let input = url::Url::parse(input)?;
-        dbg!(&input);
-        let actual = super::parse_auth_callback(&input).unwrap();
+        let actual = parse_callback_wrapper(input)?.unwrap();
 
         assert_eq!(actual.actor_name, "Reactor Scram");
         assert_eq!(actual.fragment.expose_secret(), "a_very_secret_string");
         assert_eq!(actual.state.expose_secret(), "a_less_secret_string");
 
+        // Empty string "" `actor_name` is fine
+        let input = "firezone://handle_client_sign_in_callback/?actor_name=&fragment=&state=&identity_provider_identifier=12345";
+        let actual = parse_callback_wrapper(input)?.unwrap();
+
+        assert_eq!(actual.actor_name, "");
+        assert_eq!(actual.fragment.expose_secret(), "");
+        assert_eq!(actual.state.expose_secret(), "");
+
+        // Negative cases
+
+        // URL host is wrong
         let input = "firezone://not_handle_client_sign_in_callback/?actor_name=Reactor+Scram&fragment=a_very_secret_string&state=a_less_secret_string&identity_provider_identifier=12345";
-        let actual = super::parse_auth_callback(&url::Url::parse(input)?);
+        let actual = parse_callback_wrapper(input)?;
         assert!(actual.is_none());
 
+        // `actor_name` is not just blank but totally missing
+        let input = "firezone://handle_client_sign_in_callback/?fragment=&state=&identity_provider_identifier=12345";
+        let actual = parse_callback_wrapper(input)?;
+        assert!(actual.is_none());
+
+        // URL is nonsense
+        let input = "?????????";
+        let actual_result = parse_callback_wrapper(input);
+        assert!(actual_result.is_err());
+
         Ok(())
+    }
+
+    fn parse_callback_wrapper(s: &str) -> Result<Option<super::AuthResponse>> {
+        let url = url::Url::parse(s)?;
+        Ok(super::parse_auth_callback(&url))
     }
 }
