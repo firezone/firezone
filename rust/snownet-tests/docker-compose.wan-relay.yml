@@ -12,8 +12,8 @@ services:
       args:
         PACKAGE: snownet-tests
       cache_from:
-        - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/cache/connection-tests:main
-    image: us-east1-docker.pkg.dev/firezone-staging/firezone/connection-tests:${VERSION:-main}
+        - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/cache/snownet-tests:main
+    image: us-east1-docker.pkg.dev/firezone-staging/firezone/snownet-tests:${VERSION:-main}
     environment:
       ROLE: "dialer"
     cap_add:
@@ -60,8 +60,8 @@ services:
       args:
         PACKAGE: snownet-tests
       cache_from:
-        - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/cache/connection-tests:main
-    image: us-east1-docker.pkg.dev/firezone-staging/firezone/connection-tests:${VERSION:-main}
+        - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/cache/snownet-tests:main
+    image: us-east1-docker.pkg.dev/firezone-staging/firezone/snownet-tests:${VERSION:-main}
     init: true
     environment:
       ROLE: "listener"
