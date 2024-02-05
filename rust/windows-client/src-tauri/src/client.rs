@@ -14,6 +14,7 @@ mod logging;
 mod network_changes;
 mod resolvers;
 mod settings;
+mod updates;
 mod wintun_install;
 
 /// Output of `git describe` at compile time
@@ -89,11 +90,23 @@ pub(crate) fn run() -> Result<()> {
         Some(Cmd::CrashHandlerServer { socket_path }) => crash_handling::server(socket_path),
         Some(Cmd::Debug { command }) => debug_commands::run(command),
         // If we already tried to elevate ourselves, don't try again
-        Some(Cmd::Elevated | Cmd::SmokeTest) => run_gui(cli),
+        Some(Cmd::Elevated) => run_gui(cli),
         Some(Cmd::OpenDeepLink(deep_link)) => {
             let rt = tokio::runtime::Runtime::new()?;
             rt.block_on(deep_link::open(&deep_link.url))?;
             Ok(())
+        }
+        Some(Cmd::SmokeTest) => {
+            let result = gui::run(&cli);
+            if let Err(error) = &result {
+                // In smoke-test mode, don't show the dialog, since it might be running
+                // unattended in CI and the dialog would hang forever
+
+                // Because of <https://github.com/firezone/firezone/issues/3567>,
+                // errors returned from `gui::run` may not be logged correctly
+                tracing::error!(?error, "gui::run error");
+            }
+            Ok(result?)
         }
     }
 }
@@ -105,29 +118,26 @@ fn run_gui(cli: Cli) -> Result<()> {
     let result = gui::run(&cli);
 
     // Make sure errors get logged, at least to stderr
-    if let Err(error) = result {
+    if let Err(error) = &result {
         tracing::error!(?error, "gui::run error");
-
-        if let Some(Cmd::SmokeTest) = &cli.command {
-            // In smoke-test mode, don't show the dialog, since it might be running
-            // unattended and the dialog would hang forever
-        } else {
-            let error_msg = match &error {
-                gui::Error::WebViewNotInstalled => "Firezone cannot start because WebView2 is not installed. Follow the instructions at <https://www.firezone.dev/kb/user-guides/windows-client>.".to_string(),
-                error => format!("{}", error),
-            };
-
-            native_dialog::MessageDialog::new()
-                .set_title("Firezone Error")
-                .set_text(&error_msg)
-                .set_type(native_dialog::MessageType::Error)
-                .show_alert()?;
-        }
-
-        // Convert the error to anyhow
-        return Err(error.into());
+        show_error_dialog(error)?;
     }
 
+    Ok(result?)
+}
+
+fn show_error_dialog(error: &gui::Error) -> Result<()> {
+    let error_msg = match error {
+        gui::Error::WebViewNotInstalled => "Firezone cannot start because WebView2 is not installed. Follow the instructions at <https://www.firezone.dev/kb/user-guides/windows-client>.".to_string(),
+        gui::Error::DeepLink(deep_link::Error::CantListen) => "Firezone is already running. If it's not responding, force-stop it.".to_string(),
+        error => error.to_string(),
+    };
+
+    native_dialog::MessageDialog::new()
+        .set_title("Firezone Error")
+        .set_text(&error_msg)
+        .set_type(native_dialog::MessageType::Error)
+        .show_alert()?;
     Ok(())
 }
 
@@ -137,11 +147,17 @@ fn run_gui(cli: Cli) -> Result<()> {
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 struct Cli {
+    /// If true, always show the update notification at startup, even if our version is newer than Github's
+    #[arg(long, hide = true)]
+    always_show_update_notification: bool,
     #[command(subcommand)]
     command: Option<Cmd>,
     /// If true, purposely crash the program to test the crash handler
     #[arg(long, hide = true)]
     crash_on_purpose: bool,
+    /// If true, `gui::run` returns an error on purpose to test the error logging and dialog
+    #[arg(long, hide = true)]
+    error_on_purpose: bool,
     /// If true, slow down I/O operations to test how the GUI handles slow I/O
     #[arg(long, hide = true)]
     inject_faults: bool,

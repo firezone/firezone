@@ -446,11 +446,13 @@ defmodule Domain.Config.Definitions do
     :auth_provider_adapters,
     {:array, ",", {:parameterized, Ecto.Enum, Ecto.Enum.init(values: ~w[
       email
-      openid_connect google_workspace
+      openid_connect
+      google_workspace
+      microsoft_entra
       userpass
       token
     ]a)}},
-    default: ~w[email openid_connect google_workspace token]a
+    default: ~w[email openid_connect google_workspace microsoft_entra token]a
   )
 
   ##############################################
