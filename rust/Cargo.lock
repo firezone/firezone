@@ -3820,9 +3820,9 @@ dependencies = [
 
 [[package]]
 name = "minidumper"
-version = "0.8.0"
+version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "261916bd44ec98562f8573f5e882ca08b1fea717b20bee95b6b39ad024869f97"
+checksum = "624e83140a868e87d821f315b440fd8bcb1ec07704d92a4a413ea1f2512a454d"
 dependencies = [
  "cfg-if",
  "crash-context",
@@ -3830,7 +3830,7 @@ dependencies = [
  "log",
  "minidump-writer",
  "parking_lot",
- "polling 2.8.0",
+ "polling 3.3.2",
  "scroll",
  "thiserror",
  "uds",
@@ -7326,9 +7326,9 @@ checksum = "42ff0bf0c66b8238c6f3b578df37d0b7848e55df8577b3f74f92a69acceeb825"
 
 [[package]]
 name = "uds"
-version = "0.2.7"
+version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "26095fa6d0208163cb66162d4b016c8f273226af3191ce651d6482ca760c31e7"
+checksum = "885c31f06fce836457fe3ef09a59f83fe8db95d270b11cd78f40a4666c4d1661"
 dependencies = [
  "libc",
 ]

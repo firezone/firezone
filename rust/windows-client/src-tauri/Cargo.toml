@@ -27,7 +27,7 @@ hostname = "0.3.1"
 ipconfig = "0.3.2"
 keyring = "2.3.2"
 known-folders = "1.1.0"
-minidumper = "0.8.0"
+minidumper = "0.8.1"
 reqwest = { version = "0.11.22", default-features = false, features = ["stream", "rustls-tls"] }
 ring = "0.17"
 secrecy = { workspace = true }
