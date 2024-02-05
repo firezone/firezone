@@ -57,6 +57,8 @@ pub(crate) enum Error {
     ClickableNotification(String),
     #[error("Deep-link module error: {0}")]
     DeepLink(#[from] deep_link::Error),
+    #[error("Fake error for testing")]
+    Fake,
     #[error("Can't show log filter error dialog: {0}")]
     LogFilterErrorDialog(native_dialog::Error),
     #[error("Logging module error: {0}")]
@@ -100,8 +102,8 @@ pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
         };
 
     // Start logging
-    // TODO: After <https://github.com/firezone/firezone/pull/3430> lands, try using an
-    // Arc to keep the file logger alive even if Tauri bails out
+    // TODO: Try using an Arc to keep the file logger alive even if Tauri bails out
+    // That may fix <https://github.com/firezone/firezone/issues/3567>
     let logging_handles = client::logging::setup(&advanced_settings.log_filter)?;
     tracing::info!("started log");
     tracing::info!("GIT_VERSION = {}", crate::client::GIT_VERSION);
@@ -263,6 +265,10 @@ pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
             }
         }
     };
+
+    if cli.error_on_purpose {
+        return Err(Error::Fake);
+    }
 
     app.run(|_app_handle, event| {
         if let tauri::RunEvent::ExitRequested { api, .. } = event {
