@@ -309,7 +309,7 @@ impl Allocation {
             SocketAddr::V6(_) => self.ip6_allocation.as_ref()?.addr(),
         };
 
-        tracing::debug!(server = %self.server, %peer, %relay_socket, "Decapsulated channel-data message");
+        tracing::trace!(server = %self.server, %peer, %relay_socket, "Decapsulated channel-data message");
 
         Some((peer, payload, relay_socket))
     }
