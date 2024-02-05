@@ -192,16 +192,11 @@ impl Auth {
     fn get_token_from_disk(&self) -> Result<Option<SessionAndToken>> {
         let actor_name = match std::fs::read_to_string(actor_name_path()?) {
             Ok(x) => x,
-            Err(error) => {
-                if error.kind() == std::io::ErrorKind::NotFound {
-                    // It can happen with dev systems that actor_name.txt doesn't exist
-                    // even though the token is in the cred manager.
-                    // In that case just sign the app out, don't crash.
-                    return Ok(None);
-                } else {
-                    return Err(Error::ReadActorName(error));
-                }
-            }
+            // It can happen with dev systems that actor_name.txt doesn't exist
+            // even though the token is in the cred manager.
+            // In that case we just say the app is signed out
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(e) => return Err(Error::ReadActorName(e)),
         };
 
         // This must be the only place the GUI can call `get_password`, since the
