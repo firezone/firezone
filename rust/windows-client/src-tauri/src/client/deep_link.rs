@@ -12,6 +12,8 @@ pub(crate) const FZ_SCHEME: &str = "firezone-fd0020211111";
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
+    #[error("named pipe server couldn't start listening, we are probably the second instance")]
+    CantListen,
     /// Error from client's POV
     #[error(transparent)]
     ClientCommunications(io::Error),
@@ -24,8 +26,6 @@ pub enum Error {
     /// We got some data but it's not UTF-8
     #[error(transparent)]
     LinkNotUtf8(std::string::FromUtf8Error),
-    #[error("named pipe server couldn't start listening, we are probably the second instance")]
-    Listen,
     #[error("Couldn't set up security descriptor for deep link server")]
     SecurityDescriptor,
     /// Error from server's POV
@@ -141,7 +141,7 @@ impl Server {
         // or lifetime problems because we only pass pointers to our local vars to
         // Win32, and Win32 shouldn't save them anywhere.
         let server = unsafe { server_options.create_with_security_attributes_raw(path, sa_ptr) }
-            .map_err(|_| Error::Listen)?;
+            .map_err(|_| Error::CantListen)?;
 
         tracing::debug!("server is bound");
         Ok(Server { inner: server })
