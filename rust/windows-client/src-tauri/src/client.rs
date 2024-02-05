@@ -158,6 +158,9 @@ struct Cli {
     /// If true, `gui::run` returns an error on purpose to test the error logging and dialog
     #[arg(long, hide = true)]
     error_on_purpose: bool,
+    /// If true, `gui::run` panicks in a Tokio task to test logging
+    #[arg(long, hide = true)]
+    panic_on_purpose: bool,
     /// If true, slow down I/O operations to test how the GUI handles slow I/O
     #[arg(long, hide = true)]
     inject_faults: bool,

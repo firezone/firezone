@@ -126,18 +126,6 @@ pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
     let (ctlr_tx, ctlr_rx) = mpsc::channel(5);
     let notify_controller = Arc::new(Notify::new());
 
-    if cli.crash_on_purpose {
-        tokio::spawn(async move {
-            let delay = 10;
-            tracing::info!("Will crash on purpose in {delay} seconds to test crash handling.");
-            tokio::time::sleep(Duration::from_secs(delay)).await;
-            tracing::info!("Crashing on purpose because of `--crash-on-purpose` flag");
-
-            // SAFETY: Crashing is unsafe
-            unsafe { sadness_generator::raise_segfault() }
-        });
-    }
-
     // Check for updates
     let ctlr_tx_clone = ctlr_tx.clone();
     let always_show_update_notification = cli.always_show_update_notification;
@@ -174,6 +162,18 @@ pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
     };
 
     let tray = SystemTray::new().with_menu(system_tray_menu::signed_out());
+
+    if cli.crash_on_purpose {
+        tokio::spawn(async move {
+            let delay = 5;
+            tracing::info!("Will crash on purpose in {delay} seconds to test crash handling.");
+            tokio::time::sleep(Duration::from_secs(delay)).await;
+            tracing::info!("Crashing on purpose because of `--crash-on-purpose` flag");
+
+            // SAFETY: Crashing is unsafe
+            unsafe { sadness_generator::raise_segfault() }
+        });
+    }
 
     let app = tauri::Builder::default()
         .manage(managed)
@@ -266,6 +266,8 @@ pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
 
     if cli.error_on_purpose {
         return Err(Error::Fake);
+    } else if cli.panic_on_purpose {
+        panic!("Test panic");
     }
 
     app.run(|_app_handle, event| {
