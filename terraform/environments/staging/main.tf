@@ -693,30 +693,40 @@ module "relays" {
 
   instances = {
     "australia-southeast1" = {
+      cidr_range = "10.131.0.0/24"
+
       type     = "f1-micro"
       replicas = 1
       zones    = ["australia-southeast1-a"]
     }
 
-    "southamerica-west1" = {
+    "southamerica-east1" = {
+      cidr_range = "10.134.0.0/24"
+
       type     = "f1-micro"
       replicas = 1
-      zones    = ["southamerica-west1-b"]
+      zones    = ["southamerica-east1-b"]
     }
 
     "us-east1" = {
+      cidr_range = "10.136.0.0/24"
+
       type     = "f1-micro"
       replicas = 1
       zones    = ["us-east1-d"]
     }
 
     "us-west2" = {
+      cidr_range = "10.137.0.0/24"
+
       type     = "f1-micro"
       replicas = 1
       zones    = ["us-west2-b"]
     }
 
     "us-central1" = {
+      cidr_range = "10.135.0.0/24"
+
       type     = "f1-micro"
       replicas = 1
       zones    = ["us-central1-b"]

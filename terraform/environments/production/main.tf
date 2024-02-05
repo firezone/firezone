@@ -728,63 +728,73 @@ module "relays" {
     # XXX: We may need these in the future, but for now, we don't have many
     # (if any) Enterprise customers in these regions
     # "asia-east1" = {
+    #   cidr_range = "10.129.0.0/24"
     #   type     = "n1-standard-1"
     #   replicas = 1
     #   zones    = ["asia-east1-a"]
     # }
     #
     # "asia-south1" = {
+    #   cidr_range = "10.130.0.0/24"
     #   type     = "n1-standard-1"
     #   replicas = 1
     #   zones    = ["asia-south1-a"]
     # }
     #
     # "australia-southeast1" = {
+    #   cidr_range = "10.131.0.0/24"
     #   type     = "n1-standard-1"
     #   replicas = 1
     #   zones    = ["australia-southeast1-a"]
     # }
     #
     # "me-central1" = {
+    #   cidr_range = "10.133.0.0/24"
     #   type     = "n2-standard-2"
     #   replicas = 1
     #   zones    = ["me-central1-a"]
     # }
     #
     # "southamerica-east1" = {
+    #   cidr_range = "10.134.0.0/24"
     #   type     = "n1-standard-1"
     #   replicas = 1
     #   zones    = ["southamerica-east1-b"]
     # }
     #
     # "us-central1" = {
+    #   cidr_range = "10.135.0.0/24"
     #   type     = "n1-standard-1"
     #   replicas = 1
     #   zones    = ["us-central1-b"]
     # }
 
     "europe-west1" = {
-      type     = "n1-standard-1"
-      replicas = 1
-      zones    = ["europe-west1-d"]
+      cidr_range = "10.132.0.0/24"
+      type       = "n1-standard-1"
+      replicas   = 1
+      zones      = ["europe-west1-d"]
     }
 
     "europe-west2" = {
-      type     = "n1-standard-1"
-      replicas = 1
-      zones    = ["europe-west2-c"]
+      cidr_range = "10.140.0.0/24"
+      type       = "n1-standard-1"
+      replicas   = 1
+      zones      = ["europe-west2-c"]
     }
 
     "us-east1" = {
-      type     = "n1-standard-1"
-      replicas = 1
-      zones    = ["us-east1-d"]
+      cidr_range = "10.136.0.0/24"
+      type       = "n1-standard-1"
+      replicas   = 1
+      zones      = ["us-east1-d"]
     }
 
     "us-west2" = {
-      type     = "n1-standard-1"
-      replicas = 1
-      zones    = ["us-west2-b"]
+      cidr_range = "10.137.0.0/24"
+      type       = "n1-standard-1"
+      replicas   = 1
+      zones      = ["us-west2-b"]
     }
   }
 
