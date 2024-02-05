@@ -109,7 +109,12 @@ jobs:
       - name: Build client
         run: cargo build -p firezone-windows-client
       - name: Run smoke test
-        run: cargo run -p firezone-windows-client -- smoke-test
+        run: |
+          # Why isn't this working?
+
+          Invoke-WebRequest -Uri https://go.microsoft.com/fwlink/p/?LinkId=2124703 -OutFile WebView2Installer.exe
+          .\WebView2Installer.exe /install
+          cargo run -p firezone-windows-client -- smoke-test
 
   # This should be identical to `build-push-windows-release-artifacts` in `cd.yml` except for the Github permissions, needs tag, and uploading step
   build-tauri:
