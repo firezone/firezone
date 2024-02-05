@@ -266,39 +266,6 @@ mod tests {
     }
 
     #[test]
-    fn request_times_out_after_5_seconds_and_generates_new_request_using_backoff() {
-        let start = Instant::now();
-
-        let mut stun_binding = StunBinding::new(SERVER1, start);
-
-        assert!(stun_binding.poll_transmit().is_some());
-        assert!(stun_binding.poll_transmit().is_none());
-
-        assert_eq!(
-            stun_binding.poll_timeout().unwrap(),
-            start + Duration::from_secs(5)
-        );
-
-        // Nothing after 1 second ..
-        stun_binding.handle_timeout(start + Duration::from_secs(1));
-        assert!(stun_binding.poll_transmit().is_none());
-
-        // Nothing after 2 seconds ..
-        stun_binding.handle_timeout(start + Duration::from_secs(2));
-        assert!(stun_binding.poll_transmit().is_none());
-
-        stun_binding.handle_timeout(start + Duration::from_secs(5));
-        assert!(stun_binding.poll_transmit().is_some());
-        assert!(stun_binding.poll_transmit().is_none());
-
-        // Exponential backoff should kick in.
-        assert_eq!(
-            stun_binding.poll_timeout().unwrap(),
-            start + Duration::from_millis(12_500)
-        );
-    }
-
-    #[test]
     fn backoff_resets_after_successful_response() {
         let mut now = Instant::now();
 
@@ -344,19 +311,51 @@ mod tests {
     }
 
     #[test]
-    fn backoff_eventually_give_up() {
-        let mut stun_binding = StunBinding::new(SERVER1, Instant::now());
+    fn retries_requests_using_backoff_and_gives_up_eventually() {
+        let start = Instant::now();
+        let mut stun_binding = StunBinding::new(SERVER1, start);
+
+        fn secs(secs: f64) -> Duration {
+            Duration::from_micros((secs * 1_000_000.0) as u64)
+        }
+
+        // The backoff strategy is to increment the previous interval by 1.5
+        let mut expected_backoffs = VecDeque::from([
+            start + secs(5.0),
+            start + secs(5.0 + 7.5),
+            start + secs(5.0 + 7.5 + 11.25),
+            start + secs(5.0 + 7.5 + 11.25 + 16.875),
+            start + secs(5.0 + 7.5 + 11.25 + 16.875 + 25.3125),
+            start + secs(5.0 + 7.5 + 11.25 + 16.875 + 25.3125 + 37.96875),
+            start + secs(5.0 + 7.5 + 11.25 + 16.875 + 25.3125 + 37.96875 + 56.953125),
+            start + secs(5.0 + 7.5 + 11.25 + 16.875 + 25.3125 + 37.96875 + 56.953125 + 60.0 * 1.0),
+            start + secs(5.0 + 7.5 + 11.25 + 16.875 + 25.3125 + 37.96875 + 56.953125 + 60.0 * 2.0),
+            start + secs(5.0 + 7.5 + 11.25 + 16.875 + 25.3125 + 37.96875 + 56.953125 + 60.0 * 3.0),
+            start + secs(5.0 + 7.5 + 11.25 + 16.875 + 25.3125 + 37.96875 + 56.953125 + 60.0 * 4.0),
+            start + secs(5.0 + 7.5 + 11.25 + 16.875 + 25.3125 + 37.96875 + 56.953125 + 60.0 * 5.0),
+            start + secs(5.0 + 7.5 + 11.25 + 16.875 + 25.3125 + 37.96875 + 56.953125 + 60.0 * 6.0),
+            start + secs(5.0 + 7.5 + 11.25 + 16.875 + 25.3125 + 37.96875 + 56.953125 + 60.0 * 7.0),
+            start + secs(5.0 + 7.5 + 11.25 + 16.875 + 25.3125 + 37.96875 + 56.953125 + 60.0 * 8.0),
+            start + secs(5.0 + 7.5 + 11.25 + 16.875 + 25.3125 + 37.96875 + 56.953125 + 60.0 * 9.0),
+            start + secs(5.0 + 7.5 + 11.25 + 16.875 + 25.3125 + 37.96875 + 56.953125 + 60.0 * 10.0),
+            start + secs(5.0 + 7.5 + 11.25 + 16.875 + 25.3125 + 37.96875 + 56.953125 + 60.0 * 11.0),
+            start + secs(5.0 + 7.5 + 11.25 + 16.875 + 25.3125 + 37.96875 + 56.953125 + 60.0 * 12.0),
+        ]);
 
         loop {
             let Some(timeout) = stun_binding.poll_timeout() else {
                 break;
             };
 
+            assert_eq!(expected_backoffs.pop_front().unwrap(), timeout);
+
             assert!(stun_binding.poll_transmit().is_some());
             assert!(stun_binding.poll_transmit().is_none());
 
             stun_binding.handle_timeout(timeout);
         }
+
+        assert!(expected_backoffs.is_empty())
     }
 
     #[test]
