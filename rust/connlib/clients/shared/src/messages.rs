@@ -23,7 +23,7 @@ pub struct ConfigUpdate {
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct RemoveResource(pub ResourceId);
 
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
 pub struct ConnectionDetails {
     pub relays: Vec<Relay>,
     pub resource_id: ResourceId,
@@ -83,7 +83,7 @@ pub struct GatewayIceCandidates {
 }
 
 /// The replies that can arrive from the channel by a client
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
 #[serde(untagged)]
 #[allow(clippy::large_enum_variant)]
 pub enum ReplyMessages {

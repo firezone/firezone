@@ -51,7 +51,7 @@ impl PartialEq for Client {
 
 impl Eq for Client {}
 
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
 pub struct RequestConnection {
     pub actor: Actor,
     pub relays: Vec<Relay>,
@@ -100,7 +100,7 @@ pub struct AllowAccess {
 
 // These messages are the messages that can be received
 // either by a client or a gateway by the client.
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "snake_case", tag = "event", content = "payload")]
 pub enum IngressMessages {
     RequestConnection(RequestConnection),
