@@ -170,6 +170,7 @@ where
     }
 
     fn send(&mut self, id: TId, packet: IpPacket) -> Result<()> {
+        // TODO: handle NotConnected
         let Some(transmit) = self.connections.node.encapsulate(id, packet)? else {
             return Ok(());
         };
