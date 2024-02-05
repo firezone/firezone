@@ -1164,7 +1164,7 @@ mod tests {
         );
         assert_eq!(
             msg.get_attribute::<ChannelNumber>().unwrap().value(),
-            ChannelBindings::FIRST_CHANNEL + 11
+            ChannelBindings::FIRST_CHANNEL + 10
         );
     }
 
