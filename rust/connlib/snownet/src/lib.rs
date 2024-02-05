@@ -1,3 +1,5 @@
+//! A SANS-IO connectivity library for wireguard connections formed by ICE.
+
 mod allocation;
 mod channel_data;
 mod index;

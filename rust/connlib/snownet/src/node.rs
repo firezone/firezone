@@ -49,7 +49,7 @@ pub struct Node<T, TId> {
     private_key: StaticSecret,
     index: IndexLfsr,
     rate_limiter: Arc<RateLimiter>,
-    local_interfaces: HashSet<SocketAddr>,
+    host_candidates: HashSet<Candidate>,
     buffered_transmits: VecDeque<Transmit<'static>>,
 
     next_rate_limiter_reset: Option<Instant>,
@@ -80,6 +80,8 @@ pub enum Error {
     UnmatchedPacket,
     #[error("Not connected")]
     NotConnected,
+    #[error("Invalid local address: {0}")]
+    BadLocalAddress(#[from] str0m::error::IceError),
 }
 
 impl<T, TId> Node<T, TId>
@@ -93,7 +95,7 @@ where
             marker: Default::default(),
             index: IndexLfsr::default(),
             rate_limiter: Arc::new(RateLimiter::new(public_key, HANDSHAKE_RATE_LIMIT)),
-            local_interfaces: HashSet::default(),
+            host_candidates: HashSet::default(),
             buffered_transmits: VecDeque::default(),
             next_rate_limiter_reset: None,
             negotiated_connections: HashMap::default(),
@@ -119,10 +121,33 @@ where
         })
     }
 
-    pub fn add_local_interface(&mut self, local_addr: SocketAddr) {
-        self.local_interfaces.insert(local_addr);
+    /// Add an address as a `host` candidate.
+    ///
+    /// For most network topologies, [`snownet`](crate) will automatically discover host candidates via the traffic to the configured STUN and TURN servers.
+    /// However, in topologies like the one below, we cannot discover that there is a more optimal link between BACKEND and DB.
+    /// For those situations, users need to manually add the address of the direct link in order for [`snownet`](crate) to establish a connection.
+    ///
+    /// ```text
+    ///        ┌──────┐          ┌──────┐
+    ///        │ STUN ├─┐      ┌─┤ TURN │
+    ///        └──────┘ │      │ └──────┘
+    ///                 │      │
+    ///               ┌─┴──────┴─┐
+    ///      ┌────────┤   WAN    ├───────┐
+    ///      │        └──────────┘       │
+    /// ┌────┴─────┐                  ┌──┴───┐
+    /// │    FW    │                  │  FW  │
+    /// └────┬─────┘                  └──┬───┘
+    ///      │            ┌──┐           │
+    ///  ┌───┴─────┐      │  │         ┌─┴──┐
+    ///  │ BACKEND ├──────┤FW├─────────┤ DB │
+    ///  └─────────┘      │  │         └────┘
+    ///                   └──┘
+    /// ```
+    pub fn add_local_host_candidate(&mut self, address: SocketAddr) -> Result<(), Error> {
+        self.add_local_as_host_candidate(address)?;
 
-        // TODO: Add host candidate to all existing connections here.
+        Ok(())
     }
 
     pub fn add_remote_candidate(&mut self, id: TId, candidate: String) {
@@ -165,6 +190,8 @@ where
         now: Instant,
         buffer: &'s mut [u8],
     ) -> Result<Option<(TId, IpPacket<'s>)>, Error> {
+        self.add_local_as_host_candidate(local)?;
+
         // First, check if a `StunBinding` wants the packet
         if let Some(binding) = self.bindings.get_mut(&from) {
             if binding.handle_input(from, local, packet, now) {
@@ -208,11 +235,6 @@ where
 
         // Next: If we can parse the message as a STUN message, cycle through all agents to check which one it is for.
         if let Ok(message) = StunMessage::parse(packet) {
-            // `str0m` panics if you feed it traffic from an interface it doesn't know about. (TODO: Fix upstream)
-            if !self.local_interfaces.contains(&local) {
-                return Err(Error::UnknownInterface);
-            }
-
             for agent in self.agents_mut() {
                 // TODO: `accepts_message` cannot demultiplexing multiple connections until https://github.com/algesten/str0m/pull/418 is merged.
                 if agent.accepts_message(&message) {
@@ -552,6 +574,40 @@ where
             last_seen: None,
         }
     }
+
+    /// Attempt to add the `local` address as a host candidate.
+    ///
+    /// Receiving traffic on a certain interface means we at least have a connection to a relay via this interface.
+    /// Thus, it is also a viable interface to attempt a connection to a gateway.
+    fn add_local_as_host_candidate(&mut self, local: SocketAddr) -> Result<(), Error> {
+        let host_candidate = Candidate::host(local, Protocol::Udp)?;
+
+        let is_new = self.host_candidates.insert(host_candidate.clone());
+
+        if !is_new {
+            return Ok(());
+        }
+
+        // TODO: This is duplicated with `agents_mut` but the borrow-checker doesn't allow us to de-duplicate :(
+        let initial_agents = self
+            .initial_connections
+            .iter_mut()
+            .map(|(id, c)| (*id, &mut c.agent));
+        let negotiated_agents = self
+            .negotiated_connections
+            .iter_mut()
+            .map(|(id, c)| (*id, &mut c.agent));
+
+        for (conn, agent) in initial_agents.chain(negotiated_agents) {
+            add_local_candidate(
+                conn,
+                agent,
+                host_candidate.clone(),
+                &mut self.pending_events,
+            );
+        }
+        Ok(())
+    }
 }
 
 impl<TId> Node<Client, TId>
@@ -641,9 +697,6 @@ where
     TId: Eq + Hash + Copy + fmt::Display,
 {
     /// Accept a new connection indexed by the given ID.
-    ///
-    /// The `local_server_socket` is the socket from which you are planning to send all required traffic to the (relay) servers.
-    /// It will be returned as part of [`Transmit`]'s `src` field.
     ///
     /// Out of all configured STUN and TURN servers, the connection will only use the ones provided here.
     /// The returned [`Answer`] must be passed to the remote via a signalling channel.
@@ -766,21 +819,8 @@ where
         allowed_stun_servers: &HashSet<SocketAddr>,
         allowed_turn_servers: &HashSet<SocketAddr>,
     ) {
-        for local in self.local_interfaces.iter().copied() {
-            let candidate = match Candidate::host(local, Protocol::Udp) {
-                Ok(c) => c,
-                Err(e) => {
-                    tracing::debug!("Failed to generate host candidate from addr: {e}");
-                    continue;
-                }
-            };
-
-            add_local_candidate(
-                connection,
-                agent,
-                candidate.clone(),
-                &mut self.pending_events,
-            );
+        for candidate in self.host_candidates.iter().cloned() {
+            add_local_candidate(connection, agent, candidate, &mut self.pending_events);
         }
 
         for candidate in self.bindings.iter().filter_map(|(server, binding)| {

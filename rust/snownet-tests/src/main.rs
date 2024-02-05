@@ -66,7 +66,6 @@ async fn main() -> Result<()> {
     let mut redis_connection = redis_client.get_multiplexed_async_connection().await?;
 
     let socket = UdpSocket::bind((listen_addr, 0)).await?;
-    let socket_addr = socket.local_addr()?;
     let private_key = StaticSecret::random_from_rng(rand::thread_rng());
     let public_key = PublicKey::from(&private_key);
 
@@ -77,7 +76,6 @@ async fn main() -> Result<()> {
     match role {
         Role::Dialer => {
             let mut pool = ClientNode::<u64>::new(private_key, Instant::now());
-            pool.add_local_interface(socket_addr);
 
             let offer = pool.new_connection(
                 1,
@@ -160,7 +158,6 @@ async fn main() -> Result<()> {
         }
         Role::Listener => {
             let mut pool = ServerNode::<u64>::new(private_key, Instant::now());
-            pool.add_local_interface(socket_addr);
 
             let offer = redis_connection
                 .blpop::<_, (String, wire::Offer)>("offers", 10.0)
