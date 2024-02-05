@@ -77,8 +77,6 @@ jobs:
     defaults:
       run:
         working-directory: ./rust/windows-client
-    strategy:
-      fail-fast: false
     env:
       RUST_LOG: firezone_windows_client=info
     steps:
