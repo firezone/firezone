@@ -19,6 +19,10 @@ defmodule Domain.Fixtures.Auth do
     Ecto.UUID.generate()
   end
 
+  def random_provider_identifier(%Domain.Auth.Provider{adapter: :microsoft_entra}) do
+    Ecto.UUID.generate()
+  end
+
   def random_provider_identifier(%Domain.Auth.Provider{adapter: :userpass, name: name}) do
     "user-#{unique_integer()}@#{String.downcase(name)}.com"
   end
@@ -93,6 +97,24 @@ defmodule Domain.Fixtures.Auth do
     {provider, bypass}
   end
 
+  def start_and_create_microsoft_entra_provider(attrs \\ %{}) do
+    bypass = Domain.Mocks.OpenIDConnect.discovery_document_server()
+
+    adapter_config =
+      openid_connect_adapter_config(
+        discovery_document_uri:
+          "http://localhost:#{bypass.port}/.well-known/openid-configuration",
+        scope: Domain.Auth.Adapters.MicrosoftEntra.Settings.scope() |> Enum.join(" ")
+      )
+
+    provider =
+      attrs
+      |> Enum.into(%{adapter_config: adapter_config})
+      |> create_microsoft_entra_provider()
+
+    {provider, bypass}
+  end
+
   def create_openid_connect_provider(attrs \\ %{}) do
     attrs =
       %{
@@ -124,6 +146,33 @@ defmodule Domain.Fixtures.Auth do
     attrs =
       %{
         adapter: :google_workspace,
+        provisioner: :custom
+      }
+      |> Map.merge(Enum.into(attrs, %{}))
+      |> provider_attrs()
+
+    {account, attrs} =
+      pop_assoc_fixture(attrs, :account, fn assoc_attrs ->
+        Fixtures.Accounts.create_account(assoc_attrs)
+      end)
+
+    {:ok, provider} = Auth.create_provider(account, attrs)
+
+    update!(provider,
+      disabled_at: nil,
+      adapter_state: %{
+        "access_token" => "OIDC_ACCESS_TOKEN",
+        "refresh_token" => "OIDC_REFRESH_TOKEN",
+        "expires_at" => DateTime.utc_now() |> DateTime.add(1, :day),
+        "claims" => "openid email profile offline_access"
+      }
+    )
+  end
+
+  def create_microsoft_entra_provider(attrs \\ %{}) do
+    attrs =
+      %{
+        adapter: :microsoft_entra,
         provisioner: :custom
       }
       |> Map.merge(Enum.into(attrs, %{}))
