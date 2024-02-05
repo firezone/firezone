@@ -149,7 +149,7 @@ impl Allocation {
                     "Request failed, re-authenticating"
                 );
 
-                self.authenticate_and_queue(original_request, now);
+                self.authenticate_and_queue(original_request);
 
                 return true;
             }
@@ -237,7 +237,7 @@ impl Allocation {
                 );
 
                 while let Some(buffered) = self.buffered_channel_bindings.pop_front() {
-                    self.authenticate_and_queue(buffered, now);
+                    self.authenticate_and_queue(buffered);
                 }
             }
             REFRESH => {
@@ -312,7 +312,7 @@ impl Allocation {
         if !self.has_allocation() && !self.allocate_in_flight() {
             tracing::debug!(server = %self.server, "Request new allocation");
 
-            self.authenticate_and_queue(make_allocate_request(), now);
+            self.authenticate_and_queue(make_allocate_request());
         }
 
         while let Some(timed_out_request) =
@@ -329,7 +329,7 @@ impl Allocation {
 
             tracing::debug!(id = ?request.transaction_id(), method = %request.method(), "Request timed out, re-sending");
 
-            self.authenticate_and_queue(request, now);
+            self.authenticate_and_queue(request);
         }
 
         if let Some((received_at, lifetime)) = self.allocation_lifetime {
@@ -337,7 +337,7 @@ impl Allocation {
 
             if now > received_at + refresh_after {
                 tracing::debug!("Allocation is at 50% of its lifetime, refreshing");
-                self.authenticate_and_queue(make_refresh_request(), now);
+                self.authenticate_and_queue(make_refresh_request());
             }
         }
 
@@ -348,7 +348,7 @@ impl Allocation {
             .collect::<Vec<_>>(); // Need to allocate here to satisfy borrow-checker. Number of channel refresh messages should be small so this shouldn't be a big impact.
 
         for message in refresh_messages {
-            self.authenticate_and_queue(message, now);
+            self.authenticate_and_queue(message);
         }
 
         // TODO: Clean up unused channels
@@ -367,6 +367,8 @@ impl Allocation {
     // }
 
     pub fn bind_channel(&mut self, peer: SocketAddr, now: Instant) {
+        self.update_now(now);
+
         if self.channel_bindings.channel_to_peer(peer, now).is_some() {
             tracing::debug!(relay = %self.server, %peer, "Already got a channel");
             return;
@@ -386,7 +388,7 @@ impl Allocation {
             return;
         }
 
-        self.authenticate_and_queue(msg, now);
+        self.authenticate_and_queue(msg);
     }
 
     pub fn encode_to_slice(
@@ -467,7 +469,7 @@ impl Allocation {
         message
     }
 
-    fn authenticate_and_queue(&mut self, message: Message<Attribute>, now: Instant) {
+    fn authenticate_and_queue(&mut self, message: Message<Attribute>) {
         let Some(backoff) = self.backoff.next_backoff() else {
             tracing::warn!(
                 "Unable to queue {} because we've exceeded our backoffs",
@@ -480,7 +482,7 @@ impl Allocation {
         let id = authenticated_message.transaction_id();
 
         self.sent_requests
-            .insert(id, (authenticated_message.clone(), now, backoff));
+            .insert(id, (authenticated_message.clone(), self.last_now, backoff));
         self.buffered_transmits.push_back(Transmit {
             src: None,
             dst: self.server,
