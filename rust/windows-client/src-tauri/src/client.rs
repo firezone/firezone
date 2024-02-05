@@ -14,6 +14,7 @@ mod logging;
 mod network_changes;
 mod resolvers;
 mod settings;
+mod updates;
 mod wintun_install;
 
 /// Output of `git describe` at compile time
@@ -128,6 +129,7 @@ fn run_gui(cli: Cli) -> Result<()> {
 fn show_error_dialog(error: &gui::Error) -> Result<()> {
     let error_msg = match error {
         gui::Error::WebViewNotInstalled => "Firezone cannot start because WebView2 is not installed. Follow the instructions at <https://www.firezone.dev/kb/user-guides/windows-client>.".to_string(),
+        gui::Error::DeepLink(deep_link::Error::CantListen) => "Firezone is already running. If it's not responding, force-stop it.".to_string(),
         error => error.to_string(),
     };
 
@@ -145,6 +147,9 @@ fn show_error_dialog(error: &gui::Error) -> Result<()> {
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 struct Cli {
+    /// If true, always show the update notification at startup, even if our version is newer than Github's
+    #[arg(long, hide = true)]
+    always_show_update_notification: bool,
     #[command(subcommand)]
     command: Option<Cmd>,
     /// If true, purposely crash the program to test the crash handler
