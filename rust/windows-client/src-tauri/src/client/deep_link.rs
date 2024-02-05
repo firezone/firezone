@@ -172,7 +172,6 @@ impl Server {
 
         tracing::debug!("Server read");
         let s = String::from_utf8(bytes).map_err(Error::LinkNotUtf8)?;
-        tracing::info!("{}", s);
         let url = url::Url::parse(&s)?;
 
         Ok(url)
