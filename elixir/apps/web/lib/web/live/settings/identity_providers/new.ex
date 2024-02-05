@@ -64,7 +64,7 @@ defmodule Web.Settings.IdentityProviders.New do
       adapter={@adapter}
       account={@account}
       name="OpenID Connect"
-      description="Authenticate users with a universal OpenID Connect adapter and synchronize users with just-in-time (JIT) provisioning."
+      description="Authenticate users with a universal OpenID Connect adapter and manager users and groups manually."
     />
     """
   end
@@ -92,6 +92,7 @@ defmodule Web.Settings.IdentityProviders.New do
           class={~w[ w-4 h-4 border-neutral-300 ]}
           required
         />
+        <.provider_icon adapter={@adapter} class="w-8 h-8 ml-4" />
         <label for={"idp-option-#{@adapter}"} class="block ml-2 text-lg text-neutral-900">
           <%= @name %>
         </label>

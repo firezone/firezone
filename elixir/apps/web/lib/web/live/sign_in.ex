@@ -211,10 +211,11 @@ defmodule Web.SignIn do
     ~H"""
     <.button
       navigate={~p"/#{@account}/sign_in/providers/#{@provider}/redirect?#{@params}"}
-      class="w-full"
+      class="w-full space-x-1"
       style="info"
     >
-      <%= provider_icon(@provider) %> Sign in with&nbsp;<strong><%= @provider.name %></strong>
+      <.provider_icon adapter={@provider.adapter} class="w-5 h-5 mr-2" /> Sign in with
+      <strong><%= @provider.name %></strong>
     </.button>
     """
   end
@@ -222,24 +223,4 @@ defmodule Web.SignIn do
   def adapter_enabled?(providers_by_adapter, adapter) do
     Map.get(providers_by_adapter, adapter, []) != []
   end
-
-  defp provider_icon(%{adapter: :google_workspace} = assigns) do
-    ~H"""
-    <img src={~p"/images/google-logo.svg"} alt="Google Workspace Logo" class="w-5 h-5 mr-2" />
-    """
-  end
-
-  defp provider_icon(%{adapter: :openid_connect} = assigns) do
-    ~H"""
-    <img src={~p"/images/openid-logo.svg"} alt="OpenID Connect Logo" class="w-5 h-5 mr-2" />
-    """
-  end
-
-  defp provider_icon(%{adapter: :microsoft_entra} = assigns) do
-    ~H"""
-    <img src={~p"/images/entra-logo.svg"} alt="Microsoft Entra Logo" class="w-5 h-5 mr-2" />
-    """
-  end
-
-  defp provider_icon(_provider), do: nil
 end
