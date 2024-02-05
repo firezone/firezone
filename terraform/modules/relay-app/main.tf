@@ -142,7 +142,7 @@ resource "google_compute_subnetwork" "subnetwork" {
   network = google_compute_network.network.self_link
 
   stack_type               = "IPV4_IPV6"
-  ip_cidr_range            = "10.${129 + index(keys(var.instances), each.key)}.0.0/24"
+  ip_cidr_range            = each.value.cidr_range
   ipv6_access_type         = "EXTERNAL"
   private_ip_google_access = true
 }

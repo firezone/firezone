@@ -9,9 +9,10 @@ variable "project_id" {
 
 variable "instances" {
   type = map(object({
-    type     = string
-    replicas = number
-    zones    = list(string)
+    cidr_range = string
+    type       = string
+    replicas   = number
+    zones      = list(string)
   }))
 
   description = "List deployment locations for the application."
