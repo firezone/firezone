@@ -47,6 +47,10 @@ config :domain, Domain.Auth.Adapters.GoogleWorkspace.APIClient,
   endpoint: "https://admin.googleapis.com",
   finch_transport_opts: []
 
+config :domain, Domain.Auth.Adapters.MicrosoftEntra.APIClient,
+  endpoint: "https://graph.microsoft.com",
+  finch_transport_opts: []
+
 config :domain, platform_adapter: nil
 
 config :domain, Domain.GoogleCloudPlatform,

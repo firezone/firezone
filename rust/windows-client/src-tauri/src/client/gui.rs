@@ -57,6 +57,8 @@ pub(crate) enum Error {
     ClickableNotification(String),
     #[error("Deep-link module error: {0}")]
     DeepLink(#[from] deep_link::Error),
+    #[error("Fake error for testing")]
+    Fake,
     #[error("Can't show log filter error dialog: {0}")]
     LogFilterErrorDialog(native_dialog::Error),
     #[error("Logging module error: {0}")]
@@ -100,8 +102,8 @@ pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
         };
 
     // Start logging
-    // TODO: After <https://github.com/firezone/firezone/pull/3430> lands, try using an
-    // Arc to keep the file logger alive even if Tauri bails out
+    // TODO: Try using an Arc to keep the file logger alive even if Tauri bails out
+    // That may fix <https://github.com/firezone/firezone/issues/3567>
     let logging_handles = client::logging::setup(&advanced_settings.log_filter)?;
     tracing::info!("started log");
     tracing::info!("GIT_VERSION = {}", crate::client::GIT_VERSION);
@@ -136,17 +138,15 @@ pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
         });
     }
 
-    if cli.test_update_notification {
-        // TODO: Clicking doesn't work if the notification times out and hides first.
-        // See docs for `show_clickable_notification`.
-
-        show_clickable_notification(
-            "Firezone update",
-            "Click here to open the release page.",
-            ctlr_tx.clone(),
-            Req::NotificationClicked,
-        )?;
-    }
+    // Check for updates
+    let ctlr_tx_clone = ctlr_tx.clone();
+    let always_show_update_notification = cli.always_show_update_notification;
+    tokio::spawn(async move {
+        if let Err(error) = check_for_updates(ctlr_tx_clone, always_show_update_notification).await
+        {
+            tracing::error!(?error, "Error in check_for_updates");
+        }
+    });
 
     if let Some(client::Cmd::SmokeTest) = &cli.command {
         let ctlr_tx = ctlr_tx.clone();
@@ -264,6 +264,10 @@ pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
         }
     };
 
+    if cli.error_on_purpose {
+        return Err(Error::Fake);
+    }
+
     app.run(|_app_handle, event| {
         if let tauri::RunEvent::ExitRequested { api, .. } = event {
             // Don't exit if we close our main window
@@ -323,6 +327,33 @@ async fn smoke_test(ctlr_tx: CtlrTx) -> Result<()> {
     Ok::<_, anyhow::Error>(())
 }
 
+async fn check_for_updates(ctlr_tx: CtlrTx, always_show_update_notification: bool) -> Result<()> {
+    let release = client::updates::check()
+        .await
+        .context("Error in client::updates::check")?;
+
+    let our_version = client::updates::current_version()?;
+    let github_version = &release.tag_name;
+
+    if always_show_update_notification || (our_version < release.tag_name) {
+        tracing::info!(?our_version, ?github_version, "Github has a new release");
+        // We don't necessarily need to route through the Controller here, but if we
+        // want a persistent "Click here to download the new MSI" button, this would allow that.
+        ctlr_tx
+            .send(ControllerRequest::UpdateAvailable(release))
+            .await
+            .context("Error while sending UpdateAvailable to Controller")?;
+        return Ok(());
+    }
+
+    tracing::info!(
+        ?our_version,
+        ?github_version,
+        "Our release is newer than, or the same as Github's latest"
+    );
+    Ok(())
+}
+
 /// Worker task to accept deep links from a named pipe forever
 ///
 /// * `server` An initial named pipe server to consume before making new servers. This lets us also use the named pipe to enforce single-instance
@@ -356,10 +387,11 @@ pub(crate) enum ControllerRequest {
         stem: PathBuf,
     },
     GetAdvancedSettings(oneshot::Sender<AdvancedSettings>),
-    NotificationClicked,
     SchemeRequest(url::Url),
     SystemTrayMenu(TrayMenuEvent),
     TunnelReady,
+    UpdateAvailable(client::updates::Release),
+    UpdateNotificationClicked(client::updates::Release),
 }
 
 #[derive(Clone)]
@@ -493,8 +525,13 @@ impl Controller {
             resources: Default::default(),
         };
 
+        let api_url = self.advanced_settings.api_url.clone();
+        tracing::info!(
+            api_url = api_url.to_string(),
+            "Calling connlib Session::connect"
+        );
         let connlib = connlib_client_shared::Session::connect(
-            self.advanced_settings.api_url.clone(),
+            api_url,
             token,
             self.device_id.clone(),
             None, // `get_host_name` over in connlib gets the system's name automatically
@@ -635,7 +672,7 @@ async fn run_controller(
     .context("couldn't create Controller")?;
 
     let mut have_internet = network_changes::check_internet()?;
-    tracing::debug!(?have_internet);
+    tracing::info!(?have_internet);
 
     let mut com_worker = network_changes::Worker::new()?;
 
@@ -649,7 +686,7 @@ async fn run_controller(
                 if new_have_internet != have_internet {
                     have_internet = new_have_internet;
                     // TODO: Stop / start / restart connlib as needed here
-                    tracing::debug!(?have_internet);
+                    tracing::info!(?have_internet);
                 }
             },
             req = rx.recv() => {
@@ -675,14 +712,6 @@ async fn run_controller(
                     Req::ExportLogs{path, stem} => logging::export_logs_to(path, stem).await?,
                     Req::GetAdvancedSettings(tx) => {
                         tx.send(controller.advanced_settings.clone()).ok();
-                    }
-                    Req::NotificationClicked => {
-                        tracing::info!("NotificationClicked in run_controller!");
-                        tauri::api::shell::open(
-                            &app.shell_scope(),
-                            "https://example.com/notification_clicked",
-                            None,
-                        )?;
                     }
                     Req::SchemeRequest(url) => if let Err(e) = controller.handle_deep_link(&url).await {
                         tracing::error!("couldn't handle deep link: {e:#?}");
@@ -712,7 +741,28 @@ async fn run_controller(
                         controller.refresh_system_tray_menu()?;
 
                         show_notification("Firezone connected", "You are now signed in and able to access resources.")?;
-                    },
+                    }
+                    Req::UpdateAvailable(release) => {
+                        let title = format!("Firezone {} available for download", release.tag_name);
+
+                        // We don't need to route through the controller here either, we could
+                        // use the `open` crate directly instead of Tauri's wrapper
+                        // `tauri::api::shell::open`
+                        show_clickable_notification(
+                            &title,
+                            "Click here to download the new version.",
+                            controller.ctlr_tx.clone(),
+                            Req::UpdateNotificationClicked(release),
+                        )?;
+                    }
+                    Req::UpdateNotificationClicked(release) => {
+                        tracing::info!("UpdateNotificationClicked in run_controller!");
+                        tauri::api::shell::open(
+                            &app.shell_scope(),
+                            release.browser_download_url,
+                            None,
+                        )?;
+                    }
                 }
             }
         }

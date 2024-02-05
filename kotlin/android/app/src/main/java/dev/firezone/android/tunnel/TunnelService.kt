@@ -178,6 +178,7 @@ class TunnelService : VpnService() {
             } else if (config.token != null) {
                 onTunnelStateUpdate(Tunnel.State.Connecting)
                 updateStatusNotification("Status: Connecting...")
+                System.loadLibrary("connlib")
 
                 sessionPtr =
                     TunnelSession.connect(
