@@ -40,7 +40,7 @@ defmodule Web.Resources.Index do
       </:title>
       <:help>
         Resources define the subnets, hosts, and applications for which you want to manage access. You can manage resources per site
-        in the <.link navigate={~p"/#{@account}/sites"} class={link_Style()}>sites</.link> section.
+        in the <.link navigate={~p"/#{@account}/sites"} class={link_style()}>sites</.link> section.
       </:help>
       <:action>
         <.add_button
