@@ -861,7 +861,7 @@ impl BufferedChannelBindings {
 mod tests {
     use super::*;
     use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
-    use stun_codec::rfc5389::errors::BadRequest;
+    use stun_codec::{rfc5389::errors::BadRequest, Message};
 
     const PEER1: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 10000);
 
@@ -1068,6 +1068,25 @@ mod tests {
             Allocation::for_test(Instant::now()).with_allocate_response(&[RELAY_ADDR_IP4]);
         allocation.bind_channel(PEER2_IP4, Instant::now());
 
+        let channel_bind_msg = allocation.next_message().unwrap();
+        allocation.handle_test_input(
+            &encode(channel_bind_success(&channel_bind_msg)),
+            Instant::now(),
+        );
+
+        let payload = allocation
+            .encode_to_vec(PEER2_IP4, b"foobar", Instant::now())
+            .unwrap();
+
+        assert_eq!(&payload[4..], b"foobar");
+    }
+
+    #[test]
+    fn does_relay_to_with_bound_channel() {
+        let mut allocation =
+            Allocation::for_test(Instant::now()).with_allocate_response(&[RELAY_ADDR_IP4]);
+        allocation.bind_channel(PEER2_IP4, Instant::now());
+
         let message = allocation.encode_to_vec(PEER2_IP4, b"foobar", Instant::now());
 
         assert!(message.is_none())
@@ -1082,7 +1101,7 @@ mod tests {
         let channel_bind_msg = allocation.next_message().unwrap();
 
         allocation.handle_test_input(
-            &encode(channel_bind_bad_request(channel_bind_msg.transaction_id())),
+            &encode(channel_bind_bad_request(&channel_bind_msg)),
             Instant::now(),
         );
 
@@ -1104,7 +1123,7 @@ mod tests {
 
         let channel_bind_msg = allocation.next_message().unwrap();
         allocation.handle_test_input(
-            &encode(channel_bind_success(channel_bind_msg.transaction_id())),
+            &encode(channel_bind_success(&channel_bind_msg)),
             Instant::now(),
         );
 
@@ -1215,7 +1234,7 @@ mod tests {
     }
 
     fn allocate_response(request: &Message<Attribute>, relay_addrs: &[SocketAddr]) -> Vec<u8> {
-        let mut message = stun_codec::Message::new(
+        let mut message = Message::new(
             MessageClass::SuccessResponse,
             ALLOCATE,
             request.transaction_id(),
@@ -1232,15 +1251,23 @@ mod tests {
         encode(message)
     }
 
-    fn channel_bind_bad_request(id: TransactionId) -> stun_codec::Message<Attribute> {
-        let mut message = stun_codec::Message::new(MessageClass::ErrorResponse, CHANNEL_BIND, id);
+    fn channel_bind_bad_request(request: &Message<Attribute>) -> Message<Attribute> {
+        let mut message = Message::new(
+            MessageClass::ErrorResponse,
+            CHANNEL_BIND,
+            request.transaction_id(),
+        );
         message.add_attribute(ErrorCode::from(BadRequest));
 
         message
     }
 
-    fn channel_bind_success(id: TransactionId) -> stun_codec::Message<Attribute> {
-        stun_codec::Message::new(MessageClass::SuccessResponse, CHANNEL_BIND, id)
+    fn channel_bind_success(request: &Message<Attribute>) -> Message<Attribute> {
+        Message::new(
+            MessageClass::SuccessResponse,
+            CHANNEL_BIND,
+            request.transaction_id(),
+        )
     }
 
     impl Allocation {
@@ -1261,7 +1288,7 @@ mod tests {
             self
         }
 
-        fn next_message(&mut self) -> Option<stun_codec::Message<Attribute>> {
+        fn next_message(&mut self) -> Option<Message<Attribute>> {
             let transmit = self.poll_transmit()?;
 
             Some(decode(&transmit.payload).unwrap().unwrap())
