@@ -428,7 +428,7 @@ impl<T> Eventloop<T> {
             )? {
                 return Poll::Ready(Ok(Event::Incoming {
                     conn,
-                    packet: packet.to_owned(),
+                    packet: packet.to_immutable().to_owned(),
                 }));
             }
 

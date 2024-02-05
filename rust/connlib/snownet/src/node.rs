@@ -2,8 +2,8 @@ use boringtun::noise::{Tunn, TunnResult};
 use boringtun::x25519::PublicKey;
 use boringtun::{noise::rate_limiter::RateLimiter, x25519::StaticSecret};
 use core::{fmt, slice};
-use pnet_packet::ipv4::Ipv4Packet;
-use pnet_packet::ipv6::Ipv6Packet;
+use pnet_packet::ipv4::MutableIpv4Packet;
+use pnet_packet::ipv6::MutableIpv6Packet;
 use pnet_packet::Packet;
 use rand::random;
 use secrecy::{ExposeSecret, Secret};
@@ -23,7 +23,7 @@ use crate::allocation::Allocation;
 use crate::index::IndexLfsr;
 use crate::info::ConnectionInfo;
 use crate::stun_binding::StunBinding;
-use crate::IpPacket;
+use crate::{IpPacket, MutableIpPacket};
 use boringtun::noise::errors::WireGuardError;
 use std::borrow::Cow;
 use stun_codec::rfc5389::attributes::{Realm, Username};
@@ -189,7 +189,7 @@ where
         packet: &[u8],
         now: Instant,
         buffer: &'s mut [u8],
-    ) -> Result<Option<(TId, IpPacket<'s>)>, Error> {
+    ) -> Result<Option<(TId, MutableIpPacket<'s>)>, Error> {
         self.add_local_as_host_candidate(local)?;
 
         // First, check if a `StunBinding` wants the packet
@@ -268,7 +268,8 @@ where
                 TunnResult::WriteToTunnelV4(packet, ip) => {
                     conn.set_remote_from_wg_activity(local, from, remote_socket);
 
-                    let ipv4_packet = Ipv4Packet::new(packet).expect("boringtun verifies validity");
+                    let ipv4_packet =
+                        MutableIpv4Packet::new(packet).expect("boringtun verifies validity");
                     debug_assert_eq!(ipv4_packet.get_source(), ip);
 
                     Ok(Some((*id, ipv4_packet.into())))
@@ -276,7 +277,8 @@ where
                 TunnResult::WriteToTunnelV6(packet, ip) => {
                     conn.set_remote_from_wg_activity(local, from, remote_socket);
 
-                    let ipv6_packet = Ipv6Packet::new(packet).expect("boringtun verifies validity");
+                    let ipv6_packet =
+                        MutableIpv6Packet::new(packet).expect("boringtun verifies validity");
                     debug_assert_eq!(ipv6_packet.get_source(), ip);
 
                     Ok(Some((*id, ipv6_packet.into())))
