@@ -68,30 +68,6 @@ jobs:
       - uses: ./.github/actions/setup-rust
       - run: cargo test --all-features ${{ matrix.packages }}
 
-  windows-smoke-test-fail:
-    name: windows-smoke-test-fail
-    runs-on: windows-2019
-    defaults:
-      run:
-        working-directory: ./rust/windows-client
-    env:
-      RUST_LOG: firezone_windows_client=info
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/setup-node
-      - uses: ./.github/actions/setup-rust
-        with:
-          targets: x86_64-pc-windows-msvc
-      - name: Fail smoke test
-        run: |
-          # Copied from `build.bat`, but I don't want to run `tauri build`
-          pnpm install
-          cp "node_modules/flowbite/dist/flowbite.min.js" "src/"
-          pnpm tsc
-          pnpm tailwindcss -i src/input.css -o src/output.css
-
-          cargo run -p firezone-windows-client -- smoke-test
-
   # Runs the Windows client smoke test, built in debug mode. We can't run it in release
   # mode because of a known issue: <https://github.com/firezone/firezone/blob/456e044f882c2bb314e19cc44c0d19c5ad817b7c/rust/windows-client/src-tauri/src/client.rs#L162-L164>
   windows-smoke-test:
@@ -108,32 +84,30 @@ jobs:
       - uses: ./.github/actions/setup-rust
         with:
           targets: x86_64-pc-windows-msvc
-      - name: Run smoke test
+      - name: Download WebView2 bootstrapper
         run: |
-          # Run smoke test
-
-          # Install WebView2
-
           # This is the "Evergreen" bootstrapper from Microsoft
           # <https://developer.microsoft.com/en-us/microsoft-edge/webview2/?form=MA13LH#download>
-          # This makes the test non-deterministic, but controlling the version is difficult.
+          # Unfortunately, this makes the test non-deterministic.
+          # Controlling the version would be difficult.
           Invoke-WebRequest -Uri https://go.microsoft.com/fwlink/p/?LinkId=2124703 -OutFile WebView2Installer.exe
-
+      - name: Install WebView2
+        run: |
           # This downloads about 200 MB and takes about 5 minutes on my VM
-          # So we could fault in WebView2 without the MSI if we needed.
+          # So we could fault in WebView2 from the client exe without the MSI if we needed.
+          # Currently the MSI does this and it's a little janky.
           .\WebView2Installer.exe /install
-
+      - name: Build frontend
+        run: |
           # Copied from `build.bat`, but I don't want to run `tauri build`
           pnpm install
           cp "node_modules/flowbite/dist/flowbite.min.js" "src/"
           pnpm tsc
           pnpm tailwindcss -i src/input.css -o src/output.css
-
-          cargo run -p firezone-windows-client -- smoke-test
-          if (-not $?) {
-            echo "Smoke test failed."
-            exit 1
-          }
+      - name: Build client
+        run: cargo build -p firezone-windows-client
+      - name: Run smoke test
+        run: cargo run -p firezone-windows-client -- smoke-test
 
   # This should be identical to `build-push-windows-release-artifacts` in `cd.yml` except for the Github permissions, needs tag, and uploading step
   build-tauri:
