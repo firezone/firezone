@@ -335,24 +335,24 @@ mod test {
                 resource_id: "f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3".parse().unwrap(),
                 relays: vec![
                     Relay::Stun(Stun {
-                        addr: "189.172.73.111:3478".parse().unwrap(),
+                        uri: "189.172.73.111:3478".parse().unwrap(),
                     }),
                     Relay::Turn(Turn {
                         expires_at: NaiveDateTime::from_timestamp_opt(1686629954, 0)
                             .unwrap()
                             .and_utc(),
-                        addr: "189.172.73.111:3478".parse().unwrap(),
+                        uri: "189.172.73.111:3478".parse().unwrap(),
                         username: "1686629954:C7I74wXYFdFugMYM".to_string(),
                         password: "OXXRDJ7lJN1cm+4+2BWgL87CxDrvpVrn5j3fnJHye98".to_string(),
                     }),
                     Relay::Stun(Stun {
-                        addr: "[::1]:3478".parse().unwrap(),
+                        uri: "[::1]:3478".parse().unwrap(),
                     }),
                     Relay::Turn(Turn {
                         expires_at: NaiveDateTime::from_timestamp_opt(1686629954, 0)
                             .unwrap()
                             .and_utc(),
-                        addr: "[::1]:3478".parse().unwrap(),
+                        uri: "[::1]:3478".parse().unwrap(),
                         username: "1686629954:dpHxHfNfOhxPLfMG".to_string(),
                         password: "8Wtb+3YGxO6ia23JUeSEfZ2yFD6RhGLkbgZwqjebyKY".to_string(),
                     }),
@@ -373,24 +373,24 @@ mod test {
                         "relays": [
                             {
                                 "type":"stun",
-                                "addr": "189.172.73.111:3478"
+                                "uri": "stun:189.172.73.111:3478"
                             },
                             {
                                 "expires_at": 1686629954,
                                 "password": "OXXRDJ7lJN1cm+4+2BWgL87CxDrvpVrn5j3fnJHye98",
                                 "type": "turn",
-                                "addr": "189.172.73.111:3478",
+                                "uri": "189.172.73.111:3478",
                                 "username":"1686629954:C7I74wXYFdFugMYM"
                             },
                             {
                                 "type": "stun",
-                                "addr": "[::1]:3478"
+                                "uri": "[::1]:3478"
                             },
                             {
                                 "expires_at": 1686629954,
                                 "password": "8Wtb+3YGxO6ia23JUeSEfZ2yFD6RhGLkbgZwqjebyKY",
                                 "type": "turn",
-                                "addr": "[::1]:3478",
+                                "uri": "turn:[::1]:3478",
                                 "username": "1686629954:dpHxHfNfOhxPLfMG"
                             }]
                     },

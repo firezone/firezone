@@ -188,13 +188,13 @@ mod test {
                 "relays": [
                     {
                         "type": "stun",
-                        "addr": "172.28.0.101:3478"
+                        "uri": "172.28.0.101:3478"
                     },
                     {
                         "type": "turn",
                         "username": "1719367575:ZQHcVGkdnfgGmcP1",
                         "password": "ZWYiBeFHOJyYq0mcwAXjRpcuXIJJpzWlOXVdxwttrWg",
-                        "addr": "172.28.0.101:3478",
+                        "uri": "172.28.0.101:3478",
                         "expires_at": 1719367575
                     }
                 ]
