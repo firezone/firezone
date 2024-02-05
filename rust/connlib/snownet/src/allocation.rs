@@ -54,7 +54,7 @@ pub struct Allocation {
     sent_requests: HashMap<TransactionId, (Message<Attribute>, Instant, Duration)>,
 
     channel_bindings: ChannelBindings,
-    buffered_channel_bindings: VecDeque<Message<Attribute>>,
+    buffered_channel_bindings: BufferedChannelBindings,
 
     last_now: Instant,
 
@@ -805,10 +805,28 @@ impl Channel {
     }
 }
 
+#[derive(Debug, Default)]
+struct BufferedChannelBindings {
+    inner: VecDeque<Message<Attribute>>,
+}
+
+impl BufferedChannelBindings {
+    fn push_back(&mut self, msg: Message<Attribute>) {
+        self.inner.push_back(msg);
+    }
+
+    fn pop_front(&mut self) -> Option<Message<Attribute>> {
+        self.inner.pop_front()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::net::{IpAddr, Ipv4Addr};
+    use std::{
+        iter,
+        net::{IpAddr, Ipv4Addr},
+    };
     use stun_codec::rfc5389::errors::BadRequest;
 
     const PEER1: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 10000);
@@ -1115,6 +1133,28 @@ mod tests {
         }
 
         assert!(expected_backoffs.is_empty())
+    }
+
+    #[test]
+    fn discards_old_channel_bindings_once_we_outgrow_buffer() {
+        let mut buffered_channel_bindings = BufferedChannelBindings::default();
+
+        for c in 0..11 {
+            buffered_channel_bindings.push_back(make_channel_bind_request(
+                PEER1,
+                ChannelBindings::FIRST_CHANNEL + c,
+            ));
+        }
+
+        let msg = buffered_channel_bindings.pop_front().unwrap();
+        assert!(
+            buffered_channel_bindings.pop_front().is_none(),
+            "no more messages"
+        );
+        assert_eq!(
+            msg.get_attribute::<ChannelNumber>().unwrap().value(),
+            ChannelBindings::FIRST_CHANNEL + 11
+        );
     }
 
     fn ch(peer: SocketAddr, now: Instant) -> Channel {
