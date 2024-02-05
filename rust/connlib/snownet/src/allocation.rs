@@ -244,6 +244,16 @@ impl Allocation {
                 );
 
                 while let Some(buffered) = self.buffered_channel_bindings.pop_front() {
+                    let Some(peer) = buffered.get_attribute::<XorPeerAddress>() else {
+                        debug_assert!(false, "channel binding must have peer address");
+                        continue;
+                    };
+
+                    if !self.can_relay_to(peer.address()) {
+                        tracing::debug!("Allocation cannot relay to this IP version");
+                        continue;
+                    }
+
                     self.authenticate_and_queue(buffered);
                 }
             }
@@ -371,25 +381,31 @@ impl Allocation {
         earliest_timeout
     }
 
+    #[tracing::instrument(level = "debug", skip(self, now), fields(relay = %self.server))]
     pub fn bind_channel(&mut self, peer: SocketAddr, now: Instant) {
         self.update_now(now);
 
         if self.channel_bindings.channel_to_peer(peer, now).is_some() {
-            tracing::debug!(relay = %self.server, %peer, "Already got a channel");
+            tracing::debug!("Already got a channel");
             return;
         }
 
         let Some(channel) = self.channel_bindings.new_channel_to_peer(peer, now) else {
-            tracing::warn!(relay = %self.server, "All channels are exhausted");
+            tracing::warn!("All channels are exhausted");
             return;
         };
 
         let msg = make_channel_bind_request(peer, channel);
 
         if !self.has_allocation() {
-            tracing::debug!(relay = %self.server, %peer, "No allocation yet, buffering channel binding");
+            tracing::debug!("No allocation yet, buffering channel binding");
 
             self.buffered_channel_bindings.push_back(msg);
+            return;
+        }
+
+        if !self.can_relay_to(peer) {
+            tracing::debug!("Allocation cannot relay to this IP version");
             return;
         }
 
@@ -432,6 +448,13 @@ impl Allocation {
 
     fn has_allocation(&self) -> bool {
         self.ip4_allocation.is_some() || self.ip6_allocation.is_some()
+    }
+
+    fn can_relay_to(&self, socket: SocketAddr) -> bool {
+        match socket {
+            SocketAddr::V4(_) => self.ip4_allocation.is_some(),
+            SocketAddr::V6(_) => self.ip6_allocation.is_some(),
+        }
     }
 
     fn channel_binding_in_flight(&self, channel: u16) -> bool {
