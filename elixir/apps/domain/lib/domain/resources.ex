@@ -64,7 +64,7 @@ defmodule Domain.Resources do
       {preload, _opts} = Keyword.pop(opts, :preload, [])
 
       {:ok, resources} =
-        Resource.Query.all()
+        Resource.Query.not_deleted()
         |> Resource.Query.by_account_id(subject.account.id)
         |> Resource.Query.by_authorized_actor_id(subject.actor.id)
         |> Resource.Query.with_at_least_one_gateway_group()

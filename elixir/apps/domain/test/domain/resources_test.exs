@@ -336,7 +336,14 @@ defmodule Domain.ResourcesTest do
       actor: actor,
       subject: subject
     } do
-      resource = Fixtures.Resources.create_resource(account: account)
+      gateway_group = Fixtures.Gateways.create_group(account: account)
+
+      resource =
+        Fixtures.Resources.create_resource(
+          account: account,
+          connections: [%{gateway_group_id: gateway_group.id}]
+        )
+
       actor_group = Fixtures.Actors.create_group(account: account)
       Fixtures.Actors.create_membership(account: account, actor: actor, group: actor_group)
 
@@ -346,7 +353,7 @@ defmodule Domain.ResourcesTest do
         resource: resource
       )
 
-      {:ok, _resource} = delete_resource(resource, subject)
+      resource |> Ecto.Changeset.change(deleted_at: DateTime.utc_now()) |> Repo.update!()
 
       assert list_authorized_resources(subject) == {:ok, []}
     end
