@@ -1134,4 +1134,32 @@ defmodule Web.CoreComponents do
     </div>
     """
   end
+
+  @doc """
+  Renders a logo appropriate for the given provider.
+
+  <.provider_icon adapter={:google_workspace} class="w-5 h-5 mr-2" />
+  """
+  attr :adapter, :atom, required: false
+  attr :rest, :global
+
+  def provider_icon(%{adapter: :google_workspace} = assigns) do
+    ~H"""
+    <img src={~p"/images/google-logo.svg"} alt="Google Workspace Logo" {@rest} />
+    """
+  end
+
+  def provider_icon(%{adapter: :openid_connect} = assigns) do
+    ~H"""
+    <img src={~p"/images/openid-logo.svg"} alt="OpenID Connect Logo" {@rest} />
+    """
+  end
+
+  def provider_icon(%{adapter: :microsoft_entra} = assigns) do
+    ~H"""
+    <img src={~p"/images/entra-logo.svg"} alt="Microsoft Entra Logo" {@rest} />
+    """
+  end
+
+  def provider_icon(assigns), do: ~H""
 end

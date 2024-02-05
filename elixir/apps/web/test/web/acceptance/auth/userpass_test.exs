@@ -247,7 +247,7 @@ defmodule Web.Acceptance.Auth.UserPassTest do
   defp password_login_flow(session, account, username, password, redirect_params \\ %{}) do
     session
     |> visit(~p"/#{account}?#{redirect_params}")
-    |> assert_el(Query.text("Sign into #{account.name}"))
+    |> assert_el(Query.text("Sign in to #{account.name}"))
     |> assert_el(Query.text("Sign in with username and password"))
     |> fill_form(%{
       "userpass[provider_identifier]" => username,

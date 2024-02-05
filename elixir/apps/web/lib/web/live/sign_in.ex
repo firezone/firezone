@@ -51,7 +51,7 @@ defmodule Web.SignIn do
           <div class="p-6 space-y-4 lg:space-y-6 sm:p-8">
             <h1 class="text-xl text-center leading-tight tracking-tight text-neutral-900 sm:text-2xl">
               <span>
-                Sign into <%= @account.name %>
+                Sign in to <%= @account.name %>
               </span>
             </h1>
 
@@ -200,27 +200,23 @@ defmodule Web.SignIn do
         placeholder="Enter your email"
         required
       />
-
-      <:actions>
-        <.button phx-disable-with="Sending..." class="w-full">
-          Request sign in token
-        </.button>
-      </:actions>
+      <.button phx-disable-with="Sending..." class="w-full" style="info">
+        Request sign in token
+      </.button>
     </.simple_form>
     """
   end
 
   def openid_connect_button(assigns) do
     ~H"""
-    <a href={~p"/#{@account}/sign_in/providers/#{@provider}/redirect?#{@params}"} class={~w[
-          w-full inline-flex items-center justify-center py-2.5 px-5
-          bg-white rounded
-          text-sm text-neutral-900
-          border border-neutral-200
-          hover:bg-neutral-100 hover:text-neutral-900
-    ]}>
-      Sign in with <%= @provider.name %>
-    </a>
+    <.button
+      navigate={~p"/#{@account}/sign_in/providers/#{@provider}/redirect?#{@params}"}
+      class="w-full space-x-1"
+      style="info"
+    >
+      <.provider_icon adapter={@provider.adapter} class="w-5 h-5 mr-2" /> Sign in with
+      <strong><%= @provider.name %></strong>
+    </.button>
     """
   end
 
