@@ -68,7 +68,30 @@ jobs:
       - uses: ./.github/actions/setup-rust
       - run: cargo test --all-features ${{ matrix.packages }}
 
-  # TODO: Naming
+  windows-smoke-test-fail:
+    name: windows-smoke-test-fail
+    runs-on: windows-2019
+    defaults:
+      run:
+        working-directory: ./rust/windows-client
+    env:
+      RUST_LOG: firezone_windows_client=info
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node
+      - uses: ./.github/actions/setup-rust
+        with:
+          targets: x86_64-pc-windows-msvc
+      - name: Fail smoke test
+        run: |
+          # Copied from `build.bat`, but I don't want to run `tauri build`
+          pnpm install
+          cp "node_modules/flowbite/dist/flowbite.min.js" "src/"
+          pnpm tsc
+          pnpm tailwindcss -i src/input.css -o src/output.css
+
+          cargo run -p firezone-windows-client -- smoke-test
+
   # Runs the Windows client smoke test, built in debug mode. We can't run it in release
   # mode because of a known issue: <https://github.com/firezone/firezone/blob/456e044f882c2bb314e19cc44c0d19c5ad817b7c/rust/windows-client/src-tauri/src/client.rs#L162-L164>
   windows-smoke-test:
@@ -77,8 +100,6 @@ jobs:
     defaults:
       run:
         working-directory: ./rust/windows-client
-    strategy:
-      fail-fast: false
     env:
       RUST_LOG: firezone_windows_client=info
     steps:
