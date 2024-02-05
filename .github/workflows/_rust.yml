@@ -94,7 +94,8 @@ jobs:
         # So we could fault in WebView2 from the client exe without the MSI if we needed.
         # Currently the MSI does this and it's a little janky.
       - name: Install WebView2
-        run: ./WebView2Installer.exe /install
+        run: |
+          .\WebView2Installer.exe /install
       - name: Build frontend
         run: |
           # Copied from `build.bat`, but I don't want to run `tauri build`
