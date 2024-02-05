@@ -96,6 +96,18 @@ pub(crate) fn run() -> Result<()> {
             rt.block_on(deep_link::open(&deep_link.url))?;
             Ok(())
         }
+        Some(Cmd::SmokeTest) => {
+            let result = gui::run(&cli);
+            if let Err(error) = &result {
+                // In smoke-test mode, don't show the dialog, since it might be running
+                // unattended in CI and the dialog would hang forever
+
+                // Because of <https://github.com/firezone/firezone/issues/3567>,
+                // errors returned from `gui::run` may not be logged correctly
+                tracing::error!(?error, "gui::run error");
+            }
+            Ok(result?)
+        }
     }
 }
 
@@ -103,28 +115,30 @@ pub(crate) fn run() -> Result<()> {
 ///
 /// Automatically logs or shows error dialogs for important user-actionable errors
 fn run_gui(cli: Cli) -> Result<()> {
-    let result = gui::run(cli);
+    let result = gui::run(&cli);
 
     // Make sure errors get logged, at least to stderr
     if let Err(error) = &result {
         tracing::error!(?error, "gui::run error");
-        let error_msg = match &error {
-            gui::Error::WebViewNotInstalled => "Firezone cannot start because WebView2 is not installed. Follow the instructions at <https://www.firezone.dev/kb/user-guides/windows-client>.".to_string(),
-            // TODO: Wording
-            gui::Error::DeepLink(deep_link::Error::CantListen) => "Firezone is already running. If it's not responding, force-stop it.".to_string(),
-            error => format!("{}", error),
-        };
-
-        native_dialog::MessageDialog::new()
-            .set_title("Firezone Error")
-            .set_text(&error_msg)
-            .set_type(native_dialog::MessageType::Error)
-            .show_alert()?;
+        show_error_dialog(error)?;
     }
 
-    // `Error` refers to Tauri types, so it shouldn't be used in main.
-    // Make it into an anyhow.
     Ok(result?)
+}
+
+fn show_error_dialog(error: &gui::Error) -> Result<()> {
+    let error_msg = match error {
+        gui::Error::WebViewNotInstalled => "Firezone cannot start because WebView2 is not installed. Follow the instructions at <https://www.firezone.dev/kb/user-guides/windows-client>.".to_string(),
+        gui::Error::DeepLink(deep_link::Error::CantListen) => "Firezone is already running. If it's not responding, force-stop it.".to_string(),
+        error => error.to_string(),
+    };
+
+    native_dialog::MessageDialog::new()
+        .set_title("Firezone Error")
+        .set_text(&error_msg)
+        .set_type(native_dialog::MessageType::Error)
+        .show_alert()?;
+    Ok(())
 }
 
 /// The debug / test flags like `crash_on_purpose` and `test_update_notification`
@@ -141,6 +155,9 @@ struct Cli {
     /// If true, purposely crash the program to test the crash handler
     #[arg(long, hide = true)]
     crash_on_purpose: bool,
+    /// If true, `gui::run` returns an error on purpose to test the error logging and dialog
+    #[arg(long, hide = true)]
+    error_on_purpose: bool,
     /// If true, slow down I/O operations to test how the GUI handles slow I/O
     #[arg(long, hide = true)]
     inject_faults: bool,
@@ -160,6 +177,14 @@ pub enum Cmd {
     },
     Elevated,
     OpenDeepLink(DeepLink),
+    /// SmokeTest gets its own subcommand because elevating would start a new process and trash the exit code
+    ///
+    /// We could solve that by keeping the un-elevated process around, blocking on the elevated
+    /// child process, but then we'd always have an extra process hanging around.
+    ///
+    /// It's also invalid for release builds, because we build the exe as a GUI app,
+    /// so Windows won't give us a valid exit code, it'll just detach from the terminal instantly.
+    SmokeTest,
 }
 
 #[derive(Args)]
