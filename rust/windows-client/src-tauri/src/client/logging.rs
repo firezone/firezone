@@ -45,6 +45,7 @@ pub(crate) fn setup(log_filter: &str) -> Result<Handles, Error> {
         .with(layer.with_filter(filter))
         .with(fmt::layer().with_filter(EnvFilter::from_str(log_filter)?));
     set_global_default(subscriber)?;
+    output_vt100::init();
     LogTracer::init()?;
     Ok(Handles {
         logger,
