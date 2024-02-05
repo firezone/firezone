@@ -26,7 +26,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace do
   @impl true
   def capabilities do
     [
-      provisioners: [:just_in_time, :custom],
+      provisioners: [:custom],
       default_provisioner: :custom,
       parent_adapter: :openid_connect
     ]

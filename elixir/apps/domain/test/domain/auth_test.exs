@@ -591,7 +591,7 @@ defmodule Domain.AuthTest do
         Fixtures.Auth.provider_attrs(
           adapter: :openid_connect,
           adapter_config: provider.adapter_config,
-          provisioner: :just_in_time
+          provisioner: :manual
         )
 
       assert {:error, changeset} = create_provider(account, attrs)
@@ -766,7 +766,7 @@ defmodule Domain.AuthTest do
     } do
       attrs =
         Fixtures.Auth.provider_attrs(
-          provisioner: :just_in_time,
+          provisioner: :manual,
           adapter: :foobar,
           adapter_config: %{
             client_id: "foo"
