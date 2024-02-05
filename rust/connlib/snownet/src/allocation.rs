@@ -71,7 +71,7 @@ impl Allocation {
         realm: Realm,
         now: Instant,
     ) -> Self {
-        Self {
+        let mut allocation = Self {
             server,
             last_srflx_candidate: Default::default(),
             ip4_allocation: Default::default(),
@@ -88,7 +88,13 @@ impl Allocation {
             last_now: now,
             buffered_channel_bindings: Default::default(),
             backoff: backoff::new(now, REQUEST_TIMEOUT),
-        }
+        };
+
+        tracing::debug!(%server, "Requesting new allocation");
+
+        allocation.authenticate_and_queue(make_allocate_request());
+
+        allocation
     }
 
     pub fn current_candidates(&self) -> impl Iterator<Item = Candidate> {
@@ -309,12 +315,6 @@ impl Allocation {
     pub fn handle_timeout(&mut self, now: Instant) {
         self.update_now(now);
 
-        if !self.has_allocation() && !self.allocate_in_flight() {
-            tracing::debug!(server = %self.server, "Request new allocation");
-
-            self.authenticate_and_queue(make_allocate_request());
-        }
-
         while let Some(timed_out_request) =
             self.sent_requests
                 .iter()
@@ -419,12 +419,6 @@ impl Allocation {
 
     fn has_allocation(&self) -> bool {
         self.ip4_allocation.is_some() || self.ip6_allocation.is_some()
-    }
-
-    fn allocate_in_flight(&self) -> bool {
-        self.sent_requests
-            .values()
-            .any(|(r, _, _)| r.method() == ALLOCATE)
     }
 
     fn channel_binding_in_flight(&self, channel: u16) -> bool {
@@ -986,13 +980,16 @@ mod tests {
             Instant::now(),
         );
 
+        let allocate = next_stun_message(&mut allocation).unwrap();
+        assert_eq!(allocate.method(), ALLOCATE);
+
         allocation.bind_channel(PEER1, Instant::now());
         assert!(
             next_stun_message(&mut allocation).is_none(),
             "no messages to be sent if we don't have an allocation"
         );
 
-        make_allocation(&mut allocation, PEER1);
+        make_allocation(&mut allocation, allocate.transaction_id(), PEER1);
 
         let message = next_stun_message(&mut allocation).unwrap();
         assert_eq!(message.method(), CHANNEL_BIND);
@@ -1008,7 +1005,8 @@ mod tests {
             Instant::now(),
         );
 
-        make_allocation(&mut allocation, PEER1);
+        let allocate = next_stun_message(&mut allocation).unwrap();
+        make_allocation(&mut allocation, allocate.transaction_id(), PEER1);
         allocation.bind_channel(PEER2, Instant::now());
 
         let message = allocation.encode_to_vec(PEER2, b"foobar", Instant::now());
@@ -1026,7 +1024,8 @@ mod tests {
             Instant::now(),
         );
 
-        make_allocation(&mut allocation, PEER1);
+        let allocate = next_stun_message(&mut allocation).unwrap();
+        make_allocation(&mut allocation, allocate.transaction_id(), PEER1);
         allocation.bind_channel(PEER2, Instant::now());
 
         let channel_bind_msg = next_stun_message(&mut allocation).unwrap();
@@ -1058,7 +1057,8 @@ mod tests {
             Instant::now(),
         );
 
-        make_allocation(&mut allocation, PEER1);
+        let allocate = next_stun_message(&mut allocation).unwrap();
+        make_allocation(&mut allocation, allocate.transaction_id(), PEER1);
         allocation.bind_channel(PEER2, Instant::now());
 
         let channel_bind_msg = next_stun_message(&mut allocation).unwrap();
@@ -1090,13 +1090,11 @@ mod tests {
         Some(decode(&transmit.payload).unwrap().unwrap())
     }
 
-    fn make_allocation(allocation: &mut Allocation, local: SocketAddr) {
-        allocation.handle_timeout(Instant::now());
-        let message = next_stun_message(allocation).unwrap();
+    fn make_allocation(allocation: &mut Allocation, allocate_id: TransactionId, local: SocketAddr) {
         allocation.handle_input(
             RELAY,
             local,
-            &encode(allocate_response(message.transaction_id())),
+            &encode(allocate_response(allocate_id)),
             Instant::now(),
         );
     }
