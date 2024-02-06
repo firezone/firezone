@@ -94,7 +94,7 @@ defmodule Web.Acceptance.Auth.UserPassTest do
     |> assert_error_flash("Invalid username or password.")
   end
 
-  feature "redirects to actors index after successful log in as account_admin_user", %{
+  feature "redirects to actors index after successful sign in as account_admin_user", %{
     session: session
   } do
     account = Fixtures.Accounts.create_account()
@@ -116,7 +116,7 @@ defmodule Web.Acceptance.Auth.UserPassTest do
     |> Auth.assert_authenticated(identity)
   end
 
-  feature "redirects back to sign_in page after successful log in as account_user", %{
+  feature "redirects back to sign_in page after successful sign in as account_user", %{
     session: session
   } do
     account = Fixtures.Accounts.create_account()
@@ -138,7 +138,7 @@ defmodule Web.Acceptance.Auth.UserPassTest do
     |> assert_error_flash("Please use a client application to access Firezone.")
   end
 
-  feature "redirects to client deep link after successful log in as account_admin_user", %{
+  feature "redirects to client deep link after successful sign in as account_admin_user", %{
     session: session
   } do
     nonce = Ecto.UUID.generate()
@@ -193,7 +193,7 @@ defmodule Web.Acceptance.Auth.UserPassTest do
     assert {:ok, _subject} = Domain.Auth.authenticate(token, context)
   end
 
-  feature "allows to log in using email link to the client even with active browser session", %{
+  feature "allows to sign in using email link to the client even with active browser session", %{
     session: session
   } do
     nonce = Ecto.UUID.generate()

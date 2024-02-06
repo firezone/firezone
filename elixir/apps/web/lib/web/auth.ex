@@ -465,7 +465,7 @@ defmodule Web.Auth do
       redirect_params = maybe_store_return_to(conn)
 
       conn
-      |> Phoenix.Controller.put_flash(:error, "You must log in to access this page.")
+      |> Phoenix.Controller.put_flash(:error, "You must sign in to access this page.")
       |> Phoenix.Controller.redirect(
         to: ~p"/#{conn.path_params["account_id_or_slug"]}?#{redirect_params}"
       )
@@ -558,7 +558,7 @@ defmodule Web.Auth do
     else
       socket =
         socket
-        |> Phoenix.LiveView.put_flash(:error, "You must log in to access this page.")
+        |> Phoenix.LiveView.put_flash(:error, "You must sign in to access this page.")
         |> Phoenix.LiveView.redirect(to: ~p"/#{params["account_id_or_slug"]}")
 
       {:halt, socket}

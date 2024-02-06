@@ -17,7 +17,7 @@ defmodule Web.Acceptance.SignIn.EmailTest do
     |> assert_el(Query.text("Please check your email"))
   end
 
-  feature "allows to log in using email link to the portal", %{session: session} do
+  feature "allows to sign in using email link to the portal", %{session: session} do
     Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
 
     account = Fixtures.Accounts.create_account()
@@ -37,7 +37,7 @@ defmodule Web.Acceptance.SignIn.EmailTest do
     |> Auth.assert_authenticated(identity)
   end
 
-  feature "allows to log in using email link to the client", %{session: session} do
+  feature "allows to sign in using email link to the client", %{session: session} do
     Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
     nonce = Ecto.UUID.generate()
     state = Ecto.UUID.generate()
@@ -83,7 +83,7 @@ defmodule Web.Acceptance.SignIn.EmailTest do
     assert {:ok, _subject} = Domain.Auth.authenticate(token, context)
   end
 
-  feature "allows to log in using email link to the client even with active browser session", %{
+  feature "allows to sign in using email link to the client even with active browser session", %{
     session: session
   } do
     Auth.mock_client_sign_in_callback()

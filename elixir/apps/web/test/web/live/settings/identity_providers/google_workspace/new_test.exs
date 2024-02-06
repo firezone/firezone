@@ -26,7 +26,7 @@ defmodule Web.Live.Settings.IdentityProviders.GoogleWorkspace.NewTest do
               {:redirect,
                %{
                  to: ~p"/#{account}?#{%{redirect_to: path}}",
-                 flash: %{"error" => "You must log in to access this page."}
+                 flash: %{"error" => "You must sign in to access this page."}
                }}}
   end
 
