@@ -4,7 +4,8 @@ locals {
     "bmanifold@firezone.dev",
     "gabriel@firezone.dev",
     "jamil@firezone.dev",
-    "thomas@firezone.dev"
+    "thomas@firezone.dev",
+    "trish@firezone.dev"
   ]
 
   demo_access = []
