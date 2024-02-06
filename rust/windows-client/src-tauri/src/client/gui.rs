@@ -223,15 +223,19 @@ pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
 
             let app_handle = app.handle();
             let _ctlr_task = tokio::spawn(async move {
-                let result = run_controller(
-                    app_handle.clone(),
-                    ctlr_tx,
-                    ctlr_rx,
-                    logging_handles,
-                    advanced_settings,
-                    notify_controller,
-                )
-                .await;
+                let app_handle_2 = app_handle.clone();
+                // Spawn two nested Tasks so the outer can catch panics from the inner
+                let task = tokio::spawn(async move {
+                    run_controller(
+                        app_handle_2,
+                        ctlr_tx,
+                        ctlr_rx,
+                        logging_handles,
+                        advanced_settings,
+                        notify_controller,
+                    )
+                    .await
+                });
 
                 // See <https://github.com/tauri-apps/tauri/issues/8631>
                 // This should be the ONLY place we call `app.exit` or `app_handle.exit`,
@@ -240,12 +244,19 @@ pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
                 // This seems to be a platform limitation that Tauri is unable to hide
                 // from us. It was the source of much consternation at time of writing.
 
-                if let Err(e) = result {
-                    tracing::error!("run_controller returned an error: {e:#?}");
-                    app_handle.exit(1);
-                } else {
-                    tracing::debug!("GUI controller task exited cleanly");
-                    app_handle.exit(0);
+                match task.await {
+                    Err(error) => {
+                        tracing::error!(?error, "run_controller panicked");
+                        app_handle.exit(1);
+                    }
+                    Ok(Err(error)) => {
+                        tracing::error!(?error, "run_controller returned an error");
+                        app_handle.exit(1);
+                    }
+                    Ok(Ok(_)) => {
+                        tracing::info!("GUI controller task exited cleanly. Exiting process");
+                        app_handle.exit(0);
+                    }
                 }
             });
 
@@ -568,10 +579,7 @@ impl Controller {
                 )?;
             }
             Req::ExportLogs { path, stem } => logging::export_logs_to(path, stem).await?,
-            // SAFETY: Crashing is unsafe
-            Req::Fail(Failure::Crash) => unsafe { sadness_generator::raise_segfault() },
-            Req::Fail(Failure::Error) => bail!("Test error"),
-            Req::Fail(Failure::Panic) => panic!("Test panic"),
+            Req::Fail(_) => bail!("Impossible error: `Fail` should be handled before this"),
             Req::GetAdvancedSettings(tx) => {
                 tx.send(self.advanced_settings.clone()).ok();
             }
@@ -770,10 +778,19 @@ async fn run_controller(
                 }
             },
             req = rx.recv() => {
+                let Some(req) = req else {
+                    break;
+                };
                 match req {
-                    None => break,
-                    Some(Req::SystemTrayMenu(TrayMenuEvent::Quit)) => break,
-                    Some(req) => if let Err(error) = controller.handle_request(req).await {
+                    // SAFETY: Crashing is unsafe
+                    Req::Fail(Failure::Crash) => {
+                        tracing::error!("Crashing on purpose");
+                        unsafe { sadness_generator::raise_segfault() }
+                    },
+                    Req::Fail(Failure::Error) => bail!("Test error"),
+                    Req::Fail(Failure::Panic) => panic!("Test panic"),
+                    Req::SystemTrayMenu(TrayMenuEvent::Quit) => break,
+                    req => if let Err(error) = controller.handle_request(req).await {
                         tracing::error!(?error, "Failed to handle a ControllerRequest");
                     }
                 }
