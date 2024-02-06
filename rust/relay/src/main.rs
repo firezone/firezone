@@ -343,14 +343,14 @@ where
 
         if public_address.as_v4().is_some() {
             tokio::spawn(main_udp_socket_task(
-                AddressFamily::V4,
+                UdpSocket::bind(AddressFamily::V4, 3478).context("Failed to bind IPv4 socket")?,
                 inbound_data_sender.clone(),
                 outbound_ip4_data_receiver,
             ));
         }
         if public_address.as_v6().is_some() {
             tokio::spawn(main_udp_socket_task(
-                AddressFamily::V6,
+                UdpSocket::bind(AddressFamily::V6, 3478).context("Failed to bind IPv6 socket")?,
                 inbound_data_sender,
                 outbound_ip6_data_receiver,
             ));
@@ -563,12 +563,10 @@ fn fmt_human_throughput(mut throughput: f64) -> String {
 }
 
 async fn main_udp_socket_task(
-    family: AddressFamily,
+    mut socket: UdpSocket,
     mut inbound_data_sender: mpsc::Sender<(Vec<u8>, ClientSocket)>,
     mut outbound_data_receiver: mpsc::Receiver<(Vec<u8>, ClientSocket)>,
 ) -> Result<Infallible> {
-    let mut socket = UdpSocket::bind(family, 3478)?;
-
     loop {
         tokio::select! {
             result = socket.recv() => {
