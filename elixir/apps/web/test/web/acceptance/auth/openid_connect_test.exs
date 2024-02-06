@@ -139,7 +139,7 @@ defmodule Web.Acceptance.Auth.OpenIDConnectTest do
     assert {:ok, _subject} = Domain.Auth.authenticate(token, context)
   end
 
-  feature "allows to log in to the browser and then to the client", %{
+  feature "allows to sign in to the browser and then to the client", %{
     session: session
   } do
     nonce = Ecto.UUID.generate()
@@ -201,7 +201,7 @@ defmodule Web.Acceptance.Auth.OpenIDConnectTest do
     assert account_id == account.id
   end
 
-  feature "allows to log in to the client and then to the browser", %{
+  feature "allows to sign in to the client and then to the browser", %{
     session: session
   } do
     nonce = Ecto.UUID.generate()
