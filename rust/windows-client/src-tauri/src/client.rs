@@ -152,18 +152,49 @@ struct Cli {
     always_show_update_notification: bool,
     #[command(subcommand)]
     command: Option<Cmd>,
-    /// If true, purposely crash the program to test the crash handler
+
+    /// Crash the `Controller` task to test error handling
     #[arg(long, hide = true)]
-    crash_on_purpose: bool,
-    /// If true, `gui::run` returns an error on purpose to test the error logging and dialog
+    crash: bool,
+    /// Error out of the `Controller` task to test error handling
     #[arg(long, hide = true)]
-    error_on_purpose: bool,
+    error: bool,
+    /// Panic the `Controller` task to test error handling
+    #[arg(long, hide = true)]
+    panic: bool,
+
     /// If true, slow down I/O operations to test how the GUI handles slow I/O
     #[arg(long, hide = true)]
     inject_faults: bool,
     /// If true, show a fake update notification that opens the Firezone release page when clicked
     #[arg(long, hide = true)]
     test_update_notification: bool,
+}
+
+impl Cli {
+    fn fail_on_purpose(&self) -> Option<Failure> {
+        if self.crash {
+            Some(Failure::Crash)
+        } else if self.error {
+            Some(Failure::Error)
+        } else if self.panic {
+            Some(Failure::Panic)
+        } else {
+            None
+        }
+    }
+}
+
+// The failure flags are all mutually exclusive
+// TODO: I can't figure out from the `clap` docs how to do this:
+// `app --fail-on-purpose crash-in-wintun-worker`
+// So the failure should be an `Option<Enum>` but _not_ a subcommand.
+// You can only have one subcommand per container, I've tried
+#[derive(Debug)]
+enum Failure {
+    Crash,
+    Error,
+    Panic,
 }
 
 #[derive(clap::Subcommand)]
