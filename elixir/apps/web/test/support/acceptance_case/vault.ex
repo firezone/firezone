@@ -98,7 +98,7 @@ defmodule Web.AcceptanceCase.Vault do
 
   def userpass_flow(session, oidc_login, oidc_password) do
     session
-    |> find(Query.text("Method"))
+    |> find(Query.css("[data-test-select=\"auth-method\"]"))
     |> fill_in(Query.css("[data-test-select=\"auth-method\"]"), with: "userpass")
     |> fill_in(Query.fillable_field("username"), with: oidc_login)
     |> fill_in(Query.fillable_field("password"), with: oidc_password)
