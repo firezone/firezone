@@ -476,6 +476,8 @@ where
                 continue;
             };
 
+            // TODO: add info
+            tracing::trace!(target: "wire", action = "write", to = "device");
             if let Err(e) = dev.write(p) {
                 tracing::error!("Error writing packet to device: {e:?}");
             }
