@@ -153,10 +153,13 @@ struct Cli {
     #[command(subcommand)]
     command: Option<Cmd>,
 
+    /// Crash the `Controller` task to test error handling
     #[arg(long, hide = true)]
     crash: bool,
+    /// Error out of the `Controller` task to test error handling
     #[arg(long, hide = true)]
     error: bool,
+    /// Panic the `Controller` task to test error handling
     #[arg(long, hide = true)]
     panic: bool,
 
