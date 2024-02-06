@@ -13,8 +13,8 @@ import Image from "next/image";
 Firezone integrates with Microsoft Entra using a custom connector that supports
 both authenticating users and syncing users and groups to Firezone. Use this
 guide if you're looking to setup SSO with Microsoft Entra for your Firezone
-Enterprise account and want automatic user / group syncing between Google
-Workspace and Firezone.
+Enterprise account and want automatic user / group syncing between Microsoft
+Entra and Firezone.
 
 <Alert
   color="info"
@@ -29,8 +29,8 @@ Workspace and Firezone.
 
 ## Overview
 
-The Firezone Microsoft Entra connector integrates with Google's identity APIs to
-support user authentication and user / group sync.
+The Firezone Microsoft Entra connector integrates with Microsoft's identity APIs
+to support user authentication and user / group sync.
 
 Users, groups, and organizational units are synced every few minutes to ensure
 that your Firezone account remains up-to-date with the latest identity data from
@@ -45,7 +45,7 @@ read-only scopes needed to enable sync.
 
 To setup the Microsoft Entra connector, follow the steps below.
 
-### Step 1: Create a new project in Google Cloud
+### Step 1: Create a new project in Azure
 
 <Alert
   color="info"
@@ -57,7 +57,7 @@ To setup the Microsoft Entra connector, follow the steps below.
 />
 
 [Go here to create a new project](https://console.cloud.google.com/projectcreate)
-in your Google Cloud account and fill in the following fields:
+in your Azure account and fill in the following fields:
 
 - **Project name**: `Firezone Connector`
 - **Organization**: Select the appropriate organization that contains the users
