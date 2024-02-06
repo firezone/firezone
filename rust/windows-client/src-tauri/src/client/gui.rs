@@ -6,6 +6,7 @@
 use crate::client::{
     self, about, deep_link, logging, network_changes,
     settings::{self, AdvancedSettings},
+    Failure,
 };
 use anyhow::{anyhow, bail, Context, Result};
 use arc_swap::ArcSwap;
@@ -58,8 +59,6 @@ pub(crate) enum Error {
     ClickableNotification(String),
     #[error("Deep-link module error: {0}")]
     DeepLink(#[from] deep_link::Error),
-    #[error("Fake error for testing")]
-    Fake,
     #[error("Can't show log filter error dialog: {0}")]
     LogFilterErrorDialog(native_dialog::Error),
     #[error("Logging module error: {0}")]
@@ -127,18 +126,6 @@ pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
     let (ctlr_tx, ctlr_rx) = mpsc::channel(5);
     let notify_controller = Arc::new(Notify::new());
 
-    if cli.crash_on_purpose {
-        tokio::spawn(async move {
-            let delay = 10;
-            tracing::info!("Will crash on purpose in {delay} seconds to test crash handling.");
-            tokio::time::sleep(Duration::from_secs(delay)).await;
-            tracing::info!("Crashing on purpose because of `--crash-on-purpose` flag");
-
-            // SAFETY: Crashing is unsafe
-            unsafe { sadness_generator::raise_segfault() }
-        });
-    }
-
     // Check for updates
     let ctlr_tx_clone = ctlr_tx.clone();
     let always_show_update_notification = cli.always_show_update_notification;
@@ -175,6 +162,20 @@ pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
     };
 
     let tray = SystemTray::new().with_menu(system_tray_menu::signed_out());
+
+    if let Some(failure) = cli.fail_on_purpose() {
+        let ctlr_tx = ctlr_tx.clone();
+        tokio::spawn(async move {
+            let delay = 5;
+            tracing::info!(
+                "Will crash / error / panic on purpose in {delay} seconds to test error handling."
+            );
+            tokio::time::sleep(Duration::from_secs(delay)).await;
+            tracing::info!("Crashing / erroring / panicking on purpose");
+            ctlr_tx.send(ControllerRequest::Fail(failure)).await?;
+            Ok::<_, anyhow::Error>(())
+        });
+    }
 
     let app = tauri::Builder::default()
         .manage(managed)
@@ -222,15 +223,19 @@ pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
 
             let app_handle = app.handle();
             let _ctlr_task = tokio::spawn(async move {
-                let result = run_controller(
-                    app_handle.clone(),
-                    ctlr_tx,
-                    ctlr_rx,
-                    logging_handles,
-                    advanced_settings,
-                    notify_controller,
-                )
-                .await;
+                let app_handle_2 = app_handle.clone();
+                // Spawn two nested Tasks so the outer can catch panics from the inner
+                let task = tokio::spawn(async move {
+                    run_controller(
+                        app_handle_2,
+                        ctlr_tx,
+                        ctlr_rx,
+                        logging_handles,
+                        advanced_settings,
+                        notify_controller,
+                    )
+                    .await
+                });
 
                 // See <https://github.com/tauri-apps/tauri/issues/8631>
                 // This should be the ONLY place we call `app.exit` or `app_handle.exit`,
@@ -239,12 +244,19 @@ pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
                 // This seems to be a platform limitation that Tauri is unable to hide
                 // from us. It was the source of much consternation at time of writing.
 
-                if let Err(e) = result {
-                    tracing::error!("run_controller returned an error: {e:#?}");
-                    app_handle.exit(1);
-                } else {
-                    tracing::debug!("GUI controller task exited cleanly");
-                    app_handle.exit(0);
+                match task.await {
+                    Err(error) => {
+                        tracing::error!(?error, "run_controller panicked");
+                        app_handle.exit(1);
+                    }
+                    Ok(Err(error)) => {
+                        tracing::error!(?error, "run_controller returned an error");
+                        app_handle.exit(1);
+                    }
+                    Ok(Ok(_)) => {
+                        tracing::info!("GUI controller task exited cleanly. Exiting process");
+                        app_handle.exit(0);
+                    }
                 }
             });
 
@@ -264,10 +276,6 @@ pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
             }
         }
     };
-
-    if cli.error_on_purpose {
-        return Err(Error::Fake);
-    }
 
     app.run(|_app_handle, event| {
         if let tauri::RunEvent::ExitRequested { api, .. } = event {
@@ -387,6 +395,7 @@ pub(crate) enum ControllerRequest {
         path: PathBuf,
         stem: PathBuf,
     },
+    Fail(Failure),
     GetAdvancedSettings(oneshot::Sender<AdvancedSettings>),
     SchemeRequest(Secret<SecureUrl>),
     SystemTrayMenu(TrayMenuEvent),
@@ -437,7 +446,7 @@ impl connlib_client_shared::Callbacks for CallbackHandler {
     }
 
     fn on_update_resources(&self, resources: Vec<ResourceDescription>) -> Result<(), Self::Error> {
-        tracing::info!("on_update_resources");
+        tracing::debug!("on_update_resources");
         self.resources.store(resources.into());
         self.notify_controller.notify_one();
         Ok(())
@@ -570,6 +579,7 @@ impl Controller {
                 )?;
             }
             Req::ExportLogs { path, stem } => logging::export_logs_to(path, stem).await?,
+            Req::Fail(_) => bail!("Impossible error: `Fail` should be handled before this"),
             Req::GetAdvancedSettings(tx) => {
                 tx.send(self.advanced_settings.clone()).ok();
             }
@@ -768,10 +778,19 @@ async fn run_controller(
                 }
             },
             req = rx.recv() => {
+                let Some(req) = req else {
+                    break;
+                };
                 match req {
-                    None => break,
-                    Some(Req::SystemTrayMenu(TrayMenuEvent::Quit)) => break,
-                    Some(req) => if let Err(error) = controller.handle_request(req).await {
+                    // SAFETY: Crashing is unsafe
+                    Req::Fail(Failure::Crash) => {
+                        tracing::error!("Crashing on purpose");
+                        unsafe { sadness_generator::raise_segfault() }
+                    },
+                    Req::Fail(Failure::Error) => bail!("Test error"),
+                    Req::Fail(Failure::Panic) => panic!("Test panic"),
+                    Req::SystemTrayMenu(TrayMenuEvent::Quit) => break,
+                    req => if let Err(error) = controller.handle_request(req).await {
                         tracing::error!(?error, "Failed to handle a ControllerRequest");
                     }
                 }
