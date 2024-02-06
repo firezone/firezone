@@ -164,20 +164,15 @@ pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
     let tray = SystemTray::new().with_menu(system_tray_menu::signed_out());
 
     if let Some(failure) = cli.fail_on_purpose() {
-        let req = match &failure {
-            Failure::Crash => ControllerRequest::TestCrash,
-            Failure::Error => ControllerRequest::TestError,
-            Failure::Panic => ControllerRequest::TestPanic,
-        };
         let ctlr_tx = ctlr_tx.clone();
         tokio::spawn(async move {
             let delay = 5;
             tracing::info!(
-                "Will cause {failure:?} on purpose in {delay} seconds to test error handling."
+                "Will crash / error / panic on purpose in {delay} seconds to test error handling."
             );
             tokio::time::sleep(Duration::from_secs(delay)).await;
             tracing::info!("Crashing / erroring / panicking on purpose");
-            ctlr_tx.send(req).await?;
+            ctlr_tx.send(ControllerRequest::Fail(failure)).await?;
             Ok::<_, anyhow::Error>(())
         });
     }
@@ -389,12 +384,10 @@ pub(crate) enum ControllerRequest {
         path: PathBuf,
         stem: PathBuf,
     },
+    Fail(Failure),
     GetAdvancedSettings(oneshot::Sender<AdvancedSettings>),
     SchemeRequest(Secret<SecureUrl>),
     SystemTrayMenu(TrayMenuEvent),
-    TestCrash,
-    TestError,
-    TestPanic,
     TunnelReady,
     UpdateAvailable(client::updates::Release),
     UpdateNotificationClicked(client::updates::Release),
@@ -575,6 +568,10 @@ impl Controller {
                 )?;
             }
             Req::ExportLogs { path, stem } => logging::export_logs_to(path, stem).await?,
+            // SAFETY: Crashing is unsafe
+            Req::Fail(Failure::Crash) => unsafe { sadness_generator::raise_segfault() },
+            Req::Fail(Failure::Error) => bail!("Test error"),
+            Req::Fail(Failure::Panic) => panic!("Test panic"),
             Req::GetAdvancedSettings(tx) => {
                 tx.send(self.advanced_settings.clone()).ok();
             }
@@ -606,10 +603,6 @@ impl Controller {
             Req::SystemTrayMenu(TrayMenuEvent::Quit) => {
                 bail!("Impossible error: `Quit` should be handled before this")
             }
-            // SAFETY: Crashing is unsafe
-            Req::TestCrash => unsafe { sadness_generator::raise_segfault() },
-            Req::TestError => bail!("Test error"),
-            Req::TestPanic => panic!("Test panic"),
             Req::TunnelReady => {
                 self.tunnel_ready = true;
                 self.refresh_system_tray_menu()?;

@@ -152,15 +152,14 @@ struct Cli {
     always_show_update_notification: bool,
     #[command(subcommand)]
     command: Option<Cmd>,
-    /// If true, purposely crash the program to test the crash handler
+
     #[arg(long, hide = true)]
-    crash_on_purpose: bool,
-    /// If true, `gui::run` returns an error on purpose to test the error logging and dialog
+    crash: bool,
     #[arg(long, hide = true)]
-    error_on_purpose: bool,
-    /// If true, `gui::run` panicks in a Tokio task to test logging
+    error: bool,
     #[arg(long, hide = true)]
-    panic_on_purpose: bool,
+    panic: bool,
+
     /// If true, slow down I/O operations to test how the GUI handles slow I/O
     #[arg(long, hide = true)]
     inject_faults: bool,
@@ -171,11 +170,11 @@ struct Cli {
 
 impl Cli {
     fn fail_on_purpose(&self) -> Option<Failure> {
-        if self.crash_on_purpose {
+        if self.crash {
             Some(Failure::Crash)
-        } else if self.error_on_purpose {
+        } else if self.error {
             Some(Failure::Error)
-        } else if self.panic_on_purpose {
+        } else if self.panic {
             Some(Failure::Panic)
         } else {
             None
