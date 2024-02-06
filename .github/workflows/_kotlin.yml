@@ -73,7 +73,7 @@ jobs:
         with:
           name: Android app bundle
           path: |
-            ./kotlin/android/app/release/app-release.aab
+            ./kotlin/android/app/build/outputs/bundle/*
       - name: Upload release
         if: ${{ github.event_name == 'workflow_dispatch' || (github.ref == 'refs/heads/main' && contains(github.event.head_commit.modified, 'elixir/VERSION')) }}
         env:
