@@ -244,6 +244,16 @@ impl Allocation {
                 );
 
                 while let Some(buffered) = self.buffered_channel_bindings.pop_front() {
+                    let Some(peer) = buffered.get_attribute::<XorPeerAddress>() else {
+                        debug_assert!(false, "channel binding must have peer address");
+                        continue;
+                    };
+
+                    if !self.can_relay_to(peer.address()) {
+                        tracing::debug!("Allocation cannot relay to this IP version");
+                        continue;
+                    }
+
                     self.authenticate_and_queue(buffered);
                 }
             }
@@ -371,25 +381,31 @@ impl Allocation {
         earliest_timeout
     }
 
+    #[tracing::instrument(level = "debug", skip(self, now), fields(relay = %self.server))]
     pub fn bind_channel(&mut self, peer: SocketAddr, now: Instant) {
         self.update_now(now);
 
         if self.channel_bindings.channel_to_peer(peer, now).is_some() {
-            tracing::debug!(relay = %self.server, %peer, "Already got a channel");
+            tracing::debug!("Already got a channel");
             return;
         }
 
         let Some(channel) = self.channel_bindings.new_channel_to_peer(peer, now) else {
-            tracing::warn!(relay = %self.server, "All channels are exhausted");
+            tracing::warn!("All channels are exhausted");
             return;
         };
 
         let msg = make_channel_bind_request(peer, channel);
 
         if !self.has_allocation() {
-            tracing::debug!(relay = %self.server, %peer, "No allocation yet, buffering channel binding");
+            tracing::debug!("No allocation yet, buffering channel binding");
 
             self.buffered_channel_bindings.push_back(msg);
+            return;
+        }
+
+        if !self.can_relay_to(peer) {
+            tracing::debug!("Allocation cannot relay to this IP version");
             return;
         }
 
@@ -432,6 +448,13 @@ impl Allocation {
 
     fn has_allocation(&self) -> bool {
         self.ip4_allocation.is_some() || self.ip6_allocation.is_some()
+    }
+
+    fn can_relay_to(&self, socket: SocketAddr) -> bool {
+        match socket {
+            SocketAddr::V4(_) => self.ip4_allocation.is_some(),
+            SocketAddr::V6(_) => self.ip6_allocation.is_some(),
+        }
     }
 
     fn channel_binding_in_flight(&self, channel: u16) -> bool {
@@ -837,13 +860,18 @@ impl BufferedChannelBindings {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::net::{IpAddr, Ipv4Addr};
-    use stun_codec::rfc5389::errors::BadRequest;
+    use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+    use stun_codec::{rfc5389::errors::BadRequest, Message};
 
     const PEER1: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 10000);
-    const PEER2: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 20000);
+
+    const PEER2_IP4: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 20000);
+    const PEER2_IP6: SocketAddr = SocketAddr::new(IpAddr::V6(Ipv6Addr::LOCALHOST), 20000);
+
     const RELAY: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 3478);
-    const RELAY_ADDR: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 9999);
+    const RELAY_ADDR_IP4: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 9999);
+    const RELAY_ADDR_IP6: SocketAddr = SocketAddr::new(IpAddr::V6(Ipv6Addr::LOCALHOST), 9999);
+
     const MINUTE: Duration = Duration::from_secs(60);
 
     #[test]
@@ -1014,68 +1042,66 @@ mod tests {
 
     #[test]
     fn buffer_channel_bind_requests_until_we_have_allocation() {
-        let mut allocation = Allocation::new(
-            RELAY,
-            Username::new("foobar".to_owned()).unwrap(),
-            "baz".to_owned(),
-            Realm::new("firezone".to_owned()).unwrap(),
-            Instant::now(),
-        );
+        let mut allocation = Allocation::for_test(Instant::now());
 
-        let allocate = next_stun_message(&mut allocation).unwrap();
+        let allocate = allocation.next_message().unwrap();
         assert_eq!(allocate.method(), ALLOCATE);
 
         allocation.bind_channel(PEER1, Instant::now());
         assert!(
-            next_stun_message(&mut allocation).is_none(),
+            allocation.next_message().is_none(),
             "no messages to be sent if we don't have an allocation"
         );
 
-        make_allocation(&mut allocation, allocate.transaction_id(), PEER1);
+        allocation.handle_test_input(
+            &allocate_response(&allocate, &[RELAY_ADDR_IP4]),
+            Instant::now(),
+        );
 
-        let message = next_stun_message(&mut allocation).unwrap();
+        let message = allocation.next_message().unwrap();
         assert_eq!(message.method(), CHANNEL_BIND);
     }
 
     #[test]
     fn does_not_relay_to_with_unbound_channel() {
-        let mut allocation = Allocation::new(
-            RELAY,
-            Username::new("foobar".to_owned()).unwrap(),
-            "baz".to_owned(),
-            Realm::new("firezone".to_owned()).unwrap(),
+        let mut allocation =
+            Allocation::for_test(Instant::now()).with_allocate_response(&[RELAY_ADDR_IP4]);
+        allocation.bind_channel(PEER2_IP4, Instant::now());
+
+        let channel_bind_msg = allocation.next_message().unwrap();
+        allocation.handle_test_input(
+            &encode(channel_bind_success(&channel_bind_msg)),
             Instant::now(),
         );
 
-        let allocate = next_stun_message(&mut allocation).unwrap();
-        make_allocation(&mut allocation, allocate.transaction_id(), PEER1);
-        allocation.bind_channel(PEER2, Instant::now());
+        let payload = allocation
+            .encode_to_vec(PEER2_IP4, b"foobar", Instant::now())
+            .unwrap();
 
-        let message = allocation.encode_to_vec(PEER2, b"foobar", Instant::now());
+        assert_eq!(&payload[4..], b"foobar");
+    }
+
+    #[test]
+    fn does_relay_to_with_bound_channel() {
+        let mut allocation =
+            Allocation::for_test(Instant::now()).with_allocate_response(&[RELAY_ADDR_IP4]);
+        allocation.bind_channel(PEER2_IP4, Instant::now());
+
+        let message = allocation.encode_to_vec(PEER2_IP4, b"foobar", Instant::now());
 
         assert!(message.is_none())
     }
 
     #[test]
     fn failed_channel_binding_removes_state() {
-        let mut allocation = Allocation::new(
-            RELAY,
-            Username::new("foobar".to_owned()).unwrap(),
-            "baz".to_owned(),
-            Realm::new("firezone".to_owned()).unwrap(),
-            Instant::now(),
-        );
+        let mut allocation =
+            Allocation::for_test(Instant::now()).with_allocate_response(&[RELAY_ADDR_IP4]);
+        allocation.bind_channel(PEER2_IP4, Instant::now());
 
-        let allocate = next_stun_message(&mut allocation).unwrap();
-        make_allocation(&mut allocation, allocate.transaction_id(), PEER1);
-        allocation.bind_channel(PEER2, Instant::now());
+        let channel_bind_msg = allocation.next_message().unwrap();
 
-        let channel_bind_msg = next_stun_message(&mut allocation).unwrap();
-
-        allocation.handle_input(
-            RELAY,
-            PEER1,
-            &encode(channel_bind_bad_request(channel_bind_msg.transaction_id())),
+        allocation.handle_test_input(
+            &encode(channel_bind_bad_request(&channel_bind_msg)),
             Instant::now(),
         );
 
@@ -1084,35 +1110,25 @@ mod tests {
             .channel_bindings
             .inner
             .values()
-            .find(|c| c.peer == PEER2);
+            .find(|c| c.peer == PEER2_IP4);
 
         assert!(channel.is_none());
     }
 
     #[test]
     fn rebinding_existing_channel_send_no_message() {
-        let mut allocation = Allocation::new(
-            RELAY,
-            Username::new("foobar".to_owned()).unwrap(),
-            "baz".to_owned(),
-            Realm::new("firezone".to_owned()).unwrap(),
+        let mut allocation =
+            Allocation::for_test(Instant::now()).with_allocate_response(&[RELAY_ADDR_IP4]);
+        allocation.bind_channel(PEER2_IP4, Instant::now());
+
+        let channel_bind_msg = allocation.next_message().unwrap();
+        allocation.handle_test_input(
+            &encode(channel_bind_success(&channel_bind_msg)),
             Instant::now(),
         );
 
-        let allocate = next_stun_message(&mut allocation).unwrap();
-        make_allocation(&mut allocation, allocate.transaction_id(), PEER1);
-        allocation.bind_channel(PEER2, Instant::now());
-
-        let channel_bind_msg = next_stun_message(&mut allocation).unwrap();
-        allocation.handle_input(
-            RELAY,
-            PEER1,
-            &encode(channel_bind_success(channel_bind_msg.transaction_id())),
-            Instant::now(),
-        );
-
-        allocation.bind_channel(PEER2, Instant::now());
-        let next_msg = next_stun_message(&mut allocation);
+        allocation.bind_channel(PEER2_IP4, Instant::now());
+        let next_msg = allocation.next_message();
 
         assert!(next_msg.is_none())
     }
@@ -1120,13 +1136,7 @@ mod tests {
     #[test]
     fn retries_requests_using_backoff_and_gives_up_eventually() {
         let start = Instant::now();
-        let mut allocation = Allocation::new(
-            RELAY,
-            Username::new("foobar".to_owned()).unwrap(),
-            "baz".to_owned(),
-            Realm::new("firezone".to_owned()).unwrap(),
-            start,
-        );
+        let mut allocation = Allocation::for_test(start);
 
         let mut expected_backoffs = VecDeque::from(backoff::steps(start));
 
@@ -1168,6 +1178,52 @@ mod tests {
         );
     }
 
+    #[test]
+    fn given_no_ip6_allocation_does_not_attempt_to_bind_channel_to_ip6_address() {
+        let mut allocation =
+            Allocation::for_test(Instant::now()).with_allocate_response(&[RELAY_ADDR_IP4]);
+
+        allocation.bind_channel(PEER2_IP6, Instant::now());
+        let next_msg = allocation.next_message();
+
+        assert!(next_msg.is_none());
+    }
+
+    #[test]
+    fn given_no_ip4_allocation_does_not_attempt_to_bind_channel_to_ip4_address() {
+        let mut allocation =
+            Allocation::for_test(Instant::now()).with_allocate_response(&[RELAY_ADDR_IP6]);
+        allocation.bind_channel(PEER2_IP4, Instant::now());
+
+        let next_msg = allocation.next_message();
+        assert!(next_msg.is_none());
+    }
+
+    #[test]
+    fn given_only_ip4_allocation_when_binding_channel_to_ip6_does_not_emit_buffered_binding() {
+        let mut allocation = Allocation::for_test(Instant::now());
+
+        // Attempt to allocate
+        let allocate = allocation.next_message().unwrap();
+        assert_eq!(allocate.method(), ALLOCATE);
+
+        // No response yet, try to bind channel to an IPv6 peer.
+        allocation.bind_channel(PEER2_IP6, Instant::now());
+        assert!(
+            allocation.next_message().is_none(),
+            "no messages to be sent if we don't have an allocation"
+        );
+
+        // Allocation succeeds but only for IPv4
+        allocation.handle_test_input(
+            &allocate_response(&allocate, &[RELAY_ADDR_IP4]),
+            Instant::now(),
+        );
+
+        let next_msg = allocation.next_message();
+        assert!(next_msg.is_none(), "to not emit buffered channel binding");
+    }
+
     fn ch(peer: SocketAddr, now: Instant) -> Channel {
         Channel {
             peer,
@@ -1177,38 +1233,70 @@ mod tests {
         }
     }
 
-    fn next_stun_message(allocation: &mut Allocation) -> Option<stun_codec::Message<Attribute>> {
-        let transmit = allocation.poll_transmit()?;
-
-        Some(decode(&transmit.payload).unwrap().unwrap())
-    }
-
-    fn make_allocation(allocation: &mut Allocation, allocate_id: TransactionId, local: SocketAddr) {
-        allocation.handle_input(
-            RELAY,
-            local,
-            &encode(allocate_response(allocate_id)),
-            Instant::now(),
+    fn allocate_response(request: &Message<Attribute>, relay_addrs: &[SocketAddr]) -> Vec<u8> {
+        let mut message = Message::new(
+            MessageClass::SuccessResponse,
+            ALLOCATE,
+            request.transaction_id(),
         );
-    }
-
-    fn allocate_response(id: TransactionId) -> stun_codec::Message<Attribute> {
-        let mut message = stun_codec::Message::new(MessageClass::SuccessResponse, ALLOCATE, id);
         message.add_attribute(XorMappedAddress::new(PEER1));
-        message.add_attribute(XorRelayAddress::new(RELAY_ADDR));
+
+        assert!(!relay_addrs.is_empty());
+        for addr in relay_addrs {
+            message.add_attribute(XorRelayAddress::new(*addr));
+        }
+
         message.add_attribute(Lifetime::new(Duration::from_secs(600)).unwrap());
 
-        message
+        encode(message)
     }
 
-    fn channel_bind_bad_request(id: TransactionId) -> stun_codec::Message<Attribute> {
-        let mut message = stun_codec::Message::new(MessageClass::ErrorResponse, CHANNEL_BIND, id);
+    fn channel_bind_bad_request(request: &Message<Attribute>) -> Message<Attribute> {
+        let mut message = Message::new(
+            MessageClass::ErrorResponse,
+            CHANNEL_BIND,
+            request.transaction_id(),
+        );
         message.add_attribute(ErrorCode::from(BadRequest));
 
         message
     }
 
-    fn channel_bind_success(id: TransactionId) -> stun_codec::Message<Attribute> {
-        stun_codec::Message::new(MessageClass::SuccessResponse, CHANNEL_BIND, id)
+    fn channel_bind_success(request: &Message<Attribute>) -> Message<Attribute> {
+        Message::new(
+            MessageClass::SuccessResponse,
+            CHANNEL_BIND,
+            request.transaction_id(),
+        )
+    }
+
+    impl Allocation {
+        fn for_test(start: Instant) -> Allocation {
+            Allocation::new(
+                RELAY,
+                Username::new("foobar".to_owned()).unwrap(),
+                "baz".to_owned(),
+                Realm::new("firezone".to_owned()).unwrap(),
+                start,
+            )
+        }
+
+        fn with_allocate_response(mut self, relay_addrs: &[SocketAddr]) -> Self {
+            let allocate = self.next_message().unwrap();
+            self.handle_test_input(&allocate_response(&allocate, relay_addrs), Instant::now());
+
+            self
+        }
+
+        fn next_message(&mut self) -> Option<Message<Attribute>> {
+            let transmit = self.poll_transmit()?;
+
+            Some(decode(&transmit.payload).unwrap().unwrap())
+        }
+
+        /// Wrapper around `handle_input` that always sets `RELAY` and `PEER1`.
+        fn handle_test_input(&mut self, packet: &[u8], now: Instant) {
+            self.handle_input(RELAY, PEER1, packet, now);
+        }
     }
 }
