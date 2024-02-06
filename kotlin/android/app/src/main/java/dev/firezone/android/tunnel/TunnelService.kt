@@ -257,6 +257,7 @@ class TunnelService : VpnService() {
             activeTunnel?.let { tunnel ->
                 allowFamily(OsConstants.AF_INET)
                 allowFamily(OsConstants.AF_INET6)
+                
                 // Allow traffic to bypass the VPN interface when Always-on VPN is enabled.
                 allowBypass()
 
