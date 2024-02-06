@@ -23,6 +23,7 @@ use crate::allocation::Allocation;
 use crate::index::IndexLfsr;
 use crate::info::ConnectionInfo;
 use crate::stun_binding::StunBinding;
+use crate::utils::earliest;
 use crate::{IpPacket, MutableIpPacket};
 use boringtun::noise::errors::WireGuardError;
 use std::borrow::Cow;
@@ -381,6 +382,8 @@ where
 
     /// Returns a pending [`Event`] from the pool.
     pub fn poll_event(&mut self) -> Option<Event<TId>> {
+        let mut failed_connections = vec![];
+
         for (id, conn) in self.negotiated_connections.iter_mut() {
             while let Some(event) = conn.agent.poll_event() {
                 match event {
@@ -388,7 +391,7 @@ where
                         conn.possible_sockets.insert(source);
                     }
                     IceAgentEvent::IceConnectionStateChange(IceConnectionState::Disconnected) => {
-                        return Some(Event::ConnectionFailed(*id));
+                        failed_connections.push(*id);
                     }
                     IceAgentEvent::NominatedSend {
                         destination,
@@ -434,6 +437,11 @@ where
             }
         }
 
+        for conn in failed_connections {
+            self.negotiated_connections.remove(&conn);
+            self.pending_events.push_back(Event::ConnectionFailed(conn));
+        }
+
         self.pending_events.pop_front()
     }
 
@@ -450,6 +458,9 @@ where
         for b in self.bindings.values_mut() {
             connection_timeout = earliest(connection_timeout, b.poll_timeout());
         }
+        for a in self.allocations.values_mut() {
+            connection_timeout = earliest(connection_timeout, a.poll_timeout());
+        }
 
         earliest(connection_timeout, self.next_rate_limiter_reset)
     }
@@ -460,19 +471,26 @@ where
     pub fn handle_timeout(&mut self, now: Instant) {
         self.last_now = now;
 
+        let mut expired_connections = vec![];
+
         for (id, c) in self.negotiated_connections.iter_mut() {
             match c.handle_timeout(now, &mut self.allocations) {
                 Ok(Some(transmit)) => {
                     self.buffered_transmits.push_back(transmit);
                 }
                 Err(WireGuardError::ConnectionExpired) => {
-                    self.pending_events.push_back(Event::ConnectionFailed(*id))
+                    expired_connections.push(*id);
                 }
                 Err(e) => {
                     tracing::warn!(%id, ?e);
                 }
                 _ => {}
             };
+        }
+
+        for conn in expired_connections {
+            self.negotiated_connections.remove(&conn);
+            self.pending_events.push_back(Event::ConnectionFailed(conn))
         }
 
         for binding in self.bindings.values_mut() {
@@ -809,7 +827,7 @@ where
 
                 self.allocations.insert(
                     *server,
-                    Allocation::new(*server, username, password.clone(), realm),
+                    Allocation::new(*server, username, password.clone(), realm, self.last_now),
                 );
             }
         }
@@ -993,9 +1011,9 @@ pub enum Event<TId> {
     },
     ConnectionEstablished(TId),
 
-    /// We tested all candidates and failed to establish a connection.
+    /// We failed to establish a connection.
     ///
-    /// This condition will not resolve unless more candidates are added or the network conditions change.
+    /// All state associated with the connection has been cleared.
     ConnectionFailed(TId),
 }
 
@@ -1166,14 +1184,5 @@ impl Connection {
                 encode_as_channel_data(relay, peer, message, allocations, now).ok()
             }
         }
-    }
-}
-
-fn earliest(left: Option<Instant>, right: Option<Instant>) -> Option<Instant> {
-    match (left, right) {
-        (None, None) => None,
-        (Some(left), Some(right)) => Some(std::cmp::min(left, right)),
-        (Some(left), None) => Some(left),
-        (None, Some(right)) => Some(right),
     }
 }
