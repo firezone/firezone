@@ -211,8 +211,6 @@ where
     }
 
     async fn message_process(handler: &F, message: tungstenite::Message) -> Result<()> {
-        tracing::trace!("{message:?}");
-
         match message.into_text() {
             Ok(m_str) => match serde_json::from_str::<PhoenixMessage<I, R>>(&m_str) {
                 Ok(m) => match m.payload {
