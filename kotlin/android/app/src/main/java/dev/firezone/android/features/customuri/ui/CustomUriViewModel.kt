@@ -26,14 +26,10 @@ internal class CustomUriViewModel
         val actionLiveData: LiveData<ViewAction> = actionMutableLiveData
 
         fun parseCustomUri(intent: Intent) {
-            Log.d("CustomUriViewModel", "Parsing callback...")
             viewModelScope.launch {
-                Log.d("CustomUriViewModel", "viewmodelScope.launch")
                 when (intent.data?.host) {
                     PATH_CALLBACK -> {
-                        Log.d("CustomUriViewModel", "PATH_CALLBACK")
                         intent.data?.getQueryParameter(QUERY_CLIENT_STATE)?.let { state ->
-                            Log.d("CustomUriViewModel", "state: $state")
                             if (validateStateUseCase(state).firstOrNull() == true) {
                                 Log.d("CustomUriViewModel", "Valid state parameter. Continuing to save state...")
                             } else {

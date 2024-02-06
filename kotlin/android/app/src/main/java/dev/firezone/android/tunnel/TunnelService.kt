@@ -266,8 +266,14 @@ class TunnelService : VpnService() {
 
                 setUnderlyingNetworks(null) // Use all available networks.
 
-                addAddress(tunnel.config.tunnelAddressIPv4, 32)
-                addAddress(tunnel.config.tunnelAddressIPv6, 128)
+                try {
+                    Log.d(TAG, "Attempting to add IPv4: " + tunnel.config.tunnelAddressIPv4)
+                    Log.d(TAG, "Attempting to add IPv6: " + tunnel.config.tunnelAddressIPv6)
+                    addAddress(tunnel.config.tunnelAddressIPv4, 32)
+                    addAddress(tunnel.config.tunnelAddressIPv6, 128)
+                } catch (e: IllegalArgumentException) {
+                    Log.e(TAG, "buildVpnService: " + e.message.toString())
+                }
 
                 tunnel.config.dnsAddresses.forEach { dns ->
                     addDnsServer(dns)
