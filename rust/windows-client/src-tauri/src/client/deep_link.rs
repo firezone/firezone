@@ -2,9 +2,9 @@
 //! Based on reading some of the Windows code from <https://github.com/FabianLars/tauri-plugin-deep-link>, which is licensed "MIT OR Apache-2.0"
 
 use crate::client::auth::Response as AuthResponse;
-use connlib_shared::windows::BUNDLE_ID;
-use secrecy::SecretString;
-use std::{ffi::c_void, io, path::Path};
+use connlib_shared::{control::SecureUrl, windows::BUNDLE_ID};
+use secrecy::{ExposeSecret, Secret, SecretString};
+use std::{ffi::c_void, io, path::Path, str::FromStr};
 use tokio::{io::AsyncReadExt, io::AsyncWriteExt, net::windows::named_pipe};
 use windows::Win32::Security as WinSec;
 
@@ -25,7 +25,7 @@ pub enum Error {
     CurrentExe(io::Error),
     /// We got some data but it's not UTF-8
     #[error(transparent)]
-    LinkNotUtf8(std::string::FromUtf8Error),
+    LinkNotUtf8(std::str::Utf8Error),
     #[error("Couldn't set up security descriptor for deep link server")]
     SecurityDescriptor,
     /// Error from server's POV
@@ -38,7 +38,8 @@ pub enum Error {
     WindowsRegistry(io::Error),
 }
 
-pub(crate) fn parse_auth_callback(url: &url::Url) -> Option<AuthResponse> {
+pub(crate) fn parse_auth_callback(url: &Secret<SecureUrl>) -> Option<AuthResponse> {
+    let url = &url.expose_secret().inner;
     match url.host() {
         Some(url::Host::Domain("handle_client_sign_in_callback")) => {}
         _ => return None,
@@ -152,7 +153,7 @@ impl Server {
     /// I assume this is based on the underlying Windows API.
     /// I tried re-using the server and it acted strange. The official Tokio
     /// examples are not clear on this.
-    pub async fn accept(mut self) -> Result<url::Url, Error> {
+    pub async fn accept(mut self) -> Result<Secret<SecureUrl>, Error> {
         self.inner
             .connect()
             .await
@@ -167,12 +168,16 @@ impl Server {
             .read_to_end(&mut bytes)
             .await
             .map_err(Error::ServerCommunications)?;
+        let bytes = Secret::new(bytes);
 
         self.inner.disconnect().ok();
 
         tracing::debug!("Server read");
-        let s = String::from_utf8(bytes).map_err(Error::LinkNotUtf8)?;
-        let url = url::Url::parse(&s)?;
+        let s = SecretString::from_str(
+            std::str::from_utf8(bytes.expose_secret()).map_err(Error::LinkNotUtf8)?,
+        )
+        .expect("Infallible");
+        let url = Secret::new(SecureUrl::from_url(url::Url::parse(s.expose_secret())?));
 
         Ok(url)
     }
@@ -241,7 +246,8 @@ fn named_pipe_path(id: &str) -> String {
 #[cfg(test)]
 mod tests {
     use anyhow::Result;
-    use secrecy::ExposeSecret;
+    use connlib_shared::control::SecureUrl;
+    use secrecy::{ExposeSecret, Secret};
 
     #[test]
     fn parse_auth_callback() -> Result<()> {
@@ -282,7 +288,7 @@ mod tests {
     }
 
     fn parse_callback_wrapper(s: &str) -> Result<Option<super::AuthResponse>> {
-        let url = url::Url::parse(s)?;
+        let url = Secret::new(SecureUrl::from_url(url::Url::parse(s)?));
         Ok(super::parse_auth_callback(&url))
     }
 }

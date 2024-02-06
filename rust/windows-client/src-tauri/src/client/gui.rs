@@ -10,8 +10,8 @@ use crate::client::{
 use anyhow::{anyhow, bail, Context, Result};
 use arc_swap::ArcSwap;
 use connlib_client_shared::{file_logger, ResourceDescription};
-use connlib_shared::{messages::ResourceId, windows::BUNDLE_ID};
-use secrecy::{ExposeSecret, SecretString};
+use connlib_shared::{control::SecureUrl, messages::ResourceId, windows::BUNDLE_ID};
+use secrecy::{ExposeSecret, Secret, SecretString};
 use std::{net::IpAddr, path::PathBuf, str::FromStr, sync::Arc, time::Duration};
 use system_tray_menu::Event as TrayMenuEvent;
 use tauri::{Manager, SystemTray, SystemTrayEvent};
@@ -388,7 +388,7 @@ pub(crate) enum ControllerRequest {
         stem: PathBuf,
     },
     GetAdvancedSettings(oneshot::Sender<AdvancedSettings>),
-    SchemeRequest(url::Url),
+    SchemeRequest(Secret<SecureUrl>),
     SystemTrayMenu(TrayMenuEvent),
     TunnelReady,
     UpdateAvailable(client::updates::Release),
@@ -572,7 +572,7 @@ impl Controller {
         Ok(())
     }
 
-    async fn handle_deep_link(&mut self, url: &url::Url) -> Result<()> {
+    async fn handle_deep_link(&mut self, url: &Secret<SecureUrl>) -> Result<()> {
         let auth_response =
             client::deep_link::parse_auth_callback(url).context("Couldn't parse scheme request")?;
 
