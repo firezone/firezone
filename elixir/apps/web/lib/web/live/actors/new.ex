@@ -34,7 +34,7 @@ defmodule Web.Actors.New do
                   account={@account}
                   type={:user}
                   name="User"
-                  description="Admin or regular user accounts can be used to log in to Firezone and access private resources."
+                  description="Admin or regular user accounts can be used to sign in to Firezone and access private resources."
                 />
                 <.option
                   account={@account}
