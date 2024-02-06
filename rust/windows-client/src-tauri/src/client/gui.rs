@@ -446,7 +446,7 @@ impl connlib_client_shared::Callbacks for CallbackHandler {
     }
 
     fn on_update_resources(&self, resources: Vec<ResourceDescription>) -> Result<(), Self::Error> {
-        tracing::info!("on_update_resources");
+        tracing::debug!("on_update_resources");
         self.resources.store(resources.into());
         self.notify_controller.notify_one();
         Ok(())
