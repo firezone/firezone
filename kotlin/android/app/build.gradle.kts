@@ -217,7 +217,7 @@ cargo {
     verbose = true
     module = "../../../rust/connlib/clients/android"
     libname = "connlib"
-    targets = listOf("arm", "arm64", "x86_64")
+    targets = listOf("arm", "arm64", "x86_64", "x86")
     targetDirectory = "../../../rust/target"
 }
 
