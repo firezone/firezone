@@ -232,15 +232,27 @@ async fn set_iface_config(config: InterfaceConfig, handle: Handle) -> Result<()>
 
     if res_v4.is_ok() {
         if let Err(e) = make_rule(&handle).v4().execute().await {
-            tracing::debug!("Couldn't add ip rule for ipv4: {e:#?}, ipv4 packets won't be routed");
+            if !matches!(&e, NetlinkError(err) if err.raw_code() == FILE_ALREADY_EXISTS) {
+                tracing::warn!(
+                    "Couldn't add ip rule for ipv4: {e:?}, ipv4 packets won't be routed"
+                );
+            }
             // TODO: Be smarter about this
+        } else {
+            tracing::debug!("Successfully created ip rule for ipv4");
         }
     }
 
     if res_v6.is_ok() {
         if let Err(e) = make_rule(&handle).v6().execute().await {
-            tracing::debug!("Couldn't add ip rule for ipv6: {e:#?}, ipv6 packets won't be routed");
+            if !matches!(&e, NetlinkError(err) if err.raw_code() == FILE_ALREADY_EXISTS) {
+                tracing::warn!(
+                    "Couldn't add ip rule for ipv6: {e:?}, ipv6 packets won't be routed"
+                );
+            }
             // TODO: Be smarter about this
+        } else {
+            tracing::debug!("Successfully created ip rule for ipv6");
         }
     }
 
@@ -261,6 +273,12 @@ fn make_rule(handle: &Handle) -> RuleAddRequest {
         .header
         .flags
         .push(netlink_packet_route::rule::RuleFlag::Invert);
+
+    rule.message_mut()
+        .attributes
+        .push(netlink_packet_route::rule::RuleAttribute::Protocol(
+            RouteProtocol::Kernel,
+        ));
 
     rule
 }
