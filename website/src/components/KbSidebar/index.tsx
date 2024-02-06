@@ -53,6 +53,9 @@ export default function KbSidebar() {
               <li>
                 <Item href="/kb/deploy/clients" label="Clients" />
               </li>
+              <li>
+                <Item href="/kb/deploy/dns" label="Configure DNS" />
+              </li>
             </Collapse>
           </li>
           <li>
@@ -68,6 +71,9 @@ export default function KbSidebar() {
               </li>
               <li>
                 <Item href="/kb/authenticate/google" label="Google Workspace" />
+              </li>
+              <li>
+                <Item href="/kb/authenticate/entra" label="Microsoft Entra" />
               </li>
               <li>
                 <Item href="/kb/authenticate/oidc" label="Universal OIDC" />
@@ -100,9 +106,6 @@ export default function KbSidebar() {
             >
               <li>
                 <Item href="/kb/administer/upgrading" label="Upgrading" />
-              </li>
-              <li>
-                <Item href="/kb/administer/dns" label="Configure DNS" />
               </li>
               <li>
                 <Item

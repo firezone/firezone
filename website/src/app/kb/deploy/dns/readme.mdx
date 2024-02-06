@@ -1,0 +1,70 @@
+import PlanBadge from "@/components/PlanBadge";
+import Alert from "@/components/DocsAlert";
+import SupportOptions from "@/components/SupportOptions";
+
+<div className="flex justify-between items-center">
+
+# Configure DNS
+
+<PlanBadge plans={["starter", "enterprise"]} />
+</div>
+
+Firezone includes a sophisticated DNS routing system that provides Split DNS,
+DNS-based traffic routing, and upstream server override for users of the
+Firezone client applications.
+
+## How DNS works in Firezone
+
+Firezone runs a lightweight DNS proxy embedded in each client application. When
+this proxy sees a DNS query for a resource you've defined in your Firezone
+account, it immediately responds with appropriate dummy IPs in the
+`100.64.96.0/11` and `fd00:2021:1111:8000/108` range and returns these to the
+application making the query. These IPs are remembered for the duration of the
+client's session and used to intelligently route subsequent packets to a
+Firezone gateway suitable for serving that resource.
+
+If the proxy sees a query for a name that **is not** a Firezone resource, it
+will forward the query to the upstream DNS server(s) configured by the admin in
+`Settings` -> `DNS`. If no upstream DNS servers are configured, the query is
+forwarded to the client device's default system resolver.
+
+This means that clients are automatically configured for Split DNS in Firezone
+-- no other configuration is necessary other than adding the desired resources
+in the admin portal.
+
+## Configuring client DNS upstream resolvers
+
+Upstream DNS in the clients can be overridden with servers of your choosing so
+that clients' queries will use the servers you specify for all non-Firezone
+resources.
+
+For DNS names that don't match a defined resource, Firezone will use the
+upstream resolvers defined at `Settings` -> `DNS` in the order they are defined.
+
+If no custom resolvers are configured, Firezone clients will fall back to their
+default system resolver, typically set by the DHCP server of their local
+network.
+
+To add custom resolvers, enter a valid IPv4 or IPv6 address and click "Save". To
+remove, delete the IP address and click "Save".
+
+<Alert
+  color="info"
+  html={`
+    Custom resolvers such as <a href="https://developers.cloudflare.com/1.1.1.1/setup/#1111-for-families">
+    Cloudflare</a> or <a href="https://nextdns.io">NextDNS</a> can be used to block
+    malware, ads, adult material and other content for all users in your Firezone
+    account.
+  `}
+/>
+
+## Configuring Gateway resolvers
+
+Firezone makes no assumptions about the DNS environment in which the gateway
+runs. It uses the default system resolver you've configured on the gateway host.
+
+This resolver is used for DNS resources defined in your Firezone account **and**
+for non-Firezone names, so it's important that your gateway host has DNS
+configured properly for clients to resolve names successfully.
+
+<SupportOptions />

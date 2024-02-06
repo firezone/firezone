@@ -5,21 +5,21 @@ import Image from "next/image";
 
 <div className="flex justify-between items-center">
 
-# SSO with Google Workspace
+# SSO with Microsoft Entra
 
 <PlanBadge plans={["enterprise"]} />
 </div>
 
-Firezone integrates with Google Workspace using a custom connector that supports
+Firezone integrates with Microsoft Entra using a custom connector that supports
 both authenticating users and syncing users and groups to Firezone. Use this
-guide if you're looking to setup SSO with Google Workspace for your Firezone
+guide if you're looking to setup SSO with Microsoft Entra for your Firezone
 Enterprise account and want automatic user / group syncing between Google
 Workspace and Firezone.
 
 <Alert
   color="info"
   html={`
-    If you're just looking to authenticate users against Google Workspace
+    If you're just looking to authenticate users against Microsoft Entra
     <strong>without</strong> automatic user / group sync, use our
     <a href="/kb/authenticate/oidc" class="text-accent-500 hover:underline">
       universal OIDC connector
@@ -29,21 +29,21 @@ Workspace and Firezone.
 
 ## Overview
 
-The Firezone Google Workspace connector integrates with Google's identity APIs
-to support user authentication and user / group sync.
+The Firezone Microsoft Entra connector integrates with Google's identity APIs to
+support user authentication and user / group sync.
 
 Users, groups, and organizational units are synced every few minutes to ensure
 that your Firezone account remains up-to-date with the latest identity data from
-Google Workspace. [Read more](/kb/authenticate/user-group-sync) about how sync
+Microsoft Entra. [Read more](/kb/authenticate/user-group-sync) about how sync
 works.
 
 ## Setup
 
-Setting up the Google Workspace connector is similar to the process of setting
-up a universal OIDC connector. The main difference is the addition of a few
-extra read-only scopes needed to enable sync.
+Setting up the Microsoft Entra connector is similar to the process of setting up
+a universal OIDC connector. The main difference is the addition of a few extra
+read-only scopes needed to enable sync.
 
-To setup the Google Workspace connector, follow the steps below.
+To setup the Microsoft Entra connector, follow the steps below.
 
 ### Step 1: Create a new project in Google Cloud
 
@@ -132,7 +132,7 @@ Click **SAVE AND CONTINUE**.
 
 OAuth scopes determine what information the Firezone connector is allowed to
 receive when a user authenticates. Firezone requires the following scopes to
-authenticate users and sync users and groups with your Google Workspace account:
+authenticate users and sync users and groups with your Microsoft Entra account:
 
 - `openid`: Reserved scope required by all OpenID Connect integrations.
 - `profile`: Provides information such as the user's username, given name,
@@ -195,7 +195,7 @@ Your OAuth app summary should look similar to the screenshot above.
 ### Step 5: Create client credentials
 
 Next, you'll need to add OAuth credentials to allow Firezone to connect to your
-Google Workspace account.
+Microsoft Entra account.
 
 Head to
 [the Credentials section](https://console.cloud.google.com/apis/credentials) and
@@ -214,9 +214,9 @@ information for the remain fields:
 
 - **Name**: `Firezone OAuth Client`
 - **Authorized redirect URIs**: Click **ADD URI**, and enter the two redirect
-  URIs shown on the Google Workspace identity provider setup screen in your
+  URIs shown on the Microsoft Entra identity provider setup screen in your
   Firezone admin dashboard
-  (`Settings -> Identity Providers -> Add Identity Provider -> Google Workspace -> Configure`).
+  (`Settings -> Identity Providers -> Add Identity Provider -> Microsoft Entra -> Configure`).
 
 <Image
   src="/images/gcp-creds-web.png"
@@ -255,7 +255,7 @@ prompts you.
 />
 
 If you get successfully redirected back to your Firezone admin dashboard, you're
-done! Your Google Workspace connector is now successfully configured. Users in
+done! Your Microsoft Entra connector is now successfully configured. Users in
 your organization can now authenticate to Firezone using this connector and user
 / group sync will occur every few minutes.
 

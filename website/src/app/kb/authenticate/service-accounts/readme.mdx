@@ -1,6 +1,13 @@
 import Alert from "@/components/DocsAlert";
+import SupportOptions from "@/components/SupportOptions";
+import PlanBadge from "@/components/PlanBadge";
+
+<div className="flex justify-between items-center">
 
 # Service Accounts
+
+<PlanBadge plans={["starter", "enterprise"]} />
+</div>
 
 Service accounts are actors that can be used with the Firezone Linux client in
 headless operation to manage access from a server, machine, or other non-user
@@ -9,13 +16,15 @@ machine to your Resources.
 Service accounts behave like any other actor in Firezone. They can be added to
 Groups and Policies to gain access to Resources.
 
+Unlike users, however, service accounts must be managed manually and are never
+synced from your identity provider.
+
 <Alert
   color="warning"
   html={`
     Because service accounts authenticate to your Firezone account
-    without user interaction, <strong>their tokens don't expire</strong>.
-    We recommend manually rotating service account tokens on a scheduled
-    interval as a best practice.
+    without user interaction, their tokens have a <strong>1-year</strong>
+    expiration by default.
   `}
 />
 
@@ -24,5 +33,9 @@ Groups and Policies to gain access to Resources.
 To create a service account, head to `Actors` -> `Add Actor` and select
 `Service Account` as the type.
 
-You will then be shown a token you'll need to copy somewhere safe to use with
+On the next screen, set an appropriate expiration date for the token.
+
+You will then be shown a token you'll need to store somewhere safe to use with
 the [Linux client](/kb/user-guides/linux-client).
+
+<SupportOptions />

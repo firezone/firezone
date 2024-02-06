@@ -22,5 +22,5 @@ function planBadge(plan: string) {
 }
 export default function PlanBadge({ plans }: { plans: Array<string> }) {
   const plansHtml = plans.map((plan) => planBadge(plan));
-  return <div className="w-full justify-end flex">{plansHtml}</div>;
+  return <div className="mb-8">{plansHtml}</div>;
 }

@@ -1,24 +1,43 @@
+import Alert from "@/components/DocsAlert";
+
 # Authentication
 
-Firezone supports the following authentication methods:
+Firezone supports the following authentication methods and identity providers:
 
-1. [Email (OTP)](/kb/authenticate/email)
-1. [OpenID Connect (OIDC)](/kb/authenticate/oidc)
-1. [Google Workspace](/kb/authenticate/google)
+1. [Email (OTP)](/kb/authenticate/email): Supports authenticating with a
+   one-time passcode sent via email.
+1. [OpenID Connect (OIDC)](/kb/authenticate/oidc): Supports authenticating to an
+   OpenID Connect provider using a universal OIDC connector.
+1. [Google Workspace](/kb/authenticate/google): Supports authentication and user
+   / group sync with Google Workspace.
+1. [Microsoft Entra](/kb/authenticate/google): Supports authentication and user
+   / group sync with Microsoft Entra.
+
+It's possible to create multiple providers for Google Workspace, Microsoft
+Entra, and OIDC connectors. This allows you to authenticate users against
+multiple providers simultaneously
+
+<Alert
+  color="warning"
+  html={`
+    Disabling the email provider can lock you out of your account in the event
+    that all other identity providers become unusable. We recommend keeping at least
+    one admin enabled for the email provider for account recovery.
+  `}
+/>
 
 ## Session lifetime
 
-The below session lifetimes apply to all identity providers:
+The table below summarizes the session lifetimes for various components.
 
-- Admin portal:
-  - Email providers: **10 hours**
-  - OIDC and other providers: Same as the OIDC application's access token
-    lifetime up to a maximum of **10 hours**.
-- Client application: **7 days**
-- Service account: **365 days** (by default, configurable per token)
+| Component           | Auth Provider                     | Lifetime                                                                    |
+| ------------------- | --------------------------------- | --------------------------------------------------------------------------- |
+| Admin portal web UI | Email authentication              | **10 hours**                                                                |
+| Admin portal web UI | OIDC and other identity providers | Copied from the OIDC access token lifetime, up to a maximum of **10 hours** |
+| Client applications | All identity providers            | **10 hours**                                                                |
+| Service accounts    | N/A                               | **365 days** by default, configurable per token                             |
+| Gateways            | N/A                               | **Indefinitely**. Tokens must be explicitly revoked in the portal UI.       |
 
-When a client application or service account token expires, the client is
+When a session token expires or is revoked, the affected component is
 disconnected immediately and must reauthenticate to regain access to resources.
-
-When the admin portal session expires, the admin is logged out immediately and
-must reauthenticate to regain access to the portal.
+This includes web UI sessions for admins.

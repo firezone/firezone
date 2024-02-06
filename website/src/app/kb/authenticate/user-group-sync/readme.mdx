@@ -1,58 +1,56 @@
 import Alert from "@/components/DocsAlert";
 import PlanBadge from "@/components/PlanBadge";
 
+<div className="flex justify-between items-center">
+
+# User / Group sync
+
 <PlanBadge plans={["enterprise"]} />
+</div>
 
-# User / Group Sync
+Firezone supports automatic user / group sync from Google Workspace and
+Microsoft Entra. This feature is **automatically enabled** for the
+[Google Workspace](/kb/authenticate/google) and
+[Microsoft Entra](/kb/authenticate/entra) connectors. No further configuration
+is necessary. Once the connector is activated, users, groups, and organizational
+units will be synced from your identity provider every few minutes.
 
-Firezone supports user / group sync from Google Workspace. This feature is
-**automatically enabled** for the
-[Google Workspace connector](/kb/authenticate/google). Once the connector is
-activated, users, groups, and organizational units will be synced from your
-Google Workspace account every few minutes.
+## Deleting or suspending users
 
-<Alert
-  color="info"
-  html={`
-    User / group sync is only supported with the Google Workspace connector
-    at this time. Support for more providers is currently
-    <a href="https://github.com/firezone/firezone/issues/2016">in development</a>.
-  `}
-/>
+Firezone <strong>never</strong> deletes synced users or groups. Instead, they're
+disabled temporarily in Firezone when they're deleted or suspended in your
+identity provider. This helps to preserve audit trails and other logged activity
+within Firezone.
 
-## Deleting entities
-
-To preserve audit log trails, Firezone <strong>never</strong> deletes synced
-users or groups.
-
-### Deleting or suspending users
-
-When a user is deleted or suspended in your Google Workspace account, Firezone
+When a user is deleted or suspended in a supported identity provider, Firezone
 will disable the user and clear all active client and admin portal web sessions
-for that user upon the next user/group sync. The user will be **signed out of
-all clients** and forced to reauthenticate.
+for that user upon the next sync. The user will be **signed out of all clients**
+and forced to reauthenticate.
 
 This ensures terminated employees will have all Firezone access revoked within a
-few minutes of deleting or suspending them in your Google Workspace account.
+few minutes of deleting or suspending them in your identity provider.
 
 ### Deleting a group or organizational unit
 
-Deleting a group or organizational unit in Google Workspace will hide the group
-and associated policy in Firezone.
+Deleting a group or organizational unit in your identity provider will hide the
+group and associated policy in Firezone.
 
 ## Nested groups and organizational units
 
-Firezone flattens nested groups and organizational units synced from Google
-Workspace. User membership is determined **only** by its immediate parent. For
-example, if you had the following group structure in your Google Workspace
-account:
+Firezone syncs transitive memberships from your identity provider. This means
+user membership for a particular group is determined not only by its immediate
+members, but any child groups as well, recursively.
+
+For example, if you had the following group structure in your identity provider:
 
 ```
-- Product
+- Everyone
   - steve@company.com
   - Engineering
     - bob@company.com
     - alice@company.com
+    - Devops
+      - john@company.com
   - Support
     - patrick@company.com
 ```
@@ -60,11 +58,16 @@ account:
 In Firezone, you would see the follow groups after sync:
 
 ```
-- Group:Product
+- Group:Everyone
+  - bob@company.com
+  - alice@company.com
   - steve@company.com
+  - john@company.com
 - Group:Engineering
   - bob@company.com
   - alice@company.com
 - Group:Support
   - patrick@company.com
+- Group:DevOps
+  - john@firezone.dev
 ```
