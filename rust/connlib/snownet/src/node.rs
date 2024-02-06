@@ -644,7 +644,13 @@ where
         allowed_stun_servers: HashSet<SocketAddr>,
         allowed_turn_servers: HashSet<(SocketAddr, String, String, String)>,
     ) -> Offer {
-        self.negotiated_connections.remove(&id);
+        if self.initial_connections.remove(&id).is_some() {
+            tracing::info!(%id, "Replacing existing initial connection");
+        };
+
+        if self.negotiated_connections.remove(&id).is_some() {
+            tracing::info!(%id, "Replacing existing established connection");
+        };
 
         self.upsert_stun_servers(&allowed_stun_servers);
         self.upsert_turn_servers(&allowed_turn_servers);
@@ -676,7 +682,7 @@ where
             },
         };
 
-        self.initial_connections.insert(
+        let existing = self.initial_connections.insert(
             id,
             InitialConnection {
                 agent,
@@ -687,13 +693,16 @@ where
             },
         );
 
+        debug_assert!(existing.is_none());
+
         params
     }
 
     /// Accept an [`Answer`] from the remote for a connection previously created via [`Node::new_connection`].
     pub fn accept_answer(&mut self, id: TId, remote: PublicKey, answer: Answer) {
         let Some(initial) = self.initial_connections.remove(&id) else {
-            return; // TODO: Better error handling
+            debug_assert!(false, "No initial connection to accept answer for");
+            return;
         };
 
         let mut agent = initial.agent;
@@ -710,7 +719,9 @@ where
             initial.turn_servers,
         );
 
-        self.negotiated_connections.insert(id, connection);
+        let existing = self.negotiated_connections.insert(id, connection);
+
+        debug_assert!(existing.is_none());
     }
 }
 
@@ -730,6 +741,15 @@ where
         allowed_stun_servers: HashSet<SocketAddr>,
         allowed_turn_servers: HashSet<(SocketAddr, String, String, String)>,
     ) -> Answer {
+        debug_assert!(
+            !self.initial_connections.contains_key(&id),
+            "server to not use `initial_connections`"
+        );
+
+        if self.negotiated_connections.remove(&id).is_some() {
+            tracing::info!(%id, "Replacing existing established connection");
+        };
+
         self.upsert_stun_servers(&allowed_stun_servers);
         self.upsert_turn_servers(&allowed_turn_servers);
 
@@ -766,7 +786,9 @@ where
             allowed_stun_servers,
             allowed_turn_servers,
         );
-        self.negotiated_connections.insert(id, connection);
+        let existing = self.negotiated_connections.insert(id, connection);
+
+        debug_assert!(existing.is_none());
 
         answer
     }
