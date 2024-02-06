@@ -1127,6 +1127,11 @@ impl Connection {
         if now >= self.next_timer_update {
             self.next_timer_update = now + Duration::from_secs(1);
 
+            // Don't update wireguard timers until we are connected.
+            if self.remote_socket.is_none() {
+                return Ok(None);
+            }
+
             /// [`boringtun`] requires us to pass buffers in where it can construct its packets.
             ///
             /// When updating the timers, the largest packet that we may have to send is `148` bytes as per `HANDSHAKE_INIT_SZ` constant in [`boringtun`].
