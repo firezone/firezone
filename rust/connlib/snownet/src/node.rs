@@ -644,6 +644,8 @@ where
         allowed_stun_servers: HashSet<SocketAddr>,
         allowed_turn_servers: HashSet<(SocketAddr, String, String, String)>,
     ) -> Offer {
+        self.negotiated_connections.remove(&id);
+
         self.upsert_stun_servers(&allowed_stun_servers);
         self.upsert_turn_servers(&allowed_turn_servers);
 
