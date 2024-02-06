@@ -6,6 +6,7 @@
 use crate::client::{
     self, about, deep_link, logging, network_changes,
     settings::{self, AdvancedSettings},
+    Failure,
 };
 use anyhow::{anyhow, bail, Context, Result};
 use arc_swap::ArcSwap;
@@ -72,19 +73,6 @@ pub(crate) enum Error {
     // `client.rs` provides a more user-friendly message when showing the error dialog box
     #[error("WebViewNotInstalled")]
     WebViewNotInstalled,
-}
-
-fn send_delayed_request(ctlr_tx: CtlrTx, req: ControllerRequest) {
-    tokio::spawn(async move {
-        let delay = 5;
-        tracing::info!(
-            "Will crash/error/panic on purpose in {delay} seconds to test error handling."
-        );
-        tokio::time::sleep(Duration::from_secs(delay)).await;
-        tracing::info!("Crashing / erroring / panicking on purpose");
-        ctlr_tx.send(req).await?;
-        Ok::<_, anyhow::Error>(())
-    });
 }
 
 /// Runs the Tauri GUI and returns on exit or unrecoverable error
@@ -175,12 +163,23 @@ pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
 
     let tray = SystemTray::new().with_menu(system_tray_menu::signed_out());
 
-    if cli.crash_on_purpose {
-        send_delayed_request(ctlr_tx.clone(), ControllerRequest::TestCrash);
-    } else if cli.error_on_purpose {
-        send_delayed_request(ctlr_tx.clone(), ControllerRequest::TestError);
-    } else if cli.panic_on_purpose {
-        send_delayed_request(ctlr_tx.clone(), ControllerRequest::TestPanic);
+    if let Some(failure) = cli.fail_on_purpose() {
+        let req = match &failure {
+            Failure::Crash => ControllerRequest::TestCrash,
+            Failure::Error => ControllerRequest::TestError,
+            Failure::Panic => ControllerRequest::TestPanic,
+        };
+        let ctlr_tx = ctlr_tx.clone();
+        tokio::spawn(async move {
+            let delay = 5;
+            tracing::info!(
+                "Will cause {failure:?} on purpose in {delay} seconds to test error handling."
+            );
+            tokio::time::sleep(Duration::from_secs(delay)).await;
+            tracing::info!("Crashing / erroring / panicking on purpose");
+            ctlr_tx.send(req).await?;
+            Ok::<_, anyhow::Error>(())
+        });
     }
 
     let app = tauri::Builder::default()

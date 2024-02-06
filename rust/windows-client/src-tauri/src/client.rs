@@ -169,6 +169,32 @@ struct Cli {
     test_update_notification: bool,
 }
 
+impl Cli {
+    fn fail_on_purpose(&self) -> Option<Failure> {
+        if self.crash_on_purpose {
+            Some(Failure::Crash)
+        } else if self.error_on_purpose {
+            Some(Failure::Error)
+        } else if self.panic_on_purpose {
+            Some(Failure::Panic)
+        } else {
+            None
+        }
+    }
+}
+
+// The failure flags are all mutually exclusive
+// TODO: I can't figure out from the `clap` docs how to do this:
+// `app --fail-on-purpose crash-in-wintun-worker`
+// So the failure should be an `Option<Enum>` but _not_ a subcommand.
+// You can only have one subcommand per container, I've tried
+#[derive(Debug)]
+enum Failure {
+    Crash,
+    Error,
+    Panic,
+}
+
 #[derive(clap::Subcommand)]
 pub enum Cmd {
     CrashHandlerServer {
