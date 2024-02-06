@@ -267,36 +267,17 @@ class TunnelService : VpnService() {
 
                 setUnderlyingNetworks(null) // Use all available networks.
 
-                try {
-                    addAddress(tunnel.config.tunnelAddressIPv4, 32)
-                } catch (e: IllegalArgumentException) {
-                    Log.e(TAG, "Invalid IPv4 address: ${tunnel.config.tunnelAddressIPv4}")
-                }
-                try {
-                    addAddress(tunnel.config.tunnelAddressIPv6, 128)
-                } catch (e: IllegalArgumentException) {
-                    Log.e(TAG, "Invalid IPv6 address: ${tunnel.config.tunnelAddressIPv6}")
-                }
+                addAddress(tunnel.config.tunnelAddressIPv4, 32)
+                addAddress(tunnel.config.tunnelAddressIPv6, 128)
 
                 tunnel.config.dnsAddresses.forEach { dns ->
-                    try {
-                        addDnsServer(dns)
-                    } catch (e: IllegalArgumentException) {
-                        Log.e(TAG, "Invalid DNS server: $dns")
-                    }
+                    addDnsServer(dns)
                 }
-
                 tunnel.routes.forEach {
-                    try {
-                        addRoute(it.address, it.prefix)
-                    } catch (e: IllegalArgumentException) {
-                        Log.e(TAG, "Invalid route: ${it.address}/${it.prefix}")
-                    }
+                    addRoute(it.address, it.prefix)
                 }
 
                 setSession(SESSION_NAME)
-
-                // TODO: Can we do better?
                 setMtu(DEFAULT_MTU)
             }
         }
