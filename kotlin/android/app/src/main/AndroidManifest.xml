@@ -27,6 +27,8 @@
         android:theme="@style/AppTheme.Base"
         android:usesCleartextTraffic="true">
 
+        <uses-native-library android:name="libconnlib.so" android:required="true" />
+
         <activity
             android:name=".core.presentation.MainActivity"
             android:exported="true">
