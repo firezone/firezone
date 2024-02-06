@@ -58,8 +58,6 @@ pub(crate) enum Error {
     ClickableNotification(String),
     #[error("Deep-link module error: {0}")]
     DeepLink(#[from] deep_link::Error),
-    #[error("Fake error for testing")]
-    Fake,
     #[error("Can't show log filter error dialog: {0}")]
     LogFilterErrorDialog(native_dialog::Error),
     #[error("Logging module error: {0}")]
@@ -74,6 +72,19 @@ pub(crate) enum Error {
     // `client.rs` provides a more user-friendly message when showing the error dialog box
     #[error("WebViewNotInstalled")]
     WebViewNotInstalled,
+}
+
+fn send_delayed_request(ctlr_tx: CtlrTx, req: ControllerRequest) {
+    tokio::spawn(async move {
+        let delay = 5;
+        tracing::info!(
+            "Will crash/error/panic on purpose in {delay} seconds to test error handling."
+        );
+        tokio::time::sleep(Duration::from_secs(delay)).await;
+        tracing::info!("Crashing / erroring / panicking on purpose");
+        ctlr_tx.send(req).await?;
+        Ok::<_, anyhow::Error>(())
+    });
 }
 
 /// Runs the Tauri GUI and returns on exit or unrecoverable error
@@ -165,15 +176,11 @@ pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
     let tray = SystemTray::new().with_menu(system_tray_menu::signed_out());
 
     if cli.crash_on_purpose {
-        tokio::spawn(async move {
-            let delay = 5;
-            tracing::info!("Will crash on purpose in {delay} seconds to test crash handling.");
-            tokio::time::sleep(Duration::from_secs(delay)).await;
-            tracing::info!("Crashing on purpose because of `--crash-on-purpose` flag");
-
-            // SAFETY: Crashing is unsafe
-            unsafe { sadness_generator::raise_segfault() }
-        });
+        send_delayed_request(ctlr_tx.clone(), ControllerRequest::TestCrash);
+    } else if cli.error_on_purpose {
+        send_delayed_request(ctlr_tx.clone(), ControllerRequest::TestError);
+    } else if cli.panic_on_purpose {
+        send_delayed_request(ctlr_tx.clone(), ControllerRequest::TestPanic);
     }
 
     let app = tauri::Builder::default()
@@ -264,12 +271,6 @@ pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
             }
         }
     };
-
-    if cli.error_on_purpose {
-        return Err(Error::Fake);
-    } else if cli.panic_on_purpose {
-        panic!("Test panic");
-    }
 
     app.run(|_app_handle, event| {
         if let tauri::RunEvent::ExitRequested { api, .. } = event {
@@ -392,6 +393,9 @@ pub(crate) enum ControllerRequest {
     GetAdvancedSettings(oneshot::Sender<AdvancedSettings>),
     SchemeRequest(url::Url),
     SystemTrayMenu(TrayMenuEvent),
+    TestCrash,
+    TestError,
+    TestPanic,
     TunnelReady,
     UpdateAvailable(client::updates::Release),
     UpdateNotificationClicked(client::updates::Release),
@@ -744,6 +748,10 @@ async fn run_controller(
                         }
                     }
                     Req::SystemTrayMenu(TrayMenuEvent::Quit) => break,
+                    // SAFETY: Crashing is unsafe
+                    Req::TestCrash => unsafe { sadness_generator::raise_segfault() },
+                    Req::TestError => bail!("Test error"),
+                    Req::TestPanic => panic!("Test panic"),
                     Req::TunnelReady => {
                         controller.tunnel_ready = true;
                         controller.refresh_system_tray_menu()?;
