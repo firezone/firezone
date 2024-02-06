@@ -170,7 +170,7 @@ jobs:
       - uses: ./.github/actions/setup-rust
         with:
           sccache_enabled: false
-          targets: armv7-linux-androideabi aarch64-linux-android x86_64-linux-android
+          targets: armv7-linux-androideabi aarch64-linux-android x86_64-linux-android i686-linux-android
       - uses: actions/setup-java@v4
         with:
           distribution: oracle
