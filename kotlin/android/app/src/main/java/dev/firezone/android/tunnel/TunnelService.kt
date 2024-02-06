@@ -267,14 +267,31 @@ class TunnelService : VpnService() {
 
                 setUnderlyingNetworks(null) // Use all available networks.
 
-                addAddress(tunnel.config.tunnelAddressIPv4, 32)
-                addAddress(tunnel.config.tunnelAddressIPv6, 128)
+                try {
+                    addAddress(tunnel.config.tunnelAddressIPv4, 32)
+                } catch (e: IllegalArgumentException) {
+                    Log.e(TAG, "buildVpnService: ${e.message} when adding address ${tunnel.config.tunnelAddressIPv4}")
+                }
+
+                try {
+                    addAddress(tunnel.config.tunnelAddressIPv6, 128)
+                } catch (e: IllegalArgumentException) {
+                    Log.e(TAG, "buildVpnService: ${e.message} when adding address ${tunnel.config.tunnelAddressIPv6}")
+                }
 
                 tunnel.config.dnsAddresses.forEach { dns ->
-                    addDnsServer(dns)
+                    try {
+                        addDnsServer(dns)
+                    } catch (e: IllegalArgumentException) {
+                        Log.e(TAG, "buildVpnService: ${e.message} when adding DNS server $dns")
+                    }
                 }
                 tunnel.routes.forEach {
-                    addRoute(it.address, it.prefix)
+                    try {
+                        addRoute(it.address, it.prefix)
+                    } catch (e: IllegalArgumentException) {
+                        Log.e(TAG, "buildVpnService: ${e.message} when adding route ${it.address}/${it.prefix}")
+                    }
                 }
 
                 setSession(SESSION_NAME)
