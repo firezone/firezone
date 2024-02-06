@@ -195,7 +195,7 @@ services:
   relay:
     environment:
       PUBLIC_IP4_ADDR: 172.28.0.101
-      PUBLIC_IP6_ADDR: fcff:3990:3990::101
+      # PUBLIC_IP6_ADDR: fcff:3990:3990::101
       LOWEST_PORT: 55555
       HIGHEST_PORT: 55666
       # Token for self-hosted Relay
