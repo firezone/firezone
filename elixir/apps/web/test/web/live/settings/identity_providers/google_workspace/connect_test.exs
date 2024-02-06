@@ -33,7 +33,7 @@ defmodule Web.Live.Settings.IdentityProviders.GoogleWorkspace.Connect do
         )
 
       assert redirected_to(conn) =~ ~p"/#{account_id}"
-      assert flash(conn, :error) == "You must log in to access this page."
+      assert flash(conn, :error) == "You must sign in to access this page."
     end
 
     test "redirects with an error when provider does not exist", %{identity: identity, conn: conn} do
