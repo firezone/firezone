@@ -8,6 +8,7 @@ mod info;
 mod ip_packet;
 mod node;
 mod stun_binding;
+mod utils;
 
 pub use info::ConnectionInfo;
 pub use ip_packet::{IpPacket, MutableIpPacket};

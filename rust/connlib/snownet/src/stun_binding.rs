@@ -315,32 +315,7 @@ mod tests {
         let start = Instant::now();
         let mut stun_binding = StunBinding::new(SERVER1, start);
 
-        fn secs(secs: f64) -> Duration {
-            Duration::from_micros((secs * 1_000_000.0) as u64)
-        }
-
-        // The backoff strategy is to increment the previous interval by 1.5
-        let mut expected_backoffs = VecDeque::from([
-            start + secs(5.0),
-            start + secs(5.0 + 7.5),
-            start + secs(5.0 + 7.5 + 11.25),
-            start + secs(5.0 + 7.5 + 11.25 + 16.875),
-            start + secs(5.0 + 7.5 + 11.25 + 16.875 + 25.3125),
-            start + secs(5.0 + 7.5 + 11.25 + 16.875 + 25.3125 + 37.96875),
-            start + secs(5.0 + 7.5 + 11.25 + 16.875 + 25.3125 + 37.96875 + 56.953125),
-            start + secs(5.0 + 7.5 + 11.25 + 16.875 + 25.3125 + 37.96875 + 56.953125 + 60.0 * 1.0),
-            start + secs(5.0 + 7.5 + 11.25 + 16.875 + 25.3125 + 37.96875 + 56.953125 + 60.0 * 2.0),
-            start + secs(5.0 + 7.5 + 11.25 + 16.875 + 25.3125 + 37.96875 + 56.953125 + 60.0 * 3.0),
-            start + secs(5.0 + 7.5 + 11.25 + 16.875 + 25.3125 + 37.96875 + 56.953125 + 60.0 * 4.0),
-            start + secs(5.0 + 7.5 + 11.25 + 16.875 + 25.3125 + 37.96875 + 56.953125 + 60.0 * 5.0),
-            start + secs(5.0 + 7.5 + 11.25 + 16.875 + 25.3125 + 37.96875 + 56.953125 + 60.0 * 6.0),
-            start + secs(5.0 + 7.5 + 11.25 + 16.875 + 25.3125 + 37.96875 + 56.953125 + 60.0 * 7.0),
-            start + secs(5.0 + 7.5 + 11.25 + 16.875 + 25.3125 + 37.96875 + 56.953125 + 60.0 * 8.0),
-            start + secs(5.0 + 7.5 + 11.25 + 16.875 + 25.3125 + 37.96875 + 56.953125 + 60.0 * 9.0),
-            start + secs(5.0 + 7.5 + 11.25 + 16.875 + 25.3125 + 37.96875 + 56.953125 + 60.0 * 10.0),
-            start + secs(5.0 + 7.5 + 11.25 + 16.875 + 25.3125 + 37.96875 + 56.953125 + 60.0 * 11.0),
-            start + secs(5.0 + 7.5 + 11.25 + 16.875 + 25.3125 + 37.96875 + 56.953125 + 60.0 * 12.0),
-        ]);
+        let mut expected_backoffs = VecDeque::from(backoff::steps(start));
 
         loop {
             let Some(timeout) = stun_binding.poll_timeout() else {
