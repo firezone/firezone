@@ -819,6 +819,14 @@ where
 
     fn upsert_turn_servers(&mut self, servers: &HashSet<(SocketAddr, String, String, String)>) {
         for (server, username, password, realm) in servers {
+            if let Some(allocation) = self.allocations.get(server) {
+                if allocation.uses_credentials(username, password, realm) {
+                    return;
+                }
+            }
+
+            tracing::debug!(address = %server, "Adding new TURN server");
+
             let Ok(username) = Username::new(username.to_owned()) else {
                 tracing::debug!(%username, "Invalid TURN username");
                 continue;
@@ -828,14 +836,10 @@ where
                 continue;
             };
 
-            if !self.allocations.contains_key(server) {
-                tracing::debug!(address = %server, "Adding new TURN server");
-
-                self.allocations.insert(
-                    *server,
-                    Allocation::new(*server, username, password.clone(), realm, self.last_now),
-                );
-            }
+            self.allocations.insert(
+                *server,
+                Allocation::new(*server, username, password.clone(), realm, self.last_now),
+            );
         }
     }
 

@@ -131,6 +131,10 @@ impl Allocation {
         .flatten()
     }
 
+    pub fn uses_credentials(&self, username: &str, password: &str, realm: &str) -> bool {
+        self.username.name() == username && self.password == password && self.realm.text() == realm
+    }
+
     #[tracing::instrument(level = "debug", skip(self, packet, now), fields(relay = %self.server, id, method, class, rtt))]
     pub fn handle_input(
         &mut self,
