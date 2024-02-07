@@ -30,12 +30,7 @@ fn reinitialize_allocation_if_credentials_for_relay_differ() {
     let _ = alice.new_connection(
         1,
         HashSet::new(),
-        HashSet::from([(
-            RELAY,
-            "user1".to_owned(),
-            "pass1".to_owned(),
-            "realm".to_owned(),
-        )]),
+        HashSet::from([relay("user1", "pass1", "realm1")]),
     );
 
     let transmit = alice.poll_transmit().unwrap();
@@ -43,15 +38,11 @@ fn reinitialize_allocation_if_credentials_for_relay_differ() {
     assert!(alice.poll_transmit().is_none());
 
     // Make another connection, using the same relay but different credentials (happens when the relay restarts)
+
     let _ = alice.new_connection(
-        1,
+        2,
         HashSet::new(),
-        HashSet::from([(
-            RELAY,
-            "user2".to_owned(),
-            "pass2".to_owned(),
-            "realm".to_owned(),
-        )]),
+        HashSet::from([relay("user2", "pass2", "realm1")]),
     );
 
     // Expect to send another message to the "new" relay
@@ -70,12 +61,7 @@ fn second_connection_with_same_relay_reuses_allocation() {
     let _ = alice.new_connection(
         1,
         HashSet::new(),
-        HashSet::from([(
-            RELAY,
-            "user1".to_owned(),
-            "pass1".to_owned(),
-            "realm".to_owned(),
-        )]),
+        HashSet::from([relay("user1", "pass1", "realm1")]),
     );
 
     let transmit = alice.poll_transmit().unwrap();
@@ -83,17 +69,21 @@ fn second_connection_with_same_relay_reuses_allocation() {
     assert!(alice.poll_transmit().is_none());
 
     let _ = alice.new_connection(
-        1,
+        2,
         HashSet::new(),
-        HashSet::from([(
-            RELAY,
-            "user1".to_owned(),
-            "pass1".to_owned(),
-            "realm".to_owned(),
-        )]),
+        HashSet::from([relay("user1", "pass1", "realm1")]),
     );
 
     assert!(alice.poll_transmit().is_none());
+}
+
+fn relay(username: &str, pass: &str, realm: &str) -> (SocketAddr, String, String, String) {
+    (
+        RELAY,
+        username.to_owned(),
+        pass.to_owned(),
+        realm.to_owned(),
+    )
 }
 
 const RELAY: SocketAddr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 10000));
