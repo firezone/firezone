@@ -67,40 +67,32 @@ class DnsServersDetector(
         get() {
             // This code only works on LOLLIPOP and higher
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                try {
-                    val priorityServers: MutableSet<InetAddress> = HashSet(10)
-                    val servers: MutableSet<InetAddress> = HashSet(10)
-                    val connectivityManager =
-                        context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager?
-                    if (connectivityManager != null) {
+                val priorityServers: MutableSet<InetAddress> = HashSet(10)
+                val servers: MutableSet<InetAddress> = HashSet(10)
+                val connectivityManager =
+                    context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager?
+                if (connectivityManager != null) {
 
-                        // Iterate all networks
-                        // Notice that android LOLLIPOP or higher allow iterating multiple connected networks of SAME type
-                        for (network in connectivityManager.allNetworks) {
-                            val networkInfo = connectivityManager.getNetworkInfo(network)
-                            if (networkInfo!!.isConnected) {
-                                val linkProperties = connectivityManager.getLinkProperties(network)
-                                val dnsServersList = linkProperties!!.dnsServers.toSet()
+                    // Iterate all networks
+                    // Notice that android LOLLIPOP or higher allow iterating multiple connected networks of SAME type
+                    for (network in connectivityManager.allNetworks) {
+                        val networkInfo = connectivityManager.getNetworkInfo(network)
+                        if (networkInfo!!.isConnected) {
+                            val linkProperties = connectivityManager.getLinkProperties(network)
+                            val dnsServersList = linkProperties!!.dnsServers.toSet()
 
-                                // Prioritize the DNS servers for link which have a default route
-                                if (linkPropertiesHasDefaultRoute(linkProperties)) {
-                                    priorityServers += dnsServersList
-                                } else {
-                                    servers += dnsServersList
-                                }
+                            // Prioritize the DNS servers for link which have a default route
+                            if (linkPropertiesHasDefaultRoute(linkProperties)) {
+                                priorityServers += dnsServersList
+                            } else {
+                                servers += dnsServersList
                             }
                         }
                     }
-
-                    // Append secondary arrays only if priority is empty
-                    return priorityServers.takeIf { it.isNotEmpty() } ?: servers
-                } catch (ex: Exception) {
-                    Log.d(
-                        TAG,
-                        "Exception detecting DNS servers using ConnectivityManager method",
-                        ex,
-                    )
                 }
+
+                // Append secondary arrays only if priority is empty
+                return priorityServers.takeIf { it.isNotEmpty() } ?: servers
             }
 
             return null
@@ -116,17 +108,10 @@ class DnsServersDetector(
          * @return Dns servers array
          */
         get() {
-            // We are on the safe side and avoid any bug
-            try {
-                val process = Runtime.getRuntime().exec("getprop")
-                val inputStream = process.inputStream
-                val lineNumberReader = LineNumberReader(InputStreamReader(inputStream))
-                return methodExecParseProps(lineNumberReader)
-            } catch (ex: Exception) {
-                Log.d(TAG, "Exception in getServersMethodExec", ex)
-            }
-
-            return null
+            val process = Runtime.getRuntime().exec("getprop")
+            val inputStream = process.inputStream
+            val lineNumberReader = LineNumberReader(InputStreamReader(inputStream))
+            return methodExecParseProps(lineNumberReader)
         }
 
     /**

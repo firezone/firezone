@@ -2,7 +2,6 @@
 package dev.firezone.android.features.splash.ui
 
 import android.content.Context
-import android.util.Log
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
@@ -10,7 +9,6 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.firezone.android.core.domain.preference.GetConfigUseCase
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -32,9 +30,6 @@ internal class SplashViewModel
                     actionMutableLiveData.postValue(ViewAction.NavigateToVpnPermission)
                 } else {
                     useCase.invoke()
-                        .catch {
-                            Log.e("Error", it.message.toString())
-                        }
                         .collect { user ->
                             if (user.token.isNullOrBlank()) {
                                 actionMutableLiveData.postValue(ViewAction.NavigateToSignIn)

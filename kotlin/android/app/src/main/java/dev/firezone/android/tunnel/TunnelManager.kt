@@ -31,7 +31,7 @@ internal class TunnelManager
                     }
                     TunnelRepository.RESOURCES_KEY -> {
                         listeners.forEach {
-                            it.get()?.onResourcesUpdate(tunnelRepository.getResources())
+                            it.get()?.onResourcesUpdate(tunnelRepository.getResources()!!)
                         }
                     }
                 }

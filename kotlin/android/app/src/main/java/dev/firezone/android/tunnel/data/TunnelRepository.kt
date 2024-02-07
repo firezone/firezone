@@ -8,8 +8,6 @@ import dev.firezone.android.tunnel.model.Tunnel
 import dev.firezone.android.tunnel.model.TunnelConfig
 
 interface TunnelRepository {
-    fun get(): Tunnel?
-
     fun setConfig(config: TunnelConfig)
 
     fun getConfig(): TunnelConfig?
@@ -20,13 +18,15 @@ interface TunnelRepository {
 
     fun setResources(resources: List<Resource>)
 
-    fun getResources(): List<Resource>
+    fun getResources(): List<Resource>?
+
+    fun setRoutes(routes: List<Cidr>)
 
     fun addRoute(route: Cidr)
 
     fun removeRoute(route: Cidr)
 
-    fun getRoutes(): List<Cidr>
+    fun getRoutes(): List<Cidr>?
 
     fun clearAll()
 

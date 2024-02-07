@@ -28,35 +28,31 @@ internal class AuthViewModel
         private var authFlowLaunched: Boolean = false
 
         fun onActivityResume() =
-            try {
-                viewModelScope.launch {
-                    val config =
-                        getConfigUseCase()
-                            .firstOrNull() ?: throw Exception("config cannot be null")
+            viewModelScope.launch {
+                val config =
+                    getConfigUseCase()
+                        .firstOrNull() ?: throw Exception("config cannot be null")
 
-                    val state =
-                        getStateUseCase()
-                            .firstOrNull() ?: throw Exception("state cannot be null")
+                val state =
+                    getStateUseCase()
+                        .firstOrNull() ?: throw Exception("state cannot be null")
 
-                    val nonce =
-                        getNonceUseCase()
-                            .firstOrNull() ?: throw Exception("nonce cannot be null")
+                val nonce =
+                    getNonceUseCase()
+                        .firstOrNull() ?: throw Exception("nonce cannot be null")
 
-                    actionMutableLiveData.postValue(
-                        if (authFlowLaunched || config.token != null) {
-                            ViewAction.NavigateToSignIn
-                        } else {
-                            authFlowLaunched = true
-                            ViewAction.LaunchAuthFlow(
-                                url =
-                                    "${config.authBaseUrl}" +
-                                        "?state=$state&nonce=$nonce&as=client",
-                            )
-                        },
-                    )
-                }
-            } catch (e: Exception) {
-                actionMutableLiveData.postValue(ViewAction.ShowError)
+                actionMutableLiveData.postValue(
+                    if (authFlowLaunched || config.token != null) {
+                        ViewAction.NavigateToSignIn
+                    } else {
+                        authFlowLaunched = true
+                        ViewAction.LaunchAuthFlow(
+                            url =
+                                "${config.authBaseUrl}" +
+                                    "?state=$state&nonce=$nonce&as=client",
+                        )
+                    },
+                )
             }
 
         internal sealed class ViewAction {

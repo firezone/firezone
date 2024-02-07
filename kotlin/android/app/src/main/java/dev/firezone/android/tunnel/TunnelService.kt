@@ -50,9 +50,6 @@ class TunnelService : VpnService() {
 
     private var shouldReconnect: Boolean = false
 
-    private val activeTunnel: Tunnel?
-        get() = tunnelRepository.get()
-
     private val callback: ConnlibCallback =
         object : ConnlibCallback {
             override fun onUpdateResources(resourceListJSON: String) {
@@ -79,15 +76,19 @@ class TunnelService : VpnService() {
 
                 val dns = moshi.adapter<List<String>>().fromJson(dnsAddresses) ?: emptyList()
 
-                tunnelRepository.setConfig(
+                val tunnelConfig =
                     TunnelConfig(
                         tunnelAddressIPv4,
                         tunnelAddressIPv6,
                         dns,
-                    ),
-                )
+                    )
+
+                tunnelRepository.setConfig(tunnelConfig)
+                tunnelRepository.setRoutes(emptyList())
+                tunnelRepository.setResources(emptyList())
 
                 val fd = buildVpnService().establish()?.detachFd() ?: -1
+
                 protect(fd)
                 return fd
             }
@@ -167,43 +168,35 @@ class TunnelService : VpnService() {
     }
 
     private fun connect() {
-        try {
-            val config = getConfigUseCase.sync()
+        val config = getConfigUseCase.sync()
 
-            if (tunnelRepository.getState() == Tunnel.State.Up) {
-                shouldReconnect = true
-                disconnect()
-            } else if (config.token != null) {
-                onTunnelStateUpdate(Tunnel.State.Connecting)
-                updateStatusNotification("Status: Connecting...")
-                System.loadLibrary("connlib")
+        if (tunnelRepository.getState() == Tunnel.State.Up) {
+            shouldReconnect = true
+            disconnect()
+        } else if (config.token != null) {
+            onTunnelStateUpdate(Tunnel.State.Connecting)
+            updateStatusNotification("Status: Connecting...")
+            System.loadLibrary("connlib")
 
-                sessionPtr =
-                    TunnelSession.connect(
-                        apiUrl = config.apiUrl,
-                        token = config.token,
-                        deviceId = deviceId(),
-                        deviceName = Build.MODEL,
-                        osVersion = Build.VERSION.RELEASE,
-                        logDir = getLogDir(),
-                        logFilter = config.logFilter,
-                        callback = callback,
-                    )
-            }
-        } catch (exception: Exception) {
-            Log.e(TAG, "connect(): " + exception.message.toString())
+            sessionPtr =
+                TunnelSession.connect(
+                    apiUrl = config.apiUrl,
+                    token = config.token,
+                    deviceId = deviceId(),
+                    deviceName = Build.MODEL,
+                    osVersion = Build.VERSION.RELEASE,
+                    logDir = getLogDir(),
+                    logFilter = config.logFilter,
+                    callback = callback,
+                )
         }
     }
 
     private fun disconnect() {
         Log.d(TAG, "disconnect(): Attempting to disconnect session")
-        try {
-            sessionPtr?.let {
-                TunnelSession.disconnect(it)
-            } ?: onSessionDisconnected(null)
-        } catch (exception: Exception) {
-            Log.e(TAG, exception.message.toString())
-        }
+        sessionPtr?.let {
+            TunnelSession.disconnect(it)
+        } ?: onSessionDisconnected(null)
     }
 
     private fun onSessionDisconnected(error: String?) {
@@ -252,31 +245,32 @@ class TunnelService : VpnService() {
 
     private fun buildVpnService(): VpnService.Builder =
         TunnelService().Builder().apply {
-            activeTunnel?.let { tunnel ->
-                synchronized(tunnel) {
-                    // Allow traffic to bypass the VPN interface when Always-on VPN is enabled.
-                    allowBypass()
+            // Allow traffic to bypass the VPN interface when Always-on VPN is enabled.
+            allowBypass()
 
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                        setMetered(false) // Inherit the metered status from the underlying networks.
-                    }
-
-                    setUnderlyingNetworks(null) // Use all available networks.
-
-                    addAddress(tunnel.config.tunnelAddressIPv4!!, 32)
-                    addAddress(tunnel.config.tunnelAddressIPv6!!, 128)
-
-                    tunnel.config.dnsAddresses.forEach { dns ->
-                        addDnsServer(dns)
-                    }
-                    tunnel.routes.forEach {
-                        addRoute(it.address, it.prefix)
-                    }
-
-                    setSession(SESSION_NAME)
-                    setMtu(DEFAULT_MTU)
-                }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                setMetered(false) // Inherit the metered status from the underlying networks.
             }
+
+            setUnderlyingNetworks(null) // Use all available networks.
+
+            tunnelRepository.getConfig()?.let { config ->
+                Log.d(TAG, "Building VPN service with config: $config")
+                config.tunnelAddressIPv4?.let { addAddress(it, 32) }
+                config.tunnelAddressIPv6?.let { addAddress(it, 128) }
+                config.dnsAddresses.forEach { dns ->
+                    Log.d(TAG, "Adding DNS server: $dns")
+                    addDnsServer(dns)
+                }
+            } ?: Log.e(TAG, "No config found")
+
+            tunnelRepository.getRoutes()?.forEach {
+                Log.d(TAG, "Adding route: $it")
+                addRoute(it.address, it.prefix)
+            }
+
+            setSession(SESSION_NAME)
+            setMtu(DEFAULT_MTU)
         }
 
     private fun updateStatusNotification(message: String?) {
