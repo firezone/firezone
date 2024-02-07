@@ -1,6 +1,6 @@
 use crate::{
     backoff::{self, ExponentialBackoff},
-    node::Transmit,
+    node::{CandidateEvent, Transmit},
     utils::earliest,
 };
 use ::backoff::backoff::Backoff;
@@ -49,7 +49,7 @@ pub struct Allocation {
     allocation_lifetime: Option<(Instant, Duration)>,
 
     buffered_transmits: VecDeque<Transmit<'static>>,
-    new_candidates: VecDeque<Candidate>,
+    events: VecDeque<CandidateEvent>,
 
     backoff: ExponentialBackoff,
     sent_requests: HashMap<TransactionId, (Message<Attribute>, Instant, Duration)>,
@@ -101,7 +101,7 @@ impl Allocation {
             ip4_allocation: Default::default(),
             ip6_allocation: Default::default(),
             buffered_transmits: Default::default(),
-            new_candidates: Default::default(),
+            events: Default::default(),
             sent_requests: Default::default(),
             username,
             password,
@@ -257,17 +257,17 @@ impl Allocation {
                 update_candidate(
                     maybe_srflx_candidate,
                     &mut self.last_srflx_candidate,
-                    &mut self.new_candidates,
+                    &mut self.events,
                 );
                 update_candidate(
                     maybe_ip4_relay_candidate,
                     &mut self.ip4_allocation,
-                    &mut self.new_candidates,
+                    &mut self.events,
                 );
                 update_candidate(
                     maybe_ip6_relay_candidate,
                     &mut self.ip6_allocation,
-                    &mut self.new_candidates,
+                    &mut self.events,
                 );
 
                 tracing::info!(
@@ -398,8 +398,8 @@ impl Allocation {
         // TODO: Clean up unused channels
     }
 
-    pub fn poll_candidate(&mut self) -> Option<Candidate> {
-        self.new_candidates.pop_front()
+    pub fn poll_event(&mut self) -> Option<CandidateEvent> {
+        self.events.pop_front()
     }
 
     pub fn poll_transmit(&mut self) -> Option<Transmit<'static>> {
@@ -596,16 +596,16 @@ impl Allocation {
 fn update_candidate(
     maybe_new: Option<Candidate>,
     maybe_current: &mut Option<Candidate>,
-    new_candidates: &mut VecDeque<Candidate>,
+    events: &mut VecDeque<CandidateEvent>,
 ) {
     match (maybe_new, &maybe_current) {
         (Some(new), Some(current)) if &new != current => {
             *maybe_current = Some(new.clone());
-            new_candidates.push_back(new);
+            events.push_back(CandidateEvent::New(new));
         }
         (Some(new), None) => {
             *maybe_current = Some(new.clone());
-            new_candidates.push_back(new);
+            events.push_back(CandidateEvent::New(new));
         }
         _ => {}
     }
@@ -1358,6 +1358,34 @@ mod tests {
             allocation.next_message().is_none(),
             "expect repeated unauthorized despite received nonce to stop retry"
         );
+    }
+
+    #[test]
+    fn returns_new_candidates_on_successful_allocation() {
+        let mut allocation = Allocation::for_test(Instant::now());
+
+        let allocate = allocation.next_message().unwrap();
+        allocation.handle_test_input(
+            &allocate_response(&allocate, &[RELAY_ADDR_IP4]),
+            Instant::now(),
+        );
+
+        let next_event = allocation.poll_event();
+        assert_eq!(
+            next_event,
+            Some(CandidateEvent::New(
+                Candidate::server_reflexive(PEER1, PEER1, Protocol::Udp).unwrap()
+            ))
+        );
+        let next_event = allocation.poll_event();
+        assert_eq!(
+            next_event,
+            Some(CandidateEvent::New(
+                Candidate::relayed(RELAY_ADDR_IP4, Protocol::Udp).unwrap()
+            ))
+        );
+        let next_event = allocation.poll_event();
+        assert_eq!(next_event, None);
     }
 
     fn ch(peer: SocketAddr, now: Instant) -> Channel {
