@@ -218,11 +218,11 @@ impl Allocation {
                 }
                 REFRESH => {
                     if let Some(candidate) = self.ip4_allocation.take() {
-                        self.events.push_back(CandidateEvent::Expired(candidate))
+                        self.events.push_back(CandidateEvent::Invalid(candidate))
                     }
 
                     if let Some(candidate) = self.ip6_allocation.take() {
-                        self.events.push_back(CandidateEvent::Expired(candidate))
+                        self.events.push_back(CandidateEvent::Invalid(candidate))
                     }
 
                     self.channel_bindings.clear();
@@ -1431,7 +1431,7 @@ mod tests {
     }
 
     #[test]
-    fn failed_refresh_will_expire_relay_candiates() {
+    fn failed_refresh_will_invalidate_relay_candiates() {
         let mut allocation = Allocation::for_test(Instant::now());
 
         let allocate = allocation.next_message().unwrap();
@@ -1448,13 +1448,13 @@ mod tests {
 
         assert_eq!(
             allocation.poll_event(),
-            Some(CandidateEvent::Expired(
+            Some(CandidateEvent::Invalid(
                 Candidate::relayed(RELAY_ADDR_IP4, Protocol::Udp).unwrap()
             ))
         );
         assert_eq!(
             allocation.poll_event(),
-            Some(CandidateEvent::Expired(
+            Some(CandidateEvent::Invalid(
                 Candidate::relayed(RELAY_ADDR_IP6, Protocol::Udp).unwrap()
             ))
         );
