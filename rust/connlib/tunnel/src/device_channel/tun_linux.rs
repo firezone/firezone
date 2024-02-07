@@ -116,16 +116,7 @@ impl Tun {
             worker: Mutex::new(Some(set_iface_config(config.clone(), handle).boxed())),
         };
 
-        tracing::info!(?dns_config, "Running resolvectl");
-        let mut cmd = std::process::Command::new("resolvectl");
-        cmd.args(["dns", IFACE_NAME]);
-        for ip in &dns_config {
-            cmd.arg(ip.to_string());
-        }
-        let success = cmd.spawn().map_err(|_| Error::SpawnResolvectl)?.wait().map_err(|_| Error::JoinResolvectl)?.success();
-        if ! success {
-            return Err(Error::ResolvectlExitCode);
-        }
+        tracing::info!(?dns_config, "DNS goes here");
 
         Ok(tun)
     }
