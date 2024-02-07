@@ -112,7 +112,6 @@ fn sentinel_dns_mapping(dns: &[DnsServer]) -> BiMap<IpAddr, DnsServer> {
 }
 
 impl<CB: Callbacks + 'static> ControlPlane<CB> {
-    #[tracing::instrument(level = "trace", skip(self))]
     async fn init(
         &mut self,
         InitClient {
