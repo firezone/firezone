@@ -85,7 +85,7 @@ jobs:
         with:
           targets: x86_64-pc-windows-msvc
       - name: Try out Docker
-        run: docker run --rm -it debian cat /etc/issue
+        run: docker run --rm debian cat /etc/issue
         # This is the "Evergreen" bootstrapper from Microsoft
         # <https://developer.microsoft.com/en-us/microsoft-edge/webview2/?form=MA13LH#download>
         # Unfortunately, this makes the test non-deterministic.
