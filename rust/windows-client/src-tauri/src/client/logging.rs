@@ -1,7 +1,7 @@
 //! Everything for logging to files, zipping up the files for export, and counting the files
 
 use crate::client::gui::{ControllerRequest, CtlrTx, Managed};
-use anyhow::{bail, Result};
+use anyhow::{bail, Context, Result};
 use connlib_client_shared::file_logger;
 use connlib_shared::windows::app_local_data_dir;
 use serde::Serialize;
@@ -46,7 +46,10 @@ pub(crate) fn setup(log_filter: &str) -> Result<Handles, Error> {
         .with(fmt::layer().with_filter(EnvFilter::from_str(log_filter)?));
     set_global_default(subscriber)?;
     if let Err(error) = output_vt100::try_init() {
-        tracing::warn!(?error, "Failed to init vt100 terminal colors");
+        tracing::warn!(
+            ?error,
+            "Failed to init vt100 terminal colors (expected in CI)"
+        );
     }
     LogTracer::init()?;
     Ok(Handles {
@@ -135,29 +138,30 @@ pub(crate) async fn export_logs_inner(ctlr_tx: CtlrTx) -> Result<()> {
 /// * `path` - Where the zip archive will be written
 /// * `stem` - A directory containing all the log files inside the zip archive, to avoid creating a ["tar bomb"](https://www.linfo.org/tarbomb.html). This comes from the automatically-generated name of the archive, even if the user changes it to e.g. `logs.zip`
 pub(crate) async fn export_logs_to(path: PathBuf, stem: PathBuf) -> Result<()> {
-    tracing::trace!("Exporting logs to {path:?}");
+    tracing::info!("Exporting logs to {path:?}");
 
     // TODO: Consider https://github.com/Majored/rs-async-zip/issues instead of `spawn_blocking`
     spawn_blocking(move || {
-        let f = fs::File::create(path)?;
+        let f = fs::File::create(path).context("Failed to create zip file")?;
         let mut zip = zip::ZipWriter::new(f);
         // All files will have the same modified time. Doing otherwise seems to be difficult
         let options = zip::write::FileOptions::default();
-        for entry in fs::read_dir(log_path()?)? {
-            let entry = entry?;
+        let log_path = log_path().context("Failed to compute log dir path")?;
+        for entry in fs::read_dir(log_path).context("Failed to `read_dir` log dir")? {
+            let entry = entry.context("Got bad entry from `read_dir`")?;
             let Some(path) = stem.join(entry.file_name()).to_str().map(|x| x.to_owned()) else {
                 bail!("log filename isn't valid Unicode")
             };
-            zip.start_file(path, options)?;
-            let mut f = fs::File::open(entry.path())?;
-            io::copy(&mut f, &mut zip)?;
+            zip.start_file(path, options)
+                .context("`ZipWriter::start_file` failed")?;
+            let mut f = fs::File::open(entry.path()).context("Failed to open log file")?;
+            io::copy(&mut f, &mut zip).context("Failed to copy log file into zip")?;
         }
-        zip.finish()?;
-        Ok::<_, anyhow::Error>(())
+        zip.finish().context("Failed to finish zip file")?;
+        Ok(())
     })
-    .await??;
-
-    // TODO: Somehow signal back to the GUI to unlock the log buttons when the export completes, or errors out
+    .await
+    .context("Failed to join zip export task")??;
     Ok(())
 }
 
