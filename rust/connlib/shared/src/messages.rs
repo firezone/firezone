@@ -270,7 +270,7 @@ pub struct Interface {
 }
 
 /// A single relay
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Relay {
     /// STUN type of relay
@@ -280,7 +280,7 @@ pub enum Relay {
 }
 
 /// Represent a TURN relay
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
 pub struct Turn {
     //// Expire time of the username/password in unix millisecond timestamp UTC
     #[serde(with = "ts_seconds")]
@@ -295,7 +295,7 @@ pub struct Turn {
 }
 
 /// Stun kind of relay
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
 pub struct Stun {
     /// URI for the relay
     pub uri: String,
