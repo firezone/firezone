@@ -19,7 +19,7 @@ use str0m::ice::{IceAgent, IceAgentEvent, IceCreds, StunMessage, StunPacket};
 use str0m::net::Protocol;
 use str0m::{Candidate, CandidateKind, IceConnectionState};
 
-use crate::allocation::Allocation;
+use crate::allocation::{Allocation, Socket};
 use crate::index::IndexLfsr;
 use crate::info::ConnectionInfo;
 use crate::stun_binding::StunBinding;
@@ -224,13 +224,13 @@ where
         }
 
         // Next, the packet could be a channel-data message, unwrap if that is the case.
-        let (from, packet, remote_socket) = self
+        let (from, packet, relay_socket) = self
             .allocations
             .get_mut(&from)
             .and_then(|a| {
-                let (from, packet, remote_socket) = a.decapsulate(from, packet, now)?;
+                let (from, packet, socket) = a.decapsulate(from, packet, now)?;
 
-                Some((from, packet, Some(remote_socket)))
+                Some((from, packet, Some(socket)))
             })
             .unwrap_or((from, packet, None));
 
@@ -244,7 +244,7 @@ where
                         StunPacket {
                             proto: Protocol::Udp,
                             source: from,
-                            destination: remote_socket.unwrap_or(local),
+                            destination: relay_socket.map(|s| s.address()).unwrap_or(local),
                             message,
                         },
                     );
@@ -267,7 +267,7 @@ where
                 // In our API, we parse the packets directly as an IpPacket.
                 // Thus, the caller can query whatever data they'd like, not just the source IP so we don't return it in addition.
                 TunnResult::WriteToTunnelV4(packet, ip) => {
-                    conn.set_remote_from_wg_activity(local, from, remote_socket);
+                    conn.set_remote_from_wg_activity(local, from, relay_socket);
 
                     let ipv4_packet =
                         MutableIpv4Packet::new(packet).expect("boringtun verifies validity");
@@ -276,7 +276,7 @@ where
                     Ok(Some((*id, ipv4_packet.into())))
                 }
                 TunnResult::WriteToTunnelV6(packet, ip) => {
-                    conn.set_remote_from_wg_activity(local, from, remote_socket);
+                    conn.set_remote_from_wg_activity(local, from, relay_socket);
 
                     let ipv6_packet =
                         MutableIpv6Packet::new(packet).expect("boringtun verifies validity");
@@ -290,7 +290,7 @@ where
                 // This should be fairly rare which is why we just allocate these and return them from `poll_transmit` instead.
                 // Overall, this results in a much nicer API for our caller and should not affect performance.
                 TunnResult::WriteToNetwork(bytes) => {
-                    conn.set_remote_from_wg_activity(local, from, remote_socket);
+                    conn.set_remote_from_wg_activity(local, from, relay_socket);
 
                     self.buffered_transmits.extend(conn.encapsulate(
                         bytes,
@@ -345,8 +345,8 @@ where
 
         let packet = &payload[..packet_len];
 
-        match conn.remote_socket.ok_or(Error::NotConnected)? {
-            RemoteSocket::Direct {
+        match conn.peer_socket.ok_or(Error::NotConnected)? {
+            PeerSocket::Direct {
                 dest: remote,
                 source,
             } => Ok(Some(Transmit {
@@ -354,7 +354,7 @@ where
                 dst: remote,
                 payload: Cow::Borrowed(packet),
             })),
-            RemoteSocket::Relay { relay, dest: peer } => {
+            PeerSocket::Relay { relay, dest: peer } => {
                 let Some(allocation) = self.allocations.get_mut(&relay) else {
                     tracing::warn!(%relay, "No allocation");
                     return Ok(None);
@@ -407,16 +407,26 @@ where
 
                         let remote_socket = match candidate.kind() {
                             CandidateKind::Relayed => {
-                                let relay = SocketAddr::new(source.ip(), 3478); // FIXME: Don't hardcode 3478 here.
-                                debug_assert!(self.allocations.contains_key(&relay));
+                                let relay =
+                                    self.allocations.iter().find_map(|(relay, allocation)| {
+                                        allocation.has_socket(source).then_some(*relay)
+                                    });
 
-                                RemoteSocket::Relay {
+                                let Some(relay) = relay else {
+                                    debug_assert!(
+                                        false,
+                                        "Should only nominate candidates from known relays"
+                                    );
+                                    continue;
+                                };
+
+                                PeerSocket::Relay {
                                     relay,
                                     dest: destination,
                                 }
                             }
                             CandidateKind::ServerReflexive | CandidateKind::Host => {
-                                RemoteSocket::Direct {
+                                PeerSocket::Direct {
                                     dest: destination,
                                     source,
                                 }
@@ -426,9 +436,9 @@ where
                             }
                         };
 
-                        if conn.remote_socket != Some(remote_socket) {
-                            tracing::debug!(old = ?conn.remote_socket, new = ?remote_socket, "Updating remote socket");
-                            conn.remote_socket = Some(remote_socket);
+                        if conn.peer_socket != Some(remote_socket) {
+                            tracing::debug!(old = ?conn.peer_socket, new = ?remote_socket, "Updating remote socket");
+                            conn.peer_socket = Some(remote_socket);
                             return Some(Event::ConnectionEstablished(*id));
                         }
                     }
@@ -525,29 +535,8 @@ where
     /// Returns buffered data that needs to be sent on the socket.
     pub fn poll_transmit(&mut self) -> Option<Transmit<'static>> {
         for conn in self.negotiated_connections.values_mut() {
-            while let Some(transmit) = conn.agent.poll_transmit() {
-                let relay = SocketAddr::new(transmit.source.ip(), 3478); // TODO: Don't hardcode this.
-
-                match encode_as_channel_data(
-                    relay,
-                    transmit.destination,
-                    &transmit.contents,
-                    &mut self.allocations,
-                    self.last_now,
-                ) {
-                    Ok(transmit) => return Some(transmit),
-                    Err(EncodeError::NoAllocation) => {
-                        return Some(Transmit {
-                            src: Some(transmit.source),
-                            dst: transmit.destination,
-                            payload: Cow::Owned(transmit.contents.into()),
-                        })
-                    }
-                    Err(EncodeError::NoChannel) => {
-                        tracing::debug!(%relay, peer = %transmit.destination, "Got allocation on relay but no channel to peer");
-                        continue;
-                    }
-                }
+            if let Some(transmit) = conn.poll_transmit(&mut self.allocations, self.last_now) {
+                return Some(transmit);
             }
         }
 
@@ -589,7 +578,7 @@ where
             stun_servers: allowed_stun_servers,
             turn_servers: allowed_turn_servers,
             next_timer_update: self.last_now,
-            remote_socket: None,
+            peer_socket: None,
             possible_sockets: HashSet::default(),
             last_seen: None,
         }
@@ -831,12 +820,6 @@ where
 
     fn upsert_turn_servers(&mut self, servers: &HashSet<(SocketAddr, String, String, String)>) {
         for (server, username, password, realm) in servers {
-            debug_assert_eq!(
-                server.port(),
-                3478,
-                "We rely on TURN servers running on port 3478"
-            );
-
             let Ok(username) = Username::new(username.to_owned()) else {
                 tracing::debug!(%username, "Invalid TURN username");
                 continue;
@@ -1084,7 +1067,7 @@ struct Connection {
     last_seen: Option<Instant>,
 
     // When this is `Some`, we are connected.
-    remote_socket: Option<RemoteSocket>,
+    peer_socket: Option<PeerSocket>,
     // Socket addresses from which we might receive data (even before we are connected).
     possible_sockets: HashSet<SocketAddr>,
 
@@ -1092,8 +1075,9 @@ struct Connection {
     turn_servers: HashSet<SocketAddr>,
 }
 
+/// The socket of the peer we are connected to.
 #[derive(Debug, PartialEq, Clone, Copy)]
-enum RemoteSocket {
+enum PeerSocket {
     Direct {
         source: SocketAddr,
         dest: SocketAddr,
@@ -1110,9 +1094,9 @@ impl Connection {
     /// Whilst we establish connections, we may see traffic from a certain address, prior to the negotiation being fully complete.
     /// We already want to accept that traffic and not throw it away.
     fn accepts(&self, addr: SocketAddr) -> bool {
-        let from_connected_remote = self.remote_socket.is_some_and(|r| match r {
-            RemoteSocket::Direct { dest, .. } => dest == addr,
-            RemoteSocket::Relay { dest, .. } => dest == addr,
+        let from_connected_remote = self.peer_socket.is_some_and(|r| match r {
+            PeerSocket::Direct { dest, .. } => dest == addr,
+            PeerSocket::Relay { dest, .. } => dest == addr,
         });
         let from_possible_remote = self.possible_sockets.contains(&addr);
 
@@ -1123,22 +1107,22 @@ impl Connection {
         &mut self,
         local: SocketAddr,
         dest: SocketAddr,
-        relay_socket: Option<SocketAddr>,
+        relay_socket: Option<Socket>,
     ) {
         let remote_socket = match relay_socket {
-            Some(relay_socket) => RemoteSocket::Relay {
-                relay: SocketAddr::new(relay_socket.ip(), 3478),
+            Some(relay_socket) => PeerSocket::Relay {
+                relay: relay_socket.server(),
                 dest,
             },
-            None => RemoteSocket::Direct {
+            None => PeerSocket::Direct {
                 source: local,
                 dest,
             },
         };
 
-        if self.remote_socket != Some(remote_socket) {
-            tracing::debug!(old = ?self.remote_socket, new = ?remote_socket, "Updating remote socket from WG activity");
-            self.remote_socket = Some(remote_socket);
+        if self.peer_socket != Some(remote_socket) {
+            tracing::debug!(old = ?self.peer_socket, new = ?remote_socket, "Updating remote socket from WG activity");
+            self.peer_socket = Some(remote_socket);
         }
     }
 
@@ -1147,6 +1131,46 @@ impl Connection {
         let next_wg_timer = Some(self.next_timer_update);
 
         earliest(agent_timeout, next_wg_timer)
+    }
+
+    fn poll_transmit(
+        &mut self,
+        allocations: &mut HashMap<SocketAddr, Allocation>,
+        now: Instant,
+    ) -> Option<Transmit<'static>> {
+        loop {
+            let transmit = self.agent.poll_transmit()?;
+            let source = transmit.source;
+            let dst = transmit.destination;
+            let packet = transmit.contents;
+
+            // Check if `str0m` wants us to send from a "remote" socket, i.e. one that we allocated with a relay.
+            let allocation = allocations
+                .iter_mut()
+                .find(|(_, allocation)| allocation.has_socket(source));
+
+            let Some((relay, allocation)) = allocation else {
+                // `source` did not match any of our allocated sockets, must be a local one then!
+                return Some(Transmit {
+                    src: Some(source),
+                    dst,
+                    payload: Cow::Owned(packet.into()),
+                });
+            };
+
+            // Payload should be sent from a "remote socket", let's wrap it in a channel data message!
+            let Some(channel_data) = allocation.encode_to_vec(dst, &packet, now) else {
+                // Unlikely edge-case, drop the packet and continue.
+                tracing::debug!(%relay, peer = %dst, "Dropping packet because allocation does not offer a channel to peer");
+                continue;
+            };
+
+            return Some(Transmit {
+                src: None,
+                dst: *relay,
+                payload: Cow::Owned(channel_data),
+            });
+        }
     }
 
     fn handle_timeout(
@@ -1164,6 +1188,11 @@ impl Connection {
 
         if now >= self.next_timer_update {
             self.next_timer_update = now + Duration::from_secs(1);
+
+            // Don't update wireguard timers until we are connected.
+            if self.peer_socket.is_none() {
+                return Ok(None);
+            }
 
             /// [`boringtun`] requires us to pass buffers in where it can construct its packets.
             ///
@@ -1195,8 +1224,8 @@ impl Connection {
         allocations: &mut HashMap<SocketAddr, Allocation>,
         now: Instant,
     ) -> Option<Transmit<'static>> {
-        match self.remote_socket? {
-            RemoteSocket::Direct {
+        match self.peer_socket? {
+            PeerSocket::Direct {
                 dest: remote,
                 source,
             } => Some(Transmit {
@@ -1204,7 +1233,7 @@ impl Connection {
                 dst: remote,
                 payload: Cow::Owned(message.into()),
             }),
-            RemoteSocket::Relay { relay, dest: peer } => {
+            PeerSocket::Relay { relay, dest: peer } => {
                 encode_as_channel_data(relay, peer, message, allocations, now).ok()
             }
         }
