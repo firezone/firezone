@@ -377,10 +377,15 @@ where
                     );
                 }
                 CandidateEvent::Expired(candidate) => {
-                    tracing::info!("Candiate expired: {}", candidate.to_sdp_string());
+                    for (_, agent) in self.connections.agents_mut() {
+                        agent.invalidate_candidate(&candidate);
+
+                        // TODO: Perform ICE restart here in case candidate was the active one?
+                    }
                 }
             }
         }
+
         let mut failed_connections = vec![];
 
         for (id, conn) in self.connections.iter_established_mut() {
