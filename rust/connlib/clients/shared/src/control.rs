@@ -159,7 +159,6 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
         Ok(())
     }
 
-    #[tracing::instrument(level = "trace", skip(self))]
     pub fn connect(
         &mut self,
         Connect {
@@ -191,7 +190,6 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
         }
     }
 
-    #[tracing::instrument(level = "trace", skip(self))]
     pub fn add_resource(&self, resource_description: ResourceDescription) {
         if let Err(e) = self.tunnel.add_resource(resource_description) {
             tracing::error!(message = "Can't add resource", error = ?e);
@@ -203,7 +201,6 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
         // TODO
     }
 
-    #[tracing::instrument(level = "trace", skip(self))]
     fn connection_details(
         &self,
         ConnectionDetails {
