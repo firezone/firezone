@@ -669,7 +669,7 @@ impl Controller {
                     system_tray_menu::signed_in(&auth_session.actor_name, &resources)
                 } else {
                     // Signed in, raising tunnel
-                    system_tray_menu::signing_in()
+                    system_tray_menu::signing_in("Signing In...")
                 }
             } else {
                 tracing::error!("We have an auth session but no connlib session");
@@ -677,7 +677,7 @@ impl Controller {
             }
         } else if self.auth.ongoing_request().is_ok() {
             // Signing in, waiting on deep link callback
-            system_tray_menu::signing_in()
+            system_tray_menu::signing_in("Waiting for browser...")
         } else {
             system_tray_menu::signed_out()
         }
