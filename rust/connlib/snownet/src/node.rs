@@ -1069,6 +1069,7 @@ impl<'a> Transmit<'a> {
 #[derive(Debug, PartialEq)]
 pub(crate) enum CandidateEvent {
     New(Candidate),
+    #[allow(dead_code)]
     Expired(Candidate),
 }
 
