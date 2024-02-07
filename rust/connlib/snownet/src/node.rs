@@ -809,7 +809,7 @@ where
     fn upsert_stun_servers(&mut self, servers: &HashSet<SocketAddr>) {
         for server in servers {
             if !self.bindings.contains_key(server) {
-                tracing::debug!(address = %server, "Adding new STUN server");
+                tracing::info!(address = %server, "Adding new STUN server");
 
                 self.bindings
                     .insert(*server, StunBinding::new(*server, self.last_now));
@@ -819,13 +819,13 @@ where
 
     fn upsert_turn_servers(&mut self, servers: &HashSet<(SocketAddr, String, String, String)>) {
         for (server, username, password, realm) in servers {
-            if let Some(allocation) = self.allocations.get(server) {
-                if allocation.uses_credentials(username, password, realm) {
-                    return;
-                }
+            if self
+                .allocations
+                .get(server)
+                .is_some_and(|a| a.uses_credentials(username, password, realm))
+            {
+                continue;
             }
-
-            tracing::debug!(address = %server, "Adding new TURN server");
 
             let Ok(username) = Username::new(username.to_owned()) else {
                 tracing::debug!(%username, "Invalid TURN username");
@@ -836,10 +836,16 @@ where
                 continue;
             };
 
-            self.allocations.insert(
+            let existing = self.allocations.insert(
                 *server,
                 Allocation::new(*server, username, password.clone(), realm, self.last_now),
             );
+
+            if existing.is_some() {
+                tracing::info!(address = %server, "Replaced existing allocation because credentials to TURN server changed");
+            } else {
+                tracing::info!(address = %server, "Added new TURN server");
+            }
         }
     }
 
