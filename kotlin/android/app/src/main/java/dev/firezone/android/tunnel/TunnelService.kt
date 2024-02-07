@@ -10,7 +10,6 @@ import android.content.Context
 import android.content.Intent
 import android.net.VpnService
 import android.os.Build
-import android.system.OsConstants
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.squareup.moshi.Moshi
@@ -78,17 +77,16 @@ class TunnelService : VpnService() {
                     """.trimIndent(),
                 )
 
-                moshi.adapter<List<String>>().fromJson(dnsAddresses)?.let { dns ->
-                    tunnelRepository.setConfig(
-                        TunnelConfig(
-                            tunnelAddressIPv4,
-                            tunnelAddressIPv6,
-                            dns,
-                        ),
-                    )
-                }
+                val dns = moshi.adapter<List<String>>().fromJson(dnsAddresses) ?: emptyList()
 
-                // TODO: throw error if failed to establish VpnService
+                tunnelRepository.setConfig(
+                    TunnelConfig(
+                        tunnelAddressIPv4,
+                        tunnelAddressIPv6,
+                        dns,
+                    ),
+                )
+
                 val fd = buildVpnService().establish()?.detachFd() ?: -1
                 protect(fd)
                 return fd
@@ -230,7 +228,7 @@ class TunnelService : VpnService() {
                 val newDeviceId = UUID.randomUUID().toString()
                 preferenceRepository.saveDeviceIdSync(newDeviceId)
                 newDeviceId
-            } ?: throw IllegalStateException("Device ID is null")
+            }
         Log.d(TAG, "Device ID: $deviceId")
 
         return deviceId
@@ -255,47 +253,29 @@ class TunnelService : VpnService() {
     private fun buildVpnService(): VpnService.Builder =
         TunnelService().Builder().apply {
             activeTunnel?.let { tunnel ->
-                allowFamily(OsConstants.AF_INET)
-                allowFamily(OsConstants.AF_INET6)
+                synchronized(tunnel) {
+                    // Allow traffic to bypass the VPN interface when Always-on VPN is enabled.
+                    allowBypass()
 
-                // Allow traffic to bypass the VPN interface when Always-on VPN is enabled.
-                allowBypass()
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        setMetered(false) // Inherit the metered status from the underlying networks.
+                    }
 
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    setMetered(false) // Inherit the metered status from the underlying networks.
-                }
+                    setUnderlyingNetworks(null) // Use all available networks.
 
-                setUnderlyingNetworks(null) // Use all available networks.
+                    addAddress(tunnel.config.tunnelAddressIPv4!!, 32)
+                    addAddress(tunnel.config.tunnelAddressIPv6!!, 128)
 
-                try {
-                    addAddress(tunnel.config.tunnelAddressIPv4, 32)
-                } catch (e: IllegalArgumentException) {
-                    Log.e(TAG, "buildVpnService: ${e.message} when adding address ${tunnel.config.tunnelAddressIPv4}")
-                }
-
-                try {
-                    addAddress(tunnel.config.tunnelAddressIPv6, 128)
-                } catch (e: IllegalArgumentException) {
-                    Log.e(TAG, "buildVpnService: ${e.message} when adding address ${tunnel.config.tunnelAddressIPv6}")
-                }
-
-                tunnel.config.dnsAddresses.forEach { dns ->
-                    try {
+                    tunnel.config.dnsAddresses.forEach { dns ->
                         addDnsServer(dns)
-                    } catch (e: IllegalArgumentException) {
-                        Log.e(TAG, "buildVpnService: ${e.message} when adding DNS server $dns")
                     }
-                }
-                tunnel.routes.forEach {
-                    try {
+                    tunnel.routes.forEach {
                         addRoute(it.address, it.prefix)
-                    } catch (e: IllegalArgumentException) {
-                        Log.e(TAG, "buildVpnService: ${e.message} when adding route ${it.address}/${it.prefix}")
                     }
-                }
 
-                setSession(SESSION_NAME)
-                setMtu(DEFAULT_MTU)
+                    setSession(SESSION_NAME)
+                    setMtu(DEFAULT_MTU)
+                }
             }
         }
 
@@ -308,7 +288,7 @@ class TunnelService : VpnService() {
                 NOTIFICATION_CHANNEL_NAME,
                 NotificationManager.IMPORTANCE_DEFAULT,
             )
-        chan.description = "firezone connection status"
+        chan.description = "Firezone connection status"
 
         manager.createNotificationChannel(chan)
 

@@ -42,13 +42,13 @@ android {
 
     namespace = "dev.firezone.android"
     compileSdk = 34
-    ndkVersion = "25.2.9519653"
+    ndkVersion = "26.1.10909125"
 
     defaultConfig {
         applicationId = "dev.firezone.android"
         // Android 8
         minSdk = 26
-        targetSdk = 33
+        targetSdk = 34
         versionCode = (System.currentTimeMillis() / 1000 / 10).toInt()
         // mark:automatic-version
         versionName = "1.0.0"

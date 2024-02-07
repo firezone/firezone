@@ -2,6 +2,7 @@
 package dev.firezone.android.tunnel.data
 
 import android.content.SharedPreferences
+import com.google.firebase.crashlytics.FirebaseCrashlytics
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.adapter
 import dev.firezone.android.tunnel.data.TunnelRepository.Companion.CONFIG_KEY
@@ -32,19 +33,19 @@ class TunnelRepositoryImpl
             sharedPreferences.unregisterOnSharedPreferenceChangeListener(callback)
         }
 
-        override fun get(): Tunnel? =
-            synchronized(lock) {
-                return try {
-                    Tunnel(
-                        config = requireNotNull(getConfig()),
-                        state = getState(),
-                        routes = getRoutes(),
-                        resources = getResources(),
-                    )
-                } catch (e: Exception) {
-                    null
-                }
+        override fun get(): Tunnel? {
+            return try {
+                Tunnel(
+                    config = requireNotNull(getConfig()),
+                    state = getState(),
+                    routes = getRoutes(),
+                    resources = getResources(),
+                )
+            } catch (e: Exception) {
+                FirebaseCrashlytics.getInstance().recordException(e)
+                null
             }
+        }
 
         override fun setConfig(config: TunnelConfig) {
             synchronized(lock) {
@@ -53,11 +54,15 @@ class TunnelRepositoryImpl
             }
         }
 
-        override fun getConfig(): TunnelConfig? =
-            synchronized(lock) {
-                val json = sharedPreferences.getString(CONFIG_KEY, "{}") ?: "{}"
-                return moshi.adapter<TunnelConfig>().fromJson(json)
+        override fun getConfig(): TunnelConfig? {
+            val json = sharedPreferences.getString(CONFIG_KEY, null)
+            return try {
+                moshi.adapter<TunnelConfig>().fromJson(json)
+            } catch (e: Exception) {
+                FirebaseCrashlytics.getInstance().recordException(e)
+                null
             }
+        }
 
         override fun setState(state: Tunnel.State) {
             synchronized(lock) {
