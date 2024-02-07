@@ -376,13 +376,6 @@ where
                         &mut self.pending_events,
                     );
                 }
-                CandidateEvent::Expired(candidate) => {
-                    for (_, agent) in self.connections.agents_mut() {
-                        agent.invalidate_candidate(&candidate);
-
-                        // TODO: Perform ICE restart here in case candidate was the active one?
-                    }
-                }
             }
         }
 
@@ -1069,8 +1062,6 @@ impl<'a> Transmit<'a> {
 #[derive(Debug, PartialEq)]
 pub(crate) enum CandidateEvent {
     New(Candidate),
-    #[allow(dead_code)]
-    Expired(Candidate),
 }
 
 struct InitialConnection {
