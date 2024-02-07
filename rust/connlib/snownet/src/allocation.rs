@@ -1360,6 +1360,34 @@ mod tests {
         );
     }
 
+    #[test]
+    fn returns_new_candidates_on_successful_allocation() {
+        let mut allocation = Allocation::for_test(Instant::now());
+
+        let allocate = allocation.next_message().unwrap();
+        allocation.handle_test_input(
+            &allocate_response(&allocate, &[RELAY_ADDR_IP4]),
+            Instant::now(),
+        );
+
+        let next_event = allocation.poll_event();
+        assert_eq!(
+            next_event,
+            Some(CandidateEvent::New(
+                Candidate::server_reflexive(PEER1, PEER1, Protocol::Udp).unwrap()
+            ))
+        );
+        let next_event = allocation.poll_event();
+        assert_eq!(
+            next_event,
+            Some(CandidateEvent::New(
+                Candidate::relayed(RELAY_ADDR_IP4, Protocol::Udp).unwrap()
+            ))
+        );
+        let next_event = allocation.poll_event();
+        assert_eq!(next_event, None);
+    }
+
     fn ch(peer: SocketAddr, now: Instant) -> Channel {
         Channel {
             peer,
