@@ -204,7 +204,6 @@ impl Allocation {
                 return true;
             }
 
-            #[allow(clippy::single_match)] // There will be more eventually.
             match message.method() {
                 CHANNEL_BIND => {
                     let Some(channel) = original_request
@@ -216,6 +215,17 @@ impl Allocation {
                     };
 
                     self.channel_bindings.handle_failed_binding(channel);
+                }
+                REFRESH => {
+                    if let Some(candidate) = self.ip4_allocation.take() {
+                        self.events.push_back(CandidateEvent::Expired(candidate))
+                    }
+
+                    if let Some(candidate) = self.ip6_allocation.take() {
+                        self.events.push_back(CandidateEvent::Expired(candidate))
+                    }
+
+                    self.channel_bindings.clear();
                 }
                 _ => {}
             }
@@ -827,6 +837,11 @@ impl ChannelBindings {
         tracing::info!(channel = %c, peer = %channel.peer, "Bound channel");
 
         true
+    }
+
+    fn clear(&mut self) {
+        self.inner.clear();
+        self.next_channel = Self::FIRST_CHANNEL;
     }
 }
 
