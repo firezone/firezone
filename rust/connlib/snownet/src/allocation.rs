@@ -27,6 +27,7 @@ use stun_codec::{
     rfc8656::attributes::AdditionalAddressFamily,
     DecodedMessage, Message, MessageClass, MessageDecoder, MessageEncoder, TransactionId,
 };
+use tracing::{field, Span};
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
 
@@ -130,6 +131,7 @@ impl Allocation {
         .flatten()
     }
 
+    #[tracing::instrument(level = "debug", skip(self, packet, now), fields(relay = %self.server, id, method, class, rtt))]
     pub fn handle_input(
         &mut self,
         from: SocketAddr,
@@ -147,6 +149,10 @@ impl Allocation {
             return false;
         };
 
+        Span::current().record("id", field::debug(message.transaction_id()));
+        Span::current().record("method", field::display(message.method()));
+        Span::current().record("class", field::display(message.class()));
+
         let Some((original_request, sent_at, _)) =
             self.sent_requests.remove(&message.transaction_id())
         else {
@@ -156,7 +162,7 @@ impl Allocation {
         self.backoff.reset();
 
         let rtt = now.duration_since(sent_at);
-        tracing::debug!(id = ?original_request.transaction_id(), method = %original_request.method(), ?rtt);
+        Span::current().record("rtt", field::debug(rtt));
 
         if let Some(error) = message.get_attribute::<ErrorCode>() {
             // If we sent a nonce but receive 401 instead of 438 then our credentials are invalid.
@@ -185,7 +191,6 @@ impl Allocation {
                 };
 
                 tracing::debug!(
-                    method = %original_request.method(),
                     error = error.reason_phrase(),
                     "Request failed, re-authenticating"
                 );
@@ -214,17 +219,13 @@ impl Allocation {
             // TODO: Handle error codes such as:
             // - Failed allocations
 
-            tracing::warn!(id = ?original_request.transaction_id(), method = %original_request.method(), error = %error.reason_phrase(), "STUN request failed");
+            tracing::warn!(error = %error.reason_phrase(), "STUN request failed");
 
             return true;
         }
 
         if message.class() != MessageClass::SuccessResponse {
-            tracing::warn!(
-                "Cannot handle message with class {} for method {}",
-                message.class(),
-                message.method()
-            );
+            tracing::warn!("Can only handle success messages from here");
             return true;
         }
 
@@ -318,7 +319,7 @@ impl Allocation {
 
                 if !self.channel_bindings.set_confirmed(channel, now) {
                     tracing::warn!(%channel, "Unknown channel");
-                };
+                }
             }
             _ => {}
         }
@@ -814,6 +815,8 @@ impl ChannelBindings {
         };
 
         channel.set_confirmed(now);
+
+        tracing::info!(channel = %c, peer = %channel.peer, "Bound channel");
 
         true
     }
