@@ -3,8 +3,8 @@ package dev.firezone.android.tunnel.callback
 
 interface ConnlibCallback {
     fun onSetInterfaceConfig(
-        tunnelAddressIPv4: String,
-        tunnelAddressIPv6: String,
+        addressIPv4: String,
+        addressIPv6: String,
         dnsAddresses: String,
     ): Int
 

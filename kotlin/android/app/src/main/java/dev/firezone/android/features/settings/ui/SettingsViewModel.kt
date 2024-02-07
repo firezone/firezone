@@ -15,6 +15,7 @@ import dev.firezone.android.core.domain.preference.SaveSettingsUseCase
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
@@ -167,6 +168,8 @@ internal class SettingsViewModel
                     emit(Result.success(zipFile))
                 }
             }
+        }.catch { e ->
+            emit(Result.failure(e))
         }.flowOn(Dispatchers.IO)
 
         private fun deleteLogZip(context: Context) {

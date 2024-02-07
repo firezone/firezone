@@ -416,7 +416,7 @@ fn connect(
 /// fd must be a valid file descriptor
 #[allow(non_snake_case)]
 #[no_mangle]
-pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_TunnelSession_connect(
+pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_Session_connect(
     mut env: JNIEnv,
     _class: JClass,
     api_url: JString,
@@ -462,7 +462,7 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_TunnelSession_con
 /// Pointers must be valid
 #[allow(non_snake_case)]
 #[no_mangle]
-pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_TunnelSession_disconnect(
+pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_Session_disconnect(
     mut env: JNIEnv,
     _: JClass,
     session: *mut Session<CallbackHandler>,

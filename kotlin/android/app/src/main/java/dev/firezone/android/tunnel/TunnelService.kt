@@ -1,7 +1,6 @@
 /* Licensed under Apache 2.0 (C) 2023 Firezone, Inc. */
 package dev.firezone.android.tunnel
 
-import android.app.ActivityManager
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -12,7 +11,6 @@ import android.net.VpnService
 import android.os.Build
 import android.util.Log
 import androidx.core.app.NotificationCompat
-import com.google.firebase.crashlytics.FirebaseCrashlytics
 import com.google.firebase.crashlytics.ktx.crashlytics
 import com.google.firebase.ktx.Firebase
 import com.squareup.moshi.Moshi
@@ -20,14 +18,12 @@ import com.squareup.moshi.adapter
 import dagger.hilt.android.AndroidEntryPoint
 import dev.firezone.android.R
 import dev.firezone.android.core.data.PreferenceRepository
-import dev.firezone.android.core.domain.preference.GetConfigUseCase
 import dev.firezone.android.core.presentation.MainActivity
 import dev.firezone.android.tunnel.callback.ConnlibCallback
-import dev.firezone.android.tunnel.data.TunnelRepository
-import dev.firezone.android.tunnel.data.TunnelRepository.Companion.TunnelState
 import dev.firezone.android.tunnel.model.Cidr
 import dev.firezone.android.tunnel.model.Resource
 import dev.firezone.android.tunnel.util.DnsServersDetector
+import java.lang.IllegalStateException
 import java.nio.file.Files
 import java.nio.file.Paths
 import java.util.UUID
@@ -35,78 +31,49 @@ import javax.inject.Inject
 
 @AndroidEntryPoint
 @OptIn(ExperimentalStdlibApi::class)
-class TunnelService : VpnService() {
-    @Inject
-    internal lateinit var getConfigUseCase: GetConfigUseCase
-
-    @Inject
-    internal lateinit var tunnelRepository: TunnelRepository
-
-    @Inject
-    internal lateinit var preferenceRepository: PreferenceRepository
-
+class TunnelService: VpnService() {
     @Inject
     internal lateinit var moshi: Moshi
 
-    private var sessionPtr: Long? = null
+    @Inject
+    internal lateinit var repo: PreferenceRepository
 
+    private var tunnelIpv4Address: String? = null
+    private var tunnelIpv6Address: String? = null
+    private var tunnelDnsAddresses: List<String> = emptyList()
+    private var tunnelRoutes: List<Cidr> = emptyList()
+    private var connlibSessionPtr: Long? = null
     private var shouldReconnect: Boolean = false
+    var tunnelState = State.DOWN
+    var tunnelResources: List<Resource> = emptyList()
 
     private val callback: ConnlibCallback =
         object : ConnlibCallback {
             override fun onUpdateResources(resourceListJSON: String) {
                 Log.d(TAG, "onUpdateResources: $resourceListJSON")
-                moshi.adapter<List<Resource>>().fromJson(resourceListJSON)?.let { resources ->
-                    tunnelRepository.setResources(resources)
+                moshi.adapter<List<Resource>>().fromJson(resourceListJSON)?.let {
+                    tunnelResources = it
                 }
             }
 
             override fun onSetInterfaceConfig(
-                tunnelAddressIPv4: String,
-                tunnelAddressIPv6: String,
+                addressIPv4: String,
+                addressIPv6: String,
                 dnsAddresses: String,
             ): Int {
-                Log.d(
-                    TAG,
-                    """
-                    onSetInterfaceConfig:
-                    [IPv4:$tunnelAddressIPv4]
-                    [IPv6:$tunnelAddressIPv6]
-                    [dns:$dnsAddresses]
-                    """.trimIndent(),
-                )
-                Firebase.crashlytics.log(
-                    """
-                    onSetInterfaceConfig:
-                    [IPv4:$tunnelAddressIPv4]
-                    [IPv6:$tunnelAddressIPv6]
-                    [dns:$dnsAddresses]
-                    """.trimIndent(),
-                )
+                // init tunnel config
+                tunnelDnsAddresses = moshi.adapter<List<String>>().fromJson(dnsAddresses)!!
+                tunnelIpv4Address = addressIPv4
+                tunnelIpv6Address = addressIPv6
 
-                val dns = moshi.adapter<List<String>>().fromJson(dnsAddresses) ?: emptyList()
-
-                tunnelRepository.setIPv4Address(tunnelAddressIPv4)
-                tunnelRepository.setIPv6Address(tunnelAddressIPv6)
-                tunnelRepository.setDnsAddresses(dns)
-                tunnelRepository.setRoutes(emptyList())
-                tunnelRepository.setResources(emptyList())
-
-                val fd = try {
-                    buildVpnService().establish()?.detachFd() ?: -1
-                } catch (e: Exception) {
-                    Firebase.crashlytics.recordException(e)
-                    -1
-                }
-
+                // start VPN
+                val fd = buildVpnService().establish()?.detachFd() ?: -1
                 protect(fd)
                 return fd
             }
 
             override fun onTunnelReady(): Boolean {
-                Log.d(TAG, "onTunnelReady")
-
-                tunnelRepository.setState(TunnelState.Up)
+                onTunnelStateUpdate(State.UP)
                 updateStatusNotification("Status: Connected")
                 return true
             }
@@ -117,7 +84,7 @@ class TunnelService : VpnService() {
             ): Int {
                 Log.d(TAG, "onAddRoute: $addr/$prefix")
                 val route = Cidr(addr, prefix)
-                tunnelRepository.addRoute(route)
+                tunnelRoutes.toMutableList().add(route)
                 val fd = buildVpnService().establish()?.detachFd() ?: -1
                 protect(fd)
                 return fd
@@ -129,7 +96,7 @@ class TunnelService : VpnService() {
             ): Int {
                 Log.d(TAG, "onRemoveRoute: $addr/$prefix")
                 val route = Cidr(addr, prefix)
-                tunnelRepository.removeRoute(route)
+                tunnelRoutes.toMutableList().remove(route)
                 val fd = buildVpnService().establish()?.detachFd() ?: -1
                 protect(fd)
                 return fd
@@ -173,23 +140,43 @@ class TunnelService : VpnService() {
         return START_STICKY
     }
 
-    private fun onTunnelStateUpdate(state: TunnelState) {
-        tunnelRepository.setState(state)
+
+    private fun onSessionDisconnected(error: String?) {
+        connlibSessionPtr = null
+        onTunnelStateUpdate(State.DOWN)
+
+        if (shouldReconnect && error == null) {
+            shouldReconnect = false
+            connect()
+        } else {
+            repo.clearToken()
+            stopForeground(STOP_FOREGROUND_REMOVE)
+        }
     }
 
-    private fun connect() {
-        val config = getConfigUseCase.sync()
+    fun disconnect() {
+        Log.d(TAG, "disconnect(): Attempting to disconnect session")
+        connlibSessionPtr?.let {
+            ConnlibSession.disconnect(it)
+        } ?: onSessionDisconnected(null)
 
-        if (tunnelRepository.getState() == TunnelState.Up) {
+        repo.clearToken()
+    }
+
+    fun connect() {
+        val config = repo.getConfigSync()
+
+        // TODO: Refactor this mess as part of https://github.com/firezone/firezone/issues/3343
+        if (tunnelState == State.UP) {
             shouldReconnect = true
             disconnect()
         } else if (config.token != null) {
-            onTunnelStateUpdate(TunnelState.Connecting)
+            onTunnelStateUpdate(State.CONNECTING)
             updateStatusNotification("Status: Connecting...")
             System.loadLibrary("connlib")
 
-            sessionPtr =
-                TunnelSession.connect(
+            connlibSessionPtr =
+                ConnlibSession.connect(
                     apiUrl = config.apiUrl,
                     token = config.token,
                     deviceId = deviceId(),
@@ -202,46 +189,20 @@ class TunnelService : VpnService() {
         }
     }
 
-    private fun disconnect() {
-        Log.d(TAG, "disconnect(): Attempting to disconnect session")
-        sessionPtr?.let {
-            TunnelSession.disconnect(it)
-        } ?: onSessionDisconnected(null)
+    private fun onTunnelStateUpdate(s: State) {
+        tunnelState = s
     }
-
-    private fun onSessionDisconnected(error: String?) {
-        sessionPtr = null
-        onTunnelStateUpdate(TunnelState.Down)
-
-        if (shouldReconnect && error == null) {
-            shouldReconnect = false
-            connect()
-        } else {
-            tunnelRepository.clearAll()
-            preferenceRepository.clearToken()
-            onTunnelStateUpdate(TunnelState.Closed)
-            stopForeground(STOP_FOREGROUND_REMOVE)
-        }
-    }
-
     private fun deviceId(): String {
         // Get the deviceId from the preferenceRepository, or save a new UUIDv4 and return that if it doesn't exist
         val deviceId =
-            preferenceRepository.getDeviceIdSync() ?: run {
+            repo.getDeviceIdSync() ?: run {
                 val newDeviceId = UUID.randomUUID().toString()
-                preferenceRepository.saveDeviceIdSync(newDeviceId)
+                repo.saveDeviceIdSync(newDeviceId)
                 newDeviceId
             }
         Log.d(TAG, "Device ID: $deviceId")
 
         return deviceId
-    }
-
-    private fun getLogDir(): String {
-        // Create log directory if it doesn't exist
-        val logDir = cacheDir.absolutePath + "/logs"
-        Files.createDirectories(Paths.get(logDir))
-        return logDir
     }
 
     private fun configIntent(): PendingIntent? {
@@ -253,8 +214,18 @@ class TunnelService : VpnService() {
         )
     }
 
-    private fun buildVpnService(): VpnService.Builder =
-        TunnelService().Builder().apply {
+    private fun getLogDir(): String {
+        // Create log directory if it doesn't exist
+        val logDir = cacheDir.absolutePath + "/logs"
+        Files.createDirectories(Paths.get(logDir))
+        return logDir
+    }
+
+    private fun buildVpnService(): VpnService.Builder {
+        val tunnelService = TunnelService()
+        activeTunnel = tunnelService
+
+        return tunnelService.Builder().apply {
             Firebase.crashlytics.log("Building VPN service")
             // Allow traffic to bypass the VPN interface when Always-on VPN is enabled.
             allowBypass()
@@ -265,27 +236,19 @@ class TunnelService : VpnService() {
 
             setUnderlyingNetworks(null) // Use all available networks.
 
-            Firebase.crashlytics.log("Adding routes: ${tunnelRepository.getRoutes()}")
-            tunnelRepository.getRoutes()?.forEach {
-                Log.d(TAG, "Adding route: $it")
+            tunnelRoutes.forEach {
                 addRoute(it.address, it.prefix)
             }
-
-            Firebase.crashlytics.log("Adding DNS servers: ${tunnelRepository.getDnsAddresses()}")
-            tunnelRepository.getDnsAddresses()?.forEach { dns ->
-                Log.d(TAG, "Adding DNS server: $dns")
+            tunnelDnsAddresses.forEach { dns ->
                 addDnsServer(dns)
             }
-
-            Firebase.crashlytics.log("Adding IPv4: ${tunnelRepository.getIPv4Address()}")
-            addAddress(tunnelRepository.getIPv4Address()!!, 32)
-
-            Firebase.crashlytics.log("Adding IPv6: ${tunnelRepository.getIPv6Address()}")
-            addAddress(tunnelRepository.getIPv6Address()!!, 128)
+            addAddress(tunnelIpv4Address!!, 32)
+            addAddress(tunnelIpv6Address!!, 128)
 
             setSession(SESSION_NAME)
-            setMtu(DEFAULT_MTU)
+            setMtu(MTU)
         }
+    }
 
     private fun updateStatusNotification(message: String?) {
         val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
@@ -315,6 +278,13 @@ class TunnelService : VpnService() {
     }
 
     companion object {
+        enum class State {
+            CONNECTING,
+            UP,
+            DOWN,
+            CLOSED,
+        }
+
         const val ACTION_CONNECT = "dev.firezone.android.tunnel.CONNECT"
         const val ACTION_DISCONNECT = "dev.firezone.android.tunnel.DISCONNECT"
 
@@ -325,17 +295,37 @@ class TunnelService : VpnService() {
 
         private const val TAG: String = "TunnelService"
         private const val SESSION_NAME: String = "Firezone Connection"
-        private const val DEFAULT_MTU: Int = 1280
+        private const val MTU: Int = 1280
 
-        @SuppressWarnings("deprecation")
-        fun isRunning(context: Context): Boolean {
-            val manager = context.getSystemService(ACTIVITY_SERVICE) as ActivityManager
-            for (service in manager.getRunningServices(Int.MAX_VALUE)) {
-                if (TunnelService::class.java.name == service.service.className) {
-                    return true
-                }
+        var activeTunnel: TunnelService? = null
+
+        fun start(context: Context) {
+            if (activeTunnel != null) {
+                throw IllegalStateException("TunnelService already running")
             }
-            return false
+
+            // Start system VPN service
+            val intent = Intent(context, TunnelService::class.java)
+            intent.action = ACTION_CONNECT
+            context.startService(intent)
+
+            activeTunnel = TunnelService()
+            activeTunnel!!.connect()
+        }
+
+        // Starts the TunnelService given a context
+        // For user-initiated sessions, this is started from the UI
+        fun stop(context: Context) {
+            if (activeTunnel == null) {
+                throw IllegalStateException("TunnelService not running")
+            }
+
+            val intent = Intent(context, TunnelService::class.java)
+            intent.action = ACTION_DISCONNECT
+            context.startService(intent)
+
+            activeTunnel!!.disconnect()
+            activeTunnel = null
         }
     }
 }

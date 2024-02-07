@@ -8,11 +8,8 @@ import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
-import dev.firezone.android.tunnel.TunnelManager
 import dev.firezone.android.tunnel.TunnelService
-import dev.firezone.android.tunnel.callback.TunnelListener
-import dev.firezone.android.tunnel.data.TunnelRepository
-import dev.firezone.android.tunnel.data.TunnelRepository.Companion.TunnelState
+import dev.firezone.android.tunnel.TunnelService.Companion.State
 import dev.firezone.android.tunnel.model.Resource
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -22,86 +19,41 @@ import javax.inject.Inject
 @HiltViewModel
 internal class SessionViewModel
     @Inject
-    constructor(
-        private val tunnelManager: TunnelManager,
-        private val tunnelRepository: TunnelRepository,
-    ) : ViewModel() {
-        private val _uiState = MutableStateFlow(UiState())
+    constructor() : ViewModel() {
+        private val _uiState = MutableStateFlow(UiState(TunnelService.activeTunnel?.tunnelState ?: State.DOWN))
         val uiState: StateFlow<UiState> = _uiState
 
         private val actionMutableLiveData = MutableLiveData<ViewAction>()
         val actionLiveData: LiveData<ViewAction> = actionMutableLiveData
 
-        private val tunnelListener =
-            object : TunnelListener {
-                override fun onTunnelStateUpdate(state: TunnelState) {
-                    when (state) {
-                        TunnelState.Down -> {
-                            onDisconnect()
-                        }
-                        TunnelState.Closed -> {
-                            onClosed()
-                        }
-                        else -> {
-                            _uiState.value =
-                                _uiState.value.copy(
-                                    state = state,
-                                )
-                        }
-                    }
-                }
-
-                override fun onResourcesUpdate(resources: List<Resource>?) {
-                    Log.d("TunnelManager", "onUpdateResources: $resources")
-                    _uiState.value =
-                        _uiState.value.copy(
-                            resources = resources,
-                        )
-                }
-            }
-
-        fun connect(context: Context) {
+        fun signIn(context: Context) {
             viewModelScope.launch {
-                tunnelManager.addListener(tunnelListener)
-
-                val isServiceRunning = TunnelService.isRunning(context)
-                if (!isServiceRunning ||
-                    tunnelRepository.getState() == TunnelState.Down ||
-                    tunnelRepository.getState() == TunnelState.Closed
+                if (TunnelService.activeTunnel == null ||
+                    TunnelService.activeTunnel?.tunnelState == State.DOWN ||
+                    TunnelService.activeTunnel?.tunnelState == State.CLOSED
                 ) {
-                    tunnelManager.connect()
+                    TunnelService.start(context)
                 } else {
                     _uiState.value =
                         _uiState.value.copy(
-                            state = tunnelRepository.getState(),
-                            resources = tunnelRepository.getResources(),
+                            state = TunnelService.activeTunnel!!.tunnelState,
+                            resources = TunnelService.activeTunnel!!.tunnelResources,
                         )
                 }
             }
         }
 
-        override fun onCleared() {
-            super.onCleared()
-
-            tunnelManager.removeListener(tunnelListener)
-        }
-
-        fun disconnect() {
-            tunnelManager.disconnect()
-        }
-
-        private fun onDisconnect() {
-            // no-op
+        fun signOut(context: Context) {
+            TunnelService.stop(context)
         }
 
         private fun onClosed() {
-            tunnelManager.removeListener(tunnelListener)
             actionMutableLiveData.postValue(ViewAction.NavigateToSignIn)
         }
 
         internal data class UiState(
-            val state: TunnelState = TunnelState.Down,
-            val resources: List<Resource>? = null,
+            val state: State? = State.DOWN,
+            val resources: List<Resource>? = emptyList(),
         )
 
         internal sealed class ViewAction {

@@ -14,4 +14,7 @@ internal class GetConfigUseCase
         operator fun invoke(): Flow<Config> = repository.getConfig()
 
         fun sync(): Config = repository.getConfigSync()
+        fun clearToken() = repository.clearToken()
+        fun getDeviceIdSync(): String? = repository.getDeviceIdSync()
+        fun saveDeviceIdSync(deviceId: String) = repository.saveDeviceIdSync(deviceId)
     }

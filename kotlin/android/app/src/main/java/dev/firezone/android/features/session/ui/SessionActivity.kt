@@ -1,6 +1,7 @@
 /* Licensed under Apache 2.0 (C) 2023 Firezone, Inc. */
 package dev.firezone.android.features.session.ui
 
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.viewModels
@@ -36,12 +37,12 @@ internal class SessionActivity : AppCompatActivity() {
 
         setupViews()
         setupObservers()
-        viewModel.connect(this@SessionActivity)
+        viewModel.signIn(this@SessionActivity)
     }
 
     private fun setupViews() {
         binding.btSignOut.setOnClickListener {
-            viewModel.disconnect()
+            viewModel.signOut(this@SessionActivity)
         }
 
         binding.btSettings.setOnClickListener {
