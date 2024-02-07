@@ -48,6 +48,7 @@ fn reinitialize_allocation_if_credentials_for_relay_differ() {
     // Expect to send another message to the "new" relay
     let transmit = alice.poll_transmit().unwrap();
     assert_eq!(transmit.dst, RELAY);
+    assert_eq!(&transmit.payload[..2], [0x0, 0x3]); // `ALLOCATE` is 0x0003: https://www.rfc-editor.org/rfc/rfc8656#name-stun-methods
     assert!(alice.poll_transmit().is_none());
 }
 
