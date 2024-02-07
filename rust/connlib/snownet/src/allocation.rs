@@ -1276,6 +1276,81 @@ mod tests {
         assert!(next_msg.is_none(), "to not emit buffered channel binding");
     }
 
+    #[test]
+    fn initial_allocate_has_username_realm_and_message_integrity_set() {
+        let mut allocation = Allocation::for_test(Instant::now());
+
+        let allocate = allocation.next_message().unwrap();
+
+        assert_eq!(
+            allocate.get_attribute::<Username>().map(|u| u.name()),
+            Some("foobar")
+        );
+        assert_eq!(
+            allocate.get_attribute::<Realm>().map(|u| u.text()),
+            Some("firezone")
+        );
+        assert!(allocate.get_attribute::<MessageIntegrity>().is_some());
+    }
+
+    #[test]
+    fn initial_allocate_is_missing_nonce() {
+        let mut allocation = Allocation::for_test(Instant::now());
+
+        let allocate = allocation.next_message().unwrap();
+
+        assert!(allocate.get_attribute::<Nonce>().is_none());
+    }
+
+    #[test]
+    fn upon_stale_nonce_reauthorizes_using_new_nonce() {
+        let mut allocation = Allocation::for_test(Instant::now());
+
+        let allocate = allocation.next_message().unwrap();
+        allocation.handle_test_input(
+            &stale_nonce_response(&allocate, Nonce::new("nonce2".to_owned()).unwrap()),
+            Instant::now(),
+        );
+
+        assert_eq!(
+            allocation
+                .next_message()
+                .unwrap()
+                .get_attribute::<Nonce>()
+                .map(|n| n.value()),
+            Some("nonce2")
+        );
+    }
+
+    #[test]
+    fn given_a_request_with_nonce_and_we_are_unauthorized_dont_retry() {
+        let mut allocation = Allocation::for_test(Instant::now());
+
+        // Attempt to authenticate without a nonce
+        let allocate = allocation.next_message().unwrap();
+        allocation.handle_test_input(
+            &unauthorized_response(&allocate, Some(Nonce::new("nonce1".to_owned()).unwrap())),
+            Instant::now(),
+        );
+
+        let allocate = allocation.next_message().unwrap();
+        assert_eq!(
+            allocate.get_attribute::<Nonce>().map(|n| n.value()),
+            Some("nonce1"),
+            "expect next message to include nonce from error response"
+        );
+
+        allocation.handle_test_input(
+            &unauthorized_response(&allocate, Some(Nonce::new("nonce2".to_owned()).unwrap())),
+            Instant::now(),
+        );
+
+        assert!(
+            allocation.next_message().is_none(),
+            "expect repeated unauthorized despite received nonce to stop retry"
+        );
+    }
+
     fn ch(peer: SocketAddr, now: Instant) -> Channel {
         Channel {
             peer,
@@ -1299,6 +1374,35 @@ mod tests {
         }
 
         message.add_attribute(Lifetime::new(Duration::from_secs(600)).unwrap());
+
+        encode(message)
+    }
+
+    fn unauthorized_response(request: &Message<Attribute>, nonce: Option<Nonce>) -> Vec<u8> {
+        let mut message = Message::new(
+            MessageClass::ErrorResponse,
+            request.method(),
+            request.transaction_id(),
+        );
+        message.add_attribute(ErrorCode::from(Unauthorized));
+        message.add_attribute(Realm::new("firezone".to_owned()).unwrap());
+
+        if let Some(nonce) = nonce {
+            message.add_attribute(nonce)
+        }
+
+        encode(message)
+    }
+
+    fn stale_nonce_response(request: &Message<Attribute>, nonce: Nonce) -> Vec<u8> {
+        let mut message = Message::new(
+            MessageClass::ErrorResponse,
+            request.method(),
+            request.transaction_id(),
+        );
+        message.add_attribute(ErrorCode::from(StaleNonce));
+        message.add_attribute(Realm::new("firezone".to_owned()).unwrap());
+        message.add_attribute(nonce);
 
         encode(message)
     }
