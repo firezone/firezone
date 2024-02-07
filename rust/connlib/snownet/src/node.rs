@@ -953,18 +953,28 @@ fn add_candidates<TId>(
 ) where
     TId: Copy + fmt::Display,
 {
-    // TODO: Reduce duplication between initial and negotiated connections
-    for (id, c) in connections.initial.iter_mut() {
+    let initial_connections = connections
+        .initial
+        .iter_mut()
+        .map(|(id, c)| (*id, &c.stun_servers, &c.turn_servers, &mut c.agent));
+    let established_connections = connections
+        .established
+        .iter_mut()
+        .map(|(id, c)| (*id, &c.stun_servers, &c.turn_servers, &mut c.agent));
+
+    for (id, allowed_stun, allowed_turn, agent) in
+        initial_connections.chain(established_connections)
+    {
         match candidate.kind() {
             CandidateKind::ServerReflexive => {
-                if (!c.stun_servers.contains(&server)) && (!c.turn_servers.contains(&server)) {
-                    tracing::debug!(%id, %server, allowed_stun = ?c.stun_servers, allowed_turn = ?c.turn_servers, "Not adding srflx candidate");
+                if (!allowed_stun.contains(&server)) && (!allowed_turn.contains(&server)) {
+                    tracing::debug!(%id, %server, ?allowed_stun, ?allowed_turn, "Not adding srflx candidate");
                     continue;
                 }
             }
             CandidateKind::Relayed => {
-                if !c.turn_servers.contains(&server) {
-                    tracing::debug!(%id, %server, allowed_turn = ?c.turn_servers, "Not adding relay candidate");
+                if !allowed_turn.contains(&server) {
+                    tracing::debug!(%id, %server, ?allowed_turn, "Not adding relay candidate");
 
                     continue;
                 }
@@ -972,28 +982,7 @@ fn add_candidates<TId>(
             CandidateKind::PeerReflexive | CandidateKind::Host => continue,
         }
 
-        add_local_candidate(*id, &mut c.agent, candidate.clone(), pending_events);
-    }
-
-    for (id, c) in connections.established.iter_mut() {
-        match candidate.kind() {
-            CandidateKind::ServerReflexive => {
-                if (!c.stun_servers.contains(&server)) && (!c.turn_servers.contains(&server)) {
-                    tracing::debug!(%id, %server, allowed_stun = ?c.stun_servers, allowed_turn = ?c.turn_servers, "Not adding srflx candidate");
-                    continue;
-                }
-            }
-            CandidateKind::Relayed => {
-                if !c.turn_servers.contains(&server) {
-                    tracing::debug!(%id, %server, allowed_turn = ?c.turn_servers, "Not adding relay candidate");
-
-                    continue;
-                }
-            }
-            CandidateKind::PeerReflexive | CandidateKind::Host => continue,
-        }
-
-        add_local_candidate(*id, &mut c.agent, candidate.clone(), pending_events);
+        add_local_candidate(id, agent, candidate.clone(), pending_events);
     }
 }
 
