@@ -376,8 +376,10 @@ where
                         &mut self.pending_events,
                     );
                 }
-                CandidateEvent::Invalid(_) => {
-                    // TODO: Handle expired candidates. Invalidate on ICE agent? ICE restart?
+                CandidateEvent::Invalid(candidate) => {
+                    for (_, agent) in self.connections.agents_mut() {
+                        agent.invalidate_candidate(&candidate);
+                    }
                 }
             }
         }
