@@ -159,6 +159,18 @@ impl Allocation {
         tracing::debug!(id = ?original_request.transaction_id(), method = %original_request.method(), ?rtt);
 
         if let Some(error) = message.get_attribute::<ErrorCode>() {
+            // If we sent a nonce but receive 401 instead of 438 then our credentials are invalid.
+            if error.code() == Unauthorized::CODEPOINT
+                && original_request.get_attribute::<Nonce>().is_some()
+            {
+                tracing::warn!(
+                    "Invalid credentials, refusing to re-authenticate {}",
+                    original_request.method()
+                );
+
+                return true;
+            }
+
             // Check if we need to re-authenticate the original request
             if error.code() == Unauthorized::CODEPOINT || error.code() == StaleNonce::CODEPOINT {
                 if let Some(nonce) = message.get_attribute::<Nonce>() {
