@@ -3,7 +3,7 @@ use clap::Parser;
 use connlib_client_shared::{file_logger, Callbacks, Session};
 use firezone_cli_utils::{block_on_ctrl_c, setup_global_subscriber, CommonArgs};
 use secrecy::SecretString;
-use std::path::PathBuf;
+use std::{net::IpAddr, path::PathBuf, str::FromStr};
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -25,6 +25,7 @@ fn main() -> Result<()> {
     tracing::info!("new_session");
 
     block_on_ctrl_c();
+    tracing::info!("`block_on_ctrl_c` returned");
 
     session.disconnect(None);
     Ok(())
@@ -37,6 +38,15 @@ struct CallbackHandler {
 
 impl Callbacks for CallbackHandler {
     type Error = std::convert::Infallible;
+
+    fn get_system_default_resolvers(&self) -> Result<Option<Vec<IpAddr>>, Self::Error> {
+        Ok(Some(vec![IpAddr::from_str("172.24.80.1").expect("Impossible: hard-coded IP should be parsable")]))
+    }
+
+    fn on_disconnect(&self, error: Option<&connlib_client_shared::Error>) -> Result<(), Self::Error> {
+        tracing::error!(?error, "Disconnected");
+        Ok(())
+    }
 
     fn roll_log_file(&self) -> Option<PathBuf> {
         self.handle

@@ -164,6 +164,13 @@ pub enum ConnlibError {
     ClosedByPortal,
     #[error(transparent)]
     JoinError(#[from] JoinError),
+
+    #[error("Failed to spawn resolvectl")]
+    SpawnResolvectl,
+    #[error("Failed to join resolvectl")]
+    JoinResolvectl,
+    #[error("Resolvectl returned non-zero exit code")]
+    ResolvectlExitCode,
 }
 
 impl ConnlibError {

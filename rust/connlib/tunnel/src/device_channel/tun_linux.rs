@@ -91,7 +91,7 @@ impl Tun {
         utils::poll_raw_fd(&self.fd, |fd| read(fd, buf), cx)
     }
 
-    pub fn new(config: &InterfaceConfig, _: Vec<IpAddr>, _: &impl Callbacks) -> Result<Self> {
+    pub fn new(config: &InterfaceConfig, dns_config: Vec<IpAddr>, _: &impl Callbacks) -> Result<Self> {
         create_tun_device()?;
 
         let fd = match unsafe { open(TUN_FILE.as_ptr() as _, O_RDWR) } {
@@ -109,12 +109,25 @@ impl Tun {
         let (connection, handle, _) = new_connection()?;
         let join_handle = tokio::spawn(connection);
 
-        Ok(Self {
+        let tun = Self {
             handle: handle.clone(),
             connection: join_handle,
             fd: AsyncFd::new(fd)?,
             worker: Mutex::new(Some(set_iface_config(config.clone(), handle).boxed())),
-        })
+        };
+
+        tracing::info!(?dns_config, "Running resolvectl");
+        let mut cmd = std::process::Command::new("resolvectl");
+        cmd.args(["dns", IFACE_NAME]);
+        for ip in &dns_config {
+            cmd.arg(ip.to_string());
+        }
+        let success = cmd.spawn().map_err(|_| Error::SpawnResolvectl)?.wait().map_err(|_| Error::JoinResolvectl)?.success();
+        if ! success {
+            return Err(Error::ResolvectlExitCode);
+        }
+
+        Ok(tun)
     }
 
     pub fn add_route(&self, route: IpNetwork, _: &impl Callbacks) -> Result<Option<Self>> {
