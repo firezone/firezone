@@ -271,7 +271,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
         }
     }
 
-    #[tracing::instrument(level = "trace", skip(self))]
+    #[tracing::instrument(level = "trace", skip(self, msg))]
     pub async fn handle_message(
         &mut self,
         msg: Messages,
