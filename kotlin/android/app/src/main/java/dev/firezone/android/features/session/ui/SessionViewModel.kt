@@ -12,8 +12,8 @@ import dev.firezone.android.tunnel.TunnelManager
 import dev.firezone.android.tunnel.TunnelService
 import dev.firezone.android.tunnel.callback.TunnelListener
 import dev.firezone.android.tunnel.data.TunnelRepository
+import dev.firezone.android.tunnel.data.TunnelRepository.Companion.TunnelState
 import dev.firezone.android.tunnel.model.Resource
-import dev.firezone.android.tunnel.model.Tunnel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -34,12 +34,12 @@ internal class SessionViewModel
 
         private val tunnelListener =
             object : TunnelListener {
-                override fun onTunnelStateUpdate(state: Tunnel.State) {
+                override fun onTunnelStateUpdate(state: TunnelState) {
                     when (state) {
-                        Tunnel.State.Down -> {
+                        TunnelState.Down -> {
                             onDisconnect()
                         }
-                        Tunnel.State.Closed -> {
+                        TunnelState.Closed -> {
                             onClosed()
                         }
                         else -> {
@@ -51,7 +51,7 @@ internal class SessionViewModel
                     }
                 }
 
-                override fun onResourcesUpdate(resources: List<Resource>) {
+                override fun onResourcesUpdate(resources: List<Resource>?) {
                     Log.d("TunnelManager", "onUpdateResources: $resources")
                     _uiState.value =
                         _uiState.value.copy(
@@ -66,8 +66,8 @@ internal class SessionViewModel
 
                 val isServiceRunning = TunnelService.isRunning(context)
                 if (!isServiceRunning ||
-                    tunnelRepository.getState() == Tunnel.State.Down ||
-                    tunnelRepository.getState() == Tunnel.State.Closed
+                    tunnelRepository.getState() == TunnelState.Down ||
+                    tunnelRepository.getState() == TunnelState.Closed
                 ) {
                     tunnelManager.connect()
                 } else {
@@ -100,7 +100,7 @@ internal class SessionViewModel
         }
 
         internal data class UiState(
-            val state: Tunnel.State = Tunnel.State.Down,
+            val state: TunnelState = TunnelState.Down,
             val resources: List<Resource>? = null,
         )
 

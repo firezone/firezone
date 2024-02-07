@@ -12,6 +12,9 @@ import android.net.VpnService
 import android.os.Build
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import com.google.firebase.crashlytics.FirebaseCrashlytics
+import com.google.firebase.crashlytics.ktx.crashlytics
+import com.google.firebase.ktx.Firebase
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.adapter
 import dagger.hilt.android.AndroidEntryPoint
@@ -21,10 +24,9 @@ import dev.firezone.android.core.domain.preference.GetConfigUseCase
 import dev.firezone.android.core.presentation.MainActivity
 import dev.firezone.android.tunnel.callback.ConnlibCallback
 import dev.firezone.android.tunnel.data.TunnelRepository
+import dev.firezone.android.tunnel.data.TunnelRepository.Companion.TunnelState
 import dev.firezone.android.tunnel.model.Cidr
 import dev.firezone.android.tunnel.model.Resource
-import dev.firezone.android.tunnel.model.Tunnel
-import dev.firezone.android.tunnel.model.TunnelConfig
 import dev.firezone.android.tunnel.util.DnsServersDetector
 import java.nio.file.Files
 import java.nio.file.Paths
@@ -73,21 +75,29 @@ class TunnelService : VpnService() {
                     [dns:$dnsAddresses]
                     """.trimIndent(),
                 )
+                Firebase.crashlytics.log(
+                    """
+                    onSetInterfaceConfig:
+                    [IPv4:$tunnelAddressIPv4]
+                    [IPv6:$tunnelAddressIPv6]
+                    [dns:$dnsAddresses]
+                    """.trimIndent(),
+                )
 
                 val dns = moshi.adapter<List<String>>().fromJson(dnsAddresses) ?: emptyList()
 
-                val tunnelConfig =
-                    TunnelConfig(
-                        tunnelAddressIPv4,
-                        tunnelAddressIPv6,
-                        dns,
-                    )
-
-                tunnelRepository.setConfig(tunnelConfig)
+                tunnelRepository.setIPv4Address(tunnelAddressIPv4)
+                tunnelRepository.setIPv6Address(tunnelAddressIPv6)
+                tunnelRepository.setDnsAddresses(dns)
                 tunnelRepository.setRoutes(emptyList())
                 tunnelRepository.setResources(emptyList())
 
-                val fd = buildVpnService().establish()?.detachFd() ?: -1
+                val fd = try {
+                    buildVpnService().establish()?.detachFd() ?: -1
+                } catch (e: Exception) {
+                    Firebase.crashlytics.recordException(e)
+                    -1
+                }
 
                 protect(fd)
                 return fd
@@ -96,7 +106,7 @@ class TunnelService : VpnService() {
             override fun onTunnelReady(): Boolean {
                 Log.d(TAG, "onTunnelReady")
 
-                tunnelRepository.setState(Tunnel.State.Up)
+                tunnelRepository.setState(TunnelState.Up)
                 updateStatusNotification("Status: Connected")
                 return true
             }
@@ -163,18 +173,18 @@ class TunnelService : VpnService() {
         return START_STICKY
     }
 
-    private fun onTunnelStateUpdate(state: Tunnel.State) {
+    private fun onTunnelStateUpdate(state: TunnelState) {
         tunnelRepository.setState(state)
     }
 
     private fun connect() {
         val config = getConfigUseCase.sync()
 
-        if (tunnelRepository.getState() == Tunnel.State.Up) {
+        if (tunnelRepository.getState() == TunnelState.Up) {
             shouldReconnect = true
             disconnect()
         } else if (config.token != null) {
-            onTunnelStateUpdate(Tunnel.State.Connecting)
+            onTunnelStateUpdate(TunnelState.Connecting)
             updateStatusNotification("Status: Connecting...")
             System.loadLibrary("connlib")
 
@@ -201,7 +211,7 @@ class TunnelService : VpnService() {
 
     private fun onSessionDisconnected(error: String?) {
         sessionPtr = null
-        onTunnelStateUpdate(Tunnel.State.Down)
+        onTunnelStateUpdate(TunnelState.Down)
 
         if (shouldReconnect && error == null) {
             shouldReconnect = false
@@ -209,7 +219,7 @@ class TunnelService : VpnService() {
         } else {
             tunnelRepository.clearAll()
             preferenceRepository.clearToken()
-            onTunnelStateUpdate(Tunnel.State.Closed)
+            onTunnelStateUpdate(TunnelState.Closed)
             stopForeground(STOP_FOREGROUND_REMOVE)
         }
     }
@@ -245,6 +255,7 @@ class TunnelService : VpnService() {
 
     private fun buildVpnService(): VpnService.Builder =
         TunnelService().Builder().apply {
+            Firebase.crashlytics.log("Building VPN service")
             // Allow traffic to bypass the VPN interface when Always-on VPN is enabled.
             allowBypass()
 
@@ -254,20 +265,23 @@ class TunnelService : VpnService() {
 
             setUnderlyingNetworks(null) // Use all available networks.
 
-            tunnelRepository.getConfig()?.let { config ->
-                Log.d(TAG, "Building VPN service with config: $config")
-                config.tunnelAddressIPv4?.let { addAddress(it, 32) }
-                config.tunnelAddressIPv6?.let { addAddress(it, 128) }
-                config.dnsAddresses.forEach { dns ->
-                    Log.d(TAG, "Adding DNS server: $dns")
-                    addDnsServer(dns)
-                }
-            } ?: Log.e(TAG, "No config found")
-
+            Firebase.crashlytics.log("Adding routes: ${tunnelRepository.getRoutes()}")
             tunnelRepository.getRoutes()?.forEach {
                 Log.d(TAG, "Adding route: $it")
                 addRoute(it.address, it.prefix)
             }
+
+            Firebase.crashlytics.log("Adding DNS servers: ${tunnelRepository.getDnsAddresses()}")
+            tunnelRepository.getDnsAddresses()?.forEach { dns ->
+                Log.d(TAG, "Adding DNS server: $dns")
+                addDnsServer(dns)
+            }
+
+            Firebase.crashlytics.log("Adding IPv4: ${tunnelRepository.getIPv4Address()}")
+            addAddress(tunnelRepository.getIPv4Address()!!, 32)
+
+            Firebase.crashlytics.log("Adding IPv6: ${tunnelRepository.getIPv6Address()}")
+            addAddress(tunnelRepository.getIPv6Address()!!, 128)
 
             setSession(SESSION_NAME)
             setMtu(DEFAULT_MTU)
