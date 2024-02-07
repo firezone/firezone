@@ -159,6 +159,18 @@ impl Allocation {
         tracing::debug!(id = ?original_request.transaction_id(), method = %original_request.method(), ?rtt);
 
         if let Some(error) = message.get_attribute::<ErrorCode>() {
+            // If we sent a nonce but receive 401 instead of 438 then our credentials are invalid.
+            if error.code() == Unauthorized::CODEPOINT
+                && original_request.get_attribute::<Nonce>().is_some()
+            {
+                tracing::warn!(
+                    "Invalid credentials, refusing to re-authenticate {}",
+                    original_request.method()
+                );
+
+                return true;
+            }
+
             // Check if we need to re-authenticate the original request
             if error.code() == Unauthorized::CODEPOINT || error.code() == StaleNonce::CODEPOINT {
                 if let Some(nonce) = message.get_attribute::<Nonce>() {
@@ -1276,6 +1288,75 @@ mod tests {
         assert!(next_msg.is_none(), "to not emit buffered channel binding");
     }
 
+    #[test]
+    fn initial_allocate_has_username_realm_and_message_integrity_set() {
+        let mut allocation = Allocation::for_test(Instant::now());
+
+        let allocate = allocation.next_message().unwrap();
+
+        assert_eq!(
+            allocate.get_attribute::<Username>().map(|u| u.name()),
+            Some("foobar")
+        );
+        assert_eq!(
+            allocate.get_attribute::<Realm>().map(|u| u.text()),
+            Some("firezone")
+        );
+        assert!(allocate.get_attribute::<MessageIntegrity>().is_some());
+    }
+
+    #[test]
+    fn initial_allocate_is_missing_nonce() {
+        let mut allocation = Allocation::for_test(Instant::now());
+
+        let allocate = allocation.next_message().unwrap();
+
+        assert!(allocate.get_attribute::<Nonce>().is_none());
+    }
+
+    #[test]
+    fn upon_stale_nonce_reauthorizes_using_new_nonce() {
+        let mut allocation = Allocation::for_test(Instant::now());
+
+        let allocate = allocation.next_message().unwrap();
+        allocation.handle_test_input(
+            &stale_nonce_response(&allocate, Nonce::new("nonce2".to_owned()).unwrap()),
+            Instant::now(),
+        );
+
+        assert_eq!(
+            allocation
+                .next_message()
+                .unwrap()
+                .get_attribute::<Nonce>()
+                .map(|n| n.value()),
+            Some("nonce2")
+        );
+    }
+
+    #[test]
+    fn given_a_request_with_nonce_and_we_are_unauthorized_dont_retry() {
+        let mut allocation = Allocation::for_test(Instant::now());
+
+        // Attempt to authenticate without a nonce
+        let allocate = allocation.next_message().unwrap();
+        allocation.handle_test_input(&unauthorized_response(&allocate, "nonce1"), Instant::now());
+
+        let allocate = allocation.next_message().unwrap();
+        assert_eq!(
+            allocate.get_attribute::<Nonce>().map(|n| n.value()),
+            Some("nonce1"),
+            "expect next message to include nonce from error response"
+        );
+
+        allocation.handle_test_input(&unauthorized_response(&allocate, "nonce2"), Instant::now());
+
+        assert!(
+            allocation.next_message().is_none(),
+            "expect repeated unauthorized despite received nonce to stop retry"
+        );
+    }
+
     fn ch(peer: SocketAddr, now: Instant) -> Channel {
         Channel {
             peer,
@@ -1299,6 +1380,32 @@ mod tests {
         }
 
         message.add_attribute(Lifetime::new(Duration::from_secs(600)).unwrap());
+
+        encode(message)
+    }
+
+    fn unauthorized_response(request: &Message<Attribute>, nonce: &str) -> Vec<u8> {
+        let mut message = Message::new(
+            MessageClass::ErrorResponse,
+            request.method(),
+            request.transaction_id(),
+        );
+        message.add_attribute(ErrorCode::from(Unauthorized));
+        message.add_attribute(Realm::new("firezone".to_owned()).unwrap());
+        message.add_attribute(Nonce::new(nonce.to_owned()).unwrap());
+
+        encode(message)
+    }
+
+    fn stale_nonce_response(request: &Message<Attribute>, nonce: Nonce) -> Vec<u8> {
+        let mut message = Message::new(
+            MessageClass::ErrorResponse,
+            request.method(),
+            request.transaction_id(),
+        );
+        message.add_attribute(ErrorCode::from(StaleNonce));
+        message.add_attribute(Realm::new("firezone".to_owned()).unwrap());
+        message.add_attribute(nonce);
 
         encode(message)
     }
