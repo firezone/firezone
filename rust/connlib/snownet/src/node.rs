@@ -376,6 +376,9 @@ where
                         &mut self.pending_events,
                     );
                 }
+                CandidateEvent::Expired(_) => {
+                    // TODO: Handle expired candidates. Invalidate on ICE agent? ICE restart?
+                }
             }
         }
 
@@ -1072,6 +1075,7 @@ impl<'a> Transmit<'a> {
 #[derive(Debug, PartialEq)]
 pub(crate) enum CandidateEvent {
     New(Candidate),
+    Expired(Candidate),
 }
 
 struct InitialConnection {
