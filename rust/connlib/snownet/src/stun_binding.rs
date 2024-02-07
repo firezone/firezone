@@ -106,7 +106,7 @@ impl StunBinding {
         match self.last_candidate.take() {
             Some(candidate) if candidate != new_candidate => {
                 tracing::info!(current = %candidate, new = %new_candidate, "Updating server-reflexive candidate");
-                self.events.push_back(CandidateEvent::Expired(candidate));
+                // self.events.push_back(CandidateEvent::Expired(candidate)); TODO: Is this a good idea? Just because on STUN server says so doesn't necessarily mean the server-reflexive address is completely invalid? Not sure...
             }
             None => {
                 tracing::info!(new = %new_candidate, "New server-reflexive candidate");
