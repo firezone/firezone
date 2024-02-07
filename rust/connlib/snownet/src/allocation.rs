@@ -526,6 +526,10 @@ impl Allocation {
     }
 
     pub fn refresh(&mut self) {
+        if !self.has_allocation() {
+            return;
+        }
+
         self.authenticate_and_queue(make_refresh_request());
     }
 
@@ -1493,6 +1497,18 @@ mod tests {
 
         let msg = allocation.encode_to_vec(PEER2_IP4, b"foobar", Instant::now());
         assert!(msg.is_none(), "expect to no longer have a channel to peer");
+    }
+
+    #[test]
+    fn refresh_does_nothing_if_we_dont_have_an_allocation_yet() {
+        let mut allocation = Allocation::for_test(Instant::now());
+
+        let _allocate = allocation.next_message().unwrap();
+
+        allocation.refresh();
+
+        let next_msg = allocation.next_message();
+        assert!(next_msg.is_none())
     }
 
     fn ch(peer: SocketAddr, now: Instant) -> Channel {
