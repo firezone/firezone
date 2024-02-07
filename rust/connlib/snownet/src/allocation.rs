@@ -1328,10 +1328,7 @@ mod tests {
 
         // Attempt to authenticate without a nonce
         let allocate = allocation.next_message().unwrap();
-        allocation.handle_test_input(
-            &unauthorized_response(&allocate, Some(Nonce::new("nonce1".to_owned()).unwrap())),
-            Instant::now(),
-        );
+        allocation.handle_test_input(&unauthorized_response(&allocate, "nonce1"), Instant::now());
 
         let allocate = allocation.next_message().unwrap();
         assert_eq!(
@@ -1340,10 +1337,7 @@ mod tests {
             "expect next message to include nonce from error response"
         );
 
-        allocation.handle_test_input(
-            &unauthorized_response(&allocate, Some(Nonce::new("nonce2".to_owned()).unwrap())),
-            Instant::now(),
-        );
+        allocation.handle_test_input(&unauthorized_response(&allocate, "nonce2"), Instant::now());
 
         assert!(
             allocation.next_message().is_none(),
@@ -1378,7 +1372,7 @@ mod tests {
         encode(message)
     }
 
-    fn unauthorized_response(request: &Message<Attribute>, nonce: Option<Nonce>) -> Vec<u8> {
+    fn unauthorized_response(request: &Message<Attribute>, nonce: &str) -> Vec<u8> {
         let mut message = Message::new(
             MessageClass::ErrorResponse,
             request.method(),
@@ -1386,10 +1380,7 @@ mod tests {
         );
         message.add_attribute(ErrorCode::from(Unauthorized));
         message.add_attribute(Realm::new("firezone".to_owned()).unwrap());
-
-        if let Some(nonce) = nonce {
-            message.add_attribute(nonce)
-        }
+        message.add_attribute(Nonce::new(nonce.to_owned()).unwrap());
 
         encode(message)
     }
