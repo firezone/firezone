@@ -1,4 +1,7 @@
-use crate::{backoff, node::Transmit};
+use crate::{
+    backoff,
+    node::{CandidateEvent, Transmit},
+};
 use ::backoff::backoff::Backoff;
 use backoff::ExponentialBackoff;
 use bytecodec::{DecodeExt, EncodeExt};
@@ -27,7 +30,7 @@ pub struct StunBinding {
     backoff: ExponentialBackoff,
 
     buffered_transmits: VecDeque<Transmit<'static>>,
-    new_candidates: VecDeque<Candidate>,
+    events: VecDeque<CandidateEvent>,
 }
 
 impl StunBinding {
@@ -46,7 +49,7 @@ impl StunBinding {
             state,
             last_now: now,
             buffered_transmits: VecDeque::from([transmit]),
-            new_candidates: Default::default(),
+            events: Default::default(),
             backoff,
         }
     }
@@ -100,9 +103,10 @@ impl StunBinding {
                 }
             };
 
-        match &self.last_candidate {
-            Some(candidate) if candidate != &new_candidate => {
+        match self.last_candidate.take() {
+            Some(candidate) if candidate != new_candidate => {
                 tracing::info!(current = %candidate, new = %new_candidate, "Updating server-reflexive candidate");
+                self.events.push_back(CandidateEvent::Expired(candidate));
             }
             None => {
                 tracing::info!(new = %new_candidate, "New server-reflexive candidate");
@@ -111,7 +115,7 @@ impl StunBinding {
         }
 
         self.last_candidate = Some(new_candidate.clone());
-        self.new_candidates.push_back(new_candidate);
+        self.events.push_back(CandidateEvent::New(new_candidate));
 
         true
     }
@@ -152,8 +156,8 @@ impl StunBinding {
         self.buffered_transmits.push_back(transmit);
     }
 
-    pub fn poll_candidate(&mut self) -> Option<Candidate> {
-        self.new_candidates.pop_front()
+    pub fn poll_event(&mut self) -> Option<CandidateEvent> {
+        self.events.pop_front()
     }
 
     pub fn poll_timeout(&mut self) -> Option<Instant> {
@@ -350,9 +354,14 @@ mod tests {
         );
         assert!(handled);
 
-        let candidate = stun_binding.poll_candidate().unwrap();
+        let event = stun_binding.poll_event().unwrap();
 
-        assert_eq!(candidate.addr(), MAPPED_ADDRESS);
+        assert_eq!(
+            event,
+            CandidateEvent::New(
+                Candidate::server_reflexive(MAPPED_ADDRESS, MAPPED_ADDRESS, Protocol::Udp).unwrap()
+            )
+        );
     }
 
     #[test]
@@ -386,7 +395,7 @@ mod tests {
         );
 
         assert!(!handled);
-        assert!(stun_binding.poll_candidate().is_none());
+        assert!(stun_binding.poll_event().is_none());
     }
 
     fn generate_stun_response(request: Transmit, mapped_address: SocketAddr) -> Vec<u8> {

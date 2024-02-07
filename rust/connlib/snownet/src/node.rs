@@ -27,6 +27,7 @@ use crate::utils::earliest;
 use crate::{IpPacket, MutableIpPacket};
 use boringtun::noise::errors::WireGuardError;
 use std::borrow::Cow;
+use std::iter;
 use stun_codec::rfc5389::attributes::{Realm, Username};
 
 // Note: Taken from boringtun
@@ -196,14 +197,6 @@ where
         // First, check if a `StunBinding` wants the packet
         if let Some(binding) = self.bindings.get_mut(&from) {
             if binding.handle_input(from, local, packet, now) {
-                // If it handled the packet, drain its events to ensure we update the candidates of all connections.
-                drain_and_add_candidates(
-                    from,
-                    || binding.poll_candidate(),
-                    &mut self.initial_connections,
-                    &mut self.negotiated_connections,
-                    &mut self.pending_events,
-                );
                 return Ok(None);
             }
         }
@@ -211,14 +204,6 @@ where
         // Next, check if an `Allocation` wants the packet
         if let Some(allocation) = self.allocations.get_mut(&from) {
             if allocation.handle_input(from, local, packet, now) {
-                // If it handled the packet, drain its events to ensure we update the candidates of all connections.
-                drain_and_add_candidates(
-                    from,
-                    || allocation.poll_candidate(),
-                    &mut self.initial_connections,
-                    &mut self.negotiated_connections,
-                    &mut self.pending_events,
-                );
                 return Ok(None);
             };
         }
@@ -381,6 +366,32 @@ where
 
     /// Returns a pending [`Event`] from the pool.
     pub fn poll_event(&mut self) -> Option<Event<TId>> {
+        let binding_events = self.bindings.iter_mut().flat_map(|(server, binding)| {
+            iter::from_fn(|| binding.poll_event().map(|e| (*server, e)))
+        });
+        let allocation_events = self
+            .allocations
+            .iter_mut()
+            .flat_map(|(server, allocation)| {
+                iter::from_fn(|| allocation.poll_event().map(|e| (*server, e)))
+            });
+
+        for (server, event) in binding_events.chain(allocation_events) {
+            match event {
+                CandidateEvent::New(candidate) => {
+                    add_candidates(
+                        server,
+                        candidate,
+                        &mut self.initial_connections,
+                        &mut self.negotiated_connections,
+                        &mut self.pending_events,
+                    );
+                }
+                CandidateEvent::Expired(candidate) => {
+                    tracing::info!("Candiate expired: {}", candidate.to_sdp_string());
+                }
+            }
+        }
         let mut failed_connections = vec![];
 
         for (id, conn) in self.negotiated_connections.iter_mut() {
@@ -917,9 +928,9 @@ enum EncodeError {
     NoChannel,
 }
 
-fn drain_and_add_candidates<TId>(
+fn add_candidates<TId>(
     server: SocketAddr,
-    mut next_candidate: impl FnMut() -> Option<Candidate>,
+    candidate: Candidate,
     initial_connections: &mut HashMap<TId, InitialConnection>,
     negotiated_connections: &mut HashMap<TId, Connection>,
     pending_events: &mut VecDeque<Event<TId>>,
@@ -927,49 +938,46 @@ fn drain_and_add_candidates<TId>(
     TId: Copy + fmt::Display,
 {
     // TODO: Reduce duplication between initial and negotiated connections
-
-    while let Some(candidate) = next_candidate() {
-        for (id, c) in initial_connections.iter_mut() {
-            match candidate.kind() {
-                CandidateKind::ServerReflexive => {
-                    if (!c.stun_servers.contains(&server)) && (!c.turn_servers.contains(&server)) {
-                        tracing::debug!(%id, %server, allowed_stun = ?c.stun_servers, allowed_turn = ?c.turn_servers, "Not adding srflx candidate");
-                        continue;
-                    }
+    for (id, c) in initial_connections.iter_mut() {
+        match candidate.kind() {
+            CandidateKind::ServerReflexive => {
+                if (!c.stun_servers.contains(&server)) && (!c.turn_servers.contains(&server)) {
+                    tracing::debug!(%id, %server, allowed_stun = ?c.stun_servers, allowed_turn = ?c.turn_servers, "Not adding srflx candidate");
+                    continue;
                 }
-                CandidateKind::Relayed => {
-                    if !c.turn_servers.contains(&server) {
-                        tracing::debug!(%id, %server, allowed_turn = ?c.turn_servers, "Not adding relay candidate");
-
-                        continue;
-                    }
-                }
-                CandidateKind::PeerReflexive | CandidateKind::Host => continue,
             }
+            CandidateKind::Relayed => {
+                if !c.turn_servers.contains(&server) {
+                    tracing::debug!(%id, %server, allowed_turn = ?c.turn_servers, "Not adding relay candidate");
 
-            add_local_candidate(*id, &mut c.agent, candidate.clone(), pending_events);
+                    continue;
+                }
+            }
+            CandidateKind::PeerReflexive | CandidateKind::Host => continue,
         }
 
-        for (id, c) in negotiated_connections.iter_mut() {
-            match candidate.kind() {
-                CandidateKind::ServerReflexive => {
-                    if (!c.stun_servers.contains(&server)) && (!c.turn_servers.contains(&server)) {
-                        tracing::debug!(%id, %server, allowed_stun = ?c.stun_servers, allowed_turn = ?c.turn_servers, "Not adding srflx candidate");
-                        continue;
-                    }
-                }
-                CandidateKind::Relayed => {
-                    if !c.turn_servers.contains(&server) {
-                        tracing::debug!(%id, %server, allowed_turn = ?c.turn_servers, "Not adding relay candidate");
+        add_local_candidate(*id, &mut c.agent, candidate.clone(), pending_events);
+    }
 
-                        continue;
-                    }
+    for (id, c) in negotiated_connections.iter_mut() {
+        match candidate.kind() {
+            CandidateKind::ServerReflexive => {
+                if (!c.stun_servers.contains(&server)) && (!c.turn_servers.contains(&server)) {
+                    tracing::debug!(%id, %server, allowed_stun = ?c.stun_servers, allowed_turn = ?c.turn_servers, "Not adding srflx candidate");
+                    continue;
                 }
-                CandidateKind::PeerReflexive | CandidateKind::Host => continue,
             }
+            CandidateKind::Relayed => {
+                if !c.turn_servers.contains(&server) {
+                    tracing::debug!(%id, %server, allowed_turn = ?c.turn_servers, "Not adding relay candidate");
 
-            add_local_candidate(*id, &mut c.agent, candidate.clone(), pending_events);
+                    continue;
+                }
+            }
+            CandidateKind::PeerReflexive | CandidateKind::Host => continue,
         }
+
+        add_local_candidate(*id, &mut c.agent, candidate.clone(), pending_events);
     }
 }
 
@@ -1046,6 +1054,12 @@ impl<'a> Transmit<'a> {
             payload: Cow::Owned(self.payload.into_owned()),
         }
     }
+}
+
+#[derive(Debug, PartialEq)]
+pub(crate) enum CandidateEvent {
+    New(Candidate),
+    Expired(Candidate),
 }
 
 struct InitialConnection {
