@@ -515,7 +515,9 @@ impl Allocation {
         })
     }
 
-    pub fn refresh(&self) {}
+    pub fn refresh(&mut self) {
+        self.authenticate_and_queue(make_refresh_request());
+    }
 
     fn has_allocation(&self) -> bool {
         self.ip4_allocation.is_some() || self.ip6_allocation.is_some()
