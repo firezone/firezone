@@ -258,19 +258,24 @@ impl Callbacks for CallbackHandler {
 
     fn on_disconnect(&self, error: Option<&Error>) -> Result<(), Self::Error> {
         self.env(|mut env| {
-            let error = env
-                .new_string(serde_json::to_string(&error.map(ToString::to_string))?)
-                .map_err(|source| CallbackError::NewStringFailed {
-                    name: "error",
-                    source,
-                })?;
-            call_method(
-                &mut env,
-                &self.callback_handler,
-                "onDisconnect",
-                "(Ljava/lang/String;)Z",
-                &[JValue::from(&error)],
-            )
+            if error.is_some() {
+                let error = env
+                    .new_string(serde_json::to_string(&error.map(ToString::to_string))?)
+                    .map_err(|source| CallbackError::NewStringFailed {
+                        name: "error",
+                        source,
+                    })?;
+
+                call_method(
+                    &mut env,
+                    &self.callback_handler,
+                    "onDisconnect",
+                    "(Ljava/lang/String;)Z",
+                    &[JValue::from(&error)],
+                )
+            } else {
+                call_method(&mut env, &self.callback_handler, "onDisconnect", "()Z", &[])
+            }
         })
     }
 

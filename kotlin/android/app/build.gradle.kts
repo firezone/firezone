@@ -223,13 +223,19 @@ cargo {
     } else {
         profile = "debug"
     }
+    apiLevel = 26
     // Needed for Ubuntu 22.04
     pythonCommand = "python3"
     prebuiltToolchains = true
     verbose = true
     module = "../../../rust/connlib/clients/android"
     libname = "connlib"
-    targets = listOf("arm", "arm64", "x86_64", "x86")
+    targets = listOf(
+        "arm64",
+        "x86_64",
+        "x86",
+        "arm",
+    )
     targetDirectory = "../../../rust/target"
 }
 

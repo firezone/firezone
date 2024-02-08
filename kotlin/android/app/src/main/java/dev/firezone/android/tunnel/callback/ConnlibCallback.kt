@@ -22,7 +22,10 @@ interface ConnlibCallback {
 
     fun onUpdateResources(resourceListJSON: String)
 
-    fun onDisconnect(error: String?): Boolean
+    // The JNI doesn't support nullable types, so we need two method signatures
+    fun onDisconnect(error: String): Boolean
+
+    fun onDisconnect(): Boolean
 
     fun getSystemDefaultResolvers(): Array<ByteArray>
 }
