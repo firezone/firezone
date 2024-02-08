@@ -296,7 +296,7 @@ jobs:
               sh -c 'until ping -W 1 -c 1 172.20.0.100 &>/dev/null; do true; done'
 
           # Client DNS tests
-          - test_name: direct-perf
+          - test_name: dns
             perf_test: false
             setup: echo 'Noop'
             execute: |
