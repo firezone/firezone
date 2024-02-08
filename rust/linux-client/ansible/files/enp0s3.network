@@ -2,4 +2,4 @@
 Name=enp0s3
 
 [Network]
-DNSDefaultRoute=true
+DHCP=yes

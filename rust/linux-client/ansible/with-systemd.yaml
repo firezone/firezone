@@ -1,16 +1,37 @@
 ---
 - hosts: myhosts
   tasks:
+  - name: Copy network configuration (Ethernet)
+    become: yes
+    ansible.builtin.copy:
+       src: enp0s3.network
+       dest: /etc/systemd/network/enp0s3.network
+  - name: Copy network configuration (Firezone)
+    become: yes
+    ansible.builtin.copy:
+       src: tun-firezone.network
+       dest: /etc/systemd/network/tun-firezone.network
   - name: Update apt-get repo and cache
     become: yes
     ansible.builtin.apt:
        update_cache: yes
+       upgrade: safe
        cache_valid_time: 3600
   - name: Install apt packages
     become: yes
     ansible.builtin.apt:
        name: systemd-resolved
        state: latest
+  - name: Enable systemd-networkd
+    become: yes
+    ansible.builtin.systemd:
+       name: systemd-networkd
+       state: started
+       enabled: true
+  # TODO: Get rid of the reboot. If I don't reboot, `resolvectl` hangs. Why?
+  - name: Reboot
+    become: yes
+    ansible.builtin.reboot:
   - name: Copy Firezone client
     ansible.builtin.copy:
        src: ../../target/release/firezone-linux-client
@@ -31,10 +52,3 @@
        src: test.bash
        dest: test.bash
        mode: '0755'
-  # Needed ?
-  - name: Restart networking
-    become: yes
-    ansible.builtin.systemd:
-       state: restarted
-       daemon_reload: true
-       name: networking

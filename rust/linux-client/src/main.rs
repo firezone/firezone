@@ -40,7 +40,7 @@ impl Callbacks for CallbackHandler {
     type Error = std::convert::Infallible;
 
     fn get_system_default_resolvers(&self) -> Result<Option<Vec<IpAddr>>, Self::Error> {
-        Ok(Some(vec![IpAddr::from_str("172.24.80.1").expect("Impossible: hard-coded IP should be parsable")]))
+        Ok(Some(vec![IpAddr::from_str("192.168.1.1").expect("Impossible: hard-coded IP should be parsable")]))
     }
 
     fn on_disconnect(&self, error: Option<&connlib_client_shared::Error>) -> Result<(), Self::Error> {
