@@ -43,13 +43,12 @@ class AuthActivity : AppCompatActivity(R.layout.activity_auth) {
         }
     }
 
+    // We can't close this webview because it's opened with ACTION_VIEW.
+    // If we want more control over it we need to embed our own WebView which
+    // has its own set of tradeoffs.
     private fun setupWebView(url: String) {
-        val intent =
-            Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
-                addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
-            }
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
         startActivity(intent)
-        finish()
     }
 
     private fun navigateToSignIn() {

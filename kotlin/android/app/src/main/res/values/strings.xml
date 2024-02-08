@@ -24,8 +24,6 @@
 
 	<!-- Auth -->
 	<string name="launching_auth_flow">Launching Chrome to sign in...</string>
-	<string name="signed_in_redirect">Connecting...</string>
-	<string name="actor_name"></string>
 
 	<!-- Error Dialog -->
 	<string name="error_dialog_title">Error</string>
