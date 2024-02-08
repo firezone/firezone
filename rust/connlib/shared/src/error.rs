@@ -176,6 +176,15 @@ pub enum ConnlibError {
     ResolveCtlSetDomains,
     #[error("`resolvectl domain` returned error code")]
     ResolveCtlSetDomainsExitCode,
+
+    #[error("reading resolv.conf")]
+    ReadResolvConf,
+    #[error("writing resolv.conf.firezone-backup")]
+    WriteResolvConfBackup,
+    #[error("opened resolv.conf for write")]
+    OpenResolvConf,
+    #[error("writing resolv.conf")]
+    WriteResolvConf,
 }
 
 impl ConnlibError {

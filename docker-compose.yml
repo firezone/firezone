@@ -122,6 +122,8 @@ services:
       args:
         PACKAGE: firezone-linux-client
     image: us-east1-docker.pkg.dev/firezone-staging/firezone/client:${VERSION:-main}
+    # Forwards Ctrl+C so we can stop the container gracefully without timing out and killing it
+    init: true
     dns:
       - 100.100.111.1
     cap_add:
