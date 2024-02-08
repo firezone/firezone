@@ -261,13 +261,12 @@ jobs:
         with:
           targets: x86_64-pc-windows-msvc
       - uses: ./.github/actions/setup-node
-      - name: Build release binaries
+      - name: Install pnpm deps
+        run: pnpm install
+      - name: Build release exe and MSI
+        run: pnpm build
+      - name: Compute SHA256 and rename
         run: |
-          # Build Windows Tauri GUI
-
-          pnpm install
-          pnpm build
-
           # Used for release artifact
           # This should match 'build-tauri' in _rust.yml
           cp "../target/release/bundle/msi/*.msi" "${{ env.BINARY_DEST_PATH }}-x64.msi"

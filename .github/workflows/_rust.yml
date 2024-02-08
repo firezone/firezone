@@ -133,12 +133,12 @@ jobs:
       - uses: ./.github/actions/setup-rust
         with:
           targets: x86_64-pc-windows-msvc
-      - name: Build release binaries
+      - name: Install pnpm deps
+        run: pnpm install
+      - name: Build release exe and MSI
+        run: pnpm build
+      - name: Compute SHA256 and rename
         run: |
-          # Build Windows Tauri GUI
-          pnpm install
-          pnpm build
-
           # Used for release artifact
           # In release mode the name comes from tauri.conf.json
           cp "../target/release/Firezone.exe" "${{ env.BINARY_DEST_PATH }}-x64.exe"
