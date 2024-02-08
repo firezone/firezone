@@ -10,6 +10,7 @@ import dagger.hilt.android.AndroidEntryPoint
 import dev.firezone.android.R
 import dev.firezone.android.core.presentation.MainActivity
 import dev.firezone.android.databinding.ActivityCustomUriHandlerBinding
+import dev.firezone.android.tunnel.TunnelService
 
 @AndroidEntryPoint
 class CustomUriHandlerActivity : AppCompatActivity(R.layout.activity_custom_uri_handler) {
@@ -28,10 +29,9 @@ class CustomUriHandlerActivity : AppCompatActivity(R.layout.activity_custom_uri_
         viewModel.actionLiveData.observe(this) { action ->
             when (action) {
                 CustomUriViewModel.ViewAction.AuthFlowComplete -> {
+                    TunnelService.start(this@CustomUriHandlerActivity)
                     startActivity(
-                        Intent(this@CustomUriHandlerActivity, MainActivity::class.java).apply {
-                            flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
-                        },
+                        Intent(this, MainActivity::class.java),
                     )
                     finish()
                 }

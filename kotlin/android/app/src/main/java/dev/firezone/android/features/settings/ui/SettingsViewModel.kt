@@ -50,9 +50,9 @@ internal class SettingsViewModel
                 getConfigUseCase().collect {
                     actionMutableLiveData.postValue(
                         ViewAction.FillSettings(
-                            it.authBaseUrl.orEmpty(),
-                            it.apiUrl.orEmpty(),
-                            it.logFilter.orEmpty(),
+                            it.authBaseUrl,
+                            it.apiUrl,
+                            it.logFilter,
                         ),
                     )
                 }
@@ -209,7 +209,7 @@ internal class SettingsViewModel
         )
 
         internal sealed class ViewAction {
-            object NavigateBack : ViewAction()
+            data object NavigateBack : ViewAction()
 
             data class FillSettings(
                 val authBaseUrl: String,

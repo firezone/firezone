@@ -24,6 +24,10 @@ internal class PreferenceRepositoryImpl
                 context.getSystemService(Context.RESTRICTIONS_SERVICE)
                     as android.content.RestrictionsManager
             val appRestrictions = restrictionsManager.applicationRestrictions
+            val actorName =
+                sharedPreferences.getString(ACTOR_NAME_KEY, null)?.let {
+                    if (it.isNotEmpty()) "Signed in as $it" else "Signed in"
+                }
             return Config(
                 authBaseUrl =
                     sharedPreferences.getString(AUTH_BASE_URL_KEY, null)
@@ -35,6 +39,7 @@ internal class PreferenceRepositoryImpl
                 token =
                     appRestrictions.getString(TOKEN_KEY, null)
                         ?: sharedPreferences.getString(TOKEN_KEY, null),
+                actorName,
             )
         }
 
@@ -78,6 +83,16 @@ internal class PreferenceRepositoryImpl
                 )
             }.flowOn(coroutineDispatcher)
 
+        override fun saveActorName(value: String): Flow<Unit> =
+            flow {
+                emit(
+                    sharedPreferences
+                        .edit()
+                        .putString(ACTOR_NAME_KEY, value)
+                        .apply(),
+                )
+            }.flowOn(coroutineDispatcher)
+
         override fun validateState(value: String): Flow<Boolean> =
             flow {
                 val state = sharedPreferences.getString(STATE_KEY, "").orEmpty()
@@ -95,6 +110,7 @@ internal class PreferenceRepositoryImpl
 
         companion object {
             private const val AUTH_BASE_URL_KEY = "authBaseUrl"
+            private const val ACTOR_NAME_KEY = "actorName"
             private const val API_URL_KEY = "apiUrl"
             private const val LOG_FILTER_KEY = "logFilter"
             private const val TOKEN_KEY = "token"

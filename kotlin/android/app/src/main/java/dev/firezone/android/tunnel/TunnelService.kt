@@ -1,6 +1,7 @@
 /* Licensed under Apache 2.0 (C) 2023 Firezone, Inc. */
 package dev.firezone.android.tunnel
 
+import android.app.ActivityManager
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -8,9 +9,12 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.net.VpnService
+import android.os.Binder
 import android.os.Build
+import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import androidx.lifecycle.MutableLiveData
 import com.google.firebase.crashlytics.ktx.crashlytics
 import com.google.firebase.ktx.Firebase
 import com.squareup.moshi.Moshi
@@ -23,7 +27,6 @@ import dev.firezone.android.tunnel.callback.ConnlibCallback
 import dev.firezone.android.tunnel.model.Cidr
 import dev.firezone.android.tunnel.model.Resource
 import dev.firezone.android.tunnel.util.DnsServersDetector
-import java.lang.IllegalStateException
 import java.nio.file.Files
 import java.nio.file.Paths
 import java.util.UUID
@@ -31,21 +34,49 @@ import javax.inject.Inject
 
 @AndroidEntryPoint
 @OptIn(ExperimentalStdlibApi::class)
-class TunnelService: VpnService() {
-    @Inject
-    internal lateinit var moshi: Moshi
-
+class TunnelService : VpnService() {
     @Inject
     internal lateinit var repo: PreferenceRepository
+
+    @Inject
+    internal lateinit var moshi: Moshi
 
     private var tunnelIpv4Address: String? = null
     private var tunnelIpv6Address: String? = null
     private var tunnelDnsAddresses: List<String> = emptyList()
     private var tunnelRoutes: List<Cidr> = emptyList()
     private var connlibSessionPtr: Long? = null
-    private var shouldReconnect: Boolean = false
-    var tunnelState = State.DOWN
-    var tunnelResources: List<Resource> = emptyList()
+    private var startedByUser: Boolean = false
+
+    private var _tunnelResources: List<Resource> = emptyList()
+    private var _tunnelState: State = State.DOWN
+    var tunnelResources: List<Resource>
+        get() = _tunnelResources
+        set(value) {
+            _tunnelResources = value
+            updateResourcesLiveData(value)
+        }
+    var tunnelState: State
+        get() = _tunnelState
+        set(value) {
+            _tunnelState = value
+            updateServiceStateLiveData(value)
+        }
+
+    // Used to update the UI when the SessionActivity is bound to this service
+    private var serviceStateLiveData: MutableLiveData<State>? = null
+    private var resourcesLiveData: MutableLiveData<List<Resource>>? = null
+
+    // For binding the SessionActivity view to this service
+    private val binder = LocalBinder()
+
+    inner class LocalBinder : Binder() {
+        fun getService(): TunnelService = this@TunnelService
+    }
+
+    override fun onBind(intent: Intent): IBinder {
+        return binder
+    }
 
     private val callback: ConnlibCallback =
         object : ConnlibCallback {
@@ -73,8 +104,9 @@ class TunnelService: VpnService() {
             }
 
             override fun onTunnelReady(): Boolean {
-                onTunnelStateUpdate(State.UP)
+                tunnelState = State.UP
                 updateStatusNotification("Status: Connected")
+
                 return true
             }
 
@@ -103,75 +135,63 @@ class TunnelService: VpnService() {
             }
 
             override fun getSystemDefaultResolvers(): Array<ByteArray> {
-                return DnsServersDetector(this@TunnelService).servers.map { it.address }
-                    .toTypedArray()
+                val found =
+                    DnsServersDetector(this@TunnelService).servers.map { it.address }
+                        .toTypedArray()
+                Log.d(TAG, "getSystemDefaultResolvers: ${found.contentToString()}")
+
+                return found
             }
 
             override fun onDisconnect(error: String?): Boolean {
-                onSessionDisconnected(
-                    error = error?.takeUnless { it == "null" },
-                )
+                error?.let {
+                    Log.d(TAG, "onDisconnect: $it")
+                    // Unexpected disconnect, most likely a 401. Clear the token and initiate
+                    // a stop of the service.
+                    repo.clearToken()
+                    connlibSessionPtr = null
+                    stopForeground(STOP_FOREGROUND_REMOVE)
+                    tunnelState = State.DOWN
+                    stopSelf()
+                }
+
+                // Something called disconnect() already, so assume it was user or system initiated.
                 return true
             }
         }
 
-    override fun onCreate() {
-        super.onCreate()
-        Log.d(TAG, "onCreate")
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        Log.d(TAG, "onDestroy")
-    }
-
+    // Primary callback used to start and stop the VPN service
+    // This can be called either from the UI or from the system
+    // via AlwaysOnVpn.
     override fun onStartCommand(
         intent: Intent?,
         flags: Int,
         startId: Int,
     ): Int {
-        Log.d(TAG, "onStartCommand")
-
-        if (intent != null && ACTION_DISCONNECT == intent.action) {
-            disconnect()
-            return START_NOT_STICKY
-        }
         connect()
         return START_STICKY
     }
 
-
-    private fun onSessionDisconnected(error: String?) {
-        connlibSessionPtr = null
-        onTunnelStateUpdate(State.DOWN)
-
-        if (shouldReconnect && error == null) {
-            shouldReconnect = false
-            connect()
-        } else {
-            repo.clearToken()
-            stopForeground(STOP_FOREGROUND_REMOVE)
-        }
-    }
-
+    // Call this to stop the tunnel and shutdown the service, leaving the token intact.
     fun disconnect() {
-        Log.d(TAG, "disconnect(): Attempting to disconnect session")
+        Log.d(TAG, "disconnect")
+
+        // Connlib will call onDisconnect() when it's done, with no error. We don't do the cleanup
+        // there in that case, we do it here.
         connlibSessionPtr?.let {
             ConnlibSession.disconnect(it)
-        } ?: onSessionDisconnected(null)
-
-        repo.clearToken()
+        }
+        connlibSessionPtr = null
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        tunnelState = State.DOWN
+        stopSelf()
     }
 
-    fun connect() {
+    private fun connect() {
         val config = repo.getConfigSync()
 
-        // TODO: Refactor this mess as part of https://github.com/firezone/firezone/issues/3343
-        if (tunnelState == State.UP) {
-            shouldReconnect = true
-            disconnect()
-        } else if (config.token != null) {
-            onTunnelStateUpdate(State.CONNECTING)
+        if (!config.token.isNullOrBlank()) {
+            tunnelState = State.CONNECTING
             updateStatusNotification("Status: Connecting...")
             System.loadLibrary("connlib")
 
@@ -189,9 +209,28 @@ class TunnelService: VpnService() {
         }
     }
 
-    private fun onTunnelStateUpdate(s: State) {
-        tunnelState = s
+    fun setServiceStateLiveData(liveData: MutableLiveData<State>) {
+        serviceStateLiveData = liveData
+
+        // Update the newly bound SessionActivity with our current state
+        serviceStateLiveData?.postValue(tunnelState)
     }
+
+    fun setResourcesLiveData(liveData: MutableLiveData<List<Resource>>) {
+        resourcesLiveData = liveData
+
+        // Update the newly bound SessionActivity with our current resources
+        resourcesLiveData?.postValue(tunnelResources)
+    }
+
+    private fun updateServiceStateLiveData(state: State) {
+        serviceStateLiveData?.postValue(state)
+    }
+
+    private fun updateResourcesLiveData(resources: List<Resource>) {
+        resourcesLiveData?.postValue(resources)
+    }
+
     private fun deviceId(): String {
         // Get the deviceId from the preferenceRepository, or save a new UUIDv4 and return that if it doesn't exist
         val deviceId =
@@ -222,10 +261,7 @@ class TunnelService: VpnService() {
     }
 
     private fun buildVpnService(): VpnService.Builder {
-        val tunnelService = TunnelService()
-        activeTunnel = tunnelService
-
-        return tunnelService.Builder().apply {
+        return Builder().apply {
             Firebase.crashlytics.log("Building VPN service")
             // Allow traffic to bypass the VPN interface when Always-on VPN is enabled.
             allowBypass()
@@ -236,13 +272,20 @@ class TunnelService: VpnService() {
 
             setUnderlyingNetworks(null) // Use all available networks.
 
+            Log.d(TAG, "Routes: $tunnelRoutes")
             tunnelRoutes.forEach {
                 addRoute(it.address, it.prefix)
             }
+
+            Log.d(TAG, "DNS Servers: $tunnelDnsAddresses")
             tunnelDnsAddresses.forEach { dns ->
                 addDnsServer(dns)
             }
+
+            Log.d(TAG, "IPv4 Address: $tunnelIpv4Address")
             addAddress(tunnelIpv4Address!!, 32)
+
+            Log.d(TAG, "IPv6 Address: $tunnelIpv6Address")
             addAddress(tunnelIpv6Address!!, 128)
 
             setSession(SESSION_NAME)
@@ -282,11 +325,7 @@ class TunnelService: VpnService() {
             CONNECTING,
             UP,
             DOWN,
-            CLOSED,
         }
-
-        const val ACTION_CONNECT = "dev.firezone.android.tunnel.CONNECT"
-        const val ACTION_DISCONNECT = "dev.firezone.android.tunnel.DISCONNECT"
 
         private const val NOTIFICATION_CHANNEL_ID = "firezone-connection-status"
         private const val NOTIFICATION_CHANNEL_NAME = "firezone-connection-status"
@@ -297,35 +336,23 @@ class TunnelService: VpnService() {
         private const val SESSION_NAME: String = "Firezone Connection"
         private const val MTU: Int = 1280
 
-        var activeTunnel: TunnelService? = null
-
-        fun start(context: Context) {
-            if (activeTunnel != null) {
-                throw IllegalStateException("TunnelService already running")
+        // FIXME: Find another way to check if we're running
+        @SuppressWarnings("deprecation")
+        fun isRunning(context: Context): Boolean {
+            val manager = context.getSystemService(ACTIVITY_SERVICE) as ActivityManager
+            for (service in manager.getRunningServices(Int.MAX_VALUE)) {
+                if (TunnelService::class.java.name == service.service.className) {
+                    return true
+                }
             }
 
-            // Start system VPN service
-            val intent = Intent(context, TunnelService::class.java)
-            intent.action = ACTION_CONNECT
-            context.startService(intent)
-
-            activeTunnel = TunnelService()
-            activeTunnel!!.connect()
+            return false
         }
 
-        // Starts the TunnelService given a context
-        // For user-initiated sessions, this is started from the UI
-        fun stop(context: Context) {
-            if (activeTunnel == null) {
-                throw IllegalStateException("TunnelService not running")
-            }
-
+        fun start(context: Context) {
+            Log.d(TAG, "Starting TunnelService")
             val intent = Intent(context, TunnelService::class.java)
-            intent.action = ACTION_DISCONNECT
             context.startService(intent)
-
-            activeTunnel!!.disconnect()
-            activeTunnel = null
         }
     }
 }

@@ -44,8 +44,12 @@ class AuthActivity : AppCompatActivity(R.layout.activity_auth) {
     }
 
     private fun setupWebView(url: String) {
-        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+        val intent =
+            Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+                addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            }
         startActivity(intent)
+        finish()
     }
 
     private fun navigateToSignIn() {

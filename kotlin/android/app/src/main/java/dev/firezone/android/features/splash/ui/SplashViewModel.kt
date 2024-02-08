@@ -8,7 +8,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.firezone.android.core.domain.preference.GetConfigUseCase
+import dev.firezone.android.tunnel.TunnelService
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -18,25 +20,30 @@ private const val REQUEST_DELAY = 1000L
 internal class SplashViewModel
     @Inject
     constructor(
-        private val useCase: GetConfigUseCase,
+        private var getConfigUseCase: GetConfigUseCase,
     ) : ViewModel() {
         private val actionMutableLiveData = MutableLiveData<ViewAction>()
         val actionLiveData: LiveData<ViewAction> = actionMutableLiveData
 
-        internal fun checkUserState(context: Context) {
+        internal fun checkTunnelState(context: Context) {
             viewModelScope.launch {
+                // Stay a while and enjoy the logo
                 delay(REQUEST_DELAY)
                 if (!hasVpnPermissions(context)) {
                     actionMutableLiveData.postValue(ViewAction.NavigateToVpnPermission)
+                } else if (TunnelService.isRunning(context)) {
+                    // Navigate to the SessionActivity so we can bind to it.
+                    actionMutableLiveData.postValue(ViewAction.NavigateToSession)
                 } else {
-                    useCase.invoke()
-                        .collect { user ->
-                            if (user.token.isNullOrBlank()) {
-                                actionMutableLiveData.postValue(ViewAction.NavigateToSignIn)
-                            } else {
-                                actionMutableLiveData.postValue(ViewAction.NavigateToSession)
-                            }
+                    getConfigUseCase.invoke().collect {
+                        if (it.token.isNullOrBlank()) {
+                            actionMutableLiveData.postValue(ViewAction.NavigateToSignIn)
+                        } else {
+                            // token will be re-read by the TunnelService
+                            TunnelService.start(context)
+                            actionMutableLiveData.postValue(ViewAction.NavigateToSession)
                         }
+                    }
                 }
             }
         }

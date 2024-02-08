@@ -7,7 +7,10 @@ import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.google.firebase.crashlytics.ktx.crashlytics
+import com.google.firebase.ktx.Firebase
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dev.firezone.android.core.domain.preference.SaveActorNameUseCase
 import dev.firezone.android.core.domain.preference.SaveTokenUseCase
 import dev.firezone.android.core.domain.preference.ValidateStateUseCase
 import kotlinx.coroutines.flow.collect
@@ -21,6 +24,7 @@ internal class CustomUriViewModel
     constructor(
         private val validateStateUseCase: ValidateStateUseCase,
         private val saveTokenUseCase: SaveTokenUseCase,
+        private val saveActorNameUseCase: SaveActorNameUseCase,
     ) : ViewModel() {
         private val actionMutableLiveData = MutableLiveData<ViewAction>()
         val actionLiveData: LiveData<ViewAction> = actionMutableLiveData
@@ -29,6 +33,10 @@ internal class CustomUriViewModel
             viewModelScope.launch {
                 when (intent.data?.host) {
                     PATH_CALLBACK -> {
+                        intent.data?.getQueryParameter(QUERY_ACTOR_NAME)?.let { actorName ->
+                            Log.d("CustomUriViewModel", "Found actor name: $actorName")
+                            saveActorNameUseCase(actorName).collect()
+                        }
                         intent.data?.getQueryParameter(QUERY_CLIENT_STATE)?.let { state ->
                             if (validateStateUseCase(state).firstOrNull() == true) {
                                 Log.d("CustomUriViewModel", "Valid state parameter. Continuing to save state...")
@@ -49,7 +57,8 @@ internal class CustomUriViewModel
                         }
                     }
                     else -> {
-                        Log.d("CustomUriViewModel", "Unknown path segment: ${intent.data?.lastPathSegment}")
+                        Firebase.crashlytics.log("Unknown path segment: ${intent.data?.lastPathSegment}")
+                        Log.e("CustomUriViewModel", "Unknown path segment: ${intent.data?.lastPathSegment}")
                     }
                 }
             }

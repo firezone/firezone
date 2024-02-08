@@ -4,7 +4,7 @@ package dev.firezone.android.core.data
 import dev.firezone.android.core.data.model.Config
 import kotlinx.coroutines.flow.Flow
 
-internal interface PreferenceRepository {
+interface PreferenceRepository {
     fun getConfigSync(): Config
 
     fun getConfig(): Flow<Config>
@@ -20,6 +20,8 @@ internal interface PreferenceRepository {
     fun getDeviceIdSync(): String?
 
     fun saveToken(value: String): Flow<Unit>
+
+    fun saveActorName(value: String): Flow<Unit>
 
     fun validateState(value: String): Flow<Boolean>
 
