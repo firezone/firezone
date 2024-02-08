@@ -54,7 +54,7 @@ impl Callbacks for CallbackHandler {
     ///
     /// May return Firezone's own servers, e.g. `100.100.111.1`.
     fn get_system_default_resolvers(&self) -> Result<Option<Vec<IpAddr>>, CbError> {
-        Ok(None)
+        Ok(Some(get_system_default_resolvers_resolv_conf()?))
     }
 
     fn on_disconnect(&self, error: Option<&connlib_client_shared::Error>) -> Result<(), CbError> {
@@ -71,6 +71,15 @@ impl Callbacks for CallbackHandler {
                 None
             })
     }
+}
+
+fn get_system_default_resolvers_resolv_conf() -> Result<Vec<IpAddr>, CbError> {
+    let s = std::fs::read_to_string("/etc/resolv.conf").expect("`/etc/resolv.conf` should be readable");
+    let parsed = resolv_conf::Config::parse(&s).expect("`/etc/resolv.conf` should be parsable");
+
+    // Drop the scoping info for IPv6 since connlib doesn't take it
+    let nameservers = parsed.nameservers.into_iter().map(|addr| addr.into()).collect();
+    Ok(nameservers)
 }
 
 fn get_system_default_resolvers_resolvectl() -> Result<Vec<IpAddr>, CbError> {

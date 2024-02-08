@@ -2045,6 +2045,7 @@ dependencies = [
  "connlib-client-shared",
  "firezone-cli-utils",
  "humantime",
+ "resolv-conf",
  "secrecy",
  "thiserror",
  "tracing",
