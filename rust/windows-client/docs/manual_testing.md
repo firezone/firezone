@@ -68,6 +68,16 @@ If the client stops running while signed in, then the token may be stored in Win
 - [ ] Given the log tab is displayed, when you switch to another tab or close the window, then any ongoing computation will be canceled.
 - [ ] Given the log tab is computing log directory size, when the 1-minute refresh timer ticks, then the computation will time out and show an error e.g. "timed out while computing size"
 
+# Error logging
+
+1. Given the log filter has been set to an invalid filter, when you start Firezone, then it will show an error dialog and use the default log filter instead.
+1. Given `--crash` is passed, when Firezone crashes, then the error will be written to the log file.
+1. Given `--error` is passed, when Firezone errors, then the error will be written to the log file.
+1. Given `--panic` is passed, when Firezone panics, then the error will be written to the log file.
+1. Given `--crash smoke-test` is passed, when Firezone crashes, then the error will be written to stderr.
+1. Given `--error smoke-test` is passed, when Firezone crashes, then the error will be written to stderr.
+1. Given `--panic smoke-test` is passed, when Firezone panics, then the error will be written to stderr.
+
 # Resetting state
 
 This is a list of all the on-disk state that you need to delete / reset to test a first-time install / first-time run of the Firezone client.
