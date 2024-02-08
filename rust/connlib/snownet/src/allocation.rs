@@ -204,7 +204,6 @@ impl Allocation {
                 return true;
             }
 
-            #[allow(clippy::single_match)] // There will be more eventually.
             match message.method() {
                 CHANNEL_BIND => {
                     let Some(channel) = original_request
@@ -216,6 +215,17 @@ impl Allocation {
                     };
 
                     self.channel_bindings.handle_failed_binding(channel);
+                }
+                REFRESH => {
+                    if let Some(candidate) = self.ip4_allocation.take() {
+                        self.events.push_back(CandidateEvent::Invalid(candidate))
+                    }
+
+                    if let Some(candidate) = self.ip6_allocation.take() {
+                        self.events.push_back(CandidateEvent::Invalid(candidate))
+                    }
+
+                    self.channel_bindings.clear();
                 }
                 _ => {}
             }
@@ -513,6 +523,14 @@ impl Allocation {
             server: self.server,
             address,
         })
+    }
+
+    pub fn refresh(&mut self) {
+        if !self.has_allocation() {
+            return;
+        }
+
+        self.authenticate_and_queue(make_refresh_request());
     }
 
     fn has_allocation(&self) -> bool {
@@ -824,6 +842,11 @@ impl ChannelBindings {
 
         true
     }
+
+    fn clear(&mut self) {
+        self.inner.clear();
+        self.next_channel = Self::FIRST_CHANNEL;
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -931,8 +954,11 @@ impl BufferedChannelBindings {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
-    use stun_codec::{rfc5389::errors::BadRequest, Message};
+    use std::{
+        iter,
+        net::{IpAddr, Ipv4Addr, Ipv6Addr},
+    };
+    use stun_codec::{rfc5389::errors::BadRequest, rfc5766::errors::AllocationMismatch, Message};
 
     const PEER1: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 10000);
 
@@ -1392,6 +1418,99 @@ mod tests {
         assert_eq!(next_event, None);
     }
 
+    #[test]
+    fn calling_refresh_will_trigger_refresh() {
+        let mut allocation = Allocation::for_test(Instant::now());
+
+        let allocate = allocation.next_message().unwrap();
+        allocation.handle_test_input(
+            &allocate_response(&allocate, &[RELAY_ADDR_IP4]),
+            Instant::now(),
+        );
+
+        allocation.refresh();
+
+        let refresh = allocation.next_message().unwrap();
+        assert_eq!(refresh.method(), REFRESH);
+    }
+
+    #[test]
+    fn failed_refresh_will_invalidate_relay_candiates() {
+        let mut allocation = Allocation::for_test(Instant::now());
+
+        let allocate = allocation.next_message().unwrap();
+        allocation.handle_test_input(
+            &allocate_response(&allocate, &[RELAY_ADDR_IP4, RELAY_ADDR_IP6]),
+            Instant::now(),
+        );
+        let _ = iter::from_fn(|| allocation.poll_event()).collect::<Vec<_>>(); // Drain events.
+
+        allocation.refresh();
+
+        let refresh = allocation.next_message().unwrap();
+        allocation.handle_test_input(&failed_refresh(&refresh), Instant::now());
+
+        assert_eq!(
+            allocation.poll_event(),
+            Some(CandidateEvent::Invalid(
+                Candidate::relayed(RELAY_ADDR_IP4, Protocol::Udp).unwrap()
+            ))
+        );
+        assert_eq!(
+            allocation.poll_event(),
+            Some(CandidateEvent::Invalid(
+                Candidate::relayed(RELAY_ADDR_IP6, Protocol::Udp).unwrap()
+            ))
+        );
+        assert!(allocation.poll_event().is_none());
+        assert_eq!(
+            allocation.current_candidates().collect::<Vec<_>>(),
+            vec![Candidate::server_reflexive(PEER1, PEER1, Protocol::Udp).unwrap()],
+            "server-reflexive candidate should still be valid after refresh"
+        )
+    }
+
+    #[test]
+    fn failed_refresh_clears_all_channel_bindings() {
+        let mut allocation = Allocation::for_test(Instant::now());
+
+        let allocate = allocation.next_message().unwrap();
+        allocation.handle_test_input(
+            &allocate_response(&allocate, &[RELAY_ADDR_IP4, RELAY_ADDR_IP6]),
+            Instant::now(),
+        );
+
+        allocation.bind_channel(PEER2_IP4, Instant::now());
+        let channel_bind_msg = allocation.next_message().unwrap();
+        allocation.handle_test_input(
+            &encode(channel_bind_success(&channel_bind_msg)),
+            Instant::now(),
+        );
+
+        let msg = allocation.encode_to_vec(PEER2_IP4, b"foobar", Instant::now());
+        assert!(msg.is_some(), "expect to have a channel to peer");
+
+        allocation.refresh();
+
+        let refresh = allocation.next_message().unwrap();
+        allocation.handle_test_input(&failed_refresh(&refresh), Instant::now());
+
+        let msg = allocation.encode_to_vec(PEER2_IP4, b"foobar", Instant::now());
+        assert!(msg.is_none(), "expect to no longer have a channel to peer");
+    }
+
+    #[test]
+    fn refresh_does_nothing_if_we_dont_have_an_allocation_yet() {
+        let mut allocation = Allocation::for_test(Instant::now());
+
+        let _allocate = allocation.next_message().unwrap();
+
+        allocation.refresh();
+
+        let next_msg = allocation.next_message();
+        assert!(next_msg.is_none())
+    }
+
     fn ch(peer: SocketAddr, now: Instant) -> Channel {
         Channel {
             peer,
@@ -1441,6 +1560,17 @@ mod tests {
         message.add_attribute(ErrorCode::from(StaleNonce));
         message.add_attribute(Realm::new("firezone".to_owned()).unwrap());
         message.add_attribute(nonce);
+
+        encode(message)
+    }
+
+    fn failed_refresh(request: &Message<Attribute>) -> Vec<u8> {
+        let mut message = Message::new(
+            MessageClass::ErrorResponse,
+            REFRESH,
+            request.transaction_id(),
+        );
+        message.add_attribute(ErrorCode::from(AllocationMismatch));
 
         encode(message)
     }

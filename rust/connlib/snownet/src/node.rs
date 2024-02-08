@@ -376,6 +376,9 @@ where
                         &mut self.pending_events,
                     );
                 }
+                CandidateEvent::Invalid(_) => {
+                    // TODO: Handle expired candidates. Invalidate on ICE agent? ICE restart?
+                }
             }
         }
 
@@ -789,12 +792,12 @@ where
 
     fn upsert_turn_servers(&mut self, servers: &HashSet<(SocketAddr, String, String, String)>) {
         for (server, username, password, realm) in servers {
-            if self
-                .allocations
-                .get(server)
-                .is_some_and(|a| a.uses_credentials(username, password, realm))
-            {
-                continue;
+            if let Some(existing) = self.allocations.get_mut(server) {
+                if existing.uses_credentials(username, password, realm) {
+                    existing.refresh();
+
+                    continue;
+                }
             }
 
             let Ok(username) = Username::new(username.to_owned()) else {
@@ -1072,6 +1075,7 @@ impl<'a> Transmit<'a> {
 #[derive(Debug, PartialEq)]
 pub(crate) enum CandidateEvent {
     New(Candidate),
+    Invalid(Candidate),
 }
 
 struct InitialConnection {
