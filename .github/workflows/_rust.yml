@@ -77,7 +77,8 @@ jobs:
       run:
         working-directory: ./rust/windows-client
     env:
-      RUST_LOG: firezone_windows_client=info
+      CONNLIB_LOG_UPLOAD_INTERVAL_SECS: 300
+      # The Windows client ignores RUST_LOG because it uses a settings file instead
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node
@@ -125,6 +126,7 @@ jobs:
             artifact: windows-client
     env:
       BINARY_DEST_PATH: ${{ matrix.artifact }}
+      CONNLIB_LOG_UPLOAD_INTERVAL_SECS: 300
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node
