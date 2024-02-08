@@ -79,8 +79,11 @@ fn get_system_default_resolvers() -> Result<Vec<IpAddr>, CbError> {
     // text output for this command: <https://github.com/systemd/systemd/issues/29755>
     //
     // The officially supported way is probably to use D-Bus.
-    let output = std::process::Command::new("resolvectl").arg("dns").output().map_err(|_| CbError::RunResolveCtl)?;
-    if ! output.status.success() {
+    let output = std::process::Command::new("resolvectl")
+        .arg("dns")
+        .output()
+        .map_err(|_| CbError::RunResolveCtl)?;
+    if !output.status.success() {
         return Err(CbError::ResolveCtlFailed);
     }
     let output = String::from_utf8(output.stdout).map_err(|_| CbError::ResolveCtlUtf8)?;
@@ -135,12 +138,10 @@ Link 2 (enp0s3): 192.0.2.1 2001:db8::
 Link 3 (tun-firezone): 100.100.111.1 100.100.111.2
 ";
         let actual = super::parse_resolvectl_output(input);
-        let expected = [
-            "192.0.2.1",
-            "2001:db8::",
-            "100.100.111.1",
-            "100.100.111.2",
-        ].iter().map(|s| std::net::IpAddr::from_str(s).unwrap()).collect::<Vec<_>>();
+        let expected = ["192.0.2.1", "2001:db8::", "100.100.111.1", "100.100.111.2"]
+            .iter()
+            .map(|s| std::net::IpAddr::from_str(s).unwrap())
+            .collect::<Vec<_>>();
         assert_eq!(expected, actual);
     }
 }
