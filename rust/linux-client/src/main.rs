@@ -96,7 +96,7 @@ fn get_system_default_resolvers() -> Result<Vec<IpAddr>, CbError> {
 fn parse_resolvectl_output(s: &str) -> Vec<IpAddr> {
     let mut v = vec![];
     for line in s.lines() {
-        for word in line.split(" ") {
+        for word in line.split(' ') {
             if let Ok(addr) = IpAddr::from_str(word) {
                 v.push(addr);
             }
