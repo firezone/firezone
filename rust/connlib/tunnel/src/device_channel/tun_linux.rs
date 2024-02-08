@@ -238,18 +238,18 @@ async fn set_iface_config(
 
     res_v4.or(res_v6)?;
 
-    // Set up DNS for the tunnel interface
-    let mut cmd = tokio::process::Command::new("resolvectl");
-    cmd.arg("dns").arg(IFACE_NAME);
-    for addr in &dns_config {
-        cmd.arg(addr.to_string());
-    }
-    let status = cmd.status().await.map_err(|_| Error::ResolveCtlSetDns)?;
-    if !status.success() {
-        return Err(Error::ResolveCtlSetDnsExitCode);
-    }
-    tracing::info!("Used `resolvectl` to set the Firezone DNS servers");
+    // TODO: Try to eliminate
+    flush_dns().await?;
 
+    // TODO: Fix before merging
+    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+
+    configure_systemd_resolved(&dns_config).await?;
+
+    Ok(())
+}
+
+async fn flush_dns() -> Result<()> {
     // Flush systemd's DNS cache so resources like ifconfig.net will switch to
     // Firezone even if they were cached
     //
@@ -278,6 +278,43 @@ async fn set_iface_config(
         return Err(Error::ResolveCtlFlushCachesExitCode);
     }
     tracing::info!("Ran `resolvectl flush-caches`");
+    Ok(())
+}
+
+async fn configure_systemd_resolved(dns_config: &[IpAddr]) -> Result<()> {
+    if dns_config.is_empty() {
+        // I'm not sure if this tunnel code runs on gateways, but if we don't have
+        // DNS available, don't mess up the system's DNS by registering ourselves.
+        return Ok(());
+    }
+
+    // Set our DNS server for the tunnel interface
+    // If I run this before the flush it doesn't work?
+    // Does it work after the flush?
+    let mut cmd = tokio::process::Command::new("resolvectl");
+    cmd.arg("dns").arg(IFACE_NAME);
+    for addr in dns_config {
+        cmd.arg(addr.to_string());
+    }
+    let status = cmd.status().await.map_err(|_| Error::ResolveCtlSetDns)?;
+    if !status.success() {
+        return Err(Error::ResolveCtlSetDnsExitCode);
+    }
+    tracing::info!(?dns_config, "Ran `resolvectl dns`");
+
+    // Tell systemd we can resolve any domain
+    // TODO: If we want true split DNS we can move this over to `on_update_resources`
+    let status = tokio::process::Command::new("resolvectl")
+        .arg("domain")
+        .arg(IFACE_NAME)
+        .arg("~.")
+        .status()
+        .await
+        .map_err(|_| Error::ResolveCtlSetDomains)?;
+    if !status.success() {
+        return Err(Error::ResolveCtlSetDomainsExitCode);
+    }
+    tracing::info!("Ran `resolvectl domain`");
 
     Ok(())
 }

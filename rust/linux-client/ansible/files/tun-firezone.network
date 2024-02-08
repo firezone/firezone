@@ -1,5 +1,5 @@
 [Match]
-Name=enp0s3
+Name=tun-firezone
 
 [Network]
 DNSDefaultRoute=true

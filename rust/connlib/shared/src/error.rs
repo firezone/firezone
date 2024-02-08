@@ -164,14 +164,18 @@ pub enum ConnlibError {
     ClosedByPortal,
     #[error(transparent)]
     JoinError(#[from] JoinError),
-    #[error("Failed to run `resolvectl` to set Firezone DNS servers")]
+    #[error("Failed to run `resolvectl dns`")]
     ResolveCtlSetDns,
-    #[error("`resolvectl` returned error code while setting Firezone DNS servers")]
+    #[error("`resolvectl dns` returned error code")]
     ResolveCtlSetDnsExitCode,
-    #[error("Failed to run `resolvectl` to flush DNS caches")]
+    #[error("Failed to run `resolvectl flush-caches`")]
     ResolveCtlFlushCaches,
-    #[error("`resolvectl` returned error code while flushing DNS caches")]
+    #[error("`resolvectl flush-caches` returned error code")]
     ResolveCtlFlushCachesExitCode,
+    #[error("Failed to run `resolvectl domain`")]
+    ResolveCtlSetDomains,
+    #[error("`resolvectl domain` returned error code")]
+    ResolveCtlSetDomainsExitCode,
 }
 
 impl ConnlibError {
