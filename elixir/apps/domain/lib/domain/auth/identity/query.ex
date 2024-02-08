@@ -99,12 +99,68 @@ defmodule Domain.Auth.Identity.Query do
     end
   end
 
+  def by_membership_rules(queryable \\ not_deleted(), rules) do
+    dynamic =
+      Enum.reduce(rules, false, fn
+        %{path: path, operator: :is_in, values: values}, dynamic ->
+          dynamic(
+            [identities: identities],
+            ^dynamic or
+              type(json_extract_path(identities.provider_state, ^path), :string) in ^values
+          )
+
+        %{path: path, operator: :is_not_in, values: values}, dynamic ->
+          dynamic(
+            [identities: identities],
+            ^dynamic or
+              type(json_extract_path(identities.provider_state, ^path), :string) not in ^values
+          )
+
+        %{path: path, operator: :contains, values: [value]}, dynamic ->
+          dynamic(
+            [identities: identities],
+            ^dynamic or
+              fragment(
+                "? LIKE ?",
+                type(json_extract_path(identities.provider_state, ^path), :string),
+                ^value
+              )
+          )
+
+        %{path: path, operator: :does_not_contain, values: [value]}, dynamic ->
+          dynamic(
+            [identities: identities],
+            ^dynamic or
+              fragment(
+                "? NOT LIKE ?",
+                type(json_extract_path(identities.provider_state, ^path), :string),
+                ^value
+              )
+          )
+
+        %{operator: true}, dynamic ->
+          dynamic(
+            [identities: identities],
+            ^dynamic or
+              true
+          )
+      end)
+
+    where(queryable, ^dynamic)
+  end
+
   def lock(queryable \\ not_deleted()) do
     lock(queryable, "FOR UPDATE")
   end
 
   def returning_ids(queryable \\ not_deleted()) do
     select(queryable, [identities: identities], identities.id)
+  end
+
+  def returning_distinct_actor_ids(queryable \\ not_deleted()) do
+    queryable
+    |> select([identities: identities], identities.actor_id)
+    |> distinct(true)
   end
 
   def group_by_provider_id(queryable \\ not_deleted()) do

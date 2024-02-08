@@ -69,13 +69,44 @@ defmodule Domain.Actors.Group.Changeset do
         )
 
       {_data_or_changes, type} when type in [:dynamic, :managed] ->
-        cast_embed(changeset, :membership_rules,
-          with: &Actors.MembershipRule.Changeset.changeset(&1, &2)
+        changeset
+        |> cast_embed(:membership_rules,
+          with: &Actors.MembershipRule.Changeset.changeset(&1, &2),
+          required: true
         )
-
+        |> cast_dynamic_memberships(account_id)
 
       _other ->
         changeset
     end
+  end
+
+  defp cast_dynamic_memberships(changeset, account_id) do
+    with true <- changeset.valid?,
+         true <- changed?(changeset, :membership_rules) do
+      put_dynamic_memberships(changeset, account_id)
+    else
+      _ -> changeset
+    end
+  end
+
+  def put_dynamic_memberships(changeset, account_id) do
+    {_data_or_changes, rules} = fetch_field(changeset, :membership_rules)
+
+    rules =
+      Enum.map(rules, fn
+        %Ecto.Changeset{} = changeset -> apply_changes(changeset)
+        schema -> schema
+      end)
+
+    memberships =
+      Auth.list_actor_ids_by_membership_rules(account_id, rules)
+      |> Enum.map(fn actor_id ->
+        Actors.Membership.Changeset.for_group(account_id, %Actors.Membership{}, %{
+          actor_id: actor_id
+        })
+      end)
+
+    put_change(changeset, :memberships, memberships)
   end
 end

@@ -94,7 +94,6 @@ defmodule Web.Groups.Index do
               </div>
             </:empty>
           </.table>
-          <!--<.paginator page={3} total_pages={100} collection_base_path={~p"/#{@account}/groups"} />-->
         </div>
       </:content>
     </.section>

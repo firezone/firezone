@@ -862,7 +862,7 @@ defmodule Web.CoreComponents do
 
   def created_by(%{schema: %{created_by: :system}} = assigns) do
     ~H"""
-    <.relative_datetime datetime={@schema.inserted_at} />
+    <.relative_datetime datetime={@schema.inserted_at} /> by system
     """
   end
 

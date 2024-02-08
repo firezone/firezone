@@ -11,7 +11,7 @@ defmodule Domain.Ops do
       {:ok, _everyone_group} =
         Domain.Actors.create_managed_group(account, %{
           name: "Everyone",
-          membership_rules: [%{operator: "all_users"}]
+          membership_rules: [%{operator: true}]
         })
 
       {:ok, magic_link_provider} =

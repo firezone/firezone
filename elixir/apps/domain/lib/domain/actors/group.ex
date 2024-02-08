@@ -13,7 +13,7 @@ defmodule Domain.Actors.Group do
       foreign_key: :actor_group_id,
       where: [deleted_at: nil]
 
-    embeds_many :membership_rules, Domain.Actors.MembershipRule
+    embeds_many :membership_rules, Domain.Actors.MembershipRule, on_replace: :delete
     has_many :memberships, Domain.Actors.Membership, on_replace: :delete
 
     # TODO: where doesn't work on join tables so soft-deleted records will be preloaded,

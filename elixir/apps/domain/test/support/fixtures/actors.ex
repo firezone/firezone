@@ -10,7 +10,11 @@ defmodule Domain.Fixtures.Actors do
   end
 
   def create_managed_group(attrs \\ %{}) do
-    attrs = group_attrs(attrs) |> Map.put(:type, :managed)
+    attrs =
+      attrs
+      |> group_attrs()
+      |> Map.put(:type, :managed)
+      |> Map.put_new(:membership_rules, [%{operator: true}])
 
     {account, attrs} =
       pop_assoc_fixture(attrs, :account, fn assoc_attrs ->
@@ -51,7 +55,10 @@ defmodule Domain.Fixtures.Actors do
       |> Actors.create_group(subject)
 
     if provider do
-      update!(group, provider_id: provider.id, provider_identifier: provider_identifier)
+      update!(group,
+        provider_id: provider.id,
+        provider_identifier: provider_identifier
+      )
     else
       group
     end

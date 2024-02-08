@@ -56,6 +56,21 @@ defmodule Domain.Actors do
     end
   end
 
+  # TODO: this should be a filter
+  def list_editable_groups(%Auth.Subject{} = subject, opts \\ []) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
+      {preload, _opts} = Keyword.pop(opts, :preload, [])
+
+      {:ok, groups} =
+        Group.Query.not_deleted()
+        |> Group.Query.editable()
+        |> Authorizer.for_subject(subject)
+        |> Repo.list()
+
+      {:ok, Repo.preload(groups, preload)}
+    end
+  end
+
   def peek_group_actors(groups, limit, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
       ids = groups |> Enum.map(& &1.id) |> Enum.uniq()
@@ -109,11 +124,11 @@ defmodule Domain.Actors do
   end
 
   def create_managed_group(%Accounts.Account{} = account, attrs) do
-    Group.Changeset.create(account, attrs)
-    |> Repo.insert()
-    |> case do
+    changeset = Group.Changeset.create(account, attrs)
+
+    case Repo.insert(changeset) do
       {:ok, group} ->
-        # :ok = broadcast_group_memberships_events(group, changeset)
+        :ok = broadcast_group_memberships_events(group, changeset)
         {:ok, group}
 
       {:error, reason} ->
@@ -171,6 +186,28 @@ defmodule Domain.Actors do
 
   def update_group(%Group{}, _attrs, %Auth.Subject{}) do
     {:error, :synced_group}
+  end
+
+  def update_dynamic_group_memberships(account_id) do
+    Repo.transaction(fn ->
+      Group.Query.by_account_id(account_id)
+      |> Group.Query.by_type({:in, [:dynamic, :managed]})
+      |> Group.Query.lock()
+      |> Repo.all()
+      |> Enum.map(fn group ->
+        changeset =
+          group
+          |> Repo.preload(:memberships)
+          |> Ecto.Changeset.change()
+          |> Group.Changeset.put_dynamic_memberships(account_id)
+
+        {:ok, group} = Repo.update(changeset)
+
+        :ok = broadcast_memberships_events(changeset)
+
+        group
+      end)
+    end)
   end
 
   def delete_group(%Group{provider_id: nil} = group, %Auth.Subject{} = subject) do
@@ -356,11 +393,12 @@ defmodule Domain.Actors do
       |> Repo.fetch_and_update(
         with: fn actor ->
           actor = maybe_preload_not_synced_memberships(actor, attrs)
-          # TODO: list_editable_groups
-          synced_groups = list_synced_groups(attrs)
+          synced_groups = list_not_editable_groups(attrs)
           changeset = Actor.Changeset.update(actor, attrs, synced_groups, subject)
 
-          after_commit_cb = fn _group -> :ok = broadcast_memberships_events(changeset) end
+          after_commit_cb = fn _group ->
+            :ok = broadcast_memberships_events(changeset)
+          end
 
           cond do
             changeset.data.type != :account_admin_user ->
@@ -394,7 +432,7 @@ defmodule Domain.Actors do
     end
   end
 
-  defp list_synced_groups(attrs) do
+  defp list_not_editable_groups(attrs) do
     (Map.get(attrs, "memberships") || Map.get(attrs, :memberships) || [])
     |> Enum.flat_map(fn membership ->
       if group_id = Map.get(membership, "group_id") || Map.get(membership, :group_id) do
@@ -409,7 +447,7 @@ defmodule Domain.Actors do
 
       group_ids ->
         Group.Query.by_id({:in, group_ids})
-        |> Group.Query.by_not_empty_provider_id()
+        |> Group.Query.not_editable()
         |> Repo.all()
     end
   end
@@ -454,6 +492,7 @@ defmodule Domain.Actors do
               |> Membership.Query.returning_all()
               |> Repo.delete_all()
 
+            {:ok, _groups} = update_dynamic_group_memberships(actor.account_id)
             :ok = broadcast_membership_removal_events(memberships)
             {:ok, _tokens} = Tokens.delete_tokens_for(actor, subject)
 
@@ -506,7 +545,7 @@ defmodule Domain.Actors do
   end
 
   defp broadcast_memberships_events(changeset) do
-    if changeset.valid? and Validator.changed?(changeset, :memberships) do
+    if changeset.valid? and Ecto.Changeset.changed?(changeset, :memberships) do
       case Ecto.Changeset.apply_action(changeset, :update) do
         {:ok, %Actor{} = actor} ->
           broadcast_actor_memberships_events(actor, changeset)

@@ -3,10 +3,10 @@ defmodule Domain.Actors.MembershipRule do
 
   @primary_key false
   embedded_schema do
-    field :operator, Ecto.Enum,
-      values: ~w[all_users equals_to does_not_equal_to contains does_not_contain is_in is_not_in]a
+    # `true` is a special operator which allows to select all account users
+    field :operator, Ecto.Enum, values: ~w[true contains does_not_contain is_in is_not_in]a
 
-    field :jsonpath, :string
-    field :value, :string
+    field :path, {:array, :string}
+    field :values, {:array, :string}
   end
 end

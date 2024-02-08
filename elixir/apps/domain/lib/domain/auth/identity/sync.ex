@@ -52,6 +52,9 @@ defmodule Domain.Auth.Identity.Sync do
         {:ok, actor_ids_by_provider_identifier}
       end
     )
+    |> Ecto.Multi.run(:recalculate_dynamic_groups, fn _repo, _effects_so_far ->
+      Domain.Actors.update_dynamic_group_memberships(provider.account_id)
+    end)
   end
 
   defp fetch_and_lock_provider_identities_query(provider) do

@@ -42,13 +42,13 @@ IO.puts("")
 {:ok, everyone_group} =
   Domain.Actors.create_managed_group(account, %{
     name: "Everyone",
-    membership_rules: [%{operator: "all_users"}]
+    membership_rules: [%{operator: true}]
   })
 
 {:ok, _everyone_group} =
   Domain.Actors.create_managed_group(other_account, %{
     name: "Everyone",
-    membership_rules: [%{operator: "all_users"}]
+    membership_rules: [%{operator: true}]
   })
 
 {:ok, email_provider} =
