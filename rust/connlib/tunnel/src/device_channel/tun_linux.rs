@@ -91,7 +91,11 @@ impl Tun {
         utils::poll_raw_fd(&self.fd, |fd| read(fd, buf), cx)
     }
 
-    pub fn new(config: &InterfaceConfig, dns_config: Vec<IpAddr>, _: &impl Callbacks) -> Result<Self> {
+    pub fn new(
+        config: &InterfaceConfig,
+        dns_config: Vec<IpAddr>,
+        _: &impl Callbacks,
+    ) -> Result<Self> {
         create_tun_device()?;
 
         let fd = match unsafe { open(TUN_FILE.as_ptr() as _, O_RDWR) } {
@@ -109,25 +113,14 @@ impl Tun {
         let (connection, handle, _) = new_connection()?;
         let join_handle = tokio::spawn(connection);
 
-        let tun = Self {
+        Ok(Self {
             handle: handle.clone(),
             connection: join_handle,
             fd: AsyncFd::new(fd)?,
-            worker: Mutex::new(Some(set_iface_config(config.clone(), handle).boxed())),
-        };
-
-        tracing::info!(?dns_config, "DNS goes here");
-        let mut dns_cmd = std::process::Command::new("resolvectl");
-        dns_cmd.arg("dns").arg(IFACE_NAME);
-        for addr in &dns_config {
-            dns_cmd.arg(addr.to_string());
-        }
-        let status = dns_cmd.status().expect("Should be able to run `resolvectl`");
-        if ! status.success() {
-            panic!("Should get non-zero exit code from `resolvectl`");
-        }
-
-        Ok(tun)
+            worker: Mutex::new(Some(
+                set_iface_config(config.clone(), dns_config, handle).boxed(),
+            )),
+        })
     }
 
     pub fn add_route(&self, route: IpNetwork, _: &impl Callbacks) -> Result<Option<Self>> {
@@ -203,7 +196,11 @@ impl Tun {
 }
 
 #[tracing::instrument(level = "trace", skip(handle))]
-async fn set_iface_config(config: InterfaceConfig, handle: Handle) -> Result<()> {
+async fn set_iface_config(
+    config: InterfaceConfig,
+    dns_config: Vec<IpAddr>,
+    handle: Handle,
+) -> Result<()> {
     let index = handle
         .link()
         .get()
@@ -240,6 +237,48 @@ async fn set_iface_config(config: InterfaceConfig, handle: Handle) -> Result<()>
     handle.link().set(index).up().execute().await?;
 
     res_v4.or(res_v6)?;
+
+    // Set up DNS for the tunnel interface
+    let mut cmd = tokio::process::Command::new("resolvectl");
+    cmd.arg("dns").arg(IFACE_NAME);
+    for addr in &dns_config {
+        cmd.arg(addr.to_string());
+    }
+    let status = cmd.status().await.map_err(|_| Error::ResolveCtlSetDns)?;
+    if !status.success() {
+        return Err(Error::ResolveCtlSetDnsExitCode);
+    }
+    tracing::info!("Used `resolvectl` to set the Firezone DNS servers");
+
+    // Flush systemd's DNS cache so resources like ifconfig.net will switch to
+    // Firezone even if they were cached
+    //
+    // This doesn't fix a problem where systemd-resolved doesn't mark 100.100.111.1
+    // as Firezone"s "Current DNS Server" until any transaction has happened.
+    //
+    // e.g., this will fail:
+    //
+    // 1. Start Firezone
+    // 2. Confirm the "DNS Servers" in `resolvectl status` are good
+    // 3. Run `resolvectl flush-caches` many times over any length of time
+    // 4. Run `curl https://ifconfig.net/ip`
+    //
+    // It will still go outside the tunnel. But this will work:
+    //
+    // 1. Start Firezone
+    // 2. Let `curl https://ifconfig.net/ip` fail once
+    // 3. Run `resolvectl flush-caches` once
+    // 4. Run `curl https://ifconfig.net/ip` again and it works
+    let status = tokio::process::Command::new("resolvectl")
+        .arg("flush-caches")
+        .status()
+        .await
+        .map_err(|_| Error::ResolveCtlFlushCaches)?;
+    if !status.success() {
+        return Err(Error::ResolveCtlFlushCachesExitCode);
+    }
+    tracing::info!("Ran `resolvectl flush-caches`");
+
     Ok(())
 }
 

@@ -51,6 +51,9 @@ enum CbError {
 impl Callbacks for CallbackHandler {
     type Error = CbError;
 
+    /// Shells out to `resolvectl dns` to get the system DNS resolvers
+    ///
+    /// May return Firezone's own servers, e.g. `100.100.111.1`.
     fn get_system_default_resolvers(&self) -> Result<Option<Vec<IpAddr>>, CbError> {
         Ok(Some(get_system_default_resolvers()?))
     }
@@ -71,9 +74,6 @@ impl Callbacks for CallbackHandler {
     }
 }
 
-/// Shells out to `resolvectl dns` to get the system DNS resolvers
-///
-/// May return Firezone's own servers, e.g. `100.100.111.1`.
 fn get_system_default_resolvers() -> Result<Vec<IpAddr>, CbError> {
     // Unfortunately systemd-resolved does not have a machine-readable
     // text output for this command: <https://github.com/systemd/systemd/issues/29755>

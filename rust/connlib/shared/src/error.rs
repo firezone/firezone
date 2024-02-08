@@ -164,13 +164,14 @@ pub enum ConnlibError {
     ClosedByPortal,
     #[error(transparent)]
     JoinError(#[from] JoinError),
-
-    #[error("Failed to spawn resolvectl")]
-    SpawnResolvectl,
-    #[error("Failed to join resolvectl")]
-    JoinResolvectl,
-    #[error("Resolvectl returned non-zero exit code")]
-    ResolvectlExitCode,
+    #[error("Failed to run `resolvectl` to set Firezone DNS servers")]
+    ResolveCtlSetDns,
+    #[error("`resolvectl` returned error code while setting Firezone DNS servers")]
+    ResolveCtlSetDnsExitCode,
+    #[error("Failed to run `resolvectl` to flush DNS caches")]
+    ResolveCtlFlushCaches,
+    #[error("`resolvectl` returned error code while flushing DNS caches")]
+    ResolveCtlFlushCachesExitCode,
 }
 
 impl ConnlibError {
