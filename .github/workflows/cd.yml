@@ -253,7 +253,7 @@ jobs:
           - package: firezone-windows-client
             artifact: windows-client
     env:
-      BINARY_DEST_PATH: ${{ matrix.name.artifact }}
+      BINARY_DEST_PATH: firezone-${{ matrix.name.artifact }}
       CONNLIB_LOG_UPLOAD_INTERVAL_SECS: 300
     steps:
       - uses: actions/checkout@v4
