@@ -1,0 +1,40 @@
+---
+- hosts: myhosts
+  tasks:
+  - name: Update apt-get repo and cache
+    become: yes
+    ansible.builtin.apt:
+       update_cache: yes
+       cache_valid_time: 3600
+  - name: Install apt packages
+    become: yes
+    ansible.builtin.apt:
+       name: systemd-resolved
+       state: latest
+  - name: Copy Firezone client
+    ansible.builtin.copy:
+       src: ../../target/release/firezone-linux-client
+       dest: firezone-linux-client
+       mode: '0755'
+  - name: Setcap on Firezone
+    become: yes
+    community.general.capabilities:
+       path: firezone-linux-client
+       capability: cap_net_admin+eip
+       state: present
+  - name: Copy Firezone token
+    ansible.builtin.copy:
+       src: firezone-token
+       dest: firezone-token
+  - name: Copy test script
+    ansible.builtin.copy:
+       src: test.bash
+       dest: test.bash
+       mode: '0755'
+  # Needed ?
+  - name: Restart networking
+    become: yes
+    ansible.builtin.systemd:
+       state: restarted
+       daemon_reload: true
+       name: networking
