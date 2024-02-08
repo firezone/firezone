@@ -61,7 +61,6 @@ where
     ///
     /// Once added, when a packet for the resource is intercepted a new data channel will be created
     /// and packets will be wrapped with wireguard and sent through it.
-    #[tracing::instrument(level = "trace", skip(self))]
     pub fn add_resource(
         &self,
         resource_description: ResourceDescription,
