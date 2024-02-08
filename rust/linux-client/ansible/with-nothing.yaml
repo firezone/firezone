@@ -1,4 +1,7 @@
 ---
+
+# Handy for just updating the Firezone exe
+
 - hosts: myhosts
   tasks:
   - name: Copy Firezone client

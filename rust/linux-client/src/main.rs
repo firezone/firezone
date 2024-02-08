@@ -36,14 +36,26 @@ struct CallbackHandler {
     handle: Option<file_logger::Handle>,
 }
 
-impl Callbacks for CallbackHandler {
-    type Error = std::convert::Infallible;
+// Using `thiserror` because `anyhow` doesn't seem to implement `std::error::Error`,
+// required by connlib
+#[derive(Debug, thiserror::Error)]
+enum CbError {
+    #[error("`resolvectl` reutrned non-zero exit code")]
+    ResolveCtlFailed,
+    #[error("`resolvectl`'s output was not valid UTF-8")]
+    ResolveCtlUtf8,
+    #[error("Failed to run `resolvectl` command")]
+    RunResolveCtl,
+}
 
-    fn get_system_default_resolvers(&self) -> Result<Option<Vec<IpAddr>>, Self::Error> {
-        Ok(Some(vec![IpAddr::from_str("192.168.1.1").expect("Impossible: hard-coded IP should be parsable")]))
+impl Callbacks for CallbackHandler {
+    type Error = CbError;
+
+    fn get_system_default_resolvers(&self) -> Result<Option<Vec<IpAddr>>, CbError> {
+        Ok(Some(get_system_default_resolvers()?))
     }
 
-    fn on_disconnect(&self, error: Option<&connlib_client_shared::Error>) -> Result<(), Self::Error> {
+    fn on_disconnect(&self, error: Option<&connlib_client_shared::Error>) -> Result<(), CbError> {
         tracing::error!(?error, "Disconnected");
         Ok(())
     }
@@ -57,6 +69,37 @@ impl Callbacks for CallbackHandler {
                 None
             })
     }
+}
+
+/// Shells out to `resolvectl dns` to get the system DNS resolvers
+///
+/// May return Firezone's own servers, e.g. `100.100.111.1`.
+fn get_system_default_resolvers() -> Result<Vec<IpAddr>, CbError> {
+    // Unfortunately systemd-resolved does not have a machine-readable
+    // text output for this command: <https://github.com/systemd/systemd/issues/29755>
+    //
+    // The officially supported way is probably to use D-Bus.
+    let output = std::process::Command::new("resolvectl").arg("dns").output().map_err(|_| CbError::RunResolveCtl)?;
+    if ! output.status.success() {
+        return Err(CbError::ResolveCtlFailed);
+    }
+    let output = String::from_utf8(output.stdout).map_err(|_| CbError::ResolveCtlUtf8)?;
+    Ok(parse_resolvectl_output(&output))
+}
+
+/// Parses the text output of `resolvectl dns`
+///
+/// Cannot fail. If the parsing code is wrong, the IP address vec will just be incomplete.
+fn parse_resolvectl_output(s: &str) -> Vec<IpAddr> {
+    let mut v = vec![];
+    for line in s.lines() {
+        for word in line.split(" ") {
+            if let Ok(addr) = IpAddr::from_str(word) {
+                v.push(addr);
+            }
+        }
+    }
+    v
 }
 
 #[derive(Parser)]
@@ -77,4 +120,27 @@ struct Cli {
     /// it's down. Accepts human times. e.g. "5m" or "1h" or "30d".
     #[arg(short, long, env = "MAX_PARTITION_TIME")]
     max_partition_time: Option<humantime::Duration>,
+}
+
+#[cfg(test)]
+mod tests {
+    use std::str::FromStr;
+
+    #[test]
+    fn parse_resolvectl_output() {
+        // Typical output from `resolvectl dns` while Firezone is up
+        let input = r"
+Global:
+Link 2 (enp0s3): 192.0.2.1 2001:db8::
+Link 3 (tun-firezone): 100.100.111.1 100.100.111.2
+";
+        let actual = super::parse_resolvectl_output(input);
+        let expected = [
+            "192.0.2.1",
+            "2001:db8::",
+            "100.100.111.1",
+            "100.100.111.2",
+        ].iter().map(|s| std::net::IpAddr::from_str(s).unwrap()).collect::<Vec<_>>();
+        assert_eq!(expected, actual);
+    }
 }
