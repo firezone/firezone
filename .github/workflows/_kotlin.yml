@@ -82,4 +82,4 @@ jobs:
           FIREBASE_APP_TESTERS: ${{ vars.FIREBASE_APP_TESTERS }}
         run: |
           echo -n "$FIREBASE_APP_DISTRIBUTION_CREDENTIALS" > $FIREBASE_CREDENTIALS_PATH
-          ./gradlew --info appDistributionUploadRelease
+          ./gradlew --info appDistributionUploadRelease uploadCrashlyticsSymbolFileRelease

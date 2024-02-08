@@ -1,3 +1,5 @@
+import com.google.firebase.crashlytics.buildtools.gradle.CrashlyticsExtension
+
 plugins {
     id("com.android.application")
     id("org.mozilla.rust-android-gradle.rust-android")
@@ -105,6 +107,15 @@ android {
             )
             isDebuggable = false
 
+            configure<CrashlyticsExtension> {
+                // Enable processing and uploading of native symbols to Firebase servers.
+                // By default, this is disabled to improve build speeds.
+                // This flag must be enabled to see properly-symbolicated native
+                // stack traces in the Crashlytics dashboard.
+                nativeSymbolUploadEnabled = true
+                unstrippedNativeLibsDir = layout.buildDirectory.dir("rustJniLibs")
+            }
+
             resValue("string", "app_name", "\"Firezone\"")
 
             buildConfigField("String", "AUTH_BASE_URL", "\"https://app.firezone.dev\"")
@@ -196,11 +207,12 @@ dependencies {
     implementation("androidx.browser:browser:1.7.0")
 
     // Import the BoM for the Firebase platform
-    implementation(platform("com.google.firebase:firebase-bom:32.3.1"))
+    implementation(platform("com.google.firebase:firebase-bom:32.7.1"))
 
     // Add the dependencies for the Crashlytics and Analytics libraries
     // When using the BoM, you don't specify versions in Firebase library dependencies
     implementation("com.google.firebase:firebase-crashlytics-ktx")
+    implementation("com.google.firebase:firebase-crashlytics-ndk")
     implementation("com.google.firebase:firebase-analytics-ktx")
     implementation("com.google.firebase:firebase-installations-ktx")
 }
