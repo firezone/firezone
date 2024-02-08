@@ -76,7 +76,7 @@ where
     ///
     /// # Returns
     /// A [RequestConnection] that should be sent to the gateway through the control-plane.
-    #[tracing::instrument(level = "trace", skip(self))]
+    #[tracing::instrument(level = "trace", skip_all, fields(%resource_id, %gateway_id))]
     pub async fn request_connection(
         self: &Arc<Self>,
         resource_id: ResourceId,
@@ -84,7 +84,7 @@ where
         relays: Vec<Relay>,
         reference: Option<Reference>,
     ) -> Result<Request> {
-        tracing::trace!(%gateway_id, %resource_id, "request_connection");
+        tracing::trace!("request_connection");
 
         let reference: usize = reference
             .ok_or(Error::InvalidReference)?
