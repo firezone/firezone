@@ -117,6 +117,15 @@ impl Tun {
         };
 
         tracing::info!(?dns_config, "DNS goes here");
+        let mut dns_cmd = std::process::Command::new("resolvectl");
+        dns_cmd.arg("dns").arg(IFACE_NAME);
+        for addr in &dns_config {
+            dns_cmd.arg(addr.to_string());
+        }
+        let status = dns_cmd.status().expect("Should be able to run `resolvectl`");
+        if ! status.success() {
+            panic!("Should get non-zero exit code from `resolvectl`");
+        }
 
         Ok(tun)
     }
