@@ -25,7 +25,6 @@ fn main() -> Result<()> {
     tracing::info!("new_session");
 
     block_on_ctrl_c();
-    tracing::info!("`block_on_ctrl_c` returned");
 
     session.disconnect(None);
     Ok(())
@@ -55,7 +54,7 @@ impl Callbacks for CallbackHandler {
     ///
     /// May return Firezone's own servers, e.g. `100.100.111.1`.
     fn get_system_default_resolvers(&self) -> Result<Option<Vec<IpAddr>>, CbError> {
-        Ok(Some(get_system_default_resolvers()?))
+        Ok(None)
     }
 
     fn on_disconnect(&self, error: Option<&connlib_client_shared::Error>) -> Result<(), CbError> {
@@ -74,7 +73,7 @@ impl Callbacks for CallbackHandler {
     }
 }
 
-fn get_system_default_resolvers() -> Result<Vec<IpAddr>, CbError> {
+fn get_system_default_resolvers_resolvectl() -> Result<Vec<IpAddr>, CbError> {
     // Unfortunately systemd-resolved does not have a machine-readable
     // text output for this command: <https://github.com/systemd/systemd/issues/29755>
     //

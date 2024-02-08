@@ -2121,6 +2121,7 @@ dependencies = [
  "parking_lot",
  "pnet_packet",
  "rand_core 0.6.4",
+ "resolv-conf",
  "rtnetlink",
  "secrecy",
  "serde",

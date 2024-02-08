@@ -36,6 +36,7 @@ webrtc = { workspace = true }
 
 # Needed for Android logging until tracing is fixed
 log = "0.4"
+resolv-conf = "0.7.0"
 
 [dev-dependencies]
 serde_json = "1.0"
