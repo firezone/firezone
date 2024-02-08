@@ -68,7 +68,7 @@ const GITHUB_API_VERSION: &str = "2022-11-28";
 /// The name of the Windows MSI asset.
 ///
 /// This ultimately comes from `cd.yml`
-const MSI_ASSET_NAME: &str = "firezone-windows-client-x64.msi";
+const MSI_ASSET_NAME: &str = "windows-client-x64.msi";
 
 /// Returns the latest release, even if ours is already newer
 pub(crate) async fn check() -> Result<Release, Error> {
