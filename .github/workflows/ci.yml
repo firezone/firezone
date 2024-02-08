@@ -298,7 +298,10 @@ jobs:
           # Client DNS tests
           - test_name: dns
             perf_test: false
-            setup: echo 'Noop'
+            setup: |
+              # From `linux-client/ansible/with-systemd.yaml`
+              docker compose exec -it client \
+              sh -c 'apt-get update && apt-get install systemd-resolved'
             execute: |
               # Wait for client to ping httpbin resource
               docker compose exec -it client timeout 60 \
