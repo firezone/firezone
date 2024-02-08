@@ -265,17 +265,23 @@ extension Adapter {
   // for upsert and identification in the admin portal.
   func getOrCreateFirezoneId(from fileURL: URL) -> String {
     do {
-      return try String(contentsOf: fileURL, encoding: .utf8)
+      let storedID = try String(contentsOf: fileURL, encoding: .utf8)
+      self.logger.log("Adapter.getOrCreateFirezoneId: Returning ID from disk: \(storedID)")
+      return storedID
     } catch {
+      self.logger.log(
+        "Adapter.getOrCreateFirezoneId: Could not read firezone-id file \(fileURL.path): \(error)"
+      )
       // Handle the error if the file doesn't exist or isn't readable
       // Recreate the file, save a new UUIDv4, and return it
       let newUUIDString = UUID().uuidString
 
       do {
         try newUUIDString.write(to: fileURL, atomically: true, encoding: .utf8)
+        self.logger.log("Adapter.getOrCreateFirezoneId: Written ID to disk: \(newUUIDString)")
       } catch {
         self.logger.error(
-          "Adapter.getOrCreateFirezoneId: Could not save \(fileURL)! Error: \(error)"
+          "Adapter.getOrCreateFirezoneId: Could not save firezone-id file \(fileURL.path)! Error: \(error)"
         )
       }
 
