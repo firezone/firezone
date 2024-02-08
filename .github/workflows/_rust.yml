@@ -82,6 +82,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node
+        with:
+          node-version: '20'
       - uses: ./.github/actions/setup-rust
         with:
           targets: x86_64-pc-windows-msvc
@@ -131,6 +133,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node
+        with:
+          node-version: '20'
       - uses: ./.github/actions/setup-rust
         with:
           targets: x86_64-pc-windows-msvc
