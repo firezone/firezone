@@ -64,7 +64,7 @@ services:
       # Web Server
       EXTERNAL_URL: http://localhost:8080/
       PHOENIX_HTTP_WEB_PORT: "8080"
-      PHOENIX_SECURE_COOKIES: false
+      PHOENIX_SECURE_COOKIES: "false"
       # Erlang
       ERLANG_DISTRIBUTION_PORT: 9000
       ERLANG_CLUSTER_ADAPTER: "Elixir.Cluster.Strategy.Epmd"
@@ -251,7 +251,7 @@ services:
       # Web Server
       EXTERNAL_URL: http://localhost:8081/
       PHOENIX_HTTP_API_PORT: "8081"
-      PHOENIX_SECURE_COOKIES: false
+      PHOENIX_SECURE_COOKIES: "false"
       # Erlang
       ERLANG_DISTRIBUTION_PORT: 9000
       ERLANG_CLUSTER_ADAPTER: "Elixir.Cluster.Strategy.Epmd"
