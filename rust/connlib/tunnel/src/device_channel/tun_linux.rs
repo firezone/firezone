@@ -238,13 +238,18 @@ async fn set_iface_config(
 
     res_v4.or(res_v6)?;
 
-    // TODO: Try to eliminate
-    flush_dns().await?;
+    // IIRC the tunnel code also runs on gateways, which shouldn't have DNS set,
+    // since they don't make any outgoing connections through Firezone?
+    // And it would conflict if a client and gateway ran on the same system.
+    if !dns_config.is_empty() {
+        // TODO: Try to eliminate
+        flush_dns().await?;
 
-    // TODO: Fix before merging
-    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        // TODO: Fix before merging
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
 
-    configure_systemd_resolved(&dns_config).await?;
+        configure_systemd_resolved(&dns_config).await?;
+    }
 
     Ok(())
 }
@@ -282,12 +287,6 @@ async fn flush_dns() -> Result<()> {
 }
 
 async fn configure_systemd_resolved(dns_config: &[IpAddr]) -> Result<()> {
-    if dns_config.is_empty() {
-        // I'm not sure if this tunnel code runs on gateways, but if we don't have
-        // DNS available, don't mess up the system's DNS by registering ourselves.
-        return Ok(());
-    }
-
     // Set our DNS server for the tunnel interface
     // If I run this before the flush it doesn't work?
     // Does it work after the flush?
