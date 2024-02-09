@@ -256,6 +256,7 @@ async fn configure_resolv_conf(dns_config: &[IpAddr]) -> Result<()> {
     let text = tokio::fs::read_to_string(resolv_path)
         .await
         .map_err(|_| Error::ReadResolvConf)?;
+    let parsed = resolv_conf::Config::parse(&text).expect("resolv.conf should be parsable");
 
     // Back up the original resolv.conf
     tokio::fs::write(backup_path, text)
@@ -268,6 +269,10 @@ async fn configure_resolv_conf(dns_config: &[IpAddr]) -> Result<()> {
     let mut new_resolv_conf = resolv_conf::Config::new();
     for addr in dns_config {
         new_resolv_conf.nameservers.push((*addr).into());
+    }
+
+    if let Some(search) = parsed.get_search() {
+        new_resolv_conf.set_search(search.clone());
     }
 
     // Over-writing `/etc/resolv.conf` actually violates Docker's plan for handling DNS
