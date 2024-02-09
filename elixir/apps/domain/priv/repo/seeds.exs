@@ -148,11 +148,20 @@ _unprivileged_actor_userpass_identity =
     }
   })
 
-{:ok, _admin_actor_oidc_identity} =
+{:ok, admin_actor_oidc_identity} =
   Auth.create_identity(admin_actor, oidc_provider, %{
     provider_identifier: admin_actor_email,
     provider_identifier_confirmation: admin_actor_email
   })
+
+admin_actor_oidc_identity
+|> Ecto.Changeset.change(
+  created_by: :provider,
+  provider_id: oidc_provider.id,
+  provider_identifier: admin_actor_email,
+  provider_state: %{"claims" => %{"email" => admin_actor_email, "group" => "users"}}
+)
+|> Repo.update!()
 
 # Other Account Users
 other_unprivileged_actor_email = "other-unprivileged-1@localhost"
