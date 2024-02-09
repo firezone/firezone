@@ -88,7 +88,6 @@ unsafe fn interface_name(fd: RawFd) -> Result<String> {
 
     ioctl::exec(fd, TUNGETIFF, &request)?;
 
-    tracing::debug!("Interface name: {}", request.name());
     Ok(request.name().to_string())
 }
 
@@ -100,11 +99,11 @@ impl ioctl::Request<GetInterfaceNamePayload> {
         }
     }
 
-    fn name(&self) -> std::borrow::Cow<'_, str> {
+    fn name(&self) -> String {
         // Safety: The memory of `self.name` is always initialized.
         let cstr = unsafe { std::ffi::CStr::from_ptr(self.name.as_ptr() as _) };
 
-        cstr.to_string_lossy()
+        cstr.to_string_lossy().into_owned()
     }
 }
 

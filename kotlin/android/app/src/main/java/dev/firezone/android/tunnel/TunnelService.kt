@@ -46,9 +46,11 @@ class TunnelService : VpnService() {
     private var tunnelDnsAddresses: MutableList<String> = mutableListOf()
     private var tunnelRoutes: MutableList<Cidr> = mutableListOf()
     private var connlibSessionPtr: Long? = null
-
     private var _tunnelResources: List<Resource> = emptyList()
     private var _tunnelState: State = State.DOWN
+
+    var startedByUser: Boolean = false
+
     var tunnelResources: List<Resource>
         get() = _tunnelResources
         set(value) {
@@ -181,6 +183,11 @@ class TunnelService : VpnService() {
         flags: Int,
         startId: Int,
     ): Int {
+        Log.d(TAG, "onStartCommand")
+        if (intent?.getBooleanExtra("startedByUser", false) == true) {
+            startedByUser = true
+        }
+
         connect()
         return START_STICKY
     }
@@ -381,6 +388,7 @@ class TunnelService : VpnService() {
         fun start(context: Context) {
             Log.d(TAG, "Starting TunnelService")
             val intent = Intent(context, TunnelService::class.java)
+            intent.putExtra("startedByUser", true)
             context.startService(intent)
         }
     }

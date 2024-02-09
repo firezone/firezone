@@ -9,11 +9,11 @@ import android.os.Bundle
 import android.os.IBinder
 import android.util.Log
 import androidx.activity.viewModels
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.DividerItemDecoration
 import androidx.recyclerview.widget.LinearLayoutManager
 import dagger.hilt.android.AndroidEntryPoint
-import dev.firezone.android.core.presentation.MainActivity
 import dev.firezone.android.core.utils.ClipboardUtils
 import dev.firezone.android.databinding.ActivitySessionBinding
 import dev.firezone.android.tunnel.TunnelService
@@ -75,10 +75,7 @@ internal class SessionActivity : AppCompatActivity() {
         binding.btSignOut.setOnClickListener {
             Log.d(TAG, "Sign out button clicked")
             viewModel.clearToken()
-
             tunnelService?.disconnect()
-
-            finish()
         }
 
         binding.tvActorName.text = viewModel.getActorName()
@@ -97,12 +94,20 @@ internal class SessionActivity : AppCompatActivity() {
         resourcesAdapter.updateResources(listOf(Resource("", "", "", "Connecting...")))
     }
 
+    private fun showAlwaysOnAlertDialog() {
+        val builder = AlertDialog.Builder(this)
+        builder.setMessage("Always-on VPN is enabled. To sign it, you must first disable it.")
+            .setPositiveButton("OK") { dialog, _ ->
+                dialog.dismiss()
+            }
+        builder.create().show()
+    }
+
     private fun setupObservers() {
         // Go back to MainActivity if the service dies
         viewModel.serviceStatusLiveData.observe(this) { tunnelState ->
             if (tunnelState == TunnelService.Companion.State.DOWN) {
-                // Start MainActivity which will show the Sign in fragment
-                startActivity(Intent(this, MainActivity::class.java))
+                finish()
             }
         }
 
