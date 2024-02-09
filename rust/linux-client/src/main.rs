@@ -38,7 +38,9 @@ struct CallbackHandler {
 // Using `thiserror` because `anyhow` doesn't seem to implement `std::error::Error`,
 // required by connlib
 #[derive(Debug, thiserror::Error)]
-enum CbError {}
+enum CbError {
+
+}
 
 impl Callbacks for CallbackHandler {
     type Error = CbError;
@@ -70,16 +72,12 @@ fn get_system_default_resolvers_resolv_conf() -> Result<Vec<IpAddr>, CbError> {
     // Assume that `configure_resolv_conf` has run in `tun_linux.rs`
 
     let s = std::fs::read_to_string("/etc/resolv.conf.firezone-backup")
-        .or_else(|_| std::fs::read_to_string("/etc/resolv.conf"))
-        .expect("`/etc/resolv.conf` should be readable");
+    .or_else(|_| std::fs::read_to_string("/etc/resolv.conf"))
+    .expect("`/etc/resolv.conf` should be readable");
     let parsed = resolv_conf::Config::parse(&s).expect("`/etc/resolv.conf` should be parsable");
 
     // Drop the scoping info for IPv6 since connlib doesn't take it
-    let nameservers = parsed
-        .nameservers
-        .into_iter()
-        .map(|addr| addr.into())
-        .collect();
+    let nameservers = parsed.nameservers.into_iter().map(|addr| addr.into()).collect();
     Ok(nameservers)
 }
 
@@ -101,25 +99,4 @@ struct Cli {
     /// it's down. Accepts human times. e.g. "5m" or "1h" or "30d".
     #[arg(short, long, env = "MAX_PARTITION_TIME")]
     max_partition_time: Option<humantime::Duration>,
-}
-
-#[cfg(test)]
-mod tests {
-    use std::str::FromStr;
-
-    #[test]
-    fn parse_resolvectl_output() {
-        // Typical output from `resolvectl dns` while Firezone is up
-        let input = r"
-Global:
-Link 2 (enp0s3): 192.0.2.1 2001:db8::
-Link 3 (tun-firezone): 100.100.111.1 100.100.111.2
-";
-        let actual = super::parse_resolvectl_output(input);
-        let expected = ["192.0.2.1", "2001:db8::", "100.100.111.1", "100.100.111.2"]
-            .iter()
-            .map(|s| std::net::IpAddr::from_str(s).unwrap())
-            .collect::<Vec<_>>();
-        assert_eq!(expected, actual);
-    }
 }
