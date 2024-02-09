@@ -393,9 +393,10 @@ impl Allocation {
         }
 
         if let Some(refresh_at) = self.refresh_allocation_at() {
-            if now > refresh_at {
+            if now >= refresh_at {
                 tracing::debug!("Allocation is due for a refresh");
                 self.authenticate_and_queue(make_refresh_request());
+                self.allocation_lifetime = None;
             }
         }
 
@@ -1468,6 +1469,30 @@ mod tests {
             vec![Candidate::server_reflexive(PEER1, PEER1, Protocol::Udp).unwrap()],
             "server-reflexive candidate should still be valid after refresh"
         )
+    }
+
+    #[test]
+    fn allocation_refresh_timeout_is_reset_after_refresh_request_is_sent() {
+        let mut allocation = Allocation::for_test(Instant::now());
+
+        let allocate = allocation.next_message().unwrap();
+        allocation.handle_test_input(
+            &allocate_response(&allocate, &[RELAY_ADDR_IP4, RELAY_ADDR_IP6]),
+            Instant::now(),
+        );
+
+        let next_timeout = allocation.poll_timeout().unwrap();
+        assert_eq!(next_timeout, allocation.refresh_allocation_at().unwrap());
+
+        allocation.handle_timeout(allocation.poll_timeout().unwrap());
+
+        assert!(allocation.refresh_allocation_at().is_none());
+        assert!(allocation.poll_timeout().unwrap() > next_timeout);
+
+        assert!(allocation
+            .sent_requests
+            .iter()
+            .any(|(_, (m, ..))| m.method() == REFRESH));
     }
 
     #[test]
