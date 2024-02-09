@@ -4,10 +4,6 @@ defmodule Domain.Validator do
   """
   import Ecto.Changeset
 
-  def changed?(changeset, field) do
-    Map.has_key?(changeset.changes, field)
-  end
-
   def empty?(changeset, field) do
     case fetch_field(changeset, field) do
       :error -> true

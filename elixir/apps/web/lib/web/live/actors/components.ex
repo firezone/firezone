@@ -78,12 +78,12 @@ defmodule Web.Actors.Components do
     </div>
     <div :if={@groups != []}>
       <.input
-        type="select"
+        type="group_select"
         multiple={true}
         label="Groups"
         field={@form[:memberships]}
         value_id={fn membership -> membership.group_id end}
-        options={Enum.map(@groups, fn group -> {group.name, group.id} end)}
+        options={Web.Groups.Components.select_options(@groups)}
         placeholder="Groups"
       />
       <p class="mt-2 text-xs text-neutral-500">

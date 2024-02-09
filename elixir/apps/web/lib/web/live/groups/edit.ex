@@ -6,7 +6,7 @@ defmodule Web.Groups.Edit do
     with {:ok, group} <-
            Actors.fetch_group_by_id(id, socket.assigns.subject, preload: [:memberships]),
          nil <- group.deleted_at,
-         false <- Actors.group_synced?(group) do
+         true <- Actors.group_editable?(group) do
       changeset = Actors.change_group(group)
 
       socket =

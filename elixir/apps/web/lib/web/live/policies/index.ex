@@ -14,7 +14,7 @@ defmodule Web.Policies.Index do
   defp load_policies_with_assocs(socket) do
     with {:ok, policies} <-
            Policies.list_policies(socket.assigns.subject,
-             preload: [:actor_group, :resource]
+             preload: [actor_group: [:provider], resource: []]
            ) do
       {:ok, assign(socket, policies: policies)}
     end
@@ -41,11 +41,7 @@ defmodule Web.Policies.Index do
             </.link>
           </:col>
           <:col :let={policy} label="GROUP">
-            <.link class={link_style()} navigate={~p"/#{@account}/groups/#{policy.actor_group_id}"}>
-              <.badge>
-                <%= policy.actor_group.name %>
-              </.badge>
-            </.link>
+            <.group account={@account} group={policy.actor_group} />
           </:col>
           <:col :let={policy} label="RESOURCE">
             <.link class={link_style()} navigate={~p"/#{@account}/resources/#{policy.resource_id}"}>

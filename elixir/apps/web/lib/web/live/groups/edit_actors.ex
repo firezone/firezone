@@ -7,7 +7,7 @@ defmodule Web.Groups.EditActors do
     with {:ok, group} <-
            Actors.fetch_group_by_id(id, socket.assigns.subject, preload: [:memberships]),
          nil <- group.deleted_at,
-         false <- Actors.group_synced?(group),
+         true <- Actors.group_editable?(group),
          {:ok, actors} <-
            Actors.list_actors(socket.assigns.subject, preload: [identities: :provider]) do
       current_member_ids = Enum.map(group.memberships, & &1.actor_id)

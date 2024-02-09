@@ -173,14 +173,7 @@ defmodule Web.Sites.Show do
                 </:empty>
 
                 <:item :let={group}>
-                  <.link
-                    class={link_style()}
-                    navigate={~p"/#{@account}/groups/#{group.id}?site_id=#{@group}"}
-                  >
-                    <.badge>
-                      <%= group.name %>
-                    </.badge>
-                  </.link>
+                  <.group account={@account} group={group} />
                 </:item>
 
                 <:tail :let={count}>

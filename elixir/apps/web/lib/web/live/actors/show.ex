@@ -170,22 +170,24 @@ defmodule Web.Actors.Show do
             <div class="flex justify-center text-center text-neutral-500 p-4">
               <div class="w-auto pb-4">
                 No authentication identities to display.
-                <.link
-                  :if={is_nil(@actor.deleted_at) and @actor.type == :service_account}
-                  class={[link_style()]}
-                  navigate={~p"/#{@account}/actors/service_accounts/#{@actor}/new_identity"}
-                >
-                  Create a token
-                </.link>
-                to authenticate this service account.
-                <.link
-                  :if={is_nil(@actor.deleted_at) and @actor.type != :service_account}
-                  class={[link_style()]}
-                  navigate={~p"/#{@account}/actors/users/#{@actor}/new_identity"}
-                >
-                  Create an identity
-                </.link>
-                to authenticate this user.
+                <span :if={is_nil(@actor.deleted_at) and @actor.type == :service_account}>
+                  <.link
+                    class={[link_style()]}
+                    navigate={~p"/#{@account}/actors/service_accounts/#{@actor}/new_identity"}
+                  >
+                    Create a token
+                  </.link>
+                  to authenticate this service account.
+                </span>
+                <span :if={is_nil(@actor.deleted_at) and @actor.type != :service_account}>
+                  <.link
+                    class={[link_style()]}
+                    navigate={~p"/#{@account}/actors/users/#{@actor}/new_identity"}
+                  >
+                    Create an identity
+                  </.link>
+                  to authenticate this user.
+                </span>
               </div>
             </div>
           </:empty>

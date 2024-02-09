@@ -862,7 +862,7 @@ defmodule Web.CoreComponents do
 
   def created_by(%{schema: %{created_by: :system}} = assigns) do
     ~H"""
-    <.relative_datetime datetime={@schema.inserted_at} />
+    <.relative_datetime datetime={@schema.inserted_at} /> by system
     """
   end
 
@@ -880,13 +880,13 @@ defmodule Web.CoreComponents do
 
   def created_by(%{schema: %{created_by: :provider}} = assigns) do
     ~H"""
-    synced <.relative_datetime datetime={@schema.inserted_at} /> from
+    <.relative_datetime datetime={@schema.inserted_at} /> by
     <.link
       class="text-accent-500 hover:underline"
       navigate={Web.Settings.IdentityProviders.Components.view_provider(@account, @schema.provider)}
     >
       <%= @schema.provider.name %>
-    </.link>
+    </.link> sync
     """
   end
 
@@ -962,7 +962,7 @@ defmodule Web.CoreComponents do
           "rounded-l",
           "py-0.5 pl-2.5 pr-1.5",
           "text-neutral-800",
-          "bg-neutral-100",
+          "bg-neutral-200",
           "whitespace-nowrap"
         ]}
       >

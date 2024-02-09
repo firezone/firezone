@@ -10,6 +10,14 @@ defmodule Domain.Actors.Group.Query do
     |> where([groups: groups], is_nil(groups.deleted_at))
   end
 
+  def not_editable(queryable \\ not_deleted()) do
+    where(queryable, [groups: groups], not is_nil(groups.provider_id) or groups.type != :static)
+  end
+
+  def editable(queryable \\ not_deleted()) do
+    where(queryable, [groups: groups], is_nil(groups.provider_id) and groups.type == :static)
+  end
+
   def by_id(queryable \\ not_deleted(), id)
 
   def by_id(queryable, {:in, ids}) do
@@ -20,16 +28,22 @@ defmodule Domain.Actors.Group.Query do
     where(queryable, [groups: groups], groups.id == ^id)
   end
 
+  def by_type(queryable \\ not_deleted(), type)
+
+  def by_type(queryable, {:in, types}) do
+    where(queryable, [groups: groups], groups.type in ^types)
+  end
+
+  def by_type(queryable, type) do
+    where(queryable, [groups: groups], groups.type == ^type)
+  end
+
   def by_account_id(queryable \\ not_deleted(), account_id) do
     where(queryable, [groups: groups], groups.account_id == ^account_id)
   end
 
   def by_provider_id(queryable \\ not_deleted(), provider_id) do
     where(queryable, [groups: groups], groups.provider_id == ^provider_id)
-  end
-
-  def by_not_empty_provider_id(queryable \\ not_deleted()) do
-    where(queryable, [groups: groups], not is_nil(groups.provider_id))
   end
 
   def by_provider_identifier(queryable \\ not_deleted(), provider_identifier)

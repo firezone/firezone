@@ -3,7 +3,7 @@ defmodule Web.Groups.New do
   alias Domain.Actors
 
   def mount(_params, _session, socket) do
-    changeset = Actors.new_group()
+    changeset = Actors.new_group(%{type: :static})
 
     {:ok, assign(socket, form: to_form(changeset), page_title: "New Group"),
      temporary_assigns: [form: %Phoenix.HTML.Form{}]}
@@ -22,6 +22,7 @@ defmodule Web.Groups.New do
       <:content>
         <div class="py-8 px-4 mx-auto max-w-2xl lg:py-16">
           <.form for={@form} phx-change={:change} phx-submit={:submit}>
+            <.input type="hidden" field={@form[:type]} value="static" />
             <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
               <div>
                 <.input

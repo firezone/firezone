@@ -6,7 +6,7 @@ defmodule Web.Policies.Show do
   def mount(%{"id" => id}, _session, socket) do
     with {:ok, policy} <-
            Policies.fetch_policy_by_id(id, socket.assigns.subject,
-             preload: [:actor_group, :resource, [created_by_identity: :actor]]
+             preload: [actor_group: [:provider], resource: [], created_by_identity: :actor]
            ),
          {:ok, flows} <-
            Flows.list_flows_for(policy, socket.assigns.subject,
@@ -83,11 +83,7 @@ defmodule Web.Policies.Show do
               Group
             </:label>
             <:value>
-              <.link navigate={~p"/#{@account}/groups/#{@policy.actor_group_id}"} class={link_style()}>
-                <.badge>
-                  <%= @policy.actor_group.name %>
-                </.badge>
-              </.link>
+              <.group account={@account} group={@policy.actor_group} />
               <span :if={not is_nil(@policy.actor_group.deleted_at)} class="text-red-600">
                 (deleted)
               </span>

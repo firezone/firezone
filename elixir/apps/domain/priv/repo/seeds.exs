@@ -39,6 +39,18 @@ end
 
 IO.puts("")
 
+{:ok, everyone_group} =
+  Domain.Actors.create_managed_group(account, %{
+    name: "Everyone",
+    membership_rules: [%{operator: true}]
+  })
+
+{:ok, _everyone_group} =
+  Domain.Actors.create_managed_group(other_account, %{
+    name: "Everyone",
+    membership_rules: [%{operator: true}]
+  })
+
 {:ok, email_provider} =
   Auth.create_provider(account, %{
     name: "Email",
@@ -135,6 +147,21 @@ _unprivileged_actor_userpass_identity =
       "password_confirmation" => "Firezone1234"
     }
   })
+
+{:ok, admin_actor_oidc_identity} =
+  Auth.create_identity(admin_actor, oidc_provider, %{
+    provider_identifier: admin_actor_email,
+    provider_identifier_confirmation: admin_actor_email
+  })
+
+admin_actor_oidc_identity
+|> Ecto.Changeset.change(
+  created_by: :provider,
+  provider_id: oidc_provider.id,
+  provider_identifier: admin_actor_email,
+  provider_state: %{"claims" => %{"email" => admin_actor_email, "group" => "users"}}
+)
+|> Repo.update!()
 
 # Other Account Users
 other_unprivileged_actor_email = "other-unprivileged-1@localhost"
@@ -274,16 +301,11 @@ IO.puts("")
 
 IO.puts("Created Actor Groups: ")
 
-{:ok, eng_group} = Actors.create_group(%{name: "Engineering"}, admin_subject)
-{:ok, finance_group} = Actors.create_group(%{name: "Finance"}, admin_subject)
+{:ok, eng_group} = Actors.create_group(%{name: "Engineering", type: :static}, admin_subject)
+{:ok, finance_group} = Actors.create_group(%{name: "Finance", type: :static}, admin_subject)
+{:ok, synced_group} = Actors.create_group(%{name: "Synced Group", type: :static}, admin_subject)
 
-{:ok, all_group} =
-  Actors.create_group(
-    %{name: "All Employees", provider_id: oidc_provider.id, provider_identifier: "foo"},
-    admin_subject
-  )
-
-for group <- [eng_group, finance_group, all_group] do
+for group <- [eng_group, finance_group, synced_group] do
   IO.puts("  Name: #{group.name}  ID: #{group.id}")
 end
 
@@ -301,7 +323,7 @@ finance_group
   admin_subject
 )
 
-all_group
+synced_group
 |> Repo.preload(:memberships)
 |> Actors.update_group(
   %{
@@ -312,6 +334,18 @@ all_group
   },
   admin_subject
 )
+
+synced_group
+|> Ecto.Changeset.change(
+  created_by: :provider,
+  provider_id: oidc_provider.id,
+  provider_identifier: "dummy_oidc_group_id"
+)
+|> Repo.update!()
+
+oidc_provider
+|> Ecto.Changeset.change(last_synced_at: DateTime.utc_now())
+|> Repo.update!()
 
 IO.puts("")
 
@@ -659,7 +693,7 @@ IO.puts("")
   Policies.create_policy(
     %{
       name: "All Access To Google",
-      actor_group_id: all_group.id,
+      actor_group_id: everyone_group.id,
       resource_id: dns_google_resource.id
     },
     admin_subject
@@ -669,7 +703,7 @@ IO.puts("")
   Policies.create_policy(
     %{
       name: "All Access To firez.one",
-      actor_group_id: all_group.id,
+      actor_group_id: synced_group.id,
       resource_id: firez_one.id
     },
     admin_subject
@@ -679,7 +713,7 @@ IO.puts("")
   Policies.create_policy(
     %{
       name: "All Access To firez.one",
-      actor_group_id: all_group.id,
+      actor_group_id: everyone_group.id,
       resource_id: example_dns.id
     },
     admin_subject
@@ -689,7 +723,7 @@ IO.puts("")
   Policies.create_policy(
     %{
       name: "All Access To firezone.dev",
-      actor_group_id: all_group.id,
+      actor_group_id: everyone_group.id,
       resource_id: firezone_dev.id
     },
     admin_subject
@@ -699,7 +733,7 @@ IO.puts("")
   Policies.create_policy(
     %{
       name: "All Access To ip6only.me",
-      actor_group_id: all_group.id,
+      actor_group_id: synced_group.id,
       resource_id: ip6only.id
     },
     admin_subject
@@ -719,7 +753,7 @@ IO.puts("")
   Policies.create_policy(
     %{
       name: "All Access To Network",
-      actor_group_id: all_group.id,
+      actor_group_id: synced_group.id,
       resource_id: cidr_resource.id
     },
     admin_subject

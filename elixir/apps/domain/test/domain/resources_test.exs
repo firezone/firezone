@@ -701,6 +701,18 @@ defmodule Domain.ResourcesTest do
       assert Enum.empty?(peek[resource2.id].items)
     end
 
+    test "preloads group providers", %{
+      account: account,
+      subject: subject
+    } do
+      resource = Fixtures.Resources.create_resource(account: account)
+      Fixtures.Policies.create_policy(account: account, resource: resource)
+
+      assert {:ok, peek} = peek_resource_actor_groups([resource], 3, subject)
+      assert [%Actors.Group{} = group] = peek[resource.id].items
+      assert Ecto.assoc_loaded?(group.provider)
+    end
+
     test "returns count of policies per resource and first LIMIT actors", %{
       account: account,
       subject: subject

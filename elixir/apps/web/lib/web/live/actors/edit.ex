@@ -7,10 +7,10 @@ defmodule Web.Actors.Edit do
     with {:ok, actor} <-
            Actors.fetch_actor_by_id(id, socket.assigns.subject, preload: [:memberships]),
          nil <- actor.deleted_at,
-         {:ok, groups} <- Actors.list_groups(socket.assigns.subject) do
-      changeset = Actors.change_actor(actor)
+         {:ok, groups} <- Actors.list_groups(socket.assigns.subject, preload: [:provider]) do
+      groups = Enum.filter(groups, &Actors.group_editable?/1)
 
-      groups = Enum.reject(groups, &Actors.group_synced?/1)
+      changeset = Actors.change_actor(actor)
 
       socket =
         assign(socket,

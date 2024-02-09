@@ -88,11 +88,7 @@ defmodule Web.Resources.Index do
                 </:empty>
 
                 <:item :let={group}>
-                  <.link class={link_style()} navigate={~p"/#{@account}/groups/#{group.id}"}>
-                    <.badge>
-                      <%= group.name %>
-                    </.badge>
-                  </.link>
+                  <.group account={@account} group={group} />
                 </:item>
 
                 <:tail :let={count}>

@@ -77,6 +77,7 @@ defmodule Domain.Actors.Group.Sync do
     provider_identifiers_to_upsert
     |> Enum.reduce_while({:ok, []}, fn provider_identifier, {:ok, acc} ->
       attrs = Map.get(attrs_by_provider_identifier, provider_identifier)
+      attrs = Map.put(attrs, "type", :managed)
 
       case upsert_group(repo, provider, attrs) do
         {:ok, group} ->

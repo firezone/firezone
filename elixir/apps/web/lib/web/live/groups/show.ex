@@ -1,6 +1,5 @@
 defmodule Web.Groups.Show do
   use Web, :live_view
-  import Web.Groups.Components
   import Web.Actors.Components
   alias Domain.Actors
 
@@ -36,23 +35,44 @@ defmodule Web.Groups.Show do
       </:title>
       <:action :if={is_nil(@group.deleted_at)}>
         <.edit_button
-          :if={not Actors.group_synced?(@group)}
+          :if={Actors.group_editable?(@group)}
           navigate={~p"/#{@account}/groups/#{@group}/edit"}
         >
           Edit Group
         </.edit_button>
       </:action>
       <:content>
+        <.flash
+          :if={
+            Actors.group_managed?(@group) and
+              not Enum.any?(@group.membership_rules, &(&1 == %Actors.MembershipRule{operator: true}))
+          }
+          kind={:info}
+        >
+          This group is managed by Firezone and cannot be edited.
+        </.flash>
+        <.flash
+          :if={
+            Actors.group_managed?(@group) and
+              Enum.any?(@group.membership_rules, &(&1 == %Actors.MembershipRule{operator: true}))
+          }
+          kind={:info}
+        >
+          <p>This group is managed by Firezone and cannot be edited.</p>
+          <p>It will contain all actors with at least one authentication identity.</p>
+        </.flash>
+        <.flash :if={Actors.group_synced?(@group)} kind={:info}>
+          This group is synced from an external source and cannot be edited.
+        </.flash>
+
         <.vertical_table id="group">
           <.vertical_table_row>
             <:label>Name</:label>
             <:value><%= @group.name %></:value>
           </.vertical_table_row>
           <.vertical_table_row>
-            <:label>Source</:label>
-            <:value>
-              <.source account={@account} group={@group} />
-            </:value>
+            <:label>Created</:label>
+            <:value><.created_by account={@account} schema={@group} /></:value>
           </.vertical_table_row>
         </.vertical_table>
       </:content>
@@ -62,7 +82,7 @@ defmodule Web.Groups.Show do
       <:title>Actors</:title>
       <:action :if={is_nil(@group.deleted_at)}>
         <.edit_button
-          :if={not Actors.group_synced?(@group)}
+          :if={not Actors.group_synced?(@group) and not Actors.group_managed?(@group)}
           navigate={~p"/#{@account}/groups/#{@group}/edit_actors"}
         >
           Edit Actors
@@ -84,17 +104,14 @@ defmodule Web.Groups.Show do
             <div class="flex justify-center text-center text-neutral-500 p-4">
               <div :if={not Actors.group_synced?(@group)} class="w-auto">
                 <div class="pb-4">
-                  No actors in group
+                  There are no actors in this group.
                 </div>
                 <.edit_button
-                  :if={is_nil(@group.deleted_at)}
-                  navigate={~p"/#{@account}/groups/#{@group}/edit"}
+                  :if={not Actors.group_synced?(@group) and not Actors.group_managed?(@group)}
+                  navigate={~p"/#{@account}/groups/#{@group}/edit_actors"}
                 >
-                  Edit Group
+                  Edit Actors
                 </.edit_button>
-              </div>
-              <div :if={Actors.group_synced?(@group)} class="w-auto">
-                No actors in synced group
               </div>
             </div>
           </:empty>
@@ -102,7 +119,7 @@ defmodule Web.Groups.Show do
       </:content>
     </.section>
 
-    <.danger_zone :if={is_nil(@group.deleted_at) and not Actors.group_synced?(@group)}>
+    <.danger_zone :if={is_nil(@group.deleted_at) and Actors.group_editable?(@group)}>
       <:action>
         <.delete_button
           phx-click="delete"
