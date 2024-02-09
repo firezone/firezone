@@ -38,9 +38,7 @@ struct CallbackHandler {
 // Using `thiserror` because `anyhow` doesn't seem to implement `std::error::Error`,
 // required by connlib
 #[derive(Debug, thiserror::Error)]
-enum CbError {
-
-}
+enum CbError {}
 
 impl Callbacks for CallbackHandler {
     type Error = CbError;
@@ -72,12 +70,16 @@ fn get_system_default_resolvers_resolv_conf() -> Result<Vec<IpAddr>, CbError> {
     // Assume that `configure_resolv_conf` has run in `tun_linux.rs`
 
     let s = std::fs::read_to_string("/etc/resolv.conf.firezone-backup")
-    .or_else(|_| std::fs::read_to_string("/etc/resolv.conf"))
-    .expect("`/etc/resolv.conf` should be readable");
+        .or_else(|_| std::fs::read_to_string("/etc/resolv.conf"))
+        .expect("`/etc/resolv.conf` should be readable");
     let parsed = resolv_conf::Config::parse(&s).expect("`/etc/resolv.conf` should be parsable");
 
     // Drop the scoping info for IPv6 since connlib doesn't take it
-    let nameservers = parsed.nameservers.into_iter().map(|addr| addr.into()).collect();
+    let nameservers = parsed
+        .nameservers
+        .into_iter()
+        .map(|addr| addr.into())
+        .collect();
     Ok(nameservers)
 }
 
