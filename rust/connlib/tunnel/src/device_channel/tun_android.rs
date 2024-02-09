@@ -88,6 +88,7 @@ unsafe fn interface_name(fd: RawFd) -> Result<String> {
 
     ioctl::exec(fd, TUNGETIFF, &request)?;
 
+    tracing::debug!("Interface name: {}", request.name());
     Ok(request.name().to_string())
 }
 

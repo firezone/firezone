@@ -166,13 +166,8 @@ class TunnelService : VpnService() {
             override fun onDisconnect(error: String): Boolean {
                 Log.d(TAG, "onDisconnect: $error")
                 Firebase.crashlytics.log("onDisconnect: $error")
-                
                 repo.clearToken()
-                connlibSessionPtr = null
-                stopForeground(STOP_FOREGROUND_REMOVE)
-                tunnelState = State.DOWN
-                stopSelf()
-
+                shutdown()
                 // Something called disconnect() already, so assume it was user or system initiated.
                 return true
             }
@@ -190,19 +185,29 @@ class TunnelService : VpnService() {
         return START_STICKY
     }
 
-    // Call this to stop the tunnel and shutdown the service, leaving the token intact.
-    fun disconnect() {
-        Log.d(TAG, "disconnect")
+    // System could have disconnected us
+    override fun onRevoke() {
+        shutdown()
+    }
 
-        // Connlib will call onDisconnect() when it's done, with no error. We don't do the cleanup
-        // there in that case, we do it here.
-        connlibSessionPtr?.let {
-            ConnlibSession.disconnect(it)
-        }
+    private fun shutdown() {
+        Log.d(TAG, "shutdown")
         connlibSessionPtr = null
         stopForeground(STOP_FOREGROUND_REMOVE)
         tunnelState = State.DOWN
         stopSelf()
+    }
+
+    // Call this to stop the tunnel and shutdown the service, leaving the token intact.
+    fun disconnect() {
+        Log.d(TAG, "disconnect")
+
+        // Connlib will call onDisconnect() when it's done, with no error.
+        connlibSessionPtr?.let {
+            ConnlibSession.disconnect(it)
+        }
+
+        shutdown()
     }
 
     private fun connect() {
