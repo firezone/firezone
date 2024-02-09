@@ -1,4 +1,5 @@
 defmodule API.Client.Views.Resource do
+  alias API.Client.Views
   alias Domain.Resources
 
   def render_many(resources) do
@@ -14,7 +15,9 @@ defmodule API.Client.Views.Resource do
       id: resource.id,
       type: :cidr,
       address: address,
-      name: resource.name
+      address_description: resource.address_description,
+      name: resource.name,
+      gateway_groups: Views.GatewayGroup.render_many(resource.gateway_groups)
     }
   end
 
@@ -23,7 +26,9 @@ defmodule API.Client.Views.Resource do
       id: resource.id,
       type: resource.type,
       address: resource.address,
-      name: resource.name
+      address_description: resource.address_description,
+      name: resource.name,
+      gateway_groups: Views.GatewayGroup.render_many(resource.gateway_groups)
     }
   end
 end
