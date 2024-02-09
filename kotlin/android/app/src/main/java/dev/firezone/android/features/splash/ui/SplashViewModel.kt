@@ -31,16 +31,14 @@ internal class SplashViewModel
                 delay(REQUEST_DELAY)
                 if (!hasVpnPermissions(context)) {
                     actionMutableLiveData.postValue(ViewAction.NavigateToVpnPermission)
-                } else if (TunnelService.isRunning(context)) {
-                    // Navigate to the SessionActivity so we can bind to it.
-                    actionMutableLiveData.postValue(ViewAction.NavigateToSession)
                 } else {
                     getConfigUseCase.invoke().collect {
                         if (it.token.isNullOrBlank()) {
                             actionMutableLiveData.postValue(ViewAction.NavigateToSignIn)
                         } else {
                             // token will be re-read by the TunnelService
-                            TunnelService.start(context)
+                            if (!TunnelService.isRunning(context)) TunnelService.start(context)
+
                             actionMutableLiveData.postValue(ViewAction.NavigateToSession)
                         }
                     }
