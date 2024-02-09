@@ -94,15 +94,6 @@ internal class SessionActivity : AppCompatActivity() {
         resourcesAdapter.updateResources(listOf(Resource("", "", "", "Connecting...")))
     }
 
-    private fun showAlwaysOnAlertDialog() {
-        val builder = AlertDialog.Builder(this)
-        builder.setMessage("Always-on VPN is enabled. To sign it, you must first disable it.")
-            .setPositiveButton("OK") { dialog, _ ->
-                dialog.dismiss()
-            }
-        builder.create().show()
-    }
-
     private fun setupObservers() {
         // Go back to MainActivity if the service dies
         viewModel.serviceStatusLiveData.observe(this) { tunnelState ->

@@ -86,7 +86,7 @@ android {
 
         // Release Config
         getByName("release") {
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("release")
 
             // Enables code shrinking, obfuscation, and optimization for only
             // your project's release build type. Make sure to use a build
@@ -223,7 +223,6 @@ cargo {
     } else {
         profile = "debug"
     }
-    apiLevel = 26
     // Needed for Ubuntu 22.04
     pythonCommand = "python3"
     prebuiltToolchains = true
@@ -232,9 +231,9 @@ cargo {
     libname = "connlib"
     targets =
         listOf(
-            // "arm64",
-            // "x86_64",
-            // "x86",
+            "arm64",
+            "x86_64",
+            "x86",
             "arm",
         )
     targetDirectory = "../../../rust/target"
