@@ -760,7 +760,7 @@ IO.puts("")
 {:ok, _} =
   Policies.create_policy(
     %{
-      name: "All Access To httpbin.docker.local"
+      name: "All Access To httpbin.docker.local",
       actor_group_id: all_group.id,
       resource_id: dns_httpbin_resource.id
     },
@@ -770,7 +770,7 @@ IO.puts("")
 {:ok, _} =
   Policies.create_policy(
     %{
-      name: "All Access To docker.local"
+      name: "All Access To docker.local",
       actor_group_id: all_group.id,
       resource_id: dns_docker_resource.id
     },
