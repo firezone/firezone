@@ -111,7 +111,7 @@ jobs:
 
   # This should be identical to `build-push-windows-release-artifacts` in `cd.yml` except for the Github permissions, needs tag, and uploading step
   build-tauri:
-    name: build-tauri-${{ matrix.artifact }}
+    name: build-tauri-${{ matrix.name }}
     runs-on: windows-2019
     defaults:
       run:
@@ -124,6 +124,7 @@ jobs:
         include:
           - package: firezone-windows-client
             artifact: firezone-windows-client
+            name: windows-client
     env:
       BINARY_DEST_PATH: ${{ matrix.artifact }}
       CONNLIB_LOG_UPLOAD_INTERVAL_SECS: 300
