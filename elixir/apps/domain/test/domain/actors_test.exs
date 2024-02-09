@@ -1398,6 +1398,133 @@ defmodule Domain.ActorsTest do
     end
   end
 
+  describe "update_dynamic_group_memberships/1" do
+    test "updates memberships" do
+      account = Fixtures.Accounts.create_account()
+
+      Fixtures.Actors.create_group(
+        type: :dynamic,
+        membership_rules: [%{operator: true}],
+        account: account
+      )
+
+      identity = Fixtures.Auth.create_identity(account: account)
+
+      assert {:ok, [_group]} = update_dynamic_group_memberships(account.id)
+
+      assert memberships = Repo.all(Actors.Membership)
+      assert length(memberships) == 2
+      assert Enum.any?(memberships, fn membership -> membership.actor_id == identity.actor_id end)
+    end
+
+    test "broadcasts events" do
+      account = Fixtures.Accounts.create_account()
+
+      group =
+        Fixtures.Actors.create_group(
+          type: :dynamic,
+          membership_rules: [%{operator: true}],
+          account: account
+        )
+
+      actor = Fixtures.Actors.create_actor(account: account)
+      :ok = subscribe_to_membership_updates_for_actor(actor)
+
+      # this function will call update_dynamic_group_memberships by itself
+      Fixtures.Auth.create_identity(account: account, actor: actor)
+
+      assert_receive {:create_membership, actor_id, group_id}
+      assert actor_id == actor.id
+      assert group_id == group.id
+
+      # doesn't broadcast events when memberships are not changed
+      assert {:ok, [_group]} = update_dynamic_group_memberships(account.id)
+      refute_receive {:create_membership, _actor_id, _group_id}
+    end
+
+    test "allows to use is_in operator" do
+      account = Fixtures.Accounts.create_account()
+
+      Fixtures.Actors.create_group(
+        type: :dynamic,
+        membership_rules: [%{path: ["claims", "group"], operator: :is_in, values: ["admin"]}],
+        account: account
+      )
+
+      identity =
+        Fixtures.Auth.create_identity(account: account)
+        |> Ecto.Changeset.change(provider_state: %{"claims" => %{"group" => "admin"}})
+        |> Repo.update!()
+
+      assert {:ok, [_group]} = update_dynamic_group_memberships(account.id)
+
+      assert membership = Repo.one(Actors.Membership)
+      assert membership.actor_id == identity.actor_id
+    end
+
+    test "allows to use is_not_in operator" do
+      account = Fixtures.Accounts.create_account()
+
+      Fixtures.Actors.create_group(
+        type: :dynamic,
+        membership_rules: [%{path: ["claims", "group"], operator: :is_not_in, values: ["user"]}],
+        account: account
+      )
+
+      identity =
+        Fixtures.Auth.create_identity(account: account)
+        |> Ecto.Changeset.change(provider_state: %{"claims" => %{"group" => "admin"}})
+        |> Repo.update!()
+
+      assert {:ok, [_group]} = update_dynamic_group_memberships(account.id)
+
+      assert membership = Repo.one(Actors.Membership)
+      assert membership.actor_id == identity.actor_id
+    end
+
+    test "allows to use contains operator" do
+      account = Fixtures.Accounts.create_account()
+
+      Fixtures.Actors.create_group(
+        type: :dynamic,
+        membership_rules: [%{path: ["claims", "group"], operator: :contains, values: ["ad"]}],
+        account: account
+      )
+
+      identity =
+        Fixtures.Auth.create_identity(account: account)
+        |> Ecto.Changeset.change(provider_state: %{"claims" => %{"group" => "admin"}})
+        |> Repo.update!()
+
+      assert {:ok, [_group]} = update_dynamic_group_memberships(account.id)
+
+      assert membership = Repo.one(Actors.Membership)
+      assert membership.actor_id == identity.actor_id
+    end
+
+    test "allows to use does_not_contain operator" do
+      account = Fixtures.Accounts.create_account()
+
+      Fixtures.Actors.create_group(
+        type: :dynamic,
+        membership_rules: [
+          %{path: ["claims", "group"], operator: :does_not_contain, values: ["usr"]}
+        ],
+        account: account
+      )
+
+      identity =
+        Fixtures.Auth.create_identity(account: account)
+        |> Ecto.Changeset.change(provider_state: %{"claims" => %{"group" => "admin"}})
+        |> Repo.update!()
+
+      assert {:ok, [_group]} = update_dynamic_group_memberships(account.id)
+
+      assert membership = Repo.one(Actors.Membership)
+      assert membership.actor_id == identity.actor_id
+    end
+  end
+
   describe "delete_group/2" do
     setup do
       account = Fixtures.Accounts.create_account()

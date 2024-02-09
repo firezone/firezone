@@ -102,51 +102,57 @@ defmodule Domain.Auth.Identity.Query do
   def by_membership_rules(queryable \\ not_deleted(), rules) do
     dynamic =
       Enum.reduce(rules, false, fn
-        %{path: path, operator: :is_in, values: values}, dynamic ->
-          dynamic(
-            [identities: identities],
-            ^dynamic or
-              type(json_extract_path(identities.provider_state, ^path), :string) in ^values
-          )
+        rule, false ->
+          membership_rule_dynamic(rule)
 
-        %{path: path, operator: :is_not_in, values: values}, dynamic ->
-          dynamic(
-            [identities: identities],
-            ^dynamic or
-              type(json_extract_path(identities.provider_state, ^path), :string) not in ^values
-          )
-
-        %{path: path, operator: :contains, values: [value]}, dynamic ->
-          dynamic(
-            [identities: identities],
-            ^dynamic or
-              fragment(
-                "? LIKE ?",
-                type(json_extract_path(identities.provider_state, ^path), :string),
-                ^value
-              )
-          )
-
-        %{path: path, operator: :does_not_contain, values: [value]}, dynamic ->
-          dynamic(
-            [identities: identities],
-            ^dynamic or
-              fragment(
-                "? NOT LIKE ?",
-                type(json_extract_path(identities.provider_state, ^path), :string),
-                ^value
-              )
-          )
-
-        %{operator: true}, dynamic ->
-          dynamic(
-            [identities: identities],
-            ^dynamic or
-              true
-          )
+        rule, dynamic ->
+          dynamic([identities: identities], ^dynamic or ^membership_rule_dynamic(rule))
       end)
 
     where(queryable, ^dynamic)
+  end
+
+  defp membership_rule_dynamic(%{path: path, operator: :is_in, values: values}) do
+    dynamic(
+      [identities: identities],
+      fragment("? \\?| ?", json_extract_path(identities.provider_state, ^path), ^values)
+    )
+  end
+
+  defp membership_rule_dynamic(%{path: path, operator: :is_not_in, values: values}) do
+    dynamic(
+      [identities: identities],
+      fragment("NOT (? \\?| ?)", json_extract_path(identities.provider_state, ^path), ^values)
+    )
+  end
+
+  defp membership_rule_dynamic(%{path: path, operator: :contains, values: [value]}) do
+    dynamic(
+      [identities: identities],
+      fragment(
+        "?->>0 LIKE '%' || ? || '%'",
+        json_extract_path(identities.provider_state, ^path),
+        ^value
+      )
+    )
+  end
+
+  defp membership_rule_dynamic(%{path: path, operator: :does_not_contain, values: [value]}) do
+    dynamic(
+      [identities: identities],
+      fragment(
+        "?->>0 NOT LIKE '%' || ? || '%'",
+        json_extract_path(identities.provider_state, ^path),
+        ^value
+      )
+    )
+  end
+
+  defp membership_rule_dynamic(%{operator: true}) do
+    dynamic(
+      [identities: identities],
+      true
+    )
   end
 
   def lock(queryable \\ not_deleted()) do
