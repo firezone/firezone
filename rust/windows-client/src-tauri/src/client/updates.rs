@@ -68,7 +68,7 @@ const GITHUB_API_VERSION: &str = "2022-11-28";
 /// The name of the Windows MSI asset.
 ///
 /// This ultimately comes from `cd.yml`
-const MSI_ASSET_NAME: &str = "windows-client-x64.msi";
+const MSI_ASSET_NAME: &str = "firezone-windows-client-x64.msi";
 
 /// Returns the latest release, even if ours is already newer
 pub(crate) async fn check() -> Result<Release, Error> {
@@ -114,7 +114,7 @@ struct ReleaseDetails {
 #[derive(serde::Deserialize)]
 struct Asset {
     browser_download_url: Url,
-    /// Name of the asset, e.g. `windows-client-x64.msi`
+    /// Name of the asset, e.g. `firezone-windows-client-x64.msi`
     name: String,
 }
 
@@ -168,7 +168,7 @@ mod tests {
                 "url": "https://api.github.com/repos/firezone/firezone/releases/assets/147443612",
                 "id": 147443612,
                 "node_id": "RA_kwDOD12Hpc4Iyc-c",
-                "name": "windows-client-x64.msi",
+                "name": "firezone-windows-client-x64.msi",
                 "label": "",
                 "uploader": {
                     "login": "github-actions[bot]",
@@ -196,7 +196,7 @@ mod tests {
                 "download_count": 10,
                 "created_at": "2024-01-24T04:33:53Z",
                 "updated_at": "2024-01-24T04:33:53Z",
-                "browser_download_url": "https://github.com/firezone/firezone/releases/download/1.0.0-pre.8/windows-client-x64.msi"
+                "browser_download_url": "https://github.com/firezone/firezone/releases/download/1.0.0-pre.8/firezone-windows-client-x64.msi"
             }
         ]
     }"#;
@@ -204,7 +204,7 @@ mod tests {
     #[test]
     fn test() {
         let release = super::Release::from_str(RELEASES_LATEST_JSON).unwrap();
-        assert_eq!(release.browser_download_url.to_string(), "https://github.com/firezone/firezone/releases/download/1.0.0-pre.8/windows-client-x64.msi");
+        assert_eq!(release.browser_download_url.to_string(), "https://github.com/firezone/firezone/releases/download/1.0.0-pre.8/firezone-windows-client-x64.msi");
         assert_eq!(release.tag_name.to_string(), "1.0.0-pre.8");
 
         assert!(
