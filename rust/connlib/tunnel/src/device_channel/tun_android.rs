@@ -99,11 +99,11 @@ impl ioctl::Request<GetInterfaceNamePayload> {
         }
     }
 
-    fn name(&self) -> String {
+    fn name(&self) -> std::borrow::Cow<'_, str> {
         // Safety: The memory of `self.name` is always initialized.
         let cstr = unsafe { std::ffi::CStr::from_ptr(self.name.as_ptr() as _) };
 
-        cstr.to_string_lossy().into_owned()
+        cstr.to_string_lossy()
     }
 }
 
