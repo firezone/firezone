@@ -72,7 +72,7 @@ fn get_system_default_resolvers_resolv_conf() -> Result<Vec<IpAddr>, CbError> {
     let s = std::fs::read_to_string("/etc/resolv.conf.firezone-backup")
         .or_else(|_| std::fs::read_to_string("/etc/resolv.conf"))
         .expect("`/etc/resolv.conf` should be readable");
-    let parsed = resolv_conf::Config::parse(&s).expect("`/etc/resolv.conf` should be parsable");
+    let parsed = resolv_conf::Config::parse(s).expect("`/etc/resolv.conf` should be parsable");
 
     // Drop the scoping info for IPv6 since connlib doesn't take it
     let nameservers = parsed
