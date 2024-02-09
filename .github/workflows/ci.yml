@@ -307,9 +307,13 @@ jobs:
               # Make sure resolv.conf was re-written
               docker compose exec -it client sh -c 'cat /etc/resolv.conf'
 
+              # See what nslookup thinks
+              docker compose exec -it client timeout 60 \
+              sh -c 'nslookup test.httpbin.docker.local'
+
               # Try to ping httpbin as a DNS resource
               docker compose exec -it client timeout 60 \
-              sh -c 'ping -W 1 -c 10 test.httpbin.docker.local &>/dev/null'
+              sh -c 'ping -W 1 -c 10 test.httpbin.docker.local'
 
               # TODO: Make sure it's going through the tunnel
               docker compose exec -it client timeout 60 \
