@@ -83,7 +83,14 @@ defmodule Domain.Config do
 
   def update_config(%Configuration{} = configuration, attrs, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_permission()) do
-      update_config(configuration, attrs)
+      case update_config(configuration, attrs) do
+        {:ok, configuration} ->
+          :ok = broadcast_update_to_account(configuration)
+          {:ok, configuration}
+
+        {:error, changeset} ->
+          {:error, changeset}
+      end
     end
   end
 

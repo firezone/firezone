@@ -11,6 +11,7 @@ defmodule Web.Resources.New do
         assign(
           socket,
           gateway_groups: gateway_groups,
+          address_description_changed?: false,
           name_changed?: false,
           form: to_form(changeset),
           params: Map.take(params, ["site_id"]),
@@ -111,6 +112,19 @@ defmodule Web.Resources.New do
               </p>
             </div>
 
+            <div>
+              <.input
+                field={@form[:address_description]}
+                type="text"
+                label="Address Description"
+                placeholder={@form[:address].value || "http://example.com/"}
+                required
+              />
+              <p class="mt-2 text-xs text-neutral-500">
+                This will be displayed in client applications to assist users in understanding how to access the resource.
+              </p>
+            </div>
+
             <.input
               field={@form[:name]}
               type="text"
@@ -139,11 +153,18 @@ defmodule Web.Resources.New do
   end
 
   def handle_event("change", %{"resource" => attrs} = payload, socket) do
-    name_changed? = socket.assigns.name_changed? || payload["_target"] == ["resource", "name"]
+    name_changed? =
+      socket.assigns.name_changed? ||
+        payload["_target"] == ["resource", "name"]
+
+    address_description_changed? =
+      socket.assigns.address_description_changed? ||
+        payload["_target"] == ["resource", "address_description"]
 
     attrs =
       attrs
       |> maybe_put_default_name(name_changed?)
+      |> maybe_put_default_address_description(address_description_changed?)
       |> map_filters_form_attrs()
       |> map_connections_form_attrs()
       |> maybe_put_connections(socket.assigns.params)
@@ -152,13 +173,21 @@ defmodule Web.Resources.New do
       Resources.new_resource(socket.assigns.account, attrs)
       |> Map.put(:action, :validate)
 
-    {:noreply, assign(socket, form: to_form(changeset), name_changed?: name_changed?)}
+    socket =
+      assign(socket,
+        form: to_form(changeset),
+        name_changed?: name_changed?,
+        address_description_changed?: address_description_changed?
+      )
+
+    {:noreply, socket}
   end
 
   def handle_event("submit", %{"resource" => attrs}, socket) do
     attrs =
       attrs
       |> maybe_put_default_name()
+      |> maybe_put_default_address_description()
       |> map_filters_form_attrs()
       |> map_connections_form_attrs()
       |> maybe_put_connections(socket.assigns.params)
@@ -184,6 +213,32 @@ defmodule Web.Resources.New do
 
   defp maybe_put_default_name(attrs, false) do
     Map.put(attrs, "name", attrs["address"])
+  end
+
+  defp maybe_put_default_address_description(attrs, address_description_changed? \\ true)
+
+  defp maybe_put_default_address_description(
+         %{"type" => "dns", "address" => address} = attrs,
+         false
+       )
+       when is_binary(address) do
+    Map.put(attrs, "address_description", "http://#{address}/")
+  end
+
+  defp maybe_put_default_address_description(
+         %{"type" => "ip", "address" => address} = attrs,
+         false
+       )
+       when is_binary(address) do
+    Map.put(attrs, "address_description", "http://#{address}/")
+  end
+
+  defp maybe_put_default_address_description(attrs, false) do
+    Map.put(attrs, "address_description", "")
+  end
+
+  defp maybe_put_default_address_description(attrs, true) do
+    attrs
   end
 
   defp maybe_put_connections(attrs, params) do

@@ -1,6 +1,6 @@
 defmodule Domain.Resources do
   alias Domain.{Repo, Validator, Auth, PubSub}
-  alias Domain.{Accounts, Gateways, Policies}
+  alias Domain.{Accounts, Gateways, Policies, Flows}
   alias Domain.Resources.{Authorizer, Resource, Connection}
 
   def fetch_resource_by_id(id, %Auth.Subject{} = subject, opts \\ []) do
@@ -157,17 +157,24 @@ defmodule Domain.Resources do
 
   def update_resource(%Resource{} = resource, attrs, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_resources_permission()) do
-      resource
-      |> Resource.Changeset.update(attrs, subject)
-      |> Repo.update()
-      |> case do
-        {:ok, resource} ->
-          :ok = broadcast_resource_events(:update, resource)
-          {:ok, resource}
+      Resource.Query.by_id(resource.id)
+      |> Authorizer.for_subject(Resource, subject)
+      |> Repo.fetch_and_update(
+        with: fn resource ->
+          resource = Repo.preload(resource, :connections)
+          changeset = Resource.Changeset.update(resource, attrs, subject)
 
-        {:error, reason} ->
-          {:error, reason}
-      end
+          cb = fn _resource ->
+            if Map.has_key?(changeset.changes, :connections) do
+              {:ok, _flows} = Flows.expire_flows_for(resource, subject)
+            end
+
+            :ok = broadcast_resource_events(:update, resource)
+          end
+
+          {changeset, execute_after_commit: cb}
+        end
+      )
     end
   end
 

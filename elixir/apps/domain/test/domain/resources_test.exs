@@ -877,17 +877,25 @@ defmodule Domain.ResourcesTest do
 
       assert errors_on(changeset) == %{
                address: ["can't be blank"],
+               address_description: ["can't be blank"],
                type: ["can't be blank"],
                connections: ["can't be blank"]
              }
     end
 
     test "returns error on invalid attrs", %{subject: subject} do
-      attrs = %{"name" => String.duplicate("a", 256), "filters" => :foo, "connections" => :bar}
+      attrs = %{
+        "name" => String.duplicate("a", 256),
+        "address_description" => String.duplicate("a", 513),
+        "filters" => :foo,
+        "connections" => :bar
+      }
+
       assert {:error, changeset} = create_resource(attrs, subject)
 
       assert errors_on(changeset) == %{
                address: ["can't be blank"],
+               address_description: ["should be at most 512 character(s)"],
                name: ["should be at most 255 character(s)"],
                type: ["can't be blank"],
                filters: ["is invalid"],
@@ -964,6 +972,7 @@ defmodule Domain.ResourcesTest do
       assert {:ok, resource} = create_resource(attrs, subject)
 
       assert resource.address == attrs.address
+      assert resource.address_description == attrs.address_description
       assert resource.name == attrs.address
       assert resource.account_id == account.id
 
@@ -994,12 +1003,14 @@ defmodule Domain.ResourcesTest do
           ],
           type: :cidr,
           name: "mycidr",
-          address: "192.168.1.1/28"
+          address: "192.168.1.1/28",
+          address_description: "192.168.1.1/28"
         )
 
       assert {:ok, resource} = create_resource(attrs, subject)
 
       assert resource.address == "192.168.1.0/28"
+      assert resource.address_description == attrs.address_description
       assert resource.name == attrs.name
       assert resource.account_id == account.id
 
@@ -1073,11 +1084,18 @@ defmodule Domain.ResourcesTest do
     end
 
     test "returns error on invalid attrs", %{resource: resource, subject: subject} do
-      attrs = %{"name" => String.duplicate("a", 256), "filters" => :foo, "connections" => :bar}
+      attrs = %{
+        "name" => String.duplicate("a", 256),
+        "address_description" => String.duplicate("a", 513),
+        "filters" => :foo,
+        "connections" => :bar
+      }
+
       assert {:error, changeset} = update_resource(resource, attrs, subject)
 
       assert errors_on(changeset) == %{
                name: ["should be at most 255 character(s)"],
+               address_description: ["should be at most 512 character(s)"],
                filters: ["is invalid"],
                connections: ["is invalid"]
              }
@@ -1116,14 +1134,35 @@ defmodule Domain.ResourcesTest do
       assert resource.name == "foo"
     end
 
+    test "allows to update client address", %{resource: resource, subject: subject} do
+      attrs = %{"address_description" => "http://#{resource.address}:1234/foo"}
+      assert {:ok, resource} = update_resource(resource, attrs, subject)
+      assert resource.address_description == attrs["address_description"]
+    end
+
     test "allows to update filters", %{resource: resource, subject: subject} do
       attrs = %{"filters" => []}
       assert {:ok, resource} = update_resource(resource, attrs, subject)
       assert resource.filters == []
     end
 
+    test "does not expire flows when connections are not updated", %{
+      account: account,
+      resource: resource,
+      subject: subject
+    } do
+      flow = Fixtures.Flows.create_flow(account: account, resource: resource, subject: subject)
+      :ok = Domain.Flows.subscribe_to_flow_expiration_events(flow)
+
+      attrs = %{"name" => "foo"}
+      assert {:ok, _resource} = update_resource(resource, attrs, subject)
+
+      refute_receive {:expire_flow, _flow_id, _client_id, _resource_id}
+    end
+
     test "allows to update connections", %{account: account, resource: resource, subject: subject} do
-      gateway1 = Fixtures.Gateways.create_gateway(account: account)
+      group = Fixtures.Gateways.create_group(account: account, subject: subject)
+      gateway1 = Fixtures.Gateways.create_gateway(account: account, group: group)
 
       attrs = %{"connections" => [%{gateway_group_id: gateway1.group_id}]}
       assert {:ok, resource} = update_resource(resource, attrs, subject)
@@ -1131,6 +1170,9 @@ defmodule Domain.ResourcesTest do
       assert gateway_group_ids == [gateway1.group_id]
 
       gateway2 = Fixtures.Gateways.create_gateway(account: account)
+
+      flow = Fixtures.Flows.create_flow(account: account, resource: resource, subject: subject)
+      :ok = Domain.Flows.subscribe_to_flow_expiration_events(flow)
 
       attrs = %{
         "connections" => [
@@ -1147,6 +1189,10 @@ defmodule Domain.ResourcesTest do
       assert {:ok, resource} = update_resource(resource, attrs, subject)
       gateway_group_ids = Enum.map(resource.connections, & &1.gateway_group_id)
       assert gateway_group_ids == [gateway2.group_id]
+
+      flow_id = flow.id
+      resource_id = resource.id
+      assert_receive {:expire_flow, ^flow_id, _client_id, ^resource_id}
     end
 
     test "does not allow to remove all connections", %{resource: resource, subject: subject} do
