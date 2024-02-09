@@ -121,7 +121,7 @@ jobs:
           TAGS="${TAGS},${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ env.BRANCH_TAG }}"
           TAGS="${TAGS},${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ github.sha }}"
 
-          echo "::set-output name=tags::${TAGS}"
+          echo "tags=$TAGS" >> "$GITHUB_OUTPUT"
       - name: Build Docker images
         uses: docker/build-push-action@v5
         with:
