@@ -100,10 +100,7 @@ impl ioctl::Request<GetInterfaceNamePayload> {
     }
 
     fn name(&self) -> std::borrow::Cow<'_, str> {
-        // Safety: The memory of `self.name` is always initialized.
-        let cstr = unsafe { std::ffi::CStr::from_ptr(self.name.as_ptr() as _) };
-
-        cstr.to_string_lossy()
+        String::from_utf8_lossy(&self.name.split(|&c| c == b'\0').next().unwrap())
     }
 }
 
@@ -139,7 +136,7 @@ impl Closeable {
     fn new(fd: AsyncFd<RawFd>) -> Self {
         Self {
             closed: AtomicBool::new(false),
-            fd: fd,
+            fd,
         }
     }
 
