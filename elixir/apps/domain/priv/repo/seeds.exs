@@ -645,6 +645,36 @@ IO.puts("")
     admin_subject
   )
 
+{:ok, dns_httpbin_resource} =
+  Resources.create_resource(
+    %{
+      type: :dns,
+      name: "test.httpbin.docker.local",
+      address: "?.httpbin.docker.local",
+      address_description: "http://test.httpbin.docker.local/",
+      connections: [%{gateway_group_id: gateway_group.id}],
+      filters: [
+        %{ports: ["80", "433"], protocol: :tcp},
+        %{ports: ["53"], protocol: :udp},
+        %{protocol: :icmp}
+      ]
+    },
+    admin_subject
+  )
+
+{:ok, dns_docker_resource} =
+  Resources.create_resource(
+    %{
+      type: :dns,
+      name: "*.docker.local",
+      address: "*.docker.local",
+      address_description: "*.docker.local",
+      connections: [%{gateway_group_id: gateway_group.id}],
+      filters: [%{protocol: :all}]
+    },
+    admin_subject
+  )
+
 IO.puts("Created resources:")
 IO.puts("  #{dns_google_resource.address} - DNS - gateways: #{gateway_name}")
 IO.puts("  #{dns_gitlab_resource.address} - DNS - gateways: #{gateway_name}")
@@ -653,6 +683,8 @@ IO.puts("  #{firezone_dev.address} - DNS - gateways: #{gateway_name}")
 IO.puts("  #{example_dns.address} - DNS - gateways: #{gateway_name}")
 IO.puts("  #{ip_resource.address} - IP - gateways: #{gateway_name}")
 IO.puts("  #{cidr_resource.address} - CIDR - gateways: #{gateway_name}")
+IO.puts("  #{dns_httpbin_resource.address} - DNS - gateways: #{gateway_name}")
+IO.puts("  #{dns_docker_resource.address} - DNS - gateways: #{gateway_name}")
 IO.puts("")
 
 {:ok, _} =
@@ -721,6 +753,26 @@ IO.puts("")
       name: "All Access To Network",
       actor_group_id: all_group.id,
       resource_id: cidr_resource.id
+    },
+    admin_subject
+  )
+
+{:ok, _} =
+  Policies.create_policy(
+    %{
+      name: "All Access To httpbin.docker.local"
+      actor_group_id: all_group.id,
+      resource_id: dns_httpbin_resource.id
+    },
+    admin_subject
+  )
+
+{:ok, _} =
+  Policies.create_policy(
+    %{
+      name: "All Access To docker.local"
+      actor_group_id: all_group.id,
+      resource_id: dns_docker_resource.id
     },
     admin_subject
   )

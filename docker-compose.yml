@@ -135,6 +135,8 @@ services:
         condition: "service_healthy"
       httpbin:
         condition: "service_healthy"
+      test.httpbin.docker.local:
+        condition: "service_healthy"
       iperf3:
         condition: "service_healthy"
       api:
@@ -175,6 +177,7 @@ services:
     networks:
       app:
         ipv4_address: 172.28.0.105
+      dns_resources:
       resources:
 
   httpbin:
@@ -184,6 +187,14 @@ services:
     networks:
       resources:
         ipv4_address: 172.20.0.100
+
+  test.httpbin.docker.local:
+    image: kennethreitz/httpbin
+    healthcheck:
+      test: ["CMD-SHELL", "ps -C gunicorn"]
+    networks:
+      resources:
+        ipv4_address: 172.21.0.100
 
   iperf3:
     image: networkstatic/iperf3
@@ -359,6 +370,10 @@ services:
 # IPv6 is currently causing flakiness with GH actions and on our testbed.
 # Disabling until there's more time to debug.
 networks:
+  dns_resources:
+    ipam:
+      config:
+        - subnet: 172.21.0.0/24
   resources:
     # enable_ipv6: true
     ipam:
