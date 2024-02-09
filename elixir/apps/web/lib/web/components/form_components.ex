@@ -33,7 +33,7 @@ defmodule Web.FormComponents do
   attr :type, :string,
     default: "text",
     values: ~w(checkbox color date datetime-local email file hidden month number password
-               range radio search select tel text textarea taglist time url week)
+               range radio search group_select select tel text textarea taglist time url week)
 
   attr :field, Phoenix.HTML.FormField,
     doc: "a form field struct retrieved from the form, for example: @form[:email]"
@@ -108,6 +108,30 @@ defmodule Web.FormComponents do
         />
         <%= @label %>
       </label>
+      <.error :for={msg <- @errors} data-validation-error-for={@name}><%= msg %></.error>
+    </div>
+    """
+  end
+
+  def input(%{type: "group_select"} = assigns) do
+    ~H"""
+    <div phx-feedback-for={@name}>
+      <.label for={@id}><%= @label %></.label>
+      <select id={@id} name={@name} class={~w[
+          bg-neutral-50 border border-neutral-300 text-neutral-900 text-sm rounded
+          block w-full p-2.5]} multiple={@multiple} {@rest}>
+        <option :if={@prompt} value=""><%= @prompt %></option>
+
+        <%= for {label, options} <- @options do %>
+          <%= if label == nil do %>
+            <%= Phoenix.HTML.Form.options_for_select(options, @value) %>
+          <% else %>
+            <optgroup label={label}>
+              <%= Phoenix.HTML.Form.options_for_select(options, @value) %>
+            </optgroup>
+          <% end %>
+        <% end %>
+      </select>
       <.error :for={msg <- @errors} data-validation-error-for={@name}><%= msg %></.error>
     </div>
     """

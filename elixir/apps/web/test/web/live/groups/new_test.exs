@@ -57,7 +57,8 @@ defmodule Web.Live.Groups.NewTest do
     form = form(lv, "form")
 
     assert find_inputs(form) == [
-             "group[name]"
+             "group[name]",
+             "group[type]"
            ]
   end
 

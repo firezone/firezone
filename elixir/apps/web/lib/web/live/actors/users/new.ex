@@ -4,7 +4,7 @@ defmodule Web.Actors.Users.New do
   alias Domain.Actors
 
   def mount(_params, _session, socket) do
-    with {:ok, groups} <- Actors.list_groups(socket.assigns.subject) do
+    with {:ok, groups} <- Actors.list_editable_groups(socket.assigns.subject, preload: :provider) do
       changeset = Actors.new_actor()
 
       socket =

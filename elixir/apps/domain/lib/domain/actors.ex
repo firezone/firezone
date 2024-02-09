@@ -56,6 +56,21 @@ defmodule Domain.Actors do
     end
   end
 
+  # TODO: this should be a filter
+  def list_editable_groups(%Auth.Subject{} = subject, opts \\ []) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
+      {preload, _opts} = Keyword.pop(opts, :preload, [])
+
+      {:ok, groups} =
+        Group.Query.not_deleted()
+        |> Group.Query.editable()
+        |> Authorizer.for_subject(subject)
+        |> Repo.list()
+
+      {:ok, Repo.preload(groups, preload)}
+    end
+  end
+
   def peek_group_actors(groups, limit, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
       ids = groups |> Enum.map(& &1.id) |> Enum.uniq()
@@ -71,10 +86,24 @@ defmodule Domain.Actors do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
       ids = actors |> Enum.map(& &1.id) |> Enum.uniq()
 
-      Actor.Query.by_id({:in, ids})
-      |> Actor.Query.preload_few_groups_for_each_actor(limit)
-      |> Authorizer.for_subject(subject)
-      |> Repo.peek(actors)
+      {:ok, peek} =
+        Actor.Query.by_id({:in, ids})
+        |> Actor.Query.preload_few_groups_for_each_actor(limit)
+        |> Authorizer.for_subject(subject)
+        |> Repo.peek(actors)
+
+      group_by_ids =
+        Enum.flat_map(peek, fn {_id, %{items: items}} -> items end)
+        |> Repo.preload(:provider)
+        |> Enum.map(&{&1.id, &1})
+        |> Enum.into(%{})
+
+      peek =
+        for {id, %{items: items} = map} <- peek, into: %{} do
+          {id, %{map | items: Enum.map(items, &Map.fetch!(group_by_ids, &1.id))}}
+        end
+
+      {:ok, peek}
     end
   end
 
@@ -88,6 +117,19 @@ defmodule Domain.Actors do
 
   def new_group(attrs \\ %{}) do
     change_group(%Group{}, attrs)
+  end
+
+  def create_managed_group(%Accounts.Account{} = account, attrs) do
+    changeset = Group.Changeset.create(account, attrs)
+
+    case Repo.insert(changeset) do
+      {:ok, group} ->
+        :ok = broadcast_group_memberships_events(group, changeset)
+        {:ok, group}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
   end
 
   def create_group(attrs, %Auth.Subject{} = subject) do
@@ -107,12 +149,20 @@ defmodule Domain.Actors do
 
   def change_group(group, attrs \\ %{})
 
+  def change_group(%Group{type: :managed}, _attrs) do
+    raise ArgumentError, "can't change managed groups"
+  end
+
   def change_group(%Group{provider_id: nil} = group, attrs) do
     Group.Changeset.update(group, attrs)
   end
 
   def change_group(%Group{}, _attrs) do
     raise ArgumentError, "can't change synced groups"
+  end
+
+  def update_group(%Group{type: :managed}, _attrs, %Auth.Subject{}) do
+    {:error, :managed_group}
   end
 
   def update_group(%Group{provider_id: nil} = group, attrs, %Auth.Subject{} = subject) do
@@ -132,6 +182,28 @@ defmodule Domain.Actors do
 
   def update_group(%Group{}, _attrs, %Auth.Subject{}) do
     {:error, :synced_group}
+  end
+
+  def update_dynamic_group_memberships(account_id) do
+    Repo.transaction(fn ->
+      Group.Query.by_account_id(account_id)
+      |> Group.Query.by_type({:in, [:dynamic, :managed]})
+      |> Group.Query.lock()
+      |> Repo.all()
+      |> Enum.map(fn group ->
+        changeset =
+          group
+          |> Repo.preload(:memberships)
+          |> Ecto.Changeset.change()
+          |> Group.Changeset.put_dynamic_memberships(account_id)
+
+        {:ok, group} = Repo.update(changeset)
+
+        :ok = broadcast_memberships_events(changeset)
+
+        group
+      end)
+    end)
   end
 
   def delete_group(%Group{provider_id: nil} = group, %Auth.Subject{} = subject) do
@@ -217,6 +289,12 @@ defmodule Domain.Actors do
 
   def group_synced?(%Group{provider_id: nil}), do: false
   def group_synced?(%Group{}), do: true
+
+  def group_managed?(%Group{type: :managed}), do: true
+  def group_managed?(%Group{}), do: false
+
+  def group_editable?(%Group{} = group),
+    do: not group_synced?(group) and not group_managed?(group)
 
   def group_deleted?(%Group{deleted_at: nil}), do: false
   def group_deleted?(%Group{}), do: true
@@ -311,10 +389,12 @@ defmodule Domain.Actors do
       |> Repo.fetch_and_update(
         with: fn actor ->
           actor = maybe_preload_not_synced_memberships(actor, attrs)
-          blacklisted_groups = list_blacklisted_groups(attrs)
-          changeset = Actor.Changeset.update(actor, attrs, blacklisted_groups, subject)
+          synced_groups = list_readonly_groups(attrs)
+          changeset = Actor.Changeset.update(actor, attrs, synced_groups, subject)
 
-          after_commit_cb = fn _group -> :ok = broadcast_memberships_events(changeset) end
+          after_commit_cb = fn _group ->
+            :ok = broadcast_memberships_events(changeset)
+          end
 
           cond do
             changeset.data.type != :account_admin_user ->
@@ -348,7 +428,7 @@ defmodule Domain.Actors do
     end
   end
 
-  defp list_blacklisted_groups(attrs) do
+  defp list_readonly_groups(attrs) do
     (Map.get(attrs, "memberships") || Map.get(attrs, :memberships) || [])
     |> Enum.flat_map(fn membership ->
       if group_id = Map.get(membership, "group_id") || Map.get(membership, :group_id) do
@@ -363,7 +443,7 @@ defmodule Domain.Actors do
 
       group_ids ->
         Group.Query.by_id({:in, group_ids})
-        |> Group.Query.by_not_empty_provider_id()
+        |> Group.Query.not_editable()
         |> Repo.all()
     end
   end
@@ -408,6 +488,7 @@ defmodule Domain.Actors do
               |> Membership.Query.returning_all()
               |> Repo.delete_all()
 
+            {:ok, _groups} = update_dynamic_group_memberships(actor.account_id)
             :ok = broadcast_membership_removal_events(memberships)
             {:ok, _tokens} = Tokens.delete_tokens_for(actor, subject)
 
@@ -460,7 +541,7 @@ defmodule Domain.Actors do
   end
 
   defp broadcast_memberships_events(changeset) do
-    if changeset.valid? and Validator.changed?(changeset, :memberships) do
+    if changeset.valid? and Ecto.Changeset.changed?(changeset, :memberships) do
       case Ecto.Changeset.apply_action(changeset, :update) do
         {:ok, %Actor{} = actor} ->
           broadcast_actor_memberships_events(actor, changeset)
