@@ -146,8 +146,8 @@ class TunnelService : VpnService() {
 
             override fun getSystemDefaultResolvers(): Array<ByteArray> {
                 val found = DnsServersDetector(this@TunnelService).servers
-                Log.d(TAG, "getSystemDefaultResolvers: ${found}")
-                Firebase.crashlytics.log("getSystemDefaultResolvers: ${found}")
+                Log.d(TAG, "getSystemDefaultResolvers: $found")
+                Firebase.crashlytics.log("getSystemDefaultResolvers: $found")
 
                 return found.map {
                     it.address
