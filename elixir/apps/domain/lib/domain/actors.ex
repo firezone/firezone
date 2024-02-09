@@ -393,7 +393,7 @@ defmodule Domain.Actors do
       |> Repo.fetch_and_update(
         with: fn actor ->
           actor = maybe_preload_not_synced_memberships(actor, attrs)
-          synced_groups = list_not_editable_groups(attrs)
+          synced_groups = list_readonly_groups(attrs)
           changeset = Actor.Changeset.update(actor, attrs, synced_groups, subject)
 
           after_commit_cb = fn _group ->
@@ -432,7 +432,7 @@ defmodule Domain.Actors do
     end
   end
 
-  defp list_not_editable_groups(attrs) do
+  defp list_readonly_groups(attrs) do
     (Map.get(attrs, "memberships") || Map.get(attrs, :memberships) || [])
     |> Enum.flat_map(fn membership ->
       if group_id = Map.get(membership, "group_id") || Map.get(membership, :group_id) do
