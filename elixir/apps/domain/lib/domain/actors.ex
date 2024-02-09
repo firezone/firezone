@@ -86,28 +86,24 @@ defmodule Domain.Actors do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
       ids = actors |> Enum.map(& &1.id) |> Enum.uniq()
 
-      Actor.Query.by_id({:in, ids})
-      |> Actor.Query.preload_few_groups_for_each_actor(limit)
-      |> Authorizer.for_subject(subject)
-      |> Repo.peek(actors)
-      |> case do
-        {:ok, peek} ->
-          group_by_ids =
-            Enum.flat_map(peek, fn {_id, %{items: items}} -> items end)
-            |> Repo.preload(:provider)
-            |> Enum.map(&{&1.id, &1})
-            |> Enum.into(%{})
+      {:ok, peek} =
+        Actor.Query.by_id({:in, ids})
+        |> Actor.Query.preload_few_groups_for_each_actor(limit)
+        |> Authorizer.for_subject(subject)
+        |> Repo.peek(actors)
 
-          peek =
-            for {id, %{items: items} = map} <- peek, into: %{} do
-              {id, %{map | items: Enum.map(items, &Map.fetch!(group_by_ids, &1.id))}}
-            end
+      group_by_ids =
+        Enum.flat_map(peek, fn {_id, %{items: items}} -> items end)
+        |> Repo.preload(:provider)
+        |> Enum.map(&{&1.id, &1})
+        |> Enum.into(%{})
 
-          {:ok, peek}
+      peek =
+        for {id, %{items: items} = map} <- peek, into: %{} do
+          {id, %{map | items: Enum.map(items, &Map.fetch!(group_by_ids, &1.id))}}
+        end
 
-        {:error, reason} ->
-          {:error, reason}
-      end
+      {:ok, peek}
     end
   end
 
