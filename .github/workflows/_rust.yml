@@ -113,7 +113,7 @@ jobs:
 
   # This should be identical to `build-push-windows-release-artifacts` in `cd.yml` except for the Github permissions, needs tag, and uploading step
   build-tauri:
-    name: build-tauri-${{ matrix.name }}
+    name: build-tauri-${{ matrix.artifact }}
     runs-on: windows-2019
     defaults:
       run:
@@ -125,8 +125,7 @@ jobs:
       matrix:
         include:
           - package: firezone-windows-client
-            artifact: firezone-windows-client
-            name: windows-client
+            artifact: windows-client
     env:
       BINARY_DEST_PATH: ${{ matrix.artifact }}
       CONNLIB_LOG_UPLOAD_INTERVAL_SECS: 300
@@ -138,12 +137,12 @@ jobs:
       - uses: ./.github/actions/setup-rust
         with:
           targets: x86_64-pc-windows-msvc
-      - name: Install pnpm deps
-        run: pnpm install
-      - name: Build release exe and MSI
-        run: pnpm build
-      - name: Compute SHA256 and rename
+      - name: Build release binaries
         run: |
+          # Build Windows Tauri GUI
+          pnpm install
+          pnpm build
+
           # Used for release artifact
           # In release mode the name comes from tauri.conf.json
           cp "../target/release/Firezone.exe" "${{ env.BINARY_DEST_PATH }}-x64.exe"
@@ -160,24 +159,24 @@ jobs:
       - name: Save Windows client
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact }}-x64
+          name: windows-client-x64
           path: |
-            ${{ github.workspace }}/rust/windows-client/${{ matrix.artifact }}-x64.exe
-            ${{ github.workspace }}/rust/windows-client/${{ matrix.artifact }}-x64.exe.sha256sum.txt
+            ${{ github.workspace }}/rust/windows-client/windows-client-x64.exe
+            ${{ github.workspace }}/rust/windows-client/windows-client-x64.exe.sha256sum.txt
       - name: Save Windows installer
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact }}-x64-msi
+          name: windows-client-x64-msi
           path: |
-            ${{ github.workspace }}/rust/windows-client/${{ matrix.artifact }}-x64.msi
-            ${{ github.workspace }}/rust/windows-client/${{ matrix.artifact }}-x64.msi.sha256sum.txt
+            ${{ github.workspace }}/rust/windows-client/windows-client-x64.msi
+            ${{ github.workspace }}/rust/windows-client/windows-client-x64.msi.sha256sum.txt
       - name: Save Windows debug symbols
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact }}-x64-pdb
+          name: windows-client-x64-pdb
           path: |
-            ${{ github.workspace }}/rust/windows-client/${{ matrix.artifact }}-x64.pdb
-            ${{ github.workspace }}/rust/windows-client/${{ matrix.artifact }}-x64.pdb.sha256sum.txt
+            ${{ github.workspace }}/rust/windows-client/windows-client-x64.pdb
+            ${{ github.workspace }}/rust/windows-client/windows-client-x64.pdb.sha256sum.txt
 
   smoke-test-relay:
     runs-on: ubuntu-22.04
