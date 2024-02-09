@@ -22,7 +22,7 @@ use std::{
         unix::fs::PermissionsExt,
     },
 };
-use tokio::io::{unix::AsyncFd, AsyncWriteExt};
+use tokio::io::unix::AsyncFd;
 
 mod utils;
 
@@ -292,70 +292,6 @@ async fn configure_resolv_conf(dns_config: &[IpAddr]) -> Result<()> {
     // tokio::fs::OpenOptions::new().write(true).open(resolv_path).await.map_err(|_| Error::OpenResolvConf)?.write_all(new_text.as_bytes()).await.map_err(|_| Error::WriteResolvConf)?;
 
     tokio::fs::write(resolv_path, new_text).await?;
-
-    Ok(())
-}
-
-async fn systemd_flush_dns() -> Result<()> {
-    // Flush systemd's DNS cache so resources like ifconfig.net will switch to
-    // Firezone even if they were cached
-    //
-    // This doesn't fix a problem where systemd-resolved doesn't mark 100.100.111.1
-    // as Firezone"s "Current DNS Server" until any transaction has happened.
-    //
-    // e.g., this will fail:
-    //
-    // 1. Start Firezone
-    // 2. Confirm the "DNS Servers" in `resolvectl status` are good
-    // 3. Run `resolvectl flush-caches` many times over any length of time
-    // 4. Run `curl https://ifconfig.net/ip`
-    //
-    // It will still go outside the tunnel. But this will work:
-    //
-    // 1. Start Firezone
-    // 2. Let `curl https://ifconfig.net/ip` fail once
-    // 3. Run `resolvectl flush-caches` once
-    // 4. Run `curl https://ifconfig.net/ip` again and it works
-    let status = tokio::process::Command::new("resolvectl")
-        .arg("flush-caches")
-        .status()
-        .await
-        .map_err(|_| Error::ResolveCtlFlushCaches)?;
-    if !status.success() {
-        return Err(Error::ResolveCtlFlushCachesExitCode);
-    }
-    tracing::info!("Ran `resolvectl flush-caches`");
-    Ok(())
-}
-
-async fn configure_systemd_resolved(dns_config: &[IpAddr]) -> Result<()> {
-    // Set our DNS server for the tunnel interface
-    // If I run this before the flush it doesn't work?
-    // Does it work after the flush?
-    let mut cmd = tokio::process::Command::new("resolvectl");
-    cmd.arg("dns").arg(IFACE_NAME);
-    for addr in dns_config {
-        cmd.arg(addr.to_string());
-    }
-    let status = cmd.status().await.map_err(|_| Error::ResolveCtlSetDns)?;
-    if !status.success() {
-        return Err(Error::ResolveCtlSetDnsExitCode);
-    }
-    tracing::info!(?dns_config, "Ran `resolvectl dns`");
-
-    // Tell systemd we can resolve any domain
-    // TODO: If we want true split DNS we can move this over to `on_update_resources`
-    let status = tokio::process::Command::new("resolvectl")
-        .arg("domain")
-        .arg(IFACE_NAME)
-        .arg("~.")
-        .status()
-        .await
-        .map_err(|_| Error::ResolveCtlSetDomains)?;
-    if !status.success() {
-        return Err(Error::ResolveCtlSetDomainsExitCode);
-    }
-    tracing::info!("Ran `resolvectl domain`");
 
     Ok(())
 }
