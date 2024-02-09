@@ -155,24 +155,24 @@ jobs:
       - name: Save Windows client
         uses: actions/upload-artifact@v4
         with:
-          name: windows-client-x64
+          name: ${{ matrix.artifact }}-x64
           path: |
-            ${{ github.workspace }}/rust/windows-client/firezone-windows-client-x64.exe
-            ${{ github.workspace }}/rust/windows-client/firezone-windows-client-x64.exe.sha256sum.txt
+            ${{ github.workspace }}/rust/windows-client/${{ matrix.artifact }}-x64.exe
+            ${{ github.workspace }}/rust/windows-client/${{ matrix.artifact }}-x64.exe.sha256sum.txt
       - name: Save Windows installer
         uses: actions/upload-artifact@v4
         with:
-          name: windows-client-x64-msi
+          name: ${{ matrix.artifact }}-x64-msi
           path: |
-            ${{ github.workspace }}/rust/windows-client/firezone-windows-client-x64.msi
-            ${{ github.workspace }}/rust/windows-client/firezone-windows-client-x64.msi.sha256sum.txt
+            ${{ github.workspace }}/rust/windows-client/${{ matrix.artifact }}-x64.msi
+            ${{ github.workspace }}/rust/windows-client/${{ matrix.artifact }}-x64.msi.sha256sum.txt
       - name: Save Windows debug symbols
         uses: actions/upload-artifact@v4
         with:
-          name: windows-client-x64-pdb
+          name: ${{ matrix.artifact }}-x64-pdb
           path: |
-            ${{ github.workspace }}/rust/windows-client/firezone-windows-client-x64.pdb
-            ${{ github.workspace }}/rust/windows-client/firezone-windows-client-x64.pdb.sha256sum.txt
+            ${{ github.workspace }}/rust/windows-client/${{ matrix.artifact }}-x64.pdb
+            ${{ github.workspace }}/rust/windows-client/${{ matrix.artifact }}-x64.pdb.sha256sum.txt
 
   smoke-test-relay:
     runs-on: ubuntu-22.04
