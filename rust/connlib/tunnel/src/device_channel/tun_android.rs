@@ -100,15 +100,16 @@ impl ioctl::Request<GetInterfaceNamePayload> {
     }
 
     fn name(&self) -> std::borrow::Cow<'_, str> {
-        String::from_utf8_lossy(&self.name)
+        // Safety: The memory of `self.name` is always initialized.
+        let cstr = unsafe { std::ffi::CStr::from_ptr(self.name.as_ptr() as _) };
+
+        cstr.to_string_lossy()
     }
 }
 
 #[derive(Default)]
 #[repr(C)]
-struct GetInterfaceNamePayload {
-    name: [u8; libc::IF_NAMESIZE],
-}
+struct GetInterfaceNamePayload;
 
 /// Read from the given file descriptor in the buffer.
 fn read(fd: RawFd, dst: &mut [u8]) -> io::Result<usize> {
@@ -138,7 +139,7 @@ impl Closeable {
     fn new(fd: AsyncFd<RawFd>) -> Self {
         Self {
             closed: AtomicBool::new(false),
-            fd,
+            fd: fd,
         }
     }
 
