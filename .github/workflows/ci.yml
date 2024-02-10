@@ -304,24 +304,24 @@ jobs:
               docker compose exec -it client timeout 60 \
               sh -c 'until ping -W 1 -c 10 172.20.0.100 &>/dev/null; do true; done'
 
-              # Check on something
+              echo "check original resolv.conf"
               docker compose exec -it client sh -c 'cat /etc/resolv.conf.firezone-backup'
 
-              # Make sure gateway can reach httpbin by DNS
+              echo "Make sure gateway can reach httpbin by DNS"
               docker compose exec -it gateway sh -c 'curl test.httpbin.docker.local/get || true'
 
-              # Access httpbin by IP
-              docker compose exec -it client sh -c 'curl 172.21.0.100/get || true'
-
-              # See what nslookup thinks
+              echo "See what nslookup thinks"
               docker compose exec -it client timeout 60 \
-              sh -c 'nslookup test.httpbin.docker.local 127.0.0.11; nslookup test.httpbin.docker.local'
+              sh -c 'nslookup test.httpbin.docker.local'
 
-              # Try to ping httpbin as a DNS resource
+              echo "Try to ping httpbin as a DNS resource"
               docker compose exec -it client timeout 60 \
               sh -c 'ping -W 1 -c 10 test.httpbin.docker.local'
 
-              # TODO: Make sure it's going through the tunnel
+              echo "Access httpbin by DNS"
+              docker compose exec -it client sh -c 'curl test.httpbin.docker.local/get || true'
+
+              echo "TODO: Make sure it's going through the tunnel"
               docker compose exec -it client timeout 60 \
               sh -c 'nslookup test.httpbin.docker.local | grep 100.96.0.1'
 
