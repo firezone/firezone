@@ -196,7 +196,7 @@ mod ioctl {
         Ok(())
     }
 
-    /// Represents a control request to an IO device, addresses by the device's name.
+    /// Represents a control request to an IO device, addressed by the device's name.
     ///
     /// The payload MUST also be `#[repr(C)]` and its layout depends on the particular request you are sending.
     #[repr(C)]

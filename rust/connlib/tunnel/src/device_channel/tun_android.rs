@@ -100,13 +100,15 @@ impl ioctl::Request<GetInterfaceNamePayload> {
     }
 
     fn name(&self) -> std::borrow::Cow<'_, str> {
-        String::from_utf8_lossy(&self.name.split(|&c| c == b'\0').next().unwrap())
+        String::from_utf8_lossy(&self.name)
     }
 }
 
 #[derive(Default)]
 #[repr(C)]
-struct GetInterfaceNamePayload;
+struct GetInterfaceNamePayload {
+    name: [u8; libc::IF_NAMESIZE],
+}
 
 /// Read from the given file descriptor in the buffer.
 fn read(fd: RawFd, dst: &mut [u8]) -> io::Result<usize> {
