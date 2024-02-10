@@ -87,6 +87,7 @@ COPY . .
 
 ARG TARGET
 ARG PACKAGE
+ENV CONNLIB_LOG_UPLOAD_INTERVAL_SECS=300
 RUN cargo build -p ${PACKAGE} $([ -n "${TARGET}" ] && "--target ${TARGET}")
 
 # Image which is used to run the application binary
