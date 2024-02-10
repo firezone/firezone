@@ -13,10 +13,10 @@ defmodule Web.Acceptance.Auth.OpenIDConnectTest do
 
     session
     |> visit(~p"/#{account}")
-    |> assert_el(Query.text("Sign into #{account.name}"))
+    |> assert_el(Query.text("Sign in to #{account.name}"))
     |> click(Query.link("Sign in with Vault"))
     |> Vault.userpass_flow(oidc_login, oidc_password)
-    |> assert_el(Query.text("Sign into #{account.name}"))
+    |> assert_el(Query.text("Sign in to #{account.name}"))
     |> assert_path(~p"/#{account.id}")
     |> assert_el(Query.text("You may not authenticate to this account."))
   end
@@ -41,7 +41,7 @@ defmodule Web.Acceptance.Auth.OpenIDConnectTest do
 
     session
     |> visit(~p"/#{account}")
-    |> assert_el(Query.text("Sign into #{account.name}"))
+    |> assert_el(Query.text("Sign in to #{account.name}"))
     |> click(Query.link("Sign in with Vault"))
     |> Vault.userpass_flow(oidc_login, oidc_password)
     |> assert_el(Query.css("#user-menu-button"))
@@ -69,7 +69,7 @@ defmodule Web.Acceptance.Auth.OpenIDConnectTest do
 
     session
     |> visit(~p"/#{account}")
-    |> assert_el(Query.text("Sign into #{account.name}"))
+    |> assert_el(Query.text("Sign in to #{account.name}"))
     |> click(Query.link("Sign in with Vault"))
     |> Vault.userpass_flow(oidc_login, oidc_password)
     |> assert_el(Query.css("#user-menu-button"))
@@ -110,7 +110,7 @@ defmodule Web.Acceptance.Auth.OpenIDConnectTest do
 
     session
     |> visit(~p"/#{account}?#{redirect_params}")
-    |> assert_el(Query.text("Sign into #{account.name}"))
+    |> assert_el(Query.text("Sign in to #{account.name}"))
     |> click(Query.link("Sign in with Vault"))
     |> Vault.userpass_flow(oidc_login, oidc_password)
     |> assert_el(Query.text("Client redirected"))
@@ -139,7 +139,7 @@ defmodule Web.Acceptance.Auth.OpenIDConnectTest do
     assert {:ok, _subject} = Domain.Auth.authenticate(token, context)
   end
 
-  feature "allows to log in to the browser and then to the client", %{
+  feature "allows to sign in to the browser and then to the client", %{
     session: session
   } do
     nonce = Ecto.UUID.generate()
@@ -175,7 +175,7 @@ defmodule Web.Acceptance.Auth.OpenIDConnectTest do
     # Sign In as an portal user
     session
     |> visit(~p"/#{account}")
-    |> assert_el(Query.text("Sign into #{account.name}"))
+    |> assert_el(Query.text("Sign in to #{account.name}"))
     |> click(Query.link("Sign in with Vault"))
     |> Vault.userpass_flow(oidc_login, oidc_password)
     |> assert_el(Query.css("#user-menu-button"))
@@ -185,7 +185,7 @@ defmodule Web.Acceptance.Auth.OpenIDConnectTest do
     # And then to a client
     session
     |> visit(~p"/#{account}?#{redirect_params}")
-    |> assert_el(Query.text("Sign into #{account.name}"))
+    |> assert_el(Query.text("Sign in to #{account.name}"))
     |> click(Query.link("Sign in with Vault"))
     |> assert_el(Query.text("Client redirected"))
     |> assert_path(~p"/handle_client_sign_in_callback")
@@ -201,7 +201,7 @@ defmodule Web.Acceptance.Auth.OpenIDConnectTest do
     assert account_id == account.id
   end
 
-  feature "allows to log in to the client and then to the browser", %{
+  feature "allows to sign in to the client and then to the browser", %{
     session: session
   } do
     nonce = Ecto.UUID.generate()
@@ -237,7 +237,7 @@ defmodule Web.Acceptance.Auth.OpenIDConnectTest do
     # And then to a client
     session
     |> visit(~p"/#{account}?#{redirect_params}")
-    |> assert_el(Query.text("Sign into #{account.name}"))
+    |> assert_el(Query.text("Sign in to #{account.name}"))
     |> click(Query.link("Sign in with Vault"))
     |> Vault.userpass_flow(oidc_login, oidc_password)
     |> assert_el(Query.text("Client redirected"))
@@ -246,7 +246,7 @@ defmodule Web.Acceptance.Auth.OpenIDConnectTest do
     # Sign In as an portal user
     session
     |> visit(~p"/#{account}")
-    |> assert_el(Query.text("Sign into #{account.name}"))
+    |> assert_el(Query.text("Sign in to #{account.name}"))
     |> click(Query.link("Sign in with Vault"))
     |> assert_el(Query.css("#user-menu-button"))
     |> Auth.assert_authenticated(identity)

@@ -54,7 +54,12 @@ defmodule API.Client.Channel do
       # Subscribe for config updates
       :ok = Config.subscribe_to_events_in_account(socket.assigns.client.account_id)
 
-      {:ok, resources} = Resources.list_authorized_resources(socket.assigns.subject)
+      {:ok, resources} =
+        Resources.list_authorized_resources(socket.assigns.subject,
+          preload: [
+            :gateway_groups
+          ]
+        )
 
       # We subscribe for all resource events but only care about update events,
       # where resource might be renamed which should be propagated to the UI.
@@ -163,7 +168,9 @@ defmodule API.Client.Channel do
 
     OpenTelemetry.Tracer.with_span "client.resource_updated",
       attributes: %{resource_id: resource_id} do
-      case Resources.fetch_and_authorize_resource_by_id(resource_id, socket.assigns.subject) do
+      case Resources.fetch_and_authorize_resource_by_id(resource_id, socket.assigns.subject,
+             preload: [:gateway_groups]
+           ) do
         {:ok, resource} ->
           push(socket, "resource_created_or_updated", Views.Resource.render(resource))
 
@@ -206,7 +213,9 @@ defmodule API.Client.Channel do
       } do
       :ok = Resources.subscribe_to_events_for_resource(resource_id)
 
-      case Resources.fetch_and_authorize_resource_by_id(resource_id, socket.assigns.subject) do
+      case Resources.fetch_and_authorize_resource_by_id(resource_id, socket.assigns.subject,
+             preload: [:gateway_groups]
+           ) do
         {:ok, resource} ->
           push(socket, "resource_created_or_updated", Views.Resource.render(resource))
 
@@ -237,7 +246,9 @@ defmodule API.Client.Channel do
       # and the recreate it right away if there is another allowing access to it.
       push(socket, "resource_deleted", resource_id)
 
-      case Resources.fetch_and_authorize_resource_by_id(resource_id, socket.assigns.subject) do
+      case Resources.fetch_and_authorize_resource_by_id(resource_id, socket.assigns.subject,
+             preload: [:gateway_groups]
+           ) do
         {:ok, resource} ->
           push(socket, "resource_created_or_updated", Views.Resource.render(resource))
 
@@ -315,6 +326,7 @@ defmodule API.Client.Channel do
                  relay_connection_type
                ),
              resource_id: resource_id,
+             gateway_group_id: gateway.group_id,
              gateway_id: gateway.id,
              gateway_remote_ip: gateway.last_seen_remote_ip
            }}

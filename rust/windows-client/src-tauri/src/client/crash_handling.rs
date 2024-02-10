@@ -37,7 +37,9 @@ pub(crate) fn attach_handler() -> Result<CrashHandler> {
     // https://docs.rs/crash-handler/0.6.0/crash_handler/trait.CrashEvent.html#safety
     let handler = CrashHandler::attach(unsafe {
         crash_handler::make_crash_event(move |crash_context| {
-            crash_handler::CrashEventResult::Handled(client.request_dump(crash_context).is_ok())
+            let handled = client.request_dump(crash_context).is_ok();
+            tracing::error!("Firezone crashed and wrote a crash dump.");
+            crash_handler::CrashEventResult::Handled(handled)
         })
     })
     .context("failed to attach signal handler")?;

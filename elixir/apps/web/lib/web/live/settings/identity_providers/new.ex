@@ -58,13 +58,24 @@ defmodule Web.Settings.IdentityProviders.New do
     """
   end
 
+  def adapter(%{adapter: :microsoft_entra} = assigns) do
+    ~H"""
+    <.adapter_item
+      adapter={@adapter}
+      account={@account}
+      name="Microsoft Entra"
+      description="Authenticate users and synchronize users and groups with a custom Microsoft Entra connector."
+    />
+    """
+  end
+
   def adapter(%{adapter: :openid_connect} = assigns) do
     ~H"""
     <.adapter_item
       adapter={@adapter}
       account={@account}
       name="OpenID Connect"
-      description="Authenticate users with a universal OpenID Connect adapter and synchronize users with just-in-time (JIT) provisioning."
+      description="Authenticate users with a universal OpenID Connect adapter and manager users and groups manually."
     />
     """
   end
@@ -92,10 +103,11 @@ defmodule Web.Settings.IdentityProviders.New do
           class={~w[ w-4 h-4 border-neutral-300 ]}
           required
         />
+        <.provider_icon adapter={@adapter} class="w-8 h-8 ml-4" />
         <label for={"idp-option-#{@adapter}"} class="block ml-2 text-lg text-neutral-900">
           <%= @name %>
         </label>
-        <%= if @adapter == :google_workspace do %>
+        <%= if @adapter == :google_workspace || @adapter == :microsoft_entra do %>
           <.badge class="ml-2" type="primary" title="Feature available on the Enterprise plan">
             ENTERPRISE
           </.badge>
@@ -114,5 +126,9 @@ defmodule Web.Settings.IdentityProviders.New do
 
   def next_step_path(:google_workspace, account) do
     ~p"/#{account}/settings/identity_providers/google_workspace/new"
+  end
+
+  def next_step_path(:microsoft_entra, account) do
+    ~p"/#{account}/settings/identity_providers/microsoft_entra/new"
   end
 end

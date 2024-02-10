@@ -4,7 +4,8 @@ locals {
     "bmanifold@firezone.dev",
     "gabriel@firezone.dev",
     "jamil@firezone.dev",
-    "thomas@firezone.dev"
+    "thomas@firezone.dev",
+    "trish@firezone.dev"
   ]
 
   demo_access = []
@@ -407,7 +408,7 @@ locals {
     # Auth
     {
       name  = "AUTH_PROVIDER_ADAPTERS"
-      value = "email,openid_connect,google_workspace,token"
+      value = "email,openid_connect,google_workspace,token,microsoft_entra"
     },
     # Registry from which Docker install scripts pull from
     {
@@ -692,56 +693,42 @@ module "relays" {
   project_id = module.google-cloud-project.project.project_id
 
   instances = {
-    "asia-east1" = {
-      type     = "n1-standard-1"
-      replicas = 1
-      zones    = ["asia-east1-a"]
-    }
-
-    "asia-south1" = {
-      type     = "n1-standard-1"
-      replicas = 1
-      zones    = ["asia-south1-a"]
-    }
-
     "australia-southeast1" = {
-      type     = "n1-standard-1"
+      cidr_range = "10.131.0.0/24"
+
+      type     = "f1-micro"
       replicas = 1
       zones    = ["australia-southeast1-a"]
     }
 
-    "me-central1" = {
-      type     = "n2-standard-2"
-      replicas = 1
-      zones    = ["me-central1-a"]
-    }
-
-    "europe-west1" = {
-      type     = "n1-standard-1"
-      replicas = 1
-      zones    = ["europe-west1-d"]
-    }
-
     "southamerica-east1" = {
-      type     = "n1-standard-1"
+      cidr_range = "10.134.0.0/24"
+
+      type     = "f1-micro"
       replicas = 1
       zones    = ["southamerica-east1-b"]
     }
 
     "us-east1" = {
-      type     = "n1-standard-1"
+      cidr_range = "10.136.0.0/24"
+
+      type     = "f1-micro"
       replicas = 1
       zones    = ["us-east1-d"]
     }
 
     "us-west2" = {
-      type     = "n1-standard-1"
+      cidr_range = "10.137.0.0/24"
+
+      type     = "f1-micro"
       replicas = 1
       zones    = ["us-west2-b"]
     }
 
     "us-central1" = {
-      type     = "n1-standard-1"
+      cidr_range = "10.135.0.0/24"
+
+      type     = "f1-micro"
       replicas = 1
       zones    = ["us-central1-b"]
     }

@@ -23,8 +23,8 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
   @impl true
   def capabilities do
     [
-      provisioners: [:just_in_time, :manual],
-      default_provisioner: :just_in_time,
+      provisioners: [:manual],
+      default_provisioner: :manual,
       parent_adapter: :openid_connect
     ]
   end
@@ -107,7 +107,11 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
   end
 
   @impl true
-  def verify_and_update_identity(%Provider{} = provider, {redirect_uri, code_verifier, code}) do
+  def verify_and_update_identity(
+        %Provider{} = provider,
+        {redirect_uri, code_verifier, code},
+        identifier_claim \\ "sub"
+      ) do
     token_params = %{
       grant_type: "authorization_code",
       redirect_uri: redirect_uri,
@@ -116,12 +120,13 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
     }
 
     with {:ok, provider_identifier, identity_state} <-
-           fetch_state(provider, token_params) do
+           fetch_state(provider, token_params, identifier_claim) do
       Identity.Query.not_disabled()
       |> Identity.Query.by_provider_id(provider.id)
-      |> Identity.Query.by_provider_claims(
+      |> maybe_by_provider_claims(
+        provider,
         provider_identifier,
-        identity_state["claims"]["email"] || identity_state["userinfo"]["email"]
+        identity_state
       )
       |> Repo.fetch_and_update(
         with: fn identity ->
@@ -142,10 +147,28 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
     end
   end
 
+  defp maybe_by_provider_claims(
+         queryable,
+         provider,
+         provider_identifier,
+         identity_state
+       ) do
+    if provider.provisioner == :manual do
+      Identity.Query.by_provider_claims(
+        queryable,
+        provider_identifier,
+        identity_state["claims"]["email"] || identity_state["userinfo"]["email"]
+      )
+    else
+      Identity.Query.by_provider_identifier(queryable, provider_identifier)
+    end
+  end
+
   def verify_and_upsert_identity(
         %Actors.Actor{} = actor,
         %Provider{} = provider,
-        {redirect_uri, code_verifier, code}
+        {redirect_uri, code_verifier, code},
+        identifier_claim \\ "sub"
       ) do
     token_params = %{
       grant_type: "authorization_code",
@@ -155,7 +178,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
     }
 
     with {:ok, provider_identifier, identity_state} <-
-           fetch_state(provider, token_params) do
+           fetch_state(provider, token_params, identifier_claim) do
       Domain.Auth.upsert_identity(actor, provider, %{
         provider_identifier: provider_identifier,
         provider_virtual_state: identity_state
@@ -212,7 +235,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
     end
   end
 
-  defp fetch_state(%Provider{} = provider, token_params) do
+  defp fetch_state(%Provider{} = provider, token_params, identifier_claim \\ "sub") do
     config = config_for_provider(provider)
 
     with {:ok, tokens} <- OpenIDConnect.fetch_tokens(config, token_params),
@@ -230,7 +253,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
             nil
         end
 
-      provider_identifier = claims["sub"]
+      provider_identifier = claims[identifier_claim]
 
       {:ok, provider_identifier,
        %{

@@ -136,7 +136,7 @@ defmodule Web.TableComponents do
           />
         </tbody>
       </table>
-      <div :if={Enum.empty?(@rows)}>
+      <div :if={Enum.empty?(@rows)} id={"#{@id}-empty"}>
         <%= render_slot(@empty) %>
       </div>
     </div>

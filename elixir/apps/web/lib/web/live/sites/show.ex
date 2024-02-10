@@ -83,7 +83,7 @@ defmodule Web.Sites.Show do
       <:action :if={is_nil(@group.deleted_at)}>
         <.delete_button
           phx-click="revoke_all_tokens"
-          data-confirm="Are you sure you want to revoke all tokens? This will immediately sign the actor out of all clients."
+          data-confirm="Are you sure you want to revoke all tokens? This will immediately disconnect all gateways in this site."
         >
           Revoke All Tokens
         </.delete_button>
@@ -139,7 +139,7 @@ defmodule Web.Sites.Show do
         </.add_button>
       </:action>
       <:help>
-        Resources are the endpoints that you want to make available to your clients.
+        Resources are the subnets, hosts, and applications that you wish to manage access to.
       </:help>
       <:content>
         <div class="relative overflow-x-auto">
@@ -173,14 +173,7 @@ defmodule Web.Sites.Show do
                 </:empty>
 
                 <:item :let={group}>
-                  <.link
-                    class={link_style()}
-                    navigate={~p"/#{@account}/groups/#{group.id}?site_id=#{@group}"}
-                  >
-                    <.badge>
-                      <%= group.name %>
-                    </.badge>
-                  </.link>
+                  <.group account={@account} group={group} />
                 </:item>
 
                 <:tail :let={count}>

@@ -5,7 +5,7 @@ defmodule Web.Policies.New do
   def mount(params, _session, socket) do
     with {:ok, resources} <-
            Resources.list_resources(socket.assigns.subject, preload: [:gateway_groups]),
-         {:ok, actor_groups} <- Actors.list_groups(socket.assigns.subject) do
+         {:ok, actor_groups} <- Actors.list_groups(socket.assigns.subject, preload: :provider) do
       form = to_form(Policies.new_policy(%{}, socket.assigns.subject))
 
       socket =
@@ -64,8 +64,8 @@ defmodule Web.Policies.New do
             <.input
               field={@form[:actor_group_id]}
               label="Group"
-              type="select"
-              options={Enum.map(@actor_groups, fn g -> [key: g.name, value: g.id] end)}
+              type="group_select"
+              options={Web.Groups.Components.select_options(@actor_groups)}
               value={@form[:actor_group_id].value}
               required
             />

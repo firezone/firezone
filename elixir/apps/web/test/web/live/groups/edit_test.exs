@@ -28,7 +28,7 @@ defmodule Web.Live.Groups.EditTest do
               {:redirect,
                %{
                  to: ~p"/#{account}?#{%{redirect_to: path}}",
-                 flash: %{"error" => "You must log in to access this page."}
+                 flash: %{"error" => "You must sign in to access this page."}
                }}}
   end
 
@@ -113,7 +113,9 @@ defmodule Web.Live.Groups.EditTest do
     group: group,
     conn: conn
   } do
-    attrs = Fixtures.Actors.group_attrs()
+    attrs =
+      Fixtures.Actors.group_attrs()
+      |> Map.delete(:type)
 
     {:ok, lv, _html} =
       conn
@@ -140,7 +142,10 @@ defmodule Web.Live.Groups.EditTest do
     group: group,
     conn: conn
   } do
-    attrs = Fixtures.Actors.group_attrs()
+    attrs =
+      Fixtures.Actors.group_attrs()
+      |> Map.delete(:type)
+
     Fixtures.Actors.create_group(name: attrs.name, account: account)
 
     {:ok, lv, _html} =
@@ -162,7 +167,9 @@ defmodule Web.Live.Groups.EditTest do
     group: group,
     conn: conn
   } do
-    attrs = Fixtures.Actors.group_attrs()
+    attrs =
+      Fixtures.Actors.group_attrs()
+      |> Map.delete(:type)
 
     {:ok, lv, _html} =
       conn

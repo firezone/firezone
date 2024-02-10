@@ -33,7 +33,7 @@ defmodule Web.FormComponents do
   attr :type, :string,
     default: "text",
     values: ~w(checkbox color date datetime-local email file hidden month number password
-               range radio search select tel text textarea taglist time url week)
+               range radio search group_select select tel text textarea taglist time url week)
 
   attr :field, Phoenix.HTML.FormField,
     doc: "a form field struct retrieved from the form, for example: @form[:email]"
@@ -108,6 +108,30 @@ defmodule Web.FormComponents do
         />
         <%= @label %>
       </label>
+      <.error :for={msg <- @errors} data-validation-error-for={@name}><%= msg %></.error>
+    </div>
+    """
+  end
+
+  def input(%{type: "group_select"} = assigns) do
+    ~H"""
+    <div phx-feedback-for={@name}>
+      <.label for={@id}><%= @label %></.label>
+      <select id={@id} name={@name} class={~w[
+          bg-neutral-50 border border-neutral-300 text-neutral-900 text-sm rounded
+          block w-full p-2.5]} multiple={@multiple} {@rest}>
+        <option :if={@prompt} value=""><%= @prompt %></option>
+
+        <%= for {label, options} <- @options do %>
+          <%= if label == nil do %>
+            <%= Phoenix.HTML.Form.options_for_select(options, @value) %>
+          <% else %>
+            <optgroup label={label}>
+              <%= Phoenix.HTML.Form.options_for_select(options, @value) %>
+            </optgroup>
+          <% end %>
+        <% end %>
+      </select>
       <.error :for={msg <- @errors} data-validation-error-for={@name}><%= msg %></.error>
     </div>
     """
@@ -211,7 +235,7 @@ defmodule Web.FormComponents do
     <div phx-feedback-for={@name}>
       <.label :if={not is_nil(@label)} for={@id}><%= @label %></.label>
       <div class={[
-        "flex items-center",
+        "flex",
         "text-sm text-neutral-900 bg-neutral-50",
         "border-neutral-300 border rounded",
         "w-full",
@@ -220,19 +244,16 @@ defmodule Web.FormComponents do
         "peer-disabled:bg-neutral-50 peer-disabled:text-neutral-500 peer-disabled:border-neutral-200 peer-disabled:shadow-none",
         @errors != [] && "border-rose-400"
       ]}>
-        <div
+        <span
           class={[
-            "-mr-5",
-            "select-none cursor-text",
-            "text-neutral-500",
-            "p-2.5 block"
+            "bg-neutral-200 whitespace-nowrap rounded-e-0 rounded-s inline-flex items-center px-3"
           ]}
           id={"#{@id}-prefix"}
           phx-hook="Refocus"
           data-refocus={@id}
         >
           <%= @prefix %>
-        </div>
+        </span>
         <input
           type={@type}
           name={@name}
@@ -240,7 +261,7 @@ defmodule Web.FormComponents do
           value={Phoenix.HTML.Form.normalize_value(@type, @value)}
           class={[
             "text-sm text-neutral-900 bg-transparent border-0",
-            "p-2.5 block w-full",
+            "flex-1 min-w-0 p-2.5 block w-full",
             "focus:outline-none focus:border-0 focus:ring-0"
           ]}
           {@rest}
@@ -469,6 +490,15 @@ defmodule Web.FormComponents do
         "text-red-600",
         "border border-red-600",
         "hover:text-white hover:bg-red-600"
+      ]
+  end
+
+  defp button_style("info") do
+    button_style() ++
+      [
+        "text-neutral-900",
+        "border border-neutral-200",
+        "hover:bg-neutral-100 hover:text-neutral-900"
       ]
   end
 

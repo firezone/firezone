@@ -812,7 +812,7 @@ defmodule Web.AuthTest do
       assert redirected_to(conn) =~ ~p"/#{account.slug}?redirect_to="
 
       assert Phoenix.Flash.get(conn.assigns.flash, :error) ==
-               "You must log in to access this page."
+               "You must sign in to access this page."
     end
 
     test "stores the path to redirect to on GET", %{conn: conn, account: account} do

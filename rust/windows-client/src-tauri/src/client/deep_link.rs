@@ -2,9 +2,9 @@
 //! Based on reading some of the Windows code from <https://github.com/FabianLars/tauri-plugin-deep-link>, which is licensed "MIT OR Apache-2.0"
 
 use crate::client::auth::Response as AuthResponse;
-use connlib_shared::windows::BUNDLE_ID;
-use secrecy::SecretString;
-use std::{ffi::c_void, io, path::Path};
+use connlib_shared::{control::SecureUrl, windows::BUNDLE_ID};
+use secrecy::{ExposeSecret, Secret, SecretString};
+use std::{ffi::c_void, io, path::Path, str::FromStr};
 use tokio::{io::AsyncReadExt, io::AsyncWriteExt, net::windows::named_pipe};
 use windows::Win32::Security as WinSec;
 
@@ -25,7 +25,7 @@ pub enum Error {
     CurrentExe(io::Error),
     /// We got some data but it's not UTF-8
     #[error(transparent)]
-    LinkNotUtf8(std::string::FromUtf8Error),
+    LinkNotUtf8(std::str::Utf8Error),
     #[error("Couldn't set up security descriptor for deep link server")]
     SecurityDescriptor,
     /// Error from server's POV
@@ -38,7 +38,8 @@ pub enum Error {
     WindowsRegistry(io::Error),
 }
 
-pub(crate) fn parse_auth_callback(url: &url::Url) -> Option<AuthResponse> {
+pub(crate) fn parse_auth_callback(url: &Secret<SecureUrl>) -> Option<AuthResponse> {
+    let url = &url.expose_secret().inner;
     match url.host() {
         Some(url::Host::Domain("handle_client_sign_in_callback")) => {}
         _ => return None,
@@ -152,7 +153,7 @@ impl Server {
     /// I assume this is based on the underlying Windows API.
     /// I tried re-using the server and it acted strange. The official Tokio
     /// examples are not clear on this.
-    pub async fn accept(mut self) -> Result<url::Url, Error> {
+    pub async fn accept(mut self) -> Result<Secret<SecureUrl>, Error> {
         self.inner
             .connect()
             .await
@@ -167,13 +168,16 @@ impl Server {
             .read_to_end(&mut bytes)
             .await
             .map_err(Error::ServerCommunications)?;
+        let bytes = Secret::new(bytes);
 
         self.inner.disconnect().ok();
 
         tracing::debug!("Server read");
-        let s = String::from_utf8(bytes).map_err(Error::LinkNotUtf8)?;
-        tracing::info!("{}", s);
-        let url = url::Url::parse(&s)?;
+        let s = SecretString::from_str(
+            std::str::from_utf8(bytes.expose_secret()).map_err(Error::LinkNotUtf8)?,
+        )
+        .expect("Infallible");
+        let url = Secret::new(SecureUrl::from_url(url::Url::parse(s.expose_secret())?));
 
         Ok(url)
     }
@@ -242,23 +246,49 @@ fn named_pipe_path(id: &str) -> String {
 #[cfg(test)]
 mod tests {
     use anyhow::Result;
-    use secrecy::ExposeSecret;
+    use connlib_shared::control::SecureUrl;
+    use secrecy::{ExposeSecret, Secret};
 
     #[test]
     fn parse_auth_callback() -> Result<()> {
+        // Positive cases
         let input = "firezone://handle_client_sign_in_callback/?actor_name=Reactor+Scram&fragment=a_very_secret_string&state=a_less_secret_string&identity_provider_identifier=12345";
-        let input = url::Url::parse(input)?;
-        dbg!(&input);
-        let actual = super::parse_auth_callback(&input).unwrap();
+        let actual = parse_callback_wrapper(input)?.unwrap();
 
         assert_eq!(actual.actor_name, "Reactor Scram");
         assert_eq!(actual.fragment.expose_secret(), "a_very_secret_string");
         assert_eq!(actual.state.expose_secret(), "a_less_secret_string");
 
+        // Empty string "" `actor_name` is fine
+        let input = "firezone://handle_client_sign_in_callback/?actor_name=&fragment=&state=&identity_provider_identifier=12345";
+        let actual = parse_callback_wrapper(input)?.unwrap();
+
+        assert_eq!(actual.actor_name, "");
+        assert_eq!(actual.fragment.expose_secret(), "");
+        assert_eq!(actual.state.expose_secret(), "");
+
+        // Negative cases
+
+        // URL host is wrong
         let input = "firezone://not_handle_client_sign_in_callback/?actor_name=Reactor+Scram&fragment=a_very_secret_string&state=a_less_secret_string&identity_provider_identifier=12345";
-        let actual = super::parse_auth_callback(&url::Url::parse(input)?);
+        let actual = parse_callback_wrapper(input)?;
         assert!(actual.is_none());
 
+        // `actor_name` is not just blank but totally missing
+        let input = "firezone://handle_client_sign_in_callback/?fragment=&state=&identity_provider_identifier=12345";
+        let actual = parse_callback_wrapper(input)?;
+        assert!(actual.is_none());
+
+        // URL is nonsense
+        let input = "?????????";
+        let actual_result = parse_callback_wrapper(input);
+        assert!(actual_result.is_err());
+
         Ok(())
+    }
+
+    fn parse_callback_wrapper(s: &str) -> Result<Option<super::AuthResponse>> {
+        let url = Secret::new(SecureUrl::from_url(url::Url::parse(s)?));
+        Ok(super::parse_auth_callback(&url))
     }
 }

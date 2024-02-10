@@ -862,7 +862,7 @@ defmodule Web.CoreComponents do
 
   def created_by(%{schema: %{created_by: :system}} = assigns) do
     ~H"""
-    <.relative_datetime datetime={@schema.inserted_at} />
+    <.relative_datetime datetime={@schema.inserted_at} /> by system
     """
   end
 
@@ -880,13 +880,13 @@ defmodule Web.CoreComponents do
 
   def created_by(%{schema: %{created_by: :provider}} = assigns) do
     ~H"""
-    synced <.relative_datetime datetime={@schema.inserted_at} /> from
+    <.relative_datetime datetime={@schema.inserted_at} /> by
     <.link
       class="text-accent-500 hover:underline"
       navigate={Web.Settings.IdentityProviders.Components.view_provider(@account, @schema.provider)}
     >
       <%= @schema.provider.name %>
-    </.link>
+    </.link> sync
     """
   end
 
@@ -962,7 +962,7 @@ defmodule Web.CoreComponents do
           "rounded-l",
           "py-0.5 pl-2.5 pr-1.5",
           "text-neutral-800",
-          "bg-neutral-100",
+          "bg-neutral-200",
           "whitespace-nowrap"
         ]}
       >
@@ -1134,4 +1134,32 @@ defmodule Web.CoreComponents do
     </div>
     """
   end
+
+  @doc """
+  Renders a logo appropriate for the given provider.
+
+  <.provider_icon adapter={:google_workspace} class="w-5 h-5 mr-2" />
+  """
+  attr :adapter, :atom, required: false
+  attr :rest, :global
+
+  def provider_icon(%{adapter: :google_workspace} = assigns) do
+    ~H"""
+    <img src={~p"/images/google-logo.svg"} alt="Google Workspace Logo" {@rest} />
+    """
+  end
+
+  def provider_icon(%{adapter: :openid_connect} = assigns) do
+    ~H"""
+    <img src={~p"/images/openid-logo.svg"} alt="OpenID Connect Logo" {@rest} />
+    """
+  end
+
+  def provider_icon(%{adapter: :microsoft_entra} = assigns) do
+    ~H"""
+    <img src={~p"/images/entra-logo.svg"} alt="Microsoft Entra Logo" {@rest} />
+    """
+  end
+
+  def provider_icon(assigns), do: ~H""
 end

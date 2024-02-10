@@ -12,7 +12,7 @@ defmodule Web.Live.Actors.ShowTest do
               {:redirect,
                %{
                  to: ~p"/#{account}?#{%{redirect_to: path}}",
-                 flash: %{"error" => "You must log in to access this page."}
+                 flash: %{"error" => "You must sign in to access this page."}
                }}}
   end
 
@@ -333,8 +333,7 @@ defmodule Web.Live.Actors.ShowTest do
         "#{synced_identity.provider.name} #{synced_identity.provider_identifier}",
         fn row ->
           refute row["actions"]
-          assert row["created"] =~ "synced"
-          assert row["created"] =~ "from #{synced_identity.provider.name}"
+          assert row["created"] =~ "by #{synced_identity.provider.name} sync"
           assert row["last signed in"] == "never"
         end
       )
