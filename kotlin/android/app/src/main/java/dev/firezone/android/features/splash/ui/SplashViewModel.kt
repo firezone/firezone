@@ -20,7 +20,7 @@ private const val REQUEST_DELAY = 1000L
 internal class SplashViewModel
     @Inject
     constructor(
-        private var getConfigUseCase: GetConfigUseCase,
+        private val getConfigUseCase: GetConfigUseCase,
     ) : ViewModel() {
         private val actionMutableLiveData = MutableLiveData<ViewAction>()
         val actionLiveData: LiveData<ViewAction> = actionMutableLiveData
