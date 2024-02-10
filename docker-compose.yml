@@ -122,8 +122,6 @@ services:
       args:
         PACKAGE: firezone-linux-client
     image: us-east1-docker.pkg.dev/firezone-staging/firezone/client:${VERSION:-main}
-    # Forwards Ctrl+C so the container should stop gracefully without Docker's default 10s timeout
-    init: true
     dns:
       - 100.100.111.1
     cap_add:
