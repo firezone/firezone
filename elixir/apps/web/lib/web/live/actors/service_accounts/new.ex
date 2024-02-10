@@ -4,10 +4,10 @@ defmodule Web.Actors.ServiceAccounts.New do
   alias Domain.Actors
 
   def mount(_params, _session, socket) do
-    with {:ok, groups} <- Actors.list_groups(socket.assigns.subject) do
-      changeset = Actors.new_actor(%{type: :service_account})
+    with {:ok, groups} <- Actors.list_editable_groups(socket.assigns.subject, preload: :provider) do
+      groups = Enum.filter(groups, &Actors.group_editable?/1)
 
-      groups = Enum.reject(groups, &Actors.group_synced?/1)
+      changeset = Actors.new_actor(%{type: :service_account})
 
       socket =
         assign(socket,

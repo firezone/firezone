@@ -1,6 +1,5 @@
 defmodule Web.Groups.Index do
   use Web, :live_view
-  import Web.Groups.Components
   alias Domain.Actors
 
   def mount(_params, _session, socket) do
@@ -74,7 +73,7 @@ defmodule Web.Groups.Index do
               </.peek>
             </:col>
             <:col :let={group} label="SOURCE" sortable="false">
-              <.source account={@account} group={group} />
+              <.created_by account={@account} schema={group} />
             </:col>
             <:empty>
               <div class="flex justify-center text-center text-neutral-500 p-4">
@@ -95,7 +94,6 @@ defmodule Web.Groups.Index do
               </div>
             </:empty>
           </.table>
-          <!--<.paginator page={3} total_pages={100} collection_base_path={~p"/#{@account}/groups"} />-->
         </div>
       </:content>
     </.section>

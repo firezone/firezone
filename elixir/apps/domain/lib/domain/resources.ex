@@ -129,10 +129,24 @@ defmodule Domain.Resources do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_resources_permission()) do
       ids = resources |> Enum.map(& &1.id) |> Enum.uniq()
 
-      Resource.Query.by_id({:in, ids})
-      |> Authorizer.for_subject(Resource, subject)
-      |> Resource.Query.preload_few_actor_groups_for_each_resource(limit)
-      |> Repo.peek(resources)
+      {:ok, peek} =
+        Resource.Query.by_id({:in, ids})
+        |> Authorizer.for_subject(Resource, subject)
+        |> Resource.Query.preload_few_actor_groups_for_each_resource(limit)
+        |> Repo.peek(resources)
+
+      group_by_ids =
+        Enum.flat_map(peek, fn {_id, %{items: items}} -> items end)
+        |> Repo.preload(:provider)
+        |> Enum.map(&{&1.id, &1})
+        |> Enum.into(%{})
+
+      peek =
+        for {id, %{items: items} = map} <- peek, into: %{} do
+          {id, %{map | items: Enum.map(items, &Map.fetch!(group_by_ids, &1.id))}}
+        end
+
+      {:ok, peek}
     end
   end
 
