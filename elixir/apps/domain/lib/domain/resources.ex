@@ -1,6 +1,6 @@
 defmodule Domain.Resources do
   alias Domain.{Repo, Validator, Auth, PubSub}
-  alias Domain.{Accounts, Gateways, Policies}
+  alias Domain.{Accounts, Gateways, Policies, Flows}
   alias Domain.Resources.{Authorizer, Resource, Connection}
 
   def fetch_resource_by_id(id, %Auth.Subject{} = subject, opts \\ []) do
@@ -129,10 +129,24 @@ defmodule Domain.Resources do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_resources_permission()) do
       ids = resources |> Enum.map(& &1.id) |> Enum.uniq()
 
-      Resource.Query.by_id({:in, ids})
-      |> Authorizer.for_subject(Resource, subject)
-      |> Resource.Query.preload_few_actor_groups_for_each_resource(limit)
-      |> Repo.peek(resources)
+      {:ok, peek} =
+        Resource.Query.by_id({:in, ids})
+        |> Authorizer.for_subject(Resource, subject)
+        |> Resource.Query.preload_few_actor_groups_for_each_resource(limit)
+        |> Repo.peek(resources)
+
+      group_by_ids =
+        Enum.flat_map(peek, fn {_id, %{items: items}} -> items end)
+        |> Repo.preload(:provider)
+        |> Enum.map(&{&1.id, &1})
+        |> Enum.into(%{})
+
+      peek =
+        for {id, %{items: items} = map} <- peek, into: %{} do
+          {id, %{map | items: Enum.map(items, &Map.fetch!(group_by_ids, &1.id))}}
+        end
+
+      {:ok, peek}
     end
   end
 
@@ -157,17 +171,24 @@ defmodule Domain.Resources do
 
   def update_resource(%Resource{} = resource, attrs, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_resources_permission()) do
-      resource
-      |> Resource.Changeset.update(attrs, subject)
-      |> Repo.update()
-      |> case do
-        {:ok, resource} ->
-          :ok = broadcast_resource_events(:update, resource)
-          {:ok, resource}
+      Resource.Query.by_id(resource.id)
+      |> Authorizer.for_subject(Resource, subject)
+      |> Repo.fetch_and_update(
+        with: fn resource ->
+          resource = Repo.preload(resource, :connections)
+          changeset = Resource.Changeset.update(resource, attrs, subject)
 
-        {:error, reason} ->
-          {:error, reason}
-      end
+          cb = fn _resource ->
+            if Map.has_key?(changeset.changes, :connections) do
+              {:ok, _flows} = Flows.expire_flows_for(resource, subject)
+            end
+
+            :ok = broadcast_resource_events(:update, resource)
+          end
+
+          {changeset, execute_after_commit: cb}
+        end
+      )
     end
   end
 

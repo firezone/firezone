@@ -4,10 +4,6 @@ defmodule Domain.Validator do
   """
   import Ecto.Changeset
 
-  def changed?(changeset, field) do
-    Map.has_key?(changeset.changes, field)
-  end
-
   def empty?(changeset, field) do
     case fetch_field(changeset, field) do
       :error -> true
@@ -33,6 +29,27 @@ defmodule Domain.Validator do
         [{field, message}]
       else
         []
+      end
+    end)
+  end
+
+  def validate_contains(changeset, field, [{:field, source_field} | opts]) do
+    case fetch_field(changeset, source_field) do
+      {_data_or_changes, value} when is_binary(value) ->
+        validate_contains(changeset, field, value, opts)
+
+      _ ->
+        changeset
+    end
+  end
+
+  def validate_contains(changeset, field, substring, opts \\ []) do
+    validate_change(changeset, field, fn _current_field, value ->
+      if String.contains?(value, substring) do
+        []
+      else
+        message = Keyword.get(opts, :message, "should contain #{inspect(substring)}")
+        [{field, message}]
       end
     end)
   end

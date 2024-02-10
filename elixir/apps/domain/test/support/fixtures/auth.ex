@@ -119,7 +119,7 @@ defmodule Domain.Fixtures.Auth do
     attrs =
       %{
         adapter: :openid_connect,
-        provisioner: :just_in_time
+        provisioner: :manual
       }
       |> Map.merge(Enum.into(attrs, %{}))
       |> provider_attrs()

@@ -10,6 +10,10 @@ defmodule Domain.Actors.Actor.Query do
     |> where([actors: actors], is_nil(actors.deleted_at))
   end
 
+  def not_disabled(queryable \\ not_deleted()) do
+    where(queryable, [actors: actors], is_nil(actors.disabled_at))
+  end
+
   def by_id(queryable \\ not_deleted(), id)
 
   def by_id(queryable, {:in, ids}) do
@@ -32,10 +36,6 @@ defmodule Domain.Actors.Actor.Query do
     where(queryable, [actors: actors], actors.type == ^type)
   end
 
-  def not_disabled(queryable \\ not_deleted()) do
-    where(queryable, [actors: actors], is_nil(actors.disabled_at))
-  end
-
   def preload_few_groups_for_each_actor(queryable \\ not_deleted(), limit) do
     queryable
     |> with_joined_memberships(limit)
@@ -46,6 +46,12 @@ defmodule Domain.Actors.Actor.Query do
       count: group_counts.count,
       item: groups
     })
+  end
+
+  def select_distinct_ids(queryable) do
+    queryable
+    |> select([actors: actors], actors.id)
+    |> distinct(true)
   end
 
   def with_joined_memberships(queryable, limit) do

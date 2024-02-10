@@ -1,6 +1,6 @@
 use crate::{
     backoff::{self, ExponentialBackoff},
-    node::Transmit,
+    node::{CandidateEvent, Transmit},
     utils::earliest,
 };
 use ::backoff::backoff::Backoff;
@@ -27,6 +27,7 @@ use stun_codec::{
     rfc8656::attributes::AdditionalAddressFamily,
     DecodedMessage, Message, MessageClass, MessageDecoder, MessageEncoder, TransactionId,
 };
+use tracing::{field, Span};
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
 
@@ -48,7 +49,7 @@ pub struct Allocation {
     allocation_lifetime: Option<(Instant, Duration)>,
 
     buffered_transmits: VecDeque<Transmit<'static>>,
-    new_candidates: VecDeque<Candidate>,
+    events: VecDeque<CandidateEvent>,
 
     backoff: ExponentialBackoff,
     sent_requests: HashMap<TransactionId, (Message<Attribute>, Instant, Duration)>,
@@ -100,7 +101,7 @@ impl Allocation {
             ip4_allocation: Default::default(),
             ip6_allocation: Default::default(),
             buffered_transmits: Default::default(),
-            new_candidates: Default::default(),
+            events: Default::default(),
             sent_requests: Default::default(),
             username,
             password,
@@ -130,6 +131,11 @@ impl Allocation {
         .flatten()
     }
 
+    pub fn uses_credentials(&self, username: &str, password: &str, realm: &str) -> bool {
+        self.username.name() == username && self.password == password && self.realm.text() == realm
+    }
+
+    #[tracing::instrument(level = "debug", skip(self, packet, now), fields(relay = %self.server, id, method, class, rtt))]
     pub fn handle_input(
         &mut self,
         from: SocketAddr,
@@ -147,6 +153,10 @@ impl Allocation {
             return false;
         };
 
+        Span::current().record("id", field::debug(message.transaction_id()));
+        Span::current().record("method", field::display(message.method()));
+        Span::current().record("class", field::display(message.class()));
+
         let Some((original_request, sent_at, _)) =
             self.sent_requests.remove(&message.transaction_id())
         else {
@@ -156,9 +166,21 @@ impl Allocation {
         self.backoff.reset();
 
         let rtt = now.duration_since(sent_at);
-        tracing::debug!(id = ?original_request.transaction_id(), method = %original_request.method(), ?rtt);
+        Span::current().record("rtt", field::debug(rtt));
 
         if let Some(error) = message.get_attribute::<ErrorCode>() {
+            // If we sent a nonce but receive 401 instead of 438 then our credentials are invalid.
+            if error.code() == Unauthorized::CODEPOINT
+                && original_request.get_attribute::<Nonce>().is_some()
+            {
+                tracing::warn!(
+                    "Invalid credentials, refusing to re-authenticate {}",
+                    original_request.method()
+                );
+
+                return true;
+            }
+
             // Check if we need to re-authenticate the original request
             if error.code() == Unauthorized::CODEPOINT || error.code() == StaleNonce::CODEPOINT {
                 if let Some(nonce) = message.get_attribute::<Nonce>() {
@@ -173,7 +195,6 @@ impl Allocation {
                 };
 
                 tracing::debug!(
-                    method = %original_request.method(),
                     error = error.reason_phrase(),
                     "Request failed, re-authenticating"
                 );
@@ -183,7 +204,6 @@ impl Allocation {
                 return true;
             }
 
-            #[allow(clippy::single_match)] // There will be more eventually.
             match message.method() {
                 CHANNEL_BIND => {
                     let Some(channel) = original_request
@@ -196,23 +216,30 @@ impl Allocation {
 
                     self.channel_bindings.handle_failed_binding(channel);
                 }
+                REFRESH => {
+                    if let Some(candidate) = self.ip4_allocation.take() {
+                        self.events.push_back(CandidateEvent::Invalid(candidate))
+                    }
+
+                    if let Some(candidate) = self.ip6_allocation.take() {
+                        self.events.push_back(CandidateEvent::Invalid(candidate))
+                    }
+
+                    self.channel_bindings.clear();
+                }
                 _ => {}
             }
 
             // TODO: Handle error codes such as:
             // - Failed allocations
 
-            tracing::warn!(id = ?original_request.transaction_id(), method = %original_request.method(), error = %error.reason_phrase(), "STUN request failed");
+            tracing::warn!(error = %error.reason_phrase(), "STUN request failed");
 
             return true;
         }
 
         if message.class() != MessageClass::SuccessResponse {
-            tracing::warn!(
-                "Cannot handle message with class {} for method {}",
-                message.class(),
-                message.method()
-            );
+            tracing::warn!("Can only handle success messages from here");
             return true;
         }
 
@@ -244,17 +271,17 @@ impl Allocation {
                 update_candidate(
                     maybe_srflx_candidate,
                     &mut self.last_srflx_candidate,
-                    &mut self.new_candidates,
+                    &mut self.events,
                 );
                 update_candidate(
                     maybe_ip4_relay_candidate,
                     &mut self.ip4_allocation,
-                    &mut self.new_candidates,
+                    &mut self.events,
                 );
                 update_candidate(
                     maybe_ip6_relay_candidate,
                     &mut self.ip6_allocation,
-                    &mut self.new_candidates,
+                    &mut self.events,
                 );
 
                 tracing::info!(
@@ -306,7 +333,7 @@ impl Allocation {
 
                 if !self.channel_bindings.set_confirmed(channel, now) {
                     tracing::warn!(%channel, "Unknown channel");
-                };
+                }
             }
             _ => {}
         }
@@ -385,8 +412,8 @@ impl Allocation {
         // TODO: Clean up unused channels
     }
 
-    pub fn poll_candidate(&mut self) -> Option<Candidate> {
-        self.new_candidates.pop_front()
+    pub fn poll_event(&mut self) -> Option<CandidateEvent> {
+        self.events.pop_front()
     }
 
     pub fn poll_transmit(&mut self) -> Option<Transmit<'static>> {
@@ -498,6 +525,14 @@ impl Allocation {
         })
     }
 
+    pub fn refresh(&mut self) {
+        if !self.has_allocation() {
+            return;
+        }
+
+        self.authenticate_and_queue(make_refresh_request());
+    }
+
     fn has_allocation(&self) -> bool {
         self.ip4_allocation.is_some() || self.ip6_allocation.is_some()
     }
@@ -583,16 +618,16 @@ impl Allocation {
 fn update_candidate(
     maybe_new: Option<Candidate>,
     maybe_current: &mut Option<Candidate>,
-    new_candidates: &mut VecDeque<Candidate>,
+    events: &mut VecDeque<CandidateEvent>,
 ) {
     match (maybe_new, &maybe_current) {
         (Some(new), Some(current)) if &new != current => {
             *maybe_current = Some(new.clone());
-            new_candidates.push_back(new);
+            events.push_back(CandidateEvent::New(new));
         }
         (Some(new), None) => {
             *maybe_current = Some(new.clone());
-            new_candidates.push_back(new);
+            events.push_back(CandidateEvent::New(new));
         }
         _ => {}
     }
@@ -803,7 +838,14 @@ impl ChannelBindings {
 
         channel.set_confirmed(now);
 
+        tracing::info!(channel = %c, peer = %channel.peer, "Bound channel");
+
         true
+    }
+
+    fn clear(&mut self) {
+        self.inner.clear();
+        self.next_channel = Self::FIRST_CHANNEL;
     }
 }
 
@@ -912,8 +954,11 @@ impl BufferedChannelBindings {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
-    use stun_codec::{rfc5389::errors::BadRequest, Message};
+    use std::{
+        iter,
+        net::{IpAddr, Ipv4Addr, Ipv6Addr},
+    };
+    use stun_codec::{rfc5389::errors::BadRequest, rfc5766::errors::AllocationMismatch, Message};
 
     const PEER1: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 10000);
 
@@ -1276,6 +1321,196 @@ mod tests {
         assert!(next_msg.is_none(), "to not emit buffered channel binding");
     }
 
+    #[test]
+    fn initial_allocate_has_username_realm_and_message_integrity_set() {
+        let mut allocation = Allocation::for_test(Instant::now());
+
+        let allocate = allocation.next_message().unwrap();
+
+        assert_eq!(
+            allocate.get_attribute::<Username>().map(|u| u.name()),
+            Some("foobar")
+        );
+        assert_eq!(
+            allocate.get_attribute::<Realm>().map(|u| u.text()),
+            Some("firezone")
+        );
+        assert!(allocate.get_attribute::<MessageIntegrity>().is_some());
+    }
+
+    #[test]
+    fn initial_allocate_is_missing_nonce() {
+        let mut allocation = Allocation::for_test(Instant::now());
+
+        let allocate = allocation.next_message().unwrap();
+
+        assert!(allocate.get_attribute::<Nonce>().is_none());
+    }
+
+    #[test]
+    fn upon_stale_nonce_reauthorizes_using_new_nonce() {
+        let mut allocation = Allocation::for_test(Instant::now());
+
+        let allocate = allocation.next_message().unwrap();
+        allocation.handle_test_input(
+            &stale_nonce_response(&allocate, Nonce::new("nonce2".to_owned()).unwrap()),
+            Instant::now(),
+        );
+
+        assert_eq!(
+            allocation
+                .next_message()
+                .unwrap()
+                .get_attribute::<Nonce>()
+                .map(|n| n.value()),
+            Some("nonce2")
+        );
+    }
+
+    #[test]
+    fn given_a_request_with_nonce_and_we_are_unauthorized_dont_retry() {
+        let mut allocation = Allocation::for_test(Instant::now());
+
+        // Attempt to authenticate without a nonce
+        let allocate = allocation.next_message().unwrap();
+        allocation.handle_test_input(&unauthorized_response(&allocate, "nonce1"), Instant::now());
+
+        let allocate = allocation.next_message().unwrap();
+        assert_eq!(
+            allocate.get_attribute::<Nonce>().map(|n| n.value()),
+            Some("nonce1"),
+            "expect next message to include nonce from error response"
+        );
+
+        allocation.handle_test_input(&unauthorized_response(&allocate, "nonce2"), Instant::now());
+
+        assert!(
+            allocation.next_message().is_none(),
+            "expect repeated unauthorized despite received nonce to stop retry"
+        );
+    }
+
+    #[test]
+    fn returns_new_candidates_on_successful_allocation() {
+        let mut allocation = Allocation::for_test(Instant::now());
+
+        let allocate = allocation.next_message().unwrap();
+        allocation.handle_test_input(
+            &allocate_response(&allocate, &[RELAY_ADDR_IP4]),
+            Instant::now(),
+        );
+
+        let next_event = allocation.poll_event();
+        assert_eq!(
+            next_event,
+            Some(CandidateEvent::New(
+                Candidate::server_reflexive(PEER1, PEER1, Protocol::Udp).unwrap()
+            ))
+        );
+        let next_event = allocation.poll_event();
+        assert_eq!(
+            next_event,
+            Some(CandidateEvent::New(
+                Candidate::relayed(RELAY_ADDR_IP4, Protocol::Udp).unwrap()
+            ))
+        );
+        let next_event = allocation.poll_event();
+        assert_eq!(next_event, None);
+    }
+
+    #[test]
+    fn calling_refresh_will_trigger_refresh() {
+        let mut allocation = Allocation::for_test(Instant::now());
+
+        let allocate = allocation.next_message().unwrap();
+        allocation.handle_test_input(
+            &allocate_response(&allocate, &[RELAY_ADDR_IP4]),
+            Instant::now(),
+        );
+
+        allocation.refresh();
+
+        let refresh = allocation.next_message().unwrap();
+        assert_eq!(refresh.method(), REFRESH);
+    }
+
+    #[test]
+    fn failed_refresh_will_invalidate_relay_candiates() {
+        let mut allocation = Allocation::for_test(Instant::now());
+
+        let allocate = allocation.next_message().unwrap();
+        allocation.handle_test_input(
+            &allocate_response(&allocate, &[RELAY_ADDR_IP4, RELAY_ADDR_IP6]),
+            Instant::now(),
+        );
+        let _ = iter::from_fn(|| allocation.poll_event()).collect::<Vec<_>>(); // Drain events.
+
+        allocation.refresh();
+
+        let refresh = allocation.next_message().unwrap();
+        allocation.handle_test_input(&failed_refresh(&refresh), Instant::now());
+
+        assert_eq!(
+            allocation.poll_event(),
+            Some(CandidateEvent::Invalid(
+                Candidate::relayed(RELAY_ADDR_IP4, Protocol::Udp).unwrap()
+            ))
+        );
+        assert_eq!(
+            allocation.poll_event(),
+            Some(CandidateEvent::Invalid(
+                Candidate::relayed(RELAY_ADDR_IP6, Protocol::Udp).unwrap()
+            ))
+        );
+        assert!(allocation.poll_event().is_none());
+        assert_eq!(
+            allocation.current_candidates().collect::<Vec<_>>(),
+            vec![Candidate::server_reflexive(PEER1, PEER1, Protocol::Udp).unwrap()],
+            "server-reflexive candidate should still be valid after refresh"
+        )
+    }
+
+    #[test]
+    fn failed_refresh_clears_all_channel_bindings() {
+        let mut allocation = Allocation::for_test(Instant::now());
+
+        let allocate = allocation.next_message().unwrap();
+        allocation.handle_test_input(
+            &allocate_response(&allocate, &[RELAY_ADDR_IP4, RELAY_ADDR_IP6]),
+            Instant::now(),
+        );
+
+        allocation.bind_channel(PEER2_IP4, Instant::now());
+        let channel_bind_msg = allocation.next_message().unwrap();
+        allocation.handle_test_input(
+            &encode(channel_bind_success(&channel_bind_msg)),
+            Instant::now(),
+        );
+
+        let msg = allocation.encode_to_vec(PEER2_IP4, b"foobar", Instant::now());
+        assert!(msg.is_some(), "expect to have a channel to peer");
+
+        allocation.refresh();
+
+        let refresh = allocation.next_message().unwrap();
+        allocation.handle_test_input(&failed_refresh(&refresh), Instant::now());
+
+        let msg = allocation.encode_to_vec(PEER2_IP4, b"foobar", Instant::now());
+        assert!(msg.is_none(), "expect to no longer have a channel to peer");
+    }
+
+    #[test]
+    fn refresh_does_nothing_if_we_dont_have_an_allocation_yet() {
+        let mut allocation = Allocation::for_test(Instant::now());
+
+        let _allocate = allocation.next_message().unwrap();
+
+        allocation.refresh();
+
+        let next_msg = allocation.next_message();
+        assert!(next_msg.is_none())
+    }
+
     fn ch(peer: SocketAddr, now: Instant) -> Channel {
         Channel {
             peer,
@@ -1299,6 +1534,43 @@ mod tests {
         }
 
         message.add_attribute(Lifetime::new(Duration::from_secs(600)).unwrap());
+
+        encode(message)
+    }
+
+    fn unauthorized_response(request: &Message<Attribute>, nonce: &str) -> Vec<u8> {
+        let mut message = Message::new(
+            MessageClass::ErrorResponse,
+            request.method(),
+            request.transaction_id(),
+        );
+        message.add_attribute(ErrorCode::from(Unauthorized));
+        message.add_attribute(Realm::new("firezone".to_owned()).unwrap());
+        message.add_attribute(Nonce::new(nonce.to_owned()).unwrap());
+
+        encode(message)
+    }
+
+    fn stale_nonce_response(request: &Message<Attribute>, nonce: Nonce) -> Vec<u8> {
+        let mut message = Message::new(
+            MessageClass::ErrorResponse,
+            request.method(),
+            request.transaction_id(),
+        );
+        message.add_attribute(ErrorCode::from(StaleNonce));
+        message.add_attribute(Realm::new("firezone".to_owned()).unwrap());
+        message.add_attribute(nonce);
+
+        encode(message)
+    }
+
+    fn failed_refresh(request: &Message<Attribute>) -> Vec<u8> {
+        let mut message = Message::new(
+            MessageClass::ErrorResponse,
+            REFRESH,
+            request.transaction_id(),
+        );
+        message.add_attribute(ErrorCode::from(AllocationMismatch));
 
         encode(message)
     }

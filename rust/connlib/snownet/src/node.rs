@@ -27,6 +27,7 @@ use crate::utils::earliest;
 use crate::{IpPacket, MutableIpPacket};
 use boringtun::noise::errors::WireGuardError;
 use std::borrow::Cow;
+use std::iter;
 use stun_codec::rfc5389::attributes::{Realm, Username};
 
 // Note: Taken from boringtun
@@ -58,8 +59,7 @@ pub struct Node<T, TId> {
     bindings: HashMap<SocketAddr, StunBinding>,
     allocations: HashMap<SocketAddr, Allocation>,
 
-    initial_connections: HashMap<TId, InitialConnection>,
-    negotiated_connections: HashMap<TId, Connection>,
+    connections: Connections<TId>,
     pending_events: VecDeque<Event<TId>>,
 
     last_now: Instant,
@@ -99,27 +99,18 @@ where
             host_candidates: HashSet::default(),
             buffered_transmits: VecDeque::default(),
             next_rate_limiter_reset: None,
-            negotiated_connections: HashMap::default(),
             pending_events: VecDeque::default(),
-            initial_connections: HashMap::default(),
             buffer: Box::new([0u8; MAX_UDP_SIZE]),
             bindings: HashMap::default(),
             allocations: HashMap::default(),
             last_now: now,
+            connections: Default::default(),
         }
     }
 
     /// Lazily retrieve stats of all connections.
     pub fn stats(&self) -> impl Iterator<Item = (TId, ConnectionInfo)> + '_ {
-        self.negotiated_connections.iter().map(|(id, c)| {
-            (
-                *id,
-                ConnectionInfo {
-                    last_seen: c.last_seen,
-                    generated_at: self.last_now,
-                },
-            )
-        })
+        self.connections.stats(self.last_now)
     }
 
     /// Add an address as a `host` candidate.
@@ -160,12 +151,12 @@ where
             }
         };
 
-        if let Some(agent) = self.agent_mut(id) {
+        if let Some(agent) = self.connections.agent_mut(id) {
             agent.add_remote_candidate(candidate.clone());
         }
 
         // Each remote candidate might be source of traffic: Bind a channel for each.
-        if let Some(conn) = self.negotiated_connections.get_mut(&id) {
+        if let Some(conn) = self.connections.get_established_mut(&id) {
             for relay in &conn.turn_servers {
                 let Some(allocation) = self.allocations.get_mut(relay) else {
                     continue;
@@ -196,14 +187,6 @@ where
         // First, check if a `StunBinding` wants the packet
         if let Some(binding) = self.bindings.get_mut(&from) {
             if binding.handle_input(from, local, packet, now) {
-                // If it handled the packet, drain its events to ensure we update the candidates of all connections.
-                drain_and_add_candidates(
-                    from,
-                    || binding.poll_candidate(),
-                    &mut self.initial_connections,
-                    &mut self.negotiated_connections,
-                    &mut self.pending_events,
-                );
                 return Ok(None);
             }
         }
@@ -211,14 +194,6 @@ where
         // Next, check if an `Allocation` wants the packet
         if let Some(allocation) = self.allocations.get_mut(&from) {
             if allocation.handle_input(from, local, packet, now) {
-                // If it handled the packet, drain its events to ensure we update the candidates of all connections.
-                drain_and_add_candidates(
-                    from,
-                    || allocation.poll_candidate(),
-                    &mut self.initial_connections,
-                    &mut self.negotiated_connections,
-                    &mut self.pending_events,
-                );
                 return Ok(None);
             };
         }
@@ -236,8 +211,7 @@ where
 
         // Next: If we can parse the message as a STUN message, cycle through all agents to check which one it is for.
         if let Ok(message) = StunMessage::parse(packet) {
-            for agent in self.agents_mut() {
-                // TODO: `accepts_message` cannot demultiplexing multiple connections until https://github.com/algesten/str0m/pull/418 is merged.
+            for (_, agent) in self.connections.agents_mut() {
                 if agent.accepts_message(&message) {
                     agent.handle_packet(
                         now,
@@ -253,7 +227,7 @@ where
             }
         }
 
-        for (id, conn) in self.negotiated_connections.iter_mut() {
+        for (id, conn) in self.connections.iter_established_mut() {
             if !conn.accepts(from) {
                 continue;
             }
@@ -273,7 +247,7 @@ where
                         MutableIpv4Packet::new(packet).expect("boringtun verifies validity");
                     debug_assert_eq!(ipv4_packet.get_source(), ip);
 
-                    Ok(Some((*id, ipv4_packet.into())))
+                    Ok(Some((id, ipv4_packet.into())))
                 }
                 TunnResult::WriteToTunnelV6(packet, ip) => {
                     conn.set_remote_from_wg_activity(local, from, relay_socket);
@@ -282,7 +256,7 @@ where
                         MutableIpv6Packet::new(packet).expect("boringtun verifies validity");
                     debug_assert_eq!(ipv6_packet.get_source(), ip);
 
-                    Ok(Some((*id, ipv6_packet.into())))
+                    Ok(Some((id, ipv6_packet.into())))
                 }
 
                 // During normal operation, i.e. when the tunnel is active, decapsulating a packet straight yields the decrypted packet.
@@ -328,8 +302,8 @@ where
         packet: IpPacket<'_>,
     ) -> Result<Option<Transmit<'s>>, Error> {
         let conn = self
-            .negotiated_connections
-            .get_mut(&connection)
+            .connections
+            .get_established_mut(&connection)
             .ok_or(Error::NotConnected)?;
 
         let (header, payload) = self.buffer.as_mut().split_at_mut(4);
@@ -382,16 +356,42 @@ where
 
     /// Returns a pending [`Event`] from the pool.
     pub fn poll_event(&mut self) -> Option<Event<TId>> {
+        let binding_events = self.bindings.iter_mut().flat_map(|(server, binding)| {
+            iter::from_fn(|| binding.poll_event().map(|e| (*server, e)))
+        });
+        let allocation_events = self
+            .allocations
+            .iter_mut()
+            .flat_map(|(server, allocation)| {
+                iter::from_fn(|| allocation.poll_event().map(|e| (*server, e)))
+            });
+
+        for (server, event) in binding_events.chain(allocation_events) {
+            match event {
+                CandidateEvent::New(candidate) => {
+                    add_candidates(
+                        server,
+                        candidate,
+                        &mut self.connections,
+                        &mut self.pending_events,
+                    );
+                }
+                CandidateEvent::Invalid(_) => {
+                    // TODO: Handle expired candidates. Invalidate on ICE agent? ICE restart?
+                }
+            }
+        }
+
         let mut failed_connections = vec![];
 
-        for (id, conn) in self.negotiated_connections.iter_mut() {
+        for (id, conn) in self.connections.iter_established_mut() {
             while let Some(event) = conn.agent.poll_event() {
                 match event {
                     IceAgentEvent::DiscoveredRecv { source, .. } => {
                         conn.possible_sockets.insert(source);
                     }
                     IceAgentEvent::IceConnectionStateChange(IceConnectionState::Disconnected) => {
-                        failed_connections.push(*id);
+                        failed_connections.push(id);
                     }
                     IceAgentEvent::NominatedSend {
                         destination,
@@ -439,7 +439,7 @@ where
                         if conn.peer_socket != Some(remote_socket) {
                             tracing::debug!(old = ?conn.peer_socket, new = ?remote_socket, "Updating remote socket");
                             conn.peer_socket = Some(remote_socket);
-                            return Some(Event::ConnectionEstablished(*id));
+                            return Some(Event::ConnectionEstablished(id));
                         }
                     }
                     _ => {}
@@ -448,7 +448,7 @@ where
         }
 
         for conn in failed_connections {
-            self.negotiated_connections.remove(&conn);
+            self.connections.established.remove(&conn);
             self.pending_events.push_back(Event::ConnectionFailed(conn));
         }
 
@@ -462,7 +462,7 @@ where
     pub fn poll_timeout(&mut self) -> Option<Instant> {
         let mut connection_timeout = None;
 
-        for c in self.negotiated_connections.values_mut() {
+        for (_, c) in self.connections.iter_established_mut() {
             connection_timeout = earliest(connection_timeout, c.poll_timeout());
         }
         for b in self.bindings.values_mut() {
@@ -483,13 +483,13 @@ where
 
         let mut expired_connections = vec![];
 
-        for (id, c) in self.negotiated_connections.iter_mut() {
+        for (id, c) in self.connections.iter_established_mut() {
             match c.handle_timeout(now, &mut self.allocations) {
                 Ok(Some(transmit)) => {
                     self.buffered_transmits.push_back(transmit);
                 }
                 Err(WireGuardError::ConnectionExpired) => {
-                    expired_connections.push(*id);
+                    expired_connections.push(id);
                 }
                 Err(e) => {
                     tracing::warn!(%id, ?e);
@@ -499,7 +499,7 @@ where
         }
 
         for conn in expired_connections {
-            self.negotiated_connections.remove(&conn);
+            self.connections.established.remove(&conn);
             self.pending_events.push_back(Event::ConnectionFailed(conn))
         }
 
@@ -519,7 +519,8 @@ where
         }
 
         let stale_connections = self
-            .initial_connections
+            .connections
+            .initial
             .iter()
             .filter_map(|(id, conn)| {
                 (now.duration_since(conn.created_at) >= Duration::from_secs(10)).then_some(*id)
@@ -527,14 +528,14 @@ where
             .collect::<Vec<_>>();
 
         for conn in stale_connections {
-            self.initial_connections.remove(&conn);
+            self.connections.initial.remove(&conn);
             self.pending_events.push_back(Event::ConnectionFailed(conn));
         }
     }
 
     /// Returns buffered data that needs to be sent on the socket.
     pub fn poll_transmit(&mut self) -> Option<Transmit<'static>> {
-        for conn in self.negotiated_connections.values_mut() {
+        for (_, conn) in self.connections.iter_established_mut() {
             if let Some(transmit) = conn.poll_transmit(&mut self.allocations, self.last_now) {
                 return Some(transmit);
             }
@@ -597,17 +598,7 @@ where
             return Ok(());
         }
 
-        // TODO: This is duplicated with `agents_mut` but the borrow-checker doesn't allow us to de-duplicate :(
-        let initial_agents = self
-            .initial_connections
-            .iter_mut()
-            .map(|(id, c)| (*id, &mut c.agent));
-        let negotiated_agents = self
-            .negotiated_connections
-            .iter_mut()
-            .map(|(id, c)| (*id, &mut c.agent));
-
-        for (conn, agent) in initial_agents.chain(negotiated_agents) {
+        for (conn, agent) in self.connections.agents_mut() {
             add_local_candidate(
                 conn,
                 agent,
@@ -615,6 +606,7 @@ where
                 &mut self.pending_events,
             );
         }
+
         Ok(())
     }
 }
@@ -633,11 +625,11 @@ where
         allowed_stun_servers: HashSet<SocketAddr>,
         allowed_turn_servers: HashSet<(SocketAddr, String, String, String)>,
     ) -> Offer {
-        if self.initial_connections.remove(&id).is_some() {
+        if self.connections.initial.remove(&id).is_some() {
             tracing::info!(%id, "Replacing existing initial connection");
         };
 
-        if self.negotiated_connections.remove(&id).is_some() {
+        if self.connections.established.remove(&id).is_some() {
             tracing::info!(%id, "Replacing existing established connection");
         };
 
@@ -671,7 +663,7 @@ where
             },
         };
 
-        let existing = self.initial_connections.insert(
+        let existing = self.connections.initial.insert(
             id,
             InitialConnection {
                 agent,
@@ -689,7 +681,7 @@ where
 
     /// Accept an [`Answer`] from the remote for a connection previously created via [`Node::new_connection`].
     pub fn accept_answer(&mut self, id: TId, remote: PublicKey, answer: Answer) {
-        let Some(initial) = self.initial_connections.remove(&id) else {
+        let Some(initial) = self.connections.initial.remove(&id) else {
             debug_assert!(false, "No initial connection to accept answer for");
             return;
         };
@@ -708,7 +700,7 @@ where
             initial.turn_servers,
         );
 
-        let existing = self.negotiated_connections.insert(id, connection);
+        let existing = self.connections.established.insert(id, connection);
 
         debug_assert!(existing.is_none());
     }
@@ -731,11 +723,11 @@ where
         allowed_turn_servers: HashSet<(SocketAddr, String, String, String)>,
     ) -> Answer {
         debug_assert!(
-            !self.initial_connections.contains_key(&id),
+            !self.connections.initial.contains_key(&id),
             "server to not use `initial_connections`"
         );
 
-        if self.negotiated_connections.remove(&id).is_some() {
+        if self.connections.established.remove(&id).is_some() {
             tracing::info!(%id, "Replacing existing established connection");
         };
 
@@ -775,7 +767,7 @@ where
             allowed_stun_servers,
             allowed_turn_servers,
         );
-        let existing = self.negotiated_connections.insert(id, connection);
+        let existing = self.connections.established.insert(id, connection);
 
         debug_assert!(existing.is_none());
 
@@ -787,30 +779,10 @@ impl<T, TId> Node<T, TId>
 where
     TId: Eq + Hash + Copy + fmt::Display,
 {
-    fn agent_mut(&mut self, id: TId) -> Option<&mut IceAgent> {
-        let maybe_initial_connection = self.initial_connections.get_mut(&id).map(|i| &mut i.agent);
-        let maybe_established_connection = self
-            .negotiated_connections
-            .get_mut(&id)
-            .map(|c| &mut c.agent);
-
-        maybe_initial_connection.or(maybe_established_connection)
-    }
-
-    fn agents_mut(&mut self) -> impl Iterator<Item = &mut IceAgent> {
-        let initial_agents = self.initial_connections.values_mut().map(|c| &mut c.agent);
-        let negotiated_agents = self
-            .negotiated_connections
-            .values_mut()
-            .map(|c| &mut c.agent);
-
-        initial_agents.chain(negotiated_agents)
-    }
-
     fn upsert_stun_servers(&mut self, servers: &HashSet<SocketAddr>) {
         for server in servers {
             if !self.bindings.contains_key(server) {
-                tracing::debug!(address = %server, "Adding new STUN server");
+                tracing::info!(address = %server, "Adding new STUN server");
 
                 self.bindings
                     .insert(*server, StunBinding::new(*server, self.last_now));
@@ -820,6 +792,14 @@ where
 
     fn upsert_turn_servers(&mut self, servers: &HashSet<(SocketAddr, String, String, String)>) {
         for (server, username, password, realm) in servers {
+            if let Some(existing) = self.allocations.get_mut(server) {
+                if existing.uses_credentials(username, password, realm) {
+                    existing.refresh();
+
+                    continue;
+                }
+            }
+
             let Ok(username) = Username::new(username.to_owned()) else {
                 tracing::debug!(%username, "Invalid TURN username");
                 continue;
@@ -829,13 +809,15 @@ where
                 continue;
             };
 
-            if !self.allocations.contains_key(server) {
-                tracing::debug!(address = %server, "Adding new TURN server");
+            let existing = self.allocations.insert(
+                *server,
+                Allocation::new(*server, username, password.clone(), realm, self.last_now),
+            );
 
-                self.allocations.insert(
-                    *server,
-                    Allocation::new(*server, username, password.clone(), realm, self.last_now),
-                );
+            if existing.is_some() {
+                tracing::info!(address = %server, "Replaced existing allocation because credentials to TURN server changed");
+            } else {
+                tracing::info!(address = %server, "Added new TURN server");
             }
         }
     }
@@ -886,6 +868,62 @@ where
     }
 }
 
+struct Connections<TId> {
+    initial: HashMap<TId, InitialConnection>,
+    established: HashMap<TId, Connection>,
+}
+
+impl<TId> Default for Connections<TId> {
+    fn default() -> Self {
+        Self {
+            initial: Default::default(),
+            established: Default::default(),
+        }
+    }
+}
+
+impl<TId> Connections<TId>
+where
+    TId: Eq + Hash + Copy,
+{
+    fn stats(&self, now: Instant) -> impl Iterator<Item = (TId, ConnectionInfo)> + '_ {
+        self.established.iter().map(move |(id, c)| {
+            (
+                *id,
+                ConnectionInfo {
+                    last_seen: c.last_seen,
+                    generated_at: now,
+                },
+            )
+        })
+    }
+
+    fn agent_mut(&mut self, id: TId) -> Option<&mut IceAgent> {
+        let maybe_initial_connection = self.initial.get_mut(&id).map(|i| &mut i.agent);
+        let maybe_established_connection = self.established.get_mut(&id).map(|c| &mut c.agent);
+
+        maybe_initial_connection.or(maybe_established_connection)
+    }
+
+    fn agents_mut(&mut self) -> impl Iterator<Item = (TId, &mut IceAgent)> {
+        let initial_agents = self.initial.iter_mut().map(|(id, c)| (*id, &mut c.agent));
+        let negotiated_agents = self
+            .established
+            .iter_mut()
+            .map(|(id, c)| (*id, &mut c.agent));
+
+        initial_agents.chain(negotiated_agents)
+    }
+
+    fn get_established_mut(&mut self, id: &TId) -> Option<&mut Connection> {
+        self.established.get_mut(id)
+    }
+
+    fn iter_established_mut(&mut self) -> impl Iterator<Item = (TId, &mut Connection)> {
+        self.established.iter_mut().map(|(id, conn)| (*id, conn))
+    }
+}
+
 /// Wraps the message as a channel data message via the relay, iff:
 ///
 /// - `relay` is in fact a relay
@@ -918,59 +956,44 @@ enum EncodeError {
     NoChannel,
 }
 
-fn drain_and_add_candidates<TId>(
+fn add_candidates<TId>(
     server: SocketAddr,
-    mut next_candidate: impl FnMut() -> Option<Candidate>,
-    initial_connections: &mut HashMap<TId, InitialConnection>,
-    negotiated_connections: &mut HashMap<TId, Connection>,
+    candidate: Candidate,
+    connections: &mut Connections<TId>,
     pending_events: &mut VecDeque<Event<TId>>,
 ) where
     TId: Copy + fmt::Display,
 {
-    // TODO: Reduce duplication between initial and negotiated connections
+    let initial_connections = connections
+        .initial
+        .iter_mut()
+        .map(|(id, c)| (*id, &c.stun_servers, &c.turn_servers, &mut c.agent));
+    let established_connections = connections
+        .established
+        .iter_mut()
+        .map(|(id, c)| (*id, &c.stun_servers, &c.turn_servers, &mut c.agent));
 
-    while let Some(candidate) = next_candidate() {
-        for (id, c) in initial_connections.iter_mut() {
-            match candidate.kind() {
-                CandidateKind::ServerReflexive => {
-                    if (!c.stun_servers.contains(&server)) && (!c.turn_servers.contains(&server)) {
-                        tracing::debug!(%id, %server, allowed_stun = ?c.stun_servers, allowed_turn = ?c.turn_servers, "Not adding srflx candidate");
-                        continue;
-                    }
+    for (id, allowed_stun, allowed_turn, agent) in
+        initial_connections.chain(established_connections)
+    {
+        match candidate.kind() {
+            CandidateKind::ServerReflexive => {
+                if (!allowed_stun.contains(&server)) && (!allowed_turn.contains(&server)) {
+                    tracing::debug!(%id, %server, ?allowed_stun, ?allowed_turn, "Not adding srflx candidate");
+                    continue;
                 }
-                CandidateKind::Relayed => {
-                    if !c.turn_servers.contains(&server) {
-                        tracing::debug!(%id, %server, allowed_turn = ?c.turn_servers, "Not adding relay candidate");
-
-                        continue;
-                    }
-                }
-                CandidateKind::PeerReflexive | CandidateKind::Host => continue,
             }
+            CandidateKind::Relayed => {
+                if !allowed_turn.contains(&server) {
+                    tracing::debug!(%id, %server, ?allowed_turn, "Not adding relay candidate");
 
-            add_local_candidate(*id, &mut c.agent, candidate.clone(), pending_events);
+                    continue;
+                }
+            }
+            CandidateKind::PeerReflexive | CandidateKind::Host => continue,
         }
 
-        for (id, c) in negotiated_connections.iter_mut() {
-            match candidate.kind() {
-                CandidateKind::ServerReflexive => {
-                    if (!c.stun_servers.contains(&server)) && (!c.turn_servers.contains(&server)) {
-                        tracing::debug!(%id, %server, allowed_stun = ?c.stun_servers, allowed_turn = ?c.turn_servers, "Not adding srflx candidate");
-                        continue;
-                    }
-                }
-                CandidateKind::Relayed => {
-                    if !c.turn_servers.contains(&server) {
-                        tracing::debug!(%id, %server, allowed_turn = ?c.turn_servers, "Not adding relay candidate");
-
-                        continue;
-                    }
-                }
-                CandidateKind::PeerReflexive | CandidateKind::Host => continue,
-            }
-
-            add_local_candidate(*id, &mut c.agent, candidate.clone(), pending_events);
-        }
+        add_local_candidate(id, agent, candidate.clone(), pending_events);
     }
 }
 
@@ -1047,6 +1070,12 @@ impl<'a> Transmit<'a> {
             payload: Cow::Owned(self.payload.into_owned()),
         }
     }
+}
+
+#[derive(Debug, PartialEq)]
+pub(crate) enum CandidateEvent {
+    New(Candidate),
+    Invalid(Candidate),
 }
 
 struct InitialConnection {

@@ -298,7 +298,8 @@ async fn smoke_test(ctlr_tx: CtlrTx) -> Result<()> {
     let quit_time = tokio::time::Instant::now() + Duration::from_secs(delay);
 
     // Test log exporting
-    let path = connlib_shared::windows::app_local_data_dir()?
+    let path = connlib_shared::windows::app_local_data_dir()
+        .context("`app_local_data_dir` failed")?
         .join("data")
         .join("smoke_test_log_export.zip");
     let stem = "connlib-smoke-test".into();
@@ -315,23 +316,30 @@ async fn smoke_test(ctlr_tx: CtlrTx) -> Result<()> {
             path: path.clone(),
             stem,
         })
-        .await?;
+        .await
+        .context("Failed to send ExportLogs request")?;
 
     // Give the app some time to export the zip and reach steady state
     tokio::time::sleep_until(quit_time).await;
 
     // Check results of tests
-    let zip_len = tokio::fs::metadata(&path).await?.len();
+    let zip_len = tokio::fs::metadata(&path)
+        .await
+        .context("Failed to get zip file metadata")?
+        .len();
     if zip_len == 0 {
         bail!("Exported log zip has 0 bytes");
     }
-    tokio::fs::remove_file(&path).await?;
+    tokio::fs::remove_file(&path)
+        .await
+        .context("Failed to remove zip file")?;
     tracing::info!(?path, ?zip_len, "Exported log zip looks okay");
 
     tracing::info!("Quitting on purpose because of `smoke-test` subcommand");
     ctlr_tx
         .send(ControllerRequest::SystemTrayMenu(TrayMenuEvent::Quit))
-        .await?;
+        .await
+        .context("Failed to send Quit request")?;
 
     Ok::<_, anyhow::Error>(())
 }
@@ -578,7 +586,9 @@ impl Controller {
                     "To access resources, sign in again.",
                 )?;
             }
-            Req::ExportLogs { path, stem } => logging::export_logs_to(path, stem).await?,
+            Req::ExportLogs { path, stem } => logging::export_logs_to(path, stem)
+                .await
+                .context("Failed to export logs to zip")?,
             Req::Fail(_) => bail!("Impossible error: `Fail` should be handled before this"),
             Req::GetAdvancedSettings(tx) => {
                 tx.send(self.advanced_settings.clone()).ok();
@@ -659,7 +669,7 @@ impl Controller {
                     system_tray_menu::signed_in(&auth_session.actor_name, &resources)
                 } else {
                     // Signed in, raising tunnel
-                    system_tray_menu::signing_in()
+                    system_tray_menu::signing_in("Signing In...")
                 }
             } else {
                 tracing::error!("We have an auth session but no connlib session");
@@ -667,7 +677,7 @@ impl Controller {
             }
         } else if self.auth.ongoing_request().is_ok() {
             // Signing in, waiting on deep link callback
-            system_tray_menu::signing_in()
+            system_tray_menu::signing_in("Waiting for browser...")
         } else {
             system_tray_menu::signed_out()
         }

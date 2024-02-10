@@ -23,8 +23,8 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
   @impl true
   def capabilities do
     [
-      provisioners: [:just_in_time, :manual],
-      default_provisioner: :just_in_time,
+      provisioners: [:manual],
+      default_provisioner: :manual,
       parent_adapter: :openid_connect
     ]
   end
@@ -123,9 +123,10 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
            fetch_state(provider, token_params, identifier_claim) do
       Identity.Query.not_disabled()
       |> Identity.Query.by_provider_id(provider.id)
-      |> Identity.Query.by_provider_claims(
+      |> maybe_by_provider_claims(
+        provider,
         provider_identifier,
-        identity_state["claims"]["email"] || identity_state["userinfo"]["email"]
+        identity_state
       )
       |> Repo.fetch_and_update(
         with: fn identity ->
@@ -143,6 +144,23 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
       {:error, :expired_token} -> {:error, :expired}
       {:error, :invalid_token} -> {:error, :invalid}
       {:error, :internal_error} -> {:error, :internal_error}
+    end
+  end
+
+  defp maybe_by_provider_claims(
+         queryable,
+         provider,
+         provider_identifier,
+         identity_state
+       ) do
+    if provider.provisioner == :manual do
+      Identity.Query.by_provider_claims(
+        queryable,
+        provider_identifier,
+        identity_state["claims"]["email"] || identity_state["userinfo"]["email"]
+      )
+    else
+      Identity.Query.by_provider_identifier(queryable, provider_identifier)
     end
   end
 
