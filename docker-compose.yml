@@ -193,7 +193,7 @@ services:
     healthcheck:
       test: ["CMD-SHELL", "ps -C gunicorn"]
     networks:
-      resources:
+      dns_resources:
         ipv4_address: 172.21.0.100
 
   iperf3:
