@@ -6,12 +6,13 @@
 use crate::client::{
     self, about, deep_link, logging, network_changes,
     settings::{self, AdvancedSettings},
+    Failure,
 };
 use anyhow::{anyhow, bail, Context, Result};
 use arc_swap::ArcSwap;
 use connlib_client_shared::{file_logger, ResourceDescription};
-use connlib_shared::{messages::ResourceId, windows::BUNDLE_ID};
-use secrecy::{ExposeSecret, SecretString};
+use connlib_shared::{control::SecureUrl, messages::ResourceId, windows::BUNDLE_ID};
+use secrecy::{ExposeSecret, Secret, SecretString};
 use std::{net::IpAddr, path::PathBuf, str::FromStr, sync::Arc, time::Duration};
 use system_tray_menu::Event as TrayMenuEvent;
 use tauri::{Manager, SystemTray, SystemTrayEvent};
@@ -58,8 +59,6 @@ pub(crate) enum Error {
     ClickableNotification(String),
     #[error("Deep-link module error: {0}")]
     DeepLink(#[from] deep_link::Error),
-    #[error("Fake error for testing")]
-    Fake,
     #[error("Can't show log filter error dialog: {0}")]
     LogFilterErrorDialog(native_dialog::Error),
     #[error("Logging module error: {0}")]
@@ -127,18 +126,6 @@ pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
     let (ctlr_tx, ctlr_rx) = mpsc::channel(5);
     let notify_controller = Arc::new(Notify::new());
 
-    if cli.crash_on_purpose {
-        tokio::spawn(async move {
-            let delay = 10;
-            tracing::info!("Will crash on purpose in {delay} seconds to test crash handling.");
-            tokio::time::sleep(Duration::from_secs(delay)).await;
-            tracing::info!("Crashing on purpose because of `--crash-on-purpose` flag");
-
-            // SAFETY: Crashing is unsafe
-            unsafe { sadness_generator::raise_segfault() }
-        });
-    }
-
     // Check for updates
     let ctlr_tx_clone = ctlr_tx.clone();
     let always_show_update_notification = cli.always_show_update_notification;
@@ -175,6 +162,20 @@ pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
     };
 
     let tray = SystemTray::new().with_menu(system_tray_menu::signed_out());
+
+    if let Some(failure) = cli.fail_on_purpose() {
+        let ctlr_tx = ctlr_tx.clone();
+        tokio::spawn(async move {
+            let delay = 5;
+            tracing::info!(
+                "Will crash / error / panic on purpose in {delay} seconds to test error handling."
+            );
+            tokio::time::sleep(Duration::from_secs(delay)).await;
+            tracing::info!("Crashing / erroring / panicking on purpose");
+            ctlr_tx.send(ControllerRequest::Fail(failure)).await?;
+            Ok::<_, anyhow::Error>(())
+        });
+    }
 
     let app = tauri::Builder::default()
         .manage(managed)
@@ -222,15 +223,19 @@ pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
 
             let app_handle = app.handle();
             let _ctlr_task = tokio::spawn(async move {
-                let result = run_controller(
-                    app_handle.clone(),
-                    ctlr_tx,
-                    ctlr_rx,
-                    logging_handles,
-                    advanced_settings,
-                    notify_controller,
-                )
-                .await;
+                let app_handle_2 = app_handle.clone();
+                // Spawn two nested Tasks so the outer can catch panics from the inner
+                let task = tokio::spawn(async move {
+                    run_controller(
+                        app_handle_2,
+                        ctlr_tx,
+                        ctlr_rx,
+                        logging_handles,
+                        advanced_settings,
+                        notify_controller,
+                    )
+                    .await
+                });
 
                 // See <https://github.com/tauri-apps/tauri/issues/8631>
                 // This should be the ONLY place we call `app.exit` or `app_handle.exit`,
@@ -239,12 +244,19 @@ pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
                 // This seems to be a platform limitation that Tauri is unable to hide
                 // from us. It was the source of much consternation at time of writing.
 
-                if let Err(e) = result {
-                    tracing::error!("run_controller returned an error: {e:#?}");
-                    app_handle.exit(1);
-                } else {
-                    tracing::debug!("GUI controller task exited cleanly");
-                    app_handle.exit(0);
+                match task.await {
+                    Err(error) => {
+                        tracing::error!(?error, "run_controller panicked");
+                        app_handle.exit(1);
+                    }
+                    Ok(Err(error)) => {
+                        tracing::error!(?error, "run_controller returned an error");
+                        app_handle.exit(1);
+                    }
+                    Ok(Ok(_)) => {
+                        tracing::info!("GUI controller task exited cleanly. Exiting process");
+                        app_handle.exit(0);
+                    }
                 }
             });
 
@@ -264,10 +276,6 @@ pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
             }
         }
     };
-
-    if cli.error_on_purpose {
-        return Err(Error::Fake);
-    }
 
     app.run(|_app_handle, event| {
         if let tauri::RunEvent::ExitRequested { api, .. } = event {
@@ -290,7 +298,8 @@ async fn smoke_test(ctlr_tx: CtlrTx) -> Result<()> {
     let quit_time = tokio::time::Instant::now() + Duration::from_secs(delay);
 
     // Test log exporting
-    let path = connlib_shared::windows::app_local_data_dir()?
+    let path = connlib_shared::windows::app_local_data_dir()
+        .context("`app_local_data_dir` failed")?
         .join("data")
         .join("smoke_test_log_export.zip");
     let stem = "connlib-smoke-test".into();
@@ -307,23 +316,30 @@ async fn smoke_test(ctlr_tx: CtlrTx) -> Result<()> {
             path: path.clone(),
             stem,
         })
-        .await?;
+        .await
+        .context("Failed to send ExportLogs request")?;
 
     // Give the app some time to export the zip and reach steady state
     tokio::time::sleep_until(quit_time).await;
 
     // Check results of tests
-    let zip_len = tokio::fs::metadata(&path).await?.len();
+    let zip_len = tokio::fs::metadata(&path)
+        .await
+        .context("Failed to get zip file metadata")?
+        .len();
     if zip_len == 0 {
         bail!("Exported log zip has 0 bytes");
     }
-    tokio::fs::remove_file(&path).await?;
+    tokio::fs::remove_file(&path)
+        .await
+        .context("Failed to remove zip file")?;
     tracing::info!(?path, ?zip_len, "Exported log zip looks okay");
 
     tracing::info!("Quitting on purpose because of `smoke-test` subcommand");
     ctlr_tx
         .send(ControllerRequest::SystemTrayMenu(TrayMenuEvent::Quit))
-        .await?;
+        .await
+        .context("Failed to send Quit request")?;
 
     Ok::<_, anyhow::Error>(())
 }
@@ -387,8 +403,9 @@ pub(crate) enum ControllerRequest {
         path: PathBuf,
         stem: PathBuf,
     },
+    Fail(Failure),
     GetAdvancedSettings(oneshot::Sender<AdvancedSettings>),
-    SchemeRequest(url::Url),
+    SchemeRequest(Secret<SecureUrl>),
     SystemTrayMenu(TrayMenuEvent),
     TunnelReady,
     UpdateAvailable(client::updates::Release),
@@ -437,7 +454,7 @@ impl connlib_client_shared::Callbacks for CallbackHandler {
     }
 
     fn on_update_resources(&self, resources: Vec<ResourceDescription>) -> Result<(), Self::Error> {
-        tracing::info!("on_update_resources");
+        tracing::debug!("on_update_resources");
         self.resources.store(resources.into());
         self.notify_controller.notify_one();
         Ok(())
@@ -481,41 +498,6 @@ struct Session {
 }
 
 impl Controller {
-    async fn new(
-        app: tauri::AppHandle,
-        ctlr_tx: CtlrTx,
-        logging_handles: client::logging::Handles,
-        advanced_settings: AdvancedSettings,
-        notify_controller: Arc<Notify>,
-    ) -> Result<Self> {
-        let device_id = client::device_id::device_id(&app.config().tauri.bundle.identifier).await?;
-
-        let mut this = Self {
-            advanced_settings,
-            app,
-            // Uses `std::fs`
-            auth: client::auth::Auth::new()?,
-            ctlr_tx,
-            session: None,
-            device_id,
-            logging_handles,
-            notify_controller,
-            tunnel_ready: false,
-        };
-
-        // Uses `std::fs`
-        if let Some(token) = this.auth.token()? {
-            // Connect immediately if we reloaded the token
-            if let Err(e) = this.start_session(token) {
-                tracing::error!("couldn't restart session on app start: {e:#?}");
-            }
-        } else {
-            tracing::info!("No token / actor_name on disk, starting in signed-out state");
-        }
-
-        Ok(this)
-    }
-
     // TODO: Figure out how re-starting sessions automatically will work
     /// Pre-req: the auth module must be signed in
     fn start_session(&mut self, token: SecretString) -> Result<()> {
@@ -572,14 +554,104 @@ impl Controller {
         Ok(())
     }
 
-    async fn handle_deep_link(&mut self, url: &url::Url) -> Result<()> {
+    async fn handle_deep_link(&mut self, url: &Secret<SecureUrl>) -> Result<()> {
         let auth_response =
             client::deep_link::parse_auth_callback(url).context("Couldn't parse scheme request")?;
 
+        tracing::info!("Got deep link");
         // Uses `std::fs`
         let token = self.auth.handle_response(auth_response)?;
         self.start_session(token)
             .context("Couldn't start connlib session")?;
+        Ok(())
+    }
+
+    async fn handle_request(&mut self, req: ControllerRequest) -> Result<()> {
+        match req {
+            Req::Disconnected => {
+                tracing::debug!("connlib disconnected, tearing down Session");
+                self.tunnel_ready = false;
+                if let Some(mut session) = self.session.take() {
+                    tracing::info!("disconnecting connlib");
+                    // This is probably redundant since connlib shuts itself down if it's disconnected.
+                    session.connlib.disconnect(None);
+                }
+                self.refresh_system_tray_menu()?;
+            }
+            Req::DisconnectedTokenExpired => {
+                tracing::info!("Token expired");
+                self.sign_out()?;
+                show_notification(
+                    "Firezone disconnected",
+                    "To access resources, sign in again.",
+                )?;
+            }
+            Req::ExportLogs { path, stem } => logging::export_logs_to(path, stem)
+                .await
+                .context("Failed to export logs to zip")?,
+            Req::Fail(_) => bail!("Impossible error: `Fail` should be handled before this"),
+            Req::GetAdvancedSettings(tx) => {
+                tx.send(self.advanced_settings.clone()).ok();
+            }
+            Req::SchemeRequest(url) => self
+                .handle_deep_link(&url)
+                .await
+                .context("Couldn't handle deep link")?,
+            Req::SystemTrayMenu(TrayMenuEvent::ToggleWindow(window)) => {
+                self.toggle_window(window)?
+            }
+            Req::SystemTrayMenu(TrayMenuEvent::CancelSignIn | TrayMenuEvent::SignOut) => {
+                tracing::info!("User signed out or canceled sign-in");
+                self.sign_out()?;
+            }
+            Req::SystemTrayMenu(TrayMenuEvent::Resource { id }) => self
+                .copy_resource(&id)
+                .context("Couldn't copy resource to clipboard")?,
+            Req::SystemTrayMenu(TrayMenuEvent::SignIn) => {
+                if let Some(req) = self.auth.start_sign_in()? {
+                    let url = req.to_url(&self.advanced_settings.auth_base_url);
+                    self.refresh_system_tray_menu()?;
+                    tauri::api::shell::open(
+                        &self.app.shell_scope(),
+                        &url.expose_secret().inner,
+                        None,
+                    )?;
+                }
+            }
+            Req::SystemTrayMenu(TrayMenuEvent::Quit) => {
+                bail!("Impossible error: `Quit` should be handled before this")
+            }
+            Req::TunnelReady => {
+                self.tunnel_ready = true;
+                self.refresh_system_tray_menu()?;
+
+                show_notification(
+                    "Firezone connected",
+                    "You are now signed in and able to access resources.",
+                )?;
+            }
+            Req::UpdateAvailable(release) => {
+                let title = format!("Firezone {} available for download", release.tag_name);
+
+                // We don't need to route through the controller here either, we could
+                // use the `open` crate directly instead of Tauri's wrapper
+                // `tauri::api::shell::open`
+                show_clickable_notification(
+                    &title,
+                    "Click here to download the new version.",
+                    self.ctlr_tx.clone(),
+                    Req::UpdateNotificationClicked(release),
+                )?;
+            }
+            Req::UpdateNotificationClicked(release) => {
+                tracing::info!("UpdateNotificationClicked in run_controller!");
+                tauri::api::shell::open(
+                    &self.app.shell_scope(),
+                    release.browser_download_url,
+                    None,
+                )?;
+            }
+        }
         Ok(())
     }
 
@@ -597,7 +669,7 @@ impl Controller {
                     system_tray_menu::signed_in(&auth_session.actor_name, &resources)
                 } else {
                     // Signed in, raising tunnel
-                    system_tray_menu::signing_in()
+                    system_tray_menu::signing_in("Signing In...")
                 }
             } else {
                 tracing::error!("We have an auth session but no connlib session");
@@ -605,7 +677,7 @@ impl Controller {
             }
         } else if self.auth.ongoing_request().is_ok() {
             // Signing in, waiting on deep link callback
-            system_tray_menu::signing_in()
+            system_tray_menu::signing_in("Waiting for browser...")
         } else {
             system_tray_menu::signed_out()
         }
@@ -667,28 +739,48 @@ async fn run_controller(
     advanced_settings: AdvancedSettings,
     notify_controller: Arc<Notify>,
 ) -> Result<()> {
-    let mut controller = Controller::new(
-        app.clone(),
-        ctlr_tx,
-        logging_handles,
-        advanced_settings,
-        notify_controller,
-    )
-    .await
-    .context("couldn't create Controller")?;
+    let device_id = client::device_id::device_id(&app.config().tauri.bundle.identifier)
+        .await
+        .context("Failed to read / create device ID")?;
 
-    let mut have_internet = network_changes::check_internet()?;
+    let mut controller = Controller {
+        advanced_settings,
+        app,
+        auth: client::auth::Auth::new().context("Failed to set up auth module")?,
+        ctlr_tx,
+        session: None,
+        device_id,
+        logging_handles,
+        notify_controller,
+        tunnel_ready: false,
+    };
+
+    if let Some(token) = controller
+        .auth
+        .token()
+        .context("Failed to load token from disk during app start")?
+    {
+        controller
+            .start_session(token)
+            .context("Failed to restart session during app start")?;
+    } else {
+        tracing::info!("No token / actor_name on disk, starting in signed-out state");
+    }
+
+    let mut have_internet =
+        network_changes::check_internet().context("Failed initial check for internet")?;
     tracing::info!(?have_internet);
 
-    let mut com_worker = network_changes::Worker::new()?;
+    let mut com_worker =
+        network_changes::Worker::new().context("Failed to listen for network changes")?;
 
     loop {
         tokio::select! {
-            () = controller.notify_controller.notified() => if let Err(e) = controller.refresh_system_tray_menu() {
-                tracing::error!("couldn't reload resource list: {e:#?}");
+            () = controller.notify_controller.notified() => if let Err(error) = controller.refresh_system_tray_menu() {
+                tracing::error!(?error, "Failed to reload resource list");
             },
             () = com_worker.notified() => {
-                let new_have_internet = network_changes::check_internet()?;
+                let new_have_internet = network_changes::check_internet().context("Failed to check for internet")?;
                 if new_have_internet != have_internet {
                     have_internet = new_have_internet;
                     // TODO: Stop / start / restart connlib as needed here
@@ -700,74 +792,16 @@ async fn run_controller(
                     break;
                 };
                 match req {
-                    Req::Disconnected => {
-                        tracing::debug!("connlib disconnected, tearing down Session");
-                        controller.tunnel_ready = false;
-                        if let Some(mut session) = controller.session.take() {
-                            tracing::debug!("disconnecting connlib");
-                            // This is probably redundant since connlib shuts itself down if it's disconnected.
-                            session.connlib.disconnect(None);
-                        }
-                        controller.refresh_system_tray_menu()?;
-                    }
-                    Req::DisconnectedTokenExpired => {
-                        tracing::info!("Token expired");
-                        controller.sign_out()?;
-                        show_notification("Firezone disconnected", "To access resources, sign in again.")?;
-                    }
-                    Req::ExportLogs{path, stem} => logging::export_logs_to(path, stem).await?,
-                    Req::GetAdvancedSettings(tx) => {
-                        tx.send(controller.advanced_settings.clone()).ok();
-                    }
-                    Req::SchemeRequest(url) => if let Err(e) = controller.handle_deep_link(&url).await {
-                        tracing::error!("couldn't handle deep link: {e:#?}");
-                    }
-                    Req::SystemTrayMenu(TrayMenuEvent::ToggleWindow(window)) => controller.toggle_window(window)?,
-                    Req::SystemTrayMenu(TrayMenuEvent::CancelSignIn | TrayMenuEvent::SignOut) => {
-                        tracing::info!("User signed out or canceled sign-in");
-                        controller.sign_out()?;
-                    }
-                    Req::SystemTrayMenu(TrayMenuEvent::Resource { id }) => if let Err(e) = controller.copy_resource(&id) {
-                        tracing::error!("couldn't copy resource to clipboard: {e:#?}");
-                    }
-                    Req::SystemTrayMenu(TrayMenuEvent::SignIn) => {
-                        if let Some(req) = controller.auth.start_sign_in()? {
-                            let url = req.to_url(&controller.advanced_settings.auth_base_url);
-                            controller.refresh_system_tray_menu()?;
-                            tauri::api::shell::open(
-                                &app.shell_scope(),
-                                &url.expose_secret().inner,
-                                None,
-                            )?;
-                        }
-                    }
+                    // SAFETY: Crashing is unsafe
+                    Req::Fail(Failure::Crash) => {
+                        tracing::error!("Crashing on purpose");
+                        unsafe { sadness_generator::raise_segfault() }
+                    },
+                    Req::Fail(Failure::Error) => bail!("Test error"),
+                    Req::Fail(Failure::Panic) => panic!("Test panic"),
                     Req::SystemTrayMenu(TrayMenuEvent::Quit) => break,
-                    Req::TunnelReady => {
-                        controller.tunnel_ready = true;
-                        controller.refresh_system_tray_menu()?;
-
-                        show_notification("Firezone connected", "You are now signed in and able to access resources.")?;
-                    }
-                    Req::UpdateAvailable(release) => {
-                        let title = format!("Firezone {} available for download", release.tag_name);
-
-                        // We don't need to route through the controller here either, we could
-                        // use the `open` crate directly instead of Tauri's wrapper
-                        // `tauri::api::shell::open`
-                        show_clickable_notification(
-                            &title,
-                            "Click here to download the new version.",
-                            controller.ctlr_tx.clone(),
-                            Req::UpdateNotificationClicked(release),
-                        )?;
-                    }
-                    Req::UpdateNotificationClicked(release) => {
-                        tracing::info!("UpdateNotificationClicked in run_controller!");
-                        tauri::api::shell::open(
-                            &app.shell_scope(),
-                            release.browser_download_url,
-                            None,
-                        )?;
+                    req => if let Err(error) = controller.handle_request(req).await {
+                        tracing::error!(?error, "Failed to handle a ControllerRequest");
                     }
                 }
             }

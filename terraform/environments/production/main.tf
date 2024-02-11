@@ -456,7 +456,7 @@ locals {
     # Auth
     {
       name  = "AUTH_PROVIDER_ADAPTERS"
-      value = "email,openid_connect,google_workspace,token"
+      value = "email,openid_connect,google_workspace,token,microsoft_entra"
     },
     # Registry from which Docker install scripts pull from
     {

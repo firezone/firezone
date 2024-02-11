@@ -4,7 +4,8 @@ locals {
     "bmanifold@firezone.dev",
     "gabriel@firezone.dev",
     "jamil@firezone.dev",
-    "thomas@firezone.dev"
+    "thomas@firezone.dev",
+    "trish@firezone.dev"
   ]
 
   demo_access = []
@@ -407,7 +408,7 @@ locals {
     # Auth
     {
       name  = "AUTH_PROVIDER_ADAPTERS"
-      value = "email,openid_connect,google_workspace,token"
+      value = "email,openid_connect,google_workspace,token,microsoft_entra"
     },
     # Registry from which Docker install scripts pull from
     {

@@ -75,6 +75,27 @@ defmodule Web.Resources.Show do
             </.vertical_table_row>
             <.vertical_table_row>
               <:label>
+                Address Description
+              </:label>
+              <:value>
+                <a
+                  href={
+                    if String.starts_with?(@resource.address_description, ["http", "ftp", "//"]) do
+                      @resource.address_description
+                    else
+                      "//" <> @resource.address_description
+                    end
+                  }
+                  target="_blank"
+                  class={link_style()}
+                >
+                  <%= @resource.address_description %>
+                  <.icon name="hero-arrow-top-right-on-square" class="mb-3 w-3 h-3" />
+                </a>
+              </:value>
+            </.vertical_table_row>
+            <.vertical_table_row>
+              <:label>
                 Connected Sites
               </:label>
               <:value>
@@ -117,14 +138,7 @@ defmodule Web.Resources.Show do
                   </:empty>
 
                   <:item :let={group}>
-                    <.link
-                      class={link_style()}
-                      navigate={~p"/#{@account}/groups/#{group.id}?#{@params}"}
-                    >
-                      <.badge>
-                        <%= group.name %>
-                      </.badge>
-                    </.link>
+                    <.group account={@account} group={group} />
                   </:item>
 
                   <:tail :let={count}>

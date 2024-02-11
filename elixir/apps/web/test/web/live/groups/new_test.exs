@@ -24,7 +24,7 @@ defmodule Web.Live.Groups.NewTest do
               {:redirect,
                %{
                  to: ~p"/#{account}?#{%{redirect_to: path}}",
-                 flash: %{"error" => "You must log in to access this page."}
+                 flash: %{"error" => "You must sign in to access this page."}
                }}}
   end
 
@@ -57,7 +57,8 @@ defmodule Web.Live.Groups.NewTest do
     form = form(lv, "form")
 
     assert find_inputs(form) == [
-             "group[name]"
+             "group[name]",
+             "group[type]"
            ]
   end
 

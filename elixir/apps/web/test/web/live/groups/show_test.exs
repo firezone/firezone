@@ -28,7 +28,7 @@ defmodule Web.Live.Groups.ShowTest do
               {:redirect,
                %{
                  to: ~p"/#{account}?#{%{redirect_to: path}}",
-                 flash: %{"error" => "You must log in to access this page."}
+                 flash: %{"error" => "You must sign in to access this page."}
                }}}
   end
 
@@ -85,8 +85,8 @@ defmodule Web.Live.Groups.ShowTest do
       |> vertical_table_to_map()
 
     assert table["name"] == group.name
-    assert around_now?(table["source"])
-    assert table["source"] =~ "by #{actor.name}"
+    assert around_now?(table["created"])
+    assert table["created"] =~ "by #{actor.name}"
   end
 
   test "renders name of actor that created group", %{
@@ -112,7 +112,7 @@ defmodule Web.Live.Groups.ShowTest do
            |> element("#group")
            |> render()
            |> vertical_table_to_map()
-           |> Map.fetch!("source") =~ "by #{actor.name}"
+           |> Map.fetch!("created") =~ "by #{actor.name}"
   end
 
   test "renders provider that synced group", %{
@@ -141,7 +141,7 @@ defmodule Web.Live.Groups.ShowTest do
            |> element("#group")
            |> render()
            |> vertical_table_to_map()
-           |> Map.fetch!("source") =~ "Synced from #{provider.name} never"
+           |> Map.fetch!("created") =~ "by #{provider.name} sync"
   end
 
   test "renders group actors", %{
@@ -239,7 +239,7 @@ defmodule Web.Live.Groups.ShowTest do
       |> live(~p"/#{account}/groups/#{group}")
 
     assert lv
-           |> element("a", "Edit Actors")
+           |> element("#actors-empty a", "Edit Actors")
            |> render_click() ==
              {:error,
               {:live_redirect, %{to: ~p"/#{account}/groups/#{group}/edit_actors", kind: :push}}}

@@ -78,9 +78,9 @@ pub(crate) fn signed_in(user_name: &str, resources: &[ResourceDescription]) -> S
     menu
 }
 
-pub(crate) fn signing_in() -> SystemTrayMenu {
+pub(crate) fn signing_in(waiting_message: &str) -> SystemTrayMenu {
     SystemTrayMenu::new()
-        .add_item(CustomMenuItem::new("".to_string(), "Signing In...").disabled())
+        .add_item(CustomMenuItem::new("".to_string(), waiting_message).disabled())
         .add_item(CustomMenuItem::new(
             "/cancel_sign_in".to_string(),
             "Cancel sign-in",

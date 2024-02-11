@@ -8,6 +8,12 @@ defmodule Domain.Ops do
     Domain.Repo.transaction(fn ->
       {:ok, account} = Domain.Accounts.create_account(%{name: account_name, slug: account_slug})
 
+      {:ok, _everyone_group} =
+        Domain.Actors.create_managed_group(account, %{
+          name: "Everyone",
+          membership_rules: [%{operator: true}]
+        })
+
       {:ok, magic_link_provider} =
         Domain.Auth.create_provider(account, %{
           name: "Email",
