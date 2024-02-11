@@ -16,16 +16,11 @@ guide if you're looking to setup SSO with Google Workspace for your Firezone
 Enterprise account and want automatic user / group syncing between Google
 Workspace and Firezone.
 
-<Alert
-  color="info"
-  html={`
-    If you're just looking to authenticate users against Google Workspace
-    <strong>without</strong> automatic user / group sync, use our
-    <a href="/kb/authenticate/oidc" class="text-accent-500 hover:underline">
-      universal OIDC connector
-    </a> instead, available on all plans.
-  `}
-/>
+<Alert color="info">
+  If you're just looking to authenticate users against Google Workspace
+  **without** automatic user / group sync, use our [universal OIDC
+  connector](/kb/authenticate/oidc) instead, available on all plans.
+</Alert>
 
 ## Overview
 
@@ -47,14 +42,11 @@ To setup the Google Workspace connector, follow the steps below.
 
 ### Step 1: Create a new project in Google Cloud
 
-<Alert
-  color="info"
-  html={`
-    You may skip this step and proceed directly to
-    <a href="#step-2-enable-the-admin-sdk-api" class="hover:underline text-accent-500">
-    Step 2</a> if you already have a GCP project you'd like to use with Firezone.
-  `}
-/>
+<Alert color="info">
+  You may skip this step and proceed directly to [Step
+  2](#step-2-enable-the-admin-sdk-api) if you already have a GCP project you'd
+  like to use with Firezone.
+</Alert>
 
 [Go here to create a new project](https://console.cloud.google.com/projectcreate)
 in your Google Cloud account and fill in the following fields:

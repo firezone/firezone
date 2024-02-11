@@ -33,13 +33,10 @@ Some examples of values in this field are:
   will be routed to the VPN server. In this example, the CIDR range for the
   `ap-northeast-2` AWS region was used.
 
-<Alert
-  color="info"
-  html={`
-When deciding where to route a packet, Firezone chooses the egress interface
-corresponding to the most specific route first.
-`}
-/>
+<Alert color="info">
+  When deciding where to route a packet, Firezone chooses the egress interface
+  corresponding to the most specific route first.
+</Alert>
 
 ## Step 2 (optional): Set the DNS server(s)
 
@@ -50,13 +47,10 @@ the `/settings/default` page to override this value.
 For split tunneling, this may be desired if you run a DNS server that resolves
 internal hosts to private IPs reachable via Firezone.
 
-<Alert
-  color="info"
-  html={`
+<Alert color="info">
   If you wish to resolve DNS queries over the encrypted VPN tunnel
-  (recommended), ensure the DNS IPs are included in <code>AllowedIPs</code>.
-  `}
-/>
+  (recommended), ensure the DNS IPs are included in `AllowedIPs`.
+</Alert>
 
 ## Step 3: Regenerate the device configurations
 

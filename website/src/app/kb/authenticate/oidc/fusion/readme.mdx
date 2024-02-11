@@ -98,13 +98,10 @@ for use with Firezone's OIDC connector.
 You should now be able authenticate users to Firezone using the identity
 provider just created.
 
-<Alert
-  color="warning"
-  html={`
-    Firezone <strong>does not</strong> automatically provision users or groups for identity providers
-    using the universal OIDC connector. You must create Actors and
-    associated Identities <strong>before</strong> the user will be able to sign in.
-  `}
-/>
+<Alert color="warning">
+  Firezone **does not** automatically provision users or groups for identity
+  providers using the universal OIDC connector. You must create Actors and
+  associated Identities **before** the user will be able to sign in.
+</Alert>
 
 <SupportOptions />

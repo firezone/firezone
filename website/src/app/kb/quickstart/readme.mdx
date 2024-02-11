@@ -13,14 +13,19 @@ with the some of the most common configuration options.
   className="mx-auto shadow rounded"
 />
 
+This quickstart guide illustrates a simple Firezone setup. Firezone supports
+more complex deployments, but we like to start with the basics. You'll be able
+to change everything covered in this guide later, so don't worry if you make a
+mistake or two.
+
 ## Prerequisites
 
 - Firezone account (Don't have an account?
   [Request early access](/product/early-access))
 - Resource you want to give users secure access to (e.g. prod server, database,
-  SaaS application, subnet, etc...)
-- Server or VM (with the ability to deploy a docker container or Linux
-  application) that can connect to both the resource, and the internet
+  SaaS application, or subnet)
+- Server or VM you're able to deploy a Docker container or Linux binary on that
+  can connect to both the resource and the internet
 
 ## Summary
 
@@ -37,11 +42,6 @@ with the some of the most common configuration options.
    access a Resource until a Policy permitting access is created).
 1. **Download the Firezone Client**
 
-This quickstart guide illustrates a simple Firezone setup. Firezone supports
-more complex deployments, but we like to start with the basics. You'll be able
-to change everything covered in this guide later, so don't worry if you make a
-mistake or two.
-
 Instructions below follow the same order as the summary above. If you follow the
 instructions sequentially from top to bottom, you should end up with a working
 Firezone network that looks like the architecture diagram at the top of this
@@ -50,16 +50,16 @@ guide.
 ### Signing In
 
 In your browser, visit your unique sign-in URL, which can be found in the
-"Welcome to Firezone" email sent after you created your account. Once on the
-sign-in page, enter your email and click the sign-in button. You'll receive
+"Welcome to Firezone" email you received after you created your account. Once on
+the sign-in page, enter your email and click the sign-in button. You'll receive
 another email with a sign in link and token. You may either click the link to be
 signed in automatically on the device you're using, or copy the token value and
 enter it in to the form on the sign-in page.
 
 ### Create a Site
 
-When you log in to the admin portal, you'll land on the Sites page. The first
-step will be to create a Site by clicking the 'Add Site' button. We'll
+When you log in to the admin portal, you'll be taken to the Sites page. The
+first step will be to create a Site by clicking the 'Add Site' button. We'll
 auto-generate a name for the site, but you should consider renaming it something
 relevant like `Production`, `US-West`, or `Chicago-office`.
 
@@ -80,8 +80,9 @@ Site Details page where the gateway will now be listed and shown as online.
 
 ### Add a Resource
 
-A Resource is anything the site-gateway can reach, that you'd like to give users
-access to. Examples include servers, databases, subnets, etc...
+A Resource is simply anything the gateway can reach that you'd like to give
+users access to. Examples include servers, databases, applications, and even
+entire subnets.
 
 On the Site Details page, click on the 'Create a Resource' button. You will now
 be able to enter the `name` and `address` for a Resource. The `name` can be
@@ -90,6 +91,10 @@ anything you choose, and the `address` must be one of the following:
 - IP address
 - Fully Qualified Domain Name (FQDN)
 - CIDR Range
+
+Optionally, you're given the option to provide an `Address description` which,
+if provided, will be what's shown as the Resource address in the clients when
+users sign in.
 
 After adding a Resource, you'll need to create a policy authorizing one or more
 user-groups to access that resource. End-users cannot access a resource unless

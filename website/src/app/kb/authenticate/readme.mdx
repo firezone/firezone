@@ -10,21 +10,20 @@ Firezone supports the following authentication methods and identity providers:
    OpenID Connect provider using a universal OIDC connector.
 1. [Google Workspace](/kb/authenticate/google): Supports authentication and user
    / group sync with Google Workspace.
-1. [Microsoft Entra](/kb/authenticate/google): Supports authentication and user
-   / group sync with Microsoft Entra.
+1. [Microsoft Entra](/kb/authenticate/entra): Supports authentication and user /
+   group sync with Microsoft Entra.
+1. [Okta](/kb/authenticate/okta): Supports authentication and user / group sync
+   with Microsoft Entra.
 
 It's possible to create multiple providers for Google Workspace, Microsoft
 Entra, and OIDC connectors. This allows you to authenticate users against
 multiple providers simultaneously
 
-<Alert
-  color="warning"
-  html={`
-    Disabling the email provider can lock you out of your account in the event
-    that all other identity providers become unusable. We recommend keeping at least
-    one admin enabled for the email provider for account recovery.
-  `}
-/>
+<Alert color="warning">
+  Disabling the email provider can lock you out of your account in the event
+  that all other identity providers become unusable. We recommend keeping at
+  least one admin enabled for the email provider for account recovery.
+</Alert>
 
 ## Session lifetime
 

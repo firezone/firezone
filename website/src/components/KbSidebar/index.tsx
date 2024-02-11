@@ -28,9 +28,6 @@ export default function KbSidebar() {
             <Item topLevel href="/kb" label="Overview" />
           </li>
           <li>
-            <Item topLevel href="/kb/faq" label="FAQ" />
-          </li>
-          <li>
             <Item topLevel href="/kb/quickstart" label="Quickstart" />
           </li>
           <li>
@@ -70,12 +67,6 @@ export default function KbSidebar() {
                 <Item href="/kb/authenticate/email" label="Email (OTP)" />
               </li>
               <li>
-                <Item href="/kb/authenticate/google" label="Google Workspace" />
-              </li>
-              <li>
-                <Item href="/kb/authenticate/entra" label="Microsoft Entra" />
-              </li>
-              <li>
                 <Item href="/kb/authenticate/oidc" label="Universal OIDC" />
               </li>
               <li>
@@ -86,9 +77,18 @@ export default function KbSidebar() {
                 />
               </li>
               <li>
+                <Item href="/kb/authenticate/google" label="Google Workspace" />
+              </li>
+              <li>
+                <Item href="/kb/authenticate/entra" label="Microsoft Entra" />
+              </li>
+              <li>
+                <Item href="/kb/authenticate/okta" label="Okta" />
+              </li>
+              <li>
                 <Item
                   href="/kb/authenticate/user-group-sync"
-                  label="User / Group sync"
+                  label="User / group sync"
                 />
               </li>
               <li>
@@ -158,6 +158,11 @@ export default function KbSidebar() {
               </li>
             </Collapse>
           </li>
+          <Collapse expanded={p.startsWith("/kb/reference")} label="Reference">
+            <li>
+              <Item href="/kb/reference/faq" label="FAQ" />
+            </li>
+          </Collapse>
         </ul>
       </div>
     </aside>
