@@ -160,6 +160,8 @@ class TunnelService : VpnService() {
                 Log.d(TAG, "onDisconnect")
                 Firebase.crashlytics.log("onDisconnect")
 
+                tunnelState = State.DOWN
+
                 return true
             }
 
@@ -169,6 +171,9 @@ class TunnelService : VpnService() {
                 Log.d(TAG, "onDisconnect: $error")
                 Firebase.crashlytics.log("onDisconnect: $error")
                 repo.clearToken()
+
+                tunnelState = State.DOWN
+
                 shutdown()
                 // Something called disconnect() already, so assume it was user or system initiated.
                 return true
@@ -201,7 +206,6 @@ class TunnelService : VpnService() {
         Log.d(TAG, "shutdown")
         connlibSessionPtr = null
         stopForeground(STOP_FOREGROUND_REMOVE)
-        tunnelState = State.DOWN
         stopSelf()
     }
 
