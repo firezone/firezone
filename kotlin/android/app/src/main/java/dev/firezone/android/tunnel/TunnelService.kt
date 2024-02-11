@@ -156,26 +156,25 @@ class TunnelService : VpnService() {
                 }.toTypedArray()
             }
 
+            // Something called disconnect() already, so assume it was user or system initiated.
             override fun onDisconnect(): Boolean {
                 Log.d(TAG, "onDisconnect")
                 Firebase.crashlytics.log("onDisconnect")
 
-                tunnelState = State.DOWN
+                shutdown()
 
                 return true
             }
 
-            // Unexpected disconnect, most likely a 401. Clear the token and initiate
-            // a stop of the service.
+            // Unexpected disconnect, most likely a 401. Clear the token and initiate a stop of the
+            // service.
             override fun onDisconnect(error: String): Boolean {
                 Log.d(TAG, "onDisconnect: $error")
                 Firebase.crashlytics.log("onDisconnect: $error")
                 repo.clearToken()
 
-                tunnelState = State.DOWN
-
                 shutdown()
-                // Something called disconnect() already, so assume it was user or system initiated.
+
                 return true
             }
         }
@@ -197,28 +196,31 @@ class TunnelService : VpnService() {
         return START_STICKY
     }
 
-    // System could have disconnected us
+    // Haven't seen this callback called yet, but it's here for completeness.
     override fun onRevoke() {
-        shutdown()
-    }
+        Log.d(TAG, "onRevoke")
 
-    private fun shutdown() {
-        Log.d(TAG, "shutdown")
-        connlibSessionPtr = null
-        stopForeground(STOP_FOREGROUND_REMOVE)
-        stopSelf()
+        connlibSessionPtr?.let {
+            ConnlibSession.disconnect(it)
+        }
     }
 
     // Call this to stop the tunnel and shutdown the service, leaving the token intact.
     fun disconnect() {
         Log.d(TAG, "disconnect")
 
-        // Connlib will call onDisconnect() when it's done, with no error.
-        connlibSessionPtr?.let {
+        // Connlib should call onDisconnect() when it's done, with no error.
+        connlibSessionPtr!!.let {
             ConnlibSession.disconnect(it)
         }
+    }
 
-        shutdown()
+    private fun shutdown() {
+        Log.d(TAG, "shutdown")
+
+        connlibSessionPtr = null
+        stopSelf()
+        tunnelState = State.DOWN
     }
 
     private fun connect() {
