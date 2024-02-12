@@ -4,7 +4,9 @@ use crate::messages::{
 };
 use crate::CallbackHandler;
 use anyhow::{anyhow, Result};
-use connlib_shared::messages::{ClientId, DomainResponse, GatewayResponse, ResourceAccepted};
+use connlib_shared::messages::{
+    ClientId, ConnectionAccepted, DomainResponse, GatewayResponse, ResourceAccepted,
+};
 use connlib_shared::Error;
 use firezone_tunnel::{Event, GatewayState, Tunnel};
 use phoenix_channel::PhoenixChannel;
@@ -159,18 +161,30 @@ impl Eventloop {
                     let tunnel = Arc::clone(&self.tunnel);
 
                     let connection_request = async move {
-                        let conn = tunnel
+                        let local_params = tunnel
                             .set_peer_connection_request(
-                                req.client.payload,
+                                req.client.payload.ice_parameters,
                                 req.client.peer.into(),
                                 req.relays,
                                 req.client.id,
-                                req.expires_at,
-                                req.resource,
                             )
                             .await?;
-                        Ok(GatewayResponse::ConnectionAccepted(conn))
+
+                        let domain_response = tunnel
+                            .allow_access(
+                                req.resource,
+                                req.client.id,
+                                req.expires_at,
+                                req.client.payload.domain,
+                            )
+                            .await;
+
+                        Ok(GatewayResponse::ConnectionAccepted(ConnectionAccepted {
+                            ice_parameters: local_params,
+                            domain_response,
+                        }))
                     };
+
                     match self
                         .connection_request_tasks
                         .try_push((req.client.id, req.reference.clone()), connection_request)
@@ -183,6 +197,7 @@ impl Eventloop {
                         }
                         Ok(()) => {}
                     };
+
                     continue;
                 }
                 Poll::Ready(phoenix_channel::Event::InboundMessage {

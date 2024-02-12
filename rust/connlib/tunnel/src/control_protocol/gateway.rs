@@ -7,16 +7,14 @@ use crate::{
 
 use chrono::{DateTime, Utc};
 use connlib_shared::{
-    messages::{
-        ClientId, ClientPayload, ConnectionAccepted, DomainResponse, Relay, ResourceAccepted,
-        ResourceDescription,
-    },
-    Callbacks, Dname, Error, Result,
+    messages::{ClientId, DomainResponse, Relay, ResourceDescription},
+    Callbacks, Dname, Result,
 };
 use ip_network::IpNetwork;
 use std::sync::Arc;
 use webrtc::ice_transport::{
-    ice_role::RTCIceRole, ice_transport_state::RTCIceTransportState, RTCIceTransport,
+    ice_parameters::RTCIceParameters, ice_role::RTCIceRole,
+    ice_transport_state::RTCIceTransportState, RTCIceTransport,
 };
 
 use super::{new_ice_connection, IceConnection};
@@ -59,13 +57,11 @@ where
     /// The connection details
     pub async fn set_peer_connection_request(
         self: &Arc<Self>,
-        client_payload: ClientPayload,
+        ice_parameters: RTCIceParameters,
         peer: PeerConfig,
         relays: Vec<Relay>,
         client_id: ClientId,
-        expires_at: Option<DateTime<Utc>>,
-        resource: ResourceDescription,
-    ) -> Result<ConnectionAccepted> {
+    ) -> Result<RTCIceParameters> {
         let IceConnection {
             ice_parameters: local_params,
             ice_transport: ice,
@@ -90,41 +86,14 @@ where
             let _ = ice.stop().await;
         }
 
-        let resource_addresses = match &resource {
-            ResourceDescription::Dns(r) => {
-                let Some(domain) = client_payload.domain.clone() else {
-                    return Err(Error::ControlProtocolError);
-                };
-
-                if !is_subdomain(&domain, &r.address) {
-                    let _ = ice.stop().await;
-                    return Err(Error::InvalidResource);
-                }
-
-                tokio::task::spawn_blocking(move || resolve_addresses(&domain.to_string()))
-                    .await??
-            }
-            ResourceDescription::Cidr(ref cidr) => vec![cidr.address],
-        };
-
         {
-            let resource_addresses = resource_addresses.clone();
             let tunnel = self.clone();
             tokio::spawn(async move {
                 if let Err(e) = ice
-                    .start(&client_payload.ice_parameters, Some(RTCIceRole::Controlled))
+                    .start(&ice_parameters, Some(RTCIceRole::Controlled))
                     .await
                     .map_err(Into::into)
-                    .and_then(|_| {
-                        tunnel.new_tunnel(
-                            peer,
-                            client_id,
-                            resource,
-                            expires_at,
-                            ice.clone(),
-                            resource_addresses,
-                        )
-                    })
+                    .and_then(|_| tunnel.new_tunnel(peer, client_id, ice.clone()))
                 {
                     tracing::warn!(%client_id, err = ?e, "Can't start tunnel: {e:#}");
                     {
@@ -148,16 +117,7 @@ where
             });
         }
 
-        Ok(ConnectionAccepted {
-            ice_parameters: local_params,
-            domain_response: client_payload.domain.map(|domain| DomainResponse {
-                domain,
-                address: resource_addresses
-                    .into_iter()
-                    .map(|ip| ip.network_address())
-                    .collect(),
-            }),
-        })
+        Ok(local_params)
     }
 
     pub async fn allow_access(
@@ -214,10 +174,7 @@ where
         self: &Arc<Self>,
         peer_config: PeerConfig,
         client_id: ClientId,
-        resource: ResourceDescription,
-        expires_at: Option<DateTime<Utc>>,
         ice: Arc<RTCIceTransport>,
-        resource_addresses: Vec<IpNetwork>,
     ) -> Result<()> {
         tracing::trace!(?peer_config.ips, "new_data_channel_open");
 
@@ -229,11 +186,6 @@ where
             self.rate_limiter.clone(),
             PacketTransformGateway::default(),
         ));
-
-        for address in resource_addresses {
-            peer.transform
-                .add_resource(address, resource.clone(), expires_at);
-        }
 
         let (peer_sender, peer_receiver) = tokio::sync::mpsc::channel(PEER_QUEUE_SIZE);
 
