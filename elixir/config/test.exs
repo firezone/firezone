@@ -40,9 +40,10 @@ config :web, Web.Endpoint,
 config :web, Web.Plugs.SecureHeaders,
   csp_policy: [
     "default-src 'self' 'nonce-${nonce}' https://cdn.tailwindcss.com/",
-    "img-src 'self' data: https://www.gravatar.com",
-    "style-src 'self' 'unsafe-inline'",
-    "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com/"
+    "img-src 'self' 'nonce-${nonce}' data: https://www.gravatar.com",
+    "style-src 'self' 'nonce-${nonce}' 'unsafe-inline'",
+    "frame-src 'self' 'nonce-${nonce}' https://js.stripe.com",
+    "script-src 'self' 'nonce-${nonce}' 'unsafe-inline' https://js.stripe.com https://cdn.tailwindcss.com/"
   ]
 
 ###############################

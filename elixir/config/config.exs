@@ -123,8 +123,10 @@ config :web,
 config :web, Web.Plugs.SecureHeaders,
   csp_policy: [
     "default-src 'self' 'nonce-${nonce}'",
-    "img-src 'self' data: https://www.gravatar.com",
-    "style-src 'self' 'unsafe-inline'"
+    "frame-src 'self' 'nonce-${nonce}' https://js.stripe.com",
+    "script-src 'self' 'nonce-${nonce}' https://js.stripe.com",
+    "img-src 'self' 'nonce-${nonce}' data: https://www.gravatar.com",
+    "style-src 'self' 'nonce-${nonce}' 'unsafe-inline'"
   ]
 
 config :web, api_url_override: "ws://localhost:13001/"
