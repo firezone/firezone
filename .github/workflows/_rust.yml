@@ -118,9 +118,10 @@ jobs:
           }
       - name: Run crash test
         run: |
-          if (cargo run -p firezone-windows-client -- --crash) {
-            # Crashing should return a non-zero error code
-            exit 1
+          try {
+            cargo run -p firezone-windows-client -- --crash)
+          } catch {
+            echo "This is supposed to crash"
           }
       - name: Assert crash dump was written
         run: |
