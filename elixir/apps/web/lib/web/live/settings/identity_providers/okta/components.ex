@@ -83,14 +83,26 @@ defmodule Web.Settings.IdentityProviders.Okta.Components do
 
                 <div>
                   <.input
-                    label="Discovery Document URI"
+                    label="OAuth Authorization Server URI"
                     autocomplete="off"
-                    field={adapter_config_form[:discovery_document_uri]}
-                    placeholder="https://<company>.okta.com/.well-known/openid-configuration"
+                    field={adapter_config_form[:oauth_uri]}
+                    placeholder="https://<company>.okta.com/.well-known/oauth-authorization-server"
                     required
                   />
                   <p class="mt-2 text-xs text-neutral-500">
-                    The URI to the OpenID Connect discovery document for your Okta Application.
+                    The Metadata URI of the Authorization Server for your Okta Application.
+                  </p>
+                </div>
+
+                <div :if={visible?(adapter_config_form[:discovery_document_uri].value)}>
+                  <.input
+                    type="readonly"
+                    label="OIDC well-know configuration URL (readonly)"
+                    field={adapter_config_form[:discovery_document_uri]}
+                    placeholder=".well-known/openid-configuration URL"
+                  />
+                  <p class="mt-2 text-xs text-neutral-500">
+                    The OIDC Configuration URI.  This field is derived from the value in the OAuth Authorization Server URI field.
                   </p>
                 </div>
               </.inputs_for>
@@ -109,5 +121,13 @@ defmodule Web.Settings.IdentityProviders.Okta.Components do
   def scopes do
     Domain.Auth.Adapters.Okta.Settings.scope()
     |> Enum.join("\n")
+  end
+
+  def visible?(value) do
+    case value do
+      nil -> false
+      "" -> false
+      _ -> true
+    end
   end
 end

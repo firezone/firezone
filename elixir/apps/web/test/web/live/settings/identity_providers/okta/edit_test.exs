@@ -55,11 +55,12 @@ defmodule Web.Live.Settings.IdentityProviders.Okta.EditTest do
              "provider[adapter_config][client_id]",
              "provider[adapter_config][client_secret]",
              "provider[adapter_config][discovery_document_uri]",
+             "provider[adapter_config][oauth_uri]",
              "provider[name]"
            ]
   end
 
-  test "creates a new provider on valid attrs", %{
+  test "edits an existing provider on valid attrs", %{
     account: account,
     identity: identity,
     provider: provider,
@@ -69,12 +70,13 @@ defmodule Web.Live.Settings.IdentityProviders.Okta.EditTest do
 
     adapter_config_attrs =
       Fixtures.Auth.openid_connect_adapter_config(
-        discovery_document_uri: "http://localhost:#{bypass.port}/.well-known/openid-configuration"
+        oauth_uri: "http://localhost:#{bypass.port}/.well-known/oauth-authorization-server"
       )
 
     adapter_config_attrs =
       Map.drop(adapter_config_attrs, [
         "response_type",
+        "discovery_document_uri",
         "scope"
       ])
 
@@ -89,15 +91,21 @@ defmodule Web.Live.Settings.IdentityProviders.Okta.EditTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/settings/identity_providers/okta/#{provider}/edit")
 
-    form =
-      form(lv, "form",
-        provider: %{
-          name: provider_attrs.name,
-          adapter_config: provider_attrs.adapter_config
+    form(lv, "form",
+      provider: %{
+        name: provider_attrs.name,
+        adapter_config: provider_attrs.adapter_config
+      }
+    )
+    |> render_submit(%{
+      provider: %{
+        adapter_config: %{
+          "discovery_document_uri" =>
+            "http://localhost:#{bypass.port}/.well-known/openid-configuration"
         }
-      )
+      }
+    })
 
-    render_submit(form)
     assert provider = Repo.get_by(Domain.Auth.Provider, name: provider_attrs.name)
 
     assert_redirected(
@@ -110,6 +118,12 @@ defmodule Web.Live.Settings.IdentityProviders.Okta.EditTest do
 
     assert provider.adapter_config["client_id"] == adapter_config_attrs["client_id"]
     assert provider.adapter_config["client_secret"] == adapter_config_attrs["client_secret"]
+
+    assert provider.adapter_config["oauth_uri"] ==
+             "http://localhost:#{bypass.port}/.well-known/oauth-authorization-server"
+
+    assert provider.adapter_config["discovery_document_uri"] ==
+             "http://localhost:#{bypass.port}/.well-known/openid-configuration"
   end
 
   test "renders changeset errors on invalid attrs", %{
@@ -122,12 +136,13 @@ defmodule Web.Live.Settings.IdentityProviders.Okta.EditTest do
 
     adapter_config_attrs =
       Fixtures.Auth.openid_connect_adapter_config(
-        discovery_document_uri: "http://localhost:#{bypass.port}/.well-known/openid-configuration"
+        oauth_uri: "http://localhost:#{bypass.port}/.well-known/oauth-authorization-server"
       )
 
     adapter_config_attrs =
       Map.drop(adapter_config_attrs, [
         "response_type",
+        "discovery_document_uri",
         "scope"
       ])
 

@@ -57,7 +57,8 @@ defmodule Domain.Auth.Adapters.OktaTest do
                  client_id: ["can't be blank"],
                  client_secret: ["can't be blank"],
                  discovery_document_uri: ["can't be blank"],
-                 api_base_url: ["can't be blank"]
+                 api_base_url: ["can't be blank"],
+                 oauth_uri: ["can't be blank"]
                }
              }
     end
@@ -66,6 +67,7 @@ defmodule Domain.Auth.Adapters.OktaTest do
       account = Fixtures.Accounts.create_account()
       bypass = Domain.Mocks.OpenIDConnect.discovery_document_server()
       discovery_document_url = "http://localhost:#{bypass.port}/.well-known/openid-configuration"
+      oauth_url = "http://localhost:#{bypass.port}/.well-known/oauth-authorization-server"
       api_base_url = "http://localhost:#{bypass.port}"
 
       attrs =
@@ -75,6 +77,7 @@ defmodule Domain.Auth.Adapters.OktaTest do
             client_id: "client_id",
             client_secret: "client_secret",
             discovery_document_uri: discovery_document_url,
+            oauth_uri: oauth_url,
             api_base_url: api_base_url
           }
         )
@@ -104,6 +107,7 @@ defmodule Domain.Auth.Adapters.OktaTest do
                "client_id" => "client_id",
                "client_secret" => "client_secret",
                "discovery_document_uri" => discovery_document_url,
+               "oauth_uri" => oauth_url,
                "api_base_url" => api_base_url
              }
     end

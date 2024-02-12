@@ -46,7 +46,7 @@ defmodule Web.Live.Settings.IdentityProviders.Okta.NewTest do
              "provider[adapter_config][_persistent_id]",
              "provider[adapter_config][client_id]",
              "provider[adapter_config][client_secret]",
-             "provider[adapter_config][discovery_document_uri]",
+             "provider[adapter_config][oauth_uri]",
              "provider[name]"
            ]
   end
@@ -60,12 +60,13 @@ defmodule Web.Live.Settings.IdentityProviders.Okta.NewTest do
 
     adapter_config_attrs =
       Fixtures.Auth.openid_connect_adapter_config(
-        discovery_document_uri: "http://localhost:#{bypass.port}/.well-known/openid-configuration"
+        oauth_uri: "http://localhost:#{bypass.port}/.well-known/oauth-authorization-server"
       )
 
     adapter_config_attrs =
       Map.drop(adapter_config_attrs, [
         "response_type",
+        "discovery_document_uri",
         "scope"
       ])
 
@@ -80,15 +81,21 @@ defmodule Web.Live.Settings.IdentityProviders.Okta.NewTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/settings/identity_providers/okta/new")
 
-    form =
-      form(lv, "form",
-        provider: %{
-          name: provider_attrs.name,
-          adapter_config: provider_attrs.adapter_config
+    form(lv, "form",
+      provider: %{
+        name: provider_attrs.name,
+        adapter_config: provider_attrs.adapter_config
+      }
+    )
+    |> render_submit(%{
+      provider: %{
+        adapter_config: %{
+          "discovery_document_uri" =>
+            "http://localhost:#{bypass.port}/.well-known/openid-configuration"
         }
-      )
+      }
+    })
 
-    render_submit(form)
     assert provider = Repo.get_by(Domain.Auth.Provider, name: provider_attrs.name)
 
     assert_redirected(
@@ -155,7 +162,7 @@ defmodule Web.Live.Settings.IdentityProviders.Okta.NewTest do
       assert form_validation_errors(form) == %{
                "provider[name]" => ["should be at most 255 character(s)"],
                "provider[adapter_config][client_id]" => ["can't be blank"],
-               "provider[adapter_config][discovery_document_uri]" => ["can't be blank"]
+               "provider[adapter_config][oauth_uri]" => ["can't be blank"]
              }
     end)
   end

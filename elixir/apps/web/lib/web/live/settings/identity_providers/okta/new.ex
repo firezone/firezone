@@ -51,7 +51,10 @@ defmodule Web.Settings.IdentityProviders.Okta.New do
   end
 
   def handle_event("change", %{"provider" => attrs}, socket) do
-    attrs = Map.put(attrs, "adapter", :okta)
+    attrs =
+      attrs
+      |> Map.put("adapter", :okta)
+      |> put_discovery_document_uri()
 
     changeset =
       Auth.new_provider(socket.assigns.account, attrs)
@@ -63,7 +66,7 @@ defmodule Web.Settings.IdentityProviders.Okta.New do
   def handle_event("submit", %{"provider" => attrs}, socket) do
     attrs =
       attrs
-      |> Map.update("adapter_config", %{}, &add_api_base_url/1)
+      |> Map.update("adapter_config", %{}, &put_api_base_url/1)
       |> Map.put("id", socket.assigns.id)
       |> Map.put("adapter", :okta)
       # We create provider in a disabled state because we need to write access token for it first
@@ -91,8 +94,23 @@ defmodule Web.Settings.IdentityProviders.Okta.New do
     end
   end
 
-  defp add_api_base_url(adapter_config) do
+  defp put_api_base_url(adapter_config) do
     uri = URI.parse(adapter_config["discovery_document_uri"])
     Map.put(adapter_config, "api_base_url", "#{uri.scheme}://#{uri.host}")
+  end
+
+  defp put_discovery_document_uri(attrs) do
+    config = attrs["adapter_config"]
+
+    oidc_uri =
+      String.replace_suffix(
+        config["oauth_uri"],
+        "oauth-authorization-server",
+        "openid-configuration"
+      )
+
+    config = Map.put(config, "discovery_document_uri", oidc_uri)
+
+    Map.put(attrs, "adapter_config", config)
   end
 end

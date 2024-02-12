@@ -125,6 +125,7 @@ defmodule Domain.Fixtures.Auth do
     adapter_config =
       openid_connect_adapter_config(
         api_base_url: "http://localhost:#{bypass.port}",
+        oauth_uri: "http://localhost:#{bypass.port}/.well-known/oauth-authorization-server",
         discovery_document_uri:
           "http://localhost:#{bypass.port}/.well-known/openid-configuration",
         scope: Domain.Auth.Adapters.Okta.Settings.scope() |> Enum.join(" ")
