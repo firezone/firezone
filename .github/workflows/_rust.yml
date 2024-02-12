@@ -113,7 +113,7 @@ jobs:
       - name: Assert crash dump doesn't exist yet
         run: -Not (Test-Path $env:LOCALAPPDATA/dev.firezone.client/data/logs/last_crash.dmp)
       - name: Run crash test
-        run: # cargo run -p firezone-windows-client -- --crash
+        run: echo "validating test, this should fail" # cargo run -p firezone-windows-client -- --crash
       - name: Assert crash dump was written
         run: Test-Path $env:LOCALAPPDATA/dev.firezone.client/data/logs/last_crash.dmp
 
