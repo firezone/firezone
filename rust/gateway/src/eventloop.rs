@@ -4,7 +4,7 @@ use crate::messages::{
 };
 use crate::CallbackHandler;
 use anyhow::{anyhow, Result};
-use connlib_shared::messages::{ClientId, GatewayResponse, ResourceAccepted};
+use connlib_shared::messages::{ClientId, DomainResponse, GatewayResponse, ResourceAccepted};
 use connlib_shared::Error;
 use firezone_tunnel::{Event, GatewayState, Tunnel};
 use phoenix_channel::PhoenixChannel;
@@ -23,7 +23,7 @@ pub struct Eventloop {
     connection_request_tasks:
         futures_bounded::FuturesMap<(ClientId, String), Result<GatewayResponse, Error>>,
     add_ice_candidate_tasks: futures_bounded::FuturesSet<Result<(), Error>>,
-    allow_access_tasks: futures_bounded::FuturesMap<String, Option<ResourceAccepted>>,
+    allow_access_tasks: futures_bounded::FuturesMap<String, Option<DomainResponse>>,
 
     print_stats_timer: tokio::time::Interval,
 }
@@ -110,12 +110,14 @@ impl Eventloop {
             }
 
             match self.allow_access_tasks.poll_unpin(cx) {
-                Poll::Ready((reference, Ok(Some(res)))) => {
+                Poll::Ready((reference, Ok(Some(domain_response)))) => {
                     self.portal.send(
                         PHOENIX_TOPIC,
                         EgressMessages::ConnectionReady(ConnectionReady {
                             reference,
-                            gateway_payload: GatewayResponse::ResourceAccepted(res),
+                            gateway_payload: GatewayResponse::ResourceAccepted(ResourceAccepted {
+                                domain_response,
+                            }),
                         }),
                     );
                     continue;

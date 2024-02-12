@@ -166,7 +166,7 @@ where
         client_id: ClientId,
         expires_at: Option<DateTime<Utc>>,
         domain: Option<Dname>,
-    ) -> Option<ResourceAccepted> {
+    ) -> Option<DomainResponse> {
         let Some(peer) = self
             .role_state
             .lock()
@@ -201,11 +201,9 @@ where
         }
 
         if let Some(domain) = domain {
-            return Some(ResourceAccepted {
-                domain_response: DomainResponse {
-                    domain,
-                    address: addresses.iter().map(|i| i.network_address()).collect(),
-                },
+            return Some(DomainResponse {
+                domain,
+                address: addresses.iter().map(|i| i.network_address()).collect(),
             });
         }
 
