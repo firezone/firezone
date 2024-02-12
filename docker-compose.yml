@@ -370,6 +370,7 @@ services:
 # IPv6 is currently causing flakiness with GH actions and on our testbed.
 # Disabling until there's more time to debug.
 networks:
+  # Using a separate subnet here so that the CIDR resource for 172.20.0.0 won't catch DNS resources
   dns_resources:
     ipam:
       config:
