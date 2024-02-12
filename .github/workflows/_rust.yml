@@ -117,7 +117,11 @@ jobs:
             exit 1
           }
       - name: Run crash test
-        run: cargo run -p firezone-windows-client -- --crash
+        run: |
+          if (cargo run -p firezone-windows-client -- --crash) {
+            # Crashing should return a non-zero error code
+            exit 1
+          }
       - name: Assert crash dump was written
         run: |
           if (-Not (Test-Path $env:LOCALAPPDATA/dev.firezone.client/data/logs/last_crash.dmp)) {
