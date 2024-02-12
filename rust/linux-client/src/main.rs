@@ -50,11 +50,6 @@ impl Callbacks for CallbackHandler {
         Ok(Some(get_system_default_resolvers_resolv_conf()?))
     }
 
-    fn on_disconnect(&self, error: Option<&connlib_client_shared::Error>) -> Result<(), CbError> {
-        tracing::error!(?error, "Disconnected");
-        Ok(())
-    }
-
     fn on_disconnect(
         &self,
         error: Option<&connlib_client_shared::Error>,
