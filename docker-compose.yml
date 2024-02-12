@@ -135,7 +135,7 @@ services:
         condition: "service_healthy"
       httpbin:
         condition: "service_healthy"
-      test.httpbin.docker.local:
+      test.httpbin:
         condition: "service_healthy"
       iperf3:
         condition: "service_healthy"
