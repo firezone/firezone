@@ -137,7 +137,7 @@ where
         Ok(local_params)
     }
 
-    pub async fn allow_access(
+    pub fn allow_access(
         &self,
         resource: ResourceDescription,
         client_id: ClientId,

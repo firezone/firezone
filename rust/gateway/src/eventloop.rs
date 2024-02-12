@@ -174,14 +174,12 @@ impl Eventloop {
 
                         let resource = resolve_resource_description(req.resource).await?;
 
-                        let domain_response = tunnel
-                            .allow_access(
-                                resource,
-                                req.client.id,
-                                req.expires_at,
-                                req.client.payload.domain,
-                            )
-                            .await;
+                        let domain_response = tunnel.allow_access(
+                            resource,
+                            req.client.id,
+                            req.expires_at,
+                            req.client.payload.domain,
+                        );
 
                         Ok(GatewayResponse::ConnectionAccepted(ConnectionAccepted {
                             ice_parameters: local_params,
@@ -222,9 +220,7 @@ impl Eventloop {
                     let allow_access = async move {
                         let resource = resolve_resource_description(resource).await.ok()?;
 
-                        tunnel
-                            .allow_access(resource, client_id, expires_at, payload)
-                            .await
+                        tunnel.allow_access(resource, client_id, expires_at, payload)
                     };
 
                     if self
