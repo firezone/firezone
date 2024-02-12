@@ -2,6 +2,7 @@
 
 const FIREZONE_DNS_CONTROL: &str = "FIREZONE_DNS_CONTROL";
 
+#[derive(Debug)]
 pub enum DnsControlMethod {
     /// Back up `/etc/resolv.conf` and replace it with our own
     ///
