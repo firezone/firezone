@@ -6,9 +6,11 @@ use crate::CallbackHandler;
 use anyhow::{anyhow, Result};
 use connlib_shared::messages::{
     ClientId, ConnectionAccepted, DomainResponse, GatewayResponse, ResourceAccepted,
+    ResourceDescription,
 };
 use connlib_shared::Error;
-use firezone_tunnel::{Event, GatewayState, Tunnel};
+use firezone_tunnel::{Event, GatewayState, ResolvedResourceDescriptionDns, Tunnel};
+use ip_network::IpNetwork;
 use phoenix_channel::PhoenixChannel;
 use std::convert::Infallible;
 use std::sync::Arc;
@@ -170,9 +172,11 @@ impl Eventloop {
                             )
                             .await?;
 
+                        let resource = resolve_resource_description(req.resource).await?;
+
                         let domain_response = tunnel
                             .allow_access(
-                                req.resource,
+                                resource,
                                 req.client.id,
                                 req.expires_at,
                                 req.client.payload.domain,
@@ -215,13 +219,17 @@ impl Eventloop {
 
                     let tunnel = Arc::clone(&self.tunnel);
 
+                    let allow_access = async move {
+                        let resource = resolve_resource_description(resource).await.ok()?;
+
+                        tunnel
+                            .allow_access(resource, client_id, expires_at, payload)
+                            .await
+                    };
+
                     if self
                         .allow_access_tasks
-                        .try_push(reference, async move {
-                            tunnel
-                                .allow_access(resource, client_id, expires_at, payload)
-                                .await
-                        })
+                        .try_push(reference, allow_access)
                         .is_err()
                     {
                         tracing::warn!("Too many allow access requests, dropping existing one");
@@ -273,4 +281,75 @@ impl Eventloop {
             return Poll::Pending;
         }
     }
+}
+
+async fn resolve_resource_description(
+    resource: ResourceDescription,
+) -> io::Result<ResourceDescription<ResolvedResourceDescriptionDns>> {
+    match resource {
+        ResourceDescription::Dns(dns) => {
+            let addresses = tokio::task::spawn_blocking({
+                let domain = dns.address.clone();
+
+                move || resolve_addresses(&domain)
+            })
+            .await??;
+
+            Ok(ResourceDescription::Dns(ResolvedResourceDescriptionDns {
+                id: dns.id,
+                domain: dns.address,
+                name: dns.name,
+                addresses,
+            }))
+        }
+        ResourceDescription::Cidr(cdir) => Ok(ResourceDescription::Cidr(cdir)),
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn resolve_addresses(_: &str) -> std::io::Result<Vec<IpNetwork>> {
+    unimplemented!()
+}
+
+#[cfg(not(target_os = "windows"))]
+fn resolve_addresses(addr: &str) -> std::io::Result<Vec<IpNetwork>> {
+    use libc::{AF_INET, AF_INET6};
+    let addr_v4: std::io::Result<Vec<_>> = resolve_address_family(addr, AF_INET)
+        .map_err(|e| e.into())
+        .and_then(|a| a.collect());
+    let addr_v6: std::io::Result<Vec<_>> = resolve_address_family(addr, AF_INET6)
+        .map_err(|e| e.into())
+        .and_then(|a| a.collect());
+    match (addr_v4, addr_v6) {
+        (Ok(v4), Ok(v6)) => Ok(v6
+            .iter()
+            .map(|a| a.sockaddr.ip().into())
+            .chain(v4.iter().map(|a| a.sockaddr.ip().into()))
+            .collect()),
+        (Ok(v4), Err(_)) => Ok(v4.iter().map(|a| a.sockaddr.ip().into()).collect()),
+        (Err(_), Ok(v6)) => Ok(v6.iter().map(|a| a.sockaddr.ip().into()).collect()),
+        (Err(e), Err(_)) => Err(e),
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+use dns_lookup::{AddrInfoHints, AddrInfoIter, LookupError};
+use std::io;
+
+#[cfg(not(target_os = "windows"))]
+fn resolve_address_family(
+    addr: &str,
+    family: i32,
+) -> std::result::Result<AddrInfoIter, LookupError> {
+    use libc::SOCK_STREAM;
+
+    dns_lookup::getaddrinfo(
+        Some(addr),
+        None,
+        Some(AddrInfoHints {
+            socktype: SOCK_STREAM,
+            address: family,
+            ..Default::default()
+        }),
+    )
 }
