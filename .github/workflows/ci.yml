@@ -280,8 +280,7 @@ jobs:
             execute: |
               resolvectl status
               sudo systemctl start firezone-client
-              # TODO: Something better than a sleep
-              sleep 10
+              sudo systemctl status firezone-client
               resolvectl status
 
           # Performance Tests

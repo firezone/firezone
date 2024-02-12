@@ -231,8 +231,17 @@ async fn set_iface_config(config: InterfaceConfig, _: Vec<IpAddr>, handle: Handl
         .await;
 
     handle.link().set(index).up().execute().await?;
-
     res_v4.or(res_v6)?;
+
+    // TODO: Having this inside the library is definitely wrong. I think `set_iface_config`
+    // needs to return before `new` returns, so that the `on_tunnel_ready` callback
+    // happens after the IP address and DNS are set up. Then we can call `sd_notify`
+    // inside `on_tunnel_ready` in the client.
+    if let Err(error) = sd_notify::notify(true, &[sd_notify::NotifyState::Ready]) {
+        // Nothing we can do about it
+        tracing::warn!(?error, "Failed to notify systemd that we're ready");
+    }
+
     Ok(())
 }
 
