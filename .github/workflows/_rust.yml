@@ -119,7 +119,7 @@ jobs:
       - name: Run crash test
         run: |
           try {
-            cargo run -p firezone-windows-client -- --crash)
+            cargo run -p firezone-windows-client -- --crash
           } catch {
             echo "This is supposed to crash"
           }
