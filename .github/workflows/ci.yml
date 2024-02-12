@@ -277,7 +277,8 @@ jobs:
           # Systemd-related tests (ignores the client container and runs in the runner itself)
           - test_name: systemd-resolved
             setup: |
-              sudo apt-get install systemd-resolved
+              # Don't need to install systemd-resolved, it's bundled with systemd now
+
               # Grab the exe from the client container
               docker exec client cat firezone-linux-client > firezone-linux-client
               chmod u+x firezone-linux-client
