@@ -274,6 +274,23 @@ jobs:
               docker compose exec -it client timeout 60 \
               sh -c 'until ping -W 1 -c 1 172.20.0.100 &>/dev/null; do true; done'
 
+          # Systemd-related tests (ignores the client container and runs in the runner itself)
+          - test_name: systemd-resolved
+            setup: |
+              sudo apt-get install systemd-resolved
+              # Grab the exe from the client container
+              docker exec client cat firezone-linux-client > firezone-linux-client
+              chmod u+x firezone-linux-client
+
+              # Copied these env vars from docker-compose.yml
+              export FIREZONE_TOKEN="n.SFMyNTY.g2gDaANtAAAAJGM4OWJjYzhjLTkzOTItNGRhZS1hNDBkLTg4OGFlZjZkMjhlMG0AAAAkN2RhN2QxY2QtMTExYy00NGE3LWI1YWMtNDAyN2I5ZDIzMGU1bQAAACtBaUl5XzZwQmstV0xlUkFQenprQ0ZYTnFJWktXQnMyRGR3XzJ2Z0lRdkZnbgYAGUmu74wBYgABUYA.UN3vSLLcAMkHeEh5VHumPOutkuue8JA6wlxM9JxJEPE"
+              export RUST_LOG=firezone_linux_client=trace,wire=trace,connlib_client_shared=trace,firezone_tunnel=trace,connlib_shared=trace,warn
+              export FIREZONE_API_URL=ws://api:8081
+              export FIREZONE_ID=D0455FDE-8F65-4960-A778-B934E4E85A5F
+            execute: |
+              resolvectl status
+
+
           # Performance Tests
           - test_name: direct-perf
             # Set this to enable performance testing for this test
