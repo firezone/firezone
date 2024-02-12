@@ -111,11 +111,18 @@ jobs:
       - name: Run smoke test
         run: cargo run -p firezone-windows-client -- smoke-test
       - name: Assert crash dump doesn't exist yet
-        run: -Not (Test-Path $env:LOCALAPPDATA/dev.firezone.client/data/logs/last_crash.dmp)
+        run: |
+          if (Test-Path $env:LOCALAPPDATA/dev.firezone.client/data/logs/last_crash.dmp) {
+            # Test-Path doesn't error out by itself, so we have to do this.
+            exit 1
+          }
       - name: Run crash test
         run: echo "validating test, this should fail" # cargo run -p firezone-windows-client -- --crash
       - name: Assert crash dump was written
-        run: Test-Path $env:LOCALAPPDATA/dev.firezone.client/data/logs/last_crash.dmp
+        run: |
+          if (-Not (Test-Path $env:LOCALAPPDATA/dev.firezone.client/data/logs/last_crash.dmp)) {
+            exit 1
+          }
 
   # This should be identical to `build-push-windows-release-artifacts` in `cd.yml` except for the Github permissions, needs tag, and uploading step
   build-tauri:
