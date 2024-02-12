@@ -280,7 +280,7 @@ jobs:
               # Don't need to install systemd-resolved, it's bundled with systemd now
 
               # Grab the exe from the client container
-              docker exec client cat firezone-linux-client > firezone-linux-client
+              docker compose exec client cat firezone-linux-client > firezone-linux-client
               chmod u+x firezone-linux-client
 
               # Copied these env vars from docker-compose.yml
