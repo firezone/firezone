@@ -276,21 +276,13 @@ jobs:
 
           # Systemd-related tests (ignores the client container and runs in the runner itself)
           - test_name: systemd-resolved
-            setup: |
-              # Don't need to install systemd-resolved, it's bundled with systemd now
-
-              # Grab the exe from the client container
-              docker compose exec client cat firezone-linux-client > firezone-linux-client
-              chmod u+x firezone-linux-client
-
-              # Copied these env vars from docker-compose.yml
-              export FIREZONE_TOKEN="n.SFMyNTY.g2gDaANtAAAAJGM4OWJjYzhjLTkzOTItNGRhZS1hNDBkLTg4OGFlZjZkMjhlMG0AAAAkN2RhN2QxY2QtMTExYy00NGE3LWI1YWMtNDAyN2I5ZDIzMGU1bQAAACtBaUl5XzZwQmstV0xlUkFQenprQ0ZYTnFJWktXQnMyRGR3XzJ2Z0lRdkZnbgYAGUmu74wBYgABUYA.UN3vSLLcAMkHeEh5VHumPOutkuue8JA6wlxM9JxJEPE"
-              export RUST_LOG=firezone_linux_client=trace,wire=trace,connlib_client_shared=trace,firezone_tunnel=trace,connlib_shared=trace,warn
-              export FIREZONE_API_URL=ws://api:8081
-              export FIREZONE_ID=D0455FDE-8F65-4960-A778-B934E4E85A5F
+            setup: scripts/systemd-test-setup.bash
             execute: |
               resolvectl status
-
+              systemctl start firezone-client
+              # TODO: Something better than a sleep
+              sleep 10
+              resolvectl status
 
           # Performance Tests
           - test_name: direct-perf
