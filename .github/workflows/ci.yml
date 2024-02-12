@@ -279,7 +279,7 @@ jobs:
             setup: scripts/systemd-test-setup.bash
             execute: |
               resolvectl status
-              systemctl start firezone-client
+              sudo systemctl start firezone-client
               # TODO: Something better than a sleep
               sleep 10
               resolvectl status
