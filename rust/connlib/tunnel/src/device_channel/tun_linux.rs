@@ -1,5 +1,7 @@
 use crate::device_channel::ioctl;
-use connlib_shared::{messages::Interface as InterfaceConfig, Callbacks, Error, Result};
+use connlib_shared::{
+    linux::DnsControlMethod, messages::Interface as InterfaceConfig, Callbacks, Error, Result,
+};
 use futures::TryStreamExt;
 use futures_util::future::BoxFuture;
 use futures_util::FutureExt;
@@ -196,7 +198,11 @@ impl Tun {
 }
 
 #[tracing::instrument(level = "trace", skip(handle))]
-async fn set_iface_config(config: InterfaceConfig, _: Vec<IpAddr>, handle: Handle) -> Result<()> {
+async fn set_iface_config(
+    config: InterfaceConfig,
+    dns_config: Vec<IpAddr>,
+    handle: Handle,
+) -> Result<()> {
     let index = handle
         .link()
         .get()
@@ -231,8 +237,30 @@ async fn set_iface_config(config: InterfaceConfig, _: Vec<IpAddr>, handle: Handl
         .await;
 
     handle.link().set(index).up().execute().await?;
-
     res_v4.or(res_v6)?;
+
+    // TODO: Gateways shouldn't set up DNS, right? Only clients?
+    if !dns_config.is_empty() {
+        // TODO: Before merging the DNS code to main, check if this would be better off
+        // in `on_set_interface_config` so it's handled by the client's CLI arg system
+        match connlib_shared::linux::get_dns_control_from_env() {
+            None => {
+                tracing::info!("Will not modify the system's DNS settings");
+            }
+            Some(DnsControlMethod::EtcResolvConf) => {
+                // TODO: Modify `/etc/resolv.conf`
+                tracing::info!("Will modify `/etc/resolv.conf`");
+            }
+            Some(DnsControlMethod::NetworkManager) => {
+                // TODO: Cooperate with NetworkManager
+            }
+            Some(DnsControlMethod::Systemd) => {
+                // TODO: Cooperate with `systemd-resolved`
+                tracing::info!("Will use `systemd-resolved`");
+            }
+        }
+    }
+
     Ok(())
 }
 
