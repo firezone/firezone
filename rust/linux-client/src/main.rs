@@ -38,6 +38,14 @@ struct CallbackHandler {
 impl Callbacks for CallbackHandler {
     type Error = std::convert::Infallible;
 
+    fn on_disconnect(
+        &self,
+        error: Option<&connlib_client_shared::Error>,
+    ) -> Result<(), Self::Error> {
+        tracing::error!(?error, "Disconnected");
+        Ok(())
+    }
+
     fn roll_log_file(&self) -> Option<PathBuf> {
         self.handle
             .as_ref()?
