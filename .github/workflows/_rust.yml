@@ -110,6 +110,9 @@ jobs:
         run: cargo build -p firezone-windows-client
       - name: Run smoke test
         run: cargo run -p firezone-windows-client -- smoke-test
+      - name: Run crash test with Bash
+        continue-on-error: true
+        run: bash scripts/crash-handling-smoke-test.bash
       - name: Assert crash dump doesn't exist yet
         run: |
           if (Test-Path $env:LOCALAPPDATA/dev.firezone.client/data/logs/last_crash.dmp) {
@@ -117,12 +120,8 @@ jobs:
             exit 1
           }
       - name: Run crash test
-        run: |
-          try {
-            cargo run -p firezone-windows-client -- --crash
-          } catch {
-            echo "This is supposed to crash"
-          }
+        continue-on-error: true
+        run: cargo run -p firezone-windows-client -- --crash
       - name: Assert crash dump was written
         run: |
           if (-Not (Test-Path $env:LOCALAPPDATA/dev.firezone.client/data/logs/last_crash.dmp)) {
