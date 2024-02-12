@@ -242,8 +242,15 @@ async fn set_iface_config(
     // since they don't make any outgoing connections through Firezone?
     // And it would conflict if a client and gateway ran on the same system.
     if !dns_config.is_empty() {
-        // TODO: Hide this behind a flag for Docker Alpine images only
-        configure_resolv_conf(&dns_config).await?;
+        // TODO: Before merging the DNS code to main, consider moving this stuff
+        // into `on_set_interface_config` so the client can decide which way to do DNS
+        match std::env::var("FIREZONE_DNS_CONTROL").as_deref() {
+            Ok("etc-resolv-conf") => configure_resolv_conf(&dns_config).await?,
+            Ok("network-manager") => configure_network_manager(&dns_config).await?,
+            Ok("systemd-resolved") => configure_systemd_resolved(&dns_config).await?,
+            Ok(dns_control) => tracing::error!(?dns_control, "unknown FIREZONE_DNS_CONTROL value"),
+            Err(_) => {}
+        }
     }
 
     Ok(())
@@ -296,6 +303,14 @@ async fn configure_resolv_conf(dns_config: &[IpAddr]) -> Result<()> {
     tokio::fs::write(resolv_path, new_text).await?;
 
     Ok(())
+}
+
+async fn configure_network_manager(_dns_config: &[IpAddr]) -> Result<()> {
+    todo!()
+}
+
+async fn configure_systemd_resolved(_dns_config: &[IpAddr]) -> Result<()> {
+    todo!()
 }
 
 fn get_last_error() -> Error {
