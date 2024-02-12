@@ -30,6 +30,7 @@ hickory-resolver = { workspace = true }
 arc-swap = "1.6.0"
 bimap = "0.6"
 dns-lookup = { workspace = true }
+resolv-conf = "0.7.0"
 
 # TODO: research replacing for https://github.com/algesten/str0m
 webrtc = { workspace = true }
