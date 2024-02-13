@@ -1558,6 +1558,22 @@ mod tests {
         assert_eq!(next_msg.method(), REFRESH)
     }
 
+    #[test]
+    fn failed_refresh_resets_allocation_lifetime() {
+        let mut allocation = Allocation::for_test(Instant::now());
+
+        let allocate = allocation.next_message().unwrap();
+        allocation.handle_test_input(
+            &allocate_response(&allocate, &[RELAY_ADDR_IP4, RELAY_ADDR_IP6]),
+            Instant::now(),
+        );
+        allocation.advance_to_next_timeout();
+        let refresh = allocation.next_message().unwrap();
+        allocation.handle_test_input(&failed_refresh(&refresh), Instant::now());
+
+        assert_eq!(allocation.poll_timeout(), None);
+    }
+
     fn ch(peer: SocketAddr, now: Instant) -> Channel {
         Channel {
             peer,
@@ -1668,6 +1684,12 @@ mod tests {
         /// Wrapper around `handle_input` that always sets `RELAY` and `PEER1`.
         fn handle_test_input(&mut self, packet: &[u8], now: Instant) {
             self.handle_input(RELAY, PEER1, packet, now);
+        }
+
+        fn advance_to_next_timeout(&mut self) {
+            if let Some(next) = self.poll_timeout() {
+                self.handle_timeout(next)
+            }
         }
     }
 }
