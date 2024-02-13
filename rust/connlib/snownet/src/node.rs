@@ -142,6 +142,7 @@ where
         Ok(())
     }
 
+    #[tracing::instrument(level = "debug", skip_all, fields(%id))]
     pub fn add_remote_candidate(&mut self, id: TId, candidate: String) {
         let candidate = match Candidate::from_sdp_string(&candidate) {
             Ok(c) => c,
@@ -174,6 +175,7 @@ where
     /// - `Ok(None)` if the packet was handled internally, for example, a response from a TURN server.
     /// - `Ok(Some)` if the packet was an encrypted wireguard packet from a peer.
     ///   The `Option` contains the connection on which the packet was decrypted.
+    #[tracing::instrument(level = "debug", skip_all, fields(%from, num_bytes = %packet.len()))]
     pub fn decapsulate<'s>(
         &mut self,
         local: SocketAddr,
@@ -225,6 +227,9 @@ where
                     return Ok(None);
                 }
             }
+
+            tracing::warn!("Got STUN message but no ICE agent wanted it");
+            return Err(Error::UnmatchedPacket); // We can shortcut here as everything from here on is encrypted traffic.
         }
 
         for (id, conn) in self.connections.iter_established_mut() {
@@ -296,6 +301,7 @@ where
     /// Wireguard is an IP tunnel, so we "enforce" that only IP packets are sent through it.
     /// We say "enforce" an [`IpPacket`] can be created from an (almost) arbitrary byte buffer at virtually no cost.
     /// Nevertheless, using [`IpPacket`] in our API has good documentation value.
+    #[tracing::instrument(level = "debug", skip_all, fields(id = %connection))]
     pub fn encapsulate<'s>(
         &'s mut self,
         connection: TId,
@@ -619,6 +625,7 @@ where
     ///
     /// Out of all configured STUN and TURN servers, the connection will only use the ones provided here.
     /// The returned [`Offer`] must be passed to the remote via a signalling channel.
+    #[tracing::instrument(level = "info", skip_all, fields(%id))]
     pub fn new_connection(
         &mut self,
         id: TId,
@@ -626,11 +633,11 @@ where
         allowed_turn_servers: HashSet<(SocketAddr, String, String, String)>,
     ) -> Offer {
         if self.connections.initial.remove(&id).is_some() {
-            tracing::info!(%id, "Replacing existing initial connection");
+            tracing::info!("Replacing existing initial connection");
         };
 
         if self.connections.established.remove(&id).is_some() {
-            tracing::info!(%id, "Replacing existing established connection");
+            tracing::info!("Replacing existing established connection");
         };
 
         self.upsert_stun_servers(&allowed_stun_servers);
@@ -714,6 +721,7 @@ where
     ///
     /// Out of all configured STUN and TURN servers, the connection will only use the ones provided here.
     /// The returned [`Answer`] must be passed to the remote via a signalling channel.
+    #[tracing::instrument(level = "info", skip_all, fields(%id))]
     pub fn accept_connection(
         &mut self,
         id: TId,
@@ -728,7 +736,7 @@ where
         );
 
         if self.connections.established.remove(&id).is_some() {
-            tracing::info!(%id, "Replacing existing established connection");
+            tracing::info!("Replacing existing established connection");
         };
 
         self.upsert_stun_servers(&allowed_stun_servers);
