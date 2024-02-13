@@ -222,6 +222,9 @@ impl Allocation {
             }
 
             match message.method() {
+                ALLOCATE => {
+                    self.buffered_channel_bindings.clear();
+                }
                 CHANNEL_BIND => {
                     let Some(channel) = original_request
                         .get_attribute::<ChannelNumber>()
@@ -980,8 +983,8 @@ impl BufferedChannelBindings {
         self.inner.pop_front()
     }
 
-    fn is_empty(&self) -> bool {
-        self.inner.is_empty()
+    fn clear(&mut self) {
+        self.inner.clear()
     }
 }
 
