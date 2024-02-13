@@ -799,11 +799,8 @@ where
     fn upsert_turn_servers(&mut self, servers: &HashSet<(SocketAddr, String, String, String)>) {
         for (server, username, password, realm) in servers {
             if let Some(existing) = self.allocations.get_mut(server) {
-                if existing.uses_credentials(username, password, realm) {
-                    existing.refresh();
-
-                    continue;
-                }
+                existing.refresh(username, password, realm);
+                continue;
             }
 
             let Ok(username) = Username::new(username.to_owned()) else {
