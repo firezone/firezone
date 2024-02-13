@@ -143,6 +143,8 @@ impl Allocation {
             tracing::debug!("Not refreshing allocation because we don't have one");
             return;
         }
+
+        self.authenticate_and_queue(make_refresh_request());
     }
 
     #[tracing::instrument(level = "debug", skip(self, packet, now), fields(relay = %self.server, id, method, class, rtt))]
