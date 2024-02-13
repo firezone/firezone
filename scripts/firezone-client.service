@@ -8,10 +8,9 @@ Environment="FIREZONE_TOKEN=n.SFMyNTY.g2gDaANtAAAAJGM4OWJjYzhjLTkzOTItNGRhZS1hND
 Environment="FIREZONE_API_URL=ws://localhost:8081"
 Environment="FIREZONE_ID=D0455FDE-8F65-4960-A778-B934E4E85A5F"
 ExecStart=firezone-linux-client
-MemoryDenyWriteExecute=true
-ProtectClock=true
-RestrictSUIDSGID=true
 Type=notify
+# TODO: Come back to this and cut down the permissions
+User=root
 
 [Install]
 WantedBy=default.target
