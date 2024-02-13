@@ -100,29 +100,9 @@ impl Tun {
     ) -> Result<Self> {
         // TODO: Tech debt: <https://github.com/firezone/firezone/issues/3636>
         // TODO: Gateways shouldn't set up DNS, right? Only clients?
-        let dns_control_method = if !dns_config.is_empty() {
-            // TODO: Move to the client
-            let method = connlib_shared::linux::get_dns_control_from_env();
-            match method {
-                None => {
-                    tracing::info!("Will not modify the system's DNS settings");
-                }
-                Some(DnsControlMethod::EtcResolvConf) => {
-                    // TODO: Modify `/etc/resolv.conf`
-                    tracing::info!("Will modify `/etc/resolv.conf`");
-                }
-                Some(DnsControlMethod::NetworkManager) => {
-                    // TODO: Cooperate with NetworkManager
-                }
-                Some(DnsControlMethod::Systemd) => {
-                    // TODO: Cooperate with `systemd-resolved`
-                    tracing::info!("Will use `systemd-resolved`");
-                }
-            }
-            method
-        } else {
-            None
-        };
+        // TODO: Move this configuration up to the client
+        let dns_control_method = connlib_shared::linux::get_dns_control_from_env();
+        tracing::info!(?dns_control_method, "DNS control method");
 
         create_tun_device()?;
 
