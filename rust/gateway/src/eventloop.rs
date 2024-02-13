@@ -156,22 +156,23 @@ impl Eventloop {
                 }) => {
                     let tunnel = Arc::clone(&self.tunnel);
 
-                    match self.connection_request_tasks.try_push(
-                        (req.client.id, req.reference.clone()),
-                        async move {
-                            let conn = tunnel
-                                .set_peer_connection_request(
-                                    req.client.payload,
-                                    req.client.peer.into(),
-                                    req.relays,
-                                    req.client.id,
-                                    req.expires_at,
-                                    req.resource,
-                                )
-                                .await?;
-                            Ok(GatewayResponse::ConnectionAccepted(conn))
-                        },
-                    ) {
+                    let connection_request = async move {
+                        let conn = tunnel
+                            .set_peer_connection_request(
+                                req.client.payload,
+                                req.client.peer.into(),
+                                req.relays,
+                                req.client.id,
+                                req.expires_at,
+                                req.resource,
+                            )
+                            .await?;
+                        Ok(GatewayResponse::ConnectionAccepted(conn))
+                    };
+                    match self
+                        .connection_request_tasks
+                        .try_push((req.client.id, req.reference.clone()), connection_request)
+                    {
                         Err(futures_bounded::PushError::BeyondCapacity(_)) => {
                             tracing::warn!("Too many connections requests, dropping existing one");
                         }
