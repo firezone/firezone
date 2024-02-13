@@ -812,16 +812,12 @@ where
                 continue;
             }
 
-            let existing = self.allocations.insert(
+            self.allocations.insert(
                 *server,
                 Allocation::new(*server, username, password.clone(), realm, self.last_now),
             );
 
-            if existing.is_some() {
-                tracing::info!(address = %server, "Replaced existing allocation because credentials to TURN server changed");
-            } else {
-                tracing::info!(address = %server, "Added new TURN server");
-            }
+            tracing::info!(address = %server, "Added new TURN server");
         }
     }
 

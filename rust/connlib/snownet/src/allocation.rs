@@ -145,9 +145,13 @@ impl Allocation {
         }
 
         if self.is_suspended() {
+            tracing::debug!("Attempting to make a new allocation");
+
             self.authenticate_and_queue(make_allocate_request());
             return;
         }
+
+        tracing::debug!("Refreshing allocation");
 
         self.authenticate_and_queue(make_refresh_request());
     }
