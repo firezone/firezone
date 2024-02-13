@@ -2,15 +2,15 @@
 package dev.firezone.android.features.splash.ui
 
 import android.content.Context
-import android.util.Log
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
-import dev.firezone.android.core.domain.preference.GetConfigUseCase
+import dev.firezone.android.core.data.Repository
+import dev.firezone.android.tunnel.TunnelService
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -20,28 +20,28 @@ private const val REQUEST_DELAY = 1000L
 internal class SplashViewModel
     @Inject
     constructor(
-        private val useCase: GetConfigUseCase,
+        private val repo: Repository,
     ) : ViewModel() {
         private val actionMutableLiveData = MutableLiveData<ViewAction>()
         val actionLiveData: LiveData<ViewAction> = actionMutableLiveData
 
-        internal fun checkUserState(context: Context) {
+        internal fun checkTunnelState(context: Context) {
             viewModelScope.launch {
+                // Stay a while and enjoy the logo
                 delay(REQUEST_DELAY)
                 if (!hasVpnPermissions(context)) {
                     actionMutableLiveData.postValue(ViewAction.NavigateToVpnPermission)
                 } else {
-                    useCase.invoke()
-                        .catch {
-                            Log.e("Error", it.message.toString())
+                    repo.getToken().collect {
+                        if (it.isNullOrBlank()) {
+                            actionMutableLiveData.postValue(ViewAction.NavigateToSignIn)
+                        } else {
+                            // token will be re-read by the TunnelService
+                            if (!TunnelService.isRunning(context)) TunnelService.start(context)
+
+                            actionMutableLiveData.postValue(ViewAction.NavigateToSession)
                         }
-                        .collect { user ->
-                            if (user.token.isNullOrBlank()) {
-                                actionMutableLiveData.postValue(ViewAction.NavigateToSignIn)
-                            } else {
-                                actionMutableLiveData.postValue(ViewAction.NavigateToSession)
-                            }
-                        }
+                    }
                 }
             }
         }

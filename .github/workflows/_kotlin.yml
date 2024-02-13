@@ -68,6 +68,12 @@ jobs:
           # TODO: See https://github.com/firezone/firezone/issues/2311
           # TODO: See https://github.com/firezone/firezone/issues/2309
           ./gradlew testReleaseUnitTest
+      - name: Upload app bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: Android app bundle
+          path: |
+            ./kotlin/android/app/build/outputs/bundle/*
       - name: Upload release
         if: ${{ github.event_name == 'workflow_dispatch' || (github.ref == 'refs/heads/main' && contains(github.event.head_commit.modified, 'elixir/VERSION')) }}
         env:
@@ -76,4 +82,4 @@ jobs:
           FIREBASE_APP_TESTERS: ${{ vars.FIREBASE_APP_TESTERS }}
         run: |
           echo -n "$FIREBASE_APP_DISTRIBUTION_CREDENTIALS" > $FIREBASE_CREDENTIALS_PATH
-          ./gradlew --info appDistributionUploadRelease
+          ./gradlew --info appDistributionUploadRelease uploadCrashlyticsSymbolFileRelease
