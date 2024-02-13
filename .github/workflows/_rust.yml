@@ -110,6 +110,8 @@ jobs:
         run: cargo build -p firezone-windows-client
       - name: Run smoke test
         run: cargo run -p firezone-windows-client -- smoke-test
+      - name: Test that the crash handler produces a crash dump
+        run: bash scripts/crash-handling-smoke-test.bash
 
   # This should be identical to `build-push-windows-release-artifacts` in `cd.yml` except for the Github permissions, needs tag, and uploading step
   build-tauri:

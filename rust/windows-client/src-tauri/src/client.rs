@@ -154,6 +154,7 @@ struct Cli {
     command: Option<Cmd>,
 
     /// Crash the `Controller` task to test error handling
+    /// Formerly `--crash-on-purpose`
     #[arg(long, hide = true)]
     crash: bool,
     /// Error out of the `Controller` task to test error handling
