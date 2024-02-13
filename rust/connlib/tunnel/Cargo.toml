@@ -31,7 +31,6 @@ arc-swap = "1.6.0"
 bimap = "0.6"
 dns-lookup = { workspace = true }
 resolv-conf = "0.7.0"
-sd-notify = "0.4.1"
 
 # TODO: research replacing for https://github.com/algesten/str0m
 webrtc = { workspace = true }
@@ -47,6 +46,7 @@ serde_json = "1.0"
 netlink-packet-route = { version = "0.17", default-features = false }
 netlink-packet-core = { version = "0.7", default-features = false }
 rtnetlink = { version = "0.13" }
+sd-notify = "0.4.1"
 
 # Android tunnel dependencies
 [target.'cfg(target_os = "android")'.dependencies]
