@@ -10,4 +10,4 @@ sudo setcap cap_net_admin+eip "$BINARY_NAME"
 sudo mv "$BINARY_NAME" "/usr/bin/$BINARY_NAME"
 
 sudo cp scripts/firezone-client.service /etc/systemd/system/
-systemd-analyze --user security firezone-client
+systemd-analyze security firezone-client
