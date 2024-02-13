@@ -7,6 +7,7 @@ defmodule Domain.Auth.Adapters do
     openid_connect: Domain.Auth.Adapters.OpenIDConnect,
     google_workspace: Domain.Auth.Adapters.GoogleWorkspace,
     microsoft_entra: Domain.Auth.Adapters.MicrosoftEntra,
+    okta: Domain.Auth.Adapters.Okta,
     userpass: Domain.Auth.Adapters.UserPass
   }
 
