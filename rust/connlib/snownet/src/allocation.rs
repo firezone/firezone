@@ -1652,6 +1652,16 @@ mod tests {
         assert!(next_msg.is_none())
     }
 
+    #[test]
+    fn failed_allocation_is_suspended() {
+        let mut allocation = Allocation::for_test(Instant::now());
+
+        let allocate = allocation.next_message().unwrap();
+        allocation.handle_test_input(&server_error(&allocate), Instant::now()); // This should clear the buffered channel bindings.
+
+        assert!(allocation.is_suspended())
+    }
+
     fn ch(peer: SocketAddr, now: Instant) -> Channel {
         Channel {
             peer,
