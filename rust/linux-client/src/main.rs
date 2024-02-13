@@ -1,9 +1,10 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::Parser;
 use connlib_client_shared::{file_logger, Callbacks, Session};
+use connlib_shared::linux::{get_dns_control_from_env, DnsControlMethod};
 use firezone_cli_utils::{block_on_ctrl_c, setup_global_subscriber, CommonArgs};
 use secrecy::SecretString;
-use std::path::PathBuf;
+use std::{net::IpAddr, path::PathBuf};
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -12,13 +13,19 @@ fn main() -> Result<()> {
     let (layer, handle) = cli.log_dir.as_deref().map(file_logger::layer).unzip();
     setup_global_subscriber(layer);
 
+    let dns_control_method = get_dns_control_from_env();
+    let callbacks = CallbackHandler {
+        dns_control_method,
+        handle,
+    };
+
     let mut session = Session::connect(
         cli.common.api_url,
         SecretString::from(cli.common.token),
         cli.firezone_id,
         None,
         None,
-        CallbackHandler { handle },
+        callbacks,
         max_partition_time,
     )
     .unwrap();
@@ -32,11 +39,32 @@ fn main() -> Result<()> {
 
 #[derive(Clone)]
 struct CallbackHandler {
+    dns_control_method: Option<DnsControlMethod>,
     handle: Option<file_logger::Handle>,
 }
 
+#[derive(Debug, thiserror::Error)]
+enum CbError {
+    #[error(transparent)]
+    Any(#[from] anyhow::Error),
+}
+
 impl Callbacks for CallbackHandler {
-    type Error = std::convert::Infallible;
+    // I spent several minutes messing with `anyhow` and couldn't figure out how to make
+    // it implement `std::error::Error`: <https://github.com/dtolnay/anyhow/issues/25>
+    type Error = CbError;
+
+    /// May return Firezone's own servers, e.g. `100.100.111.1`.
+    fn get_system_default_resolvers(&self) -> Result<Option<Vec<IpAddr>>, Self::Error> {
+        match self.dns_control_method {
+            None => Ok(None),
+            Some(DnsControlMethod::EtcResolvConf) => {
+                Ok(Some(get_system_default_resolvers_resolv_conf()?))
+            }
+            Some(DnsControlMethod::NetworkManager) => todo!(),
+            Some(DnsControlMethod::Systemd) => todo!(),
+        }
+    }
 
     fn on_disconnect(
         &self,
@@ -55,6 +83,23 @@ impl Callbacks for CallbackHandler {
                 None
             })
     }
+}
+
+fn get_system_default_resolvers_resolv_conf() -> Result<Vec<IpAddr>> {
+    // Assume that `configure_resolv_conf` has run in `tun_linux.rs`
+
+    let s = std::fs::read_to_string("/etc/resolv.conf.firezone-backup")
+        .or_else(|_| std::fs::read_to_string("/etc/resolv.conf"))
+        .context("`/etc/resolv.conf` should be readable")?;
+    let parsed = resolv_conf::Config::parse(s).context("`/etc/resolv.conf` should be parsable")?;
+
+    // Drop the scoping info for IPv6 since connlib doesn't take it
+    let nameservers = parsed
+        .nameservers
+        .into_iter()
+        .map(|addr| addr.into())
+        .collect();
+    Ok(nameservers)
 }
 
 #[derive(Parser)]

@@ -275,9 +275,15 @@ jobs:
               sh -c 'until ping -W 1 -c 1 172.20.0.100 &>/dev/null; do true; done'
 
           # Systemd-related tests (ignores the client container and runs in the runner itself)
-          - test_name: systemd-resolved
+          - test_name: dns-systemd-resolved
             setup: scripts/systemd-test-setup.bash
             execute: scripts/systemd-test-execute.bash
+
+            # Client DNS tests
+          - test_name: dns-etc-resolv-conf
+            perf_test: false
+            setup: echo 'Noop'
+            execute: scripts/dns-test-execute.bash
 
           # Performance Tests
           - test_name: direct-perf
