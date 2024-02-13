@@ -111,9 +111,14 @@ export default function Team() {
     },
     {
       name: "Trisha",
-      title: "Windows Platform Engineer",
+      title: "Senior Systems Engineer",
       imgSrc: gravatar("trish@firezone.dev", 200),
       githubUrl: new URL("https://github.com/ReactorScram"),
+    },
+    {
+      name: "Robert Laurence",
+      title: "Advisor",
+      imgSrc: gravatar("rb.laur@gmail.com"),
     },
   ];
 
