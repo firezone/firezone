@@ -52,7 +52,7 @@ defmodule Web.Settings.IdentityProviders.New do
     <.adapter_item
       adapter={@adapter}
       account={@account}
-      enterprise={true}
+      enterprise_feature={true}
       name="Google Workspace"
       description="Authenticate users and synchronize users and groups with a custom Google Workspace connector."
     />
@@ -64,7 +64,7 @@ defmodule Web.Settings.IdentityProviders.New do
     <.adapter_item
       adapter={@adapter}
       account={@account}
-      enterprise={true}
+      enterprise_feature={true}
       name="Microsoft Entra"
       description="Authenticate users and synchronize users and groups with a custom Microsoft Entra connector."
     />
@@ -76,7 +76,7 @@ defmodule Web.Settings.IdentityProviders.New do
     <.adapter_item
       adapter={@adapter}
       account={@account}
-      enterprise={true}
+      enterprise_feature={true}
       name="Okta"
       description="Authenticate users and synchronize users and groups with a custom Okta connector."
     />
@@ -107,7 +107,7 @@ defmodule Web.Settings.IdentityProviders.New do
 
   attr :adapter, :any
   attr :account, :any
-  attr :enterprise, :boolean, default: false
+  attr :enterprise_feature, :boolean, default: false
   attr :name, :string
   attr :description, :string
 
@@ -127,7 +127,7 @@ defmodule Web.Settings.IdentityProviders.New do
         <label for={"idp-option-#{@adapter}"} class="block ml-2 text-lg text-neutral-900">
           <%= @name %>
         </label>
-        <%= if @enterprise do %>
+        <%= if @enterprise_feature do %>
           <.badge class="ml-2" type="primary" title="Feature available on the Enterprise plan">
             ENTERPRISE
           </.badge>
