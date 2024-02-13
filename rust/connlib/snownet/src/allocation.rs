@@ -139,8 +139,13 @@ impl Allocation {
         self.realm = realm;
         self.password = password.to_owned();
 
-        if !self.has_allocation() {
-            tracing::debug!("Not refreshing allocation because we don't have one");
+        if !self.has_allocation() && self.allocate_in_flight() {
+            tracing::debug!("Not refreshing allocation because we are already making one");
+            return;
+        }
+
+        if self.is_suspended() {
+            self.authenticate_and_queue(make_allocate_request());
             return;
         }
 
@@ -559,6 +564,24 @@ impl Allocation {
         })
     }
 
+    fn allocate_in_flight(&self) -> bool {
+        self.sent_requests
+            .values()
+            .any(|(r, _, _)| r.method() == ALLOCATE)
+    }
+
+    /// Check whether this allocation is suspended.
+    ///
+    /// We call it suspended if we have given up making an allocation due to some error.
+    fn is_suspended(&self) -> bool {
+        let no_allocation = !self.has_allocation();
+        let nothing_in_flight = self.sent_requests.is_empty();
+        let nothing_buffered = self.buffered_transmits.is_empty();
+        let waiting_on_nothing = self.poll_timeout().is_none();
+
+        no_allocation && nothing_in_flight && nothing_buffered && waiting_on_nothing
+    }
+
     fn authenticate(&self, message: Message<Attribute>) -> Message<Attribute> {
         let attributes = message
             .attributes()
@@ -955,6 +978,10 @@ impl BufferedChannelBindings {
 
     fn pop_front(&mut self) -> Option<Message<Attribute>> {
         self.inner.pop_front()
+    }
+
+    fn is_empty(&self) -> bool {
+        self.inner.is_empty()
     }
 }
 
@@ -1520,19 +1547,6 @@ mod tests {
         let mut allocation = Allocation::for_test(Instant::now());
 
         let _allocate = allocation.next_message().unwrap();
-
-        allocation.refresh_with_same_credentials();
-
-        let next_msg = allocation.next_message();
-        assert!(next_msg.is_none())
-    }
-
-    #[test]
-    fn refresh_does_nothing_if_we_dont_have_an_allocation_because_it_failed() {
-        let mut allocation = Allocation::for_test(Instant::now());
-
-        let allocate = allocation.next_message().unwrap();
-        allocation.handle_test_input(&server_error(&allocate), Instant::now());
 
         allocation.refresh_with_same_credentials();
 
