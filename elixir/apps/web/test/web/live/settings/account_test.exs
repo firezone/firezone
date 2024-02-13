@@ -1,4 +1,4 @@
-defmodule Web.Live.Settings.Account.IndexTest do
+defmodule Web.Live.Settings.AccountTest do
   use Web.ConnCase, async: true
 
   setup do

@@ -72,6 +72,7 @@ config :domain, Domain.Instrumentation,
   client_logs_bucket: "logs"
 
 config :domain, :enabled_features,
+  idp_sync: true,
   traffic_filters: true,
   sign_up: true,
   flow_activities: true,

@@ -59,6 +59,7 @@ if config_env() == :prod do
     client_logs_bucket: compile_config!(:instrumentation_client_logs_bucket)
 
   config :domain, :enabled_features,
+    idp_sync: compile_config!(:feature_idp_sync_enabled),
     traffic_filters: compile_config!(:feature_traffic_filters_enabled),
     sign_up: compile_config!(:feature_sign_up_enabled),
     flow_activities: compile_config!(:feature_flow_activities_enabled),

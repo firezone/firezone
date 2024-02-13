@@ -5,6 +5,19 @@ defmodule Domain.Accounts.Account do
     field :name, :string
     field :slug, :string
 
+    # Updated by the billing subscription metadata fields
+    embeds_one :features, Domain.Accounts.Features, on_replace: :delete
+    embeds_one :limits, Domain.Accounts.Limits, on_replace: :delete
+
+    embeds_one :config, Domain.Accounts.Config, on_replace: :delete
+
+    embeds_one :external_ids, ExternalIDs, primary_key: false, on_replace: :delete do
+      embeds_one :stripe, Stripe, primary_key: false, on_replace: :delete do
+        field :customer_id, :string
+        field :subscription_id, :string
+      end
+    end
+
     # We mention all schemas here to leverage Ecto compile-time reference checks,
     # because later we will have to shard data by account_id.
     has_many :actors, Domain.Actors.Actor, where: [deleted_at: nil]
@@ -33,6 +46,10 @@ defmodule Domain.Accounts.Account do
 
     has_many :tokens, Domain.Tokens.Token, where: [deleted_at: nil]
 
+    field :disabled_reason, :string
+    field :disabled_at, :utc_datetime_usec
+
+    field :deleted_at, :utc_datetime_usec
     timestamps()
   end
 end
