@@ -17,7 +17,8 @@ defmodule Domain.Auth.Adapters.OpenIDConnect.Settings.Changeset do
 
   def validate_discovery_document_uri(changeset) do
     validate_change(changeset, :discovery_document_uri, fn :discovery_document_uri, value ->
-      with {:ok, %URI{scheme: scheme, host: host}} when not is_nil(scheme) and not is_nil(host) <-
+      with {:ok, %URI{scheme: scheme, host: host}}
+           when not is_nil(scheme) and not is_nil(host) and host != "" <-
              URI.new(value),
            {:ok, _update_result} <- OpenIDConnect.Document.fetch_document(value) do
         []
@@ -37,6 +38,9 @@ defmodule Domain.Auth.Adapters.OpenIDConnect.Settings.Changeset do
 
         {:error, {status, _body}} ->
           [{:discovery_document_uri, "is invalid, got #{status} HTTP response"}]
+
+        {:error, _} ->
+          [{:discovery_document_uri, "invalid URL"}]
       end
     end)
   end

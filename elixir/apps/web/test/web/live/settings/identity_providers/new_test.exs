@@ -47,6 +47,12 @@ defmodule Web.Live.Settings.IdentityProviders.NewTest do
     assert html =~ "Feature available on the Enterprise plan"
     assert html =~ "ENTERPRISE"
 
+    assert has_element?(lv, "#idp-option-microsoft_entra")
+    assert html =~ "Microsoft Entra"
+
+    assert has_element?(lv, "#idp-option-okta")
+    assert html =~ "Okta"
+
     assert has_element?(lv, "#idp-option-openid_connect")
     assert html =~ "OpenID Connect"
   end

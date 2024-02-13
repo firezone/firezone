@@ -449,10 +449,11 @@ defmodule Domain.Config.Definitions do
       openid_connect
       google_workspace
       microsoft_entra
+      okta
       userpass
       token
     ]a)}},
-    default: ~w[email openid_connect google_workspace microsoft_entra token]a
+    default: ~w[email openid_connect google_workspace microsoft_entra okta token]a
   )
 
   ##############################################
