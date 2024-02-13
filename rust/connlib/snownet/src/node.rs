@@ -108,6 +108,10 @@ where
         }
     }
 
+    pub fn public_key(&self) -> PublicKey {
+        (&self.private_key).into()
+    }
+
     /// Lazily retrieve stats of all connections.
     pub fn stats(&self) -> impl Iterator<Item = (TId, ConnectionInfo)> + '_ {
         self.connections.stats(self.last_now)
