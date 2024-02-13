@@ -21,7 +21,7 @@ import com.squareup.moshi.Moshi
 import com.squareup.moshi.adapter
 import dagger.hilt.android.AndroidEntryPoint
 import dev.firezone.android.R
-import dev.firezone.android.core.data.PreferenceRepository
+import dev.firezone.android.core.data.Repository
 import dev.firezone.android.core.presentation.MainActivity
 import dev.firezone.android.tunnel.callback.ConnlibCallback
 import dev.firezone.android.tunnel.model.Cidr
@@ -36,7 +36,7 @@ import javax.inject.Inject
 @OptIn(ExperimentalStdlibApi::class)
 class TunnelService : VpnService() {
     @Inject
-    internal lateinit var repo: PreferenceRepository
+    internal lateinit var repo: Repository
 
     @Inject
     internal lateinit var moshi: Moshi
@@ -172,6 +172,7 @@ class TunnelService : VpnService() {
                 Log.d(TAG, "onDisconnect: $error")
                 Firebase.crashlytics.log("onDisconnect: $error")
                 repo.clearToken()
+                repo.clearActorName()
 
                 shutdown()
 

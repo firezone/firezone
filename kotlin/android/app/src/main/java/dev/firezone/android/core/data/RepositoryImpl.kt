@@ -10,15 +10,31 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import java.security.MessageDigest
+import java.security.SecureRandom
 import javax.inject.Inject
 
-internal class PreferenceRepositoryImpl
+internal class RepositoryImpl
     @Inject
     constructor(
         private val context: Context,
         private val coroutineDispatcher: CoroutineDispatcher,
         private val sharedPreferences: SharedPreferences,
-    ) : PreferenceRepository {
+    ) : Repository {
+        override fun generateNonce(key: String): Flow<String> =
+            flow {
+                val random = SecureRandom.getInstanceStrong()
+                val bytes = ByteArray(NONCE_LENGTH)
+                random.nextBytes(bytes)
+                val encodedStr: String = bytes.joinToString("") { "%02x".format(it) }
+
+                sharedPreferences
+                    .edit()
+                    .putString(key, encodedStr)
+                    .apply()
+
+                emit(encodedStr)
+            }.flowOn(coroutineDispatcher)
+
         override fun getConfigSync(): Config {
             val restrictionsManager =
                 context.getSystemService(Context.RESTRICTIONS_SERVICE)
@@ -108,6 +124,13 @@ internal class PreferenceRepositoryImpl
             }
         }
 
+        override fun clearActorName() {
+            sharedPreferences.edit().apply {
+                remove(ACTOR_NAME_KEY)
+                apply()
+            }
+        }
+
         companion object {
             private const val AUTH_BASE_URL_KEY = "authBaseUrl"
             private const val ACTOR_NAME_KEY = "actorName"
@@ -117,5 +140,6 @@ internal class PreferenceRepositoryImpl
             private const val NONCE_KEY = "nonce"
             private const val STATE_KEY = "state"
             private const val DEVICE_ID_KEY = "deviceId"
+            private const val NONCE_LENGTH = 32
         }
     }

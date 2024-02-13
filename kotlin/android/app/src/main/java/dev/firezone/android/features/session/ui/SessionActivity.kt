@@ -74,6 +74,7 @@ internal class SessionActivity : AppCompatActivity() {
         binding.btSignOut.setOnClickListener {
             Log.d(TAG, "Sign out button clicked")
             viewModel.clearToken()
+            viewModel.clearActorName()
             tunnelService?.disconnect()
         }
 

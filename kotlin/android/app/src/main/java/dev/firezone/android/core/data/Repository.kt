@@ -4,7 +4,9 @@ package dev.firezone.android.core.data
 import dev.firezone.android.core.data.model.Config
 import kotlinx.coroutines.flow.Flow
 
-interface PreferenceRepository {
+interface Repository {
+    fun generateNonce(key: String): Flow<String>
+
     fun getConfigSync(): Config
 
     fun getConfig(): Flow<Config>
@@ -26,4 +28,6 @@ interface PreferenceRepository {
     fun validateState(value: String): Flow<Boolean>
 
     fun clearToken()
+
+    fun clearActorName()
 }

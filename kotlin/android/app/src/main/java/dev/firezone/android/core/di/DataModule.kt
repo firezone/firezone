@@ -8,25 +8,17 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
-import dev.firezone.android.core.data.AuthRepository
-import dev.firezone.android.core.data.AuthRepositoryImpl
-import dev.firezone.android.core.data.PreferenceRepository
-import dev.firezone.android.core.data.PreferenceRepositoryImpl
+import dev.firezone.android.core.data.Repository
+import dev.firezone.android.core.data.RepositoryImpl
 import kotlinx.coroutines.CoroutineDispatcher
 
 @Module
 @InstallIn(SingletonComponent::class)
 class DataModule {
     @Provides
-    internal fun provideAuthRepository(
-        @IoDispatcher coroutineDispatcher: CoroutineDispatcher,
-        sharedPreferences: SharedPreferences,
-    ): AuthRepository = AuthRepositoryImpl(coroutineDispatcher, sharedPreferences)
-
-    @Provides
-    internal fun providePreferenceRepository(
+    internal fun provideRepository(
         @ApplicationContext context: Context,
         @IoDispatcher coroutineDispatcher: CoroutineDispatcher,
         sharedPreferences: SharedPreferences,
-    ): PreferenceRepository = PreferenceRepositoryImpl(context, coroutineDispatcher, sharedPreferences)
+    ): Repository = RepositoryImpl(context, coroutineDispatcher, sharedPreferences)
 }
