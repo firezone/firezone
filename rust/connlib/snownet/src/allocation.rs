@@ -956,8 +956,11 @@ impl BufferedChannelBindings {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
-    use stun_codec::{rfc5389::errors::BadRequest, Message};
+    use std::{
+        iter,
+        net::{IpAddr, Ipv4Addr, Ipv6Addr},
+    };
+    use stun_codec::{rfc5389::errors::BadRequest, rfc5766::errors::AllocationMismatch, Message};
 
     const PEER1: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 10000);
 
@@ -1417,98 +1420,101 @@ mod tests {
         assert_eq!(next_event, None);
     }
 
-    // #[test]
-    // fn calling_refresh_will_trigger_refresh() {
-    //     let mut allocation = Allocation::for_test(Instant::now());
+    #[test]
+    fn calling_refresh_with_same_credentials_will_trigger_refresh() {
+        let mut allocation = Allocation::for_test(Instant::now());
 
-    //     let allocate = allocation.next_message().unwrap();
-    //     allocation.handle_test_input(
-    //         &allocate_response(&allocate, &[RELAY_ADDR_IP4]),
-    //         Instant::now(),
-    //     );
+        let allocate = allocation.next_message().unwrap();
+        allocation.handle_test_input(
+            &allocate_response(&allocate, &[RELAY_ADDR_IP4]),
+            Instant::now(),
+        );
 
-    //     allocation.refresh();
+        allocation.refresh("foobar", "baz", "firezone");
 
-    //     let refresh = allocation.next_message().unwrap();
-    //     assert_eq!(refresh.method(), REFRESH);
-    // }
+        let refresh = allocation.next_message().unwrap();
+        assert_eq!(refresh.method(), REFRESH);
 
-    // #[test]
-    // fn failed_refresh_will_invalidate_relay_candiates() {
-    //     let mut allocation = Allocation::for_test(Instant::now());
+        let lifetime = refresh.get_attribute::<Lifetime>();
+        assert!(lifetime.is_none() || lifetime.is_some_and(|l| l.lifetime() != Duration::ZERO));
+    }
 
-    //     let allocate = allocation.next_message().unwrap();
-    //     allocation.handle_test_input(
-    //         &allocate_response(&allocate, &[RELAY_ADDR_IP4, RELAY_ADDR_IP6]),
-    //         Instant::now(),
-    //     );
-    //     let _ = iter::from_fn(|| allocation.poll_event()).collect::<Vec<_>>(); // Drain events.
+    #[test]
+    fn failed_refresh_will_invalidate_relay_candiates() {
+        let mut allocation = Allocation::for_test(Instant::now());
 
-    //     allocation.refresh();
+        let allocate = allocation.next_message().unwrap();
+        allocation.handle_test_input(
+            &allocate_response(&allocate, &[RELAY_ADDR_IP4, RELAY_ADDR_IP6]),
+            Instant::now(),
+        );
+        let _ = iter::from_fn(|| allocation.poll_event()).collect::<Vec<_>>(); // Drain events.
 
-    //     let refresh = allocation.next_message().unwrap();
-    //     allocation.handle_test_input(&failed_refresh(&refresh), Instant::now());
+        allocation.refresh("foobar", "baz", "firezone");
 
-    //     assert_eq!(
-    //         allocation.poll_event(),
-    //         Some(CandidateEvent::Invalid(
-    //             Candidate::relayed(RELAY_ADDR_IP4, Protocol::Udp).unwrap()
-    //         ))
-    //     );
-    //     assert_eq!(
-    //         allocation.poll_event(),
-    //         Some(CandidateEvent::Invalid(
-    //             Candidate::relayed(RELAY_ADDR_IP6, Protocol::Udp).unwrap()
-    //         ))
-    //     );
-    //     assert!(allocation.poll_event().is_none());
-    //     assert_eq!(
-    //         allocation.current_candidates().collect::<Vec<_>>(),
-    //         vec![Candidate::server_reflexive(PEER1, PEER1, Protocol::Udp).unwrap()],
-    //         "server-reflexive candidate should still be valid after refresh"
-    //     )
-    // }
+        let refresh = allocation.next_message().unwrap();
+        allocation.handle_test_input(&failed_refresh(&refresh), Instant::now());
 
-    // #[test]
-    // fn failed_refresh_clears_all_channel_bindings() {
-    //     let mut allocation = Allocation::for_test(Instant::now());
+        assert_eq!(
+            allocation.poll_event(),
+            Some(CandidateEvent::Invalid(
+                Candidate::relayed(RELAY_ADDR_IP4, Protocol::Udp).unwrap()
+            ))
+        );
+        assert_eq!(
+            allocation.poll_event(),
+            Some(CandidateEvent::Invalid(
+                Candidate::relayed(RELAY_ADDR_IP6, Protocol::Udp).unwrap()
+            ))
+        );
+        assert!(allocation.poll_event().is_none());
+        assert_eq!(
+            allocation.current_candidates().collect::<Vec<_>>(),
+            vec![Candidate::server_reflexive(PEER1, PEER1, Protocol::Udp).unwrap()],
+            "server-reflexive candidate should still be valid after refresh"
+        )
+    }
 
-    //     let allocate = allocation.next_message().unwrap();
-    //     allocation.handle_test_input(
-    //         &allocate_response(&allocate, &[RELAY_ADDR_IP4, RELAY_ADDR_IP6]),
-    //         Instant::now(),
-    //     );
+    #[test]
+    fn failed_refresh_clears_all_channel_bindings() {
+        let mut allocation = Allocation::for_test(Instant::now());
 
-    //     allocation.bind_channel(PEER2_IP4, Instant::now());
-    //     let channel_bind_msg = allocation.next_message().unwrap();
-    //     allocation.handle_test_input(
-    //         &encode(channel_bind_success(&channel_bind_msg)),
-    //         Instant::now(),
-    //     );
+        let allocate = allocation.next_message().unwrap();
+        allocation.handle_test_input(
+            &allocate_response(&allocate, &[RELAY_ADDR_IP4, RELAY_ADDR_IP6]),
+            Instant::now(),
+        );
 
-    //     let msg = allocation.encode_to_vec(PEER2_IP4, b"foobar", Instant::now());
-    //     assert!(msg.is_some(), "expect to have a channel to peer");
+        allocation.bind_channel(PEER2_IP4, Instant::now());
+        let channel_bind_msg = allocation.next_message().unwrap();
+        allocation.handle_test_input(
+            &encode(channel_bind_success(&channel_bind_msg)),
+            Instant::now(),
+        );
 
-    //     allocation.refresh();
+        let msg = allocation.encode_to_vec(PEER2_IP4, b"foobar", Instant::now());
+        assert!(msg.is_some(), "expect to have a channel to peer");
 
-    //     let refresh = allocation.next_message().unwrap();
-    //     allocation.handle_test_input(&failed_refresh(&refresh), Instant::now());
+        allocation.refresh("foobar", "baz", "firezone");
 
-    //     let msg = allocation.encode_to_vec(PEER2_IP4, b"foobar", Instant::now());
-    //     assert!(msg.is_none(), "expect to no longer have a channel to peer");
-    // }
+        let refresh = allocation.next_message().unwrap();
+        allocation.handle_test_input(&failed_refresh(&refresh), Instant::now());
 
-    // #[test]
-    // fn refresh_does_nothing_if_we_dont_have_an_allocation_yet() {
-    //     let mut allocation = Allocation::for_test(Instant::now());
+        let msg = allocation.encode_to_vec(PEER2_IP4, b"foobar", Instant::now());
+        assert!(msg.is_none(), "expect to no longer have a channel to peer");
+    }
 
-    //     let _allocate = allocation.next_message().unwrap();
+    #[test]
+    fn refresh_does_nothing_if_we_dont_have_an_allocation_yet() {
+        let mut allocation = Allocation::for_test(Instant::now());
 
-    //     allocation.refresh();
+        let _allocate = allocation.next_message().unwrap();
 
-    //     let next_msg = allocation.next_message();
-    //     assert!(next_msg.is_none())
-    // }
+        allocation.refresh("foobar", "baz", "firezone");
+
+        let next_msg = allocation.next_message();
+        assert!(next_msg.is_none())
+    }
 
     fn ch(peer: SocketAddr, now: Instant) -> Channel {
         Channel {
@@ -1563,16 +1569,16 @@ mod tests {
         encode(message)
     }
 
-    // fn failed_refresh(request: &Message<Attribute>) -> Vec<u8> {
-    //     let mut message = Message::new(
-    //         MessageClass::ErrorResponse,
-    //         REFRESH,
-    //         request.transaction_id(),
-    //     );
-    //     message.add_attribute(ErrorCode::from(AllocationMismatch));
+    fn failed_refresh(request: &Message<Attribute>) -> Vec<u8> {
+        let mut message = Message::new(
+            MessageClass::ErrorResponse,
+            REFRESH,
+            request.transaction_id(),
+        );
+        message.add_attribute(ErrorCode::from(AllocationMismatch));
 
-    //     encode(message)
-    // }
+        encode(message)
+    }
 
     fn channel_bind_bad_request(request: &Message<Attribute>) -> Message<Attribute> {
         let mut message = Message::new(
