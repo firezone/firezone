@@ -236,6 +236,7 @@ impl Allocation {
                     }
 
                     self.channel_bindings.clear();
+                    self.allocation_lifetime = None;
                 }
                 _ => {}
             }
