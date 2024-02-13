@@ -12,6 +12,7 @@ import android.net.VpnService
 import android.os.Binder
 import android.os.Build
 import android.os.IBinder
+import android.os.ParcelFileDescriptor
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.lifecycle.MutableLiveData
@@ -46,6 +47,7 @@ class TunnelService : VpnService() {
     private var tunnelDnsAddresses: MutableList<String> = mutableListOf()
     private var tunnelRoutes: MutableList<Cidr> = mutableListOf()
     private var connlibSessionPtr: Long? = null
+    private var parcelFileDescriptor: ParcelFileDescriptor? = null
     private var _tunnelResources: List<Resource> = emptyList()
     private var _tunnelState: State = State.DOWN
 
@@ -103,9 +105,7 @@ class TunnelService : VpnService() {
                 tunnelIpv6Address = addressIPv6
 
                 // start VPN
-                val fd = buildVpnService().establish()?.detachFd() ?: -1
-                protect(fd)
-                return fd
+                return buildVpnService()
             }
 
             override fun onTunnelReady(): Boolean {
@@ -127,9 +127,8 @@ class TunnelService : VpnService() {
 
                 val route = Cidr(addr, prefix)
                 tunnelRoutes.add(route)
-                val fd = buildVpnService().establish()?.detachFd() ?: -1
-                protect(fd)
-                return fd
+
+                return buildVpnService()
             }
 
             override fun onRemoveRoute(
@@ -141,9 +140,8 @@ class TunnelService : VpnService() {
 
                 val route = Cidr(addr, prefix)
                 tunnelRoutes.remove(route)
-                val fd = buildVpnService().establish()?.detachFd() ?: -1
-                protect(fd)
-                return fd
+
+                return buildVpnService()
             }
 
             override fun getSystemDefaultResolvers(): Array<ByteArray> {
@@ -199,15 +197,6 @@ class TunnelService : VpnService() {
         return START_STICKY
     }
 
-    // Happens when a user removes the VPN configuration in the System settings
-    override fun onRevoke() {
-        Log.d(TAG, "onRevoke")
-
-        connlibSessionPtr?.let {
-            ConnlibSession.disconnect(it)
-        }
-    }
-
     // Call this to stop the tunnel and shutdown the service, leaving the token intact.
     fun disconnect() {
         Log.d(TAG, "disconnect")
@@ -222,6 +211,7 @@ class TunnelService : VpnService() {
         Log.d(TAG, "shutdown")
 
         connlibSessionPtr = null
+        parcelFileDescriptor?.close()
         stopSelf()
         tunnelState = State.DOWN
     }
@@ -300,8 +290,17 @@ class TunnelService : VpnService() {
         return logDir
     }
 
-    private fun buildVpnService(): VpnService.Builder {
-        return Builder().apply {
+    private fun buildVpnService(): Int {
+        parcelFileDescriptor?.let {
+            try {
+                it.close()
+            } catch (e: Exception) {
+                Log.e(TAG, "Error closing existing VPN file descriptor", e)
+                Firebase.crashlytics.recordException(e)
+            }
+        }
+
+        Builder().apply {
             Firebase.crashlytics.log("Building VPN service")
             // Allow traffic to bypass the VPN interface when Always-on VPN is enabled.
             allowBypass()
@@ -336,6 +335,13 @@ class TunnelService : VpnService() {
 
             setSession(SESSION_NAME)
             setMtu(MTU)
+        }.establish()?.let {
+            parcelFileDescriptor = it
+            return it.fd
+        } ?: run {
+            Log.e(TAG, "Error establishing VPN service")
+            Firebase.crashlytics.log("Error establishing VPN service")
+            return -1
         }
     }
 

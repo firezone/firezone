@@ -2,7 +2,6 @@ use crate::device_channel::ioctl;
 use connlib_shared::{messages::Interface as InterfaceConfig, Callbacks, Error, Result};
 use ip_network::IpNetwork;
 use std::net::IpAddr;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::task::{Context, Poll};
 use std::{
     io,
@@ -16,28 +15,21 @@ pub(crate) const SIOCGIFMTU: libc::c_ulong = libc::SIOCGIFMTU;
 
 #[derive(Debug)]
 pub(crate) struct Tun {
-    fd: Closeable,
+    fd: AsyncFd<RawFd>,
     name: String,
-}
-
-impl Drop for Tun {
-    fn drop(&mut self) {
-        unsafe { libc::close(self.fd.fd.as_raw_fd()) };
-    }
 }
 
 impl Tun {
     pub fn write4(&self, src: &[u8]) -> std::io::Result<usize> {
-        self.fd.with(|fd| write(*fd.get_ref(), src))?
+        write(*self.fd.get_ref(), src)
     }
 
     pub fn write6(&self, src: &[u8]) -> std::io::Result<usize> {
-        self.fd.with(|fd| write(*fd.get_ref(), src))?
+        write(*self.fd.get_ref(), src)
     }
 
     pub fn poll_read(&self, buf: &mut [u8], cx: &mut Context<'_>) -> Poll<io::Result<usize>> {
-        self.fd
-            .with(|fd| utils::poll_raw_fd(&fd, |fd| read(fd, buf), cx))?
+        utils::poll_raw_fd(&self.fd, |fd| read(fd, buf), cx)
     }
 
     pub fn new(
@@ -52,7 +44,7 @@ impl Tun {
         let name = unsafe { interface_name(fd)? };
 
         Ok(Tun {
-            fd: Closeable::new(AsyncFd::new(fd)?),
+            fd: AsyncFd::new(fd)?,
             name,
         })
     }
@@ -66,12 +58,11 @@ impl Tun {
         route: IpNetwork,
         callbacks: &impl Callbacks<Error = Error>,
     ) -> Result<Option<Self>> {
-        self.fd.close();
         let fd = callbacks.on_add_route(route)?.ok_or(Error::NoFd)?;
         let name = unsafe { interface_name(fd)? };
 
         Ok(Some(Tun {
-            fd: Closeable::new(AsyncFd::new(fd)?),
+            fd: AsyncFd::new(fd)?,
             name,
         }))
     }
@@ -126,32 +117,5 @@ fn write(fd: RawFd, buf: &[u8]) -> io::Result<usize> {
     match unsafe { libc::write(fd.as_raw_fd(), buf.as_ptr() as _, buf.len() as _) } {
         -1 => Err(io::Error::last_os_error()),
         n => Ok(n as usize),
-    }
-}
-
-#[derive(Debug)]
-struct Closeable {
-    closed: AtomicBool,
-    fd: AsyncFd<RawFd>,
-}
-
-impl Closeable {
-    fn new(fd: AsyncFd<RawFd>) -> Self {
-        Self {
-            closed: AtomicBool::new(false),
-            fd: fd,
-        }
-    }
-
-    fn with<U>(&self, f: impl FnOnce(&AsyncFd<RawFd>) -> U) -> std::io::Result<U> {
-        if self.closed.load(Ordering::Acquire) {
-            return Err(std::io::Error::from_raw_os_error(9));
-        }
-
-        Ok(f(&self.fd))
-    }
-
-    fn close(&self) {
-        self.closed.store(true, Ordering::Release);
     }
 }
