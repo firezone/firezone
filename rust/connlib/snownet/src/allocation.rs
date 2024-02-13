@@ -145,7 +145,7 @@ impl Allocation {
     /// - Emit new candidates.
     pub fn refresh(&mut self, username: &str, password: &str, realm: &str) {
         if !self.has_allocation() {
-            tracing::debug!("");
+            tracing::debug!("Not refreshing allocation because we don't have one");
             return;
         }
     }
