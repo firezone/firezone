@@ -1601,6 +1601,19 @@ mod tests {
         assert_eq!(allocation.poll_timeout(), None);
     }
 
+    #[test]
+    fn when_refreshed_with_no_allocation_after_failed_response_tries_to_allocate() {
+        let mut allocation = Allocation::for_test(Instant::now());
+
+        let allocate = allocation.next_message().unwrap();
+        allocation.handle_test_input(&server_error(&allocate), Instant::now());
+
+        allocation.refresh_with_same_credentials();
+
+        let next_msg = allocation.next_message().unwrap();
+        assert_eq!(next_msg.method(), ALLOCATE)
+    }
+
     fn ch(peer: SocketAddr, now: Instant) -> Channel {
         Channel {
             peer,
