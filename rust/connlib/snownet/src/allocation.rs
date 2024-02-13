@@ -239,6 +239,8 @@ impl Allocation {
 
                     self.channel_bindings.clear();
                     self.allocation_lifetime = None;
+
+                    self.authenticate_and_queue(make_allocate_request());
                 }
                 _ => {}
             }
@@ -1587,9 +1589,14 @@ mod tests {
             &allocate_response(&allocate, &[RELAY_ADDR_IP4, RELAY_ADDR_IP6]),
             Instant::now(),
         );
+
         allocation.advance_to_next_timeout();
+
         let refresh = allocation.next_message().unwrap();
         allocation.handle_test_input(&failed_refresh(&refresh), Instant::now());
+
+        let allocate = allocation.next_message().unwrap();
+        allocation.handle_test_input(&server_error(&allocate), Instant::now()); // These ones are not retried.
 
         assert_eq!(allocation.poll_timeout(), None);
     }
