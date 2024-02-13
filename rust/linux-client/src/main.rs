@@ -4,7 +4,7 @@ use connlib_client_shared::{file_logger, Callbacks, Session};
 use connlib_shared::linux::{get_dns_control_from_env, DnsControlMethod};
 use firezone_cli_utils::{block_on_ctrl_c, setup_global_subscriber, CommonArgs};
 use secrecy::SecretString;
-use std::{net::IpAddr, path::PathBuf};
+use std::{net::IpAddr, path::PathBuf, str::FromStr};
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -62,7 +62,7 @@ impl Callbacks for CallbackHandler {
                 Ok(Some(get_system_default_resolvers_resolv_conf()?))
             }
             Some(DnsControlMethod::NetworkManager) => todo!(),
-            Some(DnsControlMethod::Systemd) => todo!(),
+            Some(DnsControlMethod::Systemd) => Ok(Some(get_system_default_resolvers_resolvectl()?)),
         }
     }
 
@@ -100,6 +100,37 @@ fn get_system_default_resolvers_resolv_conf() -> Result<Vec<IpAddr>> {
         .map(|addr| addr.into())
         .collect();
     Ok(nameservers)
+}
+
+fn get_system_default_resolvers_resolvectl() -> Result<Vec<IpAddr>> {
+    // Unfortunately systemd-resolved does not have a machine-readable
+    // text output for this command: <https://github.com/systemd/systemd/issues/29755>
+    //
+    // The officially supported way is probably to use D-Bus.
+    let output = std::process::Command::new("resolvectl")
+        .arg("dns")
+        .output()
+        .context("Failed to run `resolvectl dns` and read output")?;
+    if !output.status.success() {
+        anyhow::bail!("`resolvectl dns` returned non-zero exit code");
+    }
+    let output = String::from_utf8(output.stdout).context("`resolvectl` output was not UTF-8")?;
+    Ok(parse_resolvectl_output(&output))
+}
+
+/// Parses the text output of `resolvectl dns`
+///
+/// Cannot fail. If the parsing code is wrong, the IP address vec will just be incomplete.
+fn parse_resolvectl_output(s: &str) -> Vec<IpAddr> {
+    let mut v = vec![];
+    for line in s.lines() {
+        for word in line.split(' ') {
+            if let Ok(addr) = IpAddr::from_str(word) {
+                v.push(addr);
+            }
+        }
+    }
+    v
 }
 
 #[derive(Parser)]
