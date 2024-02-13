@@ -1516,6 +1516,25 @@ mod tests {
         assert!(next_msg.is_none())
     }
 
+    #[test]
+    fn failed_refresh_attempts_to_make_new_allocation() {
+        let mut allocation = Allocation::for_test(Instant::now());
+
+        let allocate = allocation.next_message().unwrap();
+        allocation.handle_test_input(
+            &allocate_response(&allocate, &[RELAY_ADDR_IP4, RELAY_ADDR_IP6]),
+            Instant::now(),
+        );
+
+        allocation.refresh("foobar", "baz", "firezone");
+
+        let refresh = allocation.next_message().unwrap();
+        allocation.handle_test_input(&failed_refresh(&refresh), Instant::now());
+
+        let allocate = allocation.next_message().unwrap();
+        assert_eq!(allocate.method(), ALLOCATE);
+    }
+
     fn ch(peer: SocketAddr, now: Instant) -> Channel {
         Channel {
             peer,
