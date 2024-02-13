@@ -323,7 +323,7 @@ jobs:
 
               # Make sure a non-resource doesn't go through the tunnel
               docker compose exec -it client timeout 60 \
-              sh -c 'nslookup github.com; nslookup github.com | tail -n +4 | grep 100\\.96.\\0\\.'
+              sh -c 'nslookup github.com; nslookup github.com | tail -n +4 | grep -v 100\\.96.\\0\\.'
 
     steps:
       - uses: actions/checkout@v4
