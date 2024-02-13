@@ -171,6 +171,8 @@ class TunnelService : VpnService() {
             override fun onDisconnect(error: String): Boolean {
                 Log.d(TAG, "onDisconnect: $error")
                 Firebase.crashlytics.log("onDisconnect: $error")
+
+                // This is a no-op if the token is being read from MDM
                 repo.clearToken()
                 repo.clearActorName()
 
@@ -197,7 +199,7 @@ class TunnelService : VpnService() {
         return START_STICKY
     }
 
-    // Haven't seen this callback called yet, but it's here for completeness.
+    // Happens when a user removes the VPN configuration in the System settings
     override fun onRevoke() {
         Log.d(TAG, "onRevoke")
 
@@ -225,9 +227,10 @@ class TunnelService : VpnService() {
     }
 
     private fun connect() {
+        val token = repo.getTokenSync()
         val config = repo.getConfigSync()
 
-        if (!config.token.isNullOrBlank()) {
+        if (!token.isNullOrBlank()) {
             tunnelState = State.CONNECTING
             updateStatusNotification("Status: Connecting...")
             System.loadLibrary("connlib")
@@ -235,7 +238,7 @@ class TunnelService : VpnService() {
             connlibSessionPtr =
                 ConnlibSession.connect(
                     apiUrl = config.apiUrl,
-                    token = config.token,
+                    token = token,
                     deviceId = deviceId(),
                     deviceName = Build.MODEL,
                     osVersion = Build.VERSION.RELEASE,

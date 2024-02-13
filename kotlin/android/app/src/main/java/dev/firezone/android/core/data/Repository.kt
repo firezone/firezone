@@ -5,8 +5,6 @@ import dev.firezone.android.core.data.model.Config
 import kotlinx.coroutines.flow.Flow
 
 interface Repository {
-    fun generateNonce(key: String): Flow<String>
-
     fun getConfigSync(): Config
 
     fun getConfig(): Flow<Config>
@@ -19,7 +17,27 @@ interface Repository {
 
     fun saveDeviceIdSync(value: String): Unit
 
+    fun getToken(): Flow<String?>
+
+    fun getTokenSync(): String?
+
+    fun getStateSync(): String?
+
+    fun getNonceSync(): String?
+
     fun getDeviceIdSync(): String?
+
+    fun getActorName(): Flow<String?>
+
+    fun getActorNameSync(): String?
+
+    fun saveNonce(value: String): Flow<Unit>
+
+    fun saveState(value: String): Flow<Unit>
+
+    fun saveStateSync(value: String): Unit
+
+    fun saveNonceSync(value: String): Unit
 
     fun saveToken(value: String): Flow<Unit>
 
@@ -28,6 +46,10 @@ interface Repository {
     fun validateState(value: String): Flow<Boolean>
 
     fun clearToken()
+
+    fun clearNonce()
+
+    fun clearState()
 
     fun clearActorName()
 }

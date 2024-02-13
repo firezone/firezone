@@ -7,7 +7,7 @@ import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
-import dev.firezone.android.core.domain.preference.GetConfigUseCase
+import dev.firezone.android.core.data.Repository
 import dev.firezone.android.tunnel.TunnelService
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
@@ -20,7 +20,7 @@ private const val REQUEST_DELAY = 1000L
 internal class SplashViewModel
     @Inject
     constructor(
-        private val getConfigUseCase: GetConfigUseCase,
+        private val repo: Repository,
     ) : ViewModel() {
         private val actionMutableLiveData = MutableLiveData<ViewAction>()
         val actionLiveData: LiveData<ViewAction> = actionMutableLiveData
@@ -32,8 +32,8 @@ internal class SplashViewModel
                 if (!hasVpnPermissions(context)) {
                     actionMutableLiveData.postValue(ViewAction.NavigateToVpnPermission)
                 } else {
-                    getConfigUseCase.invoke().collect {
-                        if (it.token.isNullOrBlank()) {
+                    repo.getToken().collect {
+                        if (it.isNullOrBlank()) {
                             actionMutableLiveData.postValue(ViewAction.NavigateToSignIn)
                         } else {
                             // token will be re-read by the TunnelService

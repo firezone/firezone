@@ -4,7 +4,6 @@ package dev.firezone.android.features.customuri.ui
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.viewModels
-import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import dagger.hilt.android.AndroidEntryPoint
 import dev.firezone.android.R
@@ -33,23 +32,13 @@ class CustomUriHandlerActivity : AppCompatActivity(R.layout.activity_custom_uri_
                     startActivity(
                         Intent(this, MainActivity::class.java),
                     )
-                    finish()
                 }
-                CustomUriViewModel.ViewAction.ShowError -> showError()
+                else -> {
+                    throw IllegalStateException("Unknown action: $action")
+                }
             }
-        }
-    }
 
-    private fun showError() {
-        AlertDialog.Builder(this)
-            .setTitle(R.string.error_dialog_title)
-            .setMessage(R.string.error_dialog_message)
-            .setPositiveButton(
-                R.string.error_dialog_button_text,
-            ) { _, _ ->
-                this@CustomUriHandlerActivity.finish()
-            }
-            .setIcon(R.drawable.ic_firezone_logo)
-            .show()
+            finish()
+        }
     }
 }

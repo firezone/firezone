@@ -5,6 +5,4 @@ data class Config(
     val authBaseUrl: String,
     val apiUrl: String,
     val logFilter: String,
-    val token: String?,
-    val actorName: String?,
 )

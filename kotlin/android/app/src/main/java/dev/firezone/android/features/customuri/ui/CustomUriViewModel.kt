@@ -10,21 +10,18 @@ import androidx.lifecycle.viewModelScope
 import com.google.firebase.crashlytics.ktx.crashlytics
 import com.google.firebase.ktx.Firebase
 import dagger.hilt.android.lifecycle.HiltViewModel
-import dev.firezone.android.core.domain.preference.SaveActorNameUseCase
-import dev.firezone.android.core.domain.preference.SaveTokenUseCase
-import dev.firezone.android.core.domain.preference.ValidateStateUseCase
+import dev.firezone.android.core.data.Repository
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
+import java.lang.IllegalStateException
 import javax.inject.Inject
 
 @HiltViewModel
 internal class CustomUriViewModel
     @Inject
     constructor(
-        private val validateStateUseCase: ValidateStateUseCase,
-        private val saveTokenUseCase: SaveTokenUseCase,
-        private val saveActorNameUseCase: SaveActorNameUseCase,
+        private val repo: Repository,
     ) : ViewModel() {
         private val actionMutableLiveData = MutableLiveData<ViewAction>()
         val actionLiveData: LiveData<ViewAction> = actionMutableLiveData
@@ -35,25 +32,29 @@ internal class CustomUriViewModel
                     PATH_CALLBACK -> {
                         intent.data?.getQueryParameter(QUERY_ACTOR_NAME)?.let { actorName ->
                             Log.d("CustomUriViewModel", "Found actor name: $actorName")
-                            saveActorNameUseCase(actorName).collect()
+                            repo.saveActorName(actorName).collect()
                         }
                         intent.data?.getQueryParameter(QUERY_CLIENT_STATE)?.let { state ->
-                            if (validateStateUseCase(state).firstOrNull() == true) {
+                            if (repo.validateState(state).firstOrNull() == true) {
                                 Log.d("CustomUriViewModel", "Valid state parameter. Continuing to save state...")
                             } else {
-                                Log.d("CustomUriViewModel", "Invalid state parameter! Ignoring...")
-                                actionMutableLiveData.postValue(ViewAction.ShowError)
+                                throw IllegalStateException("Invalid state parameter $state! Authentication will not succeed...")
                             }
                             intent.data?.getQueryParameter(QUERY_CLIENT_AUTH_FRAGMENT)?.let { fragment ->
                                 if (fragment.isNotBlank()) {
                                     Log.d("CustomUriViewModel", "Found valid auth fragment in response")
-                                    saveTokenUseCase(fragment).collect()
+
+                                    // Save token, then clear nonce and state since we don't
+                                    // need to keep them around anymore
+                                    repo.saveToken(fragment).collect()
+                                    repo.clearNonce()
+                                    repo.clearState()
+
+                                    actionMutableLiveData.postValue(ViewAction.AuthFlowComplete)
                                 } else {
-                                    Log.d("CustomUriViewModel", "Didn't find auth fragment in response!")
+                                    throw IllegalStateException("Invalid auth fragment $fragment! Authentication will not succeed...")
                                 }
                             }
-
-                            actionMutableLiveData.postValue(ViewAction.AuthFlowComplete)
                         }
                     }
                     else -> {
@@ -69,12 +70,9 @@ internal class CustomUriViewModel
             private const val QUERY_CLIENT_STATE = "state"
             private const val QUERY_CLIENT_AUTH_FRAGMENT = "fragment"
             private const val QUERY_ACTOR_NAME = "actor_name"
-            private const val QUERY_IDENTITY_PROVIDER_IDENTIFIER = "identity_provider_identifier"
         }
 
         internal sealed class ViewAction {
             object AuthFlowComplete : ViewAction()
-
-            object ShowError : ViewAction()
         }
     }

@@ -27,5 +27,5 @@ internal class SessionViewModel
 
         fun clearActorName() = repo.clearActorName()
 
-        fun getActorName() = repo.getConfigSync().actorName
+        fun getActorName() = repo.getActorNameSync()
     }
