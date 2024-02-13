@@ -403,7 +403,7 @@ impl Allocation {
         }
 
         if let Some(refresh_at) = self.refresh_allocation_at() {
-            if now > refresh_at {
+            if now >= refresh_at {
                 tracing::debug!("Allocation is due for a refresh");
                 self.authenticate_and_queue(make_refresh_request());
             }
@@ -973,6 +973,8 @@ mod tests {
 
     const MINUTE: Duration = Duration::from_secs(60);
 
+    const ALLOCATION_LIFETIME: Duration = Duration::from_secs(600);
+
     #[test]
     fn returns_first_available_channel() {
         let mut channel_bindings = ChannelBindings::default();
@@ -1535,6 +1537,27 @@ mod tests {
         assert_eq!(allocate.method(), ALLOCATE);
     }
 
+    #[test]
+    fn allocation_is_refreshed_after_half_its_lifetime() {
+        let mut allocation = Allocation::for_test(Instant::now());
+
+        let allocate = allocation.next_message().unwrap();
+
+        let received_at = Instant::now();
+
+        allocation.handle_test_input(
+            &allocate_response(&allocate, &[RELAY_ADDR_IP4, RELAY_ADDR_IP6]),
+            received_at,
+        );
+
+        let refresh_at = allocation.poll_timeout().unwrap();
+        assert_eq!(refresh_at, received_at + (ALLOCATION_LIFETIME / 2));
+
+        allocation.handle_timeout(refresh_at);
+        let next_msg = allocation.next_message().unwrap();
+        assert_eq!(next_msg.method(), REFRESH)
+    }
+
     fn ch(peer: SocketAddr, now: Instant) -> Channel {
         Channel {
             peer,
@@ -1557,7 +1580,7 @@ mod tests {
             message.add_attribute(XorRelayAddress::new(*addr));
         }
 
-        message.add_attribute(Lifetime::new(Duration::from_secs(600)).unwrap());
+        message.add_attribute(Lifetime::new(ALLOCATION_LIFETIME).unwrap());
 
         encode(message)
     }
