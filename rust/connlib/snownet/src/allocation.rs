@@ -143,7 +143,12 @@ impl Allocation {
     /// - Clear all channels.
     /// - Attempt to make a new allocation.
     /// - Emit new candidates.
-    pub fn refresh(&mut self, _username: &str, _password: &str, _realm: &str) {}
+    pub fn refresh(&mut self, username: &str, password: &str, realm: &str) {
+        if !self.has_allocation() {
+            tracing::debug!("");
+            return;
+        }
+    }
 
     #[tracing::instrument(level = "debug", skip(self, packet, now), fields(relay = %self.server, id, method, class, rtt))]
     pub fn handle_input(
@@ -961,7 +966,11 @@ mod tests {
         iter,
         net::{IpAddr, Ipv4Addr, Ipv6Addr},
     };
-    use stun_codec::{rfc5389::errors::BadRequest, rfc5766::errors::AllocationMismatch, Message};
+    use stun_codec::{
+        rfc5389::errors::{BadRequest, ServerError},
+        rfc5766::errors::AllocationMismatch,
+        Message,
+    };
 
     const PEER1: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 10000);
 
@@ -1520,6 +1529,19 @@ mod tests {
     }
 
     #[test]
+    fn refresh_does_nothing_if_we_dont_have_an_allocation_because_it_failed() {
+        let mut allocation = Allocation::for_test(Instant::now());
+
+        let allocate = allocation.next_message().unwrap();
+        allocation.handle_test_input(&&server_error(&allocate), Instant::now());
+
+        allocation.refresh("foobar", "baz", "firezone");
+
+        let next_msg = allocation.next_message();
+        assert!(next_msg.is_none())
+    }
+
+    #[test]
     fn failed_refresh_attempts_to_make_new_allocation() {
         let mut allocation = Allocation::for_test(Instant::now());
 
@@ -1611,6 +1633,17 @@ mod tests {
         message.add_attribute(ErrorCode::from(Unauthorized));
         message.add_attribute(Realm::new("firezone".to_owned()).unwrap());
         message.add_attribute(Nonce::new(nonce.to_owned()).unwrap());
+
+        encode(message)
+    }
+
+    fn server_error(request: &Message<Attribute>) -> Vec<u8> {
+        let mut message = Message::new(
+            MessageClass::ErrorResponse,
+            request.method(),
+            request.transaction_id(),
+        );
+        message.add_attribute(ErrorCode::from(ServerError));
 
         encode(message)
     }
