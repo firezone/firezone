@@ -164,7 +164,7 @@ impl Eventloop {
                     let connection_request = async move {
                         let resource = resolve_resource_description(req.resource).await?;
 
-                        let accepted = tunnel
+                        let conn = tunnel
                             .set_peer_connection_request(
                                 req.client.payload.ice_parameters,
                                 req.client.peer.into(),
@@ -175,8 +175,7 @@ impl Eventloop {
                                 resource,
                             )
                             .await?;
-
-                        Ok(GatewayResponse::ConnectionAccepted(accepted))
+                        Ok(GatewayResponse::ConnectionAccepted(conn))
                     };
 
                     match self
