@@ -64,7 +64,7 @@ services:
       # Web Server
       EXTERNAL_URL: http://localhost:8080/
       PHOENIX_HTTP_WEB_PORT: "8080"
-      PHOENIX_SECURE_COOKIES: false
+      PHOENIX_SECURE_COOKIES: "false"
       # Erlang
       ERLANG_DISTRIBUTION_PORT: 9000
       ERLANG_CLUSTER_ADAPTER: "Elixir.Cluster.Strategy.Epmd"
@@ -79,7 +79,7 @@ services:
       DATABASE_USER: postgres
       DATABASE_PASSWORD: postgres
       # Auth
-      AUTH_PROVIDER_ADAPTERS: "email,openid_connect,userpass,token,google_workspace,microsoft_entra"
+      AUTH_PROVIDER_ADAPTERS: "email,openid_connect,userpass,token,google_workspace,microsoft_entra,okta"
       # Secrets
       TOKENS_KEY_BASE: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S2"
       TOKENS_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
@@ -133,6 +133,8 @@ services:
         condition: "service_healthy"
       httpbin:
         condition: "service_healthy"
+      test.httpbin.docker.local:
+        condition: "service_healthy"
       iperf3:
         condition: "service_healthy"
       api:
@@ -173,6 +175,7 @@ services:
     networks:
       app:
         ipv4_address: 172.28.0.105
+      dns_resources:
       resources:
 
   httpbin:
@@ -182,6 +185,14 @@ services:
     networks:
       resources:
         ipv4_address: 172.20.0.100
+
+  test.httpbin.docker.local:
+    image: kennethreitz/httpbin
+    healthcheck:
+      test: ["CMD-SHELL", "ps -C gunicorn"]
+    networks:
+      dns_resources:
+        ipv4_address: 172.21.0.100
 
   iperf3:
     image: networkstatic/iperf3
@@ -249,7 +260,7 @@ services:
       # Web Server
       EXTERNAL_URL: http://localhost:8081/
       PHOENIX_HTTP_API_PORT: "8081"
-      PHOENIX_SECURE_COOKIES: false
+      PHOENIX_SECURE_COOKIES: "false"
       # Erlang
       ERLANG_DISTRIBUTION_PORT: 9000
       ERLANG_CLUSTER_ADAPTER: "Elixir.Cluster.Strategy.Epmd"
@@ -357,6 +368,11 @@ services:
 # IPv6 is currently causing flakiness with GH actions and on our testbed.
 # Disabling until there's more time to debug.
 networks:
+  # Using a separate subnet here so that the CIDR resource for 172.20.0.0 won't catch DNS resources
+  dns_resources:
+    ipam:
+      config:
+        - subnet: 172.21.0.0/24
   resources:
     # enable_ipv6: true
     ipam:

@@ -13,7 +13,8 @@ defmodule Domain.AuthTest do
       assert adapters == %{
                openid_connect: Domain.Auth.Adapters.OpenIDConnect,
                google_workspace: Domain.Auth.Adapters.GoogleWorkspace,
-               microsoft_entra: Domain.Auth.Adapters.MicrosoftEntra
+               microsoft_entra: Domain.Auth.Adapters.MicrosoftEntra,
+               okta: Domain.Auth.Adapters.Okta
              }
     end
   end
