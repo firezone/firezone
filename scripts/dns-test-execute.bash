@@ -31,3 +31,7 @@ sh -c "nslookup $HTTPBIN; nslookup $HTTPBIN | tail -n +4 | grep 100\\.96\\.0\\."
 # Make sure a non-resource doesn't go through the tunnel
 docker compose exec -it client timeout 60 \
 sh -c "nslookup github.com; nslookup github.com | tail -n +4 | grep -v 100\\.96.\\0\\."
+
+echo "# Stop the gateway and make sure the resource is inaccessible"
+docker compose stop gateway
+! docker compose exec -it client sh -c "curl $HTTPBIN/get" && exit 1
