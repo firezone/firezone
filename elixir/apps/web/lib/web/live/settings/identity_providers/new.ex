@@ -52,6 +52,7 @@ defmodule Web.Settings.IdentityProviders.New do
     <.adapter_item
       adapter={@adapter}
       account={@account}
+      enterprise_feature={true}
       name="Google Workspace"
       description="Authenticate users and synchronize users and groups with a custom Google Workspace connector."
     />
@@ -63,8 +64,21 @@ defmodule Web.Settings.IdentityProviders.New do
     <.adapter_item
       adapter={@adapter}
       account={@account}
+      enterprise_feature={true}
       name="Microsoft Entra"
       description="Authenticate users and synchronize users and groups with a custom Microsoft Entra connector."
+    />
+    """
+  end
+
+  def adapter(%{adapter: :okta} = assigns) do
+    ~H"""
+    <.adapter_item
+      adapter={@adapter}
+      account={@account}
+      enterprise_feature={true}
+      name="Okta"
+      description="Authenticate users and synchronize users and groups with a custom Okta connector."
     />
     """
   end
@@ -91,6 +105,12 @@ defmodule Web.Settings.IdentityProviders.New do
     """
   end
 
+  attr :adapter, :any
+  attr :account, :any
+  attr :enterprise_feature, :boolean, default: false
+  attr :name, :string
+  attr :description, :string
+
   def adapter_item(assigns) do
     ~H"""
     <div>
@@ -107,7 +127,7 @@ defmodule Web.Settings.IdentityProviders.New do
         <label for={"idp-option-#{@adapter}"} class="block ml-2 text-lg text-neutral-900">
           <%= @name %>
         </label>
-        <%= if @adapter == :google_workspace || @adapter == :microsoft_entra do %>
+        <%= if @enterprise_feature do %>
           <.badge class="ml-2" type="primary" title="Feature available on the Enterprise plan">
             ENTERPRISE
           </.badge>
@@ -130,5 +150,9 @@ defmodule Web.Settings.IdentityProviders.New do
 
   def next_step_path(:microsoft_entra, account) do
     ~p"/#{account}/settings/identity_providers/microsoft_entra/new"
+  end
+
+  def next_step_path(:okta, account) do
+    ~p"/#{account}/settings/identity_providers/okta/new"
   end
 end

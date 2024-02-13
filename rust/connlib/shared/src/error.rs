@@ -164,27 +164,14 @@ pub enum ConnlibError {
     ClosedByPortal,
     #[error(transparent)]
     JoinError(#[from] JoinError),
-    #[error("Failed to run `resolvectl dns`")]
-    ResolveCtlSetDns,
-    #[error("`resolvectl dns` returned error code")]
-    ResolveCtlSetDnsExitCode,
-    #[error("Failed to run `resolvectl flush-caches`")]
-    ResolveCtlFlushCaches,
-    #[error("`resolvectl flush-caches` returned error code")]
-    ResolveCtlFlushCachesExitCode,
-    #[error("Failed to run `resolvectl domain`")]
-    ResolveCtlSetDomains,
-    #[error("`resolvectl domain` returned error code")]
-    ResolveCtlSetDomainsExitCode,
-
-    #[error("reading resolv.conf")]
-    ReadResolvConf,
-    #[error("writing resolv.conf.firezone-backup")]
-    WriteResolvConfBackup,
-    #[error("opened resolv.conf for write")]
-    OpenResolvConf,
-    #[error("writing resolv.conf")]
-    WriteResolvConf,
+    #[error("Failed to read `/etc/resolv.conf`: {0}")]
+    ReadResolvConf(std::io::Error),
+    #[error("Failed to parse `/etc/resolv.conf`")]
+    ParseResolvConf,
+    #[error("Failed to backup `/etc/resolv.conf`: {0}")]
+    WriteResolvConfBackup(std::io::Error),
+    #[error("Failed to rewrite `/etc/resolv.conf`: {0}")]
+    RewriteResolvConf(std::io::Error),
 }
 
 impl ConnlibError {

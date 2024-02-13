@@ -9,6 +9,8 @@ pub mod control;
 pub mod error;
 pub mod messages;
 
+pub mod linux;
+
 #[cfg(target_os = "windows")]
 pub mod windows;
 
