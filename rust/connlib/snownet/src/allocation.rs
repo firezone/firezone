@@ -1628,6 +1628,27 @@ mod tests {
         assert_eq!(next_msg.method(), ALLOCATE)
     }
 
+    #[test]
+    fn failed_allocation_clears_buffered_channel_bindings() {
+        let mut allocation = Allocation::for_test(Instant::now());
+
+        allocation.bind_channel(PEER1, Instant::now());
+
+        let allocate = allocation.next_message().unwrap();
+        allocation.handle_test_input(&server_error(&allocate), Instant::now()); // This should clear the buffered channel bindings.
+
+        allocation.refresh_with_same_credentials();
+
+        let allocate = allocation.next_message().unwrap();
+        allocation.handle_test_input(
+            &allocate_response(&allocate, &[RELAY_ADDR_IP4, RELAY_ADDR_IP6]),
+            Instant::now(),
+        );
+
+        let next_msg = allocation.next_message();
+        assert!(next_msg.is_none())
+    }
+
     fn ch(peer: SocketAddr, now: Instant) -> Channel {
         Channel {
             peer,
