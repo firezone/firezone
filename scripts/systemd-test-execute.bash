@@ -16,13 +16,13 @@ echo "# Accessing a resource should fail before the client is up"
 curl --interface "$IFACE_NAME" $HTTPBIN_IP/get && exit 1
 
 echo "# Start Firezone"
-resolvectl status tun-firezone && exit 1
+resolvectl dns tun-firezone && exit 1
 if ! sudo systemctl start firezone-client
 then
     sudo systemctl status firezone-client
     exit 1
 fi
-resolvectl status tun-firezone
+resolvectl dns tun-firezone
 
 echo "# Accessing a resource should succeed after the client is up"
 curl --interface "$IFACE_NAME" $HTTPBIN_IP/get
