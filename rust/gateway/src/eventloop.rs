@@ -5,8 +5,7 @@ use crate::messages::{
 use crate::CallbackHandler;
 use anyhow::{anyhow, Result};
 use connlib_shared::messages::{
-    ClientId, ConnectionAccepted, DomainResponse, GatewayResponse, ResourceAccepted,
-    ResourceDescription,
+    ClientId, DomainResponse, GatewayResponse, ResourceAccepted, ResourceDescription,
 };
 use connlib_shared::Error;
 use firezone_tunnel::{Event, GatewayState, ResolvedResourceDescriptionDns, Tunnel};
@@ -163,28 +162,21 @@ impl Eventloop {
                     let tunnel = Arc::clone(&self.tunnel);
 
                     let connection_request = async move {
-                        let local_params = tunnel
+                        let resource = resolve_resource_description(req.resource).await?;
+
+                        let accepted = tunnel
                             .set_peer_connection_request(
                                 req.client.payload.ice_parameters,
                                 req.client.peer.into(),
                                 req.relays,
                                 req.client.id,
+                                req.client.payload.domain,
+                                req.expires_at,
+                                resource,
                             )
                             .await?;
 
-                        let resource = resolve_resource_description(req.resource).await?;
-
-                        let domain_response = tunnel.allow_access(
-                            resource,
-                            req.client.id,
-                            req.expires_at,
-                            req.client.payload.domain,
-                        );
-
-                        Ok(GatewayResponse::ConnectionAccepted(ConnectionAccepted {
-                            ice_parameters: local_params,
-                            domain_response,
-                        }))
+                        Ok(GatewayResponse::ConnectionAccepted(accepted))
                     };
 
                     match self

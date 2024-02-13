@@ -2,12 +2,12 @@ use crate::{
     control_protocol::{insert_peers, start_handlers},
     dns::is_subdomain,
     peer::{PacketTransformGateway, Peer},
-    ConnectedPeer, GatewayState, PeerConfig, Tunnel, PEER_QUEUE_SIZE,
+    ConnectedPeer, Error, GatewayState, PeerConfig, Tunnel, PEER_QUEUE_SIZE,
 };
 
 use chrono::{DateTime, Utc};
 use connlib_shared::{
-    messages::{ClientId, DomainResponse, Relay, ResourceId},
+    messages::{ClientId, ConnectionAccepted, DomainResponse, Relay, ResourceId},
     Callbacks, Dname, Result,
 };
 use ip_network::IpNetwork;
@@ -72,13 +72,17 @@ where
     ///
     /// # Returns
     /// The connection details
+    #[allow(clippy::too_many_arguments)]
     pub async fn set_peer_connection_request(
         self: &Arc<Self>,
         ice_parameters: RTCIceParameters,
         peer: PeerConfig,
         relays: Vec<Relay>,
         client_id: ClientId,
-    ) -> Result<RTCIceParameters> {
+        domain: Option<Dname>,
+        expires_at: Option<DateTime<Utc>>,
+        resource: ResourceDescription,
+    ) -> Result<ConnectionAccepted> {
         let IceConnection {
             ice_parameters: local_params,
             ice_transport: ice,
@@ -103,14 +107,40 @@ where
             let _ = ice.stop().await;
         }
 
+        let resource_addresses = match &resource {
+            ResourceDescription::Dns(r) => {
+                let Some(domain) = domain.clone() else {
+                    return Err(Error::ControlProtocolError);
+                };
+
+                if !is_subdomain(&domain, &r.domain) {
+                    let _ = ice.stop().await;
+                    return Err(Error::InvalidResource);
+                }
+
+                r.addresses.clone()
+            }
+            ResourceDescription::Cidr(ref cidr) => vec![cidr.address],
+        };
+
         {
+            let resource_addresses = resource_addresses.clone();
             let tunnel = self.clone();
             tokio::spawn(async move {
                 if let Err(e) = ice
                     .start(&ice_parameters, Some(RTCIceRole::Controlled))
                     .await
                     .map_err(Into::into)
-                    .and_then(|_| tunnel.new_tunnel(peer, client_id, ice.clone()))
+                    .and_then(|_| {
+                        tunnel.new_tunnel(
+                            peer,
+                            client_id,
+                            ice.clone(),
+                            resource,
+                            resource_addresses,
+                            expires_at,
+                        )
+                    })
                 {
                     tracing::warn!(%client_id, err = ?e, "Can't start tunnel: {e:#}");
                     {
@@ -134,7 +164,16 @@ where
             });
         }
 
-        Ok(local_params)
+        Ok(ConnectionAccepted {
+            ice_parameters: local_params,
+            domain_response: domain.map(|domain| DomainResponse {
+                domain,
+                address: resource_addresses
+                    .into_iter()
+                    .map(|ip| ip.network_address())
+                    .collect(),
+            }),
+        })
     }
 
     pub fn allow_access(
@@ -189,6 +228,9 @@ where
         peer_config: PeerConfig,
         client_id: ClientId,
         ice: Arc<RTCIceTransport>,
+        resource: ResourceDescription,
+        resource_addresses: Vec<IpNetwork>,
+        expires_at: Option<DateTime<Utc>>,
     ) -> Result<()> {
         tracing::trace!(?peer_config.ips, "new_data_channel_open");
 
@@ -200,6 +242,11 @@ where
             self.rate_limiter.clone(),
             PacketTransformGateway::default(),
         ));
+
+        for address in resource_addresses {
+            peer.transform
+                .add_resource(address, resource.clone(), expires_at);
+        }
 
         let (peer_sender, peer_receiver) = tokio::sync::mpsc::channel(PEER_QUEUE_SIZE);
 
