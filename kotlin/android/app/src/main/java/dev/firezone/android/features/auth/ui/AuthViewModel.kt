@@ -6,21 +6,16 @@ import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
-import dev.firezone.android.core.domain.auth.GetNonceUseCase
-import dev.firezone.android.core.domain.auth.GetStateUseCase
-import dev.firezone.android.core.domain.preference.GetConfigUseCase
-import kotlinx.coroutines.flow.firstOrNull
+import dev.firezone.android.core.data.Repository
 import kotlinx.coroutines.launch
-import java.lang.Exception
+import java.security.SecureRandom
 import javax.inject.Inject
 
 @HiltViewModel
 internal class AuthViewModel
     @Inject
     constructor(
-        private val getConfigUseCase: GetConfigUseCase,
-        private val getStateUseCase: GetStateUseCase,
-        private val getNonceUseCase: GetNonceUseCase,
+        private val repo: Repository,
     ) : ViewModel() {
         private val actionMutableLiveData = MutableLiveData<ViewAction>()
         val actionLiveData: LiveData<ViewAction> = actionMutableLiveData
@@ -28,36 +23,30 @@ internal class AuthViewModel
         private var authFlowLaunched: Boolean = false
 
         fun onActivityResume() =
-            try {
-                viewModelScope.launch {
-                    val config =
-                        getConfigUseCase()
-                            .firstOrNull() ?: throw Exception("config cannot be null")
+            viewModelScope.launch {
+                val state = generateRandomString(NONCE_LENGTH)
+                val nonce = generateRandomString(NONCE_LENGTH)
+                repo.saveNonceSync(nonce)
+                repo.saveStateSync(state)
+                val config = repo.getConfigSync()!!
+                val token = repo.getTokenSync()
 
-                    val state =
-                        getStateUseCase()
-                            .firstOrNull() ?: throw Exception("state cannot be null")
-
-                    val nonce =
-                        getNonceUseCase()
-                            .firstOrNull() ?: throw Exception("nonce cannot be null")
-
-                    actionMutableLiveData.postValue(
-                        if (authFlowLaunched || config.token != null) {
-                            ViewAction.NavigateToSignIn
-                        } else {
-                            authFlowLaunched = true
-                            ViewAction.LaunchAuthFlow(
-                                url =
-                                    "${config.authBaseUrl}" +
-                                        "?state=$state&nonce=$nonce&as=client",
-                            )
-                        },
-                    )
-                }
-            } catch (e: Exception) {
-                actionMutableLiveData.postValue(ViewAction.ShowError)
+                actionMutableLiveData.postValue(
+                    if (authFlowLaunched || token != null) {
+                        ViewAction.NavigateToSignIn
+                    } else {
+                        authFlowLaunched = true
+                        ViewAction.LaunchAuthFlow("${config.authBaseUrl}?state=$state&nonce=$nonce&as=client")
+                    },
+                )
             }
+
+        private fun generateRandomString(length: Int): String {
+            val random = SecureRandom.getInstanceStrong()
+            val bytes = ByteArray(length)
+            random.nextBytes(bytes)
+            return bytes.joinToString("") { "%02x".format(it) }
+        }
 
         internal sealed class ViewAction {
             data class LaunchAuthFlow(val url: String) : ViewAction()
@@ -65,5 +54,9 @@ internal class AuthViewModel
             object NavigateToSignIn : ViewAction()
 
             object ShowError : ViewAction()
+        }
+
+        internal companion object {
+            private const val NONCE_LENGTH = 32
         }
     }

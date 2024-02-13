@@ -1,29 +1,49 @@
 /* Licensed under Apache 2.0 (C) 2023 Firezone, Inc. */
 package dev.firezone.android.features.session.ui
 
+import android.content.ComponentName
+import android.content.Context
 import android.content.Intent
+import android.content.ServiceConnection
 import android.os.Bundle
+import android.os.IBinder
+import android.util.Log
 import androidx.activity.viewModels
-import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.lifecycleScope
-import androidx.lifecycle.repeatOnLifecycle
 import androidx.recyclerview.widget.DividerItemDecoration
 import androidx.recyclerview.widget.LinearLayoutManager
 import dagger.hilt.android.AndroidEntryPoint
-import dev.firezone.android.R
-import dev.firezone.android.core.presentation.MainActivity
 import dev.firezone.android.core.utils.ClipboardUtils
 import dev.firezone.android.databinding.ActivitySessionBinding
-import dev.firezone.android.features.settings.ui.SettingsActivity
-import kotlinx.coroutines.launch
+import dev.firezone.android.tunnel.TunnelService
+import dev.firezone.android.tunnel.model.Resource
 
 @AndroidEntryPoint
 internal class SessionActivity : AppCompatActivity() {
     private lateinit var binding: ActivitySessionBinding
+    private var tunnelService: TunnelService? = null
+    private var serviceBound = false
     private val viewModel: SessionViewModel by viewModels()
 
+    private val serviceConnection =
+        object : ServiceConnection {
+            override fun onServiceConnected(
+                name: ComponentName?,
+                service: IBinder?,
+            ) {
+                Log.d(TAG, "onServiceConnected")
+                val binder = service as TunnelService.LocalBinder
+                tunnelService = binder.getService()
+                serviceBound = true
+                tunnelService?.setServiceStateLiveData(viewModel.serviceStatusLiveData)
+                tunnelService?.setResourcesLiveData(viewModel.resourcesLiveData)
+            }
+
+            override fun onServiceDisconnected(name: ComponentName?) {
+                Log.d(TAG, "onServiceDisconnected")
+                serviceBound = false
+            }
+        }
     private val resourcesAdapter: ResourcesAdapter =
         ResourcesAdapter { resource ->
             ClipboardUtils.copyToClipboard(this@SessionActivity, resource.name, resource.address)
@@ -34,19 +54,31 @@ internal class SessionActivity : AppCompatActivity() {
         binding = ActivitySessionBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        // Bind to existing TunnelService
+        val intent = Intent(this, TunnelService::class.java)
+        bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
+
         setupViews()
         setupObservers()
-        viewModel.connect(this@SessionActivity)
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        if (serviceBound) {
+            unbindService(serviceConnection)
+            serviceBound = false
+        }
     }
 
     private fun setupViews() {
         binding.btSignOut.setOnClickListener {
-            viewModel.disconnect()
+            Log.d(TAG, "Sign out button clicked")
+            viewModel.clearToken()
+            viewModel.clearActorName()
+            tunnelService?.disconnect()
         }
 
-        binding.btSettings.setOnClickListener {
-            startActivity(Intent(this@SessionActivity, SettingsActivity::class.java))
-        }
+        binding.tvActorName.text = viewModel.getActorName()
 
         val layoutManager = LinearLayoutManager(this@SessionActivity)
         val dividerItemDecoration =
@@ -57,42 +89,25 @@ internal class SessionActivity : AppCompatActivity() {
         binding.rvResourcesList.addItemDecoration(dividerItemDecoration)
         binding.rvResourcesList.adapter = resourcesAdapter
         binding.rvResourcesList.layoutManager = layoutManager
+
+        // Hack to show a connecting message until the service is bound
+        resourcesAdapter.updateResources(listOf(Resource("", "", "", "Connecting...")))
     }
 
     private fun setupObservers() {
-        viewModel.actionLiveData.observe(this@SessionActivity) { action ->
-            when (action) {
-                SessionViewModel.ViewAction.NavigateToSignIn -> {
-                    startActivity(
-                        Intent(this, MainActivity::class.java),
-                    )
-                    finish()
-                }
-                SessionViewModel.ViewAction.ShowError -> showError()
+        // Go back to MainActivity if the service dies
+        viewModel.serviceStatusLiveData.observe(this) { tunnelState ->
+            if (tunnelState == TunnelService.Companion.State.DOWN) {
+                finish()
             }
         }
 
-        lifecycleScope.launch {
-            repeatOnLifecycle(Lifecycle.State.STARTED) {
-                viewModel.uiState.collect { uiState ->
-                    uiState.resources?.let {
-                        resourcesAdapter.updateResources(it)
-                    }
-                }
-            }
+        viewModel.resourcesLiveData.observe(this) { resources ->
+            resourcesAdapter.updateResources(resources)
         }
     }
 
-    private fun showError() {
-        AlertDialog.Builder(this@SessionActivity)
-            .setTitle(R.string.error_dialog_title)
-            .setMessage(R.string.error_dialog_message)
-            .setPositiveButton(
-                R.string.error_dialog_button_text,
-            ) { dialog, _ ->
-                dialog.dismiss()
-            }
-            .setIcon(R.drawable.ic_firezone_logo)
-            .show()
+    companion object {
+        private const val TAG = "SessionActivity"
     }
 }

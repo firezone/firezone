@@ -1,7 +1,7 @@
 /* Licensed under Apache 2.0 (C) 2023 Firezone, Inc. */
 package dev.firezone.android.tunnel
 
-object TunnelSession {
+object ConnlibSession {
     external fun connect(
         apiUrl: String,
         token: String,
@@ -13,5 +13,5 @@ object TunnelSession {
         callback: Any,
     ): Long
 
-    external fun disconnect(session: Long): Boolean
+    external fun disconnect(connlibSession: Long): Boolean
 }

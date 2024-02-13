@@ -29,7 +29,7 @@ internal class SplashFragment : Fragment(R.layout.fragment_splash) {
 
     override fun onResume() {
         super.onResume()
-        viewModel.checkUserState(requireContext())
+        viewModel.checkTunnelState(requireContext())
     }
 
     private fun setupActionObservers() {

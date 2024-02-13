@@ -4,12 +4,12 @@ package dev.firezone.android.features.customuri.ui
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.viewModels
-import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import dagger.hilt.android.AndroidEntryPoint
 import dev.firezone.android.R
 import dev.firezone.android.core.presentation.MainActivity
 import dev.firezone.android.databinding.ActivityCustomUriHandlerBinding
+import dev.firezone.android.tunnel.TunnelService
 
 @AndroidEntryPoint
 class CustomUriHandlerActivity : AppCompatActivity(R.layout.activity_custom_uri_handler) {
@@ -28,28 +28,17 @@ class CustomUriHandlerActivity : AppCompatActivity(R.layout.activity_custom_uri_
         viewModel.actionLiveData.observe(this) { action ->
             when (action) {
                 CustomUriViewModel.ViewAction.AuthFlowComplete -> {
+                    TunnelService.start(this@CustomUriHandlerActivity)
                     startActivity(
-                        Intent(this@CustomUriHandlerActivity, MainActivity::class.java).apply {
-                            flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
-                        },
+                        Intent(this, MainActivity::class.java),
                     )
-                    finish()
                 }
-                CustomUriViewModel.ViewAction.ShowError -> showError()
+                else -> {
+                    throw IllegalStateException("Unknown action: $action")
+                }
             }
-        }
-    }
 
-    private fun showError() {
-        AlertDialog.Builder(this)
-            .setTitle(R.string.error_dialog_title)
-            .setMessage(R.string.error_dialog_message)
-            .setPositiveButton(
-                R.string.error_dialog_button_text,
-            ) { _, _ ->
-                this@CustomUriHandlerActivity.finish()
-            }
-            .setIcon(R.drawable.ic_firezone_logo)
-            .show()
+            finish()
+        }
     }
 }
