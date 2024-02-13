@@ -133,17 +133,12 @@ impl Allocation {
 
     /// Refresh this allocation.
     ///
-    /// A TURN client should only ever use a single set of credentials for a particular allocation.
-    /// If the credentials did not change, this will simply perform a refresh.
-    ///
-    /// If the credentials are different, we will:
-    ///
-    /// - Delete the current allocation by sending a `REFRESH` with lifetime 0.
-    /// - Invalidate all candidates.
-    /// - Clear all channels.
-    /// - Attempt to make a new allocation.
-    /// - Emit new candidates.
-    pub fn refresh(&mut self, username: &str, password: &str, realm: &str) {
+    /// In case refreshing the allocation fails, we will attempt to make a new one.
+    pub fn refresh(&mut self, username: Username, password: &str, realm: Realm) {
+        self.username = username;
+        self.realm = realm;
+        self.password = password.to_owned();
+
         if !self.has_allocation() {
             tracing::debug!("Not refreshing allocation because we don't have one");
             return;
@@ -1442,7 +1437,7 @@ mod tests {
             Instant::now(),
         );
 
-        allocation.refresh("foobar", "baz", "firezone");
+        allocation.refresh_with_same_credentials();
 
         let refresh = allocation.next_message().unwrap();
         assert_eq!(refresh.method(), REFRESH);
@@ -1462,7 +1457,7 @@ mod tests {
         );
         let _ = iter::from_fn(|| allocation.poll_event()).collect::<Vec<_>>(); // Drain events.
 
-        allocation.refresh("foobar", "baz", "firezone");
+        allocation.refresh_with_same_credentials();
 
         let refresh = allocation.next_message().unwrap();
         allocation.handle_test_input(&failed_refresh(&refresh), Instant::now());
@@ -1507,7 +1502,7 @@ mod tests {
         let msg = allocation.encode_to_vec(PEER2_IP4, b"foobar", Instant::now());
         assert!(msg.is_some(), "expect to have a channel to peer");
 
-        allocation.refresh("foobar", "baz", "firezone");
+        allocation.refresh_with_same_credentials();
 
         let refresh = allocation.next_message().unwrap();
         allocation.handle_test_input(&failed_refresh(&refresh), Instant::now());
@@ -1522,7 +1517,7 @@ mod tests {
 
         let _allocate = allocation.next_message().unwrap();
 
-        allocation.refresh("foobar", "baz", "firezone");
+        allocation.refresh_with_same_credentials();
 
         let next_msg = allocation.next_message();
         assert!(next_msg.is_none())
@@ -1533,9 +1528,9 @@ mod tests {
         let mut allocation = Allocation::for_test(Instant::now());
 
         let allocate = allocation.next_message().unwrap();
-        allocation.handle_test_input(&&server_error(&allocate), Instant::now());
+        allocation.handle_test_input(&server_error(&allocate), Instant::now());
 
-        allocation.refresh("foobar", "baz", "firezone");
+        allocation.refresh_with_same_credentials();
 
         let next_msg = allocation.next_message();
         assert!(next_msg.is_none())
@@ -1551,7 +1546,7 @@ mod tests {
             Instant::now(),
         );
 
-        allocation.refresh("foobar", "baz", "firezone");
+        allocation.refresh_with_same_credentials();
 
         let refresh = allocation.next_message().unwrap();
         allocation.handle_test_input(&failed_refresh(&refresh), Instant::now());
@@ -1724,6 +1719,14 @@ mod tests {
             if let Some(next) = self.poll_timeout() {
                 self.handle_timeout(next)
             }
+        }
+
+        fn refresh_with_same_credentials(&mut self) {
+            self.refresh(
+                Username::new("foobar".to_owned()).unwrap(),
+                "baz",
+                Realm::new("firezone".to_owned()).unwrap(),
+            );
         }
     }
 }
