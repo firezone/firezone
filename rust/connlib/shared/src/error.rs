@@ -164,6 +164,15 @@ pub enum ConnlibError {
     ClosedByPortal,
     #[error(transparent)]
     JoinError(#[from] JoinError),
+
+    #[error("Failed to read `/etc/resolv.conf`: {0}")]
+    ReadResolvConf(std::io::Error),
+    #[error("Failed to parse `/etc/resolv.conf`")]
+    ParseResolvConf,
+    #[error("Failed to backup `/etc/resolv.conf`: {0}")]
+    WriteResolvConfBackup(std::io::Error),
+    #[error("Failed to rewrite `/etc/resolv.conf`: {0}")]
+    RewriteResolvConf(std::io::Error),
 }
 
 impl ConnlibError {
