@@ -35,3 +35,5 @@ echo "# Stop the gateway and make sure the resource is inaccessible"
 docker compose stop gateway
 docker compose exec -it client timeout 15 \
 sh -c "curl $HTTPBIN/get" && exit 1
+
+exit 0
