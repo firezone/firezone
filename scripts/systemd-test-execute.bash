@@ -11,7 +11,7 @@ IFACE_NAME="tun-firezone"
 
 echo "# Accessing a resource should fail before the client is up"
 # TODO: For now I'm cheating and forcing curl to try the tunnel iface.
-# So this doesn't test that Firezone is adding the routes.
+# This doesn't test that Firezone is adding the routes.
 # If I don't do this, curl just connects through the Docker bridge.
 curl --interface "$IFACE_NAME" $HTTPBIN_IP/get && exit 1
 
