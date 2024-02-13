@@ -277,11 +277,7 @@ jobs:
           # Systemd-related tests (ignores the client container and runs in the runner itself)
           - test_name: systemd-resolved
             setup: scripts/systemd-test-setup.bash
-            execute: |
-              resolvectl status
-              sudo systemctl start firezone-client || true
-              sudo systemctl status firezone-client
-              # resolvectl status
+            execute: scripts/systemd-test-execute.bash
 
           # Performance Tests
           - test_name: direct-perf
