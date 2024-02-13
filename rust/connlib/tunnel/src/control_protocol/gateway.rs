@@ -135,10 +135,10 @@ where
                         tunnel.new_tunnel(
                             peer,
                             client_id,
-                            ice.clone(),
                             resource,
-                            resource_addresses,
                             expires_at,
+                            ice.clone(),
+                            resource_addresses,
                         )
                     })
                 {
@@ -227,10 +227,10 @@ where
         self: &Arc<Self>,
         peer_config: PeerConfig,
         client_id: ClientId,
-        ice: Arc<RTCIceTransport>,
         resource: ResourceDescription,
-        resource_addresses: Vec<IpNetwork>,
         expires_at: Option<DateTime<Utc>>,
+        ice: Arc<RTCIceTransport>,
+        resource_addresses: Vec<IpNetwork>,
     ) -> Result<()> {
         tracing::trace!(?peer_config.ips, "new_data_channel_open");
 
