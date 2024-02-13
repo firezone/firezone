@@ -15,14 +15,14 @@ sh -c "until ping -W 1 -c 10 172.20.0.100 &>/dev/null; do true; done"
 docker compose exec -it client sh -c "cat /etc/resolv.conf.firezone-backup"
 
 # Make sure gateway can reach httpbin by DNS
-docker compose exec -it gateway sh -c "curl $HTTPBIN/get || true"
+docker compose exec -it gateway sh -c "curl $HTTPBIN/get"
 
 # Try to ping httpbin as a DNS resource
 docker compose exec -it client timeout 60 \
 sh -c "ping -W 1 -c 10 $HTTPBIN"
 
 # Access httpbin by DNS
-docker compose exec -it client sh -c "curl $HTTPBIN/get || true"
+docker compose exec -it client sh -c "curl $HTTPBIN/get"
 
 # Make sure it's going through the tunnel
 docker compose exec -it client timeout 60 \
