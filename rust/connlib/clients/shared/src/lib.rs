@@ -93,7 +93,6 @@ where
         // See: https://github.com/firezone/firezone/issues/2227
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .thread_stack_size(3 * 1024 * 1024)
-            .thread_name("connlib")
             .enable_all()
             .build()?;
         {
