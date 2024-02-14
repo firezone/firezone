@@ -109,7 +109,12 @@ impl ioctl::Request<GetInterfaceNamePayload> {
 
 #[derive(Default)]
 #[repr(C)]
-struct GetInterfaceNamePayload;
+struct GetInterfaceNamePayload {
+    // Fixes a nasty alignment bug on 32-bit architectures on Android.
+    // The `name` field in `ioctl::Request` is only 16 bytes long and accessing it causes a NPE without this alignment.
+    // Why? Not sure. It seems to only happen in release mode which hints at an optimisation issue.
+    alignment: [std::ffi::c_uchar; 16],
+}
 
 /// Read from the given file descriptor in the buffer.
 fn read(fd: RawFd, dst: &mut [u8]) -> io::Result<usize> {
