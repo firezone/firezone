@@ -165,13 +165,13 @@ pub enum ConnlibError {
     #[error(transparent)]
     JoinError(#[from] JoinError),
 
-    #[error("Failed to read `/etc/resolv.conf`: {0}")]
+    #[error("Failed to read `resolv.conf`: {0}")]
     ReadResolvConf(std::io::Error),
-    #[error("Failed to parse `/etc/resolv.conf`")]
+    #[error("Failed to parse `resolv.conf`")]
     ParseResolvConf,
-    #[error("Failed to backup `/etc/resolv.conf`: {0}")]
+    #[error("Failed to backup `resolv.conf`: {0}")]
     WriteResolvConfBackup(std::io::Error),
-    #[error("Failed to rewrite `/etc/resolv.conf`: {0}")]
+    #[error("Failed to rewrite `resolv.conf`: {0}")]
     RewriteResolvConf(std::io::Error),
 }
 

@@ -1,6 +1,8 @@
 use crate::device_channel::ioctl;
 use connlib_shared::{
-    linux::DnsControlMethod, messages::Interface as InterfaceConfig, Callbacks, Error, Result,
+    linux::{DnsControlMethod, ETC_RESOLV_CONF, ETC_RESOLV_CONF_BACKUP},
+    messages::Interface as InterfaceConfig,
+    Callbacks, Error, Result,
 };
 use futures::TryStreamExt;
 use futures_util::future::BoxFuture;
@@ -100,29 +102,8 @@ impl Tun {
     ) -> Result<Self> {
         // TODO: Tech debt: <https://github.com/firezone/firezone/issues/3636>
         // TODO: Gateways shouldn't set up DNS, right? Only clients?
-        let dns_control_method = if !dns_config.is_empty() {
-            // TODO: Move to the client
-            let method = connlib_shared::linux::get_dns_control_from_env();
-            match method {
-                None => {
-                    tracing::info!("Will not modify the system's DNS settings");
-                }
-                Some(DnsControlMethod::EtcResolvConf) => {
-                    // TODO: Modify `/etc/resolv.conf`
-                    tracing::info!("Will modify `/etc/resolv.conf`");
-                }
-                Some(DnsControlMethod::NetworkManager) => {
-                    // TODO: Cooperate with NetworkManager
-                }
-                Some(DnsControlMethod::Systemd) => {
-                    // TODO: Cooperate with `systemd-resolved`
-                    tracing::info!("Will use `systemd-resolved`");
-                }
-            }
-            method
-        } else {
-            None
-        };
+        let dns_control_method = connlib_shared::linux::get_dns_control_from_env();
+        tracing::info!(?dns_control_method);
 
         create_tun_device()?;
 
@@ -272,7 +253,14 @@ async fn set_iface_config(
 
     match dns_control_method {
         None => {}
-        Some(DnsControlMethod::EtcResolvConf) => configure_resolv_conf(&dns_config).await?,
+        Some(DnsControlMethod::EtcResolvConf) => {
+            configure_resolv_conf(
+                &dns_config,
+                Path::new(ETC_RESOLV_CONF),
+                Path::new(ETC_RESOLV_CONF_BACKUP),
+            )
+            .await?
+        }
         Some(DnsControlMethod::NetworkManager) => configure_network_manager(&dns_config).await?,
         Some(DnsControlMethod::Systemd) => configure_systemd_resolved(&dns_config).await?,
     }
@@ -354,10 +342,11 @@ impl ioctl::Request<SetTunFlagsPayload> {
     }
 }
 
-async fn configure_resolv_conf(dns_config: &[IpAddr]) -> Result<()> {
-    let resolv_path = Path::new("/etc/resolv.conf");
-    let backup_path = Path::new("/etc/resolv.conf.firezone-backup");
-
+async fn configure_resolv_conf(
+    dns_config: &[IpAddr],
+    resolv_path: &Path,
+    backup_path: &Path,
+) -> Result<()> {
     let text = tokio::fs::read_to_string(resolv_path)
         .await
         .map_err(Error::ReadResolvConf)?;
