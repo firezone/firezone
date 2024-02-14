@@ -1,5 +1,7 @@
 use crate::device_channel::ioctl;
-use connlib_shared::{messages::Interface as InterfaceConfig, Callbacks, Error, Result};
+use connlib_shared::{
+    linux::DnsControlMethod, messages::Interface as InterfaceConfig, Callbacks, Error, Result,
+};
 use futures::TryStreamExt;
 use futures_util::future::BoxFuture;
 use futures_util::FutureExt;
@@ -96,6 +98,32 @@ impl Tun {
         dns_config: Vec<IpAddr>,
         _: &impl Callbacks,
     ) -> Result<Self> {
+        // TODO: Tech debt: <https://github.com/firezone/firezone/issues/3636>
+        // TODO: Gateways shouldn't set up DNS, right? Only clients?
+        let dns_control_method = if !dns_config.is_empty() {
+            // TODO: Move to the client
+            let method = connlib_shared::linux::get_dns_control_from_env();
+            match method {
+                None => {
+                    tracing::info!("Will not modify the system's DNS settings");
+                }
+                Some(DnsControlMethod::EtcResolvConf) => {
+                    // TODO: Modify `/etc/resolv.conf`
+                    tracing::info!("Will modify `/etc/resolv.conf`");
+                }
+                Some(DnsControlMethod::NetworkManager) => {
+                    // TODO: Cooperate with NetworkManager
+                }
+                Some(DnsControlMethod::Systemd) => {
+                    // TODO: Cooperate with `systemd-resolved`
+                    tracing::info!("Will use `systemd-resolved`");
+                }
+            }
+            method
+        } else {
+            None
+        };
+
         create_tun_device()?;
 
         let fd = match unsafe { open(TUN_FILE.as_ptr() as _, O_RDWR) } {
@@ -105,7 +133,11 @@ impl Tun {
 
         // Safety: We just opened the file descriptor.
         unsafe {
-            ioctl::exec(fd, TUNSETIFF, &ioctl::Request::<SetTunFlagsPayload>::new())?;
+            ioctl::exec(
+                fd,
+                TUNSETIFF,
+                &mut ioctl::Request::<SetTunFlagsPayload>::new(),
+            )?;
         }
 
         set_non_blocking(fd)?;
@@ -118,7 +150,7 @@ impl Tun {
             connection: join_handle,
             fd: AsyncFd::new(fd)?,
             worker: Mutex::new(Some(
-                set_iface_config(config.clone(), dns_config, handle).boxed(),
+                set_iface_config(config.clone(), dns_config, handle, dns_control_method).boxed(),
             )),
         })
     }
@@ -196,7 +228,12 @@ impl Tun {
 }
 
 #[tracing::instrument(level = "trace", skip(handle))]
-async fn set_iface_config(config: InterfaceConfig, _: Vec<IpAddr>, handle: Handle) -> Result<()> {
+async fn set_iface_config(
+    config: InterfaceConfig,
+    dns_config: Vec<IpAddr>,
+    handle: Handle,
+    dns_control_method: Option<DnsControlMethod>,
+) -> Result<()> {
     let index = handle
         .link()
         .get()
@@ -231,8 +268,11 @@ async fn set_iface_config(config: InterfaceConfig, _: Vec<IpAddr>, handle: Handl
         .await;
 
     handle.link().set(index).up().execute().await?;
-
     res_v4.or(res_v6)?;
+
+    // TODO: Hook in DNS control methods
+    let _ = dns_control_method;
+
     Ok(())
 }
 

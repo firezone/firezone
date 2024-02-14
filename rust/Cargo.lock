@@ -750,7 +750,7 @@ dependencies = [
 [[package]]
 name = "boringtun"
 version = "0.6.0"
-source = "git+https://github.com/thomaseizinger/boringtun?branch=feat/expose-last-seen#6fd54c027e6b78192a02de3e77d00552ec36968d"
+source = "git+https://github.com/cloudflare/boringtun?branch=master#f672bb6c1e1e371240a8d151f15854687eb740bb"
 dependencies = [
  "aead",
  "base64 0.13.1",
@@ -1366,9 +1366,9 @@ dependencies = [
 
 [[package]]
 name = "crash-handler"
-version = "0.6.0"
+version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c43ddb8d457c6c6c6d0ebeeadb3b3f4b246c39ed83b0d3393f91bf06a5b79b05"
+checksum = "ed56890cb467e9ff5e6fe95254571beebb301990b5c7df5e97a7b203e4f0c4f0"
 dependencies = [
  "cfg-if",
  "crash-context",
@@ -6041,6 +6041,7 @@ dependencies = [
  "bytecodec",
  "bytes",
  "firezone-relay",
+ "hex",
  "once_cell",
  "pnet_packet",
  "rand 0.8.5",
