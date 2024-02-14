@@ -47,7 +47,7 @@ firezone-tunnel = { path = "connlib/tunnel"}
 phoenix-channel = { path = "phoenix-channel"}
 
 [patch.crates-io]
-boringtun = { git = "https://github.com/thomaseizinger/boringtun", branch = "feat/expose-last-seen" }
+boringtun = { git = "https://github.com/cloudflare/boringtun", branch = "master" }
 webrtc = { git = "https://github.com/firezone/webrtc", branch = "expose-new-endpoint" }
 str0m = { git = "https://github.com/algesten/str0m", branch = "main" }
 
