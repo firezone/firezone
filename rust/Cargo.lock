@@ -6041,6 +6041,7 @@ dependencies = [
  "bytecodec",
  "bytes",
  "firezone-relay",
+ "hex",
  "once_cell",
  "pnet_packet",
  "rand 0.8.5",
