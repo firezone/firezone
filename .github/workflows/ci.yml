@@ -274,6 +274,10 @@ jobs:
               docker compose exec -it client timeout 60 \
               sh -c 'until ping -W 1 -c 1 172.20.0.100 &>/dev/null; do true; done'
 
+          - test_name: dns-nm
+            setup: scripts/dns-nm-setup.bash
+            execute: echo 'Noop'
+
           # Performance Tests
           - test_name: direct-perf
             # Set this to enable performance testing for this test
