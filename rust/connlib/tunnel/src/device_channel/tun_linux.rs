@@ -102,7 +102,7 @@ impl Tun {
         // TODO: Gateways shouldn't set up DNS, right? Only clients?
         // TODO: Move this configuration up to the client
         let dns_control_method = connlib_shared::linux::get_dns_control_from_env();
-        tracing::info!(?dns_control_method, "DNS control method");
+        tracing::info!(?dns_control_method);
 
         create_tun_device()?;
 
