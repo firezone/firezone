@@ -187,11 +187,10 @@ class TunnelService : VpnService() {
                 repo.clearToken()
                 repo.clearActorName()
 
+                shutdown()
                 if (startedByUser) {
                     signedOutNotification()
                 }
-                shutdown()
-
                 return true
             }
         }
