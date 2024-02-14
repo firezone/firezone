@@ -194,85 +194,23 @@ jobs:
           # Basic connectivity tests
           - test_name: direct-ping-portal-restart
             setup: echo 'Noop'
-            execute: |
-              docker compose exec -it client timeout 60 \
-              sh -c 'until ping -W 1 -c 10 172.20.0.100 &>/dev/null; do true; done'
+            execute: scripts/tests/direct-ping-portal-restart.sh
 
-              # Restart portal
-              docker compose restart api
-
-              # Wait for client to reconnect
-              sleep 5
-
-              # Ping again
-              docker compose exec -it client timeout 60 \
-              sh -c 'until ping -W 1 -c 1 172.20.0.100 &>/dev/null; do true; done'
           - test_name: relayed-ping-portal-restart
-            setup: |
-              #  Disallow traffic between gateway and client container
-              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
-              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
-            execute: |
-              docker compose exec -it client timeout 60 \
-              sh -c 'until ping -W 1 -c 1 172.20.0.100 &>/dev/null; do true; done'
+            setup: echo 'Noop'
+            execute: scripts/tests/relayed-ping-portal-restart.sh
 
-              # Restart portal
-              docker compose restart api
-
-              # Wait for client to reconnect
-              sleep 5
-
-              # Ping again
-              docker compose exec -it client timeout 60 \
-              sh -c 'until ping -W 1 -c 1 172.20.0.100 &>/dev/null; do true; done'
           - test_name: direct-ping-portal-down
             setup: echo 'Noop'
-            execute: |
-              docker compose exec -it client timeout 60 \
-              sh -c 'until ping -W 1 -c 10 172.20.0.100 &>/dev/null; do true; done'
+            execute: scripts/tests/direct-ping-portal-down.sh
 
-              # Stop portal
-              docker compose stop api
-
-              # Wait for client to disconnect
-              sleep 5
-
-              # Ping again
-              docker compose exec -it client timeout 60 \
-              sh -c 'until ping -W 1 -c 1 172.20.0.100 &>/dev/null; do true; done'
           - test_name: relayed-ping-portal-down
-            setup: |
-              #  Disallow traffic between gateway and client container
-              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
-              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
-            execute: |
-              docker compose exec -it client timeout 60 \
-              sh -c 'until ping -W 1 -c 1 172.20.0.100 &>/dev/null; do true; done'
+            setup: echo 'Noop'
+            execute: scripts/tests/relayed-ping-portal-down.sh
 
-              # Stop portal
-              docker compose stop api
-
-              # Wait for client to disconnect
-              sleep 5
-
-              # Ping again
-              docker compose exec -it client timeout 60 \
-              sh -c 'until ping -W 1 -c 1 172.20.0.100 &>/dev/null; do true; done'
           - test_name: direct-ping-portal-relay-down
             setup: echo 'Noop'
-            execute: |
-              docker compose exec -it client timeout 60 \
-              sh -c 'until ping -W 1 -c 10 172.20.0.100 &>/dev/null; do true; done'
-
-              # Stop api, relay
-              docker compose stop api relay
-
-              # Wait for client to disconnect
-              sleep 5
-
-              # Ping again
-              docker compose exec -it client timeout 60 \
-              sh -c 'until ping -W 1 -c 1 172.20.0.100 &>/dev/null; do true; done'
+            execute: scripts/tests/direct-ping-portal-relay-down.sh
 
           - test_name: dns-nm
             setup: scripts/dns-nm-setup.bash
