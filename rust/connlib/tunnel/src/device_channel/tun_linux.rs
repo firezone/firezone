@@ -411,11 +411,15 @@ async fn configure_resolv_conf(dns_config: &[IpAddr]) -> Result<()> {
 }
 
 async fn configure_network_manager(_dns_config: &[IpAddr]) -> Result<()> {
-    todo!()
+    Err(Error::Other(
+        "DNS control with NetworkManager is not implemented yet",
+    ))
 }
 
 async fn configure_systemd_resolved(_dns_config: &[IpAddr]) -> Result<()> {
-    todo!()
+    Err(Error::Other(
+        "DNS control with `systemd-resolved` is not implemented yet",
+    ))
 }
 
 #[repr(C)]
