@@ -100,10 +100,6 @@ impl Tun {
         dns_config: Vec<IpAddr>,
         _: &impl Callbacks,
     ) -> Result<Self> {
-        if dns_config.is_empty() {
-            panic!("`dns_config` is empty. This should be impossible, connlib will always configure at least one sentinel DNS server");
-        }
-
         // TODO: Tech debt: <https://github.com/firezone/firezone/issues/3636>
         // TODO: Gateways shouldn't set up DNS, right? Only clients?
         let dns_control_method = connlib_shared::linux::get_dns_control_from_env();
