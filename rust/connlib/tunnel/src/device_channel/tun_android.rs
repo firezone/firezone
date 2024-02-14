@@ -109,7 +109,12 @@ impl ioctl::Request<GetInterfaceNamePayload> {
 
 #[derive(Default)]
 #[repr(C)]
-struct GetInterfaceNamePayload;
+struct GetInterfaceNamePayload {
+    // Fixes a nasty alignment bug on 32-bit architectures on Android.
+    // Essentially, the compiler will optimize out the `name` field in the Request struct
+    // if the ioctl payload is not aligned to 32 bytes.
+    alignment: [std::ffi::c_uchar; 16],
+}
 
 /// Read from the given file descriptor in the buffer.
 fn read(fd: RawFd, dst: &mut [u8]) -> io::Result<usize> {
