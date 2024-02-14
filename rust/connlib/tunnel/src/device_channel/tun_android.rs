@@ -84,9 +84,9 @@ impl Tun {
 /// The file descriptor must be open.
 unsafe fn interface_name(fd: RawFd) -> Result<String> {
     const TUNGETIFF: libc::c_ulong = 0x800454d2;
-    let request = ioctl::Request::<GetInterfaceNamePayload>::new();
+    let mut request = ioctl::Request::<GetInterfaceNamePayload>::new();
 
-    ioctl::exec(fd, TUNGETIFF, &request)?;
+    ioctl::exec(fd, TUNGETIFF, &mut request)?;
 
     Ok(request.name().to_string())
 }
@@ -139,7 +139,7 @@ impl Closeable {
     fn new(fd: AsyncFd<RawFd>) -> Self {
         Self {
             closed: AtomicBool::new(false),
-            fd: fd,
+            fd,
         }
     }
 

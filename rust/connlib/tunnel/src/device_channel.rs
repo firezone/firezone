@@ -167,11 +167,11 @@ mod ioctl {
 
     pub(crate) fn interface_mtu_by_name(name: &str) -> Result<usize, ConnlibError> {
         let socket = Socket::ip4()?;
-        let request = Request::<GetInterfaceMtuPayload>::new(name)?;
+        let mut request = Request::<GetInterfaceMtuPayload>::new(name)?;
 
         // Safety: The file descriptor is open.
         unsafe {
-            exec(socket.fd, SIOCGIFMTU, &request)?;
+            exec(socket.fd, SIOCGIFMTU, &mut request)?;
         }
 
         Ok(request.payload.mtu as usize)
@@ -185,7 +185,7 @@ mod ioctl {
     pub(crate) unsafe fn exec<P>(
         fd: RawFd,
         code: libc::c_ulong,
-        req: &Request<P>,
+        req: &mut Request<P>,
     ) -> Result<(), ConnlibError> {
         let ret = unsafe { libc::ioctl(fd, code as _, req) };
 
