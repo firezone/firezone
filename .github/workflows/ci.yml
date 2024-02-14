@@ -172,7 +172,56 @@ jobs:
           timeout 600 docker compose -f rust/snownet-tests/${{ matrix.file }} up --exit-code-from dialer --abort-on-container-exit
 
   integration-tests:
-    name: integration-tests-${{ matrix.test_name }}
+    name: integration-tests-${{ matrix.test }}
+    needs: build-images
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: write
+    env:
+      VERSION: ${{ github.sha }}
+    strategy:
+      fail-fast: false
+      matrix:
+        test: [
+          direct-ping-portal-restart,
+          relayed-ping-portal-restart,
+          direct-ping-portal-down,
+          relayed-ping-portal-down,
+          direct-ping-portal-relay-down,
+          dns-etc-resolvconf,
+          dns-nm,
+          dns-systemd-resolved,
+        ]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/gcp-docker-login
+        id: login
+        with:
+          project: firezone-staging
+      - name: Seed database
+        run: docker compose run elixir /bin/sh -c 'cd apps/domain && mix ecto.seed'
+      - name: Start docker compose in the background
+        run: docker compose up -d api web client relay gateway
+
+      - run: ./scripts/tests/${{ matrix.test }}.sh
+
+      - name: Show Client logs
+        if: "!cancelled()"
+        run: docker compose logs client
+      - name: Show Relay logs
+        if: "!cancelled()"
+        run: docker compose logs relay
+      - name: Show Gateway logs
+        if: "!cancelled()"
+        run: docker compose logs gateway
+      - name: Show API logs
+        if: "!cancelled()"
+        run: docker compose logs api
+
+  performance-tests:
+    name: performance-tests-${{ matrix.test_name }}
     needs: build-images
     runs-on: ubuntu-22.04
     permissions:
@@ -185,118 +234,13 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Define new integration tests here. These are executed in parallel in our CI.
-          # If you set `perf_test` to true, the throughput test will
-          # be activated and performance results will be uploaded as artifacts.
-          # If you leave `perf_test` blank or set it to false, the performance test will
-          # be skipped.
-
-          # Basic connectivity tests
-          - test_name: direct-ping-portal-restart
-            setup: echo 'Noop'
-            execute: |
-              docker compose exec -it client timeout 60 \
-              sh -c 'until ping -W 1 -c 10 172.20.0.100 &>/dev/null; do true; done'
-
-              # Restart portal
-              docker compose restart api
-
-              # Wait for client to reconnect
-              sleep 5
-
-              # Ping again
-              docker compose exec -it client timeout 60 \
-              sh -c 'until ping -W 1 -c 1 172.20.0.100 &>/dev/null; do true; done'
-          - test_name: relayed-ping-portal-restart
-            setup: |
-              #  Disallow traffic between gateway and client container
-              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
-              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
-            execute: |
-              docker compose exec -it client timeout 60 \
-              sh -c 'until ping -W 1 -c 1 172.20.0.100 &>/dev/null; do true; done'
-
-              # Restart portal
-              docker compose restart api
-
-              # Wait for client to reconnect
-              sleep 5
-
-              # Ping again
-              docker compose exec -it client timeout 60 \
-              sh -c 'until ping -W 1 -c 1 172.20.0.100 &>/dev/null; do true; done'
-          - test_name: direct-ping-portal-down
-            setup: echo 'Noop'
-            execute: |
-              docker compose exec -it client timeout 60 \
-              sh -c 'until ping -W 1 -c 10 172.20.0.100 &>/dev/null; do true; done'
-
-              # Stop portal
-              docker compose stop api
-
-              # Wait for client to disconnect
-              sleep 5
-
-              # Ping again
-              docker compose exec -it client timeout 60 \
-              sh -c 'until ping -W 1 -c 1 172.20.0.100 &>/dev/null; do true; done'
-          - test_name: relayed-ping-portal-down
-            setup: |
-              #  Disallow traffic between gateway and client container
-              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
-              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
-            execute: |
-              docker compose exec -it client timeout 60 \
-              sh -c 'until ping -W 1 -c 1 172.20.0.100 &>/dev/null; do true; done'
-
-              # Stop portal
-              docker compose stop api
-
-              # Wait for client to disconnect
-              sleep 5
-
-              # Ping again
-              docker compose exec -it client timeout 60 \
-              sh -c 'until ping -W 1 -c 1 172.20.0.100 &>/dev/null; do true; done'
-          - test_name: direct-ping-portal-relay-down
-            setup: echo 'Noop'
-            execute: |
-              docker compose exec -it client timeout 60 \
-              sh -c 'until ping -W 1 -c 10 172.20.0.100 &>/dev/null; do true; done'
-
-              # Stop api, relay
-              docker compose stop api relay
-
-              # Wait for client to disconnect
-              sleep 5
-
-              # Ping again
-              docker compose exec -it client timeout 60 \
-              sh -c 'until ping -W 1 -c 1 172.20.0.100 &>/dev/null; do true; done'
-
-          # Systemd-related tests (ignores the client container and runs in the runner itself)
-          - test_name: dns-systemd-resolved
-            setup: scripts/systemd-test-setup.bash
-            execute: scripts/systemd-test-execute.bash
-
-            # Client DNS tests
-          - test_name: dns-etc-resolv-conf
-            perf_test: false
-            setup: echo 'Noop'
-            execute: scripts/dns-test-execute.bash
-
-          # Performance Tests
           - test_name: direct-perf
-            # Set this to enable performance testing for this test
-            perf_test: true
             setup: echo 'Noop'
             execute: |
               # Establish a channel
               docker compose exec -it client timeout 60 \
               sh -c 'until ping -W 1 -c 1 172.20.0.100 &>/dev/null; do true; done'
           - test_name: relayed-perf
-            # Set this to enable performance testing for this test
-            perf_test: true
             setup: |
               #  Disallow traffic between gateway and client container
               sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
@@ -305,7 +249,6 @@ jobs:
               # Establish a channel
               docker compose exec -it client timeout 60 \
               sh -c 'until ping -W 1 -c 1 172.20.0.100 &>/dev/null; do true; done'
-
 
     steps:
       - uses: actions/checkout@v4
@@ -330,7 +273,6 @@ jobs:
       - name: 'Execute test: ${{ matrix.test_name }}'
         run: ${{ matrix.execute }}
       - name: 'Performance test: ${{ matrix.test_name }}'
-        if: matrix.perf_test
         id: perfomance-test
         timeout-minutes: 5
         run: |
@@ -371,14 +313,13 @@ jobs:
           cat /tmp/iperf3results/udp_client2server.json | jq -r '"udp_client2server_sum_jitter_ms=" + (.end.sum.jitter_ms|tostring)' >> "$GITHUB_OUTPUT"
           cat /tmp/iperf3results/udp_client2server.json | jq -r '"udp_client2server_sum_lost_percent=" + (.end.sum.lost_percent|tostring)' >> "$GITHUB_OUTPUT"
       - name: 'Save performance test results: ${{ matrix.test_name }}'
-        if: matrix.perf_test
         uses: actions/upload-artifact@v4
         with:
           name: '${{ matrix.test_name }}-iperf3results'
           path: /tmp/iperf3results
       - name: 'Download main branch performance test results: ${{ matrix.test_name }}'
         id: download-artifact
-        if: ${{ github.event_name == 'pull_request' && matrix.perf_test }}
+        if: ${{ github.event_name == 'pull_request' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -413,7 +354,7 @@ jobs:
           rm "${DESTINATION}.zip"
       - name: "Generate main branch metrics"
         id: main-perfomance-test
-        if: ${{ github.event_name == 'pull_request' && matrix.perf_test }}
+        if: ${{ github.event_name == 'pull_request' }}
         run: |
           cat /tmp/iperf3results-main/tcp_server2client.json | jq -r '"tcp_server2client_sum_received_bits_per_second=" + (.end.sum_received.bits_per_second|tostring)' >> "$GITHUB_OUTPUT"
           cat /tmp/iperf3results-main/tcp_server2client.json | jq -r '"tcp_server2client_sum_sent_bits_per_second=" + (.end.sum_sent.bits_per_second|tostring)' >> "$GITHUB_OUTPUT"
@@ -433,7 +374,7 @@ jobs:
       - name: Update PR
         uses: actions/github-script@v7
         id: perf-comment
-        if: ${{ github.event_name == 'pull_request' && matrix.perf_test }}
+        if: ${{ github.event_name == 'pull_request' }}
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |

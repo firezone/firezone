@@ -2,6 +2,9 @@
 
 const FIREZONE_DNS_CONTROL: &str = "FIREZONE_DNS_CONTROL";
 
+pub const ETC_RESOLV_CONF: &str = "/etc/resolv.conf";
+pub const ETC_RESOLV_CONF_BACKUP: &str = "/etc/resolv.conf.firezone-backup";
+
 #[derive(Clone, Debug)]
 pub enum DnsControlMethod {
     /// Back up `/etc/resolv.conf` and replace it with our own

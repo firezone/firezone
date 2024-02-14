@@ -84,9 +84,9 @@ impl Tun {
 /// The file descriptor must be open.
 unsafe fn interface_name(fd: RawFd) -> Result<String> {
     const TUNGETIFF: libc::c_ulong = 0x800454d2;
-    let request = ioctl::Request::<GetInterfaceNamePayload>::new();
+    let mut request = ioctl::Request::<GetInterfaceNamePayload>::new();
 
-    ioctl::exec(fd, TUNGETIFF, &request)?;
+    ioctl::exec(fd, TUNGETIFF, &mut request)?;
 
     Ok(request.name().to_string())
 }
@@ -109,7 +109,12 @@ impl ioctl::Request<GetInterfaceNamePayload> {
 
 #[derive(Default)]
 #[repr(C)]
-struct GetInterfaceNamePayload;
+struct GetInterfaceNamePayload {
+    // Fixes a nasty alignment bug on 32-bit architectures on Android.
+    // The `name` field in `ioctl::Request` is only 16 bytes long and accessing it causes a NPE without this alignment.
+    // Why? Not sure. It seems to only happen in release mode which hints at an optimisation issue.
+    alignment: [std::ffi::c_uchar; 16],
+}
 
 /// Read from the given file descriptor in the buffer.
 fn read(fd: RawFd, dst: &mut [u8]) -> io::Result<usize> {
@@ -139,7 +144,7 @@ impl Closeable {
     fn new(fd: AsyncFd<RawFd>) -> Self {
         Self {
             closed: AtomicBool::new(false),
-            fd: fd,
+            fd,
         }
     }
 
