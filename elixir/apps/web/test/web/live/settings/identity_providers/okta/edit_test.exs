@@ -55,7 +55,7 @@ defmodule Web.Live.Settings.IdentityProviders.Okta.EditTest do
              "provider[adapter_config][client_id]",
              "provider[adapter_config][client_secret]",
              "provider[adapter_config][discovery_document_uri]",
-             "provider[adapter_config][oauth_uri]",
+             "provider[adapter_config][okta_account_domain]",
              "provider[name]"
            ]
   end
@@ -67,11 +67,10 @@ defmodule Web.Live.Settings.IdentityProviders.Okta.EditTest do
     conn: conn
   } do
     bypass = Domain.Mocks.OpenIDConnect.discovery_document_server()
+    api_base_url = "http://localhost:#{bypass.port}"
 
     adapter_config_attrs =
-      Fixtures.Auth.openid_connect_adapter_config(
-        oauth_uri: "http://localhost:#{bypass.port}/.well-known/oauth-authorization-server"
-      )
+      Fixtures.Auth.openid_connect_adapter_config(okta_account_domain: api_base_url)
 
     adapter_config_attrs =
       Map.drop(adapter_config_attrs, [
@@ -100,8 +99,7 @@ defmodule Web.Live.Settings.IdentityProviders.Okta.EditTest do
     |> render_submit(%{
       provider: %{
         adapter_config: %{
-          "discovery_document_uri" =>
-            "http://localhost:#{bypass.port}/.well-known/openid-configuration"
+          "discovery_document_uri" => "#{api_base_url}/.well-known/openid-configuration"
         }
       }
     })
@@ -119,11 +117,10 @@ defmodule Web.Live.Settings.IdentityProviders.Okta.EditTest do
     assert provider.adapter_config["client_id"] == adapter_config_attrs["client_id"]
     assert provider.adapter_config["client_secret"] == adapter_config_attrs["client_secret"]
 
-    assert provider.adapter_config["oauth_uri"] ==
-             "http://localhost:#{bypass.port}/.well-known/oauth-authorization-server"
+    assert provider.adapter_config["okta_account_domain"] == api_base_url
 
     assert provider.adapter_config["discovery_document_uri"] ==
-             "http://localhost:#{bypass.port}/.well-known/openid-configuration"
+             "#{api_base_url}/.well-known/openid-configuration"
   end
 
   test "renders changeset errors on invalid attrs", %{
@@ -133,11 +130,10 @@ defmodule Web.Live.Settings.IdentityProviders.Okta.EditTest do
     conn: conn
   } do
     bypass = Domain.Mocks.OpenIDConnect.discovery_document_server()
+    api_base_url = "http://localhost:#{bypass.port}"
 
     adapter_config_attrs =
-      Fixtures.Auth.openid_connect_adapter_config(
-        oauth_uri: "http://localhost:#{bypass.port}/.well-known/oauth-authorization-server"
-      )
+      Fixtures.Auth.openid_connect_adapter_config(okta_account_domain: api_base_url)
 
     adapter_config_attrs =
       Map.drop(adapter_config_attrs, [

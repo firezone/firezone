@@ -74,8 +74,10 @@ pub enum Error {
     Decapsulate(boringtun::noise::errors::WireGuardError),
     #[error("Failed to encapsulate: {0:?}")]
     Encapsulate(boringtun::noise::errors::WireGuardError),
-    #[error("Unmatched packet")]
-    UnmatchedPacket,
+    #[error("Packet is a STUN message but no agent handled it; num_agents = {num_agents}")]
+    UnhandledStunMessage { num_agents: usize },
+    #[error("Packet was not accepted by any wireguard tunnel; num_tunnels = {num_tunnels}")]
+    UnhandledPacket { num_tunnels: usize },
     #[error("Not connected")]
     NotConnected,
     #[error("Invalid local address: {0}")]
@@ -226,6 +228,10 @@ where
                     return Ok(None);
                 }
             }
+
+            return Err(Error::UnhandledStunMessage {
+                num_agents: self.connections.len(),
+            });
         }
 
         for (id, conn) in self.connections.iter_established_mut() {
@@ -289,7 +295,9 @@ where
             };
         }
 
-        Err(Error::UnmatchedPacket)
+        Err(Error::UnhandledPacket {
+            num_tunnels: self.connections.iter_established_mut().count(),
+        })
     }
 
     /// Encapsulate an outgoing IP packet.
@@ -442,7 +450,7 @@ where
                         if conn.peer_socket != Some(remote_socket) {
                             let is_first_connection = conn.peer_socket.is_none();
 
-                            tracing::debug!(old = ?conn.peer_socket, new = ?remote_socket, "Updating remote socket");
+                            tracing::info!(old = ?conn.peer_socket, new = ?remote_socket, "Updating remote socket");
                             conn.peer_socket = Some(remote_socket);
 
                             if is_first_connection {
@@ -456,6 +464,8 @@ where
         }
 
         for conn in failed_connections {
+            tracing::info!(id = %conn, "Connection failed (ICE timeout)");
+
             self.connections.established.remove(&conn);
             self.pending_events.push_back(Event::ConnectionFailed(conn));
         }
@@ -507,6 +517,8 @@ where
         }
 
         for conn in expired_connections {
+            tracing::info!(id = %conn, "Connection failed (wireguard tunnel expired)");
+
             self.connections.established.remove(&conn);
             self.pending_events.push_back(Event::ConnectionFailed(conn))
         }
@@ -536,6 +548,8 @@ where
             .collect::<Vec<_>>();
 
         for conn in stale_connections {
+            tracing::info!(id = %conn, "Connection setup timed out (no answer received)");
+
             self.connections.initial.remove(&conn);
             self.pending_events.push_back(Event::ConnectionFailed(conn));
         }
@@ -923,6 +937,10 @@ where
 
     fn iter_established_mut(&mut self) -> impl Iterator<Item = (TId, &mut Connection)> {
         self.established.iter_mut().map(|(id, conn)| (*id, conn))
+    }
+
+    fn len(&self) -> usize {
+        self.initial.len() + self.established.len()
     }
 }
 
