@@ -39,7 +39,9 @@ webrtc = { workspace = true }
 log = "0.4"
 
 [dev-dependencies]
+anyhow = "1.0"
 serde_json = "1.0"
+tempfile = "3.10.0"
 
 # Linux tunnel dependencies
 [target.'cfg(target_os = "linux")'.dependencies]
