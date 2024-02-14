@@ -121,13 +121,13 @@ defmodule Domain.Fixtures.Auth do
 
   def start_and_create_okta_provider(attrs \\ %{}) do
     bypass = Domain.Mocks.OpenIDConnect.discovery_document_server()
+    api_base_url = "http://localhost:#{bypass.port}"
 
     adapter_config =
       openid_connect_adapter_config(
-        api_base_url: "http://localhost:#{bypass.port}",
-        oauth_uri: "http://localhost:#{bypass.port}/.well-known/oauth-authorization-server",
-        discovery_document_uri:
-          "http://localhost:#{bypass.port}/.well-known/openid-configuration",
+        api_base_url: api_base_url,
+        okta_account_domain: api_base_url,
+        discovery_document_uri: "#{api_base_url}/.well-known/openid-configuration",
         scope: Domain.Auth.Adapters.Okta.Settings.scope() |> Enum.join(" ")
       )
 

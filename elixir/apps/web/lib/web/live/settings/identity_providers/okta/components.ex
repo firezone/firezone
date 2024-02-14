@@ -83,14 +83,14 @@ defmodule Web.Settings.IdentityProviders.Okta.Components do
 
                 <div>
                   <.input
-                    label="OAuth Authorization Server URI"
+                    label="Okta Account Domain"
                     autocomplete="off"
-                    field={adapter_config_form[:oauth_uri]}
-                    placeholder="https://<company>.okta.com/.well-known/oauth-authorization-server"
+                    field={adapter_config_form[:okta_account_domain]}
+                    placeholder="<company>.okta.com"
                     required
                   />
                   <p class="mt-2 text-xs text-neutral-500">
-                    The Metadata URI of the Authorization Server for your Okta Application.
+                    Your Okta account domain.
                   </p>
                 </div>
 
@@ -102,7 +102,7 @@ defmodule Web.Settings.IdentityProviders.Okta.Components do
                     placeholder=".well-known/openid-configuration URL"
                   />
                   <p class="mt-2 text-xs text-neutral-500">
-                    The OIDC Configuration URI.  This field is derived from the value in the OAuth Authorization Server URI field.
+                    The OIDC Configuration URI.  This field is derived from the value in the Okta Account Domain field.
                   </p>
                 </div>
               </.inputs_for>
@@ -123,7 +123,7 @@ defmodule Web.Settings.IdentityProviders.Okta.Components do
     |> Enum.join("\n")
   end
 
-  def visible?(value) do
+  defp visible?(value) do
     case value do
       nil -> false
       "" -> false
