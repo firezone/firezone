@@ -190,6 +190,7 @@ jobs:
           direct-ping-portal-down,
           relayed-ping-portal-down,
           direct-ping-portal-relay-down,
+          dns-etc-resolvconf,
           dns-nm,
         ]
     steps:
