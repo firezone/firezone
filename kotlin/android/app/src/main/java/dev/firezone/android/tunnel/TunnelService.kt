@@ -12,7 +12,6 @@ import android.net.VpnService
 import android.os.Binder
 import android.os.Build
 import android.os.IBinder
-import android.os.ParcelFileDescriptor
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.lifecycle.MutableLiveData
@@ -47,7 +46,6 @@ class TunnelService : VpnService() {
     private var tunnelDnsAddresses: MutableList<String> = mutableListOf()
     private var tunnelRoutes: MutableList<Cidr> = mutableListOf()
     private var connlibSessionPtr: Long? = null
-    private var parcelFileDescriptor: ParcelFileDescriptor? = null
     private var _tunnelResources: List<Resource> = emptyList()
     private var _tunnelState: State = State.DOWN
 
@@ -211,7 +209,6 @@ class TunnelService : VpnService() {
         Log.d(TAG, "shutdown")
 
         connlibSessionPtr = null
-        parcelFileDescriptor?.close()
         stopSelf()
         tunnelState = State.DOWN
     }
@@ -291,15 +288,6 @@ class TunnelService : VpnService() {
     }
 
     private fun buildVpnService(): Int {
-        parcelFileDescriptor?.let {
-            try {
-                it.close()
-            } catch (e: Exception) {
-                Log.e(TAG, "Error closing existing VPN file descriptor", e)
-                Firebase.crashlytics.recordException(e)
-            }
-        }
-
         Builder().apply {
             Firebase.crashlytics.log("Building VPN service")
             // Allow traffic to bypass the VPN interface when Always-on VPN is enabled.
@@ -335,13 +323,8 @@ class TunnelService : VpnService() {
 
             setSession(SESSION_NAME)
             setMtu(MTU)
-        }.establish()?.let {
-            parcelFileDescriptor = it
-            return it.fd
-        } ?: run {
-            Log.e(TAG, "Error establishing VPN service")
-            Firebase.crashlytics.log("Error establishing VPN service")
-            return -1
+        }.establish()!!.let {
+            return it.detachFd()
         }
     }
 
