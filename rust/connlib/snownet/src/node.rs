@@ -33,9 +33,6 @@ use stun_codec::rfc5389::attributes::{Realm, Username};
 // Note: Taken from boringtun
 const HANDSHAKE_RATE_LIMIT: u64 = 100;
 
-/// How often wireguard will send a keep-alive packet.
-pub(crate) const WIREGUARD_KEEP_ALIVE: u16 = 5;
-
 const MAX_UDP_SIZE: usize = (1 << 16) - 1;
 
 /// Manages a set of wireguard connections for a server.
@@ -572,7 +569,7 @@ where
                 self.private_key.clone(),
                 remote,
                 Some(key),
-                Some(WIREGUARD_KEEP_ALIVE),
+                None,
                 self.index.next(),
                 Some(self.rate_limiter.clone()),
             ),
@@ -581,7 +578,6 @@ where
             next_timer_update: self.last_now,
             peer_socket: None,
             possible_sockets: HashSet::default(),
-            last_seen: None,
         }
     }
 
@@ -887,15 +883,9 @@ where
     TId: Eq + Hash + Copy,
 {
     fn stats(&self, now: Instant) -> impl Iterator<Item = (TId, ConnectionInfo)> + '_ {
-        self.established.iter().map(move |(id, c)| {
-            (
-                *id,
-                ConnectionInfo {
-                    last_seen: c.last_seen,
-                    generated_at: now,
-                },
-            )
-        })
+        self.established
+            .keys()
+            .map(move |id| (*id, ConnectionInfo { generated_at: now }))
     }
 
     fn agent_mut(&mut self, id: TId) -> Option<&mut IceAgent> {
@@ -1093,8 +1083,6 @@ struct Connection {
     tunnel: Tunn,
     next_timer_update: Instant,
 
-    last_seen: Option<Instant>,
-
     // When this is `Some`, we are connected.
     peer_socket: Option<PeerSocket>,
     // Socket addresses from which we might receive data (even before we are connected).
@@ -1210,10 +1198,6 @@ impl Connection {
         self.agent.handle_timeout(now);
 
         // TODO: `boringtun` is impure because it calls `Instant::now`.
-        self.last_seen = self
-            .tunnel
-            .time_since_last_received()
-            .and_then(|d| now.checked_sub(d));
 
         if now >= self.next_timer_update {
             self.next_timer_update = now + Duration::from_secs(1);
