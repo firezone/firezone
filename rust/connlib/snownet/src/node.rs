@@ -434,9 +434,14 @@ where
                         };
 
                         if conn.peer_socket != Some(remote_socket) {
+                            let is_first_connection = conn.peer_socket.is_none();
+
                             tracing::debug!(old = ?conn.peer_socket, new = ?remote_socket, "Updating remote socket");
                             conn.peer_socket = Some(remote_socket);
-                            return Some(Event::ConnectionEstablished(id));
+
+                            if is_first_connection {
+                                return Some(Event::ConnectionEstablished(id));
+                            }
                         }
                     }
                     _ => {}
