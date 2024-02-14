@@ -13,6 +13,9 @@ use libc::{
 use netlink_packet_route::RT_SCOPE_UNIVERSE;
 use parking_lot::Mutex;
 use rtnetlink::{new_connection, Error::NetlinkError, Handle};
+use std::net::IpAddr;
+use std::path::Path;
+use std::task::{Context, Poll};
 use std::{
     ffi::CStr,
     fmt, fs, io,
@@ -20,11 +23,6 @@ use std::{
         fd::{AsRawFd, RawFd},
         unix::fs::PermissionsExt,
     },
-};
-use std::{
-    net::IpAddr,
-    path::Path,
-    task::{Context, Poll},
 };
 use tokio::io::unix::AsyncFd;
 
