@@ -6,7 +6,7 @@ source "./scripts/tests/lib.sh"
 
 client_ping_gateway
 
-docker compose stop api relay # Stop relay & relay
+docker compose stop api relay # Stop portal & relay
 
 sleep 5 # Wait for client to disconnect
 
