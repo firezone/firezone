@@ -172,7 +172,7 @@ jobs:
           timeout 600 docker compose -f rust/snownet-tests/${{ matrix.file }} up --exit-code-from dialer --abort-on-container-exit
 
   integration-tests:
-    name: integration-tests-${{ matrix.test_name }}
+    name: integration-tests-${{ matrix.test }}
     needs: build-images
     runs-on: ubuntu-22.04
     permissions:
@@ -184,33 +184,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          # Define new integration tests here. These are executed in parallel in our CI.
-
-          - test_name: direct-ping-portal-restart
-            setup: echo 'Noop'
-            execute: scripts/tests/direct-ping-portal-restart.sh
-
-          - test_name: relayed-ping-portal-restart
-            setup: echo 'Noop'
-            execute: scripts/tests/relayed-ping-portal-restart.sh
-
-          - test_name: direct-ping-portal-down
-            setup: echo 'Noop'
-            execute: scripts/tests/direct-ping-portal-down.sh
-
-          - test_name: relayed-ping-portal-down
-            setup: echo 'Noop'
-            execute: scripts/tests/relayed-ping-portal-down.sh
-
-          - test_name: direct-ping-portal-relay-down
-            setup: echo 'Noop'
-            execute: scripts/tests/direct-ping-portal-relay-down.sh
-
-          - test_name: dns-nm
-            setup: scripts/dns-nm-setup.bash
-            execute: echo 'Noop'
-
+        test: [
+          direct-ping-portal-restart,
+          relayed-ping-portal-restart,
+          direct-ping-portal-down,
+          relayed-ping-portal-down,
+          direct-ping-portal-relay-down,
+          dns-nm,
+        ]
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/gcp-docker-login
@@ -218,20 +199,12 @@ jobs:
         with:
           project: firezone-staging
       - name: Seed database
-        run:
-          docker compose run elixir /bin/sh -c 'cd apps/domain && mix ecto.seed'
+        run: docker compose run elixir /bin/sh -c 'cd apps/domain && mix ecto.seed'
       - name: Start docker compose in the background
-        run: |
-          docker compose up -d \
-            api \
-            web \
-            client \
-            relay \
-            gateway \
-      - name: 'Setup test: ${{ matrix.test_name }}'
-        run: ${{ matrix.setup }}
-      - name: 'Execute test: ${{ matrix.test_name }}'
-        run: ${{ matrix.execute }}
+        run: docker compose up -d api web client relay gateway
+
+      - run: ./scripts/tests/${{ matrix.test }}.sh
+
       - name: Show Client logs
         if: "!cancelled()"
         run: docker compose logs client
