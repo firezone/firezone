@@ -121,6 +121,7 @@ impl Tun {
         // using QUIC, HTTP/2, or even HTTP/1.1, and so they won't resolve the DNS
         // again unless you let that connection time out:
         // <https://github.com/firezone/firezone/issues/3113#issuecomment-1882096111>
+        // TODO: If we have a Windows gateway, it shouldn't configure DNS, right?
         Command::new("powershell")
             .creation_flags(CREATE_NO_WINDOW)
             .arg("-Command")
