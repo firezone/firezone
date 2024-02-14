@@ -226,6 +226,9 @@ where
                     return Ok(None);
                 }
             }
+
+            tracing::warn!(num_agents = %self.connections.len(), "Packet is a STUN message but no agent handled it");
+            return Err(Error::UnmatchedPacket);
         }
 
         for (id, conn) in self.connections.iter_established_mut() {
@@ -289,6 +292,7 @@ where
             };
         }
 
+        tracing::warn!(num_connections = %self.connections.len(), "Packet was not accepted by any wireguard tunnel");
         Err(Error::UnmatchedPacket)
     }
 
@@ -927,6 +931,10 @@ where
 
     fn iter_established_mut(&mut self) -> impl Iterator<Item = (TId, &mut Connection)> {
         self.established.iter_mut().map(|(id, conn)| (*id, conn))
+    }
+
+    fn len(&self) -> usize {
+        self.initial.len() + self.established.len()
     }
 }
 
