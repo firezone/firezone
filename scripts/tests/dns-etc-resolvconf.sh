@@ -8,7 +8,7 @@ set -euo pipefail
 HTTPBIN=test.httpbin.docker.local
 
 function client() {
-    docker compose exec -it client "$*"
+    docker compose exec -it client "$@"
 }
 
 function client_nslookup() {
@@ -18,7 +18,7 @@ function client_nslookup() {
 }
 
 function gateway() {
-    docker compose exec -it gateway "$*"
+    docker compose exec -it gateway "$@"
 }
 
 # Wait for client to ping httpbin (CIDR) resource through the gateway
