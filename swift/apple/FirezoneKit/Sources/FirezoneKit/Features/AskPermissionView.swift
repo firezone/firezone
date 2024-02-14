@@ -11,6 +11,7 @@ import SwiftUI
 @MainActor
 public final class AskPermissionViewModel: ObservableObject {
   public var tunnelStore: TunnelStore
+  private var notificationDecisionHelper: NotificationDecisionHelper
 
   private var cancellables: Set<AnyCancellable> = []
 
@@ -26,8 +27,11 @@ public final class AskPermissionViewModel: ObservableObject {
     }
   }
 
-  public init(tunnelStore: TunnelStore) {
+  @Published var needsNotificationDecision = false
+
+  public init(tunnelStore: TunnelStore, notificationDecisionHelper: NotificationDecisionHelper) {
     self.tunnelStore = tunnelStore
+    self.notificationDecisionHelper = notificationDecisionHelper
 
     tunnelStore.$tunnelAuthStatus
       .filter { $0.isInitialized }
@@ -40,6 +44,23 @@ public final class AskPermissionViewModel: ObservableObject {
               self.needsTunnelPermission = true
             } else {
               self.needsTunnelPermission = false
+            }
+          }
+        }
+      }
+      .store(in: &cancellables)
+
+    notificationDecisionHelper.$notificationDecision
+      .filter { $0.isInitialized }
+      .sink { [weak self] notificationDecision in
+        guard let self = self else { return }
+
+        Task {
+          await MainActor.run {
+            if case .notDetermined = notificationDecision {
+              self.needsNotificationDecision = true
+            } else {
+              self.needsNotificationDecision = false
             }
           }
         }
@@ -61,6 +82,12 @@ public final class AskPermissionViewModel: ObservableObject {
       }
     }
   }
+
+  #if os(iOS)
+    func grantNotificationButtonTapped() {
+      self.notificationDecisionHelper.askUserForNotificationPermissions()
+    }
+  #endif
 
   #if os(macOS)
     func closeAskPermissionWindow() {
@@ -123,7 +150,27 @@ public struct AskPermissionView: View {
             .font(.caption)
             .multilineTextAlignment(.center)
           #endif
-
+        } else if $model.needsNotificationDecision.wrappedValue {
+          #if os(iOS)
+            Text(
+              "Firezone requires your permission to show local notifications whenever you become signed out of your account."
+            )
+            .font(.body)
+            .multilineTextAlignment(.center)
+            Spacer()
+            Button("Grant Notification Permission") {
+              model.grantNotificationButtonTapped()
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            Spacer()
+              .frame(maxHeight: 20)
+            Text(
+              "After tapping on the above button, tap on 'Allow' when prompted."
+            )
+            .font(.caption)
+            .multilineTextAlignment(.center)
+          #endif
         } else {
 
           #if os(macOS)
