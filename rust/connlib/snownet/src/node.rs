@@ -74,8 +74,10 @@ pub enum Error {
     Decapsulate(boringtun::noise::errors::WireGuardError),
     #[error("Failed to encapsulate: {0:?}")]
     Encapsulate(boringtun::noise::errors::WireGuardError),
-    #[error("Unmatched packet")]
-    UnmatchedPacket,
+    #[error("Packet is a STUN message but no agent handled it; num_agents = {num_agents}")]
+    UnhandledStunMessage { num_agents: usize },
+    #[error("Packet was not accepted by any wireguard tunnel; num_tunnels = {num_tunnels}")]
+    UnhandledPacket { num_tunnels: usize },
     #[error("Not connected")]
     NotConnected,
     #[error("Invalid local address: {0}")]
@@ -227,8 +229,9 @@ where
                 }
             }
 
-            tracing::warn!(num_agents = %self.connections.len(), "Packet is a STUN message but no agent handled it");
-            return Err(Error::UnmatchedPacket);
+            return Err(Error::UnhandledStunMessage {
+                num_agents: self.connections.len(),
+            });
         }
 
         for (id, conn) in self.connections.iter_established_mut() {
@@ -292,8 +295,9 @@ where
             };
         }
 
-        tracing::warn!(num_connections = %self.connections.len(), "Packet was not accepted by any wireguard tunnel");
-        Err(Error::UnmatchedPacket)
+        Err(Error::UnhandledPacket {
+            num_tunnels: self.connections.iter_established_mut().count(),
+        })
     }
 
     /// Encapsulate an outgoing IP packet.
