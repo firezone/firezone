@@ -20,7 +20,6 @@ import dev.firezone.android.R
 import dev.firezone.android.core.data.PreferenceRepository
 import dev.firezone.android.core.domain.preference.GetConfigUseCase
 import dev.firezone.android.core.presentation.MainActivity
-import dev.firezone.android.features.auth.backend.UnauthorizedReceiver
 import dev.firezone.android.tunnel.callback.ConnlibCallback
 import dev.firezone.android.tunnel.data.TunnelRepository
 import dev.firezone.android.tunnel.model.Cidr
@@ -51,6 +50,8 @@ class TunnelService : VpnService() {
     private var sessionPtr: Long? = null
 
     private var shouldReconnect: Boolean = false
+
+    private var notificationChannel: NotificationChannel? = null
 
     private val activeTunnel: Tunnel?
         get() = tunnelRepository.get()
@@ -228,11 +229,8 @@ class TunnelService : VpnService() {
             preferenceRepository.clearToken()
             onTunnelStateUpdate(Tunnel.State.Closed)
             stopForeground(STOP_FOREGROUND_REMOVE)
-            if (is401Unauthorized) {
-                Log.d(TAG, "onSessionDisconnected: Unauthorized")
-                val intent = Intent(this, UnauthorizedReceiver::class.java)
-                intent.action = "dev.firezone.android.action.UNAUTHORIZED"
-                sendBroadcast(intent)
+            if (is401Unauthorized && isSignedIn()) {
+                signInNotification()
             }
         }
     }
@@ -299,23 +297,13 @@ class TunnelService : VpnService() {
         }
 
     private fun updateStatusNotification(message: String?) {
-        val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+        val chan = getNotificationChannel()
 
-        val chan =
-            NotificationChannel(
-                NOTIFICATION_CHANNEL_ID,
-                NOTIFICATION_CHANNEL_NAME,
-                NotificationManager.IMPORTANCE_DEFAULT,
-            )
-        chan.description = "firezone connection status"
-
-        manager.createNotificationChannel(chan)
-
-        val notificationBuilder = NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
+        val notificationBuilder = NotificationCompat.Builder(this, chan.id)
         val notification =
             notificationBuilder.setOngoing(true)
                 .setSmallIcon(R.drawable.ic_firezone_logo)
-                .setContentTitle(NOTIFICATION_TITLE)
+                .setContentTitle(STATUS_NOTIFICATION_TITLE)
                 .setContentText(message)
                 .setPriority(NotificationManager.IMPORTANCE_MIN)
                 .setCategory(Notification.CATEGORY_SERVICE)
@@ -325,6 +313,46 @@ class TunnelService : VpnService() {
         startForeground(STATUS_NOTIFICATION_ID, notification)
     }
 
+    private fun signInNotification() {
+        val chan = getNotificationChannel()
+        val notificationBuilder = NotificationCompat.Builder(this, chan.id)
+        val notification =
+            notificationBuilder
+                .setSmallIcon(R.drawable.ic_firezone_logo)
+                .setContentTitle(SIGN_IN_NOTIFICATION_TITLE)
+                .setContentText(SIGN_IN_NOTIFICATION_TEXT)
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setCategory(NotificationCompat.CATEGORY_STATUS)
+                .setContentIntent(configIntent())
+                .setAutoCancel(true)
+                .build()
+
+        startForeground(SIGN_IN_NOTIFICATION_ID, notification)
+    }
+
+    private fun getNotificationChannel(): NotificationChannel {
+        if (notificationChannel == null) {
+            notificationChannel =
+                NotificationChannel(
+                    NOTIFICATION_CHANNEL_ID,
+                    NOTIFICATION_CHANNEL_NAME,
+                    NotificationManager.IMPORTANCE_DEFAULT,
+                ).apply { description = "firezone connection status" }
+            val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+            manager.createNotificationChannel(notificationChannel!!)
+        }
+        return notificationChannel!!
+    }
+
+    private fun isSignedIn(): Boolean {
+        // See if there is a 'token' property set in managed configuration directly
+        val restrictionsManager =
+            getSystemService(Context.RESTRICTIONS_SERVICE)
+                as android.content.RestrictionsManager
+        val appRestrictions = restrictionsManager.applicationRestrictions
+        return !appRestrictions.containsKey(TOKEN_KEY)
+    }
+
     companion object {
         const val ACTION_CONNECT = "dev.firezone.android.tunnel.CONNECT"
         const val ACTION_DISCONNECT = "dev.firezone.android.tunnel.DISCONNECT"
@@ -332,11 +360,16 @@ class TunnelService : VpnService() {
         private const val NOTIFICATION_CHANNEL_ID = "firezone-connection-status"
         private const val NOTIFICATION_CHANNEL_NAME = "firezone-connection-status"
         private const val STATUS_NOTIFICATION_ID = 1337
-        private const val NOTIFICATION_TITLE = "Firezone Connection Status"
+        private const val STATUS_NOTIFICATION_TITLE = "Firezone Connection Status"
+        private const val SIGN_IN_NOTIFICATION_ID = 1338
+        private const val SIGN_IN_NOTIFICATION_TITLE = "Firezone Signed Out"
+        private const val SIGN_IN_NOTIFICATION_TEXT = "Sign in again"
 
         private const val TAG: String = "TunnelService"
         private const val SESSION_NAME: String = "Firezone Connection"
         private const val DEFAULT_MTU: Int = 1280
+
+        private const val TOKEN_KEY = "token"
 
         @SuppressWarnings("deprecation")
         fun isRunning(context: Context): Boolean {
