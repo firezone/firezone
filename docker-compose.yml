@@ -123,8 +123,6 @@ services:
       args:
         PACKAGE: firezone-linux-client
     image: us-east1-docker.pkg.dev/firezone-staging/firezone/client:${VERSION:-main}
-    dns:
-      - 100.100.111.1
     cap_add:
       - NET_ADMIN
     sysctls:
