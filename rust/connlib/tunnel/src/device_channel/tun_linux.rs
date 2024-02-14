@@ -133,7 +133,11 @@ impl Tun {
 
         // Safety: We just opened the file descriptor.
         unsafe {
-            ioctl::exec(fd, TUNSETIFF, &ioctl::Request::<SetTunFlagsPayload>::new())?;
+            ioctl::exec(
+                fd,
+                TUNSETIFF,
+                &mut ioctl::Request::<SetTunFlagsPayload>::new(),
+            )?;
         }
 
         set_non_blocking(fd)?;
