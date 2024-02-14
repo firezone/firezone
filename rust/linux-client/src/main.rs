@@ -59,12 +59,16 @@ impl Callbacks for CallbackHandler {
     /// May return Firezone's own servers, e.g. `100.100.111.1`.
     fn get_system_default_resolvers(&self) -> Result<Option<Vec<IpAddr>>, Self::Error> {
         match self.dns_control_method {
-            None => Ok(None),
+            None => Ok(Some(get_system_default_resolvers_resolv_conf()?)),
             Some(DnsControlMethod::EtcResolvConf) => {
                 Ok(Some(get_system_default_resolvers_resolv_conf()?))
             }
-            Some(DnsControlMethod::NetworkManager) => todo!(),
-            Some(DnsControlMethod::Systemd) => todo!(),
+            Some(DnsControlMethod::NetworkManager) => {
+                Ok(Some(get_system_default_resolvers_network_manager()?))
+            }
+            Some(DnsControlMethod::Systemd) => {
+                Ok(Some(get_system_default_resolvers_systemd_resolved()?))
+            }
         }
     }
 
@@ -102,6 +106,16 @@ fn get_system_default_resolvers_resolv_conf() -> Result<Vec<IpAddr>> {
         .map(|addr| addr.into())
         .collect();
     Ok(nameservers)
+}
+
+fn get_system_default_resolvers_network_manager() -> Result<Vec<IpAddr>> {
+    tracing::error!("get_system_default_resolvers_network_manager not implemented yet");
+    Ok(vec![])
+}
+
+fn get_system_default_resolvers_systemd_resolved() -> Result<Vec<IpAddr>> {
+    tracing::error!("get_system_default_resolvers_systemd_resolved not implemented yet");
+    Ok(vec![])
 }
 
 #[derive(Parser)]
