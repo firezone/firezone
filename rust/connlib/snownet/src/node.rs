@@ -440,7 +440,7 @@ where
                         if conn.peer_socket != Some(remote_socket) {
                             let is_first_connection = conn.peer_socket.is_none();
 
-                            tracing::debug!(old = ?conn.peer_socket, new = ?remote_socket, "Updating remote socket");
+                            tracing::info!(old = ?conn.peer_socket, new = ?remote_socket, "Updating remote socket");
                             conn.peer_socket = Some(remote_socket);
 
                             if is_first_connection {
@@ -454,6 +454,8 @@ where
         }
 
         for conn in failed_connections {
+            tracing::info!(id = %conn, "Connection failed (ICE timeout)");
+
             self.connections.established.remove(&conn);
             self.pending_events.push_back(Event::ConnectionFailed(conn));
         }
@@ -505,6 +507,8 @@ where
         }
 
         for conn in expired_connections {
+            tracing::info!(id = %conn, "Connection failed (wireguard tunnel expired)");
+
             self.connections.established.remove(&conn);
             self.pending_events.push_back(Event::ConnectionFailed(conn))
         }
@@ -534,6 +538,8 @@ where
             .collect::<Vec<_>>();
 
         for conn in stale_connections {
+            tracing::info!(id = %conn, "Connection setup timed out (no answer received)");
+
             self.connections.initial.remove(&conn);
             self.pending_events.push_back(Event::ConnectionFailed(conn));
         }
