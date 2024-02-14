@@ -1,7 +1,9 @@
 use anyhow::{Context, Result};
 use clap::Parser;
 use connlib_client_shared::{file_logger, Callbacks, Session};
-use connlib_shared::linux::{get_dns_control_from_env, DnsControlMethod};
+use connlib_shared::linux::{
+    get_dns_control_from_env, DnsControlMethod, ETC_RESOLV_CONF, ETC_RESOLV_CONF_BACKUP,
+};
 use firezone_cli_utils::{block_on_ctrl_c, setup_global_subscriber, CommonArgs};
 use secrecy::SecretString;
 use std::{net::IpAddr, path::PathBuf};
@@ -88,10 +90,10 @@ impl Callbacks for CallbackHandler {
 fn get_system_default_resolvers_resolv_conf() -> Result<Vec<IpAddr>> {
     // Assume that `configure_resolv_conf` has run in `tun_linux.rs`
 
-    let s = std::fs::read_to_string("/etc/resolv.conf.firezone-backup")
-        .or_else(|_| std::fs::read_to_string("/etc/resolv.conf"))
-        .context("`/etc/resolv.conf` should be readable")?;
-    let parsed = resolv_conf::Config::parse(s).context("`/etc/resolv.conf` should be parsable")?;
+    let s = std::fs::read_to_string(ETC_RESOLV_CONF_BACKUP)
+        .or_else(|_| std::fs::read_to_string(ETC_RESOLV_CONF))
+        .context("`resolv.conf` should be readable")?;
+    let parsed = resolv_conf::Config::parse(s).context("`resolv.conf` should be parsable")?;
 
     // Drop the scoping info for IPv6 since connlib doesn't take it
     let nameservers = parsed
