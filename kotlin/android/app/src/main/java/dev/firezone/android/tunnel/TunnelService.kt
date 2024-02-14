@@ -103,9 +103,7 @@ class TunnelService : VpnService() {
                 tunnelIpv6Address = addressIPv6
 
                 // start VPN
-                val fd = buildVpnService().establish()?.detachFd() ?: -1
-                protect(fd)
-                return fd
+                return buildVpnService()
             }
 
             override fun onTunnelReady(): Boolean {
@@ -127,9 +125,8 @@ class TunnelService : VpnService() {
 
                 val route = Cidr(addr, prefix)
                 tunnelRoutes.add(route)
-                val fd = buildVpnService().establish()?.detachFd() ?: -1
-                protect(fd)
-                return fd
+
+                return buildVpnService()
             }
 
             override fun onRemoveRoute(
@@ -141,9 +138,8 @@ class TunnelService : VpnService() {
 
                 val route = Cidr(addr, prefix)
                 tunnelRoutes.remove(route)
-                val fd = buildVpnService().establish()?.detachFd() ?: -1
-                protect(fd)
-                return fd
+
+                return buildVpnService()
             }
 
             override fun getSystemDefaultResolvers(): Array<ByteArray> {
@@ -197,15 +193,6 @@ class TunnelService : VpnService() {
 
         connect()
         return START_STICKY
-    }
-
-    // Happens when a user removes the VPN configuration in the System settings
-    override fun onRevoke() {
-        Log.d(TAG, "onRevoke")
-
-        connlibSessionPtr?.let {
-            ConnlibSession.disconnect(it)
-        }
     }
 
     // Call this to stop the tunnel and shutdown the service, leaving the token intact.
@@ -300,8 +287,8 @@ class TunnelService : VpnService() {
         return logDir
     }
 
-    private fun buildVpnService(): VpnService.Builder {
-        return Builder().apply {
+    private fun buildVpnService(): Int {
+        Builder().apply {
             Firebase.crashlytics.log("Building VPN service")
             // Allow traffic to bypass the VPN interface when Always-on VPN is enabled.
             allowBypass()
@@ -336,6 +323,8 @@ class TunnelService : VpnService() {
 
             setSession(SESSION_NAME)
             setMtu(MTU)
+        }.establish()!!.let {
+            return it.detachFd()
         }
     }
 
