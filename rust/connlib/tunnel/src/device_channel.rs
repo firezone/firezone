@@ -174,7 +174,7 @@ impl Device {
     }
 
     pub fn write(&self, packet: Packet<'_>) -> io::Result<usize> {
-        tracing::trace!(target: "wire", action = "write", to = "device");
+        tracing::trace!(target: "wire", action = "write", to = "device", bytes = %packet.len());
 
         match packet {
             Packet::Ipv4(msg) => self.tun.write4(&msg),
@@ -193,6 +193,13 @@ impl<'a> Packet<'a> {
         match self {
             Packet::Ipv4(p) => Packet::Ipv4(Cow::Owned(p.into_owned())),
             Packet::Ipv6(p) => Packet::Ipv6(Cow::Owned(p.into_owned())),
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        match self {
+            Packet::Ipv4(p) => p.len(),
+            Packet::Ipv6(p) => p.len(),
         }
     }
 }
