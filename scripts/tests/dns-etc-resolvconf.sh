@@ -30,6 +30,10 @@ client sh -c "cat /etc/resolv.conf.firezone-backup"
 echo "# Make sure gateway can reach httpbin by DNS"
 gateway sh -c "curl --fail $HTTPBIN/get"
 
+echo "# nslookup httpbin"
+client timeout 60 \
+sh -c "nslookup $HTTPBIN"
+
 echo "# Try to ping httpbin as a DNS resource"
 client timeout 60 \
 sh -c "ping -W 1 -c 10 $HTTPBIN"
