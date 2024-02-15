@@ -277,8 +277,6 @@ where
 
         self.sockets.try_send(&transmit)?;
 
-        tracing::trace!(target: "wire", action = "write", to = %transmit.dst, src = ?transmit.src, bytes = %transmit.payload.len());
-
         Ok(())
     }
 

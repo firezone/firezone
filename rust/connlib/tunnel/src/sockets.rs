@@ -48,6 +48,8 @@ impl Sockets {
     }
 
     pub fn try_send(&mut self, transmit: &Transmit) -> Result<usize> {
+        tracing::trace!(target: "wire", action = "write", to = %transmit.dst, src = ?transmit.src, bytes = %transmit.payload.len());
+
         match transmit.dst {
             SocketAddr::V4(_) => {
                 let socket = self.socket_v4.as_ref().ok_or(Error::NoIpv4)?;
