@@ -24,6 +24,9 @@ function gateway() {
 echo "# check original resolv.conf"
 client sh -c "cat /etc/resolv.conf.firezone-backup"
 
+echo "# check new resolv.conf"
+client sh -c "cat /etc/resolv.conf"
+
 echo "# Make sure gateway can reach httpbin by DNS"
 gateway sh -c "curl --fail $HTTPBIN/get"
 
