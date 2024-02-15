@@ -685,6 +685,7 @@ IO.puts("")
       type: :dns,
       name: "?.httpbin",
       address: "?.httpbin",
+      address_description: "http://httpbin/",
       connections: [%{gateway_group_id: gateway_group.id}],
       filters: [
         %{ports: ["80", "433"], protocol: :tcp},
