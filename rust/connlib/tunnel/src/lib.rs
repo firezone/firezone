@@ -245,6 +245,15 @@ where
                 return Poll::Pending;
             };
 
+            match self.role_state.poll_next_event(cx) {
+                Poll::Ready(Event::SendPacket(packet)) => {
+                    device.write(packet)?;
+                    continue;
+                }
+                Poll::Ready(other) => return Poll::Ready(Ok(other)),
+                _ => (),
+            }
+
             match device.poll_read(&mut self.read_buf, cx) {
                 Poll::Ready(Ok(Some(packet))) => {
                     tracing::trace!(target: "wire", action = "read", from = "device", dest = %packet.destination(), bytes = %packet.packet().len());
@@ -271,15 +280,6 @@ where
                     return Poll::Ready(Err(ConnlibError::Io(e)));
                 }
                 Poll::Pending => {}
-            }
-
-            match self.role_state.poll_next_event(cx) {
-                Poll::Ready(Event::SendPacket(packet)) => {
-                    device.write(packet)?;
-                    continue;
-                }
-                Poll::Ready(other) => return Poll::Ready(Ok(other)),
-                _ => (),
             }
 
             match ready!(self.poll_next_event_common(cx)) {
