@@ -26,12 +26,11 @@ use ip_network::IpNetwork;
 use std::borrow::Cow;
 use std::io;
 use std::net::IpAddr;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::task::{Context, Poll};
 use tun::Tun;
 
 pub struct Device {
-    mtu: AtomicUsize,
+    mtu: usize,
     tun: Tun,
 }
 
@@ -43,7 +42,7 @@ impl Device {
         callbacks: &impl Callbacks<Error = Error>,
     ) -> Result<Device, ConnlibError> {
         let tun = Tun::new(config, dns_config, callbacks)?;
-        let mtu = AtomicUsize::new(ioctl::interface_mtu_by_name(tun.name())?);
+        let mtu = ioctl::interface_mtu_by_name(tun.name())?;
 
         Ok(Device { mtu, tun })
     }
@@ -56,7 +55,7 @@ impl Device {
     ) -> Result<Device, ConnlibError> {
         Ok(Device {
             tun: Tun::new(config, dns_config)?,
-            mtu: AtomicUsize::new(1_280),
+            mtu: 1_280,
         })
     }
 
@@ -105,7 +104,7 @@ impl Device {
     }
 
     pub(crate) fn mtu(&self) -> usize {
-        self.mtu.load(Ordering::Relaxed)
+        self.mtu
     }
 
     #[cfg(target_family = "unix")]
@@ -117,7 +116,7 @@ impl Device {
         let Some(tun) = self.tun.add_route(route, callbacks)? else {
             return Ok(None);
         };
-        let mtu = AtomicUsize::new(ioctl::interface_mtu_by_name(tun.name())?);
+        let mtu = ioctl::interface_mtu_by_name(tun.name())?;
 
         Ok(Some(Device { mtu, tun }))
     }
@@ -133,9 +132,9 @@ impl Device {
     }
 
     #[cfg(target_family = "unix")]
-    pub(crate) fn refresh_mtu(&self) -> Result<usize, Error> {
+    pub(crate) fn refresh_mtu(&mut self) -> Result<usize, Error> {
         let mtu = ioctl::interface_mtu_by_name(self.tun.name())?;
-        self.mtu.store(mtu, Ordering::Relaxed);
+        self.mtu = mtu;
 
         Ok(mtu)
     }

@@ -392,7 +392,7 @@ where
     fn poll_next_event_common(&mut self, cx: &mut Context<'_>) -> Poll<Event<TId>> {
         loop {
             if self.mtu_refresh_interval.poll_tick(cx).is_ready() {
-                let Some(device) = self.device.as_ref() else {
+                let Some(device) = self.device.as_mut() else {
                     tracing::debug!("Device temporarily not available");
                     continue;
                 };
