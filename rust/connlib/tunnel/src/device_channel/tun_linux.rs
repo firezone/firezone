@@ -367,9 +367,9 @@ async fn configure_systemd_resolved(dns_config: &[IpAddr]) -> Result<()> {
     let status = cmd
         .status()
         .await
-        .expect("`resolvectl dns` should have run");
+        .map_err(|_| Error::Other("`resolvectl dns` should have run"))?;
     if !status.success() {
-        panic!("`resolvectl dns` should have succeeded");
+        return Err(Error::Other("`resolvectl dns` should have succeeded"));
     }
 
     let status = tokio::process::Command::new("resolvectl")
@@ -378,13 +378,10 @@ async fn configure_systemd_resolved(dns_config: &[IpAddr]) -> Result<()> {
         .arg("~.")
         .status()
         .await
-        .expect("`resolvectl domain` should have run");
+        .map_err(|_| Error::Other("`resolvectl domain` should have run"))?;
     if !status.success() {
-        panic!("`resolvectl domain` should have succeeded");
+        return Err(Error::Other("`resolvectl domain` should have succeeded"));
     }
-
-    tracing::info!("Done with resolvectl.");
-    tracing::info!("DNS server {}", dns_config[0].to_string());
 
     Ok(())
 }
