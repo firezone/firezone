@@ -3,7 +3,6 @@ package dev.firezone.android.core.data
 
 import android.content.Context
 import android.content.SharedPreferences
-import android.os.Bundle
 import dev.firezone.android.BuildConfig
 import dev.firezone.android.core.data.model.Config
 import kotlinx.coroutines.CoroutineDispatcher

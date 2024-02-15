@@ -8,7 +8,6 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
-import android.content.RestrictionsManager
 import android.net.VpnService
 import android.os.Binder
 import android.os.Build
@@ -219,7 +218,7 @@ class TunnelService : VpnService() {
     }
 
     private fun connect() {
-        val token =  appRestrictions.getString("token") ?: repo.getTokenSync()
+        val token = appRestrictions.getString("token") ?: repo.getTokenSync()
         val config = repo.getConfigSync()
 
         if (!token.isNullOrBlank()) {
@@ -327,14 +326,14 @@ class TunnelService : VpnService() {
             addAddress(tunnelIpv6Address!!, 128)
 
             appRestrictions.getString("allowedApplications")?.let {
-                Firebase.crashlytics.log("Allowed applications: ${it}")
+                Firebase.crashlytics.log("Allowed applications: $it")
                 it.split(",").forEach { p ->
                     addAllowedApplication(p)
                 }
             }
 
             appRestrictions.getString("disallowedApplications")?.let {
-                Firebase.crashlytics.log("Disallowed applications: ${it}")
+                Firebase.crashlytics.log("Disallowed applications: $it")
                 it.split(",").forEach { p ->
                     addDisallowedApplication(p)
                 }

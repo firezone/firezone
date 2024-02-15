@@ -21,6 +21,7 @@ class DataModule {
     internal fun provideApplicationRestrictions(
         @ApplicationContext context: Context,
     ): Bundle = (context.getSystemService(Context.RESTRICTIONS_SERVICE) as android.content.RestrictionsManager).applicationRestrictions
+
     @Provides
     internal fun provideRepository(
         @ApplicationContext context: Context,
