@@ -2018,14 +2018,11 @@ dependencies = [
  "chrono",
  "clap",
  "connlib-shared",
- "dns-lookup",
  "domain",
  "firezone-cli-utils",
  "firezone-tunnel",
  "futures",
  "futures-bounded",
- "ip_network",
- "libc",
  "phoenix-channel",
  "secrecy",
  "serde",
@@ -2111,6 +2108,7 @@ dependencies = [
  "bytes",
  "chrono",
  "connlib-shared",
+ "dns-lookup",
  "domain",
  "futures",
  "futures-bounded",
@@ -2128,6 +2126,7 @@ dependencies = [
  "rand_core 0.6.4",
  "resolv-conf",
  "rtnetlink",
+ "sd-notify",
  "secrecy",
  "serde",
  "serde_json",
@@ -5655,6 +5654,12 @@ dependencies = [
  "slab",
  "thiserror",
 ]
+
+[[package]]
+name = "sd-notify"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "621e3680f3e07db4c9c2c3fb07c6223ab2fab2e54bd3c04c3ae037990f428c32"
 
 [[package]]
 name = "sdp"

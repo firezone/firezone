@@ -13,14 +13,13 @@ use bytes::Bytes;
 use chrono::{DateTime, Utc};
 use connlib_shared::messages::DnsServer;
 use connlib_shared::IpProvider;
-use connlib_shared::{Error, Result};
+use connlib_shared::{messages::ResourceDescription, Error, Result};
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
 use parking_lot::{Mutex, RwLock};
 use pnet_packet::Packet;
 use secrecy::ExposeSecret;
 
-use crate::control_protocol::gateway::ResourceDescription;
 use crate::MAX_UDP_SIZE;
 use crate::{device_channel, ip_packet::MutableIpPacket, PeerConfig};
 
