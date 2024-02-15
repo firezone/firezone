@@ -2,22 +2,37 @@ use crate::{
     control_protocol::{insert_peers, start_handlers},
     dns::is_subdomain,
     peer::{PacketTransformGateway, Peer},
-    ConnectedPeer, GatewayState, PeerConfig, Tunnel, PEER_QUEUE_SIZE,
+    ConnectedPeer, Error, GatewayState, PeerConfig, Tunnel, PEER_QUEUE_SIZE,
 };
 
 use chrono::{DateTime, Utc};
 use connlib_shared::{
-    messages::{
-        ClientId, ClientPayload, ConnectionAccepted, DomainResponse, Relay, ResourceAccepted,
-        ResourceDescription,
-    },
-    Callbacks, Dname, Error, Result,
+    messages::{ClientId, ConnectionAccepted, DomainResponse, Relay, ResourceId},
+    Callbacks, Dname, Result,
 };
 use ip_network::IpNetwork;
 use std::sync::Arc;
 use webrtc::ice_transport::{
-    ice_role::RTCIceRole, ice_transport_state::RTCIceTransportState, RTCIceTransport,
+    ice_parameters::RTCIceParameters, ice_role::RTCIceRole,
+    ice_transport_state::RTCIceTransportState, RTCIceTransport,
 };
+
+/// Description of a resource that maps to a DNS record which had its domain already resolved.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ResolvedResourceDescriptionDns {
+    pub id: ResourceId,
+    /// Internal resource's domain name.
+    pub domain: String,
+    /// Name of the resource.
+    ///
+    /// Used only for display.
+    pub name: String,
+
+    pub addresses: Vec<IpNetwork>,
+}
+
+pub type ResourceDescription =
+    connlib_shared::messages::ResourceDescription<ResolvedResourceDescriptionDns>;
 
 use super::{new_ice_connection, IceConnection};
 
@@ -57,12 +72,14 @@ where
     ///
     /// # Returns
     /// The connection details
+    #[allow(clippy::too_many_arguments)]
     pub async fn set_peer_connection_request(
         self: &Arc<Self>,
-        client_payload: ClientPayload,
+        ice_parameters: RTCIceParameters,
         peer: PeerConfig,
         relays: Vec<Relay>,
         client_id: ClientId,
+        domain: Option<Dname>,
         expires_at: Option<DateTime<Utc>>,
         resource: ResourceDescription,
     ) -> Result<ConnectionAccepted> {
@@ -92,17 +109,16 @@ where
 
         let resource_addresses = match &resource {
             ResourceDescription::Dns(r) => {
-                let Some(domain) = client_payload.domain.clone() else {
+                let Some(domain) = domain.clone() else {
                     return Err(Error::ControlProtocolError);
                 };
 
-                if !is_subdomain(&domain, &r.address) {
+                if !is_subdomain(&domain, &r.domain) {
                     let _ = ice.stop().await;
                     return Err(Error::InvalidResource);
                 }
 
-                tokio::task::spawn_blocking(move || resolve_addresses(&domain.to_string()))
-                    .await??
+                r.addresses.clone()
             }
             ResourceDescription::Cidr(ref cidr) => vec![cidr.address],
         };
@@ -112,7 +128,7 @@ where
             let tunnel = self.clone();
             tokio::spawn(async move {
                 if let Err(e) = ice
-                    .start(&client_payload.ice_parameters, Some(RTCIceRole::Controlled))
+                    .start(&ice_parameters, Some(RTCIceRole::Controlled))
                     .await
                     .map_err(Into::into)
                     .and_then(|_| {
@@ -150,7 +166,7 @@ where
 
         Ok(ConnectionAccepted {
             ice_parameters: local_params,
-            domain_response: client_payload.domain.map(|domain| DomainResponse {
+            domain_response: domain.map(|domain| DomainResponse {
                 domain,
                 address: resource_addresses
                     .into_iter()
@@ -160,13 +176,13 @@ where
         })
     }
 
-    pub async fn allow_access(
+    pub fn allow_access(
         &self,
         resource: ResourceDescription,
         client_id: ClientId,
         expires_at: Option<DateTime<Utc>>,
         domain: Option<Dname>,
-    ) -> Option<ResourceAccepted> {
+    ) -> Option<DomainResponse> {
         let Some(peer) = self
             .role_state
             .lock()
@@ -183,14 +199,11 @@ where
                     return None;
                 };
 
-                if !is_subdomain(&domain, &r.address) {
+                if !is_subdomain(&domain, &r.domain) {
                     return None;
                 }
 
-                tokio::task::spawn_blocking(move || resolve_addresses(&domain.to_string()))
-                    .await
-                    .ok()?
-                    .ok()?
+                r.addresses.clone()
             }
             ResourceDescription::Cidr(cidr) => vec![cidr.address],
         };
@@ -201,11 +214,9 @@ where
         }
 
         if let Some(domain) = domain {
-            return Some(ResourceAccepted {
-                domain_response: DomainResponse {
-                    domain,
-                    address: addresses.iter().map(|i| i.network_address()).collect(),
-                },
+            return Some(DomainResponse {
+                domain,
+                address: addresses.iter().map(|i| i.network_address()).collect(),
             });
         }
 
@@ -258,51 +269,4 @@ where
 
         Ok(())
     }
-}
-
-#[cfg(target_os = "windows")]
-fn resolve_addresses(_: &str) -> std::io::Result<Vec<IpNetwork>> {
-    unimplemented!()
-}
-
-#[cfg(not(target_os = "windows"))]
-fn resolve_addresses(addr: &str) -> std::io::Result<Vec<IpNetwork>> {
-    use libc::{AF_INET, AF_INET6};
-    let addr_v4: std::io::Result<Vec<_>> = resolve_address_family(addr, AF_INET)
-        .map_err(|e| e.into())
-        .and_then(|a| a.collect());
-    let addr_v6: std::io::Result<Vec<_>> = resolve_address_family(addr, AF_INET6)
-        .map_err(|e| e.into())
-        .and_then(|a| a.collect());
-    match (addr_v4, addr_v6) {
-        (Ok(v4), Ok(v6)) => Ok(v6
-            .iter()
-            .map(|a| a.sockaddr.ip().into())
-            .chain(v4.iter().map(|a| a.sockaddr.ip().into()))
-            .collect()),
-        (Ok(v4), Err(_)) => Ok(v4.iter().map(|a| a.sockaddr.ip().into()).collect()),
-        (Err(_), Ok(v6)) => Ok(v6.iter().map(|a| a.sockaddr.ip().into()).collect()),
-        (Err(e), Err(_)) => Err(e),
-    }
-}
-
-#[cfg(not(target_os = "windows"))]
-use dns_lookup::{AddrInfoHints, AddrInfoIter, LookupError};
-
-#[cfg(not(target_os = "windows"))]
-fn resolve_address_family(
-    addr: &str,
-    family: i32,
-) -> std::result::Result<AddrInfoIter, LookupError> {
-    use libc::SOCK_STREAM;
-
-    dns_lookup::getaddrinfo(
-        Some(addr),
-        None,
-        Some(AddrInfoHints {
-            socktype: SOCK_STREAM,
-            address: family,
-            ..Default::default()
-        }),
-    )
 }
