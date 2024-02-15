@@ -42,7 +42,7 @@ jobs:
       - name: Wait for client to ping resource
         run: |
           docker compose exec -it client timeout 60 \
-          sh -c 'until ping -W 1 -c 1 172.20.0.100 &>/dev/null; do true; done'
+          sh -c 'until ping -W 1 -c 1 172.21.0.100 &>/dev/null; do true; done'
 
   macos:
     needs: setup

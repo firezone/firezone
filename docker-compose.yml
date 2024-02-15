@@ -130,10 +130,6 @@ services:
     depends_on:
       gateway:
         condition: "service_healthy"
-      dns.httpbin:
-        condition: "service_healthy"
-      iperf3:
-        condition: "service_healthy"
       api:
         condition: "service_healthy"
     networks:
