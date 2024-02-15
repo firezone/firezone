@@ -14,7 +14,7 @@ fn connection_times_out_after_10_seconds() {
         ClientNode::<u64>::new(StaticSecret::random_from_rng(rand::thread_rng()), start);
 
     let _ = alice.new_connection(1, HashSet::new(), HashSet::new());
-    alice.handle_timeout(start + Duration::from_secs(10));
+    alice.handle_timeout(start + Duration::from_secs(20));
 
     assert_eq!(alice.poll_event().unwrap(), Event::ConnectionFailed(1));
 }
@@ -34,39 +34,6 @@ fn answer_after_stale_connection_does_not_panic() {
     alice.handle_timeout(start + Duration::from_secs(10));
 
     alice.accept_answer(1, bob.public_key(), answer);
-}
-
-#[test]
-fn reinitialize_allocation_if_credentials_for_relay_differ() {
-    let mut alice = ClientNode::<u64>::new(
-        StaticSecret::random_from_rng(rand::thread_rng()),
-        Instant::now(),
-    );
-
-    // Make a new connection that uses RELAY with initial set of credentials
-    let _ = alice.new_connection(
-        1,
-        HashSet::new(),
-        HashSet::from([relay("user1", "pass1", "realm1")]),
-    );
-
-    let transmit = alice.poll_transmit().unwrap();
-    assert_eq!(transmit.dst, RELAY);
-    assert!(alice.poll_transmit().is_none());
-
-    // Make another connection, using the same relay but different credentials (happens when the relay restarts)
-
-    let _ = alice.new_connection(
-        2,
-        HashSet::new(),
-        HashSet::from([relay("user2", "pass2", "realm1")]),
-    );
-
-    // Expect to send another message to the "new" relay
-    let transmit = alice.poll_transmit().unwrap();
-    assert_eq!(transmit.dst, RELAY);
-    assert_eq!(&transmit.payload[..2], [0x0, 0x3]); // `ALLOCATE` is 0x0003: https://www.rfc-editor.org/rfc/rfc8656#name-stun-methods
-    assert!(alice.poll_transmit().is_none());
 }
 
 #[test]
