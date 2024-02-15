@@ -167,6 +167,8 @@ defmodule Web.Acceptance.Auth.UserPassTest do
 
     session
     |> password_login_flow(account, identity.provider_identifier, password, redirect_params)
+    |> assert_el(Query.text("Sign in successful"))
+    |> assert_path(~p"/#{account}/sign_in/success")
     |> assert_el(Query.text("Client redirected"))
     |> assert_path(~p"/handle_client_sign_in_callback")
 
@@ -230,6 +232,8 @@ defmodule Web.Acceptance.Auth.UserPassTest do
     # And then to a client
     session
     |> password_login_flow(account, identity.provider_identifier, password, redirect_params)
+    |> assert_el(Query.text("Sign in successful"))
+    |> assert_path(~p"/#{account}/sign_in/success")
     |> assert_el(Query.text("Client redirected"))
     |> assert_path(~p"/handle_client_sign_in_callback")
 
