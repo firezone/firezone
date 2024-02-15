@@ -146,6 +146,21 @@ internal class SettingsViewModel
             }
         }
 
+        fun resetSettingsToDefaults() {
+            val defaultConfig = repo.getDefaultConfigSync()
+            authBaseUrl = defaultConfig.authBaseUrl
+            apiUrl = defaultConfig.apiUrl
+            logFilter = defaultConfig.logFilter
+            onFieldUpdated()
+            actionMutableLiveData.postValue(
+                ViewAction.FillSettings(
+                    authBaseUrl,
+                    apiUrl,
+                    logFilter,
+                ),
+            )
+        }
+
         private suspend fun zipFolder(
             sourceFolder: File,
             zipFile: File,

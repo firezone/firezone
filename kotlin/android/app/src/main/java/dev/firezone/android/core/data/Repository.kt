@@ -9,6 +9,10 @@ interface Repository {
 
     fun getConfig(): Flow<Config>
 
+    fun getDefaultConfigSync(): Config
+
+    fun getDefaultConfig(): Flow<Config>
+
     fun saveSettings(
         authBaseUrl: String,
         apiUrl: String,

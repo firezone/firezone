@@ -37,6 +37,18 @@ internal class RepositoryImpl
                 emit(getConfigSync())
             }.flowOn(coroutineDispatcher)
 
+        override fun getDefaultConfigSync(): Config =
+            Config(
+                BuildConfig.AUTH_BASE_URL,
+                BuildConfig.API_URL,
+                BuildConfig.LOG_FILTER,
+            )
+
+        override fun getDefaultConfig(): Flow<Config> =
+            flow {
+                emit(getDefaultConfigSync())
+            }.flowOn(coroutineDispatcher)
+
         override fun saveSettings(
             authBaseUrl: String,
             apiUrl: String,
