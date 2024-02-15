@@ -30,7 +30,7 @@ use webrtc::{
     interceptor::registry::Registry,
 };
 
-use arc_swap::ArcSwapOption;
+use arc_swap::{access::Access, ArcSwapOption};
 use futures_util::task::AtomicWaker;
 use std::task::{ready, Context, Poll};
 use std::{collections::HashMap, fmt, net::IpAddr, sync::Arc, time::Duration};
@@ -56,7 +56,6 @@ use connlib_shared::messages::{ClientId, SecretKey};
 use device_channel::Device;
 use index::IndexLfsr;
 
-mod bounded_queue;
 mod client;
 mod control_protocol;
 mod device_channel;
@@ -365,8 +364,18 @@ where
                 }
             }
 
-            if let Poll::Ready(event) = self.role_state.lock().poll_next_event(cx) {
-                return Poll::Ready(event);
+            match self.role_state.lock().poll_next_event(cx) {
+                Poll::Ready(Event::SendPacket(packet)) => {
+                    let Some(device) = self.device.load().clone() else {
+                        continue;
+                    };
+
+                    let _ = device.write(packet);
+
+                    continue;
+                }
+                Poll::Ready(other) => return Poll::Ready(other),
+                _ => (),
             }
 
             return Poll::Pending;
@@ -416,6 +425,17 @@ pub struct DnsQuery<'a> {
     pub query: IpPacket<'a>,
 }
 
+impl DnsQuery<'static> {
+    #[allow(clippy::should_implement_trait)] // We can't because it is only valid for `'static`.
+    pub fn clone(&self) -> DnsQuery<'static> {
+        Self {
+            name: self.name.clone(),
+            record_type: self.record_type,
+            query: self.query.to_owned(),
+        }
+    }
+}
+
 impl<'a> DnsQuery<'a> {
     pub(crate) fn into_owned(self) -> DnsQuery<'static> {
         let Self {
@@ -448,7 +468,7 @@ pub enum Event<TId> {
     RefreshResources {
         connections: Vec<ReuseConnection>,
     },
-    DnsQuery(DnsQuery<'static>),
+    SendPacket(device_channel::Packet<'static>),
 }
 
 impl<CB, TRoleState> Tunnel<CB, TRoleState>

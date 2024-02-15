@@ -1,4 +1,3 @@
-use crate::bounded_queue::BoundedQueue;
 use crate::device_channel::{Device, Packet};
 use crate::ip_packet::{IpPacket, MutableIpPacket};
 use crate::peer::PacketTransformClient;
@@ -17,12 +16,13 @@ use connlib_shared::{Callbacks, Dname, IpProvider};
 use domain::base::Rtype;
 use futures::channel::mpsc::Receiver;
 use futures::stream;
-use futures_bounded::{FuturesMap, PushError, StreamMap};
-use hickory_resolver::lookup::Lookup;
+use futures_bounded::{FuturesMap, FuturesTupleSet, PushError, StreamMap};
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
 use itertools::Itertools;
 
+use hickory_resolver::config::{NameServerConfig, Protocol, ResolverConfig};
+use hickory_resolver::TokioAsyncResolver;
 use rand_core::OsRng;
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -110,24 +110,6 @@ where
         Ok(())
     }
 
-    /// Writes the response to a DNS lookup
-    #[tracing::instrument(level = "trace", skip(self))]
-    pub fn write_dns_lookup_response(
-        &self,
-        response: hickory_resolver::error::ResolveResult<Lookup>,
-        query: IpPacket<'static>,
-    ) -> connlib_shared::Result<()> {
-        if let Some(pkt) = dns::build_response_from_resolve_result(query, response)? {
-            let Some(ref device) = *self.device.load() else {
-                return Ok(());
-            };
-
-            device.write(pkt)?;
-        }
-
-        Ok(())
-    }
-
     /// Sets the interface configuration and starts background tasks.
     #[tracing::instrument(level = "trace", skip(self))]
     pub fn set_interface(
@@ -157,7 +139,7 @@ where
             return Err(errs.pop().unwrap());
         }
 
-        self.role_state.lock().dns_mapping = dns_mapping;
+        self.role_state.lock().set_dns_mapping(dns_mapping);
 
         let res_v4 = self.add_route(IPV4_RESOURCES.parse().unwrap());
         let res_v6 = self.add_route(IPV6_RESOURCES.parse().unwrap());
@@ -228,13 +210,17 @@ pub struct ClientState {
     #[allow(clippy::type_complexity)]
     pub peers_by_ip: IpNetworkTable<ConnectedPeer<GatewayId, PacketTransformClient>>,
 
-    forwarded_dns_queries: BoundedQueue<DnsQuery<'static>>,
+    forwarded_dns_queries: FuturesTupleSet<
+        Result<hickory_resolver::lookup::Lookup, hickory_resolver::error::ResolveError>,
+        DnsQuery<'static>,
+    >,
 
     pub ip_provider: IpProvider,
 
     refresh_dns_timer: Interval,
 
-    pub dns_mapping: BiMap<IpAddr, DnsServer>,
+    dns_mapping: BiMap<IpAddr, DnsServer>,
+    dns_resolvers: HashMap<IpAddr, TokioAsyncResolver>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -579,6 +565,15 @@ impl ClientState {
         }
     }
 
+    pub fn set_dns_mapping(&mut self, mapping: BiMap<IpAddr, DnsServer>) {
+        self.dns_mapping = mapping.clone();
+        self.dns_resolvers = create_resolvers(mapping);
+    }
+
+    pub fn dns_mapping(&self) -> BiMap<IpAddr, DnsServer> {
+        self.dns_mapping.clone()
+    }
+
     fn is_awaiting_connection_to_cidr(&self, destination: IpAddr) -> bool {
         let Some(resource) = self.get_cidr_resource_by_destination(destination) else {
             return false;
@@ -633,14 +628,45 @@ impl ClientState {
     }
 
     fn add_pending_dns_query(&mut self, query: DnsQuery) {
+        let upstream = query.query.destination();
+        let Some(resolver) = self.dns_resolvers.get(&upstream).cloned() else {
+            tracing::warn!(%upstream, "Dropping DNS query because of unknown upstream DNS server");
+            return;
+        };
+
+        let query = query.into_owned();
+
         if self
             .forwarded_dns_queries
-            .push_back(query.into_owned())
+            .try_push(
+                {
+                    let query = query.clone();
+
+                    async move { resolver.lookup(&query.name, query.record_type).await }
+                },
+                query,
+            )
             .is_err()
         {
-            tracing::warn!("Too many DNS queries, dropping new ones");
+            tracing::warn!("Too many DNS queries, dropping existing one");
         }
     }
+}
+
+fn create_resolvers(
+    sentinel_mapping: BiMap<IpAddr, DnsServer>,
+) -> HashMap<IpAddr, TokioAsyncResolver> {
+    sentinel_mapping
+        .into_iter()
+        .map(|(sentinel, srv)| {
+            let mut resolver_config = ResolverConfig::new();
+            resolver_config.add_name_server(NameServerConfig::new(srv.address(), Protocol::Udp));
+            (
+                sentinel,
+                TokioAsyncResolver::tokio(resolver_config, Default::default()),
+            )
+        })
+        .collect()
 }
 
 impl Default for ClientState {
@@ -665,7 +691,10 @@ impl Default for ClientState {
 
             gateway_public_keys: Default::default(),
             resources_gateways: Default::default(),
-            forwarded_dns_queries: BoundedQueue::with_capacity(DNS_QUERIES_QUEUE_SIZE),
+            forwarded_dns_queries: FuturesTupleSet::new(
+                Duration::from_secs(60),
+                DNS_QUERIES_QUEUE_SIZE,
+            ),
             gateway_preshared_keys: Default::default(),
             // TODO: decide ip ranges
             ip_provider: IpProvider::new(
@@ -680,6 +709,7 @@ impl Default for ClientState {
             deferred_dns_queries: Default::default(),
             refresh_dns_timer: interval,
             dns_mapping: Default::default(),
+            dns_resolvers: Default::default(),
         }
     }
 }
@@ -780,7 +810,25 @@ impl RoleState for ClientState {
                 return Poll::Ready(Event::RefreshResources { connections });
             }
 
-            return self.forwarded_dns_queries.poll(cx).map(Event::DnsQuery);
+            match self.forwarded_dns_queries.poll_unpin(cx) {
+                Poll::Ready((Ok(response), query)) => {
+                    match dns::build_response_from_resolve_result(query.query, response) {
+                        Ok(Some(packet)) => return Poll::Ready(Event::SendPacket(packet)),
+                        Ok(None) => continue,
+                        Err(e) => {
+                            tracing::warn!("Failed to build DNS response from lookup result: {e}");
+                            continue;
+                        }
+                    }
+                }
+                Poll::Ready((Err(resolve_timeout), query)) => {
+                    tracing::warn!(name = %query.name, server = %query.query.destination(), "DNS query timed out: {resolve_timeout}");
+                    continue;
+                }
+                Poll::Pending => {}
+            }
+
+            return Poll::Pending;
         }
     }
 

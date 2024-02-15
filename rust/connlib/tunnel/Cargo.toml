@@ -26,7 +26,7 @@ boringtun = { workspace = true }
 chrono = { workspace = true }
 pnet_packet = { version = "0.34" }
 futures-bounded = { workspace = true }
-hickory-resolver = { workspace = true }
+hickory-resolver = { workspace = true, features = ["tokio-runtime"] }
 arc-swap = "1.6.0"
 bimap = "0.6"
 dns-lookup = { workspace = true }
