@@ -36,7 +36,7 @@ serde_json = "1.0"
 semver = { version = "1.0.21", features = ["serde"] }
 subtle = "2.5.0"
 thiserror = { version = "1.0", default-features = false }
-tokio = { version = "1.33.0", features = ["time"] }
+tokio = { version = "1.36.0", features = ["time"] }
 tracing = { workspace = true }
 tracing-log = "0.2"
 tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
