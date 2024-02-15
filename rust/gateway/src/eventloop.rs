@@ -3,11 +3,11 @@ use crate::messages::{
     EgressMessages, IngressMessages,
 };
 use crate::CallbackHandler;
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, bail, Result};
 use connlib_shared::messages::{
     ClientId, DomainResponse, GatewayResponse, ResourceAccepted, ResourceDescription,
 };
-use connlib_shared::Error;
+use connlib_shared::{Dname, Error};
 use firezone_tunnel::{Event, GatewayState, ResolvedResourceDescriptionDns, Tunnel};
 use ip_network::IpNetwork;
 use phoenix_channel::PhoenixChannel;
@@ -24,7 +24,7 @@ pub struct Eventloop {
 
     // TODO: Strongly type request reference (currently `String`)
     connection_request_tasks:
-        futures_bounded::FuturesMap<(ClientId, String), Result<GatewayResponse, Error>>,
+        futures_bounded::FuturesMap<(ClientId, String), Result<GatewayResponse>>,
     add_ice_candidate_tasks: futures_bounded::FuturesSet<Result<(), Error>>,
     allow_access_tasks: futures_bounded::FuturesMap<String, Option<DomainResponse>>,
 
@@ -97,7 +97,7 @@ impl Eventloop {
                 }
                 Poll::Ready(((client, _), Ok(Err(e)))) => {
                     self.tunnel.cleanup_connection(client);
-                    tracing::debug!(%client, "Connection request failed: {:#}", anyhow::Error::new(e));
+                    tracing::debug!(%client, "Connection request failed: {:#}", e);
 
                     continue;
                 }
@@ -162,7 +162,9 @@ impl Eventloop {
                     let tunnel = Arc::clone(&self.tunnel);
 
                     let connection_request = async move {
-                        let resource = resolve_resource_description(req.resource).await?;
+                        let resource =
+                            resolve_resource_description(req.resource, &req.client.payload.domain)
+                                .await?;
 
                         let conn = tunnel
                             .set_peer_connection_request(
@@ -209,7 +211,9 @@ impl Eventloop {
                     let tunnel = Arc::clone(&self.tunnel);
 
                     let allow_access = async move {
-                        let resource = resolve_resource_description(resource).await.ok()?;
+                        let resource = resolve_resource_description(resource, &payload)
+                            .await
+                            .ok()?;
 
                         tunnel.allow_access(resource, client_id, expires_at, payload)
                     };
@@ -272,15 +276,21 @@ impl Eventloop {
 
 async fn resolve_resource_description(
     resource: ResourceDescription,
-) -> io::Result<ResourceDescription<ResolvedResourceDescriptionDns>> {
+    domain: &Option<Dname>,
+) -> Result<ResourceDescription<ResolvedResourceDescriptionDns>> {
     match resource {
         ResourceDescription::Dns(dns) => {
-            let addresses = tokio::task::spawn_blocking({
-                let domain = dns.address.clone();
+            let Some(domain) = domain.clone() else {
+                debug_assert!(
+                    false,
+                    "We should never get a DNS resource access request without the subdomain"
+                );
+                bail!("Protocol error: Request for DNS resource without the subdomain being tried to access.")
+            };
 
-                move || resolve_addresses(&domain)
-            })
-            .await??;
+            let addresses =
+                tokio::task::spawn_blocking(move || resolve_addresses(&domain.to_string()))
+                    .await??;
 
             Ok(ResourceDescription::Dns(ResolvedResourceDescriptionDns {
                 id: dns.id,
@@ -321,7 +331,6 @@ fn resolve_addresses(addr: &str) -> std::io::Result<Vec<IpNetwork>> {
 
 #[cfg(not(target_os = "windows"))]
 use dns_lookup::{AddrInfoHints, AddrInfoIter, LookupError};
-use std::io;
 
 #[cfg(not(target_os = "windows"))]
 fn resolve_address_family(
