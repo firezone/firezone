@@ -16,13 +16,14 @@ systemd-analyze security firezone-client
 
 HTTPBIN=test.httpbin.docker.local
 
-IFACE_NAME="tun-firezone"
+# I'm assuming the docker iface name is relatively constant
+DOCKER_IFACE="docker0"
+FZ_IFACE="tun-firezone"
 
 echo "# Accessing a resource should fail before the client is up"
-# TODO: For now I'm cheating and forcing curl to try the tunnel iface.
-# This doesn't test that Firezone is adding the routes.
-# If I don't do this, curl just connects through the Docker bridge.
-curl --interface "$IFACE_NAME" $HTTPBIN/get && exit 1
+# Force curl to try the Firezone interface. I can't block off the Docker interface yet
+# because it may be needed for the client to reach the portal.
+curl --interface "$FZ_IFACE" $HTTPBIN/get && exit 1
 
 echo "# Start Firezone"
 resolvectl dns tun-firezone && exit 1
@@ -32,6 +33,9 @@ then
     exit 1
 fi
 resolvectl dns tun-firezone
+resolvectl query "$HTTPBIN"
 
 echo "# Accessing a resource should succeed after the client is up"
-curl --interface "$IFACE_NAME" $HTTPBIN/get
+# Block off Docker's DNS.
+sudo resolvectl dns "$DOCKER_IFACE" ""
+curl -v $HTTPBIN/get
