@@ -1,6 +1,9 @@
+import SupportOptions from "@/components/SupportOptions";
+
 # FAQ
 
-Frequently asked questions.
+Some of the most frequently asked questions about the Firezone product and
+service.
 
 ## General
 
@@ -40,40 +43,6 @@ cloud network. Most of our customers use Firezone to access resources in public
 cloud providers like AWS, Azure, Google Cloud Platform, and Digital Ocean, or
 on-premise networks. Because Firezone operates at layer 3 of the networking
 stack, it supports all application protocols without modification.
-
-## Glossary of terms
-
-**Site**: [Sites](/kb/deploy/sites) are user-created environments where admins
-can manage Resources and the Gateways that enable access to those Resources
-(e.g. US-West, Chicago-LAN, or Prod). All Gateways and Resources in a Site are
-assumed to be able to reach each other in a shared network context such as a VPC
-or LAN.
-
-**Gateway**: [Gateways](/kb/deploy/gateways) are Firezone servers that run on
-your infrastructure. Gateways must be defined within a Site, and any traffic
-to/from resources associated with a Site will pass through one of that Site’s
-Gateways. We distribute the Gateway as self-contained binaries on our
-[releases page](https://github.com/firezone/firezone/releases), or as a Docker
-image or Systemd unit file with instructions shown when you deploy the Gateway
-from the admin portal. Gateways can run on everything from a Raspberry Pi to
-bare metal servers and everything in between. Gateways are designed to be
-lightweight and don't require persistent storage to function.
-
-**Resource**: A [Resource](/kb/deploy/resources) is any DNS name, IP, or network
-(CIDR range) you wish to manage access for. DNS-based Resources can be used to
-manage access to internal or external applications and automatically match all
-subdomains as well. CIDR-based Resources can be used to manage access for an
-entire subnets, similar to a traditional VPN.
-
-**Policy**: [Policies](/kb/deploy/policies) define a one-to-one mapping between
-a user group and a Resource. Access to Resources is default-deny, which means a
-user can't access a Resource until a Policy permitting access is created.
-
-**Group**: User groups consist of one or more users, usually members of the same
-team or department (e.g. Engineering, DevOps, Sales) and can be used in Policies
-to give all users in that Group access to a Resource. Users and groups can be
-automatically synced from your Identity Provider (Google Workspace only) to
-ensure only active users and groups maintain access to your Resources.
 
 ## Deploying Firezone
 
@@ -230,3 +199,5 @@ remains inaccessible from the internet, with no visible entry points.
 Firezone helps improve organizations’ cybersecurity posture by offering a modern
 approach to securing access to sensitive Resources in their private network.
 [Read our security disclosure policy](https://github.com/firezone/firezone/blob/main/SECURITY.md)
+
+<SupportOptions />

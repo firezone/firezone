@@ -41,7 +41,7 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.New do
         Add a new Google Workspace Identity Provider
       </:title>
       <:help>
-        For a more detailed guide on setting up Firezone with Google Workspace, please <.link class={
+        For a more detailed guide on setting up Firezone with Google Workspace, please <.link href="https://www.firezone.dev/kb/authenticate/google" class={
           link_style()
         }>refer to our documentation</.link>.
       </:help>

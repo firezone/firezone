@@ -73,14 +73,17 @@ export default function KbSidebar() {
                 <Item
                   nested
                   href="/kb/authenticate/oidc/fusion"
-                  label="Fusion Auth (OIDC)"
+                  label="Fusion Auth"
                 />
               </li>
               <li>
                 <Item href="/kb/authenticate/google" label="Google Workspace" />
               </li>
               <li>
-                <Item href="/kb/authenticate/entra" label="Microsoft Entra" />
+                <Item
+                  href="/kb/authenticate/entra"
+                  label="Microsoft Entra ID"
+                />
               </li>
               <li>
                 <Item href="/kb/authenticate/okta" label="Okta" />
@@ -161,6 +164,9 @@ export default function KbSidebar() {
           <Collapse expanded={p.startsWith("/kb/reference")} label="Reference">
             <li>
               <Item href="/kb/reference/faq" label="FAQ" />
+            </li>
+            <li>
+              <Item href="/kb/reference/glossary" label="Glossary" />
             </li>
           </Collapse>
         </ul>

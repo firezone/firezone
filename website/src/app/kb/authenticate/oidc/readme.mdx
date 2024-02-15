@@ -1,5 +1,6 @@
 import Alert from "@/components/DocsAlert";
 import PlanBadge from "@/components/PlanBadge";
+import SupportOptions from "@/components/SupportOptions";
 
 <div className="flex justify-between items-center">
 
@@ -18,10 +19,11 @@ This connector works great for popular hosted providers like Google Workspace,
 Microsoft Entra ID, and Okta and also for self-hosted ones like
 [Keycloak](https://www.keycloak.org) and [Ory](https://www.ory.sh).
 
-<Alert color="info">
-  Due to the limitations of the OIDC specification, user / group sync is **not
-  supported** with the universal OIDC connector. For user / group sync for
-  Google Workspace, Microsoft Entra, and Okta, see
+<Alert color="warning">
+  User / group sync is **not supported** with the universal OIDC connector. See
+  the [Google Workspace](/kb/authenticate/google), [Microsoft Entra
+  ID](/kb/authenticate/entra), or [Okta](/kb/authenticate/okta) connectors for
+  automatic user / group sync.
 </Alert>
 
 For Firezone-specific instructions for a given provider, select your provider in
@@ -110,3 +112,5 @@ For more detailed guides specific to each provider, see the
 [Firezone legacy documentation](/docs/authenticate/oidc). Firezone 1.0 uses the
 same OIDC connector under the hood as our legacy version, so the steps should
 similar.
+
+<SupportOptions />

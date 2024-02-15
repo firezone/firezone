@@ -4,20 +4,20 @@ import Alert from "@/components/DocsAlert";
 
 Firezone supports the following authentication methods and identity providers:
 
-1. [Email (OTP)](/kb/authenticate/email): Supports authenticating with a
-   one-time passcode sent via email.
-1. [OpenID Connect (OIDC)](/kb/authenticate/oidc): Supports authenticating to an
-   OpenID Connect provider using a universal OIDC connector.
-1. [Google Workspace](/kb/authenticate/google): Supports authentication and user
-   / group sync with Google Workspace.
-1. [Microsoft Entra](/kb/authenticate/entra): Supports authentication and user /
-   group sync with Microsoft Entra.
-1. [Okta](/kb/authenticate/okta): Supports authentication and user / group sync
-   with Microsoft Entra.
+1. [Email (OTP)](/kb/authenticate/email): Authenticate with a one-time passcode
+   sent to a user's email.
+1. [OpenID Connect (OIDC)](/kb/authenticate/oidc): Authenticate to any OpenID
+   Connect provider using a universal OIDC connector.
+1. [Google Workspace](/kb/authenticate/google): Authenticate users and sync
+   users and groups with Google Workspace.
+1. [Microsoft Entra ID](/kb/authenticate/entra): Authenticate users and sync
+   users and groups with Microsoft Entra ID.
+1. [Okta](/kb/authenticate/okta): Authenticate users and sync users and groups
+   with Okta.
 
-It's possible to create multiple providers for Google Workspace, Microsoft
-Entra, and OIDC connectors. This allows you to authenticate users against
-multiple providers simultaneously
+It's possible to create multiple providers for Google Workspace, Microsoft Entra
+ID, Okta, and OIDC connectors. This allows you to authenticate users against
+multiple providers simultaneously, each with different groups and permissions.
 
 <Alert color="warning">
   Disabling the email provider can lock you out of your account in the event

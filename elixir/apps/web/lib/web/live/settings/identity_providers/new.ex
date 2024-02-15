@@ -65,8 +65,8 @@ defmodule Web.Settings.IdentityProviders.New do
       adapter={@adapter}
       account={@account}
       enterprise_feature={true}
-      name="Microsoft Entra"
-      description="Authenticate users and synchronize users and groups with a custom Microsoft Entra connector."
+      name="Microsoft Entra ID"
+      description="Authenticate users and synchronize users and groups with a custom Microsoft Entra ID connector."
     />
     """
   end

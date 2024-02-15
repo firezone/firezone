@@ -32,7 +32,7 @@ export default function Item({
       {nested && <HiMinus className="w-2 h-2 -ml-1" />}
       <span
         className={
-          (nested ? "ml-3 " : "") +
+          (nested ? "ml-5 " : "") +
           (active(href) ? "font-medium " : "") +
           "ml-2" +
           ((topLevel && " pl-0.5") || "")

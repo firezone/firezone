@@ -31,7 +31,7 @@ you'll need to make sure the following outbound traffic is allowed:
 | N/A              | Varies               | `3478`          | STUN            | STUN protocol signaling    |
 | N/A              | Varies               | `49152 - 65535` | TURN            | TURN protocol channel data |
 
-## Resource considerations
+## Sizing recommendations
 
 Gateways, like the rest of Firezone's data plane stack, are written in Rust and
 are thus resource efficient by nature. A single gateway running on a 2 vCPU VM
@@ -40,9 +40,7 @@ under typical usage patterns.
 
 Network throughput is usually constrained by single-thread performance due to
 the WireGuard state machine and overhead in the kernel network stack. Still,
-most gateways should be able to saturate 1 Gbps with relative ease. Faster
-speeds can be achieved with syscall optimization and multi-threaded
-optimizations, both of which are currently being worked on.
+most gateways should be able to saturate 1 Gbps under typical conditions.
 
 ## Deploy a single gateway
 
@@ -70,23 +68,46 @@ balancing.
   portal for audit trail and logging purposes.
 </Alert>
 
-## Failover
+## High availability
 
-Two or more Gateways deployed in the same site will automatically fail over and
-load balance for each other.
+Firezone was designed from the ground up to support high availability
+requirements. This is achieved through a combination of **automatic failover**
+and **load balancing**, both of which are automatically enabled on all plans.
 
-When the portal detects a particular gateway is unhealthy, it will stop using it
-for new connection requests to resources in the site. Fail over takes up to 25
-seconds for clients to time out their existing gateway connections and fail over
-to a healthy one. During this time, connection to resources will be interrupted,
-so it's important to plan gateway downtime appropriately.
+### Automatic failover
 
-## Load balancing
+Two or more gateways can be deployed within a site to achieve automatic failover
+for client connections to resources in that site.
 
-Load balancing happens automatically each time a client requests a connection to
-a resource and uses a round-robin approach which selects a random gateway in the
-site to serve the resource being requested.
+Here's how it works:
 
-This effectively shards client connections across all gateways in a site,
-achieving higher overall throughput than otherwise possible with a single
-gateway.
+- When the admin portal detects a particular gateway is unhealthy, it will stop
+  using it for new connection requests to resources in the site.
+- Existing clients will remain connected to the gateway until they themselves
+  detect it to be unhealthy.
+- Clients detect unhealthy gateways by maintaining keepalive timers with
+  gateways they're connected to. If the keepalive timer expires, the client will
+  disconnect from that gateway and ask the portal for a new, healthy one to
+  connect to.
+- On average, the client keepalive timer expires after **20 seconds**. This is
+  the maximum time it takes for existing client connections to be rerouted to a
+  healthy gateway in the event of a gateway failure.
+
+By using two independent health checks in the portal and the client, Firezone
+ensures that temporary network issues or transient gateway failures do not
+affect other clients connected to the same gateway.
+
+### Load balancing
+
+Similar to automatic failover above, two or more gateways deployed within a site
+will automatic load balance client connections to resources in that site.
+
+When a client wants to connect to a resource, Firezone randomly picks a random
+healthy gateway in the site to serve the resource being requested. The client
+will then stay connected to that gateway until either the client disconnects or
+the gateway becomes unhealthy.
+
+Deploy as many gateways as you need to handle the load of client connections to
+resources in a site. This effectively shards client connections across all
+gateways in a site, achieving higher overall throughput than otherwise possible
+with a single gateway.

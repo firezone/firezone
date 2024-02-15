@@ -41,7 +41,7 @@ defmodule Web.Settings.IdentityProviders.Okta.New do
         Add a new Okta Identity Provider
       </:title>
       <:help>
-        For a more detailed guide on setting up Firezone with Okta, please <.link class={link_style()}>refer to our documentation</.link>.
+        For a more detailed guide on setting up Firezone with Okta, please <.link href="https://www.firezone.dev/kb/authenticate/okta" class={link_style()}>refer to our documentation</.link>.
       </:help>
       <:content>
         <.provider_form account={@account} id={@id} form={@form} />
