@@ -357,7 +357,6 @@ async fn configure_network_manager(_dns_config: &[IpAddr]) -> Result<()> {
 
 async fn configure_systemd_resolved(_dns_config: &[IpAddr]) -> Result<()> {
     // TODO: Call `resolvectl` here
-
     Err(Error::Other(
         "DNS control with `systemd-resolved` is not implemented yet",
     ))
