@@ -165,6 +165,7 @@ pub enum ConnlibError {
     #[error(transparent)]
     JoinError(#[from] JoinError),
 
+    // Error variants for `/etc/resolv.conf` DNS control
     #[error("Failed to read `resolv.conf`: {0}")]
     ReadResolvConf(std::io::Error),
     #[error("Failed to parse `resolv.conf`")]
@@ -173,6 +174,16 @@ pub enum ConnlibError {
     WriteResolvConfBackup(std::io::Error),
     #[error("Failed to rewrite `resolv.conf`: {0}")]
     RewriteResolvConf(std::io::Error),
+
+    // Error variants for `systemd-resolved` DNS control
+    #[error("`resolvectl dns` should have run: {0}")]
+    ResolvectlDnsDidntRun(std::io::Error),
+    #[error("`resolvectl dns` should have succeeded: {0}")]
+    ResolvectlDnsFailed(std::process::ExitStatus),
+    #[error("`resolvectl domain` should have run: {0}")]
+    ResolvectlDomainDidntRun(std::io::Error),
+    #[error("`resolvectl domain` should have succeeded: {0}")]
+    ResolvectlDomainFailed(std::process::ExitStatus),
 }
 
 impl ConnlibError {

@@ -358,18 +358,15 @@ async fn configure_network_manager(_dns_config: &[IpAddr]) -> Result<()> {
 }
 
 async fn configure_systemd_resolved(dns_config: &[IpAddr]) -> Result<()> {
-    let mut cmd = tokio::process::Command::new("resolvectl");
-    cmd.arg("dns");
-    cmd.arg(IFACE_NAME);
-    dns_config.iter().for_each(|addr| {
-        cmd.arg(addr.to_string());
-    });
-    let status = cmd
+    let status = tokio::process::Command::new("resolvectl")
+        .arg("dns")
+        .arg(IFACE_NAME)
+        .args(dns_config.iter().map(ToString::to_string))
         .status()
         .await
-        .map_err(|_| Error::Other("`resolvectl dns` should have run"))?;
+        .map_err(Error::ResolvectlDnsDidntRun)?;
     if !status.success() {
-        return Err(Error::Other("`resolvectl dns` should have succeeded"));
+        return Err(Error::ResolvectlDnsFailed(status));
     }
 
     let status = tokio::process::Command::new("resolvectl")
@@ -378,9 +375,9 @@ async fn configure_systemd_resolved(dns_config: &[IpAddr]) -> Result<()> {
         .arg("~.")
         .status()
         .await
-        .map_err(|_| Error::Other("`resolvectl domain` should have run"))?;
+        .map_err(Error::ResolvectlDomainDidntRun)?;
     if !status.success() {
-        return Err(Error::Other("`resolvectl domain` should have succeeded"));
+        return Err(Error::ResolvectlDomainFailed(status));
     }
 
     Ok(())
