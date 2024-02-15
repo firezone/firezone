@@ -176,6 +176,8 @@ services:
     healthcheck:
       test: ["CMD-SHELL", "ps -C gunicorn"]
     networks:
+      resources:
+        ipv4_address: 172.20.0.100
       dns_resources:
         ipv4_address: 172.21.0.100
 
