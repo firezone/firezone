@@ -260,6 +260,18 @@ async fn set_iface_config(
         Some(DnsControlMethod::Systemd) => configure_systemd_resolved(&dns_config).await?,
     }
 
+    // TODO: Having this inside the library is definitely wrong. I think `set_iface_config`
+    // needs to return before `new` returns, so that the `on_tunnel_ready` callback
+    // happens after the IP address and DNS are set up. Then we can call `sd_notify`
+    // inside `on_tunnel_ready` in the client.
+    //
+    // `sd_notify::notify` is always safe to call, it silently returns `Ok(())`
+    // if we aren't running as a systemd service.
+    if let Err(error) = sd_notify::notify(true, &[sd_notify::NotifyState::Ready]) {
+        // Nothing we can do about it
+        tracing::warn!(?error, "Failed to notify systemd that we're ready");
+    }
+
     Ok(())
 }
 
@@ -345,21 +357,9 @@ async fn configure_network_manager(_dns_config: &[IpAddr]) -> Result<()> {
 
 async fn configure_systemd_resolved(_dns_config: &[IpAddr]) -> Result<()> {
     // TODO: Call `resolvectl` to configure DNS on `IFACE_NAME` here
-
-    // TODO: Having this inside the library is definitely wrong. I think `set_iface_config`
-    // needs to return before `new` returns, so that the `on_tunnel_ready` callback
-    // happens after the IP address and DNS are set up. Then we can call `sd_notify`
-    // inside `on_tunnel_ready` in the client.
-    //
-    // `sd_notify::notify` returns Ok if we're not running as a systemd service,
-    // so we won't get false positive errors when running the bare exe.
-    if let Err(error) = sd_notify::notify(true, &[sd_notify::NotifyState::Ready]) {
-        // Nothing we can do about it, the user will have to double-check the
-        // service unit.
-        tracing::error!(?error, "Failed to notify systemd that we're ready");
-    }
-
-    Ok(())
+    Err(Error::Other(
+        "DNS control with `systemd-resolved` is not implemented yet",
+    ))
 }
 
 #[repr(C)]
