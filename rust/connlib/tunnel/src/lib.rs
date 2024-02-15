@@ -254,6 +254,15 @@ where
                 _ => (),
             }
 
+            match self.connections_state.poll_next_event(cx) {
+                Poll::Ready(Event::StopPeer(id)) => {
+                    self.role_state.cleanup_connected_gateway(&id);
+                    continue;
+                }
+                Poll::Ready(other) => return Poll::Ready(Ok(other)),
+                _ => (),
+            }
+
             match device.poll_read(&mut self.read_buf, cx) {
                 Poll::Ready(Ok(Some(packet))) => {
                     tracing::trace!(target: "wire", action = "read", from = "device", dest = %packet.destination(), bytes = %packet.packet().len());
@@ -282,10 +291,16 @@ where
                 Poll::Pending => {}
             }
 
-            match ready!(self.poll_next_event_common(cx)) {
-                Event::StopPeer(id) => self.role_state.cleanup_connected_gateway(&id),
-                e => return Poll::Ready(Ok(e)),
+            match self.connections_state.poll_sockets(cx) {
+                Poll::Ready(Some(packet)) => {
+                    device.write(packet)?;
+                    continue;
+                }
+                Poll::Ready(None) => continue,
+                Poll::Pending => {}
             }
+
+            return Poll::Pending;
         }
     }
 }

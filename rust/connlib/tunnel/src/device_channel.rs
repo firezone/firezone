@@ -166,6 +166,8 @@ impl Device {
     }
 
     pub fn write(&self, packet: Packet<'_>) -> io::Result<usize> {
+        tracing::trace!(target: "wire", action = "write", to = "device");
+
         match packet {
             Packet::Ipv4(msg) => self.tun.write4(&msg),
             Packet::Ipv6(msg) => self.tun.write6(&msg),
