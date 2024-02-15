@@ -130,12 +130,6 @@ services:
     depends_on:
       gateway:
         condition: "service_healthy"
-      httpbin:
-        condition: "service_healthy"
-      test.httpbin.docker.local:
-        condition: "service_healthy"
-      iperf3:
-        condition: "service_healthy"
       api:
         condition: "service_healthy"
     networks:
@@ -185,7 +179,8 @@ services:
       resources:
         ipv4_address: 172.20.0.100
 
-  test.httpbin.docker.local:
+
+  dns.httpbin:
     image: kennethreitz/httpbin
     healthcheck:
       test: ["CMD-SHELL", "ps -C gunicorn"]
