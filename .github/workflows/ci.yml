@@ -192,6 +192,7 @@ jobs:
           direct-ping-portal-relay-down,
           dns-etc-resolvconf,
           dns-nm,
+          systemd/dns-systemd-resolved,
         ]
     steps:
       - uses: actions/checkout@v4
