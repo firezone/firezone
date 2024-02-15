@@ -328,14 +328,14 @@ class TunnelService : VpnService() {
             appRestrictions.getString("allowedApplications")?.let {
                 Firebase.crashlytics.log("Allowed applications: $it")
                 it.split(",").forEach { p ->
-                    addAllowedApplication(p)
+                    addAllowedApplication(p.trim())
                 }
             }
 
             appRestrictions.getString("disallowedApplications")?.let {
                 Firebase.crashlytics.log("Disallowed applications: $it")
                 it.split(",").forEach { p ->
-                    addDisallowedApplication(p)
+                    addDisallowedApplication(p.trim())
                 }
             }
 
