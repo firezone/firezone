@@ -7,10 +7,10 @@ use connlib_shared::messages::{DnsServer, GatewayResponse, IpDnsServer};
 use connlib_shared::IpProvider;
 use firezone_tunnel::ClientTunnel;
 use ip_network::IpNetwork;
+use std::io;
 use std::net::IpAddr;
 use std::path::PathBuf;
 use std::str::FromStr;
-use std::{io, sync::Arc};
 
 use crate::messages::{
     BroadcastGatewayIceCandidates, Connect, ConnectionDetails, EgressMessages,
@@ -36,7 +36,7 @@ const DNS_SENTINELS_V4: &str = "100.100.111.0/24";
 const DNS_SENTINELS_V6: &str = "fd00:2021:1111:8000:100:100:111:0/120";
 
 pub struct ControlPlane<CB: Callbacks> {
-    pub tunnel: Arc<ClientTunnel<CB>>,
+    pub tunnel: ClientTunnel<CB>,
     pub phoenix_channel: PhoenixSenderWithTopic,
     pub tunnel_init: Mutex<bool>,
 }

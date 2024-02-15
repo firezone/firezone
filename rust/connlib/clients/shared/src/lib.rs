@@ -12,7 +12,6 @@ use messages::IngressMessages;
 use messages::Messages;
 use messages::ReplyMessages;
 use secrecy::{Secret, SecretString};
-use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::{Interval, MissedTickBehavior};
 use tokio::{runtime::Runtime, sync::Mutex, time::Instant};
@@ -176,7 +175,7 @@ where
             );
 
             let mut control_plane = ControlPlane {
-                tunnel: Arc::new(tunnel),
+                tunnel,
                 phoenix_channel: connection.sender_with_topic("client".to_owned()),
                 tunnel_init: Mutex::new(false),
             };
