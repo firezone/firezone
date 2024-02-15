@@ -543,7 +543,7 @@ where
             .initial
             .iter()
             .filter_map(|(id, conn)| {
-                (now.duration_since(conn.created_at) >= Duration::from_secs(10)).then_some(*id)
+                (now.duration_since(conn.created_at) >= Duration::from_secs(20)).then_some(*id)
             })
             .collect::<Vec<_>>();
 
