@@ -99,7 +99,7 @@ impl Tun {
         dns_config: Vec<IpAddr>,
         _: &impl Callbacks,
     ) -> Result<Self> {
-        tracing::info!(?dns_config);
+        tracing::debug!(?dns_config);
 
         // TODO: Tech debt: <https://github.com/firezone/firezone/issues/3636>
         // TODO: Gateways shouldn't set up DNS, right? Only clients?
