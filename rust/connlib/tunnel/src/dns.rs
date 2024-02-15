@@ -1,7 +1,7 @@
 use crate::client::DnsResource;
 use crate::device_channel::Packet;
 use crate::ip_packet::{to_dns, IpPacket, MutableIpPacket, Version};
-use crate::{get_v4, get_v6, DnsQuery};
+use crate::{get_v4, get_v6};
 use connlib_shared::error::ConnlibError;
 use connlib_shared::messages::{DnsServer, ResourceDescriptionDns};
 use connlib_shared::Dname;
@@ -29,6 +29,34 @@ pub(crate) enum ResolveStrategy<T, U, V> {
     LocalResponse(T),
     ForwardQuery(U),
     DeferredResponse(V),
+}
+
+#[derive(Debug)]
+pub struct DnsQuery<'a> {
+    pub name: String,
+    pub record_type: RecordType,
+    // We could be much more efficient with this field,
+    // we only need the header to create the response.
+    pub query: crate::ip_packet::IpPacket<'a>,
+}
+
+impl<'a> DnsQuery<'a> {
+    pub(crate) fn into_owned(self) -> DnsQuery<'static> {
+        let Self {
+            name,
+            record_type,
+            query,
+        } = self;
+        let buf = query.packet().to_vec();
+        let query = crate::ip_packet::IpPacket::owned(buf)
+            .expect("We are constructing the ip packet from an ip packet");
+
+        DnsQuery {
+            name,
+            record_type,
+            query,
+        }
+    }
 }
 
 struct DnsQueryParams {

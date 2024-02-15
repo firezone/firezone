@@ -1,7 +1,7 @@
 use crate::device_channel::{Device, Packet};
 use crate::ip_packet::{IpPacket, MutableIpPacket};
 use crate::peer::{PacketTransformClient, Peer};
-use crate::{dns, peer_by_ip, DnsQuery, Event, Tunnel, DNS_QUERIES_QUEUE_SIZE};
+use crate::{dns, dns::DnsQuery, peer_by_ip, Event, Tunnel, DNS_QUERIES_QUEUE_SIZE};
 use bimap::BiMap;
 use connlib_shared::error::{ConnlibError as Error, ConnlibError};
 use connlib_shared::messages::{

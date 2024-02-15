@@ -11,7 +11,6 @@ use ip_network_table::IpNetworkTable;
 use pnet_packet::Packet;
 use snownet::{IpPacket, Node, Server};
 
-use hickory_resolver::proto::rr::RecordType;
 use peer::{PacketTransform, PacketTransformClient, PacketTransformGateway, Peer, PeerStats};
 use sockets::{Received, Sockets};
 
@@ -391,34 +390,6 @@ pub(crate) fn peer_by_ip<Id, TTransform>(
     ip: IpAddr,
 ) -> Option<&Peer<Id, TTransform>> {
     peers_by_ip.longest_match(ip).map(|(_, peer)| peer.as_ref())
-}
-
-#[derive(Debug)]
-pub struct DnsQuery<'a> {
-    pub name: String,
-    pub record_type: RecordType,
-    // We could be much more efficient with this field,
-    // we only need the header to create the response.
-    pub query: crate::ip_packet::IpPacket<'a>,
-}
-
-impl<'a> DnsQuery<'a> {
-    pub(crate) fn into_owned(self) -> DnsQuery<'static> {
-        let Self {
-            name,
-            record_type,
-            query,
-        } = self;
-        let buf = query.packet().to_vec();
-        let query = ip_packet::IpPacket::owned(buf)
-            .expect("We are constructing the ip packet from an ip packet");
-
-        DnsQuery {
-            name,
-            record_type,
-            query,
-        }
-    }
 }
 
 pub enum Event<TId> {
