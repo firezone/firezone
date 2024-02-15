@@ -103,8 +103,6 @@ where
 
             match device.poll_read(&mut self.read_buf, cx) {
                 Poll::Ready(Ok(Some(packet))) => {
-                    tracing::trace!(target: "wire", action = "read", from = "device", dest = %packet.destination(), bytes = %packet.packet().len());
-
                     let Some((peer_id, packet)) = self.role_state.encapsulate(packet) else {
                         continue;
                     };

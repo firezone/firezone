@@ -72,6 +72,8 @@ impl Device {
         buf: &'b mut [u8],
         cx: &mut Context<'_>,
     ) -> Poll<io::Result<Option<MutableIpPacket<'b>>>> {
+        use pnet_packet::Packet as _;
+
         if self.mtu_refreshed_at.elapsed() > Duration::from_secs(30) {
             self.refresh_mtu()?;
         }
@@ -82,14 +84,16 @@ impl Device {
             return Poll::Ready(Ok(None));
         }
 
-        Poll::Ready(Ok(Some(MutableIpPacket::new(&mut buf[..n]).ok_or_else(
-            || {
-                io::Error::new(
-                    io::ErrorKind::InvalidInput,
-                    "received bytes are not an IP packet",
-                )
-            },
-        )?)))
+        let packet = MutableIpPacket::new(&mut buf[..n]).ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "received bytes are not an IP packet",
+            )
+        })?;
+
+        tracing::trace!(target: "wire", action = "read", from = "device", dest = %packet.destination(), bytes = %packet.packet().len());
+
+        Poll::Ready(Ok(Some(packet)))
     }
 
     #[cfg(target_family = "windows")]
@@ -98,6 +102,8 @@ impl Device {
         buf: &'b mut [u8],
         cx: &mut Context<'_>,
     ) -> Poll<io::Result<Option<MutableIpPacket<'b>>>> {
+        use pnet_packet::Packet as _;
+
         if self.mtu_refreshed_at.elapsed() > Duration::from_secs(30) {
             self.refresh_mtu()?;
         }
@@ -108,14 +114,16 @@ impl Device {
             return Poll::Ready(Ok(None));
         }
 
-        Poll::Ready(Ok(Some(MutableIpPacket::new(&mut buf[..n]).ok_or_else(
-            || {
-                io::Error::new(
-                    io::ErrorKind::InvalidInput,
-                    "received bytes are not an IP packet",
-                )
-            },
-        )?)))
+        let packet = MutableIpPacket::new(&mut buf[..n]).ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "received bytes are not an IP packet",
+            )
+        })?;
+
+        tracing::trace!(target: "wire", action = "read", from = "device", dest = %packet.destination(), bytes = %packet.packet().len());
+
+        Poll::Ready(Ok(Some(packet)))
     }
 
     pub(crate) fn mtu(&self) -> usize {
