@@ -1,7 +1,7 @@
 use crate::device_channel::{Device, Packet};
 use crate::ip_packet::{IpPacket, MutableIpPacket};
 use crate::peer::{PacketTransformClient, Peer};
-use crate::{dns, DnsQuery, Event, Tunnel, DNS_QUERIES_QUEUE_SIZE};
+use crate::{dns, peer_by_ip, DnsQuery, Event, Tunnel, DNS_QUERIES_QUEUE_SIZE};
 use bimap::BiMap;
 use connlib_shared::error::{ConnlibError as Error, ConnlibError};
 use connlib_shared::messages::{
@@ -20,7 +20,7 @@ use snownet::Client;
 use hickory_resolver::config::{NameServerConfig, Protocol, ResolverConfig};
 use hickory_resolver::TokioAsyncResolver;
 use std::collections::hash_map::Entry;
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::net::IpAddr;
 use std::sync::Arc;
 use std::task::{Context, Poll};
@@ -202,6 +202,8 @@ pub struct ClientState {
 
     dns_mapping: BiMap<IpAddr, DnsServer>,
     dns_resolvers: HashMap<IpAddr, TokioAsyncResolver>,
+
+    buffered_packets: VecDeque<Packet<'static>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -213,11 +215,33 @@ pub struct AwaitingConnectionDetails {
 }
 
 impl ClientState {
+    pub(crate) fn encapsulate<'a>(
+        &mut self,
+        packet: MutableIpPacket<'a>,
+    ) -> Option<(GatewayId, MutableIpPacket<'a>)> {
+        let (packet, dest) = match self.handle_dns(packet) {
+            Ok(response) => {
+                self.buffered_packets.push_back(response?.into_owned());
+                return None;
+            }
+            Err(non_dns_packet) => non_dns_packet,
+        };
+
+        let Some(peer) = peer_by_ip(&self.peers_by_ip, dest) else {
+            self.on_connection_intent_ip(dest);
+            return None;
+        };
+
+        let packet = peer.transform(packet)?;
+
+        Some((peer.conn_id, packet))
+    }
+
     /// Attempt to handle the given packet as a DNS packet.
     ///
     /// Returns `Ok` if the packet is in fact a DNS query with an optional response to send back.
     /// Returns `Err` if the packet is not a DNS query.
-    pub(crate) fn handle_dns<'a>(
+    fn handle_dns<'a>(
         &mut self,
         packet: MutableIpPacket<'a>,
     ) -> Result<Option<Packet<'a>>, (MutableIpPacket<'a>, IpAddr)> {
@@ -407,7 +431,7 @@ impl ClientState {
         );
     }
 
-    pub fn on_connection_intent_ip(&mut self, destination: IpAddr) {
+    fn on_connection_intent_ip(&mut self, destination: IpAddr) {
         if self.is_awaiting_connection_to_cidr(destination) {
             return;
         }
@@ -590,6 +614,10 @@ impl ClientState {
 
     pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Event<GatewayId>> {
         loop {
+            if let Some(buffered) = self.buffered_packets.pop_front() {
+                return Poll::Ready(Event::SendPacket(buffered));
+            }
+
             if let Poll::Ready((gateway_id, _)) =
                 self.gateway_awaiting_connection_timers.poll_unpin(cx)
             {
@@ -738,6 +766,7 @@ impl Default for ClientState {
             refresh_dns_timer: interval,
             dns_mapping: Default::default(),
             dns_resolvers: Default::default(),
+            buffered_packets: Default::default(),
         }
     }
 }

@@ -178,6 +178,15 @@ pub enum Packet<'a> {
     Ipv6(Cow<'a, [u8]>),
 }
 
+impl<'a> Packet<'a> {
+    pub fn into_owned(self) -> Packet<'static> {
+        match self {
+            Packet::Ipv4(p) => Packet::Ipv4(Cow::Owned(p.into_owned())),
+            Packet::Ipv6(p) => Packet::Ipv6(Cow::Owned(p.into_owned())),
+        }
+    }
+}
+
 #[cfg(target_family = "unix")]
 mod ioctl {
     use super::*;
