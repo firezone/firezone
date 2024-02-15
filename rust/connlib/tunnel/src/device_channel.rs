@@ -27,11 +27,13 @@ use std::borrow::Cow;
 use std::io;
 use std::net::IpAddr;
 use std::task::{Context, Poll};
+use std::time::{Duration, Instant};
 use tun::Tun;
 
 pub struct Device {
     mtu: usize,
     tun: Tun,
+    mtu_refreshed_at: Instant,
 }
 
 impl Device {
@@ -44,7 +46,11 @@ impl Device {
         let tun = Tun::new(config, dns_config, callbacks)?;
         let mtu = ioctl::interface_mtu_by_name(tun.name())?;
 
-        Ok(Device { mtu, tun })
+        Ok(Device {
+            mtu,
+            tun,
+            mtu_refreshed_at: Instant::now(),
+        })
     }
 
     #[cfg(target_family = "windows")]
@@ -56,15 +62,20 @@ impl Device {
         Ok(Device {
             tun: Tun::new(config, dns_config)?,
             mtu: 1_280,
+            mtu_refreshed_at: Instant::now(),
         })
     }
 
     #[cfg(target_family = "unix")]
     pub(crate) fn poll_read<'b>(
-        &self,
+        &mut self,
         buf: &'b mut [u8],
         cx: &mut Context<'_>,
     ) -> Poll<io::Result<Option<MutableIpPacket<'b>>>> {
+        if self.mtu_refreshed_at.elapsed() > Duration::from_secs(30) {
+            self.refresh_mtu()?;
+        }
+
         let n = std::task::ready!(self.tun.poll_read(&mut buf[..self.mtu()], cx))?;
 
         if n == 0 {
@@ -87,6 +98,10 @@ impl Device {
         buf: &'b mut [u8],
         cx: &mut Context<'_>,
     ) -> Poll<io::Result<Option<MutableIpPacket<'b>>>> {
+        if self.mtu_refreshed_at.elapsed() > Duration::from_secs(30) {
+            self.refresh_mtu()?;
+        }
+
         let n = std::task::ready!(self.tun.poll_read(&mut buf[..self.mtu()], cx))?;
 
         if n == 0 {
@@ -118,7 +133,11 @@ impl Device {
         };
         let mtu = ioctl::interface_mtu_by_name(tun.name())?;
 
-        Ok(Some(Device { mtu, tun }))
+        Ok(Some(Device {
+            mtu,
+            tun,
+            mtu_refreshed_at: Instant::now(),
+        }))
     }
 
     #[cfg(target_family = "windows")]
@@ -132,17 +151,18 @@ impl Device {
     }
 
     #[cfg(target_family = "unix")]
-    pub(crate) fn refresh_mtu(&mut self) -> Result<usize, Error> {
+    fn refresh_mtu(&mut self) -> io::Result<()> {
         let mtu = ioctl::interface_mtu_by_name(self.tun.name())?;
         self.mtu = mtu;
+        self.mtu_refreshed_at = Instant::now();
 
-        Ok(mtu)
+        Ok(())
     }
 
     #[cfg(target_family = "windows")]
-    pub(crate) fn refresh_mtu(&self) -> Result<usize, Error> {
+    fn refresh_mtu(&self) -> io::Result<()> {
         // TODO
-        Ok(0)
+        Ok(())
     }
 
     pub fn write(&self, packet: Packet<'_>) -> io::Result<usize> {
@@ -164,7 +184,7 @@ mod ioctl {
     use std::os::fd::RawFd;
     use tun::SIOCGIFMTU;
 
-    pub(crate) fn interface_mtu_by_name(name: &str) -> Result<usize, ConnlibError> {
+    pub(crate) fn interface_mtu_by_name(name: &str) -> io::Result<usize> {
         let socket = Socket::ip4()?;
         let mut request = Request::<GetInterfaceMtuPayload>::new(name)?;
 
@@ -185,11 +205,11 @@ mod ioctl {
         fd: RawFd,
         code: libc::c_ulong,
         req: &mut Request<P>,
-    ) -> Result<(), ConnlibError> {
+    ) -> io::Result<()> {
         let ret = unsafe { libc::ioctl(fd, code as _, req) };
 
         if ret < 0 {
-            return Err(io::Error::last_os_error().into());
+            return Err(io::Error::last_os_error());
         }
 
         Ok(())

@@ -14,18 +14,16 @@ use snownet::{IpPacket, Node, Server};
 use hickory_resolver::proto::rr::RecordType;
 use peer::{PacketTransform, PacketTransformClient, PacketTransformGateway, Peer, PeerStats};
 use sockets::{Received, Sockets};
-use tokio::time::MissedTickBehavior;
 
 use futures_util::task::AtomicWaker;
 use std::collections::HashMap;
 use std::net::{Ipv4Addr, Ipv6Addr};
 use std::{collections::HashSet, hash::Hash};
-use std::{fmt, net::IpAddr, sync::Arc, time::Duration};
+use std::{fmt, net::IpAddr, sync::Arc};
 use std::{
     task::{ready, Context, Poll},
     time::Instant,
 };
-use tokio::time::Interval;
 
 use connlib_shared::{
     messages::{GatewayId, ResourceDescription},
@@ -228,8 +226,6 @@ pub struct Tunnel<CB: Callbacks, TRoleState, TRole, TId, TTransform> {
     /// State that differs per role, i.e. clients vs gateways.
     role_state: TRoleState,
 
-    mtu_refresh_interval: Interval,
-
     device: Option<Device>,
     no_device_waker: AtomicWaker,
 
@@ -244,7 +240,7 @@ where
 {
     pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Result<Event<GatewayId>>> {
         loop {
-            let Some(device) = self.device.as_ref() else {
+            let Some(device) = self.device.as_mut() else {
                 self.no_device_waker.register(cx.waker());
                 return Poll::Pending;
             };
@@ -320,7 +316,7 @@ where
             {
                 match self
                     .device
-                    .as_ref()
+                    .as_mut()
                     .map(|d| d.poll_read(&mut self.read_buf, cx))
                 {
                     Some(Poll::Ready(Ok(Some(packet)))) => {
@@ -391,17 +387,6 @@ where
 
     fn poll_next_event_common(&mut self, cx: &mut Context<'_>) -> Poll<Event<TId>> {
         loop {
-            if self.mtu_refresh_interval.poll_tick(cx).is_ready() {
-                let Some(device) = self.device.as_mut() else {
-                    tracing::debug!("Device temporarily not available");
-                    continue;
-                };
-
-                if let Err(e) = device.refresh_mtu() {
-                    tracing::error!(error = ?e, "refresh_mtu");
-                }
-            }
-
             if let Poll::Ready(event) = self.connections_state.poll_next_event(cx) {
                 return Poll::Ready(event);
             }
@@ -493,7 +478,6 @@ where
             device: Default::default(),
             callbacks: CallbackErrorFacade(callbacks),
             role_state: Default::default(),
-            mtu_refresh_interval: mtu_refresh_interval(),
             no_device_waker: Default::default(),
             connections_state: ConnectionState::new(private_key)?,
             read_buf: [0u8; MAX_UDP_SIZE],
@@ -503,14 +487,6 @@ where
     pub fn callbacks(&self) -> &CallbackErrorFacade<CB> {
         &self.callbacks
     }
-}
-
-/// Constructs the interval for refreshing the MTU of our TUN device.
-fn mtu_refresh_interval() -> Interval {
-    let mut interval = tokio::time::interval(Duration::from_secs(30));
-    interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
-
-    interval
 }
 
 async fn sleep_until(deadline: Instant) -> Instant {
