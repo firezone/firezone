@@ -29,9 +29,6 @@ url = { version = "2.4.1", default-features = false }
 webrtc = { workspace = true }
 domain = { workspace = true }
 uuid = { version = "1.7.0", features = ["v4"] }
-ip_network = { version = "0.4", default-features = false }
-dns-lookup = { workspace = true }
-libc = { version = "0.2", default-features = false, features = ["std", "const-extern-fn", "extra_traits"] }
 
 [dev-dependencies]
 serde_json = { version = "1.0", default-features = false, features = ["std"] }
