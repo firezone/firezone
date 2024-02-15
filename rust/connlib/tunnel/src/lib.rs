@@ -16,7 +16,6 @@ use sockets::{Received, Sockets};
 
 use futures_util::task::AtomicWaker;
 use std::collections::HashMap;
-use std::net::{Ipv4Addr, Ipv6Addr};
 use std::{collections::HashSet, hash::Hash};
 use std::{fmt, net::IpAddr, sync::Arc};
 use std::{
@@ -244,20 +243,6 @@ where
             .iter()
             .map(|(&id, p)| (id, p.stats()))
             .collect()
-    }
-}
-
-pub(crate) fn get_v4(ip: IpAddr) -> Option<Ipv4Addr> {
-    match ip {
-        IpAddr::V4(v4) => Some(v4),
-        IpAddr::V6(_) => None,
-    }
-}
-
-pub(crate) fn get_v6(ip: IpAddr) -> Option<Ipv6Addr> {
-    match ip {
-        IpAddr::V4(_) => None,
-        IpAddr::V6(v6) => Some(v6),
     }
 }
 

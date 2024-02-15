@@ -1,7 +1,6 @@
 use crate::client::DnsResource;
 use crate::device_channel::Packet;
 use crate::ip_packet::{to_dns, IpPacket, MutableIpPacket, Version};
-use crate::{get_v4, get_v6};
 use connlib_shared::error::ConnlibError;
 use connlib_shared::messages::{DnsServer, ResourceDescriptionDns};
 use connlib_shared::Dname;
@@ -444,6 +443,20 @@ fn reverse_dns_addr_v6<'a>(dns_parts: &mut impl Iterator<Item = &'a str>) -> Opt
         .join(":")
         .parse()
         .ok()
+}
+
+fn get_v4(ip: IpAddr) -> Option<Ipv4Addr> {
+    match ip {
+        IpAddr::V4(v4) => Some(v4),
+        IpAddr::V6(_) => None,
+    }
+}
+
+fn get_v6(ip: IpAddr) -> Option<Ipv6Addr> {
+    match ip {
+        IpAddr::V4(_) => None,
+        IpAddr::V6(v6) => Some(v6),
+    }
 }
 
 #[cfg(test)]
