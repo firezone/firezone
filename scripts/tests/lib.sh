@@ -11,5 +11,5 @@ function remove_iptables_drop_rules() {
 }
 
 function client_ping_resource() {
-    docker compose exec -it client timeout 60 sh -c 'until ping -W 1 -c 10 172.20.0.110 &>/dev/null; do true; done'
+    docker compose exec -it client timeout 60 sh -c 'until ping -W 1 -c 10 172.20.0.100 &>/dev/null; do true; done'
 }

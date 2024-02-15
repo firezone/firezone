@@ -15,6 +15,7 @@ sudo cp scripts/tests/systemd/firezone-client.service /etc/systemd/system/
 systemd-analyze security firezone-client
 
 # TODO: Use DNS and not IP
+# HTTPBIN_DNS=172.21.0.100
 HTTPBIN_IP=172.20.0.100
 
 IFACE_NAME="tun-firezone"
