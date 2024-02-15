@@ -24,7 +24,7 @@ use crate::{
 };
 
 mod client;
-pub mod gateway;
+mod gateway;
 
 const ICE_CANDIDATE_BUFFER: usize = 100;
 // We should use not more than 1-2 relays (WebRTC in Firefox breaks at 5) due to combinatoric
