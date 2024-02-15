@@ -79,6 +79,7 @@ defmodule Web.Router do
         {Web.Auth, :redirect_if_user_is_authenticated}
       ] do
       live "/", SignIn
+      live "/signin_success", SignIn.Success
 
       # Adapter-specific routes
       ## Email
