@@ -41,9 +41,10 @@ defmodule Web.Settings.IdentityProviders.MicrosoftEntra.New do
         Add a new Microsoft Entra ID Identity Provider
       </:title>
       <:help>
-        For a more detailed guide on setting up Firezone with Microsoft Entra ID, please <.link href="https://www.firezone.dev/kb/authenticate/entra" class={
-          link_style()
-        }>refer to our documentation</.link>.
+        For a more detailed guide on setting up Firezone with Microsoft Entra ID, please <.link
+          href="https://www.firezone.dev/kb/authenticate/entra"
+          class={link_style()}
+        >refer to our documentation</.link>.
       </:help>
       <:content>
         <.provider_form account={@account} id={@id} form={@form} />
