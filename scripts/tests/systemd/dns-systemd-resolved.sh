@@ -39,3 +39,9 @@ echo "# Accessing a resource should succeed after the client is up"
 # Block off Docker's DNS.
 sudo resolvectl dns "$DOCKER_IFACE" ""
 curl -v $HTTPBIN/get
+
+echo "# Make sure it's going through the tunnel"
+client_nslookup "$HTTPBIN" | grep "100\\.96\\.0\\."
+
+echo "# Print some debug info"
+resolvectl status
