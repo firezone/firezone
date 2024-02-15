@@ -33,7 +33,11 @@ client sh -c "cat /etc/resolv.conf"
 echo "# Make sure gateway can reach httpbin by DNS"
 gateway sh -c "curl --fail $HTTPBIN/get"
 
-echo "# nslookup httpbin"
+echo "# nslookup httpbin with explicit sentinel"
+client timeout 60 \
+sh -c "nslookup $HTTPBIN 100.100.111.1"
+
+echo "# nslookup httpbin with controlled DNS"
 client timeout 60 \
 sh -c "nslookup $HTTPBIN"
 
