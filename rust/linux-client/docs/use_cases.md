@@ -39,4 +39,4 @@ a tarball artifact to be a "package" and untar it in CI to get the systemd and N
 1. None
 2. resolv.conf
 3. resolvectl
-4. NetworkManager (Ubuntu 20.04 for desktops comes with NM by default)
+4. NetworkManager (Ubuntu 20.04 Desktop and Debian 12 with XFCE both come with NM by default, so it's very popular)
