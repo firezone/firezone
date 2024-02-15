@@ -1,5 +1,5 @@
 use boringtun::x25519::StaticSecret;
-use snownet::{ClientNode, Event};
+use snownet::{ClientNode, Event, ServerNode};
 use std::{
     collections::HashSet,
     net::{Ipv4Addr, SocketAddr, SocketAddrV4},
@@ -17,6 +17,23 @@ fn connection_times_out_after_10_seconds() {
     alice.handle_timeout(start + Duration::from_secs(20));
 
     assert_eq!(alice.poll_event().unwrap(), Event::ConnectionFailed(1));
+}
+
+#[test]
+fn answer_after_stale_connection_does_not_panic() {
+    let start = Instant::now();
+
+    let mut alice =
+        ClientNode::<u64>::new(StaticSecret::random_from_rng(rand::thread_rng()), start);
+    let mut bob = ServerNode::<u64>::new(StaticSecret::random_from_rng(rand::thread_rng()), start);
+
+    let offer = alice.new_connection(1, HashSet::new(), HashSet::new());
+    let answer =
+        bob.accept_connection(1, offer, alice.public_key(), HashSet::new(), HashSet::new());
+
+    alice.handle_timeout(start + Duration::from_secs(10));
+
+    alice.accept_answer(1, bob.public_key(), answer);
 }
 
 #[test]

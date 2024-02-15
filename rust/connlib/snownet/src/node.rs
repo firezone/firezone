@@ -33,9 +33,6 @@ use stun_codec::rfc5389::attributes::{Realm, Username};
 // Note: Taken from boringtun
 const HANDSHAKE_RATE_LIMIT: u64 = 100;
 
-/// How often wireguard will send a keep-alive packet.
-pub(crate) const WIREGUARD_KEEP_ALIVE: u16 = 5;
-
 const MAX_UDP_SIZE: usize = (1 << 16) - 1;
 
 /// Manages a set of wireguard connections for a server.
@@ -77,8 +74,10 @@ pub enum Error {
     Decapsulate(boringtun::noise::errors::WireGuardError),
     #[error("Failed to encapsulate: {0:?}")]
     Encapsulate(boringtun::noise::errors::WireGuardError),
-    #[error("Unmatched packet")]
-    UnmatchedPacket,
+    #[error("Packet is a STUN message but no agent handled it; num_agents = {num_agents}")]
+    UnhandledStunMessage { num_agents: usize },
+    #[error("Packet was not accepted by any wireguard tunnel; num_tunnels = {num_tunnels}")]
+    UnhandledPacket { num_tunnels: usize },
     #[error("Not connected")]
     NotConnected,
     #[error("Invalid local address: {0}")]
@@ -106,6 +105,10 @@ where
             last_now: now,
             connections: Default::default(),
         }
+    }
+
+    pub fn public_key(&self) -> PublicKey {
+        (&self.private_key).into()
     }
 
     /// Lazily retrieve stats of all connections.
@@ -225,6 +228,10 @@ where
                     return Ok(None);
                 }
             }
+
+            return Err(Error::UnhandledStunMessage {
+                num_agents: self.connections.len(),
+            });
         }
 
         for (id, conn) in self.connections.iter_established_mut() {
@@ -288,7 +295,9 @@ where
             };
         }
 
-        Err(Error::UnmatchedPacket)
+        Err(Error::UnhandledPacket {
+            num_tunnels: self.connections.iter_established_mut().count(),
+        })
     }
 
     /// Encapsulate an outgoing IP packet.
@@ -376,8 +385,10 @@ where
                         &mut self.pending_events,
                     );
                 }
-                CandidateEvent::Invalid(_) => {
-                    // TODO: Handle expired candidates. Invalidate on ICE agent? ICE restart?
+                CandidateEvent::Invalid(candidate) => {
+                    for (_, agent) in self.connections.agents_mut() {
+                        agent.invalidate_candidate(&candidate);
+                    }
                 }
             }
         }
@@ -437,9 +448,14 @@ where
                         };
 
                         if conn.peer_socket != Some(remote_socket) {
-                            tracing::debug!(old = ?conn.peer_socket, new = ?remote_socket, "Updating remote socket");
+                            let is_first_connection = conn.peer_socket.is_none();
+
+                            tracing::info!(old = ?conn.peer_socket, new = ?remote_socket, "Updating remote socket");
                             conn.peer_socket = Some(remote_socket);
-                            return Some(Event::ConnectionEstablished(id));
+
+                            if is_first_connection {
+                                return Some(Event::ConnectionEstablished(id));
+                            }
                         }
                     }
                     _ => {}
@@ -448,6 +464,8 @@ where
         }
 
         for conn in failed_connections {
+            tracing::info!(id = %conn, "Connection failed (ICE timeout)");
+
             self.connections.established.remove(&conn);
             self.pending_events.push_back(Event::ConnectionFailed(conn));
         }
@@ -499,6 +517,8 @@ where
         }
 
         for conn in expired_connections {
+            tracing::info!(id = %conn, "Connection failed (wireguard tunnel expired)");
+
             self.connections.established.remove(&conn);
             self.pending_events.push_back(Event::ConnectionFailed(conn))
         }
@@ -528,6 +548,8 @@ where
             .collect::<Vec<_>>();
 
         for conn in stale_connections {
+            tracing::info!(id = %conn, "Connection setup timed out (no answer received)");
+
             self.connections.initial.remove(&conn);
             self.pending_events.push_back(Event::ConnectionFailed(conn));
         }
@@ -572,7 +594,7 @@ where
                 self.private_key.clone(),
                 remote,
                 Some(key),
-                Some(WIREGUARD_KEEP_ALIVE),
+                None,
                 self.index.next(),
                 Some(self.rate_limiter.clone()),
             ),
@@ -581,7 +603,6 @@ where
             next_timer_update: self.last_now,
             peer_socket: None,
             possible_sockets: HashSet::default(),
-            last_seen: None,
         }
     }
 
@@ -680,9 +701,10 @@ where
     }
 
     /// Accept an [`Answer`] from the remote for a connection previously created via [`Node::new_connection`].
+    #[tracing::instrument(level = "debug", skip_all, fields(%id, remote = %hex::encode(remote.as_bytes())))]
     pub fn accept_answer(&mut self, id: TId, remote: PublicKey, answer: Answer) {
         let Some(initial) = self.connections.initial.remove(&id) else {
-            debug_assert!(false, "No initial connection to accept answer for");
+            tracing::debug!("No initial connection state, ignoring answer"); // This can happen if the connection setup timed out.
             return;
         };
 
@@ -887,15 +909,9 @@ where
     TId: Eq + Hash + Copy,
 {
     fn stats(&self, now: Instant) -> impl Iterator<Item = (TId, ConnectionInfo)> + '_ {
-        self.established.iter().map(move |(id, c)| {
-            (
-                *id,
-                ConnectionInfo {
-                    last_seen: c.last_seen,
-                    generated_at: now,
-                },
-            )
-        })
+        self.established
+            .keys()
+            .map(move |id| (*id, ConnectionInfo { generated_at: now }))
     }
 
     fn agent_mut(&mut self, id: TId) -> Option<&mut IceAgent> {
@@ -921,6 +937,10 @@ where
 
     fn iter_established_mut(&mut self) -> impl Iterator<Item = (TId, &mut Connection)> {
         self.established.iter_mut().map(|(id, conn)| (*id, conn))
+    }
+
+    fn len(&self) -> usize {
+        self.initial.len() + self.established.len()
     }
 }
 
@@ -1093,8 +1113,6 @@ struct Connection {
     tunnel: Tunn,
     next_timer_update: Instant,
 
-    last_seen: Option<Instant>,
-
     // When this is `Some`, we are connected.
     peer_socket: Option<PeerSocket>,
     // Socket addresses from which we might receive data (even before we are connected).
@@ -1210,10 +1228,6 @@ impl Connection {
         self.agent.handle_timeout(now);
 
         // TODO: `boringtun` is impure because it calls `Instant::now`.
-        self.last_seen = self
-            .tunnel
-            .time_since_last_received()
-            .and_then(|d| now.checked_sub(d));
 
         if now >= self.next_timer_update {
             self.next_timer_update = now + Duration::from_secs(1);
