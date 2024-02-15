@@ -551,6 +551,16 @@ impl ClientState {
         }
     }
 
+    pub fn cleanup_connected_gateway(&mut self, gateway_id: &GatewayId) {
+        self.peers_by_ip.retain(|_, p| p.conn_id != *gateway_id);
+        self.dns_resources_internal_ips.retain(|resource, _| {
+            !self
+                .resources_gateways
+                .get(&resource.id)
+                .is_some_and(|r_gateway_id| r_gateway_id == gateway_id)
+        });
+    }
+
     fn get_cidr_resource_by_destination(&self, destination: IpAddr) -> Option<ResourceDescription> {
         self.cidr_resources
             .longest_match(destination)

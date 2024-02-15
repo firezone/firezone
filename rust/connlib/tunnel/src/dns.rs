@@ -18,7 +18,7 @@ use pnet_packet::{udp::MutableUdpPacket, MutablePacket, Packet as UdpPacket, Pac
 use std::collections::{HashMap, HashSet};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
-const DNS_TTL: u32 = 300;
+const DNS_TTL: u32 = 1;
 const UDP_HEADER_SIZE: usize = 8;
 const REVERSE_DNS_ADDRESS_END: &str = "arpa";
 const REVERSE_DNS_ADDRESS_V4: &str = "in-addr";

@@ -281,11 +281,7 @@ where
             }
 
             match ready!(self.poll_next_event_common(cx)) {
-                Event::StopPeer(id) => self
-                    .role_state
-                    .lock()
-                    .peers_by_ip
-                    .retain(|_, p| p.conn_id != id),
+                Event::StopPeer(id) => self.role_state.lock().cleanup_connected_gateway(&id),
                 e => return Poll::Ready(Ok(e)),
             }
         })
