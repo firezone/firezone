@@ -14,7 +14,7 @@ use messages::ReplyMessages;
 use secrecy::{Secret, SecretString};
 use std::time::Duration;
 use tokio::time::{Interval, MissedTickBehavior};
-use tokio::{runtime::Runtime, sync::Mutex, time::Instant};
+use tokio::{runtime::Runtime, time::Instant};
 use url::Url;
 
 mod control;
@@ -177,7 +177,7 @@ where
             let mut control_plane = ControlPlane {
                 tunnel,
                 phoenix_channel: connection.sender_with_topic("client".to_owned()),
-                tunnel_init: Mutex::new(false),
+                tunnel_init: false,
             };
 
             tokio::spawn({

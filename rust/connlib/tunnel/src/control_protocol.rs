@@ -23,9 +23,8 @@ where
     CB: Callbacks + 'static,
     TId: Eq + Hash + Copy + fmt::Display,
 {
-    pub fn add_ice_candidate(&self, conn_id: TId, ice_candidate: String) {
+    pub fn add_ice_candidate(&mut self, conn_id: TId, ice_candidate: String) {
         self.connections_state
-            .lock()
             .connections
             .node
             .add_remote_candidate(conn_id, ice_candidate);

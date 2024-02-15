@@ -12,12 +12,10 @@ use pnet_packet::Packet;
 use snownet::{IpPacket, Node, Server};
 
 use hickory_resolver::proto::rr::RecordType;
-use parking_lot::Mutex;
 use peer::{PacketTransform, PacketTransformClient, PacketTransformGateway, Peer, PeerStats};
 use sockets::{Received, Sockets};
 use tokio::time::MissedTickBehavior;
 
-use arc_swap::{access::Access, ArcSwapOption};
 use futures_util::task::AtomicWaker;
 use std::collections::HashMap;
 use std::net::{Ipv4Addr, Ipv6Addr};
@@ -39,7 +37,6 @@ use connlib_shared::error::ConnlibError;
 pub use control_protocol::{gateway::ResolvedResourceDescriptionDns, Request};
 pub use gateway::GatewayState;
 
-use crate::ip_packet::MutableIpPacket;
 use connlib_shared::messages::ClientId;
 use device_channel::Device;
 
@@ -229,50 +226,76 @@ pub struct Tunnel<CB: Callbacks, TRoleState, TRole, TId, TTransform> {
     callbacks: CallbackErrorFacade<CB>,
 
     /// State that differs per role, i.e. clients vs gateways.
-    role_state: Mutex<TRoleState>,
+    role_state: TRoleState,
 
-    mtu_refresh_interval: Mutex<Interval>,
+    mtu_refresh_interval: Interval,
 
-    device: Arc<ArcSwapOption<Device>>,
+    device: Option<Device>,
     no_device_waker: AtomicWaker,
 
-    connections_state: Mutex<ConnectionState<TRole, TId, TTransform>>,
+    connections_state: ConnectionState<TRole, TId, TTransform>,
+
+    read_buf: [u8; MAX_UDP_SIZE],
 }
 
 impl<CB> Tunnel<CB, ClientState, snownet::Client, GatewayId, PacketTransformClient>
 where
     CB: Callbacks + 'static,
 {
-    pub async fn next_event(&self) -> Result<Event<GatewayId>> {
+    pub async fn next_event(&mut self) -> Result<Event<GatewayId>> {
         std::future::poll_fn(|cx| loop {
-            {
-                let guard = self.device.load();
+            let Some(device) = self.device.as_ref() else {
+                self.no_device_waker.register(cx.waker());
+                return Poll::Pending;
+            };
 
-                if let Some(device) = guard.as_ref() {
-                    match self.poll_device(device, cx) {
-                        Poll::Ready(Ok(Some(event))) => return Poll::Ready(Ok(event)),
-                        Poll::Ready(Ok(None)) => {
-                            tracing::info!("Device stopped");
-                            self.device.store(None);
+            match device.poll_read(&mut self.read_buf, cx) {
+                Poll::Ready(Ok(Some(packet))) => {
+                    tracing::trace!(target: "wire", action = "read", from = "device", dest = %packet.destination(), bytes = %packet.packet().len());
+
+                    let (packet, peer_id) = {
+                        let (packet, dest) = match self.role_state.handle_dns(packet) {
+                            Ok(Some(response)) => {
+                                device.write(response)?;
+                                continue;
+                            }
+                            Ok(None) => continue,
+                            Err(non_dns_packet) => non_dns_packet,
+                        };
+
+                        let Some(peer) = peer_by_ip(&self.role_state.peers_by_ip, dest) else {
+                            self.role_state.on_connection_intent_ip(dest);
                             continue;
-                        }
-                        Poll::Ready(Err(e)) => {
-                            self.device.store(None); // Ensure we don't poll a failed device again.
-                            return Poll::Ready(Err(e));
-                        }
-                        Poll::Pending => {}
-                    }
-                } else {
-                    self.no_device_waker.register(cx.waker());
-                }
-            }
+                        };
 
-            match self.role_state.lock().poll_next_event(cx) {
-                Poll::Ready(Event::SendPacket(packet)) => {
-                    let Some(device) = self.device.load().clone() else {
-                        continue;
+                        let Some(packet) = peer.transform(packet) else {
+                            continue;
+                        };
+                        (packet, peer.conn_id)
                     };
 
+                    if let Err(e) = self
+                        .connections_state
+                        .send(peer_id, packet.as_immutable().into())
+                    {
+                        tracing::error!(to = %packet.destination(), %peer_id, "Failed to send packet: {e}");
+                        continue;
+                    }
+                }
+                Poll::Ready(Ok(None)) => {
+                    tracing::info!("Device stopped");
+                    self.device = None;
+                    continue;
+                }
+                Poll::Ready(Err(e)) => {
+                    self.device = None; // Ensure we don't poll a failed device again.
+                    return Poll::Ready(Err(ConnlibError::Io(e)));
+                }
+                Poll::Pending => {}
+            }
+
+            match self.role_state.poll_next_event(cx) {
+                Poll::Ready(Event::SendPacket(packet)) => {
                     device.write(packet)?;
                     continue;
                 }
@@ -281,51 +304,11 @@ where
             }
 
             match ready!(self.poll_next_event_common(cx)) {
-                Event::StopPeer(id) => self.role_state.lock().cleanup_connected_gateway(&id),
+                Event::StopPeer(id) => self.role_state.cleanup_connected_gateway(&id),
                 e => return Poll::Ready(Ok(e)),
             }
         })
         .await
-    }
-
-    pub(crate) fn poll_device(
-        &self,
-        device: &Device,
-        cx: &mut Context<'_>,
-    ) -> Poll<Result<Option<Event<GatewayId>>>> {
-        let mut read_buf = [0; MAX_UDP_SIZE];
-
-        loop {
-            let Some(packet) = ready!(device.poll_read(&mut read_buf, cx))? else {
-                return Poll::Ready(Ok(None));
-            };
-
-            tracing::trace!(target: "wire", action = "read", from = "device", dest = %packet.destination(), bytes = %packet.packet().len());
-
-            let (packet, peer_id) = {
-                let mut role_state = self.role_state.lock();
-                let (packet, dest) = match role_state.handle_dns(packet) {
-                    Ok(Some(response)) => {
-                        device.write(response)?;
-                        continue;
-                    }
-                    Ok(None) => continue,
-                    Err(non_dns_packet) => non_dns_packet,
-                };
-
-                let Some(peer) = peer_by_ip(&role_state.peers_by_ip, dest) else {
-                    role_state.on_connection_intent_ip(dest);
-                    continue;
-                };
-
-                let Some(packet) = peer.transform(packet) else {
-                    continue;
-                };
-                (packet, peer.conn_id)
-            };
-
-            self.send_peer(packet, peer_id);
-        }
     }
 }
 
@@ -333,20 +316,17 @@ impl<CB> Tunnel<CB, GatewayState, Server, ClientId, PacketTransformGateway>
 where
     CB: Callbacks + 'static,
 {
-    pub fn poll_next_event(&self, cx: &mut Context<'_>) -> Poll<Result<Event<ClientId>>> {
+    pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Result<Event<ClientId>>> {
         let mut read_buf = [0; MAX_UDP_SIZE];
 
         loop {
             {
-                let device = self.device.load();
-
-                match device.as_ref().map(|d| d.poll_read(&mut read_buf, cx)) {
+                match self.device.as_ref().map(|d| d.poll_read(&mut read_buf, cx)) {
                     Some(Poll::Ready(Ok(Some(packet)))) => {
                         let (packet, peer_id) = {
                             let dest = packet.destination();
 
-                            let role_state = self.role_state.lock();
-                            let Some(peer) = peer_by_ip(&role_state.peers_by_ip, dest) else {
+                            let Some(peer) = peer_by_ip(&self.role_state.peers_by_ip, dest) else {
                                 continue;
                             };
 
@@ -355,13 +335,19 @@ where
                             };
                             (packet, peer.conn_id)
                         };
-                        self.send_peer(packet, peer_id);
+
+                        if let Err(e) = self
+                            .connections_state
+                            .send(peer_id, packet.as_immutable().into())
+                        {
+                            tracing::error!(to = %packet.destination(), %peer_id, "Failed to send packet: {e}");
+                        }
 
                         continue;
                     }
                     Some(Poll::Ready(Ok(None))) => {
                         tracing::info!("Device stopped");
-                        self.device.store(None);
+                        self.device = None;
                     }
                     Some(Poll::Ready(Err(e))) => return Poll::Ready(Err(ConnlibError::Io(e))),
                     Some(Poll::Pending) => {
@@ -374,11 +360,7 @@ where
             }
 
             match ready!(self.poll_next_event_common(cx)) {
-                Event::StopPeer(id) => self
-                    .role_state
-                    .lock()
-                    .peers_by_ip
-                    .retain(|_, p| p.conn_id != id),
+                Event::StopPeer(id) => self.role_state.peers_by_ip.retain(|_, p| p.conn_id != id),
                 e => return Poll::Ready(Ok(e)),
             }
         }
@@ -399,7 +381,6 @@ where
 {
     pub fn stats(&self) -> HashMap<TId, PeerStats<TId>> {
         self.connections_state
-            .lock()
             .connections
             .peers_by_id
             .iter()
@@ -407,10 +388,10 @@ where
             .collect()
     }
 
-    fn poll_next_event_common(&self, cx: &mut Context<'_>) -> Poll<Event<TId>> {
+    fn poll_next_event_common(&mut self, cx: &mut Context<'_>) -> Poll<Event<TId>> {
         loop {
-            if self.mtu_refresh_interval.lock().poll_tick(cx).is_ready() {
-                let Some(device) = self.device.load().clone() else {
+            if self.mtu_refresh_interval.poll_tick(cx).is_ready() {
+                let Some(device) = self.device.as_ref() else {
                     tracing::debug!("Device temporarily not available");
                     continue;
                 };
@@ -420,17 +401,15 @@ where
                 }
             }
 
-            if let Poll::Ready(event) = self.connections_state.lock().poll_next_event(cx) {
+            if let Poll::Ready(event) = self.connections_state.poll_next_event(cx) {
                 return Poll::Ready(event);
             }
 
-            let mut connection_state = self.connections_state.lock();
-            let Some(p) = ready!(connection_state.poll_sockets(cx)) else {
+            let Some(p) = ready!(self.connections_state.poll_sockets(cx)) else {
                 continue;
             };
 
-            let dev = self.device.load();
-            let Some(dev) = dev.as_ref() else {
+            let Some(dev) = self.device.as_ref() else {
                 continue;
             };
 
@@ -439,16 +418,6 @@ where
             if let Err(e) = dev.write(p) {
                 tracing::error!("Error writing packet to device: {e:?}");
             }
-        }
-    }
-
-    fn send_peer(&self, packet: MutableIpPacket, peer_id: TId) {
-        if let Err(e) = self
-            .connections_state
-            .lock()
-            .send(peer_id, packet.as_immutable().into())
-        {
-            tracing::error!(to = %packet.destination(), %peer_id, "Failed to send packet: {e}");
         }
     }
 }
@@ -523,9 +492,10 @@ where
             device: Default::default(),
             callbacks: CallbackErrorFacade(callbacks),
             role_state: Default::default(),
-            mtu_refresh_interval: Mutex::new(mtu_refresh_interval()),
+            mtu_refresh_interval: mtu_refresh_interval(),
             no_device_waker: Default::default(),
-            connections_state: Mutex::new(ConnectionState::new(private_key)?),
+            connections_state: ConnectionState::new(private_key)?,
+            read_buf: [0u8; MAX_UDP_SIZE],
         })
     }
 

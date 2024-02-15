@@ -27,7 +27,6 @@ use connlib_shared::{
 use firezone_tunnel::Request;
 use reqwest::header::{CONTENT_ENCODING, CONTENT_TYPE};
 use tokio::io::BufReader;
-use tokio::sync::Mutex;
 use tokio_util::codec::{BytesCodec, FramedRead};
 use url::Url;
 
@@ -38,7 +37,7 @@ const DNS_SENTINELS_V6: &str = "fd00:2021:1111:8000:100:100:111:0/120";
 pub struct ControlPlane<CB: Callbacks> {
     pub tunnel: ClientTunnel<CB>,
     pub phoenix_channel: PhoenixSenderWithTopic,
-    pub tunnel_init: Mutex<bool>,
+    pub tunnel_init: bool,
 }
 
 fn effective_dns_servers(
@@ -108,26 +107,23 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
 
         let sentinel_mapping = sentinel_dns_mapping(&effective_dns_servers);
 
-        {
-            let mut init = self.tunnel_init.lock().await;
-            if !*init {
-                if let Err(e) = self
-                    .tunnel
-                    .set_interface(&interface, sentinel_mapping.clone())
-                {
-                    tracing::error!(error = ?e, "Error initializing interface");
-                    return Err(e);
-                } else {
-                    *init = true;
-                    tracing::info!("Firezone Started!");
-                }
-
-                for resource_description in resources {
-                    self.add_resource(resource_description);
-                }
+        if !self.tunnel_init {
+            if let Err(e) = self
+                .tunnel
+                .set_interface(&interface, sentinel_mapping.clone())
+            {
+                tracing::error!(error = ?e, "Error initializing interface");
+                return Err(e);
             } else {
-                tracing::info!("Firezone reinitializated");
+                self.tunnel_init = true;
+                tracing::info!("Firezone Started!");
             }
+
+            for resource_description in resources {
+                self.add_resource(resource_description);
+            }
+        } else {
+            tracing::info!("Firezone reinitializated");
         }
         Ok(())
     }
@@ -163,7 +159,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
         }
     }
 
-    pub fn add_resource(&self, resource_description: ResourceDescription) {
+    pub fn add_resource(&mut self, resource_description: ResourceDescription) {
         if let Err(e) = self.tunnel.add_resource(resource_description) {
             tracing::error!(message = "Can't add resource", error = ?e);
         }
@@ -175,7 +171,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
     }
 
     fn connection_details(
-        &self,
+        &mut self,
         ConnectionDetails {
             gateway_id,
             resource_id,
@@ -227,7 +223,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
 
     #[tracing::instrument(level = "trace", skip_all, fields(gateway = %gateway_id))]
     fn add_ice_candidate(
-        &self,
+        &mut self,
         GatewayIceCandidates {
             gateway_id,
             candidates,

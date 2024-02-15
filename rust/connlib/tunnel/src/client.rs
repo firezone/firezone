@@ -56,12 +56,11 @@ where
     /// Once added, when a packet for the resource is intercepted a new data channel will be created
     /// and packets will be wrapped with wireguard and sent through it.
     pub fn add_resource(
-        &self,
+        &mut self,
         resource_description: ResourceDescription,
     ) -> connlib_shared::Result<()> {
         if self
             .role_state
-            .lock()
             .resource_ids
             .contains_key(&resource_description.id())
         {
@@ -73,7 +72,6 @@ where
         match &resource_description {
             ResourceDescription::Dns(dns) => {
                 self.role_state
-                    .lock()
                     .dns_resources
                     .insert(dns.address.clone(), dns.clone());
             }
@@ -81,18 +79,16 @@ where
                 self.add_route(cidr.address)?;
 
                 self.role_state
-                    .lock()
                     .cidr_resources
                     .insert(cidr.address, cidr.clone());
             }
         }
 
         let mut resource_descriptions = {
-            let mut role_state = self.role_state.lock();
-            role_state
+            self.role_state
                 .resource_ids
                 .insert(resource_description.id(), resource_description);
-            role_state
+            self.role_state
                 .resource_ids
                 .values()
                 .cloned()
@@ -107,18 +103,18 @@ where
     /// Sets the interface configuration and starts background tasks.
     #[tracing::instrument(level = "trace", skip(self))]
     pub fn set_interface(
-        &self,
+        &mut self,
         config: &InterfaceConfig,
         dns_mapping: BiMap<IpAddr, DnsServer>,
     ) -> connlib_shared::Result<()> {
-        let device = Arc::new(Device::new(
+        let device = Device::new(
             config,
             // We can just sort in here because sentinel ips are created in order
             dns_mapping.left_values().copied().sorted().collect(),
             self.callbacks(),
-        )?);
+        )?;
 
-        self.device.store(Some(device.clone()));
+        self.device = Some(device);
         self.no_device_waker.wake();
 
         let mut errs = Vec::new();
@@ -133,7 +129,7 @@ where
             return Err(errs.pop().unwrap());
         }
 
-        self.role_state.lock().set_dns_mapping(dns_mapping);
+        self.role_state.set_dns_mapping(dns_mapping);
 
         let res_v4 = self.add_route(IPV4_RESOURCES.parse().unwrap());
         let res_v6 = self.add_route(IPV6_RESOURCES.parse().unwrap());
@@ -148,22 +144,21 @@ where
 
     /// Clean up a connection to a resource.
     // FIXME: this cleanup connection is wrong!
-    pub fn cleanup_connection(&self, id: ResourceId) {
-        self.role_state.lock().on_connection_failed(id);
+    pub fn cleanup_connection(&mut self, id: ResourceId) {
+        self.role_state.on_connection_failed(id);
         // self.peer_connections.lock().remove(&id.into());
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    pub fn add_route(&self, route: IpNetwork) -> connlib_shared::Result<()> {
+    pub fn add_route(&mut self, route: IpNetwork) -> connlib_shared::Result<()> {
         let maybe_new_device = self
             .device
-            .load()
             .as_ref()
             .ok_or(Error::ControlProtocolError)?
             .add_route(route, self.callbacks())?;
 
         if let Some(new_device) = maybe_new_device {
-            self.device.swap(Some(Arc::new(new_device)));
+            self.device = Some(new_device);
         }
 
         Ok(())

@@ -17,15 +17,15 @@ where
 {
     /// Sets the interface configuration and starts background tasks.
     #[tracing::instrument(level = "trace", skip(self))]
-    pub fn set_interface(&self, config: &InterfaceConfig) -> connlib_shared::Result<()> {
+    pub fn set_interface(&mut self, config: &InterfaceConfig) -> connlib_shared::Result<()> {
         // Note: the dns fallback strategy is irrelevant for gateways
-        let device = Arc::new(Device::new(config, vec![], self.callbacks())?);
+        let device = Device::new(config, vec![], self.callbacks())?;
 
         let result_v4 = device.add_route(PEERS_IPV4.parse().unwrap(), self.callbacks());
         let result_v6 = device.add_route(PEERS_IPV6.parse().unwrap(), self.callbacks());
         result_v4.or(result_v6)?;
 
-        self.device.store(Some(device.clone()));
+        self.device = Some(device);
         self.no_device_waker.wake();
 
         tracing::debug!("background_loop_started");
@@ -34,16 +34,9 @@ where
     }
 
     /// Clean up a connection to a resource.
-    pub fn cleanup_connection(&self, id: ClientId) {
-        self.connections_state
-            .lock()
-            .connections
-            .peers_by_id
-            .remove(&id);
-        self.role_state
-            .lock()
-            .peers_by_ip
-            .retain(|_, p| p.conn_id != id);
+    pub fn cleanup_connection(&mut self, id: ClientId) {
+        self.connections_state.connections.peers_by_id.remove(&id);
+        self.role_state.peers_by_ip.retain(|_, p| p.conn_id != id);
     }
 }
 

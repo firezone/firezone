@@ -90,7 +90,7 @@ async fn get_firezone_id(env_id: Option<String>) -> Result<String> {
 }
 
 async fn run(connect_url: Url, private_key: StaticSecret) -> Result<Infallible> {
-    let tunnel = GatewayTunnel::new(private_key, CallbackHandler)?;
+    let mut tunnel = GatewayTunnel::new(private_key, CallbackHandler)?;
 
     let (portal, init) = phoenix_channel::init::<_, InitGateway, _, _>(
         Secret::new(SecureUrl::from_url(connect_url.clone())),

@@ -49,7 +49,7 @@ where
     /// The connection details
     #[allow(clippy::too_many_arguments)]
     pub fn set_peer_connection_request(
-        &self,
+        &mut self,
         client: ClientId,
         key: Secret<Key>,
         offer: Offer,
@@ -77,24 +77,19 @@ where
 
         let mut stun_servers: HashSet<_> = turn(&relays).iter().map(|r| r.0).collect();
         stun_servers.extend(stun(&relays));
-        let answer = self
-            .connections_state
-            .lock()
-            .connections
-            .node
-            .accept_connection(
-                client,
-                snownet::Offer {
-                    session_key: key.expose_secret().0.into(),
-                    credentials: Credentials {
-                        username: offer.username,
-                        password: offer.password,
-                    },
+        let answer = self.connections_state.connections.node.accept_connection(
+            client,
+            snownet::Offer {
+                session_key: key.expose_secret().0.into(),
+                credentials: Credentials {
+                    username: offer.username,
+                    password: offer.password,
                 },
-                gateway,
-                stun_servers,
-                turn(&relays),
-            );
+            },
+            gateway,
+            stun_servers,
+            turn(&relays),
+        );
 
         self.new_peer(
             ips,
@@ -122,7 +117,7 @@ where
     }
 
     pub fn allow_access(
-        &self,
+        &mut self,
         resource: ResourceDescription,
         client: ClientId,
         expires_at: Option<DateTime<Utc>>,
@@ -130,7 +125,6 @@ where
     ) -> Option<DomainResponse> {
         let Some(peer) = self
             .role_state
-            .lock()
             .peers_by_ip
             .iter_mut()
             .find_map(|(_, p)| (p.conn_id == client).then_some(p.clone()))
@@ -171,7 +165,7 @@ where
     }
 
     fn new_peer(
-        &self,
+        &mut self,
         ips: Vec<IpNetwork>,
         client_id: ClientId,
         resource: ResourceDescription,
@@ -193,15 +187,13 @@ where
 
         // cleaning up old state
         self.role_state
-            .lock()
             .peers_by_ip
             .retain(|_, p| p.conn_id != client_id);
         self.connections_state
-            .lock()
             .connections
             .peers_by_id
             .insert(client_id, Arc::clone(&peer));
-        insert_peers(&mut self.role_state.lock().peers_by_ip, &ips, peer);
+        insert_peers(&mut self.role_state.peers_by_ip, &ips, peer);
 
         Ok(())
     }

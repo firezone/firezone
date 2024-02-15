@@ -42,7 +42,7 @@ where
     /// A [RequestConnection] that should be sent to the gateway through the control-plane.
     #[tracing::instrument(level = "trace", skip_all, fields(%resource_id, %gateway_id))]
     pub fn request_connection(
-        &self,
+        &mut self,
         resource_id: ResourceId,
         gateway_id: GatewayId,
         relays: Vec<Relay>,
@@ -55,11 +55,10 @@ where
             .parse()
             .map_err(|_| Error::InvalidReference)?;
 
-        if let Some(connection) = self.role_state.lock().attempt_to_reuse_connection(
-            resource_id,
-            gateway_id,
-            reference,
-        )? {
+        if let Some(connection) =
+            self.role_state
+                .attempt_to_reuse_connection(resource_id, gateway_id, reference)?
+        {
             // TODO: now we send reuse connections before connection is established but after
             // response is offered.
             // We need to consider new race conditions, such as connection failed after
@@ -70,18 +69,16 @@ where
 
         let domain = self
             .role_state
-            .lock()
             .get_awaiting_connection_domain(&resource_id)?
             .clone();
 
         let mut stun_relays = stun(&relays);
         stun_relays.extend(turn(&relays).iter().map(|r| r.0).collect::<HashSet<_>>());
-        let offer = self
-            .connections_state
-            .lock()
-            .connections
-            .node
-            .new_connection(gateway_id, stun_relays, turn(&relays));
+        let offer = self.connections_state.connections.node.new_connection(
+            gateway_id,
+            stun_relays,
+            turn(&relays),
+        );
 
         Ok(Request::NewConnection(RequestConnection {
             resource_id,
@@ -98,19 +95,16 @@ where
     }
 
     fn new_peer(
-        &self,
+        &mut self,
         resource_id: ResourceId,
         gateway_id: GatewayId,
         domain_response: Option<DomainResponse>,
     ) -> Result<()> {
-        let ips = self
-            .role_state
-            .lock()
-            .create_peer_config_for_new_connection(
-                resource_id,
-                gateway_id,
-                &domain_response.as_ref().map(|d| d.domain.clone()),
-            )?;
+        let ips = self.role_state.create_peer_config_for_new_connection(
+            resource_id,
+            gateway_id,
+            &domain_response.as_ref().map(|d| d.domain.clone()),
+        )?;
 
         let peer = Arc::new(Peer::new(ips.clone(), gateway_id, Default::default()));
 
@@ -120,19 +114,17 @@ where
             ips
         };
 
-        peer.transform.set_dns(self.role_state.lock().dns_mapping());
+        peer.transform.set_dns(self.role_state.dns_mapping());
 
         // cleaning up old state
         self.role_state
-            .lock()
             .peers_by_ip
             .retain(|_, p| p.conn_id != gateway_id);
         self.connections_state
-            .lock()
             .connections
             .peers_by_id
             .insert(gateway_id, Arc::clone(&peer));
-        insert_peers(&mut self.role_state.lock().peers_by_ip, &peer_ips, peer);
+        insert_peers(&mut self.role_state.peers_by_ip, &peer_ips, peer);
 
         Ok(())
     }
@@ -142,7 +134,7 @@ where
     /// Once this is called, if everything goes fine, a new tunnel should be started between the 2 peers.
     #[tracing::instrument(level = "trace", skip(self, gateway_public_key, resource_id))]
     pub fn received_offer_response(
-        &self,
+        &mut self,
         resource_id: ResourceId,
         rtc_ice_params: Answer,
         domain_response: Option<DomainResponse>,
@@ -152,24 +144,19 @@ where
 
         let gateway_id = self
             .role_state
-            .lock()
             .gateway_by_resource(&resource_id)
             .ok_or(Error::UnknownResource)?;
 
-        self.connections_state
-            .lock()
-            .connections
-            .node
-            .accept_answer(
-                gateway_id,
-                gateway_public_key,
-                snownet::Answer {
-                    credentials: snownet::Credentials {
-                        username: rtc_ice_params.username,
-                        password: rtc_ice_params.password,
-                    },
+        self.connections_state.connections.node.accept_answer(
+            gateway_id,
+            gateway_public_key,
+            snownet::Answer {
+                credentials: snownet::Credentials {
+                    username: rtc_ice_params.username,
+                    password: rtc_ice_params.password,
                 },
-            );
+            },
+        );
 
         self.new_peer(resource_id, gateway_id, domain_response)?;
 
@@ -177,14 +164,13 @@ where
     }
 
     fn dns_response(
-        &self,
+        &mut self,
         resource_id: &ResourceId,
         domain_response: &DomainResponse,
         peer: &Peer<GatewayId, PacketTransformClient>,
     ) -> Result<Vec<IpNetwork>> {
         let resource_description = self
             .role_state
-            .lock()
             .resource_ids
             .get(resource_id)
             .ok_or(Error::UnknownResource)?
@@ -198,18 +184,16 @@ where
         let resource_description =
             DnsResource::from_description(&resource_description, domain_response.domain.clone());
 
-        let mut role_state = self.role_state.lock();
-
         let addrs: HashSet<_> = domain_response
             .address
             .iter()
             .filter_map(|external_ip| {
                 peer.transform
-                    .get_or_assign_translation(external_ip, &mut role_state.ip_provider)
+                    .get_or_assign_translation(external_ip, &mut self.role_state.ip_provider)
             })
             .collect();
 
-        role_state
+        self.role_state
             .dns_resources_internal_ips
             .insert(resource_description.clone(), addrs.clone());
 
@@ -218,9 +202,9 @@ where
             peer.add_allowed_ip(*ip);
         }
 
-        if let Some(device) = self.device.load().as_ref() {
+        if let Some(device) = self.device.as_ref() {
             send_dns_answer(
-                &mut role_state,
+                &mut self.role_state,
                 Rtype::Aaaa,
                 device,
                 &resource_description,
@@ -228,7 +212,7 @@ where
             );
 
             send_dns_answer(
-                &mut role_state,
+                &mut self.role_state,
                 Rtype::A,
                 device,
                 &resource_description,
@@ -241,19 +225,17 @@ where
 
     #[tracing::instrument(level = "trace", skip(self, resource_id))]
     pub fn received_domain_parameters(
-        &self,
+        &mut self,
         resource_id: ResourceId,
         domain_response: DomainResponse,
     ) -> Result<()> {
         let gateway_id = self
             .role_state
-            .lock()
             .gateway_by_resource(&resource_id)
             .ok_or(Error::UnknownResource)?;
 
         let Some(peer) = self
             .role_state
-            .lock()
             .peers_by_ip
             .iter_mut()
             .find_map(|(_, p)| (p.conn_id == gateway_id).then_some(p.clone()))
@@ -262,7 +244,7 @@ where
         };
 
         let peer_ips = self.dns_response(&resource_id, &domain_response, &peer)?;
-        insert_peers(&mut self.role_state.lock().peers_by_ip, &peer_ips, peer);
+        insert_peers(&mut self.role_state.peers_by_ip, &peer_ips, peer);
         Ok(())
     }
 }
