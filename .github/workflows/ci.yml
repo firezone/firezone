@@ -202,7 +202,7 @@ jobs:
       - name: Seed database
         run: docker compose run elixir /bin/sh -c 'cd apps/domain && mix ecto.seed'
       - name: Start docker compose in the background
-        run: docker compose up -d api web client relay gateway dns.httpbin
+        run: docker compose up -d api web client relay gateway dns.httpbin iperf3
 
       - run: ./scripts/tests/${{ matrix.test }}.sh
 
