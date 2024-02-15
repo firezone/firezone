@@ -81,12 +81,12 @@ After this you will have running:
 - A gateway connected to the portal
 - A headless Linux client connected to the portal
 - A relay connected to the portal
-- A resource with IP `172.20.0.100` on a separate network shared with the
+- A resource with IP `172.21.0.100` on a separate network shared with the
   gateway
 
 ```sh
 # To test that a client can ping the resource
-docker compose exec -it client ping 172.20.0.100
+docker compose exec -it client ping dns.httpbin
 
 # You can also directly use the client
 docker compose exec -it client /bin/sh
