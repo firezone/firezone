@@ -316,11 +316,13 @@ where
     CB: Callbacks + 'static,
 {
     pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Result<Event<ClientId>>> {
-        let mut read_buf = [0; MAX_UDP_SIZE];
-
         loop {
             {
-                match self.device.as_ref().map(|d| d.poll_read(&mut read_buf, cx)) {
+                match self
+                    .device
+                    .as_ref()
+                    .map(|d| d.poll_read(&mut self.read_buf, cx))
+                {
                     Some(Poll::Ready(Ok(Some(packet)))) => {
                         let (packet, peer_id) = {
                             let dest = packet.destination();
