@@ -107,13 +107,10 @@ where
                         continue;
                     };
 
-                    if let Err(e) = self
-                        .connections_state
-                        .send(peer_id, packet.as_immutable().into())
-                    {
-                        tracing::error!(to = %packet.destination(), %peer_id, "Failed to send packet: {e}");
-                        continue;
-                    }
+                    self.connections_state
+                        .send(peer_id, packet.as_immutable().into());
+
+                    continue;
                 }
                 Poll::Ready(Ok(None)) => {
                     tracing::info!("Device stopped");
@@ -167,12 +164,8 @@ where
                         continue;
                     };
 
-                    if let Err(e) = self
-                        .connections_state
-                        .send(peer_id, packet.as_immutable().into())
-                    {
-                        tracing::error!(to = %packet.destination(), %peer_id, "Failed to send packet: {e}");
-                    }
+                    self.connections_state
+                        .send(peer_id, packet.as_immutable().into());
 
                     continue;
                 }
@@ -267,7 +260,15 @@ where
         })
     }
 
-    fn send(&mut self, id: TId, packet: IpPacket) -> Result<()> {
+    fn send(&mut self, id: TId, packet: IpPacket) {
+        let to = packet.destination();
+
+        if let Err(e) = self.try_send(id, packet) {
+            tracing::warn!(%to, %id, "Failed to send packet: {e}");
+        }
+    }
+
+    fn try_send(&mut self, id: TId, packet: IpPacket) -> Result<()> {
         // TODO: handle NotConnected
         let Some(transmit) = self.node.encapsulate(id, packet)? else {
             return Ok(());
