@@ -249,32 +249,29 @@ where
                 Poll::Ready(Ok(Some(packet))) => {
                     tracing::trace!(target: "wire", action = "read", from = "device", dest = %packet.destination(), bytes = %packet.packet().len());
 
-                    let (packet, peer_id) = {
-                        let (packet, dest) = match self.role_state.handle_dns(packet) {
-                            Ok(Some(response)) => {
-                                device.write(response)?;
-                                continue;
-                            }
-                            Ok(None) => continue,
-                            Err(non_dns_packet) => non_dns_packet,
-                        };
-
-                        let Some(peer) = peer_by_ip(&self.role_state.peers_by_ip, dest) else {
-                            self.role_state.on_connection_intent_ip(dest);
+                    let (packet, dest) = match self.role_state.handle_dns(packet) {
+                        Ok(Some(response)) => {
+                            device.write(response)?;
                             continue;
-                        };
+                        }
+                        Ok(None) => continue,
+                        Err(non_dns_packet) => non_dns_packet,
+                    };
 
-                        let Some(packet) = peer.transform(packet) else {
-                            continue;
-                        };
-                        (packet, peer.conn_id)
+                    let Some(peer) = peer_by_ip(&self.role_state.peers_by_ip, dest) else {
+                        self.role_state.on_connection_intent_ip(dest);
+                        continue;
+                    };
+
+                    let Some(packet) = peer.transform(packet) else {
+                        continue;
                     };
 
                     if let Err(e) = self
                         .connections_state
-                        .send(peer_id, packet.as_immutable().into())
+                        .send(peer.conn_id, packet.as_immutable().into())
                     {
-                        tracing::error!(to = %packet.destination(), %peer_id, "Failed to send packet: {e}");
+                        tracing::error!(to = %packet.destination(), peer_id = %peer.conn_id, "Failed to send packet: {e}");
                         continue;
                     }
                 }
@@ -320,24 +317,21 @@ where
                     .map(|d| d.poll_read(&mut self.read_buf, cx))
                 {
                     Some(Poll::Ready(Ok(Some(packet)))) => {
-                        let (packet, peer_id) = {
-                            let dest = packet.destination();
+                        let dest = packet.destination();
 
-                            let Some(peer) = peer_by_ip(&self.role_state.peers_by_ip, dest) else {
-                                continue;
-                            };
+                        let Some(peer) = peer_by_ip(&self.role_state.peers_by_ip, dest) else {
+                            continue;
+                        };
 
-                            let Some(packet) = peer.transform(packet) else {
-                                continue;
-                            };
-                            (packet, peer.conn_id)
+                        let Some(packet) = peer.transform(packet) else {
+                            continue;
                         };
 
                         if let Err(e) = self
                             .connections_state
-                            .send(peer_id, packet.as_immutable().into())
+                            .send(peer.conn_id, packet.as_immutable().into())
                         {
-                            tracing::error!(to = %packet.destination(), %peer_id, "Failed to send packet: {e}");
+                            tracing::error!(to = %packet.destination(), peer_id = %peer.conn_id, "Failed to send packet: {e}");
                         }
 
                         continue;
