@@ -58,18 +58,16 @@ impl Callbacks for CallbackHandler {
 
     /// May return Firezone's own servers, e.g. `100.100.111.1`.
     fn get_system_default_resolvers(&self) -> Result<Option<Vec<IpAddr>>, Self::Error> {
-        match self.dns_control_method {
-            None => Ok(Some(get_system_default_resolvers_resolv_conf()?)),
-            Some(DnsControlMethod::EtcResolvConf) => {
-                Ok(Some(get_system_default_resolvers_resolv_conf()?))
-            }
+        let default_resolvers = match self.dns_control_method {
+            None => get_system_default_resolvers_resolv_conf()?,
+            Some(DnsControlMethod::EtcResolvConf) => get_system_default_resolvers_resolv_conf()?,
             Some(DnsControlMethod::NetworkManager) => {
-                Ok(Some(get_system_default_resolvers_network_manager()?))
+                get_system_default_resolvers_network_manager()?
             }
-            Some(DnsControlMethod::Systemd) => {
-                Ok(Some(get_system_default_resolvers_systemd_resolved()?))
-            }
-        }
+            Some(DnsControlMethod::Systemd) => get_system_default_resolvers_systemd_resolved()?,
+        };
+        tracing::info!(?default_resolvers);
+        Ok(Some(default_resolvers))
     }
 
     fn on_disconnect(

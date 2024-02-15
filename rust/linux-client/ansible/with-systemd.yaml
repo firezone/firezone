@@ -1,4 +1,8 @@
 ---
+
+# Should be roughly equivalent to `dns-systemd-resolved.sh`, but runs locally on a VM
+# without relying on docker-compose, or the httpbin container, etc.
+
 - hosts: myhosts
   tasks:
   # If we don't enable DHCP on the VM's Ethernet, systemd never figures out
@@ -34,22 +38,29 @@
        state: restarted
        enabled: true
   - name: Copy Firezone client
+    become: yes
     ansible.builtin.copy:
        src: ../../target/release/firezone-linux-client
-       dest: firezone-linux-client
+       dest: /usr/bin/firezone-linux-client
        mode: '0755'
   - name: Setcap on Firezone
     become: yes
     community.general.capabilities:
-       path: firezone-linux-client
+       path: /usr/bin/firezone-linux-client
        capability: cap_net_admin+eip
        state: present
+  - name: Copy systemd service unit
+    become: yes
+    ansible.builtin.copy:
+       src: ../../../scripts/firezone-client.service
+       dest: /etc/systemd/system/firezone-client.service
+       mode: '0644'
   - name: Copy Firezone token
     ansible.builtin.copy:
        src: firezone-token
        dest: firezone-token
   - name: Copy test script
     ansible.builtin.copy:
-       src: test.bash
-       dest: test.bash
+       src: test.sh
+       dest: test.sh
        mode: '0755'
