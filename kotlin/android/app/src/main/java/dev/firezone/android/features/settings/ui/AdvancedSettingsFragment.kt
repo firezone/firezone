@@ -53,6 +53,10 @@ class AdvancedSettingsFragment : Fragment(R.layout.fragment_settings_advanced) {
                     viewModel.onValidateLogFilter(text.toString())
                 }
             }
+
+            btResetDefaults.setOnClickListener {
+                viewModel.resetSettingsToDefaults()
+            }
         }
     }
 

@@ -543,7 +543,7 @@ where
             .initial
             .iter()
             .filter_map(|(id, conn)| {
-                (now.duration_since(conn.created_at) >= Duration::from_secs(10)).then_some(*id)
+                (now.duration_since(conn.created_at) >= Duration::from_secs(20)).then_some(*id)
             })
             .collect::<Vec<_>>();
 
@@ -814,14 +814,6 @@ where
 
     fn upsert_turn_servers(&mut self, servers: &HashSet<(SocketAddr, String, String, String)>) {
         for (server, username, password, realm) in servers {
-            if let Some(existing) = self.allocations.get_mut(server) {
-                if existing.uses_credentials(username, password, realm) {
-                    existing.refresh();
-
-                    continue;
-                }
-            }
-
             let Ok(username) = Username::new(username.to_owned()) else {
                 tracing::debug!(%username, "Invalid TURN username");
                 continue;
@@ -831,16 +823,17 @@ where
                 continue;
             };
 
-            let existing = self.allocations.insert(
+            if let Some(existing) = self.allocations.get_mut(server) {
+                existing.refresh(username, password, realm);
+                continue;
+            }
+
+            self.allocations.insert(
                 *server,
                 Allocation::new(*server, username, password.clone(), realm, self.last_now),
             );
 
-            if existing.is_some() {
-                tracing::info!(address = %server, "Replaced existing allocation because credentials to TURN server changed");
-            } else {
-                tracing::info!(address = %server, "Added new TURN server");
-            }
+            tracing::info!(address = %server, "Added new TURN server");
         }
     }
 
