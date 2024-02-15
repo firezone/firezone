@@ -640,9 +640,10 @@ impl ClientState {
             .forwarded_dns_queries
             .try_push(
                 {
-                    let query = query.clone();
+                    let name = query.name.clone();
+                    let record_type = query.record_type;
 
-                    async move { resolver.lookup(&query.name, query.record_type).await }
+                    async move { resolver.lookup(&name, record_type).await }
                 },
                 query,
             )

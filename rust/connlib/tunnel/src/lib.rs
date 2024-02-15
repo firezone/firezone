@@ -425,17 +425,6 @@ pub struct DnsQuery<'a> {
     pub query: IpPacket<'a>,
 }
 
-impl DnsQuery<'static> {
-    #[allow(clippy::should_implement_trait)] // We can't because it is only valid for `'static`.
-    pub fn clone(&self) -> DnsQuery<'static> {
-        Self {
-            name: self.name.clone(),
-            record_type: self.record_type,
-            query: self.query.to_owned(),
-        }
-    }
-}
-
 impl<'a> DnsQuery<'a> {
     pub(crate) fn into_owned(self) -> DnsQuery<'static> {
         let Self {
