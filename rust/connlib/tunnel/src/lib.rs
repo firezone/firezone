@@ -311,12 +311,13 @@ where
 {
     pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Result<Event<ClientId>>> {
         loop {
-            match self
-                .device
-                .as_mut()
-                .map(|d| d.poll_read(&mut self.read_buf, cx))
-            {
-                Some(Poll::Ready(Ok(Some(packet)))) => {
+            let Some(device) = self.device.as_mut() else {
+                self.no_device_waker.register(cx.waker());
+                return Poll::Pending;
+            };
+
+            match device.poll_read(&mut self.read_buf, cx) {
+                Poll::Ready(Ok(Some(packet))) => {
                     let Some((peer_id, packet)) = self.role_state.encapsulate(packet) else {
                         continue;
                     };
@@ -330,16 +331,14 @@ where
 
                     continue;
                 }
-                Some(Poll::Ready(Ok(None))) => {
+                Poll::Ready(Ok(None)) => {
                     tracing::info!("Device stopped");
                     self.device = None;
+                    continue;
                 }
-                Some(Poll::Ready(Err(e))) => return Poll::Ready(Err(ConnlibError::Io(e))),
-                Some(Poll::Pending) => {
+                Poll::Ready(Err(e)) => return Poll::Ready(Err(ConnlibError::Io(e))),
+                Poll::Pending => {
                     // device not ready for reading, moving on ..
-                }
-                None => {
-                    self.no_device_waker.register(cx.waker());
                 }
             }
 
