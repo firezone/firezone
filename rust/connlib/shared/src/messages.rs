@@ -131,8 +131,8 @@ impl Eq for RequestConnection {}
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 #[serde(tag = "type", rename_all = "snake_case")]
-pub enum ResourceDescription<TDNS = ResourceDescriptionDns> {
-    Dns(TDNS),
+pub enum ResourceDescription {
+    Dns(ResourceDescriptionDns),
     Cidr(ResourceDescriptionCidr),
 }
 
