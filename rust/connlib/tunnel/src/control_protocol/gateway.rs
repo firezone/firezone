@@ -77,7 +77,7 @@ where
 
         let mut stun_servers: HashSet<_> = turn(&relays).iter().map(|r| r.0).collect();
         stun_servers.extend(stun(&relays));
-        let answer = self.connections_state.connections.node.accept_connection(
+        let answer = self.connections_state.node.accept_connection(
             client,
             snownet::Offer {
                 session_key: key.expose_secret().0.into(),
@@ -190,7 +190,6 @@ where
             .peers_by_ip
             .retain(|_, p| p.conn_id != client_id);
         self.connections_state
-            .connections
             .peers_by_id
             .insert(client_id, Arc::clone(&peer));
         insert_peers(&mut self.role_state.peers_by_ip, &ips, peer);

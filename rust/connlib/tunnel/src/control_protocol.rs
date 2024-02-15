@@ -25,7 +25,6 @@ where
 {
     pub fn add_ice_candidate(&mut self, conn_id: TId, ice_candidate: String) {
         self.connections_state
-            .connections
             .node
             .add_remote_candidate(conn_id, ice_candidate);
     }

@@ -36,7 +36,7 @@ where
 
     /// Clean up a connection to a resource.
     pub fn cleanup_connection(&mut self, id: ClientId) {
-        self.connections_state.connections.peers_by_id.remove(&id);
+        self.connections_state.peers_by_id.remove(&id);
         self.role_state.peers_by_ip.retain(|_, p| p.conn_id != id);
     }
 }

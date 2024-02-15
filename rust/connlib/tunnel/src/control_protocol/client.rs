@@ -74,11 +74,10 @@ where
 
         let mut stun_relays = stun(&relays);
         stun_relays.extend(turn(&relays).iter().map(|r| r.0).collect::<HashSet<_>>());
-        let offer = self.connections_state.connections.node.new_connection(
-            gateway_id,
-            stun_relays,
-            turn(&relays),
-        );
+        let offer =
+            self.connections_state
+                .node
+                .new_connection(gateway_id, stun_relays, turn(&relays));
 
         Ok(Request::NewConnection(RequestConnection {
             resource_id,
@@ -121,7 +120,6 @@ where
             .peers_by_ip
             .retain(|_, p| p.conn_id != gateway_id);
         self.connections_state
-            .connections
             .peers_by_id
             .insert(gateway_id, Arc::clone(&peer));
         insert_peers(&mut self.role_state.peers_by_ip, &peer_ips, peer);
@@ -147,7 +145,7 @@ where
             .gateway_by_resource(&resource_id)
             .ok_or(Error::UnknownResource)?;
 
-        self.connections_state.connections.node.accept_answer(
+        self.connections_state.node.accept_answer(
             gateway_id,
             gateway_public_key,
             snownet::Answer {

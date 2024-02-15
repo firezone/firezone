@@ -219,7 +219,6 @@ where
 {
     pub fn stats(&self) -> HashMap<TId, PeerStats<TId>> {
         self.connections_state
-            .connections
             .peers_by_id
             .iter()
             .map(|(&id, p)| (id, p.stats()))
@@ -242,7 +241,9 @@ pub(crate) fn get_v6(ip: IpAddr) -> Option<Ipv6Addr> {
 }
 
 struct ConnectionState<TRole, TId, TTransform> {
-    connections: Connections<TRole, TId, TTransform>,
+    pub node: Node<TRole, TId>,
+    write_buf: Box<[u8; MAX_UDP_SIZE]>,
+    peers_by_id: HashMap<TId, Arc<Peer<TId, TTransform>>>,
     connection_pool_timeout: BoxFuture<'static, std::time::Instant>,
     sockets: Sockets,
 }
@@ -254,7 +255,9 @@ where
 {
     fn new(private_key: StaticSecret) -> Result<Self> {
         Ok(ConnectionState {
-            connections: Connections::new(Node::new(private_key, std::time::Instant::now())),
+            node: Node::new(private_key, std::time::Instant::now()),
+            write_buf: Box::new([0; MAX_UDP_SIZE]),
+            peers_by_id: HashMap::new(),
             connection_pool_timeout: sleep_until(std::time::Instant::now()).boxed(),
             sockets: Sockets::new()?,
         })
@@ -262,7 +265,7 @@ where
 
     fn send(&mut self, id: TId, packet: IpPacket) -> Result<()> {
         // TODO: handle NotConnected
-        let Some(transmit) = self.connections.node.encapsulate(id, packet)? else {
+        let Some(transmit) = self.node.encapsulate(id, packet)? else {
             return Ok(());
         };
 
@@ -287,20 +290,50 @@ where
             }
         };
 
-        let maybe_device_packet = self.connections.handle_socket_packet(received);
+        let Received {
+            local,
+            from,
+            packet,
+        } = received;
+
+        let (conn_id, packet) = match self.node.decapsulate(
+            local,
+            from,
+            packet,
+            std::time::Instant::now(),
+            self.write_buf.as_mut(),
+        ) {
+            Ok(Some(packet)) => packet,
+            Ok(None) => return Poll::Ready(None),
+            Err(e) => {
+                tracing::warn!(%local, %from, "Failed to decapsulate incoming packet: {e}");
+                return Poll::Ready(None);
+            }
+        };
+
+        tracing::trace!(target: "wire", %local, %from, bytes = %packet.packet().len(), "read new packet");
+
+        let Some(peer) = self.peers_by_id.get(&conn_id) else {
+            tracing::error!(%conn_id, %local, %from, "Couldn't find connection");
+            return Poll::Ready(None);
+        };
+
+        let maybe_device_packet = peer
+            .untransform(packet.source(), self.write_buf.as_mut())
+            .ok();
 
         Poll::Ready(maybe_device_packet)
     }
 
     fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Event<TId>> {
         loop {
-            while let Some(transmit) = self.connections.node.poll_transmit() {
+            while let Some(transmit) = self.node.poll_transmit() {
                 if let Err(e) = self.sockets.try_send(&transmit) {
                     tracing::warn!(src = ?transmit.src, dst = %transmit.dst, "Failed to send UDP packet: {e}");
                 }
             }
 
-            match self.connections.node.poll_event() {
+            match self.node.poll_event() {
                 Some(snownet::Event::SignalIceCandidate {
                     connection,
                     candidate,
@@ -311,15 +344,15 @@ where
                     });
                 }
                 Some(snownet::Event::ConnectionFailed(id)) => {
-                    self.connections.peers_by_id.remove(&id);
+                    self.peers_by_id.remove(&id);
                     return Poll::Ready(Event::StopPeer(id));
                 }
                 _ => {}
             }
 
             if let Poll::Ready(instant) = self.connection_pool_timeout.poll_unpin(cx) {
-                self.connections.node.handle_timeout(instant);
-                if let Some(timeout) = self.connections.node.poll_timeout() {
+                self.node.handle_timeout(instant);
+                if let Some(timeout) = self.node.poll_timeout() {
                     self.connection_pool_timeout = sleep_until(timeout).boxed();
                 }
 
@@ -328,62 +361,6 @@ where
 
             return Poll::Pending;
         }
-    }
-}
-
-struct Connections<TRole, TId, TTransform> {
-    pub node: Node<TRole, TId>,
-    write_buf: Box<[u8; MAX_UDP_SIZE]>,
-    peers_by_id: HashMap<TId, Arc<Peer<TId, TTransform>>>,
-}
-
-impl<TRole, TId, TTransform> Connections<TRole, TId, TTransform>
-where
-    TId: Eq + Hash + Copy + fmt::Display,
-    TTransform: PacketTransform,
-{
-    fn new(connection_pool: Node<TRole, TId>) -> Self {
-        Self {
-            node: connection_pool,
-            write_buf: Box::new([0; MAX_UDP_SIZE]),
-            peers_by_id: HashMap::new(),
-        }
-    }
-
-    fn handle_socket_packet<'a>(
-        &'a mut self,
-        packet: Received<'a>,
-    ) -> Option<device_channel::Packet<'a>> {
-        let Received {
-            local,
-            from,
-            packet,
-        } = packet;
-
-        let (conn_id, packet) = self
-            .node
-            .decapsulate(
-                local,
-                from,
-                packet,
-                std::time::Instant::now(),
-                self.write_buf.as_mut(),
-            )
-            .inspect_err(
-                |e| tracing::warn!(%local, %from, "Failed to decapsulate incoming packet: {e}"),
-            )
-            .ok()??;
-
-        tracing::trace!(target: "wire", %local, %from, bytes = %packet.packet().len(), "read new packet");
-
-        let Some(peer) = self.peers_by_id.get(&conn_id) else {
-            tracing::error!(%conn_id, %local, %from, "Couldn't find connection");
-            return None;
-        };
-
-        return peer
-            .untransform(packet.source(), self.write_buf.as_mut())
-            .ok();
     }
 }
 
