@@ -7,10 +7,10 @@ source "./scripts/tests/lib.sh"
 install_iptables_drop_rules
 trap remove_iptables_drop_rules EXIT # Cleanup after us
 
-client_ping_gateway
+client_ping_httpbin
 
 docker compose restart api # Restart portal
 
 sleep 5 # Wait for client to reconnect
 
-client_ping_gateway
+client_ping_httpbin
