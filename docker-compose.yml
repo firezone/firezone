@@ -171,13 +171,20 @@ services:
       dns_resources:
       resources:
 
-  dns.httpbin:
+  httpbin:
     image: kennethreitz/httpbin
     healthcheck:
       test: ["CMD-SHELL", "ps -C gunicorn"]
     networks:
       resources:
         ipv4_address: 172.20.0.100
+
+
+  dns.httpbin:
+    image: kennethreitz/httpbin
+    healthcheck:
+      test: ["CMD-SHELL", "ps -C gunicorn"]
+    networks:
       dns_resources:
         ipv4_address: 172.21.0.100
 
