@@ -216,7 +216,29 @@ where
     CB: Callbacks + 'static,
     TId: Eq + Hash + Copy + fmt::Display,
     TTransform: PacketTransform,
+    TRoleState: Default,
 {
+    /// Creates a new tunnel.
+    ///
+    /// # Parameters
+    /// - `private_key`: wireguard's private key.
+    /// -  `control_signaler`: this is used to send SDP from the tunnel to the control plane.
+    #[tracing::instrument(level = "trace", skip(private_key, callbacks))]
+    pub fn new(private_key: StaticSecret, callbacks: CB) -> Result<Self> {
+        Ok(Self {
+            device: Default::default(),
+            callbacks: CallbackErrorFacade(callbacks),
+            role_state: Default::default(),
+            no_device_waker: Default::default(),
+            connections_state: ConnectionState::new(private_key)?,
+            read_buf: [0u8; MAX_UDP_SIZE],
+        })
+    }
+
+    pub fn callbacks(&self) -> &CallbackErrorFacade<CB> {
+        &self.callbacks
+    }
+
     pub fn stats(&self) -> HashMap<TId, PeerStats<TId>> {
         self.connections_state
             .peers_by_id
@@ -414,35 +436,6 @@ pub enum Event<TId> {
     },
     SendPacket(device_channel::Packet<'static>),
     StopPeer(TId),
-}
-
-impl<CB, TRoleState, TRole, TId, TTransform> Tunnel<CB, TRoleState, TRole, TId, TTransform>
-where
-    CB: Callbacks + 'static,
-    TId: Eq + Hash + Copy + fmt::Display,
-    TTransform: PacketTransform,
-    TRoleState: Default,
-{
-    /// Creates a new tunnel.
-    ///
-    /// # Parameters
-    /// - `private_key`: wireguard's private key.
-    /// -  `control_signaler`: this is used to send SDP from the tunnel to the control plane.
-    #[tracing::instrument(level = "trace", skip(private_key, callbacks))]
-    pub fn new(private_key: StaticSecret, callbacks: CB) -> Result<Self> {
-        Ok(Self {
-            device: Default::default(),
-            callbacks: CallbackErrorFacade(callbacks),
-            role_state: Default::default(),
-            no_device_waker: Default::default(),
-            connections_state: ConnectionState::new(private_key)?,
-            read_buf: [0u8; MAX_UDP_SIZE],
-        })
-    }
-
-    pub fn callbacks(&self) -> &CallbackErrorFacade<CB> {
-        &self.callbacks
-    }
 }
 
 async fn sleep_until(deadline: Instant) -> Instant {
