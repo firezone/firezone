@@ -19,7 +19,6 @@ internal class RepositoryImpl
         private val context: Context,
         private val coroutineDispatcher: CoroutineDispatcher,
         private val sharedPreferences: SharedPreferences,
-        private val appRestrictions: Bundle,
     ) : Repository {
         override fun getConfigSync(): Config {
             return Config(
@@ -69,15 +68,10 @@ internal class RepositoryImpl
 
         override fun getToken(): Flow<String?> =
             flow {
-                emit(
-                    appRestrictions.getString(TOKEN_KEY, null)
-                        ?: sharedPreferences.getString(TOKEN_KEY, null),
-                )
+                emit(sharedPreferences.getString(TOKEN_KEY, null))
             }.flowOn(coroutineDispatcher)
 
-        override fun getTokenSync(): String? =
-            appRestrictions.getString(TOKEN_KEY, null)
-                ?: sharedPreferences.getString(TOKEN_KEY, null)
+        override fun getTokenSync(): String? = sharedPreferences.getString(TOKEN_KEY, null)
 
         override fun getStateSync(): String? = sharedPreferences.getString(STATE_KEY, null)
 

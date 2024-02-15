@@ -3,6 +3,7 @@ package dev.firezone.android.core.di
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.os.Bundle
 import androidx.core.content.getSystemService
 import dagger.Module
 import dagger.Provides
@@ -17,6 +18,10 @@ import kotlinx.coroutines.CoroutineDispatcher
 @InstallIn(SingletonComponent::class)
 class DataModule {
     @Provides
+    internal fun provideApplicationRestrictions(
+        @ApplicationContext context: Context,
+    ): Bundle = (context.getSystemService(Context.RESTRICTIONS_SERVICE) as android.content.RestrictionsManager).applicationRestrictions
+    @Provides
     internal fun provideRepository(
         @ApplicationContext context: Context,
         @IoDispatcher coroutineDispatcher: CoroutineDispatcher,
@@ -26,9 +31,5 @@ class DataModule {
             context,
             coroutineDispatcher,
             sharedPreferences,
-            (
-                context.getSystemService(Context.RESTRICTIONS_SERVICE)
-                    as android.content.RestrictionsManager
-            ).applicationRestrictions,
         )
 }
