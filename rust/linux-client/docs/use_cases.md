@@ -7,8 +7,9 @@ feature once, although they don't exercise every combination of features.
 1. Alpine Docker container, CLI only, resolv.conf DNS (Easy to test)
 2. Exe only, Manual startup, CLI only, No DNS (Embedded / IoT)
 3. Exe only, Manual startup, CLI only, resolv.conf DNS (Embedded / IoT)
-4. Package manager installation, runs as always-on systemd service unit, Tauri GUI, resolvectl DNS (A desktop that doesn't have NetworkManager)
-5. Package manager installation, runs as systemd service unit, activated by NetworkManager, Tauri GUI and NetworkManager interfaces, NetworkManager DNS (The "Make me one with everything" option)
+4. Package manager installation, activated by NetworkManager, CLI only, NetworkManager DNS (To get NM working before committing to a GUI)
+5. Package manager installation, runs as always-on systemd service unit, Tauri GUI, resolvectl DNS (A desktop that doesn't have NetworkManager)
+6. Package manager installation, runs as systemd service unit, activated by NetworkManager, Tauri GUI and NetworkManager interfaces, NetworkManager DNS (The "Make me one with everything" option)
 
 If we don't test a real package manager (e.g. apt, yum) we can consider
 a tarball artifact to be a "package" and untar it in CI to get the systemd and NetworkManager service files. `cargo-deb` does work well for Debian systems.
@@ -38,4 +39,4 @@ a tarball artifact to be a "package" and untar it in CI to get the systemd and N
 1. None
 2. resolv.conf
 3. resolvectl
-4. NetworkManager
+4. NetworkManager (Ubuntu 20.04 for desktops comes with NM by default)
