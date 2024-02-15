@@ -316,6 +316,15 @@ where
                 return Poll::Pending;
             };
 
+            match self.connections_state.poll_next_event(cx) {
+                Poll::Ready(Event::StopPeer(id)) => {
+                    self.role_state.peers_by_ip.retain(|_, p| p.conn_id != id);
+                    continue;
+                }
+                Poll::Ready(other) => return Poll::Ready(Ok(other)),
+                _ => (),
+            }
+
             match device.poll_read(&mut self.read_buf, cx) {
                 Poll::Ready(Ok(Some(packet))) => {
                     let Some((peer_id, packet)) = self.role_state.encapsulate(packet) else {
@@ -342,10 +351,16 @@ where
                 }
             }
 
-            match ready!(self.poll_next_event_common(cx)) {
-                Event::StopPeer(id) => self.role_state.peers_by_ip.retain(|_, p| p.conn_id != id),
-                e => return Poll::Ready(Ok(e)),
+            match self.connections_state.poll_sockets(cx) {
+                Poll::Ready(Some(packet)) => {
+                    device.write(packet)?;
+                    continue;
+                }
+                Poll::Ready(None) => continue,
+                Poll::Pending => {}
             }
+
+            return Poll::Pending;
         }
     }
 }
@@ -369,28 +384,6 @@ where
             .iter()
             .map(|(&id, p)| (id, p.stats()))
             .collect()
-    }
-
-    fn poll_next_event_common(&mut self, cx: &mut Context<'_>) -> Poll<Event<TId>> {
-        loop {
-            if let Poll::Ready(event) = self.connections_state.poll_next_event(cx) {
-                return Poll::Ready(event);
-            }
-
-            let Some(p) = ready!(self.connections_state.poll_sockets(cx)) else {
-                continue;
-            };
-
-            let Some(dev) = self.device.as_ref() else {
-                continue;
-            };
-
-            // TODO: add info
-            tracing::trace!(target: "wire", action = "write", to = "device");
-            if let Err(e) = dev.write(p) {
-                tracing::error!("Error writing packet to device: {e:?}");
-            }
-        }
     }
 }
 
