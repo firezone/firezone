@@ -57,7 +57,7 @@ defmodule Web.Settings.IdentityProviders.Okta.New do
     attrs =
       attrs
       |> Map.put("adapter", :okta)
-      |> put_discovery_document_uri()
+      |> Map.update("adapter_config", %{}, &put_discovery_document_uri/1)
 
     changeset =
       Auth.new_provider(socket.assigns.account, attrs)
@@ -69,6 +69,7 @@ defmodule Web.Settings.IdentityProviders.Okta.New do
   def handle_event("submit", %{"provider" => attrs}, socket) do
     attrs =
       attrs
+      |> Map.update("adapter_config", %{}, &put_discovery_document_uri/1)
       |> Map.update("adapter_config", %{}, &put_api_base_url/1)
       |> Map.put("id", socket.assigns.id)
       |> Map.put("adapter", :okta)
@@ -98,22 +99,32 @@ defmodule Web.Settings.IdentityProviders.Okta.New do
   end
 
   defp put_api_base_url(adapter_config) do
-    uri = URI.parse(adapter_config["discovery_document_uri"])
-    Map.put(adapter_config, "api_base_url", "#{uri.scheme}://#{uri.host}")
+    api_base_url = create_api_base_url(adapter_config["okta_account_domain"])
+
+    Map.put(adapter_config, "api_base_url", api_base_url)
   end
 
-  defp put_discovery_document_uri(attrs) do
-    config = attrs["adapter_config"]
+  defp put_discovery_document_uri(adapter_config) do
+    api_base_url = create_api_base_url(adapter_config["okta_account_domain"])
 
-    oidc_uri =
-      String.replace_suffix(
-        config["oauth_uri"],
-        "oauth-authorization-server",
-        "openid-configuration"
-      )
+    Map.put(
+      adapter_config,
+      "discovery_document_uri",
+      "#{api_base_url}/.well-known/openid-configuration"
+    )
+  end
 
-    config = Map.put(config, "discovery_document_uri", oidc_uri)
+  # This is done for easier testing.  Production should only use 'https' and Okta domains,
+  # but in dev and test there are times when putting an explicit URI is useful.
+  if Mix.env() in [:dev, :test] do
+    defp create_api_base_url(okta_account_domain) do
+      uri = URI.parse(okta_account_domain)
 
-    Map.put(attrs, "adapter_config", config)
+      if uri.scheme, do: okta_account_domain, else: "https://#{okta_account_domain}"
+    end
+  else
+    defp create_api_base_url(okta_account_domain) do
+      "https://#{okta_account_domain}"
+    end
   end
 end

@@ -7,7 +7,7 @@ defmodule Domain.Auth.Adapters.Okta.Settings.Changeset do
              response_type
              client_id client_secret
              discovery_document_uri
-             oauth_uri
+             okta_account_domain
              api_base_url]a
 
   def changeset(%Settings{} = settings, attrs) do

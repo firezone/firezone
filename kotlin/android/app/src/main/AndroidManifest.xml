@@ -41,10 +41,6 @@
         </activity>
 
         <activity
-            android:name=".features.webview.ui.WebViewActivity"
-            android:exported="false" />
-
-        <activity
             android:name="dev.firezone.android.features.auth.ui.AuthActivity"
             android:exported="false" />
 
@@ -70,7 +66,7 @@
 
         <activity
             android:name="dev.firezone.android.features.settings.ui.SettingsActivity"
-            android:exported="false" />
+            android:exported="false"/>
 
         <service
             android:foregroundServiceType="systemExempted"
