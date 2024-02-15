@@ -364,9 +364,9 @@ async fn configure_systemd_resolved(dns_config: &[IpAddr]) -> Result<()> {
         .args(dns_config.iter().map(ToString::to_string))
         .status()
         .await
-        .map_err(Error::ResolvectlDnsDidntRun)?;
+        .map_err(|_| Error::ResolvectlFailed)?;
     if !status.success() {
-        return Err(Error::ResolvectlDnsFailed(status));
+        return Err(Error::ResolvectlFailed);
     }
 
     let status = tokio::process::Command::new("resolvectl")
@@ -375,9 +375,9 @@ async fn configure_systemd_resolved(dns_config: &[IpAddr]) -> Result<()> {
         .arg("~.")
         .status()
         .await
-        .map_err(Error::ResolvectlDomainDidntRun)?;
+        .map_err(|_| Error::ResolvectlFailed)?;
     if !status.success() {
-        return Err(Error::ResolvectlDomainFailed(status));
+        return Err(Error::ResolvectlFailed);
     }
 
     Ok(())

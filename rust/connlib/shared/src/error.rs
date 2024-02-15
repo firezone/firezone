@@ -176,14 +176,8 @@ pub enum ConnlibError {
     RewriteResolvConf(std::io::Error),
 
     // Error variants for `systemd-resolved` DNS control
-    #[error("`resolvectl dns` should have run: {0}")]
-    ResolvectlDnsDidntRun(std::io::Error),
-    #[error("`resolvectl dns` should have succeeded: {0}")]
-    ResolvectlDnsFailed(std::process::ExitStatus),
-    #[error("`resolvectl domain` should have run: {0}")]
-    ResolvectlDomainDidntRun(std::io::Error),
-    #[error("`resolvectl domain` should have succeeded: {0}")]
-    ResolvectlDomainFailed(std::process::ExitStatus),
+    #[error("Failed to control system DNS with `resolvectl`")]
+    ResolvectlFailed,
 }
 
 impl ConnlibError {
