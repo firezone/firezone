@@ -302,21 +302,15 @@ where
                 .map(|d| d.poll_read(&mut self.read_buf, cx))
             {
                 Some(Poll::Ready(Ok(Some(packet)))) => {
-                    let dest = packet.destination();
-
-                    let Some(peer) = peer_by_ip(&self.role_state.peers_by_ip, dest) else {
-                        continue;
-                    };
-
-                    let Some(packet) = peer.transform(packet) else {
+                    let Some((peer_id, packet)) = self.role_state.encapsulate(packet) else {
                         continue;
                     };
 
                     if let Err(e) = self
                         .connections_state
-                        .send(peer.conn_id, packet.as_immutable().into())
+                        .send(peer_id, packet.as_immutable().into())
                     {
-                        tracing::error!(to = %packet.destination(), peer_id = %peer.conn_id, "Failed to send packet: {e}");
+                        tracing::error!(to = %packet.destination(), %peer_id, "Failed to send packet: {e}");
                     }
 
                     continue;

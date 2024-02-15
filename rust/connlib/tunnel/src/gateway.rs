@@ -1,6 +1,7 @@
 use crate::device_channel::Device;
+use crate::ip_packet::MutableIpPacket;
 use crate::peer::{PacketTransformGateway, Peer};
-use crate::Tunnel;
+use crate::{peer_by_ip, Tunnel};
 use connlib_shared::messages::{ClientId, Interface as InterfaceConfig};
 use connlib_shared::Callbacks;
 use ip_network_table::IpNetworkTable;
@@ -47,6 +48,18 @@ pub struct GatewayState {
 }
 
 impl GatewayState {
+    pub(crate) fn encapsulate<'a>(
+        &mut self,
+        packet: MutableIpPacket<'a>,
+    ) -> Option<(ClientId, MutableIpPacket<'a>)> {
+        let dest = packet.destination();
+
+        let peer = peer_by_ip(&self.peers_by_ip, dest)?;
+        let packet = peer.transform(packet)?;
+
+        Some((peer.conn_id, packet))
+    }
+
     pub fn expire_resources(&mut self) -> impl Iterator<Item = ClientId> + '_ {
         self.peers_by_ip
             .iter()
