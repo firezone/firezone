@@ -12,6 +12,7 @@ use messages::IngressMessages;
 use messages::Messages;
 use messages::ReplyMessages;
 use secrecy::{Secret, SecretString};
+use std::future::poll_fn;
 use std::time::Duration;
 use tokio::time::{Interval, MissedTickBehavior};
 use tokio::{runtime::Runtime, time::Instant};
@@ -199,7 +200,7 @@ where
                                 },
                             }
                         },
-                        event = control_plane.tunnel.next_event() => control_plane.handle_tunnel_event(event).await,
+                        event = poll_fn(|cx| control_plane.tunnel.poll_next_event(cx)) => control_plane.handle_tunnel_event(event).await,
                         _ = log_stats_interval.tick() => control_plane.stats_event().await,
                         _ = upload_logs_interval.tick() => control_plane.request_log_upload_url().await,
                         else => break

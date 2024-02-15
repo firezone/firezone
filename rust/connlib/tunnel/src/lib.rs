@@ -242,8 +242,8 @@ impl<CB> Tunnel<CB, ClientState, snownet::Client, GatewayId, PacketTransformClie
 where
     CB: Callbacks + 'static,
 {
-    pub async fn next_event(&mut self) -> Result<Event<GatewayId>> {
-        std::future::poll_fn(|cx| loop {
+    pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Result<Event<GatewayId>>> {
+        loop {
             let Some(device) = self.device.as_ref() else {
                 self.no_device_waker.register(cx.waker());
                 return Poll::Pending;
@@ -307,8 +307,7 @@ where
                 Event::StopPeer(id) => self.role_state.cleanup_connected_gateway(&id),
                 e => return Poll::Ready(Ok(e)),
             }
-        })
-        .await
+        }
     }
 }
 
