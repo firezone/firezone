@@ -357,11 +357,36 @@ async fn configure_network_manager(_dns_config: &[IpAddr]) -> Result<()> {
     ))
 }
 
-async fn configure_systemd_resolved(_dns_config: &[IpAddr]) -> Result<()> {
-    // TODO: Call `resolvectl` to configure DNS on `IFACE_NAME` here
-    Err(Error::Other(
-        "DNS control with `systemd-resolved` is not implemented yet",
-    ))
+async fn configure_systemd_resolved(dns_config: &[IpAddr]) -> Result<()> {
+    let mut cmd = tokio::process::Command::new("resolvectl");
+    cmd.arg("dns");
+    cmd.arg(IFACE_NAME);
+    dns_config.iter().for_each(|addr| {
+        cmd.arg(addr.to_string());
+    });
+    let status = cmd
+        .status()
+        .await
+        .expect("`resolvectl dns` should have run");
+    if !status.success() {
+        panic!("`resolvectl dns` should have succeeded");
+    }
+
+    let status = tokio::process::Command::new("resolvectl")
+        .arg("domain")
+        .arg(IFACE_NAME)
+        .arg("~.")
+        .status()
+        .await
+        .expect("`resolvectl domain` should have run");
+    if !status.success() {
+        panic!("`resolvectl domain` should have succeeded");
+    }
+
+    tracing::info!("Done with resolvectl.");
+    tracing::info!("DNS server {}", dns_config[0].to_string());
+
+    Ok(())
 }
 
 #[repr(C)]

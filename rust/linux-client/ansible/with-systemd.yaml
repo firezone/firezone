@@ -16,7 +16,6 @@
     become: yes
     ansible.builtin.apt:
        update_cache: yes
-       #upgrade: safe
        cache_valid_time: 3600
   - name: Install apt packages
     become: yes
