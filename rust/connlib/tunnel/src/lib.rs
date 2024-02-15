@@ -310,43 +310,41 @@ where
 {
     pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Result<Event<ClientId>>> {
         loop {
+            match self
+                .device
+                .as_mut()
+                .map(|d| d.poll_read(&mut self.read_buf, cx))
             {
-                match self
-                    .device
-                    .as_mut()
-                    .map(|d| d.poll_read(&mut self.read_buf, cx))
-                {
-                    Some(Poll::Ready(Ok(Some(packet)))) => {
-                        let dest = packet.destination();
+                Some(Poll::Ready(Ok(Some(packet)))) => {
+                    let dest = packet.destination();
 
-                        let Some(peer) = peer_by_ip(&self.role_state.peers_by_ip, dest) else {
-                            continue;
-                        };
-
-                        let Some(packet) = peer.transform(packet) else {
-                            continue;
-                        };
-
-                        if let Err(e) = self
-                            .connections_state
-                            .send(peer.conn_id, packet.as_immutable().into())
-                        {
-                            tracing::error!(to = %packet.destination(), peer_id = %peer.conn_id, "Failed to send packet: {e}");
-                        }
-
+                    let Some(peer) = peer_by_ip(&self.role_state.peers_by_ip, dest) else {
                         continue;
+                    };
+
+                    let Some(packet) = peer.transform(packet) else {
+                        continue;
+                    };
+
+                    if let Err(e) = self
+                        .connections_state
+                        .send(peer.conn_id, packet.as_immutable().into())
+                    {
+                        tracing::error!(to = %packet.destination(), peer_id = %peer.conn_id, "Failed to send packet: {e}");
                     }
-                    Some(Poll::Ready(Ok(None))) => {
-                        tracing::info!("Device stopped");
-                        self.device = None;
-                    }
-                    Some(Poll::Ready(Err(e))) => return Poll::Ready(Err(ConnlibError::Io(e))),
-                    Some(Poll::Pending) => {
-                        // device not ready for reading, moving on ..
-                    }
-                    None => {
-                        self.no_device_waker.register(cx.waker());
-                    }
+
+                    continue;
+                }
+                Some(Poll::Ready(Ok(None))) => {
+                    tracing::info!("Device stopped");
+                    self.device = None;
+                }
+                Some(Poll::Ready(Err(e))) => return Poll::Ready(Err(ConnlibError::Io(e))),
+                Some(Poll::Pending) => {
+                    // device not ready for reading, moving on ..
+                }
+                None => {
+                    self.no_device_waker.register(cx.waker());
                 }
             }
 
