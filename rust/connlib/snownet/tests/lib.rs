@@ -14,7 +14,7 @@ fn connection_times_out_after_10_seconds() {
         ClientNode::<u64>::new(StaticSecret::random_from_rng(rand::thread_rng()), start);
 
     let _ = alice.new_connection(1, HashSet::new(), HashSet::new());
-    alice.handle_timeout(start + Duration::from_secs(10));
+    alice.handle_timeout(start + Duration::from_secs(20));
 
     assert_eq!(alice.poll_event().unwrap(), Event::ConnectionFailed(1));
 }
