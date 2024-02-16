@@ -18,7 +18,7 @@ repos:
       - id: check-yaml
       - id: check-merge-conflict
       - id: end-of-file-fixer
-        exclude: ^website/public/images/
+        exclude: (^website/public/images/|^elixir/apps/web/priv/static/)
       - id: trailing-whitespace
         exclude: ^website/public/images/
       - id: check-merge-conflict
