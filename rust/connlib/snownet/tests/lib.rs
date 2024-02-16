@@ -2,6 +2,7 @@ use boringtun::x25519::StaticSecret;
 use snownet::{ClientNode, Event, ServerNode};
 use std::{
     collections::HashSet,
+    iter,
     net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4},
     time::{Duration, Instant},
 };
@@ -70,12 +71,9 @@ fn only_generate_candidate_event_after_answer() {
 
     alice.accept_answer(1, bob.public_key(), answer);
 
-    let mut events = Vec::new();
-    while let Some(event) = alice.poll_event() {
-        events.push(event);
-    }
+    let mut events = iter::from_fn(|| alice.poll_event());
 
-    assert!(events.into_iter().any(|ev| ev
+    assert!(events.any(|ev| ev
         == Event::SignalIceCandidate {
             connection: 1,
             candidate: Candidate::host(local_candidate, Protocol::Udp)
