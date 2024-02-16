@@ -50,6 +50,10 @@ phoenix-channel = { path = "phoenix-channel"}
 boringtun = { git = "https://github.com/cloudflare/boringtun", branch = "master" }
 str0m = { git = "https://github.com/algesten/str0m", branch = "main" }
 
+[patch."https://github.com/quinn-rs/quinn"]
+# waiting for https://github.com/quinn-rs/quinn/pull/1758
+quinn-udp = { git = "https://github.com/conectado/quinn", branch = "main" }
+
 [profile.release]
 strip = true
 
