@@ -128,8 +128,6 @@ services:
     sysctls:
       - net.ipv6.conf.all.disable_ipv6=0
     depends_on:
-      gateway:
-        condition: "service_healthy"
       api:
         condition: "service_healthy"
     networks:
