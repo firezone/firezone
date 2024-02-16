@@ -341,45 +341,43 @@ where
     }
 
     fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Event<TId>> {
-        loop {
-            if let Err(e) = ready!(self.sockets.poll_send_ready(cx)) {
-                tracing::warn!("Failed to poll sockets for readiness: {e}");
-            };
+        if let Err(e) = ready!(self.sockets.poll_send_ready(cx)) {
+            tracing::warn!("Failed to poll sockets for readiness: {e}");
+        };
 
-            while let Some(transmit) = self.node.poll_transmit() {
-                if let Err(e) = self.sockets.try_send(&transmit) {
-                    tracing::warn!(src = ?transmit.src, dst = %transmit.dst, "Failed to send UDP packet: {e}");
-                }
+        while let Some(transmit) = self.node.poll_transmit() {
+            if let Err(e) = self.sockets.try_send(&transmit) {
+                tracing::warn!(src = ?transmit.src, dst = %transmit.dst, "Failed to send UDP packet: {e}");
             }
-
-            match self.node.poll_event() {
-                Some(snownet::Event::SignalIceCandidate {
-                    connection,
-                    candidate,
-                }) => {
-                    return Poll::Ready(Event::SignalIceCandidate {
-                        conn_id: connection,
-                        candidate,
-                    });
-                }
-                Some(snownet::Event::ConnectionFailed(id)) => {
-                    self.peers_by_id.remove(&id);
-                    return Poll::Ready(Event::StopPeer(id));
-                }
-                _ => {}
-            }
-
-            if let Poll::Ready(instant) = self.connection_pool_timeout.poll_unpin(cx) {
-                self.node.handle_timeout(instant);
-                if let Some(timeout) = self.node.poll_timeout() {
-                    self.connection_pool_timeout = sleep_until(timeout).boxed();
-                }
-
-                continue;
-            }
-
-            return Poll::Pending;
         }
+
+        match self.node.poll_event() {
+            Some(snownet::Event::SignalIceCandidate {
+                connection,
+                candidate,
+            }) => {
+                return Poll::Ready(Event::SignalIceCandidate {
+                    conn_id: connection,
+                    candidate,
+                });
+            }
+            Some(snownet::Event::ConnectionFailed(id)) => {
+                self.peers_by_id.remove(&id);
+                return Poll::Ready(Event::StopPeer(id));
+            }
+            _ => {}
+        }
+
+        if let Poll::Ready(instant) = self.connection_pool_timeout.poll_unpin(cx) {
+            self.node.handle_timeout(instant);
+            if let Some(timeout) = self.node.poll_timeout() {
+                self.connection_pool_timeout = sleep_until(timeout).boxed();
+            }
+
+            cx.waker().wake_by_ref();
+        }
+
+        Poll::Pending
     }
 }
 
