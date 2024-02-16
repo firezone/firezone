@@ -13,7 +13,7 @@ rand = "0.8"
 secrecy = { workspace = true }
 str0m = { workspace = true }
 thiserror = "1"
-tracing = "0.1"
+tracing = { workspace = true }
 stun_codec = "0.3.4"
 bytecodec = "0.4.15"
 bytes = "1.4.0"
