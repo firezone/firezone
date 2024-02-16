@@ -2,38 +2,32 @@
 //!
 //! This is both the wireguard and ICE implementation that should work in tandem.
 //! [Tunnel] is the main entry-point for this crate.
-use boringtun::x25519::StaticSecret;
 
-use connlib_shared::{messages::ReuseConnection, CallbackErrorFacade, Callbacks, Error};
-use futures_util::future::BoxFuture;
-use futures_util::FutureExt;
+use boringtun::x25519::StaticSecret;
+use connlib_shared::{
+    messages::{ClientId, GatewayId, ResourceDescription, ReuseConnection},
+    CallbackErrorFacade, Callbacks, Error, Result,
+};
+use device_channel::Device;
+use futures_util::{future::BoxFuture, task::AtomicWaker, FutureExt};
 use ip_network_table::IpNetworkTable;
+use peer::{PacketTransform, PacketTransformClient, PacketTransformGateway, Peer, PeerStats};
 use pnet_packet::Packet;
 use snownet::{IpPacket, Node, Server};
-
-use peer::{PacketTransform, PacketTransformClient, PacketTransformGateway, Peer, PeerStats};
 use sockets::{Received, Sockets};
-
-use futures_util::task::AtomicWaker;
-use std::collections::HashMap;
-use std::{collections::HashSet, hash::Hash};
-use std::{fmt, net::IpAddr, sync::Arc};
 use std::{
+    collections::{HashMap, HashSet},
+    fmt,
+    hash::Hash,
+    net::IpAddr,
+    sync::Arc,
     task::{ready, Context, Poll},
     time::Instant,
-};
-
-use connlib_shared::{
-    messages::{GatewayId, ResourceDescription},
-    Result,
 };
 
 pub use client::ClientState;
 pub use control_protocol::{gateway::ResolvedResourceDescriptionDns, Request};
 pub use gateway::GatewayState;
-
-use connlib_shared::messages::ClientId;
-use device_channel::Device;
 
 mod client;
 mod control_protocol;
