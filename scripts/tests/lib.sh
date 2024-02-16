@@ -10,6 +10,6 @@ function remove_iptables_drop_rules() {
     sudo iptables -D FORWARD -s 172.28.0.105 -d 172.28.0.100 -j DROP
 }
 
-function client_ping_gateway() {
+function client_ping_resource() {
     docker compose exec -it client timeout 60 sh -c 'until ping -W 1 -c 10 172.20.0.100 &>/dev/null; do true; done'
 }

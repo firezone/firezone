@@ -74,8 +74,10 @@ pub enum Error {
     Decapsulate(boringtun::noise::errors::WireGuardError),
     #[error("Failed to encapsulate: {0:?}")]
     Encapsulate(boringtun::noise::errors::WireGuardError),
-    #[error("Unmatched packet")]
-    UnmatchedPacket,
+    #[error("Packet is a STUN message but no agent handled it; num_agents = {num_agents}")]
+    UnhandledStunMessage { num_agents: usize },
+    #[error("Packet was not accepted by any wireguard tunnel; num_tunnels = {num_tunnels}")]
+    UnhandledPacket { num_tunnels: usize },
     #[error("Not connected")]
     NotConnected,
     #[error("Invalid local address: {0}")]
@@ -226,6 +228,10 @@ where
                     return Ok(None);
                 }
             }
+
+            return Err(Error::UnhandledStunMessage {
+                num_agents: self.connections.len(),
+            });
         }
 
         for (id, conn) in self.connections.iter_established_mut() {
@@ -289,7 +295,9 @@ where
             };
         }
 
-        Err(Error::UnmatchedPacket)
+        Err(Error::UnhandledPacket {
+            num_tunnels: self.connections.iter_established_mut().count(),
+        })
     }
 
     /// Encapsulate an outgoing IP packet.
@@ -377,8 +385,10 @@ where
                         &mut self.pending_events,
                     );
                 }
-                CandidateEvent::Invalid(_) => {
-                    // TODO: Handle expired candidates. Invalidate on ICE agent? ICE restart?
+                CandidateEvent::Invalid(candidate) => {
+                    for (_, agent) in self.connections.agents_mut() {
+                        agent.invalidate_candidate(&candidate);
+                    }
                 }
             }
         }
@@ -440,7 +450,7 @@ where
                         if conn.peer_socket != Some(remote_socket) {
                             let is_first_connection = conn.peer_socket.is_none();
 
-                            tracing::debug!(old = ?conn.peer_socket, new = ?remote_socket, "Updating remote socket");
+                            tracing::info!(old = ?conn.peer_socket, new = ?remote_socket, "Updating remote socket");
                             conn.peer_socket = Some(remote_socket);
 
                             if is_first_connection {
@@ -454,6 +464,8 @@ where
         }
 
         for conn in failed_connections {
+            tracing::info!(id = %conn, "Connection failed (ICE timeout)");
+
             self.connections.established.remove(&conn);
             self.pending_events.push_back(Event::ConnectionFailed(conn));
         }
@@ -505,6 +517,8 @@ where
         }
 
         for conn in expired_connections {
+            tracing::info!(id = %conn, "Connection failed (wireguard tunnel expired)");
+
             self.connections.established.remove(&conn);
             self.pending_events.push_back(Event::ConnectionFailed(conn))
         }
@@ -529,11 +543,13 @@ where
             .initial
             .iter()
             .filter_map(|(id, conn)| {
-                (now.duration_since(conn.created_at) >= Duration::from_secs(10)).then_some(*id)
+                (now.duration_since(conn.created_at) >= Duration::from_secs(20)).then_some(*id)
             })
             .collect::<Vec<_>>();
 
         for conn in stale_connections {
+            tracing::info!(id = %conn, "Connection setup timed out (no answer received)");
+
             self.connections.initial.remove(&conn);
             self.pending_events.push_back(Event::ConnectionFailed(conn));
         }
@@ -798,14 +814,6 @@ where
 
     fn upsert_turn_servers(&mut self, servers: &HashSet<(SocketAddr, String, String, String)>) {
         for (server, username, password, realm) in servers {
-            if let Some(existing) = self.allocations.get_mut(server) {
-                if existing.uses_credentials(username, password, realm) {
-                    existing.refresh();
-
-                    continue;
-                }
-            }
-
             let Ok(username) = Username::new(username.to_owned()) else {
                 tracing::debug!(%username, "Invalid TURN username");
                 continue;
@@ -815,16 +823,17 @@ where
                 continue;
             };
 
-            let existing = self.allocations.insert(
+            if let Some(existing) = self.allocations.get_mut(server) {
+                existing.refresh(username, password, realm);
+                continue;
+            }
+
+            self.allocations.insert(
                 *server,
                 Allocation::new(*server, username, password.clone(), realm, self.last_now),
             );
 
-            if existing.is_some() {
-                tracing::info!(address = %server, "Replaced existing allocation because credentials to TURN server changed");
-            } else {
-                tracing::info!(address = %server, "Added new TURN server");
-            }
+            tracing::info!(address = %server, "Added new TURN server");
         }
     }
 
@@ -921,6 +930,10 @@ where
 
     fn iter_established_mut(&mut self) -> impl Iterator<Item = (TId, &mut Connection)> {
         self.established.iter_mut().map(|(id, conn)| (*id, conn))
+    }
+
+    fn len(&self) -> usize {
+        self.initial.len() + self.established.len()
     }
 }
 

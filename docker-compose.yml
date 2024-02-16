@@ -123,20 +123,12 @@ services:
       args:
         PACKAGE: firezone-linux-client
     image: us-east1-docker.pkg.dev/firezone-staging/firezone/client:${VERSION:-main}
-    dns:
-      - 100.100.111.1
     cap_add:
       - NET_ADMIN
     sysctls:
       - net.ipv6.conf.all.disable_ipv6=0
     depends_on:
       gateway:
-        condition: "service_healthy"
-      httpbin:
-        condition: "service_healthy"
-      test.httpbin.docker.local:
-        condition: "service_healthy"
-      iperf3:
         condition: "service_healthy"
       api:
         condition: "service_healthy"
@@ -187,7 +179,8 @@ services:
       resources:
         ipv4_address: 172.20.0.100
 
-  test.httpbin.docker.local:
+
+  dns.httpbin:
     image: kennethreitz/httpbin
     healthcheck:
       test: ["CMD-SHELL", "ps -C gunicorn"]

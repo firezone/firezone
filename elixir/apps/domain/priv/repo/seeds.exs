@@ -683,28 +683,15 @@ IO.puts("")
   Resources.create_resource(
     %{
       type: :dns,
-      name: "?.httpbin.docker.local",
-      address: "?.httpbin.docker.local",
-      address_description: "http://test.httpbin.docker.local/",
+      name: "?.httpbin",
+      address: "?.httpbin",
+      address_description: "http://httpbin/",
       connections: [%{gateway_group_id: gateway_group.id}],
       filters: [
         %{ports: ["80", "433"], protocol: :tcp},
         %{ports: ["53"], protocol: :udp},
         %{protocol: :icmp}
       ]
-    },
-    admin_subject
-  )
-
-{:ok, dns_docker_resource} =
-  Resources.create_resource(
-    %{
-      type: :dns,
-      name: "*.docker.local",
-      address: "*.docker.local",
-      address_description: "*.docker.local/",
-      connections: [%{gateway_group_id: gateway_group.id}],
-      filters: [%{protocol: :all}]
     },
     admin_subject
   )
@@ -718,7 +705,6 @@ IO.puts("  #{example_dns.address} - DNS - gateways: #{gateway_name}")
 IO.puts("  #{ip_resource.address} - IP - gateways: #{gateway_name}")
 IO.puts("  #{cidr_resource.address} - CIDR - gateways: #{gateway_name}")
 IO.puts("  #{dns_httpbin_resource.address} - DNS - gateways: #{gateway_name}")
-IO.puts("  #{dns_docker_resource.address} - DNS - gateways: #{gateway_name}")
 IO.puts("")
 
 {:ok, _} =
@@ -794,19 +780,9 @@ IO.puts("")
 {:ok, _} =
   Policies.create_policy(
     %{
-      name: "All Access To httpbin.docker.local",
+      name: "All Access To dns.httpbin",
       actor_group_id: everyone_group.id,
       resource_id: dns_httpbin_resource.id
-    },
-    admin_subject
-  )
-
-{:ok, _} =
-  Policies.create_policy(
-    %{
-      name: "All Access To httpbin.docker.local",
-      actor_group_id: everyone_group.id,
-      resource_id: dns_docker_resource.id
     },
     admin_subject
   )
