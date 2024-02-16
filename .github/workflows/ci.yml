@@ -185,11 +185,11 @@ jobs:
       fail-fast: false
       matrix:
         test: [
-          direct-ping-portal-restart,
-          relayed-ping-portal-restart,
-          direct-ping-portal-down,
-          relayed-ping-portal-down,
-          direct-ping-portal-relay-down,
+          direct-curl-portal-restart,
+          relayed-curl-portal-restart,
+          direct-curl-portal-down,
+          relayed-curl-portal-down,
+          direct-curl-portal-relay-down,
           dns-etc-resolvconf,
           dns-nm,
           systemd/dns-systemd-resolved,
