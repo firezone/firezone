@@ -1,6 +1,6 @@
 defmodule Domain.Billing do
   use Supervisor
-  alias Domain.{Auth, Accounts}
+  alias Domain.{Auth, Accounts, Clients}
   alias Domain.Billing.Stripe.APIClient
   alias Domain.Billing.Authorizer
   require Logger
@@ -38,9 +38,20 @@ defmodule Domain.Billing do
     false
   end
 
+  def seats_limit_exceeded?(%Accounts.Account{}, nil) do
+    false
+  end
+
   def seats_limit_exceeded?(%Accounts.Account{} = account, active_actors_count) do
-    Domain.Accounts.account_active?(account) and
+    Accounts.account_active?(account) and
       active_actors_count >= account.limits.monthly_active_actors_count
+  end
+
+  def can_create_actors?(%Accounts.Account{} = account) do
+    active_actors_count = Clients.count_1m_active_actors_for_account(account)
+
+    Accounts.account_active?(account) and
+      active_actors_count < account.limits.monthly_active_actors_count
   end
 
   def provision_account(%Accounts.Account{} = account) do

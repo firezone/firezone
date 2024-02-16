@@ -2,7 +2,7 @@ defmodule Domain.Actors do
   alias Domain.Actors.Membership
   alias Web.Clients
   alias Domain.{Repo, Validator, PubSub}
-  alias Domain.{Accounts, Auth, Tokens, Clients, Policies}
+  alias Domain.{Accounts, Auth, Tokens, Clients, Policies, Billing}
   alias Domain.Actors.{Authorizer, Actor, Group}
   require Ecto.Query
 
@@ -367,9 +367,13 @@ defmodule Domain.Actors do
 
   def create_actor(%Accounts.Account{} = account, attrs, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()),
-         :ok <- Accounts.ensure_has_access_to(subject, account) do
+         :ok <- Accounts.ensure_has_access_to(subject, account),
+         true <- Billing.can_create_actors?(account) do
       Actor.Changeset.create(account.id, attrs, subject)
       |> Repo.insert()
+    else
+      false -> {:error, :seats_limits_reached}
+      {:error, reason} -> {:error, reason}
     end
   end
 

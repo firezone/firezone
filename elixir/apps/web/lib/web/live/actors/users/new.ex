@@ -76,6 +76,22 @@ defmodule Web.Actors.Users.New do
 
       {:noreply, socket}
     else
+      {:error, :seats_limits_reached} ->
+        changeset =
+          attrs
+          |> Actors.new_actor()
+          |> Map.put(:action, :insert)
+
+        socket =
+          socket
+          |> put_flash(
+            :error,
+            "You have reached the maximum number of seats allowed by your subscription plan."
+          )
+          |> assign(form: to_form(changeset))
+
+        {:noreply, socket}
+
       {:error, changeset} ->
         {:noreply, assign(socket, form: to_form(changeset))}
     end
