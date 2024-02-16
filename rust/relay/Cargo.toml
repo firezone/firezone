@@ -14,7 +14,7 @@ hex = "0.4.3"
 hex-literal = "0.4.1"
 rand = "0.8.5"
 stun_codec = "0.3.4"
-tokio = { version = "1.33.0", features = ["macros", "rt-multi-thread", "net", "time"] }
+tokio = { version = "1.36.0", features = ["macros", "rt-multi-thread", "net", "time"] }
 tracing = { workspace = true, features = ["log"] }
 tracing-subscriber = { workspace = true, features = ["env-filter", "json", "fmt"] }
 tracing-stackdriver = { version = "0.8.0", features = ["opentelemetry"] }
