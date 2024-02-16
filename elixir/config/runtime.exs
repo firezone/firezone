@@ -31,8 +31,6 @@ if config_env() == :prod do
     key_base: compile_config!(:tokens_key_base),
     salt: compile_config!(:tokens_salt)
 
-  config :domain, Domain.Clients, upstream_dns: compile_config!(:clients_upstream_dns)
-
   config :domain, Domain.Gateways,
     gateway_ipv4_masquerade: compile_config!(:gateway_ipv4_masquerade),
     gateway_ipv6_masquerade: compile_config!(:gateway_ipv6_masquerade)
