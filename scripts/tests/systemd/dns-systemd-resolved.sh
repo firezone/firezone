@@ -14,7 +14,7 @@ sudo setcap cap_net_admin+eip "/usr/bin/$BINARY_NAME"
 sudo cp scripts/tests/systemd/firezone-client.service /etc/systemd/system/
 systemd-analyze security firezone-client
 
-HTTPBIN=test.httpbin.docker.local
+HTTPBIN=dns.httpbin
 
 # I'm assuming the docker iface name is relatively constant
 DOCKER_IFACE="docker0"
