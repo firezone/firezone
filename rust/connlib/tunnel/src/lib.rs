@@ -48,7 +48,7 @@ use connlib_shared::{
 
 pub use client::ClientState;
 use connlib_shared::error::ConnlibError;
-pub use control_protocol::Request;
+pub use control_protocol::{gateway::ResolvedResourceDescriptionDns, Request};
 pub use gateway::GatewayState;
 
 use crate::ip_packet::MutableIpPacket;

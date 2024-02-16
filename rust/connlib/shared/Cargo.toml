@@ -25,7 +25,7 @@ rand_core = { version = "0.6.4", default-features = false, features = ["std"] }
 serde = { version = "1.0", default-features = false, features = ["derive", "std"] }
 serde_json = { version = "1.0", default-features = false, features = ["std"] }
 thiserror = { version = "1.0", default-features = false }
-tokio = { version = "1.33", default-features = false, features = ["rt", "rt-multi-thread"]}
+tokio = { version = "1.36", default-features = false, features = ["rt", "rt-multi-thread"]}
 tokio-stream = { version = "0.1", features = ["time"] }
 tokio-tungstenite = { version = "0.21", default-features = false, features = ["connect", "handshake", "rustls-tls-webpki-roots"] }
 tracing = { workspace = true }

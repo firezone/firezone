@@ -2017,11 +2017,14 @@ dependencies = [
  "chrono",
  "clap",
  "connlib-shared",
+ "dns-lookup",
  "domain",
  "firezone-cli-utils",
  "firezone-tunnel",
  "futures",
  "futures-bounded",
+ "ip_network",
+ "libc",
  "phoenix-channel",
  "secrecy",
  "serde",
@@ -2107,7 +2110,6 @@ dependencies = [
  "bytes",
  "chrono",
  "connlib-shared",
- "dns-lookup",
  "domain",
  "futures",
  "futures-bounded",
@@ -2125,6 +2127,7 @@ dependencies = [
  "rand_core 0.6.4",
  "resolv-conf",
  "rtnetlink",
+ "sd-notify",
  "secrecy",
  "serde",
  "serde_json",
@@ -5654,6 +5657,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "sd-notify"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "621e3680f3e07db4c9c2c3fb07c6223ab2fab2e54bd3c04c3ae037990f428c32"
+
+[[package]]
 name = "sdp"
 version = "0.6.0"
 source = "git+https://github.com/firezone/webrtc?branch=expose-new-endpoint#4918ae812ab7e45b8ab000efbc316b5850290ddb"
@@ -6840,9 +6849,9 @@ checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
 
 [[package]]
 name = "tokio"
-version = "1.35.1"
+version = "1.36.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c89b4efa943be685f629b149f53829423f8f5531ea21249408e8e2f8671ec104"
+checksum = "61285f6515fa018fb2d1e46eb21223fff441ee8db5d0f1435e8ab4f5cdb80931"
 dependencies = [
  "backtrace",
  "bytes",
