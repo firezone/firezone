@@ -160,6 +160,15 @@ where
                 _ => (),
             }
 
+            match self.connections_state.poll_sockets(cx) {
+                Poll::Ready(Some(packet)) => {
+                    device.write(packet)?;
+                    continue;
+                }
+                Poll::Ready(None) => continue,
+                Poll::Pending => {}
+            }
+
             ready!(self.connections_state.sockets.poll_send_ready(cx))?; // Ensure socket is ready before we read from device.
 
             match device.poll_read(&mut self.read_buf, cx) {
@@ -182,15 +191,6 @@ where
                 Poll::Pending => {
                     // device not ready for reading, moving on ..
                 }
-            }
-
-            match self.connections_state.poll_sockets(cx) {
-                Poll::Ready(Some(packet)) => {
-                    device.write(packet)?;
-                    continue;
-                }
-                Poll::Ready(None) => continue,
-                Poll::Pending => {}
             }
 
             return Poll::Pending;
