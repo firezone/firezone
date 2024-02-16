@@ -3,6 +3,11 @@ defmodule Domain.Accounts do
   alias Domain.Auth
   alias Domain.Accounts.{Account, Features, Authorizer}
 
+  def list_active_accounts do
+    Account.Query.not_disabled()
+    |> Repo.list()
+  end
+
   def list_accounts_by_ids(ids) do
     if Enum.all?(ids, &Validator.valid_uuid?/1) do
       Account.Query.by_id({:in, ids})

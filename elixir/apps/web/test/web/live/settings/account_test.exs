@@ -74,23 +74,15 @@ defmodule Web.Live.Settings.AccountTest do
     assert rows["account slug"] =~ account.slug
   end
 
-  test "renders error when seats limit is exceeded", %{
+  test "renders error when limit is exceeded", %{
     account: account,
     identity: identity,
     conn: conn
   } do
     account =
       Fixtures.Accounts.update_account(account, %{
-        limits: %{monthly_active_actors_count: 0}
+        warning: "You have reached your monthly active actors limit."
       })
-
-    actor = Fixtures.Actors.create_actor(account: account, type: :account_admin_user)
-
-    Fixtures.Clients.create_client(
-      account: account,
-      actor: actor,
-      last_seen_at: DateTime.utc_now()
-    )
 
     {:ok, lv, _html} =
       conn
@@ -99,7 +91,7 @@ defmodule Web.Live.Settings.AccountTest do
 
     html = lv |> render()
     assert html =~ "You have reached your monthly active actors limit."
-    assert html =~ "upgrade your plan"
+    assert html =~ "check your billing information"
   end
 
   test "renders error when account is disabled", %{

@@ -30,6 +30,11 @@ account =
         subscription_id: "sub_1OkGm2ADeNU9NGxvbrCCw6m3",
         product_name: "Enterprise"
       }
+    },
+    limits: %{
+      monthly_active_actors_count: 10,
+      sites_count: 3,
+      account_admin_users_count: 5
     }
   )
 

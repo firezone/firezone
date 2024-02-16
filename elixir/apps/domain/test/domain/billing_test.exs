@@ -183,14 +183,17 @@ defmodule Domain.BillingTest do
       |> Stripe.mock_fetch_product_endpoint("prod_Na6dGcTsmU0I4R", %{
         metadata: %{
           "multi_site_resources" => "false",
-          "self_hosted_relays" => "true"
+          "self_hosted_relays" => "true",
+          "monthly_active_actors_count" => "15",
+          "sites_count" => 1
         }
       })
 
       subscription_metadata = %{
         "idp_sync" => "true",
         "multi_site_resources" => "true",
-        "traffic_filters" => "false"
+        "traffic_filters" => "false",
+        "sites_count" => 5
       }
 
       quantity = 13
@@ -210,7 +213,8 @@ defmodule Domain.BillingTest do
       assert account.metadata.stripe.product_name == "Enterprise"
 
       assert account.limits == %Domain.Accounts.Limits{
-               monthly_active_actors_count: 13
+               monthly_active_actors_count: 15,
+               sites_count: 5
              }
 
       assert account.features == %Domain.Accounts.Features{

@@ -296,12 +296,6 @@ defmodule Web.Auth do
     conn
   end
 
-  # We do not want to fetch it for initial rendering,
-  # it will instead set once websocket is connected via `mount_account_seats_usage`.
-  def fetch_account_seats_usage(%Plug.Conn{} = conn, _opts) do
-    Plug.Conn.assign(conn, :active_actors_count, nil)
-  end
-
   @doc """
   Fetches the session token from the session and assigns the subject to the connection.
   """

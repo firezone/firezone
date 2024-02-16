@@ -1,8 +1,8 @@
 defmodule Domain.Billing do
   use Supervisor
   alias Domain.{Auth, Accounts, Clients}
+  alias Domain.Billing.{Authorizer, Jobs}
   alias Domain.Billing.Stripe.APIClient
-  alias Domain.Billing.Authorizer
   require Logger
 
   def start_link(opts) do
@@ -11,7 +11,8 @@ defmodule Domain.Billing do
 
   def init(_opts) do
     children = [
-      APIClient
+      APIClient,
+      {Domain.Jobs, Jobs}
     ]
 
     if enabled?() do
@@ -38,13 +39,16 @@ defmodule Domain.Billing do
     false
   end
 
-  def seats_limit_exceeded?(%Accounts.Account{}, nil) do
-    false
+  def seats_limit_exceeded?(%Accounts.Account{} = account, active_actors_count) do
+    active_actors_count > account.limits.monthly_active_actors_count
   end
 
-  def seats_limit_exceeded?(%Accounts.Account{} = account, active_actors_count) do
-    Accounts.account_active?(account) and
-      active_actors_count >= account.limits.monthly_active_actors_count
+  def sites_limit_exceeded?(%Accounts.Account{} = account, sites_count) do
+    sites_count > account.limits.sites_count
+  end
+
+  def admins_limit_exceeded?(%Accounts.Account{} = account, account_admins_count) do
+    account_admins_count > account.limits.account_admin_users_count
   end
 
   def can_create_actors?(%Accounts.Account{} = account) do
@@ -285,6 +289,8 @@ defmodule Domain.Billing do
   end
 
   defp account_update_attrs(quantity, product_metadata, subscription_metadata) do
+    limit_fields = Accounts.Limits.__schema__(:fields) |> Enum.map(&to_string/1)
+
     features_and_limits =
       Map.merge(product_metadata, subscription_metadata)
       |> Enum.flat_map(fn
@@ -294,22 +300,30 @@ defmodule Domain.Billing do
         {feature, "false"} ->
           [{feature, false}]
 
-        {"monthly_active_actors_count", count} ->
-          [{"monthly_active_actors_count", String.to_integer(count)}]
-
-        {_key, _value} ->
-          []
+        {key, value} ->
+          if key in limit_fields do
+            [{key, maybe_to_integer(value)}]
+          else
+            []
+          end
       end)
       |> Enum.into(%{})
 
-    {monthly_active_actors_count, features} =
+    {monthly_active_actors_count, features_and_limits} =
       Map.pop(features_and_limits, "monthly_active_actors_count", quantity)
+
+    {limits, features} = Map.split(features_and_limits, limit_fields)
+
+    limits = Map.merge(limits, %{"monthly_active_actors_count" => monthly_active_actors_count})
 
     %{
       features: features,
-      limits: %{monthly_active_actors_count: monthly_active_actors_count}
+      limits: limits
     }
   end
+
+  defp maybe_to_integer(number) when is_number(number), do: number
+  defp maybe_to_integer(binary) when is_binary(binary), do: String.to_integer(binary)
 
   defp fetch_config!(key) do
     Domain.Config.fetch_env!(:domain, __MODULE__)

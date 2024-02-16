@@ -16,7 +16,6 @@ defmodule Web.Router do
 
   pipeline :account do
     plug :fetch_account
-    plug :fetch_account_seats_usage
     plug :fetch_subject
   end
 

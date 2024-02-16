@@ -14,7 +14,9 @@ defmodule Web.Live.Settings.BillingTest do
           }
         },
         limits: %{
-          monthly_active_actors_count: 100
+          monthly_active_actors_count: 100,
+          sites_count: 10,
+          account_admin_users_count: 2
         }
       )
 
@@ -70,7 +72,9 @@ defmodule Web.Live.Settings.BillingTest do
       |> vertical_table_to_map()
 
     assert rows["current plan"] =~ account.metadata.stripe.product_name
-    assert rows["seats"] == "0 used / 100 purchased"
+    assert rows["seats"] =~ "0 used / 100 allowed"
+    assert rows["sites"] =~ "0 used / 10 allowed"
+    assert rows["admins"] =~ "1 used / 2 allowed"
 
     html = element(lv, "button[phx-click='redirect_to_billing_portal']") |> render_click()
     assert html =~ "Billing portal is temporarily unavailable, please try again later."
@@ -98,40 +102,24 @@ defmodule Web.Live.Settings.BillingTest do
     assert to =~ "https://billing.stripe.com/p/session"
   end
 
-  test "renders error when seats limit is exceeded", %{
+  test "renders error when limit is exceeded", %{
     account: account,
     identity: identity,
     conn: conn
   } do
     account =
       Fixtures.Accounts.update_account(account, %{
-        limits: %{monthly_active_actors_count: 0}
+        warning: "You have reached your monthly active actors limit."
       })
-
-    actor = Fixtures.Actors.create_actor(account: account, type: :account_admin_user)
-
-    Fixtures.Clients.create_client(
-      account: account,
-      actor: actor,
-      last_seen_at: DateTime.utc_now()
-    )
 
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
       |> live(~p"/#{account}/settings/billing")
 
-    rows =
-      lv
-      |> element("#billing")
-      |> render()
-      |> vertical_table_to_map()
-
-    assert rows["seats"] == "1 used / 0 purchased"
-
     html = lv |> render()
     assert html =~ "You have reached your monthly active actors limit."
-    assert html =~ "upgrade your plan"
+    assert html =~ "check your billing information"
   end
 
   test "renders error when account is disabled", %{

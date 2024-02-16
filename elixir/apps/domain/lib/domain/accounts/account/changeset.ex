@@ -27,7 +27,14 @@ defmodule Domain.Accounts.Account.Changeset do
 
   def update(%Account{} = account, attrs) do
     account
-    |> cast(attrs, [:name, :disabled_reason, :disabled_at])
+    |> cast(attrs, [
+      :name,
+      :disabled_reason,
+      :disabled_at,
+      :warning,
+      :warning_delivery_attempts,
+      :warning_last_sent_at_at
+    ])
     |> changeset()
   end
 

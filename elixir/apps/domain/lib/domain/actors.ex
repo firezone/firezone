@@ -301,6 +301,12 @@ defmodule Domain.Actors do
 
   # Actors
 
+  def count_account_admin_users_for_account(%Accounts.Account{} = account) do
+    Actor.Query.by_account_id(account.id)
+    |> Actor.Query.by_type(:account_admin_user)
+    |> Repo.aggregate(:count)
+  end
+
   def fetch_actors_count_by_type(type, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
       Actor.Query.by_type(type)

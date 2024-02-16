@@ -1,13 +1,24 @@
 defmodule Web.Settings.Billing do
   use Web, :live_view
-  alias Domain.{Accounts, Billing}
+  alias Domain.{Accounts, Actors, Clients, Gateways, Billing}
   require Logger
 
   def mount(_params, _session, socket) do
     unless Billing.account_provisioned?(socket.assigns.account),
       do: raise(Web.LiveErrors.NotFoundError)
 
-    socket = assign(socket, error: nil, page_title: "Billing")
+    admins_count = Actors.count_account_admin_users_for_account(socket.assigns.account)
+    active_actors_count = Clients.count_1m_active_actors_for_account(socket.assigns.account)
+    sites_count = Gateways.count_groups_for_account(socket.assigns.account)
+
+    socket =
+      assign(socket,
+        error: nil,
+        page_title: "Billing",
+        admins_count: admins_count,
+        active_actors_count: active_actors_count,
+        sites_count: sites_count
+      )
 
     {:ok, socket}
   end
@@ -52,16 +63,50 @@ defmodule Web.Settings.Billing do
               <%= @account.metadata.stripe.product_name %>
             </:value>
           </.vertical_table_row>
+
           <.vertical_table_row :if={not is_nil(@account.limits.monthly_active_actors_count)}>
-            <:label>Seats</:label>
+            <:label>
+              <p>Seats</p>
+            </:label>
             <:value>
               <span class={[
                 not is_nil(@active_actors_count) and
                   @active_actors_count > @account.limits.monthly_active_actors_count && "text-red-500"
               ]}>
-                <%= @active_actors_count || "?" %> used
+                <%= @active_actors_count %> used
               </span>
-              / <%= @account.limits.monthly_active_actors_count %> purchased
+              / <%= @account.limits.monthly_active_actors_count %> allowed
+              <p class="text-xs">actors with at least one device signed-in within last month</p>
+            </:value>
+          </.vertical_table_row>
+
+          <.vertical_table_row :if={not is_nil(@account.limits.account_admin_users_count)}>
+            <:label>
+              <p>Admins</p>
+            </:label>
+            <:value>
+              <span class={[
+                not is_nil(@admins_count) and
+                  @admins_count > @account.limits.account_admin_users_count && "text-red-500"
+              ]}>
+                <%= @admins_count %> used
+              </span>
+              / <%= @account.limits.account_admin_users_count %> allowed
+            </:value>
+          </.vertical_table_row>
+
+          <.vertical_table_row :if={not is_nil(@account.limits.sites_count)}>
+            <:label>
+              <p>Sites</p>
+            </:label>
+            <:value>
+              <span class={[
+                not is_nil(@sites_count) and
+                  @sites_count > @account.limits.sites_count && "text-red-500"
+              ]}>
+                <%= @sites_count %> used
+              </span>
+              / <%= @account.limits.sites_count %> allowed
             </:value>
           </.vertical_table_row>
         </.vertical_table>

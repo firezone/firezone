@@ -16,6 +16,11 @@ defmodule Domain.Gateways do
     Supervisor.init(children, strategy: :one_for_one)
   end
 
+  def count_groups_for_account(%Accounts.Account{} = account) do
+    Group.Query.by_account_id(account.id)
+    |> Repo.aggregate(:count)
+  end
+
   def fetch_group_by_id(id) do
     with true <- Validator.valid_uuid?(id) do
       Group.Query.by_id(id)

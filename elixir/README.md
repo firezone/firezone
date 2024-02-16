@@ -234,6 +234,18 @@ account_id = "c89bcc8c-9392-4dae-a40d-888aef6d28e0"
 }
 ```
 
+### Acceptance tests
+
+You can disable headless mode for the browser by adding
+
+```elixir
+
+  @tag debug: true
+  feature ....
+```
+
+to the acceptance test that you are running.
+
 ## Connecting to a staging or production instances
 
 We use Google Cloud Platform for all our staging and production infrastructure.

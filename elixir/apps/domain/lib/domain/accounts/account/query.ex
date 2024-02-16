@@ -10,6 +10,10 @@ defmodule Domain.Accounts.Account.Query do
     where(queryable, [account: account], is_nil(account.deleted_at))
   end
 
+  def not_disabled(queryable \\ not_deleted()) do
+    where(queryable, [account: account], is_nil(account.disabled_at))
+  end
+
   def by_id(queryable \\ not_deleted(), id)
 
   def by_id(queryable, {:in, ids}) do
