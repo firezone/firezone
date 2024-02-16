@@ -2,9 +2,11 @@ use boringtun::x25519::StaticSecret;
 use snownet::{ClientNode, Event, ServerNode};
 use std::{
     collections::HashSet,
-    net::{Ipv4Addr, SocketAddr, SocketAddrV4},
+    iter,
+    net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4},
     time::{Duration, Instant},
 };
+use str0m::{net::Protocol, Candidate};
 
 #[test]
 fn connection_times_out_after_10_seconds() {
@@ -34,6 +36,44 @@ fn answer_after_stale_connection_does_not_panic() {
     alice.handle_timeout(start + Duration::from_secs(10));
 
     alice.accept_answer(1, bob.public_key(), answer);
+}
+
+#[test]
+fn only_generate_candidate_event_after_answer() {
+    let local_candidate = SocketAddr::new(IpAddr::from(Ipv4Addr::LOCALHOST), 10000);
+
+    let mut alice = ClientNode::<u64>::new(
+        StaticSecret::random_from_rng(rand::thread_rng()),
+        Instant::now(),
+    );
+
+    alice.add_local_host_candidate(local_candidate).unwrap();
+
+    let mut bob = ServerNode::<u64>::new(
+        StaticSecret::random_from_rng(rand::thread_rng()),
+        Instant::now(),
+    );
+
+    let offer = alice.new_connection(1, HashSet::new(), HashSet::new());
+
+    assert_eq!(
+        alice.poll_event(),
+        None,
+        "no event to be emitted before accepting the answer"
+    );
+
+    let answer =
+        bob.accept_connection(1, offer, alice.public_key(), HashSet::new(), HashSet::new());
+
+    alice.accept_answer(1, bob.public_key(), answer);
+
+    assert!(iter::from_fn(|| alice.poll_event()).any(|ev| ev
+        == Event::SignalIceCandidate {
+            connection: 1,
+            candidate: Candidate::host(local_candidate, Protocol::Udp)
+                .unwrap()
+                .to_sdp_string()
+        }));
 }
 
 #[test]
