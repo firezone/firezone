@@ -206,12 +206,15 @@ where
     /// -  `control_signaler`: this is used to send SDP from the tunnel to the control plane.
     #[tracing::instrument(level = "trace", skip(private_key, callbacks))]
     pub fn new(private_key: StaticSecret, callbacks: CB) -> Result<Self> {
+        let callbacks = CallbackErrorFacade(callbacks);
+        let connections_state = ConnectionState::new(private_key, &callbacks)?;
+
         Ok(Self {
             device: Default::default(),
-            callbacks: CallbackErrorFacade(callbacks),
+            callbacks,
             role_state: Default::default(),
             no_device_waker: Default::default(),
-            connections_state: ConnectionState::new(private_key)?,
+            connections_state,
             read_buf: [0u8; MAX_UDP_SIZE],
         })
     }
@@ -242,13 +245,16 @@ where
     TId: Eq + Hash + Copy + fmt::Display,
     TTransform: PacketTransform,
 {
-    fn new(private_key: StaticSecret) -> Result<Self> {
+    fn new(
+        private_key: StaticSecret,
+        callbacks: &CallbackErrorFacade<impl Callbacks>,
+    ) -> Result<Self> {
         Ok(ConnectionState {
             node: Node::new(private_key, std::time::Instant::now()),
             write_buf: Box::new([0; MAX_UDP_SIZE]),
             peers_by_id: HashMap::new(),
             connection_pool_timeout: sleep_until(std::time::Instant::now()).boxed(),
-            sockets: Sockets::new()?,
+            sockets: Sockets::new(callbacks)?,
         })
     }
 
