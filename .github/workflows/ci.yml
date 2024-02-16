@@ -187,6 +187,7 @@ jobs:
         test: [
           direct-ping-portal-restart,
           relayed-ping-portal-restart,
+          relayed-ping-relay-restart,
           direct-ping-portal-down,
           relayed-ping-portal-down,
           direct-ping-portal-relay-down,
