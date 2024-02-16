@@ -1,6 +1,7 @@
 import Alert from "@/components/DocsAlert";
 import PlanBadge from "@/components/PlanBadge";
 import Image from "next/image";
+import Link from "next/link";
 
 <div className="flex justify-between items-center">
 
@@ -57,12 +58,17 @@ in your Google Cloud account and fill in the following fields:
 
 Click **CREATE** after you've filled in the fields above.
 
-<Image
-  src="/images/kb/authenticate/google/gcp-create-project.png"
-  alt="Create project in GCP"
-  width={1200}
-  height={1200}
-/>
+<Link
+  href="/images/kb/authenticate/google/gcp-create-project.png"
+  target="_blank"
+>
+  <Image
+    src="/images/kb/authenticate/google/gcp-create-project.png"
+    alt="Create project in GCP"
+    width={1200}
+    height={1200}
+  />
+</Link>
 
 ### Step 2: Enable the Admin SDK API
 
@@ -72,12 +78,17 @@ to enable the Admin SDK API for the project you just created in Step 1.
 **Important**: Ensure the **Firezone Connector** project you created in Step 1
 is selected before clicking the "ENABLE" button.
 
-<Image
-  src="/images/kb/authenticate/google/gcp-enable-admin-api.png"
-  alt="Enable Admin SDK API"
-  width={1200}
-  height={1200}
-/>
+<Link
+  href="/images/kb/authenticate/google/gcp-enable-admin-api.png"
+  target="_blank"
+>
+  <Image
+    src="/images/kb/authenticate/google/gcp-enable-admin-api.png"
+    alt="Enable Admin SDK API"
+    width={1200}
+    height={1200}
+  />
+</Link>
 
 ### Step 3: Configure the OAuth consent screen
 
@@ -87,12 +98,17 @@ configure the OAuth consent screen for the project you created in Step 1.
 **Important**: Select "Internal" for User type. Select "External" may allow
 external users to login to your Firezone account.
 
-<Image
-  src="/images/kb/authenticate/google/gcp-oauth-consent-screen.png"
-  alt="Enable Admin SDK API"
-  width={1200}
-  height={1200}
-/>
+<Link
+  href="/images/kb/authenticate/google/gcp-oauth-consent-screen.png"
+  target="_blank"
+>
+  <Image
+    src="/images/kb/authenticate/google/gcp-oauth-consent-screen.png"
+    alt="Enable Admin SDK API"
+    width={1200}
+    height={1200}
+  />
+</Link>
 
 Click **CREATE**.
 
@@ -110,12 +126,17 @@ On the next page, enter the following information:
 - **Developer contact information**: Enter the same email you used above, e.g.
   `it-support@company.com`
 
-<Image
-  src="/images/kb/authenticate/google/gcp-oauth-screen-2.png"
-  alt="Add app info"
-  width={1200}
-  height={1200}
-/>
+<Link
+  href="/images/kb/authenticate/google/gcp-oauth-screen-2.png"
+  target="_blank"
+>
+  <Image
+    src="/images/kb/authenticate/google/gcp-oauth-screen-2.png"
+    alt="Add app info"
+    width={1200}
+    height={1200}
+  />
+</Link>
 
 Click **SAVE AND CONTINUE**.
 
@@ -148,38 +169,58 @@ https://www.googleapis.com/auth/admin.directory.user.readonly
 Click **ADD OR REMOVE SCOPES** and copy-paste the above scopes into the
 **Manually add scopes** field.
 
-<Image
-  src="/images/kb/authenticate/google/gcp-update-scopes.png"
-  alt="Update scopes"
-  width={1200}
-  height={1200}
-/>
+<Link
+  href="/images/kb/authenticate/google/gcp-update-scopes.png"
+  target="_blank"
+>
+  <Image
+    src="/images/kb/authenticate/google/gcp-update-scopes.png"
+    alt="Update scopes"
+    width={1200}
+    height={1200}
+  />
+</Link>
 
 Then click **UPDATE** to make sure they're applied.
 
-<Image
-  src="/images/kb/authenticate/google/gcp-update-scopes-2.png"
-  alt="Update scopes"
-  width={1200}
-  height={1200}
-/>
+<Link
+  href="/images/kb/authenticate/google/gcp-update-scopes-2.png"
+  target="_blank"
+>
+  <Image
+    src="/images/kb/authenticate/google/gcp-update-scopes-2.png"
+    alt="Update scopes"
+    width={1200}
+    height={1200}
+  />
+</Link>
 
-<Image
-  src="/images/kb/authenticate/google/gcp-scopes-continue.png"
-  alt="Scopes continue"
-  width={1200}
-  height={1200}
-/>
+<Link
+  href="/images/kb/authenticate/google/gcp-scopes-continue.png"
+  target="_blank"
+>
+  <Image
+    src="/images/kb/authenticate/google/gcp-scopes-continue.png"
+    alt="Scopes continue"
+    width={1200}
+    height={1200}
+  />
+</Link>
 
 Ensure your Scopes configuration looks like the screenshot above, then click
 **SAVE AND CONTINUE**.
 
-<Image
-  src="/images/kb/authenticate/google/gcp-oauth-summary.png"
-  alt="Scopes continue"
-  width={1200}
-  height={1200}
-/>
+<Link
+  href="/images/kb/authenticate/google/gcp-oauth-summary.png"
+  target="_blank"
+>
+  <Image
+    src="/images/kb/authenticate/google/gcp-oauth-summary.png"
+    alt="Scopes continue"
+    width={1200}
+    height={1200}
+  />
+</Link>
 
 Your OAuth app summary should look similar to the screenshot above.
 
@@ -193,12 +234,17 @@ Head to
 click **CREATE CREDENTIALS** to create new OAuth credentials. Be sure to select
 "OAuth client ID" in the dropdown menu.
 
-<Image
-  src="/images/kb/authenticate/google/gcp-create-credentials.png"
-  alt="Create OAuth credentials"
-  width={1200}
-  height={1200}
-/>
+<Link
+  href="/images/kb/authenticate/google/gcp-create-credentials.png"
+  target="_blank"
+>
+  <Image
+    src="/images/kb/authenticate/google/gcp-create-credentials.png"
+    alt="Create OAuth credentials"
+    width={1200}
+    height={1200}
+  />
+</Link>
 
 On the next screen, select **Web application**, then use the following
 information for the remain fields:
@@ -209,21 +255,28 @@ information for the remain fields:
   Firezone admin dashboard
   (`Settings -> Identity Providers -> Add Identity Provider -> Google Workspace -> Configure`).
 
-<Image
-  src="/images/kb/authenticate/google/gcp-creds-web.png"
-  alt="Web application credentials"
-  width={1200}
-  height={1200}
-/>
+<Link href="/images/kb/authenticate/google/gcp-creds-web.png" target="_blank">
+  <Image
+    src="/images/kb/authenticate/google/gcp-creds-web.png"
+    alt="Web application credentials"
+    width={1200}
+    height={1200}
+  />
+</Link>
 
 Click **CREATE**.
 
-<Image
-  src="/images/kb/authenticate/google/gcp-oauth-credentials.png"
-  alt="Web application credentials"
-  width={1200}
-  height={1200}
-/>
+<Link
+  href="/images/kb/authenticate/google/gcp-oauth-credentials.png"
+  target="_blank"
+>
+  <Image
+    src="/images/kb/authenticate/google/gcp-oauth-credentials.png"
+    alt="Web application credentials"
+    width={1200}
+    height={1200}
+  />
+</Link>
 
 **Important**: Make sure to save the `Client ID` and `Client secret` fields in a
 safe place as they won't be shown again.
@@ -237,13 +290,15 @@ Go back to the Firezone admin dashboard, and enter the `Client ID` and
 Finally, click **Connect Identity Provider** and click **Allow** when Google
 prompts you.
 
-<Image
-  src="/images/kb/authenticate/google/gcp-allow.png"
-  alt="Allow admin access"
-  width={400}
-  height={400}
-  className="mx-auto"
-/>
+<Link href="/images/kb/authenticate/google/gcp-allow.png" target="_blank">
+  <Image
+    src="/images/kb/authenticate/google/gcp-allow.png"
+    alt="Allow admin access"
+    width={400}
+    height={400}
+    className="mx-auto"
+  />
+</Link>
 
 If you get successfully redirected back to your Firezone admin dashboard, you're
 done! Your Google Workspace connector is now successfully configured. Users in

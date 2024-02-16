@@ -2,7 +2,7 @@ import _Page from "./_page";
 import { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Google Workspace Authentication • Firezone Docs",
+  title: "Microsoft Entra ID Authentication • Firezone Docs",
   description: "Firezone Documentation",
 };
 
