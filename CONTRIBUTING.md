@@ -97,8 +97,6 @@ docker compose exec -it client /bin/sh
 To start the local Firezone cluster, follow these steps:
 
 ```
-docker compose build
-docker compose up -d postgres
 docker compose run --rm elixir /bin/sh -c "cd apps/domain && mix ecto.create && mix ecto.migrate && mix ecto.seed"
 
 # Before moving to the next step, copy the Firezone account UUID from the seed step
@@ -106,7 +104,7 @@ docker compose run --rm elixir /bin/sh -c "cd apps/domain && mix ecto.create && 
     Created accounts:
     c89bcc8c-9392-4dae-a40d-888aef6d28e0: Firezone Account
 
-docker compose up -d api web vault gateway client relay
+docker compose up -d
 ```
 
 You should now be able to connect to `http://localhost:8080/<account-uuid-here>`
