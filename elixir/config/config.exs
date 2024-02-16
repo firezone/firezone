@@ -53,6 +53,16 @@ config :domain, Domain.Auth.Adapters.MicrosoftEntra.APIClient,
 
 config :domain, Domain.Auth.Adapters.Okta.APIClient, finch_transport_opts: []
 
+config :domain, Domain.Billing.Stripe.APIClient,
+  endpoint: "https://api.stripe.com",
+  finch_transport_opts: []
+
+config :domain, Domain.Billing,
+  enabled: true,
+  publishable_key: "pk_test_1111",
+  secret_key: "sk_test_1111",
+  webhook_signing_secret: "whsec_test_1111"
+
 config :domain, platform_adapter: nil
 
 config :domain, Domain.GoogleCloudPlatform,

@@ -342,6 +342,12 @@ defmodule Domain.Actors do
     |> Repo.fetch!()
   end
 
+  def fetch_30d_active_actors_count_for_account!(%Accounts.Account{} = account) do
+    Actor.Query.by_account_id(account.id)
+    |> Actor.Query.by_clients_active_within(30, "day")
+    |> Repo.aggregate(:count)
+  end
+
   def list_actor_group_ids(%Actor{} = actor) do
     Membership.Query.by_actor_id(actor.id)
     |> Membership.Query.select_distinct_group_ids()

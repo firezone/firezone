@@ -4,7 +4,7 @@ defmodule Web.Live.Settings.IdentityProviders.NewTest do
   setup do
     Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
 
-    account = Fixtures.Accounts.create_account()
+    account = Fixtures.Accounts.create_account(features: %{idp_sync: false})
     actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
 
     {provider, bypass} = Fixtures.Auth.start_and_create_openid_connect_provider(account: account)

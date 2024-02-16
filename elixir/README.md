@@ -295,11 +295,11 @@ Useful for onboarding beta customers. See the `Domain.Ops.provision_account/1`
 function:
 
 ```elixir
-iex> Domain.Ops.provision_account(%{
-  account_name: "Customer Account",
-  account_slug: "customer_account",
-  account_admin_name: "Test User",
-  account_admin_email: "test@firezone.localhost"
+iex> Domain.Ops.create_and_provision_account(%{
+  name: "Customer Account",
+  slug: "customer_account",
+  admin_name: "Test User",
+  admin_email: "test@firezone.localhost"
 })
 ```
 

@@ -27,14 +27,8 @@ defmodule Domain.Accounts.Account.Changeset do
 
   def update(%Account{} = account, attrs) do
     account
-    |> cast(attrs, [:name])
+    |> cast(attrs, [:name, :disabled_reason, :disabled_at])
     |> changeset()
-  end
-
-  def disable(%Account{} = account, attrs) do
-    account
-    |> cast(attrs, [:disabled_reason, :disabled_at])
-    |> validate_required([:disabled_reason, :disabled_at])
   end
 
   defp changeset(changeset) do
@@ -45,7 +39,7 @@ defmodule Domain.Accounts.Account.Changeset do
     |> cast_embed(:config, with: &Config.Changeset.changeset/2)
     |> cast_embed(:features, with: &Features.Changeset.changeset/2)
     |> cast_embed(:limits, with: &Limits.Changeset.changeset/2)
-    |> cast_embed(:external_ids, with: &external_ids_changeset/2)
+    |> cast_embed(:metadata, with: &metadata_changeset/2)
   end
 
   defp validate_name(changeset) do
@@ -77,14 +71,14 @@ defmodule Domain.Accounts.Account.Changeset do
     put_default_value(changeset, :slug, &Domain.Accounts.generate_unique_slug/0)
   end
 
-  def external_ids_changeset(external_ids \\ %Account.ExternalIDs{}, attrs) do
-    external_ids
+  def metadata_changeset(metadata \\ %Account.Metadata{}, attrs) do
+    metadata
     |> cast(attrs, [])
-    |> cast_embed(:stripe, with: &stripe_external_ids_changeset/2)
+    |> cast_embed(:stripe, with: &stripe_metadata_changeset/2)
   end
 
-  def stripe_external_ids_changeset(stripe \\ %Account.ExternalIDs.Stripe{}, attrs) do
+  def stripe_metadata_changeset(stripe \\ %Account.Metadata.Stripe{}, attrs) do
     stripe
-    |> cast(attrs, [:customer_id, :subscription_id])
+    |> cast(attrs, [:customer_id, :subscription_id, :product_name])
   end
 end

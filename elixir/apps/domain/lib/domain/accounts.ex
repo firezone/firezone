@@ -83,7 +83,12 @@ defmodule Domain.Accounts do
   end
 
   def update_account(%Account{} = account, attrs) do
-    Account.Query.by_id(account.id)
+    update_account_by_id(account.id, attrs)
+  end
+
+  def update_account_by_id(id, attrs) do
+    Account.Query.all()
+    |> Account.Query.by_id(id)
     |> Repo.fetch_and_update(
       with: fn account ->
         changeset = Account.Changeset.update(account, attrs)
@@ -110,6 +115,9 @@ defmodule Domain.Accounts do
   defp account_feature_enabled?(account, feature) do
     Map.fetch!(account.features || %Features{}, feature)
   end
+
+  def account_active?(%{deleted_at: nil, disabled_at: nil}), do: true
+  def account_active?(_account), do: false
 
   def ensure_has_access_to(%Auth.Subject{} = subject, %Account{} = account) do
     if subject.account.id == account.id do

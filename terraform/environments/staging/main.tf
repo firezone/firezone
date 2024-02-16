@@ -415,6 +415,23 @@ locals {
       name  = "DOCKER_REGISTRY"
       value = "${module.google-artifact-registry.url}/${module.google-artifact-registry.repo}"
     },
+    # Billing system
+    {
+      name  = "BILLING_ENABLED"
+      value = "true"
+    },
+    {
+      name  = "STRIPE_SECRET_KEY"
+      value = var.stripe_secret_key
+    },
+    {
+      name  = "STRIPE_WEBHOOK_SIGNING_SECRET"
+      value = var.stripe_webhook_signing_secret
+    },
+    {
+      name  = "STRIPE_PUBLISHABLE_KEY"
+      value = var.stripe_publishable_key
+    },
     # Telemetry
     {
       name  = "TELEMETRY_ENABLED"

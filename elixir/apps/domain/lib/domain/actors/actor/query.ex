@@ -36,6 +36,12 @@ defmodule Domain.Actors.Actor.Query do
     where(queryable, [actors: actors], actors.type == ^type)
   end
 
+  def by_clients_active_within(queryable \\ not_deleted(), period, unit) do
+    queryable
+    |> with_joined_clients()
+    |> where([clients: clients], clients.last_seen_at > ago(^period, ^unit))
+  end
+
   def preload_few_groups_for_each_actor(queryable \\ not_deleted(), limit) do
     queryable
     |> with_joined_memberships(limit)
@@ -91,6 +97,17 @@ defmodule Domain.Actors.Actor.Query do
       groups in ^Domain.Actors.Group.Query.not_deleted(),
       on: groups.id == memberships.group_id,
       as: :groups
+    )
+  end
+
+  def with_joined_clients(queryable \\ not_deleted()) do
+    join(
+      queryable,
+      :left,
+      [actors: actors],
+      clients in ^Domain.Clients.Client.Query.not_deleted(),
+      on: clients.actor_id == actors.id,
+      as: :clients
     )
   end
 

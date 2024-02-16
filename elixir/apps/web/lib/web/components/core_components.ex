@@ -328,7 +328,11 @@ defmodule Web.CoreComponents do
   attr :id, :string, default: "flash", doc: "the optional id of flash container"
   attr :flash, :map, default: %{}, doc: "the map of flash messages to display"
   attr :title, :string, default: nil
-  attr :kind, :atom, values: [:success, :info, :error], doc: "used for styling and flash lookup"
+
+  attr :kind, :atom,
+    values: [:success, :info, :warning, :error],
+    doc: "used for styling and flash lookup"
+
   attr :rest, :global, doc: "the arbitrary HTML attributes to add to the flash container"
   attr :style, :string, default: "pill"
 
@@ -1168,4 +1172,18 @@ defmodule Web.CoreComponents do
   end
 
   def provider_icon(assigns), do: ~H""
+
+  def mailto_support(account, subject, email_subject) do
+    body =
+      """
+
+
+      ---
+      Please do not remove this part of the email.
+      Account ID: #{account.id}
+      Actor ID: #{subject.actor.id}
+      """
+
+    "mailto:support@firezone.dev?subject=#{URI.encode_www_form(email_subject)}&body=#{URI.encode_www_form(body)}"
+  end
 end

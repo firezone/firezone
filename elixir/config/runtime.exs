@@ -44,6 +44,16 @@ if config_env() == :prod do
   config :domain, Domain.Auth.Adapters.GoogleWorkspace.APIClient,
     finch_transport_opts: compile_config!(:http_client_ssl_opts)
 
+  config :domain, Domain.Billing.Stripe.APIClient,
+    endpoint: "https://api.stripe.com",
+    finch_transport_opts: []
+
+  config :domain, Domain.Billing,
+    enabled: compile_config!(:billing_enabled),
+    publishable_key: compile_config!(:stripe_publishable_key),
+    secret_key: compile_config!(:stripe_secret_key),
+    webhook_signing_secret: compile_config!(:stripe_webhook_signing_secret)
+
   config :domain, platform_adapter: compile_config!(:platform_adapter)
 
   if platform_adapter = compile_config!(:platform_adapter) do

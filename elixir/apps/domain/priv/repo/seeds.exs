@@ -21,7 +21,17 @@ end
     slug: "firezone"
   })
 
-account = maybe_repo_update.(account, id: "c89bcc8c-9392-4dae-a40d-888aef6d28e0")
+account =
+  maybe_repo_update.(account,
+    id: "c89bcc8c-9392-4dae-a40d-888aef6d28e0",
+    metadata: %{
+      stripe: %{
+        customer_id: "cus_PZKIfcHB6SSBA4",
+        subscription_id: "sub_1OkGm2ADeNU9NGxvbrCCw6m3",
+        product_name: "Enterprise"
+      }
+    }
+  )
 
 {:ok, other_account} =
   Accounts.create_account(%{

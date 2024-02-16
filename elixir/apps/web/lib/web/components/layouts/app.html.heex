@@ -80,5 +80,33 @@
 </.sidebar>
 
 <main class="md:ml-64 h-auto pt-14">
+  <.flash
+    :if={
+      Domain.Accounts.account_active?(@account) and
+        not is_nil(@active_actors_count) and
+        @active_actors_count > @account.limits.monthly_active_actors_count
+    }
+    kind={:warning}
+  >
+    You have reached your monthly active actors limit. Please
+    <.link navigate={~p"/#{@account}/settings/account"} class={link_style()}>
+      upgrade your plan
+    </.link>
+    to continue using Firezone.
+  </.flash>
+  <.flash :if={not Domain.Accounts.account_active?(@account)} kind={:error}>
+    This account has been disabled.
+    <span>
+      Please
+      <.link
+        class={link_style()}
+        href={mailto_support(@account, @subject, "Account billing request: #{@account.name}")}
+      >
+        contact support
+      </.link>
+      to re-activate it.
+    </span>
+  </.flash>
+
   <%= @inner_content %>
 </main>

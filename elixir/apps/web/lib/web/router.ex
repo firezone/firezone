@@ -10,18 +10,13 @@ defmodule Web.Router do
     plug :put_root_layout, {Web.Layouts, :root}
   end
 
-  pipeline :api do
-    plug :accepts, ["json"]
-    plug :ensure_authenticated
-    plug :ensure_authenticated_actor_type, :service_account
-  end
-
   pipeline :public do
     plug :accepts, ["html", "xml"]
   end
 
   pipeline :account do
     plug :fetch_account
+    plug :fetch_account_seats_usage
     plug :fetch_subject
   end
 
@@ -118,6 +113,7 @@ defmodule Web.Router do
         {Web.Auth, :ensure_authenticated},
         {Web.Auth, :ensure_account_admin_user_actor},
         {Web.Auth, :mount_account},
+        {Web.Auth, :mount_active_actors_count},
         {Web.Nav, :set_active_sidebar_item}
       ] do
       scope "/actors", Actors do
@@ -136,8 +132,6 @@ defmodule Web.Router do
         end
 
         live "/:id/edit", Edit
-        # TODO: REMOVEME it's just another identity
-        live "/:id/new_token", NewToken
       end
 
       scope "/groups", Groups do

@@ -1,6 +1,10 @@
 defmodule API.Endpoint do
   use Phoenix.Endpoint, otp_app: :api
 
+  if Application.compile_env(:domain, :sql_sandbox) do
+    plug Phoenix.Ecto.SQL.Sandbox
+  end
+
   plug Plug.RewriteOn, [:x_forwarded_host, :x_forwarded_port, :x_forwarded_proto]
   plug Plug.MethodOverride
   plug :put_hsts_header
@@ -24,8 +28,15 @@ defmodule API.Endpoint do
   socket "/client", API.Client.Socket, API.Sockets.options()
   socket "/relay", API.Relay.Socket, API.Sockets.options()
 
-  plug :healthz
-  plug :not_found
+  plug :fetch_user_agent
+  plug API.Router
+
+  def fetch_user_agent(%Plug.Conn{} = conn, _opts) do
+    case Plug.Conn.get_req_header(conn, "user-agent") do
+      [user_agent | _] -> Plug.Conn.assign(conn, :user_agent, user_agent)
+      _ -> conn
+    end
+  end
 
   def put_hsts_header(conn, _opts) do
     scheme =
@@ -41,23 +52,6 @@ defmodule API.Endpoint do
     else
       conn
     end
-  end
-
-  def healthz(%Plug.Conn{request_path: "/healthz"} = conn, _opts) do
-    conn
-    |> put_resp_content_type("application/json")
-    |> send_resp(200, Jason.encode!(%{status: "ok"}))
-    |> halt()
-  end
-
-  def healthz(conn, _opts) do
-    conn
-  end
-
-  def not_found(conn, _opts) do
-    conn
-    |> send_resp(:not_found, "Not found")
-    |> halt()
   end
 
   def real_ip_opts do

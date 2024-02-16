@@ -11,10 +11,11 @@ defmodule Domain.Accounts.Account do
 
     embeds_one :config, Domain.Accounts.Config, on_replace: :delete
 
-    embeds_one :external_ids, ExternalIDs, primary_key: false, on_replace: :delete do
-      embeds_one :stripe, Stripe, primary_key: false, on_replace: :delete do
+    embeds_one :metadata, Metadata, primary_key: false, on_replace: :update do
+      embeds_one :stripe, Stripe, primary_key: false, on_replace: :update do
         field :customer_id, :string
         field :subscription_id, :string
+        field :product_name, :string
       end
     end
 

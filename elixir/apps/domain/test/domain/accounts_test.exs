@@ -156,7 +156,7 @@ defmodule Domain.AccountsTest do
         limits: %{
           monthly_active_actors_count: 999
         },
-        external_ids: %{
+        metadata: %{
           stripe: %{
             customer_id: "cus_1234567890",
             subscription_id: "sub_1234567890"
@@ -176,13 +176,13 @@ defmodule Domain.AccountsTest do
 
       assert account.name == attrs.name
 
-      # doesn't update features, filters, external_ids or settings
+      # doesn't update features, filters, metadata or settings
       assert account.features.idp_sync
 
       assert account.limits.monthly_active_actors_count !=
                attrs.limits.monthly_active_actors_count
 
-      assert is_nil(account.external_ids.stripe)
+      assert is_nil(account.metadata.stripe.customer_id)
 
       assert account.config.clients_upstream_dns == [
                %Domain.Accounts.Config.ClientsUpstreamDNS{
@@ -310,7 +310,7 @@ defmodule Domain.AccountsTest do
         limits: %{
           monthly_active_actors_count: 999
         },
-        external_ids: %{
+        metadata: %{
           stripe: %{
             customer_id: "cus_1234567890",
             subscription_id: "sub_1234567890"
@@ -336,11 +336,11 @@ defmodule Domain.AccountsTest do
       assert account.limits.monthly_active_actors_count ==
                attrs.limits.monthly_active_actors_count
 
-      assert account.external_ids.stripe.customer_id ==
-               attrs.external_ids.stripe.customer_id
+      assert account.metadata.stripe.customer_id ==
+               attrs.metadata.stripe.customer_id
 
-      assert account.external_ids.stripe.subscription_id ==
-               attrs.external_ids.stripe.subscription_id
+      assert account.metadata.stripe.subscription_id ==
+               attrs.metadata.stripe.subscription_id
 
       assert account.config.clients_upstream_dns == [
                %Domain.Accounts.Config.ClientsUpstreamDNS{

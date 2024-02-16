@@ -13,6 +13,12 @@ config :domain, Domain.Repo,
 
 config :domain, outbound_email_adapter_configured?: true
 
+config :domain, Domain.Billing,
+  enabled: true,
+  publishable_key: System.get_env("STRIPE_PUBLISHABLE_KEY", "pk_dev_1111"),
+  secret_key: System.get_env("STRIPE_SECRET_KEY", "sk_dev_1111"),
+  webhook_signing_secret: System.get_env("STRIPE_WEBHOOK_SIGNING_SECRET", "whsec_dev_1111")
+
 ###############################
 ##### Web #####################
 ###############################

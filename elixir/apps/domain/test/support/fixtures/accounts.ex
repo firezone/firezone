@@ -26,7 +26,9 @@ defmodule Domain.Fixtures.Accounts do
       limits: %{
         monthly_active_actors_count: 100
       },
-      external_ids: %{}
+      metadata: %{
+        stripe: %{}
+      }
     })
   end
 

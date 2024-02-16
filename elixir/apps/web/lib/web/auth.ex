@@ -296,6 +296,12 @@ defmodule Web.Auth do
     conn
   end
 
+  # We do not want to fetch it for initial rendering,
+  # it will instead set once websocket is connected via `mount_account_seats_usage`.
+  def fetch_account_seats_usage(%Plug.Conn{} = conn, _opts) do
+    Plug.Conn.assign(conn, :active_actors_count, nil)
+  end
+
   @doc """
   Fetches the session token from the session and assigns the subject to the connection.
   """
@@ -522,6 +528,8 @@ defmodule Web.Auth do
       because some actions can be performed by superadmin users on behalf of other accounts
       so we can't really rely on `subject.account` in a lot of places.
 
+    * `:mount_active_actors_count` - loads the account seats usage into the socket assigns.
+
   ## Examples
 
   Use the `on_mount` lifecycle macro in LiveViews to mount or authenticate
@@ -547,6 +555,17 @@ defmodule Web.Auth do
 
   def on_mount(:mount_account, params, session, socket) do
     {:cont, mount_account(socket, params, session)}
+  end
+
+  def on_mount(:mount_active_actors_count, params, session, socket) do
+    socket = mount_account(socket, params, session)
+
+    socket =
+      Phoenix.Component.assign_new(socket, :active_actors_count, fn ->
+        Domain.Actors.fetch_30d_active_actors_count_for_account!(socket.assigns.account)
+      end)
+
+    {:cont, socket}
   end
 
   def on_mount(:ensure_authenticated, params, session, socket) do
