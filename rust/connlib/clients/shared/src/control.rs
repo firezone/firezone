@@ -6,7 +6,6 @@ use connlib_shared::control::Reason;
 use connlib_shared::messages::{DnsServer, GatewayResponse, IpDnsServer};
 use connlib_shared::IpProvider;
 use ip_network::IpNetwork;
-use std::collections::HashMap;
 use std::net::IpAddr;
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -25,8 +24,6 @@ use connlib_shared::{
 };
 
 use firezone_tunnel::{ClientState, Request, Tunnel};
-use hickory_resolver::config::{NameServerConfig, Protocol, ResolverConfig};
-use hickory_resolver::TokioAsyncResolver;
 use reqwest::header::{CONTENT_ENCODING, CONTENT_TYPE};
 use tokio::io::BufReader;
 use tokio::sync::Mutex;
@@ -41,11 +38,6 @@ pub struct ControlPlane<CB: Callbacks> {
     pub tunnel: Arc<Tunnel<CB, ClientState>>,
     pub phoenix_channel: PhoenixSenderWithTopic,
     pub tunnel_init: Mutex<bool>,
-    // It's a Mutex<Option<_>> because we need the init message to initialize the resolver
-    // also, in platforms with split DNS and no configured upstream dns this will be None.
-    //
-    // We could still initialize the resolver with no nameservers in those platforms...
-    pub fallback_resolver: parking_lot::Mutex<HashMap<IpAddr, TokioAsyncResolver>>,
 }
 
 fn effective_dns_servers(
@@ -72,22 +64,6 @@ fn effective_dns_servers(
             DnsServer::IpPort(IpDnsServer {
                 address: (ip, DNS_PORT).into(),
             })
-        })
-        .collect()
-}
-
-fn create_resolvers(
-    sentinel_mapping: BiMap<IpAddr, DnsServer>,
-) -> HashMap<IpAddr, TokioAsyncResolver> {
-    sentinel_mapping
-        .iter()
-        .map(|(sentinel, srv)| {
-            let mut resolver_config = ResolverConfig::new();
-            resolver_config.add_name_server(NameServerConfig::new(srv.address(), Protocol::Udp));
-            (
-                *sentinel,
-                TokioAsyncResolver::tokio(resolver_config, Default::default()),
-            )
         })
         .collect()
 }
@@ -148,9 +124,6 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                 for resource_description in resources {
                     self.add_resource(resource_description);
                 }
-
-                // Note: watch out here we're holding 2 mutexes
-                *self.fallback_resolver.lock() = create_resolvers(sentinel_mapping);
             } else {
                 tracing::info!("Firezone reinitializated");
             }
@@ -395,25 +368,6 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                     // TODO: Clean up connection in `ClientState` here?
                 }
             }
-            Ok(firezone_tunnel::Event::DnsQuery(query)) => {
-                // Until we handle it better on a gateway-like eventloop, making sure not to block the loop
-                let Some(resolver) = self
-                    .fallback_resolver
-                    .lock()
-                    .get(&query.query.destination())
-                    .cloned()
-                else {
-                    return;
-                };
-
-                let tunnel = self.tunnel.clone();
-                tokio::spawn(async move {
-                    let response = resolver.lookup(&query.name, query.record_type).await;
-                    if let Err(err) = tunnel.write_dns_lookup_response(response, query.query) {
-                        tracing::debug!(err = ?err, name = query.name, record_type = ?query.record_type, "DNS lookup failed: {err:#}");
-                    }
-                });
-            }
             Ok(firezone_tunnel::Event::RefreshResources { connections }) => {
                 let mut control_signaler = self.phoenix_channel.clone();
                 tokio::spawn(async move {
@@ -427,6 +381,9 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                         }
                     }
                 });
+            }
+            Ok(firezone_tunnel::Event::SendPacket(_)) => {
+                unimplemented!("Handled internally");
             }
             Err(e) => {
                 tracing::error!("Tunnel failed: {e}");

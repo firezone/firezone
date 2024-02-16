@@ -164,8 +164,7 @@ where
 
         let (peer_sender, peer_receiver) = tokio::sync::mpsc::channel(PEER_QUEUE_SIZE);
 
-        peer.transform
-            .set_dns(self.role_state.lock().dns_mapping.clone());
+        peer.transform.set_dns(self.role_state.lock().dns_mapping());
 
         start_handlers(
             Arc::clone(self),
