@@ -135,9 +135,11 @@ defmodule Web.Settings.IdentityProviders.New do
         </label>
 
         <%= if @opts[:enabled] == false do %>
-          <.badge class="ml-2" type="primary" title="Feature available on a higher pricing plan">
-            UPGRADE TO UNLOCK
-          </.badge>
+          <.link navigate={~p"/#{@account}/settings/billing"} class="ml-2 text-sm text-primary-500">
+            <.badge class="ml-2" type="primary" title="Feature available on a higher pricing plan">
+              UPGRADE TO UNLOCK
+            </.badge>
+          </.link>
         <% end %>
       </div>
       <p class="ml-6 mb-6 text-sm text-neutral-500">
