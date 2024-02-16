@@ -3,7 +3,8 @@ defmodule Web.SignIn.Success do
 
   def mount(params, _session, socket) do
     if connected?(socket) do
-      Process.send_after(self(), :redirect_client, 1)
+      delay = if Mix.env() == :test, do: 500, else: 1
+      Process.send_after(self(), :redirect_client, delay)
     end
 
     query_params =
@@ -38,11 +39,20 @@ defmodule Web.SignIn.Success do
   end
 
   def handle_info(:redirect_client, socket) do
-    client_handler = Domain.Config.fetch_env!(:web, :client_handler)
+    {scheme, url} =
+      Domain.Config.fetch_env!(:web, :client_handler)
+      |> format_redirect_url()
 
     query = URI.encode_query(socket.assigns.params)
 
-    {:noreply,
-     redirect(socket, external: {client_handler, "//handle_client_sign_in_callback?#{query}"})}
+    {:noreply, redirect(socket, external: {scheme, "#{url}?#{query}"})}
+  end
+
+  defp format_redirect_url(raw_client_handler) do
+    uri = URI.parse(raw_client_handler)
+
+    maybe_host = if uri.host == "", do: "", else: "#{uri.host}:#{uri.port}/"
+
+    {uri.scheme, "//#{maybe_host}handle_client_sign_in_callback"}
   end
 end

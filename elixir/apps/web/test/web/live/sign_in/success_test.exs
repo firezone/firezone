@@ -35,7 +35,8 @@ defmodule Web.SignIn.SuccessTest do
 
     assert_redirect(
       lv,
-      "firezone-fd0020211111://handle_client_sign_in_callback?#{sorted_query_params}"
+      "firezone-fd0020211111://handle_client_sign_in_callback?#{sorted_query_params}",
+      1000
     )
   end
 end

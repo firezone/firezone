@@ -79,7 +79,6 @@ defmodule Web.Router do
         {Web.Auth, :redirect_if_user_is_authenticated}
       ] do
       live "/", SignIn
-      live "/signin_success", SignIn.Success
 
       # Adapter-specific routes
       ## Email
@@ -89,6 +88,10 @@ defmodule Web.Router do
 
   scope "/:account_id_or_slug", Web do
     pipe_through [:browser, :account]
+
+    live_session :client_redirect, on_mount: [Web.Sandbox] do
+      live "/signin_success", SignIn.Success
+    end
 
     scope "/sign_in/providers/:provider_id" do
       # UserPass
