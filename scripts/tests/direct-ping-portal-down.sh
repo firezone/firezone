@@ -4,10 +4,9 @@ set -e
 
 source "./scripts/tests/lib.sh"
 
+# Establish a channel
 client_ping_resource
 
 docker compose stop api relay # Stop portal & relay
-
-sleep 5 # Wait for client to disconnect
 
 client_ping_resource
