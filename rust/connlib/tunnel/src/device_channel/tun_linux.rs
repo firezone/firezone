@@ -99,6 +99,8 @@ impl Tun {
         dns_config: Vec<IpAddr>,
         _: &impl Callbacks,
     ) -> Result<Self> {
+        tracing::debug!(?dns_config);
+
         // TODO: Tech debt: <https://github.com/firezone/firezone/issues/3636>
         // TODO: Gateways shouldn't set up DNS, right? Only clients?
         // TODO: Move this configuration up to the client
@@ -355,11 +357,32 @@ async fn configure_network_manager(_dns_config: &[IpAddr]) -> Result<()> {
     ))
 }
 
-async fn configure_systemd_resolved(_dns_config: &[IpAddr]) -> Result<()> {
-    // TODO: Call `resolvectl` here
-    Err(Error::Other(
-        "DNS control with `systemd-resolved` is not implemented yet",
-    ))
+async fn configure_systemd_resolved(dns_config: &[IpAddr]) -> Result<()> {
+    let status = tokio::process::Command::new("resolvectl")
+        .arg("dns")
+        .arg(IFACE_NAME)
+        .args(dns_config.iter().map(ToString::to_string))
+        .status()
+        .await
+        .map_err(|_| Error::ResolvectlFailed)?;
+    if !status.success() {
+        return Err(Error::ResolvectlFailed);
+    }
+
+    let status = tokio::process::Command::new("resolvectl")
+        .arg("domain")
+        .arg(IFACE_NAME)
+        .arg("~.")
+        .status()
+        .await
+        .map_err(|_| Error::ResolvectlFailed)?;
+    if !status.success() {
+        return Err(Error::ResolvectlFailed);
+    }
+
+    tracing::info!(?dns_config, "Configured DNS sentinels with `resolvectl`");
+
+    Ok(())
 }
 
 #[repr(C)]
