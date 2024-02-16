@@ -36,12 +36,6 @@ defmodule Domain.Actors.Actor.Query do
     where(queryable, [actors: actors], actors.type == ^type)
   end
 
-  def by_clients_active_within(queryable \\ not_deleted(), period, unit) do
-    queryable
-    |> with_joined_clients()
-    |> where([clients: clients], clients.last_seen_at > ago(^period, ^unit))
-  end
-
   def preload_few_groups_for_each_actor(queryable \\ not_deleted(), limit) do
     queryable
     |> with_joined_memberships(limit)

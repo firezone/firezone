@@ -26,6 +26,16 @@ defmodule Domain.Clients.Client.Query do
     where(queryable, [clients: clients], clients.last_used_token_id == ^last_used_token_id)
   end
 
+  def by_last_seen_within(queryable \\ not_deleted(), period, unit) do
+    where(queryable, [clients: clients], clients.last_seen_at > ago(^period, ^unit))
+  end
+
+  def select_distinct_actor_id(queryable \\ not_deleted()) do
+    queryable
+    |> select([clients: clients], clients.actor_id)
+    |> distinct(true)
+  end
+
   def returning_not_deleted(queryable \\ not_deleted()) do
     select(queryable, [clients: clients], clients)
   end

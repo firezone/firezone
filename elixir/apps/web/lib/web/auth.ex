@@ -562,7 +562,7 @@ defmodule Web.Auth do
 
     socket =
       Phoenix.Component.assign_new(socket, :active_actors_count, fn ->
-        Domain.Actors.fetch_30d_active_actors_count_for_account!(socket.assigns.account)
+        Domain.Clients.count_1m_active_actors_for_account(socket.assigns.account)
       end)
 
     {:cont, socket}

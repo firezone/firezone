@@ -8,7 +8,7 @@ defmodule Domain.Repo.Migrations.AddAccountsBilling do
       add(:config, :map, default: %{}, null: false)
       add(:metadata, :map, default: %{}, null: false)
 
-      add(:disabled_reason, :string)
+      add(:disabled_reason, :text)
       add(:disabled_at, :utc_datetime_usec)
     end
   end
