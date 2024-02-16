@@ -207,9 +207,8 @@ jobs:
         run: |
           docker compose up -d dns.httpbin httpbin
 
-          # TODO: Order matters here, but it shouldn't. The only dependency should be the API.
-          # Everything else should be able to restart or start in any order, assuming broadcasting updates
-          # is working properly.
+          # TODO: Order matters here, but it shouldn't. There seems to be some race
+          # condition involved in letting Docker deterime the start order here.
           docker compose up -d api web
           docker compose up -d relay
           docker compose up -d gateway
@@ -265,13 +264,15 @@ jobs:
           docker compose run elixir /bin/sh -c 'cd apps/domain && mix ecto.seed'
       - name: Start docker compose in the background
         run: |
-          docker compose up -d \
-            api \
-            web \
-            client \
-            relay \
-            gateway \
-            iperf3
+          docker compose up -d iperf3
+
+          # TODO: Order matters here, but it shouldn't. There seems to be some race
+          # condition involved in letting Docker deterime the start order here.
+          docker compose up -d api web
+          docker compose up -d relay
+          docker compose up -d gateway
+          docker compose up -d client
+
       - name: 'Setup test: ${{ matrix.test_name }}'
         run: ${{ matrix.setup }}
       - name: 'Execute test: ${{ matrix.test_name }}'
