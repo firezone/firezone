@@ -204,7 +204,16 @@ jobs:
       - name: Seed database
         run: docker compose run elixir /bin/sh -c 'cd apps/domain && mix ecto.seed'
       - name: Start docker compose in the background
-        run: docker compose up -d api web client relay gateway dns.httpbin httpbin
+        run: |
+          docker compose up -d dns.httpbin httpbin
+
+          # TODO: Order matters here, but it shouldn't. The only dependency should be the API.
+          # Everything else should be able to restart or start in any order, assuming broadcasting updates
+          # is working properly.
+          docker compose up -d api web
+          docker compose up -d relay
+          docker compose up -d gateway
+          docker compose up -d client
 
       - run: ./scripts/tests/${{ matrix.test }}.sh
 

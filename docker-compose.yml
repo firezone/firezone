@@ -128,10 +128,6 @@ services:
     sysctls:
       - net.ipv6.conf.all.disable_ipv6=0
     depends_on:
-      relay:
-        condition: "service_healthy"
-      gateway:
-        condition: "service_healthy"
       api:
         condition: "service_healthy"
     networks:
@@ -165,8 +161,6 @@ services:
       - net.ipv6.conf.all.forwarding=1
       - net.ipv6.conf.default.forwarding=1
     depends_on:
-      relay:
-        condition: "service_healthy"
       api:
         condition: "service_healthy"
     networks:
