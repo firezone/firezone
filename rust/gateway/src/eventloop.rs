@@ -3,11 +3,15 @@ use crate::messages::{
     EgressMessages, IngressMessages, RequestConnection,
 };
 use crate::CallbackHandler;
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, bail, Result};
+use boringtun::x25519::PublicKey;
 use connlib_shared::{
     messages::{GatewayResponse, ResourceAccepted, ResourceDescription},
     Dname,
 };
+#[cfg(not(target_os = "windows"))]
+use dns_lookup::{AddrInfoHints, AddrInfoIter, LookupError};
+use either::Either;
 use firezone_tunnel::{Event, GatewayTunnel, ResolvedResourceDescriptionDns};
 use ip_network::IpNetwork;
 use phoenix_channel::PhoenixChannel;
@@ -233,7 +237,7 @@ async fn resolve_resource_description(
                     false,
                     "We should never get a DNS resource access request without the subdomain"
                 );
-                anyhow::bail!("Protocol error: Request for DNS resource without the subdomain being tried to access.")
+                bail!("Protocol error: Request for DNS resource without the subdomain being tried to access.")
             };
 
             let addresses =
@@ -276,11 +280,6 @@ fn resolve_addresses(addr: &str) -> std::io::Result<Vec<IpNetwork>> {
         (Err(e), Err(_)) => Err(e),
     }
 }
-
-use boringtun::x25519::PublicKey;
-#[cfg(not(target_os = "windows"))]
-use dns_lookup::{AddrInfoHints, AddrInfoIter, LookupError};
-use either::Either;
 
 #[cfg(not(target_os = "windows"))]
 fn resolve_address_family(
