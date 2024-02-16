@@ -88,6 +88,7 @@ defmodule Web.Settings.IdentityProviders.New do
     <.adapter_item
       adapter={@adapter}
       account={@account}
+      opts={@opts}
       name="Okta"
       description="Authenticate users and synchronize users and groups with a custom Okta connector."
     />
@@ -108,7 +109,7 @@ defmodule Web.Settings.IdentityProviders.New do
 
   attr :adapter, :any
   attr :account, :any
-  attr :opts, :any, default: []
+  attr :opts, :any
   attr :name, :string
   attr :description, :string
 
@@ -135,7 +136,7 @@ defmodule Web.Settings.IdentityProviders.New do
 
         <%= if @opts[:enabled] == false do %>
           <.badge class="ml-2" type="primary" title="Feature available on a higher pricing plan">
-            ENTERPRISE
+            UPGRADE TO UNLOCK
           </.badge>
         <% end %>
       </div>
