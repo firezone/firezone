@@ -28,10 +28,14 @@
           "web/",
           "apps/*/lib/",
           "apps/*/src/",
-          "apps/*/test/",
           "apps/*/web/"
         ],
-        excluded: [~r"/_build/", ~r"/deps/", ~r"/node_modules/"]
+        excluded: [
+          ~r"/_build/",
+          ~r"/deps/",
+          ~r"/node_modules/",
+          "apps/*/test/"
+        ]
       },
       #
       # Load and configure plugins here:
