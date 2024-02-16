@@ -7,6 +7,9 @@ source "./scripts/tests/lib.sh"
 install_iptables_drop_rules
 trap remove_iptables_drop_rules EXIT # Cleanup after us
 
-docker compose restart relay # Restart relay
+# Establish a connection to the relay
+client_curl_resource
 
-client_ping_resource
+docker compose stop api # Stop portal
+
+client_curl_resource

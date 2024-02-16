@@ -5,8 +5,8 @@ set -e
 source "./scripts/tests/lib.sh"
 
 # Establish a channel
-client_ping_resource
+client_curl_resource
 
 docker compose stop api relay # Stop portal & relay
 
-client_ping_resource
+client_curl_resource
