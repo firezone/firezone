@@ -9,7 +9,7 @@ mock = ["connlib-shared/mock"]
 
 [dependencies]
 anyhow = "1.0.75"
-tokio = { version = "1.33", default-features = false, features = ["sync", "rt"] }
+tokio = { version = "1.36", default-features = false, features = ["sync", "rt"] }
 tokio-util = "0.7.10"
 secrecy = { workspace = true }
 tracing = { workspace = true }
@@ -27,7 +27,6 @@ time = { version = "0.3.34", features = ["formatting"] }
 reqwest = { version = "0.11.22", default-features = false, features = ["stream", "rustls-tls"] }
 tokio-tungstenite = { version = "0.21", default-features = false, features = ["connect", "handshake", "rustls-tls-webpki-roots"] }
 async-compression = { version = "0.4.6", features = ["tokio", "gzip"] }
-hickory-resolver = { workspace = true, features = ["tokio-runtime"] }
 parking_lot = "0.12"
 bimap = "0.6"
 ip_network = { version = "0.4", default-features = false }

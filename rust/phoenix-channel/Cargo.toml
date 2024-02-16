@@ -17,9 +17,9 @@ rand_core = "0.6.4"
 url = "2.4.1"
 serde_json = "1.0.108"
 thiserror = "1.0.50"
-tokio = { version = "1.33.0", features = ["net", "time"] }
+tokio = { version = "1.36.0", features = ["net", "time"] }
 backoff = "0.4.0"
 anyhow = "1"
 
 [dev-dependencies]
-tokio = { version = "1.33.0", features = ["macros", "rt"] }
+tokio = { version = "1.36.0", features = ["macros", "rt"] }
