@@ -67,9 +67,7 @@ fn only_generate_candidate_event_after_answer() {
 
     alice.accept_answer(1, bob.public_key(), answer);
 
-    let mut events = iter::from_fn(|| alice.poll_event());
-
-    assert!(events.any(|ev| ev
+    assert!(iter::from_fn(|| alice.poll_event()).any(|ev| ev
         == Event::SignalIceCandidate {
             connection: 1,
             candidate: Candidate::host(local_candidate, Protocol::Udp)
