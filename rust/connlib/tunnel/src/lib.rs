@@ -102,11 +102,10 @@ where
             }
 
             match self.connections_state.poll_sockets(cx) {
-                Poll::Ready(Some(packet)) => {
+                Poll::Ready(packet) => {
                     device.write(packet)?;
                     continue;
                 }
-                Poll::Ready(None) => continue,
                 Poll::Pending => {}
             }
 
@@ -161,11 +160,10 @@ where
             }
 
             match self.connections_state.poll_sockets(cx) {
-                Poll::Ready(Some(packet)) => {
+                Poll::Ready(packet) => {
                     device.write(packet)?;
                     continue;
                 }
-                Poll::Ready(None) => continue,
                 Poll::Pending => {}
             }
 
@@ -283,10 +281,7 @@ where
         Ok(())
     }
 
-    fn poll_sockets<'a>(
-        &'a mut self,
-        cx: &mut Context<'_>,
-    ) -> Poll<Option<device_channel::Packet<'a>>> {
+    fn poll_sockets<'a>(&'a mut self, cx: &mut Context<'_>) -> Poll<device_channel::Packet<'a>> {
         let received = match ready!(self.sockets.poll_recv_from(cx)) {
             Ok(received) => received,
             Err(e) => {
@@ -311,10 +306,15 @@ where
             self.write_buf.as_mut(),
         ) {
             Ok(Some(packet)) => packet,
-            Ok(None) => return Poll::Ready(None),
+            Ok(None) => {
+                cx.waker().wake_by_ref();
+                return Poll::Pending;
+            }
             Err(e) => {
                 tracing::warn!(%local, %from, "Failed to decapsulate incoming packet: {e}");
-                return Poll::Ready(None);
+
+                cx.waker().wake_by_ref();
+                return Poll::Pending;
             }
         };
 
@@ -322,14 +322,22 @@ where
 
         let Some(peer) = self.peers_by_id.get(&conn_id) else {
             tracing::error!(%conn_id, %local, %from, "Couldn't find connection");
-            return Poll::Ready(None);
+
+            cx.waker().wake_by_ref();
+            return Poll::Pending;
         };
 
-        let maybe_device_packet = peer
-            .untransform(packet.source(), self.write_buf.as_mut())
-            .ok();
+        let packet = match peer.untransform(packet.source(), self.write_buf.as_mut()) {
+            Ok(packet) => packet,
+            Err(e) => {
+                tracing::warn!(%conn_id, %local, %from, "Failed to transform packet: {e}");
 
-        Poll::Ready(maybe_device_packet)
+                cx.waker().wake_by_ref();
+                return Poll::Pending;
+            }
+        };
+
+        Poll::Ready(packet)
     }
 
     fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Event<TId>> {
