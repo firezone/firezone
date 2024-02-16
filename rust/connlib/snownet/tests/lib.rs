@@ -56,15 +56,11 @@ fn only_generate_candidate_event_after_answer() {
 
     let offer = alice.new_connection(1, HashSet::new(), HashSet::new());
 
-    while let Some(event) = alice.poll_event() {
-        assert!(!matches!(
-            event,
-            Event::SignalIceCandidate {
-                connection: _,
-                candidate: _
-            }
-        ));
-    }
+    assert_eq!(
+        alice.poll_event(),
+        None,
+        "no event to be emitted before accepting the answer"
+    );
 
     let answer =
         bob.accept_connection(1, offer, alice.public_key(), HashSet::new(), HashSet::new());
