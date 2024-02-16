@@ -666,13 +666,6 @@ where
         let mut agent = IceAgent::new();
         agent.set_controlling(true);
 
-        self.seed_agent_with_local_candidates(
-            id,
-            &mut agent,
-            &allowed_stun_servers,
-            &allowed_turn_servers,
-        );
-
         let session_key = Secret::new(random());
         let ice_creds = agent.local_credentials();
 
@@ -713,6 +706,13 @@ where
             ufrag: answer.credentials.username,
             pass: answer.credentials.password,
         });
+
+        self.seed_agent_with_local_candidates(
+            id,
+            &mut agent,
+            &initial.stun_servers,
+            &initial.turn_servers,
+        );
 
         let connection = self.init_connection(
             agent,
