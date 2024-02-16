@@ -9,9 +9,10 @@ import PlanBadge from "@/components/PlanBadge";
 <PlanBadge plans={["starter", "enterprise"]} />
 </div>
 
-Service accounts are actors that can be used with the Firezone Linux client in
-headless operation to manage access from a server, machine, or other non-user
-machine to your Resources.
+Service accounts are actors that can be used with Firezone clients that support
+headless mode operation. They are commonly used for situations where you want to
+manage access from a server, machine, IoT device, or other non-user machine to
+your Resources.
 
 Service accounts behave like any other actor in Firezone. They can be added to
 Groups and Policies to gain access to Resources.
@@ -21,7 +22,8 @@ synced from your identity provider.
 
 <Alert color="warning">
   Because service accounts authenticate to your Firezone account without user
-  interaction, their tokens have a **1-year** expiration by default.
+  interaction, their tokens have a **1-year** expiration by default. This can be
+  changed when creating the service account.
 </Alert>
 
 ## Create a service account
@@ -31,7 +33,7 @@ To create a service account, head to `Actors` -> `Add Actor` and select
 
 On the next screen, set an appropriate expiration date for the token.
 
-You will then be shown a token you'll need to store somewhere safe to use with
-the [Linux client](/kb/user-guides/linux-client).
+You will then be shown a token you'll need to store somewhere safe. This token
+can then be used with Firezone clients that support [headless mode operation]().
 
 <SupportOptions />
