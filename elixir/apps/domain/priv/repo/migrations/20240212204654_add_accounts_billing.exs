@@ -10,7 +10,7 @@ defmodule Domain.Repo.Migrations.AddAccountsBilling do
 
       add(:warning, :text)
       add(:warning_delivery_attempts, :integer)
-      add(:warning_last_sent_at_at, :utc_datetime_usec)
+      add(:warning_last_sent_at, :utc_datetime_usec)
 
       add(:disabled_reason, :text)
       add(:disabled_at, :utc_datetime_usec)

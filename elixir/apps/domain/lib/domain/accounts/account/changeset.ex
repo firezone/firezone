@@ -33,7 +33,7 @@ defmodule Domain.Accounts.Account.Changeset do
       :disabled_at,
       :warning,
       :warning_delivery_attempts,
-      :warning_last_sent_at_at
+      :warning_last_sent_at
     ])
     |> changeset()
   end

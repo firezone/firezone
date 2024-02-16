@@ -19,7 +19,7 @@ defmodule Domain.Billing.JobsTest do
       account = Repo.get!(Domain.Accounts.Account, account.id)
       refute account.warning
       assert account.warning_delivery_attempts == 0
-      refute account.warning_last_sent_at_at
+      refute account.warning_last_sent_at
     end
 
     test "puts a warning for an account when limits are violated", %{
@@ -50,7 +50,7 @@ defmodule Domain.Billing.JobsTest do
                "You have exceeded the following limits: monthly active actors, sites, account admins."
 
       assert account.warning_delivery_attempts == 0
-      assert account.warning_last_sent_at_at
+      assert account.warning_last_sent_at
     end
   end
 end

@@ -49,7 +49,7 @@ defmodule Domain.Accounts.Account do
 
     field :warning, :string
     field :warning_delivery_attempts, :integer, default: 0
-    field :warning_last_sent_at_at, :utc_datetime_usec
+    field :warning_last_sent_at, :utc_datetime_usec
 
     field :disabled_reason, :string
     field :disabled_at, :utc_datetime_usec

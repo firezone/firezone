@@ -16,7 +16,7 @@ defmodule Domain.Billing.Jobs do
             Accounts.update_account(account, %{
               warning: nil,
               warning_delivery_attempts: 0,
-              warning_last_sent_at_at: nil
+              warning_last_sent_at: nil
             })
 
           :ok
@@ -28,7 +28,7 @@ defmodule Domain.Billing.Jobs do
             Accounts.update_account(account, %{
               warning: warning,
               warning_delivery_attempts: 0,
-              warning_last_sent_at_at: DateTime.utc_now()
+              warning_last_sent_at: DateTime.utc_now()
             })
 
           :ok
