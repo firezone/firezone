@@ -198,6 +198,7 @@ defmodule Web.Router do
 
       scope "/settings", Settings do
         live "/account", Account
+        live "/billing", Billing
 
         scope "/identity_providers", IdentityProviders do
           live "/", Index

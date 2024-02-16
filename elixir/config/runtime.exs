@@ -50,9 +50,9 @@ if config_env() == :prod do
 
   config :domain, Domain.Billing,
     enabled: compile_config!(:billing_enabled),
-    publishable_key: compile_config!(:stripe_publishable_key),
     secret_key: compile_config!(:stripe_secret_key),
-    webhook_signing_secret: compile_config!(:stripe_webhook_signing_secret)
+    webhook_signing_secret: compile_config!(:stripe_webhook_signing_secret),
+    default_price_id: compile_config!(:stripe_default_price_id)
 
   config :domain, platform_adapter: compile_config!(:platform_adapter)
 

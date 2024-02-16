@@ -28,7 +28,8 @@ defmodule Domain.OpsTest do
 
     test "provisions an account when valid input is provided" do
       Bypass.open()
-      |> Domain.Mocks.Stripe.mock_create_customer_endpoint(%{id: nil, name: "Test Account"})
+      |> Mocks.Stripe.mock_create_customer_endpoint(%{id: nil, name: "Test Account"})
+      |> Mocks.Stripe.mock_create_subscription_endpoint()
 
       params = %{
         name: "Test Account",

@@ -59,9 +59,9 @@ config :domain, Domain.Billing.Stripe.APIClient,
 
 config :domain, Domain.Billing,
   enabled: true,
-  publishable_key: "pk_test_1111",
   secret_key: "sk_test_1111",
-  webhook_signing_secret: "whsec_test_1111"
+  webhook_signing_secret: "whsec_test_1111",
+  default_price_id: "price_1OkUIcADeNU9NGxvTNA4PPq6"
 
 config :domain, platform_adapter: nil
 
@@ -134,10 +134,10 @@ config :web,
 config :web, Web.Plugs.SecureHeaders,
   csp_policy: [
     "default-src 'self' 'nonce-${nonce}'",
-    "frame-src 'self' 'nonce-${nonce}' https://js.stripe.com",
-    "script-src 'self' 'nonce-${nonce}' https://js.stripe.com",
-    "img-src 'self' 'nonce-${nonce}' data: https://www.gravatar.com",
-    "style-src 'self' 'nonce-${nonce}' 'unsafe-inline'"
+    "frame-src 'self' https://js.stripe.com",
+    "script-src 'self' https://js.stripe.com",
+    "img-src 'self' data: https://www.gravatar.com",
+    "style-src 'self' 'unsafe-inline'"
   ]
 
 config :web, api_url_override: "ws://localhost:13001/"

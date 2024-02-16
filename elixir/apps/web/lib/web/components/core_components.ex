@@ -1173,6 +1173,40 @@ defmodule Web.CoreComponents do
 
   def provider_icon(assigns), do: ~H""
 
+  def feature_name(%{feature: :idp_sync} = assigns) do
+    ~H"""
+    Automatically sync users and groups
+    """
+  end
+
+  def feature_name(%{feature: :flow_activities} = assigns) do
+    ~H"""
+    See detailed flow activities <span>(beta)</span>
+    """
+  end
+
+  def feature_name(%{feature: :multi_site_resources} = assigns) do
+    ~H"""
+    Define globally-distributed resources <span>(beta)</span>
+    """
+  end
+
+  def feature_name(%{feature: :traffic_filters} = assigns) do
+    ~H"""
+    Filter traffic using protocol and port rules <span>(beta)</span>
+    """
+  end
+
+  def feature_name(%{feature: :self_hosted_relays} = assigns) do
+    ~H"""
+    Host your own relays <span>(beta)</span>
+    """
+  end
+
+  def feature_name(assigns) do
+    ~H""
+  end
+
   def mailto_support(account, subject, email_subject) do
     body =
       """

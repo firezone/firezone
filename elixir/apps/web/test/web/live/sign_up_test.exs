@@ -20,12 +20,6 @@ defmodule Web.Live.SignUpTest do
   test "creates new account and sends a welcome email", %{conn: conn} do
     Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
 
-    Bypass.open()
-    |> Domain.Mocks.Stripe.mock_create_customer_endpoint(%{
-      id: Ecto.UUID.generate(),
-      name: "acc_name"
-    })
-
     account_name = "FooBar"
 
     {:ok, lv, _html} = live(conn, ~p"/sign_up")
@@ -37,6 +31,13 @@ defmodule Web.Live.SignUpTest do
       actor: %{name: "John Doe"},
       email: email
     }
+
+    Bypass.open()
+    |> Domain.Mocks.Stripe.mock_create_customer_endpoint(%{
+      id: Ecto.UUID.generate(),
+      name: account_name
+    })
+    |> Domain.Mocks.Stripe.mock_create_subscription_endpoint()
 
     assert html =
              lv

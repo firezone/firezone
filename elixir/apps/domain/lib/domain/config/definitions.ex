@@ -548,9 +548,9 @@ defmodule Domain.Config.Definitions do
   ##############################################
 
   defconfig(:billing_enabled, :boolean, default: false)
-  defconfig(:stripe_publishable_key, :string, default: nil)
   defconfig(:stripe_secret_key, :string, sensitive: true, default: nil)
   defconfig(:stripe_webhook_signing_secret, :string, sensitive: true, default: nil)
+  defconfig(:stripe_default_price_id, :string, default: nil)
 
   ##############################################
   ## Local development and Staging Helpers

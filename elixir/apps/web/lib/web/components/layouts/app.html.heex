@@ -62,6 +62,12 @@
     <:name>Settings</:name>
 
     <:item navigate={~p"/#{@account}/settings/account"}>Account</:item>
+    <:item
+      :if={Domain.Billing.account_provisioned?(@account)}
+      navigate={~p"/#{@account}/settings/billing"}
+    >
+      Billing
+    </:item>
     <:item navigate={~p"/#{@account}/settings/identity_providers"}>
       Identity Providers
     </:item>
@@ -82,14 +88,13 @@
 <main class="md:ml-64 h-auto pt-14">
   <.flash
     :if={
-      Domain.Accounts.account_active?(@account) and
-        not is_nil(@active_actors_count) and
-        @active_actors_count > @account.limits.monthly_active_actors_count
+      not is_nil(@active_actors_count) and
+        Domain.Billing.seats_limit_exceeded?(@account, @active_actors_count)
     }
     kind={:warning}
   >
     You have reached your monthly active actors limit. Please
-    <.link navigate={~p"/#{@account}/settings/account"} class={link_style()}>
+    <.link navigate={~p"/#{@account}/settings/billing"} class={link_style()}>
       upgrade your plan
     </.link>
     to continue using Firezone.

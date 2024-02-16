@@ -189,6 +189,29 @@ defmodule Domain.Mocks.Stripe do
     bypass
   end
 
+  def mock_create_subscription_endpoint(bypass, resp \\ %{}) do
+    customers_endpoint_path = "v1/subscriptions"
+
+    resp =
+      Map.merge(
+        subscription_object("cus_NffrFeUfNV2Hib", %{}, %{}, 1),
+        resp
+      )
+
+    test_pid = self()
+
+    Bypass.expect(bypass, "POST", customers_endpoint_path, fn conn ->
+      conn = Plug.Conn.fetch_query_params(conn)
+      conn = fetch_request_params(conn)
+      send(test_pid, {:bypass_request, conn})
+      Plug.Conn.send_resp(conn, 200, Jason.encode!(resp))
+    end)
+
+    override_endpoint_url("http://localhost:#{bypass.port}")
+
+    bypass
+  end
+
   def subscription_object(customer_id, subscription_metadata, plan_metadata, quantity) do
     %{
       "id" => "sub_1MowQVLkdIwHu7ixeRlqHVzs",

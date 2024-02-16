@@ -20,17 +20,23 @@ defmodule Domain.BillingTest do
 
   describe "provision_account/1" do
     test "returns account if billing is disabled", %{account: account} do
-      Domain.Config.put_env_override(Domain.Billing, secret_key: nil, enabled: false)
+      Domain.Config.put_env_override(Domain.Billing,
+        secret_key: nil,
+        default_price_id: nil,
+        enabled: false
+      )
 
       assert provision_account(account) == {:ok, account}
     end
 
     test "creates a customer and persists it's ID in the account", %{account: account} do
-      bypass = Bypass.open()
-      Stripe.mock_create_customer_endpoint(bypass, account)
+      Bypass.open()
+      |> Stripe.mock_create_customer_endpoint(account)
+      |> Stripe.mock_create_subscription_endpoint()
 
       assert {:ok, account} = provision_account(account)
       assert account.metadata.stripe.customer_id == "cus_NffrFeUfNV2Hib"
+      assert account.metadata.stripe.subscription_id == "sub_1MowQVLkdIwHu7ixeRlqHVzs"
 
       assert_receive {:bypass_request, %{request_path: "/v1/customers"} = conn}
       assert conn.params == %{"name" => account.name, "metadata" => %{"account_id" => account.id}}
@@ -47,9 +53,11 @@ defmodule Domain.BillingTest do
 
   describe "billing_portal_url/3" do
     test "returns valid billing portal url", %{account: account, subject: subject} do
-      bypass = Bypass.open()
+      bypass =
+        Bypass.open()
+        |> Stripe.mock_create_customer_endpoint(account)
+        |> Stripe.mock_create_subscription_endpoint()
 
-      Stripe.mock_create_customer_endpoint(bypass, account)
       assert {:ok, account} = provision_account(account)
 
       Stripe.mock_create_billing_session_endpoint(bypass, account)

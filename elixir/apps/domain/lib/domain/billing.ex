@@ -38,14 +38,29 @@ defmodule Domain.Billing do
     false
   end
 
+  def seats_limit_exceeded?(%Accounts.Account{} = account, active_actors_count) do
+    Domain.Accounts.account_active?(account) and
+      active_actors_count >= account.limits.monthly_active_actors_count
+  end
+
   def provision_account(%Accounts.Account{} = account) do
     secret_key = fetch_config!(:secret_key)
+    default_price_id = fetch_config!(:default_price_id)
 
     with true <- enabled?(),
          true <- not account_provisioned?(account),
          {:ok, %{"id" => customer_id}} <-
-           APIClient.create_customer(secret_key, account.id, account.name) do
-      Accounts.update_account(account, %{metadata: %{stripe: %{customer_id: customer_id}}})
+           APIClient.create_customer(secret_key, account.id, account.name),
+         {:ok, %{"id" => subscription_id}} <-
+           APIClient.create_subscription(secret_key, customer_id, default_price_id) do
+      Accounts.update_account(account, %{
+        metadata: %{
+          stripe: %{
+            customer_id: customer_id,
+            subscription_id: subscription_id
+          }
+        }
+      })
     else
       false ->
         {:ok, account}
@@ -259,18 +274,29 @@ defmodule Domain.Billing do
   end
 
   defp account_update_attrs(quantity, product_metadata, subscription_metadata) do
-    features =
+    features_and_limits =
       Map.merge(product_metadata, subscription_metadata)
       |> Enum.flat_map(fn
-        {feature, "true"} -> [{feature, true}]
-        {feature, "false"} -> [{feature, false}]
-        {_key, _value} -> []
+        {feature, "true"} ->
+          [{feature, true}]
+
+        {feature, "false"} ->
+          [{feature, false}]
+
+        {"monthly_active_actors_count", count} ->
+          [{"monthly_active_actors_count", String.to_integer(count)}]
+
+        {_key, _value} ->
+          []
       end)
       |> Enum.into(%{})
 
+    {monthly_active_actors_count, features} =
+      Map.pop(features_and_limits, "monthly_active_actors_count", quantity)
+
     %{
       features: features,
-      limits: %{monthly_active_actors_count: quantity}
+      limits: %{monthly_active_actors_count: monthly_active_actors_count}
     }
   end
 

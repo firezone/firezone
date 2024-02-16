@@ -57,6 +57,6 @@ variable "stripe_webhook_signing_secret" {
   sensitive = true
 }
 
-variable "stripe_publishable_key" {
+variable "stripe_default_price_id" {
   type = string
 }

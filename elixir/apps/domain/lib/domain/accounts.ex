@@ -113,7 +113,7 @@ defmodule Domain.Accounts do
   end
 
   defp account_feature_enabled?(account, feature) do
-    Map.fetch!(account.features || %Features{}, feature)
+    Map.fetch!(account.features || %Features{}, feature) || false
   end
 
   def account_active?(%{deleted_at: nil, disabled_at: nil}), do: true

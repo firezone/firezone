@@ -477,8 +477,8 @@ locals {
       value = var.stripe_webhook_signing_secret
     },
     {
-      name  = "STRIPE_PUBLISHABLE_KEY"
-      value = var.stripe_publishable_key
+      name  = "STRIPE_DEFAULT_PRICE_ID"
+      value = var.stripe_default_price_id
     },
     # Telemetry
     {

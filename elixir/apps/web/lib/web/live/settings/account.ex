@@ -1,52 +1,14 @@
 defmodule Web.Settings.Account do
   use Web, :live_view
-  alias Domain.{Accounts, Billing}
-  require Logger
+  alias Domain.Accounts
 
   def mount(_params, _session, socket) do
     socket =
-      if connected?(socket) do
-        socket
-        |> assign_billing_portal_url()
-      else
-        assign(socket,
-          billing_portal_url: nil,
-          billing_portal_error: nil
-        )
-      end
-
-    socket = assign(socket, page_title: "Account")
+      assign(socket,
+        page_title: "Account"
+      )
 
     {:ok, socket}
-  end
-
-  defp assign_billing_portal_url(socket) do
-    case Billing.billing_portal_url(
-           socket.assigns.account,
-           url(~p"/#{socket.assigns.account}/settings/account"),
-           socket.assigns.subject
-         ) do
-      {:ok, billing_portal_url} ->
-        assign(socket,
-          billing_portal_url: billing_portal_url,
-          billing_portal_error: nil
-        )
-
-      {:error, :account_not_provisioned} ->
-        assign(socket,
-          billing_portal_url: nil,
-          billing_portal_error: nil
-        )
-
-      {:error, reason} ->
-        Logger.error("Failed to get billing portal URL", reason: inspect(reason))
-
-        assign(socket,
-          billing_portal_url: nil,
-          billing_portal_error:
-            "Billing portal is temporarily unavailable, please contact support if you need assistance with changing your plan."
-        )
-    end
   end
 
   def render(assigns) do
@@ -75,36 +37,10 @@ defmodule Web.Settings.Account do
               <.copy id="account-slug"><%= @account.slug %></.copy>
             </:value>
           </.vertical_table_row>
-          <.vertical_table_row :if={Billing.account_provisioned?(@account)}>
-            <:label>Current Plan</:label>
-            <:value>
-              <%= @account.metadata.stripe.product_name %>
-              <a :if={@billing_portal_url} class={link_style()} href={@billing_portal_url}>
-                (manage)
-              </a>
-              <div :if={@billing_portal_error} class="text-red-500">
-                <%= @billing_portal_error %>
-              </div>
-            </:value>
-          </.vertical_table_row>
-          <.vertical_table_row :if={
-            Billing.account_provisioned?(@account) and
-              not is_nil(@account.limits.monthly_active_actors_count) and
-              not is_nil(@active_actors_count)
-          }>
-            <:label>Seats</:label>
-            <:value>
-              <span class={[
-                @active_actors_count > @account.limits.monthly_active_actors_count && "text-red-500"
-              ]}>
-                <%= @active_actors_count %> used
-              </span>
-              / <%= @account.limits.monthly_active_actors_count %> purchased
-            </:value>
-          </.vertical_table_row>
         </.vertical_table>
       </:content>
     </.section>
+
     <.section>
       <:title>
         Danger zone

@@ -1,4 +1,4 @@
-defmodule Web.Live.Settings.AccountTest do
+defmodule Web.Live.Settings.BillingTest do
   use Web.ConnCase, async: true
 
   setup do
@@ -27,7 +27,7 @@ defmodule Web.Live.Settings.AccountTest do
   end
 
   test "redirects to sign in page for unauthorized user", %{account: account, conn: conn} do
-    path = ~p"/#{account}/settings/account"
+    path = ~p"/#{account}/settings/billing"
 
     assert live(conn, path) ==
              {:error,
@@ -46,11 +46,11 @@ defmodule Web.Live.Settings.AccountTest do
     {:ok, _lv, html} =
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/settings/account")
+      |> live(~p"/#{account}/settings/billing")
 
     assert item = Floki.find(html, "[aria-label='Breadcrumb']")
     breadcrumbs = String.trim(Floki.text(item))
-    assert breadcrumbs =~ "Account Settings"
+    assert breadcrumbs =~ "Billing"
   end
 
   test "renders table with account information even if billing portal is down", %{
@@ -61,17 +61,41 @@ defmodule Web.Live.Settings.AccountTest do
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/settings/account")
+      |> live(~p"/#{account}/settings/billing")
 
     rows =
       lv
-      |> element("#account")
+      |> element("#billing")
       |> render()
       |> vertical_table_to_map()
 
-    assert rows["account name"] == account.name
-    assert rows["account id"] == account.id
-    assert rows["account slug"] =~ account.slug
+    assert rows["current plan"] =~ account.metadata.stripe.product_name
+    assert rows["seats"] == "0 used / 100 purchased"
+
+    html = element(lv, "button[phx-click='redirect_to_billing_portal']") |> render_click()
+    assert html =~ "Billing portal is temporarily unavailable, please try again later."
+  end
+
+  test "renders billing portal button", %{
+    account: account,
+    identity: identity,
+    conn: conn
+  } do
+    Bypass.open()
+    |> Mocks.Stripe.mock_create_billing_session_endpoint(account)
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/settings/billing")
+
+    assert has_element?(lv, "button[phx-click='redirect_to_billing_portal']")
+
+    assert {:error, {:redirect, %{to: to}}} =
+             element(lv, "button[phx-click='redirect_to_billing_portal']")
+             |> render_click()
+
+    assert to =~ "https://billing.stripe.com/p/session"
   end
 
   test "renders error when seats limit is exceeded", %{
@@ -95,7 +119,15 @@ defmodule Web.Live.Settings.AccountTest do
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/settings/account")
+      |> live(~p"/#{account}/settings/billing")
+
+    rows =
+      lv
+      |> element("#billing")
+      |> render()
+      |> vertical_table_to_map()
+
+    assert rows["seats"] == "1 used / 0 purchased"
 
     html = lv |> render()
     assert html =~ "You have reached your monthly active actors limit."
@@ -123,7 +155,7 @@ defmodule Web.Live.Settings.AccountTest do
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/settings/account")
+      |> live(~p"/#{account}/settings/billing")
 
     html = lv |> render()
     assert html =~ "This account has been disabled."

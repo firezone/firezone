@@ -51,6 +51,19 @@ defmodule Domain.Billing.Stripe.APIClient do
     request(api_token, :post, "billing_portal/sessions", body)
   end
 
+  def create_subscription(api_token, customer_id, price_id) do
+    body =
+      URI.encode_query(
+        %{
+          "customer" => customer_id,
+          "items[0][price]" => price_id
+        },
+        :www_form
+      )
+
+    request(api_token, :post, "subscriptions", body)
+  end
+
   def request(api_token, method, path, body) do
     endpoint = fetch_config!(:endpoint)
     uri = URI.parse("#{endpoint}/v1/#{path}")
