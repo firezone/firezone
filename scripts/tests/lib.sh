@@ -11,5 +11,5 @@ function remove_iptables_drop_rules() {
 }
 
 function client_ping_resource() {
-    docker compose exec -it client curl --fail -vvv -i 172.20.0.100
+    docker compose exec -it client curl --fail -i 172.20.0.100
 }

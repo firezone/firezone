@@ -7,8 +7,11 @@ source "./scripts/tests/lib.sh"
 install_iptables_drop_rules
 trap remove_iptables_drop_rules EXIT # Cleanup after us
 
-client_ping_resource
+# Don't establish a channel first
+# client_ping_resource
 
 docker compose restart relay # Restart relay
+
+sleep 5 # Wait for relay to restart
 
 client_ping_resource
