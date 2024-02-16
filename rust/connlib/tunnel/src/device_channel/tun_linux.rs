@@ -380,6 +380,8 @@ async fn configure_systemd_resolved(dns_config: &[IpAddr]) -> Result<()> {
         return Err(Error::ResolvectlFailed);
     }
 
+    tracing::info!(?dns_config, "Configured DNS sentinels with `resolvectl`");
+
     Ok(())
 }
 

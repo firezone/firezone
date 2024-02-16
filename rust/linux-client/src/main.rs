@@ -111,6 +111,7 @@ fn get_system_default_resolvers_network_manager() -> Result<Vec<IpAddr>> {
     Ok(vec![])
 }
 
+/// Returns the DNS servers listed in `resolvectl dns`
 fn get_system_default_resolvers_systemd_resolved() -> Result<Vec<IpAddr>> {
     // Unfortunately systemd-resolved does not have a machine-readable
     // text output for this command: <https://github.com/systemd/systemd/issues/29755>
@@ -131,15 +132,10 @@ fn get_system_default_resolvers_systemd_resolved() -> Result<Vec<IpAddr>> {
 ///
 /// Cannot fail. If the parsing code is wrong, the IP address vec will just be incomplete.
 fn parse_resolvectl_output(s: &str) -> Vec<IpAddr> {
-    let mut v = vec![];
-    for line in s.lines() {
-        for word in line.split(' ') {
-            if let Ok(addr) = IpAddr::from_str(word) {
-                v.push(addr);
-            }
-        }
-    }
-    v
+    s.lines()
+        .flat_map(|line| line.split(' '))
+        .filter_map(|word| IpAddr::from_str(word).ok())
+        .collect()
 }
 
 #[derive(Parser)]
@@ -160,4 +156,37 @@ struct Cli {
     /// it's down. Accepts human times. e.g. "5m" or "1h" or "30d".
     #[arg(short, long, env = "MAX_PARTITION_TIME")]
     max_partition_time: Option<humantime::Duration>,
+}
+
+#[cfg(test)]
+mod tests {
+    use std::net::IpAddr;
+
+    #[test]
+    fn parse_resolvectl_output() {
+        let cases = [
+            // WSL
+            (
+                r"Global: 172.24.80.1
+Link 2 (eth0):
+Link 3 (docker0):
+Link 24 (br-fc0b71997a3c):
+Link 25 (br-0c129dafb204):
+Link 26 (br-e67e83b19dce):
+",
+                [IpAddr::from([172, 24, 80, 1])],
+            ),
+            // Ubuntu 20.04
+            (
+                r"Global:
+Link 2 (enp0s3): 192.168.1.1",
+                [IpAddr::from([192, 168, 1, 1])],
+            ),
+        ];
+
+        for (i, (input, expected)) in cases.iter().enumerate() {
+            let actual = super::parse_resolvectl_output(input);
+            assert_eq!(actual, expected, "Case {i} failed");
+        }
+    }
 }
