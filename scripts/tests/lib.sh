@@ -10,6 +10,6 @@ function remove_iptables_drop_rules() {
     sudo iptables -D FORWARD -s 172.28.0.105 -d 172.28.0.100 -j DROP
 }
 
-function client_ping_resource() {
+function client_curl_resource() {
     docker compose exec -it client curl --fail -i 172.20.0.100
 }
