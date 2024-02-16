@@ -189,10 +189,8 @@ services:
         ipv4_address: 172.21.0.100
 
   iperf3:
-    image: networkstatic/iperf3
-    healthcheck:
-      test: ["CMD-SHELL", "iperf3 -k 1 -c 127.0.0.1 || exit 1"]
-    command: -s
+    image: mlabbe/iperf3
+    command: -s -V
     networks:
       resources:
         ipv4_address: 172.20.0.110
