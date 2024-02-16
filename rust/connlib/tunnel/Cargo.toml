@@ -7,7 +7,7 @@ edition = "2021"
 [dependencies]
 secrecy = { workspace = true }
 async-trait = { version = "0.1", default-features = false }
-tokio = { version = "1.33", default-features = false, features = ["rt", "rt-multi-thread", "sync"] }
+tokio = { version = "1.36", default-features = false, features = ["rt", "rt-multi-thread", "sync"] }
 thiserror = { version = "1.0", default-features = false }
 rand_core = { version = "0.6", default-features = false, features = ["getrandom"] }
 serde = { version = "1.0", default-features = false, features = ["derive", "std"] }
@@ -26,10 +26,9 @@ boringtun = { workspace = true }
 chrono = { workspace = true }
 pnet_packet = { version = "0.34" }
 futures-bounded = { workspace = true }
-hickory-resolver = { workspace = true }
+hickory-resolver = { workspace = true, features = ["tokio-runtime"] }
 arc-swap = "1.6.0"
 bimap = "0.6"
-dns-lookup = { workspace = true }
 resolv-conf = "0.7.0"
 
 # TODO: research replacing for https://github.com/algesten/str0m

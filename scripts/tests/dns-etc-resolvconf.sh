@@ -5,7 +5,7 @@
 
 set -euo pipefail
 
-HTTPBIN=test.httpbin.docker.local
+HTTPBIN=dns.httpbin
 
 function client() {
     docker compose exec -it client "$@"
@@ -20,9 +20,6 @@ function client_nslookup() {
 function gateway() {
     docker compose exec -it gateway "$@"
 }
-
-# Wait for client to ping httpbin (CIDR) resource through the gateway
-client timeout 60 sh -c "until ping -W 1 -c 10 172.20.0.100 &>/dev/null; do true; done"
 
 echo "# check original resolv.conf"
 client sh -c "cat /etc/resolv.conf.firezone-backup"
