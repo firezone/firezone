@@ -101,6 +101,8 @@ where
                 _ => (),
             }
 
+            ready!(self.connections_state.sockets.poll_send_ready(cx))?; // Ensure socket is ready before we read from device.
+
             match device.poll_read(&mut self.read_buf, cx) {
                 Poll::Ready(Ok(Some(packet))) => {
                     let Some((peer_id, packet)) = self.role_state.encapsulate(packet) else {
@@ -157,6 +159,8 @@ where
                 Poll::Ready(other) => return Poll::Ready(Ok(other)),
                 _ => (),
             }
+
+            ready!(self.connections_state.sockets.poll_send_ready(cx))?; // Ensure socket is ready before we read from device.
 
             match device.poll_read(&mut self.read_buf, cx) {
                 Poll::Ready(Ok(Some(packet))) => {
@@ -330,6 +334,10 @@ where
 
     fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Event<TId>> {
         loop {
+            if let Err(e) = ready!(self.sockets.poll_send_ready(cx)) {
+                tracing::warn!("Failed to poll sockets for readiness: {e}");
+            };
+
             while let Some(transmit) = self.node.poll_transmit() {
                 if let Err(e) = self.sockets.try_send(&transmit) {
                     tracing::warn!(src = ?transmit.src, dst = %transmit.dst, "Failed to send UDP packet: {e}");

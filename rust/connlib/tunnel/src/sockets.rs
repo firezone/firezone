@@ -47,6 +47,18 @@ impl Sockets {
         })
     }
 
+    pub fn poll_send_ready(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        if let Some(socket) = self.socket_v4.as_mut() {
+            ready!(socket.poll_send_ready(cx))?;
+        }
+
+        if let Some(socket) = self.socket_v6.as_mut() {
+            ready!(socket.poll_send_ready(cx))?;
+        }
+
+        Poll::Ready(Ok(()))
+    }
+
     pub fn try_send(&mut self, transmit: &Transmit) -> Result<usize> {
         tracing::trace!(target: "wire", action = "write", to = %transmit.dst, src = ?transmit.src, bytes = %transmit.payload.len());
 
@@ -154,6 +166,10 @@ impl<const N: usize> Socket<N> {
                 }));
             }
         }
+    }
+
+    fn poll_send_ready(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        self.socket.poll_send_ready(cx)
     }
 
     fn try_send_to(
