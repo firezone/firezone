@@ -77,65 +77,66 @@ where
     CB: Callbacks + 'static,
 {
     pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Result<Event<GatewayId>>> {
-        loop {
-            let Some(device) = self.device.as_mut() else {
+        let Some(device) = self.device.as_mut() else {
+            self.no_device_waker.register(cx.waker());
+            return Poll::Pending;
+        };
+
+        match self.role_state.poll_next_event(cx) {
+            Poll::Ready(Event::SendPacket(packet)) => {
+                device.write(packet)?;
+                cx.waker().wake_by_ref();
+            }
+            Poll::Ready(other) => return Poll::Ready(Ok(other)),
+            _ => (),
+        }
+
+        match self.connections_state.poll_next_event(cx) {
+            Poll::Ready(Event::StopPeer(id)) => {
+                self.role_state.cleanup_connected_gateway(&id);
+                cx.waker().wake_by_ref();
+            }
+            Poll::Ready(other) => return Poll::Ready(Ok(other)),
+            _ => (),
+        }
+
+        match self.connections_state.poll_sockets(cx) {
+            Poll::Ready(packet) => {
+                device.write(packet)?;
+                cx.waker().wake_by_ref();
+            }
+            Poll::Pending => {}
+        }
+
+        ready!(self.connections_state.sockets.poll_send_ready(cx))?; // Ensure socket is ready before we read from device.
+
+        match device.poll_read(&mut self.read_buf, cx) {
+            Poll::Ready(Ok(Some(packet))) => {
+                let Some((peer_id, packet)) = self.role_state.encapsulate(packet) else {
+                    cx.waker().wake_by_ref();
+                    return Poll::Pending;
+                };
+
+                self.connections_state
+                    .send(peer_id, packet.as_immutable().into());
+
+                cx.waker().wake_by_ref();
+            }
+            Poll::Ready(Ok(None)) => {
+                tracing::info!("Device stopped");
+                self.device = None;
+
                 self.no_device_waker.register(cx.waker());
                 return Poll::Pending;
-            };
-
-            match self.role_state.poll_next_event(cx) {
-                Poll::Ready(Event::SendPacket(packet)) => {
-                    device.write(packet)?;
-                    continue;
-                }
-                Poll::Ready(other) => return Poll::Ready(Ok(other)),
-                _ => (),
             }
-
-            match self.connections_state.poll_next_event(cx) {
-                Poll::Ready(Event::StopPeer(id)) => {
-                    self.role_state.cleanup_connected_gateway(&id);
-                    continue;
-                }
-                Poll::Ready(other) => return Poll::Ready(Ok(other)),
-                _ => (),
+            Poll::Ready(Err(e)) => {
+                self.device = None; // Ensure we don't poll a failed device again.
+                return Poll::Ready(Err(ConnlibError::Io(e)));
             }
-
-            match self.connections_state.poll_sockets(cx) {
-                Poll::Ready(packet) => {
-                    device.write(packet)?;
-                    continue;
-                }
-                Poll::Pending => {}
-            }
-
-            ready!(self.connections_state.sockets.poll_send_ready(cx))?; // Ensure socket is ready before we read from device.
-
-            match device.poll_read(&mut self.read_buf, cx) {
-                Poll::Ready(Ok(Some(packet))) => {
-                    let Some((peer_id, packet)) = self.role_state.encapsulate(packet) else {
-                        continue;
-                    };
-
-                    self.connections_state
-                        .send(peer_id, packet.as_immutable().into());
-
-                    continue;
-                }
-                Poll::Ready(Ok(None)) => {
-                    tracing::info!("Device stopped");
-                    self.device = None;
-                    continue;
-                }
-                Poll::Ready(Err(e)) => {
-                    self.device = None; // Ensure we don't poll a failed device again.
-                    return Poll::Ready(Err(ConnlibError::Io(e)));
-                }
-                Poll::Pending => {}
-            }
-
-            return Poll::Pending;
+            Poll::Pending => {}
         }
+
+        Poll::Pending
     }
 }
 
@@ -144,55 +145,56 @@ where
     CB: Callbacks + 'static,
 {
     pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Result<Event<ClientId>>> {
-        loop {
-            let Some(device) = self.device.as_mut() else {
+        let Some(device) = self.device.as_mut() else {
+            self.no_device_waker.register(cx.waker());
+            return Poll::Pending;
+        };
+
+        match self.connections_state.poll_next_event(cx) {
+            Poll::Ready(Event::StopPeer(id)) => {
+                self.role_state.peers_by_ip.retain(|_, p| p.conn_id != id);
+                cx.waker().wake_by_ref();
+            }
+            Poll::Ready(other) => return Poll::Ready(Ok(other)),
+            _ => (),
+        }
+
+        match self.connections_state.poll_sockets(cx) {
+            Poll::Ready(packet) => {
+                device.write(packet)?;
+                cx.waker().wake_by_ref();
+            }
+            Poll::Pending => {}
+        }
+
+        ready!(self.connections_state.sockets.poll_send_ready(cx))?; // Ensure socket is ready before we read from device.
+
+        match device.poll_read(&mut self.read_buf, cx) {
+            Poll::Ready(Ok(Some(packet))) => {
+                let Some((peer_id, packet)) = self.role_state.encapsulate(packet) else {
+                    cx.waker().wake_by_ref();
+                    return Poll::Pending;
+                };
+
+                self.connections_state
+                    .send(peer_id, packet.as_immutable().into());
+
+                cx.waker().wake_by_ref();
+            }
+            Poll::Ready(Ok(None)) => {
+                tracing::info!("Device stopped");
+                self.device = None;
+
                 self.no_device_waker.register(cx.waker());
                 return Poll::Pending;
-            };
-
-            match self.connections_state.poll_next_event(cx) {
-                Poll::Ready(Event::StopPeer(id)) => {
-                    self.role_state.peers_by_ip.retain(|_, p| p.conn_id != id);
-                    continue;
-                }
-                Poll::Ready(other) => return Poll::Ready(Ok(other)),
-                _ => (),
             }
-
-            match self.connections_state.poll_sockets(cx) {
-                Poll::Ready(packet) => {
-                    device.write(packet)?;
-                    continue;
-                }
-                Poll::Pending => {}
+            Poll::Ready(Err(e)) => return Poll::Ready(Err(ConnlibError::Io(e))),
+            Poll::Pending => {
+                // device not ready for reading, moving on ..
             }
-
-            ready!(self.connections_state.sockets.poll_send_ready(cx))?; // Ensure socket is ready before we read from device.
-
-            match device.poll_read(&mut self.read_buf, cx) {
-                Poll::Ready(Ok(Some(packet))) => {
-                    let Some((peer_id, packet)) = self.role_state.encapsulate(packet) else {
-                        continue;
-                    };
-
-                    self.connections_state
-                        .send(peer_id, packet.as_immutable().into());
-
-                    continue;
-                }
-                Poll::Ready(Ok(None)) => {
-                    tracing::info!("Device stopped");
-                    self.device = None;
-                    continue;
-                }
-                Poll::Ready(Err(e)) => return Poll::Ready(Err(ConnlibError::Io(e))),
-                Poll::Pending => {
-                    // device not ready for reading, moving on ..
-                }
-            }
-
-            return Poll::Pending;
         }
+
+        Poll::Pending
     }
 }
 
