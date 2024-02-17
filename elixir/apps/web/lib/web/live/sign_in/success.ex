@@ -28,7 +28,7 @@ defmodule Web.SignIn.Success do
           <div class="p-6 space-y-4 lg:space-y-6 sm:p-8">
             <h1 class="text-xl text-center leading-tight tracking-tight text-neutral-900 sm:text-2xl">
               <span>
-                Sign in successful
+                Sign in successful.
               </span>
             </h1>
             <p class="text-center">You may close this window.</p>
