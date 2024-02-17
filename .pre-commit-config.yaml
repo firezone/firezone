@@ -7,10 +7,19 @@ repos:
         language: system
         pass_filenames: false
 
+  - repo: https://github.com/pecigonzalo/pre-commit-shfmt
+    sha: master
+    hooks:
+      - id: shell-fmt
+        args:
+          - -i
+          - "4"
+
   # Standard pre-commit hooks
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v2.3.0
     hooks:
+      - id:
       - id: mixed-line-ending
         args: ["--fix=lf"]
         description: Forces to replace line ending by the UNIX 'lf' character.
