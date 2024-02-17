@@ -8,17 +8,17 @@ set -euo pipefail
 HTTPBIN=dns.httpbin
 
 function client() {
-	docker compose exec -it client "$@"
+    docker compose exec -it client "$@"
 }
 
 function client_nslookup() {
-	# Skip the first 3 lines so that grep won't see the DNS server IP
-	# `tee` here copies stdout to stderr
-	client timeout 30 sh -c "nslookup $1 | tee >(cat 1>&2) | tail -n +4"
+    # Skip the first 3 lines so that grep won't see the DNS server IP
+    # `tee` here copies stdout to stderr
+    client timeout 30 sh -c "nslookup $1 | tee >(cat 1>&2) | tail -n +4"
 }
 
 function gateway() {
-	docker compose exec -it gateway "$@"
+    docker compose exec -it gateway "$@"
 }
 
 echo "# check original resolv.conf"
