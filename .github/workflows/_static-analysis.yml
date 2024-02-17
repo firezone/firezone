@@ -19,8 +19,9 @@ jobs:
             git diff
             exit 1
           fi
+
   global-linter:
-    runs-on: macos-14
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -30,9 +31,9 @@ jobs:
         name: Restore Python Cache
         with:
           path: ~/.cache/pip
-          key: macos-14-${{ runner.arch }}-pip-${{ hashFiles('requirements.txt') }}
+          key: ubuntu-22.04-${{ runner.arch }}-pip-${{ hashFiles('requirements.txt') }}
           restore-keys: |
-            macos-14-${{ runner.arch }}-pip-
+            ubuntu-22.04-${{ runner.arch }}-pip-
       - name: Install Python Dependencies
         run: |
           pip install -r requirements.txt
@@ -45,4 +46,4 @@ jobs:
         name: Save Python Cache
         with:
           path: ~/.cache/pip
-          key: macos-14-${{ runner.arch }}-pip-${{ hashFiles('requirements.txt') }}
+          key: ubuntu-22.04-${{ runner.arch }}-pip-${{ hashFiles('requirements.txt') }}
