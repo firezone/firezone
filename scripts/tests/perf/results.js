@@ -113,7 +113,7 @@ exports.script = async function (
     ) +
     ")";
   let udp_server2client_sum_jitter_ms =
-    results.udp_server2client_sum_jitter_ms.toFixed(2) +
+    parseFloat(results.udp_server2client_sum_jitter_ms).toFixed(2) +
     "ms (" +
     getDiffPercents(
       main_results.udp_server2client_sum_jitter_ms,
@@ -121,7 +121,7 @@ exports.script = async function (
     ) +
     ")";
   let udp_server2client_sum_lost_percent =
-    results.udp_server2client_sum_lost_percent.toFixed(2) +
+    parseFloat(results.udp_server2client_sum_lost_percent).toFixed(2) +
     "% (" +
     getDiffPercents(
       main_results.udp_server2client_sum_lost_percent,
@@ -138,7 +138,7 @@ exports.script = async function (
     ) +
     ")";
   let udp_client2server_sum_jitter_ms =
-    results.udp_client2server_sum_jitter_ms.toFixed(2) +
+    parseFloat(results.udp_client2server_sum_jitter_ms).toFixed(2) +
     "ms (" +
     getDiffPercents(
       main_results.udp_client2server_sum_jitter_ms,
@@ -146,7 +146,7 @@ exports.script = async function (
     ) +
     ")";
   let udp_client2server_sum_lost_percent =
-    results.udp_client2server_sum_lost_percent.toFixed(2) +
+    parseFloat(results.udp_client2server_sum_lost_percent).toFixed(2) +
     "% (" +
     getDiffPercents(
       main_results.udp_client2server_sum_lost_percent,
