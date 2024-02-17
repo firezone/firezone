@@ -1,5 +1,7 @@
 use crate::device_channel::ioctl;
-use connlib_shared::{messages::Interface as InterfaceConfig, Callbacks, Error, Result};
+use connlib_shared::{
+    linux::DnsControlMethod, messages::Interface as InterfaceConfig, Callbacks, Error, Result,
+};
 use futures::TryStreamExt;
 use futures_util::future::BoxFuture;
 use futures_util::FutureExt;
@@ -24,6 +26,7 @@ use std::{
 };
 use tokio::io::unix::AsyncFd;
 
+mod etc_resolv_conf;
 mod utils;
 
 pub(crate) const SIOCGIFMTU: libc::c_ulong = libc::SIOCGIFMTU;
@@ -91,7 +94,19 @@ impl Tun {
         utils::poll_raw_fd(&self.fd, |fd| read(fd, buf), cx)
     }
 
-    pub fn new(config: &InterfaceConfig, _: Vec<IpAddr>, _: &impl Callbacks) -> Result<Self> {
+    pub fn new(
+        config: &InterfaceConfig,
+        dns_config: Vec<IpAddr>,
+        _: &impl Callbacks,
+    ) -> Result<Self> {
+        tracing::debug!(?dns_config);
+
+        // TODO: Tech debt: <https://github.com/firezone/firezone/issues/3636>
+        // TODO: Gateways shouldn't set up DNS, right? Only clients?
+        // TODO: Move this configuration up to the client
+        let dns_control_method = connlib_shared::linux::get_dns_control_from_env();
+        tracing::info!(?dns_control_method);
+
         create_tun_device()?;
 
         let fd = match unsafe { open(TUN_FILE.as_ptr() as _, O_RDWR) } {
@@ -101,7 +116,11 @@ impl Tun {
 
         // Safety: We just opened the file descriptor.
         unsafe {
-            ioctl::exec(fd, TUNSETIFF, &ioctl::Request::<SetTunFlagsPayload>::new())?;
+            ioctl::exec(
+                fd,
+                TUNSETIFF,
+                &mut ioctl::Request::<SetTunFlagsPayload>::new(),
+            )?;
         }
 
         set_non_blocking(fd)?;
@@ -113,7 +132,9 @@ impl Tun {
             handle: handle.clone(),
             connection: join_handle,
             fd: AsyncFd::new(fd)?,
-            worker: Mutex::new(Some(set_iface_config(config.clone(), handle).boxed())),
+            worker: Mutex::new(Some(
+                set_iface_config(config.clone(), dns_config, handle, dns_control_method).boxed(),
+            )),
         })
     }
 
@@ -190,7 +211,12 @@ impl Tun {
 }
 
 #[tracing::instrument(level = "trace", skip(handle))]
-async fn set_iface_config(config: InterfaceConfig, handle: Handle) -> Result<()> {
+async fn set_iface_config(
+    config: InterfaceConfig,
+    dns_config: Vec<IpAddr>,
+    handle: Handle,
+    dns_control_method: Option<DnsControlMethod>,
+) -> Result<()> {
     let index = handle
         .link()
         .get()
@@ -225,8 +251,29 @@ async fn set_iface_config(config: InterfaceConfig, handle: Handle) -> Result<()>
         .await;
 
     handle.link().set(index).up().execute().await?;
-
     res_v4.or(res_v6)?;
+
+    match dns_control_method {
+        None => {}
+        Some(DnsControlMethod::EtcResolvConf) => {
+            etc_resolv_conf::configure_dns(&dns_config).await?
+        }
+        Some(DnsControlMethod::NetworkManager) => configure_network_manager(&dns_config).await?,
+        Some(DnsControlMethod::Systemd) => configure_systemd_resolved(&dns_config).await?,
+    }
+
+    // TODO: Having this inside the library is definitely wrong. I think `set_iface_config`
+    // needs to return before `new` returns, so that the `on_tunnel_ready` callback
+    // happens after the IP address and DNS are set up. Then we can call `sd_notify`
+    // inside `on_tunnel_ready` in the client.
+    //
+    // `sd_notify::notify` is always safe to call, it silently returns `Ok(())`
+    // if we aren't running as a systemd service.
+    if let Err(error) = sd_notify::notify(true, &[sd_notify::NotifyState::Ready]) {
+        // Nothing we can do about it
+        tracing::warn!(?error, "Failed to notify systemd that we're ready");
+    }
+
     Ok(())
 }
 
@@ -302,6 +349,40 @@ impl ioctl::Request<SetTunFlagsPayload> {
             },
         }
     }
+}
+
+async fn configure_network_manager(_dns_config: &[IpAddr]) -> Result<()> {
+    Err(Error::Other(
+        "DNS control with NetworkManager is not implemented yet",
+    ))
+}
+
+async fn configure_systemd_resolved(dns_config: &[IpAddr]) -> Result<()> {
+    let status = tokio::process::Command::new("resolvectl")
+        .arg("dns")
+        .arg(IFACE_NAME)
+        .args(dns_config.iter().map(ToString::to_string))
+        .status()
+        .await
+        .map_err(|_| Error::ResolvectlFailed)?;
+    if !status.success() {
+        return Err(Error::ResolvectlFailed);
+    }
+
+    let status = tokio::process::Command::new("resolvectl")
+        .arg("domain")
+        .arg(IFACE_NAME)
+        .arg("~.")
+        .status()
+        .await
+        .map_err(|_| Error::ResolvectlFailed)?;
+    if !status.success() {
+        return Err(Error::ResolvectlFailed);
+    }
+
+    tracing::info!(?dns_config, "Configured DNS sentinels with `resolvectl`");
+
+    Ok(())
 }
 
 #[repr(C)]

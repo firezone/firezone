@@ -7,7 +7,7 @@ edition = "2021"
 [dependencies]
 secrecy = { workspace = true }
 async-trait = { version = "0.1", default-features = false }
-tokio = { version = "1.33", default-features = false, features = ["rt", "rt-multi-thread", "sync"] }
+tokio = { version = "1.36", default-features = false, features = ["rt", "rt-multi-thread", "sync"] }
 thiserror = { version = "1.0", default-features = false }
 rand_core = { version = "0.6", default-features = false, features = ["getrandom"] }
 serde = { version = "1.0", default-features = false, features = ["derive", "std"] }
@@ -26,10 +26,10 @@ boringtun = { workspace = true }
 chrono = { workspace = true }
 pnet_packet = { version = "0.34" }
 futures-bounded = { workspace = true }
-hickory-resolver = { workspace = true }
+hickory-resolver = { workspace = true, features = ["tokio-runtime"] }
 arc-swap = "1.6.0"
 bimap = "0.6"
-dns-lookup = { workspace = true }
+resolv-conf = "0.7.0"
 
 # TODO: research replacing for https://github.com/algesten/str0m
 webrtc = { workspace = true }
@@ -38,13 +38,16 @@ webrtc = { workspace = true }
 log = "0.4"
 
 [dev-dependencies]
+anyhow = "1.0"
 serde_json = "1.0"
+tempfile = "3.10.0"
 
 # Linux tunnel dependencies
 [target.'cfg(target_os = "linux")'.dependencies]
 netlink-packet-route = { version = "0.17", default-features = false }
 netlink-packet-core = { version = "0.7", default-features = false }
 rtnetlink = { version = "0.13" }
+sd-notify = "0.4.1"
 
 # Android tunnel dependencies
 [target.'cfg(target_os = "android")'.dependencies]

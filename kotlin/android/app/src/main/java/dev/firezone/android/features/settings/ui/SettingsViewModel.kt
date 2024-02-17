@@ -10,8 +10,7 @@ import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
-import dev.firezone.android.core.domain.preference.GetConfigUseCase
-import dev.firezone.android.core.domain.preference.SaveSettingsUseCase
+import dev.firezone.android.core.data.Repository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -32,8 +31,7 @@ import javax.inject.Inject
 internal class SettingsViewModel
     @Inject
     constructor(
-        private val getConfigUseCase: GetConfigUseCase,
-        private val saveSettingsUseCase: SaveSettingsUseCase,
+        private val repo: Repository,
     ) : ViewModel() {
         private val _uiState = MutableStateFlow(UiState())
         val uiState: StateFlow<UiState> = _uiState
@@ -47,12 +45,12 @@ internal class SettingsViewModel
 
         fun populateFieldsFromConfig() {
             viewModelScope.launch {
-                getConfigUseCase().collect {
+                repo.getConfig().collect {
                     actionMutableLiveData.postValue(
                         ViewAction.FillSettings(
-                            it.authBaseUrl.orEmpty(),
-                            it.apiUrl.orEmpty(),
-                            it.logFilter.orEmpty(),
+                            it.authBaseUrl,
+                            it.apiUrl,
+                            it.logFilter,
                         ),
                     )
                 }
@@ -73,7 +71,7 @@ internal class SettingsViewModel
 
         fun onSaveSettingsCompleted() {
             viewModelScope.launch {
-                saveSettingsUseCase(authBaseUrl, apiUrl, logFilter).collect {
+                repo.saveSettings(authBaseUrl, apiUrl, logFilter).collect {
                     actionMutableLiveData.postValue(ViewAction.NavigateBack)
                 }
             }
@@ -148,6 +146,21 @@ internal class SettingsViewModel
             }
         }
 
+        fun resetSettingsToDefaults() {
+            val defaultConfig = repo.getDefaultConfigSync()
+            authBaseUrl = defaultConfig.authBaseUrl
+            apiUrl = defaultConfig.apiUrl
+            logFilter = defaultConfig.logFilter
+            onFieldUpdated()
+            actionMutableLiveData.postValue(
+                ViewAction.FillSettings(
+                    authBaseUrl,
+                    apiUrl,
+                    logFilter,
+                ),
+            )
+        }
+
         private suspend fun zipFolder(
             sourceFolder: File,
             zipFile: File,
@@ -208,7 +221,7 @@ internal class SettingsViewModel
         )
 
         internal sealed class ViewAction {
-            object NavigateBack : ViewAction()
+            data object NavigateBack : ViewAction()
 
             data class FillSettings(
                 val authBaseUrl: String,

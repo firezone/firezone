@@ -679,6 +679,23 @@ IO.puts("")
     admin_subject
   )
 
+{:ok, dns_httpbin_resource} =
+  Resources.create_resource(
+    %{
+      type: :dns,
+      name: "?.httpbin",
+      address: "?.httpbin",
+      address_description: "http://httpbin/",
+      connections: [%{gateway_group_id: gateway_group.id}],
+      filters: [
+        %{ports: ["80", "433"], protocol: :tcp},
+        %{ports: ["53"], protocol: :udp},
+        %{protocol: :icmp}
+      ]
+    },
+    admin_subject
+  )
+
 IO.puts("Created resources:")
 IO.puts("  #{dns_google_resource.address} - DNS - gateways: #{gateway_name}")
 IO.puts("  #{dns_gitlab_resource.address} - DNS - gateways: #{gateway_name}")
@@ -687,6 +704,7 @@ IO.puts("  #{firezone_dev.address} - DNS - gateways: #{gateway_name}")
 IO.puts("  #{example_dns.address} - DNS - gateways: #{gateway_name}")
 IO.puts("  #{ip_resource.address} - IP - gateways: #{gateway_name}")
 IO.puts("  #{cidr_resource.address} - CIDR - gateways: #{gateway_name}")
+IO.puts("  #{dns_httpbin_resource.address} - DNS - gateways: #{gateway_name}")
 IO.puts("")
 
 {:ok, _} =
@@ -755,6 +773,16 @@ IO.puts("")
       name: "All Access To Network",
       actor_group_id: synced_group.id,
       resource_id: cidr_resource.id
+    },
+    admin_subject
+  )
+
+{:ok, _} =
+  Policies.create_policy(
+    %{
+      name: "All Access To dns.httpbin",
+      actor_group_id: everyone_group.id,
+      resource_id: dns_httpbin_resource.id
     },
     admin_subject
   )

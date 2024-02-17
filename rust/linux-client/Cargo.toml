@@ -9,9 +9,12 @@ edition = "2021"
 [dependencies]
 secrecy = { workspace = true }
 connlib-client-shared = { workspace = true }
+connlib-shared = { workspace = true }
 firezone-cli-utils = { workspace = true }
 anyhow = { version = "1.0" }
 tracing = { workspace = true }
 clap = { version = "4.4", features = ["derive",  "env"] }
 tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
 humantime = "2.1"
+resolv-conf = "0.7.0"
+thiserror = "1.0.57"

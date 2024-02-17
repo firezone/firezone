@@ -164,6 +164,20 @@ pub enum ConnlibError {
     ClosedByPortal,
     #[error(transparent)]
     JoinError(#[from] JoinError),
+
+    // Error variants for `/etc/resolv.conf` DNS control
+    #[error("Failed to read `resolv.conf`: {0}")]
+    ReadResolvConf(std::io::Error),
+    #[error("Failed to parse `resolv.conf`")]
+    ParseResolvConf,
+    #[error("Failed to backup `resolv.conf`: {0}")]
+    WriteResolvConfBackup(std::io::Error),
+    #[error("Failed to rewrite `resolv.conf`: {0}")]
+    RewriteResolvConf(std::io::Error),
+
+    // Error variants for `systemd-resolved` DNS control
+    #[error("Failed to control system DNS with `resolvectl`")]
+    ResolvectlFailed,
 }
 
 impl ConnlibError {

@@ -76,9 +76,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
                adapter_config: %{
                  client_id: ["can't be blank"],
                  client_secret: ["can't be blank"],
-                 discovery_document_uri: [
-                   "is invalid, got {:options, {:server_name_indication, []}}"
-                 ]
+                 discovery_document_uri: ["is not a valid URL"]
                }
              }
     end

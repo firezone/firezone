@@ -32,8 +32,9 @@ defmodule Web.FormComponents do
 
   attr :type, :string,
     default: "text",
-    values: ~w(checkbox color date datetime-local email file hidden month number password
-               range radio search group_select select tel text textarea taglist time url week)
+    values:
+      ~w(checkbox color date datetime-local email file hidden month number password
+               range radio readonly search group_select select tel text textarea taglist time url week)
 
   attr :field, Phoenix.HTML.FormField,
     doc: "a form field struct retrieved from the form, for example: @form[:email]"
@@ -227,6 +228,26 @@ defmodule Web.FormComponents do
       value={Phoenix.HTML.Form.normalize_value(@type, @value)}
       {@rest}
     />
+    """
+  end
+
+  def input(%{type: "readonly"} = assigns) do
+    ~H"""
+    <div>
+      <.label><%= @label %></.label>
+      <div class="border border-solid rounded p-2 text-sm text-neutral-500">
+        <%= assigns.value %>
+      </div>
+      <input
+        type="hidden"
+        name={@name}
+        id={@id}
+        value={Phoenix.HTML.Form.normalize_value(@type, @value)}
+        {@rest}
+      />
+
+      <.error :for={msg <- @errors} data-validation-error-for={@name}><%= msg %></.error>
+    </div>
     """
   end
 

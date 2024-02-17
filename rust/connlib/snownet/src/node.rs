@@ -33,9 +33,6 @@ use stun_codec::rfc5389::attributes::{Realm, Username};
 // Note: Taken from boringtun
 const HANDSHAKE_RATE_LIMIT: u64 = 100;
 
-/// How often wireguard will send a keep-alive packet.
-pub(crate) const WIREGUARD_KEEP_ALIVE: u16 = 5;
-
 const MAX_UDP_SIZE: usize = (1 << 16) - 1;
 
 /// Manages a set of wireguard connections for a server.
@@ -77,8 +74,10 @@ pub enum Error {
     Decapsulate(boringtun::noise::errors::WireGuardError),
     #[error("Failed to encapsulate: {0:?}")]
     Encapsulate(boringtun::noise::errors::WireGuardError),
-    #[error("Unmatched packet")]
-    UnmatchedPacket,
+    #[error("Packet is a STUN message but no agent handled it; num_agents = {num_agents}")]
+    UnhandledStunMessage { num_agents: usize },
+    #[error("Packet was not accepted by any wireguard tunnel; num_tunnels = {num_tunnels}")]
+    UnhandledPacket { num_tunnels: usize },
     #[error("Not connected")]
     NotConnected,
     #[error("Invalid local address: {0}")]
@@ -106,6 +105,10 @@ where
             last_now: now,
             connections: Default::default(),
         }
+    }
+
+    pub fn public_key(&self) -> PublicKey {
+        (&self.private_key).into()
     }
 
     /// Lazily retrieve stats of all connections.
@@ -142,6 +145,7 @@ where
         Ok(())
     }
 
+    #[tracing::instrument(level = "debug", skip_all, fields(%id))]
     pub fn add_remote_candidate(&mut self, id: TId, candidate: String) {
         let candidate = match Candidate::from_sdp_string(&candidate) {
             Ok(c) => c,
@@ -174,6 +178,7 @@ where
     /// - `Ok(None)` if the packet was handled internally, for example, a response from a TURN server.
     /// - `Ok(Some)` if the packet was an encrypted wireguard packet from a peer.
     ///   The `Option` contains the connection on which the packet was decrypted.
+    #[tracing::instrument(level = "debug", skip_all, fields(%from, num_bytes = %packet.len()))]
     pub fn decapsulate<'s>(
         &mut self,
         local: SocketAddr,
@@ -225,6 +230,10 @@ where
                     return Ok(None);
                 }
             }
+
+            return Err(Error::UnhandledStunMessage {
+                num_agents: self.connections.len(),
+            });
         }
 
         for (id, conn) in self.connections.iter_established_mut() {
@@ -288,7 +297,9 @@ where
             };
         }
 
-        Err(Error::UnmatchedPacket)
+        Err(Error::UnhandledPacket {
+            num_tunnels: self.connections.iter_established_mut().count(),
+        })
     }
 
     /// Encapsulate an outgoing IP packet.
@@ -296,6 +307,7 @@ where
     /// Wireguard is an IP tunnel, so we "enforce" that only IP packets are sent through it.
     /// We say "enforce" an [`IpPacket`] can be created from an (almost) arbitrary byte buffer at virtually no cost.
     /// Nevertheless, using [`IpPacket`] in our API has good documentation value.
+    #[tracing::instrument(level = "debug", skip_all, fields(id = %connection))]
     pub fn encapsulate<'s>(
         &'s mut self,
         connection: TId,
@@ -376,8 +388,10 @@ where
                         &mut self.pending_events,
                     );
                 }
-                CandidateEvent::Invalid(_) => {
-                    // TODO: Handle expired candidates. Invalidate on ICE agent? ICE restart?
+                CandidateEvent::Invalid(candidate) => {
+                    for (_, agent) in self.connections.agents_mut() {
+                        agent.invalidate_candidate(&candidate);
+                    }
                 }
             }
         }
@@ -437,9 +451,14 @@ where
                         };
 
                         if conn.peer_socket != Some(remote_socket) {
-                            tracing::debug!(old = ?conn.peer_socket, new = ?remote_socket, "Updating remote socket");
+                            let is_first_connection = conn.peer_socket.is_none();
+
+                            tracing::info!(old = ?conn.peer_socket, new = ?remote_socket, "Updating remote socket");
                             conn.peer_socket = Some(remote_socket);
-                            return Some(Event::ConnectionEstablished(id));
+
+                            if is_first_connection {
+                                return Some(Event::ConnectionEstablished(id));
+                            }
                         }
                     }
                     _ => {}
@@ -448,6 +467,8 @@ where
         }
 
         for conn in failed_connections {
+            tracing::info!(id = %conn, "Connection failed (ICE timeout)");
+
             self.connections.established.remove(&conn);
             self.pending_events.push_back(Event::ConnectionFailed(conn));
         }
@@ -499,6 +520,8 @@ where
         }
 
         for conn in expired_connections {
+            tracing::info!(id = %conn, "Connection failed (wireguard tunnel expired)");
+
             self.connections.established.remove(&conn);
             self.pending_events.push_back(Event::ConnectionFailed(conn))
         }
@@ -523,11 +546,13 @@ where
             .initial
             .iter()
             .filter_map(|(id, conn)| {
-                (now.duration_since(conn.created_at) >= Duration::from_secs(10)).then_some(*id)
+                (now.duration_since(conn.created_at) >= Duration::from_secs(20)).then_some(*id)
             })
             .collect::<Vec<_>>();
 
         for conn in stale_connections {
+            tracing::info!(id = %conn, "Connection setup timed out (no answer received)");
+
             self.connections.initial.remove(&conn);
             self.pending_events.push_back(Event::ConnectionFailed(conn));
         }
@@ -572,7 +597,7 @@ where
                 self.private_key.clone(),
                 remote,
                 Some(key),
-                Some(WIREGUARD_KEEP_ALIVE),
+                None,
                 self.index.next(),
                 Some(self.rate_limiter.clone()),
             ),
@@ -581,7 +606,6 @@ where
             next_timer_update: self.last_now,
             peer_socket: None,
             possible_sockets: HashSet::default(),
-            last_seen: None,
         }
     }
 
@@ -619,6 +643,7 @@ where
     ///
     /// Out of all configured STUN and TURN servers, the connection will only use the ones provided here.
     /// The returned [`Offer`] must be passed to the remote via a signalling channel.
+    #[tracing::instrument(level = "info", skip_all, fields(%id))]
     pub fn new_connection(
         &mut self,
         id: TId,
@@ -626,11 +651,11 @@ where
         allowed_turn_servers: HashSet<(SocketAddr, String, String, String)>,
     ) -> Offer {
         if self.connections.initial.remove(&id).is_some() {
-            tracing::info!(%id, "Replacing existing initial connection");
+            tracing::info!("Replacing existing initial connection");
         };
 
         if self.connections.established.remove(&id).is_some() {
-            tracing::info!(%id, "Replacing existing established connection");
+            tracing::info!("Replacing existing established connection");
         };
 
         self.upsert_stun_servers(&allowed_stun_servers);
@@ -644,13 +669,6 @@ where
 
         let mut agent = IceAgent::new();
         agent.set_controlling(true);
-
-        self.seed_agent_with_local_candidates(
-            id,
-            &mut agent,
-            &allowed_stun_servers,
-            &allowed_turn_servers,
-        );
 
         let session_key = Secret::new(random());
         let ice_creds = agent.local_credentials();
@@ -680,9 +698,10 @@ where
     }
 
     /// Accept an [`Answer`] from the remote for a connection previously created via [`Node::new_connection`].
+    #[tracing::instrument(level = "debug", skip_all, fields(%id, remote = %hex::encode(remote.as_bytes())))]
     pub fn accept_answer(&mut self, id: TId, remote: PublicKey, answer: Answer) {
         let Some(initial) = self.connections.initial.remove(&id) else {
-            debug_assert!(false, "No initial connection to accept answer for");
+            tracing::debug!("No initial connection state, ignoring answer"); // This can happen if the connection setup timed out.
             return;
         };
 
@@ -691,6 +710,13 @@ where
             ufrag: answer.credentials.username,
             pass: answer.credentials.password,
         });
+
+        self.seed_agent_with_local_candidates(
+            id,
+            &mut agent,
+            &initial.stun_servers,
+            &initial.turn_servers,
+        );
 
         let connection = self.init_connection(
             agent,
@@ -714,6 +740,7 @@ where
     ///
     /// Out of all configured STUN and TURN servers, the connection will only use the ones provided here.
     /// The returned [`Answer`] must be passed to the remote via a signalling channel.
+    #[tracing::instrument(level = "info", skip_all, fields(%id))]
     pub fn accept_connection(
         &mut self,
         id: TId,
@@ -728,7 +755,7 @@ where
         );
 
         if self.connections.established.remove(&id).is_some() {
-            tracing::info!(%id, "Replacing existing established connection");
+            tracing::info!("Replacing existing established connection");
         };
 
         self.upsert_stun_servers(&allowed_stun_servers);
@@ -792,14 +819,6 @@ where
 
     fn upsert_turn_servers(&mut self, servers: &HashSet<(SocketAddr, String, String, String)>) {
         for (server, username, password, realm) in servers {
-            if let Some(existing) = self.allocations.get_mut(server) {
-                if existing.uses_credentials(username, password, realm) {
-                    existing.refresh();
-
-                    continue;
-                }
-            }
-
             let Ok(username) = Username::new(username.to_owned()) else {
                 tracing::debug!(%username, "Invalid TURN username");
                 continue;
@@ -809,16 +828,17 @@ where
                 continue;
             };
 
-            let existing = self.allocations.insert(
+            if let Some(existing) = self.allocations.get_mut(server) {
+                existing.refresh(username, password, realm);
+                continue;
+            }
+
+            self.allocations.insert(
                 *server,
                 Allocation::new(*server, username, password.clone(), realm, self.last_now),
             );
 
-            if existing.is_some() {
-                tracing::info!(address = %server, "Replaced existing allocation because credentials to TURN server changed");
-            } else {
-                tracing::info!(address = %server, "Added new TURN server");
-            }
+            tracing::info!(address = %server, "Added new TURN server");
         }
     }
 
@@ -887,15 +907,9 @@ where
     TId: Eq + Hash + Copy,
 {
     fn stats(&self, now: Instant) -> impl Iterator<Item = (TId, ConnectionInfo)> + '_ {
-        self.established.iter().map(move |(id, c)| {
-            (
-                *id,
-                ConnectionInfo {
-                    last_seen: c.last_seen,
-                    generated_at: now,
-                },
-            )
-        })
+        self.established
+            .keys()
+            .map(move |id| (*id, ConnectionInfo { generated_at: now }))
     }
 
     fn agent_mut(&mut self, id: TId) -> Option<&mut IceAgent> {
@@ -921,6 +935,10 @@ where
 
     fn iter_established_mut(&mut self) -> impl Iterator<Item = (TId, &mut Connection)> {
         self.established.iter_mut().map(|(id, conn)| (*id, conn))
+    }
+
+    fn len(&self) -> usize {
+        self.initial.len() + self.established.len()
     }
 }
 
@@ -1093,8 +1111,6 @@ struct Connection {
     tunnel: Tunn,
     next_timer_update: Instant,
 
-    last_seen: Option<Instant>,
-
     // When this is `Some`, we are connected.
     peer_socket: Option<PeerSocket>,
     // Socket addresses from which we might receive data (even before we are connected).
@@ -1210,10 +1226,6 @@ impl Connection {
         self.agent.handle_timeout(now);
 
         // TODO: `boringtun` is impure because it calls `Instant::now`.
-        self.last_seen = self
-            .tunnel
-            .time_since_last_received()
-            .and_then(|d| now.checked_sub(d));
 
         if now >= self.next_timer_update {
             self.next_timer_update = now + Duration::from_secs(1);

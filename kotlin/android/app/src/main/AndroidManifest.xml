@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:tools="http://schemas.android.com/tools"
-    xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
@@ -8,6 +7,8 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SYSTEM_EXEMPTED" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
 
     <queries>
         <intent>
@@ -16,6 +17,7 @@
     </queries>
 
     <application
+        android:gwpAsanMode="always"
         android:name=".core.FirezoneApp"
         android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
@@ -37,10 +39,6 @@
 
             <nav-graph android:value="@navigation/app_nav_graph" />
         </activity>
-
-        <activity
-            android:name=".features.webview.ui.WebViewActivity"
-            android:exported="false" />
 
         <activity
             android:name="dev.firezone.android.features.auth.ui.AuthActivity"
@@ -68,9 +66,10 @@
 
         <activity
             android:name="dev.firezone.android.features.settings.ui.SettingsActivity"
-            android:exported="false" />
+            android:exported="false"/>
 
         <service
+            android:foregroundServiceType="systemExempted"
             android:name="dev.firezone.android.tunnel.TunnelService"
             android:exported="true"
             android:permission="android.permission.BIND_VPN_SERVICE">
