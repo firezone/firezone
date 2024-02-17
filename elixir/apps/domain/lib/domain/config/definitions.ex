@@ -438,7 +438,7 @@ defmodule Domain.Config.Definitions do
 
   This is needed for acceptance tests.  In dev/staging/prod the default should work fine.
   """
-  defconfig(:redirect_client_delay, :integer, default: 1)
+  defconfig(:client_redirect_delay, :integer, default: 1)
 
   ##############################################
   ## Userpass / SAML / OIDC / Email authentication
