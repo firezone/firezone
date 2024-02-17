@@ -114,7 +114,7 @@ internal class SettingsViewModel
             viewModelScope.launch {
                 val logDir = context.cacheDir.absolutePath + "/logs"
                 val sourceFolder = File(logDir)
-                val zipFile = File("$logDir/connlib-logs.zip")
+                val zipFile = File(getLogZipPath(context))
 
                 zipFolder(sourceFolder, zipFile).collect()
 
@@ -186,12 +186,13 @@ internal class SettingsViewModel
         }.flowOn(Dispatchers.IO)
 
         private fun deleteLogZip(context: Context) {
-            val logDir = context.cacheDir.absolutePath + "/logs"
-            val zipFile = File("$logDir/connlib-logs.zip")
+            val zipFile = File(getLogZipPath(context))
             if (zipFile.exists()) {
                 zipFile.delete()
             }
         }
+
+        private fun getLogZipPath(context: Context) = "${context.cacheDir.absolutePath}/connlib-logs.zip"
 
         private fun onFieldUpdated() {
             _uiState.value =
