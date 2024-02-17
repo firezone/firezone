@@ -20,7 +20,18 @@ function planBadge(plan: string) {
       );
   }
 }
-export default function PlanBadge({ plans }: { plans: Array<string> }) {
+export default function PlanBadge({
+  children,
+  plans,
+}: {
+  children: React.ReactNode;
+  plans: Array<string>;
+}) {
   const plansHtml = plans.map((plan) => planBadge(plan));
-  return <div className="mb-8">{plansHtml}</div>;
+  return (
+    <div className="flex justify-between">
+      {children}
+      <div>{plansHtml}</div>
+    </div>
+  );
 }

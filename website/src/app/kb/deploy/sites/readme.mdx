@@ -1,17 +1,30 @@
+import PlanBadge from "@/components/PlanBadge";
+import SupportOptions from "@/components/SupportOptions";
+
+<PlanBadge plans={["starter", "enterprise"]}>
+
 # Sites
 
+</PlanBadge>
+
 Sites represent a shared network environment that gateways and resources exist
-in. All gateways and resources in a site should be able to reach each other.
+within. All gateways and resources in a site need unobstructed network
+connectivity to each other. This is typically achieved by placing all resources
+and gateways in the same physical location or virtual network.
 
-## Data routing
+## What is a site?
 
-Firezone allows you to select how data is routed to a particular site.
+A site is a collection of resources and gateways that are logically grouped
+together. A site can be a physical location, a virtual network, or any other
+grouping that makes sense for your organization.
 
-Choose "Firezone Managed Relays" (Enterprise plans only) to allow data to
-potentially route through the Firezone-managed Relay network when NAT hole
-punching fails. Connections in Firezone are end-to-end encrypted; we can never
-decrypt your traffic.
+A site can be as small as a single gateway running on a single server managing
+the access to the resources on that server, or as large as an entire data center
+managing access to an entire fleet of servers.
 
-Choose "Direct only" to enforce peer to peer connections between clients and
-gateways for this site. If NAT holepunching fails for gateways in the site,
-clients will be unable to connect to resources and gateways defined in the site.
+## Creating a site
+
+To create a site, click the "Sites" tab in the left-hand navigation and then
+click the "Add Site" button. You will be prompted to enter a name for the
+
+<SupportOptions />

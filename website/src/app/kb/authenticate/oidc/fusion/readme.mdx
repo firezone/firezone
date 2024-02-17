@@ -3,12 +3,11 @@ import SupportOptions from "@/components/SupportOptions";
 import PlanBadge from "@/components/PlanBadge";
 import Image from "next/image";
 
-<div className="flex justify-between items-center">
+<PlanBadge plans={["starter", "enterprise"]}>
 
 # SSO with Fusion Auth
 
-<PlanBadge plans={["starter", "enterprise"]} />
-</div>
+</PlanBadge>
 
 Firezone's universal OIDC connector has been tested to work successfully with
 [Fusion Auth](https://fusionauth.io). Follow this guide to set up Fusion Auth

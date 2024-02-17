@@ -1,12 +1,12 @@
 import PlanBadge from "@/components/PlanBadge";
 import Alert from "@/components/DocsAlert";
+import SupportOptions from "@/components/SupportOptions";
 
-<div className="flex justify-between items-center">
+<PlanBadge plans={["starter", "enterprise"]}>
 
-# Email authentication
+# Email (OTP) authentication
 
-<PlanBadge plans={["starter", "enterprise"]} />
-</div>
+</PlanBadge>
 
 Firezone supports email authentication using a one-time password (OTP).
 
@@ -21,9 +21,11 @@ Firezone's OTP-based email authentication connector sends a one-time password to
 the user's email each time authentication is requested. This password is
 short-lived and can only be used to authenticate once.
 
-<Alert color="info">
-  Users authenticated via the email connector will need to be added and removed
-  from groups manually.
+<Alert color="warning">
+  User / group sync is **not supported** with the Email (OTP) connector. See the
+  [Google Workspace](/kb/authenticate/google), [Microsoft Entra
+  ID](/kb/authenticate/entra), or [Okta](/kb/authenticate/okta) connectors for
+  automatic user / group sync.
 </Alert>
 
 ## Disabling email authentication
@@ -33,3 +35,5 @@ account, forcing all users and admins to authenticate with another connector.
 However, this can lead to issues signing in if one of your other authentication
 connectors stops working. For that reason, you may want to leave the email
 authentication connector enabled with at least one admin for recovery purposes.
+
+<SupportOptions />

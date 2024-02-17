@@ -2,12 +2,11 @@ import Alert from "@/components/DocsAlert";
 import PlanBadge from "@/components/PlanBadge";
 import SupportOptions from "@/components/SupportOptions";
 
-<div className="flex justify-between items-center">
+<PlanBadge plans={["starter", "enterprise"]}>
 
 # SSO with OpenID Connect
 
-<PlanBadge plans={["starter", "enterprise"]} />
-</div>
+</PlanBadge>
 
 Firezone supports authenticating users with a universal OIDC connector that
 works with any authentication service offering a standard

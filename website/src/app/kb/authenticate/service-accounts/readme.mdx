@@ -2,12 +2,11 @@ import Alert from "@/components/DocsAlert";
 import SupportOptions from "@/components/SupportOptions";
 import PlanBadge from "@/components/PlanBadge";
 
-<div className="flex justify-between items-center">
+<PlanBadge plans={["starter", "enterprise"]}>
 
 # Service Accounts
 
-<PlanBadge plans={["starter", "enterprise"]} />
-</div>
+</PlanBadge>
 
 Service accounts are actors that can be used with Firezone clients that support
 headless mode operation. They are commonly used for situations where you want to
