@@ -330,7 +330,7 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const script = require('./scripts/tests/perf/results.js');
+            const { script } = require('./scripts/tests/perf/results.js');
             script(github, context, '${{ matrix.test_name }}', ${{ toJSON(steps.performance-test.outputs) }}, ${{ toJSON(steps.main-performance-test.outputs) }});
       - name: Show Client logs
         if: "!cancelled()"
