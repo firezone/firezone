@@ -4,8 +4,8 @@ set -e
 cargo build --package firezone-relay --bin firezone-relay --example client --example gateway
 
 cleanup() {
-  pkill -P $$ || true # Kill all child-processes of the current process.
-  docker stop ${redis_container} > /dev/null
+    pkill -P $$ || true # Kill all child-processes of the current process.
+    docker stop ${redis_container} >/dev/null
 }
 trap cleanup EXIT
 
@@ -21,9 +21,9 @@ client="$target_directory/debug/examples/client"
 gateway="$target_directory/debug/examples/gateway"
 relay="$target_directory/debug/firezone-relay"
 
-export PUBLIC_IP4_ADDR=127.0.0.1;
-export RNG_SEED=0;
-export RUST_LOG=firezone_relay=debug;
+export PUBLIC_IP4_ADDR=127.0.0.1
+export RNG_SEED=0
+export RUST_LOG=firezone_relay=debug
 
 # Client and relay run in the background.
 $client 2>&1 | sed "s/^/${RED}[ client]${NC} /" &
