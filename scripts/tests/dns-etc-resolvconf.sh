@@ -21,6 +21,9 @@ function gateway() {
     docker compose exec -it gateway "$@"
 }
 
+# Re-up the gateway since a local dev setup may run this back-to-back
+docker compose up -d gateway
+
 echo "# check original resolv.conf"
 client sh -c "cat /etc/resolv.conf.firezone-backup"
 

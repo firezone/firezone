@@ -98,7 +98,6 @@ To start the local Firezone cluster, follow these steps:
 
 ```
 docker compose build
-docker compose up -d postgres
 docker compose run --rm elixir /bin/sh -c "cd apps/domain && mix ecto.create && mix ecto.migrate && mix ecto.seed"
 
 # Before moving to the next step, copy the Firezone account UUID from the seed step
