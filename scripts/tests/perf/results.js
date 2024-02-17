@@ -5,7 +5,7 @@ exports.script = async function (
   results,
   main_results
 ) {
-  // 1. Retrieve existing bot comments for the PR
+  // Retrieve existing bot comments for the PR
   const { data: comments } = await github.rest.issues.listComments({
     owner: context.repo.owner,
     repo: context.repo.repo,
@@ -17,6 +17,7 @@ exports.script = async function (
   });
 
   function humanFileSize(bytes, dp = 1) {
+    const bytes = parseFloat(bytes);
     const thresh = 1000;
 
     if (Math.abs(bytes) < thresh) {
@@ -39,6 +40,9 @@ exports.script = async function (
   }
 
   function getDiffPercents(main, current) {
+    const main = parseFloat(main);
+    const current = parseFloat(current);
+
     let diff = -1 * (100 - current / (main / 100));
 
     if (diff > 0) {
