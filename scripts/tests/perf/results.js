@@ -17,7 +17,7 @@ exports.script = async function (
   });
 
   function humanFileSize(bytesStr, dp = 1) {
-    const bytes = parseFloat(bytesStr);
+    let bytes = parseFloat(bytesStr);
     const thresh = 1000;
 
     if (Math.abs(bytes) < thresh) {
