@@ -7,4 +7,15 @@
         android:restrictionType="string"
         android:title="@string/config_token_title" />
 
+    <restriction
+        android:description="@string/config_allowed_applications_description"
+        android:key="allowedApplications"
+        android:restrictionType="string"
+        android:title="@string/config_allowed_applications_title" />
+
+    <restriction
+        android:description="@string/config_disallowed_applications_description"
+        android:key="disallowedApplications"
+        android:restrictionType="string"
+        android:title="@string/config_disallowed_applications_title" />
 </restrictions>
