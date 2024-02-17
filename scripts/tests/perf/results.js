@@ -16,8 +16,8 @@ exports.script = async function (
     return comment.user.type === "Bot" && comment.body.includes(test_name);
   });
 
-  function humanFileSize(bytes, dp = 1) {
-    const bytes = parseFloat(bytes);
+  function humanFileSize(bytesStr, dp = 1) {
+    const bytes = parseFloat(bytesStr);
     const thresh = 1000;
 
     if (Math.abs(bytes) < thresh) {
@@ -39,9 +39,9 @@ exports.script = async function (
     return bytes.toFixed(dp) + " " + units[u];
   }
 
-  function getDiffPercents(main, current) {
-    const main = parseFloat(main);
-    const current = parseFloat(current);
+  function getDiffPercents(mainStr, currentStr) {
+    const main = parseFloat(mainStr);
+    const current = parseFloat(currentStr);
 
     let diff = -1 * (100 - current / (main / 100));
 
