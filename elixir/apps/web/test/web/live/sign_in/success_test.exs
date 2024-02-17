@@ -27,6 +27,8 @@ defmodule Web.SignIn.SuccessTest do
     assert html =~ "success"
     assert html =~ "close this window"
 
+    client_redirect_delay = Domain.Config.fetch_env!(:web, :client_redirect_delay)
+
     sorted_query_params =
       query_params
       |> Map.to_list()
@@ -36,7 +38,7 @@ defmodule Web.SignIn.SuccessTest do
     assert_redirect(
       lv,
       "firezone-fd0020211111://handle_client_sign_in_callback?#{sorted_query_params}",
-      1000
+      client_redirect_delay + 500
     )
   end
 end
