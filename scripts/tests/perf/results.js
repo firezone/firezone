@@ -1,4 +1,10 @@
-async function script(github, context, test_name, results, main_results) {
+exports.script = async function (
+  github,
+  context,
+  test_name,
+  results,
+  main_results
+) {
   // 1. Retrieve existing bot comments for the PR
   const { data: comments } = await github.rest.issues.listComments({
     owner: context.repo.owner,
@@ -178,6 +184,4 @@ async function script(github, context, test_name, results, main_results) {
       body: output,
     });
   }
-}
-
-export default script;
+};
