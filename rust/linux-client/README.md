@@ -13,6 +13,14 @@ cargo build --release --bin firezone-linux-client
 
 You should then find a binary in `target/release/firezone-linux-client`.
 
+The releases on Github are built with musl. To build this way, use:
+
+```bash
+rustup target add x86_64-unknown-linux-musl
+sudo apt-get install musl-tools
+cargo build --release --bin firezone-linux-client --target x86_64-unknown-linux-musl
+```
+
 ## Running
 
 To run the Linux client:
