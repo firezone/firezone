@@ -5,8 +5,7 @@ Description=Firezone Client
 AmbientCapabilities=CAP_NET_ADMIN
 
 Environment="FIREZONE_API_URL=ws://localhost:8081"
-# Will re-enable this once systemd DNS control is ready for CI
-# Environment="FIREZONE_DNS_CONTROL=systemd-resolved"
+Environment="FIREZONE_DNS_CONTROL=systemd-resolved"
 Environment="FIREZONE_ID=D0455FDE-8F65-4960-A778-B934E4E85A5F"
 Environment="FIREZONE_TOKEN=n.SFMyNTY.g2gDaANtAAAAJGM4OWJjYzhjLTkzOTItNGRhZS1hNDBkLTg4OGFlZjZkMjhlMG0AAAAkN2RhN2QxY2QtMTExYy00NGE3LWI1YWMtNDAyN2I5ZDIzMGU1bQAAACtBaUl5XzZwQmstV0xlUkFQenprQ0ZYTnFJWktXQnMyRGR3XzJ2Z0lRdkZnbgYAGUmu74wBYgABUYA.UN3vSLLcAMkHeEh5VHumPOutkuue8JA6wlxM9JxJEPE"
 Environment="RUST_LOG=firezone_linux_client=trace,wire=trace,connlib_client_shared=trace,firezone_tunnel=trace,connlib_shared=trace,warn"
