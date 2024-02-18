@@ -34,6 +34,24 @@ public struct TunnelShutdownEvent: Codable, CustomStringConvertible {
       case .invalidAdapterState: return "invalid adapter state"
       }
     }
+
+    public var action: Action {
+      switch self {
+      case .stopped(let reason):
+        if reason == .userInitiated {
+          return .signoutImmediately
+        } else if reason == .userLogout || reason == .userSwitch {
+          return .doNothing
+        } else {
+          return .retryThenSignout
+        }
+      case .networkSettingsApplyFailure, .invalidAdapterState:
+        return .retryThenSignout
+      case .connlibConnectFailure, .connlibDisconnected,
+        .badTunnelConfiguration, .tokenNotFound:
+        return .signoutImmediately
+      }
+    }
   }
 
   public enum Action {
@@ -46,23 +64,7 @@ public struct TunnelShutdownEvent: Codable, CustomStringConvertible {
   public let errorMessage: String
   public let date: Date
 
-  public var action: Action {
-    switch reason {
-    case .stopped(let reason):
-      if reason == .userInitiated {
-        return .signoutImmediately
-      } else if reason == .userLogout || reason == .userSwitch {
-        return .doNothing
-      } else {
-        return .retryThenSignout
-      }
-    case .networkSettingsApplyFailure, .invalidAdapterState:
-      return .retryThenSignout
-    case .connlibConnectFailure, .connlibDisconnected,
-      .badTunnelConfiguration, .tokenNotFound:
-      return .signoutImmediately
-    }
-  }
+  public var action: Action { reason.action }
 
   public var description: String {
     "(\(reason)\(action == .signoutImmediately ? " (needs immediate signout)" : ""), error: '\(errorMessage)', date: \(date))"
