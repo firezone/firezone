@@ -3,7 +3,6 @@ defmodule Web.SignIn.Success do
 
   def mount(params, _session, socket) do
     if connected?(socket) do
-      # delay = if Mix.env() == :test, do: 500, else: 1
       delay = Domain.Config.fetch_env!(:web, :client_redirect_delay)
       Process.send_after(self(), :redirect_client, delay)
     end
