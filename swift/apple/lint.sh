@@ -13,5 +13,5 @@ fi
 if which swift-format >/dev/null; then
     find . -name "*.swift" -not -path "./FirezoneNetworkExtension/Connlib/Generated/*" -exec xargs swift-format lint --strict \;
 else
-    echo "warning: swift-format not installed, install with $(brew install swift-format)"
+    echo "warning: swift-format not installed, install with 'brew install swift-format'"
 fi
