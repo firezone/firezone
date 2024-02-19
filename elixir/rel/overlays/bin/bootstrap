@@ -10,4 +10,4 @@ setup_telemetry() {
 
 setup_telemetry
 
-cd -P -- "$(dirname -- "$0")" || exit
+cd -P -- "$(dirname -- "$0")" || exit 1
