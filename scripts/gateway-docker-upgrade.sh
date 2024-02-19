@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-set -e
+set -euo pipefail
 
 TARGET_IMAGE="ghcr.io/firezone/gateway:1"
 

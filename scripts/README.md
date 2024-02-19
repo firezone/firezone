@@ -20,3 +20,10 @@ local development environment is set up to lint shell scripts:
    installed on your system and available in your `PATH`. You'll want to
    configure it to use the `shellcheck` binary in your `PATH` in your editor
    plugin settings.
+
+## Scripting tips
+
+- Use `#!/usr/bin/env bash` along with `set -euo pipefail` in general dev and
+  test scripts.
+- In Docker images and other production scripts where systems are minimal, stick
+  to `#!/bin/sh` and simply `set -eu`.
