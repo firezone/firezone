@@ -183,8 +183,7 @@ please read the detailed info found in the
 
 ### Shell script Development
 
-If you are interested in contributing to any of our shell scripts, please read
-the detailed info found in the [Shell script README](scripts/README.md).
+See [scripts/README](scripts/README.md).
 
 ## Reporting Bugs
 
