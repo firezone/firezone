@@ -68,12 +68,12 @@ RUN set -xe \
 WORKDIR /build
 
 # Create a cache recipe for dependencies, which allows
-# to levearge Docker layer caching in a later build stage
+# to leverage Docker layer caching in a later build stage
 FROM chef as planner
 
 COPY . .
 
-RUN cargo chef prepare --recipe-path recipe.json
+RUN cargo chef prepare --recipe-path recipe.json --bin ${PACKAGE}
 
 # Build dependencies and application application
 FROM chef as builder
