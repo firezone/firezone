@@ -129,8 +129,6 @@ config :web, Web.Plugs.SecureHeaders,
 
 config :web, api_url_override: "ws://localhost:13001/"
 
-config :web, client_redirect_delay: 1
-
 ###############################
 ##### API #####################
 ###############################
