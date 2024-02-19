@@ -112,7 +112,6 @@ defmodule Web.Router do
         {Web.Auth, :ensure_authenticated},
         {Web.Auth, :ensure_account_admin_user_actor},
         {Web.Auth, :mount_account},
-        {Web.Auth, :mount_active_actors_count},
         {Web.Nav, :set_active_sidebar_item}
       ] do
       scope "/actors", Actors do

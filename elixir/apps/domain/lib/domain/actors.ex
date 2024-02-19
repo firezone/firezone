@@ -302,8 +302,16 @@ defmodule Domain.Actors do
   # Actors
 
   def count_account_admin_users_for_account(%Accounts.Account{} = account) do
-    Actor.Query.by_account_id(account.id)
+    Actor.Query.not_disabled()
+    |> Actor.Query.by_account_id(account.id)
     |> Actor.Query.by_type(:account_admin_user)
+    |> Repo.aggregate(:count)
+  end
+
+  def count_service_accounts_for_account(%Accounts.Account{} = account) do
+    Actor.Query.not_disabled()
+    |> Actor.Query.by_account_id(account.id)
+    |> Actor.Query.by_type(:service_account)
     |> Repo.aggregate(:count)
   end
 
@@ -374,13 +382,34 @@ defmodule Domain.Actors do
   def create_actor(%Accounts.Account{} = account, attrs, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()),
          :ok <- Accounts.ensure_has_access_to(subject, account),
-         true <- Billing.can_create_actors?(account) do
-      Actor.Changeset.create(account.id, attrs, subject)
-      |> Repo.insert()
-    else
-      false -> {:error, :seats_limits_reached}
-      {:error, reason} -> {:error, reason}
+         changeset = Actor.Changeset.create(account.id, attrs, subject),
+         :ok <- ensure_billing_limits_not_exceeded(account, changeset) do
+      Repo.insert(changeset)
     end
+  end
+
+  defp ensure_billing_limits_not_exceeded(account, %{valid?: true} = changeset) do
+    case Ecto.Changeset.fetch_field!(changeset, :type) do
+      :service_account ->
+        if Billing.can_create_service_accounts?(account) do
+          :ok
+        else
+          {:error, :service_accounts_limit_reached}
+        end
+
+      _other ->
+        if Billing.can_create_users?(account) do
+          :ok
+        else
+          {:error, :seats_limit_reached}
+        end
+    end
+  end
+
+  defp ensure_billing_limits_not_exceeded(_account, _changeset) do
+    # we return :ok because we want Repo.insert() call to still put action and
+    # rest of possible metadata if there are validation errors
+    :ok
   end
 
   def create_actor(%Accounts.Account{} = account, attrs) do

@@ -39,16 +39,31 @@ defmodule Domain.ClientsTest do
     end
   end
 
-  describe "count_1m_active_actors_for_account/1" do
+  describe "count_1m_active_users_for_account/1" do
     test "returns 0 when there are no clients", %{account: account} do
-      assert count_1m_active_actors_for_account(account) == 0
+      assert count_1m_active_users_for_account(account) == 0
     end
 
     test "returns 0 when there are no clients active within one month", %{account: account} do
       forty_days_ago = DateTime.utc_now() |> DateTime.add(-40, :day)
       client = Fixtures.Clients.create_client(account: account)
       client |> Ecto.Changeset.change(last_seen_at: forty_days_ago) |> Repo.update!()
-      assert count_1m_active_actors_for_account(account) == 0
+      assert count_1m_active_users_for_account(account) == 0
+    end
+
+    test "filters inactive actors", %{account: account} do
+      actor = Fixtures.Actors.create_actor(account: account)
+      Fixtures.Clients.create_client(account: account, actor: actor)
+
+      Fixtures.Actors.disable(actor)
+
+      assert count_1m_active_users_for_account(account) == 0
+    end
+
+    test "filters non-user actors", %{account: account} do
+      actor = Fixtures.Actors.create_actor(account: account, type: :service_account)
+      Fixtures.Clients.create_client(account: account, actor: actor)
+      assert count_1m_active_users_for_account(account) == 0
     end
 
     test "counts distinct actor ids in an account", %{account: account} do
@@ -60,7 +75,7 @@ defmodule Domain.ClientsTest do
       Fixtures.Clients.create_client(account: account, actor: actor2)
       Fixtures.Clients.create_client()
 
-      assert count_1m_active_actors_for_account(account) == 2
+      assert count_1m_active_users_for_account(account) == 2
     end
   end
 

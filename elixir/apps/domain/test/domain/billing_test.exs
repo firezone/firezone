@@ -101,7 +101,7 @@ defmodule Domain.BillingTest do
             idp_sync: nil
           },
           limits: %{
-            monthly_active_actors_count: nil
+            monthly_active_users_count: nil
           }
         })
 
@@ -184,7 +184,7 @@ defmodule Domain.BillingTest do
         metadata: %{
           "multi_site_resources" => "false",
           "self_hosted_relays" => "true",
-          "monthly_active_actors_count" => "15",
+          "monthly_active_users_count" => "15",
           "sites_count" => 1
         }
       })
@@ -213,7 +213,7 @@ defmodule Domain.BillingTest do
       assert account.metadata.stripe.product_name == "Enterprise"
 
       assert account.limits == %Domain.Accounts.Limits{
-               monthly_active_actors_count: 15,
+               monthly_active_users_count: 15,
                sites_count: 5
              }
 

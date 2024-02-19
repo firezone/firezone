@@ -32,7 +32,8 @@ account =
       }
     },
     limits: %{
-      monthly_active_actors_count: 10,
+      monthly_active_users_count: 10,
+      service_accounts_count: 10,
       sites_count: 3,
       account_admin_users_count: 5
     }

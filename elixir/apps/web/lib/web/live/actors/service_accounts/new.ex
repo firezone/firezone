@@ -84,7 +84,7 @@ defmodule Web.Actors.ServiceAccounts.New do
 
       {:noreply, socket}
     else
-      {:error, :seats_limits_reached} ->
+      {:error, :service_accounts_limit_reached} ->
         changeset =
           attrs
           |> Actors.new_actor()
@@ -94,7 +94,7 @@ defmodule Web.Actors.ServiceAccounts.New do
           socket
           |> put_flash(
             :error,
-            "You have reached the maximum number of seats allowed by your subscription plan."
+            "You have reached the maximum number of service accounts allowed by your subscription plan."
           )
           |> assign(form: to_form(changeset))
 

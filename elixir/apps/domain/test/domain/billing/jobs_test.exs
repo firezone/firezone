@@ -27,17 +27,21 @@ defmodule Domain.Billing.JobsTest do
     } do
       Domain.Accounts.update_account(account, %{
         limits: %{
-          monthly_active_actors_count: 1,
+          monthly_active_users_count: 1,
+          service_accounts_count: 1,
           sites_count: 1,
           account_admin_users_count: 1
         }
       })
 
-      Fixtures.Clients.create_client(account: account)
-      Fixtures.Clients.create_client(account: account)
+      Fixtures.Clients.create_client(account: account, actor: [type: :account_user])
+      Fixtures.Clients.create_client(account: account, actor: [type: :account_user])
 
       Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
       Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+
+      Fixtures.Actors.create_actor(type: :service_account, account: account)
+      Fixtures.Actors.create_actor(type: :service_account, account: account)
 
       Fixtures.Gateways.create_group(account: account)
       Fixtures.Gateways.create_group(account: account)
@@ -46,8 +50,11 @@ defmodule Domain.Billing.JobsTest do
 
       account = Repo.get!(Domain.Accounts.Account, account.id)
 
-      assert account.warning ==
-               "You have exceeded the following limits: monthly active actors, sites, account admins."
+      assert account.warning =~ "You have exceeded the following limits:"
+      assert account.warning =~ "monthly active users"
+      assert account.warning =~ "service accounts"
+      assert account.warning =~ "sites"
+      assert account.warning =~ "account admins"
 
       assert account.warning_delivery_attempts == 0
       assert account.warning_last_sent_at

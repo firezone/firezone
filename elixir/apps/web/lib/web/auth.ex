@@ -522,8 +522,6 @@ defmodule Web.Auth do
       because some actions can be performed by superadmin users on behalf of other accounts
       so we can't really rely on `subject.account` in a lot of places.
 
-    * `:mount_active_actors_count` - loads the account seats usage into the socket assigns.
-
   ## Examples
 
   Use the `on_mount` lifecycle macro in LiveViews to mount or authenticate
@@ -549,17 +547,6 @@ defmodule Web.Auth do
 
   def on_mount(:mount_account, params, session, socket) do
     {:cont, mount_account(socket, params, session)}
-  end
-
-  def on_mount(:mount_active_actors_count, params, session, socket) do
-    socket = mount_account(socket, params, session)
-
-    socket =
-      Phoenix.Component.assign_new(socket, :active_actors_count, fn ->
-        Domain.Clients.count_1m_active_actors_for_account(socket.assigns.account)
-      end)
-
-    {:cont, socket}
   end
 
   def on_mount(:ensure_authenticated, params, session, socket) do

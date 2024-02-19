@@ -1,6 +1,6 @@
 defmodule Domain.Billing do
   use Supervisor
-  alias Domain.{Auth, Accounts, Clients}
+  alias Domain.{Auth, Accounts, Actors, Clients}
   alias Domain.Billing.{Authorizer, Jobs}
   alias Domain.Billing.Stripe.APIClient
   require Logger
@@ -39,8 +39,12 @@ defmodule Domain.Billing do
     false
   end
 
-  def seats_limit_exceeded?(%Accounts.Account{} = account, active_actors_count) do
-    active_actors_count > account.limits.monthly_active_actors_count
+  def seats_limit_exceeded?(%Accounts.Account{} = account, active_users_count) do
+    active_users_count > account.limits.monthly_active_users_count
+  end
+
+  def service_accounts_limit_exceeded?(%Accounts.Account{} = account, service_accounts_count) do
+    service_accounts_count > account.limits.service_accounts_count
   end
 
   def sites_limit_exceeded?(%Accounts.Account{} = account, sites_count) do
@@ -51,11 +55,18 @@ defmodule Domain.Billing do
     account_admins_count > account.limits.account_admin_users_count
   end
 
-  def can_create_actors?(%Accounts.Account{} = account) do
-    active_actors_count = Clients.count_1m_active_actors_for_account(account)
+  def can_create_users?(%Accounts.Account{} = account) do
+    active_users_count = Clients.count_1m_active_users_for_account(account)
 
     Accounts.account_active?(account) and
-      active_actors_count < account.limits.monthly_active_actors_count
+      active_users_count < account.limits.monthly_active_users_count
+  end
+
+  def can_create_service_accounts?(%Accounts.Account{} = account) do
+    service_accounts_count = Actors.count_service_accounts_for_account(account)
+
+    Accounts.account_active?(account) and
+      service_accounts_count < account.limits.service_accounts_count
   end
 
   def provision_account(%Accounts.Account{} = account) do
@@ -309,12 +320,12 @@ defmodule Domain.Billing do
       end)
       |> Enum.into(%{})
 
-    {monthly_active_actors_count, features_and_limits} =
-      Map.pop(features_and_limits, "monthly_active_actors_count", quantity)
+    {monthly_active_users_count, features_and_limits} =
+      Map.pop(features_and_limits, "monthly_active_users_count", quantity)
 
     {limits, features} = Map.split(features_and_limits, limit_fields)
 
-    limits = Map.merge(limits, %{"monthly_active_actors_count" => monthly_active_actors_count})
+    limits = Map.merge(limits, %{"monthly_active_users_count" => monthly_active_users_count})
 
     %{
       features: features,

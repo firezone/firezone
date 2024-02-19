@@ -126,24 +126,28 @@ defmodule Web.Live.Actors.ServiceAccount.NewTest do
     {:ok, account} =
       Domain.Accounts.update_account(account, %{
         limits: %{
-          monthly_active_actors_count: 1
+          service_accounts_count: 1
         }
       })
 
-    Fixtures.Clients.create_client(account: account)
+    Fixtures.Actors.create_actor(type: :service_account, account: account)
 
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
       |> live(~p"/#{account}/actors/service_accounts/new")
 
+    attrs =
+      Fixtures.Actors.actor_attrs()
+      |> Map.take([:name])
+
     html =
       lv
-      |> form("form", actor: %{})
+      |> form("form", actor: attrs)
       |> render_submit()
 
     assert html =~ "You have reached the maximum number of"
-    assert html =~ "seats allowed by your subscription plan."
+    assert html =~ "service accounts allowed by your subscription plan"
   end
 
   test "creates a new actor on valid attrs", %{

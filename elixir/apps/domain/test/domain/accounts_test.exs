@@ -128,7 +128,7 @@ defmodule Domain.AccountsTest do
           idp_sync: 1
         },
         limits: %{
-          monthly_active_actors_count: -1
+          monthly_active_users_count: -1
         },
         config: %{
           clients_upstream_dns: [%{protocol: "ip_port", address: "!!!"}]
@@ -154,7 +154,7 @@ defmodule Domain.AccountsTest do
           idp_sync: false
         },
         limits: %{
-          monthly_active_actors_count: 999
+          monthly_active_users_count: 999
         },
         metadata: %{
           stripe: %{
@@ -179,8 +179,8 @@ defmodule Domain.AccountsTest do
       # doesn't update features, filters, metadata or settings
       assert account.features.idp_sync
 
-      assert account.limits.monthly_active_actors_count !=
-               attrs.limits.monthly_active_actors_count
+      assert account.limits.monthly_active_users_count !=
+               attrs.limits.monthly_active_users_count
 
       assert is_nil(account.metadata.stripe.customer_id)
 
@@ -232,7 +232,7 @@ defmodule Domain.AccountsTest do
           idp_sync: 1
         },
         limits: %{
-          monthly_active_actors_count: -1
+          monthly_active_users_count: -1
         },
         config: %{
           clients_upstream_dns: [%{protocol: "ip_port", address: "!!!"}]
@@ -247,7 +247,7 @@ defmodule Domain.AccountsTest do
                  idp_sync: ["is invalid"]
                },
                limits: %{
-                 monthly_active_actors_count: ["must be greater than or equal to 0"]
+                 monthly_active_users_count: ["must be greater than or equal to 0"]
                },
                config: %{
                  clients_upstream_dns: [
@@ -308,7 +308,7 @@ defmodule Domain.AccountsTest do
           self_hosted_relays: false
         },
         limits: %{
-          monthly_active_actors_count: 999
+          monthly_active_users_count: 999
         },
         metadata: %{
           stripe: %{
@@ -333,8 +333,8 @@ defmodule Domain.AccountsTest do
       assert account.features.idp_sync == attrs.features.idp_sync
       assert account.features.self_hosted_relays == attrs.features.self_hosted_relays
 
-      assert account.limits.monthly_active_actors_count ==
-               attrs.limits.monthly_active_actors_count
+      assert account.limits.monthly_active_users_count ==
+               attrs.limits.monthly_active_users_count
 
       assert account.metadata.stripe.customer_id ==
                attrs.metadata.stripe.customer_id

@@ -76,7 +76,7 @@ defmodule Web.Actors.Users.New do
 
       {:noreply, socket}
     else
-      {:error, :seats_limits_reached} ->
+      {:error, :seats_limit_reached} ->
         changeset =
           attrs
           |> Actors.new_actor()

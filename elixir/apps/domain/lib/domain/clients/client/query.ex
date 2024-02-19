@@ -18,6 +18,18 @@ defmodule Domain.Clients.Client.Query do
     where(queryable, [clients: clients], clients.actor_id == ^actor_id)
   end
 
+  def only_for_active_actors(queryable \\ not_deleted()) do
+    queryable
+    |> with_joined_actor()
+    |> where([actor: actor], is_nil(actor.disabled_at))
+  end
+
+  def by_actor_type(queryable \\ not_deleted(), {:in, types}) do
+    queryable
+    |> with_joined_actor()
+    |> where([actor: actor], actor.type in ^types)
+  end
+
   def by_account_id(queryable \\ not_deleted(), account_id) do
     where(queryable, [clients: clients], clients.account_id == ^account_id)
   end
@@ -50,12 +62,23 @@ defmodule Domain.Clients.Client.Query do
     )
   end
 
-  def with_preloaded_actor(queryable \\ not_deleted()) do
+  def with_joined_actor(queryable \\ not_deleted()) do
     with_named_binding(queryable, :actor, fn queryable, binding ->
-      queryable
-      |> join(:inner, [clients: clients], actor in assoc(clients, ^binding), as: ^binding)
-      |> preload([clients: clients, actor: actor], actor: actor)
+      join(
+        queryable,
+        :inner,
+        [clients: clients],
+        actor in ^Domain.Actors.Actor.Query.not_deleted(),
+        on: clients.actor_id == actor.id,
+        as: ^binding
+      )
     end)
+  end
+
+  def with_preloaded_actor(queryable \\ not_deleted()) do
+    queryable
+    |> with_joined_actor()
+    |> preload([clients: clients, actor: actor], actor: actor)
   end
 
   def with_preloaded_identity(queryable \\ not_deleted()) do

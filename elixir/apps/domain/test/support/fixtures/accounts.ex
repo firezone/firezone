@@ -24,7 +24,7 @@ defmodule Domain.Fixtures.Accounts do
         idp_sync: true
       },
       limits: %{
-        monthly_active_actors_count: 100
+        monthly_active_users_count: 100
       },
       metadata: %{
         stripe: %{}

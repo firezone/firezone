@@ -8,7 +8,8 @@ defmodule Web.Settings.Billing do
       do: raise(Web.LiveErrors.NotFoundError)
 
     admins_count = Actors.count_account_admin_users_for_account(socket.assigns.account)
-    active_actors_count = Clients.count_1m_active_actors_for_account(socket.assigns.account)
+    service_accounts_count = Actors.count_service_accounts_for_account(socket.assigns.account)
+    active_users_count = Clients.count_1m_active_users_for_account(socket.assigns.account)
     sites_count = Gateways.count_groups_for_account(socket.assigns.account)
 
     socket =
@@ -16,7 +17,8 @@ defmodule Web.Settings.Billing do
         error: nil,
         page_title: "Billing",
         admins_count: admins_count,
-        active_actors_count: active_actors_count,
+        active_users_count: active_users_count,
+        service_accounts_count: service_accounts_count,
         sites_count: sites_count
       )
 
@@ -64,19 +66,34 @@ defmodule Web.Settings.Billing do
             </:value>
           </.vertical_table_row>
 
-          <.vertical_table_row :if={not is_nil(@account.limits.monthly_active_actors_count)}>
+          <.vertical_table_row :if={not is_nil(@account.limits.monthly_active_users_count)}>
             <:label>
               <p>Seats</p>
             </:label>
             <:value>
               <span class={[
-                not is_nil(@active_actors_count) and
-                  @active_actors_count > @account.limits.monthly_active_actors_count && "text-red-500"
+                not is_nil(@active_users_count) and
+                  @active_users_count > @account.limits.monthly_active_users_count && "text-red-500"
               ]}>
-                <%= @active_actors_count %> used
+                <%= @active_users_count %> used
               </span>
-              / <%= @account.limits.monthly_active_actors_count %> allowed
-              <p class="text-xs">actors with at least one device signed-in within last month</p>
+              / <%= @account.limits.monthly_active_users_count %> allowed
+              <p class="text-xs">users with at least one device signed-in within last month</p>
+            </:value>
+          </.vertical_table_row>
+          <.vertical_table_row :if={not is_nil(@account.limits.monthly_active_users_count)}>
+            <:label>
+              <p>Service Accounts</p>
+            </:label>
+            <:value>
+              <span class={[
+                not is_nil(@service_accounts_count) and
+                  @service_accounts_count > @account.limits.service_accounts_count && "text-red-500"
+              ]}>
+                <%= @service_accounts_count %> used
+              </span>
+              / <%= @account.limits.service_accounts_count %> allowed
+              <p class="text-xs">users with at least one device signed-in within last month</p>
             </:value>
           </.vertical_table_row>
 

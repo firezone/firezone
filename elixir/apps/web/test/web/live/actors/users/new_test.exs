@@ -128,20 +128,25 @@ defmodule Web.Live.Actors.User.NewTest do
     {:ok, account} =
       Domain.Accounts.update_account(account, %{
         limits: %{
-          monthly_active_actors_count: 1
+          monthly_active_users_count: 1
         }
       })
 
-    Fixtures.Clients.create_client(account: account)
+    actor = Fixtures.Actors.create_actor(type: :account_user, account: account)
+    Fixtures.Clients.create_client(account: account, actor: actor)
 
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
       |> live(~p"/#{account}/actors/users/new")
 
+    attrs =
+      Fixtures.Actors.actor_attrs()
+      |> Map.take([:name])
+
     html =
       lv
-      |> form("form", actor: %{})
+      |> form("form", actor: attrs)
       |> render_submit()
 
     assert html =~ "You have reached the maximum number of"

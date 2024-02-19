@@ -8,6 +8,7 @@ defmodule Domain.Billing.Jobs do
     Enum.each(accounts, fn account ->
       []
       |> check_seats_limit(account)
+      |> check_service_accounts_limit(account)
       |> check_sites_limit(account)
       |> check_admin_limit(account)
       |> case do
@@ -37,10 +38,20 @@ defmodule Domain.Billing.Jobs do
   end
 
   defp check_seats_limit(limits_exceeded, account) do
-    active_actors_count = Clients.count_1m_active_actors_for_account(account)
+    active_users_count = Clients.count_1m_active_users_for_account(account)
 
-    if Billing.seats_limit_exceeded?(account, active_actors_count) do
-      limits_exceeded ++ ["monthly active actors"]
+    if Billing.seats_limit_exceeded?(account, active_users_count) do
+      limits_exceeded ++ ["monthly active users"]
+    else
+      limits_exceeded
+    end
+  end
+
+  defp check_service_accounts_limit(limits_exceeded, account) do
+    service_accounts_count = Actors.count_service_accounts_for_account(account)
+
+    if Billing.service_accounts_limit_exceeded?(account, service_accounts_count) do
+      limits_exceeded ++ ["service accounts"]
     else
       limits_exceeded
     end

@@ -14,7 +14,8 @@ defmodule Web.Live.Settings.BillingTest do
           }
         },
         limits: %{
-          monthly_active_actors_count: 100,
+          monthly_active_users_count: 100,
+          service_accounts_count: 100,
           sites_count: 10,
           account_admin_users_count: 2
         }
