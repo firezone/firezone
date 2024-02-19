@@ -127,7 +127,7 @@ fn sentinel_dns_mapping(dns: &[DnsServer]) -> BiMap<IpAddr, DnsServer> {
 }
 
 impl<CB: Callbacks + 'static> ControlPlane<CB> {
-    async fn init(
+    fn init(
         &mut self,
         InitClient {
             interface,
@@ -288,13 +288,9 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
     }
 
     #[tracing::instrument(level = "trace", skip(self, msg))]
-    pub async fn handle_message(
-        &mut self,
-        msg: Messages,
-        reference: Option<Reference>,
-    ) -> Result<()> {
+    pub fn handle_message(&mut self, msg: Messages, reference: Option<Reference>) -> Result<()> {
         match msg {
-            Messages::Init(init) => self.init(init).await?,
+            Messages::Init(init) => self.init(init)?,
             Messages::ConfigChanged(_update) => {
                 tracing::info!("Runtime config updates not yet implemented");
             }

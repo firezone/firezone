@@ -179,7 +179,7 @@ where
                     tokio::select! {
                         Some((msg, reference, topic)) = control_plane_receiver.recv() => {
                             match msg {
-                                Ok(msg) => control_plane.handle_message(msg, reference).await?,
+                                Ok(msg) => control_plane.handle_message(msg, reference)?,
                                 Err(err) => {
                                     if let Err(e) = control_plane.handle_error(err, reference, topic).await {
                                         Self::disconnect_inner(runtime_stopper, &callbacks, Some(e));
