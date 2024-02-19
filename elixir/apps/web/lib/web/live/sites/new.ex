@@ -21,6 +21,7 @@ defmodule Web.Sites.New do
         Add a new Site
       </:title>
       <:content>
+        <.flash kind={:error} flash={@flash} />
         <div class="py-8 px-4 mx-auto max-w-2xl lg:py-16">
           <.form for={@form} phx-change={:change} phx-submit={:submit}>
             <.input type="hidden" field={@form[:routing]} value="managed" />

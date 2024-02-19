@@ -132,21 +132,30 @@ defmodule Web.Live.Sites.NewTest do
     identity: identity,
     conn: conn
   } do
-    account = Fixtures.Accounts.create_account()
-    identity = Fixtures.Auth.create_identity(account: account, actor: [type: :account_admin_user])
-    group = Fixtures.Gateways.create_group(account: account)
+    Fixtures.Gateways.create_group(account: account)
+
+    {:ok, account} =
+      Domain.Accounts.update_account(account, %{
+        limits: %{
+          gateway_groups_count: 1
+        }
+      })
 
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
       |> live(~p"/#{account}/sites/new")
 
+    attrs =
+      Fixtures.Gateways.group_attrs()
+      |> Map.take([:name])
+
     html =
       lv
-      |> form("form", actor: attrs)
+      |> form("form", group: attrs)
       |> render_submit()
 
     assert html =~ "You have reached the maximum number of"
-    assert html =~ "seats allowed by your subscription plan."
+    assert html =~ "sites allowed by your subscription plan."
   end
 end
