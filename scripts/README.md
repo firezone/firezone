@@ -8,22 +8,33 @@ deployment of the Firezone product.
 We lint shell scripts in CI. To get your PR to pass, you'll want to ensure your
 local development environment is set up to lint shell scripts:
 
-1. Ensure [`shfmt`](https://github.com/mvdan/sh) is installed on your system and
-   available in your `PATH`. You'll want to configure it to use spaces instead
-   of tabs with the `-i 4` argument. Consult the appropriate editor plugin
-   documentation for how to do this:
-   - [Vim](https://github.com/dense-analysis/ale/blob/master/autoload/ale/fixers/shfmt.vim)
-     ([here's an example](https://github.com/jamilbk/nvim/blob/master/init.vim#L159)
-     using ALE)
-   - [VSCode](https://marketplace.visualstudio.com/items?itemName=mkhl.shfmt)
-1. Ensure [`shellcheck`](https://github.com/koalaman/shellcheck/tree/master) is
-   installed on your system and available in your `PATH`. You'll want to
-   configure it to use the `shellcheck` binary in your `PATH` in your editor
-   plugin settings.
+1. Install [`shfmt`](https://github.com/mvdan/sh):
+   - `brew install shfmt` on macOS
+   - Install shfmt from https://github.com/mvdan/sh/releases for other platforms
+1. Install [`shellcheck`](https://github.com/koalaman/shellcheck/tree/master):
+   - `brew install shellcheck` on macOS
+   - `sudo apt-get install shellcheck` on Ubuntu
+
+Then just lint and format your shell scripts before you commit:
+
+```
+shfmt -i 4 **/*.sh
+shellcheck --severity=warning **/*.sh
+```
+
+You can achieve this more easily by using `pre-commit`. See
+[CONTRIBUTING](../CONTRIBUTING.md#pre-commit).
+
+### Editor setup
+
+- [Vim](https://github.com/dense-analysis/ale/blob/master/autoload/ale/fixers/shfmt.vim)
+  ([here's an example](https://github.com/jamilbk/nvim/blob/master/init.vim#L159)
+  using ALE)
+- [VSCode](https://marketplace.visualstudio.com/items?itemName=mkhl.shfmt)
 
 ## Scripting tips
 
-- Use `#!/usr/bin/env bash` along with `set -euo pipefail` in general dev and
-  test scripts.
-- In Docker images and other production scripts where systems are minimal, stick
-  to `#!/bin/sh` and simply `set -eu`.
+- Use `#!/usr/bin/env bash` along with `set -euo pipefail` in general for dev
+  and test scripts.
+- In Docker images and other minimal envs, stick to `#!/bin/sh` and simply
+  `set -eu`.
