@@ -69,13 +69,20 @@ connections across them.
 
 Deploying a single gateway can be accomplished in the admin portal.
 
-Go to `Sites` -> `<site>` -> `Deploy a Gateway` and follow the prompts to deploy
-for your preferred environment. This will deploy a single gateway.
+Go to `Sites` -> `<name of site>` -> `Deploy a Gateway` and follow the prompts
+to deploy for your preferred environment. This will deploy a single gateway.
 
 See the [upgrading guide](/kb/administer/upgrading) for information on keeping
 your gateway up-to-date.
 
 ## Deploy multiple gateways
+
+To achieve [high availability](#high-availability), deploy more gateways within
+the same site.
+
+You can deploy multiple gateways from the admin portal, or automate the process
+by reusing the `FIREZONE_TOKEN` environment variable shown when deploying a
+gateway from the admin portal.
 
 When deploying a gateway from the admin portal, a `FIREZONE_TOKEN` environment
 variable is shown. This variable can be reused to deploy multiple gateways

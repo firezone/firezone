@@ -45,6 +45,12 @@ export default function KbSidebar() {
                 <Item href="/kb/deploy/resources" label="Resources" />
               </li>
               <li>
+                <Item href="/kb/deploy/groups" label="Groups" />
+              </li>
+              <li>
+                <Item href="/kb/deploy/users" label="Users" />
+              </li>
+              <li>
                 <Item href="/kb/deploy/policies" label="Policies" />
               </li>
               <li>
