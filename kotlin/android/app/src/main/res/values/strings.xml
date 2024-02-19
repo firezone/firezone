@@ -39,5 +39,9 @@
 
 	<!-- Managed Configuration -->
 	<string name="config_token_title">Token</string>
-	<string name="config_token_description">The token used for authentication. Set this to a service account token to achieve headless operation.</string>
+	<string name="config_token_description">The token used for authentication. Set this to a service account token to enable headless operation.</string>
+	<string name="config_allowed_applications_title">Allowed Applications</string>
+	<string name="config_allowed_applications_description">A comma-separated list of application package IDs that are allowed to use the Firezone tunnel. If this list is empty, all applications are allowed.</string>
+	<string name="config_disallowed_applications_title">Disallowed Applications</string>
+	<string name="config_disallowed_applications_description">A comma-separated list of application package IDs that are disallowed to use the Firezone tunnel and will be routed outside of it. If this list is empty, no applications are disallowed.</string>
 </resources>
