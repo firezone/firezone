@@ -25,26 +25,26 @@ defmodule Domain.Billing.JobsTest do
     test "puts a warning for an account when limits are violated", %{
       account: account
     } do
+      Fixtures.Clients.create_client(account: account, actor: [type: :account_user])
+      Fixtures.Clients.create_client(account: account, actor: [type: :account_user])
+
+      Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+      Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+
+      Fixtures.Actors.create_actor(type: :service_account, account: account)
+      Fixtures.Actors.create_actor(type: :service_account, account: account)
+
+      Fixtures.Gateways.create_group(account: account)
+      Fixtures.Gateways.create_group(account: account)
+
       Domain.Accounts.update_account(account, %{
         limits: %{
           monthly_active_users_count: 1,
           service_accounts_count: 1,
-          sites_count: 1,
+          gateway_groups_count: 1,
           account_admin_users_count: 1
         }
       })
-
-      Fixtures.Clients.create_client(account: account, actor: [type: :account_user])
-      Fixtures.Clients.create_client(account: account, actor: [type: :account_user])
-
-      Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
-      Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
-
-      Fixtures.Actors.create_actor(type: :service_account, account: account)
-      Fixtures.Actors.create_actor(type: :service_account, account: account)
-
-      Fixtures.Gateways.create_group(account: account)
-      Fixtures.Gateways.create_group(account: account)
 
       assert check_account_limits(%{}) == :ok
 

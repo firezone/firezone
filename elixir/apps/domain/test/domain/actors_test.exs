@@ -2065,6 +2065,24 @@ defmodule Domain.ActorsTest do
       assert create_actor(account, attrs, subject) == {:error, :seats_limit_reached}
     end
 
+    test "returns error when admins limit is exceeded", %{
+      account: account,
+      subject: subject
+    } do
+      {:ok, account} =
+        Domain.Accounts.update_account(account, %{
+          limits: %{
+            account_admin_users_count: 1
+          }
+        })
+
+      Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+
+      attrs = Fixtures.Actors.actor_attrs(type: :account_admin_user)
+
+      assert create_actor(account, attrs, subject) == {:error, :seats_limit_reached}
+    end
+
     test "returns error when seats limit is exceeded (users)", %{
       account: account,
       subject: subject

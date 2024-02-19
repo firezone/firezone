@@ -397,12 +397,22 @@ defmodule Domain.Actors do
           {:error, :service_accounts_limit_reached}
         end
 
-      _other ->
+      :account_admin_user ->
+        if Billing.can_create_users?(account) and Billing.can_create_admin_users?(account) do
+          :ok
+        else
+          {:error, :seats_limit_reached}
+        end
+
+      :account_user ->
         if Billing.can_create_users?(account) do
           :ok
         else
           {:error, :seats_limit_reached}
         end
+
+      _other ->
+        :ok
     end
   end
 

@@ -147,7 +147,7 @@ defmodule Domain.BillingTest do
       assert account.disabled_reason == "Stripe subscription paused"
     end
 
-    test "re-enables the account on subscription update (paused event)", %{
+    test "re-enables the account on subscription update", %{
       account: account,
       customer_id: customer_id
     } do
@@ -185,7 +185,8 @@ defmodule Domain.BillingTest do
           "multi_site_resources" => "false",
           "self_hosted_relays" => "true",
           "monthly_active_users_count" => "15",
-          "sites_count" => 1
+          "service_accounts_count" => "unlimited",
+          "gateway_groups_count" => 1
         }
       })
 
@@ -193,7 +194,7 @@ defmodule Domain.BillingTest do
         "idp_sync" => "true",
         "multi_site_resources" => "true",
         "traffic_filters" => "false",
-        "sites_count" => 5
+        "gateway_groups_count" => 5
       }
 
       quantity = 13
@@ -214,7 +215,8 @@ defmodule Domain.BillingTest do
 
       assert account.limits == %Domain.Accounts.Limits{
                monthly_active_users_count: 15,
-               sites_count: 5
+               gateway_groups_count: 5,
+               service_accounts_count: nil
              }
 
       assert account.features == %Domain.Accounts.Features{

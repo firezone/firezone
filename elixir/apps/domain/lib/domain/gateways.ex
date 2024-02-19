@@ -1,7 +1,7 @@
 defmodule Domain.Gateways do
   use Supervisor
   alias Domain.{Repo, Auth, Validator, Geo, PubSub}
-  alias Domain.{Accounts, Resources, Tokens}
+  alias Domain.{Accounts, Resources, Tokens, Billing}
   alias Domain.Gateways.{Authorizer, Gateway, Group, Presence}
 
   def start_link(opts) do
@@ -127,10 +127,14 @@ defmodule Domain.Gateways do
   end
 
   def create_group(attrs, %Auth.Subject{} = subject) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_gateways_permission()) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_gateways_permission()),
+         true <- Billing.can_create_gateway_groups?(subject.account) do
       subject.account
       |> Group.Changeset.create(attrs, subject)
       |> Repo.insert()
+    else
+      false -> {:error, :gateway_groups_limit_reached}
+      {:error, reason} -> {:error, reason}
     end
   end
 

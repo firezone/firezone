@@ -126,4 +126,27 @@ defmodule Web.Live.Sites.NewTest do
 
     assert assert_redirect(lv, ~p"/#{account}/sites/#{group}")
   end
+
+  test "renders error when sites limit is reached", %{
+    account: account,
+    identity: identity,
+    conn: conn
+  } do
+    account = Fixtures.Accounts.create_account()
+    identity = Fixtures.Auth.create_identity(account: account, actor: [type: :account_admin_user])
+    group = Fixtures.Gateways.create_group(account: account)
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/sites/new")
+
+    html =
+      lv
+      |> form("form", actor: attrs)
+      |> render_submit()
+
+    assert html =~ "You have reached the maximum number of"
+    assert html =~ "seats allowed by your subscription plan."
+  end
 end

@@ -1,6 +1,6 @@
 defmodule Domain.Billing do
   use Supervisor
-  alias Domain.{Auth, Accounts, Actors, Clients}
+  alias Domain.{Auth, Accounts, Actors, Clients, Gateways}
   alias Domain.Billing.{Authorizer, Jobs}
   alias Domain.Billing.Stripe.APIClient
   require Logger
@@ -40,33 +40,55 @@ defmodule Domain.Billing do
   end
 
   def seats_limit_exceeded?(%Accounts.Account{} = account, active_users_count) do
-    active_users_count > account.limits.monthly_active_users_count
-  end
-
-  def service_accounts_limit_exceeded?(%Accounts.Account{} = account, service_accounts_count) do
-    service_accounts_count > account.limits.service_accounts_count
-  end
-
-  def sites_limit_exceeded?(%Accounts.Account{} = account, sites_count) do
-    sites_count > account.limits.sites_count
-  end
-
-  def admins_limit_exceeded?(%Accounts.Account{} = account, account_admins_count) do
-    account_admins_count > account.limits.account_admin_users_count
+    not is_nil(account.limits.monthly_active_users_count) and
+      active_users_count > account.limits.monthly_active_users_count
   end
 
   def can_create_users?(%Accounts.Account{} = account) do
     active_users_count = Clients.count_1m_active_users_for_account(account)
 
     Accounts.account_active?(account) and
-      active_users_count < account.limits.monthly_active_users_count
+      (is_nil(account.limits.monthly_active_users_count) or
+         active_users_count < account.limits.monthly_active_users_count)
+  end
+
+  def service_accounts_limit_exceeded?(%Accounts.Account{} = account, service_accounts_count) do
+    not is_nil(account.limits.service_accounts_count) and
+      service_accounts_count > account.limits.service_accounts_count
   end
 
   def can_create_service_accounts?(%Accounts.Account{} = account) do
     service_accounts_count = Actors.count_service_accounts_for_account(account)
 
     Accounts.account_active?(account) and
-      service_accounts_count < account.limits.service_accounts_count
+      (is_nil(account.limits.service_accounts_count) or
+         service_accounts_count < account.limits.service_accounts_count)
+  end
+
+  def gateway_groups_limit_exceeded?(%Accounts.Account{} = account, gateway_groups_count) do
+    not is_nil(account.limits.gateway_groups_count) and
+      gateway_groups_count > account.limits.gateway_groups_count
+  end
+
+  def can_create_gateway_groups?(%Accounts.Account{} = account) do
+    gateway_groups_count = Gateways.count_groups_for_account(account)
+
+    Accounts.account_active?(account) and
+      (is_nil(account.limits.gateway_groups_count) or
+         gateway_groups_count < account.limits.gateway_groups_count)
+  end
+
+  def admins_limit_exceeded?(%Accounts.Account{} = account, account_admins_count) do
+    not is_nil(account.limits.account_admin_users_count) and
+      account_admins_count > account.limits.account_admin_users_count
+  end
+
+  def can_create_admin_users?(%Accounts.Account{} = account) do
+    account_admins_count = Actors.count_account_admin_users_for_account(account)
+
+    Accounts.account_active?(account) and
+      (is_nil(account.limits.account_admin_users_count) or
+         account_admins_count < account.limits.account_admin_users_count)
   end
 
   def provision_account(%Accounts.Account{} = account) do
@@ -313,7 +335,7 @@ defmodule Domain.Billing do
 
         {key, value} ->
           if key in limit_fields do
-            [{key, maybe_to_integer(value)}]
+            [{key, cast_limit(value)}]
           else
             []
           end
@@ -333,8 +355,9 @@ defmodule Domain.Billing do
     }
   end
 
-  defp maybe_to_integer(number) when is_number(number), do: number
-  defp maybe_to_integer(binary) when is_binary(binary), do: String.to_integer(binary)
+  defp cast_limit(number) when is_number(number), do: number
+  defp cast_limit("unlimited"), do: nil
+  defp cast_limit(binary) when is_binary(binary), do: String.to_integer(binary)
 
   defp fetch_config!(key) do
     Domain.Config.fetch_env!(:domain, __MODULE__)

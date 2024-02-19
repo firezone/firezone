@@ -52,6 +52,21 @@ defmodule Web.Sites.New do
            Gateways.create_group(attrs, socket.assigns.subject) do
       {:noreply, push_navigate(socket, to: ~p"/#{socket.assigns.account}/sites/#{group}")}
     else
+      {:error, :gateway_groups_limit_reached} ->
+        changeset =
+          Gateways.new_group(attrs)
+          |> Map.put(:action, :insert)
+
+        socket =
+          socket
+          |> put_flash(
+            :error,
+            "You have reached the maximum number of sites allowed by your subscription plan."
+          )
+          |> assign(form: to_form(changeset))
+
+        {:noreply, socket}
+
       {:error, changeset} ->
         {:noreply, assign(socket, form: to_form(changeset))}
     end

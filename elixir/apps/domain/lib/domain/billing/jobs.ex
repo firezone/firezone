@@ -9,7 +9,7 @@ defmodule Domain.Billing.Jobs do
       []
       |> check_seats_limit(account)
       |> check_service_accounts_limit(account)
-      |> check_sites_limit(account)
+      |> check_gateway_groups_limit(account)
       |> check_admin_limit(account)
       |> case do
         [] ->
@@ -57,10 +57,10 @@ defmodule Domain.Billing.Jobs do
     end
   end
 
-  defp check_sites_limit(limits_exceeded, account) do
-    sites_count = Gateways.count_groups_for_account(account)
+  defp check_gateway_groups_limit(limits_exceeded, account) do
+    gateway_groups_count = Gateways.count_groups_for_account(account)
 
-    if Billing.sites_limit_exceeded?(account, sites_count) do
+    if Billing.gateway_groups_limit_exceeded?(account, gateway_groups_count) do
       limits_exceeded ++ ["sites"]
     else
       limits_exceeded

@@ -10,7 +10,7 @@ defmodule Web.Settings.Billing do
     admins_count = Actors.count_account_admin_users_for_account(socket.assigns.account)
     service_accounts_count = Actors.count_service_accounts_for_account(socket.assigns.account)
     active_users_count = Clients.count_1m_active_users_for_account(socket.assigns.account)
-    sites_count = Gateways.count_groups_for_account(socket.assigns.account)
+    gateway_groups_count = Gateways.count_groups_for_account(socket.assigns.account)
 
     socket =
       assign(socket,
@@ -19,7 +19,7 @@ defmodule Web.Settings.Billing do
         admins_count: admins_count,
         active_users_count: active_users_count,
         service_accounts_count: service_accounts_count,
-        sites_count: sites_count
+        gateway_groups_count: gateway_groups_count
       )
 
     {:ok, socket}
@@ -81,7 +81,8 @@ defmodule Web.Settings.Billing do
               <p class="text-xs">users with at least one device signed-in within last month</p>
             </:value>
           </.vertical_table_row>
-          <.vertical_table_row :if={not is_nil(@account.limits.monthly_active_users_count)}>
+
+          <.vertical_table_row :if={not is_nil(@account.limits.service_accounts_count)}>
             <:label>
               <p>Service Accounts</p>
             </:label>
@@ -112,18 +113,18 @@ defmodule Web.Settings.Billing do
             </:value>
           </.vertical_table_row>
 
-          <.vertical_table_row :if={not is_nil(@account.limits.sites_count)}>
+          <.vertical_table_row :if={not is_nil(@account.limits.gateway_groups_count)}>
             <:label>
               <p>Sites</p>
             </:label>
             <:value>
               <span class={[
-                not is_nil(@sites_count) and
-                  @sites_count > @account.limits.sites_count && "text-red-500"
+                not is_nil(@gateway_groups_count) and
+                  @gateway_groups_count > @account.limits.gateway_groups_count && "text-red-500"
               ]}>
-                <%= @sites_count %> used
+                <%= @gateway_groups_count %> used
               </span>
-              / <%= @account.limits.sites_count %> allowed
+              / <%= @account.limits.gateway_groups_count %> allowed
             </:value>
           </.vertical_table_row>
         </.vertical_table>
@@ -136,7 +137,9 @@ defmodule Web.Settings.Billing do
       </:title>
       <:content>
         <.vertical_table id="features">
-          <.vertical_table_row :for={{key, _value} <- Map.from_struct(@account.features)}>
+          <.vertical_table_row :for={
+            {key, _value} <- Map.delete(Map.from_struct(@account.features), :limits)
+          }>
             <:label><.feature_name feature={key} /></:label>
             <:value>
               <% value = apply(Domain.Accounts, :"#{key}_enabled?", [@account]) %>
