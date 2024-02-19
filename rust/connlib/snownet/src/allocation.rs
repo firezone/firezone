@@ -47,7 +47,6 @@ pub struct Allocation {
 
     /// When we received the allocation and how long it is valid.
     allocation_lifetime: Option<(Instant, Duration)>,
-    last_refresh_request: Option<Instant>,
 
     buffered_transmits: VecDeque<Transmit<'static>>,
     events: VecDeque<CandidateEvent>,
@@ -109,7 +108,6 @@ impl Allocation {
             realm,
             nonce: Default::default(),
             allocation_lifetime: Default::default(),
-            last_refresh_request: Default::default(),
             channel_bindings: Default::default(),
             last_now: now,
             buffered_channel_bindings: Default::default(),
@@ -254,7 +252,6 @@ impl Allocation {
                     self.channel_bindings.clear();
                     self.allocation_lifetime = None;
 
-                    self.last_refresh_request = Some(now);
                     self.authenticate_and_queue(make_allocate_request());
                 }
                 _ => {}
@@ -423,20 +420,19 @@ impl Allocation {
         }
 
         if let Some(refresh_at) = self.refresh_allocation_at() {
-            if now >= refresh_at {
+            if now >= refresh_at && !self.refresh_in_flight() {
                 tracing::debug!("Allocation is due for a refresh");
-                self.last_refresh_request = Some(now);
                 self.authenticate_and_queue(make_refresh_request());
             }
         }
 
-        let refresh_messages = self
+        let channel_refresh_messages = self
             .channel_bindings
             .channels_to_refresh(now, |number| self.channel_binding_in_flight(number))
             .map(|(number, peer)| make_channel_bind_request(peer, number))
             .collect::<Vec<_>>(); // Need to allocate here to satisfy borrow-checker. Number of channel refresh messages should be small so this shouldn't be a big impact.
 
-        for message in refresh_messages {
+        for message in channel_refresh_messages {
             self.authenticate_and_queue(message);
         }
 
@@ -519,11 +515,15 @@ impl Allocation {
     }
 
     fn refresh_allocation_at(&self) -> Option<Instant> {
+        if self.refresh_in_flight() {
+            return None;
+        }
+
         let (received_at, lifetime) = self.allocation_lifetime?;
 
         let refresh_after = lifetime / 2;
 
-        Some(received_at.max(self.last_refresh_request.unwrap_or(received_at)) + refresh_after)
+        Some(received_at + refresh_after)
     }
 
     /// Checks whether the given socket is part of this allocation.
@@ -579,6 +579,12 @@ impl Allocation {
         self.sent_requests
             .values()
             .any(|(r, _, _)| r.method() == ALLOCATE)
+    }
+
+    fn refresh_in_flight(&self) -> bool {
+        self.sent_requests
+            .values()
+            .any(|(r, _, _)| r.method() == REFRESH)
     }
 
     /// Check whether this allocation is suspended.
