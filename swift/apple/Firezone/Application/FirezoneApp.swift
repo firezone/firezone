@@ -26,7 +26,12 @@ struct FirezoneApp: App {
 
     #if os(macOS)
       self._askPermissionViewModel =
-        StateObject(wrappedValue: AskPermissionViewModel(tunnelStore: appStore.tunnelStore))
+        StateObject(
+          wrappedValue: AskPermissionViewModel(
+            tunnelStore: appStore.tunnelStore,
+            notificationDecisionHelper: NotificationDecisionHelper(logger: appStore.logger)
+          )
+        )
       appDelegate.appStore = appStore
     #elseif os(iOS)
       self._appViewModel =

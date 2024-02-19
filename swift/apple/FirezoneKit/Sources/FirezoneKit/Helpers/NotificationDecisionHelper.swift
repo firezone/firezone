@@ -7,6 +7,9 @@
 import Foundation
 import UserNotifications
 
+// NotificationDecisionHelper helps with iOS local notifications.
+// It doesn't do anything in macOS.
+
 public class NotificationDecisionHelper {
 
   enum NotificationDecision {
@@ -32,7 +35,7 @@ public class NotificationDecisionHelper {
     }
   }
 
-  init(logger: AppLogger) {
+  public init(logger: AppLogger) {
 
     self.logger = logger
 
@@ -55,19 +58,21 @@ public class NotificationDecisionHelper {
     #endif
   }
 
-  func askUserForNotificationPermissions() {
-    guard case .notDetermined = self.notificationDecision else { return }
-    let notificationCenter = UNUserNotificationCenter.current()
-    notificationCenter.requestAuthorization(options: [.sound, .alert]) { isAuthorized, error in
-      self.logger.log(
-        "NotificationDecisionHelper.askUserForNotificationPermissions: isAuthorized = \(isAuthorized)"
-      )
-      if let error = error {
+  #if os(iOS)
+    func askUserForNotificationPermissions() {
+      guard case .notDetermined = self.notificationDecision else { return }
+      let notificationCenter = UNUserNotificationCenter.current()
+      notificationCenter.requestAuthorization(options: [.sound, .alert]) { isAuthorized, error in
         self.logger.log(
-          "NotificationDecisionHelper.askUserForNotificationPermissions: Error: \(error)"
+          "NotificationDecisionHelper.askUserForNotificationPermissions: isAuthorized = \(isAuthorized)"
         )
+        if let error = error {
+          self.logger.log(
+            "NotificationDecisionHelper.askUserForNotificationPermissions: Error: \(error)"
+          )
+        }
+        self.notificationDecision = .determined(isNotificationAllowed: isAuthorized)
       }
-      self.notificationDecision = .determined(isNotificationAllowed: isAuthorized)
     }
-  }
+  #endif
 }

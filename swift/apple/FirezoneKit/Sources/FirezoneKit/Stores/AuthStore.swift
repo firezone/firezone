@@ -10,6 +10,10 @@ import Foundation
 import NetworkExtension
 import OSLog
 
+#if os(macOS)
+  import AppKit
+#endif
+
 @MainActor
 public final class AuthStore: ObservableObject {
   enum LoginStatus: CustomStringConvertible {
@@ -202,6 +206,9 @@ public final class AuthStore: ObservableObject {
         Task {
           await self.signOut()
         }
+        #if os(macOS)
+          self.showSignedOutAlertmacOS()
+        #endif
       case .retryThenSignout:
         self.retryStartTunnel()
       case .doNothing:
@@ -230,8 +237,21 @@ public final class AuthStore: ObservableObject {
       Task {
         await self.signOut()
       }
+      #if os(macOS)
+        self.showSignedOutAlertmacOS()
+      #endif
     }
   }
+
+  #if os(macOS)
+    private func showSignedOutAlertmacOS() {
+      let alert = NSAlert()
+      alert.messageText = "Your Firezone session has ended"
+      alert.informativeText = "Please sign in again to reconnect"
+      NSApp.activate(ignoringOtherApps: true)
+      alert.runModal()
+    }
+  #endif
 
   private func handleLoginStatusChanged() {
     logger.log("\(#function): Login status: \(self.loginStatus)")
