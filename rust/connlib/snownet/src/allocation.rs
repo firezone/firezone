@@ -1602,6 +1602,26 @@ mod tests {
     }
 
     #[test]
+    fn allocation_is_refreshed_only_once() {
+        let mut allocation = Allocation::for_test(Instant::now());
+
+        let allocate = allocation.next_message().unwrap();
+
+        let received_at = Instant::now();
+
+        allocation.handle_test_input(
+            &allocate_response(&allocate, &[RELAY_ADDR_IP4, RELAY_ADDR_IP6]),
+            received_at,
+        );
+
+        let refresh_at = allocation.poll_timeout().unwrap();
+        assert_eq!(refresh_at, received_at + (ALLOCATION_LIFETIME / 2));
+
+        allocation.handle_timeout(refresh_at);
+        assert_eq!(allocation.poll_timeout(), None);
+    }
+
+    #[test]
     fn failed_refresh_resets_allocation_lifetime() {
         let mut allocation = Allocation::for_test(Instant::now());
 
