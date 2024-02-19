@@ -47,6 +47,7 @@ pub struct Allocation {
 
     /// When we received the allocation and how long it is valid.
     allocation_lifetime: Option<(Instant, Duration)>,
+    last_refresh_request: Option<Instant>,
 
     buffered_transmits: VecDeque<Transmit<'static>>,
     events: VecDeque<CandidateEvent>,
@@ -108,6 +109,7 @@ impl Allocation {
             realm,
             nonce: Default::default(),
             allocation_lifetime: Default::default(),
+            last_refresh_request: Default::default(),
             channel_bindings: Default::default(),
             last_now: now,
             buffered_channel_bindings: Default::default(),
@@ -252,6 +254,7 @@ impl Allocation {
                     self.channel_bindings.clear();
                     self.allocation_lifetime = None;
 
+                    self.last_refresh_request = Some(now);
                     self.authenticate_and_queue(make_allocate_request());
                 }
                 _ => {}
@@ -422,6 +425,7 @@ impl Allocation {
         if let Some(refresh_at) = self.refresh_allocation_at() {
             if now >= refresh_at {
                 tracing::debug!("Allocation is due for a refresh");
+                self.last_refresh_request = Some(now);
                 self.authenticate_and_queue(make_refresh_request());
             }
         }
@@ -519,7 +523,7 @@ impl Allocation {
 
         let refresh_after = lifetime / 2;
 
-        Some(received_at + refresh_after)
+        Some(received_at.max(self.last_refresh_request.unwrap_or(received_at)) + refresh_after)
     }
 
     /// Checks whether the given socket is part of this allocation.
@@ -1618,7 +1622,7 @@ mod tests {
         assert_eq!(refresh_at, received_at + (ALLOCATION_LIFETIME / 2));
 
         allocation.handle_timeout(refresh_at);
-        assert_eq!(allocation.poll_timeout(), None);
+        assert!(allocation.poll_timeout().unwrap() > refresh_at);
     }
 
     #[test]
