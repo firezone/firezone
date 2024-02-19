@@ -295,7 +295,7 @@ jobs:
           REPO="${{ github.repository }}"
           WORKFLOW="cd.yml"
           ARTIFACT_NAME="${{ matrix.test_name }}-iperf3results"
-          DESTINATION="/tmp/iperf3results-main"
+          DESTINATION="./iperf3results-main"
 
           ARTIFACTS_URL=$(
             gh api \
@@ -319,10 +319,6 @@ jobs:
           set -x
           unzip "${DESTINATION}.zip" -d "${DESTINATION}"
           rm "${DESTINATION}.zip"
-      - name: "Generate main branch metrics"
-        id: main-performance-test
-        if: ${{ github.event_name == 'pull_request' }}
-        run: ./scripts/tests/perf/compare.sh
       - name: Update PR with results
         uses: actions/github-script@v7
         id: perf-comment
@@ -331,7 +327,7 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const { script } = require('./scripts/tests/perf/results.js');
-            script(github, context, '${{ matrix.test_name }}', ${{ toJSON(steps.performance-test.outputs) }}, ${{ toJSON(steps.main-performance-test.outputs) }});
+            script(github, context, '${{ matrix.test_name }}');
       - name: Show Client logs
         if: "!cancelled()"
         run: docker compose logs client
