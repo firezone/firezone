@@ -10,3 +10,7 @@ trap remove_iptables_drop_rules EXIT # Cleanup after us
 docker compose restart relay # Restart relay
 
 client_curl_resource
+
+docker compose restart relay # Restart again
+
+client_curl_resource

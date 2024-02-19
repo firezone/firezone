@@ -4,8 +4,7 @@ set -e
 
 source "./scripts/tests/lib.sh"
 
-# Establish a channel
-client_curl_resource
+client_curl_resource # Establish a channel
 
 docker compose stop api # Stop portal
 
