@@ -1,6 +1,13 @@
 import Alert from "@/components/DocsAlert";
+import SupportOptions from "@/components/SupportOptions";
+import PlanBadge from "@/components/PlanBadge";
+import NextStep from "@/components/NextStep";
+
+<PlanBadge plans={["starter", "enterprise"]}>
 
 # Create Policies
+
+</PlanBadge>
 
 Policies are what grant users access to resources.
 
@@ -13,3 +20,7 @@ Policies define a single group access to a single resource.
   policy is created. Double-check to ensure the group and resource selected are
   correct before creating the policy.
 </Alert>
+
+<NextStep href="/kb/deploy/clients">Next: Install clients</NextStep>
+
+<SupportOptions />

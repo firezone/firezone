@@ -1,6 +1,13 @@
 import Alert from "@/components/DocsAlert";
+import SupportOptions from "@/components/SupportOptions";
+import NextStep from "@/components/NextStep";
+import PlanBadge from "@/components/PlanBadge";
+
+<PlanBadge plans={["starter", "enterprise"]}>
 
 # Deploy Gateways
+
+</PlanBadge>
 
 Gateways are what clients connect to in order to access resources in a site.
 They're the data plane workhorse of the Firezone architecture and are
@@ -141,3 +148,7 @@ Deploy as many gateways as you need to handle the load of client connections to
 resources in a site. This effectively shards client connections across all
 gateways in a site, achieving higher overall throughput than otherwise possible
 with a single gateway.
+
+<NextStep href="/kb/deploy/resources">Next: Resources</NextStep>
+
+<SupportOptions />

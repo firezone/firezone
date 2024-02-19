@@ -1,6 +1,12 @@
 import SupportOptions from "@/components/SupportOptions";
+import NextStep from "@/components/NextStep";
+import PlanBadge from "@/components/PlanBadge";
 
-# Distribute clients
+<PlanBadge plans={["starter", "enterprise"]}>
+
+# Install clients
+
+</PlanBadge>
 
 Firezone provides native clients for all major platforms. Use these clients on
 end-user devices, servers, and any other machine that needs access to your
@@ -24,10 +30,10 @@ so we can prioritize appropriately.
 
 | Platform           | Distribution Method                                                                                                                                 |
 | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| macOS / iOS        | The macOS and iOS clients are available exclusively from the Apple App Store.                                                                       |
 | Android / ChromeOS | The Android / ChromeOS client is available exclusively from the Google Play Store.                                                                  |
-| Windows            | The Windows client is available as a standalone MSI installer from our [releases page](https://www.github.com/firezone/firezone/releases).          |
 | Linux              | The Linux client is available as a standalone statically-linked binary from our [releases page](https://www.github.com/firezone/firezone/releases). |
+| macOS / iOS        | The macOS and iOS clients are available exclusively from the Apple App Store.                                                                       |
+| Windows            | The Windows client is available as a standalone MSI installer from our [releases page](https://www.github.com/firezone/firezone/releases).          |
 
 ## Headless mode operation
 
@@ -41,9 +47,11 @@ See the table below for achieving headless mode operation on each platform:
 
 | Platform           | Headless Mode Operation                                                                                                                                                                                                                                                               |
 | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| macOS / iOS        | Not yet supported.                                                                                                                                                                                                                                                                    |
-| Windows            | Not yet supported.                                                                                                                                                                                                                                                                    |
 | Android / ChromeOS | Set the `token` key using an MDM provider that supports Android [managed configurations](https://developer.android.com/work/managed-configurations). If the token is set and valid, Firezone will automatically connect and authenticate using this token when the client is started. |
 | Linux              | Set the `FIREZONE_TOKEN` environment variable when running the client binary.                                                                                                                                                                                                         |
+| macOS / iOS        | Not yet supported.                                                                                                                                                                                                                                                                    |
+| Windows            | Not yet supported.                                                                                                                                                                                                                                                                    |
+
+<NextStep href="/kb/deploy/dns">Next: Configure DNS</NextStep>
 
 <SupportOptions />

@@ -1,7 +1,13 @@
 import Alert from "@/components/DocsAlert";
 import SupportOptions from "@/components/SupportOptions";
+import NextStep from "@/components/NextStep";
+import PlanBadge from "@/components/PlanBadge";
+
+<PlanBadge plans={["starter", "enterprise"]}>
 
 # Create Users
+
+</PlanBadge>
 
 Users can be created by going to `Actors` -> `Add Actor` and then selecting
 `User` as the actor type.
@@ -26,5 +32,7 @@ ensure that the groups have the correct policies defined.
   Each user is automatically placed in the special `Everyone` group upon
   creation.
 </Alert>
+
+<NextStep href="/kb/deploy/policies">Next: Policies</NextStep>
 
 <SupportOptions />

@@ -1,6 +1,7 @@
 import PlanBadge from "@/components/PlanBadge";
 import Alert from "@/components/DocsAlert";
 import SupportOptions from "@/components/SupportOptions";
+import NextStep from "@/components/NextStep";
 
 <PlanBadge plans={["starter", "enterprise"]}>
 
@@ -55,8 +56,8 @@ further below.
 ## Configuring client DNS upstream resolvers
 
 Upstream DNS in the clients can be configured with the servers of your choosing
-so that all queries on client devices will be forward to the servers you specify
-for all non-Firezone resources.
+so that all queries on client devices will be forwarded to the servers you
+specify for all non-Firezone resources.
 
 Go to `Settings` -> `DNS` and enter IPv4 and/or IPv6 servers to use as fallback
 resolvers. Firezone clients will use these servers in the order they are defined
@@ -70,9 +71,6 @@ for any query that doesn't match a resource the user has access to.
 If no custom resolvers are configured, Firezone clients will fall back to their
 default system resolver, typically set by the DHCP server of their local
 network.
-
-To add custom resolvers, enter a valid IPv4 or IPv6 address and click "Save". To
-remove, delete the IP address and click "Save".
 
 <Alert color="info">
   Custom resolvers such as
@@ -89,5 +87,7 @@ runs. It uses the default system resolver you've configured on the gateway host.
 This resolver is used for DNS resources defined in your Firezone account so it's
 important that your gateway host has DNS configured properly for clients to
 resolve names successfully.
+
+<NextStep href="/kb/authenticate">Next: Connect an Identity Provider</NextStep>
 
 <SupportOptions />

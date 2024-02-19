@@ -1,7 +1,13 @@
 import Alert from "@/components/DocsAlert";
 import SupportOptions from "@/components/SupportOptions";
+import PlanBadge from "@/components/PlanBadge";
+import NextStep from "@/components/NextStep";
+
+<PlanBadge plans={["starter", "enterprise"]}>
 
 # Create Groups
+
+</PlanBadge>
 
 Groups form the basis of the Firezone access control model. They are used to
 organize users and apply [policies](/kb/deploy/policies) to them.
@@ -24,5 +30,7 @@ to manage a complex hierarchy of groups within Firezone.
   Firezone automatically maintains a special `Everyone` group that contains all
   of the users in your account. This group cannot be deleted or modified.
 </Alert>
+
+<NextStep href="/kb/deploy/users">Next: Users</NextStep>
 
 <SupportOptions />

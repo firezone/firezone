@@ -1,6 +1,13 @@
 import Alert from "@/components/DocsAlert";
+import SupportOptions from "@/components/SupportOptions";
+import NextStep from "@/components/NextStep";
+import PlanBadge from "@/components/PlanBadge";
+
+<PlanBadge plans={["starter", "enterprise"]}>
 
 # Create Resources
+
+</PlanBadge>
 
 Resources define subnets, IP addresses, or DNS names you wish to manage access
 for.
@@ -15,3 +22,7 @@ DNS-based resources match the address entered and all subdomains.
   cannot be changed. Double-check to ensure the address entered is correct
   before creating the resource.
 </Alert>
+
+<NextStep href="/kb/deploy/groups">Next: Groups</NextStep>
+
+<SupportOptions />
