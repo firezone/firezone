@@ -283,7 +283,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: '${{ matrix.test_name }}-iperf3results'
-          path: /tmp/iperf3results
+          path: ./iperf3results
       - name: 'Download main branch performance test results: ${{ matrix.test_name }}'
         id: download-artifact
         if: ${{ github.event_name == 'pull_request' }}
