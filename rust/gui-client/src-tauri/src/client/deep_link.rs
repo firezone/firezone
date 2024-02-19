@@ -104,6 +104,7 @@ pub(crate) fn parse_auth_callback(url: &SecretString) -> Option<AuthResponse> {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use anyhow::Result;
     use secrecy::{ExposeSecret, SecretString};
 
