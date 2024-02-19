@@ -107,6 +107,8 @@ if config_env() == :prod do
 
   config :web, api_url_override: compile_config!(:api_url_override)
 
+  config :web, client_redirect_delay: compile_config!(:client_redirect_delay)
+
   ###############################
   ##### API #####################
   ###############################
