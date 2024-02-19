@@ -235,6 +235,7 @@ jobs:
           retention-days: 1
 
   # Build for Windows
+  # TODO: Add Linux GUI here
   build-push-windows-release-artifacts:
     permissions:
       id-token: write
