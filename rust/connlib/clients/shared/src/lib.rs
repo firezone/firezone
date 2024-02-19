@@ -33,7 +33,7 @@ const MAX_RECONNECT_INTERVAL: Duration = Duration::from_secs(5);
 /// A session is created using [Session::connect], then to stop a session we use [Session::disconnect].
 pub struct Session<CB: Callbacks> {
     runtime_stopper: tokio::sync::mpsc::Sender<StopRuntime>,
-    pub callbacks: CallbackErrorFacade<CB>,
+    callbacks: CallbackErrorFacade<CB>,
 }
 
 macro_rules! fatal_error {
