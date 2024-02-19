@@ -12,7 +12,7 @@ use std::path::PathBuf;
 pub fn app_local_data_dir() -> Result<PathBuf, Error> {
     let path = get_known_folder_path(KnownFolder::LocalAppData)
         .ok_or(Error::CantFindLocalAppDataFolder)?
-        .join(BUNDLE_ID);
+        .join(crate::BUNDLE_ID);
     Ok(path)
 }
 
