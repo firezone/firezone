@@ -320,7 +320,8 @@ export default function Page() {
                 your network, and revoke access when employees leave.
               </p>
               <p className="mt-2 text-neutral-900 text-xs">
-                * Currently available for Google Workspace
+                * Currently available for Google Workspace, Microsoft Entra ID,
+                and Okta.
               </p>
             </div>
           </div>
