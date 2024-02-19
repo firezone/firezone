@@ -7,7 +7,7 @@ export default function SupportOptions() {
   return (
     <>
       <hr />
-      <div>
+      <div className="mb-8">
         <h2 id="need-additional-help">Need additional help?</h2>
         <p>Try asking on one of our community-powered support channels:</p>
         <ul>

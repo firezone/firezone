@@ -1,13 +1,41 @@
+import SupportOptions from "@/components/SupportOptions";
+import Alert from "@/components/DocsAlert";
+import Image from "next/image";
+import Link from "next/link";
+
 # Deploy Firezone
 
-Looking to get up and running quickly? See our
-[Quickstart guide](/kb/quickstart).
+This guide will walk you through a detailed product-grade deployment of Firezone
+for your organization. It's geared towards administrators and other technical
+staff who are responsible for deploying and maintaining Firezone for their team.
 
-For more detailed step-by-step instructions, follow the steps below.
+<Alert color="info">
+  Looking to get up and running with a basic deployment for testing? See our
+  [Quickstart guide](/kb/quickstart) instead.
+</Alert>
 
-1. [Create a Site](/kb/deploy/sites)
-1. [Deploy a Gateway](/kb/deploy/gateways)
-1. [Create a Resource](/kb/deploy/resources)
-1. [Create a Policy](/kb/deploy/policies)
+By following this guide, you'll end up with a production-grade deployment of
+Firezone that resembles the following diagram:
+
+<Link href="/images/kb/deploy/diagram.png" target="_blank">
+  <Image
+    src="/images/kb/deploy/diagram.png"
+    alt="Firezone deployment diagram"
+    width={1200}
+    height={1200}
+  />
+</Link>
+
+## Get started
+
+1. [Create Actors and Groups]
+1. [Create a Site](/kb/deploy/sites): A site is a logical grouping of resources
+   and gateways.
+1. [Deploy Gateways](/kb/deploy/gateways): Gateways connect users to resources.
+1. [Create a Resource](/kb/deploy/resources): Resources are the things you want
+   to protect.
+1. [Create a Policy](/kb/deploy/policies): Policies define who can access what.
 1. [Install Clients](/kb/deploy/clients)
 1. [Configure DNS](/kb/deploy/dns)
+
+<SupportOptions />
