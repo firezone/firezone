@@ -89,8 +89,7 @@ defmodule Domain.Config.Definitions do
        ]},
       {"Clients",
        [
-         :clients_upstream_dns,
-         :client_redirect_delay
+         :clients_upstream_dns
        ]},
       {"Authorization",
        """
@@ -432,13 +431,6 @@ defmodule Domain.Config.Definitions do
     default: [],
     changeset: {Domain.Config.Configuration.ClientsUpstreamDNS, :changeset, []}
   )
-
-  @doc """
-  Delay time in milliseconds to wait before redirecting client on the sign in success page.
-
-  This is needed for acceptance tests.  In dev/staging/prod the default should work fine.
-  """
-  defconfig(:client_redirect_delay, :integer, default: 1)
 
   ##############################################
   ## Userpass / SAML / OIDC / Email authentication
