@@ -2,7 +2,7 @@
 //! Based on reading some of the Windows code from <https://github.com/FabianLars/tauri-plugin-deep-link>, which is licensed "MIT OR Apache-2.0"
 
 use crate::client::auth::Response as AuthResponse;
-use connlib_shared::{control::SecureUrl, windows::BUNDLE_ID};
+use connlib_shared::{control::SecureUrl, BUNDLE_ID};
 use secrecy::{ExposeSecret, Secret, SecretString};
 use std::{ffi::c_void, io, path::Path, str::FromStr};
 use tokio::{io::AsyncReadExt, io::AsyncWriteExt, net::windows::named_pipe};

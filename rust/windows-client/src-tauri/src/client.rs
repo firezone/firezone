@@ -164,7 +164,7 @@ pub(crate) fn run() -> Result<()> {
 }
 
 #[cfg(target_os = "windows")]
-fn run_default(cli: Cli) {
+fn run_default(cli: Cli) -> Result<()> {
     use std::os::windows::process::CommandExt;
 
     // Hides Powershell's console on Windows
