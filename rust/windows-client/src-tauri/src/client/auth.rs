@@ -1,6 +1,7 @@
 //! Fulfills <https://github.com/firezone/firezone/issues/2823>
 
-use connlib_shared::{control::SecureUrl, windows::app_local_data_dir};
+use crate::client::known_dirs::app_local_data_dir;
+use connlib_shared::control::SecureUrl;
 use rand::{thread_rng, RngCore};
 use secrecy::{ExposeSecret, Secret, SecretString};
 use std::path::PathBuf;

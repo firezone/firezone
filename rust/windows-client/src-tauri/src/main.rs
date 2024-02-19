@@ -7,15 +7,5 @@ fn main() -> anyhow::Result<()> {
     client::run()
 }
 
-#[cfg(target_family = "unix")]
-mod client {
-    pub(crate) fn run() -> anyhow::Result<()> {
-        panic!("The Windows client does not compile on non-Windows platforms");
-    }
-}
-
-/// Everything is hidden inside the `client` module so that we can exempt the
-/// Windows client from static analysis on other platforms where it would throw
-/// compile errors.
-#[cfg(target_os = "windows")]
+// TODO: Collapse this
 mod client;

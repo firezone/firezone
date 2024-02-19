@@ -10,8 +10,8 @@ use crate::client::{
 };
 use anyhow::{anyhow, bail, Context, Result};
 use arc_swap::ArcSwap;
-use connlib_client_shared::{file_logger, ResourceDescription};
-use connlib_shared::{control::SecureUrl, messages::ResourceId, windows::BUNDLE_ID};
+use connlib_client_shared::{file_logger, ResourceDescription, BUNDLE_ID};
+use connlib_shared::{control::SecureUrl, messages::ResourceId};
 use secrecy::{ExposeSecret, Secret, SecretString};
 use std::{net::IpAddr, path::PathBuf, str::FromStr, sync::Arc, time::Duration};
 use system_tray_menu::Event as TrayMenuEvent;
@@ -298,7 +298,7 @@ async fn smoke_test(ctlr_tx: CtlrTx) -> Result<()> {
     let quit_time = tokio::time::Instant::now() + Duration::from_secs(delay);
 
     // Test log exporting
-    let path = connlib_shared::windows::app_local_data_dir()
+    let path = client::known_dirs::app_local_data_dir()
         .context("`app_local_data_dir` failed")?
         .join("data")
         .join("smoke_test_log_export.zip");
@@ -821,6 +821,7 @@ async fn run_controller(
 ///
 /// May say "Windows Powershell" and have the wrong icon in dev mode
 /// See <https://github.com/tauri-apps/tauri/issues/3700>
+#[cfg(target_os = "windows")]
 fn show_notification(title: &str, body: &str) -> Result<(), Error> {
     tauri_winrt_notification::Toast::new(BUNDLE_ID)
         .title(title)
@@ -828,6 +829,14 @@ fn show_notification(title: &str, body: &str) -> Result<(), Error> {
         .show()
         .map_err(|_| Error::Notification(title.to_string()))?;
 
+    Ok(())
+}
+
+#[cfg(not(target_os = "windows"))]
+fn show_notification(_title: &str, _body: &str) -> Result<(), Error> {
+    if false {
+        return Err(Error::Notification("".to_string()));
+    }
     Ok(())
 }
 
@@ -847,6 +856,7 @@ fn show_notification(title: &str, body: &str) -> Result<(), Error> {
 /// - <https://answers.microsoft.com/en-us/windows/forum/all/notifications-not-activating-the-associated-app/7a3b31b0-3a20-4426-9c88-c6e3f2ac62c6>
 ///
 /// Firefox doesn't have this problem. Maybe they're using a different API.
+#[cfg(target_os = "windows")]
 fn show_clickable_notification(
     title: &str,
     body: &str,
@@ -873,5 +883,19 @@ fn show_clickable_notification(
         })
         .show()
         .map_err(|_| Error::ClickableNotification(title.to_string()))?;
+    Ok(())
+}
+
+#[cfg(not(target_os = "windows"))]
+fn show_clickable_notification(
+    _title: &str,
+    _body: &str,
+    _tx: CtlrTx,
+    _req: ControllerRequest,
+) -> Result<(), Error> {
+    // TODO
+    if false {
+        return Err(Error::ClickableNotification("".to_string()));
+    }
     Ok(())
 }

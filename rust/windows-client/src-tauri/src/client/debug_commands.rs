@@ -50,6 +50,7 @@ fn hostname() -> Result<()> {
 }
 
 /// Try to load wintun.dll and throw an error if it's not in the right place
+#[cfg(target_os = "windows")]
 fn wintun() -> Result<()> {
     tracing_subscriber::fmt::init();
     let path = connlib_shared::windows::wintun_dll_path()?;
@@ -59,4 +60,9 @@ fn wintun() -> Result<()> {
     tracing::info!(?path, "Loaded wintun.dll");
 
     Ok(())
+}
+
+#[cfg(not(target_os = "windows"))]
+fn wintun() -> Result<()> {
+    anyhow::bail!("wintun debug subcommand only works on Windows");
 }

@@ -4,10 +4,12 @@ use std::net::IpAddr;
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
+    #[cfg(target_os = "windows")]
     #[error("can't get system DNS resolvers: {0}")]
     CantGetResolvers(#[from] ipconfig::error::Error),
 }
 
+#[cfg(target_os = "windows")]
 pub fn get() -> Result<Vec<IpAddr>, Error> {
     Ok(ipconfig::get_adapters()?
         .iter()
@@ -19,4 +21,9 @@ pub fn get() -> Result<Vec<IpAddr>, Error> {
         })
         .copied()
         .collect())
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn get() -> Result<Vec<IpAddr>, Error> {
+    Ok(vec![])
 }

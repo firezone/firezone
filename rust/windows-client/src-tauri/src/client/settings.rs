@@ -1,9 +1,11 @@
 //! Everything related to the Settings window, including
 //! advanced settings and code for manipulating diagnostic logs.
 
-use crate::client::gui::{ControllerRequest, Managed};
+use crate::client::{
+    gui::{ControllerRequest, Managed},
+    known_dirs::app_local_data_dir,
+};
 use anyhow::Result;
-use connlib_shared::windows::app_local_data_dir;
 use serde::{Deserialize, Serialize};
 use std::{path::PathBuf, time::Duration};
 use tokio::sync::oneshot;

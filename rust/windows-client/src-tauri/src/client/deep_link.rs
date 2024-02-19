@@ -202,6 +202,7 @@ pub async fn open(url: &url::Url) -> Result<(), Error> {
 /// that we send the deep link to a subcommand so the URL won't confuse `clap`
 ///
 /// * `id` A unique ID for the app, e.g. "com.contoso.todo-list" or "dev.firezone.client"
+#[cfg(target_os = "windows")]
 pub fn register() -> Result<(), Error> {
     let exe = tauri_utils::platform::current_exe()
         .map_err(Error::CurrentExe)?
@@ -214,9 +215,16 @@ pub fn register() -> Result<(), Error> {
     Ok(())
 }
 
+#[cfg(not(target_os = "windows"))]
+// TODO
+pub fn register() -> Result<(), Error> {
+    Ok(())
+}
+
 /// Set up the Windows registry to call the given exe when our deep link scheme is used
 ///
 /// All errors from this function are registry-related
+#[cfg(target_os = "windows")]
 fn set_registry_values(id: &str, exe: &str) -> Result<(), io::Error> {
     let hkcu = winreg::RegKey::predef(winreg::enums::HKEY_CURRENT_USER);
     let base = Path::new("Software").join("Classes").join(FZ_SCHEME);

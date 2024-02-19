@@ -1,21 +1,100 @@
 use anyhow::Result;
 use clap::{Args, Parser};
-use std::{os::windows::process::CommandExt, path::PathBuf, process::Command};
+use std::path::PathBuf;
 
 mod about;
 mod auth;
 mod crash_handling;
 mod debug_commands;
-mod deep_link;
 mod device_id;
-mod elevation;
 mod gui;
+mod known_dirs;
 mod logging;
-mod network_changes;
 mod resolvers;
 mod settings;
 mod updates;
+
+#[cfg(target_os = "windows")]
+mod deep_link;
+#[cfg(target_os = "windows")]
+mod elevation;
+#[cfg(target_os = "windows")]
+mod network_changes;
+#[cfg(target_os = "windows")]
 mod wintun_install;
+
+#[cfg(not(target_os = "windows"))]
+// TODO
+mod deep_link {
+    use crate::client::auth;
+    use connlib_shared::control::SecureUrl;
+    use secrecy::Secret;
+
+    #[derive(thiserror::Error, Debug)]
+    pub enum Error {
+        #[error("Can't listen for deep links, Firezone is probably already running")]
+        CantListen,
+    }
+    pub struct Server {}
+    impl Server {
+        pub fn new() -> Result<Self, Error> {
+            if false {
+                return Err(Error::CantListen);
+            }
+            Ok(Self {})
+        }
+        pub async fn accept(&self) -> Result<Secret<SecureUrl>, Error> {
+            loop {
+                tokio::task::yield_now().await;
+            }
+        }
+    }
+    pub async fn open(_url: &url::Url) -> Result<(), Error> {
+        Ok(())
+    }
+    pub fn parse_auth_callback(_url: &Secret<SecureUrl>) -> Option<auth::Response> {
+        None
+    }
+    pub fn register() -> Result<(), Error> {
+        Ok(())
+    }
+}
+#[cfg(not(target_os = "windows"))]
+// TODO
+mod elevation {}
+#[cfg(not(target_os = "windows"))]
+// TODO
+mod network_changes {
+    use anyhow::Result;
+    use std::sync::Arc;
+    use tokio::sync::Notify;
+
+    #[derive(thiserror::Error, Debug)]
+    pub enum Error {}
+    pub struct Worker {
+        notify: Arc<Notify>,
+    }
+    impl Worker {
+        pub fn new() -> std::io::Result<Self> {
+            let notify = Arc::new(Notify::new());
+            Ok(Self { notify })
+        }
+        pub fn close(&mut self) -> Result<(), Error> {
+            Ok(())
+        }
+        pub async fn notified(&self) {
+            self.notify.notified().await;
+        }
+    }
+    pub fn check_internet() -> Result<bool> {
+        Ok(true)
+    }
+    pub fn run_debug() -> Result<()> {
+        Ok(())
+    }
+}
+#[cfg(not(target_os = "windows"))]
+mod wintun_install {}
 
 /// Output of `git describe` at compile time
 /// e.g. `1.0.0-pre.4-20-ged5437c88-modified` where:
@@ -33,10 +112,6 @@ pub(crate) enum Error {
     #[error("GUI module error: {0}")]
     Gui(#[from] gui::Error),
 }
-
-// Hides Powershell's console on Windows
-// <https://stackoverflow.com/questions/59692146/is-it-possible-to-use-the-standard-library-to-spawn-a-process-without-showing-th#60958956>
-const CREATE_NO_WINDOW: u32 = 0x08000000;
 
 /// The program's entry point, equivalent to `main`
 ///
@@ -63,30 +138,7 @@ pub(crate) fn run() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        None => {
-            if elevation::check()? {
-                // We're already elevated, just run the GUI
-                run_gui(cli)
-            } else {
-                // We're not elevated, ask Powershell to re-launch us, then exit
-                let current_exe = tauri_utils::platform::current_exe()?;
-                if current_exe.display().to_string().contains('\"') {
-                    anyhow::bail!("The exe path must not contain double quotes, it makes it hard to elevate with Powershell");
-                }
-                Command::new("powershell")
-                    .creation_flags(CREATE_NO_WINDOW)
-                    .arg("-Command")
-                    .arg("Start-Process")
-                    .arg("-FilePath")
-                    .arg(format!(r#""{}""#, current_exe.display()))
-                    .arg("-Verb")
-                    .arg("RunAs")
-                    .arg("-ArgumentList")
-                    .arg("elevated")
-                    .spawn()?;
-                Ok(())
-            }
-        }
+        None => run_default(cli),
         Some(Cmd::CrashHandlerServer { socket_path }) => crash_handling::server(socket_path),
         Some(Cmd::Debug { command }) => debug_commands::run(command),
         // If we already tried to elevate ourselves, don't try again
@@ -109,6 +161,43 @@ pub(crate) fn run() -> Result<()> {
             Ok(result?)
         }
     }
+}
+
+#[cfg(target_os = "windows")]
+fn run_default(cli: Cli) {
+    use std::os::windows::process::CommandExt;
+
+    // Hides Powershell's console on Windows
+    // <https://stackoverflow.com/questions/59692146/is-it-possible-to-use-the-standard-library-to-spawn-a-process-without-showing-th#60958956>
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+    if elevation::check()? {
+        // We're already elevated, just run the GUI
+        run_gui(cli)
+    } else {
+        // We're not elevated, ask Powershell to re-launch us, then exit
+        let current_exe = tauri_utils::platform::current_exe()?;
+        if current_exe.display().to_string().contains('\"') {
+            anyhow::bail!("The exe path must not contain double quotes, it makes it hard to elevate with Powershell");
+        }
+        std::process::Command::new("powershell")
+            .creation_flags(CREATE_NO_WINDOW)
+            .arg("-Command")
+            .arg("Start-Process")
+            .arg("-FilePath")
+            .arg(format!(r#""{}""#, current_exe.display()))
+            .arg("-Verb")
+            .arg("RunAs")
+            .arg("-ArgumentList")
+            .arg("elevated")
+            .spawn()?;
+        Ok(())
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn run_default(cli: Cli) -> Result<()> {
+    run_gui(cli)
 }
 
 /// `gui::run` but wrapped in `anyhow::Result`

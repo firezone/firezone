@@ -1,4 +1,3 @@
-use known_folders::{get_known_folder_path, KnownFolder};
 use tokio::fs;
 
 #[derive(thiserror::Error, Debug)]
@@ -24,7 +23,7 @@ pub(crate) enum Error {
 ///
 /// Errors: If the disk is unwritable when initially generating the ID, or unwritable when re-generating an invalid ID.
 pub(crate) async fn device_id(identifier: &str) -> Result<String, Error> {
-    let dir = get_known_folder_path(KnownFolder::ProgramData)
+    let dir = crate::client::known_dirs::program_data_dir()
         .ok_or(Error::KnownFolder)?
         .join(identifier)
         .join("config");

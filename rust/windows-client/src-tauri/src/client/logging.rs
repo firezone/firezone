@@ -1,9 +1,11 @@
 //! Everything for logging to files, zipping up the files for export, and counting the files
 
-use crate::client::gui::{ControllerRequest, CtlrTx, Managed};
+use crate::client::{
+    gui::{ControllerRequest, CtlrTx, Managed},
+    known_dirs::app_local_data_dir,
+};
 use anyhow::{bail, Context, Result};
 use connlib_client_shared::file_logger;
-use connlib_shared::windows::app_local_data_dir;
 use serde::Serialize;
 use std::{fs, io, path::PathBuf, result::Result as StdResult, str::FromStr};
 use tokio::task::spawn_blocking;

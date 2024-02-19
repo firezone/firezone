@@ -22,6 +22,21 @@ mod control;
 pub mod file_logger;
 mod messages;
 
+/// Bundle ID / App ID that we use to distinguish ourself from other programs on the system
+///
+/// e.g. In ProgramData and AppData we use this to name our subdirectories for configs and data,
+/// and Windows may use it to track things like the MSI installer, notification titles,
+/// deep link registration, etc.
+///
+/// This should be identical to the `tauri.bundle.identifier` over in `tauri.conf.json`,
+/// but sometimes I need to use this before Tauri has booted up, or in a place where
+/// getting the Tauri app handle would be awkward.
+///
+/// Luckily this is also the AppUserModelId that Windows uses to label notifications,
+/// so if your dev system has Firezone installed by MSI, the notifications will look right.
+/// <https://learn.microsoft.com/en-us/windows/configuration/find-the-application-user-model-id-of-an-installed-app>
+pub const BUNDLE_ID: &str = "dev.firezone.client";
+
 struct StopRuntime;
 
 /// Max interval to retry connections to the portal if it's down or the client has network
