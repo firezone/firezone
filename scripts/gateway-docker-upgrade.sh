@@ -38,6 +38,7 @@ do
           --sysctl net.ipv6.conf.all.disable_ipv6=0 \
           --sysctl net.ipv6.conf.all.forwarding=1 \
           --sysctl net.ipv6.conf.default.forwarding=1 \
+          --device="/dev/net/tun:/dev/net/tun" \
           "$TARGET_IMAGE"
         rm variables.env
         echo "Container upgraded"
