@@ -1,9 +1,7 @@
 # Rust development guide
 
-Firezone uses Rust for all data plane components in the product. This directory
-contains all of the low-level networking immplementations related to STUN/TURN,
-and the Rust-based Linux and Windows clients which are contained in this
-directory.
+Firezone uses Rust for all data plane components. This directory
+contains the Linux and Windows clients, and low-level networking implementations related to STUN/TURN.
 
 ## Developer Setup
 
