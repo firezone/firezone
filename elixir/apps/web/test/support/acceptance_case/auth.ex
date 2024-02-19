@@ -112,6 +112,10 @@ defmodule Web.AcceptanceCase.Auth do
       Plug.Conn.send_resp(conn, 200, "Client redirected")
     end)
 
+    Bypass.stub(bypass, "GET", "/favicon.ico", fn conn ->
+      Plug.Conn.send_resp(conn, 404, "")
+    end)
+
     bypass
   end
 

@@ -57,6 +57,8 @@ defmodule Web.Acceptance.SignIn.EmailTest do
 
     session
     |> email_login_flow(account, identity.provider_identifier, redirect_params)
+    |> assert_el(Query.text("Sign in successful"))
+    |> assert_path(~p"/#{account}/signin_success")
     |> assert_el(Query.text("Client redirected"))
     |> assert_path(~p"/handle_client_sign_in_callback")
 
@@ -110,6 +112,8 @@ defmodule Web.Acceptance.SignIn.EmailTest do
     # And then to a client
     session
     |> email_login_flow(account, identity.provider_identifier, redirect_params)
+    |> assert_el(Query.text("Sign in successful"))
+    |> assert_path(~p"/#{account}/signin_success")
     |> assert_el(Query.text("Client redirected"))
     |> assert_path(~p"/handle_client_sign_in_callback")
 

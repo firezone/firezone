@@ -45,6 +45,8 @@ config :web, Web.Plugs.SecureHeaders,
     "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com/"
   ]
 
+config :web, client_redirect_delay: 500
+
 ###############################
 ##### API #####################
 ###############################
