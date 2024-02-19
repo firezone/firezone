@@ -35,6 +35,22 @@ pub type Dname = domain::base::Dname<Vec<u8>>;
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 const LIB_NAME: &str = "connlib";
 
+/// Bundle ID / App ID that we use to distinguish ourself from other programs on the system
+///
+/// e.g. In ProgramData and AppData we use this to name our subdirectories for configs and data,
+/// and Windows may use it to track things like the MSI installer, notification titles,
+/// deep link registration, etc.
+///
+/// This should be identical to the `tauri.bundle.identifier` over in `tauri.conf.json`,
+/// but sometimes I need to use this before Tauri has booted up, or in a place where
+/// getting the Tauri app handle would be awkward.
+///
+/// Luckily this is also the AppUserModelId that Windows uses to label notifications,
+/// so if your dev system has Firezone installed by MSI, the notifications will look right.
+/// <https://learn.microsoft.com/en-us/windows/configuration/find-the-application-user-model-id-of-an-installed-app>
+// TODO: Gateways just ignore this I guess? Since there are no GUI gateways?
+pub const BUNDLE_ID: &str = "dev.firezone.client";
+
 // From https://man7.org/linux/man-pages/man2/gethostname.2.html
 // SUSv2 guarantees that "Host names are limited to 255 bytes".
 // POSIX.1 guarantees that "Host names (not including the
