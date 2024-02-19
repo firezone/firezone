@@ -128,6 +128,10 @@ public struct AskPermissionView: View {
             )
             .font(.body)
             .multilineTextAlignment(.center)
+            .padding(EdgeInsets(top: 0, leading: 5, bottom: 0, trailing: 5))
+            Spacer()
+            Image(systemName: "network.badge.shield.half.filled")
+              .imageScale(.large)
           #endif
           Spacer()
           Button("Grant VPN Permission") {
@@ -157,6 +161,10 @@ public struct AskPermissionView: View {
             )
             .font(.body)
             .multilineTextAlignment(.center)
+            .padding(EdgeInsets(top: 0, leading: 5, bottom: 0, trailing: 5))
+            Spacer()
+            Image(systemName: "bell")
+              .imageScale(.large)
             Spacer()
             Button("Grant Notification Permission") {
               model.grantNotificationButtonTapped()
