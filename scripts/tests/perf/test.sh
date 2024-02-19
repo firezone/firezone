@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-set -xe
+set -euo pipefail
 
 mkdir -p iperf3results
 
