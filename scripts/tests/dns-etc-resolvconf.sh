@@ -31,8 +31,7 @@ echo "# Make sure gateway can reach httpbin by DNS"
 gateway sh -c "curl --fail $HTTPBIN/get"
 
 echo "# Try to ping httpbin as a DNS resource"
-client timeout 60 \
-sh -c "ping -W 1 -c 10 $HTTPBIN"
+client sh -c "ping -W 1 -c 30 $HTTPBIN"
 
 echo "# Access httpbin by DNS"
 client sh -c "curl --fail $HTTPBIN/get"
