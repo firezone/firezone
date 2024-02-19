@@ -1,5 +1,4 @@
 use bytes::Bytes;
-use connlib_shared::{CallbackErrorFacade, Callbacks};
 use core::slice;
 use quinn_udp::{RecvMeta, UdpSockRef, UdpSocketState};
 use socket2::{SockAddr, Type};
@@ -19,9 +18,9 @@ pub struct Sockets {
 }
 
 impl Sockets {
-    pub fn new(callbacks: &CallbackErrorFacade<impl Callbacks>) -> crate::Result<Self> {
-        let socket_v4 = Socket::ip4(callbacks);
-        let socket_v6 = Socket::ip6(callbacks);
+    pub fn new() -> crate::Result<Self> {
+        let socket_v4 = Socket::ip4();
+        let socket_v6 = Socket::ip6();
 
         match (socket_v4.as_ref(), socket_v6.as_ref()) {
             (Err(e), Ok(_)) => {
@@ -46,6 +45,20 @@ impl Sockets {
             socket_v4: socket_v4.ok(),
             socket_v6: socket_v6.ok(),
         })
+    }
+
+    #[cfg(target_os = "android")]
+    pub fn ip4_socket_fd(&self) -> Option<std::os::fd::RawFd> {
+        use std::os::fd::AsRawFd;
+
+        self.socket_v4.as_ref().map(|s| s.socket.as_raw_fd())
+    }
+
+    #[cfg(target_os = "android")]
+    pub fn ip6_socket_fd(&self) -> Option<std::os::fd::RawFd> {
+        use std::os::fd::AsRawFd;
+
+        self.socket_v6.as_ref().map(|s| s.socket.as_raw_fd())
     }
 
     pub fn poll_send_ready(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
@@ -105,8 +118,8 @@ struct Socket<const N: usize> {
 }
 
 impl<const N: usize> Socket<N> {
-    fn ip4(callbacks: &CallbackErrorFacade<impl Callbacks>) -> Result<Socket<N>> {
-        let socket = make_socket(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0), callbacks)?;
+    fn ip4() -> Result<Socket<N>> {
+        let socket = make_socket(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0))?;
         let port = socket.local_addr()?.port();
 
         Ok(Socket {
@@ -117,8 +130,8 @@ impl<const N: usize> Socket<N> {
         })
     }
 
-    fn ip6(callbacks: &CallbackErrorFacade<impl Callbacks>) -> Result<Socket<N>> {
-        let socket = make_socket(SocketAddrV6::new(Ipv6Addr::UNSPECIFIED, 0, 0, 0), callbacks)?;
+    fn ip6() -> Result<Socket<N>> {
+        let socket = make_socket(SocketAddrV6::new(Ipv6Addr::UNSPECIFIED, 0, 0, 0))?;
         let port = socket.local_addr()?.port();
 
         Ok(Socket {
@@ -192,13 +205,15 @@ impl<const N: usize> Socket<N> {
     }
 }
 
-fn make_socket(
-    addr: impl Into<SocketAddr>,
-    callbacks: &CallbackErrorFacade<impl Callbacks>,
-) -> Result<std::net::UdpSocket> {
+fn make_socket(addr: impl Into<SocketAddr>) -> Result<std::net::UdpSocket> {
     let addr: SockAddr = addr.into().into();
     let socket = socket2::Socket::new(addr.domain(), Type::DGRAM, None)?;
-    protect(&socket, callbacks)?;
+
+    #[cfg(target_os = "linux")]
+    {
+        socket.set_mark(crate::FIREZONE_MARK)?;
+    }
+
     socket.set_nonblocking(true)?;
     socket.bind(&addr)?;
 
@@ -208,33 +223,4 @@ fn make_socket(
     }
 
     Ok(socket.into())
-}
-
-#[cfg(target_os = "android")]
-fn protect(
-    socket: &socket2::Socket,
-    callbacks: &CallbackErrorFacade<impl Callbacks>,
-) -> Result<()> {
-    use connlib_shared::Callbacks;
-    use std::os::fd::AsRawFd;
-
-    callbacks.protect_file_descriptor(socket.as_raw_fd())?;
-    Ok(())
-}
-
-#[cfg(target_os = "linux")]
-fn protect(
-    socket: &socket2::Socket,
-    _callbacks: &CallbackErrorFacade<impl Callbacks>,
-) -> Result<()> {
-    socket.set_mark(crate::FIREZONE_MARK)?;
-    Ok(())
-}
-
-#[cfg(not(any(target_os = "android", target_os = "linux")))]
-fn protect(
-    _socket: &socket2::Socket,
-    _callbacks: &CallbackErrorFacade<impl Callbacks>,
-) -> Result<()> {
-    Ok(())
 }

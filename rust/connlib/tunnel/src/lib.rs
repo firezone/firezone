@@ -207,7 +207,18 @@ where
     #[tracing::instrument(level = "trace", skip(private_key, callbacks))]
     pub fn new(private_key: StaticSecret, callbacks: CB) -> Result<Self> {
         let callbacks = CallbackErrorFacade(callbacks);
-        let connections_state = ConnectionState::new(private_key, &callbacks)?;
+        let connections_state = ConnectionState::new(private_key)?;
+
+        // TODO: Eventually, this should move into the `connlib-client-android` crate.
+        #[cfg(target_os = "android")]
+        {
+            if let Some(ip4_socket) = connections_state.sockets.ip4_socket_fd() {
+                callbacks.protect_file_descriptor(ip4_socket)?;
+            }
+            if let Some(ip6_socket) = connections_state.sockets.ip6_socket_fd() {
+                callbacks.protect_file_descriptor(ip6_socket)?;
+            }
+        }
 
         Ok(Self {
             device: Default::default(),
@@ -245,16 +256,13 @@ where
     TId: Eq + Hash + Copy + fmt::Display,
     TTransform: PacketTransform,
 {
-    fn new(
-        private_key: StaticSecret,
-        callbacks: &CallbackErrorFacade<impl Callbacks>,
-    ) -> Result<Self> {
+    fn new(private_key: StaticSecret) -> Result<Self> {
         Ok(ConnectionState {
             node: Node::new(private_key, std::time::Instant::now()),
             write_buf: Box::new([0; MAX_UDP_SIZE]),
             peers_by_id: HashMap::new(),
             connection_pool_timeout: sleep_until(std::time::Instant::now()).boxed(),
-            sockets: Sockets::new(callbacks)?,
+            sockets: Sockets::new()?,
         })
     }
 
