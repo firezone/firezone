@@ -272,7 +272,8 @@ defmodule Web.AuthControllerTest do
 
       assert redirected_to = redirected_to(conn)
       assert redirected_to_uri = URI.parse(redirected_to)
-      assert redirected_to_uri.path == "/#{account.slug}/signin_success"
+      assert redirected_to_uri.scheme == "firezone-fd0020211111"
+      assert redirected_to_uri.host == "handle_client_sign_in_callback"
 
       assert %{
                "identity_provider_identifier" => identity_provider_identifier,
@@ -625,7 +626,8 @@ defmodule Web.AuthControllerTest do
       refute Map.has_key?(conn.cookies, "fz_auth_state_#{provider.id}")
 
       assert redirected_to = conn |> redirected_to() |> URI.parse()
-      assert redirected_to.path == "/#{account.slug}/signin_success"
+      assert redirected_to.scheme == "firezone-fd0020211111"
+      assert redirected_to.host == "handle_client_sign_in_callback"
 
       assert query_params = URI.decode_query(redirected_to.query)
       assert not is_nil(query_params["fragment"])
@@ -980,7 +982,8 @@ defmodule Web.AuthControllerTest do
         })
 
       assert redirected_to = conn |> redirected_to() |> URI.parse()
-      assert redirected_to.path == "/#{account.slug}/signin_success"
+      assert redirected_to.scheme == "firezone-fd0020211111"
+      assert redirected_to.host == "handle_client_sign_in_callback"
 
       assert query_params = URI.decode_query(redirected_to.query)
       assert not is_nil(query_params["fragment"])

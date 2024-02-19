@@ -104,7 +104,7 @@ defmodule Web.SignIn.EmailTest do
       })
       |> submit_form(conn)
 
-    assert redirected_to(conn, 302) =~ "/#{account.slug}/signin_success"
+    assert redirected_to(conn, 302) =~ "firezone-fd0020211111://handle_client_sign_in_callback"
     refute conn.assigns.flash["error"]
   end
 

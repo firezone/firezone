@@ -123,9 +123,13 @@ defmodule Web.Auth do
         identity_provider_identifier: identity.provider_identifier
       }
       |> Enum.reject(&is_nil(elem(&1, 1)))
+      |> URI.encode_query()
+
+    client_handler =
+      Domain.Config.fetch_env!(:web, :client_handler)
 
     Phoenix.Controller.redirect(conn,
-      to: ~p"/#{conn.assigns.account.slug}/signin_success?#{query}"
+      external: "#{client_handler}handle_client_sign_in_callback?#{query}"
     )
   end
 
