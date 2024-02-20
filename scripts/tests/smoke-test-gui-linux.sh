@@ -5,6 +5,7 @@ set -euo pipefail
 BUNDLE_ID="dev.firezone.client"
 DUMP_PATH="$BUNDLE_ID/data/logs/last_crash.dmp"
 PACKAGE=firezone-windows-client
+export RUST_LOG=firezone_windows_client=debug,warn
 
 # Run the smoke test normally
 xvfb-run --auto-servernum cargo run -p "$PACKAGE" -- smoke-test

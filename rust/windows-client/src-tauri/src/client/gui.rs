@@ -318,6 +318,7 @@ async fn smoke_test(ctlr_tx: CtlrTx) -> Result<()> {
         })
         .await
         .context("Failed to send ExportLogs request")?;
+    tracing::info!("`smoke_test` requested ExportLogs");
 
     // Give the app some time to export the zip and reach steady state
     tokio::time::sleep_until(quit_time).await;
@@ -593,9 +594,12 @@ impl Controller {
                     "To access resources, sign in again.",
                 )?;
             }
-            Req::ExportLogs { path, stem } => logging::export_logs_to(path, stem)
-                .await
-                .context("Failed to export logs to zip")?,
+            Req::ExportLogs { path, stem } => {
+                tracing::debug!("`handle_req` ExportLogs");
+                logging::export_logs_to(path, stem)
+                    .await
+                    .context("Failed to export logs to zip")?;
+            }
             Req::Fail(_) => bail!("Impossible error: `Fail` should be handled before this"),
             Req::GetAdvancedSettings(tx) => {
                 tx.send(self.advanced_settings.clone()).ok();
