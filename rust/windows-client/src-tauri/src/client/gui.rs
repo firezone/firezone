@@ -204,7 +204,7 @@ pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
         ]);
 
     // The system tray doesn't work in Ubuntu 22.04 CI runners
-    let app = if std::env::var("FIREZONE_DISABLE_SYSTRAY").is_ok() {
+    let app = if std::env::var("FIREZONE_DISABLE_SYSTRAY").is_err() {
         app.system_tray(tray).on_system_tray_event(|app, event| {
             if let SystemTrayEvent::MenuItemClick { id, .. } = event {
                 let event = match TrayMenuEvent::from_str(&id) {
@@ -221,6 +221,7 @@ pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
             }
         })
     } else {
+        tracing::debug!("Systray disabled");
         app
     };
     let app = app
