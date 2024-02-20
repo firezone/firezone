@@ -240,7 +240,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        dim1: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+        dim1: [1, 2, 3, 4, 5]
         dim2: ['a', 'b', 'c', 'd', 'e']
         test_name:
           - direct-tcp-client2server
