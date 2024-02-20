@@ -182,7 +182,6 @@ services:
       resources:
         ipv4_address: 172.20.0.100
 
-
   dns.httpbin:
     image: kennethreitz/httpbin
     healthcheck:
@@ -193,6 +192,8 @@ services:
 
   iperf3:
     image: mlabbe/iperf3
+    healthcheck:
+      test: ["CMD-SHELL", "cat /proc/net/tcp | grep 5201"]
     command: -s -V
     networks:
       resources:
