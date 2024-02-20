@@ -9,7 +9,7 @@ pub fn app_local_data_dir() -> Result<PathBuf, connlib_shared::Error> {
 #[cfg(not(target_os = "windows"))]
 // TODO
 pub fn app_local_data_dir() -> Result<PathBuf, connlib_shared::Error> {
-    Ok(PathBuf::new())
+    Ok(PathBuf::from(connlib_shared::BUNDLE_ID))
 }
 
 #[cfg(target_os = "windows")]

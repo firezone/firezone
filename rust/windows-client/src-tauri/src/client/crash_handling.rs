@@ -56,9 +56,13 @@ pub(crate) fn attach_handler() -> Result<CrashHandler> {
 /// <https://jake-shadle.github.io/crash-reporting/#implementation>
 /// <https://chromium.googlesource.com/breakpad/breakpad/+/master/docs/getting_started_with_breakpad.md#terminology>
 pub(crate) fn server(socket_path: PathBuf) -> Result<()> {
+    tracing_subscriber::fmt::init();
     let mut server = minidumper::Server::with_name(&*socket_path)?;
     let ab = std::sync::atomic::AtomicBool::new(false);
-    server.run(Box::new(Handler), &ab, None)?;
+    if let Err(error) = server.run(Box::new(Handler), &ab, None) {
+        tracing::error!(?error, "crash handler server failed");
+        return Err(error.into());
+    }
     Ok(())
 }
 
