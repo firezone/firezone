@@ -672,10 +672,12 @@ impl Allocation {
     }
 
     fn update_now(&mut self, now: Instant) {
-        if now > self.last_now {
-            self.last_now = now;
-            self.backoff.clock.now = now;
+        if now <= self.last_now {
+            return;
         }
+
+        self.last_now = now;
+        self.backoff.clock.now = now;
     }
 }
 
