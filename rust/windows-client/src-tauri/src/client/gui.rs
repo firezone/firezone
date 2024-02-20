@@ -224,56 +224,59 @@ pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
         tracing::debug!("Systray disabled");
         app
     };
-    let app = app
-        .setup(move |app| {
-            assert_eq!(
-                BUNDLE_ID,
-                app.handle().config().tauri.bundle.identifier,
-                "BUNDLE_ID should match bundle ID in tauri.conf.json"
-            );
+    let app = app.setup(move |app| {
+        tracing::debug!("Entered `app.setup` callback");
+        assert_eq!(
+            BUNDLE_ID,
+            app.handle().config().tauri.bundle.identifier,
+            "BUNDLE_ID should match bundle ID in tauri.conf.json"
+        );
 
-            let app_handle = app.handle();
-            let _ctlr_task = tokio::spawn(async move {
-                let app_handle_2 = app_handle.clone();
-                // Spawn two nested Tasks so the outer can catch panics from the inner
-                let task = tokio::spawn(async move {
-                    run_controller(
-                        app_handle_2,
-                        ctlr_tx,
-                        ctlr_rx,
-                        logging_handles,
-                        advanced_settings,
-                        notify_controller,
-                    )
-                    .await
-                });
-
-                // See <https://github.com/tauri-apps/tauri/issues/8631>
-                // This should be the ONLY place we call `app.exit` or `app_handle.exit`,
-                // because it exits the entire process without dropping anything.
-                //
-                // This seems to be a platform limitation that Tauri is unable to hide
-                // from us. It was the source of much consternation at time of writing.
-
-                match task.await {
-                    Err(error) => {
-                        tracing::error!(?error, "run_controller panicked");
-                        app_handle.exit(1);
-                    }
-                    Ok(Err(error)) => {
-                        tracing::error!(?error, "run_controller returned an error");
-                        app_handle.exit(1);
-                    }
-                    Ok(Ok(_)) => {
-                        tracing::info!("GUI controller task exited cleanly. Exiting process");
-                        app_handle.exit(0);
-                    }
-                }
+        let app_handle = app.handle();
+        let _ctlr_task = tokio::spawn(async move {
+            let app_handle_2 = app_handle.clone();
+            // Spawn two nested Tasks so the outer can catch panics from the inner
+            let task = tokio::spawn(async move {
+                run_controller(
+                    app_handle_2,
+                    ctlr_tx,
+                    ctlr_rx,
+                    logging_handles,
+                    advanced_settings,
+                    notify_controller,
+                )
+                .await
             });
 
-            Ok(())
-        })
-        .build(tauri::generate_context!());
+            // See <https://github.com/tauri-apps/tauri/issues/8631>
+            // This should be the ONLY place we call `app.exit` or `app_handle.exit`,
+            // because it exits the entire process without dropping anything.
+            //
+            // This seems to be a platform limitation that Tauri is unable to hide
+            // from us. It was the source of much consternation at time of writing.
+
+            match task.await {
+                Err(error) => {
+                    tracing::error!(?error, "run_controller panicked");
+                    app_handle.exit(1);
+                }
+                Ok(Err(error)) => {
+                    tracing::error!(?error, "run_controller returned an error");
+                    app_handle.exit(1);
+                }
+                Ok(Ok(_)) => {
+                    tracing::info!("GUI controller task exited cleanly. Exiting process");
+                    app_handle.exit(0);
+                }
+            }
+        });
+
+        Ok(())
+    });
+    tracing::debug!("Called `app.setup`");
+
+    let app = app.build(tauri::generate_context!());
+    tracing::debug!("Called `app.build`");
 
     let app = match app {
         Ok(x) => x,
