@@ -7,6 +7,7 @@ DUMP_PATH="$BUNDLE_ID/data/logs/last_crash.dmp"
 export FIREZONE_DISABLE_SYSTRAY=true
 PACKAGE=firezone-windows-client
 export RUST_LOG=firezone_windows_client=debug,warn
+export WEBKIT_DISABLE_COMPOSITING_MODE=1
 
 # Run the smoke test normally
 xvfb-run --auto-servernum cargo run -p "$PACKAGE" -- smoke-test
