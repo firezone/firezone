@@ -828,9 +828,13 @@ impl ChannelBindings {
     fn try_decode<'p>(&mut self, packet: &'p [u8], now: Instant) -> Option<(SocketAddr, &'p [u8])> {
         let (channel_number, payload) = crate::channel_data::decode(packet).ok()?;
         let channel = self.inner.get_mut(&channel_number)?;
-        channel.record_received(now);
 
-        // debug_assert!(channel.bound); // TODO: Should we "force-set" this? We seem to be getting traffic on this channel ..
+        if !channel.bound {
+            tracing::debug!(peer = %channel.peer, number = %channel_number, "Dropping message from channel because it is not yet bound");
+            return None;
+        }
+
+        channel.record_received(now);
 
         Some((channel.peer, payload))
     }
