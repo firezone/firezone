@@ -156,6 +156,8 @@ pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
     deep_link::register()?;
     tokio::spawn(accept_deep_links(server, ctlr_tx.clone()));
 
+    tracing::debug!("Deep link module ready");
+
     let managed = Managed {
         ctlr_tx: ctlr_tx.clone(),
         inject_faults: cli.inject_faults,
@@ -176,6 +178,8 @@ pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
             Ok::<_, anyhow::Error>(())
         });
     }
+
+    tracing::debug!("Entering Tauri setup");
 
     let app = tauri::Builder::default()
         .manage(managed)
@@ -750,6 +754,7 @@ async fn run_controller(
     advanced_settings: AdvancedSettings,
     notify_controller: Arc<Notify>,
 ) -> Result<()> {
+    tracing::debug!("Entered `run_controller`");
     let device_id = client::device_id::device_id(&app.config().tauri.bundle.identifier)
         .await
         .context("Failed to read / create device ID")?;

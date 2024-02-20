@@ -132,10 +132,10 @@ jobs:
         run: pnpm tailwindcss -i src/input.css -o src/output.css
       - name: Build client
         run: cargo build -p firezone-windows-client
-      - name: Run smoke tests
+      - name: Run smoke tests (Linux)
         if: ${{ matrix.target_os == 'linux' }}
         run: bash ../../scripts/tests/smoke-test-gui-linux.sh
-      - name: Run smoke tests
+      - name: Run smoke tests (Windows)
         if: ${{ matrix.target_os == 'windows' }}
         run: bash ../../scripts/tests/smoke-test-gui-windows.sh
 
