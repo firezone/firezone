@@ -20,6 +20,13 @@ runs:
       if: ${{ inputs.target_os == 'linux' }}
       run: sudo apt-get install gnome-keyring
       shell: bash
+      # This is only needed if we'll launch the Tauri GUI, so it's redundant for clippy / test
+      # This is what the Tauri CI tests use
+      # <https://github.com/tauri-apps/tauri/blob/3fb414b61ad7cfce67751230826fddfb39effec5/.github/workflows/bench.yml#L74>
+    - name: Install X11 virtual framebuffer
+      if: ${{ inputs.target_os == 'linux' }}
+      run: sudo apt-get install xvfb
+      shell: bash
     - name: Download WebView2 bootstrapper
       if: ${{ inputs.target_os == 'windows' }}
       # This is the "Evergreen" bootstrapper from Microsoft
