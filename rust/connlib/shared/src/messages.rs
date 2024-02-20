@@ -9,7 +9,6 @@ use ip_network::IpNetwork;
 use serde::{Deserialize, Serialize};
 use std::{fmt, str::FromStr};
 use uuid::Uuid;
-use webrtc::ice_transport::ice_parameters::RTCIceParameters;
 
 mod key;
 
@@ -75,6 +74,12 @@ pub struct Peer {
     pub preshared_key: SecretKey,
 }
 
+impl Peer {
+    pub fn ips(&self) -> Vec<IpNetwork> {
+        vec![self.ipv4.into(), self.ipv6.into()]
+    }
+}
+
 impl PartialEq for Peer {
     fn eq(&self, other: &Self) -> bool {
         self.persistent_keepalive.eq(&other.persistent_keepalive)
@@ -100,9 +105,9 @@ pub struct RequestConnection {
     pub client_payload: ClientPayload,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct ClientPayload {
-    pub ice_parameters: RTCIceParameters,
+    pub ice_parameters: Offer,
     pub domain: Option<Dname>,
 }
 
@@ -142,9 +147,21 @@ pub struct DomainResponse {
     pub address: Vec<IpAddr>,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Answer {
+    pub username: String,
+    pub password: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Offer {
+    pub username: String,
+    pub password: String,
+}
+
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct ConnectionAccepted {
-    pub ice_parameters: RTCIceParameters,
+    pub ice_parameters: Answer,
     pub domain_response: Option<DomainResponse>,
 }
 
@@ -286,7 +303,8 @@ pub struct Turn {
     #[serde(with = "ts_seconds")]
     pub expires_at: DateTime<Utc>,
     /// URI of the relay
-    pub uri: String,
+    #[serde(with = "stun_turn_uri", alias = "addr")]
+    pub uri: SocketAddr,
     /// Username for the relay
     pub username: String,
     // TODO: SecretString
@@ -298,5 +316,28 @@ pub struct Turn {
 #[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
 pub struct Stun {
     /// URI for the relay
-    pub uri: String,
+    #[serde(with = "stun_turn_uri", alias = "addr")]
+    pub uri: SocketAddr,
+}
+
+mod stun_turn_uri {
+    use serde::de::Error;
+    use serde::Deserialize;
+    use std::net::SocketAddr;
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<SocketAddr, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+        D::Error: Error,
+    {
+        let string = String::deserialize(deserializer)?;
+
+        let socket_addr = string
+            .trim_start_matches("stun:")
+            .trim_start_matches("turn:")
+            .parse::<SocketAddr>()
+            .map_err(D::Error::custom)?;
+
+        Ok(socket_addr)
+    }
 }

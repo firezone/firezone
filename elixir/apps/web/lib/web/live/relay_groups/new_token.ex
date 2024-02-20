@@ -245,6 +245,8 @@ defmodule Web.RelayGroups.NewToken do
            "connlib_shared=trace",
            "tunnel_state=trace",
            "phoenix_channel=debug",
+           "snownet=debug",
+           "str0m=info",
            "warn"
          ],
          ","
