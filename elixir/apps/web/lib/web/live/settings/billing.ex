@@ -142,10 +142,10 @@ defmodule Web.Settings.Billing do
 
     <.section>
       <:title>
-        Plan Features
+        Enabled Enterprise Features
       </:title>
       <:help>
-        Beta features are only available for accounts on Enterprise plans, please contact sales team for more information.
+        For further details on enrolling in beta features, reach out to your account manager
       </:help>
       <:content>
         <.vertical_table id="features">
