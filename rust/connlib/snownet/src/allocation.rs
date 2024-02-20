@@ -481,6 +481,11 @@ impl Allocation {
 
     #[tracing::instrument(level = "debug", skip(self, now), fields(relay = %self.server))]
     pub fn bind_channel(&mut self, peer: SocketAddr, now: Instant) {
+        if self.is_suspended() {
+            tracing::debug!("Allocation is suspended");
+            return;
+        }
+
         self.update_now(now);
 
         if self.channel_bindings.channel_to_peer(peer, now).is_some() {
