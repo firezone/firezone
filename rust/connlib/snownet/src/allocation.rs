@@ -139,7 +139,9 @@ impl Allocation {
     /// Refresh this allocation.
     ///
     /// In case refreshing the allocation fails, we will attempt to make a new one.
-    pub fn refresh(&mut self, username: Username, password: &str, realm: Realm) {
+    pub fn refresh(&mut self, username: Username, password: &str, realm: Realm, now: Instant) {
+        self.update_now(now);
+
         self.username = username;
         self.realm = realm;
         self.password = password.to_owned();
@@ -1980,6 +1982,7 @@ mod tests {
                 Username::new("foobar".to_owned()).unwrap(),
                 "baz",
                 Realm::new("firezone".to_owned()).unwrap(),
+                Instant::now(),
             );
         }
     }
