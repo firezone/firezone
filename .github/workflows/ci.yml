@@ -321,9 +321,8 @@ jobs:
             curl -H "Accept: application/vnd.github+json" -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" -L -o "${ARTIFACT_NAME}.zip" "$DOWNLOAD_URL"
 
             set -x
-            unzip "${ARTIFACT_NAME}.zip"
+            unzip "${ARTIFACT_NAME}.zip" -d "./main"
             rm "${ARTIFACT_NAME}.zip"
-            mv "${{ matrix.test_name }}.json" "${{ matrix.test_name }}-main.json"
           fi
       - name: Update PR with results
         uses: actions/github-script@v7

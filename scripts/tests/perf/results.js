@@ -1,4 +1,5 @@
 const fs = require("fs");
+const path = require("path");
 
 function getDiffPercents(main, current) {
   let diff = -1 * (100 - current / (main / 100));
@@ -40,7 +41,7 @@ exports.script = async function (github, context, test_name) {
 
   // 2. Read the main results
   const results_main = JSON.parse(
-    fs.readFileSync(test_name + "-main.json")
+    fs.readFileSync(path.join("main", test_name + ".json"))
   ).end;
 
   let output = "";
