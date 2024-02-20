@@ -240,11 +240,1002 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        test_number: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100]
         include:
           - test_name: direct-perf
+            test_number: 1
             setup: echo 'Noop'
           - test_name: relayed-perf
+            test_number: 1
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 2
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 2
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 3
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 3
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 4
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 4
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 5
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 5
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 6
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 6
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 7
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 7
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 8
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 8
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 9
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 9
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 10
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 10
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 11
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 11
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 12
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 12
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 13
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 13
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 14
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 14
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 15
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 15
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 16
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 16
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 17
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 17
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 18
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 18
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 19
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 19
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 20
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 20
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 21
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 21
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 22
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 22
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 23
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 23
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 24
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 24
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 25
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 25
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 26
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 26
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 27
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 27
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 28
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 28
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 29
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 29
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 30
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 30
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 31
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 31
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 32
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 32
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 33
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 33
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 34
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 34
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 35
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 35
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 36
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 36
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 37
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 37
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 38
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 38
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 39
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 39
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 40
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 40
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 41
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 41
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 42
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 42
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 43
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 43
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 44
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 44
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 45
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 45
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 46
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 46
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 47
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 47
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 48
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 48
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 49
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 49
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 50
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 50
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 51
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 51
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 52
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 52
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 53
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 53
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 54
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 54
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 55
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 55
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 56
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 56
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 57
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 57
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 58
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 58
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 59
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 59
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 60
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 60
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 61
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 61
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 62
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 62
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 63
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 63
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 64
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 64
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 65
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 65
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 66
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 66
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 67
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 67
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 68
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 68
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 69
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 69
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 70
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 70
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 71
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 71
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 72
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 72
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 73
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 73
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 74
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 74
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 75
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 75
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 76
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 76
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 77
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 77
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 78
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 78
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 79
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 79
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 80
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 80
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 81
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 81
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 82
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 82
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 83
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 83
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 84
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 84
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 85
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 85
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 86
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 86
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 87
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 87
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 88
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 88
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 89
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 89
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 90
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 90
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 91
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 91
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 92
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 92
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 93
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 93
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 94
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 94
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 95
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 95
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 96
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 96
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 97
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 97
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 98
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 98
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 99
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 99
+            setup: |
+              #  Disallow traffic between gateway and client container
+              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
+              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+
+          - test_name: direct-perf
+            test_number: 100
+            setup: echo 'Noop'
+          - test_name: relayed-perf
+            test_number: 100
             setup: |
               #  Disallow traffic between gateway and client container
               sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
