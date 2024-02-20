@@ -29,7 +29,7 @@ use stun_codec::{
 };
 use tracing::{field, Span};
 
-const REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(1);
 
 /// Represents a TURN allocation that refreshes itself.
 ///
@@ -419,7 +419,12 @@ impl Allocation {
         if let Some(refresh_at) = self.refresh_allocation_at() {
             if (now >= refresh_at) && !self.refresh_in_flight() {
                 tracing::debug!("Allocation is due for a refresh");
-                self.authenticate_and_queue(make_refresh_request());
+                let queued = self.authenticate_and_queue(make_refresh_request());
+
+                // If we fail to queue the refresh message because we've exceeded our backoff, give
+                if !queued {
+                    self.invalidate_allocation();
+                }
             }
         }
 
@@ -650,13 +655,14 @@ impl Allocation {
         message
     }
 
-    fn authenticate_and_queue(&mut self, message: Message<Attribute>) {
+    /// Returns: Whether we actually queued a message.
+    fn authenticate_and_queue(&mut self, message: Message<Attribute>) -> bool {
         let Some(backoff) = self.backoff.next_backoff() else {
             tracing::warn!(
                 "Unable to queue {} because we've exceeded our backoffs",
                 message.method()
             );
-            return;
+            return false;
         };
 
         let authenticated_message = self.authenticate(message);
@@ -669,6 +675,8 @@ impl Allocation {
             dst: self.server,
             payload: encode(authenticated_message).into(),
         });
+
+        true
     }
 
     fn update_now(&mut self, now: Instant) {
@@ -678,6 +686,13 @@ impl Allocation {
 
         self.last_now = now;
         self.backoff.clock.now = now;
+
+        // The backoff always counts from the last reset.
+        // If we don't have any pending requests, reset it.
+        // This allows any newly queued messages to start at the correct time.
+        if self.sent_requests.is_empty() {
+            self.backoff.reset();
+        }
     }
 }
 
@@ -1647,6 +1662,7 @@ mod tests {
         let refresh_at = allocation.poll_timeout().unwrap();
 
         allocation.handle_timeout(refresh_at);
+
         assert!(allocation.poll_timeout().unwrap() > refresh_at);
     }
 
@@ -1730,8 +1746,6 @@ mod tests {
             let _drained_events = iter::from_fn(|| allocation.poll_event()).collect::<Vec<_>>();
         }
 
-        let allocated_at = start;
-
         // Test that we refresh it.
         {
             let refresh_at = allocation.poll_timeout().unwrap();
@@ -1746,19 +1760,42 @@ mod tests {
             let timeout = allocation.poll_timeout().unwrap();
             allocation.handle_timeout(timeout);
 
-            if timeout > (allocated_at + ALLOCATION_LIFETIME) {
+            if let Some(refresh) = allocation.next_message() {
+                assert_eq!(refresh.method(), REFRESH);
+            } else {
                 break;
             }
-
-            let refresh = allocation.next_message().unwrap();
-            assert_eq!(refresh.method(), REFRESH);
         }
 
-        assert!(
-            allocation.next_message().is_none(),
-            "expect to not queue another refresh message if we are past the allocation lifetime"
-        );
         assert!(allocation.poll_timeout().is_none());
+        assert_eq!(
+            iter::from_fn(|| allocation.poll_event()).collect::<Vec<_>>(),
+            vec![
+                CandidateEvent::Invalid(Candidate::relayed(RELAY_ADDR_IP4, Protocol::Udp).unwrap()),
+                CandidateEvent::Invalid(Candidate::relayed(RELAY_ADDR_IP6, Protocol::Udp).unwrap()),
+            ]
+        )
+    }
+
+    #[test]
+    fn expires_allocation_invalidates_candidaets() {
+        let start = Instant::now();
+        let mut allocation = Allocation::for_test(start);
+
+        // Make an allocation
+        {
+            let allocate = allocation.next_message().unwrap();
+            allocation.handle_test_input(
+                &allocate_response(&allocate, &[RELAY_ADDR_IP4, RELAY_ADDR_IP6]),
+                start,
+            );
+            let _drained_events = iter::from_fn(|| allocation.poll_event()).collect::<Vec<_>>();
+        }
+
+        allocation.handle_timeout(start + ALLOCATION_LIFETIME);
+
+        assert!(allocation.poll_timeout().is_none());
+        assert!(allocation.next_message().is_none());
         assert_eq!(
             iter::from_fn(|| allocation.poll_event()).collect::<Vec<_>>(),
             vec![
