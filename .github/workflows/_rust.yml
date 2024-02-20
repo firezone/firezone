@@ -95,9 +95,10 @@ jobs:
           - runs-on: ubuntu-20.04
             target: x86_64-unknown-linux-gnu
             target_os: linux
-          - runs-on: ubuntu-22.04
-            target: x86_64-unknown-linux-gnu
-            target_os: linux
+          # Broken on 22.04 <https://github.com/firezone/firezone/issues/3699>
+          #- runs-on: ubuntu-22.04
+          #  target: x86_64-unknown-linux-gnu
+          #  target_os: linux
           - runs-on: windows-2019
             target: x86_64-pc-windows-msvc
             target_os: windows
