@@ -138,7 +138,7 @@ defmodule Web.Live.Settings.IdentityProviders.System.ShowTest do
            |> Map.fetch!("status") == "Active"
   end
 
-  test "allows deleting identity providers", %{
+  test "does not allow deleting system identity providers", %{
     account: account,
     provider: provider,
     identity: identity,
@@ -149,12 +149,6 @@ defmodule Web.Live.Settings.IdentityProviders.System.ShowTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/settings/identity_providers/system/#{provider}")
 
-    lv
-    |> element("button", "Delete Identity Provider")
-    |> render_click()
-
-    assert_redirected(lv, ~p"/#{account}/settings/identity_providers")
-
-    assert Repo.get(Domain.Auth.Provider, provider.id).deleted_at
+    refute has_element?(lv, "button", "Delete Identity Provider")
   end
 end

@@ -3,8 +3,15 @@ defmodule Web.Settings.IdentityProviders.New do
   alias Domain.Auth
 
   def mount(_params, _session, socket) do
-    {:ok, adapters} = Auth.list_provider_adapters()
-    socket = assign(socket, form: %{}, adapters: adapters, page_title: "New Identity Provider")
+    adapters = Auth.list_user_provisioned_provider_adapters!(socket.assigns.account)
+
+    socket =
+      assign(socket,
+        form: %{},
+        adapters: adapters,
+        page_title: "New Identity Provider"
+      )
+
     {:ok, socket}
   end
 
@@ -34,7 +41,12 @@ defmodule Web.Settings.IdentityProviders.New do
               <fieldset>
                 <legend class="sr-only">Identity Provider Type</legend>
 
-                <.adapter :for={{adapter, _module} <- @adapters} adapter={adapter} account={@account} />
+                <.adapter
+                  :for={{adapter, opts} <- @adapters}
+                  adapter={adapter}
+                  opts={opts}
+                  account={@account}
+                />
               </fieldset>
             </div>
             <.submit_button>
@@ -52,7 +64,7 @@ defmodule Web.Settings.IdentityProviders.New do
     <.adapter_item
       adapter={@adapter}
       account={@account}
-      enterprise_feature={true}
+      opts={@opts}
       name="Google Workspace"
       description="Authenticate users and synchronize users and groups with a custom Google Workspace connector."
     />
@@ -64,9 +76,9 @@ defmodule Web.Settings.IdentityProviders.New do
     <.adapter_item
       adapter={@adapter}
       account={@account}
-      enterprise_feature={true}
-      name="Microsoft Entra ID"
-      description="Authenticate users and synchronize users and groups with a custom Microsoft Entra ID connector."
+      opts={@opts}
+      name="Microsoft Entra"
+      description="Authenticate users and synchronize users and groups with a custom Microsoft Entra connector."
     />
     """
   end
@@ -76,7 +88,7 @@ defmodule Web.Settings.IdentityProviders.New do
     <.adapter_item
       adapter={@adapter}
       account={@account}
-      enterprise_feature={true}
+      opts={@opts}
       name="Okta"
       description="Authenticate users and synchronize users and groups with a custom Okta connector."
     />
@@ -88,26 +100,16 @@ defmodule Web.Settings.IdentityProviders.New do
     <.adapter_item
       adapter={@adapter}
       account={@account}
+      opts={@opts}
       name="OpenID Connect"
       description="Authenticate users with a universal OpenID Connect adapter and manager users and groups manually."
     />
     """
   end
 
-  def adapter(%{adapter: :saml} = assigns) do
-    ~H"""
-    <.adapter_item
-      adapter={@adapter}
-      account={@account}
-      name="SAML 2.0"
-      description="Authenticate users with a custom SAML 2.0 adapter and synchronize users and groups with SCIM 2.0."
-    />
-    """
-  end
-
   attr :adapter, :any
   attr :account, :any
-  attr :enterprise_feature, :boolean, default: false
+  attr :opts, :any
   attr :name, :string
   attr :description, :string
 
@@ -120,17 +122,24 @@ defmodule Web.Settings.IdentityProviders.New do
           type="radio"
           name="next"
           value={next_step_path(@adapter, @account)}
-          class={~w[ w-4 h-4 border-neutral-300 ]}
+          class={[
+            "w-4 h-4 border-neutral-300",
+            @opts[:enabled] == false && "cursor-not-allowed"
+          ]}
+          disabled={@opts[:enabled] == false}
           required
         />
         <.provider_icon adapter={@adapter} class="w-8 h-8 ml-4" />
         <label for={"idp-option-#{@adapter}"} class="block ml-2 text-lg text-neutral-900">
           <%= @name %>
         </label>
-        <%= if @enterprise_feature do %>
-          <.badge class="ml-2" type="primary" title="Feature available on the Enterprise plan">
-            ENTERPRISE
-          </.badge>
+
+        <%= if @opts[:enabled] == false do %>
+          <.link navigate={~p"/#{@account}/settings/billing"} class="ml-2 text-sm text-primary-500">
+            <.badge class="ml-2" type="primary" title="Feature available on a higher pricing plan">
+              UPGRADE TO UNLOCK
+            </.badge>
+          </.link>
         <% end %>
       </div>
       <p class="ml-6 mb-6 text-sm text-neutral-500">

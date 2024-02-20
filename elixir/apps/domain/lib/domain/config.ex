@@ -1,8 +1,5 @@
 defmodule Domain.Config do
-  alias Domain.{Repo, Auth, PubSub}
-  alias Domain.Config.Authorizer
   alias Domain.Config.{Definition, Definitions, Validator, Errors, Fetcher}
-  alias Domain.Config.Configuration
 
   def fetch_resolved_configs!(account_id, keys, opts \\ []) do
     for {key, {_source, value}} <-
@@ -12,8 +9,9 @@ defmodule Domain.Config do
     end
   end
 
-  def fetch_resolved_configs_with_sources!(account_id, keys, opts \\ []) do
-    {db_config, env_config} = maybe_load_sources(account_id, opts, keys)
+  def fetch_resolved_configs_with_sources!(_account_id, keys, _opts \\ []) do
+    db_config = %{}
+    env_config = System.get_env()
 
     for key <- keys, into: %{} do
       case Fetcher.fetch_source_and_config(Definitions, key, db_config, env_config) do
@@ -26,26 +24,6 @@ defmodule Domain.Config do
     end
   end
 
-  defp maybe_load_sources(account_id, opts, keys) when is_list(keys) do
-    ignored_sources = Keyword.get(opts, :ignore_sources, []) |> List.wrap()
-
-    one_of_keys_is_stored_in_db? =
-      Enum.any?(keys, &(&1 in Domain.Config.Configuration.__schema__(:fields)))
-
-    db_config =
-      if :db not in ignored_sources and one_of_keys_is_stored_in_db?,
-        do: get_account_config_by_account_id(account_id),
-        else: %{}
-
-    # credo:disable-for-lines:4
-    env_config =
-      if :env not in ignored_sources,
-        do: System.get_env(),
-        else: %{}
-
-    {db_config, env_config}
-  end
-
   @doc """
   Similar to `compile_config/2` but raises an error if the configuration is invalid.
 
@@ -54,56 +32,13 @@ defmodule Domain.Config do
 
   If you need to resolve values from the database, use `fetch_config/1` or `fetch_config!/1`.
   """
-  def compile_config!(module \\ Definitions, key, env_configurations \\ System.get_env()) do
-    case Fetcher.fetch_source_and_config(module, key, %{}, env_configurations) do
+  def compile_config!(module \\ Definitions, key, env_config \\ System.get_env()) do
+    case Fetcher.fetch_source_and_config(module, key, %{}, env_config) do
       {:ok, _source, value} ->
         value
 
       {:error, reason} ->
         Errors.raise_error!(reason)
-    end
-  end
-
-  ## Configuration stored in database
-
-  def get_account_config_by_account_id(account_id) do
-    queryable = Configuration.Query.by_account_id(account_id)
-    Repo.one(queryable) || %Configuration{account_id: account_id}
-  end
-
-  def fetch_account_config(%Auth.Subject{} = subject) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_permission()) do
-      {:ok, get_account_config_by_account_id(subject.account.id)}
-    end
-  end
-
-  def change_account_config(%Configuration{} = configuration, attrs \\ %{}) do
-    Configuration.Changeset.changeset(configuration, attrs)
-  end
-
-  def update_config(%Configuration{} = configuration, attrs, %Auth.Subject{} = subject) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_permission()) do
-      case update_config(configuration, attrs) do
-        {:ok, configuration} ->
-          :ok = broadcast_update_to_account(configuration)
-          {:ok, configuration}
-
-        {:error, changeset} ->
-          {:error, changeset}
-      end
-    end
-  end
-
-  def update_config(%Configuration{} = configuration, attrs) do
-    Configuration.Changeset.changeset(configuration, attrs)
-    |> Repo.insert_or_update()
-    |> case do
-      {:ok, configuration} ->
-        :ok = broadcast_update_to_account(configuration)
-        {:ok, configuration}
-
-      {:error, changeset} ->
-        {:error, changeset}
     end
   end
 
@@ -130,29 +65,13 @@ defmodule Domain.Config do
 
   ## Feature flag helpers
 
-  defp feature_enabled?(feature) do
+  def global_feature_enabled?(feature) do
     fetch_env!(:domain, :enabled_features)
     |> Keyword.fetch!(feature)
   end
 
   def sign_up_enabled? do
-    feature_enabled?(:sign_up)
-  end
-
-  def flow_activities_enabled? do
-    feature_enabled?(:flow_activities)
-  end
-
-  def multi_site_resources_enabled? do
-    feature_enabled?(:multi_site_resources)
-  end
-
-  def traffic_filters_enabled? do
-    feature_enabled?(:traffic_filters)
-  end
-
-  def self_hosted_relays_enabled? do
-    feature_enabled?(:self_hosted_relays)
+    global_feature_enabled?(:sign_up)
   end
 
   ## Test helpers
@@ -209,29 +128,13 @@ defmodule Domain.Config do
     end
 
     def feature_flag_override(feature, value) do
-      enabled_features = fetch_env!(:domain, :enabled_features) |> Keyword.put(feature, value)
+      enabled_features =
+        fetch_env!(:domain, :enabled_features)
+        |> Keyword.put(feature, value)
+
       put_env_override(:enabled_features, enabled_features)
     end
 
     defp pdict_key_function(app, key), do: {app, key}
-  end
-
-  ### PubSub
-
-  defp account_topic(%Domain.Accounts.Account{} = account), do: account_topic(account.id)
-  defp account_topic(account_id), do: "configs:#{account_id}"
-
-  def subscribe_to_events_in_account(account_or_id) do
-    PubSub.subscribe(account_topic(account_or_id))
-  end
-
-  defp broadcast_update_to_account(configuration) do
-    broadcast_to_account(configuration.account_id, :config_changed)
-  end
-
-  defp broadcast_to_account(account_or_id, payload) do
-    account_or_id
-    |> account_topic()
-    |> PubSub.broadcast(payload)
   end
 end
