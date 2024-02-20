@@ -181,9 +181,10 @@ pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
 
     tracing::debug!("Entering Tauri setup");
 
-    let app = tauri::Builder::default()
-        .manage(managed)
-        .on_window_event(|event| {
+    let app = tauri::Builder::default().manage(managed);
+
+    let app = if false {
+        app.on_window_event(|event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event.event() {
                 // Keep the frontend running but just hide this webview
                 // Per https://tauri.app/v1/guides/features/system-tray/#preventing-the-app-from-closing
@@ -201,7 +202,10 @@ pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
             settings::apply_advanced_settings,
             settings::reset_advanced_settings,
             settings::get_advanced_settings,
-        ]);
+        ])
+    } else {
+        app
+    };
 
     // The system tray doesn't work in Ubuntu 22.04 CI runners
     let app = if std::env::var("FIREZONE_DISABLE_SYSTRAY").is_err() {
