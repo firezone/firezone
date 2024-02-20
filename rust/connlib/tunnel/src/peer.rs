@@ -1,15 +1,12 @@
 use std::borrow::Cow;
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
 use std::net::IpAddr;
 use std::sync::Arc;
 use std::time::Instant;
 
 use arc_swap::ArcSwap;
 use bimap::BiMap;
-use boringtun::noise::rate_limiter::RateLimiter;
-use boringtun::noise::{Tunn, TunnResult};
-use boringtun::x25519::StaticSecret;
-use bytes::Bytes;
+use boringtun::noise::Tunn;
 use chrono::{DateTime, Utc};
 use connlib_shared::messages::DnsServer;
 use connlib_shared::IpProvider;
@@ -18,11 +15,9 @@ use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
 use parking_lot::{Mutex, RwLock};
 use pnet_packet::Packet;
-use secrecy::ExposeSecret;
 
 use crate::control_protocol::gateway::ResourceDescription;
-use crate::MAX_UDP_SIZE;
-use crate::{device_channel, ip_packet::MutableIpPacket, PeerConfig};
+use crate::{device_channel, ip_packet::MutableIpPacket};
 
 type ExpiryingResource = (ResourceDescription, Option<DateTime<Utc>>);
 
@@ -30,8 +25,7 @@ type ExpiryingResource = (ResourceDescription, Option<DateTime<Utc>>);
 // is 30 seconds. See resolvconf(5) timeout.
 const IDS_EXPIRE: std::time::Duration = std::time::Duration::from_secs(60);
 
-pub(crate) struct Peer<TId, TTransform> {
-    tunnel: Mutex<Tunn>,
+pub struct Peer<TId, TTransform> {
     allowed_ips: RwLock<IpNetworkTable<()>>,
     pub conn_id: TId,
     pub transform: TTransform,
@@ -39,7 +33,7 @@ pub(crate) struct Peer<TId, TTransform> {
 
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
-pub(crate) struct PeerStats<TId> {
+pub struct PeerStats<TId> {
     pub allowed_ips: Vec<IpNetwork>,
     pub conn_id: TId,
 }
@@ -49,7 +43,7 @@ where
     TId: Copy,
     TTransform: PacketTransform,
 {
-    pub(crate) fn stats(&self) -> PeerStats<TId> {
+    pub fn stats(&self) -> PeerStats<TId> {
         let allowed_ips = self.allowed_ips.read().iter().map(|(ip, _)| ip).collect();
         PeerStats {
             allowed_ips,
@@ -58,30 +52,17 @@ where
     }
 
     pub(crate) fn new(
-        private_key: StaticSecret,
-        index: u32,
-        peer_config: PeerConfig,
+        ips: Vec<IpNetwork>,
         conn_id: TId,
-        rate_limiter: Arc<RateLimiter>,
         transform: TTransform,
     ) -> Peer<TId, TTransform> {
-        let tunnel = Tunn::new(
-            private_key.clone(),
-            peer_config.public_key,
-            Some(peer_config.preshared_key.expose_secret().0),
-            peer_config.persistent_keepalive,
-            index,
-            Some(rate_limiter),
-        );
-
         let mut allowed_ips = IpNetworkTable::new();
-        for ip in peer_config.ips {
+        for ip in ips {
             allowed_ips.insert(ip, ());
         }
         let allowed_ips = RwLock::new(allowed_ips);
 
         Peer {
-            tunnel: Mutex::new(tunnel),
             allowed_ips,
             conn_id,
             transform,
@@ -92,99 +73,28 @@ where
         self.allowed_ips.write().insert(ip, ());
     }
 
-    pub(crate) fn update_timers(&self) -> Result<Option<Bytes>> {
-        /// [`boringtun`] requires us to pass buffers in where it can construct its packets.
-        ///
-        /// When updating the timers, the largest packet that we may have to send is `148` bytes as per `HANDSHAKE_INIT_SZ` constant in [`boringtun`].
-        const MAX_SCRATCH_SPACE: usize = 148;
-
-        let mut buf = [0u8; MAX_SCRATCH_SPACE];
-
-        let packet = match self.tunnel.lock().update_timers(&mut buf) {
-            TunnResult::Done => return Ok(None),
-            TunnResult::Err(e) => return Err(e.into()),
-            TunnResult::WriteToNetwork(b) => b,
-            _ => panic!("Unexpected result from update_timers"),
-        };
-
-        Ok(Some(Bytes::copy_from_slice(packet)))
-    }
-
     fn is_allowed(&self, addr: IpAddr) -> bool {
         self.allowed_ips.read().longest_match(addr).is_some()
     }
 
     /// Sends the given packet to this peer by encapsulating it in a wireguard packet.
-    pub(crate) fn encapsulate(
-        &self,
-        packet: MutableIpPacket,
-        buf: &mut [u8],
-    ) -> Result<Option<Bytes>> {
-        let Some(packet) = self.transform.packet_transform(packet) else {
-            return Ok(None);
-        };
-
-        let packet = match self.tunnel.lock().encapsulate(packet.packet(), buf) {
-            TunnResult::Done => return Ok(None),
-            TunnResult::Err(e) => return Err(e.into()),
-            TunnResult::WriteToNetwork(b) => b,
-            _ => panic!("Unexpected result from `encapsulate`"),
-        };
-
-        Ok(Some(Bytes::copy_from_slice(packet)))
+    pub(crate) fn transform<'a>(&self, packet: MutableIpPacket<'a>) -> Option<MutableIpPacket<'a>> {
+        self.transform.packet_transform(packet)
     }
 
-    pub(crate) fn decapsulate<'b>(
-        &self,
-        src: &[u8],
-        dst: &'b mut [u8],
-    ) -> Result<Option<WriteTo<'b>>> {
-        let mut tunnel = self.tunnel.lock();
-
-        match tunnel.decapsulate(None, src, dst) {
-            TunnResult::Done => Ok(None),
-            TunnResult::Err(e) => Err(e.into()),
-            TunnResult::WriteToNetwork(packet) => {
-                let mut packets = VecDeque::from([Bytes::copy_from_slice(packet)]);
-
-                let mut buf = [0u8; MAX_UDP_SIZE];
-
-                while let TunnResult::WriteToNetwork(packet) =
-                    tunnel.decapsulate(None, &[], &mut buf)
-                {
-                    packets.push_back(Bytes::copy_from_slice(packet));
-                }
-
-                Ok(Some(WriteTo::Network(packets)))
-            }
-            TunnResult::WriteToTunnelV4(packet, addr) => {
-                self.make_packet_for_resource(addr.into(), packet)
-            }
-            TunnResult::WriteToTunnelV6(packet, addr) => {
-                self.make_packet_for_resource(addr.into(), packet)
-            }
-        }
-    }
-
-    fn make_packet_for_resource<'a>(
+    pub(crate) fn untransform<'b>(
         &self,
         addr: IpAddr,
-        packet: &'a mut [u8],
-    ) -> Result<Option<WriteTo<'a>>> {
+        packet: &'b mut [u8],
+    ) -> Result<device_channel::Packet<'b>> {
         let (packet, addr) = self.transform.packet_untransform(&addr, packet)?;
 
         if !self.is_allowed(addr) {
-            tracing::debug!("A packet was seen from the tunnel with a destination address we didn't expect: {addr}");
-            return Ok(None);
+            return Err(Error::UnallowedPacket);
         }
 
-        Ok(Some(WriteTo::Resource(packet)))
+        Ok(packet)
     }
-}
-
-pub enum WriteTo<'a> {
-    Network(VecDeque<Bytes>),
-    Resource(device_channel::Packet<'a>),
 }
 
 pub struct PacketTransformGateway {
@@ -202,7 +112,6 @@ impl Default for PacketTransformGateway {
 #[derive(Default)]
 pub struct PacketTransformClient {
     translations: RwLock<BiMap<IpAddr, IpAddr>>,
-    // TODO: Upstream dns could be something that's not an ip
     dns_mapping: ArcSwap<BiMap<IpAddr, DnsServer>>,
     mangled_dns_ids: Mutex<HashMap<u16, std::time::Instant>>,
 }
@@ -256,7 +165,7 @@ impl PacketTransformGateway {
     }
 }
 
-pub(crate) trait PacketTransform {
+pub trait PacketTransform {
     fn packet_untransform<'a>(
         &self,
         addr: &IpAddr,

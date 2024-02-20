@@ -22,7 +22,7 @@ impl Default for AdvancedSettings {
         Self {
             auth_base_url: Url::parse("https://app.firez.one").unwrap(),
             api_url: Url::parse("wss://api.firez.one").unwrap(),
-            log_filter: "firezone_windows_client=debug,firezone_tunnel=trace,phoenix_channel=debug,connlib_shared=debug,connlib_client_shared=debug,warn".to_string(),
+            log_filter: "firezone_windows_client=debug,firezone_tunnel=trace,phoenix_channel=debug,connlib_shared=debug,connlib_client_shared=debug,snownet=debug,str0m=info,warn".to_string(),
         }
     }
 }
@@ -33,7 +33,7 @@ impl Default for AdvancedSettings {
         Self {
             auth_base_url: Url::parse("https://app.firezone.dev").unwrap(),
             api_url: Url::parse("wss://api.firezone.dev").unwrap(),
-            log_filter: "firezone_windows_client=info,firezone_tunnel=trace,phoenix_channel=info,connlib_shared=info,connlib_client_shared=info,webrtc=error,warn".to_string(),
+            log_filter: "firezone_windows_client=info,firezone_tunnel=trace,phoenix_channel=info,connlib_shared=info,connlib_client_shared=info,snownet=debug,str0m=info,warn".to_string(),
         }
     }
 }

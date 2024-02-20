@@ -28,4 +28,6 @@ interface ConnlibCallback {
     fun onDisconnect(): Boolean
 
     fun getSystemDefaultResolvers(): Array<ByteArray>
+
+    fun protectFileDescriptor(fileDescriptor: Int)
 }

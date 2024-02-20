@@ -1,6 +1,7 @@
 use crate::{
     backoff::{self, ExponentialBackoff},
     node::{CandidateEvent, Transmit},
+    ringbuffer::RingBuffer,
     utils::earliest,
 };
 use ::backoff::backoff::Backoff;
@@ -29,7 +30,7 @@ use stun_codec::{
 };
 use tracing::{field, Span};
 
-const REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(1);
 
 /// Represents a TURN allocation that refreshes itself.
 ///
@@ -53,6 +54,9 @@ pub struct Allocation {
 
     backoff: ExponentialBackoff,
     sent_requests: HashMap<TransactionId, (Message<Attribute>, Instant, Duration)>,
+
+    /// When we time out requests, we remember the last [`TransactionId`]s to be able to recognize them in case they do arrive later.
+    timed_out_requests: RingBuffer<TransactionId>,
 
     channel_bindings: ChannelBindings,
     buffered_channel_bindings: BufferedChannelBindings,
@@ -112,6 +116,7 @@ impl Allocation {
             last_now: now,
             buffered_channel_bindings: Default::default(),
             backoff: backoff::new(now, REQUEST_TIMEOUT),
+            timed_out_requests: RingBuffer::new(100),
         };
 
         tracing::debug!(%server, "Requesting new allocation");
@@ -134,7 +139,9 @@ impl Allocation {
     /// Refresh this allocation.
     ///
     /// In case refreshing the allocation fails, we will attempt to make a new one.
-    pub fn refresh(&mut self, username: Username, password: &str, realm: Realm) {
+    pub fn refresh(&mut self, username: Username, password: &str, realm: Realm, now: Instant) {
+        self.update_now(now);
+
         self.username = username;
         self.realm = realm;
         self.password = password.to_owned();
@@ -174,12 +181,21 @@ impl Allocation {
             return false;
         };
 
-        Span::current().record("id", field::debug(message.transaction_id()));
+        let transaction_id = message.transaction_id();
+
+        Span::current().record("id", field::debug(transaction_id));
         Span::current().record("method", field::display(message.method()));
         Span::current().record("class", field::display(message.class()));
 
-        let Some((original_request, sent_at, _)) =
-            self.sent_requests.remove(&message.transaction_id())
+        if self.timed_out_requests.remove(&transaction_id) {
+            tracing::debug!(
+                ?transaction_id,
+                "Received response to timed-out request, ignoring"
+            );
+            return true;
+        }
+
+        let Some((original_request, sent_at, _)) = self.sent_requests.remove(&transaction_id)
         else {
             return false;
         };
@@ -413,13 +429,20 @@ impl Allocation {
 
             tracing::debug!(id = ?request.transaction_id(), method = %request.method(), "Request timed out, re-sending");
 
+            self.timed_out_requests.push(request.transaction_id());
+
             self.authenticate_and_queue(request);
         }
 
         if let Some(refresh_at) = self.refresh_allocation_at() {
             if (now >= refresh_at) && !self.refresh_in_flight() {
                 tracing::debug!("Allocation is due for a refresh");
-                self.authenticate_and_queue(make_refresh_request());
+                let queued = self.authenticate_and_queue(make_refresh_request());
+
+                // If we fail to queue the refresh message because we've exceeded our backoff, give
+                if !queued {
+                    self.invalidate_allocation();
+                }
             }
         }
 
@@ -460,6 +483,11 @@ impl Allocation {
 
     #[tracing::instrument(level = "debug", skip(self, now), fields(relay = %self.server))]
     pub fn bind_channel(&mut self, peer: SocketAddr, now: Instant) {
+        if self.is_suspended() {
+            tracing::debug!("Allocation is suspended");
+            return;
+        }
+
         self.update_now(now);
 
         if self.channel_bindings.channel_to_peer(peer, now).is_some() {
@@ -650,13 +678,14 @@ impl Allocation {
         message
     }
 
-    fn authenticate_and_queue(&mut self, message: Message<Attribute>) {
+    /// Returns: Whether we actually queued a message.
+    fn authenticate_and_queue(&mut self, message: Message<Attribute>) -> bool {
         let Some(backoff) = self.backoff.next_backoff() else {
             tracing::warn!(
                 "Unable to queue {} because we've exceeded our backoffs",
                 message.method()
             );
-            return;
+            return false;
         };
 
         let authenticated_message = self.authenticate(message);
@@ -669,12 +698,23 @@ impl Allocation {
             dst: self.server,
             payload: encode(authenticated_message).into(),
         });
+
+        true
     }
 
     fn update_now(&mut self, now: Instant) {
-        if now > self.last_now {
-            self.last_now = now;
-            self.backoff.clock.now = now;
+        if now <= self.last_now {
+            return;
+        }
+
+        self.last_now = now;
+        self.backoff.clock.now = now;
+
+        // The backoff always counts from the last reset.
+        // If we don't have any pending requests, reset it.
+        // This allows any newly queued messages to start at the correct time.
+        if self.sent_requests.is_empty() {
+            self.backoff.reset();
         }
     }
 }
@@ -828,9 +868,13 @@ impl ChannelBindings {
     fn try_decode<'p>(&mut self, packet: &'p [u8], now: Instant) -> Option<(SocketAddr, &'p [u8])> {
         let (channel_number, payload) = crate::channel_data::decode(packet).ok()?;
         let channel = self.inner.get_mut(&channel_number)?;
-        channel.record_received(now);
 
-        debug_assert!(channel.bound); // TODO: Should we "force-set" this? We seem to be getting traffic on this channel ..
+        if !channel.bound {
+            tracing::debug!(peer = %channel.peer, number = %channel_number, "Dropping message from channel because it is not yet bound");
+            return None;
+        }
+
+        channel.record_received(now);
 
         Some((channel.peer, payload))
     }
@@ -1641,6 +1685,7 @@ mod tests {
         let refresh_at = allocation.poll_timeout().unwrap();
 
         allocation.handle_timeout(refresh_at);
+
         assert!(allocation.poll_timeout().unwrap() > refresh_at);
     }
 
@@ -1724,8 +1769,6 @@ mod tests {
             let _drained_events = iter::from_fn(|| allocation.poll_event()).collect::<Vec<_>>();
         }
 
-        let allocated_at = start;
-
         // Test that we refresh it.
         {
             let refresh_at = allocation.poll_timeout().unwrap();
@@ -1740,18 +1783,13 @@ mod tests {
             let timeout = allocation.poll_timeout().unwrap();
             allocation.handle_timeout(timeout);
 
-            if timeout > (allocated_at + ALLOCATION_LIFETIME) {
+            if let Some(refresh) = allocation.next_message() {
+                assert_eq!(refresh.method(), REFRESH);
+            } else {
                 break;
             }
-
-            let refresh = allocation.next_message().unwrap();
-            assert_eq!(refresh.method(), REFRESH);
         }
 
-        assert!(
-            allocation.next_message().is_none(),
-            "expect to not queue another refresh message if we are past the allocation lifetime"
-        );
         assert!(allocation.poll_timeout().is_none());
         assert_eq!(
             iter::from_fn(|| allocation.poll_event()).collect::<Vec<_>>(),
@@ -1760,6 +1798,54 @@ mod tests {
                 CandidateEvent::Invalid(Candidate::relayed(RELAY_ADDR_IP6, Protocol::Udp).unwrap()),
             ]
         )
+    }
+
+    #[test]
+    fn expires_allocation_invalidates_candidaets() {
+        let start = Instant::now();
+        let mut allocation = Allocation::for_test(start);
+
+        // Make an allocation
+        {
+            let allocate = allocation.next_message().unwrap();
+            allocation.handle_test_input(
+                &allocate_response(&allocate, &[RELAY_ADDR_IP4, RELAY_ADDR_IP6]),
+                start,
+            );
+            let _drained_events = iter::from_fn(|| allocation.poll_event()).collect::<Vec<_>>();
+        }
+
+        allocation.handle_timeout(start + ALLOCATION_LIFETIME);
+
+        assert!(allocation.poll_timeout().is_none());
+        assert!(allocation.next_message().is_none());
+        assert_eq!(
+            iter::from_fn(|| allocation.poll_event()).collect::<Vec<_>>(),
+            vec![
+                CandidateEvent::Invalid(Candidate::relayed(RELAY_ADDR_IP4, Protocol::Udp).unwrap()),
+                CandidateEvent::Invalid(Candidate::relayed(RELAY_ADDR_IP6, Protocol::Udp).unwrap()),
+            ]
+        )
+    }
+
+    #[test]
+    fn timed_out_request_is_recognised() {
+        let start = Instant::now();
+        let mut allocation = Allocation::for_test(start);
+
+        let allocate = allocation.next_message().unwrap();
+
+        allocation.advance_to_next_timeout();
+        let allocate_retry = allocation.next_message().unwrap();
+        assert_eq!(allocate_retry.method(), ALLOCATE);
+
+        let handled = allocation.handle_test_input(
+            &allocate_response(&allocate, &[RELAY_ADDR_IP4, RELAY_ADDR_IP6]),
+            start + Duration::from_secs(5),
+        );
+
+        assert!(allocation.poll_event().is_none());
+        assert!(handled);
     }
 
     fn ch(peer: SocketAddr, now: Instant) -> Channel {
@@ -1881,8 +1967,8 @@ mod tests {
         }
 
         /// Wrapper around `handle_input` that always sets `RELAY` and `PEER1`.
-        fn handle_test_input(&mut self, packet: &[u8], now: Instant) {
-            self.handle_input(RELAY, PEER1, packet, now);
+        fn handle_test_input(&mut self, packet: &[u8], now: Instant) -> bool {
+            self.handle_input(RELAY, PEER1, packet, now)
         }
 
         fn advance_to_next_timeout(&mut self) {
@@ -1896,6 +1982,7 @@ mod tests {
                 Username::new("foobar".to_owned()).unwrap(),
                 "baz",
                 Realm::new("firezone".to_owned()).unwrap(),
+                Instant::now(),
             );
         }
     }

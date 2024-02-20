@@ -59,7 +59,7 @@ pub trait Callbacks: Clone + Send + Sync {
     /// If the tunnel disconnected due to a fatal error, `error` is the error
     /// that caused the disconnect.
     fn on_disconnect(&self, error: Option<&crate::Error>) -> Result<(), Self::Error> {
-        tracing::trace!(error = ?error, "tunnel_disconnected");
+        tracing::error!(error = ?error, "tunnel_disconnected");
         // Note that we can't panic here, since we already hooked the panic to this function.
         std::process::exit(0);
     }
@@ -71,6 +71,13 @@ pub trait Callbacks: Clone + Send + Sync {
     fn get_system_default_resolvers(&self) -> Result<Option<Vec<IpAddr>>, Self::Error> {
         Ok(None)
     }
+
+    /// Protects the socket file descriptor from routing loops.
+    #[cfg(target_os = "android")]
+    fn protect_file_descriptor(
+        &self,
+        file_descriptor: std::os::fd::RawFd,
+    ) -> Result<(), Self::Error>;
 
     fn roll_log_file(&self) -> Option<PathBuf> {
         None

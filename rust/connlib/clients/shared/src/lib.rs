@@ -12,10 +12,10 @@ use messages::IngressMessages;
 use messages::Messages;
 use messages::ReplyMessages;
 use secrecy::{Secret, SecretString};
-use std::sync::Arc;
+use std::future::poll_fn;
 use std::time::Duration;
 use tokio::time::{Interval, MissedTickBehavior};
-use tokio::{runtime::Runtime, sync::Mutex, time::Instant};
+use tokio::{runtime::Runtime, time::Instant};
 use url::Url;
 
 mod control;
@@ -105,7 +105,9 @@ where
                         .payload()
                         .downcast_ref::<&str>()
                         .map(|s| Error::Panic(s.to_string()))
-                        .unwrap_or(Error::PanicNonStringPayload);
+                        .unwrap_or(Error::PanicNonStringPayload(
+                            info.location().map(ToString::to_string),
+                        ));
                     Self::disconnect_inner(tx, &callbacks, Some(err));
                     default_panic_hook(info);
                 }
@@ -168,15 +170,15 @@ where
             });
 
             let tunnel = fatal_error!(
-                Tunnel::new(private_key, callbacks.clone()).await,
+                Tunnel::new(private_key, callbacks.clone()),
                 runtime_stopper,
                 &callbacks
             );
 
             let mut control_plane = ControlPlane {
-                tunnel: Arc::new(tunnel),
+                tunnel,
                 phoenix_channel: connection.sender_with_topic("client".to_owned()),
-                tunnel_init: Mutex::new(false),
+                tunnel_init: false,
             };
 
             tokio::spawn({
@@ -198,7 +200,7 @@ where
                                 },
                             }
                         },
-                        event = control_plane.tunnel.next_event() => control_plane.handle_tunnel_event(event).await,
+                        event = poll_fn(|cx| control_plane.tunnel.poll_next_event(cx)) => control_plane.handle_tunnel_event(event).await,
                         _ = log_stats_interval.tick() => control_plane.stats_event().await,
                         _ = upload_logs_interval.tick() => control_plane.request_log_upload_url().await,
                         else => break

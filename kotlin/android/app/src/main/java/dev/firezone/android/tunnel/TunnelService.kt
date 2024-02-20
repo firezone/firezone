@@ -180,6 +180,10 @@ class TunnelService : VpnService() {
 
                 return true
             }
+
+            override fun protectFileDescriptor(fileDescriptor: Int) {
+                protect(fileDescriptor)
+            }
         }
 
     // Primary callback used to start and stop the VPN service
