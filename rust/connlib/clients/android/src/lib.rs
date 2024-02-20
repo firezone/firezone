@@ -213,6 +213,19 @@ impl Callbacks for CallbackHandler {
         })
     }
 
+    #[cfg(target_os = "android")]
+    fn protect_file_descriptor(&self, file_descriptor: RawFd) -> Result<(), Self::Error> {
+        self.env(|mut env| {
+            call_method(
+                &mut env,
+                &self.callback_handler,
+                "protectFileDescriptor",
+                "(I)V",
+                &[JValue::Int(file_descriptor)],
+            )
+        })
+    }
+
     fn on_remove_route(&self, route: IpNetwork) -> Result<Option<RawFd>, Self::Error> {
         self.env(|mut env| {
             let ip = env

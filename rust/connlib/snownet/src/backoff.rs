@@ -24,9 +24,7 @@ pub fn new(
         multiplier: backoff::default::MULTIPLIER,
         max_interval: Duration::from_millis(backoff::default::MAX_INTERVAL_MILLIS),
         start_time: now,
-        max_elapsed_time: Some(Duration::from_millis(
-            backoff::default::MAX_ELAPSED_TIME_MILLIS,
-        )),
+        max_elapsed_time: Some(Duration::from_secs(60)),
         clock: ManualClock { now },
     }
 }
@@ -35,30 +33,19 @@ pub fn new(
 ///
 /// The current strategy is multiplying the previous interval by 1.5 and adding them up.
 #[cfg(test)]
-pub fn steps(start: Instant) -> [Instant; 19] {
+pub fn steps(start: Instant) -> [Instant; 8] {
     fn secs(secs: f64) -> Duration {
-        Duration::from_micros((secs * 1_000_000.0) as u64)
+        Duration::from_nanos((secs * 1_000_000_000.0) as u64)
     }
 
     [
-        start + secs(5.0),
-        start + secs(5.0 + 7.5),
-        start + secs(5.0 + 7.5 + 11.25),
-        start + secs(5.0 + 7.5 + 11.25 + 16.875),
-        start + secs(5.0 + 7.5 + 11.25 + 16.875 + 25.3125),
-        start + secs(5.0 + 7.5 + 11.25 + 16.875 + 25.3125 + 37.96875),
-        start + secs(5.0 + 7.5 + 11.25 + 16.875 + 25.3125 + 37.96875 + 56.953125),
-        start + secs(5.0 + 7.5 + 11.25 + 16.875 + 25.3125 + 37.96875 + 56.953125 + 60.0 * 1.0),
-        start + secs(5.0 + 7.5 + 11.25 + 16.875 + 25.3125 + 37.96875 + 56.953125 + 60.0 * 2.0),
-        start + secs(5.0 + 7.5 + 11.25 + 16.875 + 25.3125 + 37.96875 + 56.953125 + 60.0 * 3.0),
-        start + secs(5.0 + 7.5 + 11.25 + 16.875 + 25.3125 + 37.96875 + 56.953125 + 60.0 * 4.0),
-        start + secs(5.0 + 7.5 + 11.25 + 16.875 + 25.3125 + 37.96875 + 56.953125 + 60.0 * 5.0),
-        start + secs(5.0 + 7.5 + 11.25 + 16.875 + 25.3125 + 37.96875 + 56.953125 + 60.0 * 6.0),
-        start + secs(5.0 + 7.5 + 11.25 + 16.875 + 25.3125 + 37.96875 + 56.953125 + 60.0 * 7.0),
-        start + secs(5.0 + 7.5 + 11.25 + 16.875 + 25.3125 + 37.96875 + 56.953125 + 60.0 * 8.0),
-        start + secs(5.0 + 7.5 + 11.25 + 16.875 + 25.3125 + 37.96875 + 56.953125 + 60.0 * 9.0),
-        start + secs(5.0 + 7.5 + 11.25 + 16.875 + 25.3125 + 37.96875 + 56.953125 + 60.0 * 10.0),
-        start + secs(5.0 + 7.5 + 11.25 + 16.875 + 25.3125 + 37.96875 + 56.953125 + 60.0 * 11.0),
-        start + secs(5.0 + 7.5 + 11.25 + 16.875 + 25.3125 + 37.96875 + 56.953125 + 60.0 * 12.0),
+        start + secs(1.0),
+        start + secs(1.0 + 1.5),
+        start + secs(1.0 + 1.5 + 2.25),
+        start + secs(1.0 + 1.5 + 2.25 + 3.375),
+        start + secs(1.0 + 1.5 + 2.25 + 3.375 + 5.0625),
+        start + secs(1.0 + 1.5 + 2.25 + 3.375 + 5.0625 + 7.59375),
+        start + secs(1.0 + 1.5 + 2.25 + 3.375 + 5.0625 + 7.59375 + 11.390625),
+        start + secs(1.0 + 1.5 + 2.25 + 3.375 + 5.0625 + 7.59375 + 11.390625 + 17.0859375),
     ]
 }

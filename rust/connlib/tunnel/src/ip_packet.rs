@@ -14,7 +14,7 @@ use pnet_packet::{
 const DNS_PORT: u16 = 53;
 
 #[derive(Debug, PartialEq)]
-pub(crate) enum MutableIpPacket<'a> {
+pub enum MutableIpPacket<'a> {
     MutableIpv4Packet(MutableIpv4Packet<'a>),
     MutableIpv6Packet(MutableIpv6Packet<'a>),
 }
@@ -197,6 +197,16 @@ pub(crate) enum Version {
 pub enum IpPacket<'a> {
     Ipv4Packet(Ipv4Packet<'a>),
     Ipv6Packet(Ipv6Packet<'a>),
+}
+
+// TODO: Create our own `ip_packet` crate that `snownet and `firezone-tunnel` can depend on.
+impl<'a> From<IpPacket<'a>> for snownet::IpPacket<'a> {
+    fn from(value: IpPacket<'a>) -> Self {
+        match value {
+            IpPacket::Ipv4Packet(p) => Self::Ipv4(p),
+            IpPacket::Ipv6Packet(p) => Self::Ipv6(p),
+        }
+    }
 }
 
 impl<'a> IpPacket<'a> {

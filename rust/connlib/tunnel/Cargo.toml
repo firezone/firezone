@@ -7,7 +7,7 @@ edition = "2021"
 [dependencies]
 secrecy = { workspace = true }
 async-trait = { version = "0.1", default-features = false }
-tokio = { version = "1.36", default-features = false, features = ["rt", "rt-multi-thread", "sync"] }
+tokio = { version = "1.36", default-features = false, features = ["rt", "rt-multi-thread", "sync", "process"] }
 thiserror = { version = "1.0", default-features = false }
 rand_core = { version = "0.6", default-features = false, features = ["getrandom"] }
 serde = { version = "1.0", default-features = false, features = ["derive", "std"] }
@@ -30,9 +30,10 @@ hickory-resolver = { workspace = true, features = ["tokio-runtime"] }
 arc-swap = "1.6.0"
 bimap = "0.6"
 resolv-conf = "0.7.0"
-
-# TODO: research replacing for https://github.com/algesten/str0m
-webrtc = { workspace = true }
+socket2 = { version = "0.5" }
+snownet = { workspace = true }
+quinn-udp = { git = "https://github.com/quinn-rs/quinn", branch = "main"}
+hex = "0.4.3"
 
 # Needed for Android logging until tracing is fixed
 log = "0.4"
@@ -44,9 +45,9 @@ tempfile = "3.10.0"
 
 # Linux tunnel dependencies
 [target.'cfg(target_os = "linux")'.dependencies]
-netlink-packet-route = { version = "0.17", default-features = false }
+netlink-packet-route = { version = "0.18", default-features = false }
 netlink-packet-core = { version = "0.7", default-features = false }
-rtnetlink = { version = "0.13" }
+rtnetlink = { workspace = true }
 sd-notify = "0.4.1"
 
 # Android tunnel dependencies
