@@ -463,6 +463,23 @@ locals {
       name  = "DOCKER_REGISTRY"
       value = "ghcr.io/firezone"
     },
+    # Billing system
+    {
+      name  = "BILLING_ENABLED"
+      value = "true"
+    },
+    {
+      name  = "STRIPE_SECRET_KEY"
+      value = var.stripe_secret_key
+    },
+    {
+      name  = "STRIPE_WEBHOOK_SIGNING_SECRET"
+      value = var.stripe_webhook_signing_secret
+    },
+    {
+      name  = "STRIPE_DEFAULT_PRICE_ID"
+      value = var.stripe_default_price_id
+    },
     # Telemetry
     {
       name  = "TELEMETRY_ENABLED"
