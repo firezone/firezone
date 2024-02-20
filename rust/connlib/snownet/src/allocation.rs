@@ -1,6 +1,7 @@
 use crate::{
     backoff::{self, ExponentialBackoff},
     node::{CandidateEvent, Transmit},
+    ringbuffer::RingBuffer,
     utils::earliest,
 };
 use ::backoff::backoff::Backoff;
@@ -53,6 +54,9 @@ pub struct Allocation {
 
     backoff: ExponentialBackoff,
     sent_requests: HashMap<TransactionId, (Message<Attribute>, Instant, Duration)>,
+
+    /// When we time out requests, we remember the last [`TransactionId`]s to be able to recognize them in case they do arrive later.
+    timed_out_requests: RingBuffer<TransactionId>,
 
     channel_bindings: ChannelBindings,
     buffered_channel_bindings: BufferedChannelBindings,
@@ -112,6 +116,7 @@ impl Allocation {
             last_now: now,
             buffered_channel_bindings: Default::default(),
             backoff: backoff::new(now, REQUEST_TIMEOUT),
+            timed_out_requests: RingBuffer::new(100),
         };
 
         tracing::debug!(%server, "Requesting new allocation");
@@ -174,12 +179,21 @@ impl Allocation {
             return false;
         };
 
-        Span::current().record("id", field::debug(message.transaction_id()));
+        let transaction_id = message.transaction_id();
+
+        Span::current().record("id", field::debug(transaction_id));
         Span::current().record("method", field::display(message.method()));
         Span::current().record("class", field::display(message.class()));
 
-        let Some((original_request, sent_at, _)) =
-            self.sent_requests.remove(&message.transaction_id())
+        if self.timed_out_requests.remove(&transaction_id) {
+            tracing::debug!(
+                ?transaction_id,
+                "Received response to timed-out request, ignoring"
+            );
+            return true;
+        }
+
+        let Some((original_request, sent_at, _)) = self.sent_requests.remove(&transaction_id)
         else {
             return false;
         };
@@ -412,6 +426,8 @@ impl Allocation {
                 .expect("ID is from list");
 
             tracing::debug!(id = ?request.transaction_id(), method = %request.method(), "Request timed out, re-sending");
+
+            self.timed_out_requests.push(request.transaction_id());
 
             self.authenticate_and_queue(request);
         }
