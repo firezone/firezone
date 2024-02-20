@@ -8,11 +8,17 @@ inputs:
 runs:
   using: "composite"
   steps:
-    - name: Apt-get install Tauri build deps
+    - name: Apt-get update
       if: ${{ inputs.target_os == 'linux' }}
-      run: |
-        sudo apt-get update
-        sudo apt-get install libwebkit2gtk-4.0-dev libssl-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
+      run: sudo apt-get update
+      shell: bash
+    - name: Install Tauri build deps
+      if: ${{ inputs.target_os == 'linux' }}
+      run: sudo apt-get install libwebkit2gtk-4.0-dev libssl-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
+      shell: bash
+    - name: Install gnome-keyring
+      if: ${{ inputs.target_os == 'linux' }}
+      run: sudo apt-get install gnome-keyring
       shell: bash
     - name: Download WebView2 bootstrapper
       if: ${{ inputs.target_os == 'windows' }}
