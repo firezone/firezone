@@ -236,26 +236,35 @@ account_id = "c89bcc8c-9392-4dae-a40d-888aef6d28e0"
 
 ### Connecting billing in dev mode for manual testing
 
+Prerequisites:
+
+* A Stripe account (Note: for the Firezone team, you will need to be invited to the Firezone Stripe account)
+* [Stripe CLI](https://github.com/stripe/stripe-cli)
+
+Steps:
+
 1. Use static seeds to provision account ID that corresponds to staging setup on
    Stripe:
 
-```bash
-STATIC_SEEDS=true mix do ecto.reset, ecto.seed
-```
+   ```bash
+   STATIC_SEEDS=true mix do ecto.reset, ecto.seed
+   ```
 
-2. Start Stripe CLI webhook proxy:
+1. Start Stripe CLI webhook proxy:
 
-```bash
-stripe listen --forward-to localhost:13001/integrations/stripe/webhooks
-```
+   ```bash
+   stripe listen --forward-to localhost:13001/integrations/stripe/webhooks
+   ```
 
-3. Start the Phoenix server with enabled billing from the [`elixir/`](./) folder
+1. Start the Phoenix server with enabled billing from the [`elixir/`](./) folder
    using a [test mode token](https://dashboard.stripe.com/test/apikeys):
 
-```
-cd elixir/
-BILLING_ENABLED=true STRIPE_SECRET_KEY="...copy from stripe dashboard..." STRIPE_WEBHOOK_SIGNING_SECRET="...copy from stripe cli tool.." mix phx.server
-```
+   ```bash
+   cd elixir/
+   BILLING_ENABLED=true STRIPE_SECRET_KEY="...copy from stripe dashboard..." STRIPE_WEBHOOK_SIGNING_SECRET="...copy from stripe cli tool.." mix phx.server
+   ```
+
+When updating the billing plan in stripe, use the [Stripe Testing Docs](https://docs.stripe.com/testing#testing-interactively) for how to add test payment info
 
 ### Acceptance tests
 
