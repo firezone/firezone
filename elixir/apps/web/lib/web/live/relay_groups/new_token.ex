@@ -1,9 +1,9 @@
 defmodule Web.RelayGroups.NewToken do
   use Web, :live_view
-  alias Domain.Relays
+  alias Domain.{Accounts, Relays}
 
   def mount(%{"id" => id}, _session, socket) do
-    with true <- Domain.Config.self_hosted_relays_enabled?(),
+    with true <- Accounts.self_hosted_relays_enabled?(socket.assigns.account),
          {:ok, group} <- Relays.fetch_group_by_id(id, socket.assigns.subject) do
       {group, env} =
         if connected?(socket) do
@@ -245,6 +245,8 @@ defmodule Web.RelayGroups.NewToken do
            "connlib_shared=trace",
            "tunnel_state=trace",
            "phoenix_channel=debug",
+           "snownet=debug",
+           "str0m=info",
            "warn"
          ],
          ","

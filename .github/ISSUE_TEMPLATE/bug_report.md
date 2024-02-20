@@ -1,30 +1,35 @@
 ---
 name: Bug report
 about: Create a bug report
-title: ''
-labels: 'needs triage'
-assignees: ''
-
+title: ""
+labels: "needs triage"
+assignees: ""
 ---
 
-**Describe the bug**
-A clear and concise description of what the bug is.
+#### Describe the bug
 
-**To Reproduce**
-Steps to reproduce the behavior:
+_A clear and concise description of what the bug is._
 
-**Expected behavior**
-A clear and concise description of what you expected to happen.
+#### To Reproduce
 
-**Screenshots / Logs**
-If applicable, add screenshots and log traces to help debug your problem with any sensitive data removed.
+_Steps to reproduce the behavior._
 
-**Platform (please complete the following information):**
- - Firezone Version [e.g. 0.7.12]
- - OS: [e.g. Linux]
- - Distro: [e.g. Ubuntu 18.04]
- - Kernel version: [e.g. 5.10.11]
- - Deployment method: [e.g. Docker / Omnibus / Source]
+#### Expected behavior
 
-**Additional context**
-Add any other context about the problem here.
+_A clear and concise description of what you expected to happen._
+
+#### Screenshots / Logs
+
+_If applicable, add screenshots and log traces to help debug your problem **with
+any sensitive data removed**._
+
+#### Platform (please complete the following information)
+
+- _Component (i.e. macOS client / Linux client / Gateway / Admin portal):_
+- _Firezone Version (e.g. 1.0.0 or N/A):_
+- _OS and version: (e.g. Ubuntu 22.04 or N/A):_
+- _Deployment method: (e.g. Docker / Systemd / App Store or N/A):_
+
+#### Additional context
+
+_Add any other context about the problem here._

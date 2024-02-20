@@ -102,8 +102,16 @@ defmodule Domain.Auth do
 
   # Providers
 
-  def list_provider_adapters do
-    Adapters.list_adapters()
+  def list_user_provisioned_provider_adapters!(%Accounts.Account{} = account) do
+    idp_sync_enabled? = Accounts.idp_sync_enabled?(account)
+
+    Adapters.list_user_provisioned_adapters!()
+    |> Map.keys()
+    |> Enum.map(fn adapter ->
+      capabilities = Adapters.fetch_capabilities!(adapter)
+      requires_idp_sync_feature? = capabilities[:default_provisioner] == :custom
+      {adapter, enabled: idp_sync_enabled? or not requires_idp_sync_feature?}
+    end)
   end
 
   def fetch_provider_by_id(id, %Subject{} = subject, opts \\ []) do

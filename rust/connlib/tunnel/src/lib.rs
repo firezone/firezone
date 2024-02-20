@@ -2,452 +2,400 @@
 //!
 //! This is both the wireguard and ICE implementation that should work in tandem.
 //! [Tunnel] is the main entry-point for this crate.
-use boringtun::{
-    noise::rate_limiter::RateLimiter,
-    x25519::{PublicKey, StaticSecret},
-};
 
-use bytes::Bytes;
+use boringtun::x25519::StaticSecret;
 use connlib_shared::{
-    messages::{Key, ReuseConnection},
-    CallbackErrorFacade, Callbacks, Error,
+    messages::{ClientId, GatewayId, ResourceDescription, ReuseConnection},
+    CallbackErrorFacade, Callbacks, Error, Result,
 };
-use ip_network::IpNetwork;
+use device_channel::Device;
+use futures_util::{future::BoxFuture, task::AtomicWaker, FutureExt};
 use ip_network_table::IpNetworkTable;
-use ip_packet::IpPacket;
+use peer::{PacketTransform, PacketTransformClient, PacketTransformGateway, Peer, PeerStats};
 use pnet_packet::Packet;
-
-use hickory_resolver::proto::rr::RecordType;
-use parking_lot::Mutex;
-use peer::{PacketTransform, Peer};
-use tokio::time::MissedTickBehavior;
-use webrtc::{
-    api::{
-        interceptor_registry::register_default_interceptors, media_engine::MediaEngine,
-        setting_engine::SettingEngine, APIBuilder, API,
-    },
-    ice_transport::{ice_candidate::RTCIceCandidate, RTCIceTransport},
-    interceptor::registry::Registry,
-};
-
-use arc_swap::{access::Access, ArcSwapOption};
-use futures_util::task::AtomicWaker;
-use std::task::{ready, Context, Poll};
-use std::{collections::HashMap, fmt, net::IpAddr, sync::Arc, time::Duration};
-use std::{collections::HashSet, hash::Hash};
+use snownet::{IpPacket, Node, Server};
+use sockets::{Received, Sockets};
 use std::{
-    collections::VecDeque,
-    net::{Ipv4Addr, Ipv6Addr},
-};
-use tokio::time::Interval;
-
-use connlib_shared::{
-    messages::{GatewayId, ResourceDescription},
-    Result,
+    collections::{HashMap, HashSet},
+    fmt,
+    hash::Hash,
+    net::IpAddr,
+    sync::Arc,
+    task::{ready, Context, Poll},
+    time::Instant,
 };
 
 pub use client::ClientState;
-use connlib_shared::error::ConnlibError;
 pub use control_protocol::{gateway::ResolvedResourceDescriptionDns, Request};
 pub use gateway::GatewayState;
-
-use crate::ip_packet::MutableIpPacket;
-use connlib_shared::messages::{ClientId, SecretKey};
-use device_channel::Device;
-use index::IndexLfsr;
 
 mod client;
 mod control_protocol;
 mod device_channel;
 mod dns;
 mod gateway;
-mod index;
 mod ip_packet;
 mod peer;
-mod peer_handler;
+mod sockets;
 
 const MAX_UDP_SIZE: usize = (1 << 16) - 1;
 const DNS_QUERIES_QUEUE_SIZE: usize = 100;
-// Why do we need such big channel? I have not the slightless idea
-// but if we make it smaller things get quite slower.
-// Since eventually we will have a UDP socket with try_send
-// I don't think there's a point to having this.
-const PEER_QUEUE_SIZE: usize = 1_000;
 
-/// For how long we will attempt to gather ICE candidates before aborting.
-///
-/// Chosen arbitrarily.
-/// Very likely, the actual WebRTC connection will timeout before this.
-/// This timeout is just here to eventually clean-up tasks if they are somehow broken.
-const ICE_GATHERING_TIMEOUT_SECONDS: u64 = 5 * 60;
+const REALM: &str = "firezone";
 
-/// How many concurrent ICE gathering attempts we are allow.
-///
-/// Chosen arbitrarily,
-const MAX_CONCURRENT_ICE_GATHERING: usize = 100;
+#[cfg(target_os = "linux")]
+const FIREZONE_MARK: u32 = 0xfd002021;
 
-// Note: Taken from boringtun
-const HANDSHAKE_RATE_LIMIT: u64 = 100;
-
-// These 2 are the default timeouts
-const ICE_DISCONNECTED_TIMEOUT: Duration = Duration::from_secs(5);
-const ICE_KEEPALIVE: Duration = Duration::from_secs(2);
-// This is approximately how long failoever will take :)
-const ICE_FAILED_TIMEOUT: Duration = Duration::from_secs(10);
-
-pub(crate) fn get_v4(ip: IpAddr) -> Option<Ipv4Addr> {
-    match ip {
-        IpAddr::V4(v4) => Some(v4),
-        IpAddr::V6(_) => None,
-    }
-}
-
-pub(crate) fn get_v6(ip: IpAddr) -> Option<Ipv6Addr> {
-    match ip {
-        IpAddr::V4(_) => None,
-        IpAddr::V6(v6) => Some(v6),
-    }
-}
-
-/// Represent's the tunnel actual peer's config
-/// Obtained from connlib_shared's Peer
-#[derive(Clone)]
-pub struct PeerConfig {
-    pub(crate) persistent_keepalive: Option<u16>,
-    pub(crate) public_key: PublicKey,
-    pub(crate) ips: Vec<IpNetwork>,
-    pub(crate) preshared_key: SecretKey,
-}
-
-impl From<connlib_shared::messages::Peer> for PeerConfig {
-    fn from(value: connlib_shared::messages::Peer) -> Self {
-        Self {
-            persistent_keepalive: value.persistent_keepalive,
-            public_key: value.public_key.0.into(),
-            ips: vec![value.ipv4.into(), value.ipv6.into()],
-            preshared_key: value.preshared_key,
-        }
-    }
-}
+pub type GatewayTunnel<CB> = Tunnel<CB, GatewayState, Server, ClientId, PacketTransformGateway>;
+pub type ClientTunnel<CB> =
+    Tunnel<CB, ClientState, snownet::Client, GatewayId, PacketTransformClient>;
 
 /// Tunnel is a wireguard state machine that uses webrtc's ICE channels instead of UDP sockets to communicate between peers.
-pub struct Tunnel<CB: Callbacks, TRoleState: RoleState> {
-    next_index: Mutex<IndexLfsr>,
-    rate_limiter: Arc<RateLimiter>,
-    private_key: StaticSecret,
-    public_key: PublicKey,
-    peer_connections: Mutex<HashMap<TRoleState::Id, Arc<RTCIceTransport>>>,
-    webrtc_api: API,
+pub struct Tunnel<CB: Callbacks, TRoleState, TRole, TId, TTransform> {
     callbacks: CallbackErrorFacade<CB>,
 
     /// State that differs per role, i.e. clients vs gateways.
-    role_state: Mutex<TRoleState>,
+    role_state: TRoleState,
 
-    rate_limit_reset_interval: Mutex<Interval>,
-    peer_refresh_interval: Mutex<Interval>,
-    mtu_refresh_interval: Mutex<Interval>,
-
-    peers_to_stop: Mutex<VecDeque<TRoleState::Id>>,
-
-    device: Arc<ArcSwapOption<Device>>,
-    read_buf: Mutex<Box<[u8; MAX_UDP_SIZE]>>,
-    write_buf: Mutex<Box<[u8; MAX_UDP_SIZE]>>,
+    device: Option<Device>,
     no_device_waker: AtomicWaker,
+
+    connections_state: ConnectionState<TRole, TId, TTransform>,
+
+    read_buf: [u8; MAX_UDP_SIZE],
 }
 
-impl<CB> Tunnel<CB, ClientState>
+impl<CB> Tunnel<CB, ClientState, snownet::Client, GatewayId, PacketTransformClient>
 where
     CB: Callbacks + 'static,
 {
-    pub async fn next_event(&self) -> Result<Event<GatewayId>> {
-        std::future::poll_fn(|cx| loop {
-            {
-                let guard = self.device.load();
-
-                if let Some(device) = guard.as_ref() {
-                    match self.poll_device(device, cx) {
-                        Poll::Ready(Ok(Some(event))) => return Poll::Ready(Ok(event)),
-                        Poll::Ready(Ok(None)) => {
-                            tracing::info!("Device stopped");
-                            self.device.store(None);
-                            continue;
-                        }
-                        Poll::Ready(Err(e)) => {
-                            self.device.store(None); // Ensure we don't poll a failed device again.
-                            return Poll::Ready(Err(e));
-                        }
-                        Poll::Pending => {}
-                    }
-                } else {
-                    self.no_device_waker.register(cx.waker());
-                }
-            }
-
-            match self.poll_next_event_common(cx) {
-                Poll::Ready(event) => return Poll::Ready(Ok(event)),
-                Poll::Pending => {}
-            }
-
+    pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Result<Event<GatewayId>>> {
+        let Some(device) = self.device.as_mut() else {
+            self.no_device_waker.register(cx.waker());
             return Poll::Pending;
-        })
-        .await
-    }
+        };
 
-    pub(crate) fn poll_device(
-        &self,
-        device: &Device,
-        cx: &mut Context<'_>,
-    ) -> Poll<Result<Option<Event<GatewayId>>>> {
-        loop {
-            let mut role_state = self.role_state.lock();
-
-            let mut read_guard = self.read_buf.lock();
-            let mut write_guard = self.write_buf.lock();
-            let read_buf = read_guard.as_mut_slice();
-            let write_buf = write_guard.as_mut_slice();
-
-            let Some(packet) = ready!(device.poll_read(read_buf, cx))? else {
-                return Poll::Ready(Ok(None));
-            };
-
-            tracing::trace!(target: "wire", action = "read", from = "device", dest = %packet.destination());
-
-            let (packet, dest) = match role_state.handle_dns(packet) {
-                Ok(Some(response)) => {
-                    device.write(response)?;
-                    continue;
-                }
-                Ok(None) => continue,
-                Err(non_dns_packet) => non_dns_packet,
-            };
-
-            let Some(peer) = peer_by_ip(&role_state.peers_by_ip, dest) else {
-                role_state.on_connection_intent_ip(dest);
-                continue;
-            };
-
-            self.encapsulate(write_buf, packet, peer);
-
-            continue;
+        match self.role_state.poll_next_event(cx) {
+            Poll::Ready(Event::SendPacket(packet)) => {
+                device.write(packet)?;
+                cx.waker().wake_by_ref();
+            }
+            Poll::Ready(other) => return Poll::Ready(Ok(other)),
+            _ => (),
         }
+
+        match self.connections_state.poll_next_event(cx) {
+            Poll::Ready(Event::StopPeer(id)) => {
+                self.role_state.cleanup_connected_gateway(&id);
+                cx.waker().wake_by_ref();
+            }
+            Poll::Ready(other) => return Poll::Ready(Ok(other)),
+            _ => (),
+        }
+
+        match self.connections_state.poll_sockets(cx) {
+            Poll::Ready(packet) => {
+                device.write(packet)?;
+                cx.waker().wake_by_ref();
+            }
+            Poll::Pending => {}
+        }
+
+        ready!(self.connections_state.sockets.poll_send_ready(cx))?; // Ensure socket is ready before we read from device.
+
+        match device.poll_read(&mut self.read_buf, cx)? {
+            Poll::Ready(Some(packet)) => {
+                let Some((peer_id, packet)) = self.role_state.encapsulate(packet) else {
+                    cx.waker().wake_by_ref();
+                    return Poll::Pending;
+                };
+
+                self.connections_state
+                    .send(peer_id, packet.as_immutable().into());
+
+                cx.waker().wake_by_ref();
+            }
+            Poll::Ready(None) => {
+                tracing::info!("Device stopped");
+                self.device = None;
+
+                self.no_device_waker.register(cx.waker());
+                return Poll::Pending;
+            }
+            Poll::Pending => {}
+        }
+
+        Poll::Pending
     }
 }
 
-impl<CB> Tunnel<CB, GatewayState>
+impl<CB> Tunnel<CB, GatewayState, Server, ClientId, PacketTransformGateway>
 where
     CB: Callbacks + 'static,
 {
-    pub fn poll_next_event(&self, cx: &mut Context<'_>) -> Poll<Result<Event<ClientId>>> {
-        let mut read_guard = self.read_buf.lock();
-        let mut write_guard = self.write_buf.lock();
-
-        let read_buf = read_guard.as_mut_slice();
-        let write_buf = write_guard.as_mut_slice();
-
-        loop {
-            {
-                let device = self.device.load();
-
-                match device.as_ref().map(|d| d.poll_read(read_buf, cx)) {
-                    Some(Poll::Ready(Ok(Some(packet)))) => {
-                        let dest = packet.destination();
-
-                        let role_state = self.role_state.lock();
-                        let Some(peer) = peer_by_ip(&role_state.peers_by_ip, dest) else {
-                            continue;
-                        };
-
-                        self.encapsulate(write_buf, packet, peer);
-
-                        continue;
-                    }
-                    Some(Poll::Ready(Ok(None))) => {
-                        tracing::info!("Device stopped");
-                        self.device.store(None);
-                    }
-                    Some(Poll::Ready(Err(e))) => return Poll::Ready(Err(ConnlibError::Io(e))),
-                    Some(Poll::Pending) => {
-                        // device not ready for reading, moving on ..
-                    }
-                    None => {
-                        self.no_device_waker.register(cx.waker());
-                    }
-                }
-            }
-
-            match self.poll_next_event_common(cx) {
-                Poll::Ready(e) => return Poll::Ready(Ok(e)),
-                Poll::Pending => {}
-            }
-
+    pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Result<Event<ClientId>>> {
+        let Some(device) = self.device.as_mut() else {
+            self.no_device_waker.register(cx.waker());
             return Poll::Pending;
-        }
-    }
-}
+        };
 
-pub struct ConnectedPeer<TId, TTransform> {
-    inner: Arc<Peer<TId, TTransform>>,
-    channel: tokio::sync::mpsc::Sender<Bytes>,
-}
-
-impl<TId, TTranform> Clone for ConnectedPeer<TId, TTranform> {
-    fn clone(&self) -> Self {
-        Self {
-            inner: Arc::clone(&self.inner),
-            channel: self.channel.clone(),
+        match self.connections_state.poll_next_event(cx) {
+            Poll::Ready(Event::StopPeer(id)) => {
+                self.role_state.peers_by_ip.retain(|_, p| p.conn_id != id);
+                cx.waker().wake_by_ref();
+            }
+            Poll::Ready(other) => return Poll::Ready(Ok(other)),
+            _ => (),
         }
+
+        match self.connections_state.poll_sockets(cx) {
+            Poll::Ready(packet) => {
+                device.write(packet)?;
+                cx.waker().wake_by_ref();
+            }
+            Poll::Pending => {}
+        }
+
+        ready!(self.connections_state.sockets.poll_send_ready(cx))?; // Ensure socket is ready before we read from device.
+
+        match device.poll_read(&mut self.read_buf, cx)? {
+            Poll::Ready(Some(packet)) => {
+                let Some((peer_id, packet)) = self.role_state.encapsulate(packet) else {
+                    cx.waker().wake_by_ref();
+                    return Poll::Pending;
+                };
+
+                self.connections_state
+                    .send(peer_id, packet.as_immutable().into());
+
+                cx.waker().wake_by_ref();
+            }
+            Poll::Ready(None) => {
+                tracing::info!("Device stopped");
+                self.device = None;
+
+                self.no_device_waker.register(cx.waker());
+                return Poll::Pending;
+            }
+            Poll::Pending => {
+                // device not ready for reading, moving on ..
+            }
+        }
+
+        Poll::Pending
     }
 }
 
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct TunnelStats<TId> {
-    public_key: String,
-    peer_connections: Vec<TId>,
+    peer_connections: HashMap<TId, PeerStats<TId>>,
 }
 
-impl<CB, TRoleState> Tunnel<CB, TRoleState>
+impl<CB, TRoleState, TRole, TId, TTransform> Tunnel<CB, TRoleState, TRole, TId, TTransform>
 where
     CB: Callbacks + 'static,
-    TRoleState: RoleState,
+    TId: Eq + Hash + Copy + fmt::Display,
+    TTransform: PacketTransform,
+    TRoleState: Default,
 {
-    pub fn stats(&self) -> TunnelStats<TRoleState::Id> {
-        let peer_connections = self.peer_connections.lock().keys().cloned().collect();
+    /// Creates a new tunnel.
+    ///
+    /// # Parameters
+    /// - `private_key`: wireguard's private key.
+    /// -  `control_signaler`: this is used to send SDP from the tunnel to the control plane.
+    #[tracing::instrument(level = "trace", skip(private_key, callbacks))]
+    pub fn new(private_key: StaticSecret, callbacks: CB) -> Result<Self> {
+        let callbacks = CallbackErrorFacade(callbacks);
+        let connections_state = ConnectionState::new(private_key)?;
 
-        TunnelStats {
-            public_key: Key::from(self.public_key).to_string(),
-            peer_connections,
+        // TODO: Eventually, this should move into the `connlib-client-android` crate.
+        #[cfg(target_os = "android")]
+        {
+            if let Some(ip4_socket) = connections_state.sockets.ip4_socket_fd() {
+                callbacks.protect_file_descriptor(ip4_socket)?;
+            }
+            if let Some(ip6_socket) = connections_state.sockets.ip6_socket_fd() {
+                callbacks.protect_file_descriptor(ip6_socket)?;
+            }
+        }
+
+        Ok(Self {
+            device: Default::default(),
+            callbacks,
+            role_state: Default::default(),
+            no_device_waker: Default::default(),
+            connections_state,
+            read_buf: [0u8; MAX_UDP_SIZE],
+        })
+    }
+
+    pub fn callbacks(&self) -> &CallbackErrorFacade<CB> {
+        &self.callbacks
+    }
+
+    pub fn stats(&self) -> HashMap<TId, PeerStats<TId>> {
+        self.connections_state
+            .peers_by_id
+            .iter()
+            .map(|(&id, p)| (id, p.stats()))
+            .collect()
+    }
+}
+
+struct ConnectionState<TRole, TId, TTransform> {
+    pub node: Node<TRole, TId>,
+    write_buf: Box<[u8; MAX_UDP_SIZE]>,
+    peers_by_id: HashMap<TId, Arc<Peer<TId, TTransform>>>,
+    connection_pool_timeout: BoxFuture<'static, std::time::Instant>,
+    sockets: Sockets,
+}
+
+impl<TRole, TId, TTransform> ConnectionState<TRole, TId, TTransform>
+where
+    TId: Eq + Hash + Copy + fmt::Display,
+    TTransform: PacketTransform,
+{
+    fn new(private_key: StaticSecret) -> Result<Self> {
+        Ok(ConnectionState {
+            node: Node::new(private_key, std::time::Instant::now()),
+            write_buf: Box::new([0; MAX_UDP_SIZE]),
+            peers_by_id: HashMap::new(),
+            connection_pool_timeout: sleep_until(std::time::Instant::now()).boxed(),
+            sockets: Sockets::new()?,
+        })
+    }
+
+    fn send(&mut self, id: TId, packet: IpPacket) {
+        let to = packet.destination();
+
+        if let Err(e) = self.try_send(id, packet) {
+            tracing::warn!(%to, %id, "Failed to send packet: {e}");
         }
     }
 
-    fn poll_next_event_common(&self, cx: &mut Context<'_>) -> Poll<Event<TRoleState::Id>> {
-        loop {
-            if let Some(conn_id) = self.peers_to_stop.lock().pop_front() {
-                self.role_state.lock().remove_peers(conn_id);
+    fn try_send(&mut self, id: TId, packet: IpPacket) -> Result<()> {
+        // TODO: handle NotConnected
+        let Some(transmit) = self.node.encapsulate(id, packet)? else {
+            return Ok(());
+        };
 
-                if let Some(conn) = self.peer_connections.lock().remove(&conn_id) {
-                    tokio::spawn({
-                        async move {
-                            if let Err(e) = conn.stop().await {
-                                tracing::warn!(%conn_id, error = ?e, "Can't close peer");
-                            }
-                        }
-                    });
-                }
-            }
+        self.sockets.try_send(&transmit)?;
 
-            if self
-                .rate_limit_reset_interval
-                .lock()
-                .poll_tick(cx)
-                .is_ready()
-            {
-                self.rate_limiter.reset_count();
-                continue;
-            }
-
-            if self.peer_refresh_interval.lock().poll_tick(cx).is_ready() {
-                let mut peers_to_stop = self.role_state.lock().refresh_peers();
-                self.peers_to_stop.lock().append(&mut peers_to_stop);
-
-                continue;
-            }
-
-            if self.mtu_refresh_interval.lock().poll_tick(cx).is_ready() {
-                let Some(device) = self.device.load().clone() else {
-                    tracing::debug!("Device temporarily not available");
-                    continue;
-                };
-
-                if let Err(e) = device.refresh_mtu() {
-                    tracing::error!(error = ?e, "refresh_mtu");
-                }
-            }
-
-            match self.role_state.lock().poll_next_event(cx) {
-                Poll::Ready(Event::SendPacket(packet)) => {
-                    let Some(device) = self.device.load().clone() else {
-                        continue;
-                    };
-
-                    let _ = device.write(packet);
-
-                    continue;
-                }
-                Poll::Ready(other) => return Poll::Ready(other),
-                _ => (),
-            }
-
-            return Poll::Pending;
-        }
+        Ok(())
     }
 
-    fn encapsulate<TTransform: PacketTransform>(
-        &self,
-        write_buf: &mut [u8],
-        packet: MutableIpPacket,
-        peer: &ConnectedPeer<TRoleState::Id, TTransform>,
-    ) {
-        let peer_id = peer.inner.conn_id;
-
-        match peer.inner.encapsulate(packet, write_buf) {
-            Ok(None) => {}
-            Ok(Some(b)) => {
-                tracing::trace!(target: "wire", action = "writing", to = "peer");
-                if peer.channel.try_send(b).is_err() {
-                    tracing::warn!(target: "wire", action = "dropped", to = "peer");
-                }
-            }
+    fn poll_sockets<'a>(&'a mut self, cx: &mut Context<'_>) -> Poll<device_channel::Packet<'a>> {
+        let received = match ready!(self.sockets.poll_recv_from(cx)) {
+            Ok(received) => received,
             Err(e) => {
-                tracing::error!(err = ?e, "failed to handle packet {e:#}");
+                tracing::warn!("Failed to read socket: {e}");
 
-                if e.is_fatal_connection_error() {
-                    self.peers_to_stop.lock().push_back(peer_id);
-                }
+                cx.waker().wake_by_ref(); // Immediately schedule a new wake-up.
+                return Poll::Pending;
             }
         };
+
+        let Received {
+            local,
+            from,
+            packet,
+        } = received;
+
+        let (conn_id, packet) = match self.node.decapsulate(
+            local,
+            from,
+            packet,
+            std::time::Instant::now(),
+            self.write_buf.as_mut(),
+        ) {
+            Ok(Some(packet)) => packet,
+            Ok(None) => {
+                cx.waker().wake_by_ref();
+                return Poll::Pending;
+            }
+            Err(e) => {
+                tracing::warn!(%local, %from, "Failed to decapsulate incoming packet: {e}");
+
+                cx.waker().wake_by_ref();
+                return Poll::Pending;
+            }
+        };
+
+        tracing::trace!(target: "wire", %local, %from, bytes = %packet.packet().len(), "read new packet");
+
+        let Some(peer) = self.peers_by_id.get(&conn_id) else {
+            tracing::error!(%conn_id, %local, %from, "Couldn't find connection");
+
+            cx.waker().wake_by_ref();
+            return Poll::Pending;
+        };
+
+        let packet = match peer.untransform(packet.source(), self.write_buf.as_mut()) {
+            Ok(packet) => packet,
+            Err(e) => {
+                tracing::warn!(%conn_id, %local, %from, "Failed to transform packet: {e}");
+
+                cx.waker().wake_by_ref();
+                return Poll::Pending;
+            }
+        };
+
+        Poll::Ready(packet)
+    }
+
+    fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Event<TId>> {
+        if let Err(e) = ready!(self.sockets.poll_send_ready(cx)) {
+            tracing::warn!("Failed to poll sockets for readiness: {e}");
+        };
+
+        while let Some(transmit) = self.node.poll_transmit() {
+            if let Err(e) = self.sockets.try_send(&transmit) {
+                tracing::warn!(src = ?transmit.src, dst = %transmit.dst, "Failed to send UDP packet: {e}");
+            }
+        }
+
+        match self.node.poll_event() {
+            Some(snownet::Event::SignalIceCandidate {
+                connection,
+                candidate,
+            }) => {
+                return Poll::Ready(Event::SignalIceCandidate {
+                    conn_id: connection,
+                    candidate,
+                });
+            }
+            Some(snownet::Event::ConnectionFailed(id)) => {
+                self.peers_by_id.remove(&id);
+                return Poll::Ready(Event::StopPeer(id));
+            }
+            _ => {}
+        }
+
+        if let Poll::Ready(instant) = self.connection_pool_timeout.poll_unpin(cx) {
+            self.node.handle_timeout(instant);
+            if let Some(timeout) = self.node.poll_timeout() {
+                self.connection_pool_timeout = sleep_until(timeout).boxed();
+            }
+
+            cx.waker().wake_by_ref();
+        }
+
+        Poll::Pending
     }
 }
 
 pub(crate) fn peer_by_ip<Id, TTransform>(
-    peers_by_ip: &IpNetworkTable<ConnectedPeer<Id, TTransform>>,
+    peers_by_ip: &IpNetworkTable<Arc<Peer<Id, TTransform>>>,
     ip: IpAddr,
-) -> Option<&ConnectedPeer<Id, TTransform>> {
-    peers_by_ip.longest_match(ip).map(|(_, peer)| peer)
-}
-
-#[derive(Debug)]
-pub struct DnsQuery<'a> {
-    pub name: String,
-    pub record_type: RecordType,
-    // We could be much more efficient with this field,
-    // we only need the header to create the response.
-    pub query: IpPacket<'a>,
-}
-
-impl<'a> DnsQuery<'a> {
-    pub(crate) fn into_owned(self) -> DnsQuery<'static> {
-        let Self {
-            name,
-            record_type,
-            query,
-        } = self;
-        let buf = query.packet().to_vec();
-        let query =
-            IpPacket::owned(buf).expect("We are constructing the ip packet from an ip packet");
-
-        DnsQuery {
-            name,
-            record_type,
-            query,
-        }
-    }
+) -> Option<&Peer<Id, TTransform>> {
+    peers_by_ip.longest_match(ip).map(|(_, peer)| peer.as_ref())
 }
 
 pub enum Event<TId> {
     SignalIceCandidate {
         conn_id: TId,
-        candidate: RTCIceCandidate,
+        candidate: String,
     },
     ConnectionIntent {
         resource: ResourceDescription,
@@ -458,112 +406,11 @@ pub enum Event<TId> {
         connections: Vec<ReuseConnection>,
     },
     SendPacket(device_channel::Packet<'static>),
+    StopPeer(TId),
 }
 
-impl<CB, TRoleState> Tunnel<CB, TRoleState>
-where
-    CB: Callbacks + 'static,
-    TRoleState: RoleState,
-{
-    /// Creates a new tunnel.
-    ///
-    /// # Parameters
-    /// - `private_key`: wireguard's private key.
-    /// -  `control_signaler`: this is used to send SDP from the tunnel to the control plane.
-    #[tracing::instrument(level = "trace", skip(private_key, callbacks))]
-    pub async fn new(private_key: StaticSecret, callbacks: CB) -> Result<Self> {
-        let public_key = (&private_key).into();
-        let rate_limiter = Arc::new(RateLimiter::new(&public_key, HANDSHAKE_RATE_LIMIT));
-        let next_index = Default::default();
-        let peer_connections = Default::default();
-        let device = Default::default();
+async fn sleep_until(deadline: Instant) -> Instant {
+    tokio::time::sleep_until(deadline.into()).await;
 
-        // ICE
-        let mut media_engine = MediaEngine::default();
-
-        // Register default codecs (TODO: We need this?)
-        media_engine.register_default_codecs()?;
-        let mut registry = Registry::new();
-        registry = register_default_interceptors(registry, &mut media_engine)?;
-        let mut setting_engine = SettingEngine::default();
-        setting_engine.set_interface_filter(Box::new(|name| !name.contains("tun")));
-        setting_engine.set_ice_timeouts(
-            Some(ICE_DISCONNECTED_TIMEOUT),
-            Some(ICE_FAILED_TIMEOUT),
-            Some(ICE_KEEPALIVE),
-        );
-
-        let webrtc_api = APIBuilder::new()
-            .with_media_engine(media_engine)
-            .with_interceptor_registry(registry)
-            .with_setting_engine(setting_engine)
-            .build();
-
-        Ok(Self {
-            rate_limiter,
-            private_key,
-            peer_connections,
-            public_key,
-            next_index,
-            webrtc_api,
-            device,
-            read_buf: Mutex::new(Box::new([0u8; MAX_UDP_SIZE])),
-            write_buf: Mutex::new(Box::new([0u8; MAX_UDP_SIZE])),
-            callbacks: CallbackErrorFacade(callbacks),
-            role_state: Default::default(),
-            rate_limit_reset_interval: Mutex::new(rate_limit_reset_interval()),
-            peer_refresh_interval: Mutex::new(peer_refresh_interval()),
-            mtu_refresh_interval: Mutex::new(mtu_refresh_interval()),
-            peers_to_stop: Default::default(),
-            no_device_waker: Default::default(),
-        })
-    }
-
-    fn next_index(&self) -> u32 {
-        self.next_index.lock().next()
-    }
-
-    pub fn callbacks(&self) -> &CallbackErrorFacade<CB> {
-        &self.callbacks
-    }
-}
-
-/// Constructs the interval for resetting the rate limit count.
-///
-/// As per documentation on [`RateLimiter::reset_count`], this is configured to run every second.
-fn rate_limit_reset_interval() -> Interval {
-    let mut interval = tokio::time::interval(Duration::from_secs(1));
-    interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
-
-    interval
-}
-
-/// Constructs the interval for "refreshing" peers.
-///
-/// On each tick, we remove expired peers from our map, update wireguard timers and send packets, if any.
-fn peer_refresh_interval() -> Interval {
-    let mut interval = tokio::time::interval(Duration::from_secs(1));
-    interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
-
-    interval
-}
-
-/// Constructs the interval for refreshing the MTU of our TUN device.
-fn mtu_refresh_interval() -> Interval {
-    let mut interval = tokio::time::interval(Duration::from_secs(30));
-    interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
-
-    interval
-}
-
-/// Dedicated trait for abstracting over the different ICE states.
-///
-/// By design, this trait does not allow any operations apart from advancing via [`RoleState::poll_next_event`].
-/// The state should only be modified when the concrete type is known, e.g. [`ClientState`] or [`GatewayState`].
-pub trait RoleState: Default + Send + 'static {
-    type Id: fmt::Debug + fmt::Display + Eq + Hash + Copy + Unpin + Send + Sync + 'static;
-
-    fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Event<Self::Id>>;
-    fn remove_peers(&mut self, conn_id: Self::Id);
-    fn refresh_peers(&mut self) -> VecDeque<Self::Id>;
+    deadline
 }

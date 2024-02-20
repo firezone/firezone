@@ -1,7 +1,7 @@
 defmodule Web.Clients.Show do
   use Web, :live_view
   import Web.Policies.Components
-  alias Domain.{Clients, Flows, Config}
+  alias Domain.{Accounts, Clients, Flows}
 
   def mount(%{"id" => id}, _session, socket) do
     with {:ok, client} <-
@@ -19,7 +19,7 @@ defmodule Web.Clients.Show do
           socket,
           client: client,
           flows: flows,
-          flow_activities_enabled?: Config.flow_activities_enabled?(),
+          flow_activities_enabled?: Accounts.flow_activities_enabled?(socket.assigns.account),
           page_title: "Client #{client.name}"
         )
 

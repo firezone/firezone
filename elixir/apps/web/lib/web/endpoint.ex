@@ -9,6 +9,7 @@ defmodule Web.Endpoint do
 
   plug Plug.RewriteOn, [:x_forwarded_host, :x_forwarded_port, :x_forwarded_proto]
   plug Plug.MethodOverride
+  plug :put_hsts_header
   plug Web.Plugs.SecureHeaders
 
   plug RemoteIp,
@@ -62,6 +63,22 @@ defmodule Web.Endpoint do
   plug Web.Session
 
   plug Web.Router
+
+  def put_hsts_header(conn, _opts) do
+    scheme =
+      config(:url, [])
+      |> Keyword.get(:scheme)
+
+    if scheme == "https" do
+      put_resp_header(
+        conn,
+        "strict-transport-security",
+        "max-age=63072000; includeSubDomains; preload"
+      )
+    else
+      conn
+    end
+  end
 
   def real_ip_opts do
     [

@@ -23,6 +23,9 @@ defmodule API.Sockets do
   def handle_error(conn, :missing_token),
     do: Plug.Conn.send_resp(conn, 401, "Missing token")
 
+  def handle_error(conn, :account_disabled),
+    do: Plug.Conn.send_resp(conn, 403, "The account is disabled")
+
   def handle_error(conn, :unauthenticated),
     do: Plug.Conn.send_resp(conn, 403, "Forbidden")
 
