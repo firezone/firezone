@@ -22,6 +22,15 @@ defmodule Domain.Clients do
     |> Repo.aggregate(:count)
   end
 
+  def count_1m_active_users_for_account(%Accounts.Account{} = account) do
+    Client.Query.by_account_id(account.id)
+    |> Client.Query.by_last_seen_within(1, "month")
+    |> Client.Query.select_distinct_actor_id()
+    |> Client.Query.only_for_active_actors()
+    |> Client.Query.by_actor_type({:in, [:account_user, :account_admin_user]})
+    |> Repo.aggregate(:count)
+  end
+
   def count_by_actor_id(actor_id) do
     Client.Query.by_actor_id(actor_id)
     |> Repo.aggregate(:count)

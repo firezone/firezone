@@ -39,6 +39,7 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.Jobs do
       Logger.debug("Syncing #{length(providers)} Microsoft Entra providers")
 
       providers
+      |> Domain.Repo.preload(:account)
       |> Enum.chunk_every(5)
       |> Enum.each(fn providers ->
         Enum.map(providers, fn provider ->
@@ -53,7 +54,8 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.Jobs do
 
     access_token = provider.adapter_state["access_token"]
 
-    with {:ok, users} <- MicrosoftEntra.APIClient.list_users(access_token),
+    with true <- Domain.Accounts.idp_sync_enabled?(provider.account),
+         {:ok, users} <- MicrosoftEntra.APIClient.list_users(access_token),
          {:ok, groups} <- MicrosoftEntra.APIClient.list_groups(access_token),
          {:ok, tuples} <- list_membership_tuples(access_token, groups) do
       identities_attrs = map_identity_attrs(users)
@@ -88,6 +90,15 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.Jobs do
           )
       end
     else
+      false ->
+        Auth.Provider.Changeset.sync_failed(
+          provider,
+          "IdP sync is not enabled in your subscription plan"
+        )
+        |> Domain.Repo.update!()
+
+        :ok
+
       {:error, {status, %{"error" => %{"message" => message}}}} ->
         provider =
           Auth.Provider.Changeset.sync_failed(provider, message)

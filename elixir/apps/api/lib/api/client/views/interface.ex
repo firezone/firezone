@@ -1,14 +1,13 @@
 defmodule API.Client.Views.Interface do
-  alias Domain.Clients
-  alias Domain.Config.Configuration.ClientsUpstreamDNS
+  alias Domain.{Accounts, Clients}
 
   def render(%Clients.Client{} = client) do
     upstream_dns =
-      Clients.fetch_client_config!(client)
-      |> Map.fetch!(:clients_upstream_dns)
+      client.account.config
+      |> Map.get(:clients_upstream_dns, [])
       |> Enum.map(fn dns_config ->
-        addr = ClientsUpstreamDNS.normalize_dns_address(dns_config)
-        Map.from_struct(%{dns_config | address: addr})
+        address = Accounts.Config.Changeset.normalize_dns_address(dns_config)
+        Map.from_struct(%{dns_config | address: address})
       end)
 
     %{

@@ -234,6 +234,50 @@ account_id = "c89bcc8c-9392-4dae-a40d-888aef6d28e0"
 }
 ```
 
+### Connecting billing in dev mode for manual testing
+
+Prerequisites:
+
+* A Stripe account (Note: for the Firezone team, you will need to be invited to the Firezone Stripe account)
+* [Stripe CLI](https://github.com/stripe/stripe-cli)
+
+Steps:
+
+1. Use static seeds to provision account ID that corresponds to staging setup on
+   Stripe:
+
+   ```bash
+   STATIC_SEEDS=true mix do ecto.reset, ecto.seed
+   ```
+
+1. Start Stripe CLI webhook proxy:
+
+   ```bash
+   stripe listen --forward-to localhost:13001/integrations/stripe/webhooks
+   ```
+
+1. Start the Phoenix server with enabled billing from the [`elixir/`](./) folder
+   using a [test mode token](https://dashboard.stripe.com/test/apikeys):
+
+   ```bash
+   cd elixir/
+   BILLING_ENABLED=true STRIPE_SECRET_KEY="...copy from stripe dashboard..." STRIPE_WEBHOOK_SIGNING_SECRET="...copy from stripe cli tool.." mix phx.server
+   ```
+
+When updating the billing plan in stripe, use the [Stripe Testing Docs](https://docs.stripe.com/testing#testing-interactively) for how to add test payment info
+
+### Acceptance tests
+
+You can disable headless mode for the browser by adding
+
+```elixir
+
+  @tag debug: true
+  feature ....
+```
+
+to the acceptance test that you are running.
+
 ## Connecting to a staging or production instances
 
 We use Google Cloud Platform for all our staging and production infrastructure.
@@ -295,11 +339,11 @@ Useful for onboarding beta customers. See the `Domain.Ops.provision_account/1`
 function:
 
 ```elixir
-iex> Domain.Ops.provision_account(%{
-  account_name: "Customer Account",
-  account_slug: "customer_account",
-  account_admin_name: "Test User",
-  account_admin_email: "test@firezone.localhost"
+iex> Domain.Ops.create_and_provision_account(%{
+  name: "Customer Account",
+  slug: "customer_account",
+  admin_name: "Test User",
+  admin_email: "test@firezone.localhost"
 })
 ```
 

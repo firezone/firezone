@@ -42,7 +42,8 @@ config :web, Web.Plugs.SecureHeaders,
     "default-src 'self' 'nonce-${nonce}' https://cdn.tailwindcss.com/",
     "img-src 'self' data: https://www.gravatar.com",
     "style-src 'self' 'unsafe-inline'",
-    "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com/"
+    "frame-src 'self' https://js.stripe.com",
+    "script-src 'self' 'unsafe-inline' https://js.stripe.com https://cdn.tailwindcss.com/"
   ]
 
 ###############################

@@ -267,7 +267,7 @@ defmodule Web.FormComponents do
       ]}>
         <span
           class={[
-            "bg-neutral-200 whitespace-nowrap rounded-e-0 rounded-s inline-flex items-center px-3"
+            "bg-neutral-100 whitespace-nowrap rounded-e-0 rounded-s inline-flex items-center px-3"
           ]}
           id={"#{@id}-prefix"}
           phx-hook="Refocus"
