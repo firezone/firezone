@@ -288,6 +288,8 @@ pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
         }
     };
 
+    tracing::debug!("Calling `app.run`");
+
     app.run(|_app_handle, event| {
         if let tauri::RunEvent::ExitRequested { api, .. } = event {
             // Don't exit if we close our main window
