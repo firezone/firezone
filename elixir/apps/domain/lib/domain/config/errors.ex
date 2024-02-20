@@ -112,7 +112,7 @@ defmodule Domain.Config.Errors do
   end
 
   defp db_example(key) do
-    if key in Domain.Config.Configuration.__schema__(:fields) do
+    if key in Domain.Accounts.Config.__schema__(:fields) do
       """
       ### Using database
 

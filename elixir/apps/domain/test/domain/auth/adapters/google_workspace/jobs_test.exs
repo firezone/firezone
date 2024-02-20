@@ -95,6 +95,19 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.JobsTest do
       }
     end
 
+    test "returns error when IdP sync is not enabled", %{account: account, provider: provider} do
+      {:ok, _account} = Domain.Accounts.update_account(account, %{features: %{idp_sync: false}})
+
+      assert sync_directory(%{}) == :ok
+
+      assert updated_provider = Repo.get(Domain.Auth.Provider, provider.id)
+      refute updated_provider.last_synced_at
+      assert updated_provider.last_syncs_failed == 1
+
+      assert updated_provider.last_sync_error ==
+               "IdP sync is not enabled in your subscription plan"
+    end
+
     test "syncs IdP data", %{provider: provider} do
       bypass = Bypass.open()
 
