@@ -45,7 +45,7 @@ mod deep_link {
         }
         pub async fn accept(&self) -> Result<Secret<SecureUrl>, Error> {
             loop {
-                tokio::task::yield_now().await;
+                tokio::time::sleep(std::time::Duration::from_secs(86400)).await;
             }
         }
     }
