@@ -241,17 +241,7 @@ impl Allocation {
                     self.channel_bindings.handle_failed_binding(channel);
                 }
                 REFRESH => {
-                    if let Some(candidate) = self.ip4_allocation.take() {
-                        self.events.push_back(CandidateEvent::Invalid(candidate))
-                    }
-
-                    if let Some(candidate) = self.ip6_allocation.take() {
-                        self.events.push_back(CandidateEvent::Invalid(candidate))
-                    }
-
-                    self.channel_bindings.clear();
-                    self.allocation_lifetime = None;
-
+                    self.invalidate_allocation();
                     self.authenticate_and_queue(make_allocate_request());
                 }
                 _ => {}
@@ -402,6 +392,13 @@ impl Allocation {
     pub fn handle_timeout(&mut self, now: Instant) {
         self.update_now(now);
 
+        if self
+            .allocation_expires_at()
+            .is_some_and(|expires_at| now >= expires_at)
+        {
+            self.invalidate_allocation();
+        }
+
         while let Some(timed_out_request) =
             self.sent_requests
                 .iter()
@@ -524,6 +521,26 @@ impl Allocation {
         let refresh_after = lifetime / 2;
 
         Some(received_at + refresh_after)
+    }
+
+    fn allocation_expires_at(&self) -> Option<Instant> {
+        let (received_at, lifetime) = self.allocation_lifetime?;
+
+        Some(received_at + lifetime)
+    }
+
+    fn invalidate_allocation(&mut self) {
+        if let Some(candidate) = self.ip4_allocation.take() {
+            self.events.push_back(CandidateEvent::Invalid(candidate))
+        }
+
+        if let Some(candidate) = self.ip6_allocation.take() {
+            self.events.push_back(CandidateEvent::Invalid(candidate))
+        }
+
+        self.channel_bindings.clear();
+        self.allocation_lifetime = None;
+        self.sent_requests.clear();
     }
 
     /// Checks whether the given socket is part of this allocation.
