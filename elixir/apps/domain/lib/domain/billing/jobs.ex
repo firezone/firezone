@@ -6,33 +6,38 @@ defmodule Domain.Billing.Jobs do
     {:ok, accounts} = Accounts.list_active_accounts()
 
     Enum.each(accounts, fn account ->
-      []
-      |> check_seats_limit(account)
-      |> check_service_accounts_limit(account)
-      |> check_gateway_groups_limit(account)
-      |> check_admin_limit(account)
-      |> case do
-        [] ->
-          {:ok, _account} =
-            Accounts.update_account(account, %{
-              warning: nil,
-              warning_delivery_attempts: 0,
-              warning_last_sent_at: nil
-            })
+      if Billing.enabled?() and Billing.account_provisioned?(account) do
+        []
+        |> check_seats_limit(account)
+        |> check_service_accounts_limit(account)
+        |> check_gateway_groups_limit(account)
+        |> check_admin_limit(account)
+        |> case do
+          [] ->
+            {:ok, _account} =
+              Accounts.update_account(account, %{
+                warning: nil,
+                warning_delivery_attempts: 0,
+                warning_last_sent_at: nil
+              })
 
-          :ok
+            :ok
 
-        limits_exceeded ->
-          warning = "You have exceeded the following limits: #{Enum.join(limits_exceeded, ", ")}."
+          limits_exceeded ->
+            warning =
+              "You have exceeded the following limits: #{Enum.join(limits_exceeded, ", ")}"
 
-          {:ok, _account} =
-            Accounts.update_account(account, %{
-              warning: warning,
-              warning_delivery_attempts: 0,
-              warning_last_sent_at: DateTime.utc_now()
-            })
+            {:ok, _account} =
+              Accounts.update_account(account, %{
+                warning: warning,
+                warning_delivery_attempts: 0,
+                warning_last_sent_at: DateTime.utc_now()
+              })
 
-          :ok
+            :ok
+        end
+      else
+        :ok
       end
     end)
   end

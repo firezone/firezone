@@ -4,7 +4,15 @@ defmodule Domain.Billing.JobsTest do
 
   describe "check_account_limits/1" do
     setup do
-      account = Fixtures.Accounts.create_account()
+      account =
+        Fixtures.Accounts.create_account(
+          metadata: %{
+            stripe: %{
+              customer_id: "cus_123",
+              subscription_id: "sub_123"
+            }
+          }
+        )
 
       %{
         account: account

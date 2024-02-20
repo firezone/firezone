@@ -39,6 +39,15 @@ defmodule Web.Settings.Billing do
         <.button icon="hero-pencil" phx-click="redirect_to_billing_portal">
           Manage
         </.button>
+        <.button navigate={
+          mailto_support(
+            @account,
+            @subject,
+            "Billing question: #{@account.name}"
+          )
+        }>
+          Contact Sales Team
+        </.button>
       </:action>
       <:content>
         <.flash :if={@error} kind={:error}>
@@ -135,6 +144,9 @@ defmodule Web.Settings.Billing do
       <:title>
         Plan Features
       </:title>
+      <:help>
+        Beta features are only available for accounts on Enterprise plans, please contact sales team for more information.
+      </:help>
       <:content>
         <.vertical_table id="features">
           <.vertical_table_row :for={

@@ -87,11 +87,14 @@
 
 <main class="md:ml-64 h-auto pt-14">
   <.flash :if={@account.warning} kind={:warning}>
-    <%= @account.warning %>. Please
-    <.link navigate={~p"/#{@account}/settings/billing"} class={link_style()}>
-      check your billing information
-    </.link>
-    to continue using Firezone.
+    <%= @account.warning %>.
+    <span :if={Domain.Billing.account_provisioned?(@account)}>
+      Please
+      <.link navigate={~p"/#{@account}/settings/billing"} class={link_style()}>
+        check your billing information
+      </.link>
+      to continue using Firezone.
+    </span>
   </.flash>
 
   <.flash :if={not Domain.Accounts.account_active?(@account)} kind={:error}>
