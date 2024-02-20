@@ -283,7 +283,7 @@ jobs:
       - name: 'Save performance test results: ${{ matrix.test_name }}'
         uses: actions/upload-artifact@v4
         with:
-          name: '${{ matrix.test_name }}-iperf3results'
+          name: '${{ matrix.test_name }}-${{ matrix.test_number }}-iperf3results'
           path: ./iperf3results
       - name: 'Download main branch performance test results: ${{ matrix.test_name }}'
         id: download-artifact
@@ -295,7 +295,7 @@ jobs:
 
           REPO="${{ github.repository }}"
           WORKFLOW="cd.yml"
-          ARTIFACT_NAME="${{ matrix.test_name }}-iperf3results"
+          ARTIFACT_NAME="${{ matrix.test_name }}-${{ matrix.test_number }}-iperf3results"
           DESTINATION="./iperf3results-main"
 
           ARTIFACTS_URL=$(
