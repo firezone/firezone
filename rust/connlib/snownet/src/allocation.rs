@@ -1805,6 +1805,26 @@ mod tests {
         )
     }
 
+    #[test]
+    fn timed_out_request_is_recognised() {
+        let start = Instant::now();
+        let mut allocation = Allocation::for_test(start);
+
+        let allocate = allocation.next_message().unwrap();
+
+        allocation.advance_to_next_timeout();
+        let allocate_retry = allocation.next_message().unwrap();
+        assert_eq!(allocate_retry.method(), ALLOCATE);
+
+        let handled = allocation.handle_test_input(
+            &allocate_response(&allocate, &[RELAY_ADDR_IP4, RELAY_ADDR_IP6]),
+            start + Duration::from_secs(5),
+        );
+
+        assert!(allocation.poll_event().is_none());
+        assert!(handled);
+    }
+
     fn ch(peer: SocketAddr, now: Instant) -> Channel {
         Channel {
             peer,
@@ -1924,8 +1944,8 @@ mod tests {
         }
 
         /// Wrapper around `handle_input` that always sets `RELAY` and `PEER1`.
-        fn handle_test_input(&mut self, packet: &[u8], now: Instant) {
-            self.handle_input(RELAY, PEER1, packet, now);
+        fn handle_test_input(&mut self, packet: &[u8], now: Instant) -> bool {
+            self.handle_input(RELAY, PEER1, packet, now)
         }
 
         fn advance_to_next_timeout(&mut self) {
