@@ -201,9 +201,11 @@ pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
             settings::apply_advanced_settings,
             settings::reset_advanced_settings,
             settings::get_advanced_settings,
-        ])
-        .system_tray(tray)
-        .on_system_tray_event(|app, event| {
+        ]);
+
+    // The system tray doesn't work in Ubuntu 22.04 CI runners
+    let app = if std::env::var("FIREZONE_DISABLE_SYSTRAY").is_ok() {
+        app.system_tray(tray).on_system_tray_event(|app, event| {
             if let SystemTrayEvent::MenuItemClick { id, .. } = event {
                 let event = match TrayMenuEvent::from_str(&id) {
                     Ok(x) => x,
@@ -218,6 +220,10 @@ pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
                 }
             }
         })
+    } else {
+        app
+    };
+    let app = app
         .setup(move |app| {
             assert_eq!(
                 BUNDLE_ID,

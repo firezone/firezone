@@ -4,6 +4,7 @@ set -euo pipefail
 
 BUNDLE_ID="dev.firezone.client"
 DUMP_PATH="$BUNDLE_ID/data/logs/last_crash.dmp"
+export FIREZONE_DISABLE_SYSTRAY=true
 PACKAGE=firezone-windows-client
 export RUST_LOG=firezone_windows_client=debug,warn
 
