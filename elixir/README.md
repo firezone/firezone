@@ -234,6 +234,29 @@ account_id = "c89bcc8c-9392-4dae-a40d-888aef6d28e0"
 }
 ```
 
+### Connecting billing in dev mode for manual testing
+
+1. Use static seeds to provision account ID that corresponds to staging setup on
+   Stripe:
+
+```bash
+STATIC_SEEDS=true mix do ecto.reset, ecto.seed
+```
+
+2. Start Stripe CLI webhook proxy:
+
+```bash
+stripe listen --forward-to localhost:13001/integrations/stripe/webhooks
+```
+
+3. Start the Phoenix server with enabled billing from the [`elixir/`](./) folder
+   using a [test mode token](https://dashboard.stripe.com/test/apikeys):
+
+```
+cd elixir/
+BILLING_ENABLED=true STRIPE_SECRET_KEY="...copy from stripe dashboard..." STRIPE_WEBHOOK_SIGNING_SECRET="...copy from stripe cli tool.." mix phx.server
+```
+
 ### Acceptance tests
 
 You can disable headless mode for the browser by adding
