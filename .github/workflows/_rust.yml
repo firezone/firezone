@@ -25,14 +25,20 @@ jobs:
         include:
           - runs-on: ubuntu-22.04
             packages: # Intentionally blank as a package catch-all linter
+            target_os: linux
           - runs-on: macos-14
             packages: -p connlib-client-apple -p snownet
+            target_os: macos
           - runs-on: windows-2022
             packages: -p connlib-client-shared -p firezone-windows-client -p snownet
+            target_os: windows
     runs-on: ${{ matrix.runs-on }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-rust
+      - uses: ./.github/actions/setup-tauri
+        with:
+          target_os: ${{ matrix.target_os }}
       - run: cargo fmt -- --check
       - run: |
           cargo doc --all-features --no-deps --document-private-items ${{ matrix.packages }}
@@ -50,29 +56,56 @@ jobs:
         include:
           - runs-on: ubuntu-20.04
             packages: -p firezone-linux-client -p firezone-gateway -p connlib-client-android -p snownet
+            target_os: linux
           - runs-on: ubuntu-22.04
             packages: -p firezone-linux-client -p firezone-gateway -p connlib-client-android -p snownet
+            target_os: linux
           - runs-on: macos-12
             packages: -p connlib-client-apple -p snownet
+            target_os: macos
           - runs-on: macos-13
             packages: -p connlib-client-apple -p snownet
+            target_os: macos
           - runs-on: macos-14
             packages: -p connlib-client-apple -p snownet
+            target_os: macos
           - runs-on: windows-2019
             packages: -p firezone-windows-client -p connlib-client-shared -p snownet
+            target_os: windows
           - runs-on: windows-2022
             packages: -p firezone-windows-client -p connlib-client-shared -p snownet
+            target_os: windows
     runs-on: ${{ matrix.runs-on }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-rust
+      - uses: ./.github/actions/setup-tauri
+        with:
+          target_os: ${{ matrix.target_os }}
       - run: cargo test --all-features ${{ matrix.packages }}
 
   # Runs the Windows client smoke test, built in debug mode. We can't run it in release
   # mode because of a known issue: <https://github.com/firezone/firezone/blob/456e044f882c2bb314e19cc44c0d19c5ad817b7c/rust/windows-client/src-tauri/src/client.rs#L162-L164>
   windows-smoke-test:
-    name: windows-smoke-test
-    runs-on: windows-2019
+    name: windows-smoke-test-${{ matrix.runs-on }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runs-on: ubuntu-20.04
+            target: x86_64-unknown-linux-gnu
+            target_os: linux
+          # Broken on 22.04 <https://github.com/firezone/firezone/issues/3699>
+          #- runs-on: ubuntu-22.04
+          #  target: x86_64-unknown-linux-gnu
+          #  target_os: linux
+          - runs-on: windows-2019
+            target: x86_64-pc-windows-msvc
+            target_os: windows
+          - runs-on: windows-2022
+            target: x86_64-pc-windows-msvc
+            target_os: windows
+    runs-on: ${{ matrix.runs-on }}
     defaults:
       run:
         working-directory: ./rust/windows-client
@@ -86,18 +119,9 @@ jobs:
           node-version: '20'
       - uses: ./.github/actions/setup-rust
         with:
-          targets: x86_64-pc-windows-msvc
-        # This is the "Evergreen" bootstrapper from Microsoft
-        # <https://developer.microsoft.com/en-us/microsoft-edge/webview2/?form=MA13LH#download>
-        # Unfortunately, this makes the test non-deterministic.
-        # Controlling the version would be difficult.
-      - name: Download WebView2 bootstrapper
-        run: Invoke-WebRequest -Uri https://go.microsoft.com/fwlink/p/?LinkId=2124703 -OutFile WebView2Installer.exe
-        # This downloads about 200 MB and takes about 5 minutes on my VM
-        # So we could fault in WebView2 from the client exe without the MSI if we needed.
-        # Currently the MSI does this and it's a little janky.
-      - name: Install WebView2
-        run: Start-Process WebView2Installer.exe -ArgumentList "/install" -Wait
+      - uses: ./.github/actions/setup-tauri
+        with:
+          target_os: ${{ matrix.target_os }}
       - name: pnpm install
         run: |
           pnpm install
@@ -139,7 +163,10 @@ jobs:
           node-version: '20'
       - uses: ./.github/actions/setup-rust
         with:
-          targets: x86_64-pc-windows-msvc
+          targets: ${{ matrix.target }}
+      - uses: ./.github/actions/setup-tauri
+        with:
+        target_os: ${{ matrix.target_os }}
       - name: Install pnpm deps
         run: pnpm install
       - name: Build release exe and MSI
@@ -159,14 +186,15 @@ jobs:
           # This might catch regressions in #3384, depending how CI runners
           # handle exit codes
           git diff --exit-code
-      - name: Save Windows client
+      - name: Save GUI client
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}-x64
           path: |
             ${{ github.workspace }}/rust/windows-client/${{ matrix.artifact }}-x64.exe
             ${{ github.workspace }}/rust/windows-client/${{ matrix.artifact }}-x64.exe.sha256sum.txt
-      - name: Save Windows installer
+      - name: Save Windows MSI installer
+        if: ${{ matrix.target_os == 'windows' }}
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}-x64-msi
@@ -174,6 +202,7 @@ jobs:
             ${{ github.workspace }}/rust/windows-client/${{ matrix.artifact }}-x64.msi
             ${{ github.workspace }}/rust/windows-client/${{ matrix.artifact }}-x64.msi.sha256sum.txt
       - name: Save Windows debug symbols
+        if: ${{ matrix.target_os == 'windows' }}
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}-x64-pdb
