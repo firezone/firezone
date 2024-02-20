@@ -240,8 +240,6 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        dim1: [1, 2, 3, 4, 5]
-        dim2: ['a', 'b', 'c', 'd', 'e']
         test_name:
           - direct-tcp-client2server
           - direct-tcp-server2client
@@ -279,12 +277,11 @@ jobs:
         timeout-minutes: 5
         env:
           TEST_NAME: ${{ matrix.test_name }}
-          DIM: ${{ matrix.dim1 }}-${{ matrix.dim2 }}
         run: ./scripts/tests/perf/${{ matrix.test_name }}.sh
       - name: 'Save performance test results: ${{ matrix.test_name }}'
         uses: actions/upload-artifact@v4
         with:
-          name: '${{ matrix.test_name }}-${{ matrix.dim1 }}-${{ matrix.dim2 }}-iperf3results'
+          name: '${{ matrix.test_name }}-iperf3results'
           path: ./${{ matrix.test_name }}.json
       - name: 'Download main branch performance test results: ${{ matrix.test_name }}'
         id: download-artifact
