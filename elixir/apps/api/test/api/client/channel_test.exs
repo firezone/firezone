@@ -3,15 +3,15 @@ defmodule API.Client.ChannelTest do
   alias Domain.Mocks.GoogleCloudPlatform
 
   setup do
-    account = Fixtures.Accounts.create_account()
-
-    Fixtures.Config.upsert_configuration(
-      account: account,
-      clients_upstream_dns: [
-        %{protocol: "ip_port", address: "1.1.1.1"},
-        %{protocol: "ip_port", address: "8.8.8.8:53"}
-      ]
-    )
+    account =
+      Fixtures.Accounts.create_account(
+        config: %{
+          clients_upstream_dns: [
+            %{protocol: "ip_port", address: "1.1.1.1"},
+            %{protocol: "ip_port", address: "8.8.8.8:53"}
+          ]
+        }
+      )
 
     actor_group = Fixtures.Actors.create_group(account: account)
     actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)

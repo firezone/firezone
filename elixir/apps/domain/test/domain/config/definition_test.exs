@@ -57,11 +57,9 @@ defmodule Domain.Config.DefinitionTest do
     end
 
     test "inserts a function which returns definition doc" do
-      assert {:ok, doc} = fetch_doc(Domain.Config.Definitions, :clients_upstream_dns)
-      assert doc =~ "Comma-separated list of upstream DNS servers to use for clients."
-
-      assert fetch_doc(Foo, :bar) ==
-               {:error, :module_not_found}
+      assert {:ok, doc} = fetch_doc(Domain.Config.Definitions, :outbound_email_adapter)
+      assert doc =~ "Method to use for sending outbound email."
+      assert fetch_doc(Foo, :bar) == {:error, :module_not_found}
     end
   end
 

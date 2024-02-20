@@ -1,7 +1,7 @@
 defmodule Web.Resources.Show do
   use Web, :live_view
   import Web.Policies.Components
-  alias Domain.{Resources, Flows, Config}
+  alias Domain.{Accounts, Resources, Flows}
 
   def mount(%{"id" => id} = params, _session, socket) do
     with {:ok, resource} <-
@@ -23,7 +23,7 @@ defmodule Web.Resources.Show do
           actor_groups_peek: Map.fetch!(actor_groups_peek, resource.id),
           flows: flows,
           params: Map.take(params, ["site_id"]),
-          traffic_filters_enabled?: Config.traffic_filters_enabled?(),
+          traffic_filters_enabled?: Accounts.traffic_filters_enabled?(socket.assigns.account),
           page_title: "Resource #{resource.name}"
         )
 
@@ -48,7 +48,7 @@ defmodule Web.Resources.Show do
       </:title>
       <:action :if={is_nil(@resource.deleted_at)}>
         <.edit_button
-          :if={Domain.Config.multi_site_resources_enabled?()}
+          :if={Domain.Accounts.multi_site_resources_enabled?(@account)}
           navigate={~p"/#{@account}/resources/#{@resource.id}/edit?#{@params}"}
         >
           Edit Resource

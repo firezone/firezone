@@ -44,7 +44,7 @@ defmodule Web.Resources.Index do
       </:help>
       <:action>
         <.add_button
-          :if={Domain.Config.multi_site_resources_enabled?()}
+          :if={Domain.Accounts.multi_site_resources_enabled?(@account)}
           navigate={~p"/#{@account}/resources/new"}
         >
           Add Multi-Site Resource

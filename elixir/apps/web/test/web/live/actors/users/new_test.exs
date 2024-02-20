@@ -120,6 +120,39 @@ defmodule Web.Live.Actors.User.NewTest do
            }
   end
 
+  test "renders changeset errors when seats count is exceeded", %{
+    account: account,
+    identity: identity,
+    conn: conn
+  } do
+    {:ok, account} =
+      Domain.Accounts.update_account(account, %{
+        limits: %{
+          monthly_active_users_count: 1
+        }
+      })
+
+    actor = Fixtures.Actors.create_actor(type: :account_user, account: account)
+    Fixtures.Clients.create_client(account: account, actor: actor)
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/actors/users/new")
+
+    attrs =
+      Fixtures.Actors.actor_attrs()
+      |> Map.take([:name])
+
+    html =
+      lv
+      |> form("form", actor: attrs)
+      |> render_submit()
+
+    assert html =~ "You have reached the maximum number of"
+    assert html =~ "seats allowed by your subscription plan."
+  end
+
   test "creates a new actor on valid attrs", %{
     account: account,
     actor: actor,
