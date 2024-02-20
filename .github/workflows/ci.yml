@@ -1286,7 +1286,7 @@ jobs:
 
           REPO="${{ github.repository }}"
           WORKFLOW="cd.yml"
-          ARTIFACT_NAME="${{ matrix.test_name }}-${{ matrix.test_number }}-iperf3results"
+          ARTIFACT_NAME="${{ matrix.test_name }}-iperf3results"
           DESTINATION="./iperf3results-main"
 
           ARTIFACTS_URL=$(
