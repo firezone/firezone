@@ -191,8 +191,6 @@ services:
         ipv4_address: 172.21.0.100
 
   iperf3:
-    cap_add:
-      - NET_ADMIN
     image: mlabbe/iperf3
     command: -s -V
     networks:
