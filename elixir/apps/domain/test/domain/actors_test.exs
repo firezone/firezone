@@ -1962,7 +1962,7 @@ defmodule Domain.ActorsTest do
     end
   end
 
-  describe "create_actor/4" do
+  describe "create_actor/2" do
     setup do
       account = Fixtures.Accounts.create_account()
 
@@ -2020,7 +2020,7 @@ defmodule Domain.ActorsTest do
     end
   end
 
-  describe "create_actor/5" do
+  describe "create_actor/3" do
     setup do
       account = Fixtures.Accounts.create_account()
       actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
@@ -2045,6 +2045,78 @@ defmodule Domain.ActorsTest do
       assert actor.type == attrs.type
       assert is_nil(actor.disabled_at)
       assert is_nil(actor.deleted_at)
+    end
+
+    test "returns error when seats limit is exceeded (admins)", %{
+      account: account,
+      subject: subject
+    } do
+      {:ok, account} =
+        Domain.Accounts.update_account(account, %{
+          limits: %{
+            monthly_active_users_count: 1
+          }
+        })
+
+      Fixtures.Clients.create_client(actor: [type: :account_admin_user], account: account)
+
+      attrs = Fixtures.Actors.actor_attrs()
+
+      assert create_actor(account, attrs, subject) == {:error, :seats_limit_reached}
+    end
+
+    test "returns error when admins limit is exceeded", %{
+      account: account,
+      subject: subject
+    } do
+      {:ok, account} =
+        Domain.Accounts.update_account(account, %{
+          limits: %{
+            account_admin_users_count: 1
+          }
+        })
+
+      Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+
+      attrs = Fixtures.Actors.actor_attrs(type: :account_admin_user)
+
+      assert create_actor(account, attrs, subject) == {:error, :seats_limit_reached}
+    end
+
+    test "returns error when seats limit is exceeded (users)", %{
+      account: account,
+      subject: subject
+    } do
+      {:ok, account} =
+        Domain.Accounts.update_account(account, %{
+          limits: %{
+            monthly_active_users_count: 1
+          }
+        })
+
+      Fixtures.Clients.create_client(actor: [type: :account_user], account: account)
+
+      attrs = Fixtures.Actors.actor_attrs()
+
+      assert create_actor(account, attrs, subject) == {:error, :seats_limit_reached}
+    end
+
+    test "returns error when service accounts limit is exceeded", %{
+      account: account,
+      subject: subject
+    } do
+      {:ok, account} =
+        Domain.Accounts.update_account(account, %{
+          limits: %{
+            service_accounts_count: 1
+          }
+        })
+
+      Fixtures.Actors.create_actor(type: :service_account, account: account)
+
+      attrs = Fixtures.Actors.actor_attrs(type: :service_account)
+
+      assert create_actor(account, attrs, subject) == {:error, :service_accounts_limit_reached}
     end
 
     test "returns error when subject can not create actors", %{

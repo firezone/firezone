@@ -1,7 +1,7 @@
 defmodule Web.Policies.Show do
   use Web, :live_view
   import Web.Policies.Components
-  alias Domain.{Policies, Flows, Config}
+  alias Domain.{Accounts, Policies, Flows}
 
   def mount(%{"id" => id}, _session, socket) do
     with {:ok, policy} <-
@@ -19,7 +19,7 @@ defmodule Web.Policies.Show do
           policy: policy,
           flows: flows,
           page_title: "Policy #{policy.id}",
-          flow_activities_enabled?: Config.flow_activities_enabled?()
+          flow_activities_enabled?: Accounts.flow_activities_enabled?(socket.assigns.account)
         )
 
       {:ok, socket}

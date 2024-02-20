@@ -10,12 +10,6 @@ defmodule Web.Router do
     plug :put_root_layout, {Web.Layouts, :root}
   end
 
-  pipeline :api do
-    plug :accepts, ["json"]
-    plug :ensure_authenticated
-    plug :ensure_authenticated_actor_type, :service_account
-  end
-
   pipeline :public do
     plug :accepts, ["html", "xml"]
   end
@@ -136,8 +130,6 @@ defmodule Web.Router do
         end
 
         live "/:id/edit", Edit
-        # TODO: REMOVEME it's just another identity
-        live "/:id/new_token", NewToken
       end
 
       scope "/groups", Groups do
@@ -204,6 +196,7 @@ defmodule Web.Router do
 
       scope "/settings", Settings do
         live "/account", Account
+        live "/billing", Billing
 
         scope "/identity_providers", IdentityProviders do
           live "/", Index

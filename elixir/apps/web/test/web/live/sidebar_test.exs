@@ -18,7 +18,7 @@ defmodule Web.SidebarTest do
     account: account,
     identity: identity
   } do
-    {:ok, _lv, html} = live(authorize_conn(conn, identity), ~p"/#{account}/actors")
+    {:ok, _lv, html} = conn |> authorize_conn(identity) |> live(~p"/#{account}/actors")
     refute Enum.empty?(Floki.find(html, "ul#dropdown-settings.hidden"))
   end
 
@@ -27,7 +27,7 @@ defmodule Web.SidebarTest do
     account: account,
     identity: identity
   } do
-    {:ok, _lv, html} = live(authorize_conn(conn, identity), ~p"/#{account}/settings/dns")
+    {:ok, _lv, html} = conn |> authorize_conn(identity) |> live(~p"/#{account}/settings/dns")
     assert Enum.empty?(Floki.find(html, "ul#dropdown-settings.hidden"))
     refute Enum.empty?(Floki.find(html, "ul#dropdown-settings"))
   end
@@ -37,7 +37,7 @@ defmodule Web.SidebarTest do
     identity: identity,
     conn: conn
   } do
-    {:ok, _lv, html} = live(authorize_conn(conn, identity), ~p"/#{account}/actors")
+    {:ok, _lv, html} = conn |> authorize_conn(identity) |> live(~p"/#{account}/actors")
     assert item = Floki.find(html, "a.bg-neutral-100[href='/#{account.slug}/actors']")
     assert String.trim(Floki.text(item)) == "Actors"
   end
@@ -47,7 +47,7 @@ defmodule Web.SidebarTest do
     identity: identity,
     conn: conn
   } do
-    {:ok, _lv, html} = live(authorize_conn(conn, identity), ~p"/#{account}/groups")
+    {:ok, _lv, html} = conn |> authorize_conn(identity) |> live(~p"/#{account}/groups")
     assert item = Floki.find(html, "a.bg-neutral-100[href='/#{account.slug}/groups']")
     assert String.trim(Floki.text(item)) == "Groups"
   end
@@ -57,7 +57,7 @@ defmodule Web.SidebarTest do
     identity: identity,
     conn: conn
   } do
-    {:ok, _lv, html} = live(authorize_conn(conn, identity), ~p"/#{account}/clients")
+    {:ok, _lv, html} = conn |> authorize_conn(identity) |> live(~p"/#{account}/clients")
     assert item = Floki.find(html, "a.bg-neutral-100[href='/#{account.slug}/clients']")
     assert String.trim(Floki.text(item)) == "Clients"
   end
@@ -67,7 +67,7 @@ defmodule Web.SidebarTest do
     identity: identity,
     conn: conn
   } do
-    {:ok, _lv, html} = live(authorize_conn(conn, identity), ~p"/#{account}/sites")
+    {:ok, _lv, html} = conn |> authorize_conn(identity) |> live(~p"/#{account}/sites")
     assert item = Floki.find(html, "a.bg-neutral-100[href='/#{account.slug}/sites']")
     assert String.trim(Floki.text(item)) == "Sites"
   end
@@ -77,7 +77,7 @@ defmodule Web.SidebarTest do
     identity: identity,
     conn: conn
   } do
-    {:ok, _lv, html} = live(authorize_conn(conn, identity), ~p"/#{account}/relay_groups")
+    {:ok, _lv, html} = conn |> authorize_conn(identity) |> live(~p"/#{account}/relay_groups")
     assert item = Floki.find(html, "a.bg-neutral-100[href='/#{account.slug}/relay_groups']")
     assert String.trim(Floki.text(item)) == "Relays"
   end
@@ -87,7 +87,7 @@ defmodule Web.SidebarTest do
   #   identity: identity,
   #   conn: conn
   # } do
-  #   {:ok, _lv, html} = live(authorize_conn(conn, identity), ~p"/#{account}/resources")
+  #   {:ok, _lv, html} = conn |> authorize_conn(identity) |> live( ~p"/#{account}/resources")
   #   assert item = Floki.find(html, "a.bg-neutral-100[href='/#{account.slug}/resources']")
   #   assert String.trim(Floki.text(item)) == "Resources"
   # end
@@ -97,7 +97,7 @@ defmodule Web.SidebarTest do
     identity: identity,
     conn: conn
   } do
-    {:ok, _lv, html} = live(authorize_conn(conn, identity), ~p"/#{account}/policies")
+    {:ok, _lv, html} = conn |> authorize_conn(identity) |> live(~p"/#{account}/policies")
     assert item = Floki.find(html, "a.bg-neutral-100[href='/#{account.slug}/policies']")
     assert String.trim(Floki.text(item)) == "Policies"
   end
@@ -107,7 +107,7 @@ defmodule Web.SidebarTest do
     identity: identity,
     conn: conn
   } do
-    {:ok, _lv, html} = live(authorize_conn(conn, identity), ~p"/#{account}/settings/account")
+    {:ok, _lv, html} = conn |> authorize_conn(identity) |> live(~p"/#{account}/settings/account")
     assert item = Floki.find(html, "a.bg-neutral-100[href='/#{account.slug}/settings/account']")
     assert String.trim(Floki.text(item)) == "Account"
   end
@@ -118,7 +118,7 @@ defmodule Web.SidebarTest do
     conn: conn
   } do
     {:ok, _lv, html} =
-      live(authorize_conn(conn, identity), ~p"/#{account}/settings/identity_providers")
+      conn |> authorize_conn(identity) |> live(~p"/#{account}/settings/identity_providers")
 
     assert item =
              Floki.find(
@@ -154,7 +154,7 @@ defmodule Web.SidebarTest do
     identity: identity,
     conn: conn
   } do
-    {:ok, _lv, html} = live(authorize_conn(conn, identity), ~p"/#{account}/settings/dns")
+    {:ok, _lv, html} = conn |> authorize_conn(identity) |> live(~p"/#{account}/settings/dns")
     assert item = Floki.find(html, "a.bg-neutral-100[href='/#{account.slug}/settings/dns']")
     assert String.trim(Floki.text(item)) == "DNS"
   end

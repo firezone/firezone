@@ -1,7 +1,7 @@
 defmodule Domain.Auth.Provider.Changeset do
   use Domain, :changeset
   alias Domain.Accounts
-  alias Domain.Auth.{Subject, Provider}
+  alias Domain.Auth.{Subject, Provider, Adapters}
 
   @create_fields ~w[id name adapter provisioner adapter_config adapter_state disabled_at]a
   @update_fields ~w[name adapter_config last_syncs_failed last_sync_error adapter_state provisioner disabled_at deleted_at]a
@@ -15,10 +15,23 @@ defmodule Domain.Auth.Provider.Changeset do
   end
 
   def create(%Accounts.Account{} = account, attrs) do
+    all_adapters = Adapters.list_all_adapters!()
+
+    allowed_adapters =
+      if Accounts.idp_sync_enabled?(account) do
+        all_adapters
+      else
+        Enum.reject(all_adapters, fn adapter ->
+          capabilities = Adapters.fetch_capabilities!(adapter)
+          capabilities[:default_provisioner] == :custom
+        end)
+      end
+
     %Provider{}
     |> cast(attrs, @create_fields)
     |> put_change(:account_id, account.id)
     |> changeset()
+    |> validate_inclusion(:adapter, allowed_adapters)
     |> put_change(:created_by, :system)
   end
 

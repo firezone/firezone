@@ -18,8 +18,7 @@ defmodule API do
   def controller do
     quote do
       use Phoenix.Controller,
-        formats: [:html, :json],
-        layouts: [html: API.Layouts]
+        formats: [:json]
 
       import Plug.Conn
 

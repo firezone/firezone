@@ -2,7 +2,7 @@ defmodule API.Client.Channel do
   use API, :channel
   alias API.Client.Views
   alias Domain.Instrumentation
-  alias Domain.{Config, Clients, Actors, Resources, Gateways, Relays, Policies, Flows}
+  alias Domain.{Accounts, Clients, Actors, Resources, Gateways, Relays, Policies, Flows}
   require Logger
   require OpenTelemetry.Tracer
 
@@ -51,8 +51,8 @@ defmodule API.Client.Channel do
     OpenTelemetry.Tracer.with_span "client.after_join" do
       :ok = Clients.connect_client(socket.assigns.client)
 
-      # Subscribe for config updates
-      :ok = Config.subscribe_to_events_in_account(socket.assigns.client.account_id)
+      # Subscribe for account config updates
+      :ok = Accounts.subscribe_to_events_in_account(socket.assigns.client.account_id)
 
       {:ok, resources} =
         Resources.list_authorized_resources(socket.assigns.subject,
@@ -76,7 +76,11 @@ defmodule API.Client.Channel do
       :ok =
         push(socket, "init", %{
           resources: Views.Resource.render_many(resources),
-          interface: Views.Interface.render(socket.assigns.client)
+          interface:
+            Views.Interface.render(%{
+              socket.assigns.client
+              | account: socket.assigns.subject.account
+            })
         })
 
       {:noreply, socket}
@@ -86,7 +90,11 @@ defmodule API.Client.Channel do
   def handle_info(:config_changed, socket) do
     :ok =
       push(socket, "config_changed", %{
-        interface: Views.Interface.render(socket.assigns.client)
+        interface:
+          Views.Interface.render(%{
+            socket.assigns.client
+            | account: socket.assigns.subject.account
+          })
       })
 
     {:noreply, socket}

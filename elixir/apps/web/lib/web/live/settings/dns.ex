@@ -1,25 +1,26 @@
 defmodule Web.Settings.DNS do
   use Web, :live_view
-  alias Domain.Config
-  alias Domain.Config.Configuration.ClientsUpstreamDNS
+  alias Domain.Accounts
 
   def mount(_params, _session, socket) do
-    {:ok, config} = Config.fetch_account_config(socket.assigns.subject)
+    account = Accounts.fetch_account_by_id!(socket.assigns.account.id)
 
     form =
-      Config.change_account_config(config, %{})
-      |> add_new_server()
+      Accounts.change_account(account, %{})
+      |> maybe_append_empty_embed()
       |> to_form()
 
-    socket = assign(socket, config: config, form: form, page_title: "DNS")
+    socket =
+      assign(socket,
+        account: account,
+        form: form,
+        page_title: "DNS"
+      )
 
     {:ok, socket}
   end
 
   def render(assigns) do
-    assigns =
-      assign(assigns, :errors, translate_errors(assigns.form.errors, :clients_upstream_dns))
-
     ~H"""
     <.breadcrumbs account={@account}>
       <.breadcrumb path={~p"/#{@account}/settings/dns"}>DNS Settings</.breadcrumb>
@@ -56,26 +57,37 @@ defmodule Web.Settings.DNS do
           <.form for={@form} phx-submit={:submit} phx-change={:change}>
             <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
               <div>
-                <.inputs_for :let={dns} field={@form[:clients_upstream_dns]}>
-                  <div class="flex gap-4 items-start mb-2">
-                    <div class="w-1/4">
-                      <.input
-                        type="select"
-                        label="Protocol"
-                        field={dns[:protocol]}
-                        placeholder="Protocol"
-                        options={dns_options()}
-                        value={dns[:protocol].value}
-                      />
+                <.inputs_for :let={config} field={@form[:config]}>
+                  <.inputs_for :let={dns} field={config[:clients_upstream_dns]}>
+                    <div class="flex gap-4 items-start mb-2">
+                      <div class="w-1/4">
+                        <.input
+                          type="select"
+                          label="Protocol"
+                          field={dns[:protocol]}
+                          placeholder="Protocol"
+                          options={dns_options()}
+                          value={dns[:protocol].value}
+                        />
+                      </div>
+                      <div class="w-3/4">
+                        <.input
+                          label="Address"
+                          field={dns[:address]}
+                          placeholder="DNS Server Address"
+                        />
+                      </div>
                     </div>
-                    <div class="w-3/4">
-                      <.input label="Address" field={dns[:address]} placeholder="DNS Server Address" />
-                    </div>
-                  </div>
+                  </.inputs_for>
+                  <% errors =
+                    translate_errors(
+                      @form.source.changes.config.errors,
+                      :clients_upstream_dns
+                    ) %>
+                  <.error :for={error <- errors} data-validation-error-for="clients_upstream_dns">
+                    <%= error %>
+                  </.error>
                 </.inputs_for>
-                <.error :for={msg <- @errors} data-validation-error-for="clients_upstream_dns">
-                  <%= msg %>
-                </.error>
               </div>
               <.submit_button>
                 Save
@@ -88,87 +100,102 @@ defmodule Web.Settings.DNS do
     """
   end
 
-  def handle_event("change", %{"configuration" => config_params}, socket) do
-    form =
-      Config.change_account_config(socket.assigns.config, config_params)
+  def handle_event("change", %{"account" => attrs}, socket) do
+    changeset =
+      Accounts.change_account(socket.assigns.account, attrs)
+      |> maybe_append_empty_embed()
       |> filter_errors()
       |> Map.put(:action, :validate)
-      |> to_form()
 
-    socket = assign(socket, form: form)
-    {:noreply, socket}
+    {:noreply, assign(socket, form: to_form(changeset))}
   end
 
-  def handle_event("submit", %{"configuration" => config_params}, socket) do
-    attrs = remove_empty_servers(config_params)
+  def handle_event("submit", %{"account" => attrs}, socket) do
+    attrs = remove_empty_servers(attrs)
 
-    with {:ok, new_config} <-
-           Domain.Config.update_config(socket.assigns.config, attrs, socket.assigns.subject) do
+    with {:ok, account} <-
+           Accounts.update_account(socket.assigns.account, attrs, socket.assigns.subject) do
       form =
-        Config.change_account_config(new_config, %{})
-        |> add_new_server()
+        Accounts.change_account(account, %{})
+        |> maybe_append_empty_embed()
         |> to_form()
 
-      socket = assign(socket, config: new_config, form: form)
-      {:noreply, socket}
+      {:noreply, assign(socket, account: account, form: form)}
     else
       {:error, changeset} ->
-        form = to_form(changeset)
-        socket = assign(socket, form: form)
-        {:noreply, socket}
+        changeset =
+          changeset
+          |> maybe_append_empty_embed()
+          |> filter_errors()
+          |> Map.put(:action, :validate)
+
+        {:noreply, assign(socket, form: to_form(changeset))}
     end
   end
 
-  defp remove_errors(changeset, field, message) do
-    errors =
-      Enum.filter(changeset.errors, fn
-        {^field, {^message, _}} -> false
-        {_, _} -> true
-      end)
-
-    %{changeset | errors: errors}
-  end
-
-  defp filter_errors(%{changes: %{clients_upstream_dns: clients_upstream_dns}} = changeset) do
-    filtered_cs =
-      changeset
-      |> remove_errors(:clients_upstream_dns, "address can't be blank")
-
-    filtered_dns_cs =
-      clients_upstream_dns
-      |> Enum.map(fn changeset ->
-        remove_errors(changeset, :address, "can't be blank")
-      end)
-
-    %{filtered_cs | changes: %{clients_upstream_dns: filtered_dns_cs}}
-  end
-
   defp filter_errors(changeset) do
-    changeset
+    update_clients_upstream_dns(changeset, fn
+      clients_upstream_dns_changesets ->
+        remove_errors(clients_upstream_dns_changesets, :address, "can't be blank")
+    end)
   end
 
-  defp remove_empty_servers(config) do
-    servers =
-      config["clients_upstream_dns"]
-      |> Enum.reduce(%{}, fn {key, value}, acc ->
-        case value["address"] do
-          nil -> acc
-          "" -> acc
-          _ -> Map.put(acc, key, value)
+  defp remove_errors(changesets, field, message) do
+    Enum.map(changesets, fn changeset ->
+      errors =
+        Enum.filter(changeset.errors, fn
+          {^field, {^message, _}} -> false
+          {_, _} -> true
+        end)
+
+      %{changeset | errors: errors}
+    end)
+  end
+
+  defp maybe_append_empty_embed(changeset) do
+    update_clients_upstream_dns(changeset, fn
+      clients_upstream_dns_changesets ->
+        last_client_upstream_dns_changeset = List.last(clients_upstream_dns_changesets)
+
+        with true <- last_client_upstream_dns_changeset != nil,
+             {_data_or_changes, last_address} <-
+               Ecto.Changeset.fetch_field(last_client_upstream_dns_changeset, :address),
+             true <- last_address in [nil, ""] do
+          clients_upstream_dns_changesets
+        else
+          _other -> clients_upstream_dns_changesets ++ [%Accounts.Config.ClientsUpstreamDNS{}]
         end
-      end)
-
-    %{"clients_upstream_dns" => servers}
+    end)
   end
 
-  defp add_new_server(changeset) do
-    existing_servers = Ecto.Changeset.get_embed(changeset, :clients_upstream_dns)
+  defp update_clients_upstream_dns(changeset, cb) do
+    config_changeset = Ecto.Changeset.get_embed(changeset, :config)
 
-    Ecto.Changeset.put_embed(
-      changeset,
-      :clients_upstream_dns,
-      existing_servers ++ [%{address: ""}]
-    )
+    clients_upstream_dns_changeset =
+      Ecto.Changeset.get_embed(config_changeset, :clients_upstream_dns)
+
+    config_changeset =
+      Ecto.Changeset.put_embed(
+        config_changeset,
+        :clients_upstream_dns,
+        cb.(clients_upstream_dns_changeset)
+      )
+
+    Ecto.Changeset.put_embed(changeset, :config, config_changeset)
+  end
+
+  defp remove_empty_servers(attrs) do
+    update_in(attrs, [Access.key("config", %{}), "clients_upstream_dns"], fn
+      nil ->
+        nil
+
+      servers ->
+        Map.filter(servers, fn
+          {_index, %{"address" => ""}} -> false
+          {_index, %{"address" => nil}} -> false
+          _ -> true
+        end)
+    end)
   end
 
   defp dns_options do
@@ -178,10 +205,10 @@ defmodule Web.Settings.DNS do
       [key: "DNS over HTTPS", value: "dns_over_https"]
     ]
 
-    supported = Enum.map(ClientsUpstreamDNS.supported_protocols(), &to_string/1)
+    supported_dns_protocols = Enum.map(Accounts.Config.supported_dns_protocols(), &to_string/1)
 
     Enum.map(options, fn option ->
-      case option[:value] in supported do
+      case option[:value] in supported_dns_protocols do
         true -> option
         false -> option ++ [disabled: true]
       end

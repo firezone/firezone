@@ -86,17 +86,6 @@ defmodule Web.Settings.IdentityProviders.System.Show do
         </div>
       </:content>
     </.section>
-
-    <.danger_zone :if={is_nil(@provider.deleted_at)}>
-      <:action>
-        <.delete_button
-          data-confirm="Are you sure want to delete this provider along with all related data?"
-          phx-click="delete"
-        >
-          Delete Identity Provider
-        </.delete_button>
-      </:action>
-    </.danger_zone>
     """
   end
 

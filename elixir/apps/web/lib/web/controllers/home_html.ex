@@ -37,21 +37,22 @@ defmodule Web.HomeHTML do
                 type="text"
                 label="Account ID or Slug"
                 prefix={url(~p"/")}
+                placeholder="Enter account ID from the welcome email"
                 required
                 autofocus
               />
-              <p>Your account ID can be found in your welcome email.</p>
 
               <.button class="w-full">
                 Go to Sign In page
               </.button>
             </.form>
+
             <p
               :if={
                 Domain.Config.sign_up_enabled?() and
                   Web.Auth.fetch_auth_context_type!(@params) == :browser
               }
-              class="py-2"
+              class="py-2 text-center"
             >
               Don't have an account?
               <a href={~p"/sign_up"} class={[link_style()]}>

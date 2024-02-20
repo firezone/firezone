@@ -1,4 +1,4 @@
-defmodule Web.Live.Settings.DNS.IndexTest do
+defmodule Web.Live.Settings.DNSTest do
   use Web.ConnCase, async: true
 
   setup do
@@ -45,6 +45,8 @@ defmodule Web.Live.Settings.DNS.IndexTest do
     identity: identity,
     conn: conn
   } do
+    Fixtures.Accounts.update_account(account, %{config: %{clients_upstream_dns: []}})
+
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
@@ -53,9 +55,10 @@ defmodule Web.Live.Settings.DNS.IndexTest do
     form = lv |> form("form")
 
     assert find_inputs(form) == [
-             "configuration[clients_upstream_dns][0][_persistent_id]",
-             "configuration[clients_upstream_dns][0][address]",
-             "configuration[clients_upstream_dns][0][protocol]"
+             "account[config][_persistent_id]",
+             "account[config][clients_upstream_dns][0][_persistent_id]",
+             "account[config][clients_upstream_dns][0][address]",
+             "account[config][clients_upstream_dns][0][protocol]"
            ]
   end
 
@@ -64,7 +67,15 @@ defmodule Web.Live.Settings.DNS.IndexTest do
     identity: identity,
     conn: conn
   } do
-    attrs = %{configuration: %{clients_upstream_dns: %{"0" => %{address: "8.8.8.8"}}}}
+    Fixtures.Accounts.update_account(account, %{config: %{clients_upstream_dns: []}})
+
+    attrs = %{
+      account: %{
+        config: %{
+          clients_upstream_dns: %{"0" => %{address: "8.8.8.8"}}
+        }
+      }
+    }
 
     {:ok, lv, _html} =
       conn
@@ -78,12 +89,13 @@ defmodule Web.Live.Settings.DNS.IndexTest do
     assert lv
            |> form("form")
            |> find_inputs() == [
-             "configuration[clients_upstream_dns][0][_persistent_id]",
-             "configuration[clients_upstream_dns][0][address]",
-             "configuration[clients_upstream_dns][0][protocol]",
-             "configuration[clients_upstream_dns][1][_persistent_id]",
-             "configuration[clients_upstream_dns][1][address]",
-             "configuration[clients_upstream_dns][1][protocol]"
+             "account[config][_persistent_id]",
+             "account[config][clients_upstream_dns][0][_persistent_id]",
+             "account[config][clients_upstream_dns][0][address]",
+             "account[config][clients_upstream_dns][0][protocol]",
+             "account[config][clients_upstream_dns][1][_persistent_id]",
+             "account[config][clients_upstream_dns][1][address]",
+             "account[config][clients_upstream_dns][1][protocol]"
            ]
   end
 
@@ -93,8 +105,12 @@ defmodule Web.Live.Settings.DNS.IndexTest do
     conn: conn
   } do
     attrs = %{
-      configuration: %{
-        clients_upstream_dns: %{"0" => %{address: "8.8.8.8"}}
+      account: %{
+        config: %{
+          clients_upstream_dns: %{
+            "0" => %{address: ""}
+          }
+        }
       }
     }
 
@@ -110,28 +126,16 @@ defmodule Web.Live.Settings.DNS.IndexTest do
     assert lv
            |> form("form")
            |> find_inputs() == [
-             "configuration[clients_upstream_dns][0][_persistent_id]",
-             "configuration[clients_upstream_dns][0][address]",
-             "configuration[clients_upstream_dns][0][protocol]",
-             "configuration[clients_upstream_dns][1][_persistent_id]",
-             "configuration[clients_upstream_dns][1][address]",
-             "configuration[clients_upstream_dns][1][protocol]"
-           ]
-
-    empty_attrs = %{
-      configuration: %{
-        clients_upstream_dns: %{"0" => %{address: ""}}
-      }
-    }
-
-    lv |> form("form", empty_attrs) |> render_submit()
-
-    assert lv
-           |> form("form")
-           |> find_inputs() == [
-             "configuration[clients_upstream_dns][0][_persistent_id]",
-             "configuration[clients_upstream_dns][0][address]",
-             "configuration[clients_upstream_dns][0][protocol]"
+             "account[config][_persistent_id]",
+             "account[config][clients_upstream_dns][0][_persistent_id]",
+             "account[config][clients_upstream_dns][0][address]",
+             "account[config][clients_upstream_dns][0][protocol]",
+             "account[config][clients_upstream_dns][1][_persistent_id]",
+             "account[config][clients_upstream_dns][1][address]",
+             "account[config][clients_upstream_dns][1][protocol]",
+             "account[config][clients_upstream_dns][2][_persistent_id]",
+             "account[config][clients_upstream_dns][2][address]",
+             "account[config][clients_upstream_dns][2][protocol]"
            ]
   end
 
@@ -145,8 +149,10 @@ defmodule Web.Live.Settings.DNS.IndexTest do
     addr2 = %{address: "1.1.1.1"}
 
     attrs = %{
-      configuration: %{
-        clients_upstream_dns: %{"0" => addr1}
+      account: %{
+        config: %{
+          clients_upstream_dns: %{"0" => addr1}
+        }
       }
     }
 
@@ -160,16 +166,28 @@ defmodule Web.Live.Settings.DNS.IndexTest do
     |> render_submit()
 
     assert lv
-           |> form("form", %{configuration: %{clients_upstream_dns: %{"1" => addr1}}})
-           |> render_change() =~ "no duplicates allowed"
+           |> form("form", %{
+             account: %{
+               config: %{clients_upstream_dns: %{"1" => addr1}}
+             }
+           })
+           |> render_change() =~ "all addresses must be unique"
 
     refute lv
-           |> form("form", %{configuration: %{clients_upstream_dns: %{"1" => addr2}}})
-           |> render_change() =~ "no duplicates allowed"
+           |> form("form", %{
+             account: %{
+               config: %{clients_upstream_dns: %{"1" => addr2}}
+             }
+           })
+           |> render_change() =~ "all addresses must be unique"
 
     assert lv
-           |> form("form", %{configuration: %{clients_upstream_dns: %{"1" => addr1_dup}}})
-           |> render_change() =~ "no duplicates allowed"
+           |> form("form", %{
+             account: %{
+               config: %{clients_upstream_dns: %{"1" => addr1_dup}}
+             }
+           })
+           |> render_change() =~ "all addresses must be unique"
   end
 
   test "does not display 'cannot be empty' error message", %{
@@ -178,8 +196,10 @@ defmodule Web.Live.Settings.DNS.IndexTest do
     conn: conn
   } do
     attrs = %{
-      configuration: %{
-        clients_upstream_dns: %{"0" => %{address: "8.8.8.8"}}
+      account: %{
+        config: %{
+          clients_upstream_dns: %{"0" => %{address: "8.8.8.8"}}
+        }
       }
     }
 
@@ -193,7 +213,13 @@ defmodule Web.Live.Settings.DNS.IndexTest do
     |> render_submit()
 
     refute lv
-           |> form("form", %{configuration: %{clients_upstream_dns: %{"0" => %{address: ""}}}})
+           |> form("form", %{
+             account: %{
+               config: %{
+                 clients_upstream_dns: %{"0" => %{address: ""}}
+               }
+             }
+           })
            |> render_change() =~ "can&#39;t be blank"
   end
 end

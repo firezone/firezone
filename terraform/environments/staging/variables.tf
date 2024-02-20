@@ -37,3 +37,17 @@ variable "postmark_server_api_token" {
 variable "mailgun_server_api_token" {
   type = string
 }
+
+variable "stripe_secret_key" {
+  type      = string
+  sensitive = true
+}
+
+variable "stripe_webhook_signing_secret" {
+  type      = string
+  sensitive = true
+}
+
+variable "stripe_default_price_id" {
+  type = string
+}

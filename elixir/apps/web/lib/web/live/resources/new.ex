@@ -1,7 +1,7 @@
 defmodule Web.Resources.New do
   use Web, :live_view
   import Web.Resources.Components
-  alias Domain.{Gateways, Resources, Config}
+  alias Domain.{Accounts, Gateways, Resources}
 
   def mount(params, _session, socket) do
     with {:ok, gateway_groups} <- Gateways.list_groups(socket.assigns.subject) do
@@ -15,7 +15,7 @@ defmodule Web.Resources.New do
           name_changed?: false,
           form: to_form(changeset),
           params: Map.take(params, ["site_id"]),
-          traffic_filters_enabled?: Config.traffic_filters_enabled?(),
+          traffic_filters_enabled?: Accounts.traffic_filters_enabled?(socket.assigns.account),
           page_title: "New Resource"
         )
 
@@ -165,7 +165,7 @@ defmodule Web.Resources.New do
       attrs
       |> maybe_put_default_name(name_changed?)
       |> maybe_put_default_address_description(address_description_changed?)
-      |> map_filters_form_attrs()
+      |> map_filters_form_attrs(socket.assigns.account)
       |> map_connections_form_attrs()
       |> maybe_put_connections(socket.assigns.params)
 
@@ -188,7 +188,7 @@ defmodule Web.Resources.New do
       attrs
       |> maybe_put_default_name()
       |> maybe_put_default_address_description()
-      |> map_filters_form_attrs()
+      |> map_filters_form_attrs(socket.assigns.account)
       |> map_connections_form_attrs()
       |> maybe_put_connections(socket.assigns.params)
 

@@ -1,7 +1,6 @@
 defmodule Domain.ConfigTest do
   use Domain.DataCase, async: true
   import Domain.Config
-  alias Domain.Config
 
   defmodule Test do
     use Domain.Config.Definition
@@ -84,28 +83,15 @@ defmodule Domain.ConfigTest do
   describe "fetch_resolved_configs!/1" do
     setup do
       account = Fixtures.Accounts.create_account()
-      Fixtures.Config.upsert_configuration(account: account)
 
       %{account: account}
     end
 
     test "returns source and config values", %{account: account} do
-      assert fetch_resolved_configs!(account.id, [:clients_upstream_dns, :clients_upstream_dns]) ==
+      assert fetch_resolved_configs!(account.id, [:outbound_email_adapter, :docker_registry]) ==
                %{
-                 clients_upstream_dns: [
-                   %Domain.Config.Configuration.ClientsUpstreamDNS{
-                     protocol: :ip_port,
-                     address: "1.1.1.1"
-                   },
-                   %Domain.Config.Configuration.ClientsUpstreamDNS{
-                     protocol: :ip_port,
-                     address: "2606:4700:4700::1111"
-                   },
-                   %Domain.Config.Configuration.ClientsUpstreamDNS{
-                     protocol: :ip_port,
-                     address: "8.8.8.8:853"
-                   }
-                 ]
+                 outbound_email_adapter: nil,
+                 docker_registry: "ghcr.io/firezone"
                }
     end
 
@@ -144,30 +130,22 @@ defmodule Domain.ConfigTest do
   describe "fetch_resolved_configs_with_sources!/1" do
     setup do
       account = Fixtures.Accounts.create_account()
-      Fixtures.Config.upsert_configuration(account: account)
 
       %{account: account}
     end
 
     test "returns source and config values", %{account: account} do
-      assert fetch_resolved_configs_with_sources!(account.id, [:clients_upstream_dns]) ==
+      %{
+        docker_registry: "ghcr.io/firezone"
+      }
+
+      assert fetch_resolved_configs_with_sources!(account.id, [
+               :outbound_email_adapter,
+               :docker_registry
+             ]) ==
                %{
-                 clients_upstream_dns:
-                   {{:db, :clients_upstream_dns},
-                    [
-                      %Domain.Config.Configuration.ClientsUpstreamDNS{
-                        protocol: :ip_port,
-                        address: "1.1.1.1"
-                      },
-                      %Domain.Config.Configuration.ClientsUpstreamDNS{
-                        protocol: :ip_port,
-                        address: "2606:4700:4700::1111"
-                      },
-                      %Domain.Config.Configuration.ClientsUpstreamDNS{
-                        protocol: :ip_port,
-                        address: "8.8.8.8:853"
-                      }
-                    ]}
+                 outbound_email_adapter: {:default, nil},
+                 docker_registry: {:default, "ghcr.io/firezone"}
                }
     end
 
@@ -355,230 +333,6 @@ defmodule Domain.ConfigTest do
 
       assert compile_config!(Test, :enum, %{"ENUM" => "Elixir.Domain.ConfigTest.Test"}) ==
                Domain.ConfigTest.Test
-    end
-  end
-
-  describe "get_account_config_by_account_id/1" do
-    setup do
-      account = Fixtures.Accounts.create_account()
-      %{account: account}
-    end
-
-    test "returns configuration for an account if it exists", %{
-      account: account
-    } do
-      configuration = Fixtures.Config.upsert_configuration(account: account)
-      assert get_account_config_by_account_id(account.id) == configuration
-    end
-
-    test "returns default configuration for an account if it does not exist", %{
-      account: account
-    } do
-      assert get_account_config_by_account_id(account.id) == %Domain.Config.Configuration{
-               account_id: account.id,
-               clients_upstream_dns: []
-             }
-    end
-  end
-
-  describe "fetch_account_config/1" do
-    setup do
-      account = Fixtures.Accounts.create_account()
-
-      actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
-      identity = Fixtures.Auth.create_identity(account: account, actor: actor)
-      subject = Fixtures.Auth.create_subject(identity: identity)
-
-      %{
-        account: account,
-        actor: actor,
-        identity: identity,
-        subject: subject
-      }
-    end
-
-    test "returns configuration for an account if it exists", %{
-      account: account,
-      subject: subject
-    } do
-      configuration = Fixtures.Config.upsert_configuration(account: account)
-      assert fetch_account_config(subject) == {:ok, configuration}
-    end
-
-    test "returns default configuration for an account if it does not exist", %{
-      account: account,
-      subject: subject
-    } do
-      assert {:ok, config} = fetch_account_config(subject)
-
-      assert config == %Domain.Config.Configuration{
-               account_id: account.id,
-               clients_upstream_dns: []
-             }
-    end
-
-    test "returns error when subject does not have permission to read configuration", %{
-      subject: subject
-    } do
-      subject = Fixtures.Auth.remove_permissions(subject)
-
-      assert fetch_account_config(subject) ==
-               {:error,
-                {:unauthorized,
-                 reason: :missing_permissions,
-                 missing_permissions: [Config.Authorizer.manage_permission()]}}
-    end
-  end
-
-  describe "change_account_config/2" do
-    setup do
-      account = Fixtures.Accounts.create_account()
-      configuration = Fixtures.Config.upsert_configuration(account: account)
-
-      %{account: account, configuration: configuration}
-    end
-
-    test "returns config changeset", %{configuration: configuration} do
-      assert %Ecto.Changeset{} = change_account_config(configuration)
-    end
-  end
-
-  describe "update_config/3" do
-    test "returns error when subject can not manage account configuration" do
-      account = Fixtures.Accounts.create_account()
-      config = get_account_config_by_account_id(account.id)
-      actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
-      identity = Fixtures.Auth.create_identity(account: account, actor: actor)
-
-      subject =
-        Fixtures.Auth.create_subject(identity: identity)
-        |> Fixtures.Auth.remove_permissions()
-
-      assert update_config(config, %{}, subject) ==
-               {:error,
-                {:unauthorized,
-                 reason: :missing_permissions,
-                 missing_permissions: [Config.Authorizer.manage_permission()]}}
-    end
-  end
-
-  describe "update_config/2" do
-    setup do
-      account = Fixtures.Accounts.create_account()
-      %{account: account}
-    end
-
-    test "returns error when changeset is invalid", %{account: account} do
-      config = get_account_config_by_account_id(account.id)
-
-      attrs = %{
-        clients_upstream_dns: [%{protocol: "ip_port", address: "!!!"}]
-      }
-
-      assert {:error, changeset} = update_config(config, attrs)
-
-      assert errors_on(changeset) == %{
-               clients_upstream_dns: [
-                 %{address: ["must be a valid IP address"]}
-               ]
-             }
-    end
-
-    test "returns error when trying to change overridden value", %{account: account} do
-      put_system_env_override(:clients_upstream_dns, [%{protocol: "ip_port", address: "1.2.3.4"}])
-
-      config = get_account_config_by_account_id(account.id)
-
-      attrs = %{
-        clients_upstream_dns: [%{protocol: "ip_port", address: "4.1.2.3"}]
-      }
-
-      assert {:error, changeset} = update_config(config, attrs)
-
-      assert errors_on(changeset) ==
-               %{
-                 clients_upstream_dns: [
-                   "cannot be changed; it is overridden by CLIENTS_UPSTREAM_DNS environment variable"
-                 ]
-               }
-    end
-
-    test "trims binary fields", %{account: account} do
-      config = get_account_config_by_account_id(account.id)
-
-      attrs = %{
-        clients_upstream_dns: [
-          %{protocol: "ip_port", address: "   1.1.1.1"},
-          %{protocol: "ip_port", address: "8.8.8.8   "}
-        ]
-      }
-
-      assert {:ok, config} = update_config(config, attrs)
-
-      assert config.clients_upstream_dns == [
-               %Domain.Config.Configuration.ClientsUpstreamDNS{
-                 protocol: :ip_port,
-                 address: "1.1.1.1"
-               },
-               %Domain.Config.Configuration.ClientsUpstreamDNS{
-                 protocol: :ip_port,
-                 address: "8.8.8.8"
-               }
-             ]
-    end
-
-    test "changes database config value when it did not exist", %{account: account} do
-      config = get_account_config_by_account_id(account.id)
-
-      attrs = %{
-        clients_upstream_dns: [
-          %{protocol: "ip_port", address: "1.1.1.1"},
-          %{protocol: "ip_port", address: "8.8.8.8"}
-        ]
-      }
-
-      :ok = subscribe_to_events_in_account(account)
-
-      assert {:ok, config} = update_config(config, attrs)
-
-      assert config.clients_upstream_dns == [
-               %Domain.Config.Configuration.ClientsUpstreamDNS{
-                 protocol: :ip_port,
-                 address: "1.1.1.1"
-               },
-               %Domain.Config.Configuration.ClientsUpstreamDNS{
-                 protocol: :ip_port,
-                 address: "8.8.8.8"
-               }
-             ]
-
-      assert_receive :config_changed
-    end
-
-    test "changes database config value when it existed", %{account: account} do
-      Fixtures.Config.upsert_configuration(account: account)
-
-      config = get_account_config_by_account_id(account.id)
-
-      attrs = %{
-        clients_upstream_dns: [
-          %{protocol: "ip_port", address: "8.8.8.8"},
-          %{protocol: "ip_port", address: "8.8.4.4"}
-        ]
-      }
-
-      assert {:ok, config} = update_config(config, attrs)
-
-      assert config.clients_upstream_dns == [
-               %Domain.Config.Configuration.ClientsUpstreamDNS{
-                 protocol: :ip_port,
-                 address: "8.8.8.8"
-               },
-               %Domain.Config.Configuration.ClientsUpstreamDNS{
-                 protocol: :ip_port,
-                 address: "8.8.4.4"
-               }
-             ]
     end
   end
 end

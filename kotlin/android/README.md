@@ -63,14 +63,6 @@ locally.
 
 1. Perform a test build: `./gradlew assembleDebug`.
 
-1. Add your debug signing key's SHA256 fingerprint to the portal's
-   [`assetlinks.json`](../../elixir/apps/web/priv/static/.well-known/assetlinks.json)
-   file. This is required for the App Links to successfully intercept the Auth
-   redirect.
-   ```
-   ./gradlew signingReport
-   ```
-
 # Release Setup
 
 We release from GitHub CI, so this shouldn't be necessary. But if you're looking

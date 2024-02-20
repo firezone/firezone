@@ -6,16 +6,25 @@ defmodule Domain.AuthTest do
 
   # Providers
 
-  describe "list_provider_adapters/0" do
+  describe "list_user_provisioned_provider_adapters!/1" do
     test "returns list of enabled adapters for an account" do
-      assert {:ok, adapters} = list_provider_adapters()
+      account = Fixtures.Accounts.create_account(features: %{idp_sync: true})
 
-      assert adapters == %{
-               openid_connect: Domain.Auth.Adapters.OpenIDConnect,
-               google_workspace: Domain.Auth.Adapters.GoogleWorkspace,
-               microsoft_entra: Domain.Auth.Adapters.MicrosoftEntra,
-               okta: Domain.Auth.Adapters.Okta
-             }
+      assert list_user_provisioned_provider_adapters!(account) == [
+               openid_connect: [enabled: true],
+               google_workspace: [enabled: true],
+               microsoft_entra: [enabled: true],
+               okta: [enabled: true]
+             ]
+
+      account = Fixtures.Accounts.create_account(features: %{idp_sync: false})
+
+      assert list_user_provisioned_provider_adapters!(account) == [
+               openid_connect: [enabled: true],
+               google_workspace: [enabled: false],
+               microsoft_entra: [enabled: false],
+               okta: [enabled: false]
+             ]
     end
   end
 
@@ -599,6 +608,23 @@ defmodule Domain.AuthTest do
       assert {:error, changeset} = create_provider(account, attrs)
       refute changeset.valid?
       assert errors_on(changeset) == %{base: ["this provider is already connected"]}
+    end
+
+    test "returns error if provider is disabled by account feature flag", %{
+      account: account
+    } do
+      {:ok, account} = Domain.Accounts.update_account(account, %{features: %{idp_sync: false}})
+
+      attrs =
+        Fixtures.Auth.provider_attrs(
+          adapter: :google_workspace,
+          adapter_config: %{client_id: "foo", client_secret: "bar"},
+          provisioner: :custom
+        )
+
+      assert {:error, changeset} = create_provider(account, attrs)
+      refute changeset.valid?
+      assert errors_on(changeset) == %{adapter: ["is invalid"]}
     end
 
     test "creates a provider", %{

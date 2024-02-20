@@ -30,7 +30,6 @@ defmodule Domain.Config.Definitions do
   use Domain.Config.Definition
   alias Domain.Config.Dumper
   alias Domain.Types
-  alias Domain.Config.Logo
 
   if Mix.env() in [:test, :dev] do
     @local_development_adapters [Swoosh.Adapters.Local]
@@ -86,10 +85,6 @@ defmodule Domain.Config.Definitions do
          :live_view_signing_salt,
          :cookie_signing_salt,
          :cookie_encryption_salt
-       ]},
-      {"Clients",
-       [
-         :clients_upstream_dns
        ]},
       {"Authorization",
        """
@@ -410,29 +405,6 @@ defmodule Domain.Config.Definitions do
   )
 
   ##############################################
-  ## Clients
-  ##############################################
-
-  @doc """
-  Comma-separated list of upstream DNS servers to use for clients.
-
-  It can be one of the following:
-    - IP address
-    - FQDN if you intend to use a DNS-over-TLS server
-    - URI if you intent to use a DNS-over-HTTPS server
-
-  Leave this blank to omit the `DNS` section from generated configs,
-  which will make clients use default system-provided DNS even when VPN session is active.
-  """
-  defconfig(
-    :clients_upstream_dns,
-    {:json_array, {:embed, Domain.Config.Configuration.ClientsUpstreamDNS},
-     validate_unique: false},
-    default: [],
-    changeset: {Domain.Config.Configuration.ClientsUpstreamDNS, :changeset, []}
-  )
-
-  ##############################################
   ## Userpass / SAML / OIDC / Email authentication
   ##############################################
 
@@ -572,16 +544,13 @@ defmodule Domain.Config.Definitions do
   )
 
   ##############################################
-  ## Appearance
+  ## Billing flags
   ##############################################
 
-  @doc """
-  The path to a logo image file to replace default Firezone logo.
-  """
-  defconfig(:logo, {:embed, Logo},
-    default: nil,
-    changeset: {Logo, :changeset, []}
-  )
+  defconfig(:billing_enabled, :boolean, default: false)
+  defconfig(:stripe_secret_key, :string, sensitive: true, default: nil)
+  defconfig(:stripe_webhook_signing_secret, :string, sensitive: true, default: nil)
+  defconfig(:stripe_default_price_id, :string, default: nil)
 
   ##############################################
   ## Local development and Staging Helpers
@@ -592,30 +561,39 @@ defmodule Domain.Config.Definitions do
 
   ##############################################
   ## Feature Flags
+  ##
+  ## If feature is disabled globally it won't be available for any account,
+  ## even if account-specific override enables them.
+  ##
   ##############################################
 
   @doc """
-  Boolean flag to turn Sign-ups on/off.
+  Boolean flag to turn Sign-ups on/off for all accounts.
   """
   defconfig(:feature_sign_up_enabled, :boolean, default: true)
 
   @doc """
-  Boolean flag to turn UI flow activities on/off.
+  Boolean flag to turn IdP sync on/off for all accounts.
+  """
+  defconfig(:feature_idp_sync_enabled, :boolean, default: true)
+
+  @doc """
+  Boolean flag to turn UI flow activities on/off for all accounts.
   """
   defconfig(:feature_flow_activities_enabled, :boolean, default: false)
 
   @doc """
-  Boolean flag to turn Resource traffic filters on/off.
+  Boolean flag to turn Resource traffic filters on/off for all accounts.
   """
   defconfig(:feature_traffic_filters_enabled, :boolean, default: false)
 
   @doc """
-  Boolean flag to turn Account relays admin functionality on/off.
+  Boolean flag to turn Account relays admin functionality on/off for all accounts.
   """
   defconfig(:feature_self_hosted_relays_enabled, :boolean, default: false)
 
   @doc """
-  Boolean flag to turn Multi-Site resources functionality on/off.
+  Boolean flag to turn Multi-Site resources functionality on/off for all accounts.
   """
   defconfig(:feature_multi_site_resources_enabled, :boolean, default: false)
 end

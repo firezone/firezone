@@ -1,7 +1,7 @@
 defmodule Web.Resources.Edit do
   use Web, :live_view
   import Web.Resources.Components
-  alias Domain.{Gateways, Resources, Config}
+  alias Domain.{Accounts, Gateways, Resources}
 
   def mount(%{"id" => id} = params, _session, socket) do
     with {:ok, resource} <-
@@ -17,7 +17,7 @@ defmodule Web.Resources.Edit do
           gateway_groups: gateway_groups,
           form: form,
           params: Map.take(params, ["site_id"]),
-          traffic_filters_enabled?: Config.traffic_filters_enabled?(),
+          traffic_filters_enabled?: Accounts.traffic_filters_enabled?(socket.assigns.account),
           page_title: "Edit #{resource.name}"
         )
 
@@ -92,7 +92,7 @@ defmodule Web.Resources.Edit do
   def handle_event("change", %{"resource" => attrs}, socket) do
     attrs =
       attrs
-      |> map_filters_form_attrs()
+      |> map_filters_form_attrs(socket.assigns.account)
       |> map_connections_form_attrs()
       |> maybe_delete_connections(socket.assigns.params)
 
@@ -106,7 +106,7 @@ defmodule Web.Resources.Edit do
   def handle_event("submit", %{"resource" => attrs}, socket) do
     attrs =
       attrs
-      |> map_filters_form_attrs()
+      |> map_filters_form_attrs(socket.assigns.account)
       |> map_connections_form_attrs()
       |> maybe_delete_connections(socket.assigns.params)
 

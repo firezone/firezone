@@ -13,6 +13,11 @@ config :domain, Domain.Repo,
 
 config :domain, outbound_email_adapter_configured?: true
 
+config :domain, Domain.Billing,
+  enabled: System.get_env("BILLING_ENABLED", "false") == "true",
+  secret_key: System.get_env("STRIPE_SECRET_KEY", "sk_dev_1111"),
+  webhook_signing_secret: System.get_env("STRIPE_WEBHOOK_SIGNING_SECRET", "whsec_dev_1111")
+
 ###############################
 ##### Web #####################
 ###############################
@@ -62,7 +67,8 @@ config :web, Web.Plugs.SecureHeaders,
     "default-src 'self' 'nonce-${nonce}' https://cdn.tailwindcss.com/",
     "img-src 'self' data: https://www.gravatar.com",
     "style-src 'self' 'unsafe-inline'",
-    "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com/"
+    "frame-src 'self' https://js.stripe.com",
+    "script-src 'self' 'unsafe-inline' https://js.stripe.com https://cdn.tailwindcss.com/"
   ]
 
 # Note: on Linux you may need to add `--add-host=host.docker.internal:host-gateway`

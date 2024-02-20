@@ -32,6 +32,13 @@ defmodule Web.Live.SignUpTest do
       email: email
     }
 
+    Bypass.open()
+    |> Domain.Mocks.Stripe.mock_create_customer_endpoint(%{
+      id: Ecto.UUID.generate(),
+      name: account_name
+    })
+    |> Domain.Mocks.Stripe.mock_create_subscription_endpoint()
+
     assert html =
              lv
              |> form("form", registration: attrs)
@@ -42,6 +49,7 @@ defmodule Web.Live.SignUpTest do
 
     account = Repo.one(Domain.Accounts.Account)
     assert account.name == account_name
+    assert account.metadata.stripe.customer_id
 
     provider = Repo.one(Domain.Auth.Provider)
     assert provider.account_id == account.id

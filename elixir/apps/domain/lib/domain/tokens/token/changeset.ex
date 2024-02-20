@@ -25,7 +25,7 @@ defmodule Domain.Tokens.Token.Changeset do
     %Token{}
     |> cast(attrs, @create_attrs)
     |> validate_required(@required_attrs)
-    |> validate_inclusion(:type, [:email, :browser, :client, :relay_group])
+    |> validate_inclusion(:type, [:email, :browser, :client, :relay_group, :api_client])
     |> changeset()
     |> put_change(:created_by, :system)
   end

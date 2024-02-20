@@ -33,8 +33,6 @@ config :domain, Domain.Tokens,
   key_base: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S2",
   salt: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
 
-config :domain, Domain.Clients, upstream_dns: ["1.1.1.1"]
-
 config :domain, Domain.Gateways,
   gateway_ipv4_masquerade: true,
   gateway_ipv6_masquerade: true
@@ -52,6 +50,16 @@ config :domain, Domain.Auth.Adapters.MicrosoftEntra.APIClient,
   finch_transport_opts: []
 
 config :domain, Domain.Auth.Adapters.Okta.APIClient, finch_transport_opts: []
+
+config :domain, Domain.Billing.Stripe.APIClient,
+  endpoint: "https://api.stripe.com",
+  finch_transport_opts: []
+
+config :domain, Domain.Billing,
+  enabled: true,
+  secret_key: "sk_test_1111",
+  webhook_signing_secret: "whsec_test_1111",
+  default_price_id: "price_1OkUIcADeNU9NGxvTNA4PPq6"
 
 config :domain, platform_adapter: nil
 
@@ -72,6 +80,7 @@ config :domain, Domain.Instrumentation,
   client_logs_bucket: "logs"
 
 config :domain, :enabled_features,
+  idp_sync: true,
   traffic_filters: true,
   sign_up: true,
   flow_activities: true,
@@ -123,6 +132,8 @@ config :web,
 config :web, Web.Plugs.SecureHeaders,
   csp_policy: [
     "default-src 'self' 'nonce-${nonce}'",
+    "frame-src 'self' https://js.stripe.com",
+    "script-src 'self' https://js.stripe.com",
     "img-src 'self' data: https://www.gravatar.com",
     "style-src 'self' 'unsafe-inline'"
   ]

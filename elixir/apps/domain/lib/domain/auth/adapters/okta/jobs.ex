@@ -39,10 +39,21 @@ defmodule Domain.Auth.Adapters.Okta.Jobs do
       Logger.debug("Syncing #{length(providers)} Okta providers")
 
       providers
+      |> Domain.Repo.preload(:account)
       |> Enum.chunk_every(5)
       |> Enum.each(fn providers ->
         Enum.map(providers, fn provider ->
-          sync_provider_directory(provider)
+          if Domain.Accounts.idp_sync_enabled?(provider.account) do
+            sync_provider_directory(provider)
+          else
+            Auth.Provider.Changeset.sync_failed(
+              provider,
+              "IdP sync is not enabled in your subscription plan"
+            )
+            |> Domain.Repo.update!()
+
+            :ok
+          end
         end)
       end)
     end

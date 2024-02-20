@@ -7,7 +7,7 @@ defmodule Domain.GatewaysTest do
     account = Fixtures.Accounts.create_account()
     actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
     identity = Fixtures.Auth.create_identity(account: account, actor: actor)
-    subject = Fixtures.Auth.create_subject(identity: identity)
+    subject = Fixtures.Auth.create_subject(account: account, actor: actor, identity: identity)
 
     %{
       account: account,
@@ -188,6 +188,26 @@ defmodule Domain.GatewaysTest do
       assert errors_on(changeset) == %{
                routing: ["is invalid"]
              }
+    end
+
+    test "returns error when billing limit is reached", %{account: account, subject: subject} do
+      {:ok, account} =
+        Domain.Accounts.update_account(account, %{
+          limits: %{
+            gateway_groups_count: 1
+          }
+        })
+
+      subject = %{subject | account: account}
+
+      Fixtures.Gateways.create_group(account: account)
+
+      attrs = %{
+        name: "foo",
+        routing: "managed"
+      }
+
+      assert create_group(attrs, subject) == {:error, :gateway_groups_limit_reached}
     end
 
     test "creates a group", %{subject: subject} do

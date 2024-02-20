@@ -31,8 +31,6 @@ if config_env() == :prod do
     key_base: compile_config!(:tokens_key_base),
     salt: compile_config!(:tokens_salt)
 
-  config :domain, Domain.Clients, upstream_dns: compile_config!(:clients_upstream_dns)
-
   config :domain, Domain.Gateways,
     gateway_ipv4_masquerade: compile_config!(:gateway_ipv4_masquerade),
     gateway_ipv6_masquerade: compile_config!(:gateway_ipv6_masquerade)
@@ -43,6 +41,16 @@ if config_env() == :prod do
 
   config :domain, Domain.Auth.Adapters.GoogleWorkspace.APIClient,
     finch_transport_opts: compile_config!(:http_client_ssl_opts)
+
+  config :domain, Domain.Billing.Stripe.APIClient,
+    endpoint: "https://api.stripe.com",
+    finch_transport_opts: []
+
+  config :domain, Domain.Billing,
+    enabled: compile_config!(:billing_enabled),
+    secret_key: compile_config!(:stripe_secret_key),
+    webhook_signing_secret: compile_config!(:stripe_webhook_signing_secret),
+    default_price_id: compile_config!(:stripe_default_price_id)
 
   config :domain, platform_adapter: compile_config!(:platform_adapter)
 
@@ -59,6 +67,7 @@ if config_env() == :prod do
     client_logs_bucket: compile_config!(:instrumentation_client_logs_bucket)
 
   config :domain, :enabled_features,
+    idp_sync: compile_config!(:feature_idp_sync_enabled),
     traffic_filters: compile_config!(:feature_traffic_filters_enabled),
     sign_up: compile_config!(:feature_sign_up_enabled),
     flow_activities: compile_config!(:feature_flow_activities_enabled),
