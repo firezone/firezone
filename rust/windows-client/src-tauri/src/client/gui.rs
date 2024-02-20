@@ -225,6 +225,7 @@ pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
         app
     };
     let app = app.setup(move |app| {
+        // This callback appears to be called when `app.build` runs
         tracing::debug!("Entered `app.setup` callback");
         assert_eq!(
             BUNDLE_ID,
@@ -275,7 +276,10 @@ pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
     });
     tracing::debug!("Called `app.setup`");
 
-    let app = app.build(tauri::generate_context!());
+    let ctx = tauri::generate_context!();
+    tracing::debug!("Called `tauri::generate_context`");
+
+    let app = app.build(ctx);
     tracing::debug!("Called `app.build`");
 
     let app = match app {
