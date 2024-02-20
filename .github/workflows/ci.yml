@@ -1269,7 +1269,7 @@ jobs:
         run: ${{ matrix.setup }}
       - name: 'Performance test: ${{ matrix.test_name }}'
         id: performance-test
-        timeout-minutes: 15
+        timeout-minutes: 5
         run: ./scripts/tests/perf/test.sh
       - name: 'Save performance test results: ${{ matrix.test_name }}'
         uses: actions/upload-artifact@v4
