@@ -39,7 +39,7 @@ defmodule API.Client.Channel do
       Process.send_after(self(), :token_expired, expires_in)
       {:ok, socket}
     else
-      {:error, %{"reason" => "token_expired"}}
+      {:error, %{reason: :token_expired}}
     end
   end
 
@@ -107,7 +107,7 @@ defmodule API.Client.Channel do
     OpenTelemetry.Tracer.set_current_span(socket.assigns.opentelemetry_span_ctx)
 
     OpenTelemetry.Tracer.with_span "client.token_expired" do
-      push(socket, "disconnect", %{"reason" => "token_expired"})
+      push(socket, "disconnect", %{reason: :token_expired})
       {:stop, {:shutdown, :token_expired}, socket}
     end
   end
@@ -115,7 +115,7 @@ defmodule API.Client.Channel do
   # This message is sent using Clients.broadcast_to_client/1 eg. when the client is deleted
   def handle_info("disconnect", socket) do
     OpenTelemetry.Tracer.with_span "client.disconnect" do
-      push(socket, "disconnect", %{"reason" => "token_expired"})
+      push(socket, "disconnect", %{reason: :token_expired})
       send(socket.transport_pid, %Phoenix.Socket.Broadcast{event: "disconnect"})
       {:stop, :shutdown, socket}
     end
