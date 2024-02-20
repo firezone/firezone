@@ -420,7 +420,7 @@ impl Allocation {
         }
 
         if let Some(refresh_at) = self.refresh_allocation_at() {
-            if now >= refresh_at && !self.refresh_in_flight() {
+            if (now >= refresh_at) && !self.refresh_in_flight() {
                 tracing::debug!("Allocation is due for a refresh");
                 self.authenticate_and_queue(make_refresh_request());
             }
@@ -448,7 +448,11 @@ impl Allocation {
     }
 
     pub fn poll_timeout(&self) -> Option<Instant> {
-        let mut earliest_timeout = self.refresh_allocation_at();
+        let mut earliest_timeout = if !self.refresh_in_flight() {
+            self.refresh_allocation_at()
+        } else {
+            None
+        };
 
         for (_, (_, sent_at, backoff)) in self.sent_requests.iter() {
             earliest_timeout = earliest(earliest_timeout, Some(*sent_at + *backoff));
@@ -515,10 +519,6 @@ impl Allocation {
     }
 
     fn refresh_allocation_at(&self) -> Option<Instant> {
-        if self.refresh_in_flight() {
-            return None;
-        }
-
         let (received_at, lifetime) = self.allocation_lifetime?;
 
         let refresh_after = lifetime / 2;
@@ -1616,16 +1616,12 @@ mod tests {
         let mut allocation = Allocation::for_test(Instant::now());
 
         let allocate = allocation.next_message().unwrap();
-
-        let received_at = Instant::now();
-
         allocation.handle_test_input(
             &allocate_response(&allocate, &[RELAY_ADDR_IP4, RELAY_ADDR_IP6]),
-            received_at,
+            Instant::now(),
         );
 
         let refresh_at = allocation.poll_timeout().unwrap();
-        assert_eq!(refresh_at, received_at + (ALLOCATION_LIFETIME / 2));
 
         allocation.handle_timeout(refresh_at);
         assert!(allocation.poll_timeout().unwrap() > refresh_at);
@@ -1694,6 +1690,59 @@ mod tests {
         allocation.handle_test_input(&server_error(&allocate), Instant::now()); // This should clear the buffered channel bindings.
 
         assert!(allocation.is_suspended())
+    }
+
+    #[test]
+    fn timed_out_refresh_requests_invalid_candidates() {
+        let start = Instant::now();
+        let mut allocation = Allocation::for_test(start);
+
+        // Make an allocation
+        {
+            let allocate = allocation.next_message().unwrap();
+            allocation.handle_test_input(
+                &allocate_response(&allocate, &[RELAY_ADDR_IP4, RELAY_ADDR_IP6]),
+                start,
+            );
+            let _drained_events = iter::from_fn(|| allocation.poll_event()).collect::<Vec<_>>();
+        }
+
+        let allocated_at = start;
+
+        // Test that we refresh it.
+        {
+            let refresh_at = allocation.poll_timeout().unwrap();
+            allocation.handle_timeout(refresh_at);
+
+            let refresh = allocation.next_message().unwrap();
+            assert_eq!(refresh.method(), REFRESH);
+        }
+
+        // Simulate refresh timing out
+        loop {
+            let timeout = allocation.poll_timeout().unwrap();
+            allocation.handle_timeout(timeout);
+
+            if timeout > (allocated_at + ALLOCATION_LIFETIME) {
+                break;
+            }
+
+            let refresh = allocation.next_message().unwrap();
+            assert_eq!(refresh.method(), REFRESH);
+        }
+
+        assert!(
+            allocation.next_message().is_none(),
+            "expect to not queue another refresh message if we are past the allocation lifetime"
+        );
+        assert!(allocation.poll_timeout().is_none());
+        assert_eq!(
+            iter::from_fn(|| allocation.poll_event()).collect::<Vec<_>>(),
+            vec![
+                CandidateEvent::Invalid(Candidate::relayed(RELAY_ADDR_IP4, Protocol::Udp).unwrap()),
+                CandidateEvent::Invalid(Candidate::relayed(RELAY_ADDR_IP6, Protocol::Udp).unwrap()),
+            ]
+        )
     }
 
     fn ch(peer: SocketAddr, now: Instant) -> Channel {
