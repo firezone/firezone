@@ -7,6 +7,7 @@ mod index;
 mod info;
 mod ip_packet;
 mod node;
+mod ringbuffer;
 mod stun_binding;
 mod utils;
 
