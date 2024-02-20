@@ -227,8 +227,8 @@ jobs:
         if: "!cancelled()"
         run: docker compose logs api
 
-  performance-tests:
-    name: performance-tests-${{ matrix.test_name }}
+  perf-tests:
+    name: perf-tests-${{ matrix.test_name }}
     needs: build-images
     runs-on: ubuntu-22.04
     permissions:
@@ -240,14 +240,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - test_name: direct-perf
-            setup: echo 'Noop'
-          - test_name: relayed-perf
-            setup: |
-              #  Disallow traffic between gateway and client container
-              sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
-              sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
+        test_name:
+          - direct-tcp-client2server
+          - direct-tcp-server2client
+          - direct-udp-client2server
+          - direct-udp-server2client
+          - relayed-tcp-client2server
+          - relayed-tcp-server2client
+          - relayed-udp-client2server
+          - relayed-udp-server2client
 
     steps:
       - uses: actions/checkout@v4
@@ -265,25 +266,23 @@ jobs:
           sed -i 's/^\(\s*\)RUST_LOG:.*$/\1RUST_LOG: wire=error,info/' docker-compose.yml
           cat docker-compose.yml | grep RUST_LOG
 
-          # TODO: Order matters here, but it shouldn't. There seems to be some race
-          # condition involved in letting Docker deterime the start order here.
+          # Start services in the same order each time for the tests
           docker compose up -d iperf3
           docker compose up -d api web
           docker compose up -d relay
           docker compose up -d gateway
           docker compose up -d client
 
-      - name: 'Setup test: ${{ matrix.test_name }}'
-        run: ${{ matrix.setup }}
       - name: 'Performance test: ${{ matrix.test_name }}'
-        id: performance-test
         timeout-minutes: 5
-        run: ./scripts/tests/perf/test.sh
+        env:
+          TEST_NAME: ${{ matrix.test_name }}
+        run: ./scripts/tests/perf/${{ matrix.test_name }}.sh
       - name: 'Save performance test results: ${{ matrix.test_name }}'
         uses: actions/upload-artifact@v4
         with:
           name: '${{ matrix.test_name }}-iperf3results'
-          path: ./iperf3results
+          path: ./${{ matrix.test_name }}.json
       - name: 'Download main branch performance test results: ${{ matrix.test_name }}'
         id: download-artifact
         if: ${{ github.event_name == 'pull_request' }}
@@ -295,7 +294,6 @@ jobs:
           REPO="${{ github.repository }}"
           WORKFLOW="cd.yml"
           ARTIFACT_NAME="${{ matrix.test_name }}-iperf3results"
-          DESTINATION="./iperf3results-main"
 
           ARTIFACTS_URL=$(
             gh api \
@@ -313,16 +311,23 @@ jobs:
               --jq '.artifacts[] | select(.name == "'${ARTIFACT_NAME}'") | .archive_download_url'
           )
 
-          set +x
-          curl -H "Accept: application/vnd.github+json" -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" -L -o "${DESTINATION}.zip" "$DOWNLOAD_URL"
+          if [ -z "$DOWNLOAD_URL" ]; then
+            echo "continue=false" >> $GITHUB_ENV
+            echo "No artifact found for ${ARTIFACT_NAME} in main branch"
+          else
+            echo "continue=true" >> $GITHUB_ENV
+            set +x
+            curl -H "Accept: application/vnd.github+json" -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" -L -o "${ARTIFACT_NAME}.zip" "$DOWNLOAD_URL"
 
-          set -x
-          unzip "${DESTINATION}.zip" -d "${DESTINATION}"
-          rm "${DESTINATION}.zip"
+            set -x
+            unzip "${ARTIFACT_NAME}.zip"
+            rm "${ARTIFACT_NAME}.zip"
+            mv "${{ matrix.test_name }}.json" "${{ matrix.test_name }}-main.json"
+          fi
       - name: Update PR with results
         uses: actions/github-script@v7
         id: perf-comment
-        if: ${{ github.event_name == 'pull_request' }}
+        if: ${{ github.event_name == 'pull_request' && steps.download-artifact.outputs.continue == 'true' }}
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
