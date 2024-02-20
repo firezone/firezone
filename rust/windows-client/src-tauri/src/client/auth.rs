@@ -8,6 +8,9 @@ use std::path::PathBuf;
 use subtle::ConstantTimeEq;
 use url::Url;
 
+mod inner;
+use inner::Inner;
+
 const NONCE_LENGTH: usize = 32;
 
 #[derive(thiserror::Error, Debug)]
@@ -35,9 +38,8 @@ pub(crate) enum Error {
 type Result<T> = std::result::Result<T, Error>;
 
 pub(crate) struct Auth {
-    /// Key for secure keyrings, e.g. "dev.firezone.client/token" for releases
-    /// and something else for automated tests of the auth module.
-    keyring_key: &'static str,
+    /// Implementation details in case we want to disable `keyring-rs`
+    inner: Inner,
     state: State,
 }
 
@@ -88,8 +90,9 @@ impl Auth {
 
     /// Creates a new Auth struct with a custom keyring key for testing.
     fn new_with_key(keyring_key: &'static str) -> Result<Self> {
+        let inner = Inner::new(keyring_key);
         let mut this = Self {
-            keyring_key,
+            inner,
             state: State::SignedOut,
         };
 
@@ -113,10 +116,7 @@ impl Auth {
     ///
     /// Performs I/O.
     pub fn sign_out(&mut self) -> Result<()> {
-        match self.keyring_entry()?.delete_password() {
-            Ok(_) | Err(keyring::Error::NoEntry) => {}
-            Err(e) => Err(e)?,
-        }
+        self.inner.delete_password()?;
         if let Err(error) = std::fs::remove_file(actor_name_path()?) {
             // Ignore NotFound, since the file is gone anyway
             if error.kind() != std::io::ErrorKind::NotFound {
@@ -159,10 +159,11 @@ impl Auth {
             req.nonce.expose_secret(),
             resp.fragment.expose_secret()
         );
+        let token = SecretString::from(token);
 
-        // This must be the only place the GUI can call `set_password`, since
+        // This MUST be the only place the GUI can call `set_password`, since
         // the actor name is also saved here.
-        self.keyring_entry()?.set_password(&token)?;
+        self.inner.set_password(&token)?;
         let path = actor_name_path()?;
         std::fs::create_dir_all(path.parent().ok_or(Error::ActorNamePathWrong)?)
             .map_err(Error::CreateDirAll)?;
@@ -202,23 +203,14 @@ impl Auth {
 
         // This must be the only place the GUI can call `get_password`, since the
         // actor name is also loaded here.
-        let token = match self.keyring_entry()?.get_password() {
-            Err(keyring::Error::NoEntry) => return Ok(None),
-            Err(e) => return Err(e.into()),
-            Ok(token) => SecretString::from(token),
+        let Some(token) = self.inner.get_password()? else {
+            return Ok(None);
         };
 
         Ok(Some(SessionAndToken {
             session: Session { actor_name },
             token,
         }))
-    }
-
-    /// Returns an Entry into the OS' credential manager
-    ///
-    /// Anything you do in there is technically blocking I/O.
-    fn keyring_entry(&self) -> Result<keyring::Entry> {
-        Ok(keyring::Entry::new_with_target(self.keyring_key, "", "")?)
     }
 
     pub fn ongoing_request(&self) -> Result<&Request> {
