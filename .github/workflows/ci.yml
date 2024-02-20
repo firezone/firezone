@@ -227,8 +227,8 @@ jobs:
         if: "!cancelled()"
         run: docker compose logs api
 
-  performance-tests:
-    name: performance-tests-${{ matrix.test_name }}
+  perf-tests:
+    name: perf-tests-${{ matrix.test_name }}
     needs: build-images
     runs-on: ubuntu-22.04
     permissions:
@@ -268,8 +268,7 @@ jobs:
           sed -i 's/^\(\s*\)RUST_LOG:.*$/\1RUST_LOG: wire=error,info/' docker-compose.yml
           cat docker-compose.yml | grep RUST_LOG
 
-          # TODO: Order matters here, but it shouldn't. There seems to be some race
-          # condition involved in letting Docker deterime the start order here.
+          # Start services in the same order each time for the tests
           docker compose up -d iperf3
           docker compose up -d api web
           docker compose up -d relay
@@ -277,7 +276,6 @@ jobs:
           docker compose up -d client
 
       - name: 'Performance test: ${{ matrix.test_name }}'
-        id: performance-test
         timeout-minutes: 5
         env:
           TEST_NAME: ${{ matrix.test_name }}
