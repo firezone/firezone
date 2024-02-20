@@ -157,6 +157,8 @@ defmodule Web.Sites.NewToken do
            "connlib_shared=trace",
            "tunnel_state=trace",
            "phoenix_channel=debug",
+           "str0m=info",
+           "snownet=debug",
            "webrtc=error",
            "warn"
          ],
@@ -180,6 +182,7 @@ defmodule Web.Sites.NewToken do
       "--sysctl net.ipv6.conf.all.disable_ipv6=0",
       "--sysctl net.ipv6.conf.all.forwarding=1",
       "--sysctl net.ipv6.conf.default.forwarding=1",
+      "--device=\"/dev/net/tun:/dev/net/tun\"",
       Enum.map(env ++ [{"FIREZONE_ENABLE_MASQUERADE", "1"}], fn {key, value} ->
         "--env #{key}=\"#{value}\""
       end),

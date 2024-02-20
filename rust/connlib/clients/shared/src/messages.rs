@@ -7,7 +7,6 @@ use connlib_shared::messages::{
     ResourceId, ReuseConnection,
 };
 use url::Url;
-use webrtc::ice_transport::ice_candidate::RTCIceCandidate;
 
 #[derive(Debug, PartialEq, Eq, Deserialize, Serialize, Clone)]
 pub struct InitClient {
@@ -53,8 +52,6 @@ impl Eq for Connect {}
 // by a client.
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "snake_case", tag = "event", content = "payload")]
-// TODO: We will need to re-visit webrtc-rs
-#[allow(clippy::large_enum_variant)]
 pub enum IngressMessages {
     Init(InitClient),
 
@@ -73,7 +70,7 @@ pub struct BroadcastGatewayIceCandidates {
     /// Gateway's id the ice candidates are meant for
     pub gateway_ids: Vec<GatewayId>,
     /// Actual RTC ice candidates
-    pub candidates: Vec<RTCIceCandidate>,
+    pub candidates: Vec<String>,
 }
 
 /// A gateway's ice candidate message.
@@ -82,7 +79,7 @@ pub struct GatewayIceCandidates {
     /// Gateway's id the ice candidates are from
     pub gateway_id: GatewayId,
     /// Actual RTC ice candidates
-    pub candidates: Vec<RTCIceCandidate>,
+    pub candidates: Vec<String>,
 }
 
 /// The replies that can arrive from the channel by a client
@@ -139,9 +136,7 @@ impl From<ReplyMessages> for Messages {
 // These messages can be sent from a client to a control pane
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "snake_case", tag = "event", content = "payload")]
-// large_enum_variant: TODO: We will need to re-visit webrtc-rs
 // enum_variant_names: These are the names in the portal!
-#[allow(clippy::large_enum_variant, clippy::enum_variant_names)]
 pub enum EgressMessages {
     PrepareConnection {
         resource_id: ResourceId,
@@ -195,9 +190,8 @@ mod test {
                              "domain":"google.com"
                           },
                           "ice_parameters":{
-                             "ice_lite":false,
-                             "password":"pMAxxTgHHSdpqHRzHGNvuNsZinLrMxwe",
-                             "username_fragment":"tGeqOjtGuPzPpuOx"
+                             "username":"tGeqOjtGuPzPpuOx",
+                             "password":"pMAxxTgHHSdpqHRzHGNvuNsZinLrMxwe"
                           }
                        }
                     },
@@ -341,24 +335,24 @@ mod test {
                 resource_id: "f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3".parse().unwrap(),
                 relays: vec![
                     Relay::Stun(Stun {
-                        uri: "stun:189.172.73.111:3478".to_string(),
+                        uri: "189.172.73.111:3478".parse().unwrap(),
                     }),
                     Relay::Turn(Turn {
                         expires_at: NaiveDateTime::from_timestamp_opt(1686629954, 0)
                             .unwrap()
                             .and_utc(),
-                        uri: "turn:189.172.73.111:3478".to_string(),
+                        uri: "189.172.73.111:3478".parse().unwrap(),
                         username: "1686629954:C7I74wXYFdFugMYM".to_string(),
                         password: "OXXRDJ7lJN1cm+4+2BWgL87CxDrvpVrn5j3fnJHye98".to_string(),
                     }),
                     Relay::Stun(Stun {
-                        uri: "stun:::1:3478".to_string(),
+                        uri: "[::1]:3478".parse().unwrap(),
                     }),
                     Relay::Turn(Turn {
                         expires_at: NaiveDateTime::from_timestamp_opt(1686629954, 0)
                             .unwrap()
                             .and_utc(),
-                        uri: "turn:::1:3478".to_string(),
+                        uri: "[::1]:3478".parse().unwrap(),
                         username: "1686629954:dpHxHfNfOhxPLfMG".to_string(),
                         password: "8Wtb+3YGxO6ia23JUeSEfZ2yFD6RhGLkbgZwqjebyKY".to_string(),
                     }),
@@ -379,24 +373,24 @@ mod test {
                         "relays": [
                             {
                                 "type":"stun",
-                                "uri":"stun:189.172.73.111:3478"
+                                "uri": "stun:189.172.73.111:3478"
                             },
                             {
                                 "expires_at": 1686629954,
                                 "password": "OXXRDJ7lJN1cm+4+2BWgL87CxDrvpVrn5j3fnJHye98",
                                 "type": "turn",
-                                "uri": "turn:189.172.73.111:3478",
+                                "uri": "189.172.73.111:3478",
                                 "username":"1686629954:C7I74wXYFdFugMYM"
                             },
                             {
                                 "type": "stun",
-                                "uri": "stun:::1:3478"
+                                "uri": "[::1]:3478"
                             },
                             {
                                 "expires_at": 1686629954,
                                 "password": "8Wtb+3YGxO6ia23JUeSEfZ2yFD6RhGLkbgZwqjebyKY",
                                 "type": "turn",
-                                "uri": "turn:::1:3478",
+                                "uri": "turn:[::1]:3478",
                                 "username": "1686629954:dpHxHfNfOhxPLfMG"
                             }]
                     },

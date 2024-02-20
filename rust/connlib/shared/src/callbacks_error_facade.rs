@@ -92,4 +92,11 @@ impl<CB: Callbacks> Callbacks for CallbackErrorFacade<CB> {
             .get_system_default_resolvers()
             .map_err(|err| Error::GetSystemDefaultResolverFailed(err.to_string()))
     }
+
+    #[cfg(target_os = "android")]
+    fn protect_file_descriptor(&self, file_descriptor: std::os::fd::RawFd) -> Result<()> {
+        self.0
+            .protect_file_descriptor(file_descriptor)
+            .map_err(|err| Error::ProtectFileDescriptorFailed(err.to_string()))
+    }
 }

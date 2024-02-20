@@ -37,7 +37,7 @@ sadness-generator = "0.5.0"
 secrecy = { workspace = true }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-semver = { version = "1.0.21", features = ["serde"] }
+semver = { version = "1.0.22", features = ["serde"] }
 subtle = "2.5.0"
 tauri = { version = "1.5", features = [ "dialog", "shell-open-api", "system-tray" ] }
 tauri-runtime = "0.14.2"
