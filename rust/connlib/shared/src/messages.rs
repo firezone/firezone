@@ -302,9 +302,8 @@ pub struct Turn {
     //// Expire time of the username/password in unix millisecond timestamp UTC
     #[serde(with = "ts_seconds")]
     pub expires_at: DateTime<Utc>,
-    /// URI of the relay
-    #[serde(with = "stun_turn_uri", alias = "addr")]
-    pub uri: SocketAddr,
+    /// Address of the relay
+    pub addr: SocketAddr,
     /// Username for the relay
     pub username: String,
     // TODO: SecretString
@@ -315,29 +314,6 @@ pub struct Turn {
 /// Stun kind of relay
 #[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
 pub struct Stun {
-    /// URI for the relay
-    #[serde(with = "stun_turn_uri", alias = "addr")]
-    pub uri: SocketAddr,
-}
-
-mod stun_turn_uri {
-    use serde::de::Error;
-    use serde::Deserialize;
-    use std::net::SocketAddr;
-
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<SocketAddr, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-        D::Error: Error,
-    {
-        let string = String::deserialize(deserializer)?;
-
-        let socket_addr = string
-            .trim_start_matches("stun:")
-            .trim_start_matches("turn:")
-            .parse::<SocketAddr>()
-            .map_err(D::Error::custom)?;
-
-        Ok(socket_addr)
-    }
+    /// Address for the relay
+    pub addr: SocketAddr,
 }
