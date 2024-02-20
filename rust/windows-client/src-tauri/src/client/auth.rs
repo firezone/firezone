@@ -8,8 +8,15 @@ use std::path::PathBuf;
 use subtle::ConstantTimeEq;
 use url::Url;
 
-mod inner;
-use inner::Inner;
+#[cfg(target_os = "linux")]
+#[path = "auth/token_storage_mock.rs"]
+mod token_storage;
+
+#[cfg(target_family = "windows")]
+#[path = "auth/token_storage_keyring.rs"]
+mod token_storage;
+
+use token_storage::TokenStorage;
 
 const NONCE_LENGTH: usize = 32;
 
@@ -39,7 +46,7 @@ type Result<T> = std::result::Result<T, Error>;
 
 pub(crate) struct Auth {
     /// Implementation details in case we want to disable `keyring-rs`
-    inner: Inner,
+    token_store: TokenStorage,
     state: State,
 }
 
@@ -90,9 +97,9 @@ impl Auth {
 
     /// Creates a new Auth struct with a custom keyring key for testing.
     fn new_with_key(keyring_key: &'static str) -> Result<Self> {
-        let inner = Inner::new(keyring_key);
+        let token_store = TokenStorage::new(keyring_key);
         let mut this = Self {
-            inner,
+            token_store,
             state: State::SignedOut,
         };
 
@@ -116,7 +123,7 @@ impl Auth {
     ///
     /// Performs I/O.
     pub fn sign_out(&mut self) -> Result<()> {
-        self.inner.delete_password()?;
+        self.token_store.delete()?;
         if let Err(error) = std::fs::remove_file(actor_name_path()?) {
             // Ignore NotFound, since the file is gone anyway
             if error.kind() != std::io::ErrorKind::NotFound {
@@ -163,7 +170,7 @@ impl Auth {
 
         // This MUST be the only place the GUI can call `set_password`, since
         // the actor name is also saved here.
-        self.inner.set_password(&token)?;
+        self.token_store.set(token.clone())?;
         let path = actor_name_path()?;
         std::fs::create_dir_all(path.parent().ok_or(Error::ActorNamePathWrong)?)
             .map_err(Error::CreateDirAll)?;
@@ -203,7 +210,7 @@ impl Auth {
 
         // This must be the only place the GUI can call `get_password`, since the
         // actor name is also loaded here.
-        let Some(token) = self.inner.get_password()? else {
+        let Some(token) = self.token_store.get()? else {
             return Ok(None);
         };
 
