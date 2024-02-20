@@ -323,6 +323,13 @@ async fn smoke_test(ctlr_tx: CtlrTx) -> Result<()> {
     tokio::time::sleep_until(quit_time).await;
 
     // Check results of tests
+    // But first print some FS info for debugging
+    tracing::info!(?path);
+    let current_dir = std::env::current_dir().unwrap();
+    let dir_entries = std::fs::read_dir(".").unwrap().collect::<Vec<_>>();
+    tracing::info!(?current_dir);
+    tracing::info!(?dir_entries);
+
     let zip_len = tokio::fs::metadata(&path)
         .await
         .context("Failed to get zip file metadata")?
