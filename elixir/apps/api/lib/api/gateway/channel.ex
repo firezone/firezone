@@ -35,14 +35,15 @@ defmodule API.Gateway.Channel do
       :ok = Gateways.connect_gateway(socket.assigns.gateway)
 
       config = Domain.Config.fetch_env!(:domain, Domain.Gateways)
-      ipv4_masquerade_enabled = Keyword.fetch!(config, :gateway_ipv4_masquerade)
-      ipv6_masquerade_enabled = Keyword.fetch!(config, :gateway_ipv6_masquerade)
+      ipv4_masquerade_enabled? = Keyword.fetch!(config, :gateway_ipv4_masquerade)
+      ipv6_masquerade_enabled? = Keyword.fetch!(config, :gateway_ipv6_masquerade)
 
       push(socket, "init", %{
         interface: Views.Interface.render(socket.assigns.gateway),
-        # TODO: move to settings
-        ipv4_masquerade_enabled: ipv4_masquerade_enabled,
-        ipv6_masquerade_enabled: ipv6_masquerade_enabled
+        config: %{
+          ipv4_masquerade_enabled: ipv4_masquerade_enabled?,
+          ipv6_masquerade_enabled: ipv6_masquerade_enabled?
+        }
       })
 
       {:noreply, socket}
@@ -259,8 +260,15 @@ defmodule API.Gateway.Channel do
         },
         socket
       ) do
-    {{channel_pid, socket_ref, resource_id, {opentelemetry_ctx, opentelemetry_span_ctx}}, refs} =
-      Map.pop(socket.assigns.refs, ref)
+    {
+      {
+        channel_pid,
+        socket_ref,
+        resource_id,
+        {opentelemetry_ctx, opentelemetry_span_ctx}
+      },
+      refs
+    } = Map.pop(socket.assigns.refs, ref)
 
     OpenTelemetry.Ctx.attach(opentelemetry_ctx)
     OpenTelemetry.Tracer.set_current_span(opentelemetry_span_ctx)

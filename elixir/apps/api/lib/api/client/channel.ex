@@ -285,7 +285,7 @@ defmodule API.Client.Channel do
     OpenTelemetry.Tracer.with_span "client.create_log_sink" do
       case Instrumentation.create_remote_log_sink(socket.assigns.client, actor_name, account_slug) do
         {:ok, signed_url} -> {:reply, {:ok, signed_url}, socket}
-        {:error, :disabled} -> {:reply, {:error, :disabled}, socket}
+        {:error, :disabled} -> {:reply, {:error, %{reason: :disabled}}, socket}
       end
     end
   end
@@ -343,11 +343,11 @@ defmodule API.Client.Channel do
       else
         {:ok, []} ->
           OpenTelemetry.Tracer.set_status(:error, "offline")
-          {:reply, {:error, :offline}, socket}
+          {:reply, {:error, %{reason: :offline}}, socket}
 
         {:error, :not_found} ->
           OpenTelemetry.Tracer.set_status(:error, "not_found")
-          {:reply, {:error, :not_found}, socket}
+          {:reply, {:error, %{reason: :not_found}}, socket}
       end
     end
   end
@@ -396,11 +396,11 @@ defmodule API.Client.Channel do
       else
         {:error, :not_found} ->
           OpenTelemetry.Tracer.set_status(:error, "not_found")
-          {:reply, {:error, :not_found}, socket}
+          {:reply, {:error, %{reason: :not_found}}, socket}
 
         false ->
           OpenTelemetry.Tracer.set_status(:error, "offline")
-          {:reply, {:error, :offline}, socket}
+          {:reply, {:error, %{reason: :offline}}, socket}
       end
     end
   end
@@ -452,11 +452,11 @@ defmodule API.Client.Channel do
       else
         {:error, :not_found} ->
           OpenTelemetry.Tracer.set_status(:error, "not_found")
-          {:reply, {:error, :not_found}, socket}
+          {:reply, {:error, %{reason: :not_found}}, socket}
 
         false ->
           OpenTelemetry.Tracer.set_status(:error, "offline")
-          {:reply, {:error, :offline}, socket}
+          {:reply, {:error, %{reason: :offline}}, socket}
       end
     end
   end
