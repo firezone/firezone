@@ -12,7 +12,7 @@ use url::Url;
 #[path = "auth/token_storage_mock.rs"]
 mod token_storage;
 
-#[cfg(target_family = "windows")]
+#[cfg(not(target_os = "linux"))]
 #[path = "auth/token_storage_keyring.rs"]
 mod token_storage;
 
