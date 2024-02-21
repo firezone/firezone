@@ -9,8 +9,8 @@ defmodule Web.SignIn.Success do
     query_params =
       params
       |> Map.take(~w[fragment state actor_name identity_provider_identifier])
-      |> Map.put(:account_slug, socket.assigns.account.slug)
-      |> Map.put(:account_name, socket.assigns.account.name)
+      |> Map.put("account_slug", socket.assigns.account.slug)
+      |> Map.put("account_name", socket.assigns.account.name)
 
     socket = assign(socket, :params, query_params)
     {:ok, socket}
