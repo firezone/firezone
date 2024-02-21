@@ -126,7 +126,10 @@ exports.script = async function (github, context, test_names) {
   });
 
   const botComment = comments.find((comment) => {
-    return comment.user.type === "Bot" && comment.body.includes(test_name);
+    return (
+      comment.user.type === "Bot" &&
+      comment.body.includes("Performance Test Results")
+    );
   });
 
   // 3. Update previous comment or create new one
