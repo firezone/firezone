@@ -282,7 +282,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           overwrite: true
-          name: '${{ matrix.test_name }}-${{ github.ref_name }}-iperf3results'
+          name: ${{ matrix.test_name }}-${{ github.ref_name == 'main' && 'main' || github.sha }}-iperf3results
           path: ./${{ matrix.test_name }}.json
       - name: Show Client logs
         if: "!cancelled()"
@@ -313,7 +313,7 @@ jobs:
       - name: Download PR performance test results
         uses: actions/download-artifact@v4
         with:
-          name: '*-${{ github.ref_name }}-iperf3results'
+          name: '*-${{ github.sha }}-iperf3results'
       - name: Download main branch performance test results
         uses: actions/download-artifact@v4
         with:
@@ -323,7 +323,7 @@ jobs:
         run: |
           set -xe
 
-          for zip in "*-${{ github.ref_name }}-iperf3results.zip"; do
+          for zip in "*-${{ github.sha }}-iperf3results.zip"; do
             unzip $zip
           done
 
