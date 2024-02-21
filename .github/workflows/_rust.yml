@@ -141,8 +141,8 @@ jobs:
 
   # This should be identical to `build-push-windows-release-artifacts` in `cd.yml` except for the Github permissions, needs tag, and uploading step
   build-tauri:
-    name: build-tauri-${{ matrix.name }}
-    runs-on: windows-2019
+    name: build-tauri-${{ matrix.name }}-${{ matrix.target_os }}
+    runs-on: ${{ matrix.runs-on }}
     defaults:
       run:
         working-directory: ./rust/windows-client
@@ -155,6 +155,8 @@ jobs:
           - package: firezone-windows-client
             artifact: firezone-windows-client
             name: windows-client
+          - runs-on: windows-2019
+            target_os: windows
     env:
       BINARY_DEST_PATH: ${{ matrix.artifact }}
       CONNLIB_LOG_UPLOAD_INTERVAL_SECS: 300
@@ -164,8 +166,6 @@ jobs:
         with:
           node-version: '20'
       - uses: ./.github/actions/setup-rust
-        with:
-          targets: ${{ matrix.target }}
       - uses: ./.github/actions/setup-tauri
         with:
           target_os: ${{ matrix.target_os }}
