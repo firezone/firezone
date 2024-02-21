@@ -86,8 +86,8 @@ jobs:
 
   # Runs the Windows client smoke test, built in debug mode. We can't run it in release
   # mode because of a known issue: <https://github.com/firezone/firezone/blob/456e044f882c2bb314e19cc44c0d19c5ad817b7c/rust/windows-client/src-tauri/src/client.rs#L162-L164>
-  windows-smoke-test:
-    name: windows-smoke-test-${{ matrix.runs-on }}
+  gui-smoke-test:
+    name: gui-smoke-test-${{ matrix.runs-on }}
     strategy:
       fail-fast: false
       matrix:
@@ -140,8 +140,8 @@ jobs:
         run: bash scripts/crash-handling-smoke-test.bash
 
   # This should be identical to `build-push-windows-release-artifacts` in `cd.yml` except for the Github permissions, needs tag, and uploading step
-  build-tauri:
-    name: build-tauri-${{ matrix.target_os }}
+  build-gui:
+    name: build-gui-${{ matrix.target_os }}
     runs-on: ${{ matrix.runs-on }}
     defaults:
       run:
