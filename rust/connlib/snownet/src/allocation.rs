@@ -17,7 +17,6 @@ use stun_codec::{
     rfc5389::{
         attributes::{ErrorCode, MessageIntegrity, Nonce, Realm, Username, XorMappedAddress},
         errors::{StaleNonce, Unauthorized},
-        methods::BINDING,
     },
     rfc5766::{
         attributes::{
