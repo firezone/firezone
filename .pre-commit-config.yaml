@@ -28,3 +28,18 @@ repos:
           - master
           - --pattern
           - '^(?!((chore|feat|feature|bug|fix|build|ci|docs|style|refactor|perf|test|revert)\/[@a-zA-Z0-9\-\.\/]+)$).*'
+
+  # Third party pre-commit hooks
+  - repo: https://github.com/koalaman/shellcheck-precommit
+    rev: v0.9.0
+    hooks:
+      - id: shellcheck
+        args: ["--severity=warning"]
+        exclude: ^.*/gradlew$
+  - repo: https://github.com/pecigonzalo/pre-commit-shfmt
+    rev: v2.1.0
+    hooks:
+      - id: shell-fmt
+        args:
+          - -i
+          - "4"
