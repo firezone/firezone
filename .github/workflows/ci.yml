@@ -322,9 +322,9 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const { data } = await github.actions.listWorkflowRuns({
-              owner: "firezone",
-              repo: "firezone",
+            const { data } = await github.rest.actions.listWorkflowRuns({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
               workflow_id: "cd.yml",
               status: 'success',
               per_page: 1
