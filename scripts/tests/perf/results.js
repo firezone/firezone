@@ -1,4 +1,5 @@
 const fs = require("fs");
+const path = require("path");
 
 function getDiffPercents(main, current) {
   let diff = -1 * (100 - current / (main / 100));
@@ -40,7 +41,7 @@ exports.script = async function (github, context, test_name) {
 
   // 2. Read the main results
   const results_main = JSON.parse(
-    fs.readFileSync(test_name + "-main.json")
+    fs.readFileSync(path.join("main", test_name + ".json"))
   ).end;
 
   let output = "";
@@ -78,25 +79,6 @@ exports.script = async function (github, context, test_name) {
 | ${tcp_sum_received_bits_per_second} | ${tcp_sum_sent_bits_per_second} | ${tcp_sum_sent_retransmits} |
 `;
   } else if (test_name.includes("udp")) {
-    const udp_sum_bits_per_second =
-      humanFileSize(results.sum.bits_per_second) +
-      " (" +
-      getDiffPercents(
-        results_main.sum.bits_per_second,
-        results.sum.bits_per_second
-      ) +
-      ")";
-    const udp_sum_jitter_ms =
-      results.sum.jitter_ms.toFixed(2) +
-      "ms (" +
-      getDiffPercents(results_main.sum.jitter_ms, results.sum.jitter_ms) +
-      ")";
-    const udp_sum_lost_percent =
-      results.sum.lost_percent.toFixed(2) +
-      "% (" +
-      getDiffPercents(results_main.sum.lost_percent, results.sum.lost_percent) +
-      ")";
-
     const udp_sum_bits_per_second =
       humanFileSize(results.sum.bits_per_second) +
       " (" +

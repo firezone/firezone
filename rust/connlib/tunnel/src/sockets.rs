@@ -221,13 +221,13 @@ fn make_socket(addr: impl Into<SocketAddr>) -> Result<std::net::UdpSocket> {
         socket.set_mark(crate::FIREZONE_MARK)?;
     }
 
-    socket.set_nonblocking(true)?;
-    socket.bind(&addr)?;
-
     // Note: for AF_INET sockets IPV6_V6ONLY is not a valid flag
     if addr.is_ipv6() {
         socket.set_only_v6(true)?;
     }
+
+    socket.set_nonblocking(true)?;
+    socket.bind(&addr)?;
 
     Ok(socket.into())
 }
