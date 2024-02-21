@@ -322,8 +322,6 @@ defmodule Web.NavigationComponents do
   slot :inner_block, required: true
   attr :rest, :global
 
-  # XXX: We could add automated testing to make sure these don't return 404s, but that will fail
-  # in scenarios where we want to add links to the portal that aren't published yet on the website.
   def website_link(assigns) do
     ~H"""
     <.link

@@ -39,6 +39,15 @@ defmodule Web.Settings.Billing do
         <.button icon="hero-pencil" phx-click="redirect_to_billing_portal">
           Manage
         </.button>
+        <.button navigate={
+          mailto_support(
+            @account,
+            @subject,
+            "Billing question: #{@account.name}"
+          )
+        }>
+          Contact Sales Team
+        </.button>
       </:action>
       <:content>
         <.flash :if={@error} kind={:error}>
@@ -63,9 +72,6 @@ defmodule Web.Settings.Billing do
             <:label>Current Plan</:label>
             <:value>
               <%= @account.metadata.stripe.product_name %>
-              <%= if @account.metadata.strine.product_name != "Enterprise" do %>
-                <.website_link href="/contact/sales">Contact Sales</.website_link>
-              <% end %>
             </:value>
           </.vertical_table_row>
 
