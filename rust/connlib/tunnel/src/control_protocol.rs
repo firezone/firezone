@@ -45,7 +45,7 @@ fn stun(relays: &[Relay]) -> HashSet<SocketAddr> {
         .iter()
         .filter_map(|r| {
             if let Relay::Stun(r) = r {
-                Some(r.uri)
+                Some(r.addr)
             } else {
                 None
             }
@@ -59,7 +59,7 @@ fn turn(relays: &[Relay]) -> HashSet<(SocketAddr, String, String, String)> {
         .filter_map(|r| {
             if let Relay::Turn(r) = r {
                 Some((
-                    r.uri,
+                    r.addr,
                     r.username.clone(),
                     r.password.clone(),
                     REALM.to_string(),
