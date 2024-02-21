@@ -172,7 +172,7 @@ defmodule Web.Acceptance.Auth.OpenIDConnectTest do
         provider_identifier: entity_id
       )
 
-    # Sign In as an portal user
+    # Sign In as a portal user
     session
     |> visit(~p"/#{account}")
     |> assert_el(Query.text("Sign in to #{account.name}"))
@@ -187,6 +187,8 @@ defmodule Web.Acceptance.Auth.OpenIDConnectTest do
     |> visit(~p"/#{account}?#{redirect_params}")
     |> assert_el(Query.text("Sign in to #{account.name}"))
     |> click(Query.link("Sign in with Vault"))
+    |> assert_el(Query.text("Sign in successful"))
+    |> assert_path(~p"/#{account}/sign_in/success")
     |> assert_el(Query.text("Client redirected"))
     |> assert_path(~p"/handle_client_sign_in_callback")
 
@@ -240,6 +242,8 @@ defmodule Web.Acceptance.Auth.OpenIDConnectTest do
     |> assert_el(Query.text("Sign in to #{account.name}"))
     |> click(Query.link("Sign in with Vault"))
     |> Vault.userpass_flow(oidc_login, oidc_password)
+    |> assert_el(Query.text("Sign in successful"))
+    |> assert_path(~p"/#{account}/sign_in/success")
     |> assert_el(Query.text("Client redirected"))
     |> assert_path(~p"/handle_client_sign_in_callback")
 
