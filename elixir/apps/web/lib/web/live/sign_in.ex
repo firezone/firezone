@@ -58,7 +58,11 @@ defmodule Web.SignIn do
             <.flash flash={@flash} kind={:error} />
             <.flash flash={@flash} kind={:info} />
 
-            <.intersperse_blocks>
+            <.flash :if={not Accounts.account_active?(@account)} kind={:error} style="wide">
+              This account has been disabled, please contact your administrator.
+            </.flash>
+
+            <.intersperse_blocks :if={not disabled?(@account, @params)}>
               <:separator>
                 <.separator />
               </:separator>
@@ -113,6 +117,14 @@ defmodule Web.SignIn do
       </div>
     </section>
     """
+  end
+
+  def disabled?(account, params) do
+    # We allow to sign in to Web UI even for disabled accounts
+    case Web.Auth.fetch_auth_context_type!(params) do
+      :client -> not Accounts.account_active?(account)
+      :browser -> false
+    end
   end
 
   def separator(assigns) do

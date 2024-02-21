@@ -149,7 +149,7 @@ defmodule Web.SignUp do
           </table>
         </div>
       </div>
-      <div class="text-base leading-7 text-center text-neutral-900">
+      <div class="text-base text-center text-neutral-900">
         <.form
           for={%{}}
           id="resend-email"
@@ -163,9 +163,10 @@ defmodule Web.SignUp do
             name="email[provider_identifier]"
             value={@identity.provider_identifier}
           />
-          <.submit_button>
+
+          <.button type="submit" class="w-full">
             Sign In
-          </.submit_button>
+          </.button>
         </.form>
       </div>
     </div>
@@ -333,6 +334,8 @@ defmodule Web.SignUp do
 
       case Domain.Repo.transaction(multi) do
         {:ok, %{account: account, provider: provider, identity: identity}} ->
+          {:ok, account} = Domain.Billing.provision_account(account)
+
           {:ok, _} =
             Web.Mailer.AuthEmail.sign_up_link_email(
               account,
