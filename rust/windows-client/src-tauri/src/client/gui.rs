@@ -11,7 +11,7 @@ use crate::client::{
 use anyhow::{anyhow, bail, Context, Result};
 use arc_swap::ArcSwap;
 use connlib_client_shared::{file_logger, ResourceDescription};
-use connlib_shared::{control::SecureUrl, messages::ResourceId, windows::BUNDLE_ID};
+use connlib_shared::{control::SecureUrl, messages::ResourceId, BUNDLE_ID};
 use secrecy::{ExposeSecret, Secret, SecretString};
 use std::{net::IpAddr, path::PathBuf, str::FromStr, sync::Arc, time::Duration};
 use system_tray_menu::Event as TrayMenuEvent;
