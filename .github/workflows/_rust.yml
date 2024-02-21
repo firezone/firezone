@@ -141,24 +141,25 @@ jobs:
 
   # This should be identical to `build-push-windows-release-artifacts` in `cd.yml` except for the Github permissions, needs tag, and uploading step
   build-tauri:
-    name: build-tauri-${{ matrix.name }}-${{ matrix.target_os }}
+    name: build-tauri-${{ matrix.target_os }}
     runs-on: ${{ matrix.runs-on }}
     defaults:
       run:
         working-directory: ./rust/windows-client
     strategy:
       fail-fast: false
-      # The matrix is 1x1 to match the style of build-push-linux-release-artifacts
-      # In the future we could try to cross-compile aarch64-windows here.
       matrix:
+        runs-on:
+          # TODO
+          # - ubuntu-20.04
+          - windows-2019
         include:
-          - package: firezone-windows-client
-            artifact: firezone-windows-client
-            name: windows-client
+          # - runs-on: ubuntu-20.04
+          #   target_os: linux
           - runs-on: windows-2019
             target_os: windows
     env:
-      BINARY_DEST_PATH: ${{ matrix.artifact }}
+      BINARY_DEST_PATH: ${{ env.ARTIFACT }}
       CONNLIB_LOG_UPLOAD_INTERVAL_SECS: 300
     steps:
       - uses: actions/checkout@v4
@@ -191,23 +192,23 @@ jobs:
       - name: Save GUI client
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact }}-x64
+          name: ${{ env.BINARY_DEST_PATH }}-x64
           path: |
-            ${{ github.workspace }}/rust/windows-client/${{ matrix.artifact }}-x64.exe
-            ${{ github.workspace }}/rust/windows-client/${{ matrix.artifact }}-x64.exe.sha256sum.txt
+            ${{ github.workspace }}/rust/windows-client/${{ env.BINARY_DEST_PATH }}-x64.exe
+            ${{ github.workspace }}/rust/windows-client/${{ env.BINARY_DEST_PATH }}-x64.exe.sha256sum.txt
       - name: Save Windows MSI installer
         if: ${{ matrix.target_os == 'windows' }}
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact }}-x64-msi
+          name: ${{ env.BINARY_DEST_PATH }}-x64-msi
           path: |
-            ${{ github.workspace }}/rust/windows-client/${{ matrix.artifact }}-x64.msi
-            ${{ github.workspace }}/rust/windows-client/${{ matrix.artifact }}-x64.msi.sha256sum.txt
+            ${{ github.workspace }}/rust/windows-client/${{ env.BINARY_DEST_PATH }}-x64.msi
+            ${{ github.workspace }}/rust/windows-client/${{ env.BINARY_DEST_PATH }}-x64.msi.sha256sum.txt
       - name: Save Windows debug symbols
         if: ${{ matrix.target_os == 'windows' }}
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact }}-x64-pdb
+          name: ${{ env.BINARY_DEST_PATH }}-x64-pdb
           path: |
-            ${{ github.workspace }}/rust/windows-client/${{ matrix.artifact }}-x64.pdb
-            ${{ github.workspace }}/rust/windows-client/${{ matrix.artifact }}-x64.pdb.sha256sum.txt
+            ${{ github.workspace }}/rust/windows-client/${{ env.BINARY_DEST_PATH }}-x64.pdb
+            ${{ github.workspace }}/rust/windows-client/${{ env.BINARY_DEST_PATH }}-x64.pdb.sha256sum.txt
