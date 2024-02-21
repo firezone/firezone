@@ -162,10 +162,10 @@ jobs:
           - windows-2019
         include:
           - runs-on: ubuntu-20.04
-            rename-script: scripts/build/build-tauri-ubuntu.sh
+            rename-script: ../../scripts/build/build-tauri-ubuntu.sh
             target_os: linux
           - runs-on: windows-2019
-            rename-script: scripts/build/build-tauri-windows.sh
+            rename-script: ../../scripts/build/build-tauri-windows.sh
             target_os: windows
 
     env:
