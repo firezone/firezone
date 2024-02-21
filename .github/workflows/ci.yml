@@ -323,10 +323,10 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const { data } = await github.actions.listWorkflowRuns({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              workflow_id: 'cd.yml',
-              status: 'completed',
+              owner: "firezone",
+              repo: "firezone",
+              workflow_id: "cd.yml",
+              status: 'success',
               per_page: 1
             });
             return data.workflow_runs[0].id;
