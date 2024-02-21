@@ -1144,6 +1144,7 @@ dependencies = [
  "hickory-resolver",
  "hostname",
  "ip_network",
+ "itertools 0.12.1",
  "known-folders",
  "libc",
  "log",
