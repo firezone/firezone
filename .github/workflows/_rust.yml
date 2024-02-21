@@ -182,20 +182,45 @@ jobs:
           target_os: ${{ matrix.target_os }}
       - name: Install pnpm deps
         run: pnpm install
-      - name: Build release exe and MSI
+      - name: Build release exe and bundles
         run: pnpm build
       - name: Compute SHA256 and rename
         env:
           BINARY_DEST_PATH: ${{ env.BINARY_DEST_PATH }}
         run: bash ${{ matrix.rename-script }}
-      - name: Save GUI client
+      - name: Save Linux exe
+        if: ${{ matrix.target_os == 'linux' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}-${{ matrix.target_os}}-amd64
+          path: |
+            ${{ github.workspace }}/rust/windows-client/${{ matrix.artifact }}-amd64
+            ${{ github.workspace }}/rust/windows-client/${{ matrix.artifact }}-amd64.sha256sum.txt
+      - name: Save Linux AppImage (standalone binary)
+        if: ${{ matrix.target_os == 'windows' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}-amd64.AppImage
+          path: |
+            ${{ github.workspace }}/rust/windows-client/${{ matrix.artifact }}-amd64.AppImage
+            ${{ github.workspace }}/rust/windows-client/${{ matrix.artifact }}-amd64.AppImage.sha256sum.txt
+      - name: Save Linux deb (package)
+        if: ${{ matrix.target_os == 'windows' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}_amd64.deb
+          path: |
+            ${{ github.workspace }}/rust/windows-client/${{ matrix.artifact }}_amd64.deb
+            ${{ github.workspace }}/rust/windows-client/${{ matrix.artifact }}_amd64.deb.sha256sum.txt
+      - name: Save Windows exe
+        if: ${{ matrix.target_os == 'windows' }}
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}-${{ matrix.target_os}}-x64
           path: |
             ${{ github.workspace }}/rust/windows-client/${{ matrix.artifact }}-x64.exe
             ${{ github.workspace }}/rust/windows-client/${{ matrix.artifact }}-x64.exe.sha256sum.txt
-      - name: Save GUI installer
+      - name: Save Windows MSI (installer)
         if: ${{ matrix.target_os == 'windows' }}
         uses: actions/upload-artifact@v4
         with:
@@ -203,7 +228,7 @@ jobs:
           path: |
             ${{ github.workspace }}/rust/windows-client/${{ matrix.artifact }}-x64.msi
             ${{ github.workspace }}/rust/windows-client/${{ matrix.artifact }}-x64.msi.sha256sum.txt
-      - name: Save GUI debug symbols
+      - name: Save Windows pdb (debug symbols)
         if: ${{ matrix.target_os == 'windows' }}
         uses: actions/upload-artifact@v4
         with:
