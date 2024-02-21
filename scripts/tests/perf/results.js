@@ -98,25 +98,6 @@ exports.script = async function (github, context, test_name) {
       getDiffPercents(results_main.sum.lost_percent, results.sum.lost_percent) +
       ")";
 
-    const udp_sum_bits_per_second =
-      humanFileSize(results.sum.bits_per_second) +
-      " (" +
-      getDiffPercents(
-        results_main.sum.bits_per_second,
-        results.sum.bits_per_second
-      ) +
-      ")";
-    const udp_sum_jitter_ms =
-      results.sum.jitter_ms.toFixed(2) +
-      "ms (" +
-      getDiffPercents(results_main.sum.jitter_ms, results.sum.jitter_ms) +
-      ")";
-    const udp_sum_lost_percent =
-      results.sum.lost_percent.toFixed(2) +
-      "% (" +
-      getDiffPercents(results_main.sum.lost_percent, results.sum.lost_percent) +
-      ")";
-
     output = `## Performance Test Results: ${test_name}
 
 | Total/s | Jitter | Lost |
