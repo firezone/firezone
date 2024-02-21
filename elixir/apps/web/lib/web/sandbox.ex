@@ -31,9 +31,14 @@ defmodule Web.Sandbox do
   end
 
   def allow_live_ecto_sandbox(socket) do
+    user_agent = Phoenix.LiveView.get_connect_info(socket, :user_agent)
+
     if Phoenix.LiveView.connected?(socket) do
-      user_agent = Phoenix.LiveView.get_connect_info(socket, :user_agent)
       Sandbox.allow(Phoenix.Ecto.SQL.Sandbox, user_agent)
+    end
+
+    with %{owner: test_pid} <- Phoenix.Ecto.SQL.Sandbox.decode_metadata(user_agent) do
+      Process.put(:last_caller_pid, test_pid)
     end
 
     socket

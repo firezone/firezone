@@ -83,6 +83,10 @@ defmodule Web.Router do
   scope "/:account_id_or_slug", Web do
     pipe_through [:browser, :account]
 
+    live_session :client_redirect, on_mount: [Web.Sandbox, {Web.Auth, :mount_account}] do
+      live "/sign_in/success", SignIn.Success
+    end
+
     scope "/sign_in/providers/:provider_id" do
       # UserPass
       post "/verify_credentials", AuthController, :verify_credentials

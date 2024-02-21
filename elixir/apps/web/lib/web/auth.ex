@@ -118,18 +118,12 @@ defmodule Web.Auth do
         fragment: encoded_fragment,
         state: state,
         actor_name: identity.actor.name,
-        account_slug: conn.assigns.account.slug,
-        account_name: conn.assigns.account.name,
         identity_provider_identifier: identity.provider_identifier
       }
       |> Enum.reject(&is_nil(elem(&1, 1)))
-      |> URI.encode_query()
-
-    client_handler =
-      Domain.Config.fetch_env!(:web, :client_handler)
 
     Phoenix.Controller.redirect(conn,
-      external: "#{client_handler}handle_client_sign_in_callback?#{query}"
+      to: ~p"/#{conn.assigns.account.slug}/sign_in/success?#{query}"
     )
   end
 

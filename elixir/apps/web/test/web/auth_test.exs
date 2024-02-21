@@ -251,7 +251,7 @@ defmodule Web.AuthTest do
       assert conn.assigns.flash["error"] == "Please use a client application to access Firezone."
     end
 
-    test "redirects regular users to the deep link for client contexts", %{
+    test "redirects regular users to the sign in success page for client contexts", %{
       conn: conn,
       context: context,
       account: account,
@@ -270,11 +270,9 @@ defmodule Web.AuthTest do
         |> signed_in(provider, identity, context, encoded_fragment, redirect_params)
         |> redirected_to()
 
-      assert redirected_to =~ "firezone-fd0020211111://handle_client_sign_in_callback"
+      assert redirected_to =~ "#{account.slug}/sign_in/success"
       assert redirected_to =~ "fragment=#{URI.encode_www_form(encoded_fragment)}"
       assert redirected_to =~ "state=STATE"
-      assert redirected_to =~ "account_slug=#{account.slug}"
-      assert redirected_to =~ "account_name=#{URI.encode_www_form(account.name)}"
 
       assert redirected_to =~
                "identity_provider_identifier=#{URI.encode_www_form(identity.provider_identifier)}"
@@ -299,11 +297,9 @@ defmodule Web.AuthTest do
         |> signed_in(provider, identity, context, encoded_fragment, redirect_params)
         |> redirected_to()
 
-      assert redirected_to =~ "firezone-fd0020211111://handle_client_sign_in_callback"
+      assert redirected_to =~ "#{account.slug}/sign_in/success"
       assert redirected_to =~ "fragment=#{URI.encode_www_form(encoded_fragment)}"
       assert redirected_to =~ "state=STATE"
-      assert redirected_to =~ "account_slug=#{account.slug}"
-      assert redirected_to =~ "account_name=#{URI.encode_www_form(account.name)}"
 
       assert redirected_to =~
                "identity_provider_identifier=#{URI.encode_www_form(identity.provider_identifier)}"
@@ -780,11 +776,9 @@ defmodule Web.AuthTest do
       assert conn.halted
 
       assert redirected_to = redirected_to(conn)
-      assert redirected_to =~ "firezone-fd0020211111://handle_client_sign_in_callback"
+      assert redirected_to =~ "#{account.slug}/sign_in/success"
       assert redirected_to =~ "fragment=#{URI.encode_www_form(encoded_fragment)}"
       assert redirected_to =~ "state=STATE"
-      assert redirected_to =~ "account_slug=#{account.slug}"
-      assert redirected_to =~ "account_name=#{URI.encode_www_form(account.name)}"
 
       assert redirected_to =~
                "identity_provider_identifier=#{URI.encode_www_form(admin_identity.provider_identifier)}"
