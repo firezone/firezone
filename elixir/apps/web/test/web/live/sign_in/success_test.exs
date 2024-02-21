@@ -30,7 +30,7 @@ defmodule Web.SignIn.SuccessTest do
       |> Map.put("account_name", account.name)
       |> Map.put("account_slug", account.slug)
 
-    {path, _flash} = assert_redirect(lv)
+    {path, _flash} = assert_redirect(lv, 500)
     uri = URI.parse(path)
     assert URI.decode_query(uri.query) == expected_query_params
   end
