@@ -60,7 +60,6 @@ exports.script = async function (github, context, test_names) {
       fs.readFileSync(path.join("main", test_name + ".json"))
     ).end;
 
-
     if (test_name.includes("tcp")) {
       const tcp_sum_received_bits_per_second =
         humanFileSize(results.sum_received.bits_per_second) +
@@ -105,7 +104,10 @@ exports.script = async function (github, context, test_names) {
       const udp_sum_lost_percent =
         results.sum.lost_percent.toFixed(2) +
         "% (" +
-        getDiffPercents(results_main.sum.lost_percent, results.sum.lost_percent) +
+        getDiffPercents(
+          results_main.sum.lost_percent,
+          results.sum.lost_percent
+        ) +
         ")";
 
       udp_output += `| ${test_name} | ${udp_sum_bits_per_second} | ${udp_sum_jitter_ms} | ${udp_sum_lost_percent} |\n`;
@@ -118,7 +120,7 @@ exports.script = async function (github, context, test_names) {
 
   // Retrieve existing bot comments for the PR
   const { data: comments } = await github.rest.issues.listComments({
-    owner: context.repo.ownerh
+    owner: context.repo.owner,
     repo: context.repo.repo,
     issue_number: context.issue.number,
   });
