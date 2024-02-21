@@ -166,7 +166,7 @@ jobs:
           targets: ${{ matrix.target }}
       - uses: ./.github/actions/setup-tauri
         with:
-        target_os: ${{ matrix.target_os }}
+          target_os: ${{ matrix.target_os }}
       - name: Install pnpm deps
         run: pnpm install
       - name: Build release exe and MSI
