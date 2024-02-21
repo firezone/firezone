@@ -43,6 +43,9 @@ snownet = { workspace = true }
 # Needed for Android logging until tracing is working
 log = "0.4"
 
+[dev-dependencies]
+itertools = "0.12"
+
 [target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
 swift-bridge = { workspace = true }
 
