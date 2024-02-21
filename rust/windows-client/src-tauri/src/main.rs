@@ -11,6 +11,7 @@ fn main() -> anyhow::Result<()> {
 mod client {
     pub(crate) fn run() -> anyhow::Result<()> {
         println!("The Windows client does not compile on non-Windows platforms yet");
+        Ok(())
     }
 }
 
