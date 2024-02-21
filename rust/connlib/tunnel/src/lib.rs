@@ -331,15 +331,17 @@ where
             return Poll::Pending;
         };
 
-        let packet = match peer.untransform(packet.source(), self.write_buf.as_mut()) {
-            Ok(packet) => packet,
-            Err(e) => {
-                tracing::warn!(%conn_id, %local, %from, "Failed to transform packet: {e}");
+        let packet_len = packet.packet().len();
+        let packet =
+            match peer.untransform(packet.source(), &mut self.write_buf.as_mut()[..packet_len]) {
+                Ok(packet) => packet,
+                Err(e) => {
+                    tracing::warn!(%conn_id, %local, %from, "Failed to transform packet: {e}");
 
-                cx.waker().wake_by_ref();
-                return Poll::Pending;
-            }
-        };
+                    cx.waker().wake_by_ref();
+                    return Poll::Pending;
+                }
+            };
 
         Poll::Ready(packet)
     }
