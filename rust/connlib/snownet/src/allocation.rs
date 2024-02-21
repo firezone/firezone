@@ -1765,6 +1765,29 @@ mod tests {
     }
 
     #[test]
+    fn buffered_channel_bindings_to_different_peers_work() {
+        let mut allocation = Allocation::for_test(Instant::now());
+
+        allocation.bind_channel(PEER1, Instant::now());
+        allocation.bind_channel(PEER2_IP4, Instant::now());
+
+        let allocate = allocation.next_message().unwrap();
+        allocation.handle_test_input(
+            &allocate_response(&allocate, &[RELAY_ADDR_IP4]),
+            Instant::now(),
+        );
+
+        let channel_bind_peer_1 = allocation.next_message().unwrap();
+        let channel_bind_peer_2 = allocation.next_message().unwrap();
+
+        assert_eq!(channel_bind_peer_1.method(), CHANNEL_BIND);
+        assert_eq!(peer_address(&channel_bind_peer_1), PEER1);
+
+        assert_eq!(channel_bind_peer_2.method(), CHANNEL_BIND);
+        assert_eq!(peer_address(&channel_bind_peer_2), PEER2_IP4);
+    }
+
+    #[test]
     fn dont_send_channel_binding_if_inflight() {
         let mut allocation =
             Allocation::for_test(Instant::now()).with_allocate_response(&[RELAY_ADDR_IP4]);
@@ -1777,6 +1800,23 @@ mod tests {
         allocation.bind_channel(PEER1, Instant::now());
 
         assert!(allocation.next_message().is_none());
+    }
+
+    #[test]
+    fn send_channel_binding_to_second_peer_if_inflight_for_other() {
+        let mut allocation =
+            Allocation::for_test(Instant::now()).with_allocate_response(&[RELAY_ADDR_IP4]);
+
+        allocation.bind_channel(PEER1, Instant::now());
+
+        let channel_bind = allocation.next_message().unwrap();
+        assert_eq!(channel_bind.method(), CHANNEL_BIND);
+
+        allocation.bind_channel(PEER2_IP4, Instant::now());
+        let channel_bind_peer_2 = allocation.next_message().unwrap();
+
+        assert_eq!(channel_bind_peer_2.method(), CHANNEL_BIND);
+        assert_eq!(peer_address(&channel_bind_peer_2), PEER2_IP4);
     }
 
     #[test]
@@ -1975,6 +2015,10 @@ mod tests {
             CHANNEL_BIND,
             request.transaction_id(),
         )
+    }
+
+    fn peer_address(message: &Message<Attribute>) -> SocketAddr {
+        message.get_attribute::<XorPeerAddress>().unwrap().address()
     }
 
     impl Allocation {
