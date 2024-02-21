@@ -64,9 +64,9 @@ impl GatewayState {
         Some((peer.conn_id, packet))
     }
 
-    pub fn poll(&mut self, cx: &mut Context<'_>) -> Poll<impl Iterator<Item = ClientId> + '_> {
+    pub fn poll(&mut self, cx: &mut Context<'_>) -> Poll<Vec<ClientId>> {
         ready!(self.expire_interval.poll_tick(cx));
-        Poll::Ready(self.expire_resources())
+        Poll::Ready(self.expire_resources().collect_vec())
     }
 
     fn expire_resources(&self) -> impl Iterator<Item = ClientId> + '_ {

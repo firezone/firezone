@@ -136,10 +136,10 @@ where
     pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Result<Event<ClientId>>> {
         match self.role_state.poll(cx) {
             Poll::Ready(ids) => {
-                for id in ids {
-                    self.connections_state.peers_by_id.remove(&id);
-                }
                 cx.waker().wake_by_ref();
+                for id in ids {
+                    self.cleanup_connection(id);
+                }
             }
             Poll::Pending => {}
         }
