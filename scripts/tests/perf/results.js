@@ -36,16 +36,19 @@ function humanFileSize(bytes, dp = 1) {
 }
 
 exports.script = async function (github, context, test_names) {
-  let output = `### Performance Test Results`;
-  let tcp_output = `
+  let output = `### Performance Test Results
 
-| Received/s | Sent/s | Retransmits |
-|---|---|---|
+  `;
+  let tcp_output = `#### TCP
+
+| Test Name | Received/s | Sent/s | Retransmits |
+|---|---|---|---|
 `;
 
-  let udp_output = `
-| Total/s | Jitter | Lost |
-|---|---|---|
+  let udp_output = `#### UDP
+
+| Test Name | Total/s | Jitter | Lost |
+|---|---|---|---|
 `;
 
   for (const test_name of test_names) {
@@ -84,7 +87,7 @@ exports.script = async function (github, context, test_names) {
         ) +
         ")";
 
-      tcp_output += `| ${tcp_sum_received_bits_per_second} | ${tcp_sum_sent_bits_per_second} | ${tcp_sum_sent_retransmits} |`;
+      tcp_output += `| ${test_name} | ${tcp_sum_received_bits_per_second} | ${tcp_sum_sent_bits_per_second} | ${tcp_sum_sent_retransmits} |\n`;
     } else if (test_name.includes("udp")) {
       const udp_sum_bits_per_second =
         humanFileSize(results.sum.bits_per_second) +
@@ -105,7 +108,7 @@ exports.script = async function (github, context, test_names) {
         getDiffPercents(results_main.sum.lost_percent, results.sum.lost_percent) +
         ")";
 
-      udp_output += `| ${udp_sum_bits_per_second} | ${udp_sum_jitter_ms} | ${udp_sum_lost_percent} |`;
+      udp_output += `| ${test_name} | ${udp_sum_bits_per_second} | ${udp_sum_jitter_ms} | ${udp_sum_lost_percent} |\n`;
     } else {
       throw new Error("Unknown test type");
     }
