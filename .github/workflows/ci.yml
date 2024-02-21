@@ -313,11 +313,13 @@ jobs:
       - name: Download PR performance test results
         uses: actions/download-artifact@v4
         with:
-          name: '*-${{ github.sha }}-iperf3results'
+          pattern: '*-${{ github.sha }}-iperf3results'
+          merge-multiple: true
       - name: Download main branch performance test results
         uses: actions/download-artifact@v4
         with:
-          name: '*-main-iperf3results'
+          pattern: '*-main-iperf3results'
+          merge-multiple: true
           github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Extract results
         run: |
