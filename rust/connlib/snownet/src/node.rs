@@ -159,7 +159,26 @@ where
             agent.add_remote_candidate(candidate.clone());
         }
 
-        // Each remote candidate might be source of traffic: Bind a channel for each.
+        match candidate.kind() {
+            CandidateKind::Host => {
+                // Binding a TURN channel for host candidates does not make sense.
+                // They are only useful to circumvent restrictive NATs in which case we are either talking to another relay candidate or a server-reflexive address.
+                return;
+            }
+
+            CandidateKind::Relayed => {
+                let now = self.last_now;
+
+                // Optimisatically try to bind the channel only on the same relay as the remote peer.
+                if let Some(allocation) = self.same_relay_as_peer(id, &candidate) {
+                    allocation.bind_channel(candidate.addr(), now);
+                    return;
+                }
+            }
+            CandidateKind::ServerReflexive | CandidateKind::PeerReflexive => {}
+        }
+
+        // In other cases, bind on all relays.
         for relay in self.connections.allowed_turn_servers(&id) {
             let Some(allocation) = self.allocations.get_mut(relay) else {
                 continue;
@@ -167,6 +186,26 @@ where
 
             allocation.bind_channel(candidate.addr(), self.last_now);
         }
+    }
+
+    /// Attempts to find the [`Allocation`] on the same relay as the remote's candidate.
+    ///
+    /// To do that, we need to check all candidates of each allocation and compare their IP.
+    /// The same relay might be reachable over IPv4 and IPv6.
+    fn same_relay_as_peer(&mut self, id: TId, candidate: &Candidate) -> Option<&mut Allocation> {
+        self.allocations
+            .iter_mut()
+            .filter(|(relay, _)| {
+                self.connections
+                    .allowed_turn_servers(&id)
+                    .any(|allowed| allowed == *relay)
+            })
+            .find_map(|(_, allocation)| {
+                allocation
+                    .current_candidates()
+                    .any(|c| c.addr().ip() == candidate.addr().ip())
+                    .then_some(allocation)
+            })
     }
 
     /// Decapsulate an incoming packet.
@@ -931,7 +970,7 @@ where
         self.established.get_mut(id)
     }
 
-    fn allowed_turn_servers(&mut self, id: &TId) -> impl Iterator<Item = &SocketAddr> + '_ {
+    fn allowed_turn_servers(&self, id: &TId) -> impl Iterator<Item = &SocketAddr> + '_ {
         let initial = self
             .initial
             .get(id)
