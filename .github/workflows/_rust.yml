@@ -115,7 +115,7 @@ jobs:
 
   # This should be identical to `build-push-windows-release-artifacts` in `cd.yml` except for the Github permissions, needs tag, and uploading step
   build-gui:
-    name: build-gui-${{ runner.os }}
+    name: build-gui-${{ matrix.runs-on }}
     runs-on: ${{ matrix.runs-on }}
     defaults:
       run:
