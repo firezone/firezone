@@ -107,10 +107,10 @@ jobs:
       - name: Build client
         run: cargo build -p firezone-gui-client
       - name: Run smoke tests (Linux)
-        if: ${{ matrix.target_os == 'linux' }}
+        if: ${{ runner.os == 'Linux' }}
         run: bash ../../scripts/tests/smoke-test-gui-linux.sh
       - name: Run smoke tests (Windows)
-        if: ${{ matrix.target_os == 'windows' }}
+        if: ${{ runner.os == 'Windows' }}
         run: bash ../../scripts/tests/smoke-test-gui-windows.sh
 
   # This should be identical to `build-push-windows-release-artifacts` in `cd.yml` except for the Github permissions, needs tag, and uploading step
