@@ -198,7 +198,7 @@ defmodule Web.RelayGroups.NewToken do
           <div id="connection-status" class="flex justify-between items-center">
             <p class="text-sm">
               Relay not connecting? See our
-              <.website_link href="/kb">
+              <.website_link href="/kb/administer/troubleshooting">
                 relay troubleshooting guide
               </.website_link>.
             </p>
