@@ -119,6 +119,7 @@ jobs:
           node-version: '20'
       - uses: ./.github/actions/setup-rust
         with:
+          targets: ${{ matrix.target }}
       - uses: ./.github/actions/setup-tauri
         with:
           target_os: ${{ matrix.target_os }}
