@@ -159,14 +159,33 @@ where
             agent.add_remote_candidate(candidate.clone());
         }
 
-        // Each remote candidate might be source of traffic: Bind a channel for each.
+        let last_now = self.last_now;
+
+        // First, optimisatically try to bind the channel only on the same relay as the remote peer.
+        if candidate.kind() == CandidateKind::Relayed {
+            if let Some(allocation) = self.same_relay_as_peer(id, &candidate) {
+                allocation.bind_channel(candidate.addr(), last_now);
+                return;
+            }
+        }
+
+        // In other cases, bind on all relays.
         for relay in self.connections.allowed_turn_servers(&id) {
             let Some(allocation) = self.allocations.get_mut(relay) else {
                 continue;
             };
 
-            allocation.bind_channel(candidate.addr(), self.last_now);
+            allocation.bind_channel(candidate.addr(), last_now);
         }
+    }
+
+    fn same_relay_as_peer(&mut self, id: TId, candidate: &Candidate) -> Option<&mut Allocation> {
+        let same_relay = self
+            .connections
+            .allowed_turn_servers(&id)
+            .find(|relay| candidate.addr().ip() == relay.ip())?;
+
+        self.allocations.get_mut(same_relay)
     }
 
     /// Decapsulate an incoming packet.
@@ -931,7 +950,7 @@ where
         self.established.get_mut(id)
     }
 
-    fn allowed_turn_servers(&mut self, id: &TId) -> impl Iterator<Item = &SocketAddr> + '_ {
+    fn allowed_turn_servers(&self, id: &TId) -> impl Iterator<Item = &SocketAddr> + '_ {
         let initial = self
             .initial
             .get(id)
