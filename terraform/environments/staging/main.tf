@@ -477,6 +477,10 @@ locals {
     {
       name  = "FEATURE_MULTI_SITE_RESOURCES_ENABLED"
       value = true
+    },
+    {
+      name  = "FEATURE_SIGN_UP_ENABLED"
+      value = false
     }
   ]
 }
