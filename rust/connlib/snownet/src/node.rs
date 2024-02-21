@@ -160,14 +160,12 @@ where
         }
 
         // Each remote candidate might be source of traffic: Bind a channel for each.
-        if let Some(conn) = self.connections.get_established_mut(&id) {
-            for relay in &conn.turn_servers {
-                let Some(allocation) = self.allocations.get_mut(relay) else {
-                    continue;
-                };
+        for relay in self.connections.allowed_turn_servers(&id) {
+            let Some(allocation) = self.allocations.get_mut(relay) else {
+                continue;
+            };
 
-                allocation.bind_channel(candidate.addr(), self.last_now);
-            }
+            allocation.bind_channel(candidate.addr(), self.last_now);
         }
     }
 
@@ -931,6 +929,21 @@ where
 
     fn get_established_mut(&mut self, id: &TId) -> Option<&mut Connection> {
         self.established.get_mut(id)
+    }
+
+    fn allowed_turn_servers(&mut self, id: &TId) -> impl Iterator<Item = &SocketAddr> + '_ {
+        let initial = self
+            .initial
+            .get(id)
+            .into_iter()
+            .flat_map(|c| c.turn_servers.iter());
+        let established = self
+            .established
+            .get(id)
+            .into_iter()
+            .flat_map(|c| c.turn_servers.iter());
+
+        initial.chain(established)
     }
 
     fn iter_established_mut(&mut self) -> impl Iterator<Item = (TId, &mut Connection)> {
