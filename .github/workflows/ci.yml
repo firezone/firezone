@@ -315,21 +315,25 @@ jobs:
         with:
           pattern: '*-${{ github.sha }}-iperf3results'
           merge-multiple: true
+          path: ./
       - name: Download main branch performance test results
         uses: actions/download-artifact@v4
         with:
           pattern: '*-main-iperf3results'
           merge-multiple: true
           github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: ./
       - name: Extract results
         run: |
           set -xe
 
-          for zip in *-${{ github.sha }}-iperf3results.zip; do
+          tree
+
+          for zip in ./*-${{ github.sha }}-iperf3results.zip; do
             unzip $zip
           done
 
-          for zip in *-main-iperf3results.zip; do
+          for zip in ./*-main-iperf3results.zip; do
             unzip $zip -d main
           done
       - name: Update PR with results
