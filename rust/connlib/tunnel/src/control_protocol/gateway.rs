@@ -85,8 +85,12 @@ where
                 },
             },
             gateway,
-            stun(&relays),
-            turn(&relays),
+            stun(&relays, |addr| {
+                self.connections_state.sockets.can_handle(addr)
+            }),
+            turn(&relays, |addr| {
+                self.connections_state.sockets.can_handle(addr)
+            }),
         );
 
         self.new_peer(

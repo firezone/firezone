@@ -72,10 +72,15 @@ where
             .get_awaiting_connection_domain(&resource_id)?
             .clone();
 
-        let offer =
-            self.connections_state
-                .node
-                .new_connection(gateway_id, stun(&relays), turn(&relays));
+        let offer = self.connections_state.node.new_connection(
+            gateway_id,
+            stun(&relays, |addr| {
+                self.connections_state.sockets.can_handle(addr)
+            }),
+            turn(&relays, |addr| {
+                self.connections_state.sockets.can_handle(addr)
+            }),
+        );
 
         Ok(Request::NewConnection(RequestConnection {
             resource_id,
