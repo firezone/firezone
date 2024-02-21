@@ -7,6 +7,12 @@ permissions:
   contents: 'read'
   id-token: 'write'
 
+# https://github.com/actions/runner-images/blob/main/images/ubuntu/Ubuntu2204-Readme.md
+# Not having these causes flaky CI builds with "Missing NDK"
+env:
+  ANDROID_NDK: /usr/local/lib/android/sdk/ndk/26.1.10909125
+  ANDROID_NDK_HOME: /usr/local/lib/android/sdk/ndk/26.1.10909125
+
 jobs:
   static-analysis:
     # Android SDK tools hardware accel is available only on Linux runners
