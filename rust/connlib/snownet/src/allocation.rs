@@ -448,7 +448,9 @@ impl Allocation {
 
         let channel_refresh_messages = self
             .channel_bindings
-            .channels_to_refresh(now, |number| self.channel_binding_in_flight(number))
+            .channels_to_refresh(now, |number| {
+                self.channel_binding_in_flight_by_number(number)
+            })
             .map(|(number, peer)| make_channel_bind_request(peer, number))
             .collect::<Vec<_>>(); // Need to allocate here to satisfy borrow-checker. Number of channel refresh messages should be small so this shouldn't be a big impact.
 
@@ -492,6 +494,11 @@ impl Allocation {
 
         if self.channel_bindings.channel_to_peer(peer, now).is_some() {
             tracing::debug!("Already got a channel");
+            return;
+        }
+
+        if self.channel_binding_in_flight_by_peer(peer) {
+            tracing::debug!("Already binding a channel to peer");
             return;
         }
 
@@ -612,11 +619,25 @@ impl Allocation {
         }
     }
 
-    fn channel_binding_in_flight(&self, channel: u16) -> bool {
+    fn channel_binding_in_flight_by_number(&self, channel: u16) -> bool {
         self.sent_requests.values().any(|(r, _, _)| {
-            r.method() == BINDING
+            r.method() == CHANNEL_BIND
                 && r.get_attribute::<ChannelNumber>()
                     .is_some_and(|n| n.value() == channel)
+        })
+    }
+
+    fn channel_binding_in_flight_by_peer(&self, peer: SocketAddr) -> bool {
+        let sent_requests = self.sent_requests.values().map(|(r, _, _)| r);
+        let buffered = self.buffered_channel_bindings.inner.iter();
+
+        sent_requests.chain(buffered).any(|message| {
+            let is_binding = message.method() == CHANNEL_BIND;
+            let is_for_peer = message
+                .get_attribute::<XorPeerAddress>()
+                .is_some_and(|n| n.address() == peer);
+
+            is_binding && is_for_peer
         })
     }
 
