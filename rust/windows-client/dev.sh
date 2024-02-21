@@ -7,9 +7,9 @@ set -e
 
 # Fixes exiting with Ctrl-C
 stop() {
-  kill $(jobs -p)
+    kill "$(jobs -p)"
 }
-trap stop SIGINT SIGTERM
+trap stop INT TERM
 
 # Copy frontend dependencies
 cp node_modules/flowbite/dist/flowbite.min.js src/

@@ -17,6 +17,7 @@ started.
   - [Pre-commit](#pre-commit)
   - [Elixir Development](#elixir-development)
   - [Rust Development](#rust-development)
+  - [Shell script Development](#shell-script-development)
 - [Reporting Bugs](#reporting-bugs)
 - [Opening a Pull Request](#opening-a-pull-request)
   - [Run Tests](#run-tests)
@@ -179,6 +180,10 @@ the detailed info found in the [Elixir Developer Guide](elixir/README.md)
 If you are interested in contributing to the Gateway, Relay, or client library,
 please read the detailed info found in the
 [Rust Developer Guide](rust/README.md)
+
+### Shell script Development
+
+See [scripts/README](scripts/README.md).
 
 ## Reporting Bugs
 

@@ -4,7 +4,7 @@ set -ex
 
 # Set up NAT
 nft add table ip nat
-nft add chain ip nat postrouting { type nat hook postrouting priority 100 \; }
+nft add chain ip nat postrouting '{' type nat hook postrouting priority 100 \; '}'
 nft add rule ip nat postrouting masquerade $NAT_BEHAVIOUR
 
 # Assumption after a long debugging session involving Gabi, Jamil and Thomas:
@@ -13,6 +13,6 @@ nft add rule ip nat postrouting masquerade $NAT_BEHAVIOUR
 # To achieve this, we set an absurdly high latency of 300ms for the WAN network.
 tc qdisc add dev eth1 root netem delay 300ms
 
-echo "1" > /tmp/setup_done # This will be checked by our docker HEALTHCHECK
+echo "1" >/tmp/setup_done # This will be checked by our docker HEALTHCHECK
 
 conntrack --event --proto UDP --output timestamp # Display a real-time log of NAT events in the kernel.

@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+set -euo pipefail
+
 function install_iptables_drop_rules() {
     sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
     sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
