@@ -162,10 +162,10 @@ jobs:
           - windows-2019
         include:
           - runs-on: ubuntu-20.04
-            rename-script: ../../scripts/build/build-tauri-ubuntu.sh
+            rename-script: ../../scripts/build/tauri-rename-ubuntu.sh
             target_os: linux
           - runs-on: windows-2019
-            rename-script: ../../scripts/build/build-tauri-windows.sh
+            rename-script: ../../scripts/build/tauri-rename-windows.sh
             target_os: windows
 
     env:
@@ -187,7 +187,7 @@ jobs:
       - name: Compute SHA256 and rename
         env:
           BINARY_DEST_PATH: ${{ env.BINARY_DEST_PATH }}
-        run: ${{ matrix.rename-script }}
+        run: bash ${{ matrix.rename-script }}
       - name: Save GUI client
         uses: actions/upload-artifact@v4
         with:
