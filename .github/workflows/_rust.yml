@@ -25,20 +25,15 @@ jobs:
         include:
           - runs-on: ubuntu-22.04
             packages: # Intentionally blank as a package catch-all linter
-            target_os: linux
           - runs-on: macos-14
             packages: -p connlib-client-apple -p snownet
-            target_os: macos
           - runs-on: windows-2022
             packages: -p connlib-client-shared -p firezone-windows-client -p snownet
-            target_os: windows
     runs-on: ${{ matrix.runs-on }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-rust
       - uses: ./.github/actions/setup-tauri
-        with:
-          target_os: ${{ matrix.target_os }}
       - run: cargo fmt -- --check
       - run: |
           cargo doc --all-features --no-deps --document-private-items ${{ matrix.packages }}
@@ -56,32 +51,23 @@ jobs:
         include:
           - runs-on: ubuntu-20.04
             packages: -p firezone-linux-client -p firezone-gateway -p connlib-client-android -p snownet
-            target_os: linux
           - runs-on: ubuntu-22.04
             packages: -p firezone-linux-client -p firezone-gateway -p connlib-client-android -p snownet
-            target_os: linux
           - runs-on: macos-12
             packages: -p connlib-client-apple -p snownet
-            target_os: macos
           - runs-on: macos-13
             packages: -p connlib-client-apple -p snownet
-            target_os: macos
           - runs-on: macos-14
             packages: -p connlib-client-apple -p snownet
-            target_os: macos
           - runs-on: windows-2019
             packages: -p firezone-windows-client -p connlib-client-shared -p snownet
-            target_os: windows
           - runs-on: windows-2022
             packages: -p firezone-windows-client -p connlib-client-shared -p snownet
-            target_os: windows
     runs-on: ${{ matrix.runs-on }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-rust
       - uses: ./.github/actions/setup-tauri
-        with:
-          target_os: ${{ matrix.target_os }}
       - run: cargo test --all-features ${{ matrix.packages }}
 
   # Runs the Windows client smoke test, built in debug mode. We can't run it in release
@@ -94,18 +80,10 @@ jobs:
         include:
           # Awaiting another PR to generalize the smoke test for Ubuntu
           #- runs-on: ubuntu-20.04
-          #  target: x86_64-unknown-linux-gnu
-          #  target_os: linux
           # Broken on 22.04 <https://github.com/firezone/firezone/issues/3699>
           #- runs-on: ubuntu-22.04
-          #  target: x86_64-unknown-linux-gnu
-          #  target_os: linux
           - runs-on: windows-2019
-            target: x86_64-pc-windows-msvc
-            target_os: windows
           - runs-on: windows-2022
-            target: x86_64-pc-windows-msvc
-            target_os: windows
     runs-on: ${{ matrix.runs-on }}
     defaults:
       run:
@@ -119,11 +97,7 @@ jobs:
         with:
           node-version: '20'
       - uses: ./.github/actions/setup-rust
-        with:
-          targets: ${{ matrix.target }}
       - uses: ./.github/actions/setup-tauri
-        with:
-          target_os: ${{ matrix.target_os }}
       - name: pnpm install
         run: |
           pnpm install
@@ -141,7 +115,7 @@ jobs:
 
   # This should be identical to `build-push-windows-release-artifacts` in `cd.yml` except for the Github permissions, needs tag, and uploading step
   build-gui:
-    name: build-gui-${{ matrix.target_os }}
+    name: build-gui-${{ runner.os }}
     runs-on: ${{ matrix.runs-on }}
     defaults:
       run:
@@ -155,9 +129,7 @@ jobs:
           - windows-2019
         include:
           # - runs-on: ubuntu-20.04
-          #   target_os: linux
           - runs-on: windows-2019
-            target_os: windows
     env:
       BINARY_DEST_PATH: firezone-windows-client
       CONNLIB_LOG_UPLOAD_INTERVAL_SECS: 300
@@ -168,8 +140,6 @@ jobs:
           node-version: '20'
       - uses: ./.github/actions/setup-rust
       - uses: ./.github/actions/setup-tauri
-        with:
-          target_os: ${{ matrix.target_os }}
       - name: Install pnpm deps
         run: pnpm install
       - name: Build release exe and MSI
@@ -197,7 +167,7 @@ jobs:
             ${{ github.workspace }}/rust/windows-client/${{ env.BINARY_DEST_PATH }}-x64.exe
             ${{ github.workspace }}/rust/windows-client/${{ env.BINARY_DEST_PATH }}-x64.exe.sha256sum.txt
       - name: Save Windows MSI installer
-        if: ${{ matrix.target_os == 'windows' }}
+        if: ${{ runner.os == 'Windows' }}
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.BINARY_DEST_PATH }}-x64-msi
@@ -205,7 +175,7 @@ jobs:
             ${{ github.workspace }}/rust/windows-client/${{ env.BINARY_DEST_PATH }}-x64.msi
             ${{ github.workspace }}/rust/windows-client/${{ env.BINARY_DEST_PATH }}-x64.msi.sha256sum.txt
       - name: Save Windows debug symbols
-        if: ${{ matrix.target_os == 'windows' }}
+        if: ${{ runner.os == 'Windows' }}
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.BINARY_DEST_PATH }}-x64-pdb
