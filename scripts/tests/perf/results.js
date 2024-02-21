@@ -35,83 +35,87 @@ function humanFileSize(bytes, dp = 1) {
   return bytes.toFixed(dp) + " " + units[u];
 }
 
-exports.script = async function (github, context, test_name) {
-  // 1. Read the current results
-  const results = JSON.parse(fs.readFileSync(test_name + ".json")).end;
-
-  // 2. Read the main results
-  const results_main = JSON.parse(
-    fs.readFileSync(path.join("main", test_name + ".json"))
-  ).end;
-
-  let output = "";
-
-  if (test_name.includes("tcp")) {
-    const tcp_sum_received_bits_per_second =
-      humanFileSize(results.sum_received.bits_per_second) +
-      " (" +
-      getDiffPercents(
-        results_main.sum_received.bits_per_second,
-        results.sum_received.bits_per_second
-      ) +
-      ")";
-    const tcp_sum_sent_bits_per_second =
-      humanFileSize(results.sum_sent.bits_per_second) +
-      " (" +
-      getDiffPercents(
-        results_main.sum_sent.bits_per_second,
-        results.sum_sent.bits_per_second
-      ) +
-      ")";
-    const tcp_sum_sent_retransmits =
-      results.sum_sent.retransmits +
-      " (" +
-      getDiffPercents(
-        results_main.sum_sent.retransmits,
-        results.sum_sent.retransmits
-      ) +
-      ")";
-
-    output = `## Performance Test Results: ${test_name}
+exports.script = async function (github, context, test_names) {
+  let output = `### Performance Test Results`;
+  let tcp_output = `
 
 | Received/s | Sent/s | Retransmits |
 |---|---|---|
-| ${tcp_sum_received_bits_per_second} | ${tcp_sum_sent_bits_per_second} | ${tcp_sum_sent_retransmits} |
 `;
-  } else if (test_name.includes("udp")) {
-    const udp_sum_bits_per_second =
-      humanFileSize(results.sum.bits_per_second) +
-      " (" +
-      getDiffPercents(
-        results_main.sum.bits_per_second,
-        results.sum.bits_per_second
-      ) +
-      ")";
-    const udp_sum_jitter_ms =
-      results.sum.jitter_ms.toFixed(2) +
-      "ms (" +
-      getDiffPercents(results_main.sum.jitter_ms, results.sum.jitter_ms) +
-      ")";
-    const udp_sum_lost_percent =
-      results.sum.lost_percent.toFixed(2) +
-      "% (" +
-      getDiffPercents(results_main.sum.lost_percent, results.sum.lost_percent) +
-      ")";
 
-    output = `## Performance Test Results: ${test_name}
-
+  let udp_output = `
 | Total/s | Jitter | Lost |
 |---|---|---|
-| ${udp_sum_bits_per_second} | ${udp_sum_jitter_ms} | ${udp_sum_lost_percent} |
-
 `;
-  } else {
-    throw new Error("Unknown test type");
+
+  for (const test_name of test_names) {
+    // 1. Read the current results
+    const results = JSON.parse(fs.readFileSync(test_name + ".json")).end;
+
+    // 2. Read the main results
+    const results_main = JSON.parse(
+      fs.readFileSync(path.join("main", test_name + ".json"))
+    ).end;
+
+
+    if (test_name.includes("tcp")) {
+      const tcp_sum_received_bits_per_second =
+        humanFileSize(results.sum_received.bits_per_second) +
+        " (" +
+        getDiffPercents(
+          results_main.sum_received.bits_per_second,
+          results.sum_received.bits_per_second
+        ) +
+        ")";
+      const tcp_sum_sent_bits_per_second =
+        humanFileSize(results.sum_sent.bits_per_second) +
+        " (" +
+        getDiffPercents(
+          results_main.sum_sent.bits_per_second,
+          results.sum_sent.bits_per_second
+        ) +
+        ")";
+      const tcp_sum_sent_retransmits =
+        results.sum_sent.retransmits +
+        " (" +
+        getDiffPercents(
+          results_main.sum_sent.retransmits,
+          results.sum_sent.retransmits
+        ) +
+        ")";
+
+      tcp_output += `| ${tcp_sum_received_bits_per_second} | ${tcp_sum_sent_bits_per_second} | ${tcp_sum_sent_retransmits} |`;
+    } else if (test_name.includes("udp")) {
+      const udp_sum_bits_per_second =
+        humanFileSize(results.sum.bits_per_second) +
+        " (" +
+        getDiffPercents(
+          results_main.sum.bits_per_second,
+          results.sum.bits_per_second
+        ) +
+        ")";
+      const udp_sum_jitter_ms =
+        results.sum.jitter_ms.toFixed(2) +
+        "ms (" +
+        getDiffPercents(results_main.sum.jitter_ms, results.sum.jitter_ms) +
+        ")";
+      const udp_sum_lost_percent =
+        results.sum.lost_percent.toFixed(2) +
+        "% (" +
+        getDiffPercents(results_main.sum.lost_percent, results.sum.lost_percent) +
+        ")";
+
+      udp_output += `| ${udp_sum_bits_per_second} | ${udp_sum_jitter_ms} | ${udp_sum_lost_percent} |`;
+    } else {
+      throw new Error("Unknown test type");
+    }
   }
+
+  output += tcp_output + "\n" + udp_output;
 
   // Retrieve existing bot comments for the PR
   const { data: comments } = await github.rest.issues.listComments({
-    owner: context.repo.owner,
+    owner: context.repo.ownerh
     repo: context.repo.repo,
     issue_number: context.issue.number,
   });
