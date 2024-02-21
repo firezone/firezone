@@ -1765,6 +1765,21 @@ mod tests {
     }
 
     #[test]
+    fn dont_send_channel_binding_if_inflight() {
+        let mut allocation =
+            Allocation::for_test(Instant::now()).with_allocate_response(&[RELAY_ADDR_IP4]);
+
+        allocation.bind_channel(PEER1, Instant::now());
+
+        let channel_bind = allocation.next_message().unwrap();
+        assert_eq!(channel_bind.method(), CHANNEL_BIND);
+
+        allocation.bind_channel(PEER1, Instant::now());
+
+        assert!(allocation.next_message().is_none());
+    }
+
+    #[test]
     fn failed_allocation_is_suspended() {
         let mut allocation = Allocation::for_test(Instant::now());
 
