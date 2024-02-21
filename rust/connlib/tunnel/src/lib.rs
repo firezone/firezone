@@ -134,6 +134,16 @@ where
     CB: Callbacks + 'static,
 {
     pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Result<Event<ClientId>>> {
+        match self.role_state.poll(cx) {
+            Poll::Ready(ids) => {
+                for id in ids {
+                    self.connections_state.peers_by_id.remove(&id);
+                }
+                cx.waker().wake_by_ref();
+            }
+            Poll::Pending => {}
+        }
+
         let Some(device) = self.device.as_mut() else {
             self.no_device_waker.register(cx.waker());
             return Poll::Pending;
