@@ -159,6 +159,12 @@ where
             agent.add_remote_candidate(candidate.clone());
         }
 
+        if candidate.kind() == CandidateKind::Host {
+            // Binding a TURN channel for host candidates does not make sense.
+            // They are only useful to circumvent restrictive NATs in which case we are either talking to another relay candidate or a server-reflexive address.
+            return;
+        };
+
         let last_now = self.last_now;
 
         // First, optimisatically try to bind the channel only on the same relay as the remote peer.
