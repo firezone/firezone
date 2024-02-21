@@ -322,20 +322,7 @@ jobs:
           pattern: '*-main-iperf3results'
           merge-multiple: true
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          path: ./
-      - name: Extract results
-        run: |
-          set -xe
-
-          tree
-
-          for zip in ./*-${{ github.sha }}-iperf3results.zip; do
-            unzip $zip
-          done
-
-          for zip in ./*-main-iperf3results.zip; do
-            unzip $zip -d main
-          done
+          path: ./main
       - name: Update PR with results
         uses: actions/github-script@v7
         with:
