@@ -18,6 +18,7 @@ clap = { version = "4.4", features = ["derive",  "env"] }
 connlib-client-shared = { workspace = true }
 connlib-shared = { workspace = true }
 crash-handler = "0.6.1"
+dirs = "5.0.1"
 firezone-cli-utils = { workspace = true }
 hex = "0.4.3"
 git-version = "0.3.9"
