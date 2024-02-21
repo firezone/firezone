@@ -40,7 +40,7 @@ fn insert_peers<TId: Copy, TTransform>(
     }
 }
 
-fn stun(relays: &[Relay]) -> HashSet<SocketAddr> {
+fn stun(relays: &[Relay], predicate: impl Fn(&SocketAddr) -> bool) -> HashSet<SocketAddr> {
     relays
         .iter()
         .filter_map(|r| {
@@ -50,10 +50,14 @@ fn stun(relays: &[Relay]) -> HashSet<SocketAddr> {
                 None
             }
         })
+        .filter(predicate)
         .collect()
 }
 
-fn turn(relays: &[Relay]) -> HashSet<(SocketAddr, String, String, String)> {
+fn turn(
+    relays: &[Relay],
+    predicate: impl Fn(&SocketAddr) -> bool,
+) -> HashSet<(SocketAddr, String, String, String)> {
     relays
         .iter()
         .filter_map(|r| {
@@ -68,5 +72,6 @@ fn turn(relays: &[Relay]) -> HashSet<(SocketAddr, String, String, String)> {
                 None
             }
         })
+        .filter(|(socket, _, _, _)| predicate(socket))
         .collect()
 }
