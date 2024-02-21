@@ -17,7 +17,7 @@ use connlib_shared::{
 use ip_network::IpNetwork;
 use secrecy::{ExposeSecret as _, Secret};
 use snownet::{Credentials, Server};
-use std::{collections::HashSet, sync::Arc};
+use std::sync::Arc;
 
 /// Description of a resource that maps to a DNS record which had its domain already resolved.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -75,8 +75,6 @@ where
             ResourceDescription::Cidr(ref cidr) => vec![cidr.address],
         };
 
-        let mut stun_servers: HashSet<_> = turn(&relays).iter().map(|r| r.0).collect();
-        stun_servers.extend(stun(&relays));
         let answer = self.connections_state.node.accept_connection(
             client,
             snownet::Offer {
@@ -87,7 +85,7 @@ where
                 },
             },
             gateway,
-            stun_servers,
+            stun(&relays),
             turn(&relays),
         );
 

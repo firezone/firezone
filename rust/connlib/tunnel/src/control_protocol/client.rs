@@ -72,12 +72,10 @@ where
             .get_awaiting_connection_domain(&resource_id)?
             .clone();
 
-        let mut stun_relays = stun(&relays);
-        stun_relays.extend(turn(&relays).iter().map(|r| r.0).collect::<HashSet<_>>());
         let offer =
             self.connections_state
                 .node
-                .new_connection(gateway_id, stun_relays, turn(&relays));
+                .new_connection(gateway_id, stun(&relays), turn(&relays));
 
         Ok(Request::NewConnection(RequestConnection {
             resource_id,
