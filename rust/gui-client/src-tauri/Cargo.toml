@@ -1,5 +1,5 @@
 [package]
-name = "firezone-windows-client"
+name = "firezone-gui-client"
 # mark:automatic-version
 version = "1.0.0"
 description = "Firezone"

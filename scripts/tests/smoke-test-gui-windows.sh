@@ -5,7 +5,7 @@ set -euo pipefail
 
 BUNDLE_ID="dev.firezone.client"
 DUMP_PATH="$LOCALAPPDATA/$BUNDLE_ID/data/logs/last_crash.dmp"
-PACKAGE=firezone-windows-client
+PACKAGE=firezone-gui-client
 
 # Run the smoke test normally
 cargo run -p "$PACKAGE" -- smoke-test
