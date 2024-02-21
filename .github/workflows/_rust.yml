@@ -197,7 +197,7 @@ jobs:
             ${{ github.workspace }}/rust/windows-client/${{ matrix.artifact }}-amd64
             ${{ github.workspace }}/rust/windows-client/${{ matrix.artifact }}-amd64.sha256sum.txt
       - name: Save Linux AppImage (standalone binary)
-        if: ${{ matrix.target_os == 'windows' }}
+        if: ${{ matrix.target_os == 'linux' }}
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}-amd64.AppImage
@@ -205,7 +205,7 @@ jobs:
             ${{ github.workspace }}/rust/windows-client/${{ matrix.artifact }}-amd64.AppImage
             ${{ github.workspace }}/rust/windows-client/${{ matrix.artifact }}-amd64.AppImage.sha256sum.txt
       - name: Save Linux deb (package)
-        if: ${{ matrix.target_os == 'windows' }}
+        if: ${{ matrix.target_os == 'linux' }}
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}_amd64.deb
