@@ -299,6 +299,11 @@ impl Allocation {
                     .attributes()
                     .find_map(relay_candidate(|s| s.is_ipv6()));
 
+                if maybe_ip4_relay_candidate.is_none() && maybe_ip6_relay_candidate.is_none() {
+                    tracing::warn!("Relay sent a successful allocate response without addresses");
+                    return true;
+                }
+
                 self.allocation_lifetime = Some((now, lifetime));
                 update_candidate(
                     maybe_srflx_candidate,
@@ -325,6 +330,10 @@ impl Allocation {
                 );
 
                 while let Some(peer) = self.buffered_channel_bindings.pop() {
+                    debug_assert!(
+                        self.has_allocation(),
+                        "We just received a successful allocation response"
+                    );
                     self.bind_channel(peer, now);
                 }
             }
