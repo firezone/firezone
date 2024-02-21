@@ -170,7 +170,7 @@ mod tests {
                 "url": "https://api.github.com/repos/firezone/firezone/releases/assets/147443612",
                 "id": 147443612,
                 "node_id": "RA_kwDOD12Hpc4Iyc-c",
-                "name": "firezone-windows-client-x64.msi",
+                "name": "firezone-gui-client-windows-x64.msi",
                 "label": "",
                 "uploader": {
                     "login": "github-actions[bot]",
@@ -198,7 +198,7 @@ mod tests {
                 "download_count": 10,
                 "created_at": "2024-01-24T04:33:53Z",
                 "updated_at": "2024-01-24T04:33:53Z",
-                "browser_download_url": "https://github.com/firezone/firezone/releases/download/1.0.0-pre.8/firezone-windows-client-x64.msi"
+                "browser_download_url": "https://github.com/firezone/firezone/releases/download/1.0.0-pre.8/firezone-gui-client-windows-x64.msi"
             }
         ]
     }"#;
@@ -206,7 +206,7 @@ mod tests {
     #[test]
     fn test() {
         let release = super::Release::from_str(RELEASES_LATEST_JSON).unwrap();
-        assert_eq!(release.browser_download_url.to_string(), "https://github.com/firezone/firezone/releases/download/1.0.0-pre.8/firezone-windows-client-x64.msi");
+        assert_eq!(release.browser_download_url.to_string(), "https://github.com/firezone/firezone/releases/download/1.0.0-pre.8/firezone-gui-client-windows-x64.msi");
         assert_eq!(release.tag_name.to_string(), "1.0.0-pre.8");
 
         assert!(
