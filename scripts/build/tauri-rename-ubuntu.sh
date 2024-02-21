@@ -6,9 +6,10 @@ ls ../target/release ../target/release/bundle/appimage ../target/release/bundle/
 
 # Used for release artifact
 # In release mode the name comes from tauri.conf.json
-cp "../target/release/*.exe" "$BINARY_DEST_PATH"-amd64
-cp "../target/release/bundle/appimage/*_amd.AppImage" "$BINARY_DEST_PATH"-amd64.AppImage
-cp "../target/release/bundle/deb/*_amd64.deb" "$BINARY_DEST_PATH"_amd64.deb
+# Using a glob for the source, there will only be one exe, AppImage, and deb anyway
+cp ../target/release/firezone "$BINARY_DEST_PATH"-amd64
+cp ../target/release/bundle/appimage/*_amd.AppImage "$BINARY_DEST_PATH"-amd64.AppImage
+cp ../target/release/bundle/deb/*_amd64.deb "$BINARY_DEST_PATH"_amd64.deb
 # TODO: Debug symbols for Linux
 
 # I think we agreed in standup to just match platform conventions
