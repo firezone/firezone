@@ -22,10 +22,14 @@ defmodule Domain.Auth.Adapters do
     Supervisor.init(@adapter_modules, strategy: :one_for_one)
   end
 
-  def list_adapters do
+  def list_all_adapters! do
+    Map.keys(@adapters)
+  end
+
+  def list_user_provisioned_adapters! do
     enabled_adapters = Domain.Config.compile_config!(:auth_provider_adapters)
     enabled_idp_adapters = enabled_adapters -- ~w[email userpass]a
-    {:ok, Map.take(@adapters, enabled_idp_adapters)}
+    Map.take(@adapters, enabled_idp_adapters)
   end
 
   def fetch_capabilities!(%Provider{} = provider) do

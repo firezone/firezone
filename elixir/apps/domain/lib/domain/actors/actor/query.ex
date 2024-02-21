@@ -94,6 +94,17 @@ defmodule Domain.Actors.Actor.Query do
     )
   end
 
+  def with_joined_clients(queryable \\ not_deleted()) do
+    join(
+      queryable,
+      :left,
+      [actors: actors],
+      clients in ^Domain.Clients.Client.Query.not_deleted(),
+      on: clients.actor_id == actors.id,
+      as: :clients
+    )
+  end
+
   def lock(queryable \\ not_deleted()) do
     lock(queryable, "FOR UPDATE")
   end

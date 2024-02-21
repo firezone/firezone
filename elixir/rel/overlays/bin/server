@@ -1,5 +1,5 @@
 #!/bin/sh
 set -e
-source "$(dirname -- "$0")/bootstrap"
+. "$(dirname -- "$0")/bootstrap"
 ./migrate
-exec ./${APPLICATION_NAME} start
+exec ./"$APPLICATION_NAME" start

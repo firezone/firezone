@@ -1,4 +1,5 @@
 const fs = require("fs");
+const path = require("path");
 
 function getDiffPercents(main, current) {
   let diff = -1 * (100 - current / (main / 100));
@@ -36,32 +37,77 @@ function humanFileSize(bytes, dp = 1) {
 
 exports.script = async function (github, context, test_name) {
   // 1. Read the current results
-  const tcp_s2c = JSON.parse(
-    fs.readFileSync("iperf3results/tcp_server2client.json")
-  ).end;
-  const tcp_c2s = JSON.parse(
-    fs.readFileSync("iperf3results/tcp_client2server.json")
-  ).end;
-  const udp_s2c = JSON.parse(
-    fs.readFileSync("iperf3results/udp_server2client.json")
-  ).end;
-  const udp_c2s = JSON.parse(
-    fs.readFileSync("iperf3results/udp_client2server.json")
-  ).end;
+  const results = JSON.parse(fs.readFileSync(test_name + ".json")).end;
 
   // 2. Read the main results
-  const tcp_s2c_main = JSON.parse(
-    fs.readFileSync("iperf3results-main/tcp_server2client.json")
+  const results_main = JSON.parse(
+    fs.readFileSync(path.join("main", test_name + ".json"))
   ).end;
-  const tcp_c2s_main = JSON.parse(
-    fs.readFileSync("iperf3results-main/tcp_client2server.json")
-  ).end;
-  const udp_s2c_main = JSON.parse(
-    fs.readFileSync("iperf3results-main/udp_server2client.json")
-  ).end;
-  const udp_c2s_main = JSON.parse(
-    fs.readFileSync("iperf3results-main/udp_client2server.json")
-  ).end;
+
+  let output = "";
+
+  if (test_name.includes("tcp")) {
+    const tcp_sum_received_bits_per_second =
+      humanFileSize(results.sum_received.bits_per_second) +
+      " (" +
+      getDiffPercents(
+        results_main.sum_received.bits_per_second,
+        results.sum_received.bits_per_second
+      ) +
+      ")";
+    const tcp_sum_sent_bits_per_second =
+      humanFileSize(results.sum_sent.bits_per_second) +
+      " (" +
+      getDiffPercents(
+        results_main.sum_sent.bits_per_second,
+        results.sum_sent.bits_per_second
+      ) +
+      ")";
+    const tcp_sum_sent_retransmits =
+      results.sum_sent.retransmits +
+      " (" +
+      getDiffPercents(
+        results_main.sum_sent.retransmits,
+        results.sum_sent.retransmits
+      ) +
+      ")";
+
+    output = `## Performance Test Results: ${test_name}
+
+| Received/s | Sent/s | Retransmits |
+|---|---|---|
+| ${tcp_sum_received_bits_per_second} | ${tcp_sum_sent_bits_per_second} | ${tcp_sum_sent_retransmits} |
+`;
+  } else if (test_name.includes("udp")) {
+    const udp_sum_bits_per_second =
+      humanFileSize(results.sum.bits_per_second) +
+      " (" +
+      getDiffPercents(
+        results_main.sum.bits_per_second,
+        results.sum.bits_per_second
+      ) +
+      ")";
+    const udp_sum_jitter_ms =
+      results.sum.jitter_ms.toFixed(2) +
+      "ms (" +
+      getDiffPercents(results_main.sum.jitter_ms, results.sum.jitter_ms) +
+      ")";
+    const udp_sum_lost_percent =
+      results.sum.lost_percent.toFixed(2) +
+      "% (" +
+      getDiffPercents(results_main.sum.lost_percent, results.sum.lost_percent) +
+      ")";
+
+    output = `## Performance Test Results: ${test_name}
+
+| Total/s | Jitter | Lost |
+|---|---|---|
+| ${udp_sum_bits_per_second} | ${udp_sum_jitter_ms} | ${udp_sum_lost_percent} |
+
+`;
+  } else {
+    throw new Error("Unknown test type");
+  }
 
   // Retrieve existing bot comments for the PR
   const { data: comments } = await github.rest.issues.listComments({
@@ -73,112 +119,6 @@ exports.script = async function (github, context, test_name) {
   const botComment = comments.find((comment) => {
     return comment.user.type === "Bot" && comment.body.includes(test_name);
   });
-
-  const tcp_server2client_sum_received_bits_per_second =
-    humanFileSize(tcp_s2c.sum_received.bits_per_second) +
-    " (" +
-    getDiffPercents(
-      tcp_s2c_main.sum_received.bits_per_second,
-      tcp_s2c.sum_received.bits_per_second
-    ) +
-    ")";
-  const tcp_server2client_sum_sent_bits_per_second =
-    humanFileSize(tcp_s2c.sum_sent.bits_per_second) +
-    " (" +
-    getDiffPercents(
-      tcp_s2c_main.sum_sent.bits_per_second,
-      tcp_s2c.sum_sent.bits_per_second
-    ) +
-    ")";
-  const tcp_server2client_sum_sent_retransmits =
-    tcp_s2c.sum_sent.retransmits +
-    " (" +
-    getDiffPercents(
-      tcp_s2c_main.sum_sent.retransmits,
-      tcp_s2c.sum_sent.retransmits
-    ) +
-    ")";
-
-  const tcp_client2server_sum_received_bits_per_second =
-    humanFileSize(tcp_c2s.sum_received.bits_per_second) +
-    " (" +
-    getDiffPercents(
-      tcp_c2s_main.sum_received.bits_per_second,
-      tcp_c2s.sum_received.bits_per_second
-    ) +
-    ")";
-  const tcp_client2server_sum_sent_bits_per_second =
-    humanFileSize(tcp_c2s.sum_sent.bits_per_second) +
-    " (" +
-    getDiffPercents(
-      tcp_c2s_main.sum_sent.bits_per_second,
-      tcp_c2s.sum_sent.bits_per_second
-    ) +
-    ")";
-  const tcp_client2server_sum_sent_retransmits =
-    tcp_c2s.sum_sent.retransmits +
-    " (" +
-    getDiffPercents(
-      tcp_c2s.sum_sent.retransmits,
-      tcp_c2s_main.sum_sent.retransmits
-    ) +
-    ")";
-
-  const udp_server2client_sum_bits_per_second =
-    humanFileSize(udp_s2c.sum.bits_per_second) +
-    " (" +
-    getDiffPercents(
-      udp_s2c_main.sum.bits_per_second,
-      udp_s2c.sum.bits_per_second
-    ) +
-    ")";
-  const udp_server2client_sum_jitter_ms =
-    udp_s2c.sum.jitter_ms.toFixed(2) +
-    "ms (" +
-    getDiffPercents(udp_s2c_main.sum.jitter_ms, udp_s2c.sum.jitter_ms) +
-    ")";
-  const udp_server2client_sum_lost_percent =
-    udp_s2c.sum.lost_percent.toFixed(2) +
-    "% (" +
-    getDiffPercents(udp_s2c_main.sum.lost_percent, udp_s2c.sum.lost_percent) +
-    ")";
-
-  const udp_client2server_sum_bits_per_second =
-    humanFileSize(udp_c2s.sum.bits_per_second) +
-    " (" +
-    getDiffPercents(
-      udp_c2s_main.sum.bits_per_second,
-      udp_c2s.sum.bits_per_second
-    ) +
-    ")";
-  const udp_client2server_sum_jitter_ms =
-    udp_c2s.sum.jitter_ms.toFixed(2) +
-    "ms (" +
-    getDiffPercents(udp_c2s_main.sum.jitter_ms, udp_c2s.sum.jitter_ms) +
-    ")";
-  const udp_client2server_sum_lost_percent =
-    udp_c2s.sum.lost_percent.toFixed(2) +
-    "% (" +
-    getDiffPercents(udp_c2s_main.sum.lost_percent, udp_c2s.sum.lost_percent) +
-    ")";
-
-  const output = `## Performance Test Results: ${test_name}
-
-### TCP
-
-| Direction        | Received/s                                             | Sent/s                                             | Retransmits                                    |
-|------------------|--------------------------------------------------------|----------------------------------------------------|------------------------------------------------|
-| Client to Server | ${tcp_client2server_sum_received_bits_per_second} | ${tcp_client2server_sum_sent_bits_per_second} | ${tcp_client2server_sum_sent_retransmits} |
-| Server to Client | ${tcp_server2client_sum_received_bits_per_second} | ${tcp_server2client_sum_sent_bits_per_second} | ${tcp_server2client_sum_sent_retransmits} |
-
-### UDP
-
-| Direction        | Total/s                                       | Jitter                                  | Lost                                       |
-|------------------|-----------------------------------------------|-----------------------------------------|--------------------------------------------|
-| Client to Server | ${udp_client2server_sum_bits_per_second} | ${udp_client2server_sum_jitter_ms} | ${udp_server2client_sum_lost_percent} |
-| Server to Client | ${udp_server2client_sum_bits_per_second} | ${udp_server2client_sum_jitter_ms} | ${udp_client2server_sum_lost_percent} |
-
-`;
 
   // 3. Update previous comment or create new one
   if (botComment) {

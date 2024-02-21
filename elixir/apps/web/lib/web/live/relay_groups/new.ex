@@ -1,9 +1,9 @@
 defmodule Web.RelayGroups.New do
   use Web, :live_view
-  alias Domain.Relays
+  alias Domain.{Accounts, Relays}
 
   def mount(_params, _session, socket) do
-    with true <- Domain.Config.self_hosted_relays_enabled?() do
+    with true <- Accounts.self_hosted_relays_enabled?(socket.assigns.account) do
       changeset = Relays.new_group()
 
       {:ok, assign(socket, form: to_form(changeset, page_title: "New Relay Group")),
