@@ -1220,4 +1220,11 @@ defmodule Web.CoreComponents do
 
     "mailto:support@firezone.dev?subject=#{URI.encode_www_form(email_subject)}&body=#{URI.encode_www_form(body)}"
   end
+
+  def link_style do
+    [
+      "text-accent-500",
+      "hover:underline"
+    ]
+  end
 end
