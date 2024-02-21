@@ -47,6 +47,13 @@ impl Sockets {
         })
     }
 
+    pub fn can_handle(&self, addr: &SocketAddr) -> bool {
+        match addr {
+            SocketAddr::V4(_) => self.socket_v4.is_some(),
+            SocketAddr::V6(_) => self.socket_v6.is_some(),
+        }
+    }
+
     #[cfg(target_os = "android")]
     pub fn ip4_socket_fd(&self) -> Option<std::os::fd::RawFd> {
         use std::os::fd::AsRawFd;

@@ -44,7 +44,10 @@ android {
 
     namespace = "dev.firezone.android"
     compileSdk = 34
-    ndkVersion = "26.1.10909125"
+
+    // Life is easier if we just match the default NDK on the Ubuntu 22.04 runners
+    // https://github.com/actions/runner-images/blob/main/images/ubuntu/Ubuntu2204-Readme.md#android
+    ndkVersion = "25.2.9519653"
 
     defaultConfig {
         applicationId = "dev.firezone.android"
