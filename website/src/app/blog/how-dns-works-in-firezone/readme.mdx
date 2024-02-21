@@ -36,7 +36,7 @@ listens on an address in the `fd00:2021:1111:8000:100:100:111:0/120` range.
 
 When an application makes a DNS query, the proxy checks if the name matches a
 Firezone resource that the user has access to. If it does, the client then
-requests a gateway serving that resource to resolve the query. When the gateway
+requests a gateway serving that resource to resolve the DNS query. When the gateway
 responds, the proxy will create a temporary mapping between the actual IP
 address of the resource and the dummy IP address it returned to the application.
 From this point onward, all subsequent packets to the dummy IP address are
