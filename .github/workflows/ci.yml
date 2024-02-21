@@ -312,10 +312,9 @@ jobs:
           )
 
           if [ -z "$DOWNLOAD_URL" ]; then
-            echo "continue=false" >> $GITHUB_ENV
             echo "No artifact found for ${ARTIFACT_NAME} in main branch"
           else
-            echo "continue=true" >> $GITHUB_ENV
+            echo "continue=true" >> $GITHUB_OUTPUT
             set +x
             curl -H "Accept: application/vnd.github+json" -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" -L -o "${ARTIFACT_NAME}.zip" "$DOWNLOAD_URL"
 
