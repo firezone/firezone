@@ -334,8 +334,8 @@ defmodule API.Gateway.ChannelTest do
       assert payload.flow_id == flow_id
       assert payload.actor == %{id: client.actor_id}
 
-      ipv4_turn_uri = "turn:#{relay.ipv4}:#{relay.port}"
-      ipv6_turn_uri = "turn:[#{relay.ipv6}]:#{relay.port}"
+      ipv4_turn_uri = "#{relay.ipv4}:#{relay.port}"
+      ipv6_turn_uri = "[#{relay.ipv6}]:#{relay.port}"
 
       assert [
                %{
@@ -343,14 +343,14 @@ defmodule API.Gateway.ChannelTest do
                  expires_at: expires_at_unix,
                  password: password1,
                  username: username1,
-                 uri: ^ipv4_turn_uri
+                 addr: ^ipv4_turn_uri
                },
                %{
                  type: :turn,
                  expires_at: expires_at_unix,
                  password: password2,
                  username: username2,
-                 uri: ^ipv6_turn_uri
+                 addr: ^ipv6_turn_uri
                }
              ] = payload.relays
 
@@ -444,8 +444,8 @@ defmodule API.Gateway.ChannelTest do
       assert payload.flow_id == flow_id
       assert payload.actor == %{id: client.actor_id}
 
-      ipv4_turn_uri = "turn:#{relay.ipv4}:#{relay.port}"
-      ipv6_turn_uri = "turn:[#{relay.ipv6}]:#{relay.port}"
+      ipv4_turn_uri = "#{relay.ipv4}:#{relay.port}"
+      ipv6_turn_uri = "[#{relay.ipv6}]:#{relay.port}"
 
       assert [
                %{
@@ -453,14 +453,14 @@ defmodule API.Gateway.ChannelTest do
                  expires_at: expires_at_unix,
                  password: password1,
                  username: username1,
-                 uri: ^ipv4_turn_uri
+                 addr: ^ipv4_turn_uri
                },
                %{
                  type: :turn,
                  expires_at: expires_at_unix,
                  password: password2,
                  username: username2,
-                 uri: ^ipv6_turn_uri
+                 addr: ^ipv6_turn_uri
                }
              ] = payload.relays
 
@@ -553,17 +553,17 @@ defmodule API.Gateway.ChannelTest do
       assert payload.flow_id == flow_id
       assert payload.actor == %{id: client.actor_id}
 
-      ipv4_turn_uri = "stun:#{relay.ipv4}:#{relay.port}"
-      ipv6_turn_uri = "stun:[#{relay.ipv6}]:#{relay.port}"
+      ipv4_turn_uri = "#{relay.ipv4}:#{relay.port}"
+      ipv6_turn_uri = "[#{relay.ipv6}]:#{relay.port}"
 
       assert [
                %{
                  type: :stun,
-                 uri: ^ipv4_turn_uri
+                 addr: ^ipv4_turn_uri
                },
                %{
                  type: :stun,
-                 uri: ^ipv6_turn_uri
+                 addr: ^ipv6_turn_uri
                }
              ] = payload.relays
 
