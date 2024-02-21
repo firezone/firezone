@@ -1817,6 +1817,58 @@ dependencies = [
 ]
 
 [[package]]
+name = "firezone-gui-client"
+version = "1.0.0"
+dependencies = [
+ "anyhow",
+ "arboard",
+ "arc-swap",
+ "bincode",
+ "chrono",
+ "clap",
+ "connlib-client-shared",
+ "connlib-shared",
+ "crash-handler",
+ "firezone-cli-utils",
+ "git-version",
+ "hex",
+ "hostname",
+ "ipconfig",
+ "keyring",
+ "known-folders",
+ "minidumper",
+ "native-dialog",
+ "output_vt100",
+ "rand 0.8.5",
+ "reqwest",
+ "ring",
+ "sadness-generator",
+ "secrecy",
+ "semver",
+ "serde",
+ "serde_json",
+ "subtle",
+ "tauri",
+ "tauri-build",
+ "tauri-runtime",
+ "tauri-utils",
+ "tauri-winrt-notification",
+ "thiserror",
+ "tokio",
+ "tracing",
+ "tracing-log 0.2.0",
+ "tracing-panic",
+ "tracing-subscriber",
+ "url",
+ "uuid",
+ "windows 0.52.0",
+ "windows-implement 0.52.0",
+ "winreg 0.52.0",
+ "wintun",
+ "zip",
+]
+
+[[package]]
 name = "firezone-linux-client"
 version = "1.0.0"
 dependencies = [
@@ -1920,58 +1972,6 @@ dependencies = [
  "uuid",
  "windows 0.52.0",
  "wintun",
-]
-
-[[package]]
-name = "firezone-windows-client"
-version = "1.0.0"
-dependencies = [
- "anyhow",
- "arboard",
- "arc-swap",
- "bincode",
- "chrono",
- "clap",
- "connlib-client-shared",
- "connlib-shared",
- "crash-handler",
- "firezone-cli-utils",
- "git-version",
- "hex",
- "hostname",
- "ipconfig",
- "keyring",
- "known-folders",
- "minidumper",
- "native-dialog",
- "output_vt100",
- "rand 0.8.5",
- "reqwest",
- "ring",
- "sadness-generator",
- "secrecy",
- "semver",
- "serde",
- "serde_json",
- "subtle",
- "tauri",
- "tauri-build",
- "tauri-runtime",
- "tauri-utils",
- "tauri-winrt-notification",
- "thiserror",
- "tokio",
- "tracing",
- "tracing-log 0.2.0",
- "tracing-panic",
- "tracing-subscriber",
- "url",
- "uuid",
- "windows 0.52.0",
- "windows-implement 0.52.0",
- "winreg 0.52.0",
- "wintun",
- "zip",
 ]
 
 [[package]]

@@ -12,7 +12,7 @@ members = [
   "snownet-tests",
   "phoenix-channel",
   "relay",
-  "windows-client/src-tauri",
+  "gui-client/src-tauri",
 ]
 
 resolver = "2"
@@ -38,7 +38,7 @@ connlib-client-apple = { path = "connlib/clients/apple"}
 connlib-client-shared = { path = "connlib/clients/shared"}
 firezone-gateway = { path = "gateway"}
 firezone-linux-client = { path = "linux-client"}
-firezone-windows-client = { path = "windows-client/src-tauri"}
+firezone-gui-client = { path = "gui-client/src-tauri"}
 firezone-cli-utils = { path = "firezone-cli-utils"}
 snownet = { path = "connlib/snownet"}
 firezone-relay = { path = "relay"}
@@ -58,7 +58,7 @@ quinn-udp = { git = "https://github.com/conectado/quinn", branch = "main" }
 strip = true
 
 # Override build settings just for the Windows client, so we get a pdb
-[profile.release.package.firezone-windows-client]
+[profile.release.package.firezone-gui-client]
 # Generate debug symbols for the crash handler to use, even if the exe itself is optimized
 debug = "full"
 # Split out debug info from the exe. This is already default on Windows.
