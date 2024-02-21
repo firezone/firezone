@@ -74,15 +74,17 @@ FROM chef as planner
 COPY . .
 
 ARG PACKAGE
-RUN cargo chef prepare --recipe-path recipe.json --bin ${PACKAGE}
+# RUN cargo chef prepare --recipe-path recipe.json --bin ${PACKAGE}
+RUN cargo chef prepare --recipe-path recipe.json
 
 # Build dependencies and application application
 FROM chef as builder
 
 COPY --from=planner /build/recipe.json .
 
+ARG PACKAGE
 RUN set -xe \
-  && cargo chef cook --recipe-path recipe.json
+  && cargo chef cook --recipe-path recipe.json --bin ${PACKAGE}
 
 COPY . .
 
