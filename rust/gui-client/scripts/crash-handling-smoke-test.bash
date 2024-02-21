@@ -9,7 +9,7 @@ DUMP_PATH="$LOCALAPPDATA/$BUNDLE_ID/data/logs/last_crash.dmp"
 rm -f "$DUMP_PATH"
 
 # Ignore the exit code, this is supposed to crash
-cargo run -p firezone-windows-client -- --crash || true
+cargo run -p firezone-gui-client -- --crash || true
 
 # Fail if the crash file wasn't written
 stat "$DUMP_PATH"

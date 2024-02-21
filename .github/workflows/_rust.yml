@@ -28,7 +28,7 @@ jobs:
           - runs-on: macos-14
             packages: -p connlib-client-apple -p snownet
           - runs-on: windows-2022
-            packages: -p connlib-client-shared -p firezone-windows-client -p snownet
+            packages: -p connlib-client-shared -p firezone-gui-client -p snownet
     runs-on: ${{ matrix.runs-on }}
     steps:
       - uses: actions/checkout@v4
@@ -59,9 +59,9 @@ jobs:
           - runs-on: macos-14
             packages: -p connlib-client-apple -p snownet
           - runs-on: windows-2019
-            packages: -p firezone-windows-client -p connlib-client-shared -p snownet
+            packages: -p firezone-gui-client -p connlib-client-shared -p snownet
           - runs-on: windows-2022
-            packages: -p firezone-windows-client -p connlib-client-shared -p snownet
+            packages: -p firezone-gui-client -p connlib-client-shared -p snownet
     runs-on: ${{ matrix.runs-on }}
     steps:
       - uses: actions/checkout@v4
@@ -69,13 +69,13 @@ jobs:
       - run: cargo test --all-features ${{ matrix.packages }}
 
   # Runs the Windows client smoke test, built in debug mode. We can't run it in release
-  # mode because of a known issue: <https://github.com/firezone/firezone/blob/456e044f882c2bb314e19cc44c0d19c5ad817b7c/rust/windows-client/src-tauri/src/client.rs#L162-L164>
-  windows-smoke-test:
-    name: windows-smoke-test
+  # mode because of a known issue: <https://github.com/firezone/firezone/blob/456e044f882c2bb314e19cc44c0d19c5ad817b7c/rust/gui-client/src-tauri/src/client.rs#L162-L164>
+  gui-smoke-test:
+    name: gui-smoke-test
     runs-on: windows-2019
     defaults:
       run:
-        working-directory: ./rust/windows-client
+        working-directory: ./rust/gui-client
     env:
       CONNLIB_LOG_UPLOAD_INTERVAL_SECS: 300
       # The Windows client ignores RUST_LOG because it uses a settings file instead
@@ -85,8 +85,6 @@ jobs:
         with:
           node-version: '20'
       - uses: ./.github/actions/setup-rust
-        with:
-          targets: x86_64-pc-windows-msvc
         # This is the "Evergreen" bootstrapper from Microsoft
         # <https://developer.microsoft.com/en-us/microsoft-edge/webview2/?form=MA13LH#download>
         # Unfortunately, this makes the test non-deterministic.
@@ -107,9 +105,9 @@ jobs:
       - name: Compile Tailwind
         run: pnpm tailwindcss -i src/input.css -o src/output.css
       - name: Build client
-        run: cargo build -p firezone-windows-client
+        run: cargo build -p firezone-gui-client
       - name: Run smoke test
-        run: cargo run -p firezone-windows-client -- smoke-test
+        run: cargo run -p firezone-gui-client -- smoke-test
       - name: Test that the crash handler produces a crash dump
         run: bash scripts/crash-handling-smoke-test.bash
 
@@ -119,16 +117,16 @@ jobs:
     runs-on: windows-2019
     defaults:
       run:
-        working-directory: ./rust/windows-client
+        working-directory: ./rust/gui-client
     strategy:
       fail-fast: false
       # The matrix is 1x1 to match the style of build-push-linux-release-artifacts
       # In the future we could try to cross-compile aarch64-windows here.
       matrix:
         include:
-          - package: firezone-windows-client
-            artifact: firezone-windows-client
-            name: windows-client
+          - package: firezone-gui-client
+            artifact: firezone-gui-client
+            name: gui-client
     env:
       BINARY_DEST_PATH: ${{ matrix.artifact }}
       CONNLIB_LOG_UPLOAD_INTERVAL_SECS: 300
@@ -138,8 +136,6 @@ jobs:
         with:
           node-version: '20'
       - uses: ./.github/actions/setup-rust
-        with:
-          targets: x86_64-pc-windows-msvc
       - name: Install pnpm deps
         run: pnpm install
       - name: Build release exe and MSI
@@ -150,7 +146,7 @@ jobs:
           # In release mode the name comes from tauri.conf.json
           cp "../target/release/Firezone.exe" "${{ env.BINARY_DEST_PATH }}-x64.exe"
           cp "../target/release/bundle/msi/*.msi" "${{ env.BINARY_DEST_PATH }}-x64.msi"
-          cp "../target/release/firezone_windows_client.pdb" "${{ env.BINARY_DEST_PATH }}-x64.pdb"
+          cp "../target/release/firezone_gui_client.pdb" "${{ env.BINARY_DEST_PATH }}-x64.pdb"
 
           Get-FileHash ${{ env.BINARY_DEST_PATH }}-x64.exe -Algorithm SHA256 | Select-Object Hash > ${{ env.BINARY_DEST_PATH }}-x64.exe.sha256sum.txt
           Get-FileHash ${{ env.BINARY_DEST_PATH }}-x64.msi -Algorithm SHA256 | Select-Object Hash > ${{ env.BINARY_DEST_PATH }}-x64.msi.sha256sum.txt
@@ -164,19 +160,19 @@ jobs:
         with:
           name: ${{ matrix.artifact }}-x64
           path: |
-            ${{ github.workspace }}/rust/windows-client/${{ matrix.artifact }}-x64.exe
-            ${{ github.workspace }}/rust/windows-client/${{ matrix.artifact }}-x64.exe.sha256sum.txt
+            ${{ github.workspace }}/rust/gui-client/${{ matrix.artifact }}-x64.exe
+            ${{ github.workspace }}/rust/gui-client/${{ matrix.artifact }}-x64.exe.sha256sum.txt
       - name: Save Windows installer
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}-x64-msi
           path: |
-            ${{ github.workspace }}/rust/windows-client/${{ matrix.artifact }}-x64.msi
-            ${{ github.workspace }}/rust/windows-client/${{ matrix.artifact }}-x64.msi.sha256sum.txt
+            ${{ github.workspace }}/rust/gui-client/${{ matrix.artifact }}-x64.msi
+            ${{ github.workspace }}/rust/gui-client/${{ matrix.artifact }}-x64.msi.sha256sum.txt
       - name: Save Windows debug symbols
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}-x64-pdb
           path: |
-            ${{ github.workspace }}/rust/windows-client/${{ matrix.artifact }}-x64.pdb
-            ${{ github.workspace }}/rust/windows-client/${{ matrix.artifact }}-x64.pdb.sha256sum.txt
+            ${{ github.workspace }}/rust/gui-client/${{ matrix.artifact }}-x64.pdb
+            ${{ github.workspace }}/rust/gui-client/${{ matrix.artifact }}-x64.pdb.sha256sum.txt
