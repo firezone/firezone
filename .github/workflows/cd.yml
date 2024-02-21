@@ -244,23 +244,21 @@ jobs:
     runs-on: windows-2019
     defaults:
       run:
-        working-directory: ./rust/windows-client
+        working-directory: ./rust/gui-client
     strategy:
       fail-fast: false
       # The matrix is 1x1 to match the style of build-push-linux-release-artifacts
       # In the future we could try to cross-compile aarch64-windows here.
       matrix:
         name:
-          - package: firezone-windows-client
-            artifact: windows-client
+          - package: firezone-gui-client
+            artifact: gui-client
     env:
       BINARY_DEST_PATH: firezone-${{ matrix.name.artifact }}
       CONNLIB_LOG_UPLOAD_INTERVAL_SECS: 300
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-rust
-        with:
-          targets: x86_64-pc-windows-msvc
       - uses: ./.github/actions/setup-node
       - name: Install pnpm deps
         run: pnpm install
@@ -279,7 +277,7 @@ jobs:
         run: |
           # Upload Windows MSI
 
-          # This artifact name is tied to the update checker in `windows-client/src-tauri/src/client/updates.rs`
+          # This artifact name is tied to the update checker in `gui-client/src-tauri/src/client/updates.rs`
           gh release upload ${{ needs.update-release-draft.outputs.tag_name }} `
             ${{ env.BINARY_DEST_PATH }}-x64.msi `
             ${{ env.BINARY_DEST_PATH }}-x64.msi.sha256sum.txt `

@@ -1,4 +1,4 @@
-How to run manual tests of `firezone-windows-client`
+How to run manual tests of `firezone-gui-client`
 
 Using [Given-when-then syntax](https://en.wikipedia.org/wiki/Given-When-Then)
 
@@ -6,7 +6,7 @@ Using [Given-when-then syntax](https://en.wikipedia.org/wiki/Given-When-Then)
 
 The client may be running or not running.
 
-Only one instance of the client may run at a time per Windows device. If two users are logged in at once, starting a 2nd instance results in undefined behavior.
+Only one instance of the client may run at a time per system. If two users are logged in at once, starting a 2nd instance results in undefined behavior.
 
 If the client is running, the GUI may be in a "signed out", "signed in", or "signing in" state.
 

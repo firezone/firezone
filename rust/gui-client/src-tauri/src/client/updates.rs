@@ -9,7 +9,7 @@ use url::Url;
 pub(crate) struct Release {
     /// URL that will instantly try to download the MSI to disk
     ///
-    /// e.g. <https://github.com/firezone/firezone/releases/download/1.0.0-pre.8/windows-client-x64.msi>
+    /// e.g. <https://github.com/firezone/firezone/releases/download/1.0.0-pre.8/gui-client-x64.msi>
     pub browser_download_url: Url,
     /// Git tag name
     ///
@@ -68,7 +68,8 @@ const GITHUB_API_VERSION: &str = "2022-11-28";
 /// The name of the Windows MSI asset.
 ///
 /// This ultimately comes from `cd.yml`
-const MSI_ASSET_NAME: &str = "firezone-windows-client-x64.msi";
+// TODO: Remove 'windows'
+const MSI_ASSET_NAME: &str = "firezone-gui-client-windows-x64.msi";
 
 /// Returns the latest release, even if ours is already newer
 pub(crate) async fn check() -> Result<Release, Error> {
@@ -77,6 +78,7 @@ pub(crate) async fn check() -> Result<Release, Error> {
     // <https://docs.github.com/en/rest/using-the-rest-api/getting-started-with-the-rest-api?apiVersion=2022-11-28#user-agent-required>
     // This would change for aarch64 support
     let user_agent = format!(
+        // TODO: remove 'windows'
         "Firezone Client/{:?} (Windows; Win64; x64)",
         current_version()
     );
