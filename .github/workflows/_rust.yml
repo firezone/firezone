@@ -152,17 +152,20 @@ jobs:
       # The matrix is 1x1 to match the style of build-push-linux-release-artifacts
       # In the future we could try to cross-compile aarch64-windows here.
       matrix:
+        artifact:
+          - firezone-windows-client
+        runs-on:
+          - ubuntu-20.04
+          # Doesn't work on 22.04 yet
+          # <https://github.com/firezone/firezone/issues/3699>
+          # - ubuntu-22.04
+          - windows-2019
         include:
-          - package: firezone-windows-client
-            artifact: firezone-windows-client
-            name: windows-client
           - runs-on: ubuntu-20.04
             rename-script: scripts/build/build-tauri-ubuntu.sh
-            target: x86_64-unknown-linux-gnu
             target_os: linux
           - runs-on: windows-2019
             rename-script: scripts/build/build-tauri-windows.sh
-            target: x86_64-pc-windows-msvc
             target_os: windows
 
     env:
@@ -174,8 +177,6 @@ jobs:
         with:
           node-version: '20'
       - uses: ./.github/actions/setup-rust
-        with:
-          targets: ${{ matrix.target }}
       - uses: ./.github/actions/setup-tauri
         with:
           target_os: ${{ matrix.target_os }}
@@ -190,12 +191,12 @@ jobs:
       - name: Save GUI client
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact }}-x64
+          name: ${{ matrix.artifact }}-${{ matrix.target_os}}-x64
           path: |
             ${{ github.workspace }}/rust/windows-client/${{ matrix.artifact }}-x64.exe
             ${{ github.workspace }}/rust/windows-client/${{ matrix.artifact }}-x64.exe.sha256sum.txt
       - name: Save GUI installer
-        if: ${{ matrix.is_windows }} == true
+        if: ${{ matrix.target_os == 'windows' }}
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}-x64-msi
@@ -203,7 +204,7 @@ jobs:
             ${{ github.workspace }}/rust/windows-client/${{ matrix.artifact }}-x64.msi
             ${{ github.workspace }}/rust/windows-client/${{ matrix.artifact }}-x64.msi.sha256sum.txt
       - name: Save GUI debug symbols
-        if: ${{ matrix.is_windows }} == true
+        if: ${{ matrix.target_os == 'windows' }}
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}-x64-pdb
