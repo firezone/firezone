@@ -200,7 +200,7 @@ jobs:
         if: ${{ matrix.target_os == 'linux' }}
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact }}-amd64.AppImage
+          name: ${{ matrix.artifact }}_amd64.AppImage
           path: |
             ${{ github.workspace }}/rust/windows-client/${{ matrix.artifact }}-amd64.AppImage
             ${{ github.workspace }}/rust/windows-client/${{ matrix.artifact }}-amd64.AppImage.sha256sum.txt
