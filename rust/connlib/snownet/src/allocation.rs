@@ -113,7 +113,7 @@ impl Allocation {
             allocation_lifetime: Default::default(),
             channel_bindings: Default::default(),
             last_now: now,
-            buffered_channel_bindings: RingBuffer::new(10),
+            buffered_channel_bindings: RingBuffer::new(100),
             backoff: backoff::new(now, REQUEST_TIMEOUT),
             timed_out_requests: RingBuffer::new(100),
         };
