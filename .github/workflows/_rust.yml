@@ -159,7 +159,7 @@ jobs:
           - runs-on: windows-2019
             target_os: windows
     env:
-      BINARY_DEST_PATH: ${{ env.ARTIFACT }}
+      BINARY_DEST_PATH: firezone-windows-client
       CONNLIB_LOG_UPLOAD_INTERVAL_SECS: 300
     steps:
       - uses: actions/checkout@v4
