@@ -17,7 +17,6 @@ use stun_codec::{
     rfc5389::{
         attributes::{ErrorCode, MessageIntegrity, Nonce, Realm, Username, XorMappedAddress},
         errors::{StaleNonce, Unauthorized},
-        methods::BINDING,
     },
     rfc5766::{
         attributes::{
@@ -448,7 +447,9 @@ impl Allocation {
 
         let channel_refresh_messages = self
             .channel_bindings
-            .channels_to_refresh(now, |number| self.channel_binding_in_flight(number))
+            .channels_to_refresh(now, |number| {
+                self.channel_binding_in_flight_by_number(number)
+            })
             .map(|(number, peer)| make_channel_bind_request(peer, number))
             .collect::<Vec<_>>(); // Need to allocate here to satisfy borrow-checker. Number of channel refresh messages should be small so this shouldn't be a big impact.
 
@@ -492,6 +493,11 @@ impl Allocation {
 
         if self.channel_bindings.channel_to_peer(peer, now).is_some() {
             tracing::debug!("Already got a channel");
+            return;
+        }
+
+        if self.channel_binding_in_flight_by_peer(peer) {
+            tracing::debug!("Already binding a channel to peer");
             return;
         }
 
@@ -612,11 +618,25 @@ impl Allocation {
         }
     }
 
-    fn channel_binding_in_flight(&self, channel: u16) -> bool {
+    fn channel_binding_in_flight_by_number(&self, channel: u16) -> bool {
         self.sent_requests.values().any(|(r, _, _)| {
-            r.method() == BINDING
+            r.method() == CHANNEL_BIND
                 && r.get_attribute::<ChannelNumber>()
                     .is_some_and(|n| n.value() == channel)
+        })
+    }
+
+    fn channel_binding_in_flight_by_peer(&self, peer: SocketAddr) -> bool {
+        let sent_requests = self.sent_requests.values().map(|(r, _, _)| r);
+        let buffered = self.buffered_channel_bindings.inner.iter();
+
+        sent_requests.chain(buffered).any(|message| {
+            let is_binding = message.method() == CHANNEL_BIND;
+            let is_for_peer = message
+                .get_attribute::<XorPeerAddress>()
+                .is_some_and(|n| n.address() == peer);
+
+            is_binding && is_for_peer
         })
     }
 
@@ -1745,6 +1765,81 @@ mod tests {
     }
 
     #[test]
+    fn dont_buffer_channel_bindings_twice() {
+        let mut allocation = Allocation::for_test(Instant::now());
+
+        allocation.bind_channel(PEER1, Instant::now());
+        allocation.bind_channel(PEER1, Instant::now());
+
+        let allocate = allocation.next_message().unwrap();
+        allocation.handle_test_input(
+            &allocate_response(&allocate, &[RELAY_ADDR_IP4]),
+            Instant::now(),
+        );
+
+        let channel_bind = allocation.next_message().unwrap();
+        let next_msg = allocation.next_message();
+
+        assert_eq!(channel_bind.method(), CHANNEL_BIND);
+        assert!(next_msg.is_none());
+    }
+
+    #[test]
+    fn buffered_channel_bindings_to_different_peers_work() {
+        let mut allocation = Allocation::for_test(Instant::now());
+
+        allocation.bind_channel(PEER1, Instant::now());
+        allocation.bind_channel(PEER2_IP4, Instant::now());
+
+        let allocate = allocation.next_message().unwrap();
+        allocation.handle_test_input(
+            &allocate_response(&allocate, &[RELAY_ADDR_IP4]),
+            Instant::now(),
+        );
+
+        let channel_bind_peer_1 = allocation.next_message().unwrap();
+        let channel_bind_peer_2 = allocation.next_message().unwrap();
+
+        assert_eq!(channel_bind_peer_1.method(), CHANNEL_BIND);
+        assert_eq!(peer_address(&channel_bind_peer_1), PEER1);
+
+        assert_eq!(channel_bind_peer_2.method(), CHANNEL_BIND);
+        assert_eq!(peer_address(&channel_bind_peer_2), PEER2_IP4);
+    }
+
+    #[test]
+    fn dont_send_channel_binding_if_inflight() {
+        let mut allocation =
+            Allocation::for_test(Instant::now()).with_allocate_response(&[RELAY_ADDR_IP4]);
+
+        allocation.bind_channel(PEER1, Instant::now());
+
+        let channel_bind = allocation.next_message().unwrap();
+        assert_eq!(channel_bind.method(), CHANNEL_BIND);
+
+        allocation.bind_channel(PEER1, Instant::now());
+
+        assert!(allocation.next_message().is_none());
+    }
+
+    #[test]
+    fn send_channel_binding_to_second_peer_if_inflight_for_other() {
+        let mut allocation =
+            Allocation::for_test(Instant::now()).with_allocate_response(&[RELAY_ADDR_IP4]);
+
+        allocation.bind_channel(PEER1, Instant::now());
+
+        let channel_bind = allocation.next_message().unwrap();
+        assert_eq!(channel_bind.method(), CHANNEL_BIND);
+
+        allocation.bind_channel(PEER2_IP4, Instant::now());
+        let channel_bind_peer_2 = allocation.next_message().unwrap();
+
+        assert_eq!(channel_bind_peer_2.method(), CHANNEL_BIND);
+        assert_eq!(peer_address(&channel_bind_peer_2), PEER2_IP4);
+    }
+
+    #[test]
     fn failed_allocation_is_suspended() {
         let mut allocation = Allocation::for_test(Instant::now());
 
@@ -1940,6 +2035,10 @@ mod tests {
             CHANNEL_BIND,
             request.transaction_id(),
         )
+    }
+
+    fn peer_address(message: &Message<Attribute>) -> SocketAddr {
+        message.get_attribute::<XorPeerAddress>().unwrap().address()
     }
 
     impl Allocation {

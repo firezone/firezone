@@ -47,6 +47,13 @@ impl Sockets {
         })
     }
 
+    pub fn can_handle(&self, addr: &SocketAddr) -> bool {
+        match addr {
+            SocketAddr::V4(_) => self.socket_v4.is_some(),
+            SocketAddr::V6(_) => self.socket_v6.is_some(),
+        }
+    }
+
     #[cfg(target_os = "android")]
     pub fn ip4_socket_fd(&self) -> Option<std::os::fd::RawFd> {
         use std::os::fd::AsRawFd;
@@ -214,13 +221,13 @@ fn make_socket(addr: impl Into<SocketAddr>) -> Result<std::net::UdpSocket> {
         socket.set_mark(crate::FIREZONE_MARK)?;
     }
 
-    socket.set_nonblocking(true)?;
-    socket.bind(&addr)?;
-
     // Note: for AF_INET sockets IPV6_V6ONLY is not a valid flag
     if addr.is_ipv6() {
         socket.set_only_v6(true)?;
     }
+
+    socket.set_nonblocking(true)?;
+    socket.bind(&addr)?;
 
     Ok(socket.into())
 }
