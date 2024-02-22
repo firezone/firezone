@@ -126,13 +126,12 @@ jobs:
       fail-fast: false
       matrix:
         runs-on:
-          # TODO
-          # - ubuntu-20.04
+          - ubuntu-20.04
           - windows-2019
         include:
-          # - runs-on: ubuntu-20.04
-          #   os-name: linux
-          #   rename-script: ../../scripts/build/tauri-rename-ubuntu.sh
+          - runs-on: ubuntu-20.04
+            os-name: linux
+            rename-script: ../../scripts/build/tauri-rename-ubuntu.sh
           - runs-on: windows-2019
             os-name: windows
             rename-script: ../../scripts/build/tauri-rename-windows.sh
