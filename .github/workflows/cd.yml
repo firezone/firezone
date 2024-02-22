@@ -287,16 +287,10 @@ jobs:
         if: ${{ runner.os == 'Windows' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+          TAG_NAME: ${{ needs.update-release-draft.outputs.tag_name }}
         shell: bash
-        run: |
-          # Upload Windows MSI
-
-          # This artifact name is tied to the update checker in `gui-client/src-tauri/src/client/updates.rs`
-          gh release upload ${{ needs.update-release-draft.outputs.tag_name }} `
-            ${{ env.BINARY_DEST_PATH }}-x64.msi `
-            ${{ env.BINARY_DEST_PATH }}-x64.msi.sha256sum.txt `
-            --clobber `
-            --repo ${{ github.repository }}
+        run: ../../scripts/build/tauri-upload-windows.sh
 
   merge-release-artifacts:
     permissions:
