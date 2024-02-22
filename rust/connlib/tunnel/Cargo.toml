@@ -45,7 +45,7 @@ tempfile = "3.10.0"
 
 # Linux tunnel dependencies
 [target.'cfg(target_os = "linux")'.dependencies]
-netlink-packet-route = { version = "=0.18.1", default-features = false }
+netlink-packet-route = { version = "0.19", default-features = false }
 netlink-packet-core = { version = "0.7", default-features = false }
 rtnetlink = { workspace = true }
 sd-notify = "0.4.1"
