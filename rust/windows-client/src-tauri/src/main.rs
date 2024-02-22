@@ -10,7 +10,8 @@ fn main() -> anyhow::Result<()> {
 #[cfg(target_family = "unix")]
 mod client {
     pub(crate) fn run() -> anyhow::Result<()> {
-        panic!("The Windows client does not compile on non-Windows platforms");
+        println!("The Windows client does not compile on non-Windows platforms yet");
+        Ok(())
     }
 }
 
