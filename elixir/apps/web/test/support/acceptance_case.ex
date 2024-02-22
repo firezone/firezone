@@ -198,6 +198,8 @@ defmodule Web.AcceptanceCase do
   end
 
   def assert_path(session, path) do
+    # Occasionally the path is not updated immediately after the page body
+    Process.sleep(10)
     assert current_path(session) == path
     session
   end
