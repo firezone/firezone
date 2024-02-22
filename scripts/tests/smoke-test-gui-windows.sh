@@ -7,8 +7,10 @@ BUNDLE_ID="dev.firezone.client"
 DUMP_PATH="$LOCALAPPDATA/$BUNDLE_ID/data/logs/last_crash.dmp"
 PACKAGE=firezone-gui-client
 
-# Fail if the environment doesn't have `C:\ProgramData` known folder
-${ProgramData:?}
+if [[ -z "$ProgramData" ]]; then
+    echo "The env var \$ProgramData should be set to \`C:\ProgramData\` or similar"
+    exit 1
+fi
 
 # Make sure the files we want to check don't exist on the system yet
 stat "$LOCALAPPDATA/$BUNDLE_ID" && exit 1
