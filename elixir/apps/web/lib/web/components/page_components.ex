@@ -63,11 +63,4 @@ defmodule Web.PageComponents do
     </.section>
     """
   end
-
-  def link_style do
-    [
-      "text-accent-500",
-      "hover:underline"
-    ]
-  end
 end
