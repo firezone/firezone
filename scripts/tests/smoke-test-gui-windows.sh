@@ -21,7 +21,7 @@ cargo run -p "$PACKAGE" -- smoke-test
 
 # Make sure the files were written in the right paths
 stat "$LOCALAPPDATA/$BUNDLE_ID/config/advanced_settings.json"
-stat "$LOCALAPPDATA/$BUNDLE_ID/data/logs/connlib*log"
+stat "$LOCALAPPDATA/$BUNDLE_ID/data/logs/"connlib*log
 stat "$LOCALAPPDATA/$BUNDLE_ID/data/wintun.dll"
 stat "$ProgramData/$BUNDLE_ID/config/device_id.json"
 
