@@ -6,4 +6,4 @@ mod imp;
 #[path = "network_changes/windows.rs"]
 mod imp;
 
-pub(crate) use imp::{Error, run_debug, check_internet, Worker, Listener};
+pub(crate) use imp::{check_internet, run_debug, Worker};

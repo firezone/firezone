@@ -63,6 +63,7 @@ impl Managed {
 // TODO: Replace with `anyhow` gradually per <https://github.com/firezone/firezone/pull/3546#discussion_r1477114789>
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum Error {
+    #[cfg(target_os = "windows")]
     #[error(r#"Couldn't show clickable notification titled "{0}""#)]
     ClickableNotification(String),
     #[error("Deep-link module error: {0}")]
@@ -71,6 +72,7 @@ pub(crate) enum Error {
     LogFilterErrorDialog(native_dialog::Error),
     #[error("Logging module error: {0}")]
     Logging(#[from] logging::Error),
+    #[cfg(target_os = "windows")]
     #[error(r#"Couldn't show notification titled "{0}""#)]
     Notification(String),
     #[error(transparent)]

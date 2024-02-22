@@ -6,6 +6,7 @@ pub(crate) enum Error {
     #[cfg(target_os = "windows")]
     #[error("couldn't load wintun.dll")]
     DllLoad,
+    #[cfg(target_os = "windows")]
     #[error("UUID parse error - This should be impossible since the UUID is hard-coded")]
     Uuid,
 }
@@ -26,16 +27,15 @@ mod imp {
     }
 }
 
-/// Creates a bogus wintun tunnel to check whether we have permissions to create wintun tunnels.
-/// Extracts wintun.dll if needed.
-///
-/// Returns true if already elevated, false if not elevated, error if we can't be sure
 #[cfg(target_os = "windows")]
 mod imp {
+    use super::Error;
     use crate::client::wintun_install;
     use std::str::FromStr;
-    use super::Error;
 
+    /// Check if we have elevated privileges, extract wintun.dll if needed.
+    ///
+    /// Returns true if already elevated, false if not elevated, error if we can't be sure
     pub(crate) fn check() -> Result<bool, Error> {
         // Almost the same as the code in tun_windows.rs in connlib
         const TUNNEL_UUID: &str = "72228ef4-cb84-4ca5-a4e6-3f8636e75757";
@@ -53,13 +53,18 @@ mod imp {
         let uuid = uuid::Uuid::from_str(TUNNEL_UUID).map_err(|_| Error::Uuid)?;
 
         // Wintun hides the exact Windows error, so let's assume the only way Adapter::create can fail is if we're not elevated.
-        if wintun::Adapter::create(&wintun, "Firezone", TUNNEL_NAME, Some(uuid.as_u128())).is_err() {
+        if wintun::Adapter::create(&wintun, "Firezone", TUNNEL_NAME, Some(uuid.as_u128())).is_err()
+        {
             return Ok(false);
         }
         Ok(true)
     }
 
     pub(crate) fn elevate() -> Result<(), Error> {
+        // Hides Powershell's console on Windows
+        // <https://stackoverflow.com/questions/59692146/is-it-possible-to-use-the-standard-library-to-spawn-a-process-without-showing-th#60958956>
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+
         let current_exe = tauri_utils::platform::current_exe()?;
         if current_exe.display().to_string().contains('\"') {
             anyhow::bail!("The exe path must not contain double quotes, it makes it hard to elevate with Powershell");

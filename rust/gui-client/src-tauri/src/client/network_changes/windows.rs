@@ -101,7 +101,7 @@ pub(crate) fn run_debug() -> Result<()> {
 /// Returns true if Windows thinks we have Internet access per [IsConnectedToInternet](https://learn.microsoft.com/en-us/windows/win32/api/netlistmgr/nf-netlistmgr-inetworklistmanager-get_isconnectedtointernet)
 ///
 /// Call this when `Listener` notifies you.
-pub fn check_internet() -> WinResult<bool> {
+pub fn check_internet() -> Result<bool> {
     // Retrieving the INetworkListManager takes less than half a millisecond, and this
     // makes the lifetimes and Send+Sync much simpler for callers, so just retrieve it
     // every single time.
@@ -130,7 +130,7 @@ struct WorkerInner {
 }
 
 impl Worker {
-    pub fn new() -> std::io::Result<Self> {
+    pub(crate) fn new() -> Result<Self> {
         let notify = Arc::new(Notify::new());
 
         let (stopper, rx) = tokio::sync::oneshot::channel();
@@ -156,7 +156,7 @@ impl Worker {
     }
 
     /// Same as `drop`, but you can catch errors
-    pub fn close(&mut self) -> Result<(), Error> {
+    pub(crate) fn close(&mut self) -> Result<()> {
         if let Some(inner) = self.inner.take() {
             inner
                 .stopper
@@ -170,7 +170,7 @@ impl Worker {
         Ok(())
     }
 
-    pub async fn notified(&self) {
+    pub(crate) async fn notified(&self) {
         self.notify.notified().await;
     }
 }
@@ -225,7 +225,7 @@ impl Drop for ComGuard {
 }
 
 /// Listens to network connectivity change eents
-pub(crate) struct Listener<'a> {
+struct Listener<'a> {
     /// The cookies we get back from `Advise`. Can be None if the owner called `close`
     ///
     /// This has to be mutable because we have to hook up the callbacks during

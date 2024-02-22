@@ -1,17 +1,17 @@
 use super::{ControllerRequest, CtlrTx, Error};
 
 /// Show a notification in the bottom right of the screen
-pub(crate) fn show_notification(title: &str, body: &str) -> Result<(), Error> {
+pub(crate) fn show_notification(_title: &str, _body: &str) -> Result<(), Error> {
     // TODO
     Ok(())
 }
 
 /// Show a notification that signals `Controller` when clicked
 pub(crate) fn show_clickable_notification(
-    title: &str,
-    body: &str,
-    tx: CtlrTx,
-    req: ControllerRequest,
+    _title: &str,
+    _body: &str,
+    _tx: CtlrTx,
+    _req: ControllerRequest,
 ) -> Result<(), Error> {
     // TODO
     Ok(())
