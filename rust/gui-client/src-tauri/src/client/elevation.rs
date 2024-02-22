@@ -2,7 +2,7 @@ pub(crate) use imp::{check, elevate};
 
 #[cfg(target_os = "linux")]
 mod imp {
-    use anyhow::{Context, Result};
+    use anyhow::Result;
 
     pub(crate) fn check() -> Result<bool> {
         // TODO
