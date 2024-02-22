@@ -197,10 +197,10 @@ defmodule Web.RelayGroups.NewToken do
 
           <div id="connection-status" class="flex justify-between items-center">
             <p class="text-sm">
-              Relay not connecting? See our <.link
-                class="text-accent-500 hover:underline"
-                href="https://www.firezone.dev/kb/administer/troubleshooting#relay-not-connecting"
-              >relay troubleshooting guide</.link>.
+              Relay not connecting? See our
+              <.website_link href="/kb/administer/troubleshooting">
+                relay troubleshooting guide
+              </.website_link>.
             </p>
             <.initial_connection_status
               :if={@env}

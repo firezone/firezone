@@ -172,7 +172,7 @@ defmodule Web.Acceptance.Auth.OpenIDConnectTest do
         provider_identifier: entity_id
       )
 
-    # Sign In as an portal user
+    # Sign In as a portal user
     session
     |> visit(~p"/#{account}")
     |> assert_el(Query.text("Sign in to #{account.name}"))

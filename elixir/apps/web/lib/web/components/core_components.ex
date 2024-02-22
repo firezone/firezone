@@ -1214,10 +1214,19 @@ defmodule Web.CoreComponents do
 
       ---
       Please do not remove this part of the email.
+      Account Name: #{account.name}
+      Account Slug: #{account.slug}
       Account ID: #{account.id}
       Actor ID: #{subject.actor.id}
       """
 
     "mailto:support@firezone.dev?subject=#{URI.encode_www_form(email_subject)}&body=#{URI.encode_www_form(body)}"
+  end
+
+  def link_style do
+    [
+      "text-accent-500",
+      "hover:underline"
+    ]
   end
 end
