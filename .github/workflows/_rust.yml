@@ -108,10 +108,12 @@ jobs:
         run: pnpm tailwindcss -i src/input.css -o src/output.css
       - name: Build client
         run: cargo build -p firezone-gui-client
-      - name: Run smoke test
-        run: cargo run -p firezone-gui-client -- smoke-test
-      - name: Test that the crash handler produces a crash dump
-        run: bash scripts/crash-handling-smoke-test.bash
+      - name: Run smoke tests (Linux)
+        if: ${{ runner.os == 'Linux' }}
+        run: bash ../../scripts/tests/smoke-test-gui-linux.sh
+      - name: Run smoke tests (Windows)
+        if: ${{ runner.os == 'Windows' }}
+        run: bash ../../scripts/tests/smoke-test-gui-windows.sh
 
   # This should be identical to `build-push-windows-release-artifacts` in `cd.yml` except for the Github permissions, needs tag, and uploading step
   build-gui:
