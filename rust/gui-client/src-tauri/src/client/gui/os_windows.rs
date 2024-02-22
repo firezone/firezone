@@ -1,3 +1,6 @@
+use super::{ControllerRequest, CtlrTx, Error};
+use connlib_shared::BUNDLE_ID;
+
 /// Show a notification in the bottom right of the screen
 ///
 /// May say "Windows Powershell" and have the wrong icon in dev mode

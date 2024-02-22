@@ -3,6 +3,7 @@
 use crate::client::auth::Response as AuthResponse;
 use connlib_shared::control::SecureUrl;
 use secrecy::{ExposeSecret, Secret, SecretString};
+use std::io;
 
 #[cfg(target_os = "linux")]
 #[path = "deep_link/linux.rs"]

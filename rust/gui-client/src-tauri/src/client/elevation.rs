@@ -1,42 +1,29 @@
-#[derive(thiserror::Error, Debug)]
-pub(crate) enum Error {
-    #[cfg(target_os = "windows")]
-    #[error("couldn't install wintun.dll")]
-    DllInstall(#[from] wintun_install::Error),
-    #[cfg(target_os = "windows")]
-    #[error("couldn't load wintun.dll")]
-    DllLoad,
-    #[cfg(target_os = "windows")]
-    #[error("UUID parse error - This should be impossible since the UUID is hard-coded")]
-    Uuid,
-}
-
 pub(crate) use imp::{check, elevate};
 
 #[cfg(target_os = "linux")]
 mod imp {
-    use super::Error;
+    use anyhow::{Context, Result};
 
-    pub(crate) fn check() -> Result<bool, Error> {
+    pub(crate) fn check() -> Result<bool> {
         // TODO
         Ok(true)
     }
 
-    pub(crate) fn elevate() -> Result<(), Error> {
+    pub(crate) fn elevate() -> Result<()> {
         todo!()
     }
 }
 
 #[cfg(target_os = "windows")]
 mod imp {
-    use super::Error;
     use crate::client::wintun_install;
-    use std::str::FromStr;
+    use anyhow::{Context, Result};
+    use std::{os::windows::process::CommandExt, str::FromStr};
 
     /// Check if we have elevated privileges, extract wintun.dll if needed.
     ///
     /// Returns true if already elevated, false if not elevated, error if we can't be sure
-    pub(crate) fn check() -> Result<bool, Error> {
+    pub(crate) fn check() -> Result<bool> {
         // Almost the same as the code in tun_windows.rs in connlib
         const TUNNEL_UUID: &str = "72228ef4-cb84-4ca5-a4e6-3f8636e75757";
         const TUNNEL_NAME: &str = "Firezone Elevation Check";
@@ -44,13 +31,15 @@ mod imp {
         let path = match wintun_install::ensure_dll() {
             Ok(x) => x,
             Err(wintun_install::Error::PermissionDenied) => return Ok(false),
-            Err(e) => return Err(Error::DllInstall(e)),
+            Err(e) => return Err(e).context("Failed to ensure wintun.dll is installed"),
         };
 
         // SAFETY: Unsafe needed because we're loading a DLL from disk and it has arbitrary C code in it.
         // `wintun_install::ensure_dll` checks the hash before we get here. This protects against accidental corruption, but not against attacks. (Because of TOCTOU)
-        let wintun = unsafe { wintun::load_from_path(path) }.map_err(|_| Error::DllLoad)?;
-        let uuid = uuid::Uuid::from_str(TUNNEL_UUID).map_err(|_| Error::Uuid)?;
+        let wintun =
+            unsafe { wintun::load_from_path(path) }.context("Failed to load wintun.dll")?;
+        let uuid =
+            uuid::Uuid::from_str(TUNNEL_UUID).context("Impossible: Hard-coded UUID is invalid")?;
 
         // Wintun hides the exact Windows error, so let's assume the only way Adapter::create can fail is if we're not elevated.
         if wintun::Adapter::create(&wintun, "Firezone", TUNNEL_NAME, Some(uuid.as_u128())).is_err()
@@ -60,7 +49,7 @@ mod imp {
         Ok(true)
     }
 
-    pub(crate) fn elevate() -> Result<(), Error> {
+    pub(crate) fn elevate() -> Result<()> {
         // Hides Powershell's console on Windows
         // <https://stackoverflow.com/questions/59692146/is-it-possible-to-use-the-standard-library-to-spawn-a-process-without-showing-th#60958956>
         const CREATE_NO_WINDOW: u32 = 0x08000000;
@@ -79,7 +68,8 @@ mod imp {
             .arg("RunAs")
             .arg("-ArgumentList")
             .arg("elevated")
-            .spawn()?;
+            .spawn()
+            .context("Failed to elevate ourselves with `RunAs`")?;
         Ok(())
     }
 }
