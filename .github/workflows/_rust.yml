@@ -163,21 +163,21 @@ jobs:
         with:
           name: ${{ env.BINARY_DEST_PATH }}-x64
           path: |
-            ${{ github.workspace }}/rust/windows-client/${{ env.BINARY_DEST_PATH }}-x64.exe
-            ${{ github.workspace }}/rust/windows-client/${{ env.BINARY_DEST_PATH }}-x64.exe.sha256sum.txt
+            ${{ github.workspace }}/rust/gui-client/${{ env.BINARY_DEST_PATH }}-x64.exe
+            ${{ github.workspace }}/rust/gui-client/${{ env.BINARY_DEST_PATH }}-x64.exe.sha256sum.txt
       - name: Save Windows MSI installer
         if: ${{ runner.os == 'Windows' }}
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.BINARY_DEST_PATH }}-x64-msi
           path: |
-            ${{ github.workspace }}/rust/windows-client/${{ env.BINARY_DEST_PATH }}-x64.msi
-            ${{ github.workspace }}/rust/windows-client/${{ env.BINARY_DEST_PATH }}-x64.msi.sha256sum.txt
+            ${{ github.workspace }}/rust/gui-client/${{ env.BINARY_DEST_PATH }}-x64.msi
+            ${{ github.workspace }}/rust/gui-client/${{ env.BINARY_DEST_PATH }}-x64.msi.sha256sum.txt
       - name: Save Windows debug symbols
         if: ${{ runner.os == 'Windows' }}
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.BINARY_DEST_PATH }}-x64-pdb
           path: |
-            ${{ github.workspace }}/rust/windows-client/${{ env.BINARY_DEST_PATH }}-x64.pdb
-            ${{ github.workspace }}/rust/windows-client/${{ env.BINARY_DEST_PATH }}-x64.pdb.sha256sum.txt
+            ${{ github.workspace }}/rust/gui-client/${{ env.BINARY_DEST_PATH }}-x64.pdb
+            ${{ github.workspace }}/rust/gui-client/${{ env.BINARY_DEST_PATH }}-x64.pdb.sha256sum.txt
