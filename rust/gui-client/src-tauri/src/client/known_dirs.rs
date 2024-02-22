@@ -1,49 +1,102 @@
-//! An abstraction over well-known dirs on Linux and Windows, like AppData/Local
+//! An abstraction over well-known dirs like AppData/Local on Windows and $HOME/.config on Linux
+//!
+//! On Linux it uses `dirs` which is a convenience wrapper for getting XDG environment vars
 //!
 //! On Windows it uses `known_folders` which calls into Windows for forwards-compatibility
-//! On Linux it uses `dirs` which is a convenience wrapper for getting XDG environment vars
+//! We can't use `dirs` on Windows because we need to match connlib for when it opens wintun.dll.
 //!
 //! I wanted the ProgramData folder on Windows, which `dirs` alone doesn't provide.
 
-use anyhow::Result;
-use std::path::PathBuf;
+pub(crate) use imp::{device_id, logs, session, settings};
 
-/// `C:\ProgramData` on Windows, `/home/alice/.config
-pub fn device_id_dir() -> Option<PathBuf> {
-    program_data_dir()
+#[cfg(target_os = "linux")]
+mod imp {
+    use connlib_shared::BUNDLE_ID;
+    use std::path::PathBuf;
+
+    /// e.g. `/home/alice/.config/dev.firezone.client/config`
+    ///
+    /// Device ID is stored here until <https://github.com/firezone/firezone/issues/3713> lands
+    ///
+    /// Linux has no direct equivalent to Window's `ProgramData` dir, `/var` doesn't seem
+    /// to be writable by normal users.
+    pub(crate) fn device_id() -> Option<PathBuf> {
+        Some(dirs::config_local_dir()?.join(BUNDLE_ID).join("config"))
+    }
+
+    /// e.g. `/home/alice/.cache/dev.firezone.client/data/logs`
+    ///
+    /// Logs are considered cache because they're not configs and it's technically okay
+    /// if the system / user deletes them to free up space
+    pub(crate) fn logs() -> Option<PathBuf> {
+        Some(dirs::cache_dir()?.join(BUNDLE_ID).join("data").join("logs"))
+    }
+
+    /// e.g. `/home/alice/.config/dev.firezone.client/data`
+    ///
+    /// Things like actor name are stored here because they're kind of config,
+    /// the system / user should not delete them to free up space, but they're not
+    /// really config since the program will rewrite them automatically to persist sessions.
+    pub(crate) fn session() -> Option<PathBuf> {
+        Some(dirs::config_local_dir()?.join(BUNDLE_ID).join("data"))
+    }
+
+    /// e.g. `/home/alice/.config/dev.firezone.client/config`
+    ///
+    /// See connlib docs for details
+    pub(crate) fn settings() -> Option<PathBuf> {
+        Some(dirs::config_local_dir()?.join(BUNDLE_ID).join("config"))
+    }
 }
 
-/// e.g. `C:\Users\Alice\AppData\Local\dev.firezone.client`
-///
-/// See connlib docs for details
 #[cfg(target_os = "windows")]
-fn app_local_data_dir() -> Result<PathBuf, connlib_shared::Error> {
-    connlib_shared::windows::app_local_data_dir()
-}
+mod imp {
+    use connlib_shared::BUNDLE_ID;
+    use known_folders::{get_known_folder_path, KnownFolder};
+    use std::path::PathBuf;
 
-/// e.g. `/home/alice/.config/dev.firezone.client`
-#[cfg(not(target_os = "windows"))]
-// TODO
-fn app_local_data_dir() -> Result<PathBuf, connlib_shared::Error> {
-    Ok(PathBuf::from(connlib_shared::BUNDLE_ID))
-}
+    /// e.g. `C:\ProgramData\dev.firezone.client\config`
+    ///
+    /// Device ID is stored here until <https://github.com/firezone/firezone/issues/3712> lands
+    pub(crate) fn device_id() -> Option<PathBuf> {
+        Some(
+            get_known_folder_path(KnownFolder::ProgramData)?
+                .join(BUNDLE_ID)
+                .join("config"),
+        )
+    }
 
-/// e.g. `C:\ProgramData\`
-///
-/// Device ID is stored here until <https://github.com/firezone/firezone/issues/3712> lands
-#[cfg(target_os = "windows")]
-pub fn program_data_dir() -> Option<PathBuf> {
-    known_folders::get_known_folder_path(known_folders::KnownFolder::ProgramData)
-}
+    /// e.g. `C:\Users\Alice\AppData\Local\dev.firezone.client\data\logs`
+    ///
+    /// See connlib docs for details
+    pub(crate) fn logs() -> Option<PathBuf> {
+        Some(
+            connlib_shared::windows::app_local_data_dir()
+                .ok()?
+                .join("data")
+                .join("logs"),
+        )
+    }
 
-/// e.g. `/home/alice/.config/`
-///
-/// Device ID is stored here until <https://github.com/firezone/firezone/issues/3713> lands
-///
-/// Linux has no direct equivalent to Window's `ProgramData` dir, `/var` doesn't seem
-/// to be writable by normal users.
-#[cfg(not(target_os = "windows"))]
-// TODO
-pub fn program_data_dir() -> Option<PathBuf> {
-    Some(PathBuf::new())
+    /// e.g. `C:\Users\Alice\AppData\Local\dev.firezone.client\data`
+    ///
+    /// Things like actor name go here
+    pub(crate) fn session() -> Option<PathBuf> {
+        Some(
+            connlib_shared::windows::app_local_data_dir()
+                .ok()?
+                .join("data"),
+        )
+    }
+
+    /// e.g. `C:\Users\Alice\AppData\Local\dev.firezone.client\config`
+    ///
+    /// See connlib docs for details
+    pub(crate) fn settings() -> Option<PathBuf> {
+        Some(
+            connlib_shared::windows::app_local_data_dir()
+                .ok()?
+                .join("config"),
+        )
+    }
 }

@@ -7,6 +7,4 @@ fn main() -> anyhow::Result<()> {
     client::run()
 }
 
-// TODO: This is left over from when the GUI client didn't build for Linux.
-// Refactor it out some day.
 mod client;

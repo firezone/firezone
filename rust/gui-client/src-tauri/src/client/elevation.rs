@@ -64,7 +64,7 @@ mod imp {
         if current_exe.display().to_string().contains('\"') {
             anyhow::bail!("The exe path must not contain double quotes, it makes it hard to elevate with Powershell");
         }
-        std::proces::Command::new("powershell")
+        std::process::Command::new("powershell")
             .creation_flags(CREATE_NO_WINDOW)
             .arg("-Command")
             .arg("Start-Process")
