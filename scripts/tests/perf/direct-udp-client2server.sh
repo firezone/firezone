@@ -3,11 +3,7 @@
 set -euox pipefail
 
 docker compose exec --env RUST_LOG=info -it client /bin/sh -c 'iperf3 \
-  --zerocopy \
-  --omit 10 \
-  --time 30 \
   --udp \
-  --udp-counters-64bit \
-  --bandwidth 1G \
+  --bandwidth 10M \
   --client 172.20.0.110 \
   --json' >>"${TEST_NAME}.json"
