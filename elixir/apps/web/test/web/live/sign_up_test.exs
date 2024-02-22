@@ -68,6 +68,84 @@ defmodule Web.Live.SignUpTest do
     end)
   end
 
+  test "allows override to create new account and send a welcome email", %{conn: conn} do
+    Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
+    Domain.Config.feature_flag_override(:sign_up, false)
+    Domain.Config.put_env_override(:sign_up_allow_list, "example.com")
+
+    account_name = "FooBar"
+
+    {:ok, lv, _html} = live(conn, ~p"/sign_up")
+
+    email = Fixtures.Auth.email()
+
+    attrs = %{
+      account: %{name: account_name},
+      actor: %{name: "John Doe"},
+      email: email
+    }
+
+    Bypass.open()
+    |> Domain.Mocks.Stripe.mock_create_customer_endpoint(%{
+      id: Ecto.UUID.generate(),
+      name: account_name
+    })
+    |> Domain.Mocks.Stripe.mock_create_subscription_endpoint()
+
+    assert html =
+             lv
+             |> form("form", registration: attrs)
+             |> render_submit()
+
+    assert html =~ "Your account has been created!"
+    assert html =~ account_name
+
+    account = Repo.one(Domain.Accounts.Account)
+    assert account.name == account_name
+    assert account.metadata.stripe.customer_id
+
+    provider = Repo.one(Domain.Auth.Provider)
+    assert provider.account_id == account.id
+
+    actor = Repo.one(Domain.Actors.Actor)
+    assert actor.account_id == account.id
+    assert actor.name == "John Doe"
+
+    identity = Repo.one(Domain.Auth.Identity)
+    assert identity.account_id == account.id
+    assert identity.provider_identifier == email
+
+    assert_email_sent(fn email ->
+      assert email.subject == "Welcome to Firezone"
+      assert email.text_body =~ url(~p"/#{account}")
+    end)
+  end
+
+  test "prevents unauthorized email from creating new account", %{conn: conn} do
+    Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
+    Domain.Config.feature_flag_override(:sign_up, false)
+    Domain.Config.put_env_override(:sign_up_allow_list, "firezone.dev")
+
+    account_name = "FooBar"
+
+    {:ok, lv, _html} = live(conn, ~p"/sign_up")
+
+    email = Fixtures.Auth.email()
+
+    attrs = %{
+      account: %{name: account_name},
+      actor: %{name: "John Doe"},
+      email: email
+    }
+
+    assert html =
+             lv
+             |> form("form", registration: attrs)
+             |> render_submit()
+
+    assert html =~ "email domain is not allowed at this time"
+  end
+
   test "renders changeset errors on input change", %{conn: conn} do
     {:ok, lv, _html} = live(conn, ~p"/sign_up")
 
@@ -108,8 +186,31 @@ defmodule Web.Live.SignUpTest do
            }
   end
 
+  test "renders changeset errors on submit when sign ups disabled", %{conn: conn} do
+    Domain.Config.feature_flag_override(:sign_up, false)
+
+    attrs = %{
+      account: %{name: "FooBar"},
+      actor: %{name: "John Doe"},
+      email: "jdoe"
+    }
+
+    {:ok, lv, _html} = live(conn, ~p"/sign_up")
+
+    assert lv
+           |> form("form", registration: attrs)
+           |> render_submit()
+           |> form_validation_errors() == %{
+             "registration[email]" => [
+               "email domain is not allowed at this time",
+               "has invalid format"
+             ]
+           }
+  end
+
   test "renders sign up disabled message", %{conn: conn} do
     Domain.Config.feature_flag_override(:sign_up, false)
+    Domain.Config.put_env_override(:sign_up_allow_list, "")
 
     {:ok, _lv, html} = live(conn, ~p"/sign_up")
 

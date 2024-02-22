@@ -550,6 +550,16 @@ defmodule Domain.Config.Definitions do
   defconfig(:api_url_override, :string, default: nil)
 
   ##############################################
+  ## Sign Up
+  ##############################################
+
+  @doc """
+  String of comma separated email domains allowed to signup regardless of signup enabled state.
+  If signups are enabled, this list is ignored.
+  """
+  defconfig(:sign_up_allow_list, :string, default: "")
+
+  ##############################################
   ## Feature Flags
   ##
   ## If feature is disabled globally it won't be available for any account,
