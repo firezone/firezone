@@ -8,6 +8,9 @@ use ip_network_table::IpNetworkTable;
 use itertools::Itertools;
 use snownet::Server;
 use std::sync::Arc;
+use std::task::{ready, Context, Poll};
+use std::time::Duration;
+use tokio::time::{interval, Interval, MissedTickBehavior};
 
 const PEERS_IPV4: &str = "100.64.0.0/11";
 const PEERS_IPV6: &str = "fd00:2021:1111::/107";
@@ -45,6 +48,7 @@ where
 pub struct GatewayState {
     #[allow(clippy::type_complexity)]
     pub peers_by_ip: IpNetworkTable<Arc<Peer<ClientId, PacketTransformGateway>>>,
+    expire_interval: Interval,
 }
 
 impl GatewayState {
@@ -60,7 +64,12 @@ impl GatewayState {
         Some((peer.conn_id, packet))
     }
 
-    pub fn expire_resources(&mut self) -> impl Iterator<Item = ClientId> + '_ {
+    pub fn poll(&mut self, cx: &mut Context<'_>) -> Poll<Vec<ClientId>> {
+        ready!(self.expire_interval.poll_tick(cx));
+        Poll::Ready(self.expire_resources().collect_vec())
+    }
+
+    fn expire_resources(&self) -> impl Iterator<Item = ClientId> + '_ {
         self.peers_by_ip
             .iter()
             .unique_by(|(_, p)| p.conn_id)
@@ -77,8 +86,11 @@ impl GatewayState {
 
 impl Default for GatewayState {
     fn default() -> Self {
+        let mut expire_interval = interval(Duration::from_secs(1));
+        expire_interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
         Self {
             peers_by_ip: IpNetworkTable::new(),
+            expire_interval,
         }
     }
 }
