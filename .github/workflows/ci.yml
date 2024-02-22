@@ -240,8 +240,6 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        dim1: [1, 2, 3, 4, 5]
-        dim2: ['a', 'b', 'c', 'd', 'e']
         test_name:
           - direct-tcp-client2server
           - direct-tcp-server2client
@@ -278,14 +276,13 @@ jobs:
       - name: 'Performance test: ${{ matrix.test_name }}'
         timeout-minutes: 5
         env:
-          DIM: ${{ matrix.dim1 }}-${{ matrix.dim2 }}
           TEST_NAME: ${{ matrix.test_name }}
         run: ./scripts/tests/perf/${{ matrix.test_name }}.sh
       - name: 'Save performance test results: ${{ matrix.test_name }}'
         uses: actions/upload-artifact@v4
         with:
           overwrite: true
-          name: ${{ matrix.test_name }}-${{ matrix.dim1 }}-${{ matrix.dim2 }}-${{ github.ref_name == 'main' && 'main' || github.sha }}-iperf3results
+          name: ${{ matrix.test_name }}-${{ github.ref_name == 'main' && 'main' || github.sha }}-iperf3results
           path: ./${{ matrix.test_name }}.json
       - name: Show Client logs
         if: "!cancelled()"
