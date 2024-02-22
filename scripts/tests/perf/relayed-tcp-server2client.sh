@@ -7,6 +7,8 @@ install_iptables_drop_rules
 
 docker compose exec --env RUST_LOG=info -it client /bin/sh -c 'iperf3 \
   --reverse \
+  --omit 10 \
+  --time 30 \
   --set-mss 1240 \
   --zerocopy \
   --client 172.20.0.110 \
