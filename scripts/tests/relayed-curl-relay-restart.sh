@@ -7,10 +7,8 @@ source "./scripts/tests/lib.sh"
 install_iptables_drop_rules
 trap remove_iptables_drop_rules EXIT # Cleanup after us
 
-docker compose restart relay # Restart relay
-
 client_curl_resource
 
-docker compose restart relay # Restart again
+docker compose restart relay # Restart relay
 
 client_curl_resource
