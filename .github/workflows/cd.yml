@@ -116,10 +116,10 @@ jobs:
           - target: x86_64-unknown-linux-musl
             shortname: x64
             platform: linux/amd64
-          - target: aarch64-unknown-linux-musl # E.g. AWS Graviton
+          - target: aarch64-unknown-linux-musl  # E.g. AWS Graviton
             shortname: arm64
             platform: linux/arm64
-          - target: armv7-unknown-linux-musleabihf # E.g. Raspberry Pi
+          - target: armv7-unknown-linux-musleabihf  # E.g. Raspberry Pi
             platform: linux/arm/v7
             shortname: arm
           # Requires ring v0.17 which a number of our dependencies don't yet support
