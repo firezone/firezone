@@ -134,6 +134,16 @@ where
     CB: Callbacks + 'static,
 {
     pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Result<Event<ClientId>>> {
+        match self.role_state.poll(cx) {
+            Poll::Ready(ids) => {
+                cx.waker().wake_by_ref();
+                for id in ids {
+                    self.cleanup_connection(id);
+                }
+            }
+            Poll::Pending => {}
+        }
+
         let Some(device) = self.device.as_mut() else {
             self.no_device_waker.register(cx.waker());
             return Poll::Pending;
@@ -331,15 +341,17 @@ where
             return Poll::Pending;
         };
 
-        let packet = match peer.untransform(packet.source(), self.write_buf.as_mut()) {
-            Ok(packet) => packet,
-            Err(e) => {
-                tracing::warn!(%conn_id, %local, %from, "Failed to transform packet: {e}");
+        let packet_len = packet.packet().len();
+        let packet =
+            match peer.untransform(packet.source(), &mut self.write_buf.as_mut()[..packet_len]) {
+                Ok(packet) => packet,
+                Err(e) => {
+                    tracing::warn!(%conn_id, %local, %from, "Failed to transform packet: {e}");
 
-                cx.waker().wake_by_ref();
-                return Poll::Pending;
-            }
-        };
+                    cx.waker().wake_by_ref();
+                    return Poll::Pending;
+                }
+            };
 
         Poll::Ready(packet)
     }
