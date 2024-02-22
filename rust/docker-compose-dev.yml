@@ -2,18 +2,18 @@
 services:
   client:
     build:
-      target: runtime
+      target: development
     volumes:
       - ./rust/target/x86_64-unknown-linux-musl/debug/firezone-linux-client:/bin/firezone-linux-client
 
   gateway:
     build:
-      target: runtime
+      target: development
     volumes:
       - ./rust/target/x86_64-unknown-linux-musl/debug/firezone-gateway:/bin/firezone-gateway
 
   relay:
     build:
-      target: runtime
+      target: development
     volumes:
       - ./rust/target/x86_64-unknown-linux-musl/debug/firezone-relay:/bin/firezone-relay
