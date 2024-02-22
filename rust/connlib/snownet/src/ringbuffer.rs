@@ -24,6 +24,18 @@ impl<T: PartialEq> RingBuffer<T> {
         initial_len != self.buffer.len()
     }
 
+    pub fn pop(&mut self) -> Option<T> {
+        self.buffer.pop()
+    }
+
+    pub fn clear(&mut self) {
+        self.buffer.clear();
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &T> + '_ {
+        self.buffer.iter()
+    }
+
     #[cfg(test)]
     fn inner(&self) -> &[T] {
         self.buffer.as_slice()
