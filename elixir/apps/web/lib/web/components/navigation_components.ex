@@ -308,4 +308,30 @@ defmodule Web.NavigationComponents do
     </div>
     """
   end
+
+  @doc """
+  Renders links based off our website path.
+
+  ## Examples
+
+    <.website_link href="/pricing>Pricing</.website_link>
+    <.website_link href="/kb/deploy/gateways" class="text-neutral-900">Deploy Gateway(s)</.website_link>
+    <.website_link href={~p"/contact/sales"}>Contact Sales</.website_link>
+  """
+  attr :href, :string, required: true
+  slot :inner_block, required: true
+  attr :rest, :global
+
+  def website_link(assigns) do
+    ~H"""
+    <.link
+      navigate={"https://www.firezone.dev#{@href}?utm_source=product"}
+      class={link_style()}
+      target="_blank"
+      {@rest}
+    >
+      <%= render_slot(@inner_block) %>
+    </.link>
+    """
+  end
 end
