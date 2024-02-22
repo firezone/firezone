@@ -537,12 +537,12 @@ extension Adapter: CallbackHandlerDelegate {
     var resolvers: [String] = Resolv().getservers().map(Resolv.getnameinfo)
 
     // When the tunnel is up, we can only get the system's default resolvers
-    // by reading /etc/resolv.conf and matchDomains is set to a non-empty string.
+    // by reading /etc/resolv.conf when matchDomains is set to a non-empty string.
     // If matchDomains is an empty string, /etc/resolv.conf will contain connlib's
     // sentinel, which isn't helpful to us.
     // If networkSettings isn't initialized, this means we're setting up the tunnel,
-    // so we haven't overridden the system's default DNS resolver yet, and so we
-    // don't need to do this dance.
+    // so we haven't set matchDomains at all yet, and so we
+    // don't need to do this dance and can just read what's in /etc/resolv.conf.
     if let networkSettings = self.networkSettings {
       // async / await can't be used here because this is an FFI callback
       let semaphore = DispatchSemaphore(value: 0)
