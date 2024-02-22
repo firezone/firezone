@@ -68,22 +68,8 @@ pub(crate) fn run() -> Result<()> {
                 // We're already elevated, just run the GUI
                 run_gui(cli)
             } else {
-                // We're not elevated, ask Powershell to re-launch us, then exit
-                let current_exe = tauri_utils::platform::current_exe()?;
-                if current_exe.display().to_string().contains('\"') {
-                    anyhow::bail!("The exe path must not contain double quotes, it makes it hard to elevate with Powershell");
-                }
-                Command::new("powershell")
-                    .creation_flags(CREATE_NO_WINDOW)
-                    .arg("-Command")
-                    .arg("Start-Process")
-                    .arg("-FilePath")
-                    .arg(format!(r#""{}""#, current_exe.display()))
-                    .arg("-Verb")
-                    .arg("RunAs")
-                    .arg("-ArgumentList")
-                    .arg("elevated")
-                    .spawn()?;
+                // We're not elevated, ask Powershell / sudo to re-launch us, then exit
+                elevation::elevate()?;
                 Ok(())
             }
         }
