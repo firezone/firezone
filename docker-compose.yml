@@ -195,7 +195,7 @@ services:
     healthcheck:
       # Test if the iperf3 server is listening on the expected ports, then wait
       # another second. iperf3 takes a moment to start up and be stable for testing.
-      test: ["CMD-SHELL", "ps -C iperf3"]
+      test: ["CMD-SHELL", "(cat /proc/net/tcp | grep 5201) && (cat /proc/net/udp | grep 5201) && sleep 1"]
     command: -s -V
     networks:
       resources:
