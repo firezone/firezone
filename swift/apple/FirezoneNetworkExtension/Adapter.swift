@@ -144,12 +144,6 @@ class Adapter {
 
       self.logger.log("Adapter.start: Starting connlib")
       do {
-        // We can only get the system's default resolvers before connlib starts, and then they'll
-        // be overwritten by the ones from connlib. So cache them here for getSystemDefaultResolvers
-        // to retrieve them later.
-        self.callbackHandler.setSystemDefaultResolvers(
-          resolvers: Resolv().getservers().map(Resolv.getnameinfo)
-        )
         self.state = .startingTunnel(
           session: try WrappedSession.connect(
             self.controlPlaneURLString,
@@ -293,24 +287,6 @@ extension Adapter {
 // MARK: Responding to path updates
 
 extension Adapter {
-  private func resetToSystemDNS() {
-    // Setting this to anything but an empty string will populate /etc/resolv.conf with
-    // the default interface's DNS servers, which we read later from connlib
-    // during tunnel setup.
-    self.networkSettings?.setMatchDomains(["firezone-fd0020211111"])
-    self.networkSettings?.apply(
-      on: self.packetTunnelProvider,
-      logger: self.logger,
-      completionHandler: { _ in
-        // We can only get the system's default resolvers before connlib starts, and then they'll
-        // be overwritten by the ones from connlib. So cache them here for getSystemDefaultResolvers
-        // to retrieve them later.
-        self.callbackHandler.setSystemDefaultResolvers(
-          resolvers: Resolv().getservers().map(Resolv.getnameinfo)
-        )
-      })
-  }
-
   private func beginPathMonitoring() {
     self.logger.log("Beginning path monitoring")
     let networkMonitor = NWPathMonitor()
@@ -328,7 +304,6 @@ extension Adapter {
       if path.status != .satisfied {
         self.logger.log("Adapter.didReceivePathUpdate: Offline. Shutting down connlib.")
         onStarted?(nil)
-        resetToSystemDNS()
         self.packetTunnelProvider?.reasserting = true
         self.state = .stoppingTunnelTemporarily(session: session, onStopped: nil)
         session.disconnect()
@@ -337,7 +312,6 @@ extension Adapter {
     case .tunnelReady(let session):
       if path.status != .satisfied {
         self.logger.log("Adapter.didReceivePathUpdate: Offline. Shutting down connlib.")
-        resetToSystemDNS()
         self.packetTunnelProvider?.reasserting = true
         self.state = .stoppingTunnelTemporarily(session: session, onStopped: nil)
         session.disconnect()
@@ -557,5 +531,47 @@ extension Adapter: CallbackHandlerDelegate {
         }
       }
     }
+  }
+
+  public func getSystemDefaultResolvers() -> RustString {
+    var resolvers: [String] = Resolv().getservers().map(Resolv.getnameinfo)
+
+    // When the tunnel is up, we can only get the system's default resolvers
+    // by reading /etc/resolv.conf and matchDomains is set to a non-empty string.
+    // If matchDomains is an empty string, /etc/resolv.conf will contain connlib's
+    // sentinel, which isn't helpful to us.
+    // If networkSettings isn't initialized, this means we're setting up the tunnel,
+    // so we haven't overridden the system's default DNS resolver yet, and so we
+    // don't need to do this dance.
+    if let networkSettings = self.networkSettings {
+      // async / await can't be used here because this is an FFI callback
+      let semaphore = DispatchSemaphore(value: 0)
+      networkSettings.setMatchDomains(["firezone-fd0020211111"])
+
+      // Call apply with the completion handler
+      networkSettings.apply(
+        on: self.packetTunnelProvider, logger: self.logger,
+        completionHandler: { _ in
+          // Only now can we get the system resolvers
+          resolvers = Resolv().getservers().map(Resolv.getnameinfo)
+          semaphore.signal()
+        })
+
+      self.logger.log(
+        "Adapter.getSystemDefaultResolvers: Waiting on NetworkSettings.apply to complete")
+
+      semaphore.wait()
+
+      // Restore connlib's DNS resolvers as the system default only after we're sure we've read the
+      // actual default resolvers.
+      networkSettings.setMatchDomains([""])
+      networkSettings.apply(
+        on: self.packetTunnelProvider, logger: self.logger, completionHandler: nil)
+    }
+
+    return try! String(
+      decoding: JSONEncoder().encode(resolvers),
+      as: UTF8.self
+    ).intoRustString()
   }
 }

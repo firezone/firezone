@@ -27,11 +27,11 @@ public protocol CallbackHandlerDelegate: AnyObject {
   func onRemoveRoute(_: String)
   func onUpdateResources(resourceList: String)
   func onDisconnect(error: String?)
+  func getSystemDefaultResolvers() -> RustString
 }
 
 public class CallbackHandler {
   public weak var delegate: CallbackHandlerDelegate?
-  private var systemDefaultResolvers: [String] = []
   private let logger: AppLogger
 
   init(logger: AppLogger) {
@@ -95,20 +95,7 @@ public class CallbackHandler {
     delegate?.onDisconnect(error: optionalError)
   }
 
-  func setSystemDefaultResolvers(resolvers: [String]) {
-    logger.log(
-      "CallbackHandler.setSystemDefaultResolvers: \(resolvers)")
-    self.systemDefaultResolvers = resolvers
-  }
-
   func getSystemDefaultResolvers() -> RustString {
-    logger.log(
-      "CallbackHandler.getSystemDefaultResolvers: \(self.systemDefaultResolvers)"
-    )
-
-    return try! String(
-      decoding: JSONEncoder().encode(self.systemDefaultResolvers),
-      as: UTF8.self
-    ).intoRustString()
+    return delegate!.getSystemDefaultResolvers()
   }
 }
