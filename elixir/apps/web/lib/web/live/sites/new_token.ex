@@ -44,19 +44,17 @@ defmodule Web.Sites.NewToken do
         Gateways require egress connectivity to the control plane API and relay servers.
         <strong>No ingress firewall rules</strong>
         are required or recommended. See our
-        <.link
-          href="https://www.firezone.dev/kb/deploy/gateways#firewall-considerations?utm_source=product"
-          class={link_style()}
-        >
+        <.website_link href="/kb/deploy/gateways#firewall-considerations">
           deploy guide
-        </.link>
+        </.website_link>
         for more information.
       </:help>
       <:help>
-        <.link
-          href="http://www.firezone.dev/kb/deploy/gateways?utm_source=product"
-          class="text-accent-500 hover:underline"
-        >Read the gateway deployment guide for more detailed instructions</.link>.
+        Read the
+        <.website_link href="/kb/deploy/gateways">
+          gateway deployment guide
+        </.website_link>
+        for more detailed instructions.
       </:help>
       <:content>
         <div class="py-8 px-4 mx-auto max-w-2xl lg:py-16">
@@ -111,10 +109,10 @@ defmodule Web.Sites.NewToken do
 
           <div id="connection-status" class="flex justify-between items-center">
             <p class="text-sm">
-              Gateway not connecting? See our <.link
-                class="text-accent-500 hover:underline"
-                href="https://www.firezone.dev/kb/administer/troubleshooting#gateway-not-connecting"
-              >gateway troubleshooting guide</.link>.
+              Gateway not connecting? See our
+              <.website_link href="/kb/administer/troubleshooting#gateway-not-connecting">
+                gateway troubleshooting guide
+              </.website_link>.
             </p>
             <.initial_connection_status
               :if={@env}

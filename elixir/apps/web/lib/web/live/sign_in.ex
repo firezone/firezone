@@ -109,9 +109,9 @@ defmodule Web.SignIn do
         <div :if={Web.Auth.fetch_auth_context_type!(@params) == :browser} class="mx-auto p-6 sm:p-8">
           <p class="py-2">
             Meant to sign in from a client instead?
-            <a href="https://firezone.dev/kb/user-guides?utm_source=product" class={link_style()}>
+            <.website_link href="/kb/user-guides">
               Read the docs.
-            </a>
+            </.website_link>
           </p>
         </div>
       </div>

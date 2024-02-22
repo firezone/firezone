@@ -39,13 +39,9 @@ defmodule Web.Settings.DNS do
           resolver will be used.
         </p>
         <p class="ml-4 mb-4 text-neutral-600">
-          <.link
-            class={link_style()}
-            href="https://www.firezone.dev/kb/administer/dns?utm_source=product"
-            target="_blank"
-          >
+          <.website_link href="/kb/administer/dns">
             Read more about configuring DNS in Firezone.
-          </.link>
+          </.website_link>
         </p>
         <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
           <.flash kind={:success} flash={@flash} phx-click="lv:clear-flash" />

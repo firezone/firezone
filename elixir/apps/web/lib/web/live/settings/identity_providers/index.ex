@@ -42,13 +42,10 @@ defmodule Web.Settings.IdentityProviders.Index do
         </.add_button>
       </:action>
       <:help>
-        <.link
-          class={link_style()}
-          href="https://www.firezone.dev/kb/authenticate?utm_source=product"
-          target="_blank"
-        >
-          Read more about how authentication works in Firezone.
-        </.link>
+        <.website_link href="/kb/authenticate">
+          Read more
+        </.website_link>
+        about how authentication works in Firezone.
       </:help>
       <:content>
         <.flash_group flash={@flash} />
