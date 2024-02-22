@@ -72,7 +72,7 @@ pub struct Allocation {
 ///
 /// Note that any combination of IP versions is possible here.
 /// We might have allocated an IPv6 address on a TURN server that we are talking to IPv4 and vice versa.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct Socket {
     /// The server this socket was allocated on.
     server: SocketAddr,

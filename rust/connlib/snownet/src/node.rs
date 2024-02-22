@@ -28,6 +28,7 @@ use crate::{IpPacket, MutableIpPacket};
 use boringtun::noise::errors::WireGuardError;
 use std::borrow::Cow;
 use std::iter;
+use std::ops::ControlFlow;
 use stun_codec::rfc5389::attributes::{Realm, Username};
 
 // Note: Taken from boringtun
@@ -226,52 +227,26 @@ where
     ) -> Result<Option<(TId, MutableIpPacket<'s>)>, Error> {
         self.add_local_as_host_candidate(local)?;
 
-        // First, check if a `StunBinding` wants the packet
-        if let Some(binding) = self.bindings.get_mut(&from) {
-            if binding.handle_input(from, local, packet, now) {
-                return Ok(None);
-            }
-        }
+        let ControlFlow::Continue(()) = self.bindings_try_handle(from, local, packet, now) else {
+            return Ok(None);
+        };
 
-        // Next, check if an `Allocation` wants the packet
-        if let Some(allocation) = self.allocations.get_mut(&from) {
-            if allocation.handle_input(from, local, packet, now) {
-                return Ok(None);
-            };
-        }
+        let ControlFlow::Continue((from, packet, relay_socket)) =
+            self.allocations_try_handle(from, local, packet, now)
+        else {
+            return Ok(None);
+        };
 
-        // Next, the packet could be a channel-data message, unwrap if that is the case.
-        let (from, packet, relay_socket) = self
-            .allocations
-            .get_mut(&from)
-            .and_then(|a| {
-                let (from, packet, socket) = a.decapsulate(from, packet, now)?;
-
-                Some((from, packet, Some(socket)))
-            })
-            .unwrap_or((from, packet, None));
-
-        // Next: If we can parse the message as a STUN message, cycle through all agents to check which one it is for.
-        if let Ok(message) = StunMessage::parse(packet) {
-            for (_, agent) in self.connections.agents_mut() {
-                if agent.accepts_message(&message) {
-                    agent.handle_packet(
-                        now,
-                        StunPacket {
-                            proto: Protocol::Udp,
-                            source: from,
-                            destination: relay_socket.map(|s| s.address()).unwrap_or(local),
-                            message,
-                        },
-                    );
-                    return Ok(None);
-                }
-            }
-
-            return Err(Error::UnhandledStunMessage {
-                num_agents: self.connections.len(),
-            });
-        }
+        match self.agents_try_handle(
+            from,
+            relay_socket.map(|s| s.address()).unwrap_or(local),
+            packet,
+            now,
+        ) {
+            ControlFlow::Continue(()) => {}
+            ControlFlow::Break(Ok(())) => return Ok(None),
+            ControlFlow::Break(Err(e)) => return Err(e),
+        };
 
         for (id, conn) in self.connections.iter_established_mut() {
             if !conn.accepts(from) {
@@ -669,6 +644,86 @@ where
         }
 
         Ok(())
+    }
+
+    fn bindings_try_handle(
+        &mut self,
+        from: SocketAddr,
+        local: SocketAddr,
+        packet: &[u8],
+        now: Instant,
+    ) -> ControlFlow<()> {
+        let Some(binding) = self.bindings.get_mut(&from) else {
+            return ControlFlow::Continue(());
+        };
+
+        let handled = binding.handle_input(from, local, packet, now);
+
+        if !handled {
+            tracing::debug!("Packet was destined for binding but no longer accepted");
+        }
+
+        ControlFlow::Break(())
+    }
+
+    /// Tries to handle the packet using one of our [`Allocation`]s.
+    fn allocations_try_handle<'p>(
+        &mut self,
+        from: SocketAddr,
+        local: SocketAddr,
+        packet: &'p [u8],
+        now: Instant,
+    ) -> ControlFlow<(), (SocketAddr, &'p [u8], Option<Socket>)> {
+        // First, check whether the packet is from a known allocation.
+        let Some(allocation) = self.allocations.get_mut(&from) else {
+            return ControlFlow::Continue((from, packet, None));
+        };
+
+        // Second, attempt to unpack it as a channel data message.
+        if let Some((from, packet, socket)) = allocation.decapsulate(from, packet, now) {
+            return ControlFlow::Continue((from, packet, Some(socket)));
+        }
+
+        // Third, if it is not a channel data message, attempt to handle as a control message (i.e. STUN).
+        let handled = allocation.handle_input(from, local, packet, now);
+
+        if !handled {
+            tracing::debug!("Packet was destined for allocation but no longer accepted");
+        }
+
+        ControlFlow::Break(())
+    }
+
+    fn agents_try_handle(
+        &mut self,
+        from: SocketAddr,
+        destination: SocketAddr,
+        packet: &[u8],
+        now: Instant,
+    ) -> ControlFlow<Result<(), Error>> {
+        let Ok(message) = StunMessage::parse(packet) else {
+            return ControlFlow::Continue(());
+        };
+
+        for (_, agent) in self.connections.agents_mut() {
+            if agent.accepts_message(&message) {
+                agent.handle_packet(
+                    now,
+                    StunPacket {
+                        proto: Protocol::Udp,
+                        source: from,
+                        destination,
+                        message,
+                    },
+                );
+
+                return ControlFlow::Break(Ok(()));
+            }
+        }
+
+        ControlFlow::Break(Err(Error::UnhandledStunMessage {
+            num_agents: self.connections.len(),
+        }))
     }
 }
 
