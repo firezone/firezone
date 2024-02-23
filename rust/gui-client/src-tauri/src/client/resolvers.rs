@@ -5,16 +5,9 @@ use std::net::IpAddr;
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
     #[error("can't get system DNS resolvers: {0}")]
-    #[cfg(target_os = "windows")]
     CantGetResolvers(#[from] ipconfig::error::Error),
 }
 
-#[cfg(target_os = "linux")]
-pub fn get() -> Result<Vec<IpAddr>, Error> {
-    todo!()
-}
-
-#[cfg(target_os = "windows")]
 pub fn get() -> Result<Vec<IpAddr>, Error> {
     Ok(ipconfig::get_adapters()?
         .iter()

@@ -10,6 +10,7 @@ pub enum Cmd {
     Crash,
     Hostname,
     NetworkChanges,
+    Wintun,
 }
 
 pub fn run(cmd: Cmd) -> Result<()> {
@@ -18,6 +19,7 @@ pub fn run(cmd: Cmd) -> Result<()> {
         Cmd::Crash => crash(),
         Cmd::Hostname => hostname(),
         Cmd::NetworkChanges => client::network_changes::run_debug(),
+        Cmd::Wintun => wintun(),
     }
 }
 
@@ -44,5 +46,17 @@ fn hostname() -> Result<()> {
         "{:?}",
         hostname::get().ok().and_then(|x| x.into_string().ok())
     );
+    Ok(())
+}
+
+/// Try to load wintun.dll and throw an error if it's not in the right place
+fn wintun() -> Result<()> {
+    tracing_subscriber::fmt::init();
+    let path = connlib_shared::windows::wintun_dll_path()?;
+    // SAFETY: Loading a DLL from disk is unsafe. We're responsible for making sure
+    // we're using the DLL's API correctly.
+    unsafe { wintun::load_from_path(&path) }?;
+    tracing::info!(?path, "Loaded wintun.dll");
+
     Ok(())
 }

@@ -7,16 +7,16 @@ fn main() -> anyhow::Result<()> {
     client::run()
 }
 
-#[cfg(target_os = "linux")]
-mod client;
-
-#[cfg(target_os = "macos")]
+#[cfg(target_family = "unix")]
 mod client {
     pub(crate) fn run() -> anyhow::Result<()> {
-        println!("The GUI client does not compile on macOS yet");
+        println!("The Windows client does not compile on non-Windows platforms yet");
         Ok(())
     }
 }
 
+/// Everything is hidden inside the `client` module so that we can exempt the
+/// Windows client from static analysis on other platforms where it would throw
+/// compile errors.
 #[cfg(target_os = "windows")]
 mod client;
