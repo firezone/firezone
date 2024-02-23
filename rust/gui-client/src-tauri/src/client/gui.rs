@@ -297,6 +297,9 @@ async fn smoke_test(ctlr_tx: CtlrTx) -> Result<()> {
     tracing::info!("Will quit on purpose in {delay} seconds as part of the smoke test.");
     let quit_time = tokio::time::Instant::now() + Duration::from_secs(delay);
 
+    // Write the settings so we can check the path for those
+    settings::apply_advanced_settings_inner(&settings::AdvancedSettings::default()).await?;
+
     // Test log exporting
     let path = connlib_shared::windows::app_local_data_dir()
         .context("`app_local_data_dir` failed")?
