@@ -11,6 +11,93 @@ permissions:
   id-token: 'write'
 
 jobs:
+  # From <https://mutants.rs/pr-diff.html>
+  incremental-mutants:
+    name: incremental-mutants-${{ matrix.runs-on }}
+    if: github.event_name == 'pull_request'
+    # Copied from `test`, but I don't want mutation testing to slow down the unit tests,
+    # so I made a separate job
+    strategy:
+      fail-fast: false
+      matrix:
+        # TODO: https://github.com/rust-lang/cargo/issues/5220
+        include:
+          - runs-on: ubuntu-20.04
+            packages: --workspace
+          - runs-on: ubuntu-22.04
+            packages: --workspace
+          - runs-on: macos-12
+            packages: -p connlib-client-apple -p snownet
+          - runs-on: macos-13
+            packages: -p connlib-client-apple -p snownet
+          - runs-on: macos-14
+            packages: -p connlib-client-apple -p snownet
+          - runs-on: windows-2019
+            packages: -p firezone-gui-client -p connlib-client-shared -p snownet
+          - runs-on: windows-2022
+            packages: -p firezone-gui-client -p connlib-client-shared -p snownet
+    runs-on: ${{ matrix.runs-on }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Relative diff
+        shell: bash
+        run: |
+          git branch -av
+          git diff origin/${{ github.base_ref }}.. | tee git.diff
+      - uses: ./.github/actions/setup-rust
+      - uses: ./.github/actions/setup-tauri
+      - run: cargo install --locked cargo-mutants
+      - name: Mutants
+        run: cargo mutants --no-shuffle -j 2 -vV --in-diff git.diff
+      - name: Archive mutants.out
+        uses: actions/upload-artifact@v4
+        # TODO: What does this do?
+        if: always()
+        with:
+          name: mutants-incremental.out-${{ matrix.runs-on }}
+          path: ${{ github.workspace }}/rust/mutants.out
+
+  mutation:
+    name: mutation-${{ matrix.runs-on }}
+    # Copied from `test`, but I don't want mutation testing to slow down the unit tests,
+    # so I made a separate job
+    strategy:
+      fail-fast: false
+      matrix:
+        # TODO: https://github.com/rust-lang/cargo/issues/5220
+        include:
+          - runs-on: ubuntu-20.04
+            packages: --workspace
+          - runs-on: ubuntu-22.04
+            packages: --workspace
+          - runs-on: macos-12
+            packages: -p connlib-client-apple -p snownet
+          - runs-on: macos-13
+            packages: -p connlib-client-apple -p snownet
+          - runs-on: macos-14
+            packages: -p connlib-client-apple -p snownet
+          - runs-on: windows-2019
+            packages: -p firezone-gui-client -p connlib-client-shared -p snownet
+          - runs-on: windows-2022
+            packages: -p firezone-gui-client -p connlib-client-shared -p snownet
+    runs-on: ${{ matrix.runs-on }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-rust
+      - uses: ./.github/actions/setup-tauri
+      - run: cargo install --locked cargo-mutants
+        # Use `--in-place` since this copy of the repo will be tossed when the job ends anyway
+      - run: timeout 15m cargo mutants --in-place ${{ matrix.packages }}
+        shell: bash
+      - name: Archive mutants.out
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mutants-full.out-${{ matrix.runs-on }}
+          path: ${{ github.workspace }}/rust/mutants.out
+
   static-analysis:
     name: static-analysis-${{ matrix.runs-on }}
     strategy:
