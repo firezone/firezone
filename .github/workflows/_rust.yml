@@ -43,7 +43,7 @@ jobs:
         shell: bash
         run: |
           git branch -av
-          git diff origin/${{ github.base_ref }}.. | tee git.diff
+          git diff origin/${{ github.base_ref }} | tee git.diff
       - uses: ./.github/actions/setup-rust
       - uses: ./.github/actions/setup-tauri
       - run: cargo install --locked cargo-mutants
