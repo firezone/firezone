@@ -1,7 +1,6 @@
 use crate::{
     backoff,
     node::{CandidateEvent, Transmit},
-    ringbuffer::RingBuffer,
 };
 use ::backoff::backoff::Backoff;
 use backoff::ExponentialBackoff;
@@ -30,9 +29,6 @@ pub struct StunBinding {
 
     backoff: ExponentialBackoff,
 
-    /// When we time out requests, we remember the last [`TransactionId`]s to be able to recognize them in case they do arrive later.
-    timed_out_requests: RingBuffer<TransactionId>,
-
     buffered_transmits: VecDeque<Transmit<'static>>,
     events: VecDeque<CandidateEvent>,
 }
@@ -55,7 +51,6 @@ impl StunBinding {
             buffered_transmits: VecDeque::from([transmit]),
             events: Default::default(),
             backoff,
-            timed_out_requests: RingBuffer::new(100),
         }
     }
 
@@ -84,14 +79,6 @@ impl StunBinding {
         };
 
         let transaction_id = message.transaction_id();
-
-        if self.timed_out_requests.remove(&transaction_id) {
-            tracing::debug!(
-                ?transaction_id,
-                "Received response to timed-out request, ignoring"
-            );
-            return true;
-        }
 
         match self.state {
             State::SentRequest { id, .. } if id == transaction_id => {
@@ -144,8 +131,6 @@ impl StunBinding {
                 match self.backoff.next_backoff() {
                     Some(backoff) => {
                         tracing::debug!(?id, "STUN request timed out, sending new one");
-
-                        self.timed_out_requests.push(id);
 
                         backoff
                     }
@@ -412,30 +397,6 @@ mod tests {
         );
 
         assert!(!handled);
-        assert!(stun_binding.poll_event().is_none());
-    }
-
-    #[test]
-    fn timed_out_response_is_still_handled() {
-        let start = Instant::now();
-
-        let mut stun_binding = StunBinding::new(SERVER1, start);
-
-        let first_request = stun_binding.poll_transmit().unwrap();
-
-        let timeout = stun_binding.poll_timeout().unwrap();
-        stun_binding.handle_timeout(timeout);
-
-        let _second_request = stun_binding.poll_transmit().unwrap();
-
-        let handled = stun_binding.handle_input(
-            SERVER1,
-            MAPPED_ADDRESS,
-            &generate_stun_response(first_request, MAPPED_ADDRESS),
-            start + Duration::from_secs(5),
-        );
-
-        assert!(handled);
         assert!(stun_binding.poll_event().is_none());
     }
 
