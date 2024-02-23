@@ -56,8 +56,8 @@ jobs:
         # TODO: What does this do?
         if: always()
         with:
-          name: mutants-incremental.out
-          path: mutants.out-${{ matrix.runs-on }}
+          name: mutants-incremental.out-${{ matrix.runs-on }}
+          path: mutants.out
 
   mutation:
     name: mutation-${{ matrix.runs-on }}
@@ -93,8 +93,8 @@ jobs:
       - name: Archive mutants.out
         uses: actions/upload-artifact@v4
         with:
-          name: mutants-full.out
-          path: mutants.out-${{ matrix.runs-on }}
+          name: mutants-full.out-${{ matrix.runs-on }}
+          path: mutants.out
 
   static-analysis:
     name: static-analysis-${{ matrix.runs-on }}
