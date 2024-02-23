@@ -6,6 +6,8 @@ use secrecy::{ExposeSecret, Secret, SecretString};
 #[cfg(target_os = "windows")]
 use std::io;
 
+pub(crate) const FZ_SCHEME: &str = "firezone-fd0020211111";
+
 #[cfg(target_os = "linux")]
 #[path = "deep_link/linux.rs"]
 mod imp;
@@ -14,6 +16,8 @@ mod imp;
 #[path = "deep_link/windows.rs"]
 mod imp;
 
+// TODO: The repeated `target_os = "windows"` here is bad.
+// When I add deep link support for Linux I'll replace this all for `anyhow`.
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
     #[error("named pipe server couldn't start listening, we are probably the second instance")]

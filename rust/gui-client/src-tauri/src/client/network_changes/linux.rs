@@ -6,7 +6,7 @@ use anyhow::Result;
 pub(crate) enum Error {}
 
 pub(crate) fn run_debug() -> Result<()> {
-    tracing::warn!("network_changes not implemented for Linux");
+    tracing::warn!("network_changes not implemented yet on Linux");
     Ok(())
 }
 
@@ -27,8 +27,6 @@ impl Worker {
     }
 
     pub(crate) async fn notified(&self) {
-        loop {
-            tokio::time::sleep(std::time::Duration::from_secs(86400)).await;
-        }
+        futures::future::pending().await
     }
 }

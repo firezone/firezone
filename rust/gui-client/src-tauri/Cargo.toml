@@ -18,7 +18,6 @@ clap = { version = "4.4", features = ["derive",  "env"] }
 connlib-client-shared = { workspace = true }
 connlib-shared = { workspace = true }
 crash-handler = "0.6.1"
-dirs = "5.0.1"
 firezone-cli-utils = { workspace = true }
 git-version = "0.3.9"
 hex = "0.4.3"
@@ -53,17 +52,18 @@ url = { version = "2.5.0", features = ["serde"] }
 uuid = { version = "1.7.0", features = ["v4"] }
 zip = { version = "0.6.6", features = ["deflate", "time"], default-features = false }
 
-[target.'cfg(linux)'.dependencies]
+[target.'cfg(target_os = "linux")'.dependencies]
 dirs = "5.0.1"
+# Used for infinite `pending` on not-yet-implemented functions
+futures = "0.3.30"
 
-# These dependencies are locked behind `cfg(windows)` because they either can't compile at all on Linux, or they need native dependencies like glib that are difficult to get. Try not to add more here.
-[target.'cfg(windows)'.dependencies]
+[target.'cfg(target_os = "windows")'.dependencies]
 tauri-winrt-notification = "0.1.3"
 windows-implement = "0.52.0"
 winreg = "0.52.0"
 wintun = "0.4.0"
 
-[target.'cfg(windows)'.dependencies.windows]
+[target.'cfg(target_os = "windows")'.dependencies.windows]
 version = "0.52.0"
 features = [
   # For implementing COM interfaces

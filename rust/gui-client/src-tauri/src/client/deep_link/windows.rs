@@ -1,14 +1,12 @@
 //! A module for registering, catching, and parsing deep links that are sent over to the app's already-running instance
 //! Based on reading some of the Windows code from <https://github.com/FabianLars/tauri-plugin-deep-link>, which is licensed "MIT OR Apache-2.0"
 
-use super::Error;
+use super::{Error, FZ_SCHEME};
 use connlib_shared::{control::SecureUrl, BUNDLE_ID};
 use secrecy::{ExposeSecret, Secret, SecretString};
 use std::{ffi::c_void, io, path::Path, str::FromStr};
 use tokio::{io::AsyncReadExt, io::AsyncWriteExt, net::windows::named_pipe};
 use windows::Win32::Security as WinSec;
-
-pub(crate) const FZ_SCHEME: &str = "firezone-fd0020211111";
 
 /// A server for a named pipe, so we can receive deep links from other instances
 /// of the client launched by web browsers
@@ -124,8 +122,6 @@ pub async fn open(url: &url::Url) -> Result<(), Error> {
 ///
 /// This is copied almost verbatim from tauri-plugin-deep-link's `register` fn, with an improvement
 /// that we send the deep link to a subcommand so the URL won't confuse `clap`
-///
-/// * `id` A unique ID for the app, e.g. "com.contoso.todo-list" or "dev.firezone.client"
 pub fn register() -> Result<(), Error> {
     let exe = tauri_utils::platform::current_exe()
         .map_err(Error::CurrentExe)?

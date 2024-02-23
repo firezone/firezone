@@ -9,6 +9,7 @@ pub(crate) struct Server {}
 impl Server {
     pub(crate) fn new() -> Result<Self, Error> {
         tracing::warn!("Not implemented yet");
+        tracing::trace!(scheme = super::FZ_SCHEME, "prevents dead code warning");
         // Stop Cargo from erroring
         if false {
             return Err(Error::CantListen);
@@ -17,10 +18,8 @@ impl Server {
     }
 
     pub(crate) async fn accept(self) -> Result<Secret<SecureUrl>, Error> {
-        tracing::warn!("Not implemented yet");
-        loop {
-            tokio::time::sleep(std::time::Duration::from_secs(86400)).await;
-        }
+        tracing::warn!("Deep links not implemented yet on Linux");
+        futures::future::pending().await
     }
 }
 

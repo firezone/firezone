@@ -1860,6 +1860,7 @@ dependencies = [
  "crash-handler",
  "dirs",
  "firezone-cli-utils",
+ "futures",
  "git-version",
  "hex",
  "hostname",
