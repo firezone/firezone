@@ -7,7 +7,7 @@
 //!
 //! I wanted the ProgramData folder on Windows, which `dirs` alone doesn't provide.
 
-pub(crate) use imp::{device_id, logs, session, settings};
+pub(crate) use imp::{device_id, logs, runtime, session, settings};
 
 #[cfg(target_os = "linux")]
 mod imp {
