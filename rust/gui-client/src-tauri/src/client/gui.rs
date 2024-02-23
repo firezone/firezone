@@ -4,7 +4,7 @@
 // TODO: `git grep` for unwraps before 1.0, especially this gui module <https://github.com/firezone/firezone/issues/3521>
 
 use crate::client::{
-    self, about, deep_link, known_dirs, logging, network_changes,
+    self, about, deep_link, logging, network_changes,
     settings::{self, AdvancedSettings},
     Failure,
 };
@@ -311,9 +311,8 @@ async fn smoke_test(ctlr_tx: CtlrTx) -> Result<()> {
     settings::apply_advanced_settings_inner(&settings::AdvancedSettings::default()).await?;
 
     // Test log exporting
-    let path = known_dirs::session()
-        .context("`known_dirs::session` failed during smoke test")?
-        .join("smoke_test_log_export.zip");
+    let path = PathBuf::from("smoke_test_log_export.zip");
+
     let stem = "connlib-smoke-test".into();
     match tokio::fs::remove_file(&path).await {
         Ok(()) => {}
