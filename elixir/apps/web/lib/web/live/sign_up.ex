@@ -74,9 +74,9 @@ defmodule Web.SignUp do
 
     allowed_domains =
       Domain.Config.get_env(:domain, :sign_up_allow_list)
-      |> String.trim()
-      |> String.split(",", trim: true)
+      |> String.split(",")
       |> Enum.map(&String.trim/1)
+      |> Enum.reject(&(&1 == ""))
 
     socket =
       assign(socket,
