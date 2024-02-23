@@ -246,70 +246,14 @@ where
             ControlFlow::Break(Err(e)) => return Err(e),
         };
 
-        for (id, conn) in self.connections.iter_established_mut() {
-            if !conn.accepts(from) {
-                continue;
-            }
-
-            return match conn.tunnel.decapsulate(None, packet, buffer) {
-                TunnResult::Done => Ok(None),
-                TunnResult::Err(e) => Err(Error::Decapsulate(e)),
-
-                // For WriteToTunnel{V4,V6}, boringtun returns the source IP of the packet that was tunneled to us.
-                // I am guessing this was done for convenience reasons.
-                // In our API, we parse the packets directly as an IpPacket.
-                // Thus, the caller can query whatever data they'd like, not just the source IP so we don't return it in addition.
-                TunnResult::WriteToTunnelV4(packet, ip) => {
-                    conn.set_remote_from_wg_activity(local, from, relayed);
-
-                    let ipv4_packet =
-                        MutableIpv4Packet::new(packet).expect("boringtun verifies validity");
-                    debug_assert_eq!(ipv4_packet.get_source(), ip);
-
-                    Ok(Some((id, ipv4_packet.into())))
-                }
-                TunnResult::WriteToTunnelV6(packet, ip) => {
-                    conn.set_remote_from_wg_activity(local, from, relayed);
-
-                    let ipv6_packet =
-                        MutableIpv6Packet::new(packet).expect("boringtun verifies validity");
-                    debug_assert_eq!(ipv6_packet.get_source(), ip);
-
-                    Ok(Some((id, ipv6_packet.into())))
-                }
-
-                // During normal operation, i.e. when the tunnel is active, decapsulating a packet straight yields the decrypted packet.
-                // However, in case `Tunn` has buffered packets, they may be returned here instead.
-                // This should be fairly rare which is why we just allocate these and return them from `poll_transmit` instead.
-                // Overall, this results in a much nicer API for our caller and should not affect performance.
-                TunnResult::WriteToNetwork(bytes) => {
-                    conn.set_remote_from_wg_activity(local, from, relayed);
-
-                    self.buffered_transmits.extend(conn.encapsulate(
-                        bytes,
-                        &mut self.allocations,
-                        now,
-                    ));
-
-                    while let TunnResult::WriteToNetwork(packet) =
-                        conn.tunnel
-                            .decapsulate(None, &[], self.buffer.as_mut_slice())
-                    {
-                        self.buffered_transmits.extend(conn.encapsulate(
-                            packet,
-                            &mut self.allocations,
-                            now,
-                        ));
-                    }
-
-                    Ok(None)
-                }
+        let (id, packet) =
+            match self.connections_try_handle(from, local, packet, relayed, buffer, now) {
+                ControlFlow::Continue(c) => c,
+                ControlFlow::Break(Ok(())) => return Ok(None),
+                ControlFlow::Break(Err(e)) => return Err(e),
             };
-        }
 
-        Err(Error::UnhandledPacket {
-            num_tunnels: self.connections.iter_established_mut().count(),
-        })
+        Ok(Some((id, packet)))
     }
 
     /// Encapsulate an outgoing IP packet.
@@ -721,6 +665,81 @@ where
 
         ControlFlow::Break(Err(Error::UnhandledStunMessage {
             num_agents: self.connections.len(),
+        }))
+    }
+
+    fn connections_try_handle<'b>(
+        &mut self,
+        from: SocketAddr,
+        local: SocketAddr,
+        packet: &[u8],
+        relayed: Option<Socket>,
+        buffer: &'b mut [u8],
+        now: Instant,
+    ) -> ControlFlow<Result<(), Error>, (TId, MutableIpPacket<'b>)> {
+        for (id, conn) in self.connections.iter_established_mut() {
+            if !conn.accepts(from) {
+                continue;
+            }
+
+            return match conn.tunnel.decapsulate(None, packet, buffer) {
+                TunnResult::Done => ControlFlow::Break(Ok(())),
+                TunnResult::Err(e) => ControlFlow::Break(Err(Error::Decapsulate(e))),
+
+                // For WriteToTunnel{V4,V6}, boringtun returns the source IP of the packet that was tunneled to us.
+                // I am guessing this was done for convenience reasons.
+                // In our API, we parse the packets directly as an IpPacket.
+                // Thus, the caller can query whatever data they'd like, not just the source IP so we don't return it in addition.
+                TunnResult::WriteToTunnelV4(packet, ip) => {
+                    conn.set_remote_from_wg_activity(local, from, relayed);
+
+                    let ipv4_packet =
+                        MutableIpv4Packet::new(packet).expect("boringtun verifies validity");
+                    debug_assert_eq!(ipv4_packet.get_source(), ip);
+
+                    ControlFlow::Continue((id, ipv4_packet.into()))
+                }
+                TunnResult::WriteToTunnelV6(packet, ip) => {
+                    conn.set_remote_from_wg_activity(local, from, relayed);
+
+                    let ipv6_packet =
+                        MutableIpv6Packet::new(packet).expect("boringtun verifies validity");
+                    debug_assert_eq!(ipv6_packet.get_source(), ip);
+
+                    ControlFlow::Continue((id, ipv6_packet.into()))
+                }
+
+                // During normal operation, i.e. when the tunnel is active, decapsulating a packet straight yields the decrypted packet.
+                // However, in case `Tunn` has buffered packets, they may be returned here instead.
+                // This should be fairly rare which is why we just allocate these and return them from `poll_transmit` instead.
+                // Overall, this results in a much nicer API for our caller and should not affect performance.
+                TunnResult::WriteToNetwork(bytes) => {
+                    conn.set_remote_from_wg_activity(local, from, relayed);
+
+                    self.buffered_transmits.extend(conn.encapsulate(
+                        bytes,
+                        &mut self.allocations,
+                        now,
+                    ));
+
+                    while let TunnResult::WriteToNetwork(packet) =
+                        conn.tunnel
+                            .decapsulate(None, &[], self.buffer.as_mut_slice())
+                    {
+                        self.buffered_transmits.extend(conn.encapsulate(
+                            packet,
+                            &mut self.allocations,
+                            now,
+                        ));
+                    }
+
+                    ControlFlow::Break(Ok(()))
+                }
+            };
+        }
+
+        ControlFlow::Break(Err(Error::UnhandledPacket {
+            num_tunnels: self.connections.iter_established_mut().count(),
         }))
     }
 }
