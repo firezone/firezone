@@ -27,6 +27,7 @@ pub trait Callbacks: Clone + Send + Sync {
     }
 
     /// Called when the tunnel is connected.
+    // TODO: Remove this in favor of on_set_interface_config
     fn on_tunnel_ready(&self) -> Result<(), Self::Error> {
         tracing::trace!("tunnel_connected");
         Ok(())
@@ -66,10 +67,7 @@ pub trait Callbacks: Clone + Send + Sync {
 
     /// Protects the socket file descriptor from routing loops.
     #[cfg(target_os = "android")]
-    fn protect_file_descriptor(
-        &self,
-        file_descriptor: std::os::fd::RawFd,
-    ) -> Result<(), Self::Error>;
+    fn protect_socket(&self, socket: std::os::fd::RawFd) -> Result<(), Self::Error>;
 
     fn roll_log_file(&self) -> Option<PathBuf> {
         None

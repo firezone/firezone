@@ -75,7 +75,7 @@ where
             return Poll::Pending;
         };
 
-        match self.role_state.poll_next_event(cx) {
+        match self.role_state.poll_next_event(cx, self.callbacks.clone()) {
             Poll::Ready(Event::SendPacket(packet)) => {
                 self.device.as_mut().unwrap().write(packet)?;
                 cx.waker().wake_by_ref();
@@ -226,10 +226,10 @@ where
         #[cfg(target_os = "android")]
         {
             if let Some(ip4_socket) = connections_state.sockets.ip4_socket_fd() {
-                callbacks.protect_file_descriptor(ip4_socket)?;
+                callbacks.protect_socket(ip4_socket)?;
             }
             if let Some(ip6_socket) = connections_state.sockets.ip6_socket_fd() {
-                callbacks.protect_file_descriptor(ip6_socket)?;
+                callbacks.protect_socket(ip6_socket)?;
             }
         }
 

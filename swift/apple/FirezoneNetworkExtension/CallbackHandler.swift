@@ -22,20 +22,20 @@ public protocol CallbackHandlerDelegate: AnyObject {
     tunnelAddressIPv6: String,
     dnsAddresses: [String]
   )
-  func onTunnelReady()
   func onUpdateRoutes(routeList4: String, routeList6: String)
   func onUpdateResources(resourceList: String)
   func onDisconnect(error: String?)
+  func getSystemDefaultResolvers() -> String
 }
 
 public class CallbackHandler {
   public weak var delegate: CallbackHandlerDelegate?
-  private var systemDefaultResolvers: [String] = []
   private let logger: AppLogger
 
   init(logger: AppLogger) {
     self.logger = logger
   }
+
   func onSetInterfaceConfig(
     tunnelAddressIPv4: RustString,
     tunnelAddressIPv6: RustString,
@@ -49,24 +49,14 @@ public class CallbackHandler {
           DNS: \(dnsAddresses.toString())
       """)
 
-    guard let dnsData = dnsAddresses.toString().data(using: .utf8) else {
-      return
-    }
-    guard let dnsArray = try? JSONDecoder().decode([String].self, from: dnsData)
-    else {
-      return
-    }
+    let dnsData = dnsAddresses.toString().data(using: .utf8)!
+    let dnsArray = try! JSONDecoder().decode([String].self, from: dnsData)
 
     delegate?.onSetInterfaceConfig(
       tunnelAddressIPv4: tunnelAddressIPv4.toString(),
       tunnelAddressIPv6: tunnelAddressIPv6.toString(),
       dnsAddresses: dnsArray
     )
-  }
-
-  func onTunnelReady() {
-    logger.log("CallbackHandler.onTunnelReady")
-    delegate?.onTunnelReady()
   }
 
   func onUpdateRoutes(routeList4: RustString, routeList6: RustString) {
@@ -81,6 +71,7 @@ public class CallbackHandler {
 
   func onDisconnect(error: RustString) {
     logger.log("CallbackHandler.onDisconnect: \(error.toString())")
+
     let error = error.toString()
     var optionalError = Optional.some(error)
     if error.isEmpty {
@@ -89,20 +80,12 @@ public class CallbackHandler {
     delegate?.onDisconnect(error: optionalError)
   }
 
-  func setSystemDefaultResolvers(resolvers: [String]) {
-    logger.log(
-      "CallbackHandler.setSystemDefaultResolvers: \(resolvers)")
-    self.systemDefaultResolvers = resolvers
-  }
-
   func getSystemDefaultResolvers() -> RustString {
-    logger.log(
-      "CallbackHandler.getSystemDefaultResolvers: \(self.systemDefaultResolvers)"
-    )
+    logger.log("CallbackHandler.getSystemDefaultResolvers")
+    guard let resolvers = delegate?.getSystemDefaultResolvers() else {
+      return "[]".intoRustString()
+    }
 
-    return try! String(
-      decoding: JSONEncoder().encode(self.systemDefaultResolvers),
-      as: UTF8.self
-    ).intoRustString()
+    return resolvers.intoRustString()
   }
 }

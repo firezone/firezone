@@ -30,17 +30,6 @@ impl<CB: Callbacks> Callbacks for CallbackErrorFacade<CB> {
         result
     }
 
-    fn on_tunnel_ready(&self) -> Result<()> {
-        let result = self
-            .0
-            .on_tunnel_ready()
-            .map_err(|err| Error::OnTunnelReadyFailed(err.to_string()));
-        if let Err(err) = result.as_ref() {
-            tracing::error!(?err);
-        }
-        result
-    }
-
     fn on_update_routes(
         &self,
         routes4: Vec<Ipv4Network>,
@@ -88,9 +77,9 @@ impl<CB: Callbacks> Callbacks for CallbackErrorFacade<CB> {
     }
 
     #[cfg(target_os = "android")]
-    fn protect_file_descriptor(&self, file_descriptor: std::os::fd::RawFd) -> Result<()> {
+    fn protect_socket(&self, socket: std::os::fd::RawFd) -> Result<()> {
         self.0
-            .protect_file_descriptor(file_descriptor)
-            .map_err(|err| Error::ProtectFileDescriptorFailed(err.to_string()))
+            .protect_socket(socket)
+            .map_err(|err| Error::ProtectSocketFailed(err.to_string()))
     }
 }

@@ -55,9 +55,6 @@ mod ffi {
             dnsAddresses: String,
         );
 
-        #[swift_bridge(swift_name = "onTunnelReady")]
-        fn on_tunnel_ready(&self);
-
         #[swift_bridge(swift_name = "onUpdateRoutes")]
         fn on_update_routes(&self, routeList4: String, routeList6: String);
 
@@ -105,11 +102,6 @@ impl Callbacks for CallbackHandler {
                 .expect("developer error: a list of ips should always be serializable"),
         );
         Ok(None)
-    }
-
-    fn on_tunnel_ready(&self) -> Result<(), Self::Error> {
-        self.inner.on_tunnel_ready();
-        Ok(())
     }
 
     fn on_update_routes(

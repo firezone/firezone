@@ -101,23 +101,12 @@ class TunnelService : VpnService() {
                 Log.d(TAG, "onSetInterfaceConfig: $addressIPv4, $addressIPv6, $dnsAddresses")
                 Firebase.crashlytics.log("onSetInterfaceConfig: $addressIPv4, $addressIPv6, $dnsAddresses")
 
-                // init tunnel config
                 tunnelDnsAddresses = moshi.adapter<MutableList<String>>().fromJson(dnsAddresses)!!
+                tunnelRoutes.addAll(tunnelDnsAddresses.map { Cidr(it, if (it.contains(":")) 128 else 32) })
                 tunnelIpv4Address = addressIPv4
                 tunnelIpv6Address = addressIPv6
 
-                // start VPN
                 return buildVpnService()
-            }
-
-            override fun onTunnelReady(): Boolean {
-                Log.d(TAG, "onTunnelReady")
-                Firebase.crashlytics.log("onTunnelReady")
-
-                tunnelState = State.UP
-                updateStatusNotification("Status: Connected")
-
-                return true
             }
 
             override fun onUpdateRoutes(
@@ -171,8 +160,8 @@ class TunnelService : VpnService() {
                 return true
             }
 
-            override fun protectFileDescriptor(fileDescriptor: Int) {
-                protect(fileDescriptor)
+            override fun protectSocket(socket: Int) {
+                protect(socket)
             }
         }
 
@@ -319,13 +308,13 @@ class TunnelService : VpnService() {
             Firebase.crashlytics.log("IPv6 Address: $tunnelIpv6Address")
             addAddress(tunnelIpv6Address!!, 128)
 
+            // Per-app VPN
             appRestrictions.getString("allowedApplications")?.let {
                 Firebase.crashlytics.log("Allowed applications: $it")
                 it.split(",").forEach { p ->
                     addAllowedApplication(p.trim())
                 }
             }
-
             appRestrictions.getString("disallowedApplications")?.let {
                 Firebase.crashlytics.log("Disallowed applications: $it")
                 it.split(",").forEach { p ->

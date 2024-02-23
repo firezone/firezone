@@ -12,6 +12,7 @@ use connlib_shared::messages::{
 use connlib_shared::{Callbacks, Dname, IpProvider};
 use domain::base::Rtype;
 use futures_bounded::{FuturesMap, FuturesTupleSet, PushError};
+use futures_util::FutureExt;
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
 use itertools::Itertools;
@@ -26,6 +27,7 @@ use std::net::IpAddr;
 use std::str::FromStr;
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
+use tokio::task::JoinHandle;
 use tokio::time::{Interval, MissedTickBehavior};
 
 // Using str here because Ipv4/6Network doesn't support `const` 🙃
@@ -257,6 +259,7 @@ pub struct ClientState {
         Result<hickory_resolver::lookup::Lookup, hickory_resolver::error::ResolveError>,
         DnsQuery<'static>,
     >,
+    dns_worker: Option<JoinHandle<Option<Vec<IpAddr>>>>,
 
     pub ip_provider: IpProvider,
 
@@ -621,7 +624,12 @@ impl ClientState {
         }
     }
 
-    pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Event<GatewayId>> {
+    pub fn poll_next_event(
+        &mut self,
+        cx: &mut Context<'_>,
+        // TODO: remove me :(
+        cb: impl Callbacks + 'static,
+    ) -> Poll<Event<GatewayId>> {
         loop {
             if let Some(event) = self.buffered_events.pop_front() {
                 return Poll::Ready(event);
@@ -631,6 +639,33 @@ impl ClientState {
                 self.gateway_awaiting_connection_timers.poll_unpin(cx)
             {
                 self.gateway_awaiting_connection.remove(&gateway_id);
+            }
+
+            if let Some(mut worker) = self.dns_worker.take() {
+                match worker.poll_unpin(cx) {
+                    Poll::Ready(Ok(Some(dns_servers))) => {
+                        let dns_servers = effective_dns_servers(
+                            self.interface_config
+                                .as_ref()
+                                .expect("inconsistent state")
+                                .upstream_dns
+                                .clone(),
+                            dns_servers,
+                        );
+                        if HashSet::<&DnsServer>::from_iter(dns_servers.iter())
+                            != HashSet::from_iter(self.dns_mapping.right_values())
+                        {
+                            self.set_dns_mapping(sentinel_dns_mapping(&dns_servers));
+                            return Poll::Ready(Event::DeviceConfigUpdated);
+                        }
+                    }
+                    Poll::Pending => {
+                        self.dns_worker = Some(worker);
+                    }
+                    Poll::Ready(_) => {
+                        // TODO?
+                    }
+                }
             }
 
             if self.refresh_dns_timer.poll_tick(cx).is_ready() {
@@ -671,6 +706,12 @@ impl ClientState {
                 }
                 Poll::Ready((Err(resolve_timeout), query)) => {
                     tracing::warn!(name = %query.name, server = %query.query.destination(), "DNS query timed out: {resolve_timeout}");
+                    if self.dns_worker.is_none() {
+                        let cb = cb.clone();
+                        self.dns_worker = Some(tokio::task::spawn_blocking(move || {
+                            cb.get_system_default_resolvers().ok().flatten()
+                        }));
+                    }
                     continue;
                 }
                 Poll::Pending => {}
@@ -730,6 +771,7 @@ impl Default for ClientState {
             dns_mapping: Default::default(),
             dns_resolvers: Default::default(),
             buffered_events: Default::default(),
+            dns_worker: Default::default(),
             interface_config: Default::default(),
         }
     }

@@ -9,108 +9,57 @@ import NetworkExtension
 import os.log
 
 class NetworkSettings {
-
-  // Unchanging values
-  let tunnelAddressIPv4: String
-  let tunnelAddressIPv6: String
-  let dnsAddresses: [String]
-
   // WireGuard has an 80-byte overhead. We could try setting tunnelOverheadBytes
   // but that's not a reliable way to calculate how big our packets should be,
   // so just use the minimum.
   let mtu: NSNumber = 1280
 
-  public var routes4: [NEIPv4Route] = []
-  public var routes6: [NEIPv6Route] = []
+  // Constants
+  private weak var packetTunnelProvider: NEPacketTunnelProvider?
+  private(set) var logger: AppLogger
 
   // Modifiable values
-  private(set) var resourceDomains: [String] = []
-  private(set) var matchDomains: [String] = [""]
+  public var tunnelAddressIPv4: String?
+  public var tunnelAddressIPv6: String?
+  public var dnsAddresses: [String] = []
+  public var routes4: [NEIPv4Route] = []
+  public var routes6: [NEIPv6Route] = []
+  public var matchDomains: [String] = [""]
 
-  // To keep track of modifications
-  private(set) var hasUnappliedChanges: Bool
-
-  init(
-    tunnelAddressIPv4: String, tunnelAddressIPv6: String, dnsAddresses: [String]
-  ) {
-    self.tunnelAddressIPv4 = tunnelAddressIPv4
-    self.tunnelAddressIPv6 = tunnelAddressIPv6
-    self.dnsAddresses = dnsAddresses
-    self.hasUnappliedChanges = true
+  init(packetTunnelProvider: PacketTunnelProvider?, logger: AppLogger) {
+    self.packetTunnelProvider = packetTunnelProvider
+    self.logger = logger
   }
 
-  func setResourceDomains(_ resourceDomains: [String]) {
-    let sortedResourceDomains = resourceDomains.sorted()
-    if self.resourceDomains != sortedResourceDomains {
-      self.resourceDomains = sortedResourceDomains
-    }
-    self.hasUnappliedChanges = true
-  }
-
-  func setMatchDomains(_ matchDomains: [String]) {
-    self.matchDomains = matchDomains
-    self.hasUnappliedChanges = true
-  }
-
-  func apply(
-    on packetTunnelProvider: NEPacketTunnelProvider?,
-    logger: AppLogger,
-    completionHandler: ((Error?) -> Void)?
-  ) {
-    guard let packetTunnelProvider = packetTunnelProvider else {
-      logger.error("\(#function): packetTunnelProvider not initialized! This should not happen.")
-      return
-    }
-
-    guard self.hasUnappliedChanges else {
-      logger.error("NetworkSettings.apply: No changes to apply")
-      completionHandler?(nil)
-      return
-    }
-
-    logger.log("NetworkSettings.apply: Applying network settings")
+  func apply(completionHandler: (() -> Void)? = nil) {
     // We don't really know the connlib gateway IP address at this point, but just using 127.0.0.1 is okay
     // because the OS doesn't really need this IP address.
     // NEPacketTunnelNetworkSettings taking in tunnelRemoteAddress is probably a bad abstraction caused by
     // NEPacketTunnelNetworkSettings inheriting from NETunnelNetworkSettings.
-
     let tunnelNetworkSettings = NEPacketTunnelNetworkSettings(tunnelRemoteAddress: "127.0.0.1")
 
+    // Set tunnel addresses and routes
     let ipv4Settings = NEIPv4Settings(
-      addresses: [tunnelAddressIPv4], subnetMasks: ["255.255.255.255"])
-      ipv4Settings.includedRoutes = self.routes4
-    tunnelNetworkSettings.ipv4Settings = ipv4Settings
-
-    let ipv6Settings = NEIPv6Settings(addresses: [tunnelAddressIPv6], networkPrefixLengths: [128])
-      ipv6Settings.includedRoutes = self.routes6
-    tunnelNetworkSettings.ipv6Settings = ipv6Settings
-
+      addresses: [tunnelAddressIPv4!], subnetMasks: ["255.255.255.255"])
+    let ipv6Settings = NEIPv6Settings(addresses: [tunnelAddressIPv6!], networkPrefixLengths: [128])
     let dnsSettings = NEDNSSettings(servers: dnsAddresses)
-    // Intercept all DNS queries; SplitDNS will be handled by connlib
+    ipv4Settings.includedRoutes = routes4
+    ipv6Settings.includedRoutes = routes6
     dnsSettings.matchDomains = matchDomains
     dnsSettings.matchDomainsNoSearch = true
+    tunnelNetworkSettings.ipv4Settings = ipv4Settings
+    tunnelNetworkSettings.ipv6Settings = ipv6Settings
     tunnelNetworkSettings.dnsSettings = dnsSettings
     tunnelNetworkSettings.mtu = mtu
 
-    self.hasUnappliedChanges = false
-    logger.log("Attempting to set network settings")
-    packetTunnelProvider.setTunnelNetworkSettings(tunnelNetworkSettings) { error in
+    packetTunnelProvider?.setTunnelNetworkSettings(tunnelNetworkSettings) { error in
       if let error = error {
-        logger.error("NetworkSettings.apply: Error: \(error)")
-      } else {
-        guard !self.hasUnappliedChanges else {
-          // Changes were made while the packetTunnelProvider was setting the network settings
-          logger.log(
-            """
-            NetworkSettings.apply:
-              Applying changes made to network settings while we were applying the network settings
-            """)
-          self.apply(on: packetTunnelProvider, logger: logger, completionHandler: completionHandler)
-          return
-        }
-        logger.log("NetworkSettings.apply: Applied successfully")
+        self.logger.error(
+          "\(#function): Error occurred while applying network settings! Error: \(error.localizedDescription)"
+        )
       }
-      completionHandler?(error)
+
+      completionHandler?()
     }
   }
 }
@@ -154,6 +103,8 @@ enum IPv4SubnetMaskLookup {
   ]
 }
 
+// Route convenience helpers. Data is from connlib and guaranteed to be valid.
+// Otherwise, we should crash and learn about it.
 extension NetworkSettings {
   static func parseRoutes4(routes4: [String]) -> [NEIPv4Route] {
     return routes4.map { route4 in
@@ -167,34 +118,10 @@ extension NetworkSettings {
 
   static func parseRoutes6(routes6: [String]) -> [NEIPv6Route] {
     routes6.map { route6 in
-        let components = route6.split(separator: "/")
-        let address = String(components[0])
-        let prefix: NSNumber = NSNumber(value: Int(components.last!)!)
-        return NEIPv6Route(destinationAddress: address, networkPrefixLength: prefix)
+      let components = route6.split(separator: "/")
+      let address = String(components[0])
+      let prefix: NSNumber = NSNumber(value: Int(components.last!)!)
+      return NEIPv6Route(destinationAddress: address, networkPrefixLength: prefix)
     }
-  }
-
-  private static func validNetworkPrefixLength(fromString string: String, maximumValue: Int) -> Int
-  {
-    guard let networkPrefixLength = Int(string) else { return 0 }
-    if networkPrefixLength < 0 { return 0 }
-    if networkPrefixLength > maximumValue { return maximumValue }
-    return networkPrefixLength
-  }
-
-  private static func ipv4SubnetMask(networkPrefixLength: Int) -> String {
-    precondition(networkPrefixLength >= 0 && networkPrefixLength <= 32)
-    let mask: UInt32 = 0xFFFF_FFFF
-    let maxPrefixLength = 32
-    let octets = 4
-
-    let subnetMask = mask & (mask << (maxPrefixLength - networkPrefixLength))
-    var parts: [String] = []
-    for idx in 0...(octets - 1) {
-      let part = String(UInt32(0x0000_00FF) & (subnetMask >> ((octets - 1 - idx) * 8)), radix: 10)
-      parts.append(part)
-    }
-
-    return parts.joined(separator: ".")
   }
 }

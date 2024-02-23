@@ -74,8 +74,8 @@ pub enum ConnlibError {
     OnUpdateRoutesFailed(String),
     #[error("`get_system_default_resolvers` failed: {0}")]
     GetSystemDefaultResolverFailed(String),
-    #[error("`protect_file_descriptor` failed: {0}")]
-    ProtectFileDescriptorFailed(String),
+    #[error("`protect_socket` failed: {0}")]
+    ProtectSocketFailed(String),
     /// Glob for errors without a type.
     #[error("Other error: {0}")]
     Other(&'static str),

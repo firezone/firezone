@@ -211,27 +211,15 @@ impl Callbacks for CallbackHandler {
         })
     }
 
-    fn on_tunnel_ready(&self) -> Result<(), Self::Error> {
-        self.env(|mut env| {
-            call_method(
-                &mut env,
-                &self.callback_handler,
-                "onTunnelReady",
-                "()Z",
-                &[],
-            )
-        })
-    }
-
     #[cfg(target_os = "android")]
-    fn protect_file_descriptor(&self, file_descriptor: RawFd) -> Result<(), Self::Error> {
+    fn protect_socket(&self, socket: RawFd) -> Result<(), Self::Error> {
         self.env(|mut env| {
             call_method(
                 &mut env,
                 &self.callback_handler,
-                "protectFileDescriptor",
+                "protectSocket",
                 "(I)V",
-                &[JValue::Int(file_descriptor)],
+                &[JValue::Int(socket)],
             )
         })
     }
