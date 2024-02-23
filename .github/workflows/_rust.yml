@@ -44,7 +44,7 @@ jobs:
       - name: Relative diff
         shell: bash
         run: |
-          git branch -av
+          git branch
           git diff origin/${{ github.base_ref }}.. | tee git.diff
       - uses: ./.github/actions/setup-rust
       - uses: ./.github/actions/setup-tauri
