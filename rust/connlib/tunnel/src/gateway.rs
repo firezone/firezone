@@ -23,7 +23,7 @@ where
     #[tracing::instrument(level = "trace", skip(self))]
     pub fn set_interface(&mut self, config: &InterfaceConfig) -> connlib_shared::Result<()> {
         // Note: the dns fallback strategy is irrelevant for gateways
-        let device = Device::new(config, vec![], self.callbacks())?;
+        let mut device = Device::new(config, vec![], self.callbacks())?;
 
         let result_v4 = device.add_route(PEERS_IPV4.parse().unwrap(), self.callbacks());
         let result_v6 = device.add_route(PEERS_IPV6.parse().unwrap(), self.callbacks());
