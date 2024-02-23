@@ -372,12 +372,15 @@ where
             PeerSocket::Direct {
                 dest: remote,
                 source,
+                ..
             } => Ok(Some(Transmit {
                 src: Some(source),
                 dst: remote,
                 payload: Cow::Borrowed(packet),
             })),
-            PeerSocket::Relay { relay, dest: peer } => {
+            PeerSocket::Relay {
+                relay, dest: peer, ..
+            } => {
                 let Some(allocation) = self.allocations.get_mut(&relay) else {
                     tracing::warn!(%relay, "No allocation");
                     return Ok(None);
@@ -449,14 +452,15 @@ where
                         source,
                         ..
                     } => {
-                        let candidate = conn
-                            .agent
-                            .local_candidates()
-                            .iter()
-                            .find(|c| c.addr() == source)
+                        let local_candidate = conn
+                            .local_candidate(source)
                             .expect("to only nominate existing candidates");
 
-                        let remote_socket = match candidate.kind() {
+                        let remote_candidate = conn
+                            .remote_candidate(destination)
+                            .expect("to only nominate existing candidates");
+
+                        let remote_socket = match local_candidate.kind() {
                             CandidateKind::Relayed => {
                                 let relay =
                                     self.allocations.iter().find_map(|(relay, allocation)| {
@@ -474,12 +478,14 @@ where
                                 PeerSocket::Relay {
                                     relay,
                                     dest: destination,
+                                    dest_kind: remote_candidate.kind(),
                                 }
                             }
                             CandidateKind::ServerReflexive | CandidateKind::Host => {
                                 PeerSocket::Direct {
                                     dest: destination,
                                     source,
+                                    dest_kind: remote_candidate.kind(),
                                 }
                             }
                             CandidateKind::PeerReflexive => {
@@ -487,14 +493,20 @@ where
                             }
                         };
 
-                        if conn.peer_socket != Some(remote_socket) {
-                            let is_first_connection = conn.peer_socket.is_none();
+                        match conn.peer_socket {
+                            None => {
+                                conn.peer_socket = Some(remote_socket);
 
-                            tracing::info!(old = ?conn.peer_socket, new = ?remote_socket, "Updating remote socket");
-                            conn.peer_socket = Some(remote_socket);
+                                tracing::info!(%id, socket = ?remote_socket, "Connected to peer");
 
-                            if is_first_connection {
                                 return Some(Event::ConnectionEstablished(id));
+                            }
+                            Some(old) if remote_socket > old => {
+                                tracing::info!(%id, ?old, new = ?remote_socket, "Updating remote socket");
+                                conn.peer_socket = Some(remote_socket);
+                            }
+                            Some(old) => {
+                                tracing::debug!(%id, ?old, new = ?remote_socket, "Not switching to new remote socket because it is not better");
                             }
                         }
                     }
@@ -1178,11 +1190,65 @@ enum PeerSocket {
     Direct {
         source: SocketAddr,
         dest: SocketAddr,
+        dest_kind: CandidateKind,
     },
     Relay {
         relay: SocketAddr,
         dest: SocketAddr,
+        dest_kind: CandidateKind,
     },
+}
+
+impl PartialOrd for PeerSocket {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        match (self, other) {
+            (PeerSocket::Direct { .. }, PeerSocket::Relay { .. }) => {
+                Some(std::cmp::Ordering::Greater)
+            }
+            (PeerSocket::Relay { .. }, PeerSocket::Direct { .. }) => {
+                Some(std::cmp::Ordering::Greater)
+            }
+            (
+                PeerSocket::Direct {
+                    dest_kind: left, ..
+                },
+                PeerSocket::Direct {
+                    dest_kind: right, ..
+                },
+            )
+            | (
+                PeerSocket::Relay {
+                    dest_kind: left, ..
+                },
+                PeerSocket::Relay {
+                    dest_kind: right, ..
+                },
+            ) => Some(cmp_candidate_kind(left, right)),
+        }
+    }
+}
+
+fn cmp_candidate_kind(left: &CandidateKind, right: &CandidateKind) -> std::cmp::Ordering {
+    use std::cmp::Ordering::*;
+
+    match (left, right) {
+        (CandidateKind::Host, CandidateKind::PeerReflexive) => Greater,
+        (CandidateKind::Host, CandidateKind::ServerReflexive) => Greater,
+        (CandidateKind::Host, CandidateKind::Relayed) => Greater,
+        (CandidateKind::PeerReflexive, CandidateKind::Relayed) => Greater,
+        (CandidateKind::ServerReflexive, CandidateKind::Relayed) => Greater,
+        (CandidateKind::PeerReflexive, CandidateKind::Host) => Less,
+        (CandidateKind::ServerReflexive, CandidateKind::Host) => Less,
+        (CandidateKind::Relayed, CandidateKind::Host) => Less,
+        (CandidateKind::Relayed, CandidateKind::PeerReflexive) => Less,
+        (CandidateKind::Relayed, CandidateKind::ServerReflexive) => Less,
+        (CandidateKind::Host, CandidateKind::Host)
+        | (CandidateKind::Relayed, CandidateKind::Relayed)
+        | (CandidateKind::PeerReflexive, CandidateKind::PeerReflexive)
+        | (CandidateKind::ServerReflexive, CandidateKind::ServerReflexive)
+        | (CandidateKind::ServerReflexive, CandidateKind::PeerReflexive)
+        | (CandidateKind::PeerReflexive, CandidateKind::ServerReflexive) => Equal,
+    }
 }
 
 impl Connection {
@@ -1200,20 +1266,40 @@ impl Connection {
         from_connected_remote || from_possible_remote
     }
 
+    fn local_candidate(&self, addr: SocketAddr) -> Option<&Candidate> {
+        self.agent
+            .local_candidates()
+            .iter()
+            .find(|c| c.addr() == addr)
+    }
+
+    fn remote_candidate(&self, addr: SocketAddr) -> Option<&Candidate> {
+        self.agent
+            .remote_candidates()
+            .iter()
+            .find(|c| c.addr() == addr)
+    }
+
     fn set_remote_from_wg_activity(
         &mut self,
         local: SocketAddr,
         dest: SocketAddr,
         relay_socket: Option<Socket>,
     ) {
+        let Some(candidate) = self.remote_candidate(dest) else {
+            return;
+        };
+
         let remote_socket = match relay_socket {
             Some(relay_socket) => PeerSocket::Relay {
                 relay: relay_socket.server(),
                 dest,
+                dest_kind: candidate.kind(),
             },
             None => PeerSocket::Direct {
                 source: local,
                 dest,
+                dest_kind: candidate.kind(),
             },
         };
 
@@ -1321,14 +1407,56 @@ impl Connection {
             PeerSocket::Direct {
                 dest: remote,
                 source,
+                ..
             } => Some(Transmit {
                 src: Some(source),
                 dst: remote,
                 payload: Cow::Owned(message.into()),
             }),
-            PeerSocket::Relay { relay, dest: peer } => {
-                encode_as_channel_data(relay, peer, message, allocations, now).ok()
-            }
+            PeerSocket::Relay {
+                relay, dest: peer, ..
+            } => encode_as_channel_data(relay, peer, message, allocations, now).ok(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::net::{Ipv4Addr, SocketAddrV4};
+
+    #[test]
+    fn direct_to_srflx_is_better_than_relay_to_srflx() {
+        assert!(direct(CandidateKind::ServerReflexive) > relay(CandidateKind::ServerReflexive));
+    }
+
+    #[test]
+    fn direct_to_srflx_is_better_than_direct_to_relay() {
+        assert!(direct(CandidateKind::ServerReflexive) > direct(CandidateKind::Relayed));
+    }
+
+    #[test]
+    fn direct_to_host_is_better_than_direct_to_srflx() {
+        assert!(direct(CandidateKind::Host) > direct(CandidateKind::ServerReflexive));
+    }
+
+    fn addr1() -> SocketAddr {
+        SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 1000))
+    }
+
+    fn direct(remote_kind: CandidateKind) -> PeerSocket {
+        PeerSocket::Direct {
+            source: addr1(),
+            dest: addr1(),
+            dest_kind: remote_kind,
+        }
+    }
+
+    fn relay(remote_kind: CandidateKind) -> PeerSocket {
+        PeerSocket::Relay {
+            relay: addr1(),
+            dest: addr1(),
+            dest_kind: remote_kind,
         }
     }
 }
