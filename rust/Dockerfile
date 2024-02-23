@@ -12,7 +12,7 @@ FROM alpine:${ALPINE_VERSION} as rust
 # is updated with the current date. It will force refresh of all
 # of the base images and things like `apk add` won't be using
 # old cached versions when the Dockerfile is built.
-ENV REFRESHED_AT=2023-12-11 \
+ENV REFRESHED_AT=2024-02-22 \
   LANG=C.UTF-8 \
   TERM=xterm
 
@@ -68,7 +68,7 @@ RUN set -xe \
 WORKDIR /build
 
 # Create a cache recipe for dependencies, which allows
-# to levearge Docker layer caching in a later build stage
+# to leverage Docker layer caching in a later build stage
 FROM chef as planner
 
 COPY . .
@@ -80,8 +80,9 @@ FROM chef as builder
 
 COPY --from=planner /build/recipe.json .
 
+ARG PACKAGE
 RUN set -xe \
-  && cargo chef cook --recipe-path recipe.json
+  && cargo chef cook --recipe-path recipe.json --bin ${PACKAGE}
 
 COPY . .
 
