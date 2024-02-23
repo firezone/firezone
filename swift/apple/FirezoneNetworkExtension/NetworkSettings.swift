@@ -22,7 +22,6 @@ class NetworkSettings {
 
   // Modifiable values
   private(set) var routes: [String] = []
-  private(set) var resourceDomains: [String] = []
   private(set) var matchDomains: [String] = [""]
 
   // To keep track of modifications
@@ -51,14 +50,6 @@ class NetworkSettings {
     }
   }
 
-  func setResourceDomains(_ resourceDomains: [String]) {
-    let sortedResourceDomains = resourceDomains.sorted()
-    if self.resourceDomains != sortedResourceDomains {
-      self.resourceDomains = sortedResourceDomains
-    }
-    self.hasUnappliedChanges = true
-  }
-
   func setMatchDomains(_ matchDomains: [String]) {
     self.matchDomains = matchDomains
     self.hasUnappliedChanges = true
@@ -66,6 +57,7 @@ class NetworkSettings {
 
   func apply(
     on packetTunnelProvider: NEPacketTunnelProvider?,
+    beforeHandler: (() -> Void)?,
     logger: AppLogger,
     completionHandler: ((Error?) -> Void)?
   ) {
@@ -84,6 +76,8 @@ class NetworkSettings {
 
     var tunnelIPv4Routes: [NEIPv4Route] = []
     var tunnelIPv6Routes: [NEIPv6Route] = []
+
+    let (tunnelIPv4Routes, tunnelIPv6Routes) = parseRoutes(routes)
 
     for route in routes {
       let components = route.split(separator: "/")
@@ -156,6 +150,7 @@ class NetworkSettings {
 
     self.hasUnappliedChanges = false
     logger.log("Attempting to set network settings")
+    beforeHandler?()
     packetTunnelProvider.setTunnelNetworkSettings(tunnelNetworkSettings) { error in
       if let error = error {
         logger.error("NetworkSettings.apply: Error: \(error)")
@@ -167,7 +162,10 @@ class NetworkSettings {
             NetworkSettings.apply:
               Applying changes made to network settings while we were applying the network settings
             """)
-          self.apply(on: packetTunnelProvider, logger: logger, completionHandler: completionHandler)
+          self.apply(
+            on: packetTunnelProvider,
+            beforeHandler: beforeHandler,
+            logger: logger, completionHandler: completionHandler)
           return
         }
         logger.log("NetworkSettings.apply: Applied successfully")
