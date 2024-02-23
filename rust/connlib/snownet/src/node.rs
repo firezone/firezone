@@ -602,7 +602,7 @@ where
         let handled = binding.handle_input(from, local, packet, now);
 
         if !handled {
-            tracing::debug!("Packet was destined for binding but no longer accepted");
+            tracing::debug!("Packet was a STUN message but not accepted");
         }
 
         ControlFlow::Break(())
