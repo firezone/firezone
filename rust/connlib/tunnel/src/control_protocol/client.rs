@@ -12,7 +12,6 @@ use connlib_shared::{
 use domain::base::Rtype;
 use ip_network::IpNetwork;
 use secrecy::{ExposeSecret, Secret};
-use snownet::Client;
 
 use crate::{
     client::DnsResource,
@@ -25,10 +24,16 @@ use crate::{peer::Peer, ClientState, Error, Request, Result, Tunnel};
 
 use super::insert_peers;
 
-impl<CB> Tunnel<CB, ClientState, Client, GatewayId, PacketTransformClient>
+impl<CB> Tunnel<CB, ClientState>
 where
     CB: Callbacks + 'static,
 {
+    pub fn add_ice_candidate(&mut self, conn_id: GatewayId, ice_candidate: String) {
+        self.role_state
+            .node
+            .add_remote_candidate(conn_id, ice_candidate);
+    }
+
     /// Initiate an ice connection request.
     ///
     /// Given a resource id and a list of relay creates a [RequestConnection]
@@ -72,14 +77,10 @@ where
             .get_awaiting_connection_domain(&resource_id)?
             .clone();
 
-        let offer = self.connections_state.node.new_connection(
+        let offer = self.role_state.node.new_connection(
             gateway_id,
-            stun(&relays, |addr| {
-                self.connections_state.sockets.can_handle(addr)
-            }),
-            turn(&relays, |addr| {
-                self.connections_state.sockets.can_handle(addr)
-            }),
+            stun(&relays, |addr| self.sockets.can_handle(addr)),
+            turn(&relays, |addr| self.sockets.can_handle(addr)),
         );
 
         Ok(Request::NewConnection(RequestConnection {
@@ -122,7 +123,7 @@ where
         self.role_state
             .peers_by_ip
             .retain(|_, p| p.conn_id != gateway_id);
-        self.connections_state
+        self.role_state
             .peers_by_id
             .insert(gateway_id, Arc::clone(&peer));
         insert_peers(&mut self.role_state.peers_by_ip, &peer_ips, peer);
@@ -148,7 +149,7 @@ where
             .gateway_by_resource(&resource_id)
             .ok_or(Error::UnknownResource)?;
 
-        self.connections_state.node.accept_answer(
+        self.role_state.node.accept_answer(
             gateway_id,
             gateway_public_key,
             snownet::Answer {

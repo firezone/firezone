@@ -7,7 +7,7 @@ use backoff::{backoff::Backoff, ExponentialBackoffBuilder};
 use connlib_shared::control::SecureUrl;
 use connlib_shared::{control::PhoenixChannel, login_url, CallbackErrorFacade, Mode, Result};
 use control::ControlPlane;
-use firezone_tunnel::Tunnel;
+use firezone_tunnel::ClientTunnel;
 use messages::IngressMessages;
 use messages::Messages;
 use messages::ReplyMessages;
@@ -170,7 +170,7 @@ where
             });
 
             let tunnel = fatal_error!(
-                Tunnel::new(private_key, callbacks.clone()),
+                ClientTunnel::new(private_key, callbacks.clone()),
                 runtime_stopper,
                 &callbacks
             );

@@ -376,13 +376,6 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                     }
                 });
             }
-            Ok(firezone_tunnel::Event::StopPeer(_)) => {
-                // This should never bubbled up
-                // TODO: we might want to segregate events further
-            }
-            Ok(firezone_tunnel::Event::SendPacket(_)) => {
-                unimplemented!("Handled internally");
-            }
             Err(e) => {
                 tracing::error!("Tunnel failed: {e:#?}");
             }

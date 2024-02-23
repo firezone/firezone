@@ -15,17 +15,23 @@ use futures_bounded::{FuturesMap, FuturesTupleSet, PushError, StreamMap};
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
 use itertools::Itertools;
-use snownet::Client;
+use snownet::ClientNode;
 
+use crate::sleep_until;
+use crate::sockets::Received;
+use boringtun::x25519::StaticSecret;
+use futures_util::future::BoxFuture;
+use futures_util::FutureExt;
 use hickory_resolver::config::{NameServerConfig, Protocol, ResolverConfig};
 use hickory_resolver::TokioAsyncResolver;
+use pnet_packet::Packet as _;
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::net::IpAddr;
 use std::sync::Arc;
 use std::task::{Context, Poll};
-use std::time::Duration;
-use tokio::time::{Instant, Interval, MissedTickBehavior};
+use std::time::{Duration, Instant};
+use tokio::time::{Interval, MissedTickBehavior};
 
 // Using str here because Ipv4/6Network doesn't support `const` 🙃
 const IPV4_RESOURCES: &str = "100.96.0.0/11";
@@ -47,7 +53,7 @@ impl DnsResource {
     }
 }
 
-impl<CB> Tunnel<CB, ClientState, Client, GatewayId, PacketTransformClient>
+impl<CB> Tunnel<CB, ClientState>
 where
     CB: Callbacks + 'static,
 {
@@ -168,7 +174,7 @@ where
 /// [`Tunnel`] state specific to clients.
 pub struct ClientState {
     awaiting_connection: HashMap<ResourceId, AwaitingConnectionDetails>,
-    awaiting_connection_timers: StreamMap<ResourceId, Instant>,
+    awaiting_connection_timers: StreamMap<ResourceId, tokio::time::Instant>,
 
     pub gateway_awaiting_connection: HashSet<GatewayId>,
     // This timer exist for an unlikely case, on unreliable connections where the RequestConnection message
@@ -203,6 +209,10 @@ pub struct ClientState {
     dns_mapping: BiMap<IpAddr, DnsServer>,
     dns_resolvers: HashMap<IpAddr, TokioAsyncResolver>,
 
+    pub node: ClientNode<GatewayId>,
+    pub peers_by_id: HashMap<GatewayId, Arc<Peer<GatewayId, PacketTransformClient>>>,
+    node_timeout: BoxFuture<'static, std::time::Instant>,
+
     buffered_packets: VecDeque<Packet<'static>>,
 }
 
@@ -215,10 +225,10 @@ pub struct AwaitingConnectionDetails {
 }
 
 impl ClientState {
-    pub(crate) fn encapsulate<'a>(
-        &mut self,
-        packet: MutableIpPacket<'a>,
-    ) -> Option<(GatewayId, MutableIpPacket<'a>)> {
+    pub(crate) fn encapsulate<'s>(
+        &'s mut self,
+        packet: MutableIpPacket<'_>,
+    ) -> Option<snownet::Transmit<'s>> {
         let (packet, dest) = match self.handle_dns(packet) {
             Ok(response) => {
                 self.buffered_packets.push_back(response?.into_owned());
@@ -234,7 +244,62 @@ impl ClientState {
 
         let packet = peer.transform(packet)?;
 
-        Some((peer.conn_id, packet))
+        let transmit = self
+            .node
+            .encapsulate(peer.conn_id, packet.as_immutable().into())
+            .inspect_err(
+                |e| tracing::warn!(peer = %peer.conn_id, "Failed to encapsulate packet: {e}"),
+            )
+            .ok()??;
+
+        Some(transmit)
+    }
+
+    pub(crate) fn decapsulate<'b>(
+        &mut self,
+        received: Received<'_>,
+        buf: &'b mut [u8],
+    ) -> Option<Packet<'b>> {
+        let Received {
+            local,
+            from,
+            packet,
+        } = received;
+
+        let (conn_id, packet) = match self.node.decapsulate(
+            local,
+            from,
+            packet.as_ref(),
+            std::time::Instant::now(),
+            buf,
+        ) {
+            Ok(packet) => packet?,
+            Err(e) => {
+                tracing::warn!(%local, %from, num_bytes = %packet.len(), "Failed to decapsulate incoming packet: {e}");
+
+                return None;
+            }
+        };
+
+        tracing::trace!(target: "wire", %local, %from, bytes = %packet.packet().len(), "read new packet");
+
+        let Some(peer) = self.peers_by_id.get(&conn_id) else {
+            tracing::error!(%conn_id, %local, %from, "Couldn't find connection");
+
+            return None;
+        };
+
+        let packet_len = packet.packet().len();
+        let packet = match peer.untransform(packet.source(), &mut buf[..packet_len]) {
+            Ok(packet) => packet,
+            Err(e) => {
+                tracing::warn!(%conn_id, %local, %from, "Failed to transform packet: {e}");
+
+                return None;
+            }
+        };
+
+        Some(packet)
     }
 
     /// Attempt to handle the given packet as a DNS packet.
@@ -570,7 +635,8 @@ impl ClientState {
         }
     }
 
-    pub fn cleanup_connected_gateway(&mut self, gateway_id: &GatewayId) {
+    fn cleanup_connected_gateway(&mut self, gateway_id: &GatewayId) {
+        self.peers_by_id.remove(gateway_id);
         self.peers_by_ip.retain(|_, p| p.conn_id != *gateway_id);
         self.dns_resources_internal_ips.retain(|resource, _| {
             !self
@@ -612,10 +678,34 @@ impl ClientState {
         }
     }
 
+    pub fn poll_transmit(&mut self) -> Option<snownet::Transmit> {
+        self.node.poll_transmit()
+    }
+
+    pub fn poll_packet(&mut self) -> Option<Packet<'static>> {
+        self.buffered_packets.pop_front()
+    }
+
     pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Event<GatewayId>> {
         loop {
-            if let Some(buffered) = self.buffered_packets.pop_front() {
-                return Poll::Ready(Event::SendPacket(buffered));
+            match self.node.poll_event() {
+                Some(snownet::Event::SignalIceCandidate {
+                    connection,
+                    candidate,
+                }) => {
+                    return Poll::Ready(Event::SignalIceCandidate {
+                        conn_id: connection,
+                        candidate,
+                    })
+                }
+                Some(snownet::Event::ConnectionFailed(id)) => {
+                    self.cleanup_connected_gateway(&id);
+                    continue;
+                }
+                Some(snownet::Event::ConnectionEstablished(_)) => {
+                    continue;
+                }
+                None => (),
             }
 
             if let Poll::Ready((gateway_id, _)) =
@@ -694,10 +784,22 @@ impl ClientState {
                 return Poll::Ready(Event::RefreshResources { connections });
             }
 
+            if let Poll::Ready(instant) = self.node_timeout.poll_unpin(cx) {
+                self.node.handle_timeout(instant);
+                if let Some(timeout) = self.node.poll_timeout() {
+                    self.node_timeout = sleep_until(timeout).boxed();
+                }
+
+                continue;
+            }
+
             match self.forwarded_dns_queries.poll_unpin(cx) {
                 Poll::Ready((Ok(response), query)) => {
                     match dns::build_response_from_resolve_result(query.query, response) {
-                        Ok(Some(packet)) => return Poll::Ready(Event::SendPacket(packet)),
+                        Ok(Some(packet)) => {
+                            self.buffered_packets.push_back(packet);
+                            continue;
+                        }
                         Ok(None) => continue,
                         Err(e) => {
                             tracing::warn!("Failed to build DNS response from lookup result: {e}");
@@ -733,8 +835,8 @@ fn create_resolvers(
         .collect()
 }
 
-impl Default for ClientState {
-    fn default() -> Self {
+impl ClientState {
+    pub fn new(private_key: StaticSecret) -> Self {
         // With this single timer this might mean that some DNS are refreshed too often
         // however... this also mean any resource is refresh within a 5 mins interval
         // therefore, only the first time it's added that happens, after that it doesn't matter.
@@ -767,6 +869,9 @@ impl Default for ClientState {
             dns_mapping: Default::default(),
             dns_resolvers: Default::default(),
             buffered_packets: Default::default(),
+            node: ClientNode::new(private_key, Instant::now()),
+            peers_by_id: Default::default(),
+            node_timeout: sleep_until(Instant::now()).boxed(),
         }
     }
 }

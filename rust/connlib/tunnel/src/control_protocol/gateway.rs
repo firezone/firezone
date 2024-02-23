@@ -16,7 +16,7 @@ use connlib_shared::{
 };
 use ip_network::IpNetwork;
 use secrecy::{ExposeSecret as _, Secret};
-use snownet::{Credentials, Server};
+use snownet::Credentials;
 use std::sync::Arc;
 
 /// Description of a resource that maps to a DNS record which had its domain already resolved.
@@ -36,10 +36,16 @@ pub struct ResolvedResourceDescriptionDns {
 pub type ResourceDescription =
     connlib_shared::messages::ResourceDescription<ResolvedResourceDescriptionDns>;
 
-impl<CB> Tunnel<CB, GatewayState, Server, ClientId, PacketTransformGateway>
+impl<CB> Tunnel<CB, GatewayState>
 where
     CB: Callbacks + 'static,
 {
+    pub fn add_ice_candidate(&mut self, conn_id: ClientId, ice_candidate: String) {
+        self.role_state
+            .node
+            .add_remote_candidate(conn_id, ice_candidate);
+    }
+
     /// Accept a connection request from a client.
     ///
     /// Sets a connection to a remote SDP, creates the local SDP
@@ -75,7 +81,7 @@ where
             ResourceDescription::Cidr(ref cidr) => vec![cidr.address],
         };
 
-        let answer = self.connections_state.node.accept_connection(
+        let answer = self.role_state.node.accept_connection(
             client,
             snownet::Offer {
                 session_key: key.expose_secret().0.into(),
@@ -85,12 +91,8 @@ where
                 },
             },
             gateway,
-            stun(&relays, |addr| {
-                self.connections_state.sockets.can_handle(addr)
-            }),
-            turn(&relays, |addr| {
-                self.connections_state.sockets.can_handle(addr)
-            }),
+            stun(&relays, |addr| self.sockets.can_handle(addr)),
+            turn(&relays, |addr| self.sockets.can_handle(addr)),
         );
 
         self.new_peer(
@@ -191,7 +193,7 @@ where
         self.role_state
             .peers_by_ip
             .retain(|_, p| p.conn_id != client_id);
-        self.connections_state
+        self.role_state
             .peers_by_id
             .insert(client_id, Arc::clone(&peer));
         insert_peers(&mut self.role_state.peers_by_ip, &ips, peer);

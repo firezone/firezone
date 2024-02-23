@@ -13,7 +13,4 @@ mod utils;
 
 pub use info::ConnectionInfo;
 pub use ip_packet::{IpPacket, MutableIpPacket};
-pub use node::{
-    Answer, Client, ClientNode, Credentials, Error, Event, Node, Offer, Server, ServerNode,
-    Transmit,
-};
+pub use node::{Answer, ClientNode, Credentials, Error, Event, Node, Offer, ServerNode, Transmit};

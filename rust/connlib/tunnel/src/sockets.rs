@@ -80,6 +80,12 @@ impl Sockets {
         Poll::Ready(Ok(()))
     }
 
+    pub fn send(&self, transmit: &Transmit) {
+        if let Err(e) = self.try_send(transmit) {
+            tracing::warn!(dest = %transmit.dst, "Failed to send packet: {e}")
+        }
+    }
+
     pub fn try_send(&self, transmit: &Transmit) -> Result<usize> {
         tracing::trace!(target: "wire", action = "write", to = %transmit.dst, src = ?transmit.src, bytes = %transmit.payload.len());
 
@@ -96,18 +102,65 @@ impl Sockets {
     }
 
     pub fn poll_recv_from<'a>(
-        &'a mut self,
+        &self,
+        buffer: &'a mut [u8],
         cx: &mut Context<'_>,
-    ) -> Poll<io::Result<impl Iterator<Item = Received<'a>>>> {
-        if let Some(Poll::Ready(packet)) = self.socket_v4.as_mut().map(|s| s.poll_recv_from(cx)) {
-            return Poll::Ready(packet);
+    ) -> Poll<impl Iterator<Item = Received<'a>>> {
+        let middle = buffer.len() / 2;
+
+        let (ip4_buffer, ip6_buffer) = buffer.split_at_mut(middle);
+
+        let mut ret = PacketsIter {
+            ip4: None,
+            ip6: None,
+        };
+
+        if let Some(Poll::Ready(Ok(packets))) = self
+            .socket_v4
+            .as_ref()
+            .map(|s| s.poll_recv_from(ip4_buffer, cx))
+        {
+            ret.ip4 = Some(packets);
         }
 
-        if let Some(Poll::Ready(packet)) = self.socket_v6.as_mut().map(|s| s.poll_recv_from(cx)) {
-            return Poll::Ready(packet);
+        if let Some(Poll::Ready(Ok(packets))) = self
+            .socket_v6
+            .as_ref()
+            .map(|s| s.poll_recv_from(ip6_buffer, cx))
+        {
+            ret.ip6 = Some(packets);
         }
 
-        Poll::Pending
+        if ret.ip4.is_none() && ret.ip6.is_none() {
+            return Poll::Pending;
+        }
+
+        Poll::Ready(ret)
+    }
+}
+
+struct PacketsIter<T1, T2> {
+    ip4: Option<T1>,
+    ip6: Option<T2>,
+}
+
+impl<'a, T1, T2> Iterator for PacketsIter<T1, T2>
+where
+    T1: Iterator<Item = Received<'a>>,
+    T2: Iterator<Item = Received<'a>>,
+{
+    type Item = Received<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(next) = self.ip4.as_mut().and_then(|i| i.next()) {
+            return Some(next);
+        }
+
+        if let Some(next) = self.ip6.as_mut().and_then(|i| i.next()) {
+            return Some(next);
+        }
+
+        None
     }
 }
 
@@ -121,7 +174,6 @@ struct Socket<const N: usize> {
     state: UdpSocketState,
     port: u16,
     socket: UdpSocket,
-    buffer: Box<[u8; N]>,
 }
 
 impl<const N: usize> Socket<N> {
@@ -133,7 +185,6 @@ impl<const N: usize> Socket<N> {
             state: UdpSocketState::new(UdpSockRef::from(&socket))?,
             port,
             socket: tokio::net::UdpSocket::from_std(socket)?,
-            buffer: Box::new([0u8; N]),
         })
     }
 
@@ -145,23 +196,22 @@ impl<const N: usize> Socket<N> {
             state: UdpSocketState::new(UdpSockRef::from(&socket))?,
             port,
             socket: tokio::net::UdpSocket::from_std(socket)?,
-            buffer: Box::new([0u8; N]),
         })
     }
 
     #[allow(clippy::type_complexity)]
     fn poll_recv_from<'b>(
-        &'b mut self,
+        &self,
+        buffer: &'b mut [u8],
         cx: &mut Context<'_>,
     ) -> Poll<io::Result<impl Iterator<Item = Received<'b>>>> {
         let Socket {
             port,
             socket,
-            buffer,
             state,
         } = self;
 
-        let bufs = &mut [IoSliceMut::new(buffer.as_mut())];
+        let bufs = &mut [IoSliceMut::new(buffer)];
         let mut meta = RecvMeta::default();
 
         loop {
