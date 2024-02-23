@@ -92,6 +92,7 @@ jobs:
       - run: cargo mutants --in-place ${{ matrix.packages }}
       - name: Archive mutants.out
         uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: mutants-full.out-${{ matrix.runs-on }}
           path: mutants.out
