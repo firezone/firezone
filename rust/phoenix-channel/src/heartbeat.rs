@@ -74,7 +74,7 @@ mod tests {
 
     #[tokio::test]
     async fn returns_heartbeat_after_interval() {
-        let mut heartbeat = Heartbeat::new(Duration::from_millis(10));
+        let mut heartbeat = Heartbeat::new(Duration::from_millis(30));
         let _ = poll_fn(|cx| heartbeat.poll(cx)).await; // Tick once at startup.
 
         let start = Instant::now();
