@@ -132,7 +132,7 @@ impl Device {
 
     #[cfg(target_family = "unix")]
     pub(crate) fn add_route(
-        &self,
+        &mut self,
         route: IpNetwork,
         callbacks: &impl Callbacks<Error = Error>,
     ) -> Result<Option<Device>, Error> {
@@ -149,8 +149,9 @@ impl Device {
     }
 
     #[cfg(target_family = "windows")]
+    #[allow(unused_mut)]
     pub(crate) fn add_route(
-        &self,
+        &mut self,
         route: IpNetwork,
         _: &impl Callbacks<Error = Error>,
     ) -> Result<Option<Device>, Error> {

@@ -13,7 +13,6 @@ use libc::{
 };
 use netlink_packet_route::route::{RouteProtocol, RouteScope};
 use netlink_packet_route::rule::RuleAction;
-use parking_lot::Mutex;
 use rtnetlink::RuleAddRequest;
 use rtnetlink::{new_connection, Error::NetlinkError, Handle};
 use std::net::IpAddr;
@@ -50,7 +49,7 @@ pub struct Tun {
     connection: tokio::task::JoinHandle<()>,
     fd: AsyncFd<RawFd>,
 
-    worker: Mutex<Option<BoxFuture<'static, Result<()>>>>,
+    worker: Option<BoxFuture<'static, Result<()>>>,
 }
 
 impl fmt::Debug for Tun {
@@ -79,15 +78,14 @@ impl Tun {
         write(self.fd.as_raw_fd(), buf)
     }
 
-    pub fn poll_read(&self, buf: &mut [u8], cx: &mut Context<'_>) -> Poll<io::Result<usize>> {
-        let mut guard = self.worker.lock();
-        if let Some(worker) = guard.as_mut() {
+    pub fn poll_read(&mut self, buf: &mut [u8], cx: &mut Context<'_>) -> Poll<io::Result<usize>> {
+        if let Some(worker) = self.worker.as_mut() {
             match worker.poll_unpin(cx) {
                 Poll::Ready(Ok(())) => {
-                    *guard = None;
+                    self.worker = None;
                 }
                 Poll::Ready(Err(e)) => {
-                    *guard = None;
+                    self.worker = None;
                     return Poll::Ready(Err(io::Error::new(io::ErrorKind::Other, e)));
                 }
                 Poll::Pending => return Poll::Pending,
@@ -135,13 +133,13 @@ impl Tun {
             handle: handle.clone(),
             connection: join_handle,
             fd: AsyncFd::new(fd)?,
-            worker: Mutex::new(Some(
+            worker: Some(
                 set_iface_config(config.clone(), dns_config, handle, dns_control_method).boxed(),
-            )),
+            ),
         })
     }
 
-    pub fn add_route(&self, route: IpNetwork, _: &impl Callbacks) -> Result<Option<Self>> {
+    pub fn add_route(&mut self, route: IpNetwork, _: &impl Callbacks) -> Result<Option<Self>> {
         let handle = self.handle.clone();
 
         let add_route_worker = async move {
@@ -190,11 +188,10 @@ impl Tun {
             }
         };
 
-        let mut guard = self.worker.lock();
-        match guard.take() {
-            None => *guard = Some(add_route_worker.boxed()),
+        match self.worker.take() {
+            None => self.worker = Some(add_route_worker.boxed()),
             Some(current_worker) => {
-                *guard = Some(
+                self.worker = Some(
                     async move {
                         current_worker.await?;
                         add_route_worker.await?;
