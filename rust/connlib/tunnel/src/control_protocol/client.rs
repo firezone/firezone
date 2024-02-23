@@ -106,8 +106,11 @@ where
             &domain_response.as_ref().map(|d| d.domain.clone()),
         )?;
 
-        let mut peer: Peer<_, PacketTransformClient> =
-            Peer::new(ips.clone(), gateway_id, Default::default());
+        let mut peer: Peer<_, PacketTransformClient> = Peer::new(gateway_id, Default::default());
+        for ip in &ips {
+            peer.add_allowed_ip(*ip, resource_id);
+        }
+
         peer.transform.set_dns(self.role_state.dns_mapping());
         self.role_state.peers.insert(peer);
 
@@ -117,7 +120,9 @@ where
             ips
         };
 
-        self.role_state.peers.add_ips(&gateway_id, &peer_ips);
+        self.role_state
+            .peers
+            .add_ips(&gateway_id, &peer_ips, resource_id);
 
         Ok(())
     }
@@ -232,7 +237,9 @@ where
 
         let peer_ips = self.dns_response(&resource_id, &domain_response, &gateway_id)?;
 
-        self.role_state.peers.add_ips(&gateway_id, &peer_ips);
+        self.role_state
+            .peers
+            .add_ips(&gateway_id, &peer_ips, resource_id);
 
         Ok(())
     }

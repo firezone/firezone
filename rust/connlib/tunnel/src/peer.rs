@@ -4,7 +4,7 @@ use std::time::Instant;
 
 use bimap::BiMap;
 use chrono::{DateTime, Utc};
-use connlib_shared::messages::DnsServer;
+use connlib_shared::messages::{DnsServer, ResourceId};
 use connlib_shared::IpProvider;
 use connlib_shared::{Error, Result};
 use ip_network::IpNetwork;
@@ -21,7 +21,7 @@ type ExpiryingResource = (ResourceDescription, Option<DateTime<Utc>>);
 const IDS_EXPIRE: std::time::Duration = std::time::Duration::from_secs(60);
 
 pub struct Peer<TId, TTransform> {
-    allowed_ips: IpNetworkTable<()>,
+    pub allowed_ips: IpNetworkTable<ResourceId>,
     pub conn_id: TId,
     pub transform: TTransform,
 }
@@ -31,25 +31,16 @@ where
     TId: Copy,
     TTransform: PacketTransform,
 {
-    pub(crate) fn new(
-        ips: Vec<IpNetwork>,
-        conn_id: TId,
-        transform: TTransform,
-    ) -> Peer<TId, TTransform> {
-        let mut allowed_ips = IpNetworkTable::new();
-        for ip in ips {
-            allowed_ips.insert(ip, ());
-        }
-
+    pub(crate) fn new(conn_id: TId, transform: TTransform) -> Peer<TId, TTransform> {
         Peer {
-            allowed_ips,
+            allowed_ips: IpNetworkTable::new(),
             conn_id,
             transform,
         }
     }
 
-    pub(crate) fn add_allowed_ip(&mut self, ip: IpNetwork) {
-        self.allowed_ips.insert(ip, ());
+    pub(crate) fn add_allowed_ip(&mut self, ip: IpNetwork, resource_id: ResourceId) {
+        self.allowed_ips.insert(ip, resource_id);
     }
 
     fn is_allowed(&self, addr: IpAddr) -> bool {
@@ -92,7 +83,7 @@ impl Default for PacketTransformGateway {
 
 #[derive(Default)]
 pub struct PacketTransformClient {
-    translations: BiMap<IpAddr, IpAddr>,
+    pub translations: BiMap<IpAddr, IpAddr>,
     dns_mapping: BiMap<IpAddr, DnsServer>,
     mangled_dns_ids: HashMap<u16, std::time::Instant>,
 }

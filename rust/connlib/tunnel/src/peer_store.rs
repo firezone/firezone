@@ -3,6 +3,7 @@ use std::hash::Hash;
 use std::net::IpAddr;
 
 use crate::peer::{PacketTransform, Peer};
+use connlib_shared::messages::ResourceId;
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
 
@@ -31,12 +32,17 @@ where
             .retain(|_, id| self.peer_by_id.contains_key(id));
     }
 
-    pub fn add_ips(&mut self, id: &TId, ips: &[IpNetwork]) -> Option<&Peer<TId, TTransform>> {
+    pub fn add_ips(
+        &mut self,
+        id: &TId,
+        ips: &[IpNetwork],
+        resource_id: ResourceId,
+    ) -> Option<&Peer<TId, TTransform>> {
         let peer = self.peer_by_id.get_mut(id)?;
 
         for ip in ips {
             self.id_by_ip.insert(*ip, peer.conn_id);
-            peer.add_allowed_ip(*ip);
+            peer.add_allowed_ip(*ip, resource_id);
         }
 
         Some(peer)
@@ -87,22 +93,28 @@ where
 
 #[cfg(test)]
 mod tests {
+    use connlib_shared::messages::ResourceId;
+
     use crate::peer::{PacketTransformGateway, Peer};
 
     use super::PeerStore;
 
+    fn resource_id() -> ResourceId {
+        "3a25ff38-f8d7-47de-9b30-c7c40c206083".parse().unwrap()
+    }
+
     #[test]
     fn can_insert_and_retrieve_peer() {
         let mut peer_storage = PeerStore::default();
-        peer_storage.insert(Peer::new(vec![], 0, PacketTransformGateway::default()));
+        peer_storage.insert(Peer::new(0, PacketTransformGateway::default()));
         assert!(peer_storage.get(&0).is_some());
     }
 
     #[test]
     fn can_insert_and_retrieve_peer_by_ip() {
         let mut peer_storage = PeerStore::default();
-        peer_storage.insert(Peer::new(vec![], 0, PacketTransformGateway::default()));
-        peer_storage.add_ips(&0, &["100.0.0.0/24".parse().unwrap()]);
+        peer_storage.insert(Peer::new(0, PacketTransformGateway::default()));
+        peer_storage.add_ips(&0, &["100.0.0.0/24".parse().unwrap()], resource_id());
 
         assert_eq!(
             peer_storage
@@ -116,8 +128,8 @@ mod tests {
     #[test]
     fn can_remove_peer() {
         let mut peer_storage = PeerStore::default();
-        peer_storage.insert(Peer::new(vec![], 0, PacketTransformGateway::default()));
-        peer_storage.add_ips(&0, &["100.0.0.0/24".parse().unwrap()]);
+        peer_storage.insert(Peer::new(0, PacketTransformGateway::default()));
+        peer_storage.add_ips(&0, &["100.0.0.0/24".parse().unwrap()], resource_id());
         peer_storage.remove(&0);
 
         assert!(peer_storage.get(&0).is_none());
@@ -129,9 +141,9 @@ mod tests {
     #[test]
     fn inserting_peer_removes_previous_instances_of_same_id() {
         let mut peer_storage = PeerStore::default();
-        peer_storage.insert(Peer::new(vec![], 0, PacketTransformGateway::default()));
-        peer_storage.add_ips(&0, &["100.0.0.0/24".parse().unwrap()]);
-        peer_storage.insert(Peer::new(vec![], 0, PacketTransformGateway::default()));
+        peer_storage.insert(Peer::new(0, PacketTransformGateway::default()));
+        peer_storage.add_ips(&0, &["100.0.0.0/24".parse().unwrap()], resource_id());
+        peer_storage.insert(Peer::new(0, PacketTransformGateway::default()));
 
         assert!(peer_storage.get(&0).is_some());
         assert!(peer_storage

@@ -99,6 +99,48 @@ where
         Ok(())
     }
 
+    pub fn remove_resource(&mut self, id: ResourceId) {
+        if let Some(ResourceDescription::Cidr(resource)) = self.role_state.resource_ids.remove(&id)
+        {
+            let _ = self.remove_route(resource.address).inspect_err(
+                |err| tracing::error!(%id, %resource.address, "failed to remove route: {err:?}"),
+            );
+        }
+        self.role_state.awaiting_connection.remove(&id);
+        self.role_state.awaiting_connection_timers.remove(id);
+        self.role_state
+            .dns_resources_internal_ips
+            .retain(|r, _| r.id != id);
+        self.role_state.dns_resources.retain(|_, r| r.id != id);
+        self.role_state.cidr_resources.retain(|_, r| r.id != id);
+        self.role_state
+            .deferred_dns_queries
+            .retain(|(r, _), _| r.id != id);
+        let Some(gateway_id) = self.role_state.resources_gateways.remove(&id) else {
+            return;
+        };
+
+        let Some(peer) = self.role_state.peers.get_mut(&gateway_id) else {
+            return;
+        };
+
+        peer.allowed_ips
+            .iter()
+            .filter_map(|(ip, &r_id)| (r_id == id).then_some(ip))
+            .for_each(|network| {
+                peer.transform
+                    .translations
+                    //TODO: Can there be overlaps that complicate this?
+                    .retain(|ip, _| !network.contains(*ip));
+            });
+
+        peer.allowed_ips.retain(|_, r_id| r_id != &id);
+        if peer.allowed_ips.is_empty() {
+            self.role_state.peers.remove(&gateway_id);
+            // TODO: should we have a Node::remove_connection?
+        }
+    }
+
     /// Sets the interface configuration and starts background tasks.
     #[tracing::instrument(level = "trace", skip(self))]
     pub fn set_interface(
@@ -156,6 +198,22 @@ where
             .as_mut()
             .ok_or(Error::ControlProtocolError)?
             .add_route(route, &callbacks)?;
+
+        if let Some(new_device) = maybe_new_device {
+            self.device = Some(new_device);
+        }
+
+        Ok(())
+    }
+
+    #[tracing::instrument(level = "trace", skip(self))]
+    pub fn remove_route(&mut self, route: IpNetwork) -> connlib_shared::Result<()> {
+        let callbacks = self.callbacks().clone();
+        let maybe_new_device = self
+            .device
+            .as_mut()
+            .ok_or(Error::ControlProtocolError)?
+            .remove_route(route, &callbacks)?;
 
         if let Some(new_device) = maybe_new_device {
             self.device = Some(new_device);
@@ -334,7 +392,7 @@ impl ClientState {
 
         if self
             .peers
-            .add_ips(&gateway, &self.get_resource_ip(desc, &domain))
+            .add_ips(&gateway, &self.get_resource_ip(desc, &domain), resource)
             .is_none()
         {
             match self

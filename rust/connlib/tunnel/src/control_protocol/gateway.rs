@@ -167,7 +167,7 @@ where
     ) -> Result<()> {
         tracing::trace!(?ips, "new_data_channel_open");
 
-        let mut peer = Peer::new(ips.clone(), client_id, PacketTransformGateway::default());
+        let mut peer = Peer::new(client_id, PacketTransformGateway::default());
 
         for address in resource_addresses {
             peer.transform
@@ -175,7 +175,14 @@ where
         }
 
         self.role_state.peers.insert(peer);
-        self.role_state.peers.add_ips(&client_id, &ips);
+
+        // TODO: for gateways the association between ip and id should be treated a bit differently
+        let resource_id = match resource {
+            connlib_shared::messages::ResourceDescription::Dns(r) => r.id,
+            connlib_shared::messages::ResourceDescription::Cidr(r) => r.id,
+        };
+
+        self.role_state.peers.add_ips(&client_id, &ips, resource_id);
 
         Ok(())
     }
