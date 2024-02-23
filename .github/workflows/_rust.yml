@@ -50,7 +50,8 @@ jobs:
         # TODO: https://github.com/rust-lang/cargo/issues/5220
         include:
           - runs-on: ubuntu-20.04
-            packages: -p firezone-relay -p firezone-linux-client -p firezone-gateway -p connlib-client-android -p snownet
+            packages: -p firezone-gui-client -p firezone-relay -p firezone-linux-client -p firezone-gateway -p connlib-client-android -p snownet
+            # GUI client doesn't build on 22.04 yet <https://github.com/firezone/firezone/issues/3699>
           - runs-on: ubuntu-22.04
             packages: -p firezone-relay -p firezone-linux-client -p firezone-gateway -p connlib-client-android -p snownet
           - runs-on: macos-12
