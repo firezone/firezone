@@ -4,6 +4,9 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() -> anyhow::Result<()> {
+    if false {
+        bogus().ok();
+    }
     client::run()
 }
 
@@ -20,3 +23,10 @@ mod client {
 /// compile errors.
 #[cfg(target_os = "windows")]
 mod client;
+
+/// Used to teset #3752 - mutation testing
+fn bogus() -> anyhow::Result<()> {
+    anyhow::bail!(
+        "`cargo-mutants` should change this to `Ok(())` and then mark it as a missed mutant"
+    );
+}
