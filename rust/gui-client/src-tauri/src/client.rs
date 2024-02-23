@@ -10,6 +10,7 @@ mod deep_link;
 mod device_id;
 mod elevation;
 mod gui;
+mod known_dirs;
 mod logging;
 mod network_changes;
 mod resolvers;

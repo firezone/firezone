@@ -1,9 +1,11 @@
 //! Everything related to the Settings window, including
 //! advanced settings and code for manipulating diagnostic logs.
 
-use crate::client::gui::{ControllerRequest, Managed};
-use anyhow::Result;
-use connlib_shared::windows::app_local_data_dir;
+use crate::client::{
+    gui::{ControllerRequest, Managed},
+    known_dirs,
+};
+use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::{path::PathBuf, time::Duration};
 use tokio::sync::oneshot;
@@ -38,15 +40,10 @@ impl Default for AdvancedSettings {
     }
 }
 
-struct DirAndPath {
-    dir: PathBuf,
-    path: PathBuf,
-}
-
-fn advanced_settings_path() -> Result<DirAndPath> {
-    let dir = app_local_data_dir()?.join("config");
-    let path = dir.join("advanced_settings.json");
-    Ok(DirAndPath { dir, path })
+fn advanced_settings_path() -> Result<PathBuf> {
+    Ok(known_dirs::settings()
+        .context("`known_dirs::settings` failed")?
+        .join("advanced_settings.json"))
 }
 
 #[tauri::command]
@@ -93,8 +90,11 @@ pub(crate) async fn get_advanced_settings(
 }
 
 pub(crate) async fn apply_advanced_settings_inner(settings: &AdvancedSettings) -> Result<()> {
-    let DirAndPath { dir, path } = advanced_settings_path()?;
-    tokio::fs::create_dir_all(&dir).await?;
+    let path = advanced_settings_path()?;
+    let dir = path
+        .parent()
+        .context("settings path should have a parent")?;
+    tokio::fs::create_dir_all(dir).await?;
     tokio::fs::write(path, serde_json::to_string(&settings)?).await?;
     Ok(())
 }
@@ -103,7 +103,7 @@ pub(crate) async fn apply_advanced_settings_inner(settings: &AdvancedSettings) -
 ///
 /// Uses std::fs, so stick it in `spawn_blocking` for async contexts
 pub(crate) fn load_advanced_settings() -> Result<AdvancedSettings> {
-    let DirAndPath { dir: _, path } = advanced_settings_path()?;
+    let path = advanced_settings_path()?;
     let text = std::fs::read_to_string(path)?;
     let settings = serde_json::from_str(&text)?;
     Ok(settings)
