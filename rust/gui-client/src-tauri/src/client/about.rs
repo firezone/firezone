@@ -10,3 +10,17 @@ pub(crate) fn get_cargo_version() -> String {
 pub(crate) fn get_git_version() -> String {
     GIT_VERSION.to_string()
 }
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn version() {
+        let cargo = super::get_cargo_version();
+        let git = super::get_git_version();
+
+        assert!(cargo != "Unknown");
+        assert!(git != "Unknown");
+        assert!(cargo.len() >= 2);
+        assert!(git.len() >= 8);
+    }
+}

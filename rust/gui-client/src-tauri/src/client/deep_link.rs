@@ -250,6 +250,14 @@ mod tests {
     use secrecy::{ExposeSecret, Secret};
 
     #[test]
+    fn named_pipe_path() {
+        assert_eq!(
+            super::named_pipe_path("dev.firezone.client"),
+            r"\\.\pipe\dev.firezone.client"
+        );
+    }
+
+    #[test]
     fn parse_auth_callback() -> Result<()> {
         // Positive cases
         let input = "firezone://handle_client_sign_in_callback/?actor_name=Reactor+Scram&fragment=a_very_secret_string&state=a_less_secret_string&identity_provider_identifier=12345";
