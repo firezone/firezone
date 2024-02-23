@@ -887,11 +887,7 @@ impl ChannelBindings {
         let (channel_number, payload) = crate::channel_data::decode(packet).ok()?;
         let channel = self.inner.get_mut(&channel_number)?;
 
-        if !channel.bound {
-            tracing::debug!(peer = %channel.peer, number = %channel_number, "Dropping message from channel because it is not yet bound");
-            return None;
-        }
-
+        channel.bound = true;
         channel.record_received(now);
 
         Some((channel.peer, payload))
