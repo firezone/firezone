@@ -2,7 +2,7 @@
 
 use crate::client::{
     gui::{ControllerRequest, CtlrTx, Managed},
-    known_dirs::app_local_data_dir,
+    known_dirs,
 };
 use anyhow::{bail, Context, Result};
 use connlib_client_shared::file_logger;
@@ -181,13 +181,7 @@ pub(crate) async fn count_logs_inner() -> Result<FileCount> {
     Ok(file_count)
 }
 
-/// Returns the well-known log path
-///
-/// e.g. %LOCALAPPDATA%/dev.firezone.client/data/logs/
+/// Wrapper around `known_dirs::logs`
 pub(crate) fn log_path() -> Result<PathBuf, Error> {
-    let path = app_local_data_dir()
-        .map_err(|_| Error::CantFindLocalAppDataFolder)?
-        .join("data")
-        .join("logs");
-    Ok(path)
+    known_dirs::logs().ok_or(Error::CantFindLocalAppDataFolder)
 }

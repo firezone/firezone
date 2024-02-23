@@ -1,34 +1,30 @@
 # From https://tauri.app/v1/guides/getting-started/prerequisites
 name: "Setup Tauri"
 description: "Sets up the dependencies for building and testing Tauri apps"
-inputs:
-  target_os:
-    description: "`windows` or `linux` like in Rust"
-    required: true
 runs:
   using: "composite"
   steps:
     - name: Apt-get update
-      if: ${{ inputs.target_os == 'linux' }}
+      if: ${{ runner.os == 'Linux' }}
       run: sudo apt-get update
       shell: bash
     - name: Install Tauri build deps
-      if: ${{ inputs.target_os == 'linux' }}
+      if: ${{ runner.os == 'Linux' }}
       run: sudo apt-get install libwebkit2gtk-4.0-dev libssl-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
       shell: bash
     - name: Install gnome-keyring
-      if: ${{ inputs.target_os == 'linux' }}
+      if: ${{ runner.os == 'Linux' }}
       run: sudo apt-get install gnome-keyring
       shell: bash
       # This is only needed if we'll launch the Tauri GUI, so it's redundant for clippy / test
       # This is what the Tauri CI tests use
       # <https://github.com/tauri-apps/tauri/blob/3fb414b61ad7cfce67751230826fddfb39effec5/.github/workflows/bench.yml#L74>
     - name: Install Tauri runtime deps
-      if: ${{ inputs.target_os == 'linux' }}
+      if: ${{ runner.os == 'Linux' }}
       run: sudo apt-get install at-spi2-core xvfb
       shell: bash
     - name: Download WebView2 bootstrapper
-      if: ${{ inputs.target_os == 'windows' }}
+      if: ${{ runner.os == 'Windows' }}
       # This is the "Evergreen" bootstrapper from Microsoft
       # <https://developer.microsoft.com/en-us/microsoft-edge/webview2/?form=MA13LH#download>
       # Unfortunately, this makes the test non-deterministic.
@@ -36,7 +32,7 @@ runs:
       run: Invoke-WebRequest -Uri https://go.microsoft.com/fwlink/p/?LinkId=2124703 -OutFile WebView2Installer.exe
       shell: pwsh
     - name: Install WebView2
-      if: ${{ inputs.target_os == 'windows' }}
+      if: ${{ runner.os == 'Windows' }}
       # This downloads about 200 MB and takes about 5 minutes on my VM
       # So we could fault in WebView2 from the client exe without the MSI if we needed.
       # Currently the MSI does this and it's a little janky.

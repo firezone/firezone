@@ -15,18 +15,11 @@ pub(crate) enum Error {
 /// Per <https://github.com/firezone/firezone/issues/2697> and <https://github.com/firezone/firezone/issues/2711>,
 /// clients must generate their own random IDs and persist them to disk, to handle situations like VMs where a hardware ID is not unique or not available.
 ///
-/// # Arguments
-///
-/// * `identifier` - Our Tauri bundle identifier, e.g. "dev.firezone.client"
-///
 /// Returns: The UUID as a String, suitable for sending verbatim to `connlib_client_shared::Session::connect`.
 ///
 /// Errors: If the disk is unwritable when initially generating the ID, or unwritable when re-generating an invalid ID.
-pub(crate) async fn device_id(identifier: &str) -> Result<String, Error> {
-    let dir = crate::client::known_dirs::program_data_dir()
-        .ok_or(Error::KnownFolder)?
-        .join(identifier)
-        .join("config");
+pub(crate) async fn device_id() -> Result<String, Error> {
+    let dir = crate::client::known_dirs::device_id().ok_or(Error::KnownFolder)?;
     let path = dir.join("device_id.json");
 
     // Try to read it back from disk

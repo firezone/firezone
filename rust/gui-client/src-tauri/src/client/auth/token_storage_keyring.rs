@@ -1,4 +1,7 @@
 //! Implements credential storage with `keyring-rs`.
+//!
+//! `keyring-rs` is cross-platform but it's hard to get it working in headless Linux
+//! environments like Github's CI.
 
 use super::Error;
 use secrecy::{ExposeSecret, SecretString};

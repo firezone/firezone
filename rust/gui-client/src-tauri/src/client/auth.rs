@@ -1,6 +1,6 @@
 //! Fulfills <https://github.com/firezone/firezone/issues/2823>
 
-use crate::client::known_dirs::app_local_data_dir;
+use crate::client::known_dirs;
 use connlib_shared::control::SecureUrl;
 use rand::{thread_rng, RngCore};
 use secrecy::{ExposeSecret, Secret, SecretString};
@@ -8,6 +8,8 @@ use std::path::PathBuf;
 use subtle::ConstantTimeEq;
 use url::Url;
 
+// TODO: Put this behind a "CI tests only" flag so that
+// official CI builds, and default local builds won't get the mock
 #[cfg(target_os = "linux")]
 #[path = "auth/token_storage_mock.rs"]
 mod token_storage;
@@ -24,8 +26,8 @@ const NONCE_LENGTH: usize = 32;
 pub(crate) enum Error {
     #[error("`actor_name_path` has no parent, this should be impossible")]
     ActorNamePathWrong,
-    #[error("`app_local_data_dir` failed")]
-    CantFindLocalAppDataFolder,
+    #[error("`known_dirs` failed")]
+    CantFindKnownDir,
     #[error("`create_dir_all` failed while writing `actor_name_path`")]
     CreateDirAll(std::io::Error),
     #[error("Couldn't delete actor_name from disk: {0}")]
@@ -208,7 +210,7 @@ impl Auth {
             Err(e) => return Err(Error::ReadActorName(e)),
         };
 
-        // This must be the only place the GUI can call `get_password`, since the
+        // This MUST be the only place the GUI can call `get_password`, since the
         // actor name is also loaded here.
         let Some(token) = self.token_store.get()? else {
             return Ok(None);
@@ -232,11 +234,8 @@ impl Auth {
 ///
 /// Hopefully we don't need to save anything else, or there will be a migration step
 fn actor_name_path() -> Result<PathBuf> {
-    // Would it be better to break out another error type for `app_local_data_dir` here?
-    // It can only return one kind of error, unrelated to the other errors connlib can return
-    Ok(app_local_data_dir()
-        .map_err(|_| Error::CantFindLocalAppDataFolder)?
-        .join("data")
+    Ok(known_dirs::session()
+        .ok_or(Error::CantFindKnownDir)?
         .join("actor_name.txt"))
 }
 
@@ -273,6 +272,7 @@ mod tests {
     #[test]
     fn everything() -> anyhow::Result<()> {
         // Run `happy_path` first to make sure it reacts okay if our `data` dir is missing
+        // TODO: Re-enable happy path tests once `keyring-rs` is working in CI tests
         // happy_path("");
         // happy_path("Jane Doe");
         utils();

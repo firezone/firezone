@@ -12,7 +12,7 @@ FROM alpine:${ALPINE_VERSION} as rust
 # is updated with the current date. It will force refresh of all
 # of the base images and things like `apk add` won't be using
 # old cached versions when the Dockerfile is built.
-ENV REFRESHED_AT=2023-12-11 \
+ENV REFRESHED_AT=2024-02-22 \
   LANG=C.UTF-8 \
   TERM=xterm
 
@@ -124,11 +124,14 @@ ENV PACKAGE=${PACKAGE}
 
 CMD $PACKAGE
 
-# Build an image for GitHub Actions which includes debug asserts and test utilities
-FROM runtime AS debug
+# used for local development
+FROM runtime as development
 
 RUN set -xe \
   && apk add --no-cache iperf3 bind-tools iproute2 jq
+
+# Build an image for GitHub Actions which includes debug asserts and test utilities
+FROM development AS debug
 
 ARG TARGET
 COPY --from=builder /build/target/${TARGET}/debug/${PACKAGE} .

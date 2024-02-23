@@ -116,10 +116,10 @@ jobs:
           - target: x86_64-unknown-linux-musl
             shortname: x64
             platform: linux/amd64
-          - target: aarch64-unknown-linux-musl # E.g. AWS Graviton
+          - target: aarch64-unknown-linux-musl  # E.g. AWS Graviton
             shortname: arm64
             platform: linux/arm64
-          - target: armv7-unknown-linux-musleabihf # E.g. Raspberry Pi
+          - target: armv7-unknown-linux-musleabihf  # E.g. Raspberry Pi
             platform: linux/arm/v7
             shortname: arm
           # Requires ring v0.17 which a number of our dependencies don't yet support
@@ -234,14 +234,14 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
-  # Build for Windows
-  # TODO: Add Linux GUI here
-  build-push-windows-release-artifacts:
+  # Build GUI for Windows / Linux
+  build-push-gui-release-artifacts:
+    name: build-gui-${{ matrix.runs-on }}
+    runs-on: ${{ matrix.runs-on }}
     permissions:
       id-token: write
       contents: write
     needs: update-release-draft
-    runs-on: windows-2019
     defaults:
       run:
         working-directory: ./rust/gui-client
@@ -250,39 +250,46 @@ jobs:
       # The matrix is 1x1 to match the style of build-push-linux-release-artifacts
       # In the future we could try to cross-compile aarch64-windows here.
       matrix:
-        name:
-          - package: firezone-gui-client
-            artifact: gui-client
+        include:
+          - runs-on: ubuntu-20.04
+            binary-dest-path: firezone-linux-gui-client
+            rename-script: ../../scripts/build/tauri-rename-ubuntu.sh
+          - runs-on: windows-2019
+            binary-dest-path: firezone-windows-client
+            rename-script: ../../scripts/build/tauri-rename-windows.sh
     env:
-      BINARY_DEST_PATH: firezone-${{ matrix.name.artifact }}
+      BINARY_DEST_PATH: ${{ matrix.binary-dest-path }}
       CONNLIB_LOG_UPLOAD_INTERVAL_SECS: 300
     steps:
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/setup-rust
       - uses: ./.github/actions/setup-node
+        with:
+          node-version: '20'
+      - uses: ./.github/actions/setup-rust
+      - uses: ./.github/actions/setup-tauri
       - name: Install pnpm deps
         run: pnpm install
       - name: Build release exe and MSI
         run: pnpm build
-      - name: Compute SHA256 and rename
-        run: |
-          # Used for release artifact
-          # This should match 'build-tauri' in _rust.yml
-          cp "../target/release/bundle/msi/*.msi" "${{ env.BINARY_DEST_PATH }}-x64.msi"
-
-          Get-FileHash ${{ env.BINARY_DEST_PATH }}-x64.msi -Algorithm SHA256 | Select-Object Hash > ${{ env.BINARY_DEST_PATH }}-x64.msi.sha256sum.txt
-      - name: Upload Release Assets
+      - name: Rename artifacts and compute SHA256
+        shell: bash
+        run: ${{ matrix.rename-script }}
+      - name: Upload Release Assets (Linux)
+        if: ${{ runner.os == 'Linux' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          # Upload Windows MSI
-
-          # This artifact name is tied to the update checker in `gui-client/src-tauri/src/client/updates.rs`
-          gh release upload ${{ needs.update-release-draft.outputs.tag_name }} `
-            ${{ env.BINARY_DEST_PATH }}-x64.msi `
-            ${{ env.BINARY_DEST_PATH }}-x64.msi.sha256sum.txt `
-            --clobber `
-            --repo ${{ github.repository }}
+          REPOSITORY: ${{ github.repository }}
+          TAG_NAME: ${{ needs.update-release-draft.outputs.tag_name }}
+        shell: bash
+        run: ../../scripts/build/tauri-upload-ubuntu.sh
+      - name: Upload Release Assets (Windows)
+        if: ${{ runner.os == 'Windows' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+          TAG_NAME: ${{ needs.update-release-draft.outputs.tag_name }}
+        shell: bash
+        run: ../../scripts/build/tauri-upload-windows.sh
 
   merge-release-artifacts:
     permissions:

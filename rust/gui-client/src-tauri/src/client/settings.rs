@@ -3,9 +3,9 @@
 
 use crate::client::{
     gui::{ControllerRequest, Managed},
-    known_dirs::app_local_data_dir,
+    known_dirs,
 };
-use anyhow::Result;
+use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::{path::PathBuf, time::Duration};
 use tokio::sync::oneshot;
@@ -40,15 +40,10 @@ impl Default for AdvancedSettings {
     }
 }
 
-struct DirAndPath {
-    dir: PathBuf,
-    path: PathBuf,
-}
-
-fn advanced_settings_path() -> Result<DirAndPath> {
-    let dir = app_local_data_dir()?.join("config");
-    let path = dir.join("advanced_settings.json");
-    Ok(DirAndPath { dir, path })
+fn advanced_settings_path() -> Result<PathBuf> {
+    Ok(known_dirs::settings()
+        .context("`known_dirs::settings` failed")?
+        .join("advanced_settings.json"))
 }
 
 #[tauri::command]
@@ -56,7 +51,10 @@ pub(crate) async fn apply_advanced_settings(
     managed: tauri::State<'_, Managed>,
     settings: AdvancedSettings,
 ) -> Result<(), String> {
-    apply_advanced_settings_inner(managed.inner(), &settings)
+    if managed.inner().inject_faults {
+        tokio::time::sleep(Duration::from_secs(2)).await;
+    }
+    apply_advanced_settings_inner(&settings)
         .await
         .map_err(|e| e.to_string())
 }
@@ -66,8 +64,10 @@ pub(crate) async fn reset_advanced_settings(
     managed: tauri::State<'_, Managed>,
 ) -> Result<AdvancedSettings, String> {
     let settings = AdvancedSettings::default();
-
-    apply_advanced_settings_inner(managed.inner(), &settings)
+    if managed.inner().inject_faults {
+        tokio::time::sleep(Duration::from_secs(2)).await;
+    }
+    apply_advanced_settings_inner(&settings)
         .await
         .map_err(|e| e.to_string())?;
 
@@ -89,17 +89,13 @@ pub(crate) async fn get_advanced_settings(
     Ok(rx.await.unwrap())
 }
 
-pub(crate) async fn apply_advanced_settings_inner(
-    managed: &Managed,
-    settings: &AdvancedSettings,
-) -> Result<()> {
-    let DirAndPath { dir, path } = advanced_settings_path()?;
-    tokio::fs::create_dir_all(&dir).await?;
+pub(crate) async fn apply_advanced_settings_inner(settings: &AdvancedSettings) -> Result<()> {
+    let path = advanced_settings_path()?;
+    let dir = path
+        .parent()
+        .context("settings path should have a parent")?;
+    tokio::fs::create_dir_all(dir).await?;
     tokio::fs::write(path, serde_json::to_string(&settings)?).await?;
-
-    if managed.inject_faults {
-        tokio::time::sleep(Duration::from_secs(2)).await;
-    }
     Ok(())
 }
 
@@ -107,7 +103,7 @@ pub(crate) async fn apply_advanced_settings_inner(
 ///
 /// Uses std::fs, so stick it in `spawn_blocking` for async contexts
 pub(crate) fn load_advanced_settings() -> Result<AdvancedSettings> {
-    let DirAndPath { dir: _, path } = advanced_settings_path()?;
+    let path = advanced_settings_path()?;
     let text = std::fs::read_to_string(path)?;
     let settings = serde_json::from_str(&text)?;
     Ok(settings)

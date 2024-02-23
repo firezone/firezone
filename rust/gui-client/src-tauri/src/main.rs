@@ -7,5 +7,16 @@ fn main() -> anyhow::Result<()> {
     client::run()
 }
 
-// TODO: Collapse this
+#[cfg(target_os = "linux")]
+mod client;
+
+#[cfg(target_os = "macos")]
+mod client {
+    pub(crate) fn run() -> anyhow::Result<()> {
+        println!("The GUI client does not compile on macOS platforms yet");
+        Ok(())
+    }
+}
+
+#[cfg(target_os = "windows")]
 mod client;

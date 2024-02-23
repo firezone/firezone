@@ -148,19 +148,43 @@ pub(crate) fn run() -> Result<()> {
             rt.block_on(deep_link::open(&deep_link.url))?;
             Ok(())
         }
-        Some(Cmd::SmokeTest) => {
-            let result = gui::run(&cli);
-            if let Err(error) = &result {
-                // In smoke-test mode, don't show the dialog, since it might be running
-                // unattended in CI and the dialog would hang forever
-
-                // Because of <https://github.com/firezone/firezone/issues/3567>,
-                // errors returned from `gui::run` may not be logged correctly
-                tracing::error!(?error, "gui::run error");
-            }
-            Ok(result?)
-        }
+        Some(Cmd::SmokeTest) => run_smoke_test(cli),
     }
+}
+
+#[cfg(target_os = "linux")]
+fn run_smoke_test(cli: Cli) -> Result<()> {
+    // Linux doesn't do elevation::check yet because it doesn't need wintun.dll
+    // and the elevation stuff isn't ready anyway.
+    let result = gui::run(&cli);
+    if let Err(error) = &result {
+        tracing::error!(?error, "gui::run error");
+    }
+    Ok(result?)
+}
+
+#[cfg(target_os = "windows")]
+fn run_smoke_test(cli: Cli) -> Result<()> {
+    // Check for elevation. This also ensures wintun.dll is installed.
+    if !elevation::check()? {
+        anyhow::bail!("`smoke-test` must be run with elevated permissions");
+    }
+
+    let result = gui::run(&cli);
+    if let Err(error) = &result {
+        // In smoke-test mode, don't show the dialog, since it might be running
+        // unattended in CI and the dialog would hang forever
+
+        // Because of <https://github.com/firezone/firezone/issues/3567>,
+        // errors returned from `gui::run` may not be logged correctly
+        tracing::error!(?error, "gui::run error");
+    }
+    Ok(result?)
+}
+
+#[cfg(target_os = "linux")]
+fn run_default(cli: Cli) -> Result<()> {
+    run_gui(cli)
 }
 
 #[cfg(target_os = "windows")]
@@ -193,11 +217,6 @@ fn run_default(cli: Cli) -> Result<()> {
             .spawn()?;
         Ok(())
     }
-}
-
-#[cfg(not(target_os = "windows"))]
-fn run_default(cli: Cli) -> Result<()> {
-    run_gui(cli)
 }
 
 /// `gui::run` but wrapped in `anyhow::Result`
