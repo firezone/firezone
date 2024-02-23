@@ -227,15 +227,16 @@ where
     ) -> Result<Option<(TId, MutableIpPacket<'s>)>, Error> {
         self.add_local_as_host_candidate(local)?;
 
-        let ControlFlow::Continue(()) = self.bindings_try_handle(from, local, packet, now) else {
-            return Ok(None);
-        };
+        match self.bindings_try_handle(from, local, packet, now) {
+            ControlFlow::Continue(()) => {}
+            ControlFlow::Break(()) => return Ok(None),
+        }
 
-        let ControlFlow::Continue((from, packet, relay_socket)) =
-            self.allocations_try_handle(from, local, packet, now)
-        else {
-            return Ok(None);
-        };
+        let (from, packet, relay_socket) =
+            match self.allocations_try_handle(from, local, packet, now) {
+                ControlFlow::Continue(c) => c,
+                ControlFlow::Break(()) => return Ok(None),
+            };
 
         match self.agents_try_handle(
             from,
