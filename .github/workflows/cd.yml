@@ -250,16 +250,15 @@ jobs:
       # The matrix is 1x1 to match the style of build-push-linux-release-artifacts
       # In the future we could try to cross-compile aarch64-windows here.
       matrix:
-        runs-on:
-          - ubuntu-20.04
-          - windows-2019
         include:
           - runs-on: ubuntu-20.04
+            binary-dest-path: firezone-linux-gui-client
             rename-script: ../../scripts/build/tauri-rename-ubuntu.sh
           - runs-on: windows-2019
+            binary-dest-path: firezone-windows-client
             rename-script: ../../scripts/build/tauri-rename-windows.sh
     env:
-      BINARY_DEST_PATH: firezone-gui-client-${{ matrix.os-name }}
+      BINARY_DEST_PATH: ${{ matrix.binary-dest-path }}
       CONNLIB_LOG_UPLOAD_INTERVAL_SECS: 300
     steps:
       - uses: actions/checkout@v4
