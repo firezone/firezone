@@ -232,18 +232,15 @@ where
             ControlFlow::Break(()) => return Ok(None),
         }
 
-        let (from, packet, relay_socket) =
-            match self.allocations_try_handle(from, local, packet, now) {
-                ControlFlow::Continue(c) => c,
-                ControlFlow::Break(()) => return Ok(None),
-            };
+        let (from, packet, relayed) = match self.allocations_try_handle(from, local, packet, now) {
+            ControlFlow::Continue(c) => c,
+            ControlFlow::Break(()) => return Ok(None),
+        };
 
-        match self.agents_try_handle(
-            from,
-            relay_socket.map(|s| s.address()).unwrap_or(local),
-            packet,
-            now,
-        ) {
+        // For our agents, it is important what the initial "destination" of the packet was.
+        let destination = relayed.map(|s| s.address()).unwrap_or(local);
+
+        match self.agents_try_handle(from, destination, packet, now) {
             ControlFlow::Continue(()) => {}
             ControlFlow::Break(Ok(())) => return Ok(None),
             ControlFlow::Break(Err(e)) => return Err(e),
@@ -263,7 +260,7 @@ where
                 // In our API, we parse the packets directly as an IpPacket.
                 // Thus, the caller can query whatever data they'd like, not just the source IP so we don't return it in addition.
                 TunnResult::WriteToTunnelV4(packet, ip) => {
-                    conn.set_remote_from_wg_activity(local, from, relay_socket);
+                    conn.set_remote_from_wg_activity(local, from, relayed);
 
                     let ipv4_packet =
                         MutableIpv4Packet::new(packet).expect("boringtun verifies validity");
@@ -272,7 +269,7 @@ where
                     Ok(Some((id, ipv4_packet.into())))
                 }
                 TunnResult::WriteToTunnelV6(packet, ip) => {
-                    conn.set_remote_from_wg_activity(local, from, relay_socket);
+                    conn.set_remote_from_wg_activity(local, from, relayed);
 
                     let ipv6_packet =
                         MutableIpv6Packet::new(packet).expect("boringtun verifies validity");
@@ -286,7 +283,7 @@ where
                 // This should be fairly rare which is why we just allocate these and return them from `poll_transmit` instead.
                 // Overall, this results in a much nicer API for our caller and should not affect performance.
                 TunnResult::WriteToNetwork(bytes) => {
-                    conn.set_remote_from_wg_activity(local, from, relay_socket);
+                    conn.set_remote_from_wg_activity(local, from, relayed);
 
                     self.buffered_transmits.extend(conn.encapsulate(
                         bytes,
