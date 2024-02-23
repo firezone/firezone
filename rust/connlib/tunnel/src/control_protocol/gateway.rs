@@ -1,5 +1,4 @@
 use crate::{
-    control_protocol::insert_peers,
     dns::is_subdomain,
     peer::{PacketTransformGateway, Peer},
     Error, GatewayState, Tunnel,
@@ -17,7 +16,6 @@ use connlib_shared::{
 use ip_network::IpNetwork;
 use secrecy::{ExposeSecret as _, Secret};
 use snownet::{Credentials, Server};
-use std::sync::Arc;
 
 /// Description of a resource that maps to a DNS record which had its domain already resolved.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -36,7 +34,7 @@ pub struct ResolvedResourceDescriptionDns {
 pub type ResourceDescription =
     connlib_shared::messages::ResourceDescription<ResolvedResourceDescriptionDns>;
 
-impl<CB> Tunnel<CB, GatewayState, Server, ClientId, PacketTransformGateway>
+impl<CB> Tunnel<CB, GatewayState, Server, ClientId>
 where
     CB: Callbacks + 'static,
 {
@@ -125,14 +123,7 @@ where
         expires_at: Option<DateTime<Utc>>,
         domain: Option<Dname>,
     ) -> Option<DomainResponse> {
-        let Some(peer) = self
-            .role_state
-            .peers_by_ip
-            .iter_mut()
-            .find_map(|(_, p)| (p.conn_id == client).then_some(p.clone()))
-        else {
-            return None;
-        };
+        let peer = self.role_state.peers.get_mut(&client)?;
 
         let (addresses, resource_id) = match &resource {
             ResourceDescription::Dns(r) => {
@@ -176,25 +167,15 @@ where
     ) -> Result<()> {
         tracing::trace!(?ips, "new_data_channel_open");
 
-        let peer = Arc::new(Peer::new(
-            ips.clone(),
-            client_id,
-            PacketTransformGateway::default(),
-        ));
+        let mut peer = Peer::new(ips.clone(), client_id, PacketTransformGateway::default());
 
         for address in resource_addresses {
             peer.transform
                 .add_resource(address, resource.clone(), expires_at);
         }
 
-        // cleaning up old state
-        self.role_state
-            .peers_by_ip
-            .retain(|_, p| p.conn_id != client_id);
-        self.connections_state
-            .peers_by_id
-            .insert(client_id, Arc::clone(&peer));
-        insert_peers(&mut self.role_state.peers_by_ip, &ips, peer);
+        self.role_state.peers.insert(peer);
+        self.role_state.peers.add_ips(&client_id, &ips);
 
         Ok(())
     }
