@@ -4,10 +4,8 @@ set -euo pipefail
 
 source "./scripts/tests/lib.sh"
 
-client_curl_resource
+client_curl_resource # Establish a connection
 
 docker compose stop api relay # Stop portal & relay
-
-sleep 5 # Wait for client to disconnect
 
 client_curl_resource

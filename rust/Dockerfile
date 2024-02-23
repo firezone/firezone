@@ -122,11 +122,14 @@ ENV PACKAGE=${PACKAGE}
 
 CMD $PACKAGE
 
-# Build an image for GitHub Actions which includes debug asserts and test utilities
-FROM runtime AS debug
+# used for local development
+FROM runtime as development
 
 RUN set -xe \
   && apk add --no-cache iperf3 bind-tools iproute2 jq
+
+# Build an image for GitHub Actions which includes debug asserts and test utilities
+FROM development AS debug
 
 ARG TARGET
 COPY --from=builder /build/target/${TARGET}/debug/${PACKAGE} .

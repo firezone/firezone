@@ -187,6 +187,7 @@ jobs:
         test: [
           direct-curl-portal-restart,
           relayed-curl-portal-restart,
+          relayed-curl-relay-restart,
           direct-curl-portal-down,
           relayed-curl-portal-down,
           direct-curl-portal-relay-down,

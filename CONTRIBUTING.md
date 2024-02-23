@@ -93,6 +93,21 @@ docker compose exec -it client ping 172.20.0.100
 docker compose exec -it client /bin/sh
 ```
 
+##### Rust development with docker
+
+Sometimes it's useful to test your changes in a local docker, however the
+`docker-compose.yml` file at the root directory requires rebuilding the
+images each time you want to test the change.
+
+To solve this, you can use the `rust/docker-compose-dev.yml` file like
+`docker compose -f docker-compose.yml -f rust/docker-compose-dev.yml <command>`
+
+This will use locally compiled binaries situated at
+`rust/target/x86_64-unknown-musl/debug`
+
+You can also set use the env variable `COMPOSE_FILE` as explained [here](https://docs.docker.com/compose/environment-variables/envvars/#compose_file)
+so you don't have to manually set the compose files each time.
+
 ### Bootstrapping
 
 To start the local Firezone cluster, follow these steps:

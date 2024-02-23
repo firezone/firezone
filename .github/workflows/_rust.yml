@@ -125,12 +125,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runs-on:
-          # TODO
-          # - ubuntu-20.04
-          - windows-2019
+        include:
+          - runs-on: ubuntu-20.04
+            binary-dest-path: firezone-linux-gui-client
+            rename-script: ../../scripts/build/tauri-rename-ubuntu.sh
+          - runs-on: windows-2019
+            binary-dest-path: firezone-windows-client
+            rename-script: ../../scripts/build/tauri-rename-windows.sh
     env:
-      BINARY_DEST_PATH: firezone-gui-client
+      BINARY_DEST_PATH: ${{ matrix.binary-dest-path }}
       CONNLIB_LOG_UPLOAD_INTERVAL_SECS: 300
     steps:
       - uses: actions/checkout@v4
@@ -143,41 +146,36 @@ jobs:
         run: pnpm install
       - name: Build release exe and MSI
         run: pnpm build
-      - name: Compute SHA256 and rename
-        run: |
-          # Used for release artifact
-          # In release mode the name comes from tauri.conf.json
-          cp "../target/release/Firezone.exe" "${{ env.BINARY_DEST_PATH }}-x64.exe"
-          cp "../target/release/bundle/msi/*.msi" "${{ env.BINARY_DEST_PATH }}-x64.msi"
-          cp "../target/release/firezone_gui_client.pdb" "${{ env.BINARY_DEST_PATH }}-x64.pdb"
-
-          Get-FileHash ${{ env.BINARY_DEST_PATH }}-x64.exe -Algorithm SHA256 | Select-Object Hash > ${{ env.BINARY_DEST_PATH }}-x64.exe.sha256sum.txt
-          Get-FileHash ${{ env.BINARY_DEST_PATH }}-x64.msi -Algorithm SHA256 | Select-Object Hash > ${{ env.BINARY_DEST_PATH }}-x64.msi.sha256sum.txt
-          Get-FileHash ${{ env.BINARY_DEST_PATH }}-x64.pdb -Algorithm SHA256 | Select-Object Hash > ${{ env.BINARY_DEST_PATH }}-x64.pdb.sha256sum.txt
-
-          # This might catch regressions in #3384, depending how CI runners
-          # handle exit codes
-          git diff --exit-code
-      - name: Save GUI client
-        uses: actions/upload-artifact@v4
+      - name: Rename artifacts and compute SHA256
+        shell: bash
+        run: ${{ matrix.rename-script }}
+      - name: Save Linux client
+        if: ${{ runner.os == 'Linux' }}
+        uses: ./.github/actions/upload-gui-artifact
         with:
-          name: ${{ env.BINARY_DEST_PATH }}-x64
-          path: |
-            ${{ github.workspace }}/rust/windows-client/${{ env.BINARY_DEST_PATH }}-x64.exe
-            ${{ github.workspace }}/rust/windows-client/${{ env.BINARY_DEST_PATH }}-x64.exe.sha256sum.txt
+          base: ${{ env.BINARY_DEST_PATH }}-amd64
+      - name: Save Linux AppImage
+        if: ${{ runner.os == 'Linux' }}
+        uses: ./.github/actions/upload-gui-artifact
+        with:
+          base: ${{ env.BINARY_DEST_PATH }}_amd64.AppImage
+      - name: Save Linux deb package
+        if: ${{ runner.os == 'Linux' }}
+        uses: ./.github/actions/upload-gui-artifact
+        with:
+          base: ${{ env.BINARY_DEST_PATH }}_amd64.deb
+      - name: Save Windows client
+        if: ${{ runner.os == 'Windows' }}
+        uses: ./.github/actions/upload-gui-artifact
+        with:
+          base: ${{ env.BINARY_DEST_PATH }}-x64.exe
       - name: Save Windows MSI installer
         if: ${{ runner.os == 'Windows' }}
-        uses: actions/upload-artifact@v4
+        uses: ./.github/actions/upload-gui-artifact
         with:
-          name: ${{ env.BINARY_DEST_PATH }}-x64-msi
-          path: |
-            ${{ github.workspace }}/rust/windows-client/${{ env.BINARY_DEST_PATH }}-x64.msi
-            ${{ github.workspace }}/rust/windows-client/${{ env.BINARY_DEST_PATH }}-x64.msi.sha256sum.txt
+          base: ${{ env.BINARY_DEST_PATH }}-x64.msi
       - name: Save Windows debug symbols
         if: ${{ runner.os == 'Windows' }}
-        uses: actions/upload-artifact@v4
+        uses: ./.github/actions/upload-gui-artifact
         with:
-          name: ${{ env.BINARY_DEST_PATH }}-x64-pdb
-          path: |
-            ${{ github.workspace }}/rust/windows-client/${{ env.BINARY_DEST_PATH }}-x64.pdb
-            ${{ github.workspace }}/rust/windows-client/${{ env.BINARY_DEST_PATH }}-x64.pdb.sha256sum.txt
+          base: ${{ env.BINARY_DEST_PATH }}-x64.pdb

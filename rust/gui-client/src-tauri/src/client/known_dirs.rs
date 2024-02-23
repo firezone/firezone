@@ -7,7 +7,7 @@
 //!
 //! I wanted the ProgramData folder on Windows, which `dirs` alone doesn't provide.
 
-pub(crate) use imp::{device_id, logs, session, settings};
+pub(crate) use imp::{device_id, logs, runtime, session, settings};
 
 #[cfg(target_os = "linux")]
 mod imp {
@@ -32,13 +32,20 @@ mod imp {
         Some(dirs::cache_dir()?.join(BUNDLE_ID).join("data").join("logs"))
     }
 
-    /// e.g. `/home/alice/.config/dev.firezone.client/data`
+    /// e.g. `/run/user/1000/dev.firezone.client/data`
+    ///
+    /// Crash handler socket and other temp files go here
+    pub(crate) fn runtime() -> Option<PathBuf> {
+        Some(dirs::runtime_dir()?.join(BUNDLE_ID).join("data"))
+    }
+
+    /// e.g. `/home/alice/.local/share/dev.firezone.client/data`
     ///
     /// Things like actor name are stored here because they're kind of config,
     /// the system / user should not delete them to free up space, but they're not
     /// really config since the program will rewrite them automatically to persist sessions.
     pub(crate) fn session() -> Option<PathBuf> {
-        Some(dirs::config_local_dir()?.join(BUNDLE_ID).join("data"))
+        Some(dirs::data_local_dir()?.join(BUNDLE_ID).join("data"))
     }
 
     /// e.g. `/home/alice/.config/dev.firezone.client/config`
@@ -75,6 +82,17 @@ mod imp {
                 .ok()?
                 .join("data")
                 .join("logs"),
+        )
+    }
+
+    /// e.g. `C:\Users\Alice\AppData\Local\dev.firezone.client\data`
+    ///
+    /// Crash handler socket and other temp files go here
+    pub(crate) fn runtime() -> Option<PathBuf> {
+        Some(
+            connlib_shared::windows::app_local_data_dir()
+                .ok()?
+                .join("data"),
         )
     }
 

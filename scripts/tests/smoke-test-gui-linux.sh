@@ -17,6 +17,7 @@ stat "$HOME/.config/$BUNDLE_ID" && exit 1
 xvfb-run --auto-servernum cargo run -p "$PACKAGE" -- smoke-test
 
 # Make sure the files were written in the right paths
+# TODO: Inject some bogus sign-in sequence to test the actor_name file
 stat "$HOME/.config/$BUNDLE_ID/config/advanced_settings.json"
 stat "$HOME/.cache/$BUNDLE_ID/data/logs/"connlib*log
 stat "$HOME/.config/$BUNDLE_ID/config/device_id.json"
