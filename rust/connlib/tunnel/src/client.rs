@@ -150,11 +150,12 @@ where
 
     #[tracing::instrument(level = "trace", skip(self))]
     pub fn add_route(&mut self, route: IpNetwork) -> connlib_shared::Result<()> {
+        let callbacks = self.callbacks().clone();
         let maybe_new_device = self
             .device
-            .as_ref()
+            .as_mut()
             .ok_or(Error::ControlProtocolError)?
-            .add_route(route, self.callbacks())?;
+            .add_route(route, &callbacks)?;
 
         if let Some(new_device) = maybe_new_device {
             self.device = Some(new_device);
