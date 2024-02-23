@@ -165,8 +165,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Awaiting another PR to generalize the smoke test for Ubuntu
-          #- runs-on: ubuntu-20.04
+          - runs-on: ubuntu-20.04
           # Broken on 22.04 <https://github.com/firezone/firezone/issues/3699>
           #- runs-on: ubuntu-22.04
           - runs-on: windows-2019
