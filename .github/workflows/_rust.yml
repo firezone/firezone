@@ -89,7 +89,8 @@ jobs:
       - uses: ./.github/actions/setup-tauri
       - run: cargo install --locked cargo-mutants
         # Use `--in-place` since this copy of the repo will be tossed when the job ends anyway
-      - run: cargo mutants --in-place ${{ matrix.packages }}
+      - run: timeout 15m cargo mutants --in-place ${{ matrix.packages }}
+        shell: bash
       - name: Archive mutants.out
         uses: actions/upload-artifact@v4
         if: always()
