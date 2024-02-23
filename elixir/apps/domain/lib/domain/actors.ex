@@ -87,7 +87,8 @@ defmodule Domain.Actors do
       ids = actors |> Enum.map(& &1.id) |> Enum.uniq()
 
       {:ok, peek} =
-        Actor.Query.by_id({:in, ids})
+        Actor.Query.not_deleted()
+        |> Actor.Query.by_id({:in, ids})
         |> Actor.Query.preload_few_groups_for_each_actor(limit)
         |> Authorizer.for_subject(subject)
         |> Repo.peek(actors)
@@ -317,7 +318,8 @@ defmodule Domain.Actors do
 
   def fetch_actors_count_by_type(type, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
-      Actor.Query.by_type(type)
+      Actor.Query.not_deleted()
+      |> Actor.Query.by_type(type)
       |> Authorizer.for_subject(subject)
       |> Repo.aggregate(:count)
     end
@@ -344,7 +346,8 @@ defmodule Domain.Actors do
 
   def fetch_actor_by_id(id) do
     if Validator.valid_uuid?(id) do
-      Actor.Query.by_id(id)
+      Actor.Query.not_deleted()
+      |> Actor.Query.by_id(id)
       |> Repo.fetch()
     else
       {:error, :not_found}
@@ -352,7 +355,8 @@ defmodule Domain.Actors do
   end
 
   def fetch_actor_by_id!(id) do
-    Actor.Query.by_id(id)
+    Actor.Query.not_deleted()
+    |> Actor.Query.by_id(id)
     |> Repo.fetch!()
   end
 
@@ -433,7 +437,8 @@ defmodule Domain.Actors do
 
   def update_actor(%Actor{} = actor, attrs, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
-      Actor.Query.by_id(actor.id)
+      Actor.Query.not_deleted()
+      |> Actor.Query.by_id(actor.id)
       |> Authorizer.for_subject(subject)
       |> Repo.fetch_and_update(
         with: fn actor ->
@@ -499,7 +504,8 @@ defmodule Domain.Actors do
 
   def disable_actor(%Actor{} = actor, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
-      Actor.Query.by_id(actor.id)
+      Actor.Query.not_deleted()
+      |> Actor.Query.by_id(actor.id)
       |> Authorizer.for_subject(subject)
       |> Repo.fetch_and_update(
         with: fn actor ->
@@ -516,7 +522,8 @@ defmodule Domain.Actors do
 
   def enable_actor(%Actor{} = actor, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
-      Actor.Query.by_id(actor.id)
+      Actor.Query.not_deleted()
+      |> Actor.Query.by_id(actor.id)
       |> Authorizer.for_subject(subject)
       |> Repo.fetch_and_update(with: &Actor.Changeset.enable_actor/1)
     end
@@ -524,7 +531,8 @@ defmodule Domain.Actors do
 
   def delete_actor(%Actor{} = actor, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
-      Actor.Query.by_id(actor.id)
+      Actor.Query.not_deleted()
+      |> Actor.Query.by_id(actor.id)
       |> Authorizer.for_subject(subject)
       |> Repo.fetch_and_update(
         with: fn actor ->
@@ -564,8 +572,8 @@ defmodule Domain.Actors do
          account_id: account_id,
          id: id
        }) do
-    Actor.Query.by_type(:account_admin_user)
-    |> Actor.Query.not_disabled()
+    Actor.Query.not_disabled()
+    |> Actor.Query.by_type(:account_admin_user)
     |> Actor.Query.by_account_id(account_id)
     |> Actor.Query.by_id({:not, id})
     |> Actor.Query.lock()

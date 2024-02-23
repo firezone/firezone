@@ -3,6 +3,7 @@ defmodule Domain.Repo do
     otp_app: :domain,
     adapter: Ecto.Adapters.Postgres
 
+  alias Domain.Repo.Paginator
   require Ecto.Query
 
   @doc """
@@ -84,7 +85,28 @@ defmodule Domain.Repo do
   Similar to `Ecto.Repo.all/2`, fetches all results from the query but return a tuple.
   """
   def list(queryable, opts \\ []) do
-    {:ok, __MODULE__.all(queryable, opts)}
+    {query_module, opts} = Keyword.pop!(opts, :query_module)
+
+    {preload, _opts} = Keyword.pop(opts, :preload, [])
+    # {filters, opts} = Keyword.pop(opts, :filters, %{})
+    # {search_query, opts} = Keyword.pop(opts, :search_query, nil)
+
+    # Pagination
+    {paginator_opts, opts} = Keyword.pop(opts, :page, [])
+
+    with {:ok, paginator_opts} <- Paginator.init(query_module, paginator_opts) do
+      {results, metadata} =
+        queryable
+        |> Paginator.query(paginator_opts)
+        |> __MODULE__.all(opts)
+        |> Paginator.metadata(paginator_opts)
+
+      results =
+        results
+        |> __MODULE__.preload(preload)
+
+      {:ok, results, metadata}
+    end
   end
 
   @doc """
@@ -111,7 +133,7 @@ defmodule Domain.Repo do
   @doc """
   Similar to `peek/2` but only returns count of assocs.
   """
-  def counts(queryable, ids) do
+  def peek_counts(queryable, ids) do
     ids = Enum.uniq(ids)
     preview = Map.new(ids, fn id -> {id, 0} end)
 

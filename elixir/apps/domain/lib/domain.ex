@@ -28,6 +28,9 @@ defmodule Domain do
   def query do
     quote do
       import Ecto.Query
+      import Domain.Repo.Query
+
+      @behaviour Domain.Repo.Query
     end
   end
 

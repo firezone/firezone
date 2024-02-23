@@ -14,8 +14,6 @@ defmodule Domain.Actors.Actor.Query do
     where(queryable, [actors: actors], is_nil(actors.disabled_at))
   end
 
-  def by_id(queryable \\ not_deleted(), id)
-
   def by_id(queryable, {:in, ids}) do
     where(queryable, [actors: actors], actors.id in ^ids)
   end
@@ -28,15 +26,46 @@ defmodule Domain.Actors.Actor.Query do
     where(queryable, [actors: actors], actors.id == ^id)
   end
 
-  def by_account_id(queryable \\ not_deleted(), account_id) do
+  def by_account_id(queryable, account_id) do
     where(queryable, [actors: actors], actors.account_id == ^account_id)
   end
 
-  def by_type(queryable \\ not_deleted(), type) do
+  def by_type(queryable, type) do
     where(queryable, [actors: actors], actors.type == ^type)
   end
 
-  def preload_few_groups_for_each_actor(queryable \\ not_deleted(), limit) do
+  # Pagination
+
+  @impl Domain.Repo.Query
+  def cursor_fields, do: [:inserted_at, :id]
+
+  @impl Domain.Repo.Query
+  def order_by_cursor_fields(queryable) do
+    order_by(queryable, [actors: actors], asc: actors.inserted_at, asc: actors.id)
+  end
+
+  @impl Domain.Repo.Query
+  def by_cursor(queryable, :after, [inserted_at, id]) do
+    where(
+      queryable,
+      [actors: actors],
+      actors.inserted_at > ^inserted_at or
+        (actors.inserted_at == ^inserted_at and actors.id > ^id)
+    )
+  end
+
+  def by_cursor(queryable, :before, [inserted_at, id]) do
+    where(
+      queryable,
+      [actors: actors],
+      actors.inserted_at < ^inserted_at or
+        (actors.inserted_at == ^inserted_at and actors.id < ^id)
+    )
+  end
+
+  # Preloads
+
+  def preload_few_groups_for_each_actor(queryable, limit) do
     queryable
     |> with_joined_memberships(limit)
     |> with_joined_groups()
@@ -83,7 +112,7 @@ defmodule Domain.Actors.Actor.Query do
     )
   end
 
-  def with_joined_groups(queryable \\ not_deleted()) do
+  def with_joined_groups(queryable) do
     join(
       queryable,
       :left,
@@ -94,7 +123,7 @@ defmodule Domain.Actors.Actor.Query do
     )
   end
 
-  def with_joined_clients(queryable \\ not_deleted()) do
+  def with_joined_clients(queryable) do
     join(
       queryable,
       :left,
@@ -105,13 +134,16 @@ defmodule Domain.Actors.Actor.Query do
     )
   end
 
-  def lock(queryable \\ not_deleted()) do
+  def lock(queryable) do
     lock(queryable, "FOR UPDATE")
   end
 
-  def with_assoc(queryable \\ not_deleted(), qual \\ :left, assoc) do
+  def with_assoc(queryable, qual \\ :left, assoc) do
     with_named_binding(queryable, assoc, fn query, binding ->
       join(query, qual, [actors: actors], a in assoc(actors, ^binding), as: ^binding)
     end)
+  end
+
+  def filters do
   end
 end
