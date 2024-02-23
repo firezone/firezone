@@ -50,7 +50,7 @@ defmodule Web.SignUp do
     end
 
     defp email_allowed?(email, allowed_domains) do
-      with [_, domain] <- String.split(email, "@", part: 2) do
+      with [_, domain] <- String.split(email, "@", parts: 2) do
         Enum.member?(allowed_domains, domain)
       else
         _ -> false
