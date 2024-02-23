@@ -32,6 +32,13 @@ mod imp {
         Some(dirs::cache_dir()?.join(BUNDLE_ID).join("data").join("logs"))
     }
 
+    /// e.g. `/run/user/1000/dev.firezone.client/data`
+    ///
+    /// Crash handler socket and other temp files go here
+    pub(crate) fn runtime() -> Option<PathBuf> {
+        Some(dirs::runtime_dir()?.join(BUNDLE_ID).join("data"))
+    }
+
     /// e.g. `/home/alice/.local/share/dev.firezone.client/data`
     ///
     /// Things like actor name are stored here because they're kind of config,
@@ -75,6 +82,17 @@ mod imp {
                 .ok()?
                 .join("data")
                 .join("logs"),
+        )
+    }
+
+    /// e.g. `C:\Users\Alice\AppData\Local\dev.firezone.client\data`
+    ///
+    /// Crash handler socket and other temp files go here
+    pub(crate) fn runtime() -> Option<PathBuf> {
+        Some(
+            connlib_shared::windows::app_local_data_dir()
+                .ok()?
+                .join("data"),
         )
     }
 
