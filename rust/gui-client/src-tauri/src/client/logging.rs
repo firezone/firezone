@@ -1,9 +1,11 @@
 //! Everything for logging to files, zipping up the files for export, and counting the files
 
-use crate::client::gui::{ControllerRequest, CtlrTx, Managed};
+use crate::client::{
+    gui::{ControllerRequest, CtlrTx, Managed},
+    known_dirs,
+};
 use anyhow::{bail, Context, Result};
 use connlib_client_shared::file_logger;
-use connlib_shared::windows::app_local_data_dir;
 use serde::Serialize;
 use std::{fs, io, path::PathBuf, result::Result as StdResult, str::FromStr};
 use tokio::task::spawn_blocking;
@@ -179,13 +181,7 @@ pub(crate) async fn count_logs_inner() -> Result<FileCount> {
     Ok(file_count)
 }
 
-/// Returns the well-known log path
-///
-/// e.g. %LOCALAPPDATA%/dev.firezone.client/data/logs/
+/// Wrapper around `known_dirs::logs`
 pub(crate) fn log_path() -> Result<PathBuf, Error> {
-    let path = app_local_data_dir()
-        .map_err(|_| Error::CantFindLocalAppDataFolder)?
-        .join("data")
-        .join("logs");
-    Ok(path)
+    known_dirs::logs().ok_or(Error::CantFindLocalAppDataFolder)
 }
