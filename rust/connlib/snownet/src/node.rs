@@ -621,19 +621,28 @@ where
             return ControlFlow::Continue((from, packet, None));
         };
 
-        // Second, attempt to unpack it as a channel data message.
-        if let Some((from, packet, socket)) = allocation.decapsulate(from, packet, now) {
-            return ControlFlow::Continue((from, packet, Some(socket)));
+        // See <https://www.rfc-editor.org/rfc/rfc8656#name-channels-2> for details on de-multiplexing.
+        match packet.first() {
+            Some(0..=3) => {
+                if allocation.handle_input(from, local, packet, now) {
+                    return ControlFlow::Break(());
+                }
+
+                tracing::debug!("Packet was a STUN message but not accepted");
+
+                ControlFlow::Break(()) // Stop processing the packet.
+            }
+            Some(64..=79) => {
+                if let Some((from, packet, socket)) = allocation.decapsulate(from, packet, now) {
+                    return ControlFlow::Continue((from, packet, Some(socket)));
+                }
+
+                tracing::debug!("Packet was a channel data message but not accepted");
+
+                ControlFlow::Break(()) // Stop processing the packet.
+            }
+            _ => ControlFlow::Continue((from, packet, None)),
         }
-
-        // Third, if it is not a channel data message, attempt to handle as a control message (i.e. STUN).
-        let handled = allocation.handle_input(from, local, packet, now);
-
-        if !handled {
-            tracing::debug!("Packet was destined for allocation but no longer accepted");
-        }
-
-        ControlFlow::Break(())
     }
 
     fn agents_try_handle(
