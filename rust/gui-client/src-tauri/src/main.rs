@@ -30,3 +30,11 @@ fn bogus() -> anyhow::Result<()> {
         "`cargo-mutants` should change this to `Ok(())` and then mark it as a missed mutant"
     );
 }
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn bogus() {
+        super::bogus().ok();
+    }
+}
