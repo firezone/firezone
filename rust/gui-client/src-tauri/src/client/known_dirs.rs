@@ -32,13 +32,13 @@ mod imp {
         Some(dirs::cache_dir()?.join(BUNDLE_ID).join("data").join("logs"))
     }
 
-    /// e.g. `/home/alice/.config/dev.firezone.client/data`
+    /// e.g. `/home/alice/.local/share/dev.firezone.client/data`
     ///
     /// Things like actor name are stored here because they're kind of config,
     /// the system / user should not delete them to free up space, but they're not
     /// really config since the program will rewrite them automatically to persist sessions.
     pub(crate) fn session() -> Option<PathBuf> {
-        Some(dirs::config_local_dir()?.join(BUNDLE_ID).join("data"))
+        Some(dirs::data_local_dir()?.join(BUNDLE_ID).join("data"))
     }
 
     /// e.g. `/home/alice/.config/dev.firezone.client/config`
