@@ -57,7 +57,7 @@ jobs:
         if: always()
         with:
           name: mutants-incremental.out-${{ matrix.runs-on }}
-          path: mutants.out
+          path: ${{ github.workspace }}/rust/mutants.out
 
   mutation:
     name: mutation-${{ matrix.runs-on }}
@@ -95,7 +95,7 @@ jobs:
         if: always()
         with:
           name: mutants-full.out-${{ matrix.runs-on }}
-          path: mutants.out
+          path: ${{ github.workspace }}/rust/mutants.out
 
   static-analysis:
     name: static-analysis-${{ matrix.runs-on }}
