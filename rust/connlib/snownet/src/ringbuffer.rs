@@ -18,12 +18,6 @@ impl<T: PartialEq> RingBuffer<T> {
         self.buffer.push(item);
     }
 
-    pub fn remove(&mut self, item: &T) -> bool {
-        let initial_len = self.buffer.len();
-        self.buffer.retain(|x| x != item);
-        initial_len != self.buffer.len()
-    }
-
     pub fn pop(&mut self) -> Option<T> {
         self.buffer.pop()
     }
@@ -66,28 +60,5 @@ mod tests {
         buffer.push(3);
 
         assert_eq!(buffer.inner(), &[2, 3]);
-    }
-
-    #[test]
-    fn test_remove_existing_item() {
-        let mut buffer = RingBuffer::new(3);
-
-        buffer.push(1);
-        buffer.push(2);
-        buffer.push(3);
-
-        assert!(buffer.remove(&2));
-        assert_eq!(buffer.inner(), &[1, 3]);
-    }
-
-    #[test]
-    fn test_remove_non_existing_item() {
-        let mut buffer = RingBuffer::new(2);
-
-        buffer.push(1);
-        buffer.push(2);
-
-        assert!(!buffer.remove(&3));
-        assert_eq!(buffer.inner(), &[1, 2]);
     }
 }

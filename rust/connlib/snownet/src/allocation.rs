@@ -54,9 +54,6 @@ pub struct Allocation {
     backoff: ExponentialBackoff,
     sent_requests: HashMap<TransactionId, (Message<Attribute>, Instant, Duration)>,
 
-    /// When we time out requests, we remember the last [`TransactionId`]s to be able to recognize them in case they do arrive later.
-    timed_out_requests: RingBuffer<TransactionId>,
-
     channel_bindings: ChannelBindings,
     buffered_channel_bindings: RingBuffer<SocketAddr>,
 
@@ -72,7 +69,7 @@ pub struct Allocation {
 ///
 /// Note that any combination of IP versions is possible here.
 /// We might have allocated an IPv6 address on a TURN server that we are talking to IPv4 and vice versa.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct Socket {
     /// The server this socket was allocated on.
     server: SocketAddr,
@@ -115,7 +112,6 @@ impl Allocation {
             last_now: now,
             buffered_channel_bindings: RingBuffer::new(100),
             backoff: backoff::new(now, REQUEST_TIMEOUT),
-            timed_out_requests: RingBuffer::new(100),
         };
 
         tracing::debug!(%server, "Requesting new allocation");
@@ -185,14 +181,6 @@ impl Allocation {
         Span::current().record("id", field::debug(transaction_id));
         Span::current().record("method", field::display(message.method()));
         Span::current().record("class", field::display(message.class()));
-
-        if self.timed_out_requests.remove(&transaction_id) {
-            tracing::debug!(
-                ?transaction_id,
-                "Received response to timed-out request, ignoring"
-            );
-            return true;
-        }
 
         let Some((original_request, sent_at, _)) = self.sent_requests.remove(&transaction_id)
         else {
@@ -426,8 +414,6 @@ impl Allocation {
                 .expect("ID is from list");
 
             tracing::debug!(id = ?request.transaction_id(), method = %request.method(), "Request timed out, re-sending");
-
-            self.timed_out_requests.push(request.transaction_id());
 
             self.authenticate_and_queue(request);
         }
@@ -1864,26 +1850,6 @@ mod tests {
                 CandidateEvent::Invalid(Candidate::relayed(RELAY_ADDR_IP6, Protocol::Udp).unwrap()),
             ]
         )
-    }
-
-    #[test]
-    fn timed_out_request_is_recognised() {
-        let start = Instant::now();
-        let mut allocation = Allocation::for_test(start);
-
-        let allocate = allocation.next_message().unwrap();
-
-        allocation.advance_to_next_timeout();
-        let allocate_retry = allocation.next_message().unwrap();
-        assert_eq!(allocate_retry.method(), ALLOCATE);
-
-        let handled = allocation.handle_test_input(
-            &allocate_response(&allocate, &[RELAY_ADDR_IP4, RELAY_ADDR_IP6]),
-            start + Duration::from_secs(5),
-        );
-
-        assert!(allocation.poll_event().is_none());
-        assert!(handled);
     }
 
     fn ch(peer: SocketAddr, now: Instant) -> Channel {
