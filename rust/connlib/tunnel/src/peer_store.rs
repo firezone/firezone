@@ -84,3 +84,58 @@ where
         self.peer_by_id.values()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::peer::{PacketTransformGateway, Peer};
+
+    use super::PeerStore;
+
+    #[test]
+    fn can_insert_and_retrieve_peer() {
+        let mut peer_storage = PeerStore::default();
+        peer_storage.insert(Peer::new(vec![], 0, PacketTransformGateway::default()));
+        assert!(peer_storage.get(&0).is_some());
+    }
+
+    #[test]
+    fn can_insert_and_retrieve_peer_by_ip() {
+        let mut peer_storage = PeerStore::default();
+        peer_storage.insert(Peer::new(vec![], 0, PacketTransformGateway::default()));
+        peer_storage.add_ips(&0, &["100.0.0.0/24".parse().unwrap()]);
+
+        assert_eq!(
+            peer_storage
+                .peer_by_ip("100.0.0.1".parse().unwrap())
+                .unwrap()
+                .conn_id,
+            0
+        );
+    }
+
+    #[test]
+    fn can_remove_peer() {
+        let mut peer_storage = PeerStore::default();
+        peer_storage.insert(Peer::new(vec![], 0, PacketTransformGateway::default()));
+        peer_storage.add_ips(&0, &["100.0.0.0/24".parse().unwrap()]);
+        peer_storage.remove(&0);
+
+        assert!(peer_storage.get(&0).is_none());
+        assert!(peer_storage
+            .peer_by_ip("100.0.0.1".parse().unwrap())
+            .is_none())
+    }
+
+    #[test]
+    fn inserting_peer_removes_previous_instances_of_same_id() {
+        let mut peer_storage = PeerStore::default();
+        peer_storage.insert(Peer::new(vec![], 0, PacketTransformGateway::default()));
+        peer_storage.add_ips(&0, &["100.0.0.0/24".parse().unwrap()]);
+        peer_storage.insert(Peer::new(vec![], 0, PacketTransformGateway::default()));
+
+        assert!(peer_storage.get(&0).is_some());
+        assert!(peer_storage
+            .peer_by_ip("100.0.0.1".parse().unwrap())
+            .is_none())
+    }
+}
