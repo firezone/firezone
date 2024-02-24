@@ -93,11 +93,8 @@ internal class SettingsActivity : AppCompatActivity() {
         AlertDialog.Builder(this).apply {
             setTitle("Warning")
             setMessage("Changed settings will not be applied until you sign out and sign back in.")
-            setPositiveButton("Save") { dialog, which ->
+            setPositiveButton("Okay") { dialog, which ->
                 viewModel.onSaveSettingsCompleted()
-            }
-            setNegativeButton("Cancel") { dialog, which ->
-                dialog.dismiss()
             }
             create().show()
         }

@@ -161,9 +161,6 @@ internal class SettingsViewModel
             )
         }
 
-        fun showSaveWarningDialog() {
-        }
-
         private suspend fun zipFolder(
             sourceFolder: File,
             zipFile: File,
