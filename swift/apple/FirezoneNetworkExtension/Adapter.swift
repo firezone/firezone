@@ -57,10 +57,10 @@ class Adapter {
   private var callbackHandler: CallbackHandler
 
   /// Network settings
-  private var networkSettings: NetworkSettings?
+  private var networkSettings: NetworkSettings
 
   /// Packet tunnel provider.
-  private weak var packetTunnelProvider: PacketTunnelProvider
+  private weak var packetTunnelProvider: PacketTunnelProvider?
 
   /// Network routes monitor.
   private var networkMonitor: NWPathMonitor?
@@ -92,8 +92,10 @@ class Adapter {
   private let connlibLogFolderPath: String
 
   init(
-    controlPlaneURLString: String, token: String,
-    logFilter: String, packetTunnelProvider: PacketTunnelProvider
+    controlPlaneURLString: String,
+    token: String,
+    logFilter: String,
+    packetTunnelProvider: PacketTunnelProvider
   ) {
     self.controlPlaneURLString = controlPlaneURLString
     self.token = token
@@ -103,6 +105,7 @@ class Adapter {
     self.logFilter = logFilter
     self.connlibLogFolderPath = SharedAccess.connlibLogFolderURL?.path ?? ""
     self.logger = packetTunnelProvider.logger
+    self.networkSettings = NetworkSettings(packetTunnelProvider: packetTunnelProvider, logger: packetTunnelProvider.logger)
   }
 
   deinit {
@@ -251,37 +254,24 @@ extension Adapter {
     // Setting this to anything but an empty string will populate /etc/resolv.conf with
     // the default interface's DNS servers, which we read later from connlib
     // during tunnel setup.
-    self.networkSettings?.setMatchDomains(["firezone-fd0020211111"])
+    self.networkSettings.matchDomains = ["firezone-fd0020211111"]
 
     // Apply the changes, so that /etc/resolv.conf will be populated with the system's
     // default resolvers
-    applyNetworkSettings(
+    self.networkSettings.apply(
       beforeHandler: { self.pausePathMonitoring() },
-      completionHandler: { error in
-        if let error = error {
-          self.logger.error("\(#function): Error: \(error)")
-        } else {
-          self.maybeUpdateSessionWithNewResolvers(
-            session: session,
-            completion: {
-              self.networkSettings?.setMatchDomains([""])
-              self.applyNetworkSettings(
-                beforeHandler: nil,
-                completionHandler: { _ in self.resumePathMonitoring() }
-              )
-            })
-        }
-      })
-  }
-
-  private func applyNetworkSettings(
-    beforeHandler: (() -> Void)?, completionHandler: ((Error?) -> Void)?
-  ) {
-    self.networkSettings?.apply(
-      on: self.packetTunnelProvider,
-      beforeHandler: beforeHandler,
-      logger: self.logger,
-      completionHandler: completionHandler
+      completionHandler: {
+        self.maybeUpdateSessionWithNewResolvers(
+          session: session,
+          completion: {
+            self.networkSettings.matchDomains = [""]
+            self.networkSettings.apply(
+              beforeHandler: nil,
+              completionHandler: { self.resumePathMonitoring() }
+            )
+          }
+        )
+      }
     )
   }
 
@@ -307,7 +297,7 @@ extension Adapter {
   private func didReceivePathUpdate(path: Network.NWPath) {
     // Will be invoked in the workQueue by the path monitor
     if self.temporarilyDisablePathMonitor {
-      self.logger.log("\(#function): Ignoring path update while responding to a previous path update.")
+      self.logger.log("\(#function): Ignoring path updates while responding to a previous path update.")
     } else {
       switch self.state {
       case .tunnelReady(let session):
@@ -343,11 +333,15 @@ extension Adapter: CallbackHandlerDelegate {
 
       switch self.state {
       case .startingTunnel:
-        self.networkSettings = NetworkSettings(
-          tunnelAddressIPv4: tunnelAddressIPv4, tunnelAddressIPv6: tunnelAddressIPv6,
-          dnsAddresses: dnsAddresses)
+        networkSettings.tunnelAddressIPv4 = tunnelAddressIPv4
+        networkSettings.tunnelAddressIPv6 = tunnelAddressIPv6
+        networkSettings.dnsAddresses = dnsAddresses
+        networkSettings.apply(beforeHandler: nil, completionHandler: nil)
       case .tunnelReady:
-        self.applyNetworkSettings(beforeHandler: { self.pausePathMonitoring() }, completionHandler: { _ in self.resumePathMonitoring() })
+        networkSettings.apply(
+          beforeHandler: { self.pausePathMonitoring() },
+          completionHandler: { self.resumePathMonitoring() }
+        )
       case .stoppedTunnel:
         self.logger.error(
           "Adapter.onTunnelReady: Unexpected state: \(self.state)")
@@ -355,48 +349,22 @@ extension Adapter: CallbackHandlerDelegate {
     }
   }
 
-  public func onAddRoute(_ route: String) {
+  public func onUpdateRoutes(routeList4: String, routeList6: String) {
     workQueue.async { [weak self] in
       guard let self = self else { return }
 
-      self.logger.log("Adapter.onAddRoute(\(route))")
-      guard let networkSettings = self.networkSettings else {
-        self.logger.error("Adapter.onAddRoute: No network settings")
-        return
-      }
+      self.logger.log("Adapter.onUpdateRoutes")
 
-      networkSettings.addRoute(route)
-      if case .tunnelReady = self.state {
-        applyNetworkSettings(
-          beforeHandler: { self.pausePathMonitoring() },
-          completionHandler: { _ in
-            self.logger.log("\(#function): Enabling path monitor")
-            self.temporarilyDisablePathMonitor = false
-          }
-        )
-      }
-    }
-  }
+      let routes4 = try! JSONDecoder().decode([String].self, from: routeList4.data(using: .utf8)!)
+      let routes6 = try! JSONDecoder().decode([String].self, from: routeList6.data(using: .utf8)!)
 
-  public func onRemoveRoute(_ route: String) {
-    workQueue.async { [weak self] in
-      guard let self = self else { return }
+      networkSettings.routes4 = NetworkSettings.parseRoutes4(routes4: routes4)
+      networkSettings.routes6 = NetworkSettings.parseRoutes6(routes6: routes6)
 
-      self.logger.log("Adapter.onRemoveRoute(\(route))")
-      guard let networkSettings = self.networkSettings else {
-        self.logger.error("Adapter.onRemoveRoute: No network settings")
-        return
-      }
-      networkSettings.removeRoute(route)
-      if case .tunnelReady = self.state {
-        applyNetworkSettings(
-          beforeHandler: { self.pausePathMonitoring() },
-          completionHandler: { _ in
-            self.logger.log("\(#function): Enabling path monitor")
-            self.temporarilyDisablePathMonitor = false
-          }
-        )
-      }
+      networkSettings.apply(
+        beforeHandler: { self.pausePathMonitoring() },
+        completionHandler: { self.resumePathMonitoring() }
+      )
     }
   }
 
@@ -405,55 +373,42 @@ extension Adapter: CallbackHandlerDelegate {
       guard let self = self else { return }
 
       self.logger.log("Adapter.onUpdateResources")
-      let jsonString = resourceList
-      guard let jsonData = jsonString.data(using: .utf8) else {
-        return
-      }
-      guard let networkResources = try? JSONDecoder().decode([NetworkResource].self, from: jsonData)
-      else {
-        return
-      }
+
+      let networkResources = try! JSONDecoder().decode([NetworkResource].self, from: resourceList.data(using: .utf8)!)
 
       // Update resource list
       self.displayableResources.update(resources: networkResources.map { $0.displayableResource })
     }
   }
 
+  // Unexpected disconnect initiated by connlib. Typically for 401s.
+  public func onDisconnect(error: String?) {
+    workQueue.async { [weak self] in
+      guard let self = self else { return }
+
+      self.logger.log("\(#function)")
+
+      if let error = error {
+        self.logger.error(
+          "Connlib disconnected with unrecoverable error: \(error)")
+        self.packetTunnelProvider?.handleTunnelShutdown(
+          dueTo: .connlibDisconnected,
+          errorMessage: error)
+        self.packetTunnelProvider?.cancelTunnelWithError(
+          AdapterError.connlibFatalError(error))
+        self.state = .stoppedTunnel
+      }
+
+      self.networkMonitor!.cancel()
+      self.networkMonitor = nil
+    }
+  }
+
+  // Final phase of a user or system-initiated disconnect. Connlib tells us everything's torn down.
   public func onDisconnect() {
     workQueue.async { [weak self] in
       guard let self = self else { return }
 
-      self.networkMonitor!.cancel()
-      self.networkMonitor = nil
-  }
-
-  public func onDisconnect(error: String) {
-    workQueue.async { [weak self] in
-      guard let self = self else { return }
-
-      self.logger.log("Adapter.onDisconnect: \(error)")
-
-      self.networkMonitor!.cancel()
-      self.networkMonitor = nil
-
-      self.logger.error(
-        "Connlib disconnected with unrecoverable error: \(error)")
-      packetTunnelProvider.handleTunnelShutdown(
-        dueTo: .connlibDisconnected,
-        errorMessage: error)
-      self.packetTunnelProvider.cancelTunnelWithError(
-        AdapterError.connlibFatalError(error))
-      self.state = .stoppedTunnel
-
-      self.logger.log("Connlib disconnected")
-      self.state = .stoppedTunnel
     }
-  }
-
-  public func getSystemDefaultResolvers() -> RustString {
-    return try! String(
-      decoding: JSONEncoder().encode(self.systemDefaultResolvers),
-      as: UTF8.self
-    ).intoRustString()
   }
 }

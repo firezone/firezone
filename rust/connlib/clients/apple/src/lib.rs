@@ -58,14 +58,8 @@ mod ffi {
             dnsAddresses: String,
         );
 
-        #[swift_bridge(swift_name = "onTunnelReady")]
-        fn on_tunnel_ready(&self);
-
-        #[swift_bridge(swift_name = "onAddRoute")]
-        fn on_add_route(&self, route: String);
-
-        #[swift_bridge(swift_name = "onRemoveRoute")]
-        fn on_remove_route(&self, route: String);
+        #[swift_bridge(swift_name = "onUpdateRoutes")]
+        fn on_add_route(&self, routeList4: String, routeList6: String
 
         #[swift_bridge(swift_name = "onUpdateResources")]
         fn on_update_resources(&self, resourceList: String);
@@ -110,18 +104,8 @@ impl Callbacks for CallbackHandler {
         Ok(None)
     }
 
-    fn on_tunnel_ready(&self) -> Result<(), Self::Error> {
-        self.inner.on_tunnel_ready();
-        Ok(())
-    }
-
-    fn on_add_route(&self, route: IpNetwork) -> Result<Option<RawFd>, Self::Error> {
-        self.inner.on_add_route(route.to_string());
-        Ok(None)
-    }
-
-    fn on_remove_route(&self, route: IpNetwork) -> Result<Option<RawFd>, Self::Error> {
-        self.inner.on_remove_route(route.to_string());
+    fn on_update_routes(&self, route_list_4: Vec<IpNetwork>, route_list_6: Vec<IpNetwork>) -> Result<Option<RawFd>, Self::Error> {
+        // self.inner.on_update_routes(routeList4.to_string(), routesList6.to_string());
         Ok(None)
     }
 
@@ -142,17 +126,6 @@ impl Callbacks for CallbackHandler {
         Ok(())
     }
 
-    fn get_system_default_resolvers(&self) -> Result<Option<Vec<IpAddr>>, Self::Error> {
-        let resolvers_json = self.inner.get_system_default_resolvers();
-        tracing::debug!(
-            "get_system_default_resolvers returned: {:?}",
-            resolvers_json
-        );
-
-        let resolvers: Vec<IpAddr> = serde_json::from_str(&resolvers_json)
-            .expect("developer error: failed to deserialize resolvers");
-        Ok(Some(resolvers))
-    }
     fn roll_log_file(&self) -> Option<PathBuf> {
         self.handle.roll_to_new_file().unwrap_or_else(|e| {
             tracing::error!("Failed to roll over to new log file: {e}");
