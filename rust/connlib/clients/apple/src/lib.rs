@@ -59,7 +59,7 @@ mod ffi {
         );
 
         #[swift_bridge(swift_name = "onUpdateRoutes")]
-        fn on_add_route(&self, routeList4: String, routeList6: String
+        fn on_update_routes(&self, routeList4: String, routeList6: String
 
         #[swift_bridge(swift_name = "onUpdateResources")]
         fn on_update_resources(&self, resourceList: String);
