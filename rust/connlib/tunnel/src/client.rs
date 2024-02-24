@@ -247,7 +247,7 @@ pub struct ClientState {
     pub resource_ids: HashMap<ResourceId, ResourceDescription>,
     pub deferred_dns_queries: HashMap<(DnsResource, Rtype), IpPacket<'static>>,
 
-    pub peers: PeerStore<GatewayId, PacketTransformClient>,
+    pub peers: PeerStore<GatewayId, PacketTransformClient, ResourceId>,
 
     forwarded_dns_queries: FuturesTupleSet<
         Result<hickory_resolver::lookup::Lookup, hickory_resolver::error::ResolveError>,

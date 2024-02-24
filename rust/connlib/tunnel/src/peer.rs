@@ -20,18 +20,18 @@ type ExpiryingResource = (ResourceDescription, Option<DateTime<Utc>>);
 // is 30 seconds. See resolvconf(5) timeout.
 const IDS_EXPIRE: std::time::Duration = std::time::Duration::from_secs(60);
 
-pub struct Peer<TId, TTransform> {
-    pub allowed_ips: IpNetworkTable<ResourceId>,
+pub struct Peer<TId, TTransform, RId> {
+    pub allowed_ips: IpNetworkTable<RId>,
     pub conn_id: TId,
     pub transform: TTransform,
 }
 
-impl<TId, TTransform> Peer<TId, TTransform>
+impl<TId, TTransform, RId> Peer<TId, TTransform, RId>
 where
     TId: Copy,
     TTransform: PacketTransform,
 {
-    pub(crate) fn new(conn_id: TId, transform: TTransform) -> Peer<TId, TTransform> {
+    pub(crate) fn new(conn_id: TId, transform: TTransform) -> Peer<TId, TTransform, RId> {
         Peer {
             allowed_ips: IpNetworkTable::new(),
             conn_id,
@@ -39,7 +39,7 @@ where
         }
     }
 
-    pub(crate) fn add_allowed_ip(&mut self, ip: IpNetwork, resource_id: ResourceId) {
+    pub(crate) fn add_allowed_ip(&mut self, ip: IpNetwork, resource_id: RId) {
         self.allowed_ips.insert(ip, resource_id);
     }
 
@@ -122,6 +122,13 @@ impl PacketTransformGateway {
     pub(crate) fn expire_resources(&mut self) {
         self.resources
             .retain(|_, (_, e)| !e.is_some_and(|e| e <= Utc::now()));
+    }
+
+    pub(crate) fn remove_resource(&mut self, resource: &ResourceId) {
+        self.resources.retain(|_, (r, _)| match r {
+            connlib_shared::messages::ResourceDescription::Dns(r) => r.id != *resource,
+            connlib_shared::messages::ResourceDescription::Cidr(r) => r.id != *resource,
+        })
     }
 
     pub(crate) fn add_resource(

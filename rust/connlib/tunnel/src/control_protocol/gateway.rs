@@ -176,13 +176,7 @@ where
 
         self.role_state.peers.insert(peer);
 
-        // TODO: for gateways the association between ip and id should be treated a bit differently
-        let resource_id = match resource {
-            connlib_shared::messages::ResourceDescription::Dns(r) => r.id,
-            connlib_shared::messages::ResourceDescription::Cidr(r) => r.id,
-        };
-
-        self.role_state.peers.add_ips(&client_id, &ips, resource_id);
+        self.role_state.peers.add_ips(&client_id, &ips, ());
 
         Ok(())
     }

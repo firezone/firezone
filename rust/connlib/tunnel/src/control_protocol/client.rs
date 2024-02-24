@@ -106,7 +106,8 @@ where
             &domain_response.as_ref().map(|d| d.domain.clone()),
         )?;
 
-        let mut peer: Peer<_, PacketTransformClient> = Peer::new(gateway_id, Default::default());
+        let mut peer: Peer<_, PacketTransformClient, ResourceId> =
+            Peer::new(gateway_id, Default::default());
         for ip in &ips {
             peer.add_allowed_ip(*ip, resource_id);
         }
