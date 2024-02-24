@@ -161,6 +161,9 @@ internal class SettingsViewModel
             )
         }
 
+        fun showSaveWarningDialog() {
+        }
+
         private suspend fun zipFolder(
             sourceFolder: File,
             zipFile: File,
@@ -192,7 +195,7 @@ internal class SettingsViewModel
             }
         }
 
-        private fun getLogZipPath(context: Context) = "${context.cacheDir.absolutePath}/connlib-logs.zip"
+        private fun getLogZipPath(context: Context) = "${context.cacheDir.absolutePath}/logs.zip"
 
         private fun onFieldUpdated() {
             _uiState.value =
