@@ -1,7 +1,8 @@
 use crate::device_channel::{Device, Packet};
 use crate::ip_packet::{IpPacket, MutableIpPacket};
-use crate::peer::{PacketTransformClient, Peer};
-use crate::{dns, dns::DnsQuery, peer_by_ip, Event, Tunnel, DNS_QUERIES_QUEUE_SIZE};
+use crate::peer::PacketTransformClient;
+use crate::peer_store::PeerStore;
+use crate::{dns, dns::DnsQuery, Event, Tunnel, DNS_QUERIES_QUEUE_SIZE};
 use bimap::BiMap;
 use connlib_shared::error::{ConnlibError as Error, ConnlibError};
 use connlib_shared::messages::{
@@ -22,7 +23,6 @@ use hickory_resolver::TokioAsyncResolver;
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::net::IpAddr;
-use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
 use tokio::time::{Instant, Interval, MissedTickBehavior};
@@ -47,7 +47,7 @@ impl DnsResource {
     }
 }
 
-impl<CB> Tunnel<CB, ClientState, Client, GatewayId, PacketTransformClient>
+impl<CB> Tunnel<CB, ClientState, Client, GatewayId>
 where
     CB: Callbacks + 'static,
 {
@@ -189,7 +189,7 @@ pub struct ClientState {
     pub resource_ids: HashMap<ResourceId, ResourceDescription>,
     pub deferred_dns_queries: HashMap<(DnsResource, Rtype), IpPacket<'static>>,
 
-    pub peers_by_ip: IpNetworkTable<Arc<Peer<GatewayId, PacketTransformClient>>>,
+    pub peers: PeerStore<GatewayId, PacketTransformClient>,
 
     forwarded_dns_queries: FuturesTupleSet<
         Result<hickory_resolver::lookup::Lookup, hickory_resolver::error::ResolveError>,
@@ -227,7 +227,7 @@ impl ClientState {
             Err(non_dns_packet) => non_dns_packet,
         };
 
-        let Some(peer) = peer_by_ip(&self.peers_by_ip, dest) else {
+        let Some(peer) = self.peers.peer_by_ip_mut(dest) else {
             self.on_connection_intent_ip(dest);
             return None;
         };
@@ -309,7 +309,7 @@ impl ClientState {
 
         let domain = self.get_awaiting_connection_domain(&resource)?.clone();
 
-        if self.is_connected_to(resource, &self.peers_by_ip, &domain) {
+        if self.is_connected_to(resource, &domain) {
             return Err(Error::UnexpectedConnectionDetails);
         }
 
@@ -332,11 +332,11 @@ impl ClientState {
 
         self.resources_gateways.insert(resource, gateway);
 
-        let Some(peer) = self
-            .peers_by_ip
-            .iter()
-            .find_map(|(_, p)| (p.conn_id == gateway).then_some(p.clone()))
-        else {
+        if self
+            .peers
+            .add_ips(&gateway, &self.get_resource_ip(desc, &domain))
+            .is_none()
+        {
             match self
                 .gateway_awaiting_connection_timers
                 // Note: we don't need to set a timer here because
@@ -357,10 +357,6 @@ impl ClientState {
             return Ok(None);
         };
 
-        for ip in self.get_resource_ip(desc, &domain) {
-            peer.add_allowed_ip(ip);
-            self.peers_by_ip.insert(ip, peer.clone());
-        }
         self.awaiting_connection.remove(&resource);
         self.awaiting_connection_timers.remove(resource);
 
@@ -531,19 +527,13 @@ impl ClientState {
         self.awaiting_connection.contains_key(&resource.id())
     }
 
-    fn is_connected_to(
-        &self,
-        resource: ResourceId,
-        connected_peers: &IpNetworkTable<Arc<Peer<GatewayId, PacketTransformClient>>>,
-        domain: &Option<Dname>,
-    ) -> bool {
+    fn is_connected_to(&self, resource: ResourceId, domain: &Option<Dname>) -> bool {
         let Some(resource) = self.resource_ids.get(&resource) else {
             return false;
         };
 
         let ips = self.get_resource_ip(resource, domain);
-        ips.iter()
-            .any(|ip| connected_peers.exact_match(*ip).is_some())
+        ips.iter().any(|ip| self.peers.exact_match(*ip).is_some())
     }
 
     fn get_resource_ip(
@@ -571,7 +561,7 @@ impl ClientState {
     }
 
     pub fn cleanup_connected_gateway(&mut self, gateway_id: &GatewayId) {
-        self.peers_by_ip.retain(|_, p| p.conn_id != *gateway_id);
+        self.peers.remove(gateway_id);
         self.dns_resources_internal_ips.retain(|resource, _| {
             !self
                 .resources_gateways
@@ -668,20 +658,16 @@ impl ClientState {
             if self.refresh_dns_timer.poll_tick(cx).is_ready() {
                 let mut connections = Vec::new();
 
-                self.peers_by_ip
-                    .iter()
-                    .for_each(|p| p.1.transform.expire_dns_track());
+                self.peers
+                    .iter_mut()
+                    .for_each(|p| p.transform.expire_dns_track());
 
                 for resource in self.dns_resources_internal_ips.keys() {
                     let Some(gateway_id) = self.resources_gateways.get(&resource.id) else {
                         continue;
                     };
                     // filter inactive connections
-                    if !self
-                        .peers_by_ip
-                        .iter()
-                        .any(|(_, p)| &p.conn_id == gateway_id)
-                    {
+                    if self.peers.get(gateway_id).is_none() {
                         continue;
                     }
 
@@ -761,7 +747,7 @@ impl Default for ClientState {
             dns_resources: Default::default(),
             cidr_resources: IpNetworkTable::new(),
             resource_ids: Default::default(),
-            peers_by_ip: IpNetworkTable::new(),
+            peers: Default::default(),
             deferred_dns_queries: Default::default(),
             refresh_dns_timer: interval,
             dns_mapping: Default::default(),

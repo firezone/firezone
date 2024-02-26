@@ -185,7 +185,6 @@ where
                 let runtime_stopper = runtime_stopper.clone();
                 let callbacks = callbacks.clone();
                 async move {
-                let mut log_stats_interval = tokio::time::interval(Duration::from_secs(10));
                 let mut upload_logs_interval = upload_interval();
                 loop {
                     tokio::select! {
@@ -201,7 +200,6 @@ where
                             }
                         },
                         event = poll_fn(|cx| control_plane.tunnel.poll_next_event(cx)) => control_plane.handle_tunnel_event(event).await,
-                        _ = log_stats_interval.tick() => control_plane.stats_event().await,
                         _ = upload_logs_interval.tick() => control_plane.request_log_upload_url().await,
                         else => break
                     }
