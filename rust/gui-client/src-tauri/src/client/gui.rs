@@ -609,7 +609,7 @@ impl Controller {
                     // but if you already got in, don't make me sign in all over again."
                     //
                     // Also, by amazing coincidence, it doesn't work in Tauri anyway.
-                    // We'd have to re-use the `sign_out` ID to make it work.
+                    // We'd have to reuse the `sign_out` ID to make it work.
                     tracing::info!("This can never happen. Tauri doesn't pass us a system tray event if the menu no longer has any item with that ID.");
                 } else {
                     tracing::info!("Calling `sign_out` to cancel sign-in");
