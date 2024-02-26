@@ -71,19 +71,11 @@ where
             return Poll::Pending;
         };
 
-        while let Some(packet) = self.role_state.poll_packet() {
-            device.write(packet)?;
-        }
-
         if let Poll::Ready(event) = self.role_state.poll_next_event(cx) {
             return Poll::Ready(Ok(event));
         }
 
         ready!(self.sockets.poll_send_ready(cx))?; // Ensure socket is ready before we continue.
-
-        while let Some(transmit) = self.role_state.poll_transmit() {
-            self.sockets.send(&transmit);
-        }
 
         if let Poll::Ready(received) = self.sockets.poll_recv_from(self.read_buf.as_mut(), cx) {
             for received in received {
@@ -96,6 +88,14 @@ where
             }
 
             cx.waker().wake_by_ref();
+        }
+
+        while let Some(transmit) = self.role_state.poll_transmit() {
+            self.sockets.send(&transmit);
+        }
+
+        while let Some(packet) = self.role_state.poll_packet() {
+            device.write(packet)?;
         }
 
         match device.poll_read(self.read_buf.as_mut(), cx)? {
@@ -134,10 +134,6 @@ where
 
         ready!(self.sockets.poll_send_ready(cx))?; // Ensure socket is ready before we continue.
 
-        while let Some(transmit) = self.role_state.poll_transmit() {
-            self.sockets.send(&transmit);
-        }
-
         if let Poll::Ready(received) = self.sockets.poll_recv_from(self.read_buf.as_mut(), cx) {
             for received in received {
                 if let Some(packet) = self
@@ -149,6 +145,10 @@ where
             }
 
             cx.waker().wake_by_ref();
+        }
+
+        while let Some(transmit) = self.role_state.poll_transmit() {
+            self.sockets.send(&transmit);
         }
 
         match device.poll_read(self.read_buf.as_mut(), cx)? {
@@ -244,7 +244,10 @@ where
 }
 
 #[allow(unused_variables)]
-fn new_sockets(callbacks: &impl Callbacks) -> Result<Sockets> {
+fn new_sockets<CB>(callbacks: &CB) -> Result<Sockets>
+where
+    CB: Callbacks,
+{
     let sockets = Sockets::new()?;
 
     // TODO: Eventually, this should move into the `connlib-client-android` crate.
