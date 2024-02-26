@@ -1,10 +1,8 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::net::IpAddr;
-use std::sync::Arc;
 use std::time::Instant;
 
-use arc_swap::ArcSwap;
 use bimap::BiMap;
 use boringtun::noise::Tunn;
 use chrono::{DateTime, Utc};
@@ -13,7 +11,6 @@ use connlib_shared::IpProvider;
 use connlib_shared::{Error, Result};
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
-use parking_lot::{Mutex, RwLock};
 use pnet_packet::Packet;
 
 use crate::control_protocol::gateway::ResourceDescription;
@@ -26,16 +23,9 @@ type ExpiryingResource = (ResourceDescription, Option<DateTime<Utc>>);
 const IDS_EXPIRE: std::time::Duration = std::time::Duration::from_secs(60);
 
 pub struct Peer<TId, TTransform> {
-    allowed_ips: RwLock<IpNetworkTable<()>>,
+    allowed_ips: IpNetworkTable<()>,
     pub conn_id: TId,
     pub transform: TTransform,
-}
-
-#[allow(dead_code)]
-#[derive(Debug, Clone)]
-pub struct PeerStats<TId> {
-    pub allowed_ips: Vec<IpNetwork>,
-    pub conn_id: TId,
 }
 
 impl<TId, TTransform> Peer<TId, TTransform>
@@ -43,14 +33,6 @@ where
     TId: Copy,
     TTransform: PacketTransform,
 {
-    pub fn stats(&self) -> PeerStats<TId> {
-        let allowed_ips = self.allowed_ips.read().iter().map(|(ip, _)| ip).collect();
-        PeerStats {
-            allowed_ips,
-            conn_id: self.conn_id,
-        }
-    }
-
     pub(crate) fn new(
         ips: Vec<IpNetwork>,
         conn_id: TId,
@@ -60,7 +42,6 @@ where
         for ip in ips {
             allowed_ips.insert(ip, ());
         }
-        let allowed_ips = RwLock::new(allowed_ips);
 
         Peer {
             allowed_ips,
@@ -69,21 +50,24 @@ where
         }
     }
 
-    pub(crate) fn add_allowed_ip(&self, ip: IpNetwork) {
-        self.allowed_ips.write().insert(ip, ());
+    pub(crate) fn add_allowed_ip(&mut self, ip: IpNetwork) {
+        self.allowed_ips.insert(ip, ());
     }
 
     fn is_allowed(&self, addr: IpAddr) -> bool {
-        self.allowed_ips.read().longest_match(addr).is_some()
+        self.allowed_ips.longest_match(addr).is_some()
     }
 
     /// Sends the given packet to this peer by encapsulating it in a wireguard packet.
-    pub(crate) fn transform<'a>(&self, packet: MutableIpPacket<'a>) -> Option<MutableIpPacket<'a>> {
+    pub(crate) fn transform<'a>(
+        &mut self,
+        packet: MutableIpPacket<'a>,
+    ) -> Option<MutableIpPacket<'a>> {
         self.transform.packet_transform(packet)
     }
 
     pub(crate) fn untransform<'b>(
-        &self,
+        &mut self,
         addr: IpAddr,
         packet: &'b mut [u8],
     ) -> Result<device_channel::Packet<'b>> {
@@ -98,86 +82,83 @@ where
 }
 
 pub struct PacketTransformGateway {
-    resources: RwLock<IpNetworkTable<ExpiryingResource>>,
+    resources: IpNetworkTable<ExpiryingResource>,
 }
 
 impl Default for PacketTransformGateway {
     fn default() -> Self {
         Self {
-            resources: RwLock::new(IpNetworkTable::new()),
+            resources: IpNetworkTable::new(),
         }
     }
 }
 
 #[derive(Default)]
 pub struct PacketTransformClient {
-    translations: RwLock<BiMap<IpAddr, IpAddr>>,
-    dns_mapping: ArcSwap<BiMap<IpAddr, DnsServer>>,
-    mangled_dns_ids: Mutex<HashMap<u16, std::time::Instant>>,
+    translations: BiMap<IpAddr, IpAddr>,
+    dns_mapping: BiMap<IpAddr, DnsServer>,
+    mangled_dns_ids: HashMap<u16, std::time::Instant>,
 }
 
 impl PacketTransformClient {
     pub fn get_or_assign_translation(
-        &self,
+        &mut self,
         ip: &IpAddr,
         ip_provider: &mut IpProvider,
     ) -> Option<IpAddr> {
-        let mut translations = self.translations.write();
-        if let Some(proxy_ip) = translations.get_by_right(ip) {
+        if let Some(proxy_ip) = self.translations.get_by_right(ip) {
             return Some(*proxy_ip);
         }
 
         let proxy_ip = ip_provider.get_proxy_ip_for(ip)?;
 
-        translations.insert(proxy_ip, *ip);
+        self.translations.insert(proxy_ip, *ip);
         Some(proxy_ip)
     }
 
-    pub fn expire_dns_track(&self) {
+    pub fn expire_dns_track(&mut self) {
         self.mangled_dns_ids
-            .lock()
             .retain(|_, exp| exp.elapsed() < IDS_EXPIRE);
     }
 
-    pub fn set_dns(&self, mapping: BiMap<IpAddr, DnsServer>) {
-        self.dns_mapping.store(Arc::new(mapping));
+    pub fn set_dns(&mut self, mapping: BiMap<IpAddr, DnsServer>) {
+        self.dns_mapping = mapping;
     }
 }
 
 impl PacketTransformGateway {
     pub(crate) fn is_emptied(&self) -> bool {
-        self.resources.read().is_empty()
+        self.resources.is_empty()
     }
 
-    pub(crate) fn expire_resources(&self) {
+    pub(crate) fn expire_resources(&mut self) {
         self.resources
-            .write()
             .retain(|_, (_, e)| !e.is_some_and(|e| e <= Utc::now()));
     }
 
     pub(crate) fn add_resource(
-        &self,
+        &mut self,
         ip: IpNetwork,
         resource: ResourceDescription,
         expires_at: Option<DateTime<Utc>>,
     ) {
-        self.resources.write().insert(ip, (resource, expires_at));
+        self.resources.insert(ip, (resource, expires_at));
     }
 }
 
 pub trait PacketTransform {
     fn packet_untransform<'a>(
-        &self,
+        &mut self,
         addr: &IpAddr,
         packet: &'a mut [u8],
     ) -> Result<(device_channel::Packet<'a>, IpAddr)>;
 
-    fn packet_transform<'a>(&self, packet: MutableIpPacket<'a>) -> Option<MutableIpPacket<'a>>;
+    fn packet_transform<'a>(&mut self, packet: MutableIpPacket<'a>) -> Option<MutableIpPacket<'a>>;
 }
 
 impl PacketTransform for PacketTransformGateway {
     fn packet_untransform<'a>(
-        &self,
+        &mut self,
         addr: &IpAddr,
         packet: &'a mut [u8],
     ) -> Result<(device_channel::Packet<'a>, IpAddr)> {
@@ -185,7 +166,7 @@ impl PacketTransform for PacketTransformGateway {
             return Err(Error::BadPacket);
         };
 
-        if self.resources.read().longest_match(dst).is_some() {
+        if self.resources.longest_match(dst).is_some() {
             let packet = make_packet(packet, addr);
             Ok((packet, *addr))
         } else {
@@ -194,19 +175,18 @@ impl PacketTransform for PacketTransformGateway {
         }
     }
 
-    fn packet_transform<'a>(&self, packet: MutableIpPacket<'a>) -> Option<MutableIpPacket<'a>> {
+    fn packet_transform<'a>(&mut self, packet: MutableIpPacket<'a>) -> Option<MutableIpPacket<'a>> {
         Some(packet)
     }
 }
 
 impl PacketTransform for PacketTransformClient {
     fn packet_untransform<'a>(
-        &self,
+        &mut self,
         addr: &IpAddr,
         packet: &'a mut [u8],
     ) -> Result<(device_channel::Packet<'a>, IpAddr)> {
-        let translations = self.translations.read();
-        let mut src = *translations.get_by_right(addr).unwrap_or(addr);
+        let mut src = *self.translations.get_by_right(addr).unwrap_or(addr);
 
         let Some(mut pkt) = MutableIpPacket::new(packet) else {
             return Err(Error::BadPacket);
@@ -216,14 +196,11 @@ impl PacketTransform for PacketTransformClient {
         if let Some(dgm) = pkt.as_udp() {
             if let Some(sentinel) = self
                 .dns_mapping
-                .load()
-                .as_ref()
                 .get_by_right(&(src, dgm.get_source()).into())
             {
                 if let Ok(message) = domain::base::Message::from_slice(dgm.payload()) {
                     if self
                         .mangled_dns_ids
-                        .lock()
                         .remove(&message.header().id())
                         .is_some_and(|exp| exp.elapsed() < IDS_EXPIRE)
                     {
@@ -239,22 +216,19 @@ impl PacketTransform for PacketTransformClient {
         Ok((packet, original_src))
     }
 
-    fn packet_transform<'a>(&self, mut packet: MutableIpPacket<'a>) -> Option<MutableIpPacket<'a>> {
-        if let Some(translated_ip) = self.translations.read().get_by_left(&packet.destination()) {
+    fn packet_transform<'a>(
+        &mut self,
+        mut packet: MutableIpPacket<'a>,
+    ) -> Option<MutableIpPacket<'a>> {
+        if let Some(translated_ip) = self.translations.get_by_left(&packet.destination()) {
             packet.set_dst(*translated_ip);
             packet.update_checksum();
         }
 
-        if let Some(srv) = self
-            .dns_mapping
-            .load()
-            .as_ref()
-            .get_by_left(&packet.destination())
-        {
+        if let Some(srv) = self.dns_mapping.get_by_left(&packet.destination()) {
             if let Some(dgm) = packet.as_udp() {
                 if let Ok(message) = domain::base::Message::from_slice(dgm.payload()) {
                     self.mangled_dns_ids
-                        .lock()
                         .insert(message.header().id(), Instant::now());
                     packet.set_dst(srv.ip());
                     packet.update_checksum();
