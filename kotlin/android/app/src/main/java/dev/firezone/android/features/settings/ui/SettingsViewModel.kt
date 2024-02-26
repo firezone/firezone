@@ -116,7 +116,7 @@ internal class SettingsViewModel
 
                 zipFolder(sourceFolder, zipFile).collect()
 
-                val shareIntent =
+                val sendIntent =
                     Intent(Intent.ACTION_SEND).apply {
                         putExtra(
                             Intent.EXTRA_SUBJECT,
@@ -140,6 +140,7 @@ internal class SettingsViewModel
                         flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
                         data = fileURI
                     }
+                val shareIntent = Intent.createChooser(sendIntent, null)
                 context.startActivity(shareIntent)
             }
         }
