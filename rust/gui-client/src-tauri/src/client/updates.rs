@@ -23,7 +23,7 @@ impl Release {
         let ReleaseDetails { assets, tag_name } = serde_json::from_str(s)?;
         let asset = assets
             .into_iter()
-            .find(|asset| asset.name == MSI_ASSET_NAME)
+            .find(|asset| asset.name == ASSET_NAME)
             .ok_or(Error::NoSuchAsset)?;
 
         Ok(Release {
@@ -51,7 +51,7 @@ pub(crate) enum Error {
     HttpStatus(reqwest::StatusCode),
     #[error(transparent)]
     JsonParse(#[from] serde_json::Error),
-    #[error("No such asset `{MSI_ASSET_NAME}` in the latest release")]
+    #[error("No such asset `{ASSET_NAME}` in the latest release")]
     NoSuchAsset,
     #[error("Our own semver in the exe is invalid, this should be impossible")]
     OurVersionIsInvalid(semver::Error),
@@ -67,9 +67,12 @@ const GITHUB_API_VERSION: &str = "2022-11-28";
 
 /// The name of the Windows MSI asset.
 ///
-/// This ultimately comes from `cd.yml`
-// TODO: Remove 'windows'
-const MSI_ASSET_NAME: &str = "firezone-gui-client-windows-x64.msi";
+/// This ultimately comes from `cd.yml`, `git grep WCPYPXZF`
+#[cfg(target_os = "linux")]
+const ASSET_NAME: &str = "firezone-linux-gui-client_amd64.AppImage";
+
+#[cfg(target_os = "windows")]
+const ASSET_NAME: &str = "firezone-windows-client-x64.msi";
 
 /// Returns the latest release, even if ours is already newer
 pub(crate) async fn check() -> Result<Release, Error> {

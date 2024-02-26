@@ -249,6 +249,7 @@ jobs:
       fail-fast: false
       # The matrix is 1x1 to match the style of build-push-linux-release-artifacts
       # In the future we could try to cross-compile aarch64-windows here.
+      # Match with `updates.rs` in gui-client, `git grep WCPYPXZF`
       matrix:
         include:
           - runs-on: ubuntu-20.04
