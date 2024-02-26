@@ -166,13 +166,13 @@ impl PacketTransform for PacketTransformGateway {
             return Err(Error::BadPacket);
         };
 
-        if self.resources.longest_match(dst).is_some() {
-            let packet = make_packet(packet, addr);
-            Ok((packet, *addr))
-        } else {
+        if self.resources.longest_match(dst).is_none() {
             tracing::warn!(%dst, "unallowed packet");
-            Err(Error::InvalidDst)
+            return Err(Error::InvalidDst);
         }
+
+        let packet = make_packet(packet, addr);
+        Ok((packet, *addr))
     }
 
     fn packet_transform<'a>(&mut self, packet: MutableIpPacket<'a>) -> Option<MutableIpPacket<'a>> {
