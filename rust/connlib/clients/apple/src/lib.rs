@@ -38,11 +38,8 @@ mod ffi {
             os_version_override: Option<String>,
             log_dir: String,
             log_filter: String,
-            dns_servers: String,
             callback_handler: CallbackHandler,
         ) -> Result<WrappedSession, String>;
-
-        fn update(&mut self, dns_servers: String);
 
         fn disconnect(&mut self);
     }
@@ -66,6 +63,9 @@ mod ffi {
 
         #[swift_bridge(swift_name = "onDisconnect")]
         fn on_disconnect(&self, error: String);
+
+        #[swift_bridge(swift_name = "getSystemDefaultResolvers")]
+        fn get_system_default_resolvers(&self) -> String;
     }
 }
 
@@ -109,6 +109,7 @@ impl Callbacks for CallbackHandler {
         route_list_4: Vec<IpNetwork>,
         route_list_6: Vec<IpNetwork>,
     ) -> Result<Option<RawFd>, Self::Error> {
+        // TODO
         // self.inner.on_update_routes(routeList4.to_string(), routesList6.to_string());
         Ok(None)
     }
@@ -128,6 +129,18 @@ impl Callbacks for CallbackHandler {
         self.inner
             .on_disconnect(error.map(ToString::to_string).unwrap_or_default());
         Ok(())
+    }
+
+    fn get_system_default_resolvers(&self) -> Result<Option<Vec<IpAddr>>, Self::Error> {
+        let resolvers_json = self.inner.get_system_default_resolvers();
+        tracing::debug!(
+            "get_system_default_resolvers returned: {:?}",
+            resolvers_json
+        );
+
+        let resolvers: Vec<IpAddr> = serde_json::from_str(&resolvers_json)
+            .expect("developer error: failed to deserialize resolvers");
+        Ok(Some(resolvers))
     }
 
     fn roll_log_file(&self) -> Option<PathBuf> {
@@ -164,7 +177,6 @@ impl WrappedSession {
         os_version_override: Option<String>,
         log_dir: String,
         log_filter: String,
-        dns_servers: String,
         callback_handler: ffi::CallbackHandler,
     ) -> Result<Self, String> {
         let secret = SecretString::from(token);
@@ -183,23 +195,7 @@ impl WrappedSession {
         )
         .map_err(|err| err.to_string())?;
 
-        tracing::info!("DNS servers: {}", dns_servers);
-
         Ok(Self(session))
-    }
-
-    // TODO: Implement this
-    fn update(&mut self, dns_servers: String) {
-        tracing::info!("Updating DNS servers: {}", dns_servers);
-        // self.0.update(dns_servers)
-        let _ = self.0.callbacks.on_set_interface_config(
-            Ipv4Addr::new(100, 100, 100, 100),
-            Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0, 0x100, 0x100, 0x100, 0x100),
-            vec![
-                Ipv4Addr::new(100, 100, 111, 1).into(),
-                Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0x8000, 0x100, 0x100, 0x111, 0x0).into(),
-            ],
-        );
     }
 
     fn disconnect(&mut self) {

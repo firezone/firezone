@@ -37,11 +37,13 @@ pub trait Callbacks: Clone + Send + Sync {
     ///
     /// This should return a new `fd` if there is one.
     /// (Only happens on android for now)
+    /// TODO: Remove this in favor of on_update_routes
     fn on_add_route(&self, _: IpNetwork) -> Result<Option<RawFd>, Self::Error> {
         Ok(None)
     }
 
     /// Called when when a route is removed.
+    /// TODO: Remove this in favor of on_update_routes
     fn on_remove_route(&self, _: IpNetwork) -> Result<Option<RawFd>, Self::Error> {
         Ok(None)
     }

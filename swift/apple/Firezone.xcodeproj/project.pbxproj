@@ -31,9 +31,9 @@
 		794C38172970A26A0029F38F /* FirezoneKit in Frameworks */ = {isa = PBXBuildFile; productRef = 794C38162970A26A0029F38F /* FirezoneKit */; };
 		79756C6629704A7A0018E2D5 /* FirezoneKit in Frameworks */ = {isa = PBXBuildFile; productRef = 79756C6529704A7A0018E2D5 /* FirezoneKit */; };
 		8D28EB992B35FBD70083621C /* Resolv.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D28EB982B35FBD70083621C /* Resolv.swift */; };
-		8D28EB9A2B35FBD70083621C /* Resolv.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D28EB982B35FBD70083621C /* Resolv.swift */; };
 		8DBFB1FC2B88FAD100EC717F /* DeviceMetadata.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8DBFB1FB2B88FAD100EC717F /* DeviceMetadata.swift */; };
 		8DBFB1FD2B88FAD100EC717F /* DeviceMetadata.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8DBFB1FB2B88FAD100EC717F /* DeviceMetadata.swift */; };
+		8DBFB2022B8D2EC600EC717F /* SystemConfigurationResolvers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8DBFB2012B8D2EC600EC717F /* SystemConfigurationResolvers.swift */; };
 		8DC08BCB2B296C4500675F46 /* libresolv.9.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = 8DC08BCA2B296C4500675F46 /* libresolv.9.tbd */; };
 		8DC08BCD2B296C5900675F46 /* libresolv.9.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = 8DC08BCC2B296C5900675F46 /* libresolv.9.tbd */; };
 		8DC08BD22B297B7B00675F46 /* libresolv.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = 8DC08BD12B297B7B00675F46 /* libresolv.tbd */; };
@@ -120,6 +120,7 @@
 		6FFECD5B2AD6998400E00273 /* SystemConfiguration.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SystemConfiguration.framework; path = System/Library/Frameworks/SystemConfiguration.framework; sourceTree = SDKROOT; };
 		8D28EB982B35FBD70083621C /* Resolv.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Resolv.swift; sourceTree = "<group>"; };
 		8DBFB1FB2B88FAD100EC717F /* DeviceMetadata.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceMetadata.swift; sourceTree = "<group>"; };
+		8DBFB2012B8D2EC600EC717F /* SystemConfigurationResolvers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemConfigurationResolvers.swift; sourceTree = "<group>"; };
 		8DC08BCA2B296C4500675F46 /* libresolv.9.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libresolv.9.tbd; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS17.2.sdk/usr/lib/libresolv.9.tbd; sourceTree = DEVELOPER_DIR; };
 		8DC08BCC2B296C5900675F46 /* libresolv.9.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libresolv.9.tbd; path = usr/lib/libresolv.9.tbd; sourceTree = SDKROOT; };
 		8DC08BD12B297B7B00675F46 /* libresolv.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libresolv.tbd; path = usr/lib/libresolv.tbd; sourceTree = SDKROOT; };
@@ -192,6 +193,7 @@
 				6FE455112A5D13A2006549B1 /* FirezoneNetworkExtension-Bridging-Header.h */,
 				8D28EB982B35FBD70083621C /* Resolv.swift */,
 				8DBFB1FB2B88FAD100EC717F /* DeviceMetadata.swift */,
+				8DBFB2012B8D2EC600EC717F /* SystemConfigurationResolvers.swift */,
 			);
 			path = FirezoneNetworkExtension;
 			sourceTree = "<group>";
@@ -519,7 +521,7 @@
 			files = (
 				8DC08BD62B297DA400675F46 /* FirezoneNetworkExtension-Bridging-Header.h in Sources */,
 				6FE4550A2A5D110D006549B1 /* CallbackHandler.swift in Sources */,
-				8D28EB9A2B35FBD70083621C /* Resolv.swift in Sources */,
+				8DBFB2022B8D2EC600EC717F /* SystemConfigurationResolvers.swift in Sources */,
 				6FE455102A5D112C006549B1 /* connlib-client-apple.swift in Sources */,
 				05CF1D16290B1FE700CF4755 /* PacketTunnelProvider.swift in Sources */,
 				6FE454F72A5BFB93006549B1 /* Adapter.swift in Sources */,

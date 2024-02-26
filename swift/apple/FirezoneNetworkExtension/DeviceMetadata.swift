@@ -8,6 +8,10 @@
 import FirezoneKit
 import Foundation
 
+#if os(iOS)
+  import UIKit.UIDevice
+#endif
+
 public class DeviceMetadata {
   public static func getDeviceName() -> String? {
     // Returns a generic device name on iOS 16 and higher
