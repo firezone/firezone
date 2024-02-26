@@ -260,13 +260,13 @@ extension Adapter: CallbackHandlerDelegate {
         networkSettings.tunnelAddressIPv4 = tunnelAddressIPv4
         networkSettings.tunnelAddressIPv6 = tunnelAddressIPv6
         networkSettings.dnsAddresses = dnsAddresses
-        networkSettings.apply(completionHandler: {
+        networkSettings.apply() {
           self.state = .tunnelReady(session: session)
           onStarted?(nil)
           self.beginPathMonitoring()
-        })
+        }
       case .tunnelReady:
-        networkSettings.apply(completionHandler: nil)
+        networkSettings.apply()
       case .stoppedTunnel:
         self.logger.error(
           "\(#function): Unexpected state: \(self.state)")
@@ -286,7 +286,7 @@ extension Adapter: CallbackHandlerDelegate {
       networkSettings.routes4 = NetworkSettings.parseRoutes4(routes4: routes4)
       networkSettings.routes6 = NetworkSettings.parseRoutes6(routes6: routes6)
 
-      networkSettings.apply(completionHandler: nil)
+      networkSettings.apply()
     }
   }
 
@@ -347,31 +347,36 @@ extension Adapter {
   // If matchDomains is an empty string, /etc/resolv.conf will contain connlib's
   // sentinel, which isn't helpful to us.
   private func resetToSystemDNSGettingBindResolvers() -> [String] {
-    var resolvers: [String] = []
+    logger.log("\(#function): Getting system default resolvers from Bind")
 
-    // async / await can't be used here because this is an FFI callback
-    let semaphore = DispatchSemaphore(value: 0)
+    switch self.state {
+    case .startingTunnel:
+      return BindResolvers().getservers().map(BindResolvers.getnameinfo)
+    case .tunnelReady:
+      var resolvers: [String] = []
 
-    // Set tunnel's matchDomains to a dummy string that will never match any name
-    networkSettings.matchDomains = ["firezone-fd0020211111"]
+      // async / await can't be used here because this is an FFI callback
+      let semaphore = DispatchSemaphore(value: 0)
 
-    // Call apply to populate /etc/resolv.conf with the system's default resolvers
-    networkSettings.apply() {
-      // Only now can we get the system resolvers
-      resolvers = BindResolvers().getservers().map(BindResolvers.getnameinfo)
+      // Set tunnel's matchDomains to a dummy string that will never match any name
+      networkSettings.matchDomains = ["firezone-fd0020211111"]
 
-      // Restore connlib's DNS resolvers
-      self.networkSettings.matchDomains = [""]
-      self.networkSettings.apply() { semaphore.signal() }
-      self.logger.log(
-         "Adapter.getSystemDefaultResolvers: Waiting on NetworkSettings.apply to complete")
-      semaphore.wait()
+      // Call apply to populate /etc/resolv.conf with the system's default resolvers
+      networkSettings.apply() {
+        // Only now can we get the system resolvers
+        resolvers = BindResolvers().getservers().map(BindResolvers.getnameinfo)
+
+        // Restore connlib's DNS resolvers
+        self.networkSettings.matchDomains = [""]
+        self.networkSettings.apply() { semaphore.signal() }
+        semaphore.wait()
+      }
+
+      return resolvers
+    case .stoppedTunnel:
+      logger.error("\(#function): Unexpected state")
+      return []
     }
-
-     self.logger.log(
-       "Adapter.getSystemDefaultResolvers: Returning system resolvers: \(resolvers)")
-
-     return resolvers
   }
 }
 #endif
