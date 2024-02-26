@@ -30,6 +30,7 @@ internal class SettingsActivity : AppCompatActivity() {
         setupStateObservers()
 
         viewModel.populateFieldsFromConfig()
+        viewModel.deleteLogZip(this@SettingsActivity)
     }
 
     private fun setupViews() {
@@ -79,6 +80,13 @@ internal class SettingsActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         viewModel.onViewResume(this@SettingsActivity)
+    }
+
+    override fun onStop() {
+        super.onStop()
+        if (isFinishing) {
+            viewModel.deleteLogZip(this@SettingsActivity)
+        }
     }
 
     private inner class SettingsPagerAdapter(activity: FragmentActivity) :
