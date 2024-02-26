@@ -98,7 +98,7 @@ impl Sockets {
     pub fn poll_recv_from<'a>(
         &'a mut self,
         cx: &mut Context<'_>,
-    ) -> Poll<io::Result<Received<'a>>> {
+    ) -> Poll<io::Result<impl Iterator<Item = Received<'a>>>> {
         if let Some(Poll::Ready(packet)) = self.socket_v4.as_mut().map(|s| s.poll_recv_from(cx)) {
             return Poll::Ready(packet);
         }
@@ -150,7 +150,10 @@ impl<const N: usize> Socket<N> {
     }
 
     #[allow(clippy::type_complexity)]
-    fn poll_recv_from<'b>(&'b mut self, cx: &mut Context<'_>) -> Poll<io::Result<Received<'b>>> {
+    fn poll_recv_from<'b>(
+        &'b mut self,
+        cx: &mut Context<'_>,
+    ) -> Poll<io::Result<impl Iterator<Item = Received<'b>>>> {
         let Socket {
             port,
             socket,
@@ -180,11 +183,13 @@ impl<const N: usize> Socket<N> {
 
                 let local = SocketAddr::new(local_ip, *port);
 
-                return Poll::Ready(Ok(Received {
-                    local,
-                    from: meta.addr,
-                    packet: &mut buffer[..meta.len],
-                }));
+                return Poll::Ready(Ok(buffer[..meta.len].chunks(meta.stride).map(
+                    move |packet| Received {
+                        local,
+                        from: meta.addr,
+                        packet,
+                    },
+                )));
             }
         }
     }
