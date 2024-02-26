@@ -129,11 +129,11 @@ impl GatewayState {
         Some(packet)
     }
 
-    pub fn poll_transmit(&mut self) -> Option<snownet::Transmit> {
+    pub(crate) fn poll_transmit(&mut self) -> Option<snownet::Transmit> {
         self.node.poll_transmit()
     }
 
-    pub fn poll(&mut self, cx: &mut Context<'_>) -> Poll<()> {
+    pub(crate) fn poll(&mut self, cx: &mut Context<'_>) -> Poll<()> {
         loop {
             if let Poll::Ready(instant) = self.node_timeout.poll_unpin(cx) {
                 self.node.handle_timeout(instant);
@@ -173,7 +173,7 @@ impl GatewayState {
 }
 
 impl GatewayState {
-    pub fn new(private_key: StaticSecret) -> Self {
+    pub(crate) fn new(private_key: StaticSecret) -> Self {
         let mut expire_interval = interval(Duration::from_secs(1));
         expire_interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
         Self {

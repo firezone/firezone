@@ -45,7 +45,10 @@ pub struct DnsResource {
 }
 
 impl DnsResource {
-    pub fn from_description(description: &ResourceDescriptionDns, address: Dname) -> DnsResource {
+    pub(crate) fn from_description(
+        description: &ResourceDescriptionDns,
+        address: Dname,
+    ) -> DnsResource {
         DnsResource {
             id: description.id,
             address,
@@ -155,7 +158,7 @@ where
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    pub fn add_route(&mut self, route: IpNetwork) -> connlib_shared::Result<()> {
+    pub(crate) fn add_route(&mut self, route: IpNetwork) -> connlib_shared::Result<()> {
         let callbacks = self.callbacks().clone();
         let maybe_new_device = self
             .device
@@ -436,7 +439,7 @@ impl ClientState {
         }))
     }
 
-    pub fn on_connection_failed(&mut self, resource: ResourceId) {
+    pub(crate) fn on_connection_failed(&mut self, resource: ResourceId) {
         self.awaiting_connection.remove(&resource);
         self.awaiting_connection_timers.remove(resource);
 
@@ -452,7 +455,7 @@ impl ClientState {
         self.awaiting_connection.contains_key(&resource.id)
     }
 
-    pub fn on_connection_intent_dns(&mut self, resource: &DnsResource) {
+    pub(crate) fn on_connection_intent_dns(&mut self, resource: &DnsResource) {
         if self.is_awaiting_connection_to_dns(resource) {
             return;
         }
@@ -554,7 +557,7 @@ impl ClientState {
         );
     }
 
-    pub fn create_peer_config_for_new_connection(
+    pub(crate) fn create_peer_config_for_new_connection(
         &mut self,
         resource: ResourceId,
         gateway: GatewayId,
@@ -575,16 +578,16 @@ impl ClientState {
         Ok(ips)
     }
 
-    pub fn gateway_by_resource(&self, resource: &ResourceId) -> Option<GatewayId> {
+    pub(crate) fn gateway_by_resource(&self, resource: &ResourceId) -> Option<GatewayId> {
         self.resources_gateways.get(resource).copied()
     }
 
-    pub fn set_dns_mapping(&mut self, mapping: BiMap<IpAddr, DnsServer>) {
+    pub(crate) fn set_dns_mapping(&mut self, mapping: BiMap<IpAddr, DnsServer>) {
         self.dns_mapping = mapping.clone();
         self.dns_resolvers = create_resolvers(mapping);
     }
 
-    pub fn dns_mapping(&self) -> BiMap<IpAddr, DnsServer> {
+    pub(crate) fn dns_mapping(&self) -> BiMap<IpAddr, DnsServer> {
         self.dns_mapping.clone()
     }
 
@@ -678,15 +681,15 @@ impl ClientState {
         }
     }
 
-    pub fn poll_transmit(&mut self) -> Option<snownet::Transmit> {
+    pub(crate) fn poll_transmit(&mut self) -> Option<snownet::Transmit> {
         self.node.poll_transmit()
     }
 
-    pub fn poll_packet(&mut self) -> Option<Packet<'static>> {
+    pub(crate) fn poll_packet(&mut self) -> Option<Packet<'static>> {
         self.buffered_packets.pop_front()
     }
 
-    pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Event<GatewayId>> {
+    pub(crate) fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Event<GatewayId>> {
         loop {
             match self.node.poll_event() {
                 Some(snownet::Event::SignalIceCandidate {
@@ -836,7 +839,7 @@ fn create_resolvers(
 }
 
 impl ClientState {
-    pub fn new(private_key: StaticSecret) -> Self {
+    pub(crate) fn new(private_key: StaticSecret) -> Self {
         // With this single timer this might mean that some DNS are refreshed too often
         // however... this also mean any resource is refresh within a 5 mins interval
         // therefore, only the first time it's added that happens, after that it doesn't matter.

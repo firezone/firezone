@@ -4,14 +4,17 @@
 //! [Tunnel] is the main entry-point for this crate.
 
 use boringtun::x25519::StaticSecret;
+use client::ClientState;
 use connlib_shared::{
     messages::{ClientId, GatewayId, ResourceDescription, ReuseConnection},
     CallbackErrorFacade, Callbacks, Error, Result,
 };
 use device_channel::Device;
 use futures_util::task::AtomicWaker;
+use gateway::GatewayState;
 use ip_network_table::IpNetworkTable;
 use peer::{Peer, PeerStats};
+use sockets::Sockets;
 use std::{
     collections::{HashMap, HashSet},
     net::IpAddr,
@@ -20,10 +23,7 @@ use std::{
     time::Instant,
 };
 
-pub use client::ClientState;
 pub use control_protocol::{gateway::ResolvedResourceDescriptionDns, Request};
-pub use gateway::GatewayState;
-use sockets::Sockets;
 
 mod client;
 mod control_protocol;
