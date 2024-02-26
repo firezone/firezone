@@ -329,10 +329,7 @@ where
                 continue;
             };
 
-            let packet_len = packet.packet().len();
-            let packet = match peer
-                .untransform(packet.source(), &mut self.write_buf.as_mut()[..packet_len])
-            {
+            let packet = match peer.untransform(packet.into()) {
                 Ok(packet) => packet,
                 Err(e) => {
                     tracing::warn!(%conn_id, %local, %from, "Failed to transform packet: {e}");
@@ -341,7 +338,7 @@ where
                 }
             };
 
-            device.write(packet)?;
+            device.write(packet.as_immutable())?;
         }
 
         Poll::Ready(Ok(()))

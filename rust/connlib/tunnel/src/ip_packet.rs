@@ -42,6 +42,14 @@ impl<'a> MutableIpPacket<'a> {
     }
 
     #[inline]
+    pub(crate) fn source(&self) -> IpAddr {
+        match self {
+            MutableIpPacket::MutableIpv4Packet(i) => i.get_source().into(),
+            MutableIpPacket::MutableIpv6Packet(i) => i.get_source().into(),
+        }
+    }
+
+    #[inline]
     pub(crate) fn destination(&self) -> IpAddr {
         match self {
             MutableIpPacket::MutableIpv4Packet(i) => i.get_destination().into(),
@@ -203,18 +211,16 @@ impl<'a> From<IpPacket<'a>> for snownet::IpPacket<'a> {
     }
 }
 
-impl<'a> IpPacket<'a> {
-    #[inline]
-    pub(crate) fn new(data: &mut [u8]) -> Option<IpPacket> {
-        let packet = match data[0] >> 4 {
-            4 => Ipv4Packet::new(data)?.into(),
-            6 => Ipv6Packet::new(data)?.into(),
-            _ => return None,
-        };
-
-        Some(packet)
+impl<'a> From<snownet::MutableIpPacket<'a>> for MutableIpPacket<'a> {
+    fn from(value: snownet::MutableIpPacket<'a>) -> Self {
+        match value {
+            snownet::MutableIpPacket::Ipv4(p) => Self::MutableIpv4Packet(p),
+            snownet::MutableIpPacket::Ipv6(p) => Self::MutableIpv6Packet(p),
+        }
     }
+}
 
+impl<'a> IpPacket<'a> {
     pub(crate) fn owned(data: Vec<u8>) -> Option<IpPacket<'static>> {
         let packet = match data[0] >> 4 {
             4 => Ipv4Packet::owned(data)?.into(),
