@@ -59,7 +59,7 @@ mod ffi {
         );
 
         #[swift_bridge(swift_name = "onUpdateRoutes")]
-        fn on_update_routes(&self, routeList4: String, routeList6: String
+        fn on_update_routes(&self, routeList4: String, routeList6: String);
 
         #[swift_bridge(swift_name = "onUpdateResources")]
         fn on_update_resources(&self, resourceList: String);
@@ -104,7 +104,11 @@ impl Callbacks for CallbackHandler {
         Ok(None)
     }
 
-    fn on_update_routes(&self, route_list_4: Vec<IpNetwork>, route_list_6: Vec<IpNetwork>) -> Result<Option<RawFd>, Self::Error> {
+    fn on_update_routes(
+        &self,
+        route_list_4: Vec<IpNetwork>,
+        route_list_6: Vec<IpNetwork>,
+    ) -> Result<Option<RawFd>, Self::Error> {
         // self.inner.on_update_routes(routeList4.to_string(), routesList6.to_string());
         Ok(None)
     }
@@ -184,10 +188,18 @@ impl WrappedSession {
         Ok(Self(session))
     }
 
+    // TODO: Implement this
     fn update(&mut self, dns_servers: String) {
         tracing::info!("Updating DNS servers: {}", dns_servers);
-        let _ = self.0.callbacks.on_tunnel_ready();
         // self.0.update(dns_servers)
+        let _ = self.0.callbacks.on_set_interface_config(
+            Ipv4Addr::new(100, 100, 100, 100),
+            Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0, 0x100, 0x100, 0x100, 0x100),
+            vec![
+                Ipv4Addr::new(100, 100, 111, 1).into(),
+                Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0x8000, 0x100, 0x100, 0x111, 0x0).into(),
+            ],
+        );
     }
 
     fn disconnect(&mut self) {

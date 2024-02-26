@@ -105,7 +105,8 @@ class Adapter {
     self.logFilter = logFilter
     self.connlibLogFolderPath = SharedAccess.connlibLogFolderURL?.path ?? ""
     self.logger = packetTunnelProvider.logger
-    self.networkSettings = NetworkSettings(packetTunnelProvider: packetTunnelProvider, logger: packetTunnelProvider.logger)
+    self.networkSettings = NetworkSettings(
+      packetTunnelProvider: packetTunnelProvider, logger: packetTunnelProvider.logger)
   }
 
   deinit {
@@ -125,7 +126,6 @@ class Adapter {
       onStarted?(nil)
     case .stoppedTunnel:
       logger.log("Adapter.deinit: Already stopped")
-    // Perfect!
     }
   }
 
@@ -153,7 +153,6 @@ class Adapter {
 
       self.logger.log("Adapter.start: Starting connlib")
       do {
-
         self.systemDefaultResolvers = Resolv().getservers().map(Resolv.getnameinfo)
         let dnsServers = try! String(
           decoding: JSONEncoder().encode(self.systemDefaultResolvers),
@@ -196,15 +195,20 @@ class Adapter {
 
       switch self.state {
       case .stoppedTunnel:
+        self.logger.log("\(#function): Unexpected state")
         break
       case .tunnelReady(let session):
-        self.logger.log("Adapter.stop: Shutting down connlib")
+        self.logger.log("\(#function): Shutting down connlib")
         session.disconnect()
+        self.state = .stoppedTunnel
       case .startingTunnel(let session, let onStarted):
-        self.logger.log("Adapter.stop: Shutting down connlib before tunnel ready")
+        self.logger.log("\(#function): Shutting down connlib before tunnel ready")
         session.disconnect()
         onStarted?(nil)
+        self.state = .stoppedTunnel
       }
+
+      completionHandler()
     }
   }
 
@@ -225,16 +229,12 @@ class Adapter {
   }
 }
 
-// MARK: Device metadata
-
-extension Adapter {
-
-}
-
 // MARK: Responding to path updates
 
 extension Adapter {
-  private func maybeUpdateSessionWithNewResolvers(session: WrappedSession, completion: () -> Void) {
+  private func maybeUpdateSessionWithNewResolvers(
+    session: WrappedSession, completionHandler: () -> Void
+  ) {
     let resolvers = Resolv().getservers().map(Resolv.getnameinfo)
     if resolvers != systemDefaultResolvers {
       self.systemDefaultResolvers = resolvers
@@ -243,11 +243,9 @@ extension Adapter {
           decoding: JSONEncoder().encode(self.systemDefaultResolvers),
           as: UTF8.self
         ))
-      // session.update will call onTunnelReady where we unpause path monitoring
-    } else {
-      // Revert back to connlib right away
-      completion()
     }
+
+    completionHandler()
   }
 
   private func updateTunnelDNS(session: WrappedSession) {
@@ -263,7 +261,7 @@ extension Adapter {
       completionHandler: {
         self.maybeUpdateSessionWithNewResolvers(
           session: session,
-          completion: {
+          completionHandler: {
             self.networkSettings.matchDomains = [""]
             self.networkSettings.apply(
               beforeHandler: nil,
@@ -276,12 +274,12 @@ extension Adapter {
   }
 
   private func resumePathMonitoring() {
-    self.logger.log("\(#function): Resuming path monitoring at \(Date.now)")
+    self.logger.log("Resuming path monitoring")
     self.temporarilyDisablePathMonitor = false
   }
 
   private func pausePathMonitoring() {
-    self.logger.log("\(#function): Pausing path monitoring at \(Date.now)")
+    self.logger.log("Pausing path monitoring")
     self.temporarilyDisablePathMonitor = true
   }
 
@@ -297,7 +295,8 @@ extension Adapter {
   private func didReceivePathUpdate(path: Network.NWPath) {
     // Will be invoked in the workQueue by the path monitor
     if self.temporarilyDisablePathMonitor {
-      self.logger.log("\(#function): Ignoring path updates while responding to a previous path update.")
+      self.logger.log(
+        "\(#function): Ignoring path updates while responding to a previous path update.")
     } else {
       switch self.state {
       case .tunnelReady(let session):
@@ -305,7 +304,8 @@ extension Adapter {
           self.logger.log("\(#function): Detected network change. Temporarily offline.")
           self.packetTunnelProvider?.reasserting = true
         } else {
-          self.logger.log("\(#function): Detected network change. Now online. Potentially updating tunnel DNS.")
+          self.logger.log(
+            "\(#function): Detected network change. Now online. Potentially updating tunnel DNS.")
           self.packetTunnelProvider?.reasserting = false
           updateTunnelDNS(session: session)
         }
@@ -332,11 +332,14 @@ extension Adapter: CallbackHandlerDelegate {
       self.logger.log("Adapter.onSetInterfaceConfig")
 
       switch self.state {
-      case .startingTunnel:
+      case .startingTunnel(let session, let onStarted):
         networkSettings.tunnelAddressIPv4 = tunnelAddressIPv4
         networkSettings.tunnelAddressIPv6 = tunnelAddressIPv6
         networkSettings.dnsAddresses = dnsAddresses
-        networkSettings.apply(beforeHandler: nil, completionHandler: nil)
+        networkSettings.apply(beforeHandler: nil) {
+          self.state = .tunnelReady(session: session)
+          onStarted?(nil)
+        }
       case .tunnelReady:
         networkSettings.apply(
           beforeHandler: { self.pausePathMonitoring() },
@@ -344,7 +347,7 @@ extension Adapter: CallbackHandlerDelegate {
         )
       case .stoppedTunnel:
         self.logger.error(
-          "Adapter.onTunnelReady: Unexpected state: \(self.state)")
+          "\(#function): Unexpected state: \(self.state)")
       }
     }
   }
@@ -374,20 +377,21 @@ extension Adapter: CallbackHandlerDelegate {
 
       self.logger.log("Adapter.onUpdateResources")
 
-      let networkResources = try! JSONDecoder().decode([NetworkResource].self, from: resourceList.data(using: .utf8)!)
+      let networkResources = try! JSONDecoder().decode(
+        [NetworkResource].self, from: resourceList.data(using: .utf8)!)
 
       // Update resource list
       self.displayableResources.update(resources: networkResources.map { $0.displayableResource })
     }
   }
 
-  // Unexpected disconnect initiated by connlib. Typically for 401s.
   public func onDisconnect(error: String?) {
     workQueue.async { [weak self] in
       guard let self = self else { return }
 
       self.logger.log("\(#function)")
 
+      // Unexpected disconnect initiated by connlib. Typically for 401s.
       if let error = error {
         self.logger.error(
           "Connlib disconnected with unrecoverable error: \(error)")
@@ -396,19 +400,10 @@ extension Adapter: CallbackHandlerDelegate {
           errorMessage: error)
         self.packetTunnelProvider?.cancelTunnelWithError(
           AdapterError.connlibFatalError(error))
-        self.state = .stoppedTunnel
       }
 
-      self.networkMonitor!.cancel()
+      self.networkMonitor?.cancel()
       self.networkMonitor = nil
-    }
-  }
-
-  // Final phase of a user or system-initiated disconnect. Connlib tells us everything's torn down.
-  public func onDisconnect() {
-    workQueue.async { [weak self] in
-      guard let self = self else { return }
-
     }
   }
 }

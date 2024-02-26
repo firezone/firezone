@@ -27,6 +27,7 @@ pub trait Callbacks: Clone + Send + Sync {
     }
 
     /// Called when the tunnel is connected.
+    // TODO: Remove this in favor of on_set_interface_config
     fn on_tunnel_ready(&self) -> Result<(), Self::Error> {
         tracing::trace!("tunnel_connected");
         Ok(())
@@ -42,6 +43,16 @@ pub trait Callbacks: Clone + Send + Sync {
 
     /// Called when when a route is removed.
     fn on_remove_route(&self, _: IpNetwork) -> Result<Option<RawFd>, Self::Error> {
+        Ok(None)
+    }
+
+    /// Called when the route list changes.
+    fn on_update_routes(
+        &self,
+        route_list_4: Vec<IpNetwork>,
+        route_list_6: Vec<IpNetwork>,
+    ) -> Result<Option<RawFd>, Self::Error> {
+        tracing::trace!(?route_list_4, ?route_list_6, "route_updated");
         Ok(None)
     }
 

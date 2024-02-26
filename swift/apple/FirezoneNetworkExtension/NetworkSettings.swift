@@ -40,7 +40,7 @@ class NetworkSettings {
 
     // Set tunnel addresses and routes
     let ipv4Settings = NEIPv4Settings(
-      addresses: [tunnelAddressIPv4!], subnetMasks: ["255.255.255.255"])
+      addresses: [tunnelAddressIPv4!],subnetMasks: ["255.255.255.255"])
     let ipv6Settings = NEIPv6Settings(addresses: [tunnelAddressIPv6!], networkPrefixLengths: [128])
     let dnsSettings = NEDNSSettings(servers: dnsAddresses)
     ipv4Settings.includedRoutes = routes4

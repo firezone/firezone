@@ -29,17 +29,7 @@ impl<CB: Callbacks> Callbacks for CallbackErrorFacade<CB> {
         result
     }
 
-    fn on_tunnel_ready(&self) -> Result<()> {
-        let result = self
-            .0
-            .on_tunnel_ready()
-            .map_err(|err| Error::OnTunnelReadyFailed(err.to_string()));
-        if let Err(err) = result.as_ref() {
-            tracing::error!(?err);
-        }
-        result
-    }
-
+    // TODO: Remove this in favor of on_update_routes
     fn on_add_route(&self, route: IpNetwork) -> Result<Option<RawFd>> {
         let result = self
             .0
@@ -51,6 +41,7 @@ impl<CB: Callbacks> Callbacks for CallbackErrorFacade<CB> {
         result
     }
 
+    // TODO: Remove this in favor of on_update_routes
     fn on_remove_route(&self, route: IpNetwork) -> Result<Option<RawFd>> {
         let result = self
             .0
