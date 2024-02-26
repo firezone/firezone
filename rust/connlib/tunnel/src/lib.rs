@@ -13,7 +13,7 @@ use futures_util::{future::BoxFuture, task::AtomicWaker, FutureExt};
 use peer::PacketTransform;
 use peer_store::PeerStore;
 use pnet_packet::Packet;
-use snownet::{IpPacket, Node, Server};
+use snownet::{Node, Server};
 use sockets::{Received, Sockets};
 use std::{
     collections::HashSet,
@@ -27,6 +27,7 @@ use std::{
 pub use client::ClientState;
 pub use control_protocol::{gateway::ResolvedResourceDescriptionDns, Request};
 pub use gateway::GatewayState;
+use ip_packet::IpPacket;
 
 mod client;
 mod control_protocol;
@@ -111,8 +112,7 @@ where
                     return Poll::Pending;
                 };
 
-                self.connections_state
-                    .send(peer_id, packet.as_immutable().into());
+                self.connections_state.send(peer_id, packet.as_immutable());
 
                 cx.waker().wake_by_ref();
             }
@@ -175,8 +175,7 @@ where
                     return Poll::Pending;
                 };
 
-                self.connections_state
-                    .send(peer_id, packet.as_immutable().into());
+                self.connections_state.send(peer_id, packet.as_immutable());
 
                 cx.waker().wake_by_ref();
             }
@@ -268,7 +267,7 @@ where
 
     fn try_send(&mut self, id: TId, packet: IpPacket) -> Result<()> {
         // TODO: handle NotConnected
-        let Some(transmit) = self.node.encapsulate(id, packet)? else {
+        let Some(transmit) = self.node.encapsulate(id, packet.into())? else {
             return Ok(());
         };
 
@@ -401,7 +400,7 @@ pub enum Event<TId> {
     RefreshResources {
         connections: Vec<ReuseConnection>,
     },
-    SendPacket(device_channel::Packet<'static>),
+    SendPacket(IpPacket<'static>),
     StopPeer(TId),
 }
 

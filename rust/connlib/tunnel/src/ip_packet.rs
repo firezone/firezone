@@ -187,12 +187,6 @@ impl<'a> MutableIpPacket<'a> {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Version {
-    Ipv4,
-    Ipv6,
-}
-
 #[derive(Debug, PartialEq)]
 pub enum IpPacket<'a> {
     Ipv4Packet(Ipv4Packet<'a>),
@@ -210,6 +204,17 @@ impl<'a> From<IpPacket<'a>> for snownet::IpPacket<'a> {
 }
 
 impl<'a> IpPacket<'a> {
+    #[inline]
+    pub(crate) fn new(data: &mut [u8]) -> Option<IpPacket> {
+        let packet = match data[0] >> 4 {
+            4 => Ipv4Packet::new(data)?.into(),
+            6 => Ipv6Packet::new(data)?.into(),
+            _ => return None,
+        };
+
+        Some(packet)
+    }
+
     pub(crate) fn owned(data: Vec<u8>) -> Option<IpPacket<'static>> {
         let packet = match data[0] >> 4 {
             4 => Ipv4Packet::owned(data)?.into(),
@@ -223,13 +228,6 @@ impl<'a> IpPacket<'a> {
     pub(crate) fn to_owned(&self) -> IpPacket<'static> {
         // This should never fail as the provided buffer is a vec (unless oom)
         IpPacket::owned(self.packet().to_vec()).unwrap()
-    }
-
-    pub(crate) fn version(&self) -> Version {
-        match self {
-            IpPacket::Ipv4Packet(_) => Version::Ipv4,
-            IpPacket::Ipv6Packet(_) => Version::Ipv6,
-        }
     }
 
     pub(crate) fn is_icmpv6(&self) -> bool {
