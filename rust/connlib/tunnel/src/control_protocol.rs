@@ -1,13 +1,11 @@
-use ip_network::IpNetwork;
-use ip_network_table::IpNetworkTable;
-use std::{collections::HashSet, fmt, hash::Hash, net::SocketAddr, sync::Arc};
+use std::{collections::HashSet, fmt, hash::Hash, net::SocketAddr};
 
 use connlib_shared::{
     messages::{Relay, RequestConnection, ReuseConnection},
     Callbacks,
 };
 
-use crate::{peer::Peer, Tunnel, REALM};
+use crate::{Tunnel, REALM};
 
 mod client;
 pub mod gateway;
@@ -18,7 +16,7 @@ pub enum Request {
     ReuseConnection(ReuseConnection),
 }
 
-impl<CB, TRoleState, TRole, TId, TTransform> Tunnel<CB, TRoleState, TRole, TId, TTransform>
+impl<CB, TRoleState, TRole, TId> Tunnel<CB, TRoleState, TRole, TId>
 where
     CB: Callbacks + 'static,
     TId: Eq + Hash + Copy + fmt::Display,
@@ -27,16 +25,6 @@ where
         self.connections_state
             .node
             .add_remote_candidate(conn_id, ice_candidate);
-    }
-}
-
-fn insert_peers<TId: Copy, TTransform>(
-    peers_by_ip: &mut IpNetworkTable<Arc<Peer<TId, TTransform>>>,
-    ips: &Vec<IpNetwork>,
-    peer: Arc<Peer<TId, TTransform>>,
-) {
-    for ip in ips {
-        peers_by_ip.insert(*ip, peer.clone());
     }
 }
 

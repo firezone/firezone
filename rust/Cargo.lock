@@ -1922,7 +1922,6 @@ name = "firezone-tunnel"
 version = "1.0.0"
 dependencies = [
  "anyhow",
- "arc-swap",
  "async-trait",
  "bimap",
  "boringtun",
@@ -1942,7 +1941,6 @@ dependencies = [
  "log",
  "netlink-packet-core",
  "netlink-packet-route",
- "parking_lot",
  "pnet_packet",
  "quinn-udp",
  "rand_core 0.6.4",
