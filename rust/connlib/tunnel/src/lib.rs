@@ -19,6 +19,7 @@ use std::{
     collections::{HashMap, HashSet},
     fmt,
     hash::Hash,
+    io,
     net::IpAddr,
     sync::Arc,
     task::{ready, Context, Poll},
@@ -93,9 +94,8 @@ where
             _ => (),
         }
 
-        match self.connections_state.poll_sockets(cx) {
-            Poll::Ready(packet) => {
-                device.write(packet)?;
+        match self.connections_state.poll_sockets(device, cx)? {
+            Poll::Ready(()) => {
                 cx.waker().wake_by_ref();
             }
             Poll::Pending => {}
@@ -158,9 +158,8 @@ where
             _ => (),
         }
 
-        match self.connections_state.poll_sockets(cx) {
-            Poll::Ready(packet) => {
-                device.write(packet)?;
+        match self.connections_state.poll_sockets(device, cx)? {
+            Poll::Ready(()) => {
                 cx.waker().wake_by_ref();
             }
             Poll::Pending => {}
@@ -295,7 +294,7 @@ where
         Ok(())
     }
 
-    fn poll_sockets<'a>(&'a mut self, cx: &mut Context<'_>) -> Poll<device_channel::Packet<'a>> {
+    fn poll_sockets(&mut self, device: &mut Device, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
         let received = match ready!(self.sockets.poll_recv_from(cx)) {
             Ok(received) => received,
             Err(e) => {
@@ -306,54 +305,55 @@ where
             }
         };
 
-        let Received {
-            local,
-            from,
-            packet,
-        } = received;
+        for received in received {
+            let Received {
+                local,
+                from,
+                packet,
+            } = received;
 
-        let (conn_id, packet) = match self.node.decapsulate(
-            local,
-            from,
-            packet,
-            std::time::Instant::now(),
-            self.write_buf.as_mut(),
-        ) {
-            Ok(Some(packet)) => packet,
-            Ok(None) => {
-                cx.waker().wake_by_ref();
-                return Poll::Pending;
-            }
-            Err(e) => {
-                tracing::warn!(%local, %from, "Failed to decapsulate incoming packet: {e}");
+            let (conn_id, packet) = match self.node.decapsulate(
+                local,
+                from,
+                packet.as_ref(),
+                std::time::Instant::now(),
+                self.write_buf.as_mut(),
+            ) {
+                Ok(Some(packet)) => packet,
+                Ok(None) => {
+                    continue;
+                }
+                Err(e) => {
+                    tracing::warn!(%local, %from, num_bytes = %packet.len(), "Failed to decapsulate incoming packet: {e}");
 
-                cx.waker().wake_by_ref();
-                return Poll::Pending;
-            }
-        };
+                    continue;
+                }
+            };
 
-        tracing::trace!(target: "wire", %local, %from, bytes = %packet.packet().len(), "read new packet");
+            tracing::trace!(target: "wire", %local, %from, bytes = %packet.packet().len(), "read new packet");
 
-        let Some(peer) = self.peers_by_id.get(&conn_id) else {
-            tracing::error!(%conn_id, %local, %from, "Couldn't find connection");
+            let Some(peer) = self.peers_by_id.get(&conn_id) else {
+                tracing::error!(%conn_id, %local, %from, "Couldn't find connection");
 
-            cx.waker().wake_by_ref();
-            return Poll::Pending;
-        };
+                continue;
+            };
 
-        let packet_len = packet.packet().len();
-        let packet =
-            match peer.untransform(packet.source(), &mut self.write_buf.as_mut()[..packet_len]) {
+            let packet_len = packet.packet().len();
+            let packet = match peer
+                .untransform(packet.source(), &mut self.write_buf.as_mut()[..packet_len])
+            {
                 Ok(packet) => packet,
                 Err(e) => {
                     tracing::warn!(%conn_id, %local, %from, "Failed to transform packet: {e}");
 
-                    cx.waker().wake_by_ref();
-                    return Poll::Pending;
+                    continue;
                 }
             };
 
-        Poll::Ready(packet)
+            device.write(packet)?;
+        }
+
+        Poll::Ready(Ok(()))
     }
 
     fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Event<TId>> {

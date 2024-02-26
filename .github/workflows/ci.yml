@@ -288,12 +288,18 @@ jobs:
       - name: Show Client logs
         if: "!cancelled()"
         run: docker compose logs client
+      - name: Show Client UDP stats
+        if: "!cancelled()"
+        run: docker compose exec client cat /proc/net/udp
       - name: Show Relay logs
         if: "!cancelled()"
         run: docker compose logs relay
       - name: Show Gateway logs
         if: "!cancelled()"
         run: docker compose logs gateway
+      - name: Show Gateway UDP stats
+        if: "!cancelled()"
+        run: docker compose exec gateway cat /proc/net/udp
       - name: Show API logs
         if: "!cancelled()"
         run: docker compose logs api
