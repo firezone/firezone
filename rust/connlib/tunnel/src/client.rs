@@ -59,14 +59,10 @@ where
         &mut self,
         resource_description: ResourceDescription,
     ) -> connlib_shared::Result<()> {
-        if self
-            .role_state
-            .resource_ids
-            .contains_key(&resource_description.id())
-        {
-            // TODO
-            tracing::info!("Resource updates aren't implemented yet");
-            return Ok(());
+        if let Some(resource) = self.role_state.resource_ids.get(&resource_description.id()) {
+            if address_changed(resource, &resource_description) {
+                self.remove_resource(resource.id());
+            }
         }
 
         match &resource_description {
@@ -812,5 +808,16 @@ impl Default for ClientState {
             dns_resolvers: Default::default(),
             buffered_packets: Default::default(),
         }
+    }
+}
+fn address_changed(resource_a: &ResourceDescription, resource_b: &ResourceDescription) -> bool {
+    match (resource_a, resource_b) {
+        (ResourceDescription::Dns(dns_a), ResourceDescription::Dns(dns_b)) => {
+            dns_a.address != dns_b.address
+        }
+        (ResourceDescription::Cidr(cidr_a), ResourceDescription::Cidr(cidr_b)) => {
+            cidr_a.address != cidr_b.address
+        }
+        _ => true,
     }
 }
