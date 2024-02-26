@@ -34,18 +34,13 @@ defmodule Web.SignUp do
       )
     end
 
-    defp validate_email_allowed(changeset, sign_up_enabled, allowed_domains) do
+    defp validate_email_allowed(changeset, true, _allowed_domains), do: changeset
+
+    defp validate_email_allowed(changeset, _sign_up_enabled, allowed_domains) do
       Ecto.Changeset.validate_change(changeset, :email, fn :email, email ->
-        cond do
-          sign_up_enabled ->
-            []
-
-          email_allowed?(email, allowed_domains) ->
-            []
-
-          true ->
-            [email: "email domain is not allowed at this time"]
-        end
+        if email_allowed?(email, allowed_domains),
+          do: [],
+          else: [email: "email domain is not allowed at this time"]
       end)
     end
 
@@ -73,10 +68,8 @@ defmodule Web.SignUp do
       )
 
     allowed_domains =
-      Domain.Config.get_env(:domain, :sign_up_allow_list)
-      |> String.split(",")
-      |> Enum.map(&String.trim/1)
-      |> Enum.reject(&(&1 == ""))
+      Domain.Config.get_env(:domain, :sign_up_allowed_domains)
+      |> String.split(",", trim: true)
 
     socket =
       assign(socket,

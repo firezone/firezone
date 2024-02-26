@@ -557,7 +557,14 @@ defmodule Domain.Config.Definitions do
   String of comma separated email domains allowed to signup regardless of signup enabled state.
   If signups are enabled, this list is ignored.
   """
-  defconfig(:sign_up_allow_list, :string, default: "")
+  defconfig(:sign_up_allowed_domains, :string,
+    changeset: fn changeset, key ->
+      changeset
+      |> Domain.Validator.validate_does_not_contain(key, " ", message: "cannot contain spaces")
+      |> Domain.Validator.validate_does_not_contain(key, ",,")
+    end,
+    default: ""
+  )
 
   ##############################################
   ## Feature Flags

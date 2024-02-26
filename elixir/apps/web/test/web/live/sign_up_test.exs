@@ -71,7 +71,7 @@ defmodule Web.Live.SignUpTest do
   test "allows override to create new account and send a welcome email", %{conn: conn} do
     Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
     Domain.Config.feature_flag_override(:sign_up, false)
-    Domain.Config.put_env_override(:sign_up_allow_list, "example.com")
+    Domain.Config.put_env_override(:sign_up_allowed_domains, "example.com")
 
     account_name = "FooBar"
 
@@ -124,7 +124,7 @@ defmodule Web.Live.SignUpTest do
   test "prevents unauthorized email from creating new account", %{conn: conn} do
     Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
     Domain.Config.feature_flag_override(:sign_up, false)
-    Domain.Config.put_env_override(:sign_up_allow_list, "firezone.dev")
+    Domain.Config.put_env_override(:sign_up_allowed_domains, "firezone.dev")
 
     account_name = "FooBar"
 
@@ -210,7 +210,7 @@ defmodule Web.Live.SignUpTest do
 
   test "renders sign up disabled message", %{conn: conn} do
     Domain.Config.feature_flag_override(:sign_up, false)
-    Domain.Config.put_env_override(:sign_up_allow_list, "")
+    Domain.Config.put_env_override(:sign_up_allowed_domains, "")
 
     {:ok, _lv, html} = live(conn, ~p"/sign_up")
 
