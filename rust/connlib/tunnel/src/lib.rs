@@ -71,11 +71,19 @@ where
             return Poll::Pending;
         };
 
+        while let Some(packet) = self.role_state.poll_packet() {
+            device.write(packet)?;
+        }
+
         if let Poll::Ready(event) = self.role_state.poll_next_event(cx) {
             return Poll::Ready(Ok(event));
         }
 
         ready!(self.sockets.poll_send_ready(cx))?; // Ensure socket is ready before we continue.
+
+        while let Some(transmit) = self.role_state.poll_transmit() {
+            self.sockets.send(&transmit);
+        }
 
         if let Poll::Ready(received) = self.sockets.poll_recv_from(self.read_buf.as_mut(), cx) {
             for received in received {
@@ -125,6 +133,10 @@ where
         let _ = self.role_state.poll(cx);
 
         ready!(self.sockets.poll_send_ready(cx))?; // Ensure socket is ready before we continue.
+
+        while let Some(transmit) = self.role_state.poll_transmit() {
+            self.sockets.send(&transmit);
+        }
 
         if let Poll::Ready(received) = self.sockets.poll_recv_from(self.read_buf.as_mut(), cx) {
             for received in received {
