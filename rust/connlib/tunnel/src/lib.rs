@@ -95,7 +95,9 @@ where
         }
 
         match self.connections_state.poll_sockets(device, cx)? {
-            Poll::Ready(()) => {}
+            Poll::Ready(()) => {
+                cx.waker().wake_by_ref();
+            }
             Poll::Pending => {}
         }
 
@@ -157,7 +159,9 @@ where
         }
 
         match self.connections_state.poll_sockets(device, cx)? {
-            Poll::Ready(()) => {}
+            Poll::Ready(()) => {
+                cx.waker().wake_by_ref();
+            }
             Poll::Pending => {}
         }
 
