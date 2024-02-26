@@ -31,7 +31,7 @@ class NetworkSettings {
     self.logger = logger
   }
 
-  func apply(beforeHandler: (() -> Void)?, completionHandler: (() -> Void)?) {
+  func apply(completionHandler: (() -> Void)?) {
     // We don't really know the connlib gateway IP address at this point, but just using 127.0.0.1 is okay
     // because the OS doesn't really need this IP address.
     // NEPacketTunnelNetworkSettings taking in tunnelRemoteAddress is probably a bad abstraction caused by
@@ -40,7 +40,7 @@ class NetworkSettings {
 
     // Set tunnel addresses and routes
     let ipv4Settings = NEIPv4Settings(
-      addresses: [tunnelAddressIPv4!],subnetMasks: ["255.255.255.255"])
+      addresses: [tunnelAddressIPv4!], subnetMasks: ["255.255.255.255"])
     let ipv6Settings = NEIPv6Settings(addresses: [tunnelAddressIPv6!], networkPrefixLengths: [128])
     let dnsSettings = NEDNSSettings(servers: dnsAddresses)
     ipv4Settings.includedRoutes = routes4
@@ -52,12 +52,11 @@ class NetworkSettings {
     tunnelNetworkSettings.dnsSettings = dnsSettings
     tunnelNetworkSettings.mtu = mtu
 
-    // For disabling path monitoring while apply network settings
-    beforeHandler?()
-
-    packetTunnelProvider!.setTunnelNetworkSettings(tunnelNetworkSettings) { error in
+    packetTunnelProvider?.setTunnelNetworkSettings(tunnelNetworkSettings) { error in
       if let error = error {
-        self.logger.error("\(#function): Error occurred while applying network settings! Error: \(error.localizedDescription)")
+        self.logger.error(
+          "\(#function): Error occurred while applying network settings! Error: \(error.localizedDescription)"
+        )
       }
 
       completionHandler?()

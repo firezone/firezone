@@ -232,56 +232,6 @@ class Adapter {
 // MARK: Responding to path updates
 
 extension Adapter {
-  private func maybeUpdateSessionWithNewResolvers(
-    session: WrappedSession, completionHandler: () -> Void
-  ) {
-    let resolvers = Resolv().getservers().map(Resolv.getnameinfo)
-    if resolvers != systemDefaultResolvers {
-      self.systemDefaultResolvers = resolvers
-      session.update(
-        try! String(
-          decoding: JSONEncoder().encode(self.systemDefaultResolvers),
-          as: UTF8.self
-        ))
-    }
-
-    completionHandler()
-  }
-
-  private func updateTunnelDNS(session: WrappedSession) {
-    // Setting this to anything but an empty string will populate /etc/resolv.conf with
-    // the default interface's DNS servers, which we read later from connlib
-    // during tunnel setup.
-    self.networkSettings.matchDomains = ["firezone-fd0020211111"]
-
-    // Apply the changes, so that /etc/resolv.conf will be populated with the system's
-    // default resolvers
-    self.networkSettings.apply(
-      beforeHandler: { self.pausePathMonitoring() },
-      completionHandler: {
-        self.maybeUpdateSessionWithNewResolvers(
-          session: session,
-          completionHandler: {
-            self.networkSettings.matchDomains = [""]
-            self.networkSettings.apply(
-              beforeHandler: nil,
-              completionHandler: { self.resumePathMonitoring() }
-            )
-          }
-        )
-      }
-    )
-  }
-
-  private func resumePathMonitoring() {
-    self.logger.log("Resuming path monitoring")
-    self.temporarilyDisablePathMonitor = false
-  }
-
-  private func pausePathMonitoring() {
-    self.logger.log("Pausing path monitoring")
-    self.temporarilyDisablePathMonitor = true
-  }
 
   private func beginPathMonitoring() {
     self.logger.log("Beginning path monitoring")
@@ -294,28 +244,13 @@ extension Adapter {
 
   private func didReceivePathUpdate(path: Network.NWPath) {
     // Will be invoked in the workQueue by the path monitor
-    if self.temporarilyDisablePathMonitor {
-      self.logger.log(
-        "\(#function): Ignoring path updates while responding to a previous path update.")
+    if path.status == .unsatisfied {
+      self.logger.log("\(#function): Detected network change. Temporarily offline.")
+      self.packetTunnelProvider?.reasserting = true
     } else {
-      switch self.state {
-      case .tunnelReady(let session):
-        if path.status == .unsatisfied {
-          self.logger.log("\(#function): Detected network change. Temporarily offline.")
-          self.packetTunnelProvider?.reasserting = true
-        } else {
-          self.logger.log(
-            "\(#function): Detected network change. Now online. Potentially updating tunnel DNS.")
-          self.packetTunnelProvider?.reasserting = false
-          updateTunnelDNS(session: session)
-        }
-
-      case .startingTunnel:
-        self.logger.log("\(#function): Ignoring path updates while starting tunnel.")
-
-      case .stoppedTunnel:
-        self.logger.error("\(#function): Unexpected state: \(self.state)")
-      }
+      self.logger.log(
+        "\(#function): Detected network change. Now online.")
+      self.packetTunnelProvider?.reasserting = false
     }
   }
 }
@@ -336,15 +271,13 @@ extension Adapter: CallbackHandlerDelegate {
         networkSettings.tunnelAddressIPv4 = tunnelAddressIPv4
         networkSettings.tunnelAddressIPv6 = tunnelAddressIPv6
         networkSettings.dnsAddresses = dnsAddresses
-        networkSettings.apply(beforeHandler: nil) {
+        networkSettings.apply(completionHandler: {
           self.state = .tunnelReady(session: session)
           onStarted?(nil)
-        }
+          self.beginPathMonitoring()
+        })
       case .tunnelReady:
-        networkSettings.apply(
-          beforeHandler: { self.pausePathMonitoring() },
-          completionHandler: { self.resumePathMonitoring() }
-        )
+        networkSettings.apply(completionHandler: nil)
       case .stoppedTunnel:
         self.logger.error(
           "\(#function): Unexpected state: \(self.state)")
@@ -364,10 +297,7 @@ extension Adapter: CallbackHandlerDelegate {
       networkSettings.routes4 = NetworkSettings.parseRoutes4(routes4: routes4)
       networkSettings.routes6 = NetworkSettings.parseRoutes6(routes6: routes6)
 
-      networkSettings.apply(
-        beforeHandler: { self.pausePathMonitoring() },
-        completionHandler: { self.resumePathMonitoring() }
-      )
+      networkSettings.apply(completionHandler: nil)
     }
   }
 
