@@ -311,10 +311,6 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
         Ok(())
     }
 
-    pub async fn stats_event(&mut self) {
-        tracing::debug!(target: "tunnel_state", stats = ?self.tunnel.stats());
-    }
-
     pub async fn request_log_upload_url(&mut self) {
         tracing::info!("Requesting log upload URL from portal");
 

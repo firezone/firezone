@@ -28,6 +28,7 @@ use crate::{IpPacket, MutableIpPacket};
 use boringtun::noise::errors::WireGuardError;
 use std::borrow::Cow;
 use std::iter;
+use std::ops::ControlFlow;
 use stun_codec::rfc5389::attributes::{Realm, Username};
 
 // Note: Taken from boringtun
@@ -226,117 +227,33 @@ where
     ) -> Result<Option<(TId, MutableIpPacket<'s>)>, Error> {
         self.add_local_as_host_candidate(local)?;
 
-        // First, check if a `StunBinding` wants the packet
-        if let Some(binding) = self.bindings.get_mut(&from) {
-            if binding.handle_input(from, local, packet, now) {
-                return Ok(None);
-            }
+        match self.bindings_try_handle(from, local, packet, now) {
+            ControlFlow::Continue(()) => {}
+            ControlFlow::Break(()) => return Ok(None),
         }
 
-        // Next, check if an `Allocation` wants the packet
-        if let Some(allocation) = self.allocations.get_mut(&from) {
-            if allocation.handle_input(from, local, packet, now) {
-                return Ok(None);
+        let (from, packet, relayed) = match self.allocations_try_handle(from, local, packet, now) {
+            ControlFlow::Continue(c) => c,
+            ControlFlow::Break(()) => return Ok(None),
+        };
+
+        // For our agents, it is important what the initial "destination" of the packet was.
+        let destination = relayed.map(|s| s.address()).unwrap_or(local);
+
+        match self.agents_try_handle(from, destination, packet, now) {
+            ControlFlow::Continue(()) => {}
+            ControlFlow::Break(Ok(())) => return Ok(None),
+            ControlFlow::Break(Err(e)) => return Err(e),
+        };
+
+        let (id, packet) =
+            match self.connections_try_handle(from, local, packet, relayed, buffer, now) {
+                ControlFlow::Continue(c) => c,
+                ControlFlow::Break(Ok(())) => return Ok(None),
+                ControlFlow::Break(Err(e)) => return Err(e),
             };
-        }
 
-        // Next, the packet could be a channel-data message, unwrap if that is the case.
-        let (from, packet, relay_socket) = self
-            .allocations
-            .get_mut(&from)
-            .and_then(|a| {
-                let (from, packet, socket) = a.decapsulate(from, packet, now)?;
-
-                Some((from, packet, Some(socket)))
-            })
-            .unwrap_or((from, packet, None));
-
-        // Next: If we can parse the message as a STUN message, cycle through all agents to check which one it is for.
-        if let Ok(message) = StunMessage::parse(packet) {
-            for (_, agent) in self.connections.agents_mut() {
-                if agent.accepts_message(&message) {
-                    agent.handle_packet(
-                        now,
-                        StunPacket {
-                            proto: Protocol::Udp,
-                            source: from,
-                            destination: relay_socket.map(|s| s.address()).unwrap_or(local),
-                            message,
-                        },
-                    );
-                    return Ok(None);
-                }
-            }
-
-            return Err(Error::UnhandledStunMessage {
-                num_agents: self.connections.len(),
-            });
-        }
-
-        for (id, conn) in self.connections.iter_established_mut() {
-            if !conn.accepts(from) {
-                continue;
-            }
-
-            return match conn.tunnel.decapsulate(None, packet, buffer) {
-                TunnResult::Done => Ok(None),
-                TunnResult::Err(e) => Err(Error::Decapsulate(e)),
-
-                // For WriteToTunnel{V4,V6}, boringtun returns the source IP of the packet that was tunneled to us.
-                // I am guessing this was done for convenience reasons.
-                // In our API, we parse the packets directly as an IpPacket.
-                // Thus, the caller can query whatever data they'd like, not just the source IP so we don't return it in addition.
-                TunnResult::WriteToTunnelV4(packet, ip) => {
-                    conn.set_remote_from_wg_activity(local, from, relay_socket);
-
-                    let ipv4_packet =
-                        MutableIpv4Packet::new(packet).expect("boringtun verifies validity");
-                    debug_assert_eq!(ipv4_packet.get_source(), ip);
-
-                    Ok(Some((id, ipv4_packet.into())))
-                }
-                TunnResult::WriteToTunnelV6(packet, ip) => {
-                    conn.set_remote_from_wg_activity(local, from, relay_socket);
-
-                    let ipv6_packet =
-                        MutableIpv6Packet::new(packet).expect("boringtun verifies validity");
-                    debug_assert_eq!(ipv6_packet.get_source(), ip);
-
-                    Ok(Some((id, ipv6_packet.into())))
-                }
-
-                // During normal operation, i.e. when the tunnel is active, decapsulating a packet straight yields the decrypted packet.
-                // However, in case `Tunn` has buffered packets, they may be returned here instead.
-                // This should be fairly rare which is why we just allocate these and return them from `poll_transmit` instead.
-                // Overall, this results in a much nicer API for our caller and should not affect performance.
-                TunnResult::WriteToNetwork(bytes) => {
-                    conn.set_remote_from_wg_activity(local, from, relay_socket);
-
-                    self.buffered_transmits.extend(conn.encapsulate(
-                        bytes,
-                        &mut self.allocations,
-                        now,
-                    ));
-
-                    while let TunnResult::WriteToNetwork(packet) =
-                        conn.tunnel
-                            .decapsulate(None, &[], self.buffer.as_mut_slice())
-                    {
-                        self.buffered_transmits.extend(conn.encapsulate(
-                            packet,
-                            &mut self.allocations,
-                            now,
-                        ));
-                    }
-
-                    Ok(None)
-                }
-            };
-        }
-
-        Err(Error::UnhandledPacket {
-            num_tunnels: self.connections.iter_established_mut().count(),
-        })
+        Ok(Some((id, packet)))
     }
 
     /// Encapsulate an outgoing IP packet.
@@ -669,6 +586,170 @@ where
         }
 
         Ok(())
+    }
+
+    fn bindings_try_handle(
+        &mut self,
+        from: SocketAddr,
+        local: SocketAddr,
+        packet: &[u8],
+        now: Instant,
+    ) -> ControlFlow<()> {
+        let Some(binding) = self.bindings.get_mut(&from) else {
+            return ControlFlow::Continue(());
+        };
+
+        let handled = binding.handle_input(from, local, packet, now);
+
+        if !handled {
+            tracing::debug!("Packet was a STUN message but not accepted");
+        }
+
+        ControlFlow::Break(())
+    }
+
+    /// Tries to handle the packet using one of our [`Allocation`]s.
+    fn allocations_try_handle<'p>(
+        &mut self,
+        from: SocketAddr,
+        local: SocketAddr,
+        packet: &'p [u8],
+        now: Instant,
+    ) -> ControlFlow<(), (SocketAddr, &'p [u8], Option<Socket>)> {
+        // First, check whether the packet is from a known allocation.
+        let Some(allocation) = self.allocations.get_mut(&from) else {
+            return ControlFlow::Continue((from, packet, None));
+        };
+
+        // See <https://www.rfc-editor.org/rfc/rfc8656#name-channels-2> for details on de-multiplexing.
+        match packet.first() {
+            Some(0..=3) => {
+                if allocation.handle_input(from, local, packet, now) {
+                    return ControlFlow::Break(());
+                }
+
+                tracing::debug!("Packet was a STUN message but not accepted");
+
+                ControlFlow::Break(()) // Stop processing the packet.
+            }
+            Some(64..=79) => {
+                if let Some((from, packet, socket)) = allocation.decapsulate(from, packet, now) {
+                    return ControlFlow::Continue((from, packet, Some(socket)));
+                }
+
+                tracing::debug!("Packet was a channel data message but not accepted");
+
+                ControlFlow::Break(()) // Stop processing the packet.
+            }
+            _ => ControlFlow::Continue((from, packet, None)),
+        }
+    }
+
+    fn agents_try_handle(
+        &mut self,
+        from: SocketAddr,
+        destination: SocketAddr,
+        packet: &[u8],
+        now: Instant,
+    ) -> ControlFlow<Result<(), Error>> {
+        let Ok(message) = StunMessage::parse(packet) else {
+            return ControlFlow::Continue(());
+        };
+
+        for (_, agent) in self.connections.agents_mut() {
+            if agent.accepts_message(&message) {
+                agent.handle_packet(
+                    now,
+                    StunPacket {
+                        proto: Protocol::Udp,
+                        source: from,
+                        destination,
+                        message,
+                    },
+                );
+
+                return ControlFlow::Break(Ok(()));
+            }
+        }
+
+        ControlFlow::Break(Err(Error::UnhandledStunMessage {
+            num_agents: self.connections.len(),
+        }))
+    }
+
+    fn connections_try_handle<'b>(
+        &mut self,
+        from: SocketAddr,
+        local: SocketAddr,
+        packet: &[u8],
+        relayed: Option<Socket>,
+        buffer: &'b mut [u8],
+        now: Instant,
+    ) -> ControlFlow<Result<(), Error>, (TId, MutableIpPacket<'b>)> {
+        for (id, conn) in self.connections.iter_established_mut() {
+            if !conn.accepts(from) {
+                continue;
+            }
+
+            return match conn.tunnel.decapsulate(None, packet, buffer) {
+                TunnResult::Done => ControlFlow::Break(Ok(())),
+                TunnResult::Err(e) => ControlFlow::Break(Err(Error::Decapsulate(e))),
+
+                // For WriteToTunnel{V4,V6}, boringtun returns the source IP of the packet that was tunneled to us.
+                // I am guessing this was done for convenience reasons.
+                // In our API, we parse the packets directly as an IpPacket.
+                // Thus, the caller can query whatever data they'd like, not just the source IP so we don't return it in addition.
+                TunnResult::WriteToTunnelV4(packet, ip) => {
+                    conn.set_remote_from_wg_activity(local, from, relayed);
+
+                    let ipv4_packet =
+                        MutableIpv4Packet::new(packet).expect("boringtun verifies validity");
+                    debug_assert_eq!(ipv4_packet.get_source(), ip);
+
+                    ControlFlow::Continue((id, ipv4_packet.into()))
+                }
+                TunnResult::WriteToTunnelV6(packet, ip) => {
+                    conn.set_remote_from_wg_activity(local, from, relayed);
+
+                    let ipv6_packet =
+                        MutableIpv6Packet::new(packet).expect("boringtun verifies validity");
+                    debug_assert_eq!(ipv6_packet.get_source(), ip);
+
+                    ControlFlow::Continue((id, ipv6_packet.into()))
+                }
+
+                // During normal operation, i.e. when the tunnel is active, decapsulating a packet straight yields the decrypted packet.
+                // However, in case `Tunn` has buffered packets, they may be returned here instead.
+                // This should be fairly rare which is why we just allocate these and return them from `poll_transmit` instead.
+                // Overall, this results in a much nicer API for our caller and should not affect performance.
+                TunnResult::WriteToNetwork(bytes) => {
+                    conn.set_remote_from_wg_activity(local, from, relayed);
+
+                    self.buffered_transmits.extend(conn.encapsulate(
+                        bytes,
+                        &mut self.allocations,
+                        now,
+                    ));
+
+                    while let TunnResult::WriteToNetwork(packet) =
+                        conn.tunnel
+                            .decapsulate(None, &[], self.buffer.as_mut_slice())
+                    {
+                        self.buffered_transmits.extend(conn.encapsulate(
+                            packet,
+                            &mut self.allocations,
+                            now,
+                        ));
+                    }
+
+                    ControlFlow::Break(Ok(()))
+                }
+            };
+        }
+
+        ControlFlow::Break(Err(Error::UnhandledPacket {
+            num_tunnels: self.connections.iter_established_mut().count(),
+        }))
     }
 }
 

@@ -10,6 +10,7 @@ mod deep_link;
 mod device_id;
 mod elevation;
 mod gui;
+mod known_dirs;
 mod logging;
 mod network_changes;
 mod resolvers;
@@ -97,6 +98,11 @@ pub(crate) fn run() -> Result<()> {
             Ok(())
         }
         Some(Cmd::SmokeTest) => {
+            // Check for elevation. This also ensures wintun.dll is installed.
+            if !elevation::check()? {
+                anyhow::bail!("`smoke-test` must be run with elevated permissions");
+            }
+
             let result = gui::run(&cli);
             if let Err(error) = &result {
                 // In smoke-test mode, don't show the dialog, since it might be running
@@ -128,6 +134,7 @@ fn run_gui(cli: Cli) -> Result<()> {
 
 fn show_error_dialog(error: &gui::Error) -> Result<()> {
     let error_msg = match error {
+        // TODO: Update this URL
         gui::Error::WebViewNotInstalled => "Firezone cannot start because WebView2 is not installed. Follow the instructions at <https://www.firezone.dev/kb/user-guides/windows-client>.".to_string(),
         gui::Error::DeepLink(deep_link::Error::CantListen) => "Firezone is already running. If it's not responding, force-stop it.".to_string(),
         error => error.to_string(),

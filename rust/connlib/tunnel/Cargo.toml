@@ -14,7 +14,6 @@ serde = { version = "1.0", default-features = false, features = ["derive", "std"
 futures =  { version = "0.3", default-features = false, features = ["std", "async-await", "executor"] }
 futures-util =  { version = "0.3", default-features = false, features = ["std", "async-await", "async-await-macro"] }
 tracing = { workspace = true }
-parking_lot = { version = "0.12", default-features = false }
 bytes = { version = "1.4", default-features = false, features = ["std"] }
 itertools = { version = "0.12", default-features = false, features = ["use_std"] }
 connlib-shared = { workspace = true }
@@ -27,7 +26,6 @@ chrono = { workspace = true }
 pnet_packet = { version = "0.34" }
 futures-bounded = { workspace = true }
 hickory-resolver = { workspace = true, features = ["tokio-runtime"] }
-arc-swap = "1.6.0"
 bimap = "0.6"
 resolv-conf = "0.7.0"
 socket2 = { version = "0.5" }
@@ -45,7 +43,7 @@ tempfile = "3.10.0"
 
 # Linux tunnel dependencies
 [target.'cfg(target_os = "linux")'.dependencies]
-netlink-packet-route = { version = "0.18", default-features = false }
+netlink-packet-route = { version = "0.19", default-features = false }
 netlink-packet-core = { version = "0.7", default-features = false }
 rtnetlink = { workspace = true }
 sd-notify = "0.4.1"

@@ -61,8 +61,6 @@ internal class SettingsViewModel
             val directory = File(context.cacheDir.absolutePath + "/logs")
             val totalSize = directory.walkTopDown().filter { it.isFile }.map { it.length() }.sum()
 
-            deleteLogZip(context)
-
             _uiState.value =
                 _uiState.value.copy(
                     logSizeBytes = totalSize,
@@ -118,7 +116,7 @@ internal class SettingsViewModel
 
                 zipFolder(sourceFolder, zipFile).collect()
 
-                val shareIntent =
+                val sendIntent =
                     Intent(Intent.ACTION_SEND).apply {
                         putExtra(
                             Intent.EXTRA_SUBJECT,
@@ -142,6 +140,7 @@ internal class SettingsViewModel
                         flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
                         data = fileURI
                     }
+                val shareIntent = Intent.createChooser(sendIntent, null)
                 context.startActivity(shareIntent)
             }
         }
@@ -159,6 +158,13 @@ internal class SettingsViewModel
                     logFilter,
                 ),
             )
+        }
+
+        fun deleteLogZip(context: Context) {
+            val zipFile = File(getLogZipPath(context))
+            if (zipFile.exists()) {
+                zipFile.delete()
+            }
         }
 
         private suspend fun zipFolder(
@@ -184,13 +190,6 @@ internal class SettingsViewModel
         }.catch { e ->
             emit(Result.failure(e))
         }.flowOn(Dispatchers.IO)
-
-        private fun deleteLogZip(context: Context) {
-            val zipFile = File(getLogZipPath(context))
-            if (zipFile.exists()) {
-                zipFile.delete()
-            }
-        }
 
         private fun getLogZipPath(context: Context) = "${context.cacheDir.absolutePath}/connlib-logs.zip"
 

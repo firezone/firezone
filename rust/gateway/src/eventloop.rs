@@ -29,7 +29,6 @@ pub struct Eventloop {
         Result<ResourceDescription<ResolvedResourceDescriptionDns>>,
         Either<RequestConnection, AllowAccess>,
     >,
-    print_stats_timer: tokio::time::Interval,
 }
 
 impl Eventloop {
@@ -41,7 +40,6 @@ impl Eventloop {
             tunnel,
             portal,
             resolve_tasks: futures_bounded::FuturesTupleSet::new(Duration::from_secs(60), 100),
-            print_stats_timer: tokio::time::interval(Duration::from_secs(10)),
         }
     }
 }
@@ -104,7 +102,7 @@ impl Eventloop {
                         Err(e) => {
                             let client = req.client.id;
 
-                            self.tunnel.cleanup_connection(client);
+                            self.tunnel.cleanup_connection(&client);
                             tracing::debug!(%client, "Connection request failed: {:#}", anyhow::Error::new(e));
 
                             continue;
@@ -214,11 +212,6 @@ impl Eventloop {
                     return Poll::Ready(Err(anyhow!("Disconnected by portal: {reason}")));
                 }
                 _ => {}
-            }
-
-            if self.print_stats_timer.poll_tick(cx).is_ready() {
-                tracing::debug!(target: "tunnel_state", stats = ?self.tunnel.stats());
-                continue;
             }
 
             return Poll::Pending;

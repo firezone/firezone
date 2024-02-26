@@ -1,5 +1,5 @@
 [package]
-name = "firezone-windows-client"
+name = "firezone-gui-client"
 # mark:automatic-version
 version = "1.0.0"
 description = "Firezone"
@@ -19,22 +19,29 @@ connlib-client-shared = { workspace = true }
 connlib-shared = { workspace = true }
 crash-handler = "0.6.1"
 firezone-cli-utils = { workspace = true }
-hex = "0.4.3"
 git-version = "0.3.9"
+hex = "0.4.3"
 # Same crate Hickory uses
 hostname = "0.3.1"
 # This is the same crate hickory uses to get system resolvers
 ipconfig = "0.3.2"
 keyring = "2.3.2"
 known-folders = "1.1.0"
-minidumper = "0.8.1"
+minidumper = "0.8.2"
+native-dialog = "0.7.0"
+output_vt100 = "0.1"
+rand = "0.8.5"
 reqwest = { version = "0.11.22", default-features = false, features = ["stream", "rustls-tls"] }
 ring = "0.17"
+sadness-generator = "0.5.0"
 secrecy = { workspace = true }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 semver = { version = "1.0.22", features = ["serde"] }
 subtle = "2.5.0"
+tauri = { version = "1.5", features = [ "dialog", "shell-open-api", "system-tray" ] }
+tauri-runtime = "0.14.2"
+tauri-utils = "1.5.3"
 thiserror = { version = "1.0", default-features = false }
 tokio = { version = "1.36.0", features = ["time"] }
 tracing = { workspace = true }
@@ -44,21 +51,12 @@ url = { version = "2.5.0", features = ["serde"] }
 uuid = { version = "1.7.0", features = ["v4"] }
 tracing-panic = "0.1.1"
 zip = { version = "0.6.6", features = ["deflate", "time"], default-features = false }
-rand = "0.8.5"
-windows-implement = "0.52.0"
-sadness-generator = "0.5.0"
-bincode = "1.3.3"
-native-dialog = "0.7.0"
-output_vt100 = "0.1"
 
 # These dependencies are locked behind `cfg(windows)` because they either can't compile at all on Linux, or they need native dependencies like glib that are difficult to get. Try not to add more here.
 
 [target.'cfg(windows)'.dependencies]
-# Tauri works fine on Linux, but it requires a lot of build-time deps like glib and gdk, so I've blocked it out for now.
-tauri = { version = "1.5", features = [ "dialog", "shell-open-api", "system-tray" ] }
-tauri-runtime = "0.14.2"
-tauri-utils = "1.5.1"
 tauri-winrt-notification = "0.1.3"
+windows-implement = "0.52.0"
 winreg = "0.52.0"
 wintun = "0.4.0"
 

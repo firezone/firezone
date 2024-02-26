@@ -548,15 +548,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "230c5f1ca6a325a32553f8640d31ac9b49f2411e901e427570154868b46da4f7"
 
 [[package]]
-name = "bincode"
-version = "1.3.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b1f45e9417d87227c7a56d22e471c6206462cba514c7590c09aff4cf6d1ddcad"
-dependencies = [
- "serde",
-]
-
-[[package]]
 name = "bindgen"
 version = "0.64.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1817,6 +1808,57 @@ dependencies = [
 ]
 
 [[package]]
+name = "firezone-gui-client"
+version = "1.0.0"
+dependencies = [
+ "anyhow",
+ "arboard",
+ "arc-swap",
+ "chrono",
+ "clap",
+ "connlib-client-shared",
+ "connlib-shared",
+ "crash-handler",
+ "firezone-cli-utils",
+ "git-version",
+ "hex",
+ "hostname",
+ "ipconfig",
+ "keyring",
+ "known-folders",
+ "minidumper",
+ "native-dialog",
+ "output_vt100",
+ "rand 0.8.5",
+ "reqwest",
+ "ring",
+ "sadness-generator",
+ "secrecy",
+ "semver",
+ "serde",
+ "serde_json",
+ "subtle",
+ "tauri",
+ "tauri-build",
+ "tauri-runtime",
+ "tauri-utils",
+ "tauri-winrt-notification",
+ "thiserror",
+ "tokio",
+ "tracing",
+ "tracing-log 0.2.0",
+ "tracing-panic",
+ "tracing-subscriber",
+ "url",
+ "uuid",
+ "windows 0.52.0",
+ "windows-implement 0.52.0",
+ "winreg 0.52.0",
+ "wintun",
+ "zip",
+]
+
+[[package]]
 name = "firezone-linux-client"
 version = "1.0.0"
 dependencies = [
@@ -1880,7 +1922,6 @@ name = "firezone-tunnel"
 version = "1.0.0"
 dependencies = [
  "anyhow",
- "arc-swap",
  "async-trait",
  "bimap",
  "boringtun",
@@ -1900,7 +1941,6 @@ dependencies = [
  "log",
  "netlink-packet-core",
  "netlink-packet-route",
- "parking_lot",
  "pnet_packet",
  "quinn-udp",
  "rand_core 0.6.4",
@@ -1920,58 +1960,6 @@ dependencies = [
  "uuid",
  "windows 0.52.0",
  "wintun",
-]
-
-[[package]]
-name = "firezone-windows-client"
-version = "1.0.0"
-dependencies = [
- "anyhow",
- "arboard",
- "arc-swap",
- "bincode",
- "chrono",
- "clap",
- "connlib-client-shared",
- "connlib-shared",
- "crash-handler",
- "firezone-cli-utils",
- "git-version",
- "hex",
- "hostname",
- "ipconfig",
- "keyring",
- "known-folders",
- "minidumper",
- "native-dialog",
- "output_vt100",
- "rand 0.8.5",
- "reqwest",
- "ring",
- "sadness-generator",
- "secrecy",
- "semver",
- "serde",
- "serde_json",
- "subtle",
- "tauri",
- "tauri-build",
- "tauri-runtime",
- "tauri-utils",
- "tauri-winrt-notification",
- "thiserror",
- "tokio",
- "tracing",
- "tracing-log 0.2.0",
- "tracing-panic",
- "tracing-subscriber",
- "url",
- "uuid",
- "windows 0.52.0",
- "windows-implement 0.52.0",
- "winreg 0.52.0",
- "wintun",
- "zip",
 ]
 
 [[package]]
@@ -2473,7 +2461,7 @@ checksum = "f27c1b4369c2cd341b5de549380158b105a04c331be5db9110eef7b6d2742134"
 dependencies = [
  "log",
  "plain",
- "scroll",
+ "scroll 0.11.0",
 ]
 
 [[package]]
@@ -3527,7 +3515,7 @@ dependencies = [
  "num-derive",
  "num-traits",
  "range-map",
- "scroll",
+ "scroll 0.11.0",
  "smart-default",
 ]
 
@@ -3549,16 +3537,16 @@ dependencies = [
  "minidump-common",
  "nix 0.27.1",
  "procfs-core",
- "scroll",
+ "scroll 0.11.0",
  "tempfile",
  "thiserror",
 ]
 
 [[package]]
 name = "minidumper"
-version = "0.8.1"
+version = "0.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "624e83140a868e87d821f315b440fd8bcb1ec07704d92a4a413ea1f2512a454d"
+checksum = "1b99697a8483221ca2d163aedcbee44f3851c4f5916ab0e96ae6397fb6b6deb2"
 dependencies = [
  "cfg-if",
  "crash-context",
@@ -3567,7 +3555,7 @@ dependencies = [
  "minidump-writer",
  "parking_lot",
  "polling 3.3.2",
- "scroll",
+ "scroll 0.12.0",
  "thiserror",
  "uds",
 ]
@@ -3663,9 +3651,9 @@ dependencies = [
 
 [[package]]
 name = "netlink-packet-route"
-version = "0.18.1"
+version = "0.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dd9ccdfabb457e05c7c61e66eb39262a204fbb376c53968b5e52dce15b423fc5"
+checksum = "74c171cd77b4ee8c7708da746ce392440cb7bcf618d122ec9ecc607b12938bf4"
 dependencies = [
  "anyhow",
  "byteorder",
@@ -5014,9 +5002,9 @@ dependencies = [
 
 [[package]]
 name = "rtnetlink"
-version = "0.14.0"
+version = "0.14.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bb5bbb61e037711ff30a3657ec537285b2e1ecb5427e4365d275164f0928c884"
+checksum = "b684475344d8df1859ddb2d395dd3dac4f8f3422a1aa0725993cb375fc5caba5"
 dependencies = [
  "futures",
  "log",
@@ -5206,7 +5194,16 @@ version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "04c565b551bafbef4157586fa379538366e4385d42082f255bfd96e4fe8519da"
 dependencies = [
- "scroll_derive",
+ "scroll_derive 0.11.1",
+]
+
+[[package]]
+name = "scroll"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6ab8598aa408498679922eff7fa985c25d58a90771bd6be794434c5277eab1a6"
+dependencies = [
+ "scroll_derive 0.12.0",
 ]
 
 [[package]]
@@ -5214,6 +5211,17 @@ name = "scroll_derive"
 version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1db149f81d46d2deba7cd3c50772474707729550221e69588478ebf9ada425ae"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.48",
+]
+
+[[package]]
+name = "scroll_derive"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7f81c2fde025af7e69b1d1420531c8a8811ca898919db177141a85313b1cb932"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -6157,9 +6165,9 @@ dependencies = [
 
 [[package]]
 name = "tauri-utils"
-version = "1.5.2"
+version = "1.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ece74810b1d3d44f29f732a7ae09a63183d63949bbdd59c61f8ed2a1b70150db"
+checksum = "75ad0bbb31fccd1f4c56275d0a5c3abdf1f59999f72cb4ef8b79b4ed42082a21"
 dependencies = [
  "brotli",
  "ctor",

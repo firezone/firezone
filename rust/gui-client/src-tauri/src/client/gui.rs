@@ -4,7 +4,7 @@
 // TODO: `git grep` for unwraps before 1.0, especially this gui module <https://github.com/firezone/firezone/issues/3521>
 
 use crate::client::{
-    self, about, deep_link, logging, network_changes,
+    self, about, deep_link, known_dirs, logging, network_changes,
     settings::{self, AdvancedSettings},
     Failure,
 };
@@ -297,10 +297,12 @@ async fn smoke_test(ctlr_tx: CtlrTx) -> Result<()> {
     tracing::info!("Will quit on purpose in {delay} seconds as part of the smoke test.");
     let quit_time = tokio::time::Instant::now() + Duration::from_secs(delay);
 
+    // Write the settings so we can check the path for those
+    settings::apply_advanced_settings_inner(&settings::AdvancedSettings::default()).await?;
+
     // Test log exporting
-    let path = connlib_shared::windows::app_local_data_dir()
-        .context("`app_local_data_dir` failed")?
-        .join("data")
+    let path = known_dirs::session()
+        .context("`known_dirs::session` failed during smoke test")?
         .join("smoke_test_log_export.zip");
     let stem = "connlib-smoke-test".into();
     match tokio::fs::remove_file(&path).await {
@@ -739,7 +741,7 @@ async fn run_controller(
     advanced_settings: AdvancedSettings,
     notify_controller: Arc<Notify>,
 ) -> Result<()> {
-    let device_id = client::device_id::device_id(&app.config().tauri.bundle.identifier)
+    let device_id = client::device_id::device_id()
         .await
         .context("Failed to read / create device ID")?;
 
