@@ -260,12 +260,27 @@ extension Adapter: CallbackHandlerDelegate {
         networkSettings.tunnelAddressIPv4 = tunnelAddressIPv4
         networkSettings.tunnelAddressIPv6 = tunnelAddressIPv6
         networkSettings.dnsAddresses = dnsAddresses
-        networkSettings.apply() {
+        // Add DNS sentinels to routes as a start
+        networkSettings.routes4 = dnsAddresses.reduce([]) {
+          $0
+            + (IPv4Address($1) != nil
+              ? [NEIPv4Route(destinationAddress: $1, subnetMask: "255.255.255.0")] : [])
+        }
+        networkSettings.routes6 = dnsAddresses.reduce([]) {
+          $0
+            + (IPv6Address($1) != nil
+              ? [NEIPv6Route(destinationAddress: $1, networkPrefixLength: 128)] : [])
+        }
+
+        networkSettings.apply {
           self.state = .tunnelReady(session: session)
           onStarted?(nil)
           self.beginPathMonitoring()
         }
       case .tunnelReady:
+        networkSettings.tunnelAddressIPv4 = tunnelAddressIPv4
+        networkSettings.tunnelAddressIPv6 = tunnelAddressIPv6
+        networkSettings.dnsAddresses = dnsAddresses
         networkSettings.apply()
       case .stoppedTunnel:
         self.logger.error(
@@ -325,9 +340,9 @@ extension Adapter: CallbackHandlerDelegate {
 
   public func getSystemDefaultResolvers() -> String {
     #if os(macOS)
-    let resolvers = SystemConfigurationResolvers(logger: self.logger).getDefaultDNSServers()
+      let resolvers = SystemConfigurationResolvers(logger: self.logger).getDefaultDNSServers()
     #elseif os(iOS)
-    let resolvers = resetToSystemDNSGettingBindResolvers()
+      let resolvers = resetToSystemDNSGettingBindResolvers()
     #endif
 
     logger.log("\(#function): \(resolvers)")
@@ -341,42 +356,42 @@ extension Adapter: CallbackHandlerDelegate {
 
 // MARK: Getting System Resolvers on iOS
 #if os(iOS)
-extension Adapter {
-  // When the tunnel is up, we can only get the system's default resolvers
-  // by reading /etc/resolv.conf when matchDomains is set to a non-empty string.
-  // If matchDomains is an empty string, /etc/resolv.conf will contain connlib's
-  // sentinel, which isn't helpful to us.
-  private func resetToSystemDNSGettingBindResolvers() -> [String] {
-    logger.log("\(#function): Getting system default resolvers from Bind")
+  extension Adapter {
+    // When the tunnel is up, we can only get the system's default resolvers
+    // by reading /etc/resolv.conf when matchDomains is set to a non-empty string.
+    // If matchDomains is an empty string, /etc/resolv.conf will contain connlib's
+    // sentinel, which isn't helpful to us.
+    private func resetToSystemDNSGettingBindResolvers() -> [String] {
+      logger.log("\(#function): Getting system default resolvers from Bind")
 
-    switch self.state {
-    case .startingTunnel:
-      return BindResolvers().getservers().map(BindResolvers.getnameinfo)
-    case .tunnelReady:
-      var resolvers: [String] = []
+      switch self.state {
+      case .startingTunnel:
+        return BindResolvers().getservers().map(BindResolvers.getnameinfo)
+      case .tunnelReady:
+        var resolvers: [String] = []
 
-      // async / await can't be used here because this is an FFI callback
-      let semaphore = DispatchSemaphore(value: 0)
+        // async / await can't be used here because this is an FFI callback
+        let semaphore = DispatchSemaphore(value: 0)
 
-      // Set tunnel's matchDomains to a dummy string that will never match any name
-      networkSettings.matchDomains = ["firezone-fd0020211111"]
+        // Set tunnel's matchDomains to a dummy string that will never match any name
+        networkSettings.matchDomains = ["firezone-fd0020211111"]
 
-      // Call apply to populate /etc/resolv.conf with the system's default resolvers
-      networkSettings.apply() {
-        // Only now can we get the system resolvers
-        resolvers = BindResolvers().getservers().map(BindResolvers.getnameinfo)
+        // Call apply to populate /etc/resolv.conf with the system's default resolvers
+        networkSettings.apply {
+          // Only now can we get the system resolvers
+          resolvers = BindResolvers().getservers().map(BindResolvers.getnameinfo)
 
-        // Restore connlib's DNS resolvers
-        self.networkSettings.matchDomains = [""]
-        self.networkSettings.apply() { semaphore.signal() }
-        semaphore.wait()
+          // Restore connlib's DNS resolvers
+          self.networkSettings.matchDomains = [""]
+          self.networkSettings.apply { semaphore.signal() }
+          semaphore.wait()
+        }
+
+        return resolvers
+      case .stoppedTunnel:
+        logger.error("\(#function): Unexpected state")
+        return []
       }
-
-      return resolvers
-    case .stoppedTunnel:
-      logger.error("\(#function): Unexpected state")
-      return []
     }
   }
-}
 #endif
