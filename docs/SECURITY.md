@@ -16,14 +16,18 @@ running the latest version of Firezone at all times.
 
 ## Reporting a Vulnerability
 
-Please **do not** open a Github Issue for security issues you encounter.
-Instead, please send an email to `security AT firezone.dev` describing the issue
-and we'll respond as soon as possible.
+Please **do not** open a regular Github Issue for security issues you encounter.
+
+Instead do one of the following and we'll respond as soon as possible:
+
+- Open a GitHub security advisory by visiting:
+  https://github.com/firezone/firezone/security/advisories/new
+- Or, send an email to `security AT firezone.dev` describing the issue
 
 ## PGP Key
 
-You may use the public key below to encrypt emails to `security AT firezone.dev`.
-You can also find this key at:
+You may use the public key below to encrypt emails to
+`security AT firezone.dev`. You can also find this key at:
 
 https://pgp.mit.edu/pks/lookup?op=get&search=0x45113BA04AD83D8A
 
