@@ -414,6 +414,10 @@ where
                             conn.peer_socket = Some(remote_socket);
 
                             if is_first_connection {
+                                self.buffered_transmits.extend(
+                                    conn.force_handshake(&mut self.allocations, self.last_now),
+                                );
+
                                 return Some(Event::ConnectionEstablished(id));
                             }
                         }
@@ -1414,5 +1418,26 @@ impl Connection {
                 encode_as_channel_data(relay, peer, message, allocations, now).ok()
             }
         }
+    }
+
+    fn force_handshake(
+        &mut self,
+        allocations: &mut HashMap<SocketAddr, Allocation>,
+        now: Instant,
+    ) -> Option<Transmit<'static>> {
+        /// [`boringtun`] requires us to pass buffers in where it can construct its packets.
+        ///
+        /// When updating the timers, the largest packet that we may have to send is `148` bytes as per `HANDSHAKE_INIT_SZ` constant in [`boringtun`].
+        const MAX_SCRATCH_SPACE: usize = 148;
+
+        let mut buf = [0u8; MAX_SCRATCH_SPACE];
+
+        let TunnResult::WriteToNetwork(bytes) =
+            self.tunnel.format_handshake_initiation(&mut buf, true)
+        else {
+            return None;
+        };
+
+        self.encapsulate(bytes, allocations, now)
     }
 }
