@@ -13,13 +13,18 @@ use std::net::IpAddr;
 #[derive(Debug, PartialEq, Eq, Deserialize, Serialize, Clone)]
 pub struct InitGateway {
     pub interface: Interface,
-    pub ipv4_masquerade_enabled: bool,
-    pub ipv6_masquerade_enabled: bool,
+    pub config: Config,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct Actor {
     pub id: ActorId,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+pub struct Config {
+    pub ipv4_masquerade_enabled: bool,
+    pub ipv6_masquerade_enabled: bool,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -141,10 +146,9 @@ pub struct ConnectionReady {
 
 #[cfg(test)]
 mod test {
-    use connlib_shared::{control::PhoenixMessage, messages::Interface};
+    use super::*;
+    use connlib_shared::control::PhoenixMessage;
     use phoenix_channel::InitMessage;
-
-    use super::{IngressMessages, InitGateway};
 
     #[test]
     fn request_connection_message() {
@@ -206,8 +210,10 @@ mod test {
                 ipv6: "fd00:2021:1111::2c:f6ab".parse().unwrap(),
                 upstream_dns: vec![],
             },
-            ipv4_masquerade_enabled: true,
-            ipv6_masquerade_enabled: true,
+            config: Config {
+                ipv4_masquerade_enabled: true,
+                ipv6_masquerade_enabled: true,
+            },
         });
 
         let message = r#"{"event":"init","ref":null,"topic":"gateway","payload":{"interface":{"ipv6":"fd00:2021:1111::2c:f6ab","ipv4":"100.115.164.78"},"ipv4_masquerade_enabled":true,"ipv6_masquerade_enabled":true}}"#;
