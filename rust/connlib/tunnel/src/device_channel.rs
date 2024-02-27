@@ -170,9 +170,9 @@ impl Device {
     pub(crate) fn remove_route(
         &mut self,
         route: IpNetwork,
-        callbacks: &impl Callbacks<Error = Error>,
+        _callbacks: &impl Callbacks<Error = Error>,
     ) -> Result<Option<Device>, Error> {
-        self.tun.remove_route(route, callbacks)?;
+        self.tun.remove_route(route)?;
         Ok(None)
     }
 

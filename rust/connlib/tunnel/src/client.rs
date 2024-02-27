@@ -98,7 +98,7 @@ where
     pub fn remove_resource(&mut self, id: ResourceId) {
         if let Some(ResourceDescription::Cidr(resource)) = self.role_state.resource_ids.remove(&id)
         {
-            // Note: hopefuly the os doesn't coalece routes in a way that removing a more general route deletes the most specific
+            // Note: hopefully the os doesn't coalece routes in a way that removing a more general route deletes the most specific
             let _ = self.remove_route(resource.address).inspect_err(
                 |err| tracing::error!(%id, %resource.address, "failed to remove route: {err:?}"),
             );

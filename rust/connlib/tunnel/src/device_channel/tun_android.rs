@@ -75,6 +75,21 @@ impl Tun {
             name,
         }))
     }
+
+    pub fn remove_route(
+        &self,
+        route: IpNetwork,
+        callbacks: &impl Callbacks<Error = Error>,
+    ) -> Result<Option<Self>> {
+        self.fd.close();
+        let fd = callbacks.on_remove_route(route)?.ok_or(Error::NoFd)?;
+        let name = unsafe { interface_name(fd)? };
+
+        Ok(Some(Tun {
+            fd: Closeable::new(AsyncFd::new(fd)?),
+            name,
+        }))
+    }
 }
 
 /// Retrieves the name of the interface pointed to by the provided file descriptor.
