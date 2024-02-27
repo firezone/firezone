@@ -93,7 +93,7 @@ impl Tun {
         // by this point. So instead, we iterate through all file descriptors looking for the one corresponding
         // to the utun interface we have access to read and write from.
         //
-        // Credit to Jason Donenfeld (@zx2c4) for this technique. See NOTICE.txt for attribution.
+        // Credit to Jason Donenfeld (@zx2c4) for this technique. See docs/NOTICE.txt for attribution.
         // https://github.com/WireGuard/wireguard-apple/blob/master/Sources/WireGuardKit/WireGuardAdapter.swift
         for fd in 0..1024 {
             tracing::debug!("Checking fd {}", fd);

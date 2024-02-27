@@ -16,7 +16,7 @@ defmodule Firezone.MixProject do
       ],
       docs: [
         logo: "apps/web/assets/static/images/logo.svg",
-        extras: ["README.md", "SECURITY.md", "CONTRIBUTING.md"]
+        extras: ["docs/README.md", "docs/SECURITY.md", "docs/CONTRIBUTING.md"]
       ],
       deps: deps(),
       dialyzer: [
