@@ -9,7 +9,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Check version is up to date
         run: |
-          make version
+          make -f scripts/Makefile version
           if [ -z "$(git status --porcelain)" ]; then
             # Working directory clean
             echo "Version manifests up to date"

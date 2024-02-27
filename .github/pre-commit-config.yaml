@@ -3,7 +3,7 @@ repos:
     hooks:
       - id: codespell
         name: "python: codespell"
-        args: [--config=.github/.codespellrc]
+        args: [--config=.github/codespellrc]
         entry: codespell
         language: system
         pass_filenames: false
