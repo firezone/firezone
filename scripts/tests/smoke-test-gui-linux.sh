@@ -47,8 +47,8 @@ function crash_test() {
 # Run the tests twice to make sure it's okay for the directories to stay intact,
 # and to make sure the tests can cycle.
 smoke_test
-crash_test
 smoke_test
+crash_test
 crash_test
 
 # I'm not sure if the last command is handled specially, so explicitly exit with 0
