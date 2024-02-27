@@ -3,11 +3,11 @@ import PlanBadge from "@/components/PlanBadge";
 
 <PlanBadge plans={["enterprise"]}>
 
-# User / Group sync
+# Directory sync
 
 </PlanBadge>
 
-Firezone supports automatic user / group sync from Google Workspace, Microsoft
+Firezone supports automatic directory sync from Google Workspace, Microsoft
 Entra ID, and Okta. This feature is **automatically enabled** when you create
 one of the [Google Workspace](/kb/authenticate/google),
 [Microsoft Entra](/kb/authenticate/entra), or [Okta](/kb/authenticate/okta)
@@ -15,25 +15,25 @@ connectors. No further configuration is necessary. Once the connector is
 activated, users, groups, and organizational units will be synced from your
 identity provider every few minutes.
 
-## Deleting or suspending users
+## How Firezone treats deleted or suspended users
 
-Firezone <strong>never</strong> deletes synced users or groups. Instead, they're
-disabled temporarily in Firezone when they're deleted or suspended in your
-identity provider. This helps to preserve audit trails and other logged activity
-within Firezone.
+Firezone <strong>never</strong> deletes synced users or groups. This helps to
+preserve audit trails and other logged activity within Firezone.
 
-When a user is deleted or suspended in your identity provider, Firezone will
-disable the user and clear all active client and admin portal web sessions for
-that user upon the next sync. The user will be **signed out of all clients** and
-forced to reauthenticate.
+Instead, when a user is deleted or suspended in your identity provider, Firezone
+will disable the user and clear all active client and admin portal web sessions
+for that user upon the next sync. The user will be **signed out of all clients**
+and forced to reauthenticate.
 
 This ensures terminated employees will have all Firezone access revoked within a
 few minutes of deleting or suspending them in your identity provider.
 
 ### Deleting a group or organizational unit
 
-Deleting a group or organizational unit in your identity provider will hide the
-group and delete the associated policy in Firezone.
+Similarly, Firezone does not delete synced groups or organizational units.
+
+Instead, when a group or organizational unit is deleted in your identity
+provider, Firezone will hide the group and delete any associated policies.
 
 ## Nested groups and organizational units
 

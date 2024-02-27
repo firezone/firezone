@@ -10,24 +10,24 @@ import Link from "next/link";
 </PlanBadge>
 
 Firezone integrates with Okta using a custom connector that supports both
-authenticating users and syncing users and groups to Firezone. Use this guide if
-you're looking to setup SSO with Okta for your Firezone Enterprise account and
-want to automatically sync users and groups from Okta to Firezone.
+authentication and directory sync. Use this guide if you're looking to setup SSO
+with Okta for your Firezone Enterprise account and want to automatically sync
+users and groups from Okta to Firezone.
 
 <Alert color="info">
   If you're just looking to authenticate users against Okta **without**
-  automatic user / group sync, use our [universal OIDC
+  automatic directory sync, use our [universal OIDC
   connector](/kb/authenticate/oidc) instead, available on all plans.
 </Alert>
 
 ## Overview
 
 The Firezone Okta connector integrates with Okta's APIs to support user
-authentication and user / group sync.
+authentication and directory sync.
 
 Users, groups, and organizational units are synced every few minutes to ensure
 that your Firezone account remains up-to-date with the latest identity data from
-Okta. [Read more](/kb/authenticate/user-group-sync) about how sync works.
+Okta. [Read more](/kb/authenticate/directory-sync) about how sync works.
 
 ## Setup
 

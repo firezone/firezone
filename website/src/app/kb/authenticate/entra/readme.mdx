@@ -11,25 +11,25 @@ import Link from "next/link";
 
 Firezone integrates with
 [Microsoft Entra ID](https://www.microsoft.com/en-us/security/business/identity-access/microsoft-entra-id)
-using a custom connector that supports both authenticating users and syncing
-users and groups to Firezone. Use this guide if you're looking to setup SSO with
-Microsoft Entra ID for your Firezone Enterprise account and want to
-automatically sync users and groups from Microsoft Entra ID to Firezone.
+using a custom connector that supports both authentication and directory sync.
+Use this guide if you're looking to setup SSO with Microsoft Entra ID for your
+Firezone Enterprise account and want to automatically sync users and groups from
+Microsoft Entra ID to Firezone.
 
 <Alert color="info">
   If you're just looking to authenticate users against Microsoft Entra ID
-  **without** automatic user / group sync, use our [universal OIDC
+  **without** automatic directory sync, use our [universal OIDC
   connector](/kb/authenticate/oidc) instead, available on all plans.
 </Alert>
 
 ## Overview
 
 The Firezone Microsoft Entra ID connector integrates with Microsoft's identity
-APIs to support user authentication and user / group sync.
+APIs to support user authentication and directory sync.
 
 Users and groups are synced every few minutes to ensure that your Firezone
 account remains up-to-date with the latest identity data from Entra ID.
-[Read more](/kb/authenticate/user-group-sync) about how sync works.
+[Read more](/kb/authenticate/directory-sync) about how sync works.
 
 ## Setup
 

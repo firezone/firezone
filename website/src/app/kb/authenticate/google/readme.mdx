@@ -10,25 +10,25 @@ import Link from "next/link";
 </PlanBadge>
 
 Firezone integrates with [Google Workspace](https://workspace.google.com) using
-a custom connector that supports both authenticating users and syncing users and
-groups to Firezone. Use this guide if you're looking to setup SSO with Google
-Workspace for your Firezone Enterprise account and want to automatically sync
-users, groups, and organizational units from Google Workspace to Firezone.
+a custom connector that supports both authentication and directory sync. Use
+this guide if you're looking to setup SSO with Google Workspace for your
+Firezone Enterprise account and want to automatically sync users, groups, and
+organizational units from Google Workspace to Firezone.
 
 <Alert color="info">
   If you're just looking to authenticate users against Google Workspace
-  **without** automatic user / group sync, use our [universal OIDC
+  **without** automatic directory sync, use our [universal OIDC
   connector](/kb/authenticate/oidc) instead, available on all plans.
 </Alert>
 
 ## Overview
 
 The Firezone Google Workspace connector integrates with Google's identity APIs
-to support user authentication and user / group sync.
+to support user authentication and directory sync.
 
 Users, groups, and organizational units are synced every few minutes to ensure
 that your Firezone account remains up-to-date with the latest identity data from
-Google Workspace. [Read more](/kb/authenticate/user-group-sync) about how sync
+Google Workspace. [Read more](/kb/authenticate/directory-sync) about how sync
 works.
 
 ## Setup

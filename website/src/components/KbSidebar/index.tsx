@@ -96,8 +96,8 @@ export default function KbSidebar() {
               </li>
               <li>
                 <Item
-                  href="/kb/authenticate/user-group-sync"
-                  label="User / group sync"
+                  href="/kb/authenticate/directory-sync"
+                  label="Directory sync"
                 />
               </li>
               <li>
