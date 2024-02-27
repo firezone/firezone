@@ -231,6 +231,18 @@ impl ResourceDescription {
             ResourceDescription::Cidr(r) => Cow::from(r.address.to_string()),
         }
     }
+
+    pub fn has_different_address(&self, other: &ResourceDescription) -> bool {
+        match (self, other) {
+            (ResourceDescription::Dns(dns_a), ResourceDescription::Dns(dns_b)) => {
+                dns_a.address != dns_b.address
+            }
+            (ResourceDescription::Cidr(cidr_a), ResourceDescription::Cidr(cidr_b)) => {
+                cidr_a.address != cidr_b.address
+            }
+            _ => true,
+        }
+    }
 }
 
 /// Description of a resource that maps to a CIDR.

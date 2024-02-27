@@ -167,15 +167,14 @@ where
     ) -> Result<()> {
         tracing::trace!(?ips, "new_data_channel_open");
 
-        let mut peer = Peer::new(ips.clone(), client_id, PacketTransformGateway::default());
+        let mut peer = Peer::new(client_id, PacketTransformGateway::default(), &ips, ());
 
         for address in resource_addresses {
             peer.transform
                 .add_resource(address, resource.clone(), expires_at);
         }
 
-        self.role_state.peers.insert(peer);
-        self.role_state.peers.add_ips(&client_id, &ips);
+        self.role_state.peers.insert(peer, &ips);
 
         Ok(())
     }
