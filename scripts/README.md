@@ -23,7 +23,7 @@ shellcheck --severity=warning **/*.sh
 ```
 
 You can achieve this more easily by using `pre-commit`. See
-[CONTRIBUTING](../CONTRIBUTING.md#pre-commit).
+[CONTRIBUTING](../docs/CONTRIBUTING.md#pre-commit).
 
 ### Editor setup
 

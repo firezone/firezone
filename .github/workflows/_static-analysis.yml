@@ -20,6 +20,15 @@ jobs:
             exit 1
           fi
 
+  link-check:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: lycheeverse/lychee-action@v1.9.0
+        with:
+          fail: true
+          args: --offline --verbose --no-progress **/*.md
+
   global-linter:
     runs-on: ubuntu-22.04
     steps:
