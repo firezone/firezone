@@ -181,7 +181,7 @@ for any local, non-Docker development or testing.
 
 ### nix Setup
 
-If you are using Nix, see [scripts/nix/README](scripts/nix/README.md).
+If you are using Nix, see [scripts/nix/README](../scripts/nix/README.md).
 
 ### Pre-commit
 
