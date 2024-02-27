@@ -346,7 +346,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                     .clone()
                     .send_with_ref(
                         EgressMessages::PrepareConnection {
-                            resource_id: resource.id(),
+                            resource_id: resource,
                             connected_gateway_ids,
                         },
                         reference,

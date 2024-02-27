@@ -515,7 +515,7 @@ impl ClientState {
         };
 
         self.buffered_events.push_back(Event::ConnectionIntent {
-            resource: resource.clone(),
+            resource: resource.id(),
             connected_gateway_ids: gateways,
             reference,
         });

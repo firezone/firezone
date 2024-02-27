@@ -5,7 +5,7 @@
 
 use boringtun::x25519::StaticSecret;
 use connlib_shared::{
-    messages::{ClientId, GatewayId, ResourceDescription, ReuseConnection},
+    messages::{ClientId, GatewayId, ResourceId, ReuseConnection},
     CallbackErrorFacade, Callbacks, Error, Result,
 };
 use device_channel::Device;
@@ -392,7 +392,7 @@ pub enum Event<TId> {
         candidate: String,
     },
     ConnectionIntent {
-        resource: ResourceDescription,
+        resource: ResourceId,
         connected_gateway_ids: HashSet<GatewayId>,
         reference: usize,
     },
