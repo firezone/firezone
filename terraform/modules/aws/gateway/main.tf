@@ -48,5 +48,9 @@ resource "aws_instance" "this" {
     volume_size = 20
   }
 
+  lifecycle {
+    create_before_destroy = true
+  }
+
   tags = merge({ "Name" = var.name }, var.instance_tags, var.tags)
 }
