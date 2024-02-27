@@ -60,8 +60,13 @@ where
     pub fn insert(
         &mut self,
         peer: Peer<TId, TTransform, TResource>,
+        ips: &[IpNetwork],
     ) -> Option<Peer<TId, TTransform, TResource>> {
         self.id_by_ip.retain(|_, &mut r_id| r_id != peer.conn_id);
+
+        for ip in ips {
+            self.add_ip(&peer.conn_id, &ip);
+        }
 
         self.peer_by_id.insert(peer.conn_id, peer)
     }

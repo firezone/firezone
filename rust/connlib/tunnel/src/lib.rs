@@ -277,14 +277,15 @@ where
     }
 
     // TODO: passing the peer_store looks weird, we can just remove ConnectionState and move everything into Tunnel, there's no Mutexes any longer that justify this separation
-    fn poll_sockets<TTransform, RId>(
+    fn poll_sockets<TTransform, TResource>(
         &mut self,
         device: &mut Device,
-        peer_store: &mut PeerStore<TId, TTransform, RId>,
+        peer_store: &mut PeerStore<TId, TTransform, TResource>,
         cx: &mut Context<'_>,
     ) -> Poll<io::Result<()>>
     where
         TTransform: PacketTransform,
+        TResource: Clone,
     {
         let received = match ready!(self.sockets.poll_recv_from(cx)) {
             Ok(received) => received,

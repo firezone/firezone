@@ -49,10 +49,21 @@ impl<TId, TTransform, TResource> Peer<TId, TTransform, TResource>
 where
     TId: Copy,
     TTransform: PacketTransform,
+    TResource: Clone,
 {
-    pub(crate) fn new(conn_id: TId, transform: TTransform) -> Peer<TId, TTransform, TResource> {
+    pub(crate) fn new(
+        conn_id: TId,
+        transform: TTransform,
+        ips: &[IpNetwork],
+        resource: TResource,
+    ) -> Peer<TId, TTransform, TResource> {
+        let mut allowed_ips = IpNetworkTable::new();
+        for ip in ips {
+            allowed_ips.insert(*ip, resource.clone());
+        }
+
         Peer {
-            allowed_ips: IpNetworkTable::new(),
+            allowed_ips,
             conn_id,
             transform,
         }
