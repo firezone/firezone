@@ -102,6 +102,7 @@ class TunnelService : VpnService() {
                 Firebase.crashlytics.log("onSetInterfaceConfig: $addressIPv4, $addressIPv6, $dnsAddresses")
 
                 tunnelDnsAddresses = moshi.adapter<MutableList<String>>().fromJson(dnsAddresses)!!
+                tunnelRoutes.addAll(tunnelDnsAddresses.map { Cidr(it, if (it.contains(":")) 128 else 32) })
                 tunnelIpv4Address = addressIPv4
                 tunnelIpv6Address = addressIPv6
 
