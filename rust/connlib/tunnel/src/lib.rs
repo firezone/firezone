@@ -107,7 +107,8 @@ where
 
         match device.poll_read(&mut self.read_buf, cx)? {
             Poll::Ready(Some(packet)) => {
-                let Some((peer_id, packet)) = self.role_state.encapsulate(packet) else {
+                let Some((peer_id, packet)) = self.role_state.encapsulate(packet, Instant::now())
+                else {
                     cx.waker().wake_by_ref();
                     return Poll::Pending;
                 };
