@@ -1,4 +1,4 @@
-use crate::device_channel::{Device, Packet};
+use crate::device_channel::Device;
 use crate::ip_packet::{IpPacket, MutableIpPacket};
 use crate::peer::PacketTransformClient;
 use crate::peer_store::PeerStore;
@@ -203,7 +203,7 @@ pub struct ClientState {
     dns_mapping: BiMap<IpAddr, DnsServer>,
     dns_resolvers: HashMap<IpAddr, TokioAsyncResolver>,
 
-    buffered_packets: VecDeque<Packet<'static>>,
+    buffered_packets: VecDeque<IpPacket<'static>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -221,7 +221,7 @@ impl ClientState {
     ) -> Option<(GatewayId, MutableIpPacket<'a>)> {
         let (packet, dest) = match self.handle_dns(packet) {
             Ok(response) => {
-                self.buffered_packets.push_back(response?.into_owned());
+                self.buffered_packets.push_back(response?.to_owned());
                 return None;
             }
             Err(non_dns_packet) => non_dns_packet,
@@ -244,7 +244,7 @@ impl ClientState {
     fn handle_dns<'a>(
         &mut self,
         packet: MutableIpPacket<'a>,
-    ) -> Result<Option<Packet<'a>>, (MutableIpPacket<'a>, IpAddr)> {
+    ) -> Result<Option<IpPacket<'a>>, (MutableIpPacket<'a>, IpAddr)> {
         match dns::parse(
             &self.dns_resources,
             &self.dns_resources_internal_ips,

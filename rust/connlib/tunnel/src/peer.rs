@@ -1,10 +1,8 @@
-use std::borrow::Cow;
 use std::collections::HashMap;
 use std::net::IpAddr;
 use std::time::Instant;
 
 use bimap::BiMap;
-use boringtun::noise::Tunn;
 use chrono::{DateTime, Utc};
 use connlib_shared::messages::DnsServer;
 use connlib_shared::IpProvider;
@@ -14,7 +12,7 @@ use ip_network_table::IpNetworkTable;
 use pnet_packet::Packet;
 
 use crate::control_protocol::gateway::ResourceDescription;
-use crate::{device_channel, ip_packet::MutableIpPacket};
+use crate::ip_packet::MutableIpPacket;
 
 type ExpiryingResource = (ResourceDescription, Option<DateTime<Utc>>);
 
@@ -68,10 +66,9 @@ where
 
     pub(crate) fn untransform<'b>(
         &mut self,
-        addr: IpAddr,
-        packet: &'b mut [u8],
-    ) -> Result<device_channel::Packet<'b>> {
-        let (packet, addr) = self.transform.packet_untransform(&addr, packet)?;
+        packet: MutableIpPacket<'b>,
+    ) -> Result<MutableIpPacket<'b>> {
+        let (packet, addr) = self.transform.packet_untransform(packet)?;
 
         if !self.is_allowed(addr) {
             return Err(Error::UnallowedPacket);
@@ -149,9 +146,8 @@ impl PacketTransformGateway {
 pub trait PacketTransform {
     fn packet_untransform<'a>(
         &mut self,
-        addr: &IpAddr,
-        packet: &'a mut [u8],
-    ) -> Result<(device_channel::Packet<'a>, IpAddr)>;
+        packet: MutableIpPacket<'a>,
+    ) -> Result<(MutableIpPacket<'a>, IpAddr)>;
 
     fn packet_transform<'a>(&mut self, packet: MutableIpPacket<'a>) -> Option<MutableIpPacket<'a>>;
 }
@@ -159,20 +155,17 @@ pub trait PacketTransform {
 impl PacketTransform for PacketTransformGateway {
     fn packet_untransform<'a>(
         &mut self,
-        addr: &IpAddr,
-        packet: &'a mut [u8],
-    ) -> Result<(device_channel::Packet<'a>, IpAddr)> {
-        let Some(dst) = Tunn::dst_address(packet) else {
-            return Err(Error::BadPacket);
-        };
+        packet: MutableIpPacket<'a>,
+    ) -> Result<(MutableIpPacket<'a>, IpAddr)> {
+        let addr = packet.source();
+        let dst = packet.destination();
 
-        if self.resources.longest_match(dst).is_some() {
-            let packet = make_packet(packet, addr);
-            Ok((packet, *addr))
-        } else {
+        if self.resources.longest_match(dst).is_none() {
             tracing::warn!(%dst, "unallowed packet");
-            Err(Error::InvalidDst)
+            return Err(Error::InvalidDst);
         }
+
+        Ok((packet, addr))
     }
 
     fn packet_transform<'a>(&mut self, packet: MutableIpPacket<'a>) -> Option<MutableIpPacket<'a>> {
@@ -183,14 +176,10 @@ impl PacketTransform for PacketTransformGateway {
 impl PacketTransform for PacketTransformClient {
     fn packet_untransform<'a>(
         &mut self,
-        addr: &IpAddr,
-        packet: &'a mut [u8],
-    ) -> Result<(device_channel::Packet<'a>, IpAddr)> {
-        let mut src = *self.translations.get_by_right(addr).unwrap_or(addr);
-
-        let Some(mut pkt) = MutableIpPacket::new(packet) else {
-            return Err(Error::BadPacket);
-        };
+        mut pkt: MutableIpPacket<'a>,
+    ) -> Result<(MutableIpPacket<'a>, IpAddr)> {
+        let addr = pkt.source();
+        let mut src = *self.translations.get_by_right(&addr).unwrap_or(&addr);
 
         let original_src = src;
         if let Some(dgm) = pkt.as_udp() {
@@ -212,8 +201,8 @@ impl PacketTransform for PacketTransformClient {
 
         pkt.set_src(src);
         pkt.update_checksum();
-        let packet = make_packet(packet, addr);
-        Ok((packet, original_src))
+
+        Ok((pkt, original_src))
     }
 
     fn packet_transform<'a>(
@@ -237,13 +226,5 @@ impl PacketTransform for PacketTransformClient {
         }
 
         Some(packet)
-    }
-}
-
-#[inline(always)]
-fn make_packet<'a>(packet: &'a mut [u8], dst_addr: &IpAddr) -> device_channel::Packet<'a> {
-    match dst_addr {
-        IpAddr::V4(_) => device_channel::Packet::Ipv4(Cow::Borrowed(packet)),
-        IpAddr::V6(_) => device_channel::Packet::Ipv6(Cow::Borrowed(packet)),
     }
 }
