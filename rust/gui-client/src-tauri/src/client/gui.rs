@@ -13,7 +13,13 @@ use arc_swap::ArcSwap;
 use connlib_client_shared::{file_logger, ResourceDescription};
 use connlib_shared::{control::SecureUrl, messages::ResourceId, BUNDLE_ID};
 use secrecy::{ExposeSecret, Secret, SecretString};
-use std::{net::IpAddr, path::PathBuf, str::FromStr, sync::Arc, time::Duration};
+use std::{
+    net::{IpAddr, Ipv4Addr, Ipv6Addr},
+    path::PathBuf,
+    str::FromStr,
+    sync::Arc,
+    time::Duration,
+};
 use system_tray_menu::Event as TrayMenuEvent;
 use tauri::{Manager, SystemTray, SystemTrayEvent};
 use tokio::sync::{mpsc, oneshot, Notify};
@@ -449,10 +455,15 @@ impl connlib_client_shared::Callbacks for CallbackHandler {
         Ok(())
     }
 
-    fn on_tunnel_ready(&self) -> Result<(), Self::Error> {
-        tracing::info!("on_tunnel_ready");
+    fn on_set_interface_config(
+        &self,
+        _: Ipv4Addr,
+        _: Ipv6Addr,
+        _: Vec<IpAddr>,
+    ) -> Result<Option<connlib_shared::RawFd>, Self::Error> {
+        tracing::info!("on_set_interface_config");
         self.ctlr_tx.try_send(ControllerRequest::TunnelReady)?;
-        Ok(())
+        Ok(None)
     }
 
     fn on_update_resources(&self, resources: Vec<ResourceDescription>) -> Result<(), Self::Error> {

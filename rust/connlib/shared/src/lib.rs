@@ -14,7 +14,7 @@ pub mod linux;
 #[cfg(target_os = "windows")]
 pub mod windows;
 
-pub use callbacks::Callbacks;
+pub use callbacks::{Callbacks, RawFd};
 pub use callbacks_error_facade::CallbackErrorFacade;
 pub use error::ConnlibError as Error;
 pub use error::Result;

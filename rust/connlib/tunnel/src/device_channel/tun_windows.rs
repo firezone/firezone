@@ -189,6 +189,16 @@ impl Tun {
         Ok(())
     }
 
+    // TODO: Build this based on the existing `add_route` fn
+    // I'd like to regression-test it in CI too if it's added.
+    // There's a lot of Windows-specific stuff that can't be covered by integration tests
+    // yet, so we should at least boot up wintun and make sure it can claim routes, even
+    // though we can't boot connlib and the portal and all yet.
+    // -- Reactorscram
+    pub fn remove_route(&self, _route: IpNetwork) -> Result<()> {
+        todo!()
+    }
+
     pub fn poll_read(&self, buf: &mut [u8], cx: &mut Context<'_>) -> Poll<io::Result<usize>> {
         let mut packet_rx = self.packet_rx.try_lock().unwrap();
 

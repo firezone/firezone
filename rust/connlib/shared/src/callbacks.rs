@@ -6,7 +6,7 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::path::PathBuf;
 
 // Avoids having to map types for Windows
-type RawFd = i32;
+pub type RawFd = i32;
 
 /// Traits that will be used by connlib to callback the client upper layers.
 pub trait Callbacks: Clone + Send + Sync {
