@@ -1,3 +1,4 @@
+use super::utils;
 use crate::device_channel::ioctl;
 use connlib_shared::{messages::Interface as InterfaceConfig, Callbacks, Error, Result};
 use ip_network::IpNetwork;
@@ -9,8 +10,6 @@ use std::{
     os::fd::{AsRawFd, RawFd},
 };
 use tokio::io::unix::AsyncFd;
-
-mod utils;
 
 pub(crate) const SIOCGIFMTU: libc::c_ulong = libc::SIOCGIFMTU;
 

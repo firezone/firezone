@@ -1,6 +1,9 @@
 #![allow(clippy::module_inception)]
 #![cfg_attr(target_family = "windows", allow(dead_code))] // TODO: Remove when windows is fully implemented.
 
+#[cfg(target_os = "linux")]
+mod etc_resolv_conf;
+
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 mod tun_darwin;
 #[cfg(any(target_os = "macos", target_os = "ios"))]
@@ -20,6 +23,8 @@ use tun_windows as tun;
 #[cfg(target_os = "android")]
 #[path = "device_channel/tun_android.rs"]
 mod tun;
+
+mod utils;
 
 use crate::ip_packet::MutableIpPacket;
 use connlib_shared::error::ConnlibError;

@@ -1,3 +1,4 @@
+use super::{etc_resolv_conf, utils};
 use crate::device_channel::ioctl;
 use crate::FIREZONE_MARK;
 use connlib_shared::{
@@ -27,9 +28,6 @@ use std::{
     },
 };
 use tokio::io::unix::AsyncFd;
-
-mod etc_resolv_conf;
-mod utils;
 
 pub(crate) const SIOCGIFMTU: libc::c_ulong = libc::SIOCGIFMTU;
 
