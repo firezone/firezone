@@ -65,7 +65,7 @@ When you want to test every component together the ideal way to go is to use
 docker.
 
 To do this you first need a seeded database, for that follow the steps on the
-[Elixir's README](elixir/readme#running-control-plane-for-local-development).
+[Elixir's README](../elixir/README.md#running-control-plane-for-local-development).
 Then you can do:
 
 ```sh
@@ -132,7 +132,7 @@ Email:    firezone@localhost
 Password: Firezone1234
 ```
 
-The [`docker-compose.yml`](docker-compose.yml) file configures the Docker
+The [`docker-compose.yml`](../docker-compose.yml) file configures the Docker
 development environment. If you make any changes you feel would benefit all
 developers, feel free to open a PR to get them merged!
 
@@ -167,7 +167,7 @@ setup properly.
 
 While not strictly required, we use [asdf-vm](https://asdf-vm.com) to manage
 language versions for Firezone. You'll need to install the language runtimes
-according to the versions laid out in the [.tool-versions](.tool-versions) file.
+according to the versions laid out in the [.tool-versions](../.tool-versions) file.
 
 If using asdf, simply run `asdf install` from the project root.
 
@@ -188,17 +188,17 @@ pip: `pip install pre-commit`.
 ### Elixir Development
 
 If you are interested in contributing to the Web Application/API, please read
-the detailed info found in the [Elixir Developer Guide](elixir/README.md)
+the detailed info found in the [Elixir Developer Guide](../elixir/README.md)
 
 ### Rust Development
 
 If you are interested in contributing to the Gateway, Relay, or client library,
 please read the detailed info found in the
-[Rust Developer Guide](rust/README.md)
+[Rust Developer Guide](../rust/README.md)
 
 ### Shell script Development
 
-See [scripts/README](scripts/README.md).
+See [scripts/README](../scripts/README.md).
 
 ## Reporting Bugs
 

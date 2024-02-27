@@ -27,7 +27,7 @@ hostname = "0.3.1"
 ipconfig = "0.3.2"
 keyring = "2.3.2"
 known-folders = "1.1.0"
-minidumper = "0.8.1"
+minidumper = "0.8.2"
 native-dialog = "0.7.0"
 output_vt100 = "0.1"
 rand = "0.8.5"
@@ -41,7 +41,7 @@ semver = { version = "1.0.22", features = ["serde"] }
 subtle = "2.5.0"
 tauri = { version = "1.5", features = [ "dialog", "shell-open-api", "system-tray" ] }
 tauri-runtime = "0.14.2"
-tauri-utils = "1.5.1"
+tauri-utils = "1.5.3"
 thiserror = { version = "1.0", default-features = false }
 tokio = { version = "1.36.0", features = ["time"] }
 tracing = { workspace = true }

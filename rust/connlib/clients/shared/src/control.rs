@@ -166,8 +166,8 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    fn resource_deleted(&self, id: ResourceId) {
-        // TODO
+    fn resource_deleted(&mut self, id: ResourceId) {
+        self.tunnel.remove_resource(id);
     }
 
     fn connection_details(
@@ -309,10 +309,6 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
             _ => {}
         }
         Ok(())
-    }
-
-    pub async fn stats_event(&mut self) {
-        tracing::debug!(target: "tunnel_state", stats = ?self.tunnel.stats());
     }
 
     pub async fn request_log_upload_url(&mut self) {

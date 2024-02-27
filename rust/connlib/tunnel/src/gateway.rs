@@ -1,21 +1,20 @@
-use crate::device_channel::Device;
-use crate::ip_packet::MutableIpPacket;
-use crate::peer::{PacketTransformGateway, Peer};
-use crate::{peer_by_ip, Tunnel};
-use connlib_shared::messages::{ClientId, Interface as InterfaceConfig};
-use connlib_shared::Callbacks;
-use ip_network_table::IpNetworkTable;
-use itertools::Itertools;
-use snownet::Server;
-use std::sync::Arc;
 use std::task::{ready, Context, Poll};
 use std::time::Duration;
+
+use crate::device_channel::Device;
+use crate::ip_packet::MutableIpPacket;
+use crate::peer::PacketTransformGateway;
+use crate::peer_store::PeerStore;
+use crate::Tunnel;
+use connlib_shared::messages::{ClientId, Interface as InterfaceConfig, ResourceId};
+use connlib_shared::Callbacks;
+use snownet::Server;
 use tokio::time::{interval, Interval, MissedTickBehavior};
 
 const PEERS_IPV4: &str = "100.64.0.0/11";
 const PEERS_IPV6: &str = "fd00:2021:1111::/107";
 
-impl<CB> Tunnel<CB, GatewayState, Server, ClientId, PacketTransformGateway>
+impl<CB> Tunnel<CB, GatewayState, Server, ClientId>
 where
     CB: Callbacks + 'static,
 {
@@ -38,16 +37,25 @@ where
     }
 
     /// Clean up a connection to a resource.
-    pub fn cleanup_connection(&mut self, id: ClientId) {
-        self.connections_state.peers_by_id.remove(&id);
-        self.role_state.peers_by_ip.retain(|_, p| p.conn_id != id);
+    pub fn cleanup_connection(&mut self, id: &ClientId) {
+        self.role_state.peers.remove(id);
+    }
+
+    pub fn remove_access(&mut self, id: &ClientId, resource_id: &ResourceId) {
+        let Some(peer) = self.role_state.peers.get_mut(id) else {
+            return;
+        };
+
+        peer.transform.remove_resource(resource_id);
+        if peer.transform.is_emptied() {
+            self.role_state.peers.remove(id);
+        }
     }
 }
 
 /// [`Tunnel`] state specific to gateways.
 pub struct GatewayState {
-    #[allow(clippy::type_complexity)]
-    pub peers_by_ip: IpNetworkTable<Arc<Peer<ClientId, PacketTransformGateway>>>,
+    pub peers: PeerStore<ClientId, PacketTransformGateway, ()>,
     expire_interval: Interval,
 }
 
@@ -58,29 +66,23 @@ impl GatewayState {
     ) -> Option<(ClientId, MutableIpPacket<'a>)> {
         let dest = packet.destination();
 
-        let peer = peer_by_ip(&self.peers_by_ip, dest)?;
+        let peer = self.peers.peer_by_ip_mut(dest)?;
         let packet = peer.transform(packet)?;
 
         Some((peer.conn_id, packet))
     }
 
-    pub fn poll(&mut self, cx: &mut Context<'_>) -> Poll<Vec<ClientId>> {
+    pub fn poll(&mut self, cx: &mut Context<'_>) -> Poll<()> {
         ready!(self.expire_interval.poll_tick(cx));
-        Poll::Ready(self.expire_resources().collect_vec())
+        self.expire_resources();
+        Poll::Ready(())
     }
 
-    fn expire_resources(&self) -> impl Iterator<Item = ClientId> + '_ {
-        self.peers_by_ip
-            .iter()
-            .unique_by(|(_, p)| p.conn_id)
-            .for_each(|(_, p)| p.transform.expire_resources());
-        self.peers_by_ip.iter().filter_map(|(_, p)| {
-            if p.transform.is_emptied() {
-                Some(p.conn_id)
-            } else {
-                None
-            }
-        })
+    fn expire_resources(&mut self) {
+        self.peers
+            .iter_mut()
+            .for_each(|p| p.transform.expire_resources());
+        self.peers.retain(|_, p| !p.transform.is_emptied());
     }
 }
 
@@ -89,7 +91,7 @@ impl Default for GatewayState {
         let mut expire_interval = interval(Duration::from_secs(1));
         expire_interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
         Self {
-            peers_by_ip: IpNetworkTable::new(),
+            peers: Default::default(),
             expire_interval,
         }
     }

@@ -1,4 +1,4 @@
-use std::{collections::HashSet, net::IpAddr, sync::Arc};
+use std::{collections::HashSet, net::IpAddr};
 
 use boringtun::x25519::PublicKey;
 use connlib_shared::{
@@ -23,9 +23,7 @@ use crate::{
 };
 use crate::{peer::Peer, ClientState, Error, Request, Result, Tunnel};
 
-use super::insert_peers;
-
-impl<CB> Tunnel<CB, ClientState, Client, GatewayId, PacketTransformClient>
+impl<CB> Tunnel<CB, ClientState, Client, GatewayId>
 where
     CB: Callbacks + 'static,
 {
@@ -108,24 +106,21 @@ where
             &domain_response.as_ref().map(|d| d.domain.clone()),
         )?;
 
-        let peer = Arc::new(Peer::new(ips.clone(), gateway_id, Default::default()));
+        let resource_ids = HashSet::from([resource_id]);
+        let mut peer: Peer<_, PacketTransformClient, _> =
+            Peer::new(gateway_id, Default::default(), &ips, resource_ids);
+        peer.transform.set_dns(self.role_state.dns_mapping());
+        self.role_state.peers.insert(peer, &[]);
 
         let peer_ips = if let Some(domain_response) = domain_response {
-            self.dns_response(&resource_id, &domain_response, &peer)?
+            self.dns_response(&resource_id, &domain_response, &gateway_id)?
         } else {
             ips
         };
 
-        peer.transform.set_dns(self.role_state.dns_mapping());
-
-        // cleaning up old state
         self.role_state
-            .peers_by_ip
-            .retain(|_, p| p.conn_id != gateway_id);
-        self.connections_state
-            .peers_by_id
-            .insert(gateway_id, Arc::clone(&peer));
-        insert_peers(&mut self.role_state.peers_by_ip, &peer_ips, peer);
+            .peers
+            .add_ips_with_resource(&gateway_id, &peer_ips, &resource_id);
 
         Ok(())
     }
@@ -168,8 +163,14 @@ where
         &mut self,
         resource_id: &ResourceId,
         domain_response: &DomainResponse,
-        peer: &Peer<GatewayId, PacketTransformClient>,
+        peer_id: &GatewayId,
     ) -> Result<Vec<IpNetwork>> {
+        let peer = self
+            .role_state
+            .peers
+            .get_mut(peer_id)
+            .ok_or(Error::ControlProtocolError)?;
+
         let resource_description = self
             .role_state
             .resource_ids
@@ -199,9 +200,6 @@ where
             .insert(resource_description.clone(), addrs.clone());
 
         let ips: Vec<IpNetwork> = addrs.iter().copied().map(Into::into).collect();
-        for ip in &ips {
-            peer.add_allowed_ip(*ip);
-        }
 
         if let Some(device) = self.device.as_ref() {
             send_dns_answer(
@@ -235,17 +233,12 @@ where
             .gateway_by_resource(&resource_id)
             .ok_or(Error::UnknownResource)?;
 
-        let Some(peer) = self
-            .role_state
-            .peers_by_ip
-            .iter_mut()
-            .find_map(|(_, p)| (p.conn_id == gateway_id).then_some(p.clone()))
-        else {
-            return Err(Error::ControlProtocolError);
-        };
+        let peer_ips = self.dns_response(&resource_id, &domain_response, &gateway_id)?;
 
-        let peer_ips = self.dns_response(&resource_id, &domain_response, &peer)?;
-        insert_peers(&mut self.role_state.peers_by_ip, &peer_ips, peer);
+        self.role_state
+            .peers
+            .add_ips_with_resource(&gateway_id, &peer_ips, &resource_id);
+
         Ok(())
     }
 }
