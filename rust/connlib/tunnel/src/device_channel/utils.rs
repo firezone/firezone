@@ -3,7 +3,6 @@ use std::os::fd::{AsRawFd, RawFd};
 use std::task::{Context, Poll};
 use tokio::io::Ready;
 
-#[cfg(target_family = "unix")]
 pub fn poll_raw_fd(
     fd: &tokio::io::unix::AsyncFd<RawFd>,
     mut read: impl FnMut(RawFd) -> io::Result<usize>,

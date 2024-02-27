@@ -24,6 +24,7 @@ use tun_windows as tun;
 #[path = "device_channel/tun_android.rs"]
 mod tun;
 
+#[cfg(target_family = "unix")]
 mod utils;
 
 use crate::ip_packet::MutableIpPacket;
