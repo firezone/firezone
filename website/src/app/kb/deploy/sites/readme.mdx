@@ -1,6 +1,7 @@
 import PlanBadge from "@/components/PlanBadge";
 import SupportOptions from "@/components/SupportOptions";
 import NextStep from "@/components/NextStep";
+import Alert from "@/components/DocsAlert";
 
 <PlanBadge plans={["starter", "enterprise"]}>
 
@@ -27,6 +28,11 @@ network managing access to an entire cluster of servers.
 
 To create a site, click the "Sites" tab in the left-hand navigation and then
 click the "Add Site" button. You will be prompted to enter a name for the site.
+
+<Alert color="info">
+  Don't worry too much about the name of the site now. You can always change it
+  later.
+</Alert>
 
 <NextStep href="/kb/deploy/gateways">Next: Deploy Gateways</NextStep>
 
