@@ -435,15 +435,7 @@ impl ClientState {
         self.gateway_awaiting_connection_timers.remove(gateway);
     }
 
-    fn is_awaiting_connection_to_dns(&self, resource: &DnsResource) -> bool {
-        self.awaiting_connection.contains_key(&resource.id)
-    }
-
     pub fn on_connection_intent_dns(&mut self, resource: &DnsResource, now: Instant) {
-        if self.is_awaiting_connection_to_dns(resource) {
-            return;
-        }
-
         self.on_connection_intent_to_resource(resource.id, now)
     }
 
