@@ -269,7 +269,6 @@ pub struct ClientState {
     dns_mapping: BiMap<IpAddr, DnsServer>,
     dns_resolvers: HashMap<IpAddr, TokioAsyncResolver>,
 
-    buffered_packets: VecDeque<IpPacket<'static>>,
     buffered_events: VecDeque<Event<GatewayId>>,
 }
 
@@ -290,7 +289,8 @@ impl ClientState {
     ) -> Option<(GatewayId, MutableIpPacket<'a>)> {
         let (packet, dest) = match self.handle_dns(packet, now) {
             Ok(response) => {
-                self.buffered_packets.push_back(response?.to_owned());
+                self.buffered_events
+                    .push_back(Event::SendPacket(response?.to_owned()));
                 return None;
             }
             Err(non_dns_packet) => non_dns_packet,
@@ -644,10 +644,6 @@ impl ClientState {
                 return Poll::Ready(event);
             }
 
-            if let Some(buffered) = self.buffered_packets.pop_front() {
-                return Poll::Ready(Event::SendPacket(buffered));
-            }
-
             if let Poll::Ready((gateway_id, _)) =
                 self.gateway_awaiting_connection_timers.poll_unpin(cx)
             {
@@ -750,7 +746,6 @@ impl Default for ClientState {
             refresh_dns_timer: interval,
             dns_mapping: Default::default(),
             dns_resolvers: Default::default(),
-            buffered_packets: Default::default(),
             buffered_events: Default::default(),
         }
     }
