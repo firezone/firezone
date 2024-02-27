@@ -18,7 +18,12 @@
     <activity
         android:id="@+id/settingsActivity"
         android:name="dev.firezone.android.features.settings.ui.SettingsActivity"
-        tools:layout="@layout/activity_settings" />
+        android:label="SettingsActivity"
+        tools:layout="@layout/activity_settings">
+        <argument
+            android:name="isUserSignedIn"
+            app:argType="boolean" />
+    </activity>
 
     <activity
         android:id="@+id/sessionActivity"

@@ -37,8 +37,13 @@ internal class SignInFragment : Fragment(R.layout.fragment_sign_in) {
                 requireActivity().finish()
             }
             btSettings.setOnClickListener {
+                val bundle =
+                    Bundle().apply {
+                        putBoolean("isUserSignedIn", false)
+                    }
                 findNavController().navigate(
                     R.id.settingsActivity,
+                    bundle,
                 )
             }
         }
