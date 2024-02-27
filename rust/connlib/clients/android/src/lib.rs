@@ -179,33 +179,31 @@ impl Callbacks for CallbackHandler {
         })
     }
 
-    fn on_tunnel_ready(&self) -> Result<(), Self::Error> {
+    fn on_update_routes(
+        &self,
+        route_list_4: Vec<IpNetwork>,
+        route_list_6: Vec<IpNetwork>,
+    ) -> Result<Option<RawFd>, Self::Error> {
         self.env(|mut env| {
-            call_method(
-                &mut env,
-                &self.callback_handler,
-                "onTunnelReady",
-                "()Z",
-                &[],
-            )
-        })
-    }
-
-    fn on_add_route(&self, route: IpNetwork) -> Result<Option<RawFd>, Self::Error> {
-        self.env(|mut env| {
-            let ip = env
-                .new_string(route.network_address().to_string())
+            let route_list_4 = env
+                .new_string(serde_json::to_string(&route_list_4)?)
                 .map_err(|source| CallbackError::NewStringFailed {
-                    name: "route_ip",
+                    name: "route_list_4",
+                    source,
+                })?;
+            let route_list_6 = env
+                .new_string(serde_json::to_string(&route_list_6)?)
+                .map_err(|source| CallbackError::NewStringFailed {
+                    name: "route_list_6",
                     source,
                 })?;
 
-            let name = "onAddRoute";
+            let name = "onUpdateRoutes";
             env.call_method(
                 &self.callback_handler,
                 name,
-                "(Ljava/lang/String;I)I",
-                &[JValue::from(&ip), JValue::Int(route.netmask().into())],
+                "(Ljava/lang/String;Ljava/lang/String;)I",
+                &[JValue::from(&route_list_4), JValue::from(&route_list_6)],
             )
             .and_then(|val| val.i())
             .map(Some)
@@ -214,14 +212,14 @@ impl Callbacks for CallbackHandler {
     }
 
     #[cfg(target_os = "android")]
-    fn protect_file_descriptor(&self, file_descriptor: RawFd) -> Result<(), Self::Error> {
+    fn protect_socket(&self, socket: RawFd) -> Result<(), Self::Error> {
         self.env(|mut env| {
             call_method(
                 &mut env,
                 &self.callback_handler,
-                "protectFileDescriptor",
+                "protectSocket",
                 "(I)V",
-                &[JValue::Int(file_descriptor)],
+                &[JValue::Int(socket)],
             )
         })
     }

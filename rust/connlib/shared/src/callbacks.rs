@@ -87,10 +87,7 @@ pub trait Callbacks: Clone + Send + Sync {
 
     /// Protects the socket file descriptor from routing loops.
     #[cfg(target_os = "android")]
-    fn protect_file_descriptor(
-        &self,
-        file_descriptor: std::os::fd::RawFd,
-    ) -> Result<(), Self::Error>;
+    fn protect_socket(&self, socket: std::os::fd::RawFd) -> Result<(), Self::Error>;
 
     fn roll_log_file(&self) -> Option<PathBuf> {
         None

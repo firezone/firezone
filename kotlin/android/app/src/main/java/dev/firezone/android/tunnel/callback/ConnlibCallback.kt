@@ -8,16 +8,9 @@ interface ConnlibCallback {
         dnsAddresses: String,
     ): Int
 
-    fun onTunnelReady(): Boolean
-
-    fun onAddRoute(
-        addr: String,
-        prefix: Int,
-    ): Int
-
-    fun onRemoveRoute(
-        addr: String,
-        prefix: Int,
+    fun onUpdateRoutes(
+        routes4JSON: String,
+        routes6JSON: String,
     ): Int
 
     fun onUpdateResources(resourceListJSON: String)
@@ -29,5 +22,5 @@ interface ConnlibCallback {
 
     fun getSystemDefaultResolvers(): Array<ByteArray>
 
-    fun protectFileDescriptor(fileDescriptor: Int)
+    fun protectSocket(socket: Int)
 }

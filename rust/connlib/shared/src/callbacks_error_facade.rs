@@ -85,9 +85,9 @@ impl<CB: Callbacks> Callbacks for CallbackErrorFacade<CB> {
     }
 
     #[cfg(target_os = "android")]
-    fn protect_file_descriptor(&self, file_descriptor: std::os::fd::RawFd) -> Result<()> {
+    fn protect_socket(&self, socket: std::os::fd::RawFd) -> Result<()> {
         self.0
-            .protect_file_descriptor(file_descriptor)
-            .map_err(|err| Error::ProtectFileDescriptorFailed(err.to_string()))
+            .protect_socket(socket)
+            .map_err(|err| Error::ProtectSocketFailed(err.to_string()))
     }
 }

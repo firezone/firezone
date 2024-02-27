@@ -260,18 +260,6 @@ extension Adapter: CallbackHandlerDelegate {
         networkSettings.tunnelAddressIPv4 = tunnelAddressIPv4
         networkSettings.tunnelAddressIPv6 = tunnelAddressIPv6
         networkSettings.dnsAddresses = dnsAddresses
-        // Add DNS sentinels to routes as a start
-        networkSettings.routes4 = dnsAddresses.reduce([]) {
-          $0
-            + (IPv4Address($1) != nil
-              ? [NEIPv4Route(destinationAddress: $1, subnetMask: "255.255.255.0")] : [])
-        }
-        networkSettings.routes6 = dnsAddresses.reduce([]) {
-          $0
-            + (IPv6Address($1) != nil
-              ? [NEIPv6Route(destinationAddress: $1, networkPrefixLength: 128)] : [])
-        }
-
         networkSettings.apply {
           self.state = .tunnelReady(session: session)
           onStarted?(nil)
