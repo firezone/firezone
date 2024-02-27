@@ -22,7 +22,8 @@ const MAX_UDP_SIZE: usize = (1 << 16) - 1;
 async fn main() -> Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
-            EnvFilter::builder().parse("info,boringtun=debug,str0m=debug,snownet=debug")?,
+            EnvFilter::builder()
+                .parse("info,boringtun=debug,str0m=debug,boringtun=debug,snownet=debug")?,
         )
         .init();
 
