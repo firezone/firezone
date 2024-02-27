@@ -448,10 +448,6 @@ impl ClientState {
     }
 
     fn on_connection_intent_ip(&mut self, destination: IpAddr, now: Instant) {
-        if self.is_awaiting_connection_to_cidr(destination) {
-            return;
-        }
-
         tracing::trace!(resource_ip = %destination, "resource_connection_intent");
 
         let Some(resource_id) = self.get_cidr_resource_by_destination(destination) else {
