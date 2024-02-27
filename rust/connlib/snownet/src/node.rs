@@ -837,7 +837,7 @@ where
     }
 
     /// Accept an [`Answer`] from the remote for a connection previously created via [`Node::new_connection`].
-    #[tracing::instrument(level = "debug", skip_all, fields(%id, remote = %hex::encode(remote.as_bytes())))]
+    #[tracing::instrument(level = "info", skip_all, fields(%id))]
     pub fn accept_answer(&mut self, id: TId, remote: PublicKey, answer: Answer) {
         let Some(initial) = self.connections.initial.remove(&id) else {
             tracing::debug!("No initial connection state, ignoring answer"); // This can happen if the connection setup timed out.
@@ -867,7 +867,7 @@ where
 
         let existing = self.connections.established.insert(id, connection);
 
-        tracing::info!("Signalling protocol completed");
+        tracing::info!(remote = %hex::encode(remote.as_bytes()), "Signalling protocol completed");
 
         debug_assert!(existing.is_none());
     }
