@@ -18,12 +18,12 @@ mod tun;
 #[path = "device_channel/tun_android.rs"]
 mod tun;
 
-use crate::ip_packet::MutableIpPacket;
+use crate::ip_packet::{IpPacket, MutableIpPacket};
 use connlib_shared::error::ConnlibError;
 use connlib_shared::messages::Interface;
 use connlib_shared::{Callbacks, Error};
 use ip_network::IpNetwork;
-use std::borrow::Cow;
+use pnet_packet::Packet;
 use std::io;
 use std::net::IpAddr;
 use std::task::{Context, Poll};
@@ -174,33 +174,12 @@ impl Device {
         Ok(())
     }
 
-    pub fn write(&self, packet: Packet<'_>) -> io::Result<usize> {
-        tracing::trace!(target: "wire", action = "write", to = "device", bytes = %packet.len());
+    pub fn write(&self, packet: IpPacket<'_>) -> io::Result<usize> {
+        tracing::trace!(target: "wire", action = "write", to = "device", bytes = %packet.packet().len());
 
         match packet {
-            Packet::Ipv4(msg) => self.tun.write4(&msg),
-            Packet::Ipv6(msg) => self.tun.write6(&msg),
-        }
-    }
-}
-
-pub enum Packet<'a> {
-    Ipv4(Cow<'a, [u8]>),
-    Ipv6(Cow<'a, [u8]>),
-}
-
-impl<'a> Packet<'a> {
-    pub fn into_owned(self) -> Packet<'static> {
-        match self {
-            Packet::Ipv4(p) => Packet::Ipv4(Cow::Owned(p.into_owned())),
-            Packet::Ipv6(p) => Packet::Ipv6(Cow::Owned(p.into_owned())),
-        }
-    }
-
-    pub fn len(&self) -> usize {
-        match self {
-            Packet::Ipv4(p) => p.len(),
-            Packet::Ipv6(p) => p.len(),
+            IpPacket::Ipv4Packet(msg) => self.tun.write4(msg.packet()),
+            IpPacket::Ipv6Packet(msg) => self.tun.write6(msg.packet()),
         }
     }
 }

@@ -42,6 +42,14 @@ impl<'a> MutableIpPacket<'a> {
     }
 
     #[inline]
+    pub(crate) fn source(&self) -> IpAddr {
+        match self {
+            MutableIpPacket::MutableIpv4Packet(i) => i.get_source().into(),
+            MutableIpPacket::MutableIpv6Packet(i) => i.get_source().into(),
+        }
+    }
+
+    #[inline]
     pub(crate) fn destination(&self) -> IpAddr {
         match self {
             MutableIpPacket::MutableIpv4Packet(i) => i.get_destination().into(),
@@ -187,12 +195,6 @@ impl<'a> MutableIpPacket<'a> {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Version {
-    Ipv4,
-    Ipv6,
-}
-
 #[derive(Debug, PartialEq)]
 pub enum IpPacket<'a> {
     Ipv4Packet(Ipv4Packet<'a>),
@@ -205,6 +207,15 @@ impl<'a> From<IpPacket<'a>> for snownet::IpPacket<'a> {
         match value {
             IpPacket::Ipv4Packet(p) => Self::Ipv4(p),
             IpPacket::Ipv6Packet(p) => Self::Ipv6(p),
+        }
+    }
+}
+
+impl<'a> From<snownet::MutableIpPacket<'a>> for MutableIpPacket<'a> {
+    fn from(value: snownet::MutableIpPacket<'a>) -> Self {
+        match value {
+            snownet::MutableIpPacket::Ipv4(p) => Self::MutableIpv4Packet(p),
+            snownet::MutableIpPacket::Ipv6(p) => Self::MutableIpv6Packet(p),
         }
     }
 }
@@ -223,13 +234,6 @@ impl<'a> IpPacket<'a> {
     pub(crate) fn to_owned(&self) -> IpPacket<'static> {
         // This should never fail as the provided buffer is a vec (unless oom)
         IpPacket::owned(self.packet().to_vec()).unwrap()
-    }
-
-    pub(crate) fn version(&self) -> Version {
-        match self {
-            IpPacket::Ipv4Packet(_) => Version::Ipv4,
-            IpPacket::Ipv6Packet(_) => Version::Ipv6,
-        }
     }
 
     pub(crate) fn is_icmpv6(&self) -> bool {
