@@ -51,6 +51,13 @@ to manage and monitor them. Firezone's control plane is designed to make this as
 easy as possible, but it's still something to keep in mind when planning your
 deployment.
 
+<Alert color="warning">
+  When deploying gateways, remember that all gateways and resources in a site
+  must have unobstructed network connectivity to each other. This is necessary
+  for Firezone's automatic failover and load balancing features to work
+  correctly.
+</Alert>
+
 ### Sizing recommendations
 
 Gateways, like the rest of Firezone's data plane stack, are written in Rust and
