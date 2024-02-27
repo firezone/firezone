@@ -12,7 +12,6 @@ use messages::IngressMessages;
 use messages::Messages;
 use messages::ReplyMessages;
 use secrecy::{Secret, SecretString};
-use std::collections::HashMap;
 use std::future::poll_fn;
 use std::time::Duration;
 use tokio::time::{Interval, MissedTickBehavior};
@@ -181,7 +180,7 @@ where
                 phoenix_channel: connection.sender_with_topic("client".to_owned()),
                 tunnel_init: false,
                 next_request_id: 0,
-                last_connection_intent_request: HashMap::default(),
+                sent_connection_intents: Default::default(),
             };
 
             tokio::spawn({

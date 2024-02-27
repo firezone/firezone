@@ -42,10 +42,44 @@ pub struct ControlPlane<CB: Callbacks> {
 
     pub next_request_id: usize,
 
-    // Upon attempting to connect to a resource, we send a connection intent at most every 2 seconds.
-    // In case we receive a response, we only want to accept the "last" one.
-    // In other words, discard any responses from the portal until we get a response to the one we sent last.
-    pub last_connection_intent_request: HashMap<ResourceId, usize>,
+    pub sent_connection_intents: SentConnectionIntents,
+}
+
+#[derive(Default)]
+pub struct SentConnectionIntents {
+    inner: HashMap<usize, ResourceId>,
+}
+
+impl SentConnectionIntents {
+    fn register_new_intent(&mut self, id: usize, resource: ResourceId) {
+        self.inner.insert(id, resource);
+    }
+
+    /// To be called when we receive the connection details for a particular resource.
+    ///
+    /// Returns whether we should accept them.
+    fn handle_connection_details_received(&mut self, reference: usize, r: ResourceId) -> bool {
+        let has_more_recent_intent = self
+            .inner
+            .iter()
+            .any(|(req, resource)| req > &reference && resource == &r);
+
+        if has_more_recent_intent {
+            return false;
+        }
+
+        debug_assert!(self
+            .inner
+            .get(&reference)
+            .is_some_and(|resource| resource == &r));
+        self.inner.retain(|_, v| v != &r);
+
+        true
+    }
+
+    fn handle_error(&mut self, reference: usize) -> Option<ResourceId> {
+        self.inner.remove(&reference)
+    }
 }
 
 fn effective_dns_servers(
@@ -193,12 +227,12 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
             return;
         };
 
-        let Some(last_intent) = self.last_connection_intent_request.get(&resource_id) else {
-            return;
-        };
-
-        if reference != *last_intent {
+        if !self
+            .sent_connection_intents
+            .handle_connection_details_received(reference, resource_id)
+        {
             tracing::debug!("Discarding stale connection details");
+
             return;
         }
 
@@ -302,12 +336,17 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
     ) -> Result<()> {
         match (reply_error, reference) {
             (ChannelError::ErrorReply(ErrorInfo::Offline), Some(reference)) => {
-                let Ok(resource_id) = reference.parse::<ResourceId>() else {
-                    tracing::warn!("The portal responded with an Offline error. Is the Resource associated with any online Gateways or Relays?");
+                let Ok(request_id) = reference.parse::<usize>() else {
                     return Ok(());
                 };
-                // TODO: Rate limit the number of attempts of getting the relays before just trying a local network connection
-                self.tunnel.cleanup_connection(resource_id);
+
+                let Some(resource) = self.sent_connection_intents.handle_error(request_id) else {
+                    return Ok(());
+                };
+
+                tracing::debug!(%resource, "Resource is offline");
+
+                self.tunnel.cleanup_connection(resource);
             }
             (
                 ChannelError::ErrorReply(ErrorInfo::Reason(Reason::Known(
@@ -364,7 +403,8 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
             }) => {
                 let id = self.next_request_id;
                 self.next_request_id += 1;
-                self.last_connection_intent_request.insert(resource, id);
+                self.sent_connection_intents
+                    .register_new_intent(id, resource);
 
                 if let Err(e) = self
                     .phoenix_channel
