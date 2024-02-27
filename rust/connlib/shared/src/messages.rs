@@ -232,7 +232,7 @@ impl ResourceDescription {
         }
     }
 
-    pub fn different_address(&self, other: &ResourceDescription) -> bool {
+    pub fn has_different_address(&self, other: &ResourceDescription) -> bool {
         match (self, other) {
             (ResourceDescription::Dns(dns_a), ResourceDescription::Dns(dns_b)) => {
                 dns_a.address != dns_b.address

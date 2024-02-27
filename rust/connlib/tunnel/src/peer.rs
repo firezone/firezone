@@ -35,13 +35,10 @@ where
     TTransform: PacketTransform,
 {
     pub(crate) fn insert_id(&mut self, ip: &IpNetwork, id: &ResourceId) {
-        if let Some(resources) = self.allowed_ips.exact_match_mut(*ip) {
-            resources.insert(*id);
-        } else {
-            let mut resources = HashSet::new();
-            resources.insert(*id);
-            self.allowed_ips.insert(*ip, resources);
-        }
+        self.allowed_ips
+            .exact_match_mut(*ip)
+            .get_or_insert(&mut HashSet::new())
+            .insert(*id);
     }
 }
 

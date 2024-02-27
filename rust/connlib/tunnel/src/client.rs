@@ -60,7 +60,7 @@ where
         resource_description: ResourceDescription,
     ) -> connlib_shared::Result<()> {
         if let Some(resource) = self.role_state.resource_ids.get(&resource_description.id()) {
-            if resource.different_address(resource) {
+            if resource.has_different_address(resource) {
                 self.remove_resource(resource.id());
             }
         }
