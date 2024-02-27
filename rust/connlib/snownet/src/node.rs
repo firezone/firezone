@@ -193,6 +193,7 @@ where
     ///
     /// To do that, we need to check all candidates of each allocation and compare their IP.
     /// The same relay might be reachable over IPv4 and IPv6.
+    #[must_use]
     fn same_relay_as_peer(&mut self, id: TId, candidate: &Candidate) -> Option<&mut Allocation> {
         self.allocations
             .iter_mut()
@@ -324,6 +325,7 @@ where
     }
 
     /// Returns a pending [`Event`] from the pool.
+    #[must_use]
     pub fn poll_event(&mut self) -> Option<Event<TId>> {
         let binding_events = self.bindings.iter_mut().flat_map(|(server, binding)| {
             iter::from_fn(|| binding.poll_event().map(|e| (*server, e)))
@@ -443,6 +445,7 @@ where
     ///
     /// This function only takes `&mut self` because it caches certain computations internally.
     /// The returned timestamp will **not** change unless other state is modified.
+    #[must_use]
     pub fn poll_timeout(&mut self) -> Option<Instant> {
         let mut connection_timeout = None;
 
@@ -522,6 +525,7 @@ where
     }
 
     /// Returns buffered data that needs to be sent on the socket.
+    #[must_use]
     pub fn poll_transmit(&mut self) -> Option<Transmit<'static>> {
         for (_, conn) in self.connections.iter_established_mut() {
             if let Some(transmit) = conn.poll_transmit(&mut self.allocations, self.last_now) {
@@ -544,6 +548,7 @@ where
         self.buffered_transmits.pop_front()
     }
 
+    #[must_use]
     fn init_connection(
         &mut self,
         mut agent: IceAgent,
@@ -597,6 +602,7 @@ where
         Ok(())
     }
 
+    #[must_use]
     fn bindings_try_handle(
         &mut self,
         from: SocketAddr,
@@ -618,6 +624,7 @@ where
     }
 
     /// Tries to handle the packet using one of our [`Allocation`]s.
+    #[must_use]
     fn allocations_try_handle<'p>(
         &mut self,
         from: SocketAddr,
@@ -654,6 +661,7 @@ where
         }
     }
 
+    #[must_use]
     fn agents_try_handle(
         &mut self,
         from: SocketAddr,
@@ -686,6 +694,7 @@ where
         }))
     }
 
+    #[must_use]
     fn connections_try_handle<'b>(
         &mut self,
         from: SocketAddr,
@@ -771,6 +780,7 @@ where
     /// Out of all configured STUN and TURN servers, the connection will only use the ones provided here.
     /// The returned [`Offer`] must be passed to the remote via a signalling channel.
     #[tracing::instrument(level = "info", skip_all, fields(%id))]
+    #[must_use]
     pub fn new_connection(
         &mut self,
         id: TId,
@@ -872,6 +882,7 @@ where
     /// Out of all configured STUN and TURN servers, the connection will only use the ones provided here.
     /// The returned [`Answer`] must be passed to the remote via a signalling channel.
     #[tracing::instrument(level = "info", skip_all, fields(%id))]
+    #[must_use]
     pub fn accept_connection(
         &mut self,
         id: TId,
@@ -1286,6 +1297,7 @@ impl Connection {
     ///
     /// Whilst we establish connections, we may see traffic from a certain address, prior to the negotiation being fully complete.
     /// We already want to accept that traffic and not throw it away.
+    #[must_use]
     fn accepts(&self, addr: SocketAddr) -> bool {
         let from_connected_remote = self.peer_socket.is_some_and(|r| match r {
             PeerSocket::Direct { dest, .. } => dest == addr,
@@ -1319,6 +1331,7 @@ impl Connection {
         }
     }
 
+    #[must_use]
     fn poll_timeout(&mut self) -> Option<Instant> {
         let agent_timeout = self.agent.poll_timeout();
         let next_wg_timer = Some(self.next_timer_update);
@@ -1326,6 +1339,7 @@ impl Connection {
         earliest(agent_timeout, next_wg_timer)
     }
 
+    #[must_use]
     fn poll_transmit(
         &mut self,
         allocations: &mut HashMap<SocketAddr, Allocation>,
@@ -1407,6 +1421,7 @@ impl Connection {
         Ok(None)
     }
 
+    #[must_use]
     fn encapsulate(
         &self,
         message: &[u8],
@@ -1428,6 +1443,7 @@ impl Connection {
         }
     }
 
+    #[must_use]
     fn force_handshake(
         &mut self,
         allocations: &mut HashMap<SocketAddr, Allocation>,
