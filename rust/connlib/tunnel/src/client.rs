@@ -59,14 +59,10 @@ where
         &mut self,
         resource_description: ResourceDescription,
     ) -> connlib_shared::Result<()> {
-        if self
-            .role_state
-            .resource_ids
-            .contains_key(&resource_description.id())
-        {
-            // TODO
-            tracing::info!("Resource updates aren't implemented yet");
-            return Ok(());
+        if let Some(resource) = self.role_state.resource_ids.get(&resource_description.id()) {
+            if resource.has_different_address(resource) {
+                self.remove_resource(resource.id());
+            }
         }
 
         match &resource_description {
@@ -97,6 +93,63 @@ where
                 .collect_vec(),
         )?;
         Ok(())
+    }
+
+    pub fn remove_resource(&mut self, id: ResourceId) {
+        self.role_state.awaiting_connection.remove(&id);
+        self.role_state.awaiting_connection_timers.remove(id);
+        self.role_state
+            .dns_resources_internal_ips
+            .retain(|r, _| r.id != id);
+        self.role_state.dns_resources.retain(|_, r| r.id != id);
+        self.role_state.cidr_resources.retain(|_, r| r.id != id);
+        self.role_state
+            .deferred_dns_queries
+            .retain(|(r, _), _| r.id != id);
+
+        if let Some(ResourceDescription::Cidr(resource)) = self.role_state.resource_ids.remove(&id)
+        {
+            // Note: hopefully the os doesn't coalece routes in a way that removing a more general route deletes the most specific
+            if let Err(err) = self.remove_route(resource.address) {
+                tracing::error!(%id, %resource.address, "failed to remove route: {err:?}");
+            }
+        }
+
+        let Some(gateway_id) = self.role_state.resources_gateways.remove(&id) else {
+            return;
+        };
+
+        let Some(peer) = self.role_state.peers.get_mut(&gateway_id) else {
+            return;
+        };
+
+        // First we remove the id from all allowed ips
+        for (network, resources) in peer
+            .allowed_ips
+            .iter_mut()
+            .filter(|(_, resources)| resources.contains(&id))
+        {
+            resources.remove(&id);
+
+            if !resources.is_empty() {
+                continue;
+            }
+
+            // If the allowed_ips doesn't correspond to any resource anymore we
+            // clean up any related translation.
+            peer.transform
+                .translations
+                .remove_by_left(&network.network_address());
+        }
+
+        // We remove all empty allowed ips entry since there's no resource that corresponds to it
+        peer.allowed_ips.retain(|_, r| !r.is_empty());
+
+        // If there's no allowed ip left we remove the whole peer because there's no point on keeping it around
+        if peer.allowed_ips.is_empty() {
+            self.role_state.peers.remove(&gateway_id);
+            // TODO: should we have a Node::remove_connection?
+        }
     }
 
     /// Sets the interface configuration and starts background tasks.
@@ -163,6 +216,22 @@ where
 
         Ok(())
     }
+
+    #[tracing::instrument(level = "trace", skip(self))]
+    pub fn remove_route(&mut self, route: IpNetwork) -> connlib_shared::Result<()> {
+        let callbacks = self.callbacks().clone();
+        let maybe_new_device = self
+            .device
+            .as_mut()
+            .ok_or(Error::ControlProtocolError)?
+            .remove_route(route, &callbacks)?;
+
+        if let Some(new_device) = maybe_new_device {
+            self.device = Some(new_device);
+        }
+
+        Ok(())
+    }
 }
 
 /// [`Tunnel`] state specific to clients.
@@ -189,7 +258,7 @@ pub struct ClientState {
     pub resource_ids: HashMap<ResourceId, ResourceDescription>,
     pub deferred_dns_queries: HashMap<(DnsResource, Rtype), IpPacket<'static>>,
 
-    pub peers: PeerStore<GatewayId, PacketTransformClient>,
+    pub peers: PeerStore<GatewayId, PacketTransformClient, HashSet<ResourceId>>,
 
     forwarded_dns_queries: FuturesTupleSet<
         Result<hickory_resolver::lookup::Lookup, hickory_resolver::error::ResolveError>,
@@ -332,11 +401,7 @@ impl ClientState {
 
         self.resources_gateways.insert(resource, gateway);
 
-        if self
-            .peers
-            .add_ips(&gateway, &self.get_resource_ip(desc, &domain))
-            .is_none()
-        {
+        if self.peers.get(&gateway).is_none() {
             match self
                 .gateway_awaiting_connection_timers
                 // Note: we don't need to set a timer here because
@@ -356,6 +421,9 @@ impl ClientState {
             self.gateway_awaiting_connection.insert(gateway);
             return Ok(None);
         };
+
+        self.peers
+            .add_ips_with_resource(&gateway, &self.get_resource_ip(desc, &domain), &resource);
 
         self.awaiting_connection.remove(&resource);
         self.awaiting_connection_timers.remove(resource);

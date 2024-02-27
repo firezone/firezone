@@ -6,7 +6,7 @@ use crate::ip_packet::MutableIpPacket;
 use crate::peer::PacketTransformGateway;
 use crate::peer_store::PeerStore;
 use crate::Tunnel;
-use connlib_shared::messages::{ClientId, Interface as InterfaceConfig};
+use connlib_shared::messages::{ClientId, Interface as InterfaceConfig, ResourceId};
 use connlib_shared::Callbacks;
 use snownet::Server;
 use tokio::time::{interval, Interval, MissedTickBehavior};
@@ -40,11 +40,22 @@ where
     pub fn cleanup_connection(&mut self, id: &ClientId) {
         self.role_state.peers.remove(id);
     }
+
+    pub fn remove_access(&mut self, id: &ClientId, resource_id: &ResourceId) {
+        let Some(peer) = self.role_state.peers.get_mut(id) else {
+            return;
+        };
+
+        peer.transform.remove_resource(resource_id);
+        if peer.transform.is_emptied() {
+            self.role_state.peers.remove(id);
+        }
+    }
 }
 
 /// [`Tunnel`] state specific to gateways.
 pub struct GatewayState {
-    pub peers: PeerStore<ClientId, PacketTransformGateway>,
+    pub peers: PeerStore<ClientId, PacketTransformGateway, ()>,
     expire_interval: Interval,
 }
 

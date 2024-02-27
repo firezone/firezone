@@ -1,10 +1,10 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::net::IpAddr;
 use std::time::Instant;
 
 use bimap::BiMap;
 use chrono::{DateTime, Utc};
-use connlib_shared::messages::DnsServer;
+use connlib_shared::messages::{DnsServer, ResourceId};
 use connlib_shared::IpProvider;
 use connlib_shared::{Error, Result};
 use ip_network::IpNetwork;
@@ -20,25 +20,44 @@ type ExpiryingResource = (ResourceDescription, Option<DateTime<Utc>>);
 // is 30 seconds. See resolvconf(5) timeout.
 const IDS_EXPIRE: std::time::Duration = std::time::Duration::from_secs(60);
 
-pub struct Peer<TId, TTransform> {
-    allowed_ips: IpNetworkTable<()>,
+pub struct Peer<TId, TTransform, TResource> {
+    // TODO: we should refactor this
+    // in the gateway-side this means that we are explicit about ()
+    // maybe duping the Peer struct is the way to go
+    pub allowed_ips: IpNetworkTable<TResource>,
     pub conn_id: TId,
     pub transform: TTransform,
 }
 
-impl<TId, TTransform> Peer<TId, TTransform>
+impl<TId, TTransform> Peer<TId, TTransform, HashSet<ResourceId>>
 where
     TId: Copy,
     TTransform: PacketTransform,
 {
+    pub(crate) fn insert_id(&mut self, ip: &IpNetwork, id: &ResourceId) {
+        if let Some(resources) = self.allowed_ips.exact_match_mut(*ip) {
+            resources.insert(*id);
+        } else {
+            self.allowed_ips.insert(*ip, HashSet::from([*id]));
+        }
+    }
+}
+
+impl<TId, TTransform, TResource> Peer<TId, TTransform, TResource>
+where
+    TId: Copy,
+    TTransform: PacketTransform,
+    TResource: Clone,
+{
     pub(crate) fn new(
-        ips: Vec<IpNetwork>,
         conn_id: TId,
         transform: TTransform,
-    ) -> Peer<TId, TTransform> {
+        ips: &[IpNetwork],
+        resource: TResource,
+    ) -> Peer<TId, TTransform, TResource> {
         let mut allowed_ips = IpNetworkTable::new();
         for ip in ips {
-            allowed_ips.insert(ip, ());
+            allowed_ips.insert(*ip, resource.clone());
         }
 
         Peer {
@@ -46,10 +65,6 @@ where
             conn_id,
             transform,
         }
-    }
-
-    pub(crate) fn add_allowed_ip(&mut self, ip: IpNetwork) {
-        self.allowed_ips.insert(ip, ());
     }
 
     fn is_allowed(&self, addr: IpAddr) -> bool {
@@ -92,7 +107,7 @@ impl Default for PacketTransformGateway {
 
 #[derive(Default)]
 pub struct PacketTransformClient {
-    translations: BiMap<IpAddr, IpAddr>,
+    pub translations: BiMap<IpAddr, IpAddr>,
     dns_mapping: BiMap<IpAddr, DnsServer>,
     mangled_dns_ids: HashMap<u16, std::time::Instant>,
 }
@@ -131,6 +146,13 @@ impl PacketTransformGateway {
     pub(crate) fn expire_resources(&mut self) {
         self.resources
             .retain(|_, (_, e)| !e.is_some_and(|e| e <= Utc::now()));
+    }
+
+    pub(crate) fn remove_resource(&mut self, resource: &ResourceId) {
+        self.resources.retain(|_, (r, _)| match r {
+            connlib_shared::messages::ResourceDescription::Dns(r) => r.id != *resource,
+            connlib_shared::messages::ResourceDescription::Cidr(r) => r.id != *resource,
+        })
     }
 
     pub(crate) fn add_resource(

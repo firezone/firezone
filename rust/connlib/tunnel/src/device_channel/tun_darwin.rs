@@ -153,6 +153,16 @@ impl Tun {
         Ok(None)
     }
 
+    pub fn remove_route(
+        &self,
+        route: IpNetwork,
+        callbacks: &impl Callbacks<Error = Error>,
+    ) -> Result<Option<Self>> {
+        // This will always be None in macos
+        callbacks.on_remove_route(route)?;
+        Ok(None)
+    }
+
     pub fn name(&self) -> &str {
         self.name.as_str()
     }

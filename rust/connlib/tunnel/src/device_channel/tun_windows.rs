@@ -13,8 +13,8 @@ use tokio::sync::mpsc;
 use windows::Win32::{
     NetworkManagement::{
         IpHelper::{
-            CreateIpForwardEntry2, GetIpInterfaceEntry, InitializeIpForwardEntry,
-            SetIpInterfaceEntry, MIB_IPFORWARD_ROW2, MIB_IPINTERFACE_ROW,
+            CreateIpForwardEntry2, DeleteIpForwardEntry2, GetIpInterfaceEntry,
+            InitializeIpForwardEntry, SetIpInterfaceEntry, MIB_IPFORWARD_ROW2, MIB_IPINTERFACE_ROW,
         },
         Ndis::NET_LUID_LH,
     },
@@ -154,37 +154,27 @@ impl Tun {
 
     // It's okay if this blocks until the route is added in the OS.
     pub fn add_route(&self, route: IpNetwork) -> Result<()> {
-        tracing::debug!("add_route {route}");
-        let mut row = MIB_IPFORWARD_ROW2::default();
-        // SAFETY: Windows shouldn't store the reference anywhere, it's just setting defaults
-        unsafe { InitializeIpForwardEntry(&mut row) };
-
-        let prefix = &mut row.DestinationPrefix;
-        match route {
-            IpNetwork::V4(x) => {
-                prefix.PrefixLength = x.netmask();
-                prefix.Prefix.Ipv4 = SocketAddrV4::new(x.network_address(), 0).into();
-            }
-            IpNetwork::V6(x) => {
-                prefix.PrefixLength = x.netmask();
-                prefix.Prefix.Ipv6 = SocketAddrV6::new(x.network_address(), 0, 0, 0).into();
-            }
-        }
-
-        row.InterfaceIndex = self.iface_idx;
-        row.Metric = 0;
+        const DUPLICATE_ERR: u32 = 0x80071392;
+        let entry = self.forward_entry(route);
 
         // SAFETY: Windows shouldn't store the reference anywhere, it's just a way to pass lots of arguments at once. And no other thread sees this variable.
-        match unsafe { CreateIpForwardEntry2(&row) } {
-            Ok(_) => {}
-            Err(e) => {
-                if e.code().0 as u32 == 0x80071392 {
-                    // "Object already exists" error
-                    tracing::warn!("Failed to add duplicate route, ignoring");
-                } else {
-                    Err(e)?;
-                }
+        match unsafe { CreateIpForwardEntry2(&entry) } {
+            Ok(()) => Ok(()),
+            Err(e) if e.code().0 as u32 == DUPLICATE_ERR => {
+                tracing::debug!(%route, "Failed to add duplicate route, ignoring");
+                Ok(())
             }
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    // It's okay if this blocks until the route is added in the OS.
+    pub fn remove_route(&self, route: IpNetwork) -> Result<()> {
+        let entry = self.forward_entry(route);
+
+        // SAFETY: Windows shouldn't store the reference anywhere, it's just a way to pass lots of arguments at once. And no other thread sees this variable.
+        unsafe {
+            DeleteIpForwardEntry2(&entry)?;
         }
         Ok(())
     }
@@ -238,6 +228,29 @@ impl Tun {
         // space in the ring buffer.
         self.session.send_packet(pkt);
         Ok(bytes.len())
+    }
+
+    fn forward_entry(&self, route: IpNetwork) -> MIB_IPFORWARD_ROW2 {
+        let mut row = MIB_IPFORWARD_ROW2::default();
+        // SAFETY: Windows shouldn't store the reference anywhere, it's just setting defaults
+        unsafe { InitializeIpForwardEntry(&mut row) };
+
+        let prefix = &mut row.DestinationPrefix;
+        match route {
+            IpNetwork::V4(x) => {
+                prefix.PrefixLength = x.netmask();
+                prefix.Prefix.Ipv4 = SocketAddrV4::new(x.network_address(), 0).into();
+            }
+            IpNetwork::V6(x) => {
+                prefix.PrefixLength = x.netmask();
+                prefix.Prefix.Ipv6 = SocketAddrV6::new(x.network_address(), 0, 0, 0).into();
+            }
+        }
+
+        row.InterfaceIndex = self.iface_idx;
+        row.Metric = 0;
+
+        row
     }
 }
 

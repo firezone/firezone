@@ -148,6 +148,34 @@ impl Device {
         }))
     }
 
+    #[cfg(target_family = "unix")]
+    pub(crate) fn remove_route(
+        &mut self,
+        route: IpNetwork,
+        callbacks: &impl Callbacks<Error = Error>,
+    ) -> Result<Option<Device>, Error> {
+        let Some(tun) = self.tun.remove_route(route, callbacks)? else {
+            return Ok(None);
+        };
+        let mtu = ioctl::interface_mtu_by_name(tun.name())?;
+
+        Ok(Some(Device {
+            mtu,
+            tun,
+            mtu_refreshed_at: Instant::now(),
+        }))
+    }
+
+    #[cfg(target_family = "windows")]
+    pub(crate) fn remove_route(
+        &mut self,
+        route: IpNetwork,
+        _callbacks: &impl Callbacks<Error = Error>,
+    ) -> Result<Option<Device>, Error> {
+        self.tun.remove_route(route)?;
+        Ok(None)
+    }
+
     #[cfg(target_family = "windows")]
     #[allow(unused_mut)]
     pub(crate) fn add_route(
