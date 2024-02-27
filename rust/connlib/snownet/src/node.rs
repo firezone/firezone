@@ -272,6 +272,9 @@ where
             .get_established_mut(&connection)
             .ok_or(Error::NotConnected)?;
 
+        // Must bail early if we don't have a socket yet to avoid running into WG timeouts.
+        let socket = conn.peer_socket.ok_or(Error::NotConnected)?;
+
         let (header, payload) = self.buffer.as_mut().split_at_mut(4);
 
         let packet_len = match conn.tunnel.encapsulate(packet.packet(), payload) {
@@ -285,7 +288,7 @@ where
 
         let packet = &payload[..packet_len];
 
-        match conn.peer_socket.ok_or(Error::NotConnected)? {
+        match socket {
             PeerSocket::Direct {
                 dest: remote,
                 source,
