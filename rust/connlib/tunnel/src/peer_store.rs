@@ -64,11 +64,14 @@ where
     ) -> Option<Peer<TId, TTransform, TResource>> {
         self.id_by_ip.retain(|_, &mut r_id| r_id != peer.conn_id);
 
+        let id = peer.conn_id;
+        let old_peer = self.peer_by_id.insert(id, peer);
+
         for ip in ips {
-            self.add_ip(&peer.conn_id, &ip);
+            self.add_ip(&id, ip);
         }
 
-        self.peer_by_id.insert(peer.conn_id, peer)
+        old_peer
     }
 
     pub fn remove(&mut self, id: &TId) -> Option<Peer<TId, TTransform, TResource>> {
@@ -117,15 +120,20 @@ mod tests {
     #[test]
     fn can_insert_and_retrieve_peer() {
         let mut peer_storage = PeerStore::<_, _, ()>::default();
-        peer_storage.insert(Peer::new(0, PacketTransformGateway::default()));
+        peer_storage.insert(
+            Peer::new(0, PacketTransformGateway::default(), &[], ()),
+            &[],
+        );
         assert!(peer_storage.get(&0).is_some());
     }
 
     #[test]
     fn can_insert_and_retrieve_peer_by_ip() {
         let mut peer_storage = PeerStore::<_, _, ()>::default();
-        peer_storage.insert(Peer::new(0, PacketTransformGateway::default()));
-        peer_storage.add_ip(&0, &"100.0.0.0/24".parse().unwrap());
+        peer_storage.insert(
+            Peer::new(0, PacketTransformGateway::default(), &[], ()),
+            &["100.0.0.0/24".parse().unwrap()],
+        );
 
         assert_eq!(
             peer_storage
@@ -139,8 +147,10 @@ mod tests {
     #[test]
     fn can_remove_peer() {
         let mut peer_storage = PeerStore::<_, _, ()>::default();
-        peer_storage.insert(Peer::new(0, PacketTransformGateway::default()));
-        peer_storage.add_ip(&0, &"100.0.0.0/24".parse().unwrap());
+        peer_storage.insert(
+            Peer::new(0, PacketTransformGateway::default(), &[], ()),
+            &["100.0.0.0/24".parse().unwrap()],
+        );
         peer_storage.remove(&0);
 
         assert!(peer_storage.get(&0).is_none());
@@ -152,9 +162,14 @@ mod tests {
     #[test]
     fn inserting_peer_removes_previous_instances_of_same_id() {
         let mut peer_storage = PeerStore::<_, _, ()>::default();
-        peer_storage.insert(Peer::new(0, PacketTransformGateway::default()));
-        peer_storage.add_ip(&0, &"100.0.0.0/24".parse().unwrap());
-        peer_storage.insert(Peer::new(0, PacketTransformGateway::default()));
+        peer_storage.insert(
+            Peer::new(0, PacketTransformGateway::default(), &[], ()),
+            &["100.0.0.0/24".parse().unwrap()],
+        );
+        peer_storage.insert(
+            Peer::new(0, PacketTransformGateway::default(), &[], ()),
+            &[],
+        );
 
         assert!(peer_storage.get(&0).is_some());
         assert!(peer_storage
