@@ -274,7 +274,6 @@ pub struct ClientState {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct AwaitingConnectionDetails {
-    response_received: bool,
     domain: Option<Dname>,
     gateways: HashSet<GatewayId>,
     last_intent_sent_at: Instant,
@@ -381,12 +380,9 @@ impl ClientState {
             return Err(Error::UnexpectedConnectionDetails);
         }
 
-        let details = self
-            .awaiting_connection
+        self.awaiting_connection
             .get_mut(&resource)
             .ok_or(Error::UnexpectedConnectionDetails)?;
-
-        details.response_received = true;
 
         if self.gateway_awaiting_connection.contains(&gateway) {
             self.awaiting_connection.remove(&resource);
@@ -493,7 +489,6 @@ impl ClientState {
             }
             Entry::Vacant(vacant) => {
                 vacant.insert(AwaitingConnectionDetails {
-                    response_received: false,
                     domain: None,
                     gateways: gateways.clone(),
                     last_intent_sent_at: now,
