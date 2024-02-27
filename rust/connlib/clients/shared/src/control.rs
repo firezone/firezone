@@ -166,8 +166,8 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    fn resource_deleted(&self, id: ResourceId) {
-        // TODO
+    fn resource_deleted(&mut self, id: ResourceId) {
+        self.tunnel.remove_resource(id);
     }
 
     fn connection_details(
