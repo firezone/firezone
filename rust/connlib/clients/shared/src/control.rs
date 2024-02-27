@@ -26,6 +26,7 @@ use connlib_shared::{
 
 use firezone_tunnel::Request;
 use reqwest::header::{CONTENT_ENCODING, CONTENT_TYPE};
+use std::collections::HashMap;
 use tokio::io::BufReader;
 use tokio_util::codec::{BytesCodec, FramedRead};
 use url::Url;
@@ -44,7 +45,7 @@ pub struct ControlPlane<CB: Callbacks> {
     // Upon attempting to connect to a resource, we send a connection intent at most every 2 seconds.
     // In case we receive a response, we only want to accept the "last" one.
     // In other words, discard any responses from the portal until we get a response to the one we sent last.
-    pub last_connection_intent_request: usize,
+    pub last_connection_intent_request: HashMap<ResourceId, usize>,
 }
 
 fn effective_dns_servers(
@@ -192,7 +193,11 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
             return;
         };
 
-        if reference != self.last_connection_intent_request {
+        let Some(last_intent) = self.last_connection_intent_request.get(&resource_id) else {
+            return;
+        };
+
+        if reference != *last_intent {
             tracing::debug!("Discarding stale connection details");
             return;
         }
@@ -359,7 +364,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
             }) => {
                 let id = self.next_request_id;
                 self.next_request_id += 1;
-                self.last_connection_intent_request = id;
+                self.last_connection_intent_request.insert(resource, id);
 
                 if let Err(e) = self
                     .phoenix_channel
