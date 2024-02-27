@@ -3,7 +3,6 @@
 use crate::client::auth::Response as AuthResponse;
 use connlib_shared::control::SecureUrl;
 use secrecy::{ExposeSecret, Secret, SecretString};
-#[cfg(target_os = "windows")]
 use std::io;
 
 pub(crate) const FZ_SCHEME: &str = "firezone-fd0020211111";
@@ -16,39 +15,34 @@ mod imp;
 #[path = "deep_link/windows.rs"]
 mod imp;
 
-// TODO: The repeated `target_os = "windows"` here is bad.
-// When I add deep link support for Linux I'll replace this all for `anyhow`.
+// TODO: Replace this all for `anyhow`.
+#[cfg_attr(target_os = "linux", allow(dead_code))]
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
     #[error("named pipe server couldn't start listening, we are probably the second instance")]
     CantListen,
     /// Error from client's POV
-    #[cfg(target_os = "windows")]
     #[error(transparent)]
     ClientCommunications(io::Error),
     /// Error while connecting to the server
-    #[cfg(target_os = "windows")]
     #[error(transparent)]
     Connect(io::Error),
     /// Something went wrong finding the path to our own exe
-    #[cfg(target_os = "windows")]
     #[error(transparent)]
     CurrentExe(io::Error),
     /// We got some data but it's not UTF-8
-    #[cfg(target_os = "windows")]
     #[error(transparent)]
     LinkNotUtf8(std::str::Utf8Error),
     #[cfg(target_os = "windows")]
     #[error("Couldn't set up security descriptor for deep link server")]
     SecurityDescriptor,
     /// Error from server's POV
-    #[cfg(target_os = "windows")]
     #[error(transparent)]
     ServerCommunications(io::Error),
     #[error(transparent)]
     UrlParse(#[from] url::ParseError),
-    #[cfg(target_os = "windows")]
     /// Something went wrong setting up the registry
+    #[cfg(target_os = "windows")]
     #[error(transparent)]
     WindowsRegistry(io::Error),
 }
