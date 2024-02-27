@@ -127,12 +127,10 @@ impl minidumper::ServerHandler for Handler {
         // `tracing` is unlikely to work inside the crash handler subprocess, so
         // just print to stderr and it may show up on the terminal. This helps in CI / local dev.
         eprintln!("Creating minidump at {}", dump_path.display());
-        if let Some(dir) = dump_path.parent() {
-            // TODO: There is a TOCTOU bug here
-            if !dir.try_exists()? {
-                std::fs::create_dir_all(dir)?;
-            }
-        }
+        let Some(dir) = dump_path.parent() else {
+            return Err(std::io::ErrorKind::NotFound.into());
+        };
+        std::fs::create_dir_all(dir)?;
         let file = File::create(&dump_path)?;
         Ok((file, dump_path))
     }
