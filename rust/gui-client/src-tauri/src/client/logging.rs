@@ -50,7 +50,7 @@ pub(crate) fn setup(log_filter: &str) -> Result<Handles, Error> {
     if let Err(error) = output_vt100::try_init() {
         tracing::warn!(
             ?error,
-            "Failed to init vt100 terminal colors (expected in CI)"
+            "Failed to init vt100 terminal colors (expected in release builds and in CI)"
         );
     }
     LogTracer::init()?;
