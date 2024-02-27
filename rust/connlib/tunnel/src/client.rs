@@ -502,7 +502,7 @@ impl ClientState {
 
         tracing::trace!(resource_ip = %destination, "resource_connection_intent");
 
-        let Some(resource) = self.get_cidr_resource_by_destination(destination) else {
+        let Some(resource_id) = self.get_cidr_resource_by_destination(destination) else {
             if let Some(resource) = self
                 .dns_resources_internal_ips
                 .iter()
@@ -515,8 +515,6 @@ impl ClientState {
         };
 
         const MAX_SIGNAL_CONNECTION_DELAY: Duration = Duration::from_secs(2);
-
-        let resource_id = resource.id();
 
         let gateways = self
             .gateway_awaiting_connection
@@ -592,7 +590,7 @@ impl ClientState {
             return false;
         };
 
-        self.awaiting_connection.contains_key(&resource.id())
+        self.awaiting_connection.contains_key(&resource)
     }
 
     fn is_connected_to(&self, resource: ResourceId, domain: &Option<Dname>) -> bool {
@@ -638,10 +636,10 @@ impl ClientState {
         });
     }
 
-    fn get_cidr_resource_by_destination(&self, destination: IpAddr) -> Option<ResourceDescription> {
+    fn get_cidr_resource_by_destination(&self, destination: IpAddr) -> Option<ResourceId> {
         self.cidr_resources
             .longest_match(destination)
-            .map(|(_, res)| ResourceDescription::Cidr(res.clone()))
+            .map(|(_, res)| res.id)
     }
 
     fn add_pending_dns_query(&mut self, query: DnsQuery) {
