@@ -480,10 +480,7 @@ impl ClientState {
     }
 
     fn on_connection_intent_to_resource(&mut self, resource: ResourceId, now: Instant) {
-        let resource = self
-            .resource_ids
-            .get(&resource)
-            .expect("inconsistent internal state");
+        debug_assert!(self.resource_ids.contains_key(&resource));
 
         let gateways = self
             .gateway_awaiting_connection
@@ -492,7 +489,7 @@ impl ClientState {
             .copied()
             .collect::<HashSet<_>>();
 
-        let reference = match self.awaiting_connection.entry(resource.id()) {
+        let reference = match self.awaiting_connection.entry(resource) {
             Entry::Occupied(mut occupied) => {
                 if now.duration_since(occupied.get().last_intent_sent_at) < Duration::from_secs(2) {
                     return;
@@ -515,7 +512,7 @@ impl ClientState {
         };
 
         self.buffered_events.push_back(Event::ConnectionIntent {
-            resource: resource.id(),
+            resource,
             connected_gateway_ids: gateways,
             reference,
         });
