@@ -86,6 +86,12 @@ pub struct AllowAccess {
     pub reference: String,
 }
 
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+pub struct RejectAccess {
+    pub client_id: ClientId,
+    pub resource_id: ResourceId,
+}
+
 // These messages are the messages that can be received
 // either by a client or a gateway by the client.
 #[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
@@ -93,6 +99,7 @@ pub struct AllowAccess {
 pub enum IngressMessages {
     RequestConnection(RequestConnection),
     AllowAccess(AllowAccess),
+    RejectAccess(RejectAccess),
     IceCandidates(ClientIceCandidates),
     Init(InitGateway),
 }

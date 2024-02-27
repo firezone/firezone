@@ -1,7 +1,8 @@
-use crate::device_channel::{Device, Packet};
+use crate::device_channel::Device;
 use crate::ip_packet::{IpPacket, MutableIpPacket};
-use crate::peer::{PacketTransformClient, Peer};
-use crate::{dns, dns::DnsQuery, peer_by_ip, Event, Tunnel, DNS_QUERIES_QUEUE_SIZE};
+use crate::peer::PacketTransformClient;
+use crate::peer_store::PeerStore;
+use crate::{dns, dns::DnsQuery, Event, Tunnel, DNS_QUERIES_QUEUE_SIZE};
 use bimap::BiMap;
 use connlib_shared::error::{ConnlibError as Error, ConnlibError};
 use connlib_shared::messages::{
@@ -22,7 +23,6 @@ use hickory_resolver::TokioAsyncResolver;
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::net::IpAddr;
-use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
 use tokio::time::{Instant, Interval, MissedTickBehavior};
@@ -47,7 +47,7 @@ impl DnsResource {
     }
 }
 
-impl<CB> Tunnel<CB, ClientState, Client, GatewayId, PacketTransformClient>
+impl<CB> Tunnel<CB, ClientState, Client, GatewayId>
 where
     CB: Callbacks + 'static,
 {
@@ -59,14 +59,10 @@ where
         &mut self,
         resource_description: ResourceDescription,
     ) -> connlib_shared::Result<()> {
-        if self
-            .role_state
-            .resource_ids
-            .contains_key(&resource_description.id())
-        {
-            // TODO
-            tracing::info!("Resource updates aren't implemented yet");
-            return Ok(());
+        if let Some(resource) = self.role_state.resource_ids.get(&resource_description.id()) {
+            if resource.has_different_address(resource) {
+                self.remove_resource(resource.id());
+            }
         }
 
         match &resource_description {
@@ -97,6 +93,63 @@ where
                 .collect_vec(),
         )?;
         Ok(())
+    }
+
+    pub fn remove_resource(&mut self, id: ResourceId) {
+        self.role_state.awaiting_connection.remove(&id);
+        self.role_state.awaiting_connection_timers.remove(id);
+        self.role_state
+            .dns_resources_internal_ips
+            .retain(|r, _| r.id != id);
+        self.role_state.dns_resources.retain(|_, r| r.id != id);
+        self.role_state.cidr_resources.retain(|_, r| r.id != id);
+        self.role_state
+            .deferred_dns_queries
+            .retain(|(r, _), _| r.id != id);
+
+        if let Some(ResourceDescription::Cidr(resource)) = self.role_state.resource_ids.remove(&id)
+        {
+            // Note: hopefully the os doesn't coalece routes in a way that removing a more general route deletes the most specific
+            if let Err(err) = self.remove_route(resource.address) {
+                tracing::error!(%id, %resource.address, "failed to remove route: {err:?}");
+            }
+        }
+
+        let Some(gateway_id) = self.role_state.resources_gateways.remove(&id) else {
+            return;
+        };
+
+        let Some(peer) = self.role_state.peers.get_mut(&gateway_id) else {
+            return;
+        };
+
+        // First we remove the id from all allowed ips
+        for (network, resources) in peer
+            .allowed_ips
+            .iter_mut()
+            .filter(|(_, resources)| resources.contains(&id))
+        {
+            resources.remove(&id);
+
+            if !resources.is_empty() {
+                continue;
+            }
+
+            // If the allowed_ips doesn't correspond to any resource anymore we
+            // clean up any related translation.
+            peer.transform
+                .translations
+                .remove_by_left(&network.network_address());
+        }
+
+        // We remove all empty allowed ips entry since there's no resource that corresponds to it
+        peer.allowed_ips.retain(|_, r| !r.is_empty());
+
+        // If there's no allowed ip left we remove the whole peer because there's no point on keeping it around
+        if peer.allowed_ips.is_empty() {
+            self.role_state.peers.remove(&gateway_id);
+            // TODO: should we have a Node::remove_connection?
+        }
     }
 
     /// Sets the interface configuration and starts background tasks.
@@ -150,11 +203,28 @@ where
 
     #[tracing::instrument(level = "trace", skip(self))]
     pub fn add_route(&mut self, route: IpNetwork) -> connlib_shared::Result<()> {
+        let callbacks = self.callbacks().clone();
         let maybe_new_device = self
             .device
-            .as_ref()
+            .as_mut()
             .ok_or(Error::ControlProtocolError)?
-            .add_route(route, self.callbacks())?;
+            .add_route(route, &callbacks)?;
+
+        if let Some(new_device) = maybe_new_device {
+            self.device = Some(new_device);
+        }
+
+        Ok(())
+    }
+
+    #[tracing::instrument(level = "trace", skip(self))]
+    pub fn remove_route(&mut self, route: IpNetwork) -> connlib_shared::Result<()> {
+        let callbacks = self.callbacks().clone();
+        let maybe_new_device = self
+            .device
+            .as_mut()
+            .ok_or(Error::ControlProtocolError)?
+            .remove_route(route, &callbacks)?;
 
         if let Some(new_device) = maybe_new_device {
             self.device = Some(new_device);
@@ -188,7 +258,7 @@ pub struct ClientState {
     pub resource_ids: HashMap<ResourceId, ResourceDescription>,
     pub deferred_dns_queries: HashMap<(DnsResource, Rtype), IpPacket<'static>>,
 
-    pub peers_by_ip: IpNetworkTable<Arc<Peer<GatewayId, PacketTransformClient>>>,
+    pub peers: PeerStore<GatewayId, PacketTransformClient, HashSet<ResourceId>>,
 
     forwarded_dns_queries: FuturesTupleSet<
         Result<hickory_resolver::lookup::Lookup, hickory_resolver::error::ResolveError>,
@@ -202,7 +272,7 @@ pub struct ClientState {
     dns_mapping: BiMap<IpAddr, DnsServer>,
     dns_resolvers: HashMap<IpAddr, TokioAsyncResolver>,
 
-    buffered_packets: VecDeque<Packet<'static>>,
+    buffered_packets: VecDeque<IpPacket<'static>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -220,13 +290,13 @@ impl ClientState {
     ) -> Option<(GatewayId, MutableIpPacket<'a>)> {
         let (packet, dest) = match self.handle_dns(packet) {
             Ok(response) => {
-                self.buffered_packets.push_back(response?.into_owned());
+                self.buffered_packets.push_back(response?.to_owned());
                 return None;
             }
             Err(non_dns_packet) => non_dns_packet,
         };
 
-        let Some(peer) = peer_by_ip(&self.peers_by_ip, dest) else {
+        let Some(peer) = self.peers.peer_by_ip_mut(dest) else {
             self.on_connection_intent_ip(dest);
             return None;
         };
@@ -243,7 +313,7 @@ impl ClientState {
     fn handle_dns<'a>(
         &mut self,
         packet: MutableIpPacket<'a>,
-    ) -> Result<Option<Packet<'a>>, (MutableIpPacket<'a>, IpAddr)> {
+    ) -> Result<Option<IpPacket<'a>>, (MutableIpPacket<'a>, IpAddr)> {
         match dns::parse(
             &self.dns_resources,
             &self.dns_resources_internal_ips,
@@ -308,7 +378,7 @@ impl ClientState {
 
         let domain = self.get_awaiting_connection_domain(&resource)?.clone();
 
-        if self.is_connected_to(resource, &self.peers_by_ip, &domain) {
+        if self.is_connected_to(resource, &domain) {
             return Err(Error::UnexpectedConnectionDetails);
         }
 
@@ -331,11 +401,7 @@ impl ClientState {
 
         self.resources_gateways.insert(resource, gateway);
 
-        let Some(peer) = self
-            .peers_by_ip
-            .iter()
-            .find_map(|(_, p)| (p.conn_id == gateway).then_some(p.clone()))
-        else {
+        if self.peers.get(&gateway).is_none() {
             match self
                 .gateway_awaiting_connection_timers
                 // Note: we don't need to set a timer here because
@@ -356,10 +422,9 @@ impl ClientState {
             return Ok(None);
         };
 
-        for ip in self.get_resource_ip(desc, &domain) {
-            peer.add_allowed_ip(ip);
-            self.peers_by_ip.insert(ip, peer.clone());
-        }
+        self.peers
+            .add_ips_with_resource(&gateway, &self.get_resource_ip(desc, &domain), &resource);
+
         self.awaiting_connection.remove(&resource);
         self.awaiting_connection_timers.remove(resource);
 
@@ -530,19 +595,13 @@ impl ClientState {
         self.awaiting_connection.contains_key(&resource.id())
     }
 
-    fn is_connected_to(
-        &self,
-        resource: ResourceId,
-        connected_peers: &IpNetworkTable<Arc<Peer<GatewayId, PacketTransformClient>>>,
-        domain: &Option<Dname>,
-    ) -> bool {
+    fn is_connected_to(&self, resource: ResourceId, domain: &Option<Dname>) -> bool {
         let Some(resource) = self.resource_ids.get(&resource) else {
             return false;
         };
 
         let ips = self.get_resource_ip(resource, domain);
-        ips.iter()
-            .any(|ip| connected_peers.exact_match(*ip).is_some())
+        ips.iter().any(|ip| self.peers.exact_match(*ip).is_some())
     }
 
     fn get_resource_ip(
@@ -570,7 +629,7 @@ impl ClientState {
     }
 
     pub fn cleanup_connected_gateway(&mut self, gateway_id: &GatewayId) {
-        self.peers_by_ip.retain(|_, p| p.conn_id != *gateway_id);
+        self.peers.remove(gateway_id);
         self.dns_resources_internal_ips.retain(|resource, _| {
             !self
                 .resources_gateways
@@ -667,20 +726,16 @@ impl ClientState {
             if self.refresh_dns_timer.poll_tick(cx).is_ready() {
                 let mut connections = Vec::new();
 
-                self.peers_by_ip
-                    .iter()
-                    .for_each(|p| p.1.transform.expire_dns_track());
+                self.peers
+                    .iter_mut()
+                    .for_each(|p| p.transform.expire_dns_track());
 
                 for resource in self.dns_resources_internal_ips.keys() {
                     let Some(gateway_id) = self.resources_gateways.get(&resource.id) else {
                         continue;
                     };
                     // filter inactive connections
-                    if !self
-                        .peers_by_ip
-                        .iter()
-                        .any(|(_, p)| &p.conn_id == gateway_id)
-                    {
+                    if self.peers.get(gateway_id).is_none() {
                         continue;
                     }
 
@@ -760,7 +815,7 @@ impl Default for ClientState {
             dns_resources: Default::default(),
             cidr_resources: IpNetworkTable::new(),
             resource_ids: Default::default(),
-            peers_by_ip: IpNetworkTable::new(),
+            peers: Default::default(),
             deferred_dns_queries: Default::default(),
             refresh_dns_timer: interval,
             dns_mapping: Default::default(),

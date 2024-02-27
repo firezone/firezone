@@ -13,8 +13,8 @@
 //! - Compile `minidump-stackwalk` with PR 891 merged
 //! - `minidump-stackwalker --symbols-path firezone.syms crash.dmp`
 
+use crate::client::known_dirs;
 use anyhow::{anyhow, bail, Context, Result};
-use connlib_shared::windows::app_local_data_dir;
 use crash_handler::CrashHandler;
 use std::{fs::File, io::Write, path::PathBuf};
 
@@ -66,9 +66,8 @@ fn start_server_and_connect() -> Result<(minidumper::Client, std::process::Child
     let exe = std::env::current_exe().context("unable to find our own exe path")?;
     // Path of a Unix domain socket for IPC with the crash handler server
     // <https://github.com/EmbarkStudios/crash-handling/issues/10>
-    let socket_path = app_local_data_dir()
-        .context("couldn't compute crash handler socket path")?
-        .join("data")
+    let socket_path = known_dirs::runtime()
+        .context("`known_dirs::runtime` failed")?
         .join("crash_handler_pipe");
 
     let mut server = None;
@@ -115,10 +114,8 @@ impl minidumper::ServerHandler for Handler {
     /// Called when a crash has been received and a backing file needs to be
     /// created to store it.
     fn create_minidump_file(&self) -> Result<(File, PathBuf), std::io::Error> {
-        let dump_path = app_local_data_dir()
-            .expect("app_local_data_dir() failed")
-            .join("data")
-            .join("logs")
+        let dump_path = known_dirs::logs()
+            .expect("Should be able to find logs dir to put crash dump in")
             .join("last_crash.dmp");
 
         if let Some(dir) = dump_path.parent() {
