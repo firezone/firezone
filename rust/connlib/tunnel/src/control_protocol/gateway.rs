@@ -174,9 +174,15 @@ where
                 .add_resource(address, resource.clone(), expires_at);
         }
 
+        for ip in &ips {
+            peer.allowed_ips.insert(*ip, ());
+        }
+
         self.role_state.peers.insert(peer);
 
-        self.role_state.peers.add_ips(&client_id, &ips, ());
+        for ip in ips {
+            self.role_state.peers.add_ip(&client_id, &ip);
+        }
 
         Ok(())
     }

@@ -98,6 +98,7 @@ where
     pub fn remove_resource(&mut self, id: ResourceId) {
         if let Some(ResourceDescription::Cidr(resource)) = self.role_state.resource_ids.remove(&id)
         {
+            // Note: hopefuly the os doesn't coalece routes in a way that removing a more general route deletes the most specific
             let _ = self.remove_route(resource.address).inspect_err(
                 |err| tracing::error!(%id, %resource.address, "failed to remove route: {err:?}"),
             );
@@ -120,17 +121,24 @@ where
             return;
         };
 
-        peer.allowed_ips
-            .iter()
-            .filter_map(|(ip, &r_id)| (r_id == id).then_some(ip))
-            .for_each(|network| {
-                peer.transform
-                    .translations
-                    //TODO: Can there be overlaps that complicate this?
-                    .retain(|ip, _| !network.contains(*ip));
-            });
+        for (network, resources) in peer.allowed_ips.iter_mut() {
+            if !resources.contains(&id) {
+                continue;
+            }
 
-        peer.allowed_ips.retain(|_, r_id| r_id != &id);
+            resources.remove(&id);
+
+            if !resources.is_empty() {
+                continue;
+            }
+
+            peer.transform
+                .translations
+                .remove_by_left(&network.network_address());
+        }
+
+        peer.allowed_ips.retain(|_, r| !r.is_empty());
+
         if peer.allowed_ips.is_empty() {
             self.role_state.peers.remove(&gateway_id);
             // TODO: should we have a Node::remove_connection?
@@ -243,7 +251,7 @@ pub struct ClientState {
     pub resource_ids: HashMap<ResourceId, ResourceDescription>,
     pub deferred_dns_queries: HashMap<(DnsResource, Rtype), IpPacket<'static>>,
 
-    pub peers: PeerStore<GatewayId, PacketTransformClient, ResourceId>,
+    pub peers: PeerStore<GatewayId, PacketTransformClient, HashSet<ResourceId>>,
 
     forwarded_dns_queries: FuturesTupleSet<
         Result<hickory_resolver::lookup::Lookup, hickory_resolver::error::ResolveError>,
@@ -386,11 +394,9 @@ impl ClientState {
 
         self.resources_gateways.insert(resource, gateway);
 
-        if self
-            .peers
-            .add_ips(&gateway, &self.get_resource_ip(desc, &domain), resource)
-            .is_none()
-        {
+        let resource_ips = self.get_resource_ip(desc, &domain);
+
+        let Some(peer) = self.peers.get_mut(&gateway) else {
             match self
                 .gateway_awaiting_connection_timers
                 // Note: we don't need to set a timer here because
@@ -410,6 +416,14 @@ impl ClientState {
             self.gateway_awaiting_connection.insert(gateway);
             return Ok(None);
         };
+
+        for ip in &resource_ips {
+            insert_id(&mut peer.allowed_ips, ip, &resource);
+        }
+
+        for ip in resource_ips {
+            self.peers.add_ip(&gateway, &ip);
+        }
 
         self.awaiting_connection.remove(&resource);
         self.awaiting_connection_timers.remove(resource);
@@ -819,5 +833,19 @@ fn address_changed(resource_a: &ResourceDescription, resource_b: &ResourceDescri
             cidr_a.address != cidr_b.address
         }
         _ => true,
+    }
+}
+
+pub(crate) fn insert_id(
+    allowed_ips: &mut IpNetworkTable<HashSet<ResourceId>>,
+    ip: &IpNetwork,
+    id: &ResourceId,
+) {
+    if let Some(resources) = allowed_ips.exact_match_mut(*ip) {
+        resources.insert(*id);
+    } else {
+        let mut resources = HashSet::new();
+        resources.insert(*id);
+        allowed_ips.insert(*ip, resources);
     }
 }

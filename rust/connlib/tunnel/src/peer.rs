@@ -20,27 +20,26 @@ type ExpiryingResource = (ResourceDescription, Option<DateTime<Utc>>);
 // is 30 seconds. See resolvconf(5) timeout.
 const IDS_EXPIRE: std::time::Duration = std::time::Duration::from_secs(60);
 
-pub struct Peer<TId, TTransform, RId> {
-    pub allowed_ips: IpNetworkTable<RId>,
+pub struct Peer<TId, TTransform, TResource> {
+    // TODO: we should refactor this
+    // in the gateway-side this means that we are explicit about ()
+    // maybe duping the Peer struct is the way to go
+    pub allowed_ips: IpNetworkTable<TResource>,
     pub conn_id: TId,
     pub transform: TTransform,
 }
 
-impl<TId, TTransform, RId> Peer<TId, TTransform, RId>
+impl<TId, TTransform, TResource> Peer<TId, TTransform, TResource>
 where
     TId: Copy,
     TTransform: PacketTransform,
 {
-    pub(crate) fn new(conn_id: TId, transform: TTransform) -> Peer<TId, TTransform, RId> {
+    pub(crate) fn new(conn_id: TId, transform: TTransform) -> Peer<TId, TTransform, TResource> {
         Peer {
             allowed_ips: IpNetworkTable::new(),
             conn_id,
             transform,
         }
-    }
-
-    pub(crate) fn add_allowed_ip(&mut self, ip: IpNetwork, resource_id: RId) {
-        self.allowed_ips.insert(ip, resource_id);
     }
 
     fn is_allowed(&self, addr: IpAddr) -> bool {

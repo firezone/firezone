@@ -285,7 +285,6 @@ where
     ) -> Poll<io::Result<()>>
     where
         TTransform: PacketTransform,
-        RId: Copy,
     {
         let received = match ready!(self.sockets.poll_recv_from(cx)) {
             Ok(received) => received,

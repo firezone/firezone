@@ -15,7 +15,7 @@ use secrecy::{ExposeSecret, Secret};
 use snownet::Client;
 
 use crate::{
-    client::DnsResource,
+    client::{insert_id, DnsResource},
     control_protocol::{stun, turn},
     device_channel::Device,
     dns,
@@ -106,10 +106,9 @@ where
             &domain_response.as_ref().map(|d| d.domain.clone()),
         )?;
 
-        let mut peer: Peer<_, PacketTransformClient, ResourceId> =
-            Peer::new(gateway_id, Default::default());
+        let mut peer: Peer<_, PacketTransformClient, _> = Peer::new(gateway_id, Default::default());
         for ip in &ips {
-            peer.add_allowed_ip(*ip, resource_id);
+            insert_id(&mut peer.allowed_ips, ip, &resource_id);
         }
 
         peer.transform.set_dns(self.role_state.dns_mapping());
@@ -121,9 +120,15 @@ where
             ips
         };
 
-        self.role_state
-            .peers
-            .add_ips(&gateway_id, &peer_ips, resource_id);
+        for ip in &peer_ips {
+            self.role_state.peers.add_ip(&gateway_id, ip);
+        }
+
+        let peer = self.role_state.peers.get_mut(&gateway_id).unwrap();
+
+        for ip in peer_ips {
+            insert_id(&mut peer.allowed_ips, &ip, &resource_id);
+        }
 
         Ok(())
     }
@@ -238,9 +243,17 @@ where
 
         let peer_ips = self.dns_response(&resource_id, &domain_response, &gateway_id)?;
 
-        self.role_state
-            .peers
-            .add_ips(&gateway_id, &peer_ips, resource_id);
+        let Some(peer) = self.role_state.peers.get_mut(&gateway_id) else {
+            return Ok(());
+        };
+
+        for ip in &peer_ips {
+            insert_id(&mut peer.allowed_ips, ip, &resource_id);
+        }
+
+        for ip in peer_ips {
+            self.role_state.peers.add_ip(&gateway_id, &ip);
+        }
 
         Ok(())
     }

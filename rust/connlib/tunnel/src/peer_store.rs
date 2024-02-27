@@ -6,9 +6,9 @@ use crate::peer::{PacketTransform, Peer};
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
 
-pub struct PeerStore<TId, TTransform, RId> {
+pub struct PeerStore<TId, TTransform, TResource> {
     id_by_ip: IpNetworkTable<TId>,
-    peer_by_id: HashMap<TId, Peer<TId, TTransform, RId>>,
+    peer_by_id: HashMap<TId, Peer<TId, TTransform, TResource>>,
 }
 
 impl<T, U, V> Default for PeerStore<T, U, V> {
@@ -20,76 +20,66 @@ impl<T, U, V> Default for PeerStore<T, U, V> {
     }
 }
 
-impl<TId, TTransform, RId> PeerStore<TId, TTransform, RId>
+impl<TId, TTransform, TResource> PeerStore<TId, TTransform, TResource>
 where
     TId: Hash + Eq + Copy,
-    RId: Copy,
     TTransform: PacketTransform,
 {
-    pub fn retain(&mut self, f: impl Fn(&TId, &mut Peer<TId, TTransform, RId>) -> bool) {
+    pub fn retain(&mut self, f: impl Fn(&TId, &mut Peer<TId, TTransform, TResource>) -> bool) {
         self.peer_by_id.retain(f);
         self.id_by_ip
             .retain(|_, id| self.peer_by_id.contains_key(id));
     }
 
-    pub fn add_ips(
-        &mut self,
-        id: &TId,
-        ips: &[IpNetwork],
-        resource_id: RId,
-    ) -> Option<&Peer<TId, TTransform, RId>> {
-        let peer = self.peer_by_id.get_mut(id)?;
-
-        for ip in ips {
-            self.id_by_ip.insert(*ip, peer.conn_id);
-            peer.add_allowed_ip(*ip, resource_id);
-        }
-
-        Some(peer)
+    pub fn add_ip(&mut self, id: &TId, ip: &IpNetwork) {
+        if !self.peer_by_id.contains_key(id) {
+            return;
+        };
+        self.id_by_ip.insert(*ip, *id);
     }
 
     pub fn insert(
         &mut self,
-        peer: Peer<TId, TTransform, RId>,
-    ) -> Option<Peer<TId, TTransform, RId>> {
+        peer: Peer<TId, TTransform, TResource>,
+    ) -> Option<Peer<TId, TTransform, TResource>> {
         self.id_by_ip.retain(|_, &mut r_id| r_id != peer.conn_id);
 
         self.peer_by_id.insert(peer.conn_id, peer)
     }
 
-    pub fn remove(&mut self, id: &TId) -> Option<Peer<TId, TTransform, RId>> {
+    pub fn remove(&mut self, id: &TId) -> Option<Peer<TId, TTransform, TResource>> {
         self.id_by_ip.retain(|_, r_id| r_id != id);
         self.peer_by_id.remove(id)
     }
 
-    pub fn exact_match(&self, ip: IpNetwork) -> Option<&Peer<TId, TTransform, RId>> {
+    pub fn exact_match(&self, ip: IpNetwork) -> Option<&Peer<TId, TTransform, TResource>> {
         let ip = self.id_by_ip.exact_match(ip)?;
         self.peer_by_id.get(ip)
     }
 
-    pub fn get(&self, id: &TId) -> Option<&Peer<TId, TTransform, RId>> {
+    pub fn get(&self, id: &TId) -> Option<&Peer<TId, TTransform, TResource>> {
         self.peer_by_id.get(id)
     }
 
-    pub fn get_mut(&mut self, id: &TId) -> Option<&mut Peer<TId, TTransform, RId>> {
+    pub fn get_mut(&mut self, id: &TId) -> Option<&mut Peer<TId, TTransform, TResource>> {
         self.peer_by_id.get_mut(id)
     }
 
-    pub fn peer_by_ip(&self, ip: IpAddr) -> Option<&Peer<TId, TTransform, RId>> {
+    pub fn peer_by_ip(&self, ip: IpAddr) -> Option<&Peer<TId, TTransform, TResource>> {
         let (_, id) = self.id_by_ip.longest_match(ip)?;
         self.peer_by_id.get(id)
     }
 
-    pub fn peer_by_ip_mut(&mut self, ip: IpAddr) -> Option<&mut Peer<TId, TTransform, RId>> {
+    pub fn peer_by_ip_mut(&mut self, ip: IpAddr) -> Option<&mut Peer<TId, TTransform, TResource>> {
         let (_, id) = self.id_by_ip.longest_match(ip)?;
         self.peer_by_id.get_mut(id)
     }
 
-    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut Peer<TId, TTransform, RId>> {
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut Peer<TId, TTransform, TResource>> {
         self.peer_by_id.values_mut()
     }
 
-    pub fn iter(&mut self) -> impl Iterator<Item = &Peer<TId, TTransform, RId>> {
+    pub fn iter(&mut self) -> impl Iterator<Item = &Peer<TId, TTransform, TResource>> {
         self.peer_by_id.values()
     }
 }
@@ -102,16 +92,16 @@ mod tests {
 
     #[test]
     fn can_insert_and_retrieve_peer() {
-        let mut peer_storage: PeerStore<_, _, ()> = PeerStore::default();
+        let mut peer_storage = PeerStore::<_, _, ()>::default();
         peer_storage.insert(Peer::new(0, PacketTransformGateway::default()));
         assert!(peer_storage.get(&0).is_some());
     }
 
     #[test]
     fn can_insert_and_retrieve_peer_by_ip() {
-        let mut peer_storage = PeerStore::default();
+        let mut peer_storage: PeerStore<_, _, ()> = PeerStore::default();
         peer_storage.insert(Peer::new(0, PacketTransformGateway::default()));
-        peer_storage.add_ips(&0, &["100.0.0.0/24".parse().unwrap()], ());
+        peer_storage.add_ip(&0, &"100.0.0.0/24".parse().unwrap());
 
         assert_eq!(
             peer_storage
@@ -124,9 +114,9 @@ mod tests {
 
     #[test]
     fn can_remove_peer() {
-        let mut peer_storage = PeerStore::default();
+        let mut peer_storage = PeerStore::<_, _, ()>::default();
         peer_storage.insert(Peer::new(0, PacketTransformGateway::default()));
-        peer_storage.add_ips(&0, &["100.0.0.0/24".parse().unwrap()], ());
+        peer_storage.add_ip(&0, &"100.0.0.0/24".parse().unwrap());
         peer_storage.remove(&0);
 
         assert!(peer_storage.get(&0).is_none());
@@ -137,9 +127,9 @@ mod tests {
 
     #[test]
     fn inserting_peer_removes_previous_instances_of_same_id() {
-        let mut peer_storage = PeerStore::default();
+        let mut peer_storage = PeerStore::<_, _, ()>::default();
         peer_storage.insert(Peer::new(0, PacketTransformGateway::default()));
-        peer_storage.add_ips(&0, &["100.0.0.0/24".parse().unwrap()], ());
+        peer_storage.add_ip(&0, &"100.0.0.0/24".parse().unwrap());
         peer_storage.insert(Peer::new(0, PacketTransformGateway::default()));
 
         assert!(peer_storage.get(&0).is_some());
