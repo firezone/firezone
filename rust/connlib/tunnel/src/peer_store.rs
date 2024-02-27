@@ -1,8 +1,9 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
 use std::net::IpAddr;
 
 use crate::peer::{PacketTransform, Peer};
+use connlib_shared::messages::ResourceId;
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
 
@@ -11,11 +12,26 @@ pub struct PeerStore<TId, TTransform, TResource> {
     peer_by_id: HashMap<TId, Peer<TId, TTransform, TResource>>,
 }
 
-impl<T, U, V> Default for PeerStore<T, U, V> {
+impl<TId, TTransform, TResource> Default for PeerStore<TId, TTransform, TResource> {
     fn default() -> Self {
         Self {
             id_by_ip: IpNetworkTable::new(),
             peer_by_id: HashMap::new(),
+        }
+    }
+}
+
+impl<TId, TTransform> PeerStore<TId, TTransform, HashSet<ResourceId>>
+where
+    TId: Hash + Eq + Copy,
+    TTransform: PacketTransform,
+{
+    pub fn add_ips_with_resource(&mut self, id: &TId, ips: &[IpNetwork], resource: &ResourceId) {
+        for ip in ips {
+            let Some(peer) = self.add_ip(id, ip) else {
+                continue;
+            };
+            peer.insert_id(ip, resource);
         }
     }
 }
@@ -31,11 +47,14 @@ where
             .retain(|_, id| self.peer_by_id.contains_key(id));
     }
 
-    pub fn add_ip(&mut self, id: &TId, ip: &IpNetwork) {
-        if !self.peer_by_id.contains_key(id) {
-            return;
-        };
+    pub fn add_ip(
+        &mut self,
+        id: &TId,
+        ip: &IpNetwork,
+    ) -> Option<&mut Peer<TId, TTransform, TResource>> {
+        let peer = self.peer_by_id.get_mut(id)?;
         self.id_by_ip.insert(*ip, *id);
+        Some(peer)
     }
 
     pub fn insert(
@@ -99,7 +118,7 @@ mod tests {
 
     #[test]
     fn can_insert_and_retrieve_peer_by_ip() {
-        let mut peer_storage: PeerStore<_, _, ()> = PeerStore::default();
+        let mut peer_storage = PeerStore::<_, _, ()>::default();
         peer_storage.insert(Peer::new(0, PacketTransformGateway::default()));
         peer_storage.add_ip(&0, &"100.0.0.0/24".parse().unwrap());
 

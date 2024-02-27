@@ -60,7 +60,7 @@ where
         resource_description: ResourceDescription,
     ) -> connlib_shared::Result<()> {
         if let Some(resource) = self.role_state.resource_ids.get(&resource_description.id()) {
-            if address_changed(resource, &resource_description) {
+            if resource.different_address(resource) {
                 self.remove_resource(resource.id());
             }
         }
@@ -96,13 +96,6 @@ where
     }
 
     pub fn remove_resource(&mut self, id: ResourceId) {
-        if let Some(ResourceDescription::Cidr(resource)) = self.role_state.resource_ids.remove(&id)
-        {
-            // Note: hopefully the os doesn't coalece routes in a way that removing a more general route deletes the most specific
-            let _ = self.remove_route(resource.address).inspect_err(
-                |err| tracing::error!(%id, %resource.address, "failed to remove route: {err:?}"),
-            );
-        }
         self.role_state.awaiting_connection.remove(&id);
         self.role_state.awaiting_connection_timers.remove(id);
         self.role_state
@@ -113,6 +106,15 @@ where
         self.role_state
             .deferred_dns_queries
             .retain(|(r, _), _| r.id != id);
+
+        if let Some(ResourceDescription::Cidr(resource)) = self.role_state.resource_ids.remove(&id)
+        {
+            // Note: hopefully the os doesn't coalece routes in a way that removing a more general route deletes the most specific
+            if let Err(err) = self.remove_route(resource.address) {
+                tracing::error!(%id, %resource.address, "failed to remove route: {err:?}");
+            }
+        }
+
         let Some(gateway_id) = self.role_state.resources_gateways.remove(&id) else {
             return;
         };
@@ -121,24 +123,29 @@ where
             return;
         };
 
-        for (network, resources) in peer.allowed_ips.iter_mut() {
-            if !resources.contains(&id) {
-                continue;
-            }
-
+        // First we remove the id from all allowed ips
+        for (network, resources) in peer
+            .allowed_ips
+            .iter_mut()
+            .filter(|(_, resources)| resources.contains(&id))
+        {
             resources.remove(&id);
 
             if !resources.is_empty() {
                 continue;
             }
 
+            // If the allowed_ips doesn't correspond to any resource anymorre we
+            // clean up any related translation.
             peer.transform
                 .translations
                 .remove_by_left(&network.network_address());
         }
 
+        // We remove all empty allowed ips entry since there's no resource that corresponds to it
         peer.allowed_ips.retain(|_, r| !r.is_empty());
 
+        // If there's no allowed ip left we remove the whole peer because there's no point on keeping it around
         if peer.allowed_ips.is_empty() {
             self.role_state.peers.remove(&gateway_id);
             // TODO: should we have a Node::remove_connection?
@@ -394,9 +401,7 @@ impl ClientState {
 
         self.resources_gateways.insert(resource, gateway);
 
-        let resource_ips = self.get_resource_ip(desc, &domain);
-
-        let Some(peer) = self.peers.get_mut(&gateway) else {
+        if self.peers.get(&gateway).is_none() {
             match self
                 .gateway_awaiting_connection_timers
                 // Note: we don't need to set a timer here because
@@ -417,13 +422,8 @@ impl ClientState {
             return Ok(None);
         };
 
-        for ip in &resource_ips {
-            insert_id(&mut peer.allowed_ips, ip, &resource);
-        }
-
-        for ip in resource_ips {
-            self.peers.add_ip(&gateway, &ip);
-        }
+        self.peers
+            .add_ips_with_resource(&gateway, &self.get_resource_ip(desc, &domain), &resource);
 
         self.awaiting_connection.remove(&resource);
         self.awaiting_connection_timers.remove(resource);
@@ -822,30 +822,5 @@ impl Default for ClientState {
             dns_resolvers: Default::default(),
             buffered_packets: Default::default(),
         }
-    }
-}
-fn address_changed(resource_a: &ResourceDescription, resource_b: &ResourceDescription) -> bool {
-    match (resource_a, resource_b) {
-        (ResourceDescription::Dns(dns_a), ResourceDescription::Dns(dns_b)) => {
-            dns_a.address != dns_b.address
-        }
-        (ResourceDescription::Cidr(cidr_a), ResourceDescription::Cidr(cidr_b)) => {
-            cidr_a.address != cidr_b.address
-        }
-        _ => true,
-    }
-}
-
-pub(crate) fn insert_id(
-    allowed_ips: &mut IpNetworkTable<HashSet<ResourceId>>,
-    ip: &IpNetwork,
-    id: &ResourceId,
-) {
-    if let Some(resources) = allowed_ips.exact_match_mut(*ip) {
-        resources.insert(*id);
-    } else {
-        let mut resources = HashSet::new();
-        resources.insert(*id);
-        allowed_ips.insert(*ip, resources);
     }
 }

@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::net::IpAddr;
 use std::time::Instant;
 
@@ -27,6 +27,22 @@ pub struct Peer<TId, TTransform, TResource> {
     pub allowed_ips: IpNetworkTable<TResource>,
     pub conn_id: TId,
     pub transform: TTransform,
+}
+
+impl<TId, TTransform> Peer<TId, TTransform, HashSet<ResourceId>>
+where
+    TId: Copy,
+    TTransform: PacketTransform,
+{
+    pub(crate) fn insert_id(&mut self, ip: &IpNetwork, id: &ResourceId) {
+        if let Some(resources) = self.allowed_ips.exact_match_mut(*ip) {
+            resources.insert(*id);
+        } else {
+            let mut resources = HashSet::new();
+            resources.insert(*id);
+            self.allowed_ips.insert(*ip, resources);
+        }
+    }
 }
 
 impl<TId, TTransform, TResource> Peer<TId, TTransform, TResource>
