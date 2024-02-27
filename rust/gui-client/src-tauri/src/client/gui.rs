@@ -25,6 +25,8 @@ use tauri::{Manager, SystemTray, SystemTrayEvent};
 use tokio::sync::{mpsc, oneshot, Notify};
 use ControllerRequest as Req;
 
+pub type RawFd = i32;
+
 mod system_tray_menu;
 
 /// The Windows client doesn't use platform APIs to detect network connectivity changes,
@@ -460,7 +462,7 @@ impl connlib_client_shared::Callbacks for CallbackHandler {
         _: Ipv4Addr,
         _: Ipv6Addr,
         _: Vec<IpAddr>,
-    ) -> Result<Option<connlib_shared::RawFd>, Self::Error> {
+    ) -> Result<Option<RawFd>, Self::Error> {
         tracing::info!("on_set_interface_config");
         self.ctlr_tx.try_send(ControllerRequest::TunnelReady)?;
         Ok(None)
