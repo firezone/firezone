@@ -135,7 +135,7 @@ where
                 continue;
             }
 
-            // If the allowed_ips doesn't correspond to any resource anymorre we
+            // If the allowed_ips doesn't correspond to any resource anymore we
             // clean up any related translation.
             peer.transform
                 .translations
