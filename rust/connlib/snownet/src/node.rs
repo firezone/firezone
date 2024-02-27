@@ -1339,7 +1339,7 @@ impl Connection {
             // Payload should be sent from a "remote socket", let's wrap it in a channel data message!
             let Some(channel_data) = allocation.encode_to_vec(dst, &packet, now) else {
                 // Unlikely edge-case, drop the packet and continue.
-                tracing::debug!(%relay, peer = %dst, "Dropping packet because allocation does not offer a channel to peer");
+                tracing::trace!(%relay, peer = %dst, "Dropping packet because allocation does not offer a channel to peer");
                 continue;
             };
 
