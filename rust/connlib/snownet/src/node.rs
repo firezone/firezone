@@ -414,6 +414,8 @@ where
                             conn.peer_socket = Some(remote_socket);
 
                             if is_first_connection {
+                                tracing::info!(%id, "Starting wireguard handshake");
+
                                 self.buffered_transmits.extend(
                                     conn.force_handshake(&mut self.allocations, self.last_now),
                                 );
@@ -819,6 +821,8 @@ where
 
         debug_assert!(existing.is_none());
 
+        tracing::info!("Establishing new connection");
+
         params
     }
 
@@ -852,6 +856,8 @@ where
         );
 
         let existing = self.connections.established.insert(id, connection);
+
+        tracing::info!("Signalling protocol completed");
 
         debug_assert!(existing.is_none());
     }
@@ -922,6 +928,8 @@ where
         let existing = self.connections.established.insert(id, connection);
 
         debug_assert!(existing.is_none());
+
+        tracing::info!("Created new connection");
 
         answer
     }
