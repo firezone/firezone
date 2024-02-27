@@ -276,7 +276,7 @@ pub struct ClientState {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AwaitingConnectionDetails {
+struct AwaitingConnectionDetails {
     total_attemps: usize,
     response_received: bool,
     domain: Option<Dname>,
