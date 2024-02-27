@@ -38,6 +38,13 @@ pub struct ControlPlane<CB: Callbacks> {
     pub tunnel: ClientTunnel<CB>,
     pub phoenix_channel: PhoenixSenderWithTopic,
     pub tunnel_init: bool,
+
+    pub next_request_id: usize,
+
+    // Upon attempting to connect to a resource, we send a connection intent at most every 2 seconds.
+    // In case we receive a response, we only want to accept the "last" one.
+    // In other words, discard any responses from the portal until we get a response to the one we sent last.
+    pub last_connection_intent_request: usize,
 }
 
 fn effective_dns_servers(
@@ -180,11 +187,21 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
         }: ConnectionDetails,
         reference: Option<Reference>,
     ) {
+        let Some(reference) = reference.as_ref().and_then(|r| r.parse::<usize>().ok()) else {
+            tracing::warn!(?reference, "Failed to parse reference as usize");
+            return;
+        };
+
+        if reference != self.last_connection_intent_request {
+            tracing::debug!("Discarding stale connection details");
+            return;
+        }
+
         let mut control_signaler = self.phoenix_channel.clone();
 
         let err = match self
             .tunnel
-            .request_connection(resource_id, gateway_id, relays, reference)
+            .request_connection(resource_id, gateway_id, relays)
         {
             Ok(Request::NewConnection(connection_request)) => {
                 tokio::spawn(async move {
@@ -339,8 +356,11 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
             Ok(firezone_tunnel::Event::ConnectionIntent {
                 resource,
                 connected_gateway_ids,
-                reference,
             }) => {
+                let id = self.next_request_id;
+                self.next_request_id += 1;
+                self.last_connection_intent_request = id;
+
                 if let Err(e) = self
                     .phoenix_channel
                     .clone()
@@ -349,7 +369,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                             resource_id: resource,
                             connected_gateway_ids,
                         },
-                        reference,
+                        id,
                     )
                     .await
                 {

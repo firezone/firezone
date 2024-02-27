@@ -274,7 +274,6 @@ pub struct ClientState {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct AwaitingConnectionDetails {
-    total_attemps: usize,
     response_received: bool,
     domain: Option<Dname>,
     gateways: HashSet<GatewayId>,
@@ -370,7 +369,6 @@ impl ClientState {
         &mut self,
         resource: ResourceId,
         gateway: GatewayId,
-        expected_attempts: usize,
     ) -> Result<Option<ReuseConnection>, ConnlibError> {
         let desc = self
             .resource_ids
@@ -389,10 +387,6 @@ impl ClientState {
             .ok_or(Error::UnexpectedConnectionDetails)?;
 
         details.response_received = true;
-
-        if details.total_attemps != expected_attempts {
-            return Err(Error::UnexpectedConnectionDetails);
-        }
 
         if self.gateway_awaiting_connection.contains(&gateway) {
             self.awaiting_connection.remove(&resource);
@@ -489,32 +483,27 @@ impl ClientState {
             .copied()
             .collect::<HashSet<_>>();
 
-        let reference = match self.awaiting_connection.entry(resource) {
+        match self.awaiting_connection.entry(resource) {
             Entry::Occupied(mut occupied) => {
                 if now.duration_since(occupied.get().last_intent_sent_at) < Duration::from_secs(2) {
                     return;
                 }
 
                 occupied.get_mut().last_intent_sent_at = now;
-                occupied.get().total_attemps
             }
             Entry::Vacant(vacant) => {
                 vacant.insert(AwaitingConnectionDetails {
-                    total_attemps: 0,
                     response_received: false,
                     domain: None,
                     gateways: gateways.clone(),
                     last_intent_sent_at: now,
                 });
-
-                0
             }
-        };
+        }
 
         self.buffered_events.push_back(Event::ConnectionIntent {
             resource,
             connected_gateway_ids: gateways,
-            reference,
         });
     }
 

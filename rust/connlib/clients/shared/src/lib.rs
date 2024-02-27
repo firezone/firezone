@@ -179,6 +179,8 @@ where
                 tunnel,
                 phoenix_channel: connection.sender_with_topic("client".to_owned()),
                 tunnel_init: false,
+                next_request_id: 0,
+                last_connection_intent_request: 0,
             };
 
             tokio::spawn({

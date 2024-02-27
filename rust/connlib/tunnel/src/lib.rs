@@ -394,7 +394,6 @@ pub enum Event<TId> {
     ConnectionIntent {
         resource: ResourceId,
         connected_gateway_ids: HashSet<GatewayId>,
-        reference: usize,
     },
     RefreshResources {
         connections: Vec<ReuseConnection>,
