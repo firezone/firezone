@@ -179,6 +179,10 @@ If using asdf, simply run `asdf install` from the project root.
 This is used to run static analysis checks during [pre-commit](#pre-commit) and
 for any local, non-Docker development or testing.
 
+### nix Setup
+
+If you are using Nix, see [scripts/nix/README](../scripts/nix/README.md).
+
 ### Pre-commit
 
 We use [pre-commit](https://pre-commit.com) to catch any static analysis issues
