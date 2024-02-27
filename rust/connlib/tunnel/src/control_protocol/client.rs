@@ -106,8 +106,7 @@ where
             &domain_response.as_ref().map(|d| d.domain.clone()),
         )?;
 
-        let mut resource_ids = HashSet::new();
-        resource_ids.insert(resource_id);
+        let resource_ids = HashSet::from([resource_id]);
         let mut peer: Peer<_, PacketTransformClient, _> =
             Peer::new(gateway_id, Default::default(), &ips, resource_ids);
         peer.transform.set_dns(self.role_state.dns_mapping());
