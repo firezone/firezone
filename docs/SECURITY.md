@@ -29,13 +29,10 @@ Instead do one of the following and we'll respond as soon as possible:
 You may use the public key below to encrypt emails to
 `security AT firezone.dev`. You can also find this key at:
 
-https://pgp.mit.edu/pks/lookup?op=get&search=0x45113BA04AD83D8A
+https://keys.openpgp.org/vks/v1/by-fingerprint/250F8B56804107042DFC6A7345113BA04AD83D8A
 
 ```
 -----BEGIN PGP PUBLIC KEY BLOCK-----
-Version: SKS 1.1.6
-Comment: Hostname: pgp.mit.edu
-
 mDMEYYwK5BYJKwYBBAHaRw8BAQdA4ooDpwDy3V0wHCftM/LHD5e713LSr0SQy49joUMgHoS0
 JkZpcmV6b25lIFNlY3VyaXR5IDxzZWN1cml0eUBmaXJlei5vbmU+iJoEExYKAEIWIQQlD4tW
 gEEHBC38anNFETugStg9igUCYYwK5AIbAwUJA8JnAAULCQgHAgMiAgEGFQoJCAsCBBYCAwEC
