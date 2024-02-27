@@ -21,7 +21,9 @@ defmodule Domain do
     quote do
       import Ecto.Changeset
       import Domain.Changeset
+      # TODO: deprecate it
       import Domain.Validator
+      import Domain.Repo.Changeset
     end
   end
 

@@ -65,7 +65,7 @@ defmodule Domain.TokensTest do
       Fixtures.Tokens.create_token(account: account)
       Fixtures.Tokens.create_token()
 
-      assert {:ok, tokens} = list_tokens_for(subject)
+      assert {:ok, tokens, _metadata} = list_tokens_for(subject)
       token_ids = Enum.map(tokens, & &1.id)
       assert token.id in token_ids
       assert subject.token_id in token_ids
@@ -97,7 +97,7 @@ defmodule Domain.TokensTest do
       Fixtures.Tokens.create_token(account: account)
       Fixtures.Tokens.create_token()
 
-      assert {:ok, [fetched_token]} = list_tokens_for(actor, subject)
+      assert {:ok, [fetched_token], _metadata} = list_tokens_for(actor, subject)
       assert fetched_token.id == token.id
     end
 

@@ -65,4 +65,19 @@ defmodule Domain.Relays.Relay.Query do
       |> preload([relays: relays, user: user], user: user)
     end)
   end
+
+  # Pagination
+
+  @impl Domain.Repo.Query
+  def cursor_fields,
+    do: [
+      {:relays, :asc, :inserted_at},
+      {:relays, :asc, :id}
+    ]
+
+  @impl Domain.Repo.Query
+  def preloads,
+    do: [
+      online?: &Domain.Relays.preload_relays_presence/1
+    ]
 end

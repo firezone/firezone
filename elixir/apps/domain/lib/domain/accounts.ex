@@ -3,61 +3,40 @@ defmodule Domain.Accounts do
   alias Domain.Auth
   alias Domain.Accounts.{Account, Features, Authorizer}
 
-  def list_active_accounts do
+  def all_active_accounts do
     Account.Query.not_disabled()
-    |> Repo.list()
+    |> Repo.all()
   end
 
-  def list_accounts_by_ids(ids) do
+  def list_accounts_by_ids(ids, opts \\ []) do
     if Enum.all?(ids, &Validator.valid_uuid?/1) do
       Account.Query.by_id({:in, ids})
-      |> Repo.list()
+      |> Repo.list(Account.Query, opts)
     else
       {:ok, []}
     end
   end
 
-  def fetch_account_by_id(id, %Auth.Subject{} = subject) do
+  def fetch_account_by_id(id, %Auth.Subject{} = subject, opts \\ []) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_own_account_permission()),
          true <- Validator.valid_uuid?(id) do
       Account.Query.by_id(id)
       |> Authorizer.for_subject(subject)
-      |> Repo.fetch()
+      |> Repo.fetch(Account.Query, opts)
     else
       false -> {:error, :not_found}
       other -> other
     end
   end
 
-  def fetch_account_by_id_or_slug(id_or_slug, %Auth.Subject{} = subject) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_own_account_permission()),
-         true <- not is_nil(id_or_slug) do
-      id_or_slug
-      |> Account.Query.by_id_or_slug()
-      |> Authorizer.for_subject(subject)
-      |> Repo.fetch()
-    else
-      false -> {:error, :not_found}
-      other -> other
-    end
-  end
+  def fetch_account_by_id_or_slug(term, opts \\ [])
+  def fetch_account_by_id_or_slug(nil, _opts), do: {:error, :not_found}
+  def fetch_account_by_id_or_slug("", _opts), do: {:error, :not_found}
 
-  def fetch_account_by_id_or_slug(nil), do: {:error, :not_found}
-  def fetch_account_by_id_or_slug(""), do: {:error, :not_found}
-
-  def fetch_account_by_id_or_slug(id_or_slug) do
+  def fetch_account_by_id_or_slug(id_or_slug, opts) do
     id_or_slug
     |> Account.Query.by_id_or_slug()
-    |> Repo.fetch()
-  end
-
-  def fetch_account_by_id(id) do
-    if Validator.valid_uuid?(id) do
-      Account.Query.by_id(id)
-      |> Repo.fetch()
-    else
-      {:error, :not_found}
-    end
+    |> Repo.fetch(Account.Query, opts)
   end
 
   def fetch_account_by_id!(id) do
@@ -78,11 +57,9 @@ defmodule Domain.Accounts do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_own_account_permission()) do
       Account.Query.by_id(account.id)
       |> Authorizer.for_subject(subject)
-      |> Repo.fetch_and_update(
-        with: fn account ->
-          changeset = Account.Changeset.update_profile_and_config(account, attrs)
-          {changeset, execute_after_commit: on_account_update_cb(changeset)}
-        end
+      |> Repo.fetch_and_update(Account.Query,
+        with: &Account.Changeset.update_profile_and_config(&1, attrs),
+        after_commit: &on_account_update/2
       )
     end
   end
@@ -94,19 +71,17 @@ defmodule Domain.Accounts do
   def update_account_by_id(id, attrs) do
     Account.Query.all()
     |> Account.Query.by_id(id)
-    |> Repo.fetch_and_update(
-      with: fn account ->
-        changeset = Account.Changeset.update(account, attrs)
-        {changeset, execute_after_commit: on_account_update_cb(changeset)}
-      end
+    |> Repo.fetch_and_update(Account.Query,
+      with: &Account.Changeset.update(&1, attrs),
+      after_commit: &on_account_update/2
     )
   end
 
-  defp on_account_update_cb(changeset) do
+  defp on_account_update(account, changeset) do
     if Ecto.Changeset.changed?(changeset, :config) do
-      &broadcast_config_update_to_account/1
+      broadcast_config_update_to_account(account)
     else
-      fn _account -> :ok end
+      :ok
     end
   end
 

@@ -91,4 +91,13 @@ defmodule Domain.Flows.Flow.Query do
       join(queryable, :inner, [client: client], identity in assoc(client, ^binding), as: ^binding)
     end)
   end
+
+  # Pagination
+
+  @impl Domain.Repo.Query
+  def cursor_fields,
+    do: [
+      {:flows, :asc, :inserted_at},
+      {:flows, :asc, :id}
+    ]
 end

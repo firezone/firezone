@@ -19,24 +19,10 @@ defmodule Domain.Relays do
   def fetch_group_by_id(id, %Auth.Subject{} = subject, opts \\ []) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_relays_permission()),
          true <- Validator.valid_uuid?(id) do
-      {preload, _opts} = Keyword.pop(opts, :preload, [])
-
       Group.Query.all()
       |> Group.Query.by_id(id)
       |> Authorizer.for_subject(subject)
-      |> Repo.fetch()
-      |> case do
-        {:ok, group} ->
-          group =
-            group
-            |> Repo.preload(preload)
-            |> maybe_preload_online_status()
-
-          {:ok, group}
-
-        {:error, reason} ->
-          {:error, reason}
-      end
+      |> Repo.fetch(Group.Query, opts)
     else
       false -> {:error, :not_found}
       other -> other
@@ -45,59 +31,9 @@ defmodule Domain.Relays do
 
   def list_groups(%Auth.Subject{} = subject, opts \\ []) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_relays_permission()) do
-      {preload, _opts} = Keyword.pop(opts, :preload, [])
-
-      {:ok, groups} =
-        Group.Query.not_deleted()
-        |> Authorizer.for_subject(subject)
-        |> Repo.list()
-
-      groups =
-        groups
-        |> Repo.preload(preload)
-        |> maybe_preload_online_statuses()
-
-      {:ok, groups}
-    end
-  end
-
-  # TODO: this is ugly!
-  defp maybe_preload_online_status(group) do
-    if Ecto.assoc_loaded?(group.relays) do
-      connected_relays = group |> group_presence_topic() |> Presence.list()
-
-      relays =
-        Enum.map(group.relays, fn relay ->
-          %{relay | online?: Map.has_key?(connected_relays, relay.id)}
-        end)
-
-      %{group | relays: relays}
-    else
-      group
-    end
-  end
-
-  defp maybe_preload_online_statuses([]), do: []
-
-  defp maybe_preload_online_statuses([group | _] = groups) do
-    connected_global_relays = global_groups_presence_topic() |> Presence.list()
-    connected_relays = group.account_id |> account_presence_topic() |> Presence.list()
-
-    if Ecto.assoc_loaded?(group.relays) do
-      Enum.map(groups, fn group ->
-        relays =
-          Enum.map(group.relays, fn relay ->
-            online? =
-              Map.has_key?(connected_relays, relay.id) or
-                Map.has_key?(connected_global_relays, relay.id)
-
-            %{relay | online?: online?}
-          end)
-
-        %{group | relays: relays}
-      end)
-    else
-      groups
+      Group.Query.not_deleted()
+      |> Authorizer.for_subject(subject)
+      |> Repo.list(Group.Query, opts)
     end
   end
 
@@ -148,7 +84,7 @@ defmodule Domain.Relays do
       Group.Query.by_id(group.id)
       |> Authorizer.for_subject(subject)
       |> Group.Query.by_account_id(subject.account.id)
-      |> Repo.fetch_and_update(
+      |> Repo.fetch_and_update(Group.Query,
         with: fn group ->
           {:ok, _tokens} = Tokens.delete_tokens_for(group, subject)
 
@@ -157,16 +93,9 @@ defmodule Domain.Relays do
             |> Repo.update_all(set: [deleted_at: DateTime.utc_now()])
 
           Group.Changeset.delete(group)
-        end
+        end,
+        after_commit: &disconnect_relays_in_group/1
       )
-      |> case do
-        {:ok, group} ->
-          :ok = disconnect_relays_in_group(group)
-          {:ok, group}
-
-        {:error, changeset} ->
-          {:error, changeset}
-      end
     end
   end
 
@@ -207,7 +136,7 @@ defmodule Domain.Relays do
   def authenticate(encoded_token, %Auth.Context{} = context) when is_binary(encoded_token) do
     with {:ok, token} <- Tokens.use_token(encoded_token, context),
          queryable = Group.Query.by_id(token.relay_group_id),
-         {:ok, group} <- Repo.fetch(queryable) do
+         {:ok, group} <- Repo.fetch(queryable, Group.Query, []) do
       {:ok, group, token}
     else
       {:error, :invalid_or_expired_token} -> {:error, :unauthorized}
@@ -218,24 +147,10 @@ defmodule Domain.Relays do
   def fetch_relay_by_id(id, %Auth.Subject{} = subject, opts \\ []) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_relays_permission()),
          true <- Validator.valid_uuid?(id) do
-      {preload, _opts} = Keyword.pop(opts, :preload, [])
-
       Relay.Query.all()
       |> Relay.Query.by_id(id)
       |> Authorizer.for_subject(subject)
-      |> Repo.fetch()
-      |> case do
-        {:ok, gateway} ->
-          gateway =
-            gateway
-            |> Repo.preload(preload)
-            |> preload_online_status()
-
-          {:ok, gateway}
-
-        {:error, reason} ->
-          {:error, reason}
-      end
+      |> Repo.fetch(Relay.Query, opts)
     else
       false -> {:error, :not_found}
       other -> other
@@ -243,34 +158,30 @@ defmodule Domain.Relays do
   end
 
   def fetch_relay_by_id!(id, opts \\ []) do
-    {preload, _opts} = Keyword.pop(opts, :preload, [])
-
     Relay.Query.by_id(id)
-    |> Repo.one!()
-    |> Repo.preload(preload)
-    |> preload_online_status()
+    |> Repo.fetch!(Relay.Query, opts)
   end
 
   def list_relays(%Auth.Subject{} = subject, opts \\ []) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_relays_permission()) do
-      {preload, _opts} = Keyword.pop(opts, :preload, [])
-
-      {:ok, relays} =
-        Relay.Query.not_deleted()
-        |> Authorizer.for_subject(subject)
-        |> Repo.list()
-
-      relays =
-        relays
-        |> Repo.preload(preload)
-        |> preload_online_statuses(subject.account.id)
-
-      {:ok, relays}
+      Relay.Query.not_deleted()
+      |> Authorizer.for_subject(subject)
+      |> Repo.list(Relay.Query, opts)
     end
   end
 
-  # TODO: make it function of a preload, so that we don't pull this data when we don't need to
-  defp preload_online_status(%Relay{} = relay) do
+  @doc false
+  def preload_relays_presence([%{account_id: nil} = relay]) do
+    global_groups_presence_topic()
+    |> Presence.get_by_key(relay.id)
+    |> case do
+      [] -> %{relay | online?: false}
+      %{metas: [_ | _]} -> %{relay | online?: true}
+    end
+    |> List.wrap()
+  end
+
+  def preload_relays_presence([relay]) do
     relay.account_id
     |> account_presence_topic()
     |> Presence.get_by_key(relay.id)
@@ -278,18 +189,33 @@ defmodule Domain.Relays do
       [] -> %{relay | online?: false}
       %{metas: [_ | _]} -> %{relay | online?: true}
     end
+    |> List.wrap()
   end
 
-  defp preload_online_statuses(relays, account_id) do
-    connected_global_relays = global_groups_presence_topic() |> Presence.list()
-    connected_relays = account_id |> account_presence_topic() |> Presence.list()
+  def preload_relays_presence(relays) do
+    # if there are relays without account_id, we need to fetch global relays
+    connected_global_relays =
+      if Enum.any?(relays, &is_nil(&1.account_id)) do
+        global_groups_presence_topic() |> Presence.list()
+      else
+        %{}
+      end
+
+    # we fetch list of account relays for every account_id present in the relays list
+    connected_relays =
+      relays
+      |> Enum.map(& &1.account_id)
+      |> Enum.reject(&is_nil/1)
+      |> Enum.uniq()
+      |> Enum.reduce(%{}, fn account_id, acc ->
+        connected_relays = account_id |> account_presence_topic() |> Presence.list()
+        Map.merge(acc, connected_relays)
+      end)
+
+    all_connected_relays = Map.merge(connected_relays, connected_global_relays)
 
     Enum.map(relays, fn relay ->
-      online? =
-        Map.has_key?(connected_relays, relay.id) or
-          Map.has_key?(connected_global_relays, relay.id)
-
-      %{relay | online?: online?}
+      %{relay | online?: Map.has_key?(all_connected_relays, relay.id)}
     end)
   end
 
@@ -359,15 +285,10 @@ defmodule Domain.Relays do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_relays_permission()) do
       Relay.Query.by_id(relay.id)
       |> Authorizer.for_subject(subject)
-      |> Repo.fetch_and_update(with: &Relay.Changeset.delete/1)
-      |> case do
-        {:ok, relay} ->
-          :ok = disconnect_relay(relay)
-          {:ok, relay}
-
-        {:error, changeset} ->
-          {:error, changeset}
-      end
+      |> Repo.fetch_and_update(Relay.Query,
+        with: &Relay.Changeset.delete/1,
+        after_commit: &disconnect_relay/1
+      )
     end
   end
 

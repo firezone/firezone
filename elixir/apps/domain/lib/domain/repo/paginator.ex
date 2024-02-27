@@ -9,7 +9,7 @@ defmodule Domain.Repo.Paginator do
   It also supports ordering and paging.
   """
   alias Domain.Repo.Query
-  require Ecto.Query
+  import Ecto.Query
 
   @default_limit 50
   @max_limit 100
@@ -25,12 +25,14 @@ defmodule Domain.Repo.Paginator do
     limit = Keyword.get(opts, :limit, @default_limit)
     limit = max(min(limit, @max_limit), 1)
 
+    cursor_fields = Query.fetch_cursor_fields!(query_module)
+
     if encoded_cursor = Keyword.get(opts, :cursor) do
       with {:ok, {direction, values}} <- decode_cursor(encoded_cursor) do
         {:ok,
          %{
            query_module: query_module,
-           cursor_fields: query_module.cursor_fields(),
+           cursor_fields: cursor_fields,
            limit: limit,
            direction: direction,
            values: values
@@ -40,7 +42,7 @@ defmodule Domain.Repo.Paginator do
       {:ok,
        %{
          query_module: query_module,
-         cursor_fields: query_module.cursor_fields(),
+         cursor_fields: cursor_fields,
          limit: limit
        }}
     end
@@ -48,42 +50,81 @@ defmodule Domain.Repo.Paginator do
 
   def query(queryable, paginator_opts) do
     queryable
-    |> order(paginator_opts)
-    |> filter(paginator_opts)
-    |> limit(paginator_opts)
+    |> order_by_cursor_fields(paginator_opts)
+    |> maybe_query_page(paginator_opts)
+    |> limit_page_size(paginator_opts)
   end
 
-  def order(queryable, %{query_module: query_module, direction: :before}) do
+  defp order_by_cursor_fields(queryable, %{cursor_fields: cursor_fields, direction: :before}) do
     # when we paginate backwards we need to flip the orders and
     # then reverse the results in `metadata/3` function
     queryable
-    |> Query.order_by_cursor_fields(query_module)
+    |> default_order_by_cursor_fields(cursor_fields)
     |> Ecto.Query.reverse_order()
   end
 
-  def order(queryable, %{query_module: query_module}) do
-    Query.order_by_cursor_fields(queryable, query_module)
+  defp order_by_cursor_fields(queryable, %{cursor_fields: cursor_fields}) do
+    default_order_by_cursor_fields(queryable, cursor_fields)
   end
 
-  @doc """
-  Uses `Domain.Repo.Query` behaviour to filter results based on cursor direction and value.
-  """
-  def filter(queryable, %{query_module: query_module, direction: direction, values: values}) do
-    Query.by_cursor(queryable, query_module, direction, values)
+  defp default_order_by_cursor_fields(queryable, cursor_fields) do
+    Enum.reduce(cursor_fields, queryable, fn {binding, order, field}, queryable ->
+      order_by(queryable, [{^binding, b}], [{^order, field(b, ^field)}])
+    end)
   end
 
-  def filter(queryable, _opts) do
+  defp maybe_query_page(queryable, %{
+         direction: direction,
+         cursor_fields: cursor_fields,
+         values: values
+       }) do
+    dynamic =
+      cursor_fields
+      |> Enum.zip(values)
+      |> Enum.reverse()
+      |> Enum.reduce(nil, fn {field, value}, dynamic ->
+        append_by_cursor_dynamic(dynamic, direction, field, value)
+      end)
+
+    where(queryable, ^dynamic)
+  end
+
+  defp maybe_query_page(queryable, _opts) do
     queryable
   end
 
-  @doc """
-  Loads `limit`+1 records.
+  defp append_by_cursor_dynamic(nil, :before, {binding, :asc, field}, value) do
+    dynamic([{^binding, b}], field(b, ^field) < ^value)
+  end
 
-  Additional record is used to determine if there are more records in the next page,
-  and then is removed from the result set in `metadata/3`.
-  """
-  def limit(queryable, %{limit: limit}) do
+  defp append_by_cursor_dynamic(dynamic, :before, {binding, :asc, field}, value) do
+    dynamic(
+      [{^binding, b}],
+      field(b, ^field) < ^value or (field(b, ^field) == ^value and ^dynamic)
+    )
+  end
+
+  defp append_by_cursor_dynamic(nil, :after, {binding, :asc, field}, value) do
+    dynamic([{^binding, b}], field(b, ^field) > ^value)
+  end
+
+  defp append_by_cursor_dynamic(dynamic, :after, {binding, :asc, field}, value) do
+    dynamic(
+      [{^binding, b}],
+      field(b, ^field) > ^value or (field(b, ^field) == ^value and ^dynamic)
+    )
+  end
+
+  # Loads `limit`+1 records.
+
+  # Additional record is used to determine if there are more records in the next page,
+  # and then is removed from the result set in `metadata/3`.
+  defp limit_page_size(queryable, %{limit: limit}) do
     Ecto.Query.limit(queryable, ^(limit + 1))
+  end
+
+  def empty_metadata do
+    %Metadata{limit: @default_limit}
   end
 
   def metadata([], %{limit: limit}) do
@@ -184,7 +225,10 @@ defmodule Domain.Repo.Paginator do
 
   @doc false
   def encode_cursor(direction, cursor_fields, schema) do
-    values = Enum.map(cursor_fields, &Map.fetch!(schema, &1))
+    values =
+      Enum.map(cursor_fields, fn {_binding, _order, field} ->
+        Map.fetch!(schema, field)
+      end)
 
     {direction, values}
     |> :erlang.term_to_binary()

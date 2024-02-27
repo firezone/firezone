@@ -6,10 +6,10 @@ defmodule Web.Actors.Users.NewIdentity do
   def mount(%{"id" => id}, _session, socket) do
     with {:ok, actor} <-
            Actors.fetch_actor_by_id(id, socket.assigns.subject, preload: [:memberships]),
-         true <- actor.type in [:account_user, :account_admin_user],
-         {:ok, providers} <- Auth.list_active_providers_for_account(socket.assigns.account) do
+         true <- actor.type in [:account_user, :account_admin_user] do
       providers =
-        Enum.filter(providers, fn provider ->
+        Auth.all_active_providers_for_account(socket.assigns.account)
+        |> Enum.filter(providers, fn provider ->
           Auth.fetch_provider_capabilities!(provider)
           |> Keyword.fetch!(:provisioners)
           |> Enum.member?(:manual)

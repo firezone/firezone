@@ -117,19 +117,10 @@ defmodule Domain.Auth do
   def fetch_provider_by_id(id, %Subject{} = subject, opts \\ []) do
     with :ok <- ensure_has_permissions(subject, Authorizer.manage_providers_permission()),
          true <- Validator.valid_uuid?(id) do
-      {preload, _opts} = Keyword.pop(opts, :preload, [])
-
       Provider.Query.all()
       |> Provider.Query.by_id(id)
       |> Authorizer.for_subject(Provider, subject)
-      |> Repo.fetch()
-      |> case do
-        {:ok, provider} ->
-          {:ok, Repo.preload(provider, preload)}
-
-        {:error, reason} ->
-          {:error, reason}
-      end
+      |> Repo.fetch(Provider.Query, opts)
     else
       false -> {:error, :not_found}
       other -> other
@@ -137,11 +128,11 @@ defmodule Domain.Auth do
   end
 
   # used to during auth flow in the UI where Subject doesn't exist yet
-  def fetch_active_provider_by_id(id) do
+  def fetch_active_provider_by_id(id, opts \\ []) do
     if Validator.valid_uuid?(id) do
       Provider.Query.by_id(id)
       |> Provider.Query.not_disabled()
-      |> Repo.fetch()
+      |> Repo.fetch(Provider.Query, opts)
     else
       {:error, :not_found}
     end
@@ -153,38 +144,29 @@ defmodule Domain.Auth do
   def fetch_active_provider_by_adapter(adapter, %Subject{} = subject, opts \\ [])
       when adapter in [:email, :userpass] do
     with :ok <- ensure_has_permissions(subject, Authorizer.manage_providers_permission()) do
-      {preload, _opts} = Keyword.pop(opts, :preload, [])
-
       Provider.Query.by_adapter(adapter)
       |> Provider.Query.not_disabled()
       |> Authorizer.for_subject(Provider, subject)
-      |> Repo.fetch()
-      |> case do
-        {:ok, provider} ->
-          {:ok, Repo.preload(provider, preload)}
-
-        {:error, reason} ->
-          {:error, reason}
-      end
+      |> Repo.fetch(Provider.Query, opts)
     end
   end
 
-  def list_providers(%Subject{} = subject) do
+  def list_providers(%Subject{} = subject, opts \\ []) do
     with :ok <- ensure_has_permissions(subject, Authorizer.manage_providers_permission()) do
       Provider.Query.not_deleted()
       |> Authorizer.for_subject(Provider, subject)
-      |> Repo.list()
+      |> Repo.list(Provider.Query, opts)
     end
   end
 
   # used to build list of auth options for the UI
-  def list_active_providers_for_account(%Accounts.Account{} = account) do
+  def all_active_providers_for_account(%Accounts.Account{} = account) do
     Provider.Query.by_account_id(account.id)
     |> Provider.Query.not_disabled()
-    |> Repo.list()
+    |> Repo.all()
   end
 
-  def list_providers_pending_token_refresh_by_adapter(adapter) do
+  def all_providers_pending_token_refresh_by_adapter(adapter) do
     datetime_filter = DateTime.utc_now() |> DateTime.add(30, :minute)
 
     Provider.Query.by_adapter(adapter)
@@ -192,15 +174,15 @@ defmodule Domain.Auth do
     |> Provider.Query.by_non_empty_refresh_token()
     |> Provider.Query.token_expires_at({:lt, datetime_filter})
     |> Provider.Query.not_disabled()
-    |> Repo.list()
+    |> Repo.all()
   end
 
-  def list_providers_pending_sync_by_adapter(adapter) do
+  def all_providers_pending_sync_by_adapter(adapter) do
     Provider.Query.by_adapter(adapter)
     |> Provider.Query.by_provisioner(:custom)
     |> Provider.Query.only_ready_to_be_synced()
     |> Provider.Query.not_disabled()
-    |> Repo.list()
+    |> Repo.all()
   end
 
   def new_provider(%Accounts.Account{} = account, attrs \\ %{}) do
@@ -283,7 +265,7 @@ defmodule Domain.Auth do
     with :ok <- ensure_has_permissions(subject, Authorizer.manage_providers_permission()) do
       Provider.Query.by_id(provider.id)
       |> Authorizer.for_subject(Provider, subject)
-      |> Repo.fetch_and_update(with: callback)
+      |> Repo.fetch_and_update(Provider.Query, with: callback)
     end
   end
 
@@ -307,28 +289,19 @@ defmodule Domain.Auth do
         provider_identifier,
         opts \\ []
       ) do
-    {preload, _opts} = Keyword.pop(opts, :preload, [])
-
     Identity.Query.not_disabled()
     |> Identity.Query.by_provider_id(provider.id)
     |> Identity.Query.by_account_id(provider.account_id)
     |> Identity.Query.by_provider_identifier(provider_identifier)
-    |> Repo.fetch()
-    |> case do
-      {:ok, identity} ->
-        {:ok, Repo.preload(identity, preload)}
-
-      {:error, reason} ->
-        {:error, reason}
-    end
+    |> Repo.fetch(Identity.Query, opts)
   end
 
-  def fetch_identity_by_id(id, %Subject{} = subject) do
+  def fetch_identity_by_id(id, %Subject{} = subject, opts \\ []) do
     with :ok <- ensure_has_permissions(subject, Authorizer.manage_identities_permission()),
          true <- Validator.valid_uuid?(id) do
       Identity.Query.by_id(id)
       |> Authorizer.for_subject(Identity, subject)
-      |> Repo.fetch()
+      |> Repo.fetch(Identity.Query, opts)
     else
       false -> {:error, :not_found}
       other -> other
@@ -338,13 +311,11 @@ defmodule Domain.Auth do
   # TODO: can be replaced with peek for consistency
   def fetch_identities_count_grouped_by_provider_id(%Subject{} = subject) do
     with :ok <- ensure_has_permissions(subject, Authorizer.manage_identities_permission()) do
-      {:ok, identities} =
+      identities =
         Identity.Query.group_by_provider_id()
         |> Authorizer.for_subject(Identity, subject)
-        |> Repo.list()
-
-      identities =
-        Enum.reduce(identities, %{}, fn %{provider_id: id, count: count}, acc ->
+        |> Repo.all()
+        |> Enum.reduce(%{}, fn %{provider_id: id, count: count}, acc ->
           Map.put(acc, id, count)
         end)
 
@@ -434,7 +405,7 @@ defmodule Domain.Auth do
         |> Identity.Query.lock()
         |> Identity.Query.with_preloaded_assoc(:inner, :actor)
         |> Identity.Query.with_preloaded_assoc(:inner, :provider)
-        |> Repo.fetch()
+        |> Repo.fetch(Identity.Query)
       end)
       |> Ecto.Multi.insert(:new_identity, fn %{identity: identity} ->
         Identity.Changeset.create_identity(identity.actor, identity.provider, attrs, subject)
@@ -473,7 +444,7 @@ defmodule Domain.Auth do
     with :ok <- ensure_has_permissions(subject, required_permissions) do
       Identity.Query.by_id(identity.id)
       |> Authorizer.for_subject(Identity, subject)
-      |> Repo.fetch_and_update(
+      |> Repo.fetch_and_update(Identity.Query,
         with: fn identity ->
           {:ok, _tokens} = Tokens.delete_tokens_for(identity, subject)
           Identity.Changeset.delete_identity(identity)
@@ -563,7 +534,7 @@ defmodule Domain.Auth do
       |> Identity.Query.by_provider_id(provider.id)
       |> Identity.Query.by_id_or_provider_identifier(id_or_provider_identifier)
 
-    with {:ok, identity} <- Repo.fetch(identity_queryable),
+    with {:ok, identity} <- Repo.fetch(identity_queryable, Identity.Query),
          {:ok, identity, expires_at} <-
            Adapters.verify_secret(provider, identity, context, secret),
          identity = Repo.preload(identity, :actor),

@@ -137,4 +137,13 @@ defmodule Domain.Actors.Group.Query do
   def lock(queryable \\ not_deleted()) do
     lock(queryable, "FOR UPDATE")
   end
+
+  # Pagination
+
+  @impl Domain.Repo.Query
+  def cursor_fields,
+    do: [
+      {:groups, :asc, :inserted_at},
+      {:groups, :asc, :id}
+    ]
 end

@@ -96,7 +96,7 @@ defmodule Domain.Auth.Adapters.UserPass do
   def verify_secret(%Identity{} = identity, %Context{} = _context, password)
       when is_binary(password) do
     Identity.Query.by_id(identity.id)
-    |> Repo.fetch_and_update(
+    |> Repo.fetch_and_update(Identity.Query,
       with: fn identity ->
         password_hash = identity.provider_state["password_hash"]
 

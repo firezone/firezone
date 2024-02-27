@@ -95,4 +95,13 @@ defmodule Domain.Policies.Policy.Query do
       )
     end)
   end
+
+  # Pagination
+
+  @impl Domain.Repo.Query
+  def cursor_fields,
+    do: [
+      {:policies, :asc, :inserted_at},
+      {:policies, :asc, :id}
+    ]
 end

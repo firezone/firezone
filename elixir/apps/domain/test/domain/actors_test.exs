@@ -91,14 +91,14 @@ defmodule Domain.ActorsTest do
     end
 
     test "returns empty list when there are no groups", %{subject: subject} do
-      assert list_groups(subject) == {:ok, []}
+      assert {:ok, [], _metadata} = list_groups(subject)
     end
 
     test "does not list groups from other accounts", %{
       subject: subject
     } do
       Fixtures.Actors.create_group()
-      assert list_groups(subject) == {:ok, []}
+      assert {:ok, [], _metadata} = list_groups(subject)
     end
 
     test "does not list deleted groups", %{
@@ -108,7 +108,7 @@ defmodule Domain.ActorsTest do
       Fixtures.Actors.create_group(account: account)
       |> Fixtures.Actors.delete_group()
 
-      assert list_groups(subject) == {:ok, []}
+      assert {:ok, [], _metadata} = list_groups(subject)
     end
 
     test "returns all groups", %{
@@ -119,7 +119,7 @@ defmodule Domain.ActorsTest do
       Fixtures.Actors.create_group(account: account)
       Fixtures.Actors.create_group()
 
-      assert {:ok, groups} = list_groups(subject)
+      assert {:ok, groups, _metadata} = list_groups(subject)
       assert length(groups) == 2
     end
 
@@ -2015,7 +2015,7 @@ defmodule Domain.ActorsTest do
           Actors.Authorizer.manage_actors_permission()
         ])
 
-      assert list_actors(subject) == {:ok, []}
+      assert {:ok, [], _metadata} = list_actors(subject)
     end
 
     test "returns list of actors in all types" do
@@ -2027,7 +2027,7 @@ defmodule Domain.ActorsTest do
       identity1 = Fixtures.Auth.create_identity(account: account, actor: actor1)
       subject = Fixtures.Auth.create_subject(identity: identity1)
 
-      assert {:ok, actors} = list_actors(subject)
+      assert {:ok, actors, _metadata} = list_actors(subject)
       assert length(actors) == 2
       assert Enum.sort(Enum.map(actors, & &1.id)) == Enum.sort([actor1.id, actor2.id])
     end
@@ -2053,7 +2053,7 @@ defmodule Domain.ActorsTest do
       actor2 = Fixtures.Actors.create_actor(type: :account_user, account: account)
       Fixtures.Auth.create_identity(account: account, actor: actor2)
 
-      {:ok, actors} = list_actors(subject, preload: :identities)
+      {:ok, actors, _metadata} = list_actors(subject, preload: :identities)
       assert length(actors) == 2
 
       assert Enum.all?(actors, fn a -> Ecto.assoc_loaded?(a.identities) end)
@@ -2864,7 +2864,11 @@ defmodule Domain.ActorsTest do
           end
           |> Task.await_many()
 
-          assert Repo.aggregate(Actors.Actor.Query.by_account_id(account.id), :count) == 1
+          queryable =
+            Actors.Actor.Query.not_deleted()
+            |> Actors.Actor.Query.by_account_id(account.id)
+
+          assert Repo.aggregate(queryable, :count) == 1
         end)
       end
       |> Task.await_many()

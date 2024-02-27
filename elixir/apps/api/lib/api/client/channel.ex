@@ -69,7 +69,7 @@ defmodule API.Client.Channel do
       :ok = Actors.subscribe_to_membership_updates_for_actor(socket.assigns.subject.actor)
 
       # We subscribe for policy access events for the actor and the groups the client is a member of,
-      {:ok, actor_group_ids} = Actors.list_actor_group_ids(socket.assigns.subject.actor)
+      actor_group_ids = Actors.all_actor_group_ids(socket.assigns.subject.actor)
       :ok = Enum.each(actor_group_ids, &Policies.subscribe_to_events_for_actor_group/1)
       :ok = Policies.subscribe_to_events_for_actor(socket.assigns.subject.actor)
 
@@ -306,7 +306,7 @@ defmodule API.Client.Channel do
       with {:ok, resource} <-
              Resources.fetch_and_authorize_resource_by_id(resource_id, socket.assigns.subject),
            {:ok, [_ | _] = gateways} <-
-             Gateways.list_connected_gateways_for_resource(resource, preload: :group),
+             Gateways.all_connected_gateways_for_resource(resource, preload: :group),
            gateway_groups = Enum.map(gateways, & &1.group),
            {relay_hosting_type, relay_connection_type} = Gateways.relay_strategy(gateway_groups),
            {:ok, [_ | _] = relays} <-

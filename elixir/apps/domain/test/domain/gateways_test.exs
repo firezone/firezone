@@ -74,40 +74,16 @@ defmodule Domain.GatewaysTest do
     end
   end
 
-  describe "fetch_group_by_id/1" do
-    test "returns error when UUID is invalid" do
-      assert fetch_group_by_id("foo") == {:error, :not_found}
-    end
-
-    test "does not return deleted groups", %{account: account} do
-      group =
-        Fixtures.Gateways.create_group(account: account)
-        |> Fixtures.Gateways.delete_group()
-
-      assert fetch_group_by_id(group.id) == {:error, :not_found}
-    end
-
-    test "returns group by id", %{account: account} do
-      group = Fixtures.Gateways.create_group(account: account)
-      assert {:ok, fetched_group} = fetch_group_by_id(group.id)
-      assert fetched_group.id == group.id
-    end
-
-    test "returns error when group does not exist" do
-      assert fetch_group_by_id(Ecto.UUID.generate()) == {:error, :not_found}
-    end
-  end
-
   describe "list_groups/1" do
     test "returns empty list when there are no groups", %{subject: subject} do
-      assert list_groups(subject) == {:ok, []}
+      assert {:ok, [], _metadata} = list_groups(subject)
     end
 
     test "does not list groups from other accounts", %{
       subject: subject
     } do
       Fixtures.Gateways.create_group()
-      assert list_groups(subject) == {:ok, []}
+      assert {:ok, [], _metadata} = list_groups(subject)
     end
 
     test "does not list deleted groups", %{
@@ -117,7 +93,7 @@ defmodule Domain.GatewaysTest do
       Fixtures.Gateways.create_group(account: account)
       |> Fixtures.Gateways.delete_group()
 
-      assert list_groups(subject) == {:ok, []}
+      assert {:ok, [], _metadata} = list_groups(subject)
     end
 
     test "returns all groups", %{
@@ -128,7 +104,7 @@ defmodule Domain.GatewaysTest do
       Fixtures.Gateways.create_group(account: account)
       Fixtures.Gateways.create_group()
 
-      assert {:ok, groups} = list_groups(subject)
+      assert {:ok, groups, _metadata} = list_groups(subject)
       assert length(groups) == 2
     end
 
@@ -255,9 +231,10 @@ defmodule Domain.GatewaysTest do
 
   describe "update_group/3" do
     test "does not allow to reset required fields to empty values", %{
+      account: account,
       subject: subject
     } do
-      group = Fixtures.Gateways.create_group()
+      group = Fixtures.Gateways.create_group(account: account)
       attrs = %{name: nil}
 
       assert {:error, changeset} = update_group(group, attrs, subject)
@@ -569,12 +546,12 @@ defmodule Domain.GatewaysTest do
         Fixtures.Gateways.create_gateway(account: account)
         |> Fixtures.Gateways.delete_gateway()
 
-      assert fetch_gateway_by_id(gateway.id, subject) == {:ok, gateway}
+      assert fetch_gateway_by_id(gateway.id, subject, preload: :online?) == {:ok, gateway}
     end
 
     test "returns gateway by id", %{account: account, subject: subject} do
       gateway = Fixtures.Gateways.create_gateway(account: account)
-      assert fetch_gateway_by_id(gateway.id, subject) == {:ok, gateway}
+      assert fetch_gateway_by_id(gateway.id, subject, preload: :online?) == {:ok, gateway}
     end
 
     test "returns gateway that belongs to another actor", %{
@@ -582,7 +559,7 @@ defmodule Domain.GatewaysTest do
       subject: subject
     } do
       gateway = Fixtures.Gateways.create_gateway(account: account)
-      assert fetch_gateway_by_id(gateway.id, subject) == {:ok, gateway}
+      assert fetch_gateway_by_id(gateway.id, subject, preload: :online?) == {:ok, gateway}
     end
 
     test "returns error when gateway does not exist", %{subject: subject} do
@@ -620,7 +597,7 @@ defmodule Domain.GatewaysTest do
 
   describe "list_gateways/1" do
     test "returns empty list when there are no gateways", %{subject: subject} do
-      assert list_gateways(subject) == {:ok, []}
+      assert {:ok, [], _metadata} = list_gateways(subject)
     end
 
     test "does not list deleted gateways", %{
@@ -629,7 +606,7 @@ defmodule Domain.GatewaysTest do
       Fixtures.Gateways.create_gateway()
       |> Fixtures.Gateways.delete_gateway()
 
-      assert list_gateways(subject) == {:ok, []}
+      assert {:ok, [], _metadata} = list_gateways(subject)
     end
 
     test "returns all gateways", %{
@@ -641,7 +618,7 @@ defmodule Domain.GatewaysTest do
       :ok = connect_gateway(online_gateway)
       Fixtures.Gateways.create_gateway()
 
-      assert {:ok, gateways} = list_gateways(subject)
+      assert {:ok, gateways, _metadata} = list_gateways(subject, preload: :online?)
       assert length(gateways) == 2
 
       online_gateway_id = online_gateway.id
@@ -670,7 +647,7 @@ defmodule Domain.GatewaysTest do
       Fixtures.Gateways.create_gateway(account: account)
       Fixtures.Gateways.create_gateway(account: account)
 
-      {:ok, gateways} = list_gateways(subject, preload: [:group, :account])
+      {:ok, gateways, _metadata} = list_gateways(subject, preload: [:group, :account])
       assert length(gateways) == 2
 
       assert Enum.all?(gateways, &Ecto.assoc_loaded?(&1.group))

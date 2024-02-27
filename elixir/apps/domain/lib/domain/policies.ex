@@ -4,8 +4,6 @@ defmodule Domain.Policies do
   alias Domain.Policies.{Authorizer, Policy}
 
   def fetch_policy_by_id(id, %Auth.Subject{} = subject, opts \\ []) do
-    {preload, _opts} = Keyword.pop(opts, :preload, [])
-
     required_permissions =
       {:one_of,
        [
@@ -18,11 +16,7 @@ defmodule Domain.Policies do
       Policy.Query.all()
       |> Policy.Query.by_id(id)
       |> Authorizer.for_subject(subject)
-      |> Repo.fetch()
-      |> case do
-        {:ok, policy} -> {:ok, Repo.preload(policy, preload)}
-        {:error, reason} -> {:error, reason}
-      end
+      |> Repo.fetch(Policy.Query, opts)
     else
       false -> {:error, :not_found}
       other -> other
@@ -30,8 +24,6 @@ defmodule Domain.Policies do
   end
 
   def list_policies(%Auth.Subject{} = subject, opts \\ []) do
-    {preload, _opts} = Keyword.pop(opts, :preload, [])
-
     required_permissions =
       {:one_of,
        [
@@ -40,12 +32,9 @@ defmodule Domain.Policies do
        ]}
 
     with :ok <- Auth.ensure_has_permissions(subject, required_permissions) do
-      {:ok, policies} =
-        Policy.Query.not_deleted()
-        |> Authorizer.for_subject(subject)
-        |> Repo.list()
-
-      {:ok, Repo.preload(policies, preload)}
+      Policy.Query.not_deleted()
+      |> Authorizer.for_subject(subject)
+      |> Repo.list(Policy.Query, opts)
     end
   end
 
@@ -67,20 +56,14 @@ defmodule Domain.Policies do
   end
 
   def update_policy(%Policy{} = policy, attrs, %Auth.Subject{} = subject) do
-    required_permissions = {:one_of, [Authorizer.manage_policies_permission()]}
-
-    with :ok <- Auth.ensure_has_permissions(subject, required_permissions),
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_policies_permission()),
          :ok <- ensure_has_access_to(subject, policy) do
-      Policy.Changeset.update(policy, attrs)
-      |> Repo.update()
-      |> case do
-        {:ok, policy} ->
-          :ok = broadcast_policy_events(:update, policy)
-          {:ok, policy}
-
-        {:error, reason} ->
-          {:error, reason}
-      end
+      Policy.Query.by_id(policy.id)
+      |> Authorizer.for_subject(subject)
+      |> Repo.fetch_and_update(Policy.Query,
+        with: &Policy.Changeset.update(&1, attrs),
+        after_commit: &broadcast_policy_events(:update, &1)
+      )
     end
   end
 
@@ -88,11 +71,13 @@ defmodule Domain.Policies do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_policies_permission()) do
       Policy.Query.by_id(policy.id)
       |> Authorizer.for_subject(subject)
-      |> Repo.fetch_and_update(with: &Policy.Changeset.disable(&1, subject))
+      |> Repo.fetch_and_update(Policy.Query,
+        with: &Policy.Changeset.disable(&1, subject),
+        after_commit: &broadcast_policy_events(:disable, &1)
+      )
       |> case do
         {:ok, policy} ->
           {:ok, _flows} = Flows.expire_flows_for(policy, subject)
-          :ok = broadcast_policy_events(:disable, policy)
           {:ok, policy}
 
         {:error, reason} ->
@@ -105,15 +90,10 @@ defmodule Domain.Policies do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_policies_permission()) do
       Policy.Query.by_id(policy.id)
       |> Authorizer.for_subject(subject)
-      |> Repo.fetch_and_update(with: &Policy.Changeset.enable/1)
-      |> case do
-        {:ok, policy} ->
-          :ok = broadcast_policy_events(:enable, policy)
-          {:ok, policy}
-
-        {:error, reason} ->
-          {:error, reason}
-      end
+      |> Repo.fetch_and_update(Policy.Query,
+        with: &Policy.Changeset.enable/1,
+        after_commit: &broadcast_policy_events(:enable, &1)
+      )
     end
   end
 

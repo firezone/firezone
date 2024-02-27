@@ -84,14 +84,14 @@ defmodule Domain.RelaysTest do
 
   describe "list_groups/1" do
     test "returns empty list when there are no groups", %{subject: subject} do
-      assert list_groups(subject) == {:ok, []}
+      assert {:ok, [], _metadata} = list_groups(subject)
     end
 
     test "does not list groups from other accounts", %{
       subject: subject
     } do
       Fixtures.Relays.create_group()
-      assert list_groups(subject) == {:ok, []}
+      assert {:ok, [], _metadata} = list_groups(subject)
     end
 
     test "does not list deleted groups", %{
@@ -101,7 +101,7 @@ defmodule Domain.RelaysTest do
       Fixtures.Relays.create_group(account: account)
       |> Fixtures.Relays.delete_group()
 
-      assert list_groups(subject) == {:ok, []}
+      assert {:ok, [], _metadata} = list_groups(subject)
     end
 
     test "returns all groups", %{
@@ -112,14 +112,14 @@ defmodule Domain.RelaysTest do
       Fixtures.Relays.create_group(account: account)
       Fixtures.Relays.create_group()
 
-      assert {:ok, groups} = list_groups(subject)
+      assert {:ok, groups, _metadata} = list_groups(subject)
       assert length(groups) == 2
     end
 
     test "returns global groups", %{subject: subject} do
       Fixtures.Relays.create_global_group()
 
-      assert {:ok, [_group]} = list_groups(subject)
+      assert {:ok, [_group], _metadata} = list_groups(subject)
     end
 
     test "returns error when subject has no permission to manage groups", %{
@@ -612,7 +612,7 @@ defmodule Domain.RelaysTest do
 
     test "returns relay by id", %{account: account, subject: subject} do
       relay = Fixtures.Relays.create_relay(account: account)
-      assert fetch_relay_by_id(relay.id, subject) == {:ok, relay}
+      assert fetch_relay_by_id(relay.id, subject, preload: :online?) == {:ok, relay}
     end
 
     test "returns relay that belongs to another actor", %{
@@ -620,7 +620,7 @@ defmodule Domain.RelaysTest do
       subject: subject
     } do
       relay = Fixtures.Relays.create_relay(account: account)
-      assert fetch_relay_by_id(relay.id, subject) == {:ok, relay}
+      assert fetch_relay_by_id(relay.id, subject, preload: :online?) == {:ok, relay}
     end
 
     test "returns error when relay does not exist", %{subject: subject} do
@@ -643,7 +643,7 @@ defmodule Domain.RelaysTest do
 
   describe "list_relays/1" do
     test "returns empty list when there are no relays", %{subject: subject} do
-      assert list_relays(subject) == {:ok, []}
+      assert {:ok, [], _metadata} = list_relays(subject)
     end
 
     test "does not list deleted relays", %{
@@ -652,7 +652,7 @@ defmodule Domain.RelaysTest do
       Fixtures.Relays.create_relay()
       |> Fixtures.Relays.delete_relay()
 
-      assert list_relays(subject) == {:ok, []}
+      assert {:ok, [], _metadata} = list_relays(subject)
     end
 
     test "returns all relays", %{
@@ -666,12 +666,12 @@ defmodule Domain.RelaysTest do
       group = Fixtures.Relays.create_global_group()
       relay = Fixtures.Relays.create_relay(group: group)
 
-      assert {:ok, relays} = list_relays(subject)
+      assert {:ok, relays, _metadata} = list_relays(subject, preload: :online?)
       assert length(relays) == 3
       refute Enum.any?(relays, & &1.online?)
 
       :ok = connect_relay(relay, Ecto.UUID.generate())
-      assert {:ok, relays} = list_relays(subject)
+      assert {:ok, relays, _metadata} = list_relays(subject, preload: :online?)
       assert length(relays) == 3
       assert Enum.any?(relays, & &1.online?)
     end

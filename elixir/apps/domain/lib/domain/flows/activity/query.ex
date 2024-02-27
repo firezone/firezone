@@ -20,4 +20,13 @@ defmodule Domain.Flows.Activity.Query do
   def by_window_ended_at(queryable \\ all(), {:greater_than, datetime}) do
     where(queryable, [activities: activities], activities.window_ended_at > ^datetime)
   end
+
+  # Pagination
+
+  @impl Domain.Repo.Query
+  def cursor_fields,
+    do: [
+      {:activities, :asc, :window_started_at},
+      {:activities, :asc, :id}
+    ]
 end

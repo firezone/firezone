@@ -128,7 +128,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
         provider_identifier,
         identity_state
       )
-      |> Repo.fetch_and_update(
+      |> Repo.fetch_and_update(Identity.Query,
         with: fn identity ->
           Identity.Changeset.update_identity_provider_state(identity, identity_state)
           # if an email was used in provider identifier and it's replaced by sub claim
@@ -195,7 +195,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
     with {:ok, _provider_identifier, adapter_state} <-
            fetch_state(provider, token_params) do
       Provider.Query.by_id(provider.id)
-      |> Repo.fetch_and_update(
+      |> Repo.fetch_and_update(Provider.Query,
         with: fn provider ->
           adapter_state_updates =
             Map.take(adapter_state, ["expires_at", "access_token", "userinfo", "claims"])
@@ -208,7 +208,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
     else
       {:error, :expired_token} ->
         Provider.Query.by_id(provider.id)
-        |> Repo.fetch_and_update(
+        |> Repo.fetch_and_update(Provider.Query,
           with: fn provider ->
             Provider.Changeset.update(provider, %{
               adapter_state: Map.delete(provider.adapter_state, "refresh_token")
@@ -220,7 +220,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
 
       {:error, :invalid_token} ->
         Provider.Query.by_id(provider.id)
-        |> Repo.fetch_and_update(
+        |> Repo.fetch_and_update(Provider.Query,
           with: fn provider ->
             Provider.Changeset.update(provider, %{
               adapter_state: Map.delete(provider.adapter_state, "refresh_token")

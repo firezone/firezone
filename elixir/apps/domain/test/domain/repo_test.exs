@@ -2,37 +2,44 @@ defmodule Domain.RepoTest do
   use Domain.DataCase, async: true
   import Domain.Repo
 
-  describe "fetch/2" do
+  describe "fetch/3" do
     test "returns {:ok, schema} when a single result is found" do
       account = Fixtures.Accounts.create_account()
-      queryable = Domain.Accounts.Account.Query.all()
-      assert fetch(queryable) == {:ok, account}
+      query_module = Domain.Accounts.Account.Query
+      queryable = query_module.all()
+      assert fetch(queryable, query_module) == {:ok, account}
     end
 
     test "raises when the query returns more than one row" do
       Fixtures.Accounts.create_account()
       Fixtures.Accounts.create_account()
-      queryable = Domain.Accounts.Account.Query.all()
+      query_module = Domain.Accounts.Account.Query
+      queryable = query_module.all()
 
       assert_raise Ecto.MultipleResultsError, fn ->
-        fetch(queryable)
+        fetch(queryable, query_module)
       end
     end
 
     test "returns {:error, :not_found} when no results are found" do
-      queryable = Domain.Accounts.Account.Query.all()
-      assert fetch(queryable) == {:error, :not_found}
+      query_module = Domain.Accounts.Account.Query
+      queryable = query_module.all()
+
+      assert fetch(queryable, query_module) == {:error, :not_found}
     end
   end
 
   describe "fetch_and_update/3" do
     test "returns updated schema for a single updated record" do
       account = Fixtures.Accounts.create_account()
-      queryable = Domain.Accounts.Account.Query.all()
+      query_module = Domain.Accounts.Account.Query
+      queryable = query_module.all()
       new_value = Ecto.UUID.generate()
       changeset_cb = fn account -> Ecto.Changeset.change(account, name: new_value) end
 
-      assert {:ok, updated_account} = fetch_and_update(queryable, with: changeset_cb)
+      assert {:ok, updated_account} =
+               fetch_and_update(queryable, query_module, with: changeset_cb)
+
       assert updated_account.id == account.id
       assert updated_account.name == new_value
     end
@@ -40,23 +47,26 @@ defmodule Domain.RepoTest do
     test "raises when the query returns more than one row" do
       Fixtures.Accounts.create_account()
       Fixtures.Accounts.create_account()
-      queryable = Domain.Accounts.Account.Query.all()
+      query_module = Domain.Accounts.Account.Query
+      queryable = query_module.all()
       changeset_cb = fn account -> Ecto.Changeset.change(account, name: "foo") end
 
       assert_raise Ecto.MultipleResultsError, fn ->
-        fetch_and_update(queryable, with: changeset_cb)
+        fetch_and_update(queryable, query_module, with: changeset_cb)
       end
     end
 
     test "returns {:error, :not_found} when no results are found" do
-      queryable = Domain.Accounts.Account.Query.all()
+      query_module = Domain.Accounts.Account.Query
+      queryable = query_module.all()
       changeset_cb = fn account -> Ecto.Changeset.change(account, name: "foo") end
-      assert fetch_and_update(queryable, with: changeset_cb) == {:error, :not_found}
+      assert fetch_and_update(queryable, query_module, with: changeset_cb) == {:error, :not_found}
     end
 
     test "returns {:error, changeset} when changeset is invalid" do
       Fixtures.Accounts.create_account()
-      queryable = Domain.Accounts.Account.Query.all()
+      query_module = Domain.Accounts.Account.Query
+      queryable = query_module.all()
 
       changeset_cb = fn account ->
         account
@@ -64,24 +74,36 @@ defmodule Domain.RepoTest do
         |> Ecto.Changeset.add_error(:name, "is invalid")
       end
 
-      assert {:error, %Ecto.Changeset{}} = fetch_and_update(queryable, with: changeset_cb)
+      assert {:error, %Ecto.Changeset{}} =
+               fetch_and_update(queryable, query_module, with: changeset_cb)
     end
 
     test "allows to execute a callback after transaction is committed" do
       Fixtures.Accounts.create_account()
-      queryable = Domain.Accounts.Account.Query.all()
+      query_module = Domain.Accounts.Account.Query
+      queryable = query_module.all()
 
       test_pid = self()
-      broadcast = fn account -> send(test_pid, {:broadcast, account}) end
 
-      new_value = Ecto.UUID.generate()
-
-      changeset_cb = fn account ->
-        changeset = Ecto.Changeset.change(account, name: new_value)
-        {changeset, execute_after_commit: broadcast}
+      broadcast = fn account ->
+        send(test_pid, {:broadcast, account})
+        :ok
       end
 
-      assert {:ok, updated_account} = fetch_and_update(queryable, with: changeset_cb)
+      assert {:ok, updated_account} =
+               fetch_and_update(queryable, query_module,
+                 with: &Ecto.Changeset.change(&1, name: Ecto.UUID.generate()),
+                 after_commit: broadcast
+               )
+
+      assert_receive {:broadcast, ^updated_account}
+
+      assert {:ok, updated_account} =
+               fetch_and_update(queryable, query_module,
+                 with: &Ecto.Changeset.change(&1, name: Ecto.UUID.generate()),
+                 after_commit: fn account, _changeset -> broadcast.(account) end
+               )
+
       assert_receive {:broadcast, ^updated_account}
     end
   end
@@ -101,10 +123,10 @@ defmodule Domain.RepoTest do
     } do
       empty_metadata = %Domain.Repo.Paginator.Metadata{limit: 50}
 
-      assert list(queryable, query_module: query_module) == {:ok, [], empty_metadata}
-      assert list(queryable, query_module: query_module, limit: 1000) == {:ok, [], empty_metadata}
-      assert list(queryable, query_module: query_module, limit: 1) == {:ok, [], empty_metadata}
-      assert list(queryable, query_module: query_module, limit: -1) == {:ok, [], empty_metadata}
+      assert list(queryable, query_module) == {:ok, [], empty_metadata}
+      assert list(queryable, query_module, limit: 1000) == {:ok, [], empty_metadata}
+      assert list(queryable, query_module, limit: 1) == {:ok, [], empty_metadata}
+      assert list(queryable, query_module, limit: -1) == {:ok, [], empty_metadata}
     end
 
     test "returns single result if only one record exists", %{
@@ -114,7 +136,7 @@ defmodule Domain.RepoTest do
     } do
       actor = Fixtures.Actors.create_actor(account: account)
 
-      assert {:ok, [returned_actor], _metadata} = list(queryable, query_module: query_module)
+      assert {:ok, [returned_actor], _metadata} = list(queryable, query_module)
       assert returned_actor.id == actor.id
     end
 
@@ -125,7 +147,7 @@ defmodule Domain.RepoTest do
     } do
       for _ <- 1..60, do: Fixtures.Actors.create_actor(account: account)
 
-      assert {:ok, actors, metadata} = list(queryable, query_module: query_module)
+      assert {:ok, actors, metadata} = list(queryable, query_module)
       assert length(actors) == 50
       assert metadata.limit == 50
     end
@@ -140,12 +162,7 @@ defmodule Domain.RepoTest do
       Fixtures.Actors.create_actor(account: account)
 
       for limit <- [1, 2] do
-        assert {:ok, actors, metadata} =
-                 list(queryable,
-                   query_module: query_module,
-                   page: [limit: limit]
-                 )
-
+        assert {:ok, actors, metadata} = list(queryable, query_module, page: [limit: limit])
         assert length(actors) == limit
         assert metadata.limit == limit
         assert metadata.next_page_cursor
@@ -163,11 +180,7 @@ defmodule Domain.RepoTest do
       Fixtures.Actors.create_actor(account: account)
 
       # when limit is greater that results set
-      assert {:ok, actors, metadata} =
-               list(queryable,
-                 query_module: query_module,
-                 page: [limit: 5]
-               )
+      assert {:ok, actors, metadata} = list(queryable, query_module, page: [limit: 5])
 
       assert length(actors) == 3
       assert metadata.limit == 5
@@ -179,11 +192,7 @@ defmodule Domain.RepoTest do
       query_module: query_module,
       queryable: queryable
     } do
-      assert {:ok, [], metadata} =
-               list(queryable,
-                 query_module: query_module,
-                 page: [limit: 200]
-               )
+      assert {:ok, [], metadata} = list(queryable, query_module, page: [limit: 200])
 
       assert metadata.limit == 100
     end
@@ -192,10 +201,10 @@ defmodule Domain.RepoTest do
       query_module: query_module,
       queryable: queryable
     } do
-      assert {:ok, [], metadata} = list(queryable, query_module: query_module, page: [limit: -1])
+      assert {:ok, [], metadata} = list(queryable, query_module, page: [limit: -1])
       assert metadata.limit == 1
 
-      assert {:ok, [], metadata} = list(queryable, query_module: query_module, page: [limit: 0])
+      assert {:ok, [], metadata} = list(queryable, query_module, page: [limit: 0])
       assert metadata.limit == 1
     end
 
@@ -224,11 +233,7 @@ defmodule Domain.RepoTest do
       {third_page_ids, []} = Enum.split(rest_ids, 2)
 
       # load first page with 4 entries
-      assert {:ok, actors1, metadata1} =
-               list(queryable,
-                 query_module: query_module,
-                 page: [limit: 4]
-               )
+      assert {:ok, actors1, metadata1} = list(queryable, query_module, page: [limit: 4])
 
       assert Enum.map(actors1, & &1.id) == first_page_ids
       assert metadata1.limit == 4
@@ -237,10 +242,7 @@ defmodule Domain.RepoTest do
 
       # load next page with 4 more entries
       assert {:ok, actors2, metadata2} =
-               list(queryable,
-                 query_module: query_module,
-                 page: [limit: 4, cursor: metadata1.next_page_cursor]
-               )
+               list(queryable, query_module, page: [limit: 4, cursor: metadata1.next_page_cursor])
 
       assert Enum.map(actors2, & &1.id) == second_page_ids
       assert metadata2.limit == 4
@@ -249,10 +251,7 @@ defmodule Domain.RepoTest do
 
       # load next page with 2 more entries
       assert {:ok, actors3, metadata3} =
-               list(queryable,
-                 query_module: query_module,
-                 page: [limit: 4, cursor: metadata2.next_page_cursor]
-               )
+               list(queryable, query_module, page: [limit: 4, cursor: metadata2.next_page_cursor])
 
       assert Enum.map(actors3, & &1.id) == third_page_ids
       assert metadata3.limit == 4
@@ -261,8 +260,7 @@ defmodule Domain.RepoTest do
 
       # go back to 2nd page
       assert {:ok, actors4, metadata4} =
-               list(queryable,
-                 query_module: query_module,
+               list(queryable, query_module,
                  page: [limit: 4, cursor: metadata3.previous_page_cursor]
                )
 
@@ -273,8 +271,7 @@ defmodule Domain.RepoTest do
 
       # go back to first page
       assert {:ok, actors4, metadata4} =
-               list(queryable,
-                 query_module: query_module,
+               list(queryable, query_module,
                  page: [limit: 4, cursor: metadata4.previous_page_cursor]
                )
 
@@ -302,11 +299,7 @@ defmodule Domain.RepoTest do
           actor.id
         end
 
-      assert {:ok, actors, metadata} =
-               list(queryable,
-                 query_module: query_module,
-                 page: [limit: 10]
-               )
+      assert {:ok, actors, metadata} = list(queryable, query_module, page: [limit: 10])
 
       assert Enum.map(actors, & &1.id) == ids
       assert metadata.limit == 10
@@ -318,17 +311,15 @@ defmodule Domain.RepoTest do
       query_module: query_module,
       queryable: queryable
     } do
+      cursor_fields = query_module.cursor_fields()
+
       cursor =
-        Domain.Repo.Paginator.encode_cursor(:after, [:inserted_at, :id], %{
+        Domain.Repo.Paginator.encode_cursor(:after, cursor_fields, %{
           id: Ecto.UUID.generate(),
           inserted_at: ~U[2000-01-01 00:00:00.000000Z]
         })
 
-      assert {:ok, [], metadata} =
-               list(queryable,
-                 query_module: query_module,
-                 page: [cursor: cursor]
-               )
+      assert {:ok, [], metadata} = list(queryable, query_module, page: [cursor: cursor])
 
       refute metadata.next_page_cursor
       refute metadata.previous_page_cursor
@@ -338,19 +329,21 @@ defmodule Domain.RepoTest do
       query_module: query_module,
       queryable: queryable
     } do
+      cursor_fields = query_module.cursor_fields()
+
       cursor =
-        Domain.Repo.Paginator.encode_cursor(:after, [:inserted_at, :id], %{
+        Domain.Repo.Paginator.encode_cursor(:after, cursor_fields, %{
           id: Ecto.UUID.generate(),
           inserted_at: nil
         })
 
-      assert list(queryable, query_module: query_module, page: [cursor: cursor]) ==
+      assert list(queryable, query_module, page: [cursor: cursor]) ==
                {:error, :invalid_cursor}
 
-      assert list(queryable, query_module: query_module, page: [cursor: "foo"]) ==
+      assert list(queryable, query_module, page: [cursor: "foo"]) ==
                {:error, :invalid_cursor}
 
-      assert list(queryable, query_module: query_module, page: [cursor: 1]) ==
+      assert list(queryable, query_module, page: [cursor: 1]) ==
                {:error, :invalid_cursor}
     end
   end

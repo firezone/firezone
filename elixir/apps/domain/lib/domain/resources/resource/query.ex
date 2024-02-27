@@ -128,4 +128,13 @@ defmodule Domain.Resources.Resource.Query do
       )
     end)
   end
+
+  # Pagination
+
+  @impl Domain.Repo.Query
+  def cursor_fields,
+    do: [
+      {:resources, :asc, :inserted_at},
+      {:resources, :asc, :id}
+    ]
 end

@@ -46,24 +46,10 @@ defmodule Domain.Clients do
 
     with :ok <- Auth.ensure_has_permissions(subject, required_permissions),
          true <- Validator.valid_uuid?(id) do
-      {preload, _opts} = Keyword.pop(opts, :preload, [])
-
       Client.Query.all()
       |> Client.Query.by_id(id)
       |> Authorizer.for_subject(subject)
-      |> Repo.fetch()
-      |> case do
-        {:ok, client} ->
-          client =
-            client
-            |> Repo.preload(preload)
-            |> preload_online_status()
-
-          {:ok, client}
-
-        {:error, reason} ->
-          {:error, reason}
-      end
+      |> Repo.fetch(Client.Query, opts)
     else
       false -> {:error, :not_found}
       other -> other
@@ -71,17 +57,11 @@ defmodule Domain.Clients do
   end
 
   def fetch_client_by_id!(id, opts \\ []) do
-    {preload, _opts} = Keyword.pop(opts, :preload, [])
-
     Client.Query.by_id(id)
-    |> Repo.one!()
-    |> Repo.preload(preload)
-    |> preload_online_status()
+    |> Repo.fetch!(Client.Query, opts)
   end
 
   def list_clients(%Auth.Subject{} = subject, opts \\ []) do
-    {preload, _opts} = Keyword.pop(opts, :preload, [])
-
     required_permissions =
       {:one_of,
        [
@@ -90,17 +70,9 @@ defmodule Domain.Clients do
        ]}
 
     with :ok <- Auth.ensure_has_permissions(subject, required_permissions) do
-      {:ok, clients} =
-        Client.Query.not_deleted()
-        |> Authorizer.for_subject(subject)
-        |> Ecto.Query.order_by([clients: clients], desc: clients.last_seen_at, desc: clients.id)
-        |> Repo.list()
-
-      clients =
-        clients
-        |> preload_online_statuses()
-
-      {:ok, Repo.preload(clients, preload)}
+      Client.Query.not_deleted()
+      |> Authorizer.for_subject(subject)
+      |> Repo.list(Client.Query, opts)
     end
   end
 
@@ -108,7 +80,7 @@ defmodule Domain.Clients do
     list_clients_by_actor_id(actor.id, subject)
   end
 
-  def list_clients_by_actor_id(actor_id, %Auth.Subject{} = subject) do
+  def list_clients_by_actor_id(actor_id, %Auth.Subject{} = subject, opts \\ []) do
     required_permissions =
       {:one_of,
        [
@@ -118,24 +90,17 @@ defmodule Domain.Clients do
 
     with :ok <- Auth.ensure_has_permissions(subject, required_permissions),
          true <- Validator.valid_uuid?(actor_id) do
-      {:ok, clients} =
-        Client.Query.by_actor_id(actor_id)
-        |> Authorizer.for_subject(subject)
-        |> Repo.list()
-
-      clients =
-        clients
-        |> preload_online_statuses()
-
-      {:ok, clients}
+      Client.Query.by_actor_id(actor_id)
+      |> Authorizer.for_subject(subject)
+      |> Repo.list(Client.Query, opts)
     else
-      false -> {:error, :not_found}
+      false -> {:ok, [], Repo.Paginator.empty_metadata()}
       other -> other
     end
   end
 
-  # TODO: this is ugly!
-  defp preload_online_status(client) do
+  @doc false
+  def preload_clients_presence([client]) do
     client.account_id
     |> account_presence_topic()
     |> Presence.get_by_key(client.id)
@@ -143,12 +108,20 @@ defmodule Domain.Clients do
       [] -> %{client | online?: false}
       %{metas: [_ | _]} -> %{client | online?: true}
     end
+    |> List.wrap()
   end
 
-  def preload_online_statuses([]), do: []
-
-  def preload_online_statuses([client | _] = clients) do
-    connected_clients = client.account_id |> account_presence_topic() |> Presence.list()
+  def preload_clients_presence(clients) do
+    # we fetch list of account clients for every account_id present in the clients list
+    connected_clients =
+      clients
+      |> Enum.map(& &1.account_id)
+      |> Enum.reject(&is_nil/1)
+      |> Enum.uniq()
+      |> Enum.reduce(%{}, fn account_id, acc ->
+        connected_clients = account_id |> account_presence_topic() |> Presence.list()
+        Map.merge(acc, connected_clients)
+      end)
 
     Enum.map(clients, fn client ->
       %{client | online?: Map.has_key?(connected_clients, client.id)}
@@ -198,14 +171,10 @@ defmodule Domain.Clients do
     with :ok <- authorize_actor_client_management(client.actor_id, subject) do
       Client.Query.by_id(client.id)
       |> Authorizer.for_subject(subject)
-      |> Repo.fetch_and_update(with: &Client.Changeset.update(&1, attrs))
-      |> case do
-        {:ok, client} ->
-          {:ok, preload_online_status(client)}
-
-        {:error, reason} ->
-          {:error, reason}
-      end
+      |> Repo.fetch_and_update(Client.Query,
+        with: &Client.Changeset.update(&1, attrs),
+        preload: [:online?]
+      )
     end
   end
 
@@ -242,6 +211,8 @@ defmodule Domain.Clients do
       |> Authorizer.for_subject(subject)
       |> Client.Query.delete()
       |> Repo.update_all([])
+
+    :ok = Enum.each(clients, &disconnect_client/1)
 
     {:ok, clients}
   end

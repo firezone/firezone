@@ -18,7 +18,7 @@ defmodule Domain.Tokens do
     Supervisor.init(children, strategy: :one_for_one)
   end
 
-  def fetch_token_by_id(id, %Auth.Subject{} = subject) do
+  def fetch_token_by_id(id, %Auth.Subject{} = subject, opts \\ []) do
     required_permissions =
       {:one_of,
        [
@@ -30,7 +30,7 @@ defmodule Domain.Tokens do
          true <- Validator.valid_uuid?(id) do
       Token.Query.by_id(id)
       |> Authorizer.for_subject(subject)
-      |> Repo.fetch()
+      |> Repo.fetch(Token.Query, opts)
     else
       false -> {:error, :not_found}
       other -> other
@@ -52,15 +52,10 @@ defmodule Domain.Tokens do
   end
 
   defp list_tokens(queryable, subject, opts) do
-    {preload, _opts} = Keyword.pop(opts, :preload, [])
-
-    {:ok, tokens} =
-      queryable
-      |> Authorizer.for_subject(subject)
-      |> Ecto.Query.order_by([tokens: tokens], desc: tokens.inserted_at, desc: tokens.id)
-      |> Repo.list()
-
-    {:ok, Repo.preload(tokens, preload)}
+    queryable
+    |> Authorizer.for_subject(subject)
+    |> Ecto.Query.order_by([tokens: tokens], desc: tokens.inserted_at, desc: tokens.id)
+    |> Repo.list(Token.Query, opts)
   end
 
   def create_token(attrs) do
@@ -81,7 +76,7 @@ defmodule Domain.Tokens do
   def update_token(%Token{} = token, attrs) do
     Token.Query.by_id(token.id)
     |> Token.Query.not_expired()
-    |> Repo.fetch_and_update(with: &Token.Changeset.update(&1, attrs))
+    |> Repo.fetch_and_update(Token.Query, with: &Token.Changeset.update(&1, attrs))
   end
 
   @doc """

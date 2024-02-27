@@ -79,15 +79,9 @@ defmodule Domain.Flows do
   def fetch_flow_by_id(id, %Auth.Subject{} = subject, opts \\ []) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_flows_permission()),
          true <- Validator.valid_uuid?(id) do
-      {preload, _opts} = Keyword.pop(opts, :preload, [])
-
       Flow.Query.by_id(id)
       |> Authorizer.for_subject(Flow, subject)
-      |> Repo.fetch()
-      |> case do
-        {:ok, resource} -> {:ok, Repo.preload(resource, preload)}
-        {:error, reason} -> {:error, reason}
-      end
+      |> Repo.fetch(Flow.Query, opts)
     else
       false -> {:error, :not_found}
       other -> other
@@ -123,16 +117,10 @@ defmodule Domain.Flows do
 
   defp list_flows(queryable, subject, opts) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_flows_permission()) do
-      {preload, _opts} = Keyword.pop(opts, :preload, [])
-
-      {:ok, flows} =
-        queryable
-        |> Authorizer.for_subject(Flow, subject)
-        |> Ecto.Query.order_by([flows: flows], desc: flows.inserted_at, desc: flows.id)
-        |> Ecto.Query.limit(50)
-        |> Repo.list()
-
-      {:ok, Repo.preload(flows, preload)}
+      queryable
+      |> Authorizer.for_subject(Flow, subject)
+      |> Ecto.Query.order_by([flows: flows], desc: flows.inserted_at, desc: flows.id)
+      |> Repo.list(Flow.Query, opts)
     end
   end
 
@@ -142,34 +130,38 @@ defmodule Domain.Flows do
     {:ok, num}
   end
 
+  def list_flow_activities_for(assoc, ended_after, started_before, subject, opts \\ [])
+
   def list_flow_activities_for(
         %Flow{} = flow,
         ended_after,
         started_before,
-        %Auth.Subject{} = subject
+        %Auth.Subject{} = subject,
+        opts
       ) do
     Activity.Query.by_flow_id(flow.id)
-    |> list_activities(ended_after, started_before, subject)
+    |> list_activities(ended_after, started_before, subject, opts)
   end
 
   def list_flow_activities_for(
         %Accounts.Account{} = account,
         ended_after,
         started_before,
-        %Auth.Subject{} = subject
+        %Auth.Subject{} = subject,
+        opts
       ) do
     Activity.Query.by_account_id(account.id)
-    |> list_activities(ended_after, started_before, subject)
+    |> list_activities(ended_after, started_before, subject, opts)
   end
 
-  defp list_activities(queryable, ended_after, started_before, subject) do
+  defp list_activities(queryable, ended_after, started_before, subject, opts) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_flows_permission()) do
       queryable
       |> Activity.Query.by_window_ended_at({:greater_than, ended_after})
       |> Activity.Query.by_window_started_at({:less_than, started_before})
       |> Authorizer.for_subject(Activity, subject)
       |> Ecto.Query.order_by([activities: activities], asc: activities.window_started_at)
-      |> Repo.list()
+      |> Repo.list(Activity.Query, opts)
     end
   end
 

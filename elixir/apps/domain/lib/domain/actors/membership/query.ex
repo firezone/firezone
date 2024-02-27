@@ -95,4 +95,13 @@ defmodule Domain.Actors.Membership.Query do
   def lock(queryable \\ all()) do
     lock(queryable, "FOR UPDATE")
   end
+
+  # Pagination
+
+  @impl Domain.Repo.Query
+  def cursor_fields,
+    do: [
+      {:memberships, :asc, :inserted_at},
+      {:memberships, :asc, :id}
+    ]
 end

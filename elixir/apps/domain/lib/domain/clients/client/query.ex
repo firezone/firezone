@@ -88,4 +88,19 @@ defmodule Domain.Clients.Client.Query do
       |> preload([clients: clients, identity: identity], identity: identity)
     end)
   end
+
+  # Pagination
+
+  @impl Domain.Repo.Query
+  def cursor_fields,
+    do: [
+      {:clients, :desc, :last_seen_at},
+      {:clients, :desc, :id}
+    ]
+
+  @impl Domain.Repo.Query
+  def preloads,
+    do: [
+      online?: &Domain.Clients.preload_clients_presence/1
+    ]
 end

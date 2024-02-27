@@ -200,4 +200,13 @@ defmodule Domain.Auth.Identity.Query do
       join(query, type, [identities: identities], a in assoc(identities, ^binding), as: ^binding)
     end)
   end
+
+  # Pagination
+
+  @impl Domain.Repo.Query
+  def cursor_fields,
+    do: [
+      {:identities, :asc, :inserted_at},
+      {:identities, :asc, :id}
+    ]
 end

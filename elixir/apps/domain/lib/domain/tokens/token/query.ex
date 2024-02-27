@@ -83,4 +83,13 @@ defmodule Domain.Tokens.Token.Query do
       join(queryable, :inner, [tokens: tokens], identity in assoc(tokens, ^binding), as: ^binding)
     end)
   end
+
+  # Pagination
+
+  @impl Domain.Repo.Query
+  def cursor_fields,
+    do: [
+      {:tokens, :asc, :inserted_at},
+      {:tokens, :asc, :id}
+    ]
 end

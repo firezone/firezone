@@ -6,45 +6,42 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.Jobs do
   require Logger
 
   every minutes(5), :refresh_access_tokens do
-    with {:ok, providers} <-
-           Domain.Auth.list_providers_pending_token_refresh_by_adapter(:google_workspace) do
-      Logger.debug("Refreshing access tokens for #{length(providers)} providers")
+    providers = Domain.Auth.all_providers_pending_token_refresh_by_adapter(:google_workspace)
+    Logger.debug("Refreshing access tokens for #{length(providers)} providers")
 
-      Enum.each(providers, fn provider ->
-        Logger.debug("Refreshing access token",
-          provider_id: provider.id,
-          account_id: provider.account_id
-        )
+    Enum.each(providers, fn provider ->
+      Logger.debug("Refreshing access token",
+        provider_id: provider.id,
+        account_id: provider.account_id
+      )
 
-        case GoogleWorkspace.refresh_access_token(provider) do
-          {:ok, provider} ->
-            Logger.debug("Finished refreshing access token",
-              provider_id: provider.id,
-              account_id: provider.account_id
-            )
+      case GoogleWorkspace.refresh_access_token(provider) do
+        {:ok, provider} ->
+          Logger.debug("Finished refreshing access token",
+            provider_id: provider.id,
+            account_id: provider.account_id
+          )
 
-          {:error, reason} ->
-            Logger.error("Failed refreshing access token",
-              provider_id: provider.id,
-              account_id: provider.account_id,
-              reason: inspect(reason)
-            )
-        end
-      end)
-    end
+        {:error, reason} ->
+          Logger.error("Failed refreshing access token",
+            provider_id: provider.id,
+            account_id: provider.account_id,
+            reason: inspect(reason)
+          )
+      end
+    end)
   end
 
   every minutes(3), :sync_directory do
-    with {:ok, providers} <- Domain.Auth.list_providers_pending_sync_by_adapter(:google_workspace) do
-      Logger.debug("Syncing #{length(providers)} Google Workspace providers")
+    providers = Domain.Auth.all_providers_pending_sync_by_adapter(:google_workspace)
+    Logger.debug("Syncing #{length(providers)} Google Workspace providers")
 
-      providers
-      |> Domain.Repo.preload(:account)
-      |> Enum.chunk_every(5)
-      |> Enum.each(fn providers ->
-        Enum.map(providers, &sync_provider/1)
-      end)
-    end
+    providers
+    |> Domain.Repo.preload(:account)
+    |> Enum.chunk_every(5)
+    |> Enum.each(fn providers ->
+      Enum.map(providers, &sync_provider/1)
+    end)
   end
 
   def sync_provider(provider) do

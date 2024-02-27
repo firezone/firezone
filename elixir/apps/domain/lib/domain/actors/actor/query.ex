@@ -34,35 +34,6 @@ defmodule Domain.Actors.Actor.Query do
     where(queryable, [actors: actors], actors.type == ^type)
   end
 
-  # Pagination
-
-  @impl Domain.Repo.Query
-  def cursor_fields, do: [:inserted_at, :id]
-
-  @impl Domain.Repo.Query
-  def order_by_cursor_fields(queryable) do
-    order_by(queryable, [actors: actors], asc: actors.inserted_at, asc: actors.id)
-  end
-
-  @impl Domain.Repo.Query
-  def by_cursor(queryable, :after, [inserted_at, id]) do
-    where(
-      queryable,
-      [actors: actors],
-      actors.inserted_at > ^inserted_at or
-        (actors.inserted_at == ^inserted_at and actors.id > ^id)
-    )
-  end
-
-  def by_cursor(queryable, :before, [inserted_at, id]) do
-    where(
-      queryable,
-      [actors: actors],
-      actors.inserted_at < ^inserted_at or
-        (actors.inserted_at == ^inserted_at and actors.id < ^id)
-    )
-  end
-
   # Preloads
 
   def preload_few_groups_for_each_actor(queryable, limit) do
@@ -144,6 +115,12 @@ defmodule Domain.Actors.Actor.Query do
     end)
   end
 
-  def filters do
-  end
+  # Pagination
+
+  @impl Domain.Repo.Query
+  def cursor_fields,
+    do: [
+      {:actors, :asc, :inserted_at},
+      {:actors, :asc, :id}
+    ]
 end

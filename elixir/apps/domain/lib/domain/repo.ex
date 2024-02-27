@@ -3,7 +3,7 @@ defmodule Domain.Repo do
     otp_app: :domain,
     adapter: Ecto.Adapters.Postgres
 
-  alias Domain.Repo.Paginator
+  alias Domain.Repo.{Paginator, Preloader}
   require Ecto.Query
 
   @doc """
@@ -15,17 +15,43 @@ defmodule Domain.Repo do
   """
   @spec fetch(queryable :: Ecto.Queryable.t(), opts :: Keyword.t()) ::
           {:ok, Ecto.Schema.t()} | {:error, :not_found}
-  def fetch(queryable, opts \\ []) do
-    case __MODULE__.one(queryable, opts) do
-      nil -> {:error, :not_found}
-      schema -> {:ok, schema}
+  def fetch(queryable, query_module, opts \\ []) do
+    {preload, opts} = Keyword.pop(opts, :preload, [])
+
+    if schema = __MODULE__.one(queryable, opts) do
+      {schema, ecto_preloads} = Preloader.preload(schema, preload, query_module)
+      schema = __MODULE__.preload(schema, ecto_preloads)
+      {:ok, schema}
+    else
+      {:error, :not_found}
     end
   end
 
   @doc """
   Alias of `Ecto.Repo.one!/2` added for naming convenience.
   """
-  def fetch!(queryable, opts \\ []), do: __MODULE__.one!(queryable, opts)
+  def fetch!(queryable, query_module, opts \\ []) do
+    {preload, opts} = Keyword.pop(opts, :preload, [])
+
+    schema = __MODULE__.one!(queryable, opts)
+    {schema, ecto_preloads} = Preloader.preload(schema, preload, query_module)
+    __MODULE__.preload(schema, ecto_preloads)
+  end
+
+  @typedoc """
+  A callback which is executed after the transaction is committed.
+
+  The callback is either a function that takes the schema as an argument or
+  a function that takes the schema and the changeset as arguments.
+
+  It must return `:ok`.
+  """
+  @type after_commit :: (term() -> :ok) | (term(), Ecto.Changeset.t() -> :ok)
+
+  @typedoc """
+  A callback which takes a schema and returns a changeset that is then used to update the schema.
+  """
+  @type changeset_fun :: (term() -> Ecto.Changeset.t())
 
   @doc """
   Uses query to fetch a single result from the database, locks it for update and
@@ -35,42 +61,46 @@ defmodule Domain.Repo do
   """
   @spec fetch_and_update(
           queryable :: Ecto.Queryable.t(),
-          [{:with, changeset_fun :: (term() -> Ecto.Changeset.t())}],
-          opts :: Keyword.t()
+          query_module :: module(),
+          opts ::
+            [
+              {:with, changeset_fun()},
+              {:preload, term()},
+              {:after_callback, after_commit() | [after_commit()]}
+            ]
+            | Keyword.t()
         ) ::
           {:ok, Ecto.Schema.t()}
           | {:error, :not_found}
           | {:error, Ecto.Changeset.t()}
           | {:error, term()}
-  def fetch_and_update(queryable, [with: changeset_fun], opts \\ [])
-      when is_function(changeset_fun, 1) do
-    transaction(fn ->
-      queryable = Ecto.Query.lock(queryable, "FOR UPDATE")
+  def fetch_and_update(queryable, query_module, opts) do
+    {preload, opts} = Keyword.pop(opts, :preload, [])
+    {after_commit, opts} = Keyword.pop(opts, :after_commit, [])
+    {changeset_fun, repo_shared_opts} = Keyword.pop!(opts, :with)
 
-      with {:ok, schema} <- fetch(queryable, opts) do
-        schema
-        |> changeset_fun.()
-        |> case do
-          {%Ecto.Changeset{} = changeset, execute_after_commit: cb} when is_function(cb, 1) ->
-            {update(changeset, mode: :savepoint), cb}
+    queryable = Ecto.Query.lock(queryable, "FOR UPDATE")
 
+    fn ->
+      if schema = __MODULE__.one(queryable, repo_shared_opts) do
+        case changeset_fun.(schema) do
           %Ecto.Changeset{} = changeset ->
-            {update(changeset, mode: :savepoint), nil}
+            {update(changeset, mode: :savepoint), changeset}
 
           reason ->
             {:error, reason}
         end
+      else
+        {:error, :not_found}
       end
-    end)
+    end
+    |> transaction(repo_shared_opts)
     |> case do
-      {:ok, {{:ok, schema}, nil}} ->
-        {:ok, schema}
+      {:ok, {{:ok, schema}, changeset}} ->
+        :ok = execute_after_commit(schema, changeset, after_commit)
+        {:ok, execute_preloads(schema, query_module, preload)}
 
-      {:ok, {{:ok, schema}, cb}} ->
-        cb.(schema)
-        {:ok, schema}
-
-      {:ok, {{:error, reason}, _cb}} ->
+      {:ok, {{:error, reason}, _changeset}} ->
         {:error, reason}
 
       {:ok, {:error, reason}} ->
@@ -81,13 +111,28 @@ defmodule Domain.Repo do
     end
   end
 
+  defp execute_after_commit(schema, changeset, after_commit) do
+    after_commit
+    |> List.wrap()
+    |> Enum.each(fn
+      callback when is_function(callback, 1) ->
+        :ok = callback.(schema)
+
+      callback when is_function(callback, 2) ->
+        :ok = callback.(schema, changeset)
+    end)
+  end
+
+  defp execute_preloads(schema, query_module, preload) do
+    {schema, ecto_preloads} = Preloader.preload(schema, preload, query_module)
+    __MODULE__.preload(schema, ecto_preloads)
+  end
+
   @doc """
   Similar to `Ecto.Repo.all/2`, fetches all results from the query but return a tuple.
   """
-  def list(queryable, opts \\ []) do
-    {query_module, opts} = Keyword.pop!(opts, :query_module)
-
-    {preload, _opts} = Keyword.pop(opts, :preload, [])
+  def list(queryable, query_module, opts \\ []) do
+    {preload, opts} = Keyword.pop(opts, :preload, [])
     # {filters, opts} = Keyword.pop(opts, :filters, %{})
     # {search_query, opts} = Keyword.pop(opts, :search_query, nil)
 
@@ -101,9 +146,8 @@ defmodule Domain.Repo do
         |> __MODULE__.all(opts)
         |> Paginator.metadata(paginator_opts)
 
-      results =
-        results
-        |> __MODULE__.preload(preload)
+      {results, ecto_preloads} = Preloader.preload(results, preload, query_module)
+      results = __MODULE__.preload(results, ecto_preloads)
 
       {:ok, results, metadata}
     end

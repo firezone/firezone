@@ -17,4 +17,19 @@ defmodule Domain.Gateways.Group.Query do
   def by_account_id(queryable \\ not_deleted(), account_id) do
     where(queryable, [groups: groups], groups.account_id == ^account_id)
   end
+
+  # Pagination
+
+  @impl Domain.Repo.Query
+  def cursor_fields,
+    do: [
+      {:groups, :asc, :inserted_at},
+      {:groups, :asc, :id}
+    ]
+
+  @impl Domain.Repo.Query
+  def preloads,
+    do: [
+      gateway: Domain.Gateways.Gateway.Query.preloads()
+    ]
 end

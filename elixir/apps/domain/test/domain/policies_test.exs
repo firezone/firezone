@@ -76,19 +76,19 @@ defmodule Domain.PoliciesTest do
 
   describe "list_policies/1" do
     test "returns empty list when there are no policies", %{subject: subject} do
-      assert list_policies(subject) == {:ok, []}
+      assert {:ok, [], _metadata} = list_policies(subject)
     end
 
     test "does not list policies from other accounts", %{subject: subject} do
       Fixtures.Policies.create_policy()
-      assert list_policies(subject) == {:ok, []}
+      assert {:ok, [], _metadata} = list_policies(subject)
     end
 
     test "does not list deleted policies", %{account: account, subject: subject} do
       Fixtures.Policies.create_policy(account: account)
       |> delete_policy(subject)
 
-      assert list_policies(subject) == {:ok, []}
+      assert {:ok, [], _metadata} = list_policies(subject)
     end
 
     test "returns all policies for account admin subject", %{account: account} do
@@ -100,7 +100,7 @@ defmodule Domain.PoliciesTest do
       Fixtures.Policies.create_policy(account: account)
       Fixtures.Policies.create_policy()
 
-      assert {:ok, policies} = list_policies(subject)
+      assert {:ok, policies, _metadata} = list_policies(subject)
       assert length(policies) == 2
     end
 
@@ -122,7 +122,7 @@ defmodule Domain.PoliciesTest do
       Fixtures.Policies.create_policy(account: account)
       Fixtures.Policies.create_policy()
 
-      assert {:ok, policies} = list_policies(unprivileged_subject)
+      assert {:ok, policies, _metadata} = list_policies(unprivileged_subject)
       assert length(policies) == 1
     end
 
@@ -381,9 +381,7 @@ defmodule Domain.PoliciesTest do
                {:error,
                 {:unauthorized,
                  reason: :missing_permissions,
-                 missing_permissions: [
-                   {:one_of, [Policies.Authorizer.manage_policies_permission()]}
-                 ]}}
+                 missing_permissions: [Policies.Authorizer.manage_policies_permission()]}}
     end
 
     test "return error when subject is outside of account", %{policy: policy} do

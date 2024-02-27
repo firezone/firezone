@@ -29,4 +29,19 @@ defmodule Domain.Relays.Group.Query do
       groups.account_id == ^account_id or is_nil(groups.account_id)
     )
   end
+
+  # Pagination
+
+  @impl Domain.Repo.Query
+  def cursor_fields,
+    do: [
+      {:groups, :asc, :inserted_at},
+      {:groups, :asc, :id}
+    ]
+
+  @impl Domain.Repo.Query
+  def preloads,
+    do: [
+      relay: Domain.Relays.Relay.Query.preloads()
+    ]
 end

@@ -3,37 +3,37 @@ defmodule Domain.Accounts.Account.Query do
   alias Domain.Validator
 
   def all do
-    from(account in Domain.Accounts.Account, as: :account)
+    from(accounts in Domain.Accounts.Account, as: :accounts)
   end
 
   def not_deleted(queryable \\ all()) do
-    where(queryable, [account: account], is_nil(account.deleted_at))
+    where(queryable, [accounts: accounts], is_nil(accounts.deleted_at))
   end
 
   def not_disabled(queryable \\ not_deleted()) do
-    where(queryable, [account: account], is_nil(account.disabled_at))
+    where(queryable, [accounts: accounts], is_nil(accounts.disabled_at))
   end
 
   def by_id(queryable \\ not_deleted(), id)
 
   def by_id(queryable, {:in, ids}) do
-    where(queryable, [account: account], account.id in ^ids)
+    where(queryable, [accounts: accounts], accounts.id in ^ids)
   end
 
   def by_id(queryable, id) do
-    where(queryable, [account: account], account.id == ^id)
+    where(queryable, [accounts: accounts], accounts.id == ^id)
   end
 
   def by_stripe_customer_id(queryable, customer_id) do
     where(
       queryable,
-      [account: account],
-      fragment("?->'stripe'->>'customer_id' = ?", account.metadata, ^customer_id)
+      [accounts: accounts],
+      fragment("?->'stripe'->>'customer_id' = ?", accounts.metadata, ^customer_id)
     )
   end
 
   def by_slug(queryable \\ not_deleted(), slug) do
-    where(queryable, [account: account], account.slug == ^slug)
+    where(queryable, [accounts: accounts], accounts.slug == ^slug)
   end
 
   def by_id_or_slug(queryable \\ not_deleted(), id_or_slug) do
@@ -43,4 +43,13 @@ defmodule Domain.Accounts.Account.Query do
       by_slug(queryable, id_or_slug)
     end
   end
+
+  # Pagination
+
+  @impl Domain.Repo.Query
+  def cursor_fields,
+    do: [
+      {:accounts, :asc, :inserted_at},
+      {:accounts, :asc, :id}
+    ]
 end
