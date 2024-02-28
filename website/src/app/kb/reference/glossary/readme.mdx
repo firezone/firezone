@@ -1,10 +1,20 @@
 # Glossary of terms
 
-**Site**: [Sites](/kb/deploy/sites) are user-created environments where admins
-can manage Resources and the Gateways that enable access to those Resources
-(e.g. US-West, Chicago-LAN, or Prod). All Gateways and Resources in a Site are
-assumed to be able to reach each other in a shared network context such as a VPC
-or LAN.
+**Account Slug**: A unique identifier for your Firezone account typically
+genearted automatically during sign up. This is used in the URL for your
+Firezone admin portal, e.g.
+https://app.firezone.dev/**international-widget-corporation**. You can change
+your account slug by [contacting support](mailto:support@firezone.dev).
+
+**Admin Portal**: The web-based interface where you can manage your Firezone
+account. You can access the admin portal at
+https://app.firezone.dev/**your-account-slug**.
+
+**Actor**: An Actor is a [user](/kb/deploy/users) or
+[service account](/kb/authenticate/service-accounts) that can authenticate to
+Firezone. Actors can be members of one or more [Groups](/kb/deploy/groups) which
+can be assigned one or more [Policies](/kb/deploy/policies) to grant access to
+[Resources](/kb/deploy/resources).
 
 **Gateway**: [Gateways](/kb/deploy/gateways) are Firezone servers that run on
 your infrastructure. Gateways must be defined within a Site, and any traffic
@@ -16,18 +26,25 @@ from the admin portal. Gateways can run on everything from a Raspberry Pi to
 bare metal servers and everything in between. Gateways are designed to be
 lightweight and don't require persistent storage to function.
 
-**Resource**: A [Resource](/kb/deploy/resources) is any DNS name, IP, or network
-(CIDR range) you wish to manage access for. DNS-based Resources can be used to
-manage access to internal or external applications and automatically match all
-subdomains as well. CIDR-based Resources can be used to manage access for an
-entire subnets, similar to a traditional VPN.
+**Group**: [User groups](/kb/deploy/groups) consist of one or more users,
+usually members of the same team or department (e.g. Engineering, DevOps, Sales)
+and can be used in Policies to give all users in that Group access to a
+Resource. Users and groups can be automatically synced from your Identity
+Provider (Google Workspace only) to ensure only active users and groups maintain
+access to your Resources.
 
 **Policy**: [Policies](/kb/deploy/policies) define a one-to-one mapping between
 a user group and a Resource. Access to Resources is default-deny, which means a
 user can't access a Resource until a Policy permitting access is created.
 
-**Group**: User groups consist of one or more users, usually members of the same
-team or department (e.g. Engineering, DevOps, Sales) and can be used in Policies
-to give all users in that Group access to a Resource. Users and groups can be
-automatically synced from your Identity Provider (Google Workspace only) to
-ensure only active users and groups maintain access to your Resources.
+**Resource**: A [Resource](/kb/deploy/resources) is any DNS name, IP, or network
+(CIDR range) you wish to manage access for. DNS-based Resources can be used to
+manage access to internal or external applications and optionally be configured
+to match all subdomains as well. CIDR-based Resources can be used to manage
+access for an entire subnets, similar to a traditional VPN.
+
+**Site**: [Sites](/kb/deploy/sites) are user-created environments where admins
+can manage Resources and the Gateways that enable access to those Resources
+(e.g. US-West, Chicago-LAN, or Prod). All Gateways and Resources in a Site are
+assumed to be able to reach each other in a shared network context such as a VPC
+or LAN.
