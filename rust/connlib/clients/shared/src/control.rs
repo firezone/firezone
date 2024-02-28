@@ -41,7 +41,6 @@ pub struct ControlPlane<CB: Callbacks> {
     pub tunnel_init: bool,
 
     pub next_request_id: usize,
-
     pub sent_connection_intents: SentConnectionIntents,
 }
 
