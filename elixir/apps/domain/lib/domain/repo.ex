@@ -13,7 +13,13 @@ defmodule Domain.Repo do
 
   Raises when the query returns more than one row.
   """
-  @spec fetch(queryable :: Ecto.Queryable.t(), opts :: Keyword.t()) ::
+  @spec fetch(
+          queryable :: Ecto.Queryable.t(),
+          query_module :: module(),
+          opts ::
+            [{:preload, term()}]
+            | Keyword.t()
+        ) ::
           {:ok, Ecto.Schema.t()} | {:error, :not_found}
   def fetch(queryable, query_module, opts \\ []) do
     {preload, opts} = Keyword.pop(opts, :preload, [])
@@ -31,6 +37,13 @@ defmodule Domain.Repo do
   @doc """
   Alias of `Ecto.Repo.one!/2` added for naming convenience.
   """
+  @spec fetch!(
+          queryable :: Ecto.Queryable.t(),
+          opts ::
+            [{:preload, term()}]
+            | Keyword.t()
+        ) ::
+          Ecto.Schema.t()
   def fetch!(queryable, query_module, opts \\ []) do
     {preload, opts} = Keyword.pop(opts, :preload, [])
 
@@ -81,7 +94,7 @@ defmodule Domain.Repo do
     {after_commit, opts} = Keyword.pop(opts, :after_commit, [])
     {changeset_fun, repo_shared_opts} = Keyword.pop!(opts, :with)
 
-    queryable = Ecto.Query.lock(queryable, "FOR UPDATE")
+    queryable = Ecto.Query.lock(queryable, "FOR NO KEY UPDATE")
 
     fn ->
       if schema = __MODULE__.one(queryable, repo_shared_opts) do
@@ -132,8 +145,26 @@ defmodule Domain.Repo do
   end
 
   @doc """
-  Similar to `Ecto.Repo.all/2`, fetches all results from the query but return a tuple.
+  Similar to `Ecto.Repo.all/2`, fetches all results from the query but returns a tuple
+  and allow to execute preloads and paginate through the results.
   """
+  @spec list(
+          queryable :: Ecto.Queryable.t(),
+          query_module :: module(),
+          opts ::
+            [
+              {:preload, term()},
+              {:page,
+               [
+                 {:cursor, binary()},
+                 {:limit, non_neg_integer()}
+               ]}
+            ]
+            | Keyword.t()
+        ) ::
+          {:ok, [Ecto.Schema.t()], Paginator.Metadata.t()}
+          | {:error, :invalid_cursor}
+          | {:error, term()}
   def list(queryable, query_module, opts \\ []) do
     {preload, opts} = Keyword.pop(opts, :preload, [])
     # {filters, opts} = Keyword.pop(opts, :filters, %{})
