@@ -2605,7 +2605,7 @@ checksum = "6fe2267d4ed49bc07b63801559be28c718ea06c4738b7a03c94df7386d2cde46"
 [[package]]
 name = "hickory-proto"
 version = "0.24.0"
-source = "git+https://github.com/hickory-dns/hickory-dns?branch=main#a3669bd80f3f7b97f0c301c15f1cba6368d97b63"
+source = "git+https://github.com/hickory-dns/hickory-dns?rev=a3669bd80f3f7b97f0c301c15f1cba6368d97b63#a3669bd80f3f7b97f0c301c15f1cba6368d97b63"
 dependencies = [
  "async-trait",
  "cfg-if",
@@ -2628,7 +2628,7 @@ dependencies = [
 [[package]]
 name = "hickory-resolver"
 version = "0.24.0"
-source = "git+https://github.com/hickory-dns/hickory-dns?branch=main#a3669bd80f3f7b97f0c301c15f1cba6368d97b63"
+source = "git+https://github.com/hickory-dns/hickory-dns?rev=a3669bd80f3f7b97f0c301c15f1cba6368d97b63#a3669bd80f3f7b97f0c301c15f1cba6368d97b63"
 dependencies = [
  "cfg-if",
  "futures-util",

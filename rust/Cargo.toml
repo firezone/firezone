@@ -25,7 +25,7 @@ backoff = { version = "0.4", features = ["tokio"] }
 tracing = { version = "0.1.40" }
 tracing-subscriber = { version = "0.3.17", features = ["parking_lot"] }
 secrecy = "0.8"
-hickory-resolver = { git = "https://github.com/hickory-dns/hickory-dns", branch="main", features = ["tokio-runtime"] }
+hickory-resolver = { git = "https://github.com/hickory-dns/hickory-dns", rev="a3669bd80f3f7b97f0c301c15f1cba6368d97b63", features = ["tokio-runtime"] }
 str0m = { version = "0.4", default-features = false }
 futures-bounded = "0.2.1"
 domain = { version = "0.9", features = ["serde"] }
