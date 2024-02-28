@@ -4,18 +4,14 @@ import SupportOptions from "@/components/SupportOptions";
 
 # Install Firezone with Omnibus
 
-<Alert
-  color="warning"
-  html={`
-Due to Omnibus being EOL'd by Chef in 2024, Docker is now the
-preferred method of deploying Firezone. See the
-<a href="/docs/deploy/docker">Docker deployment guide</a> to get started.
-Read below to continue with an Omnibus-based deployment.
-`}
-/>
+<Alert color="warning">
+  Due to Omnibus being EOL'd by Chef in 2024, Docker is now the preferred method
+  of deploying Firezone. See the [Docker deployment guide](/docs/deploy/docker)
+  to get started. Read below to continue with an Omnibus-based deployment.
+</Alert>
 
 Firezone can be deployed on a server running a supported
-[Linux distribution ](/docs/deploy/omnibus/supported-platforms) in a few minutes
+[Linux distribution](/docs/deploy/omnibus/supported-platforms) in a few minutes
 with our Debian or Red Hat package. This guide will walk you through the steps
 to get started.
 
@@ -30,24 +26,18 @@ to get started.
   - `443/tcp`: To access the web UI.
   - `51820/udp`: VPN traffic listen port.
 
-<Alert
-  color="warning"
-  html={`
-Before deploying Firezone in <strong>production</strong>, you'll need a valid DNS
-record pointing to this instance. See <a href="/docs/deploy/#prepare-to-deploy">
-Prepare to Deploy</a> if you haven't done this already.
-`}
-/>
+<Alert color="warning">
+  Before deploying Firezone in <strong>production</strong>, you'll need a valid
+  DNS record pointing to this instance. See [Prepare to
+  deploy](/docs/deploy/#prepare-to-deploy) if you haven't done this already.
+</Alert>
 
-<Alert
-  color="info"
-  html={`
-Firezone modifies the kernel netfilter and routing tables. Other programs that
-modify the Linux routing table or firewall may interfere with Firezone’s
-operation. For help troubleshooting connectivity issues, see the
-<a href="/docs/administer/troubleshoot">troubleshooting guide</a>.
-`}
-/>
+<Alert color="info">
+  Firezone modifies the kernel netfilter and routing tables. Other programs that
+  modify the Linux routing table or firewall may interfere with Firezone’s
+  operation. For help troubleshooting connectivity issues, see the
+  [troubleshooting guide](/docs/administer/troubleshoot)
+</Alert>
 
 ## Step 2: Install server
 

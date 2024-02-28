@@ -1,20 +1,48 @@
 import Alert from "@/components/DocsAlert";
+import SupportOptions from "@/components/SupportOptions";
+import NextStep from "@/components/NextStep";
+import PlanBadge from "@/components/PlanBadge";
+
+<PlanBadge plans={["starter", "enterprise"]}>
 
 # Create Resources
+
+</PlanBadge>
 
 Resources define subnets, IP addresses, or DNS names you wish to manage access
 for.
 
-To create a resource, go to `Sites` -> `<site>` -> `Add a resource`. Resources
-are expected to be reachable by all gateways in the same site.
+To create a Resource, go to `Sites` -> `<Site>` -> `Add a Resource`.
 
-DNS-based resources match the address entered and all subdomains.
+<Alert color="info">
+  Remember, Resources **must** be reachable by all Gateways in the same Site.
+</Alert>
 
-<Alert
-  color="warning"
-  html={`
-    <strong>Note:</strong> To preserve audit trails, once a resource is created,
-    its address cannot be changed. Double-check to ensure the address entered
-    is correct before creating the resource.
-  `}
-/>
+From there, you can select the type of Resource you want to create:
+
+- **DNS**: A domain name pattern to match.
+  - By default, the pattern will only match exactly the name you enter.
+  - To recursively match all subdomains, use a wildcard, such as
+    `*.example.com`. This will match `sub2.example.com`,
+    `sub1.sub2.example.com`,
+  - To non-recursively match all subdomains, use a question mark, such as
+    `?.example.com`. This will match `sub1.example.com` and `sub2.example.com`
+    but _not_ `sub1.sub2.example.com`.
+- **IP**: A single IPv4 or IPv6 address
+- **CIDR**: A range of IPv4 or IPv6 addresses in CIDR notation, such as
+  `10.1.2.0/24` or `2001:db8::/48`
+
+Firezone does not currently filter traffic based on any layer 4 details such as
+transport protocol (UDP / TCP) or port number. If you're interested in a feature
+like this,
+[please leave a comment on our public roadmap](https://github.com/firezone/firezone/issues/2030).
+
+<Alert color="warning">
+  **Note:** To preserve audit trails, once a Resource is created, its address
+  cannot be changed. Double-check to ensure the address entered is correct
+  before creating the Resource.
+</Alert>
+
+<NextStep href="/kb/deploy/groups">Next: Create Groups</NextStep>
+
+<SupportOptions />

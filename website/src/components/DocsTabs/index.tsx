@@ -63,7 +63,7 @@ const customTheme: CustomFlowbiteTheme["tab"] = {
 
 function TabsGroup({ children }: { children: React.ReactNode }) {
   return (
-    <div className="mb-4">
+    <div className="mb-8">
       <FlowbiteTabs.Group
         theme={customTheme}
         style="underline"
