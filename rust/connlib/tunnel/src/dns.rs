@@ -9,6 +9,7 @@ use domain::base::{
     Message, MessageBuilder, Question, ToDname,
 };
 use hickory_resolver::lookup::Lookup;
+use hickory_resolver::proto::error::{ProtoError, ProtoErrorKind};
 use hickory_resolver::proto::op::{Message as TrustDnsMessage, MessageType};
 use hickory_resolver::proto::rr::RecordType;
 use itertools::Itertools;
@@ -166,11 +167,15 @@ pub(crate) fn build_response_from_resolve_result(
 
     let response = match response.map_err(|err| err.kind().clone()) {
         Ok(response) => message.add_answers(response.records().to_vec()),
-        Err(hickory_resolver::error::ResolveErrorKind::NoRecordsFound {
-            soa,
-            response_code,
-            ..
-        }) => {
+        Err(hickory_resolver::error::ResolveErrorKind::Proto(ProtoError { kind, .. }))
+            if matches!(*kind, ProtoErrorKind::NoRecordsFound { .. }) =>
+        {
+            let ProtoErrorKind::NoRecordsFound {
+                soa, response_code, ..
+            } = *kind
+            else {
+                panic!("Impossible - We matched on `ProtoErrorKind::NoRecordsFound` but then could not destructure that same variant");
+            };
             if let Some(soa) = soa {
                 message.add_name_server(soa.clone().into_record_of_rdata());
             }
