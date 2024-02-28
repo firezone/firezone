@@ -41,9 +41,9 @@ you'll need to make sure the following outbound traffic is allowed:
 
 Ideally, Gateways should be deployed as close to the Resources they're serving
 -- in some cases, even on the same physical host. This ensures the lowest
-possible latency and highest possible throughput for client connections, and
+possible latency and highest possible throughput for Client connections, and
 allows you to more easily deploy additional Gateways for a particular Resource
-that needs to handle more client connections.
+that needs to handle more Client connections.
 
 The downside of deploying Gateways close to Resources is that it increases the
 number of overall Gateways you need to deploy, possibly making it more difficult
@@ -63,8 +63,8 @@ deployment.
 Gateways, like the rest of Firezone's data plane stack, are written in Rust and
 are thus Resource efficient by nature.
 
-A single client connection to a single Gateway can typically reach speeds of **1
-Gbps** or more. This scales linearly with each client connection up to the
+A single Client connection to a single Gateway can typically reach speeds of **1
+Gbps** or more. This scales linearly with each Client connection up to the
 number of CPU cores available to the Gateway.
 
 Use the table below as a rough guide for sizing your Gateway deployments:
@@ -76,7 +76,7 @@ Use the table below as a rough guide for sizing your Gateway deployments:
 | Large        | 10,000       | 32        | 32 GB  | 40 Gbps      |
 
 To go beyond the table above, you can deploy additional Gateways and use
-Firezone's [automatic load balancing](#load-balancing) to distribute client
+Firezone's [automatic load balancing](#load-balancing) to distribute Client
 connections across them.
 
 ## Deploy a single Gateway
@@ -121,7 +121,7 @@ and **load balancing**, both of which are automatically enabled on all plans.
 ### Automatic failover
 
 Two or more Gateways can be deployed within a Site to achieve automatic failover
-for client connections to Resources in that Site.
+for Client connections to Resources in that Site.
 
 Here's how it works:
 
@@ -132,8 +132,8 @@ Here's how it works:
 - Clients identify unhealthy gateways using keepalive timers. If the timer
   expires, the Client will disconnect from the unhealthy Gateway and request a
   new, healthy one from the portal.
-- The client keepalive timer expires after **20 seconds**. This is the maximum
-  time it takes for existing client connections to be rerouted to a healthy
+- The Client keepalive timer expires after **20 seconds**. This is the maximum
+  time it takes for existing Client connections to be rerouted to a healthy
   Gateway in the event of a Gateway failure.
 
 By using two independent health checks in the portal and the Client, Firezone
@@ -143,15 +143,15 @@ interrupt existing connections to healthy Gateways.
 ### Load balancing
 
 Similar to automatic failover, two or more Gateways deployed within a Site will
-automatic load balance client connections to Resources in that Site.
+automatic load balance Client connections to Resources in that Site.
 
 When a Client wants to connect to a Resource, Firezone randomly selects a
 healthy Gateway in the Site to handle the request. The Client maintains the
 connection to that Gateway until either the Client disconnects or the Gateway
 becomes unhealthy.
 
-Deploy as many Gateways as you need to handle the load of client connections to
-Resources in a Site. This effectively shards client connections across all
+Deploy as many Gateways as you need to handle the load of Client connections to
+Resources in a Site. This effectively shards Client connections across all
 Gateways in a Site, achieving higher overall throughput than otherwise possible
 with a single Gateway.
 

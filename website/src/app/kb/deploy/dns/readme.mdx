@@ -10,13 +10,12 @@ import NextStep from "@/components/NextStep";
 </PlanBadge>
 
 Firezone includes a sophisticated DNS routing system available on all plans that
-provides Split DNS and fallback resolver configuration for each client
-application in your Firezone account. Read more below to understand how it works
-and how to configure it.
+provides Split DNS and fallback resolver configuration for each Firezone Client.
+Read more below to understand how it works and how to configure it.
 
 ## How DNS works in Firezone
 
-Each Firezone client embeds a lightweight DNS proxy used to route queries to an
+Each Firezone Client embeds a lightweight DNS proxy used to route queries to an
 appropriate Gateway for resolution.
 
 The proxy "listens on" IP addresses in the following ranges:
@@ -51,9 +50,9 @@ further below.
 
 ## Configuring Client DNS upstream resolvers
 
-Upstream DNS in the Clients can be configured with the servers of your choosing
-so that all queries on client devices will be forwarded to the servers you
-specify for all non-Firezone resources.
+Upstream DNS in Client can be configured with the servers of your choosing so
+that all queries on Client devices will be forwarded to the servers you specify
+for all non-Firezone resources.
 
 Go to `Settings` -> `DNS` and enter IPv4 and/or IPv6 servers to use as fallback
 resolvers. Firezone Clients will use these servers in the order they are defined

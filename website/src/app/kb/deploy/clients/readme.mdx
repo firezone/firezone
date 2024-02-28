@@ -15,10 +15,10 @@ protected Resources.
 ## User installation
 
 See our [end-user instructions](/kb/user-guides/) for basic installation and
-usage instructions for the Firezone client apps that are appropriate for all
-Firezone users. Or continue reading below for [MDM](#deploy-with-mdm) deployment
-and [headless mode](#headless-mode-operation) instructions suited for advanced
-users and Firezone admins.
+usage instructions for the Firezone Client that are appropriate for all Firezone
+users. Or continue reading below for [MDM](#deploy-with-mdm) deployment and
+[headless mode](#headless-mode-operation) instructions suited Firezone admins
+wishing to deploy the clients at scale across their organization.
 
 ## Provision with MDM
 
@@ -48,7 +48,7 @@ See the table below for achieving headless mode operation on each platform:
 | Platform           | Headless Mode Operation                                                                                                                                                                                                                                                               |
 | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Android / ChromeOS | Set the `token` key using an MDM provider that supports Android [managed configurations](https://developer.android.com/work/managed-configurations). If the token is set and valid, Firezone will automatically connect and authenticate using this token when the Client is started. |
-| Linux              | Set the `FIREZONE_TOKEN` environment variable when running the Client binary.                                                                                                                                                                                                         |
+| Linux              | Set the `FIREZONE_TOKEN` and `FIREZONE_ID` environment variables when running the Client binary.                                                                                                                                                                                      |
 | macOS / iOS        | Not yet supported.                                                                                                                                                                                                                                                                    |
 | Windows            | Not yet supported.                                                                                                                                                                                                                                                                    |
 

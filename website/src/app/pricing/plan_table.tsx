@@ -175,8 +175,7 @@ export default function PlanTable() {
               role="tooltip"
               className="absolute z-10 invisible inline-block px-3 py-2 text-xs font-medium text-white transition-opacity duration-100 bg-neutral-900 rounded shadow-sm opacity-90 tooltip"
             >
-              Any device or machine that the Firezone client appplication
-              connects from
+              Any device or machine that the Firezone Client connects from
               <div className="tooltip-arrow" data-popper-arrow></div>
             </div>
           </td>
@@ -209,7 +208,7 @@ export default function PlanTable() {
           </td>
         </tr>
         <tr className="border-b border-1 border-neutral-200">
-          <td className="px-6 py-4">Native Firezone clients</td>
+          <td className="px-6 py-4">Native Firezone Clients</td>
           <td className="px-6 py-4">
             <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
