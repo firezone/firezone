@@ -435,15 +435,13 @@ impl ClientState {
         self.gateway_awaiting_connection_timers.remove(gateway);
     }
 
+    #[tracing::instrument(level = "debug", skip_all, fields(resource_address = %resource.address, resource_id = %resource.id))]
     fn on_connection_intent_dns(&mut self, resource: &DnsResource, now: Instant) {
-        tracing::trace!(address = %resource.address, "resource_connection_intent");
-
         self.on_connection_intent_to_resource(resource.id, Some(resource.address.clone()), now)
     }
 
+    #[tracing::instrument(level = "debug", skip_all, fields(resource_ip = %destination, resource_id))]
     fn on_connection_intent_ip(&mut self, destination: IpAddr, now: Instant) {
-        tracing::trace!(resource_ip = %destination, "resource_connection_intent");
-
         let Some(resource_id) = self.get_cidr_resource_by_destination(destination) else {
             if let Some(resource) = self
                 .dns_resources_internal_ips
@@ -453,8 +451,13 @@ impl ClientState {
             {
                 self.on_connection_intent_dns(&resource, now);
             }
+
+            tracing::trace!("Unknown resource");
+
             return;
         };
+
+        tracing::Span::current().record("resource_id", tracing::field::display(&resource_id));
 
         self.on_connection_intent_to_resource(resource_id, None, now)
     }
@@ -476,7 +479,11 @@ impl ClientState {
 
         match self.awaiting_connection.entry(resource) {
             Entry::Occupied(mut occupied) => {
-                if now.duration_since(occupied.get().last_intent_sent_at) < Duration::from_secs(2) {
+                let time_since_last_intent = now.duration_since(occupied.get().last_intent_sent_at);
+
+                if time_since_last_intent < Duration::from_secs(2) {
+                    tracing::trace!(?time_since_last_intent, "Skipping connection intent");
+
                     return;
                 }
 
@@ -490,6 +497,8 @@ impl ClientState {
                 });
             }
         }
+
+        tracing::debug!("Sending connection intent");
 
         self.buffered_events.push_back(Event::ConnectionIntent {
             resource,
