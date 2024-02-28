@@ -2,7 +2,6 @@ use std::{collections::HashSet, net::IpAddr};
 
 use boringtun::x25519::PublicKey;
 use connlib_shared::{
-    control::Reference,
     messages::{
         Answer, ClientPayload, DomainResponse, GatewayId, Key, Offer, Relay, RequestConnection,
         ResourceDescription, ResourceId,
@@ -44,18 +43,12 @@ where
         resource_id: ResourceId,
         gateway_id: GatewayId,
         relays: Vec<Relay>,
-        reference: Option<Reference>,
     ) -> Result<Request> {
         tracing::trace!("request_connection");
 
-        let reference: usize = reference
-            .ok_or(Error::InvalidReference)?
-            .parse()
-            .map_err(|_| Error::InvalidReference)?;
-
-        if let Some(connection) =
-            self.role_state
-                .attempt_to_reuse_connection(resource_id, gateway_id, reference)?
+        if let Some(connection) = self
+            .role_state
+            .attempt_to_reuse_connection(resource_id, gateway_id)?
         {
             // TODO: now we send reuse connections before connection is established but after
             // response is offered.

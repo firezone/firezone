@@ -26,6 +26,7 @@ use connlib_shared::{
 
 use firezone_tunnel::Request;
 use reqwest::header::{CONTENT_ENCODING, CONTENT_TYPE};
+use std::collections::HashMap;
 use tokio::io::BufReader;
 use tokio_util::codec::{BytesCodec, FramedRead};
 use url::Url;
@@ -38,6 +39,46 @@ pub struct ControlPlane<CB: Callbacks> {
     pub tunnel: ClientTunnel<CB>,
     pub phoenix_channel: PhoenixSenderWithTopic,
     pub tunnel_init: bool,
+
+    pub next_request_id: usize,
+    pub sent_connection_intents: SentConnectionIntents,
+}
+
+#[derive(Default)]
+pub struct SentConnectionIntents {
+    inner: HashMap<usize, ResourceId>,
+}
+
+impl SentConnectionIntents {
+    fn register_new_intent(&mut self, id: usize, resource: ResourceId) {
+        self.inner.insert(id, resource);
+    }
+
+    /// To be called when we receive the connection details for a particular resource.
+    ///
+    /// Returns whether we should accept them.
+    fn handle_connection_details_received(&mut self, reference: usize, r: ResourceId) -> bool {
+        let has_more_recent_intent = self
+            .inner
+            .iter()
+            .any(|(req, resource)| req > &reference && resource == &r);
+
+        if has_more_recent_intent {
+            return false;
+        }
+
+        debug_assert!(self
+            .inner
+            .get(&reference)
+            .is_some_and(|resource| resource == &r));
+        self.inner.retain(|_, v| v != &r);
+
+        true
+    }
+
+    fn handle_error(&mut self, reference: usize) -> Option<ResourceId> {
+        self.inner.remove(&reference)
+    }
 }
 
 fn effective_dns_servers(
@@ -180,11 +221,25 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
         }: ConnectionDetails,
         reference: Option<Reference>,
     ) {
+        let Some(reference) = reference.as_ref().and_then(|r| r.parse::<usize>().ok()) else {
+            tracing::warn!(?reference, "Failed to parse reference as usize");
+            return;
+        };
+
+        if !self
+            .sent_connection_intents
+            .handle_connection_details_received(reference, resource_id)
+        {
+            tracing::debug!("Discarding stale connection details");
+
+            return;
+        }
+
         let mut control_signaler = self.phoenix_channel.clone();
 
         let err = match self
             .tunnel
-            .request_connection(resource_id, gateway_id, relays, reference)
+            .request_connection(resource_id, gateway_id, relays)
         {
             Ok(Request::NewConnection(connection_request)) => {
                 tokio::spawn(async move {
@@ -280,12 +335,17 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
     ) -> Result<()> {
         match (reply_error, reference) {
             (ChannelError::ErrorReply(ErrorInfo::Offline), Some(reference)) => {
-                let Ok(resource_id) = reference.parse::<ResourceId>() else {
-                    tracing::warn!("The portal responded with an Offline error. Is the Resource associated with any online Gateways or Relays?");
+                let Ok(request_id) = reference.parse::<usize>() else {
                     return Ok(());
                 };
-                // TODO: Rate limit the number of attempts of getting the relays before just trying a local network connection
-                self.tunnel.cleanup_connection(resource_id);
+
+                let Some(resource) = self.sent_connection_intents.handle_error(request_id) else {
+                    return Ok(());
+                };
+
+                tracing::debug!(%resource, "Resource is offline");
+
+                self.tunnel.cleanup_connection(resource);
             }
             (
                 ChannelError::ErrorReply(ErrorInfo::Reason(Reason::Known(
@@ -339,17 +399,21 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
             Ok(firezone_tunnel::Event::ConnectionIntent {
                 resource,
                 connected_gateway_ids,
-                reference,
             }) => {
+                let id = self.next_request_id;
+                self.next_request_id += 1;
+                self.sent_connection_intents
+                    .register_new_intent(id, resource);
+
                 if let Err(e) = self
                     .phoenix_channel
                     .clone()
                     .send_with_ref(
                         EgressMessages::PrepareConnection {
-                            resource_id: resource.id(),
+                            resource_id: resource,
                             connected_gateway_ids,
                         },
-                        reference,
+                        id,
                     )
                     .await
                 {
@@ -420,4 +484,40 @@ async fn upload(path: PathBuf, url: Url) -> io::Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn discards_old_connection_intent() {
+        let mut intents = SentConnectionIntents::default();
+
+        let resource = ResourceId::random();
+
+        intents.register_new_intent(1, resource);
+        intents.register_new_intent(2, resource);
+
+        let should_accept = intents.handle_connection_details_received(1, resource);
+
+        assert!(!should_accept);
+    }
+
+    #[test]
+    fn allows_unrelated_intents() {
+        let mut intents = SentConnectionIntents::default();
+
+        let resource1 = ResourceId::random();
+        let resource2 = ResourceId::random();
+
+        intents.register_new_intent(1, resource1);
+        intents.register_new_intent(2, resource2);
+
+        let should_accept_1 = intents.handle_connection_details_received(1, resource1);
+        let should_accept_2 = intents.handle_connection_details_received(2, resource2);
+
+        assert!(should_accept_1);
+        assert!(should_accept_2);
+    }
 }
