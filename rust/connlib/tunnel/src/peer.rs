@@ -1,12 +1,10 @@
-use std::borrow::Cow;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::net::IpAddr;
 use std::time::Instant;
 
 use bimap::BiMap;
-use boringtun::noise::Tunn;
 use chrono::{DateTime, Utc};
-use connlib_shared::messages::DnsServer;
+use connlib_shared::messages::{DnsServer, ResourceId};
 use connlib_shared::IpProvider;
 use connlib_shared::{Error, Result};
 use ip_network::IpNetwork;
@@ -14,7 +12,7 @@ use ip_network_table::IpNetworkTable;
 use pnet_packet::Packet;
 
 use crate::control_protocol::gateway::ResourceDescription;
-use crate::{device_channel, ip_packet::MutableIpPacket};
+use crate::ip_packet::MutableIpPacket;
 
 type ExpiryingResource = (ResourceDescription, Option<DateTime<Utc>>);
 
@@ -22,25 +20,44 @@ type ExpiryingResource = (ResourceDescription, Option<DateTime<Utc>>);
 // is 30 seconds. See resolvconf(5) timeout.
 const IDS_EXPIRE: std::time::Duration = std::time::Duration::from_secs(60);
 
-pub struct Peer<TId, TTransform> {
-    allowed_ips: IpNetworkTable<()>,
+pub struct Peer<TId, TTransform, TResource> {
+    // TODO: we should refactor this
+    // in the gateway-side this means that we are explicit about ()
+    // maybe duping the Peer struct is the way to go
+    pub allowed_ips: IpNetworkTable<TResource>,
     pub conn_id: TId,
     pub transform: TTransform,
 }
 
-impl<TId, TTransform> Peer<TId, TTransform>
+impl<TId, TTransform> Peer<TId, TTransform, HashSet<ResourceId>>
 where
     TId: Copy,
     TTransform: PacketTransform,
 {
+    pub(crate) fn insert_id(&mut self, ip: &IpNetwork, id: &ResourceId) {
+        if let Some(resources) = self.allowed_ips.exact_match_mut(*ip) {
+            resources.insert(*id);
+        } else {
+            self.allowed_ips.insert(*ip, HashSet::from([*id]));
+        }
+    }
+}
+
+impl<TId, TTransform, TResource> Peer<TId, TTransform, TResource>
+where
+    TId: Copy,
+    TTransform: PacketTransform,
+    TResource: Clone,
+{
     pub(crate) fn new(
-        ips: Vec<IpNetwork>,
         conn_id: TId,
         transform: TTransform,
-    ) -> Peer<TId, TTransform> {
+        ips: &[IpNetwork],
+        resource: TResource,
+    ) -> Peer<TId, TTransform, TResource> {
         let mut allowed_ips = IpNetworkTable::new();
         for ip in ips {
-            allowed_ips.insert(ip, ());
+            allowed_ips.insert(*ip, resource.clone());
         }
 
         Peer {
@@ -48,10 +65,6 @@ where
             conn_id,
             transform,
         }
-    }
-
-    pub(crate) fn add_allowed_ip(&mut self, ip: IpNetwork) {
-        self.allowed_ips.insert(ip, ());
     }
 
     fn is_allowed(&self, addr: IpAddr) -> bool {
@@ -68,10 +81,9 @@ where
 
     pub(crate) fn untransform<'b>(
         &mut self,
-        addr: IpAddr,
-        packet: &'b mut [u8],
-    ) -> Result<device_channel::Packet<'b>> {
-        let (packet, addr) = self.transform.packet_untransform(&addr, packet)?;
+        packet: MutableIpPacket<'b>,
+    ) -> Result<MutableIpPacket<'b>> {
+        let (packet, addr) = self.transform.packet_untransform(packet)?;
 
         if !self.is_allowed(addr) {
             return Err(Error::UnallowedPacket);
@@ -95,7 +107,7 @@ impl Default for PacketTransformGateway {
 
 #[derive(Default)]
 pub struct PacketTransformClient {
-    translations: BiMap<IpAddr, IpAddr>,
+    pub translations: BiMap<IpAddr, IpAddr>,
     dns_mapping: BiMap<IpAddr, DnsServer>,
     mangled_dns_ids: HashMap<u16, std::time::Instant>,
 }
@@ -136,6 +148,13 @@ impl PacketTransformGateway {
             .retain(|_, (_, e)| !e.is_some_and(|e| e <= Utc::now()));
     }
 
+    pub(crate) fn remove_resource(&mut self, resource: &ResourceId) {
+        self.resources.retain(|_, (r, _)| match r {
+            connlib_shared::messages::ResourceDescription::Dns(r) => r.id != *resource,
+            connlib_shared::messages::ResourceDescription::Cidr(r) => r.id != *resource,
+        })
+    }
+
     pub(crate) fn add_resource(
         &mut self,
         ip: IpNetwork,
@@ -149,9 +168,8 @@ impl PacketTransformGateway {
 pub trait PacketTransform {
     fn packet_untransform<'a>(
         &mut self,
-        addr: &IpAddr,
-        packet: &'a mut [u8],
-    ) -> Result<(device_channel::Packet<'a>, IpAddr)>;
+        packet: MutableIpPacket<'a>,
+    ) -> Result<(MutableIpPacket<'a>, IpAddr)>;
 
     fn packet_transform<'a>(&mut self, packet: MutableIpPacket<'a>) -> Option<MutableIpPacket<'a>>;
 }
@@ -159,20 +177,17 @@ pub trait PacketTransform {
 impl PacketTransform for PacketTransformGateway {
     fn packet_untransform<'a>(
         &mut self,
-        addr: &IpAddr,
-        packet: &'a mut [u8],
-    ) -> Result<(device_channel::Packet<'a>, IpAddr)> {
-        let Some(dst) = Tunn::dst_address(packet) else {
-            return Err(Error::BadPacket);
-        };
+        packet: MutableIpPacket<'a>,
+    ) -> Result<(MutableIpPacket<'a>, IpAddr)> {
+        let addr = packet.source();
+        let dst = packet.destination();
 
-        if self.resources.longest_match(dst).is_some() {
-            let packet = make_packet(packet, addr);
-            Ok((packet, *addr))
-        } else {
+        if self.resources.longest_match(dst).is_none() {
             tracing::warn!(%dst, "unallowed packet");
-            Err(Error::InvalidDst)
+            return Err(Error::InvalidDst);
         }
+
+        Ok((packet, addr))
     }
 
     fn packet_transform<'a>(&mut self, packet: MutableIpPacket<'a>) -> Option<MutableIpPacket<'a>> {
@@ -183,14 +198,10 @@ impl PacketTransform for PacketTransformGateway {
 impl PacketTransform for PacketTransformClient {
     fn packet_untransform<'a>(
         &mut self,
-        addr: &IpAddr,
-        packet: &'a mut [u8],
-    ) -> Result<(device_channel::Packet<'a>, IpAddr)> {
-        let mut src = *self.translations.get_by_right(addr).unwrap_or(addr);
-
-        let Some(mut pkt) = MutableIpPacket::new(packet) else {
-            return Err(Error::BadPacket);
-        };
+        mut pkt: MutableIpPacket<'a>,
+    ) -> Result<(MutableIpPacket<'a>, IpAddr)> {
+        let addr = pkt.source();
+        let mut src = *self.translations.get_by_right(&addr).unwrap_or(&addr);
 
         let original_src = src;
         if let Some(dgm) = pkt.as_udp() {
@@ -212,8 +223,8 @@ impl PacketTransform for PacketTransformClient {
 
         pkt.set_src(src);
         pkt.update_checksum();
-        let packet = make_packet(packet, addr);
-        Ok((packet, original_src))
+
+        Ok((pkt, original_src))
     }
 
     fn packet_transform<'a>(
@@ -237,13 +248,5 @@ impl PacketTransform for PacketTransformClient {
         }
 
         Some(packet)
-    }
-}
-
-#[inline(always)]
-fn make_packet<'a>(packet: &'a mut [u8], dst_addr: &IpAddr) -> device_channel::Packet<'a> {
-    match dst_addr {
-        IpAddr::V4(_) => device_channel::Packet::Ipv4(Cow::Borrowed(packet)),
-        IpAddr::V6(_) => device_channel::Packet::Ipv6(Cow::Borrowed(packet)),
     }
 }

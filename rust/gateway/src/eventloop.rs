@@ -1,6 +1,6 @@
 use crate::messages::{
     AllowAccess, BroadcastClientIceCandidates, ClientIceCandidates, ConnectionReady,
-    EgressMessages, IngressMessages, RequestConnection,
+    EgressMessages, IngressMessages, RejectAccess, RequestConnection,
 };
 use crate::CallbackHandler;
 use anyhow::{anyhow, bail, Result};
@@ -199,6 +199,20 @@ impl Eventloop {
 
                         self.tunnel.add_ice_candidate(client_id, candidate);
                     }
+                    continue;
+                }
+
+                Poll::Ready(phoenix_channel::Event::InboundMessage {
+                    msg:
+                        IngressMessages::RejectAccess(RejectAccess {
+                            client_id,
+                            resource_id,
+                        }),
+                    ..
+                }) => {
+                    tracing::debug!(client = %client_id, resource = %resource_id, "Access removed");
+
+                    self.tunnel.remove_access(&client_id, &resource_id);
                     continue;
                 }
                 Poll::Ready(phoenix_channel::Event::InboundMessage {

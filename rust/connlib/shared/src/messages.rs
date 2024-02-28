@@ -20,6 +20,12 @@ use crate::Dname;
 pub struct GatewayId(Uuid);
 #[derive(Hash, Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ResourceId(Uuid);
+
+impl ResourceId {
+    pub fn random() -> ResourceId {
+        ResourceId(Uuid::new_v4())
+    }
+}
 #[derive(Hash, Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq)]
 pub struct ClientId(Uuid);
 #[derive(Hash, Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq)]
@@ -229,6 +235,18 @@ impl ResourceDescription {
         match self {
             ResourceDescription::Dns(r) => Cow::from(&r.address),
             ResourceDescription::Cidr(r) => Cow::from(r.address.to_string()),
+        }
+    }
+
+    pub fn has_different_address(&self, other: &ResourceDescription) -> bool {
+        match (self, other) {
+            (ResourceDescription::Dns(dns_a), ResourceDescription::Dns(dns_b)) => {
+                dns_a.address != dns_b.address
+            }
+            (ResourceDescription::Cidr(cidr_a), ResourceDescription::Cidr(cidr_b)) => {
+                cidr_a.address != cidr_b.address
+            }
+            _ => true,
         }
     }
 }
