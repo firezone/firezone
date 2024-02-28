@@ -35,7 +35,7 @@ defmodule Domain.Billing do
     enabled?()
   end
 
-  def account_provisioned?(_account) do
+  def account_provisioned?(%Accounts.Account{}) do
     false
   end
 
