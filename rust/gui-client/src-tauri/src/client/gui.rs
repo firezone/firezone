@@ -4,7 +4,7 @@
 // TODO: `git grep` for unwraps before 1.0, especially this gui module <https://github.com/firezone/firezone/issues/3521>
 
 use crate::client::{
-    self, about, deep_link, known_dirs, logging, network_changes,
+    self, about, deep_link, logging, network_changes,
     settings::{self, AdvancedSettings},
     Failure,
 };
@@ -20,6 +20,14 @@ use tokio::sync::{mpsc, oneshot, Notify};
 use ControllerRequest as Req;
 
 mod system_tray_menu;
+
+#[cfg(target_os = "linux")]
+#[path = "gui/os_linux.rs"]
+mod os;
+
+#[cfg(target_os = "windows")]
+#[path = "gui/os_windows.rs"]
+mod os;
 
 /// The Windows client doesn't use platform APIs to detect network connectivity changes,
 /// so we rely on connlib to do so. We have valid use cases for headless Windows clients
@@ -53,6 +61,7 @@ impl Managed {
 }
 
 // TODO: Replace with `anyhow` gradually per <https://github.com/firezone/firezone/pull/3546#discussion_r1477114789>
+#[cfg_attr(target_os = "linux", allow(dead_code))]
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum Error {
     #[error(r#"Couldn't show clickable notification titled "{0}""#)]
@@ -303,9 +312,8 @@ async fn smoke_test(ctlr_tx: CtlrTx) -> Result<()> {
     settings::apply_advanced_settings_inner(&settings::AdvancedSettings::default()).await?;
 
     // Test log exporting
-    let path = known_dirs::session()
-        .context("`known_dirs::session` failed during smoke test")?
-        .join("smoke_test_log_export.zip");
+    let path = PathBuf::from("smoke_test_log_export.zip");
+
     let stem = "connlib-smoke-test".into();
     match tokio::fs::remove_file(&path).await {
         Ok(()) => {}
@@ -585,7 +593,7 @@ impl Controller {
             Req::DisconnectedTokenExpired => {
                 tracing::info!("Token expired");
                 self.sign_out()?;
-                show_notification(
+                os::show_notification(
                     "Firezone disconnected",
                     "To access resources, sign in again.",
                 )?;
@@ -644,7 +652,7 @@ impl Controller {
                 self.tunnel_ready = true;
                 self.refresh_system_tray_menu()?;
 
-                show_notification(
+                os::show_notification(
                     "Firezone connected",
                     "You are now signed in and able to access resources.",
                 )?;
@@ -655,7 +663,7 @@ impl Controller {
                 // We don't need to route through the controller here either, we could
                 // use the `open` crate directly instead of Tauri's wrapper
                 // `tauri::api::shell::open`
-                show_clickable_notification(
+                os::show_clickable_notification(
                     &title,
                     "Click here to download the new version.",
                     self.ctlr_tx.clone(),
@@ -829,64 +837,5 @@ async fn run_controller(
 
     // Last chance to do any drops / cleanup before the process crashes.
 
-    Ok(())
-}
-
-/// Show a notification in the bottom right of the screen
-///
-/// May say "Windows Powershell" and have the wrong icon in dev mode
-/// See <https://github.com/tauri-apps/tauri/issues/3700>
-fn show_notification(title: &str, body: &str) -> Result<(), Error> {
-    tauri_winrt_notification::Toast::new(BUNDLE_ID)
-        .title(title)
-        .text1(body)
-        .show()
-        .map_err(|_| Error::Notification(title.to_string()))?;
-
-    Ok(())
-}
-
-/// Show a notification that signals `Controller` when clicked
-///
-/// May say "Windows Powershell" and have the wrong icon in dev mode
-/// See <https://github.com/tauri-apps/tauri/issues/3700>
-///
-/// Known issue: If the notification times out and goes into the notification center
-/// (the little thing that pops up when you click the bell icon), then we may not get the
-/// click signal.
-///
-/// I've seen this reported by people using Powershell, C#, etc., so I think it might
-/// be a Windows bug?
-/// - <https://superuser.com/questions/1488763/windows-10-notifications-not-activating-the-associated-app-when-clicking-on-it>
-/// - <https://stackoverflow.com/questions/65835196/windows-toast-notification-com-not-working>
-/// - <https://answers.microsoft.com/en-us/windows/forum/all/notifications-not-activating-the-associated-app/7a3b31b0-3a20-4426-9c88-c6e3f2ac62c6>
-///
-/// Firefox doesn't have this problem. Maybe they're using a different API.
-fn show_clickable_notification(
-    title: &str,
-    body: &str,
-    tx: CtlrTx,
-    req: ControllerRequest,
-) -> Result<(), Error> {
-    // For some reason `on_activated` is FnMut
-    let mut req = Some(req);
-
-    tauri_winrt_notification::Toast::new(BUNDLE_ID)
-        .title(title)
-        .text1(body)
-        .scenario(tauri_winrt_notification::Scenario::Reminder)
-        .on_activated(move || {
-            if let Some(req) = req.take() {
-                if let Err(error) = tx.blocking_send(req) {
-                    tracing::error!(
-                        ?error,
-                        "User clicked on notification, but we couldn't tell `Controller`"
-                    );
-                }
-            }
-            Ok(())
-        })
-        .show()
-        .map_err(|_| Error::ClickableNotification(title.to_string()))?;
     Ok(())
 }
