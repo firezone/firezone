@@ -3,7 +3,45 @@ defmodule Domain.AccountsTest do
   import Domain.Accounts
   alias Domain.Accounts
 
-  describe "fetch_account_by_id/2" do
+  describe "all_active_accounts/0" do
+    test "returns all active accounts" do
+      Fixtures.Accounts.create_account()
+      Fixtures.Accounts.create_account() |> Fixtures.Accounts.disable_account()
+      Fixtures.Accounts.create_account() |> Fixtures.Accounts.delete_account()
+
+      accounts = all_active_accounts()
+      assert length(accounts) == 1
+    end
+  end
+
+  describe "all_accounts_by_ids/1" do
+    test "returns empty list when ids are empty" do
+      accounts = all_accounts_by_ids([])
+      assert length(accounts) == 0
+    end
+
+    test "returns empty list when ids are invalid" do
+      accounts = all_accounts_by_ids(["foo", "bar"])
+      assert length(accounts) == 0
+    end
+
+    test "returns accounts when they exist" do
+      account1 = Fixtures.Accounts.create_account()
+      account2 = Fixtures.Accounts.create_account()
+      account3 = Fixtures.Accounts.create_account() |> Fixtures.Accounts.disable_account()
+
+      accounts = all_accounts_by_ids([account1.id, account2.id, account3.id])
+      assert length(accounts) == 3
+    end
+
+    test "does not return deleted accounts" do
+      account = Fixtures.Accounts.create_account() |> Fixtures.Accounts.delete_account()
+      accounts = all_accounts_by_ids([account.id])
+      assert length(accounts) == 0
+    end
+  end
+
+  describe "fetch_account_by_id/3" do
     setup do
       account = Fixtures.Accounts.create_account()
       actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
@@ -31,6 +69,14 @@ defmodule Domain.AccountsTest do
       assert fetched_account.id == account.id
     end
 
+    test "allows to preload assocs", %{account: account, subject: subject} do
+      assert {:ok, account} =
+               fetch_account_by_id(account.id, subject, preload: [actors: [:identities]])
+
+      assert Ecto.assoc_loaded?(account.actors)
+      assert Enum.all?(account.actors, &Ecto.assoc_loaded?(&1.identities))
+    end
+
     test "returns error when subject has no permission to view accounts", %{subject: subject} do
       subject = Fixtures.Auth.remove_permissions(subject)
 
@@ -42,21 +88,93 @@ defmodule Domain.AccountsTest do
     end
   end
 
-  describe "fetch_account_by_id_or_slug/1" do
+  describe "fetch_account_by_id_or_slug/2" do
     test "returns error when account does not exist" do
       assert fetch_account_by_id_or_slug(Ecto.UUID.generate()) == {:error, :not_found}
       assert fetch_account_by_id_or_slug("foo") == {:error, :not_found}
     end
 
     test "returns account when account exists" do
-      account =
-        Fixtures.Accounts.create_account(slug: "follow_the_#{System.unique_integer([:positive])}")
+      slug = generate_unique_slug()
+      account = Fixtures.Accounts.create_account(slug: slug)
 
       assert {:ok, fetched_account} = fetch_account_by_id_or_slug(account.id)
       assert fetched_account.id == account.id
 
-      assert {:ok, fetched_account} = fetch_account_by_id_or_slug(account.slug)
+      assert {:ok, fetched_account} = fetch_account_by_id_or_slug(slug)
       assert fetched_account.id == account.id
+    end
+  end
+
+  describe "fetch_account_by_id!/1" do
+    test "returns account when account exists" do
+      account = Fixtures.Accounts.create_account()
+      assert fetch_account_by_id!(account.id) == account
+    end
+
+    test "raises error when account does not exist" do
+      assert_raise Ecto.NoResultsError, fn ->
+        fetch_account_by_id!(Ecto.UUID.generate())
+      end
+    end
+  end
+
+  describe "create_account/1" do
+    test "creates account given valid attrs" do
+      slug = generate_unique_slug()
+      assert {:ok, account} = create_account(%{name: "foo", slug: slug})
+      assert account.name == "foo"
+      assert account.slug == slug
+    end
+
+    test "returns error on empty attrs" do
+      assert {:error, changeset} = create_account(%{})
+
+      assert errors_on(changeset) == %{
+               name: ["can't be blank"]
+             }
+    end
+
+    test "returns error on invalid attrs" do
+      assert {:error, changeset} =
+               create_account(%{
+                 name: String.duplicate("A", 65),
+                 slug: "admin"
+               })
+
+      assert errors_on(changeset) == %{
+               name: ["should be at most 64 character(s)"],
+               slug: ["is reserved"]
+             }
+    end
+
+    test "returns error when account name is too long" do
+      assert {:error, changeset} = create_account(%{name: String.duplicate("A", 65)})
+      assert errors_on(changeset) == %{name: ["should be at most 64 character(s)"]}
+    end
+
+    test "returns error when account name is too short" do
+      assert {:error, changeset} = create_account(%{name: "a"})
+      assert errors_on(changeset) == %{name: ["should be at least 3 character(s)"]}
+    end
+
+    test "returns error when slug contains invalid characters" do
+      assert {:error, changeset} = create_account(%{slug: "foo-bar"})
+      assert "can only contain letters, numbers, and underscores" in errors_on(changeset).slug
+    end
+
+    test "returns error when slug already exists" do
+      assert {:ok, _account} = create_account(%{name: "foo", slug: "foo"})
+      assert {:error, changeset} = create_account(%{name: "bar", slug: "foo"})
+      assert "has already been taken" in errors_on(changeset).slug
+    end
+  end
+
+  describe "change_account/2" do
+    test "returns account changeset" do
+      account = Fixtures.Accounts.create_account()
+      assert changeset = change_account(account, %{})
+      assert changeset.valid?
     end
   end
 
@@ -166,6 +284,14 @@ defmodule Domain.AccountsTest do
   end
 
   describe "update_account/2" do
+    test "updates account" do
+      account = Fixtures.Accounts.create_account()
+      assert {:ok, account} = update_account(account, %{name: "new_name"})
+      assert account.name == "new_name"
+    end
+  end
+
+  describe "update_account_by_id/2.id" do
     setup do
       account = Fixtures.Accounts.create_account(config: %{})
       %{account: account}
@@ -185,7 +311,7 @@ defmodule Domain.AccountsTest do
         }
       }
 
-      assert {:error, changeset} = update_account(account, attrs)
+      assert {:error, changeset} = update_account_by_id(account.id, attrs)
 
       assert errors_on(changeset) == %{
                name: ["should be at most 64 character(s)"],
@@ -213,7 +339,7 @@ defmodule Domain.AccountsTest do
         }
       }
 
-      assert {:ok, account} = update_account(account, attrs)
+      assert {:ok, account} = update_account_by_id(account.id, attrs)
 
       assert account.config.clients_upstream_dns == [
                %Domain.Accounts.Config.ClientsUpstreamDNS{
@@ -237,7 +363,7 @@ defmodule Domain.AccountsTest do
         }
       }
 
-      assert {:error, changeset} = update_account(account, attrs)
+      assert {:error, changeset} = update_account_by_id(account.id, attrs)
 
       assert errors_on(changeset) == %{
                config: %{
@@ -272,7 +398,7 @@ defmodule Domain.AccountsTest do
 
       :ok = subscribe_to_events_in_account(account)
 
-      assert {:ok, account} = update_account(account, attrs)
+      assert {:ok, account} = update_account_by_id(account.id, attrs)
 
       assert account.name == attrs.name
 
@@ -323,6 +449,23 @@ defmodule Domain.AccountsTest do
     end
   end
 
+  describe "account_active?/1" do
+    test "returns true when account is active" do
+      account = Fixtures.Accounts.create_account()
+      assert account_active?(account) == true
+    end
+
+    test "returns false when account is deleted" do
+      account = Fixtures.Accounts.create_account() |> Fixtures.Accounts.delete_account()
+      assert account_active?(account) == false
+    end
+
+    test "returns false when account is disabled" do
+      account = Fixtures.Accounts.create_account() |> Fixtures.Accounts.disable_account()
+      assert account_active?(account) == false
+    end
+  end
+
   describe "ensure_has_access_to/2" do
     test "returns :ok if subject has access to the account" do
       subject = Fixtures.Auth.create_subject()
@@ -338,57 +481,10 @@ defmodule Domain.AccountsTest do
     end
   end
 
-  describe "create_account/1" do
-    test "creates account given a valid name" do
-      assert {:ok, account} = create_account(%{name: "foo"})
-      assert account.name == "foo"
-    end
-
-    test "creates account given a valid name and valid slug" do
-      assert {:ok, account1} = create_account(%{name: "foobar", slug: "foobar"})
-      assert account1.slug == "foobar"
-
-      assert {:ok, account2} = create_account(%{name: "foo1", slug: "foo1"})
-      assert account2.slug == "foo1"
-
-      assert {:ok, account3} = create_account(%{name: "foo_bar", slug: "foo_bar"})
-      assert account3.slug == "foo_bar"
-    end
-
-    test "returns error when account name is blank" do
-      assert {:error, changeset} = create_account(%{name: ""})
-      assert errors_on(changeset) == %{name: ["can't be blank"]}
-    end
-
-    test "returns error when account name is too long" do
-      max_name_length = 64
-      assert {:ok, _account} = create_account(%{name: String.duplicate("a", max_name_length)})
-
-      assert {:error, changeset} =
-               create_account(%{name: String.duplicate("b", max_name_length + 1)})
-
-      assert errors_on(changeset) == %{name: ["should be at most 64 character(s)"]}
-    end
-
-    test "returns error when account name is too short" do
-      assert {:error, changeset} = create_account(%{name: "a"})
-      assert errors_on(changeset) == %{name: ["should be at least 3 character(s)"]}
-    end
-
-    test "returns error when slug contains invalid characters" do
-      assert {:error, changeset} = create_account(%{name: "foo-bar", slug: "foo-bar"})
-
-      assert errors_on(changeset) == %{
-               slug: ["can only contain letters, numbers, and underscores"]
-             }
-    end
-
-    test "returns error when slug already exists" do
-      assert {:ok, _account} = create_account(%{name: "foo", slug: "foo"})
-
-      assert {:error, changeset} = create_account(%{name: "bar", slug: "foo"})
-
-      assert errors_on(changeset) == %{slug: ["has already been taken"]}
+  describe "generate_unique_slug/0" do
+    test "returns unique slug" do
+      assert slug = generate_unique_slug()
+      assert is_binary(slug)
     end
   end
 end
