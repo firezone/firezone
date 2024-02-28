@@ -38,19 +38,19 @@ if you make a mistake or two.
 - Resource you want to give users secure access to (e.g. prod server, database,
   SaaS application, or subnet)
 - Server or VM you're able to deploy a Docker container or Linux binary on that
-  can connect to both the resource and the internet
+  can connect to both the Resource and the internet
 
 ## Summary
 
 1. **Sign in to your Firezone Admin Portal** (e.g.
    https://app.firezone.dev/example_company)
-1. **Create a Site** - Sites are where admins manage resources, and gateways
-   that enable access to those resources (e.g. US-West, Chicago-office).
+1. **Create a Site** - Sites are where admins manage Resources, and Gateways
+   that enable access to those Resources (e.g. US-West, Chicago-office).
 1. **Deploy a Gateway** - Gateways are Site-specific, and provide connectivity
-   between the Firezone client and resources in a Site.
-1. **Add a Resource** - A resource is anything you'd like to give users secure
+   between the Firezone Client and Resources in a Site.
+1. **Add a Resource** - A Resource is anything you'd like to give users secure
    access to (e.g. a server/VM, database, subnet).
-1. **Create a Policy for each Resource** - A policy defines which user-groups
+1. **Create a Policy for each Resource** - A Policy defines which user-groups
    can access a Resource (note: access is default-deny, which means a user can't
    access a Resource until a Policy permitting access is created).
 1. **Download the Firezone Client**
@@ -73,32 +73,32 @@ value and enter it in to the form on the sign-in page.
 
 When you log in to the admin portal, you'll be taken to the Sites page. The
 first step will be to create a Site by clicking the 'Add Site' button. We'll
-auto-generate a name for the site, but you should consider renaming it something
+auto-generate a name for the Site, but you should consider renaming it something
 relevant like `Production`, `US-West`, or `Chicago-office`.
 
-After the site is created, you'll be forwarded to the Site Details page where
+After the Site is created, you'll be forwarded to the Site Details page where
 you can continue the setup process.
 
 ### Deploy a Gateway
 
 Gateways run on your infrastructure (server, VM, etc.) and must have access to
-the internet as well as the resource you'd like to share via Firezone.
+the internet as well as the Resource you'd like to share via Firezone.
 
 Clicking **Deploy a Gateway** on the Site Details page will give you two options
 for deploying a Gateway: `Docker` or `Systemd` (choose whichever method you
 prefer, and follow the instruction on that page).
 
 When a Gateway has been successfully deployed, you will be redirected to the
-Site Details page where the gateway will now be listed and shown as online.
+Site Details page where the Gateway will now be listed and shown as online.
 
 ### Add a Resource
 
-A Resource is simply anything the gateway can reach that you'd like to give
+A Resource is simply anything the Gateway can reach that you'd like to give
 users access to. Examples include servers, databases, applications, and even
 entire subnets.
 
 <Alert color="info">
-  The more granular you can be with your resources, the more control you'll have
+  The more granular you can be with your Resources, the more control you'll have
   over who can access them.
 </Alert>
 
@@ -115,20 +115,20 @@ if provided, will be what's shown as the Resource address in the clients when
 users sign in.
 
 After adding a Resource, you'll need to create a policy authorizing one or more
-user-groups to access that resource. End-users cannot access a resource unless
-they are members of a group that has explicit access to that resource.
+user-groups to access that Resource. End-users cannot access a Resource unless
+they are members of a group that has explicit access to that Resource.
 
 ### Create a Policy
 
 Navigate to the Policies page by clicking the **Policies** button in the
 left-side menu bar. Select a Resource, and choose which groups can access that
-Resource. Save the policy.
+Resource. Save the Policy.
 
 ### Install the Firezone Client
 
 When you're finished in the Admin Portal, end-users can connect to available
-resources by
-[installing the Firezone client for your platform](/kb/deploy/clients), and
+Resources by
+[installing the Firezone Client for their platform](/kb/user-guides), and
 signing in.
 
 After installing the client, go to **Settings** and enter your **Account ID**
@@ -139,7 +139,7 @@ signed up.
 To sign in, close the settings window, click **Sign In** in the Firezone app,
 and authenticate your account.
 
-You now have secure access to resources shown in the **Resources** section.
+You now have secure access to Resources shown in the **Resources** section.
 Enjoy!
 
 <SupportOptions />

@@ -17,7 +17,7 @@ Firezone supports the following authentication methods and identity providers:
 
 It's possible to create multiple providers for Google Workspace, Microsoft Entra
 ID, Okta, and OIDC connectors. This allows you to authenticate users against
-multiple providers at the same time, each with different groups and policies
+multiple providers at the same time, each with different Groups and Policies
 applied to them.
 
 <Alert color="warning">
@@ -41,5 +41,5 @@ The table below summarizes the session lifetimes for various components.
 | Gateways            | N/A                               | **Indefinitely**. Tokens must be explicitly revoked in the portal UI.       |
 
 When a session token expires or is revoked, the affected component is
-disconnected immediately and must reauthenticate to regain access to resources.
+disconnected immediately and must reauthenticate to regain access to Resources.
 This includes web UI sessions for admins.

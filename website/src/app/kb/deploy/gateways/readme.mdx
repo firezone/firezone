@@ -9,9 +9,9 @@ import PlanBadge from "@/components/PlanBadge";
 
 </PlanBadge>
 
-Gateways are what clients connect to in order to access resources in a site.
+Gateways are what Clients connect to in order to access Resources in a Site.
 They're the data plane workhorse of the Firezone architecture and are
-responsible for securely routing traffic between clients and resources.
+responsible for securely routing traffic between Clients and Resources.
 
 ## Prerequisites
 
@@ -39,20 +39,20 @@ you'll need to make sure the following outbound traffic is allowed:
 
 ### Where to deploy Gateways
 
-Ideally, Gateways should be deployed as close to the resources they're serving
+Ideally, Gateways should be deployed as close to the Resources they're serving
 -- in some cases, even on the same physical host. This ensures the lowest
 possible latency and highest possible throughput for client connections, and
-allows you to more easily deploy additional gateways for a particular resource
+allows you to more easily deploy additional Gateways for a particular Resource
 that needs to handle more client connections.
 
-The downside of deploying gateways close to resources is that it increases the
-number of overall gateways you need to deploy, possibly making it more difficult
+The downside of deploying Gateways close to Resources is that it increases the
+number of overall Gateways you need to deploy, possibly making it more difficult
 to manage and monitor them. Firezone's control plane is designed to make this as
 easy as possible, but it's still something to keep in mind when planning your
 deployment.
 
 <Alert color="warning">
-  When deploying gateways, remember that all gateways and resources in a site
+  When deploying Gateways, remember that all Gateways and Resources in a Site
   must have unobstructed network connectivity to each other. This is necessary
   for Firezone's automatic failover and load balancing features to work
   correctly.
@@ -61,13 +61,13 @@ deployment.
 ### Sizing recommendations
 
 Gateways, like the rest of Firezone's data plane stack, are written in Rust and
-are thus resource efficient by nature.
+are thus Resource efficient by nature.
 
-A single client connection to a single gateway can typically reach speeds of **1
+A single client connection to a single Gateway can typically reach speeds of **1
 Gbps** or more. This scales linearly with each client connection up to the
 number of CPU cores available to the Gateway.
 
-Use the table below as a rough guide for sizing your gateway deployments:
+Use the table below as a rough guide for sizing your Gateway deployments:
 
 | Gateway size | Users served | CPU cores | Memory | Network link |
 | ------------ | ------------ | --------- | ------ | ------------ |
@@ -79,36 +79,36 @@ To go beyond the table above, you can deploy additional Gateways and use
 Firezone's [automatic load balancing](#load-balancing) to distribute client
 connections across them.
 
-## Deploy a single gateway
+## Deploy a single Gateway
 
-Deploying a single gateway can be accomplished in the admin portal.
+Deploying a single Gateway can be accomplished in the admin portal.
 
-Go to `Sites` -> `<name of site>` -> `Deploy a Gateway` and follow the prompts
-to deploy for your preferred environment. This will deploy a single gateway.
+Go to `Sites` -> `<name of Site>` -> `Deploy a Gateway` and follow the prompts
+to deploy for your preferred environment. This will deploy a single Gateway.
 
 See the [upgrading guide](/kb/administer/upgrading) for information on keeping
-your gateway up-to-date.
+your Gateway up-to-date.
 
-## Deploy multiple gateways
+## Deploy multiple Gateways
 
-To achieve [high availability](#high-availability), deploy more gateways within
+To achieve [high availability](#high-availability), deploy more Gateways within
 the same site.
 
-You can deploy multiple gateways from the admin portal, or automate the process
+You can deploy multiple Gateways from the admin portal, or automate the process
 by reusing the `FIREZONE_TOKEN` environment variable shown when deploying a
-gateway from the admin portal.
+Gateway from the admin portal.
 
-When deploying a gateway from the admin portal, a `FIREZONE_TOKEN` environment
-variable is shown. This variable can be reused to deploy multiple gateways
-within the same site.
+When deploying a Gateway from the admin portal, a `FIREZONE_TOKEN` environment
+variable is shown. This variable can be reused to deploy multiple Gateways
+within the same Site.
 
-This means you can automate deployment of the gateway using your automation
-method of choice, adding as many gateways as necessary for failover and load
+This means you can automate deployment of the Gateway using your automation
+method of choice, adding as many Gateways as necessary for failover and load
 balancing.
 
 <Alert color="warning">
-  **Note:** Be sure to set a unique `FIREZONE_ID` for each gateway you deploy.
-  This can be any non-empty string and is used to identify the gateway in the
+  **Note:** Be sure to set a unique `FIREZONE_ID` for each Gateway you deploy.
+  This can be any non-empty string and is used to identify the Gateway in the
   portal for audit trail and logging purposes.
 </Alert>
 
@@ -120,41 +120,41 @@ and **load balancing**, both of which are automatically enabled on all plans.
 
 ### Automatic failover
 
-Two or more gateways can be deployed within a site to achieve automatic failover
-for client connections to resources in that site.
+Two or more Gateways can be deployed within a Site to achieve automatic failover
+for client connections to Resources in that Site.
 
 Here's how it works:
 
-- When the admin portal detects a particular gateway is unhealthy, it will stop
-  using it for new connection requests to resources in the site.
-- Existing clients will remain connected to the gateway until they themselves
+- When the admin portal detects a particular Gateway is unhealthy, it will stop
+  using it for new connection requests to Resources in the Site.
+- Existing Clients will remain connected to the Gateway until they themselves
   detect it to be unhealthy.
-- Clients detect unhealthy gateways by maintaining keepalive timers with
-  gateways they're connected to. If the keepalive timer expires, the client will
-  disconnect from that gateway and ask the portal for a new, healthy one to
+- Clients detect unhealthy Gateways by maintaining keepalive timers with
+  Gateways they're connected to. If the keepalive timer expires, the Client will
+  disconnect from that Gateway and ask the portal for a new, healthy one to
   connect to.
-- On average, the client keepalive timer expires after **20 seconds**. This is
-  the maximum time it takes for existing client connections to be rerouted to a
-  healthy gateway in the event of a gateway failure.
+- The client keepalive timer expires after **20 seconds**. This is the maximum
+  time it takes for existing client connections to be rerouted to a healthy
+  Gateway in the event of a Gateway failure.
 
-By using two independent health checks in the portal and the client, Firezone
-ensures that temporary network issues between the client and portal do not
-interrupt existing connections to healthy gateways.
+By using two independent health checks in the portal and the Client, Firezone
+ensures that temporary network issues between the Client and portal do not
+interrupt existing connections to healthy Gateways.
 
 ### Load balancing
 
-Similar to automatic failover, two or more gateways deployed within a site will
-automatic load balance client connections to resources in that site.
+Similar to automatic failover, two or more Gateways deployed within a Site will
+automatic load balance client connections to Resources in that Site.
 
-When a client wants to connect to a resource, Firezone randomly picks a random
-healthy gateway in the site to serve the resource being requested. The client
-will then stay connected to that gateway until either the client disconnects or
-the gateway becomes unhealthy.
+When a Client wants to connect to a Resource, Firezone randomly picks a random
+healthy Gateway in the Site to serve the Resource being requested. The Client
+will then stay connected to that Gateway until either the Client disconnects or
+the Gateway becomes unhealthy.
 
-Deploy as many gateways as you need to handle the load of client connections to
-resources in a site. This effectively shards client connections across all
-gateways in a site, achieving higher overall throughput than otherwise possible
-with a single gateway.
+Deploy as many Gateways as you need to handle the load of client connections to
+Resources in a Site. This effectively shards client connections across all
+Gateways in a Site, achieving higher overall throughput than otherwise possible
+with a single Gateway.
 
 <NextStep href="/kb/deploy/resources">Next: Create Resources</NextStep>
 

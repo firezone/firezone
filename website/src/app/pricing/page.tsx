@@ -234,7 +234,7 @@ export default function Page() {
             >
               less than 10 minutes
             </Link>
-            , and gateways can be added by running a simple Docker command.{" "}
+            , and Gateways can be added by running a simple Docker command.{" "}
             <Link href="/kb" className="hover:underline text-accent-500">
               Visit our docs
             </Link>{" "}
@@ -258,7 +258,7 @@ export default function Page() {
           </blockquote>
           <p className="mb-8">
             Network traffic is always end-to-end encrypted, and by default,
-            routes directly to gateways running on your infrastructure. In rare
+            routes directly to Gateways running on your infrastructure. In rare
             circumstances, encrypted traffic can pass through our global relay
             network if a direct connection cannot be established. Firezone can
             never decrypt the contents of your traffic.

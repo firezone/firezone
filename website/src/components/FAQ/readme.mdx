@@ -48,7 +48,7 @@ stack, it supports all application protocols without modification.
 
 #### How long does it take to set up Firezone?
 
-Firezone can be set up in less than 10 minutes, and gateways can be added by
+Firezone can be set up in less than 10 minutes, and Gateways can be added by
 running a simple Docker command. Visit our docs for more information and step by
 step instructions.
 
@@ -78,7 +78,7 @@ you’re ready. There’s no need for any downtime or unnecessary disruptions.
 Firezone uses a split control plane and data plane architecture to allow for
 things like key distribution, user authentication, and policy enforcement to
 happen out-of-band with the hot data paths. The data plane components such as
-the clients and Gateway are specifically designed to be self-hosted, but the
+the Clients and Gateway are specifically designed to be self-hosted, but the
 control plane, due to its complexity, security, and persistence requirements, is
 not.
 
@@ -88,10 +88,10 @@ prevent self-hosters from using the product as they see fit.
 
 #### How do I get Firezone on an end-user device?
 
-Users can install the Firezone client [here](/kb/deploy/clients). After
-installing the Client, users simply need to enter their account ID and sign in
-using their email or SSO to start accessing the Resources that you (an Admin)
-has given them permission to access in the Firezone admin portal.
+Users can install the Firezone Client [here](/kb/user-guides). After installing
+the Client, users simply need to enter their account ID and sign in using their
+email or SSO to start accessing the Resources that you (an Admin) has given them
+permission to access in the Firezone admin portal.
 
 #### Can Firezone connect to my identity provider (IdP)?
 
@@ -113,7 +113,7 @@ failover.
 
 Service accounts facilitate secure connections from a server, VM or container to
 a Resource. Because service accounts do not involve a user, they can’t fulfill
-2FA requirements, and use the Firezone client in a non-interactive way (headless
+2FA requirements, and use the Firezone Client in a non-interactive way (headless
 mode).
 
 ## Performance
@@ -121,7 +121,7 @@ mode).
 #### Does all my traffic go through Firezone?
 
 Network traffic is always end-to-end encrypted, and by default, routes directly
-to gateways running on your infrastructure. In rare circumstances, encrypted
+to Gateways running on your infrastructure. In rare circumstances, encrypted
 traffic can pass through our global relay network if a direct connection cannot
 be established. Firezone can never decrypt the contents of your traffic.
 
@@ -138,7 +138,7 @@ traffic and TLS to encrypt all control plane traffic.
 
 #### What happens if I add the same Resource to more than one Site?
 
-The end-user client will automatically select the nearest gateway, and route
+The Firezone Client will automatically select the nearest Gateway, and route
 traffic to/from that Resource.
 
 #### What happens if Firezone goes offline?
@@ -151,12 +151,12 @@ approximately 5 minutes before being disconnected.
 
 #### How do end users get Firezone?
 
-Windows and Linux users can download the client from
+Windows and Linux users can download the Client from
 [here](https://github.com/firezone/firezone/releases). MacOS, iOS, iPadOS,
-Android, and ChromeOS users can download the client from their device’s app
+Android, and ChromeOS users can download the Client from their device’s app
 store.
 
-#### Do users need to interact with the Firezone client?
+#### Do users need to interact with the Firezone Client?
 
 The client app is designed to be unobtrusive, and once a user clicks connect and
 authenticates with their credentials, it should run in the background without

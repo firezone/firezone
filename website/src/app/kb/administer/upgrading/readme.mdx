@@ -3,10 +3,10 @@ import { TabsItem, TabsGroup } from "@/components/DocsTabs";
 
 # Upgrading Firezone
 
-Upgrading Firezone consists of upgrading the client applications and gateways.
-Read more below to understand how our versioning system works, how you can
-auto-update these components, and suggestions for an upgrade strategy in
-high-availability deployments.
+Upgrading Firezone consists of upgrading the Clients and Gateways. Read more
+below to understand how our versioning system works, how you can auto-update
+these components, and suggestions for an upgrade strategy in high-availability
+deployments.
 
 ## How versioning works in Firezone
 
@@ -23,7 +23,7 @@ change for some time.
 
 ## Client application auto-updates
 
-In general we recommend keeping clients and gateways as up-to-date as possible.
+In general we recommend keeping Clients and Gateways as up-to-date as possible.
 See below for auto-update details for each client.
 
 <TabsGroup>
@@ -39,17 +39,17 @@ See below for auto-update details for each client.
   </TabsItem>
 </TabsGroup>
 
-## Upgrading gateways
+## Upgrading Gateways
 
-Upgrading a gateway generally consists of simply replacing the binary or Docker
+Upgrading a Gateway generally consists of simply replacing the binary or Docker
 image and then restarting. See below for specific steps depending on how you've
-deployed your gateway:
+deployed your Gateway:
 
 <TabsGroup>
 <TabsItem title="Docker" active>
 
 Run the following upgrade script which pulls the latest image, stops the running
-gateway, and then restarts it using the newer image with the same configuration.
+Gateway, and then restarts it using the newer image with the same configuration.
 
 ```bash
 curl -s https://raw.githubusercontent.com/firezone/firezone/main/scripts/gateway-docker-upgrade.sh | bash
@@ -59,7 +59,7 @@ curl -s https://raw.githubusercontent.com/firezone/firezone/main/scripts/gateway
 <TabsItem title="systemd">
 
 If you deployed via the portal, your unit file should already contain logic
-necessary to upgrade the gateway on service start. Simply move the old binary
+necessary to upgrade the Gateway on service start. Simply move the old binary
 and restart the service to trigger the upgrade:
 
 ```bash
@@ -72,12 +72,12 @@ sudo systemctl restart firezone-gateway
 
 ### Downtime considerations
 
-Gateways deployed within the same site will automatically
-[failover](/kb/deploy/gateways#failover) for each other. By upgrading gateways
-one-by-one, clients connected to the gateway being upgraded will automatically
-reconnect to an available gateway.
+Gateways deployed within the same Site will automatically
+[failover](/kb/deploy/gateways#failover) for each other. By upgrading Gateways
+one-by-one, Clients connected to the Gateway being upgraded will automatically
+reconnect to an available Gateway.
 
 Upgrades should be performed during a scheduled maintenance window to ensure
 minimal disruption. Other than a possible short-term connection interruption to
-in-use resources, users won't otherwise be impacted by upgrading gateways within
-the same site.
+in-use Resources, users won't otherwise be impacted by upgrading Gateways within
+the same Site.

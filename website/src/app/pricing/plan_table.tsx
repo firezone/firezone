@@ -66,7 +66,7 @@ export default function PlanTable() {
               role="tooltip"
               className="absolute z-10 invisible inline-block px-3 py-2 text-xs font-medium text-white transition-opacity duration-100 bg-neutral-900 rounded shadow-sm opacity-90 tooltip"
             >
-              Machine accounts used to access resources without a user present
+              Machine accounts used to access Resources without a user present
               <div className="tooltip-arrow" data-popper-arrow></div>
             </div>
           </td>
@@ -87,7 +87,7 @@ export default function PlanTable() {
               role="tooltip"
               className="absolute z-10 invisible inline-block px-3 py-2 text-xs font-medium text-white transition-opacity duration-100 bg-neutral-900 rounded shadow-sm opacity-90 tooltip"
             >
-              Sites are a collection of gateways and resources that share the
+              Sites are a collection of Gateways and Resources that share the
               same network connectivity context. Typically a subnet or VPC.
               <div className="tooltip-arrow" data-popper-arrow></div>
             </div>
@@ -109,8 +109,8 @@ export default function PlanTable() {
               role="tooltip"
               className="absolute z-10 invisible inline-block px-3 py-2 text-xs font-medium text-white transition-opacity duration-100 bg-neutral-900 rounded shadow-sm opacity-90 tooltip"
             >
-              Users with account-wide access to deploy gateways, manage billing,
-              and edit users, sites, or other configuration
+              Users with account-wide access to deploy Gateways, manage billing,
+              and edit users, Sites, or other configuration
               <div className="tooltip-arrow" data-popper-arrow></div>
             </div>
           </td>
@@ -131,8 +131,8 @@ export default function PlanTable() {
               role="tooltip"
               className="absolute z-10 invisible inline-block px-3 py-2 text-xs font-medium text-white transition-opacity duration-100 bg-neutral-900 rounded shadow-sm opacity-90 tooltip"
             >
-              Policies control access to resources (e.g. group “A” may access
-              resource “B”)
+              Policies control access to Resources (e.g. Group “A” may access
+              Resource “B”)
               <div className="tooltip-arrow" data-popper-arrow></div>
             </div>
           </td>
@@ -175,7 +175,7 @@ export default function PlanTable() {
               role="tooltip"
               className="absolute z-10 invisible inline-block px-3 py-2 text-xs font-medium text-white transition-opacity duration-100 bg-neutral-900 rounded shadow-sm opacity-90 tooltip"
             >
-              Any device or machine that the Firezone client application
+              Any device or machine that the Firezone client appplication
               connects from
               <div className="tooltip-arrow" data-popper-arrow></div>
             </div>
@@ -245,7 +245,7 @@ export default function PlanTable() {
           </td>
         </tr>
         <tr className="border-b border-1 border-neutral-200">
-          <td className="px-6 py-4">Automatic gateway failover</td>
+          <td className="px-6 py-4">Automatic Gateway failover</td>
           <td className="px-6 py-4">
             <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
