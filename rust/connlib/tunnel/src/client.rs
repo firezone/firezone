@@ -11,8 +11,7 @@ use connlib_shared::messages::{
 };
 use connlib_shared::{Callbacks, Dname, IpProvider};
 use domain::base::Rtype;
-use futures::stream;
-use futures_bounded::{FuturesMap, FuturesTupleSet, PushError, StreamMap};
+use futures_bounded::{FuturesMap, FuturesTupleSet, PushError};
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
 use itertools::Itertools;
@@ -24,8 +23,8 @@ use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::net::IpAddr;
 use std::task::{Context, Poll};
-use std::time::Duration;
-use tokio::time::{Instant, Interval, MissedTickBehavior};
+use std::time::{Duration, Instant};
+use tokio::time::{Interval, MissedTickBehavior};
 
 // Using str here because Ipv4/6Network doesn't support `const` 🙃
 const IPV4_RESOURCES: &str = "100.96.0.0/11";
@@ -97,7 +96,6 @@ where
 
     pub fn remove_resource(&mut self, id: ResourceId) {
         self.role_state.awaiting_connection.remove(&id);
-        self.role_state.awaiting_connection_timers.remove(id);
         self.role_state
             .dns_resources_internal_ips
             .retain(|r, _| r.id != id);
@@ -237,7 +235,6 @@ where
 /// [`Tunnel`] state specific to clients.
 pub struct ClientState {
     awaiting_connection: HashMap<ResourceId, AwaitingConnectionDetails>,
-    awaiting_connection_timers: StreamMap<ResourceId, Instant>,
 
     pub gateway_awaiting_connection: HashSet<GatewayId>,
     // This timer exist for an unlikely case, on unreliable connections where the RequestConnection message
@@ -272,32 +269,33 @@ pub struct ClientState {
     dns_mapping: BiMap<IpAddr, DnsServer>,
     dns_resolvers: HashMap<IpAddr, TokioAsyncResolver>,
 
-    buffered_packets: VecDeque<IpPacket<'static>>,
+    buffered_events: VecDeque<Event<GatewayId>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AwaitingConnectionDetails {
-    total_attemps: usize,
-    response_received: bool,
+struct AwaitingConnectionDetails {
     domain: Option<Dname>,
     gateways: HashSet<GatewayId>,
+    last_intent_sent_at: Instant,
 }
 
 impl ClientState {
     pub(crate) fn encapsulate<'a>(
         &mut self,
         packet: MutableIpPacket<'a>,
+        now: Instant,
     ) -> Option<(GatewayId, MutableIpPacket<'a>)> {
-        let (packet, dest) = match self.handle_dns(packet) {
+        let (packet, dest) = match self.handle_dns(packet, now) {
             Ok(response) => {
-                self.buffered_packets.push_back(response?.to_owned());
+                self.buffered_events
+                    .push_back(Event::SendPacket(response?.to_owned()));
                 return None;
             }
             Err(non_dns_packet) => non_dns_packet,
         };
 
         let Some(peer) = self.peers.peer_by_ip_mut(dest) else {
-            self.on_connection_intent_ip(dest);
+            self.on_connection_intent_ip(dest, now);
             return None;
         };
 
@@ -313,6 +311,7 @@ impl ClientState {
     fn handle_dns<'a>(
         &mut self,
         packet: MutableIpPacket<'a>,
+        now: Instant,
     ) -> Result<Option<IpPacket<'a>>, (MutableIpPacket<'a>, IpAddr)> {
         match dns::parse(
             &self.dns_resources,
@@ -341,7 +340,7 @@ impl ClientState {
                 Ok(None)
             }
             Some(dns::ResolveStrategy::DeferredResponse(resource)) => {
-                self.on_connection_intent_dns(&resource.0);
+                self.on_connection_intent_dns(&resource.0, now);
                 self.deferred_dns_queries
                     .insert(resource, packet.as_immutable().to_owned());
 
@@ -369,7 +368,6 @@ impl ClientState {
         &mut self,
         resource: ResourceId,
         gateway: GatewayId,
-        expected_attempts: usize,
     ) -> Result<Option<ReuseConnection>, ConnlibError> {
         let desc = self
             .resource_ids
@@ -382,20 +380,12 @@ impl ClientState {
             return Err(Error::UnexpectedConnectionDetails);
         }
 
-        let details = self
-            .awaiting_connection
+        self.awaiting_connection
             .get_mut(&resource)
             .ok_or(Error::UnexpectedConnectionDetails)?;
 
-        details.response_received = true;
-
-        if details.total_attemps != expected_attempts {
-            return Err(Error::UnexpectedConnectionDetails);
-        }
-
         if self.gateway_awaiting_connection.contains(&gateway) {
             self.awaiting_connection.remove(&resource);
-            self.awaiting_connection_timers.remove(resource);
             return Err(Error::PendingConnection);
         }
 
@@ -426,7 +416,6 @@ impl ClientState {
             .add_ips_with_resource(&gateway, &self.get_resource_ip(desc, &domain), &resource);
 
         self.awaiting_connection.remove(&resource);
-        self.awaiting_connection_timers.remove(resource);
 
         Ok(Some(ReuseConnection {
             resource_id: resource,
@@ -437,7 +426,6 @@ impl ClientState {
 
     pub fn on_connection_failed(&mut self, resource: ResourceId) {
         self.awaiting_connection.remove(&resource);
-        self.awaiting_connection_timers.remove(resource);
 
         let Some(gateway) = self.resources_gateways.remove(&resource) else {
             return;
@@ -447,110 +435,75 @@ impl ClientState {
         self.gateway_awaiting_connection_timers.remove(gateway);
     }
 
-    fn is_awaiting_connection_to_dns(&self, resource: &DnsResource) -> bool {
-        self.awaiting_connection.contains_key(&resource.id)
+    #[tracing::instrument(level = "debug", skip_all, fields(resource_address = %resource.address, resource_id = %resource.id))]
+    fn on_connection_intent_dns(&mut self, resource: &DnsResource, now: Instant) {
+        self.on_connection_intent_to_resource(resource.id, Some(resource.address.clone()), now)
     }
 
-    pub fn on_connection_intent_dns(&mut self, resource: &DnsResource) {
-        if self.is_awaiting_connection_to_dns(resource) {
-            return;
-        }
-
-        const MAX_SIGNAL_CONNECTION_DELAY: Duration = Duration::from_secs(2);
-
-        let resource_id = resource.id;
-
-        let gateways = self
-            .gateway_awaiting_connection
-            .iter()
-            .chain(self.resources_gateways.values())
-            .copied()
-            .collect();
-
-        match self.awaiting_connection_timers.try_push(
-            resource_id,
-            stream::poll_fn({
-                let mut interval = tokio::time::interval(MAX_SIGNAL_CONNECTION_DELAY);
-                move |cx| interval.poll_tick(cx).map(Some)
-            }),
-        ) {
-            Ok(()) => {}
-            Err(PushError::BeyondCapacity(_)) => {
-                tracing::warn!(%resource_id, "Too many concurrent connection attempts");
-                return;
-            }
-            Err(PushError::Replaced(_)) => {
-                // The timers are equivalent for our purpose so we don't really care about this one.
-            }
-        }
-
-        self.awaiting_connection.insert(
-            resource_id,
-            AwaitingConnectionDetails {
-                total_attemps: 0,
-                response_received: false,
-                domain: Some(resource.address.clone()),
-                gateways,
-            },
-        );
-    }
-
-    fn on_connection_intent_ip(&mut self, destination: IpAddr) {
-        if self.is_awaiting_connection_to_cidr(destination) {
-            return;
-        }
-
-        tracing::trace!(resource_ip = %destination, "resource_connection_intent");
-
-        let Some(resource) = self.get_cidr_resource_by_destination(destination) else {
+    #[tracing::instrument(level = "debug", skip_all, fields(resource_ip = %destination, resource_id))]
+    fn on_connection_intent_ip(&mut self, destination: IpAddr, now: Instant) {
+        let Some(resource_id) = self.get_cidr_resource_by_destination(destination) else {
             if let Some(resource) = self
                 .dns_resources_internal_ips
                 .iter()
                 .find_map(|(r, i)| i.contains(&destination).then_some(r))
                 .cloned()
             {
-                self.on_connection_intent_dns(&resource);
+                self.on_connection_intent_dns(&resource, now);
             }
+
+            tracing::trace!("Unknown resource");
+
             return;
         };
 
-        const MAX_SIGNAL_CONNECTION_DELAY: Duration = Duration::from_secs(2);
+        tracing::Span::current().record("resource_id", tracing::field::display(&resource_id));
 
-        let resource_id = resource.id();
+        self.on_connection_intent_to_resource(resource_id, None, now)
+    }
+
+    fn on_connection_intent_to_resource(
+        &mut self,
+        resource: ResourceId,
+        domain: Option<Dname>,
+        now: Instant,
+    ) {
+        debug_assert!(self.resource_ids.contains_key(&resource));
 
         let gateways = self
             .gateway_awaiting_connection
             .iter()
             .chain(self.resources_gateways.values())
             .copied()
-            .collect();
+            .collect::<HashSet<_>>();
 
-        match self.awaiting_connection_timers.try_push(
-            resource_id,
-            stream::poll_fn({
-                let mut interval = tokio::time::interval(MAX_SIGNAL_CONNECTION_DELAY);
-                move |cx| interval.poll_tick(cx).map(Some)
-            }),
-        ) {
-            Ok(()) => {}
-            Err(PushError::BeyondCapacity(_)) => {
-                tracing::warn!(%resource_id, "Too many concurrent connection attempts");
-                return;
+        match self.awaiting_connection.entry(resource) {
+            Entry::Occupied(mut occupied) => {
+                let time_since_last_intent = now.duration_since(occupied.get().last_intent_sent_at);
+
+                if time_since_last_intent < Duration::from_secs(2) {
+                    tracing::trace!(?time_since_last_intent, "Skipping connection intent");
+
+                    return;
+                }
+
+                occupied.get_mut().last_intent_sent_at = now;
             }
-            Err(PushError::Replaced(_)) => {
-                // The timers are equivalent for our purpose so we don't really care about this one.
+            Entry::Vacant(vacant) => {
+                vacant.insert(AwaitingConnectionDetails {
+                    domain,
+                    gateways: gateways.clone(),
+                    last_intent_sent_at: now,
+                });
             }
         }
 
-        self.awaiting_connection.insert(
-            resource_id,
-            AwaitingConnectionDetails {
-                total_attemps: 0,
-                response_received: false,
-                domain: None,
-                gateways,
-            },
-        );
+        tracing::debug!("Sending connection intent");
+
+        self.buffered_events.push_back(Event::ConnectionIntent {
+            resource,
+            connected_gateway_ids: gateways,
+        });
     }
 
     pub fn create_peer_config_for_new_connection(
@@ -585,14 +538,6 @@ impl ClientState {
 
     pub fn dns_mapping(&self) -> BiMap<IpAddr, DnsServer> {
         self.dns_mapping.clone()
-    }
-
-    fn is_awaiting_connection_to_cidr(&self, destination: IpAddr) -> bool {
-        let Some(resource) = self.get_cidr_resource_by_destination(destination) else {
-            return false;
-        };
-
-        self.awaiting_connection.contains_key(&resource.id())
     }
 
     fn is_connected_to(&self, resource: ResourceId, domain: &Option<Dname>) -> bool {
@@ -638,10 +583,10 @@ impl ClientState {
         });
     }
 
-    fn get_cidr_resource_by_destination(&self, destination: IpAddr) -> Option<ResourceDescription> {
+    fn get_cidr_resource_by_destination(&self, destination: IpAddr) -> Option<ResourceId> {
         self.cidr_resources
             .longest_match(destination)
-            .map(|(_, res)| ResourceDescription::Cidr(res.clone()))
+            .map(|(_, res)| res.id)
     }
 
     fn add_pending_dns_query(&mut self, query: DnsQuery) {
@@ -672,55 +617,14 @@ impl ClientState {
 
     pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Event<GatewayId>> {
         loop {
-            if let Some(buffered) = self.buffered_packets.pop_front() {
-                return Poll::Ready(Event::SendPacket(buffered));
+            if let Some(event) = self.buffered_events.pop_front() {
+                return Poll::Ready(event);
             }
 
             if let Poll::Ready((gateway_id, _)) =
                 self.gateway_awaiting_connection_timers.poll_unpin(cx)
             {
                 self.gateway_awaiting_connection.remove(&gateway_id);
-            }
-
-            match self.awaiting_connection_timers.poll_next_unpin(cx) {
-                Poll::Ready((resource, Some(Ok(_)))) => {
-                    let Entry::Occupied(mut entry) = self.awaiting_connection.entry(resource)
-                    else {
-                        self.awaiting_connection_timers.remove(resource);
-
-                        continue;
-                    };
-
-                    if entry.get().response_received {
-                        self.awaiting_connection_timers.remove(resource);
-
-                        // entry.remove(); Maybe?
-
-                        continue;
-                    }
-
-                    entry.get_mut().total_attemps += 1;
-
-                    let reference = entry.get_mut().total_attemps;
-
-                    return Poll::Ready(Event::ConnectionIntent {
-                        resource: self
-                            .resource_ids
-                            .get(&resource)
-                            .expect("inconsistent internal state")
-                            .clone(),
-                        connected_gateway_ids: entry.get().gateways.clone(),
-                        reference,
-                    });
-                }
-
-                Poll::Ready((id, Some(Err(e)))) => {
-                    tracing::warn!(resource_id = %id, "Connection establishment timeout: {e}");
-                    self.awaiting_connection.remove(&id);
-                    self.awaiting_connection_timers.remove(id);
-                }
-                Poll::Ready((_, None)) => continue,
-                Poll::Pending => {}
             }
 
             if self.refresh_dns_timer.poll_tick(cx).is_ready() {
@@ -797,7 +701,6 @@ impl Default for ClientState {
 
         Self {
             awaiting_connection: Default::default(),
-            awaiting_connection_timers: StreamMap::new(Duration::from_secs(60), 100),
 
             gateway_awaiting_connection: Default::default(),
             gateway_awaiting_connection_timers: FuturesMap::new(MAX_CONNECTION_REQUEST_DELAY, 100),
@@ -820,7 +723,7 @@ impl Default for ClientState {
             refresh_dns_timer: interval,
             dns_mapping: Default::default(),
             dns_resolvers: Default::default(),
-            buffered_packets: Default::default(),
+            buffered_events: Default::default(),
         }
     }
 }

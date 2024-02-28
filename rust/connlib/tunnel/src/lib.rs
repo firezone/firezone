@@ -5,7 +5,7 @@
 
 use boringtun::x25519::StaticSecret;
 use connlib_shared::{
-    messages::{ClientId, GatewayId, ResourceDescription, ReuseConnection},
+    messages::{ClientId, GatewayId, ResourceId, ReuseConnection},
     CallbackErrorFacade, Callbacks, Error, Result,
 };
 use device_channel::Device;
@@ -107,7 +107,8 @@ where
 
         match device.poll_read(&mut self.read_buf, cx)? {
             Poll::Ready(Some(packet)) => {
-                let Some((peer_id, packet)) = self.role_state.encapsulate(packet) else {
+                let Some((peer_id, packet)) = self.role_state.encapsulate(packet, Instant::now())
+                else {
                     cx.waker().wake_by_ref();
                     return Poll::Pending;
                 };
@@ -391,9 +392,8 @@ pub enum Event<TId> {
         candidate: String,
     },
     ConnectionIntent {
-        resource: ResourceDescription,
+        resource: ResourceId,
         connected_gateway_ids: HashSet<GatewayId>,
-        reference: usize,
     },
     RefreshResources {
         connections: Vec<ReuseConnection>,
