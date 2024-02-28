@@ -216,29 +216,25 @@ where
                     Payload::Message(payload) => {
                         handler(Ok(payload.into()), m.reference, m.topic).await
                     }
-                    Payload::Reply(status) => match status {
-                        ReplyMessage::PhxReply(phx_reply) => match phx_reply {
-                            // TODO: Here we should pass error info to a subscriber
-                            PhxReply::Error(info) => {
-                                tracing::debug!("Portal error: {info:?}");
-                                handler(Err(ChannelError::ErrorReply(info)), m.reference, m.topic)
-                                    .await
+                    Payload::PhxReply(status) => match status {
+                        // TODO: Here we should pass error info to a subscriber
+                        Reply::Error { reason } => {
+                            tracing::debug!("Portal error: {reason:?}");
+                            handler(Err(ChannelError::ErrorReply(reason)), m.reference, m.topic)
+                                .await
+                        }
+                        Reply::Ok(reply) => match reply {
+                            OkReply::NoMessage(Empty {}) => {
+                                tracing::trace!(target: "phoenix_status", "Phoenix status message")
                             }
-                            PhxReply::Ok(reply) => match reply {
-                                OkReply::NoMessage(Empty {}) => {
-                                    tracing::trace!(target: "phoenix_status", "Phoenix status message")
-                                }
-                                OkReply::Message(payload) => {
-                                    handler(Ok(payload.into()), m.reference, m.topic).await
-                                }
-                            },
+                            OkReply::Message(payload) => {
+                                handler(Ok(payload.into()), m.reference, m.topic).await
+                            }
                         },
-                        ReplyMessage::PhxError(Empty {}) => tracing::error!("Phoenix error"),
                     },
-                    Payload::ControlMessage(ControlMessage::PhxClose(_)) => {
-                        return Err(Error::ClosedByPortal)
-                    }
-                    Payload::ControlMessage(ControlMessage::Disconnect { reason: _reason }) => {
+                    Payload::PhxError(_) => {}
+                    Payload::PhxClose(Empty {}) => return Err(Error::ClosedByPortal),
+                    Payload::Disconnect { reason: _reason } => {
                         // TODO: pass the _reason up to the client so it can print a pertinent user message
                         handler(
                             Err(ChannelError::ErrorMsg(Error::ClosedByPortal)),
@@ -309,26 +305,28 @@ pub type MessageResult<M> = std::result::Result<M, ChannelError>;
 
 #[derive(Debug)]
 pub enum ChannelError {
-    ErrorReply(ErrorInfo),
+    ErrorReply(ErrorReply),
     ErrorMsg(Error),
 }
 
 #[derive(Debug, PartialEq, Eq, Deserialize, Serialize, Clone)]
-#[serde(untagged)]
+#[serde(rename_all = "snake_case", tag = "event", content = "payload")]
 enum Payload<T, R> {
-    // We might want other type for the reply message
-    // but that makes everything even more convoluted!
-    // and we need to think how to make this whole mess less convoluted.
-    Reply(ReplyMessage<R>),
-    ControlMessage(ControlMessage),
+    PhxReply(Reply<R>),
+    PhxError(Empty),
+    PhxClose(Empty),
+    Disconnect {
+        reason: String,
+    },
+    #[serde(untagged)]
     Message(T),
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
-#[serde(rename_all = "snake_case", tag = "event", content = "payload")]
-enum ControlMessage {
-    PhxClose(Empty),
-    Disconnect { reason: String },
+#[derive(Debug, PartialEq, Eq, Deserialize, Serialize, Clone)]
+#[serde(rename_all = "snake_case", tag = "status", content = "response")]
+enum Reply<T> {
+    Ok(OkReply<T>),
+    Error { reason: ErrorReply },
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Deserialize, Serialize)]
@@ -358,22 +356,20 @@ impl<T, R> PhoenixMessage<T, R> {
         Self {
             topic: topic.into(),
             // There has to be a better way :\
-            payload: Payload::Reply(ReplyMessage::PhxReply(PhxReply::Ok(OkReply::Message(
-                payload,
-            )))),
+            payload: Payload::PhxReply(Reply::Ok(OkReply::Message(payload))),
             reference: reference.into(),
         }
     }
 
     pub fn new_err_reply(
         topic: impl Into<String>,
-        error: ErrorInfo,
+        reason: ErrorReply,
         reference: impl Into<Option<String>>,
     ) -> Self {
         Self {
             topic: topic.into(),
             // There has to be a better way :\
-            payload: Payload::Reply(ReplyMessage::PhxReply(PhxReply::Error(error))),
+            payload: Payload::PhxReply(Reply::Error { reason }),
             reference: reference.into(),
         }
     }
@@ -392,51 +388,24 @@ enum EgressControlMessage {
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
-#[serde(rename_all = "snake_case", tag = "event", content = "payload")]
-enum ReplyMessage<T> {
-    PhxReply(PhxReply<T>),
-    PhxError(Empty),
-}
-
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 #[serde(untagged)]
 enum OkReply<T> {
     Message(T),
     NoMessage(Empty),
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
-pub struct UnknownError(pub String);
-
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
-pub enum KnownError {
-    #[serde(rename = "unmatched topic")]
-    UnmatchedTopic,
-    #[serde(rename = "token_expired")]
-    TokenExpired,
-}
-
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
-#[serde(untagged)]
-pub enum Reason {
-    Known(KnownError),
-    Unknown(UnknownError),
-}
-
 /// This represents the info we have about the error
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
-pub enum ErrorInfo {
-    Reason(Reason),
+pub enum ErrorReply {
+    #[serde(rename = "unmatched topic")]
+    UnmatchedTopic,
+    TokenExpired,
+    NotFound,
     Offline,
     Disabled,
-}
-
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
-#[serde(rename_all = "snake_case", tag = "status", content = "response")]
-enum PhxReply<T> {
-    Ok(OkReply<T>),
-    Error(ErrorInfo),
+    #[serde(other)]
+    Other,
 }
 
 /// You can use this sender to send messages through a `PhoenixChannel`.
@@ -539,30 +508,27 @@ impl PhoenixSender {
 
 #[cfg(test)]
 mod tests {
-    use crate::control::{
-        ControlMessage, Empty, ErrorInfo, KnownError, Payload, PhxReply::Error, Reason,
-        ReplyMessage::PhxReply, UnknownError,
-    };
+    use super::*;
 
     #[test]
     fn unmatched_topic_reply() {
         let actual_reply = r#"
             {
-               "event":"phx_reply",
-               "ref":"12",
-               "topic":"client",
+               "event": "phx_reply",
+               "ref": "12",
+               "topic": "client",
                "payload":{
-                  "status":"error",
+                  "status": "error",
                   "response":{
-                     "reason":"unmatched topic"
+                     "reason": "unmatched topic"
                   }
                }
             }
         "#;
         let actual_reply: Payload<(), ()> = serde_json::from_str(actual_reply).unwrap();
-        let expected_reply = Payload::<(), ()>::Reply(PhxReply(Error(ErrorInfo::Reason(
-            Reason::Known(KnownError::UnmatchedTopic),
-        ))));
+        let expected_reply = Payload::<(), ()>::PhxReply(Reply::Error {
+            reason: ErrorReply::UnmatchedTopic,
+        });
         assert_eq!(actual_reply, expected_reply);
     }
 
@@ -577,7 +543,7 @@ mod tests {
         }
         "#;
         let actual_reply: Payload<(), ()> = serde_json::from_str(actual_reply).unwrap();
-        let expected_reply = Payload::<(), ()>::ControlMessage(ControlMessage::PhxClose(Empty {}));
+        let expected_reply = Payload::<(), ()>::PhxClose(Empty {});
         assert_eq!(actual_reply, expected_reply);
     }
 
@@ -592,8 +558,30 @@ mod tests {
         }
         "#;
         let actual_reply: Payload<(), ()> = serde_json::from_str(actual_reply).unwrap();
-        let expected_reply = Payload::<(), ()>::ControlMessage(ControlMessage::Disconnect {
+        let expected_reply = Payload::<(), ()>::Disconnect {
             reason: "token_expired".to_string(),
+        };
+        assert_eq!(actual_reply, expected_reply);
+    }
+
+    #[test]
+    fn not_found() {
+        let actual_reply = r#"
+        {
+            "event": "phx_reply",
+            "ref": null,
+            "topic": "client",
+            "payload": {
+                "status": "error",
+                "response": {
+                    "reason": "not_found"
+                }
+            }
+        }
+        "#;
+        let actual_reply: Payload<(), ()> = serde_json::from_str(actual_reply).unwrap();
+        let expected_reply = Payload::<(), ()>::PhxReply(Reply::Error {
+            reason: ErrorReply::NotFound,
         });
         assert_eq!(actual_reply, expected_reply);
     }
@@ -602,21 +590,21 @@ mod tests {
     fn unexpected_error_reply() {
         let actual_reply = r#"
             {
-               "event":"phx_reply",
-               "ref":"12",
-               "topic":"client",
-               "payload":{
-                  "status":"error",
-                  "response":{
-                     "reason":"bad reply"
+               "event": "phx_reply",
+               "ref": "12",
+               "topic": "client",
+               "payload": {
+                  "status": "error",
+                  "response": {
+                     "reason": "bad reply"
                   }
                }
             }
         "#;
         let actual_reply: Payload<(), ()> = serde_json::from_str(actual_reply).unwrap();
-        let expected_reply = Payload::<(), ()>::Reply(PhxReply(Error(ErrorInfo::Reason(
-            Reason::Unknown(UnknownError("bad reply".to_string())),
-        ))));
+        let expected_reply = Payload::<(), ()>::PhxReply(Reply::Error {
+            reason: ErrorReply::Other,
+        });
         assert_eq!(actual_reply, expected_reply);
     }
 }
