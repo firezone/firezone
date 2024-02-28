@@ -721,7 +721,7 @@ defmodule Domain.Auth do
       when type in [:browser, :client, :api_client] do
     account = Accounts.fetch_account_by_id!(token.account_id)
 
-    with {:ok, actor} <- Actors.fetch_actor_by_id(token.actor_id) do
+    with {:ok, actor} <- Actors.fetch_active_actor_by_id(token.actor_id) do
       permissions = fetch_type_permissions!(actor.type)
 
       %Subject{

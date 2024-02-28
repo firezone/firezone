@@ -11,7 +11,8 @@ defmodule Domain.Actors do
   def fetch_groups_count_grouped_by_provider_id(%Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
       groups =
-        Group.Query.group_by_provider_id()
+        Group.Query.not_deleted()
+        |> Group.Query.group_by_provider_id()
         |> Authorizer.for_subject(subject)
         |> Repo.all()
 
@@ -59,7 +60,8 @@ defmodule Domain.Actors do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
       ids = groups |> Enum.map(& &1.id) |> Enum.uniq()
 
-      Group.Query.by_id({:in, ids})
+      Group.Query.not_deleted()
+      |> Group.Query.by_id({:in, ids})
       |> Group.Query.preload_few_actors_for_each_group(limit)
       |> Authorizer.for_subject(subject)
       |> Repo.peek(groups)
@@ -152,7 +154,8 @@ defmodule Domain.Actors do
 
   def update_group(%Group{provider_id: nil} = group, attrs, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
-      Group.Query.by_id(group.id)
+      Group.Query.not_deleted()
+      |> Group.Query.by_id(group.id)
       |> Authorizer.for_subject(subject)
       |> Repo.fetch_and_update(Group.Query,
         with: fn group ->
@@ -171,7 +174,8 @@ defmodule Domain.Actors do
 
   def update_dynamic_group_memberships(account_id) do
     Repo.transaction(fn ->
-      Group.Query.by_account_id(account_id)
+      Group.Query.not_deleted()
+      |> Group.Query.by_account_id(account_id)
       |> Group.Query.by_type({:in, [:dynamic, :managed]})
       |> Group.Query.lock()
       |> Repo.all()
@@ -192,14 +196,17 @@ defmodule Domain.Actors do
   end
 
   def delete_group(%Group{provider_id: nil} = group, %Auth.Subject{} = subject) do
-    queryable = Group.Query.by_id(group.id)
+    queryable =
+      Group.Query.not_deleted()
+      |> Group.Query.by_id(group.id)
 
     case delete_groups(queryable, subject) do
       {:ok, [group]} ->
         {:ok, _policies} = Policies.delete_policies_for(group, subject)
 
         {_count, memberships} =
-          Membership.Query.by_group_id(group.id)
+          Membership.Query.all()
+          |> Membership.Query.by_group_id(group.id)
           |> Membership.Query.returning_all()
           |> Repo.delete_all()
 
@@ -221,7 +228,8 @@ defmodule Domain.Actors do
 
   def delete_groups_for(%Auth.Provider{} = provider, %Auth.Subject{} = subject) do
     queryable =
-      Group.Query.by_provider_id(provider.id)
+      Group.Query.not_deleted()
+      |> Group.Query.by_provider_id(provider.id)
       |> Group.Query.by_account_id(provider.account_id)
 
     {_count, memberships} =
@@ -300,15 +308,6 @@ defmodule Domain.Actors do
     |> Repo.aggregate(:count)
   end
 
-  def fetch_actors_count_by_type(type, %Auth.Subject{} = subject) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
-      Actor.Query.not_deleted()
-      |> Actor.Query.by_type(type)
-      |> Authorizer.for_subject(subject)
-      |> Repo.aggregate(:count)
-    end
-  end
-
   def fetch_actor_by_id(id, %Auth.Subject{} = subject, opts \\ []) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()),
          true <- Validator.valid_uuid?(id) do
@@ -322,10 +321,9 @@ defmodule Domain.Actors do
     end
   end
 
-  # TODO: should be removed?
-  def fetch_actor_by_id(id) do
+  def fetch_active_actor_by_id(id) do
     if Validator.valid_uuid?(id) do
-      Actor.Query.not_deleted()
+      Actor.Query.not_disabled()
       |> Actor.Query.by_id(id)
       |> Repo.fetch(Actor.Query, [])
     else
@@ -333,29 +331,11 @@ defmodule Domain.Actors do
     end
   end
 
-  def fetch_actor_by_id!(id) do
-    Actor.Query.not_deleted()
-    |> Actor.Query.by_id(id)
-    |> Repo.fetch!(Actor.Query)
-  end
-
   def all_actor_group_ids(%Actor{} = actor) do
     Membership.Query.by_actor_id(actor.id)
     |> Membership.Query.select_distinct_group_ids()
     |> Repo.all()
   end
-
-  # filters: [
-  #   type: :enum,
-  #   name: :fts,
-  #   synced_from: none, provider_id,
-  #   disabled: bool
-
-  # ]
-
-  # preload: [
-  #   groups
-  # ]
 
   def list_actors(%Auth.Subject{} = subject, opts \\ []) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
@@ -367,6 +347,11 @@ defmodule Domain.Actors do
 
   def new_actor(attrs \\ %{memberships: []}) do
     Actor.Changeset.create(attrs)
+  end
+
+  def create_actor(%Accounts.Account{} = account, attrs) do
+    Actor.Changeset.create(account.id, attrs)
+    |> Repo.insert()
   end
 
   def create_actor(%Accounts.Account{} = account, attrs, %Auth.Subject{} = subject) do
@@ -410,11 +395,6 @@ defmodule Domain.Actors do
     # we return :ok because we want Repo.insert() call to still put action and
     # rest of possible metadata if there are validation errors
     :ok
-  end
-
-  def create_actor(%Accounts.Account{} = account, attrs) do
-    Actor.Changeset.create(account.id, attrs)
-    |> Repo.insert()
   end
 
   def change_actor(%Actor{} = actor, attrs \\ %{}) do
@@ -472,8 +452,9 @@ defmodule Domain.Actors do
         []
 
       group_ids ->
-        Group.Query.by_id({:in, group_ids})
+        Group.Query.not_deleted()
         |> Group.Query.not_editable()
+        |> Group.Query.by_id({:in, group_ids})
         |> Repo.all()
     end
   end

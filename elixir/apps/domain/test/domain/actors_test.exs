@@ -4,6 +4,59 @@ defmodule Domain.ActorsTest do
   alias Domain.Auth
   alias Domain.Actors
 
+  describe "fetch_groups_count_grouped_by_provider_id/1" do
+    test "returns empty map when there are no groups" do
+      subject = Fixtures.Auth.create_subject()
+      assert fetch_groups_count_grouped_by_provider_id(subject) == {:ok, %{}}
+    end
+
+    test "returns count of actor groups by provider id" do
+      account = Fixtures.Accounts.create_account()
+      actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+      identity = Fixtures.Auth.create_identity(account: account, actor: actor)
+      subject = Fixtures.Auth.create_subject(identity: identity)
+
+      {google_provider, _bypass} =
+        Fixtures.Auth.start_and_create_openid_connect_provider(account: account, name: "google")
+
+      {vault_provider, _bypass} =
+        Fixtures.Auth.start_and_create_openid_connect_provider(account: account, name: "vault")
+
+      Fixtures.Actors.create_group(
+        account: account,
+        subject: subject
+      )
+
+      Fixtures.Actors.create_group(
+        account: account,
+        subject: subject,
+        provider: google_provider,
+        provider_identifier: Ecto.UUID.generate()
+      )
+
+      Fixtures.Actors.create_group(
+        account: account,
+        subject: subject,
+        provider: vault_provider,
+        provider_identifier: Ecto.UUID.generate()
+      )
+
+      Fixtures.Actors.create_group(
+        account: account,
+        subject: subject,
+        provider: vault_provider,
+        provider_identifier: Ecto.UUID.generate()
+      )
+
+      assert fetch_groups_count_grouped_by_provider_id(subject) ==
+               {:ok,
+                %{
+                  google_provider.id => 1,
+                  vault_provider.id => 2
+                }}
+    end
+  end
+
   describe "fetch_group_by_id/2" do
     setup do
       account = Fixtures.Accounts.create_account()
@@ -1064,40 +1117,6 @@ defmodule Domain.ActorsTest do
     end
   end
 
-  describe "group_synced?/1" do
-    test "returns true for synced groups" do
-      account = Fixtures.Accounts.create_account()
-      provider = Fixtures.Auth.create_userpass_provider(account: account)
-      group = Fixtures.Actors.create_group(account: account, provider: provider)
-      assert group_synced?(group)
-    end
-
-    test "returns false for manually created groups" do
-      group = Fixtures.Actors.create_group()
-      assert group_synced?(group) == false
-    end
-  end
-
-  describe "group_editable?/1" do
-    test "returns false for synced groups" do
-      account = Fixtures.Accounts.create_account()
-      provider = Fixtures.Auth.create_userpass_provider(account: account)
-      group = Fixtures.Actors.create_group(account: account, provider: provider)
-      assert group_editable?(group) == false
-    end
-
-    test "returns false for managed groups" do
-      account = Fixtures.Accounts.create_account()
-      group = Fixtures.Actors.create_managed_group(account: account)
-      assert group_editable?(group) == false
-    end
-
-    test "returns false for manually created groups" do
-      group = Fixtures.Actors.create_group()
-      assert group_editable?(group) == true
-    end
-  end
-
   describe "create_managed_group/2" do
     setup do
       account = Fixtures.Accounts.create_account()
@@ -1791,108 +1810,148 @@ defmodule Domain.ActorsTest do
     end
   end
 
-  describe "fetch_actors_count_by_type/0" do
-    setup do
+  describe "group_synced?/1" do
+    test "returns true for synced groups" do
       account = Fixtures.Accounts.create_account()
-      actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
-      identity = Fixtures.Auth.create_identity(account: account, actor: actor)
-      subject = Fixtures.Auth.create_subject(identity: identity)
-
-      %{
-        account: account,
-        actor: actor,
-        subject: subject
-      }
+      provider = Fixtures.Auth.create_userpass_provider(account: account)
+      group = Fixtures.Actors.create_group(account: account, provider: provider)
+      assert group_synced?(group) == true
     end
 
-    test "returns correct count of not deleted actors by type", %{
-      account: account,
-      subject: subject
-    } do
-      assert fetch_actors_count_by_type(:account_admin_user, subject) == 1
-      assert fetch_actors_count_by_type(:account_user, subject) == 0
-
-      Fixtures.Actors.create_actor(type: :account_admin_user)
-      actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
-      assert {:ok, _actor} = delete_actor(actor, subject)
-      assert fetch_actors_count_by_type(:account_admin_user, subject) == 1
-      assert fetch_actors_count_by_type(:account_user, subject) == 0
-
-      Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
-      assert fetch_actors_count_by_type(:account_admin_user, subject) == 2
-      assert fetch_actors_count_by_type(:account_user, subject) == 0
-
-      Fixtures.Actors.create_actor(type: :account_user)
-      Fixtures.Actors.create_actor(type: :account_user, account: account)
-      assert fetch_actors_count_by_type(:account_admin_user, subject) == 2
-      assert fetch_actors_count_by_type(:account_user, subject) == 1
-
-      for _ <- 1..5, do: Fixtures.Actors.create_actor(type: :account_user, account: account)
-      assert fetch_actors_count_by_type(:account_admin_user, subject) == 2
-      assert fetch_actors_count_by_type(:account_user, subject) == 6
-    end
-
-    test "returns error when subject can not view actors", %{subject: subject} do
-      subject = Fixtures.Auth.remove_permissions(subject)
-
-      assert fetch_actors_count_by_type(:foo, subject) ==
-               {:error,
-                {:unauthorized,
-                 reason: :missing_permissions,
-                 missing_permissions: [Actors.Authorizer.manage_actors_permission()]}}
+    test "returns false for manually created groups" do
+      group = Fixtures.Actors.create_group()
+      assert group_synced?(group) == false
     end
   end
 
-  describe "fetch_groups_count_grouped_by_provider_id/1" do
-    test "returns empty map when there are no groups" do
-      subject = Fixtures.Auth.create_subject()
-      assert fetch_groups_count_grouped_by_provider_id(subject) == {:ok, %{}}
+  describe "group_managed?/1" do
+    test "returns true for managed groups" do
+      account = Fixtures.Accounts.create_account()
+      group = Fixtures.Actors.create_managed_group(account: account)
+      assert group_managed?(group) == true
     end
 
-    test "returns count of actor groups by provider id" do
+    test "returns false for manually created groups" do
+      group = Fixtures.Actors.create_group()
+      assert group_managed?(group) == false
+    end
+  end
+
+  describe "group_editable?/1" do
+    test "returns false for synced groups" do
       account = Fixtures.Accounts.create_account()
-      actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
-      identity = Fixtures.Auth.create_identity(account: account, actor: actor)
-      subject = Fixtures.Auth.create_subject(identity: identity)
+      provider = Fixtures.Auth.create_userpass_provider(account: account)
+      group = Fixtures.Actors.create_group(account: account, provider: provider)
+      assert group_editable?(group) == false
+    end
 
-      {google_provider, _bypass} =
-        Fixtures.Auth.start_and_create_openid_connect_provider(account: account, name: "google")
+    test "returns false for managed groups" do
+      account = Fixtures.Accounts.create_account()
+      group = Fixtures.Actors.create_managed_group(account: account)
+      assert group_editable?(group) == false
+    end
 
-      {vault_provider, _bypass} =
-        Fixtures.Auth.start_and_create_openid_connect_provider(account: account, name: "vault")
+    test "returns false for manually created groups" do
+      group = Fixtures.Actors.create_group()
+      assert group_editable?(group) == true
+    end
+  end
 
-      Fixtures.Actors.create_group(
-        account: account,
-        subject: subject
-      )
+  describe "group_deleted?/1" do
+    test "returns true for deleted groups" do
+      account = Fixtures.Accounts.create_account()
+      group = Fixtures.Actors.create_group(account: account) |> Fixtures.Actors.delete_group()
+      assert group_deleted?(group) == true
+    end
 
-      Fixtures.Actors.create_group(
-        account: account,
-        subject: subject,
-        provider: google_provider,
-        provider_identifier: Ecto.UUID.generate()
-      )
+    test "returns false for manually created groups" do
+      group = Fixtures.Actors.create_group()
+      assert group_deleted?(group) == false
+    end
+  end
 
-      Fixtures.Actors.create_group(
-        account: account,
-        subject: subject,
-        provider: vault_provider,
-        provider_identifier: Ecto.UUID.generate()
-      )
+  describe "count_account_admin_users_for_account/1" do
+    test "returns 0 when actors are in another account", %{} do
+      account = Fixtures.Accounts.create_account()
+      Fixtures.Actors.create_actor(type: :account_admin_user)
 
-      Fixtures.Actors.create_group(
-        account: account,
-        subject: subject,
-        provider: vault_provider,
-        provider_identifier: Ecto.UUID.generate()
-      )
+      assert count_account_admin_users_for_account(account) == 0
+    end
 
-      assert fetch_groups_count_grouped_by_provider_id(subject) ==
-               {:ok,
-                %{
-                  google_provider.id => 1,
-                  vault_provider.id => 2
-                }}
+    test "returns count of account admin actors" do
+      account = Fixtures.Accounts.create_account()
+      Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+      Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+
+      assert count_account_admin_users_for_account(account) == 2
+    end
+
+    test "does not count non account admin actors" do
+      account = Fixtures.Accounts.create_account()
+      Fixtures.Actors.create_actor(type: :account_user, account: account)
+
+      assert count_account_admin_users_for_account(account) == 0
+    end
+
+    test "does not count disabled account admin actors" do
+      account = Fixtures.Accounts.create_account()
+
+      Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+      |> Fixtures.Actors.disable()
+
+      assert count_account_admin_users_for_account(account) == 0
+    end
+
+    test "does not count deleted account admin actors" do
+      account = Fixtures.Accounts.create_account()
+
+      Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+      |> Fixtures.Actors.delete()
+
+      assert count_account_admin_users_for_account(account) == 0
+    end
+  end
+
+  describe "count_service_accounts_for_account/1" do
+    test "returns 0 when actors are in another account", %{} do
+      account = Fixtures.Accounts.create_account()
+      Fixtures.Actors.create_actor(type: :service_account)
+
+      assert count_service_accounts_for_account(account) == 0
+    end
+
+    test "returns count of service account actors" do
+      account = Fixtures.Accounts.create_account()
+      Fixtures.Actors.create_actor(type: :service_account, account: account)
+      Fixtures.Actors.create_actor(type: :service_account, account: account)
+
+      assert count_service_accounts_for_account(account) == 2
+    end
+
+    test "does not count non service account actors" do
+      account = Fixtures.Accounts.create_account()
+      Fixtures.Actors.create_actor(type: :account_user, account: account)
+      Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+
+      assert count_service_accounts_for_account(account) == 0
+    end
+
+    test "does not count disabled service account actors" do
+      account = Fixtures.Accounts.create_account()
+
+      Fixtures.Actors.create_actor(type: :service_account, account: account)
+      |> Fixtures.Actors.disable()
+
+      assert count_service_accounts_for_account(account) == 0
+    end
+
+    test "does not count deleted service account actors" do
+      account = Fixtures.Accounts.create_account()
+
+      Fixtures.Actors.create_actor(type: :service_account, account: account)
+      |> Fixtures.Actors.delete()
+
+      assert count_service_accounts_for_account(account) == 0
     end
   end
 
@@ -1963,39 +2022,51 @@ defmodule Domain.ActorsTest do
     end
   end
 
-  describe "fetch_actor_by_id/1" do
+  describe "fetch_active_actor_by_id/1" do
     test "returns error when actor is not found" do
-      assert fetch_actor_by_id(Ecto.UUID.generate()) == {:error, :not_found}
+      assert fetch_active_actor_by_id(Ecto.UUID.generate()) == {:error, :not_found}
     end
 
     test "returns error when id is not a valid UUIDv4" do
-      assert fetch_actor_by_id("foo") == {:error, :not_found}
+      assert fetch_active_actor_by_id("foo") == {:error, :not_found}
+    end
+
+    test "returns error when actor is disabled" do
+      actor =
+        Fixtures.Actors.create_actor(type: :account_admin_user)
+        |> Fixtures.Actors.disable()
+
+      assert fetch_active_actor_by_id(actor.id) == {:error, :not_found}
+    end
+
+    test "returns error when actor is deleted" do
+      actor =
+        Fixtures.Actors.create_actor(type: :account_admin_user)
+        |> Fixtures.Actors.delete()
+
+      assert fetch_active_actor_by_id(actor.id) == {:error, :not_found}
     end
 
     test "returns actor" do
       actor = Fixtures.Actors.create_actor(type: :account_admin_user)
-      assert {:ok, returned_actor} = fetch_actor_by_id(actor.id)
+      assert {:ok, returned_actor} = fetch_active_actor_by_id(actor.id)
       assert returned_actor.id == actor.id
     end
   end
 
-  describe "fetch_actor_by_id!/1" do
-    test "raises when actor is not found" do
-      assert_raise(Ecto.NoResultsError, fn ->
-        fetch_actor_by_id!(Ecto.UUID.generate())
-      end)
-    end
+  describe "all_actor_group_ids/1" do
+    test "returns list of all group ids where an actor is a member" do
+      account = Fixtures.Accounts.create_account()
+      actor = Fixtures.Actors.create_actor(account: account)
 
-    test "raises when id is not a valid UUIDv4" do
-      assert_raise(Ecto.Query.CastError, fn ->
-        assert fetch_actor_by_id!("foo")
-      end)
-    end
+      group1 = Fixtures.Actors.create_group(account: account)
+      group2 = Fixtures.Actors.create_group(account: account)
+      Fixtures.Actors.create_group(account: account)
 
-    test "returns actor" do
-      actor = Fixtures.Actors.create_actor(type: :account_admin_user)
-      assert returned_actor = fetch_actor_by_id!(actor.id)
-      assert returned_actor.id == actor.id
+      Fixtures.Actors.create_membership(account: account, actor: actor, group: group1)
+      Fixtures.Actors.create_membership(account: account, actor: actor, group: group2)
+
+      assert Enum.sort(all_actor_group_ids(actor)) == Enum.sort([group1.id, group2.id])
     end
   end
 
@@ -2905,6 +2976,54 @@ defmodule Domain.ActorsTest do
                 {:unauthorized,
                  reason: :missing_permissions,
                  missing_permissions: [Actors.Authorizer.manage_actors_permission()]}}
+    end
+  end
+
+  describe "actor_synced?/1" do
+    test "returns true when actor is synced" do
+      actor = Fixtures.Actors.create_actor()
+      actor = Fixtures.Actors.update(actor, last_synced_at: DateTime.utc_now())
+
+      assert actor_synced?(actor) == true
+    end
+
+    test "returns false when actor is not synced" do
+      actor = Fixtures.Actors.create_actor()
+      actor = Fixtures.Actors.update(actor, last_synced_at: nil)
+
+      assert actor_synced?(actor) == false
+    end
+  end
+
+  describe "actor_deleted?/1" do
+    test "returns true when actor is deleted" do
+      actor =
+        Fixtures.Actors.create_actor()
+        |> Fixtures.Actors.delete()
+
+      assert actor_deleted?(actor) == true
+    end
+
+    test "returns false when actor is not deleted" do
+      actor = Fixtures.Actors.create_actor()
+
+      assert actor_deleted?(actor) == false
+    end
+  end
+
+  describe "actor_disabled?/1" do
+    test "returns true when actor is disabled" do
+      actor =
+        Fixtures.Actors.create_actor()
+        |> Fixtures.Actors.disable()
+
+      assert actor_disabled?(actor) == true
+    end
+
+    test "returns false when actor is not disabled" do
+      actor = Fixtures.Actors.create_actor()
+
+      assert actor_disabled?(actor) == false
     end
   end
 
