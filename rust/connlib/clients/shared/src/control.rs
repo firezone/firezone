@@ -1,8 +1,6 @@
 use async_compression::tokio::bufread::GzipEncoder;
 use bimap::BiMap;
-use connlib_shared::control::ChannelError;
-use connlib_shared::control::KnownError;
-use connlib_shared::control::Reason;
+use connlib_shared::control::{ChannelError, ErrorReply};
 use connlib_shared::messages::{DnsServer, GatewayResponse, IpDnsServer};
 use connlib_shared::IpProvider;
 use firezone_tunnel::ClientTunnel;
@@ -17,7 +15,7 @@ use crate::messages::{
     GatewayIceCandidates, InitClient, Messages,
 };
 use connlib_shared::{
-    control::{ErrorInfo, PhoenixSenderWithTopic, Reference},
+    control::{PhoenixSenderWithTopic, Reference},
     messages::{GatewayId, ResourceDescription, ResourceId},
     Callbacks,
     Error::{self},
@@ -334,7 +332,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
         topic: String,
     ) -> Result<()> {
         match (reply_error, reference) {
-            (ChannelError::ErrorReply(ErrorInfo::Offline), Some(reference)) => {
+            (ChannelError::ErrorReply(ErrorReply::Offline), Some(reference)) => {
                 let Ok(request_id) = reference.parse::<usize>() else {
                     return Ok(());
                 };
@@ -347,22 +345,12 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
 
                 self.tunnel.cleanup_connection(resource);
             }
-            (
-                ChannelError::ErrorReply(ErrorInfo::Reason(Reason::Known(
-                    KnownError::UnmatchedTopic,
-                ))),
-                _,
-            ) => {
+            (ChannelError::ErrorReply(ErrorReply::UnmatchedTopic), _) => {
                 if let Err(e) = self.phoenix_channel.get_sender().join_topic(topic).await {
                     tracing::debug!(err = ?e, "couldn't join topic: {e:#?}");
                 }
             }
-            (
-                ChannelError::ErrorReply(ErrorInfo::Reason(Reason::Known(
-                    KnownError::TokenExpired,
-                ))),
-                _,
-            )
+            (ChannelError::ErrorReply(ErrorReply::TokenExpired), _)
             | (ChannelError::ErrorMsg(Error::ClosedByPortal), _) => {
                 return Err(Error::ClosedByPortal);
             }
