@@ -531,14 +531,6 @@ impl ClientState {
         self.dns_mapping.clone()
     }
 
-    fn is_awaiting_connection_to_cidr(&self, destination: IpAddr) -> bool {
-        let Some(resource) = self.get_cidr_resource_by_destination(destination) else {
-            return false;
-        };
-
-        self.awaiting_connection.contains_key(&resource)
-    }
-
     fn is_connected_to(&self, resource: ResourceId, domain: &Option<Dname>) -> bool {
         let Some(resource) = self.resource_ids.get(&resource) else {
             return false;
