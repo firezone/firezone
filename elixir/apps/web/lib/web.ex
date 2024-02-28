@@ -18,7 +18,7 @@ defmodule Web do
   """
 
   def static_paths,
-    do: ~w(assets fonts images .well-known favicon.ico site.webmanifest robots.txt)
+    do: ~w(assets fonts images .well-known)
 
   def router do
     quote do
