@@ -10,6 +10,38 @@ defmodule Domain.RepoTest do
       assert fetch(queryable, query_module) == {:ok, account}
     end
 
+    test "allows to preload deeply nested fields" do
+      account = Fixtures.Accounts.create_account()
+      Fixtures.Auth.create_userpass_provider(account: account)
+      Fixtures.Actors.create_actor(account: account)
+      Fixtures.Clients.create_client(account: account)
+      Fixtures.Policies.create_policy(account: account)
+
+      query_module = Domain.Accounts.Account.Query
+      queryable = query_module.all()
+
+      assert {:ok, account} =
+               fetch(queryable, query_module,
+                 preload: [
+                   :auth_providers,
+                   policies: [],
+                   actors: [identities: :provider],
+                   clients: [:online?, :actor]
+                 ]
+               )
+
+      assert Ecto.assoc_loaded?(account.auth_providers)
+
+      assert Ecto.assoc_loaded?(account.policies)
+
+      assert Ecto.assoc_loaded?(account.actors)
+      assert Enum.all?(account.actors, &Ecto.assoc_loaded?(&1.identities))
+
+      assert Ecto.assoc_loaded?(account.clients)
+      assert Enum.all?(account.clients, &(&1.online? == false))
+      assert Enum.all?(account.clients, &Ecto.assoc_loaded?(&1.actor))
+    end
+
     test "raises when the query returns more than one row" do
       Fixtures.Accounts.create_account()
       Fixtures.Accounts.create_account()
@@ -138,6 +170,40 @@ defmodule Domain.RepoTest do
 
       assert {:ok, [returned_actor], _metadata} = list(queryable, query_module)
       assert returned_actor.id == actor.id
+    end
+
+    test "allows to preload deeply nested fields" do
+      account = Fixtures.Accounts.create_account()
+      Fixtures.Auth.create_userpass_provider(account: account)
+      Fixtures.Actors.create_actor(account: account)
+      Fixtures.Clients.create_client(account: account)
+      Fixtures.Policies.create_policy(account: account)
+
+      query_module = Domain.Accounts.Account.Query
+      queryable = query_module.all()
+
+      assert {:ok, accounts, _metadata} =
+               list(queryable, query_module,
+                 preload: [
+                   :auth_providers,
+                   policies: [],
+                   actors: [identities: :provider],
+                   clients: [:online?, :actor]
+                 ]
+               )
+
+      for account <- accounts do
+        assert Ecto.assoc_loaded?(account.auth_providers)
+
+        assert Ecto.assoc_loaded?(account.policies)
+
+        assert Ecto.assoc_loaded?(account.actors)
+        assert Enum.all?(account.actors, &Ecto.assoc_loaded?(&1.identities))
+
+        assert Ecto.assoc_loaded?(account.clients)
+        assert Enum.all?(account.clients, &(&1.online? == false))
+        assert Enum.all?(account.clients, &Ecto.assoc_loaded?(&1.actor))
+      end
     end
 
     test "returns up to 50 items by default", %{

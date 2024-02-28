@@ -38,15 +38,4 @@ defmodule Domain.Repo.Query do
       []
     end
   end
-    order_by_cursor_fields: 1,
-    by_cursor: 3
-  ]
-
-  def order_by_cursor_fields(queryable, query_module) do
-    query_module.order_by_cursor_fields(queryable)
-  end
-
-  def by_cursor(queryable, query_module, direction, values) do
-    query_module.by_cursor(queryable, direction, values)
-  end
 end

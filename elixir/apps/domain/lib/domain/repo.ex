@@ -3,7 +3,7 @@ defmodule Domain.Repo do
     otp_app: :domain,
     adapter: Ecto.Adapters.Postgres
 
-  alias Domain.Repo.{Paginator, Preloader}
+  alias Domain.Repo.{Paginator, Preloader, Query}
   require Ecto.Query
 
   @doc """
@@ -19,7 +19,8 @@ defmodule Domain.Repo do
     {preload, opts} = Keyword.pop(opts, :preload, [])
 
     if schema = __MODULE__.one(queryable, opts) do
-      {schema, ecto_preloads} = Preloader.preload(schema, preload, query_module)
+      preloads_funs = Query.get_preloads_funs(query_module)
+      {schema, ecto_preloads} = Preloader.preload(schema, preload, preloads_funs)
       schema = __MODULE__.preload(schema, ecto_preloads)
       {:ok, schema}
     else
@@ -34,7 +35,8 @@ defmodule Domain.Repo do
     {preload, opts} = Keyword.pop(opts, :preload, [])
 
     schema = __MODULE__.one!(queryable, opts)
-    {schema, ecto_preloads} = Preloader.preload(schema, preload, query_module)
+    preloads_funs = Query.get_preloads_funs(query_module)
+    {schema, ecto_preloads} = Preloader.preload(schema, preload, preloads_funs)
     __MODULE__.preload(schema, ecto_preloads)
   end
 
@@ -124,7 +126,8 @@ defmodule Domain.Repo do
   end
 
   defp execute_preloads(schema, query_module, preload) do
-    {schema, ecto_preloads} = Preloader.preload(schema, preload, query_module)
+    preloads_funs = Query.get_preloads_funs(query_module)
+    {schema, ecto_preloads} = Preloader.preload(schema, preload, preloads_funs)
     __MODULE__.preload(schema, ecto_preloads)
   end
 
@@ -134,7 +137,6 @@ defmodule Domain.Repo do
   def list(queryable, query_module, opts \\ []) do
     {preload, opts} = Keyword.pop(opts, :preload, [])
     # {filters, opts} = Keyword.pop(opts, :filters, %{})
-    # {search_query, opts} = Keyword.pop(opts, :search_query, nil)
 
     # Pagination
     {paginator_opts, opts} = Keyword.pop(opts, :page, [])
@@ -146,7 +148,8 @@ defmodule Domain.Repo do
         |> __MODULE__.all(opts)
         |> Paginator.metadata(paginator_opts)
 
-      {results, ecto_preloads} = Preloader.preload(results, preload, query_module)
+      preloads_funs = Query.get_preloads_funs(query_module)
+      {results, ecto_preloads} = Preloader.preload(results, preload, preloads_funs)
       results = __MODULE__.preload(results, ecto_preloads)
 
       {:ok, results, metadata}

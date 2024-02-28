@@ -52,4 +52,11 @@ defmodule Domain.Accounts.Account.Query do
       {:accounts, :asc, :inserted_at},
       {:accounts, :asc, :id}
     ]
+
+  @impl Domain.Repo.Query
+  def preloads do
+    [
+      clients: {Domain.Clients.Client.Query.not_deleted(), Domain.Clients.Client.Query.preloads()}
+    ]
+  end
 end
