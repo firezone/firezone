@@ -1955,7 +1955,7 @@ defmodule Domain.ActorsTest do
     end
   end
 
-  describe "fetch_actor_by_id/2" do
+  describe "fetch_actor_by_id/3" do
     test "returns error when actor is not found" do
       subject = Fixtures.Auth.create_subject()
       assert fetch_actor_by_id(Ecto.UUID.generate(), subject) == {:error, :not_found}

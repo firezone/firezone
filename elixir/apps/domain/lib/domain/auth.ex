@@ -130,8 +130,8 @@ defmodule Domain.Auth do
   # used to during auth flow in the UI where Subject doesn't exist yet
   def fetch_active_provider_by_id(id, opts \\ []) do
     if Validator.valid_uuid?(id) do
-      Provider.Query.by_id(id)
-      |> Provider.Query.not_disabled()
+      Provider.Query.not_disabled()
+      |> Provider.Query.by_id(id)
       |> Repo.fetch(Provider.Query, opts)
     else
       {:error, :not_found}
@@ -144,8 +144,8 @@ defmodule Domain.Auth do
   def fetch_active_provider_by_adapter(adapter, %Subject{} = subject, opts \\ [])
       when adapter in [:email, :userpass] do
     with :ok <- ensure_has_permissions(subject, Authorizer.manage_providers_permission()) do
-      Provider.Query.by_adapter(adapter)
-      |> Provider.Query.not_disabled()
+      Provider.Query.not_disabled()
+      |> Provider.Query.by_adapter(adapter)
       |> Authorizer.for_subject(Provider, subject)
       |> Repo.fetch(Provider.Query, opts)
     end
@@ -161,27 +161,27 @@ defmodule Domain.Auth do
 
   # used to build list of auth options for the UI
   def all_active_providers_for_account(%Accounts.Account{} = account) do
-    Provider.Query.by_account_id(account.id)
-    |> Provider.Query.not_disabled()
+    Provider.Query.not_disabled()
+    |> Provider.Query.by_account_id(account.id)
     |> Repo.all()
   end
 
   def all_providers_pending_token_refresh_by_adapter(adapter) do
     datetime_filter = DateTime.utc_now() |> DateTime.add(30, :minute)
 
-    Provider.Query.by_adapter(adapter)
+    Provider.Query.not_disabled()
+    |> Provider.Query.by_adapter(adapter)
     |> Provider.Query.by_provisioner(:custom)
     |> Provider.Query.by_non_empty_refresh_token()
     |> Provider.Query.token_expires_at({:lt, datetime_filter})
-    |> Provider.Query.not_disabled()
     |> Repo.all()
   end
 
   def all_providers_pending_sync_by_adapter(adapter) do
-    Provider.Query.by_adapter(adapter)
+    Provider.Query.not_disabled()
+    |> Provider.Query.by_adapter(adapter)
     |> Provider.Query.by_provisioner(:custom)
     |> Provider.Query.only_ready_to_be_synced()
-    |> Provider.Query.not_disabled()
     |> Repo.all()
   end
 
@@ -263,15 +263,16 @@ defmodule Domain.Auth do
   defp mutate_provider(%Provider{} = provider, %Subject{} = subject, callback)
        when is_function(callback, 1) do
     with :ok <- ensure_has_permissions(subject, Authorizer.manage_providers_permission()) do
-      Provider.Query.by_id(provider.id)
+      Provider.Query.not_deleted()
+      |> Provider.Query.by_id(provider.id)
       |> Authorizer.for_subject(Provider, subject)
       |> Repo.fetch_and_update(Provider.Query, with: callback)
     end
   end
 
   defp other_active_providers_exist?(%Provider{id: id, account_id: account_id}) do
-    Provider.Query.by_id({:not, id})
-    |> Provider.Query.not_disabled()
+    Provider.Query.not_disabled()
+    |> Provider.Query.by_id({:not, id})
     |> Provider.Query.by_account_id(account_id)
     |> Provider.Query.lock()
     |> Repo.exists?()
@@ -299,7 +300,8 @@ defmodule Domain.Auth do
   def fetch_identity_by_id(id, %Subject{} = subject, opts \\ []) do
     with :ok <- ensure_has_permissions(subject, Authorizer.manage_identities_permission()),
          true <- Validator.valid_uuid?(id) do
-      Identity.Query.by_id(id)
+      Identity.Query.not_deleted()
+      |> Identity.Query.by_id(id)
       |> Authorizer.for_subject(Identity, subject)
       |> Repo.fetch(Identity.Query, opts)
     else
@@ -312,7 +314,8 @@ defmodule Domain.Auth do
   def fetch_identities_count_grouped_by_provider_id(%Subject{} = subject) do
     with :ok <- ensure_has_permissions(subject, Authorizer.manage_identities_permission()) do
       identities =
-        Identity.Query.group_by_provider_id()
+        Identity.Query.not_deleted()
+        |> Identity.Query.group_by_provider_id()
         |> Authorizer.for_subject(Identity, subject)
         |> Repo.all()
         |> Enum.reduce(%{}, fn %{provider_id: id, count: count}, acc ->
@@ -327,8 +330,9 @@ defmodule Domain.Auth do
     Identity.Sync.sync_provider_identities_multi(provider, attrs_list)
   end
 
-  def list_actor_ids_by_membership_rules(account_id, membership_rules) do
-    Identity.Query.by_account_id(account_id)
+  def all_actor_ids_by_membership_rules(account_id, membership_rules) do
+    Identity.Query.not_disabled()
+    |> Identity.Query.by_account_id(account_id)
     |> Identity.Query.by_membership_rules(membership_rules)
     |> Identity.Query.returning_distinct_actor_ids()
     |> Repo.all()
@@ -401,7 +405,8 @@ defmodule Domain.Auth do
     with :ok <- ensure_has_permissions(subject, required_permissions) do
       Ecto.Multi.new()
       |> Ecto.Multi.run(:identity, fn _repo, _effects_so_far ->
-        Identity.Query.by_id(identity.id)
+        Identity.Query.not_deleted()
+        |> Identity.Query.by_id(identity.id)
         |> Identity.Query.lock()
         |> Identity.Query.with_preloaded_assoc(:inner, :actor)
         |> Identity.Query.with_preloaded_assoc(:inner, :provider)
@@ -442,7 +447,8 @@ defmodule Domain.Auth do
        ]}
 
     with :ok <- ensure_has_permissions(subject, required_permissions) do
-      Identity.Query.by_id(identity.id)
+      Identity.Query.not_deleted()
+      |> Identity.Query.by_id(identity.id)
       |> Authorizer.for_subject(Identity, subject)
       |> Repo.fetch_and_update(Identity.Query,
         with: fn identity ->
@@ -462,13 +468,15 @@ defmodule Domain.Auth do
   end
 
   def delete_identities_for(%Actors.Actor{} = actor, %Subject{} = subject) do
-    Identity.Query.by_actor_id(actor.id)
+    Identity.Query.not_deleted()
+    |> Identity.Query.by_actor_id(actor.id)
     |> Identity.Query.by_account_id(actor.account_id)
     |> delete_identities(actor, subject)
   end
 
   def delete_identities_for(%Provider{} = provider, %Subject{} = subject) do
-    Identity.Query.by_provider_id(provider.id)
+    Identity.Query.not_deleted()
+    |> Identity.Query.by_provider_id(provider.id)
     |> Identity.Query.by_account_id(provider.account_id)
     |> delete_identities(provider, subject)
   end
@@ -487,9 +495,6 @@ defmodule Domain.Auth do
       :ok
     end
   end
-
-  def identity_disabled?(%{disabled_at: nil}), do: false
-  def identity_disabled?(_identity), do: true
 
   def identity_deleted?(%{deleted_at: nil}), do: false
   def identity_deleted?(_identity), do: true
@@ -750,8 +755,8 @@ defmodule Domain.Auth do
   end
 
   defp maybe_fetch_subject_identity(subject, token) do
-    Identity.Query.by_id(token.identity_id)
-    |> Identity.Query.not_disabled()
+    Identity.Query.not_disabled()
+    |> Identity.Query.by_id(token.identity_id)
     |> Ecto.Query.select([identities: identities], identities)
     |> Repo.update_all(
       set: [

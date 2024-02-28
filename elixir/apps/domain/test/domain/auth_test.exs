@@ -28,7 +28,7 @@ defmodule Domain.AuthTest do
     end
   end
 
-  describe "fetch_provider_by_id/2" do
+  describe "fetch_provider_by_id/3" do
     setup do
       account = Fixtures.Accounts.create_account()
       actor = Fixtures.Actors.create_actor(account: account, type: :account_admin_user)
@@ -84,7 +84,7 @@ defmodule Domain.AuthTest do
     end
   end
 
-  describe "fetch_active_provider_by_id/1" do
+  describe "fetch_active_provider_by_id/2" do
     test "returns error when provider does not exist" do
       assert fetch_active_provider_by_id(Ecto.UUID.generate()) == {:error, :not_found}
     end
@@ -1217,7 +1217,9 @@ defmodule Domain.AuthTest do
           end
           |> Task.await_many()
 
-          assert Repo.aggregate(Auth.Provider.Query.by_account_id(account.id), :count) == 1
+          assert Auth.Provider.Query.not_deleted()
+                 |> Auth.Provider.Query.by_account_id(account.id)
+                 |> Repo.aggregate(:count) == 1
         end)
       end
       |> Task.await_many()
@@ -1398,7 +1400,7 @@ defmodule Domain.AuthTest do
     end
   end
 
-  describe "fetch_identity_by_id/2" do
+  describe "fetch_identity_by_id/3" do
     setup do
       account = Fixtures.Accounts.create_account()
       actor = Fixtures.Actors.create_actor(account: account, type: :account_admin_user)
@@ -1877,6 +1879,123 @@ defmodule Domain.AuthTest do
                identity2.actor.id
 
       assert Enum.count(actor_ids_by_provider_identifier) == 1
+    end
+  end
+
+  describe "all_actor_ids_by_membership_rules/2" do
+    test "returns actor ids by evaluating membership rules" do
+      account = Fixtures.Accounts.create_account()
+      identity = Fixtures.Auth.create_identity(account: account)
+
+      rules = [%{operator: true}]
+
+      assert [actor_id] = all_actor_ids_by_membership_rules(account.id, rules)
+      assert actor_id == identity.actor_id
+    end
+
+    test "does return identities from other accounts" do
+      account = Fixtures.Accounts.create_account()
+      Fixtures.Auth.create_identity()
+
+      rules = [%{operator: true}]
+
+      assert all_actor_ids_by_membership_rules(account.id, rules) == []
+    end
+
+    test "does not return identities for deleted actors" do
+      account = Fixtures.Accounts.create_account()
+      actor = Fixtures.Actors.create_actor(account: account)
+      Fixtures.Auth.create_identity(account: account, actor: actor)
+      Fixtures.Actors.delete(actor)
+
+      rules = [%{operator: true}]
+
+      assert all_actor_ids_by_membership_rules(account.id, rules) == []
+    end
+
+    test "does not return identities for disabled actors" do
+      account = Fixtures.Accounts.create_account()
+      actor = Fixtures.Actors.create_actor(account: account)
+      Fixtures.Auth.create_identity(account: account, actor: actor)
+      Fixtures.Actors.disable(actor)
+
+      rules = [%{operator: true}]
+
+      assert all_actor_ids_by_membership_rules(account.id, rules) == []
+    end
+
+    test "allows to use is_in operator" do
+      account = Fixtures.Accounts.create_account()
+
+      rules = [%{path: ["claims", "group"], operator: :is_in, values: ["admin"]}]
+
+      identity =
+        Fixtures.Auth.create_identity(account: account)
+        |> Ecto.Changeset.change(provider_state: %{"claims" => %{"group" => "admin"}})
+        |> Repo.update!()
+
+      Fixtures.Auth.create_identity(account: account)
+      |> Ecto.Changeset.change(provider_state: %{"claims" => %{"group" => "user"}})
+      |> Repo.update!()
+
+      assert [actor_id] = all_actor_ids_by_membership_rules(account.id, rules)
+      assert actor_id == identity.actor_id
+    end
+
+    test "allows to use is_not_in operator" do
+      account = Fixtures.Accounts.create_account()
+
+      rules = [%{path: ["claims", "group"], operator: :is_not_in, values: ["user"]}]
+
+      identity =
+        Fixtures.Auth.create_identity(account: account)
+        |> Ecto.Changeset.change(provider_state: %{"claims" => %{"group" => "admin"}})
+        |> Repo.update!()
+
+      Fixtures.Auth.create_identity(account: account)
+      |> Ecto.Changeset.change(provider_state: %{"claims" => %{"group" => "user"}})
+      |> Repo.update!()
+
+      assert [actor_id] = all_actor_ids_by_membership_rules(account.id, rules)
+      assert actor_id == identity.actor_id
+    end
+
+    test "allows to use contains operator" do
+      account = Fixtures.Accounts.create_account()
+
+      rules = [%{path: ["claims", "group"], operator: :contains, values: ["ad"]}]
+
+      identity =
+        Fixtures.Auth.create_identity(account: account)
+        |> Ecto.Changeset.change(provider_state: %{"claims" => %{"group" => "admin"}})
+        |> Repo.update!()
+
+      Fixtures.Auth.create_identity(account: account)
+      |> Ecto.Changeset.change(provider_state: %{"claims" => %{"group" => "foo"}})
+      |> Repo.update!()
+
+      assert [actor_id] = all_actor_ids_by_membership_rules(account.id, rules)
+      assert actor_id == identity.actor_id
+    end
+
+    test "allows to use does_not_contain operator" do
+      account = Fixtures.Accounts.create_account()
+
+      rules = [
+        %{path: ["claims", "group"], operator: :does_not_contain, values: ["use"]}
+      ]
+
+      identity =
+        Fixtures.Auth.create_identity(account: account)
+        |> Ecto.Changeset.change(provider_state: %{"claims" => %{"group" => "admin"}})
+        |> Repo.update!()
+
+      Fixtures.Auth.create_identity(account: account)
+      |> Ecto.Changeset.change(provider_state: %{"claims" => %{"group" => "user"}})
+      |> Repo.update!()
+
+      assert [actor_id] = all_actor_ids_by_membership_rules(account.id, rules)
+      assert actor_id == identity.actor_id
     end
   end
 
@@ -2673,10 +2792,17 @@ defmodule Domain.AuthTest do
       Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
       Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
 
-      assert Repo.aggregate(Auth.Identity.Query.all(), :count) == 4
+      all_identities_query = Auth.Identity.Query.all()
+      assert Repo.aggregate(all_identities_query, :count) == 4
       assert delete_identities_for(actor, subject) == :ok
 
-      assert Repo.aggregate(Auth.Identity.Query.by_actor_id(actor.id), :count) == 0
+      assert Repo.aggregate(all_identities_query, :count) == 4
+
+      by_actor_id_query =
+        Auth.Identity.Query.not_deleted()
+        |> Auth.Identity.Query.by_actor_id(actor.id)
+
+      assert Repo.aggregate(by_actor_id_query, :count) == 0
     end
 
     test "removes all identities and flows that belong to a provider", %{
@@ -2689,10 +2815,17 @@ defmodule Domain.AuthTest do
       Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
       Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
 
-      assert Repo.aggregate(Auth.Identity.Query.all(), :count) == 4
+      all_identities_query = Auth.Identity.Query.all()
+      assert Repo.aggregate(all_identities_query, :count) == 4
       assert delete_identities_for(provider, subject) == :ok
 
-      assert Repo.aggregate(Auth.Identity.Query.by_provider_id(provider.id), :count) == 0
+      assert Repo.aggregate(all_identities_query, :count) == 4
+
+      by_provider_id_query =
+        Auth.Identity.Query.not_deleted()
+        |> Auth.Identity.Query.by_provider_id(provider.id)
+
+      assert Repo.aggregate(by_provider_id_query, :count) == 0
     end
 
     test "deletes tokens and broadcasts message to disconnect the actor sessions", %{
@@ -2782,6 +2915,21 @@ defmodule Domain.AuthTest do
                  ]}}
 
       assert Repo.aggregate(Auth.Identity.Query.all(), :count) == 3
+    end
+  end
+
+  describe "identity_deleted?/1" do
+    test "returns true when identity is deleted" do
+      identity =
+        Fixtures.Auth.create_identity()
+        |> Fixtures.Auth.delete_identity()
+
+      assert identity_deleted?(identity) == true
+    end
+
+    test "returns false when identity is not deleted" do
+      identity = Fixtures.Auth.create_identity()
+      assert identity_deleted?(identity) == false
     end
   end
 

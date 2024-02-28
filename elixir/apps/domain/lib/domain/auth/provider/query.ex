@@ -14,7 +14,7 @@ defmodule Domain.Auth.Provider.Query do
     where(queryable, [providers: providers], is_nil(providers.disabled_at))
   end
 
-  def by_id(queryable \\ not_deleted(), id)
+  def by_id(queryable, id)
 
   def by_id(queryable, {:not, id}) do
     where(queryable, [providers: providers], providers.id != ^id)
@@ -24,7 +24,7 @@ defmodule Domain.Auth.Provider.Query do
     where(queryable, [providers: providers], providers.id == ^id)
   end
 
-  def by_adapter(queryable \\ not_deleted(), adapter)
+  def by_adapter(queryable, adapter)
 
   def by_adapter(queryable, {:not_in, adapters}) do
     where(queryable, [providers: providers], providers.adapter not in ^adapters)
@@ -34,7 +34,7 @@ defmodule Domain.Auth.Provider.Query do
     where(queryable, [providers: providers], providers.adapter == ^adapter)
   end
 
-  def last_synced_at(queryable \\ not_deleted(), {:lt, datetime}) do
+  def last_synced_at(queryable, {:lt, datetime}) do
     where(
       queryable,
       [providers: providers],
@@ -42,7 +42,7 @@ defmodule Domain.Auth.Provider.Query do
     )
   end
 
-  def only_ready_to_be_synced(queryable \\ not_deleted()) do
+  def only_ready_to_be_synced(queryable) do
     queryable
     |> where(
       [provider: provider],
@@ -56,7 +56,7 @@ defmodule Domain.Auth.Provider.Query do
     |> where([provider: provider], is_nil(provider.sync_disabled_at))
   end
 
-  def by_non_empty_refresh_token(queryable \\ not_deleted()) do
+  def by_non_empty_refresh_token(queryable) do
     where(
       queryable,
       [providers: providers],
@@ -64,7 +64,7 @@ defmodule Domain.Auth.Provider.Query do
     )
   end
 
-  def token_expires_at(queryable \\ not_deleted(), {:lt, datetime}) do
+  def token_expires_at(queryable, {:lt, datetime}) do
     where(
       queryable,
       [providers: providers],
@@ -72,15 +72,15 @@ defmodule Domain.Auth.Provider.Query do
     )
   end
 
-  def by_provisioner(queryable \\ not_deleted(), provisioner) do
+  def by_provisioner(queryable, provisioner) do
     where(queryable, [providers: providers], providers.provisioner == ^provisioner)
   end
 
-  def by_account_id(queryable \\ not_deleted(), account_id) do
+  def by_account_id(queryable, account_id) do
     where(queryable, [providers: providers], providers.account_id == ^account_id)
   end
 
-  def lock(queryable \\ not_deleted()) do
+  def lock(queryable) do
     lock(queryable, "FOR UPDATE")
   end
 

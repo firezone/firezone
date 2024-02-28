@@ -20,7 +20,7 @@ defmodule Domain.Auth.Identity.Query do
     |> where([provider: provider], is_nil(provider.disabled_at))
   end
 
-  def by_id(queryable \\ not_deleted(), id)
+  def by_id(queryable, id)
 
   def by_id(queryable, {:not, id}) do
     where(queryable, [identities: identities], identities.id != ^id)
@@ -30,24 +30,24 @@ defmodule Domain.Auth.Identity.Query do
     where(queryable, [identities: identities], identities.id == ^id)
   end
 
-  def by_account_id(queryable \\ not_deleted(), account_id) do
+  def by_account_id(queryable, account_id) do
     where(queryable, [identities: identities], identities.account_id == ^account_id)
   end
 
-  def by_actor_id(queryable \\ not_deleted(), actor_id) do
+  def by_actor_id(queryable, actor_id) do
     where(queryable, [identities: identities], identities.actor_id == ^actor_id)
   end
 
-  def by_provider_id(queryable \\ not_deleted(), provider_id) do
+  def by_provider_id(queryable, provider_id) do
     queryable
     |> where([identities: identities], identities.provider_id == ^provider_id)
   end
 
-  def by_adapter(queryable \\ not_deleted(), adapter) do
+  def by_adapter(queryable, adapter) do
     where(queryable, [identities: identities], identities.adapter == ^adapter)
   end
 
-  def by_provider_identifier(queryable \\ not_deleted(), provider_identifier)
+  def by_provider_identifier(queryable, provider_identifier)
 
   def by_provider_identifier(queryable, {:in, provider_identifiers}) do
     where(
@@ -86,7 +86,7 @@ defmodule Domain.Auth.Identity.Query do
     )
   end
 
-  def by_id_or_provider_identifier(queryable \\ not_deleted(), id_or_provider_identifier) do
+  def by_id_or_provider_identifier(queryable, id_or_provider_identifier) do
     if Domain.Validator.valid_uuid?(id_or_provider_identifier) do
       where(
         queryable,
@@ -99,7 +99,7 @@ defmodule Domain.Auth.Identity.Query do
     end
   end
 
-  def by_membership_rules(queryable \\ not_deleted(), rules) do
+  def by_membership_rules(queryable, rules) do
     dynamic =
       Enum.reduce(rules, false, fn
         rule, false ->
@@ -155,21 +155,21 @@ defmodule Domain.Auth.Identity.Query do
     )
   end
 
-  def lock(queryable \\ not_deleted()) do
+  def lock(queryable) do
     lock(queryable, "FOR UPDATE")
   end
 
-  def returning_ids(queryable \\ not_deleted()) do
+  def returning_ids(queryable) do
     select(queryable, [identities: identities], identities.id)
   end
 
-  def returning_distinct_actor_ids(queryable \\ not_deleted()) do
+  def returning_distinct_actor_ids(queryable) do
     queryable
     |> select([identities: identities], identities.actor_id)
     |> distinct(true)
   end
 
-  def group_by_provider_id(queryable \\ not_deleted()) do
+  def group_by_provider_id(queryable) do
     queryable
     |> group_by([identities: identities], identities.provider_id)
     |> select([identities: identities], %{
@@ -178,7 +178,7 @@ defmodule Domain.Auth.Identity.Query do
     })
   end
 
-  def delete(queryable \\ not_deleted()) do
+  def delete(queryable) do
     queryable
     |> Ecto.Query.select([identities: identities], identities)
     |> Ecto.Query.update([identities: identities],
@@ -189,13 +189,13 @@ defmodule Domain.Auth.Identity.Query do
     )
   end
 
-  def with_preloaded_assoc(queryable \\ not_deleted(), type \\ :left, assoc) do
+  def with_preloaded_assoc(queryable, type \\ :left, assoc) do
     queryable
     |> with_assoc(type, assoc)
     |> preload([{^assoc, assoc}], [{^assoc, assoc}])
   end
 
-  def with_assoc(queryable \\ not_deleted(), type \\ :left, assoc) do
+  def with_assoc(queryable, type \\ :left, assoc) do
     with_named_binding(queryable, assoc, fn query, binding ->
       join(query, type, [identities: identities], a in assoc(identities, ^binding), as: ^binding)
     end)

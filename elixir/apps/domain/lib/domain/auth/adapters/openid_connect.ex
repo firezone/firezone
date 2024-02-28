@@ -194,7 +194,8 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
 
     with {:ok, _provider_identifier, adapter_state} <-
            fetch_state(provider, token_params) do
-      Provider.Query.by_id(provider.id)
+      Provider.Query.not_deleted()
+      |> Provider.Query.by_id(provider.id)
       |> Repo.fetch_and_update(Provider.Query,
         with: fn provider ->
           adapter_state_updates =
@@ -207,7 +208,8 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
       )
     else
       {:error, :expired_token} ->
-        Provider.Query.by_id(provider.id)
+        Provider.Query.not_deleted()
+        |> Provider.Query.by_id(provider.id)
         |> Repo.fetch_and_update(Provider.Query,
           with: fn provider ->
             Provider.Changeset.update(provider, %{
@@ -219,7 +221,8 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
         {:error, :expired}
 
       {:error, :invalid_token} ->
-        Provider.Query.by_id(provider.id)
+        Provider.Query.not_deleted()
+        |> Provider.Query.by_id(provider.id)
         |> Repo.fetch_and_update(Provider.Query,
           with: fn provider ->
             Provider.Changeset.update(provider, %{
