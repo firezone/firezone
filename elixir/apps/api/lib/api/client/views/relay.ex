@@ -5,43 +5,42 @@ defmodule API.Client.Views.Relay do
     Enum.flat_map(relays, &render(&1, expires_at, stun_or_turn))
   end
 
-  def render(%Relays.Relay{} = relay, expires_at, stun_or_turn) do
-    [
-      maybe_render(relay, expires_at, relay.ipv4, stun_or_turn),
-      maybe_render(relay, expires_at, relay.ipv6, stun_or_turn)
-    ]
-    |> List.flatten()
-  end
-
-  defp maybe_render(%Relays.Relay{}, _expires_at, nil, _stun_or_turn), do: []
-
   # STUN returns the reflective candidates to the peer and is used for hole-punching;
   # TURN is used to real actual traffic if hole-punching fails. It requires authentication.
   # WebRTC will automatically fail back to STUN if TURN fails,
   # so there is no need to send both of them along with each other.
 
-  defp maybe_render(%Relays.Relay{} = relay, _expires_at, address, :stun) do
+  def render(%Relays.Relay{} = relay, _expires_at, :stun) do
+    ipv4_addr = if relay.ipv4, do: "#{format_address(relay.ipv4)}:#{relay.port}"
+    ipv6_addr = if relay.ipv6, do: "#{format_address(relay.ipv6)}:#{relay.port}"
+
     [
       %{
         id: relay.id,
         type: :stun,
-        addr: "#{format_address(address)}:#{relay.port}"
+        ipv4_addr: ipv4_addr,
+        ipv6_addr: ipv6_addr
       }
     ]
   end
 
-  defp maybe_render(%Relays.Relay{} = relay, expires_at, address, :turn) do
+  def render(%Relays.Relay{} = relay, expires_at, :turn) do
     %{
       username: username,
       password: password,
       expires_at: expires_at
     } = Relays.generate_username_and_password(relay, expires_at)
 
+    ipv4_addr = if relay.ipv4, do: "#{format_address(relay.ipv4)}:#{relay.port}"
+    ipv6_addr = if relay.ipv6, do: "#{format_address(relay.ipv6)}:#{relay.port}"
+
     [
       %{
         id: relay.id,
         type: :turn,
-        addr: "#{format_address(address)}:#{relay.port}",
+        addr: ipv4_addr || ipv6_addr,
+        ipv4_addr: ipv4_addr,
+        ipv6_addr: ipv6_addr,
         username: username,
         password: password,
         expires_at: expires_at
