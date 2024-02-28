@@ -1,4 +1,4 @@
-//! Linux-specific things like DNS control methods
+//! Linux-specific things like
 
 const FIREZONE_DNS_CONTROL: &str = "FIREZONE_DNS_CONTROL";
 
