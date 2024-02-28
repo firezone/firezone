@@ -9,11 +9,10 @@ use std::{
 use str0m::{net::Protocol, Candidate};
 
 #[test]
-fn connection_times_out_after_10_seconds() {
+fn connection_times_out_after_20_seconds() {
     let start = Instant::now();
 
-    let mut alice =
-        ClientNode::<u64>::new(StaticSecret::random_from_rng(rand::thread_rng()), start);
+    let (mut alice, _) = alice_and_bob(start);
 
     let _ = alice.new_connection(1, HashSet::new(), HashSet::new());
     alice.handle_timeout(start + Duration::from_secs(20));
@@ -25,9 +24,7 @@ fn connection_times_out_after_10_seconds() {
 fn answer_after_stale_connection_does_not_panic() {
     let start = Instant::now();
 
-    let mut alice =
-        ClientNode::<u64>::new(StaticSecret::random_from_rng(rand::thread_rng()), start);
-    let mut bob = ServerNode::<u64>::new(StaticSecret::random_from_rng(rand::thread_rng()), start);
+    let (mut alice, mut bob) = alice_and_bob(start);
 
     let offer = alice.new_connection(1, HashSet::new(), HashSet::new());
     let answer =
@@ -100,6 +97,13 @@ fn second_connection_with_same_relay_reuses_allocation() {
     );
 
     assert!(alice.poll_transmit().is_none());
+}
+
+fn alice_and_bob(start: Instant) -> (ClientNode<u64>, ServerNode<u64>) {
+    let alice = ClientNode::<u64>::new(StaticSecret::random_from_rng(rand::thread_rng()), start);
+    let bob = ServerNode::<u64>::new(StaticSecret::random_from_rng(rand::thread_rng()), start);
+
+    (alice, bob)
 }
 
 fn relay(username: &str, pass: &str, realm: &str) -> (SocketAddr, String, String, String) {
