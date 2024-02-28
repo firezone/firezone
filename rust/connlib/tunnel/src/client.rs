@@ -435,7 +435,9 @@ impl ClientState {
         self.gateway_awaiting_connection_timers.remove(gateway);
     }
 
-    pub fn on_connection_intent_dns(&mut self, resource: &DnsResource, now: Instant) {
+    fn on_connection_intent_dns(&mut self, resource: &DnsResource, now: Instant) {
+        tracing::trace!(address = %resource.address, "resource_connection_intent");
+
         self.on_connection_intent_to_resource(resource.id, Some(resource.address.clone()), now)
     }
 
