@@ -436,7 +436,7 @@ impl ClientState {
     }
 
     pub fn on_connection_intent_dns(&mut self, resource: &DnsResource, now: Instant) {
-        self.on_connection_intent_to_resource(resource.id, now)
+        self.on_connection_intent_to_resource(resource.id, Some(resource.address.clone()), now)
     }
 
     fn on_connection_intent_ip(&mut self, destination: IpAddr, now: Instant) {
@@ -454,10 +454,15 @@ impl ClientState {
             return;
         };
 
-        self.on_connection_intent_to_resource(resource_id, now)
+        self.on_connection_intent_to_resource(resource_id, None, now)
     }
 
-    fn on_connection_intent_to_resource(&mut self, resource: ResourceId, now: Instant) {
+    fn on_connection_intent_to_resource(
+        &mut self,
+        resource: ResourceId,
+        domain: Option<Dname>,
+        now: Instant,
+    ) {
         debug_assert!(self.resource_ids.contains_key(&resource));
 
         let gateways = self
@@ -477,7 +482,7 @@ impl ClientState {
             }
             Entry::Vacant(vacant) => {
                 vacant.insert(AwaitingConnectionDetails {
-                    domain: None,
+                    domain,
                     gateways: gateways.clone(),
                     last_intent_sent_at: now,
                 });
