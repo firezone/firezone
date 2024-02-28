@@ -516,7 +516,7 @@ where
                     req_id,
                     reason,
                 }))) => {
-                    tracing::warn!(target: "relay", "Request with ID {req_id} on topic {topic} failed: {reason}");
+                    tracing::warn!(target: "relay", "Request with ID {req_id} on topic {topic} failed: {reason:?}");
                     continue;
                 }
                 Some(Poll::Ready(Ok(Event::HeartbeatSent))) => {

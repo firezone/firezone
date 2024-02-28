@@ -309,6 +309,21 @@ pub enum ChannelError {
     ErrorMsg(Error),
 }
 
+#[derive(Debug, PartialEq, Eq, Clone, Deserialize, Serialize)]
+pub struct PhoenixMessage<T, R> {
+    // TODO: we should use a newtype pattern for topics
+    topic: String,
+    #[serde(flatten)]
+    payload: Payload<T, R>,
+    #[serde(rename = "ref")]
+    reference: Option<String>,
+}
+
+// Awful hack to get serde_json to generate an empty "{}" instead of using "null"
+#[derive(Debug, Deserialize, Serialize, PartialEq, Eq, Clone)]
+#[serde(deny_unknown_fields)]
+struct Empty {}
+
 #[derive(Debug, PartialEq, Eq, Deserialize, Serialize, Clone)]
 #[serde(rename_all = "snake_case", tag = "event", content = "payload")]
 enum Payload<T, R> {
@@ -329,14 +344,25 @@ enum Reply<T> {
     Error { reason: ErrorReply },
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Deserialize, Serialize)]
-pub struct PhoenixMessage<T, R> {
-    // TODO: we should use a newtype pattern for topics
-    topic: String,
-    #[serde(flatten)]
-    payload: Payload<T, R>,
-    #[serde(rename = "ref")]
-    reference: Option<String>,
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+#[serde(untagged)]
+enum OkReply<T> {
+    Message(T),
+    NoMessage(Empty),
+}
+
+/// This represents the info we have about the error
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ErrorReply {
+    #[serde(rename = "unmatched topic")]
+    UnmatchedTopic,
+    TokenExpired,
+    NotFound,
+    Offline,
+    Disabled,
+    #[serde(other)]
+    Other,
 }
 
 impl<T, R> PhoenixMessage<T, R> {
@@ -375,37 +401,11 @@ impl<T, R> PhoenixMessage<T, R> {
     }
 }
 
-// Awful hack to get serde_json to generate an empty "{}" instead of using "null"
-#[derive(Debug, Deserialize, Serialize, PartialEq, Eq, Clone)]
-#[serde(deny_unknown_fields)]
-struct Empty {}
-
 #[derive(Debug, Deserialize, Serialize, Clone)]
 #[serde(rename_all = "snake_case", tag = "event", content = "payload")]
 enum EgressControlMessage {
     PhxJoin(Empty),
     Heartbeat(Empty),
-}
-
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
-#[serde(untagged)]
-enum OkReply<T> {
-    Message(T),
-    NoMessage(Empty),
-}
-
-/// This represents the info we have about the error
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum ErrorReply {
-    #[serde(rename = "unmatched topic")]
-    UnmatchedTopic,
-    TokenExpired,
-    NotFound,
-    Offline,
-    Disabled,
-    #[serde(other)]
-    Other,
 }
 
 /// You can use this sender to send messages through a `PhoenixChannel`.

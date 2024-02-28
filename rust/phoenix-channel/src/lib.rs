@@ -344,9 +344,7 @@ where
                                 }))
                             }
                         },
-                        Payload::Reply(ReplyMessage::PhxReply(PhxReply::Error(
-                            ErrorInfo::Reason(reason),
-                        ))) => {
+                        Payload::PhxReply(Reply::Error { reason }) => {
                             return Poll::Ready(Ok(Event::ErrorResponse {
                                 topic: message.topic,
                                 req_id: OutboundRequestId(
@@ -355,9 +353,7 @@ where
                                 reason,
                             }));
                         }
-                        Payload::Reply(ReplyMessage::PhxReply(PhxReply::Ok(OkReply::Message(
-                            reply,
-                        )))) => {
+                        Payload::PhxReply(Reply::Ok(OkReply::Message(reply))) => {
                             let req_id =
                                 OutboundRequestId(message.reference.ok_or(Error::MissingReplyId)?);
 
@@ -376,18 +372,7 @@ where
                                 res: reply,
                             }));
                         }
-                        Payload::Reply(ReplyMessage::PhxReply(PhxReply::Error(
-                            ErrorInfo::Offline,
-                        ))) => {
-                            tracing::warn!(
-                                "Received offline error for request {:?}",
-                                message.reference
-                            );
-                            continue;
-                        }
-                        Payload::Reply(ReplyMessage::PhxReply(PhxReply::Ok(
-                            OkReply::NoMessage(Empty {}),
-                        ))) => {
+                        Payload::PhxReply(Reply::Ok(OkReply::NoMessage(Empty {}))) => {
                             let id =
                                 OutboundRequestId(message.reference.ok_or(Error::MissingReplyId)?);
 
@@ -402,20 +387,20 @@ where
 
                             continue;
                         }
-                        Payload::Reply(ReplyMessage::PhxError(Empty {})) => {
+                        Payload::PhxError(Empty {}) => {
                             return Poll::Ready(Ok(Event::ErrorResponse {
                                 topic: message.topic,
                                 req_id: OutboundRequestId(
                                     message.reference.ok_or(Error::MissingReplyId)?,
                                 ),
-                                reason: "unknown error (bad event?)".to_owned(),
+                                reason: ErrorReply::Other,
                             }))
                         }
-                        Payload::ControlMessage(ControlMessage::PhxClose(_)) => {
+                        Payload::PhxClose(Empty {}) => {
                             self.reconnect_on_transient_error(Error::CloseMessage);
                             continue;
                         }
-                        Payload::ControlMessage(ControlMessage::Disconnect { reason }) => {
+                        Payload::Disconnect { reason } => {
                             return Poll::Ready(Ok(Event::Disconnect(reason)));
                         }
                     }
@@ -523,7 +508,7 @@ pub enum Event<TInboundMsg, TOutboundRes> {
     ErrorResponse {
         topic: String,
         req_id: OutboundRequestId,
-        reason: String,
+        reason: ErrorReply,
     },
     /// The server sent us a message, most likely this is a broadcast to all connected clients.
     InboundMessage {
@@ -538,31 +523,60 @@ pub enum Event<TInboundMsg, TOutboundRes> {
     Disconnect(String),
 }
 
-#[derive(Debug, PartialEq, Eq, Deserialize, Serialize, Clone)]
-#[serde(untagged)]
-enum Payload<T, R> {
-    // We might want other type for the reply message
-    // but that makes everything even more convoluted!
-    // and we need to think how to make this whole mess less convoluted.
-    Reply(ReplyMessage<R>),
-    ControlMessage(ControlMessage),
-    Message(T),
-}
-
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
-#[serde(rename_all = "snake_case", tag = "event", content = "payload")]
-enum ControlMessage {
-    PhxClose(Empty),
-    Disconnect { reason: String },
-}
-
 #[derive(Debug, PartialEq, Eq, Clone, Deserialize, Serialize)]
 pub struct PhoenixMessage<T, R> {
+    // TODO: we should use a newtype pattern for topics
     topic: String,
     #[serde(flatten)]
     payload: Payload<T, R>,
     #[serde(rename = "ref")]
     reference: Option<u64>,
+}
+
+// Awful hack to get serde_json to generate an empty "{}" instead of using "null"
+#[derive(Debug, Deserialize, Serialize, PartialEq, Eq, Clone)]
+#[serde(deny_unknown_fields)]
+struct Empty {}
+
+#[derive(Debug, PartialEq, Eq, Deserialize, Serialize, Clone)]
+#[serde(rename_all = "snake_case", tag = "event", content = "payload")]
+enum Payload<T, R> {
+    PhxReply(Reply<R>),
+    PhxError(Empty),
+    PhxClose(Empty),
+    Disconnect {
+        reason: String,
+    },
+    #[serde(untagged)]
+    Message(T),
+}
+
+#[derive(Debug, PartialEq, Eq, Deserialize, Serialize, Clone)]
+#[serde(rename_all = "snake_case", tag = "status", content = "response")]
+enum Reply<T> {
+    Ok(OkReply<T>),
+    Error { reason: ErrorReply },
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+#[serde(untagged)]
+enum OkReply<T> {
+    Message(T),
+    NoMessage(Empty),
+}
+
+/// This represents the info we have about the error
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ErrorReply {
+    #[serde(rename = "unmatched topic")]
+    UnmatchedTopic,
+    TokenExpired,
+    NotFound,
+    Offline,
+    Disabled,
+    #[serde(other)]
+    Other,
 }
 
 impl<T, R> PhoenixMessage<T, R> {
@@ -609,44 +623,11 @@ fn make_request(secret_url: Secret<SecureUrl>, user_agent: String) -> Result<Req
     Ok(req)
 }
 
-// Awful hack to get serde_json to generate an empty "{}" instead of using "null"
-#[derive(Debug, Deserialize, Serialize, PartialEq, Eq, Clone)]
-#[serde(deny_unknown_fields)]
-struct Empty {}
-
 #[derive(Debug, Deserialize, Serialize, Clone)]
 #[serde(rename_all = "snake_case", tag = "event", content = "payload")]
 enum EgressControlMessage<T> {
     PhxJoin(T),
     Heartbeat(Empty),
-}
-
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
-#[serde(rename_all = "snake_case", tag = "event", content = "payload")]
-enum ReplyMessage<T> {
-    PhxReply(PhxReply<T>),
-    PhxError(Empty),
-}
-
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
-#[serde(untagged)]
-enum OkReply<T> {
-    Message(T),
-    NoMessage(Empty),
-}
-
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-enum ErrorInfo {
-    Reason(String),
-    Offline,
-}
-
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
-#[serde(rename_all = "snake_case", tag = "status", content = "response")]
-enum PhxReply<T> {
-    Ok(OkReply<T>),
-    Error(ErrorInfo),
 }
 
 #[cfg(test)]
@@ -662,14 +643,14 @@ mod tests {
     #[test]
     fn can_deserialize_inbound_message() {
         let msg = r#"{
-  "topic": "room:lobby",
-  "ref": null,
-  "payload": {
-    "hello": "world"
-  },
-  "join_ref": null,
-  "event": "shout"
-}"#;
+            "topic": "room:lobby",
+            "ref": null,
+            "payload": {
+                "hello": "world"
+            },
+            "join_ref": null,
+            "event": "shout"
+        }"#;
 
         let msg = serde_json::from_str::<PhoenixMessage<Msg, ()>>(msg).unwrap();
 
@@ -697,5 +678,103 @@ mod tests {
             msg.payload,
             Payload::Message(InitMessage::Init(EmptyInit {}))
         );
+    }
+
+    #[test]
+    fn unmatched_topic_reply() {
+        let actual_reply = r#"
+            {
+               "event": "phx_reply",
+               "ref": "12",
+               "topic": "client",
+               "payload":{
+                  "status": "error",
+                  "response":{
+                     "reason": "unmatched topic"
+                  }
+               }
+            }
+        "#;
+        let actual_reply: Payload<(), ()> = serde_json::from_str(actual_reply).unwrap();
+        let expected_reply = Payload::<(), ()>::PhxReply(Reply::Error {
+            reason: ErrorReply::UnmatchedTopic,
+        });
+        assert_eq!(actual_reply, expected_reply);
+    }
+
+    #[test]
+    fn phx_close() {
+        let actual_reply = r#"
+        {
+          "event": "phx_close",
+          "ref": null,
+          "topic": "client",
+          "payload": {}
+        }
+        "#;
+        let actual_reply: Payload<(), ()> = serde_json::from_str(actual_reply).unwrap();
+        let expected_reply = Payload::<(), ()>::PhxClose(Empty {});
+        assert_eq!(actual_reply, expected_reply);
+    }
+
+    #[test]
+    fn token_expired() {
+        let actual_reply = r#"
+        {
+          "event": "disconnect",
+          "ref": null,
+          "topic": "client",
+          "payload": { "reason": "token_expired" }
+        }
+        "#;
+        let actual_reply: Payload<(), ()> = serde_json::from_str(actual_reply).unwrap();
+        let expected_reply = Payload::<(), ()>::Disconnect {
+            reason: "token_expired".to_string(),
+        };
+        assert_eq!(actual_reply, expected_reply);
+    }
+
+    #[test]
+    fn not_found() {
+        let actual_reply = r#"
+        {
+            "event": "phx_reply",
+            "ref": null,
+            "topic": "client",
+            "payload": {
+                "status": "error",
+                "response": {
+                    "reason": "not_found"
+                }
+            }
+        }
+        "#;
+        let actual_reply: Payload<(), ()> = serde_json::from_str(actual_reply).unwrap();
+        let expected_reply = Payload::<(), ()>::PhxReply(Reply::Error {
+            reason: ErrorReply::NotFound,
+        });
+        assert_eq!(actual_reply, expected_reply);
+    }
+
+    #[test]
+    fn unexpected_error_reply() {
+        let actual_reply = r#"
+            {
+               "event": "phx_reply",
+               "ref": "12",
+               "topic": "client",
+               "payload": {
+                  "status": "error",
+                  "response": {
+                     "reason": "bad reply"
+                  }
+               }
+            }
+        "#;
+        let actual_reply: Payload<(), ()> = serde_json::from_str(actual_reply).unwrap();
+        let expected_reply = Payload::<(), ()>::PhxReply(Reply::Error {
+            reason: ErrorReply::Other,
+        });
+        assert_eq!(actual_reply, expected_reply);
     }
 }
