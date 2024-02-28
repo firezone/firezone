@@ -116,7 +116,7 @@ defmodule Web.AcceptanceCase do
         Wallaby.QueryError
       ] ->
         time_spent = now - started_at
-        max_wait_seconds = fetch_max_wait_seconds!()
+        max_wait_seconds = fetch_default_wait_seconds!()
 
         if time_spent > :timer.seconds(max_wait_seconds) do
           reraise(e, __STACKTRACE__)
@@ -130,33 +130,37 @@ defmodule Web.AcceptanceCase do
     end
   end
 
-  defp fetch_max_wait_seconds! do
-    if env = System.get_env("E2E_MAX_WAIT_SECONDS") do
+  defp fetch_default_wait_seconds! do
+    if env = System.get_env("E2E_DEFAULT_WAIT_SECONDS") do
       String.to_integer(env)
     else
       2
     end
   end
 
-  def wait_for(assertion_callback, started_at \\ nil) do
+  @doc """
+  Allows to wait for an assertion to be true or to extend the wait timeout for acceptance
+  assertions when we know the process is going to take a while.
+  """
+  def wait_for(assertion_callback, wait_seconds \\ nil, started_at \\ nil) do
     now = :erlang.monotonic_time(:milli_seconds)
     started_at = started_at || now
 
     try do
       assertion_callback.()
     rescue
-      e in [ExUnit.AssertionError] ->
+      e in [ExUnit.AssertionError, Wallaby.ExpectationNotMetError] ->
         time_spent = now - started_at
-        max_wait_seconds = fetch_max_wait_seconds!()
+        wait_seconds = wait_seconds || fetch_default_wait_seconds!()
 
-        if time_spent > :timer.seconds(max_wait_seconds) do
+        if time_spent > :timer.seconds(wait_seconds) do
           reraise(e, __STACKTRACE__)
         else
           floor(time_spent / 10)
           |> max(100)
           |> :timer.sleep()
 
-          wait_for(assertion_callback, started_at)
+          wait_for(assertion_callback, wait_seconds, started_at)
         end
     end
   end
