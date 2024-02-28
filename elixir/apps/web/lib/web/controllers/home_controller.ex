@@ -6,8 +6,10 @@ defmodule Web.HomeController do
     signed_in_account_ids = conn |> get_session("sessions", []) |> Enum.map(&elem(&1, 0))
 
     {accounts, conn} =
-      with {:ok, recent_account_ids, conn} <- Web.Auth.list_recent_account_ids(conn),
-           {:ok, accounts} <- Accounts.list_accounts_by_ids(recent_account_ids) do
+      with {:ok, recent_account_ids, conn} <- Web.Auth.list_recent_account_ids(conn) do
+        accounts = Accounts.all_accounts_by_ids(recent_account_ids)
+
+        # we remove all ids that are not returned by the query anymore
         conn =
           Web.Auth.update_recent_account_ids(conn, fn _recent_account_ids ->
             Enum.map(accounts, & &1.id)

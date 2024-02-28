@@ -8,19 +8,21 @@ defmodule Domain.Accounts do
     |> Repo.all()
   end
 
-  def list_accounts_by_ids(ids, opts \\ []) do
+  def all_accounts_by_ids(ids) do
     if Enum.all?(ids, &Validator.valid_uuid?/1) do
-      Account.Query.by_id({:in, ids})
-      |> Repo.list(Account.Query, opts)
+      Account.Query.not_deleted()
+      |> Account.Query.by_id({:in, ids})
+      |> Repo.all()
     else
-      {:ok, []}
+      []
     end
   end
 
   def fetch_account_by_id(id, %Auth.Subject{} = subject, opts \\ []) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_own_account_permission()),
          true <- Validator.valid_uuid?(id) do
-      Account.Query.by_id(id)
+      Account.Query.not_deleted()
+      |> Account.Query.by_id(id)
       |> Authorizer.for_subject(subject)
       |> Repo.fetch(Account.Query, opts)
     else
@@ -34,13 +36,14 @@ defmodule Domain.Accounts do
   def fetch_account_by_id_or_slug("", _opts), do: {:error, :not_found}
 
   def fetch_account_by_id_or_slug(id_or_slug, opts) do
-    id_or_slug
-    |> Account.Query.by_id_or_slug()
+    Account.Query.not_deleted()
+    |> Account.Query.by_id_or_slug(id_or_slug)
     |> Repo.fetch(Account.Query, opts)
   end
 
   def fetch_account_by_id!(id) do
-    Account.Query.by_id(id)
+    Account.Query.not_deleted()
+    |> Account.Query.by_id(id)
     |> Repo.one!()
   end
 
@@ -55,7 +58,8 @@ defmodule Domain.Accounts do
 
   def update_account(%Account{} = account, attrs, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_own_account_permission()) do
-      Account.Query.by_id(account.id)
+      Account.Query.not_deleted()
+      |> Account.Query.by_id(account.id)
       |> Authorizer.for_subject(subject)
       |> Repo.fetch_and_update(Account.Query,
         with: &Account.Changeset.update_profile_and_config(&1, attrs),
@@ -110,7 +114,11 @@ defmodule Domain.Accounts do
   def generate_unique_slug do
     slug_candidate = Domain.NameGenerator.generate_slug()
 
-    if Account.Query.by_slug(slug_candidate) |> Repo.exists?() do
+    queryable =
+      Account.Query.not_deleted()
+      |> Account.Query.by_slug(slug_candidate)
+
+    if Repo.exists?(queryable) do
       generate_unique_slug()
     else
       slug_candidate

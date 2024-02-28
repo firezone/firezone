@@ -14,7 +14,7 @@ defmodule Domain.Accounts.Account.Query do
     where(queryable, [accounts: accounts], is_nil(accounts.disabled_at))
   end
 
-  def by_id(queryable \\ not_deleted(), id)
+  def by_id(queryable, id)
 
   def by_id(queryable, {:in, ids}) do
     where(queryable, [accounts: accounts], accounts.id in ^ids)
@@ -32,11 +32,11 @@ defmodule Domain.Accounts.Account.Query do
     )
   end
 
-  def by_slug(queryable \\ not_deleted(), slug) do
+  def by_slug(queryable, slug) do
     where(queryable, [accounts: accounts], accounts.slug == ^slug)
   end
 
-  def by_id_or_slug(queryable \\ not_deleted(), id_or_slug) do
+  def by_id_or_slug(queryable, id_or_slug) do
     if Validator.valid_uuid?(id_or_slug) do
       by_id(queryable, id_or_slug)
     else
