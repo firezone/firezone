@@ -65,9 +65,9 @@ defmodule Web do
         end
       end
 
-      # and we ignore Domain.Tokens disconnect messages as they will be handled by the socket itself
+      # ignore "disconnect" message that is broadcasted for some pages
+      # because of subscription for relay/gateway group events
       def handle_info("disconnect", socket) do
-        send(socket.transport_pid, {:socket_close, self(), :disconnect})
         {:noreply, socket}
       end
     end
