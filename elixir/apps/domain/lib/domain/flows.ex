@@ -79,7 +79,8 @@ defmodule Domain.Flows do
   def fetch_flow_by_id(id, %Auth.Subject{} = subject, opts \\ []) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_flows_permission()),
          true <- Validator.valid_uuid?(id) do
-      Flow.Query.by_id(id)
+      Flow.Query.all()
+      |> Flow.Query.by_id(id)
       |> Authorizer.for_subject(Flow, subject)
       |> Repo.fetch(Flow.Query, opts)
     else
@@ -91,27 +92,32 @@ defmodule Domain.Flows do
   def list_flows_for(assoc, subject, opts \\ [])
 
   def list_flows_for(%Policies.Policy{} = policy, %Auth.Subject{} = subject, opts) do
-    Flow.Query.by_policy_id(policy.id)
+    Flow.Query.all()
+    |> Flow.Query.by_policy_id(policy.id)
     |> list_flows(subject, opts)
   end
 
   def list_flows_for(%Resources.Resource{} = resource, %Auth.Subject{} = subject, opts) do
-    Flow.Query.by_resource_id(resource.id)
+    Flow.Query.all()
+    |> Flow.Query.by_resource_id(resource.id)
     |> list_flows(subject, opts)
   end
 
   def list_flows_for(%Clients.Client{} = client, %Auth.Subject{} = subject, opts) do
-    Flow.Query.by_client_id(client.id)
+    Flow.Query.all()
+    |> Flow.Query.by_client_id(client.id)
     |> list_flows(subject, opts)
   end
 
   def list_flows_for(%Actors.Actor{} = actor, %Auth.Subject{} = subject, opts) do
-    Flow.Query.by_actor_id(actor.id)
+    Flow.Query.all()
+    |> Flow.Query.by_actor_id(actor.id)
     |> list_flows(subject, opts)
   end
 
   def list_flows_for(%Gateways.Gateway{} = gateway, %Auth.Subject{} = subject, opts) do
-    Flow.Query.by_gateway_id(gateway.id)
+    Flow.Query.all()
+    |> Flow.Query.by_gateway_id(gateway.id)
     |> list_flows(subject, opts)
   end
 
@@ -139,7 +145,8 @@ defmodule Domain.Flows do
         %Auth.Subject{} = subject,
         opts
       ) do
-    Activity.Query.by_flow_id(flow.id)
+    Activity.Query.all()
+    |> Activity.Query.by_flow_id(flow.id)
     |> list_activities(ended_after, started_before, subject, opts)
   end
 
@@ -150,7 +157,8 @@ defmodule Domain.Flows do
         %Auth.Subject{} = subject,
         opts
       ) do
-    Activity.Query.by_account_id(account.id)
+    Activity.Query.all()
+    |> Activity.Query.by_account_id(account.id)
     |> list_activities(ended_after, started_before, subject, opts)
   end
 
@@ -166,52 +174,62 @@ defmodule Domain.Flows do
   end
 
   def expire_flows_for(%Auth.Identity{} = identity) do
-    Flow.Query.by_identity_id(identity.id)
+    Flow.Query.all()
+    |> Flow.Query.by_identity_id(identity.id)
     |> expire_flows()
   end
 
   def expire_flows_for(%Actors.Group{} = actor_group) do
-    Flow.Query.by_policy_actor_group_id(actor_group.id)
+    Flow.Query.all()
+    |> Flow.Query.by_policy_actor_group_id(actor_group.id)
     |> expire_flows()
   end
 
   def expire_flows_for(%Tokens.Token{} = token, %Auth.Subject{} = subject) do
-    Flow.Query.by_token_id(token.id)
+    Flow.Query.all()
+    |> Flow.Query.by_token_id(token.id)
     |> expire_flows(subject)
   end
 
   def expire_flows_for(%Actors.Actor{} = actor, %Auth.Subject{} = subject) do
-    Flow.Query.by_actor_id(actor.id)
+    Flow.Query.all()
+    |> Flow.Query.by_actor_id(actor.id)
     |> expire_flows(subject)
   end
 
   def expire_flows_for(%Auth.Identity{} = identity, %Auth.Subject{} = subject) do
-    Flow.Query.by_identity_id(identity.id)
+    Flow.Query.all()
+    |> Flow.Query.by_identity_id(identity.id)
     |> expire_flows(subject)
   end
 
   def expire_flows_for(%Policies.Policy{} = policy, %Auth.Subject{} = subject) do
-    Flow.Query.by_policy_id(policy.id)
+    Flow.Query.all()
+    |> Flow.Query.by_policy_id(policy.id)
     |> expire_flows(subject)
   end
 
   def expire_flows_for(%Resources.Resource{} = resource, %Auth.Subject{} = subject) do
-    Flow.Query.by_resource_id(resource.id)
+    Flow.Query.all()
+    |> Flow.Query.by_resource_id(resource.id)
     |> expire_flows(subject)
   end
 
   def expire_flows_for(%Actors.Group{} = actor_group, %Auth.Subject{} = subject) do
-    Flow.Query.by_policy_actor_group_id(actor_group.id)
+    Flow.Query.all()
+    |> Flow.Query.by_policy_actor_group_id(actor_group.id)
     |> expire_flows(subject)
   end
 
   def expire_flows_for(%Auth.Provider{} = provider, %Auth.Subject{} = subject) do
-    Flow.Query.by_identity_provider_id(provider.id)
+    Flow.Query.all()
+    |> Flow.Query.by_identity_provider_id(provider.id)
     |> expire_flows(subject)
   end
 
   def expire_flows_for(actor_id, group_id) do
-    Flow.Query.by_actor_id(actor_id)
+    Flow.Query.all()
+    |> Flow.Query.by_actor_id(actor_id)
     |> Flow.Query.by_policy_actor_group_id(group_id)
     |> expire_flows()
   end

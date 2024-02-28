@@ -223,7 +223,7 @@ defmodule Domain.FlowsTest do
     end
   end
 
-  describe "fetch_flow_by_id/2" do
+  describe "fetch_flow_by_id/3" do
     test "returns error when flow does not exist", %{subject: subject} do
       assert fetch_flow_by_id(Ecto.UUID.generate(), subject) == {:error, :not_found}
     end
@@ -306,7 +306,7 @@ defmodule Domain.FlowsTest do
     end
   end
 
-  describe "list_flows_for/2" do
+  describe "list_flows_for/3" do
     test "returns empty list when there are no flows", %{
       actor: actor,
       client: client,
