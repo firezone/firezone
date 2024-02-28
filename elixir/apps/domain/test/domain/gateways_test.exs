@@ -17,7 +17,28 @@ defmodule Domain.GatewaysTest do
     }
   end
 
-  describe "fetch_group_by_id/2" do
+  describe "count_groups_for_account/1" do
+    test "returns 0 when there are no groups", %{account: account} do
+      assert count_groups_for_account(account) == 0
+    end
+
+    test "returns count of groups for an account", %{account: account} do
+      Fixtures.Gateways.create_group(account: account)
+      Fixtures.Gateways.create_group(account: account)
+      Fixtures.Gateways.create_group()
+
+      assert count_groups_for_account(account) == 2
+    end
+
+    test "does not count deleted groups", %{account: account} do
+      Fixtures.Gateways.create_group(account: account)
+      |> Fixtures.Gateways.delete_group()
+
+      assert count_groups_for_account(account) == 0
+    end
+  end
+
+  describe "fetch_group_by_id/3" do
     test "returns error when UUID is invalid", %{subject: subject} do
       assert fetch_group_by_id("foo", subject) == {:error, :not_found}
     end
@@ -74,7 +95,7 @@ defmodule Domain.GatewaysTest do
     end
   end
 
-  describe "list_groups/1" do
+  describe "list_groups/2" do
     test "returns empty list when there are no groups", %{subject: subject} do
       assert {:ok, [], _metadata} = list_groups(subject)
     end
@@ -526,7 +547,7 @@ defmodule Domain.GatewaysTest do
     end
   end
 
-  describe "fetch_gateway_by_id/2" do
+  describe "fetch_gateway_by_id/3" do
     test "returns error when UUID is invalid", %{subject: subject} do
       assert fetch_gateway_by_id("foo", subject) == {:error, :not_found}
     end
@@ -595,7 +616,7 @@ defmodule Domain.GatewaysTest do
     end
   end
 
-  describe "list_gateways/1" do
+  describe "list_gateways/2" do
     test "returns empty list when there are no gateways", %{subject: subject} do
       assert {:ok, [], _metadata} = list_gateways(subject)
     end
@@ -655,8 +676,11 @@ defmodule Domain.GatewaysTest do
     end
   end
 
-  describe "list_connected_gateways_for_resource/1" do
-    test "returns empty list when there are no online gateways", %{account: account} do
+  describe "list_connected_gateways_for_resource/3" do
+    test "returns empty list when there are no online gateways", %{
+      account: account,
+      subject: subject
+    } do
       resource = Fixtures.Resources.create_resource(account: account)
 
       Fixtures.Gateways.create_gateway(account: account)
@@ -664,10 +688,13 @@ defmodule Domain.GatewaysTest do
       Fixtures.Gateways.create_gateway(account: account)
       |> Fixtures.Gateways.delete_gateway()
 
-      assert list_connected_gateways_for_resource(resource) == {:ok, []}
+      assert list_connected_gateways_for_resource(resource, subject) == {:ok, []}
     end
 
-    test "returns list of connected gateways for a given resource", %{account: account} do
+    test "returns list of connected gateways for a given resource", %{
+      account: account,
+      subject: subject
+    } do
       gateway = Fixtures.Gateways.create_gateway(account: account)
 
       resource =
@@ -678,19 +705,20 @@ defmodule Domain.GatewaysTest do
 
       assert connect_gateway(gateway) == :ok
 
-      assert {:ok, [connected_gateway]} = list_connected_gateways_for_resource(resource)
+      assert {:ok, [connected_gateway]} = list_connected_gateways_for_resource(resource, subject)
       assert connected_gateway.id == gateway.id
     end
 
     test "does not return connected gateways that are not connected to given resource", %{
-      account: account
+      account: account,
+      subject: subject
     } do
       resource = Fixtures.Resources.create_resource(account: account)
       gateway = Fixtures.Gateways.create_gateway(account: account)
 
       assert connect_gateway(gateway) == :ok
 
-      assert list_connected_gateways_for_resource(resource) == {:ok, []}
+      assert list_connected_gateways_for_resource(resource, subject) == {:ok, []}
     end
   end
 
@@ -1218,6 +1246,53 @@ defmodule Domain.GatewaysTest do
 
       assert connect_gateway(gateway) == :ok
       assert {:error, {:already_tracked, _pid, _topic, _key}} = connect_gateway(gateway)
+    end
+
+    test "tracks gateway presence for account", %{account: account} do
+      gateway = Fixtures.Gateways.create_gateway(account: account)
+      assert connect_gateway(gateway) == :ok
+
+      gateway = fetch_gateway_by_id!(gateway.id, preload: [:online?])
+      assert gateway.online? == true
+    end
+
+    test "tracks gateway presence for actor", %{account: account} do
+      gateway = Fixtures.Gateways.create_gateway(account: account)
+      assert connect_gateway(gateway) == :ok
+
+      assert broadcast_to_gateway(gateway, "test") == :ok
+
+      assert_receive "test"
+    end
+
+    test "subscribes to gateway events", %{account: account} do
+      gateway = Fixtures.Gateways.create_gateway(account: account)
+      assert connect_gateway(gateway) == :ok
+
+      assert disconnect_gateway(gateway) == :ok
+
+      assert_receive "disconnect"
+    end
+
+    test "subscribes to gateway group events", %{account: account} do
+      group = Fixtures.Gateways.create_group(account: account)
+      gateway = Fixtures.Gateways.create_gateway(account: account, group: group)
+
+      assert connect_gateway(gateway) == :ok
+
+      assert disconnect_gateways_in_group(group) == :ok
+
+      assert_receive "disconnect"
+    end
+
+    test "subscribes to account events", %{account: account} do
+      gateway = Fixtures.Gateways.create_gateway(account: account)
+
+      assert connect_gateway(gateway) == :ok
+
+      assert disconnect_gateways_in_account(account) == :ok
+
+      assert_receive "disconnect"
     end
   end
 end

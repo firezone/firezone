@@ -17,7 +17,8 @@ defmodule Domain.Gateways do
   end
 
   def count_groups_for_account(%Accounts.Account{} = account) do
-    Group.Query.by_account_id(account.id)
+    Group.Query.not_deleted()
+    |> Group.Query.by_account_id(account.id)
     |> Repo.aggregate(:count)
   end
 
@@ -66,7 +67,8 @@ defmodule Domain.Gateways do
 
   def update_group(%Group{} = group, attrs, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_gateways_permission()) do
-      Group.Query.by_id(group.id)
+      Group.Query.not_deleted()
+      |> Group.Query.by_id(group.id)
       |> Authorizer.for_subject(subject)
       |> Repo.fetch_and_update(
         Group.Query,
@@ -82,7 +84,8 @@ defmodule Domain.Gateways do
 
   def delete_group(%Group{} = group, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_gateways_permission()) do
-      Group.Query.by_id(group.id)
+      Group.Query.not_deleted()
+      |> Group.Query.by_id(group.id)
       |> Authorizer.for_subject(subject)
       |> Repo.fetch_and_update(Group.Query,
         with: fn group ->
@@ -90,7 +93,8 @@ defmodule Domain.Gateways do
           {:ok, _count} = Resources.delete_connections_for(group, subject)
 
           {_count, _} =
-            Gateway.Query.by_group_id(group.id)
+            Gateway.Query.not_deleted()
+            |> Gateway.Query.by_group_id(group.id)
             |> Repo.update_all(set: [deleted_at: DateTime.utc_now()])
 
           Group.Changeset.delete(group)
@@ -123,7 +127,7 @@ defmodule Domain.Gateways do
 
   def authenticate(encoded_token, %Auth.Context{} = context) when is_binary(encoded_token) do
     with {:ok, token} <- Tokens.use_token(encoded_token, context),
-         queryable = Group.Query.by_id(token.gateway_group_id),
+         queryable = Group.Query.not_deleted() |> Group.Query.by_id(token.gateway_group_id),
          {:ok, group} <- Repo.fetch(queryable, Group.Query, []) do
       {:ok, group, token}
     else
@@ -153,7 +157,8 @@ defmodule Domain.Gateways do
   end
 
   def fetch_gateway_by_id!(id, opts \\ []) do
-    Gateway.Query.by_id(id)
+    Gateway.Query.not_deleted()
+    |> Gateway.Query.by_id(id)
     |> Repo.fetch!(Gateway.Query, opts)
   end
 
@@ -207,12 +212,11 @@ defmodule Domain.Gateways do
   # TODO: this should be replaced with a filter in list_gateways
   def list_connected_gateways_for_group(%Group{} = group, %Auth.Subject{} = subject, opts \\ []) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_gateways_permission()) do
-      connected_gateways = group.id |> group_presence_topic() |> Presence.list()
+      connected_gateways_ids = group.id |> group_presence_topic() |> Presence.list() |> Map.keys()
 
       {:ok, gateways} =
-        connected_gateways
-        |> Map.keys()
-        |> Gateway.Query.by_ids()
+        Gateway.Query.not_deleted()
+        |> Gateway.Query.by_ids(connected_gateways_ids)
         |> Gateway.Query.by_group_id(group.id)
         |> Authorizer.for_subject(subject)
         |> Repo.list(Gateway.Query, opts)
@@ -224,25 +228,34 @@ defmodule Domain.Gateways do
     end
   end
 
-  # TODO: add subject
-  def list_connected_gateways_for_resource(%Resources.Resource{} = resource, opts \\ []) do
-    {preload, _opts} = Keyword.pop(opts, :preload, [])
-    connected_gateways = resource.account_id |> account_presence_topic() |> Presence.list()
+  def list_connected_gateways_for_resource(
+        %Resources.Resource{} = resource,
+        %Auth.Subject{} = subject,
+        opts \\ []
+      ) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.connect_gateways_permission()) do
+      {preload, _opts} = Keyword.pop(opts, :preload, [])
 
-    gateways =
-      connected_gateways
-      |> Map.keys()
-      # TODO: This will create a pretty large query to send to Postgres,
-      # we probably want to load connected resources once when gateway connects,
-      # and persist them in the memory not to query DB every time with a
-      # `WHERE ... IN (...)`.
-      |> Gateway.Query.by_ids()
-      |> Gateway.Query.by_account_id(resource.account_id)
-      |> Gateway.Query.by_resource_id(resource.id)
-      |> Repo.all()
-      |> Repo.preload(preload)
+      connected_gateway_ids =
+        resource.account_id
+        |> account_presence_topic()
+        |> Presence.list()
+        |> Map.keys()
 
-    {:ok, gateways}
+      gateways =
+        Gateway.Query.not_deleted()
+        # TODO: This will create a pretty large query to send to Postgres,
+        # we probably want to load connected resources once when gateway connects,
+        # and persist them in the memory not to query DB every time with a
+        # `WHERE ... IN (...)`.
+        |> Gateway.Query.by_ids(connected_gateway_ids)
+        |> Gateway.Query.by_account_id(resource.account_id)
+        |> Gateway.Query.by_resource_id(resource.id)
+        |> Repo.all()
+        |> Repo.preload(preload)
+
+      {:ok, gateways}
+    end
   end
 
   def gateway_can_connect_to_resource?(%Gateway{} = gateway, %Resources.Resource{} = resource) do
@@ -302,7 +315,8 @@ defmodule Domain.Gateways do
 
   def update_gateway(%Gateway{} = gateway, attrs, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_gateways_permission()) do
-      Gateway.Query.by_id(gateway.id)
+      Gateway.Query.not_deleted()
+      |> Gateway.Query.by_id(gateway.id)
       |> Authorizer.for_subject(subject)
       |> Repo.fetch_and_update(Gateway.Query,
         with: &Gateway.Changeset.update(&1, attrs),
@@ -313,7 +327,8 @@ defmodule Domain.Gateways do
 
   def delete_gateway(%Gateway{} = gateway, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_gateways_permission()) do
-      Gateway.Query.by_id(gateway.id)
+      Gateway.Query.not_deleted()
+      |> Gateway.Query.by_id(gateway.id)
       |> Authorizer.for_subject(subject)
       |> Repo.fetch_and_update(Gateway.Query,
         with: &Gateway.Changeset.delete/1,
@@ -445,11 +460,21 @@ defmodule Domain.Gateways do
     |> PubSub.broadcast(payload)
   end
 
+  defp broadcast_to_gateways_in_account(account_or_id, payload) do
+    account_or_id
+    |> account_topic()
+    |> PubSub.broadcast(payload)
+  end
+
   def disconnect_gateway(gateway_or_id) do
     broadcast_to_gateway(gateway_or_id, "disconnect")
   end
 
   def disconnect_gateways_in_group(group_or_id) do
     broadcast_to_gateways_in_group(group_or_id, "disconnect")
+  end
+
+  def disconnect_gateways_in_account(account_or_id) do
+    broadcast_to_gateways_in_account(account_or_id, "disconnect")
   end
 end
