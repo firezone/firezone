@@ -344,7 +344,7 @@ where
                                 }))
                             }
                         },
-                        Payload::PhxReply(Reply::Error { reason }) => {
+                        Payload::Reply(Reply::Error { reason }) => {
                             return Poll::Ready(Ok(Event::ErrorResponse {
                                 topic: message.topic,
                                 req_id: OutboundRequestId(
@@ -353,7 +353,7 @@ where
                                 reason,
                             }));
                         }
-                        Payload::PhxReply(Reply::Ok(OkReply::Message(reply))) => {
+                        Payload::Reply(Reply::Ok(OkReply::Message(reply))) => {
                             let req_id =
                                 OutboundRequestId(message.reference.ok_or(Error::MissingReplyId)?);
 
@@ -372,7 +372,7 @@ where
                                 res: reply,
                             }));
                         }
-                        Payload::PhxReply(Reply::Ok(OkReply::NoMessage(Empty {}))) => {
+                        Payload::Reply(Reply::Ok(OkReply::NoMessage(Empty {}))) => {
                             let id =
                                 OutboundRequestId(message.reference.ok_or(Error::MissingReplyId)?);
 
@@ -387,7 +387,7 @@ where
 
                             continue;
                         }
-                        Payload::PhxError(Empty {}) => {
+                        Payload::Error(Empty {}) => {
                             return Poll::Ready(Ok(Event::ErrorResponse {
                                 topic: message.topic,
                                 req_id: OutboundRequestId(
@@ -396,7 +396,7 @@ where
                                 reason: ErrorReply::Other,
                             }))
                         }
-                        Payload::PhxClose(Empty {}) => {
+                        Payload::Close(Empty {}) => {
                             self.reconnect_on_transient_error(Error::CloseMessage);
                             continue;
                         }
@@ -533,23 +533,25 @@ pub struct PhoenixMessage<T, R> {
     reference: Option<u64>,
 }
 
+#[derive(Debug, PartialEq, Eq, Deserialize, Serialize, Clone)]
+#[serde(tag = "event", content = "payload")]
+enum Payload<T, R> {
+    #[serde(rename = "phx_reply")]
+    Reply(Reply<R>),
+    #[serde(rename = "phx_error")]
+    Error(Empty),
+    #[serde(rename = "phx_close")]
+    Close(Empty),
+    #[serde(rename = "disconnect")]
+    Disconnect { reason: String },
+    #[serde(untagged)]
+    Message(T),
+}
+
 // Awful hack to get serde_json to generate an empty "{}" instead of using "null"
 #[derive(Debug, Deserialize, Serialize, PartialEq, Eq, Clone)]
 #[serde(deny_unknown_fields)]
 struct Empty {}
-
-#[derive(Debug, PartialEq, Eq, Deserialize, Serialize, Clone)]
-#[serde(rename_all = "snake_case", tag = "event", content = "payload")]
-enum Payload<T, R> {
-    PhxReply(Reply<R>),
-    PhxError(Empty),
-    PhxClose(Empty),
-    Disconnect {
-        reason: String,
-    },
-    #[serde(untagged)]
-    Message(T),
-}
 
 #[derive(Debug, PartialEq, Eq, Deserialize, Serialize, Clone)]
 #[serde(rename_all = "snake_case", tag = "status", content = "response")]
@@ -696,7 +698,7 @@ mod tests {
             }
         "#;
         let actual_reply: Payload<(), ()> = serde_json::from_str(actual_reply).unwrap();
-        let expected_reply = Payload::<(), ()>::PhxReply(Reply::Error {
+        let expected_reply = Payload::<(), ()>::Reply(Reply::Error {
             reason: ErrorReply::UnmatchedTopic,
         });
         assert_eq!(actual_reply, expected_reply);
@@ -713,7 +715,7 @@ mod tests {
         }
         "#;
         let actual_reply: Payload<(), ()> = serde_json::from_str(actual_reply).unwrap();
-        let expected_reply = Payload::<(), ()>::PhxClose(Empty {});
+        let expected_reply = Payload::<(), ()>::Close(Empty {});
         assert_eq!(actual_reply, expected_reply);
     }
 
@@ -750,7 +752,7 @@ mod tests {
         }
         "#;
         let actual_reply: Payload<(), ()> = serde_json::from_str(actual_reply).unwrap();
-        let expected_reply = Payload::<(), ()>::PhxReply(Reply::Error {
+        let expected_reply = Payload::<(), ()>::Reply(Reply::Error {
             reason: ErrorReply::NotFound,
         });
         assert_eq!(actual_reply, expected_reply);
@@ -772,7 +774,7 @@ mod tests {
             }
         "#;
         let actual_reply: Payload<(), ()> = serde_json::from_str(actual_reply).unwrap();
-        let expected_reply = Payload::<(), ()>::PhxReply(Reply::Error {
+        let expected_reply = Payload::<(), ()>::Reply(Reply::Error {
             reason: ErrorReply::Other,
         });
         assert_eq!(actual_reply, expected_reply);

@@ -216,7 +216,7 @@ where
                     Payload::Message(payload) => {
                         handler(Ok(payload.into()), m.reference, m.topic).await
                     }
-                    Payload::PhxReply(status) => match status {
+                    Payload::Reply(status) => match status {
                         // TODO: Here we should pass error info to a subscriber
                         Reply::Error { reason } => {
                             tracing::debug!("Portal error: {reason:?}");
@@ -232,8 +232,8 @@ where
                             }
                         },
                     },
-                    Payload::PhxError(_) => {}
-                    Payload::PhxClose(Empty {}) => return Err(Error::ClosedByPortal),
+                    Payload::Error(_) => {}
+                    Payload::Close(Empty {}) => return Err(Error::ClosedByPortal),
                     Payload::Disconnect { reason: _reason } => {
                         // TODO: pass the _reason up to the client so it can print a pertinent user message
                         handler(
@@ -319,23 +319,25 @@ pub struct PhoenixMessage<T, R> {
     reference: Option<String>,
 }
 
+#[derive(Debug, PartialEq, Eq, Deserialize, Serialize, Clone)]
+#[serde(tag = "event", content = "payload")]
+enum Payload<T, R> {
+    #[serde(rename = "phx_reply")]
+    Reply(Reply<R>),
+    #[serde(rename = "phx_error")]
+    Error(Empty),
+    #[serde(rename = "phx_close")]
+    Close(Empty),
+    #[serde(rename = "disconnect")]
+    Disconnect { reason: String },
+    #[serde(untagged)]
+    Message(T),
+}
+
 // Awful hack to get serde_json to generate an empty "{}" instead of using "null"
 #[derive(Debug, Deserialize, Serialize, PartialEq, Eq, Clone)]
 #[serde(deny_unknown_fields)]
 struct Empty {}
-
-#[derive(Debug, PartialEq, Eq, Deserialize, Serialize, Clone)]
-#[serde(rename_all = "snake_case", tag = "event", content = "payload")]
-enum Payload<T, R> {
-    PhxReply(Reply<R>),
-    PhxError(Empty),
-    PhxClose(Empty),
-    Disconnect {
-        reason: String,
-    },
-    #[serde(untagged)]
-    Message(T),
-}
 
 #[derive(Debug, PartialEq, Eq, Deserialize, Serialize, Clone)]
 #[serde(rename_all = "snake_case", tag = "status", content = "response")]
@@ -382,7 +384,7 @@ impl<T, R> PhoenixMessage<T, R> {
         Self {
             topic: topic.into(),
             // There has to be a better way :\
-            payload: Payload::PhxReply(Reply::Ok(OkReply::Message(payload))),
+            payload: Payload::Reply(Reply::Ok(OkReply::Message(payload))),
             reference: reference.into(),
         }
     }
@@ -395,7 +397,7 @@ impl<T, R> PhoenixMessage<T, R> {
         Self {
             topic: topic.into(),
             // There has to be a better way :\
-            payload: Payload::PhxReply(Reply::Error { reason }),
+            payload: Payload::Reply(Reply::Error { reason }),
             reference: reference.into(),
         }
     }
@@ -526,7 +528,7 @@ mod tests {
             }
         "#;
         let actual_reply: Payload<(), ()> = serde_json::from_str(actual_reply).unwrap();
-        let expected_reply = Payload::<(), ()>::PhxReply(Reply::Error {
+        let expected_reply = Payload::<(), ()>::Reply(Reply::Error {
             reason: ErrorReply::UnmatchedTopic,
         });
         assert_eq!(actual_reply, expected_reply);
@@ -543,7 +545,7 @@ mod tests {
         }
         "#;
         let actual_reply: Payload<(), ()> = serde_json::from_str(actual_reply).unwrap();
-        let expected_reply = Payload::<(), ()>::PhxClose(Empty {});
+        let expected_reply = Payload::<(), ()>::Close(Empty {});
         assert_eq!(actual_reply, expected_reply);
     }
 
@@ -580,7 +582,7 @@ mod tests {
         }
         "#;
         let actual_reply: Payload<(), ()> = serde_json::from_str(actual_reply).unwrap();
-        let expected_reply = Payload::<(), ()>::PhxReply(Reply::Error {
+        let expected_reply = Payload::<(), ()>::Reply(Reply::Error {
             reason: ErrorReply::NotFound,
         });
         assert_eq!(actual_reply, expected_reply);
@@ -602,7 +604,7 @@ mod tests {
             }
         "#;
         let actual_reply: Payload<(), ()> = serde_json::from_str(actual_reply).unwrap();
-        let expected_reply = Payload::<(), ()>::PhxReply(Reply::Error {
+        let expected_reply = Payload::<(), ()>::Reply(Reply::Error {
             reason: ErrorReply::Other,
         });
         assert_eq!(actual_reply, expected_reply);
