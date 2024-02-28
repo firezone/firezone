@@ -30,6 +30,7 @@ use std::borrow::Cow;
 use std::iter;
 use std::ops::ControlFlow;
 use stun_codec::rfc5389::attributes::{Realm, Username};
+use tracing::{field, Span};
 
 // Note: Taken from boringtun
 const HANDSHAKE_RATE_LIMIT: u64 = 100;
@@ -193,6 +194,7 @@ where
     ///
     /// To do that, we need to check all candidates of each allocation and compare their IP.
     /// The same relay might be reachable over IPv4 and IPv6.
+    #[must_use]
     fn same_relay_as_peer(&mut self, id: TId, candidate: &Candidate) -> Option<&mut Allocation> {
         self.allocations
             .iter_mut()
@@ -272,6 +274,9 @@ where
             .get_established_mut(&connection)
             .ok_or(Error::NotConnected)?;
 
+        // Must bail early if we don't have a socket yet to avoid running into WG timeouts.
+        let socket = conn.peer_socket.ok_or(Error::NotConnected)?;
+
         let (header, payload) = self.buffer.as_mut().split_at_mut(4);
 
         let packet_len = match conn.tunnel.encapsulate(packet.packet(), payload) {
@@ -285,7 +290,7 @@ where
 
         let packet = &payload[..packet_len];
 
-        match conn.peer_socket.ok_or(Error::NotConnected)? {
+        match socket {
             PeerSocket::Direct {
                 dest: remote,
                 source,
@@ -321,6 +326,7 @@ where
     }
 
     /// Returns a pending [`Event`] from the pool.
+    #[must_use]
     pub fn poll_event(&mut self) -> Option<Event<TId>> {
         let binding_events = self.bindings.iter_mut().flat_map(|(server, binding)| {
             iter::from_fn(|| binding.poll_event().map(|e| (*server, e)))
@@ -367,10 +373,7 @@ where
                         ..
                     } => {
                         let candidate = conn
-                            .agent
-                            .local_candidates()
-                            .iter()
-                            .find(|c| c.addr() == source)
+                            .local_candidate(source)
                             .expect("to only nominate existing candidates");
 
                         let remote_socket = match candidate.kind() {
@@ -410,7 +413,15 @@ where
                             tracing::info!(old = ?conn.peer_socket, new = ?remote_socket, "Updating remote socket");
                             conn.peer_socket = Some(remote_socket);
 
+                            conn.invalidate_candiates();
+
                             if is_first_connection {
+                                tracing::info!(%id, "Starting wireguard handshake");
+
+                                self.buffered_transmits.extend(
+                                    conn.force_handshake(&mut self.allocations, self.last_now),
+                                );
+
                                 return Some(Event::ConnectionEstablished(id));
                             }
                         }
@@ -434,6 +445,7 @@ where
     ///
     /// This function only takes `&mut self` because it caches certain computations internally.
     /// The returned timestamp will **not** change unless other state is modified.
+    #[must_use]
     pub fn poll_timeout(&mut self) -> Option<Instant> {
         let mut connection_timeout = None;
 
@@ -513,6 +525,7 @@ where
     }
 
     /// Returns buffered data that needs to be sent on the socket.
+    #[must_use]
     pub fn poll_transmit(&mut self) -> Option<Transmit<'static>> {
         for (_, conn) in self.connections.iter_established_mut() {
             if let Some(transmit) = conn.poll_transmit(&mut self.allocations, self.last_now) {
@@ -535,6 +548,7 @@ where
         self.buffered_transmits.pop_front()
     }
 
+    #[must_use]
     fn init_connection(
         &mut self,
         mut agent: IceAgent,
@@ -588,6 +602,7 @@ where
         Ok(())
     }
 
+    #[must_use]
     fn bindings_try_handle(
         &mut self,
         from: SocketAddr,
@@ -609,6 +624,7 @@ where
     }
 
     /// Tries to handle the packet using one of our [`Allocation`]s.
+    #[must_use]
     fn allocations_try_handle<'p>(
         &mut self,
         from: SocketAddr,
@@ -645,6 +661,7 @@ where
         }
     }
 
+    #[must_use]
     fn agents_try_handle(
         &mut self,
         from: SocketAddr,
@@ -677,6 +694,7 @@ where
         }))
     }
 
+    #[must_use]
     fn connections_try_handle<'b>(
         &mut self,
         from: SocketAddr,
@@ -762,6 +780,7 @@ where
     /// Out of all configured STUN and TURN servers, the connection will only use the ones provided here.
     /// The returned [`Offer`] must be passed to the remote via a signalling channel.
     #[tracing::instrument(level = "info", skip_all, fields(%id))]
+    #[must_use]
     pub fn new_connection(
         &mut self,
         id: TId,
@@ -812,11 +831,13 @@ where
 
         debug_assert!(existing.is_none());
 
+        tracing::info!("Establishing new connection");
+
         params
     }
 
     /// Accept an [`Answer`] from the remote for a connection previously created via [`Node::new_connection`].
-    #[tracing::instrument(level = "debug", skip_all, fields(%id, remote = %hex::encode(remote.as_bytes())))]
+    #[tracing::instrument(level = "info", skip_all, fields(%id))]
     pub fn accept_answer(&mut self, id: TId, remote: PublicKey, answer: Answer) {
         let Some(initial) = self.connections.initial.remove(&id) else {
             tracing::debug!("No initial connection state, ignoring answer"); // This can happen if the connection setup timed out.
@@ -846,6 +867,8 @@ where
 
         let existing = self.connections.established.insert(id, connection);
 
+        tracing::info!(remote = %hex::encode(remote.as_bytes()), "Signalling protocol completed");
+
         debug_assert!(existing.is_none());
     }
 }
@@ -859,6 +882,7 @@ where
     /// Out of all configured STUN and TURN servers, the connection will only use the ones provided here.
     /// The returned [`Answer`] must be passed to the remote via a signalling channel.
     #[tracing::instrument(level = "info", skip_all, fields(%id))]
+    #[must_use]
     pub fn accept_connection(
         &mut self,
         id: TId,
@@ -915,6 +939,8 @@ where
         let existing = self.connections.established.insert(id, connection);
 
         debug_assert!(existing.is_none());
+
+        tracing::info!("Created new connection");
 
         answer
     }
@@ -1266,11 +1292,21 @@ enum PeerSocket {
     },
 }
 
+impl PeerSocket {
+    fn our_socket(&self) -> SocketAddr {
+        match self {
+            PeerSocket::Direct { source, .. } => *source,
+            PeerSocket::Relay { relay, .. } => *relay,
+        }
+    }
+}
+
 impl Connection {
     /// Checks if we want to accept a packet from a certain address.
     ///
     /// Whilst we establish connections, we may see traffic from a certain address, prior to the negotiation being fully complete.
     /// We already want to accept that traffic and not throw it away.
+    #[must_use]
     fn accepts(&self, addr: SocketAddr) -> bool {
         let from_connected_remote = self.peer_socket.is_some_and(|r| match r {
             PeerSocket::Direct { dest, .. } => dest == addr,
@@ -1304,6 +1340,7 @@ impl Connection {
         }
     }
 
+    #[must_use]
     fn poll_timeout(&mut self) -> Option<Instant> {
         let agent_timeout = self.agent.poll_timeout();
         let next_wg_timer = Some(self.next_timer_update);
@@ -1311,6 +1348,7 @@ impl Connection {
         earliest(agent_timeout, next_wg_timer)
     }
 
+    #[must_use]
     fn poll_transmit(
         &mut self,
         allocations: &mut HashMap<SocketAddr, Allocation>,
@@ -1339,7 +1377,7 @@ impl Connection {
             // Payload should be sent from a "remote socket", let's wrap it in a channel data message!
             let Some(channel_data) = allocation.encode_to_vec(dst, &packet, now) else {
                 // Unlikely edge-case, drop the packet and continue.
-                tracing::debug!(%relay, peer = %dst, "Dropping packet because allocation does not offer a channel to peer");
+                tracing::trace!(%relay, peer = %dst, "Dropping packet because allocation does not offer a channel to peer");
                 continue;
             };
 
@@ -1392,6 +1430,7 @@ impl Connection {
         Ok(None)
     }
 
+    #[must_use]
     fn encapsulate(
         &self,
         message: &[u8],
@@ -1411,5 +1450,63 @@ impl Connection {
                 encode_as_channel_data(relay, peer, message, allocations, now).ok()
             }
         }
+    }
+
+    #[must_use]
+    fn force_handshake(
+        &mut self,
+        allocations: &mut HashMap<SocketAddr, Allocation>,
+        now: Instant,
+    ) -> Option<Transmit<'static>> {
+        /// [`boringtun`] requires us to pass buffers in where it can construct its packets.
+        ///
+        /// When updating the timers, the largest packet that we may have to send is `148` bytes as per `HANDSHAKE_INIT_SZ` constant in [`boringtun`].
+        const MAX_SCRATCH_SPACE: usize = 148;
+
+        let mut buf = [0u8; MAX_SCRATCH_SPACE];
+
+        let TunnResult::WriteToNetwork(bytes) =
+            self.tunnel.format_handshake_initiation(&mut buf, true)
+        else {
+            return None;
+        };
+
+        self.encapsulate(bytes, allocations, now)
+    }
+
+    /// Invalidates all local candidates with a lower or equal priority compared to the nominated one.
+    ///
+    /// Each time we nominate a candidate pair, we don't really want to keep all the others active because it creates a lot of noise.
+    /// At the same time, we want to retain trickle ICE and allow the ICE agent to find a _better_ pair, hence we invalidate by priority.
+    #[tracing::instrument(level = "debug", skip_all, fields(nominated_prio))]
+    fn invalidate_candiates(&mut self) {
+        let Some(socket) = self.peer_socket else {
+            return;
+        };
+
+        let Some(nominated) = self.local_candidate(socket.our_socket()).cloned() else {
+            return;
+        };
+
+        Span::current().record("nominated_prio", field::display(&nominated.prio()));
+
+        let irrelevant_candidates = self
+            .agent
+            .local_candidates()
+            .iter()
+            .filter(|c| c.prio() <= nominated.prio() && c != &&nominated)
+            .cloned()
+            .collect::<Vec<_>>();
+
+        for candidate in irrelevant_candidates {
+            self.agent.invalidate_candidate(&candidate);
+        }
+    }
+
+    fn local_candidate(&self, source: SocketAddr) -> Option<&Candidate> {
+        self.agent
+            .local_candidates()
+            .iter()
+            .find(|c| c.addr() == source)
     }
 }

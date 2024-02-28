@@ -16,8 +16,8 @@ mod imp;
 #[path = "deep_link/windows.rs"]
 mod imp;
 
-// TODO: The repeated `target_os = "windows"` here is bad.
-// When I add deep link support for Linux I'll replace this all for `anyhow`.
+// TODO: Replace this all for `anyhow`.
+#[cfg_attr(target_os = "linux", allow(dead_code))]
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
     #[error("named pipe server couldn't start listening, we are probably the second instance")]
@@ -49,6 +49,7 @@ pub enum Error {
     UrlParse(#[from] url::ParseError),
     #[cfg(target_os = "windows")]
     /// Something went wrong setting up the registry
+    #[cfg(target_os = "windows")]
     #[error(transparent)]
     WindowsRegistry(io::Error),
 }

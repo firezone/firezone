@@ -61,6 +61,7 @@ impl Managed {
 }
 
 // TODO: Replace with `anyhow` gradually per <https://github.com/firezone/firezone/pull/3546#discussion_r1477114789>
+#[cfg_attr(target_os = "linux", allow(dead_code))]
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum Error {
     #[cfg(target_os = "windows")]
@@ -193,6 +194,7 @@ pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event.event() {
                 // Keep the frontend running but just hide this webview
                 // Per https://tauri.app/v1/guides/features/system-tray/#preventing-the-app-from-closing
+                // Closing the window fully seems to deallocate it or something.
 
                 event.window().hide().unwrap();
                 api.prevent_close();
@@ -211,6 +213,7 @@ pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
         .system_tray(tray)
         .on_system_tray_event(|app, event| {
             if let SystemTrayEvent::MenuItemClick { id, .. } = event {
+                tracing::debug!(?id, "SystemTrayEvent::MenuItemClick");
                 let event = match TrayMenuEvent::from_str(&id) {
                     Ok(x) => x,
                     Err(e) => {
@@ -608,12 +611,23 @@ impl Controller {
                 .handle_deep_link(&url)
                 .await
                 .context("Couldn't handle deep link")?,
+            Req::SystemTrayMenu(TrayMenuEvent::CancelSignIn) => {
+                if self.session.is_some() {
+                    // If the user opened the menu, then sign-in completed, then they
+                    // click "cancel sign in", don't sign out - They can click Sign Out
+                    // if they want to sign out. "Cancel" may mean "Give up waiting,
+                    // but if you already got in, don't make me sign in all over again."
+                    //
+                    // Also, by amazing coincidence, it doesn't work in Tauri anyway.
+                    // We'd have to reuse the `sign_out` ID to make it work.
+                    tracing::info!("This can never happen. Tauri doesn't pass us a system tray event if the menu no longer has any item with that ID.");
+                } else {
+                    tracing::info!("Calling `sign_out` to cancel sign-in");
+                    self.sign_out()?;
+                }
+            }
             Req::SystemTrayMenu(TrayMenuEvent::ToggleWindow(window)) => {
                 self.toggle_window(window)?
-            }
-            Req::SystemTrayMenu(TrayMenuEvent::CancelSignIn | TrayMenuEvent::SignOut) => {
-                tracing::info!("User signed out or canceled sign-in");
-                self.sign_out()?;
             }
             Req::SystemTrayMenu(TrayMenuEvent::Resource { id }) => self
                 .copy_resource(&id)
@@ -628,6 +642,10 @@ impl Controller {
                         None,
                     )?;
                 }
+            }
+            Req::SystemTrayMenu(TrayMenuEvent::SignOut) => {
+                tracing::info!("User asked to sign out");
+                self.sign_out()?;
             }
             Req::SystemTrayMenu(TrayMenuEvent::Quit) => {
                 bail!("Impossible error: `Quit` should be handled before this")
@@ -714,7 +732,7 @@ impl Controller {
         } else {
             // Might just be because we got a double sign-out or
             // the user canceled the sign-in or something innocent.
-            tracing::warn!("tried to sign out but there's no session");
+            tracing::info!("Tried to sign out but there's no session, cancelled sign-in");
         }
         self.refresh_system_tray_menu()?;
         Ok(())
@@ -731,12 +749,8 @@ impl Controller {
             .get_window(id)
             .ok_or_else(|| anyhow!("getting handle to `{id}` window"))?;
 
-        if win.is_visible()? {
-            // If we close the window here, we can't re-open it, we'd have to fully re-create it. Not needed for MVP - We agreed 100 MB is fine for the GUI client.
-            win.hide()?;
-        } else {
-            win.show()?;
-        }
+        win.show()?;
+        win.unminimize()?;
         Ok(())
     }
 }

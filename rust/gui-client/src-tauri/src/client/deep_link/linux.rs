@@ -10,10 +10,6 @@ impl Server {
     pub(crate) fn new() -> Result<Self, Error> {
         tracing::warn!("Not implemented yet");
         tracing::trace!(scheme = super::FZ_SCHEME, "prevents dead code warning");
-        // Stop Cargo from erroring
-        if false {
-            return Err(Error::CantListen);
-        }
         Ok(Self {})
     }
 

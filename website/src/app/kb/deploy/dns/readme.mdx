@@ -1,0 +1,88 @@
+import PlanBadge from "@/components/PlanBadge";
+import Alert from "@/components/DocsAlert";
+import SupportOptions from "@/components/SupportOptions";
+import NextStep from "@/components/NextStep";
+
+<PlanBadge plans={["starter", "enterprise"]}>
+
+# Configure DNS
+
+</PlanBadge>
+
+Firezone includes a sophisticated DNS routing system available on all plans that
+provides Split DNS and fallback resolver configuration for each Firezone Client.
+Read more below to understand how it works and how to configure it.
+
+## How DNS works in Firezone
+
+Each Firezone Client embeds a lightweight DNS proxy used to route queries to an
+appropriate Gateway for resolution.
+
+The proxy "listens on" IP addresses in the following ranges:
+
+- IPv4: `100.100.111.0/24`
+- IPv6: `fd00:2021:1111:8000::100:100:111:0/120`
+
+When a user signs in, the Client configures the host operating system to use
+this proxy as the default resolver for all queries on the system.
+
+This is why you'll commonly see `100.100.111.1` or
+`fd00:2021:1111:8000::100:100:111:0` as the DNS server responding to DNS queries
+when the Firezone Client is signed in.
+
+### Routing DNS queries
+
+When the proxy sees a query, it checks to see if it matches a Resource the user
+has access to. If it does, the proxy then finds an appropriate Gateway
+associated with the Resource, forwards the query to be resolved on the Gateway,
+then returns the result back to the Client to be returned to the application
+making the query.
+
+<Alert color="info">
+  DNS queries forwarded to Gateways benefit from the same NAT holepunching
+  mechanism as any other traffic. No firewall configuration is required to
+  achieve Split DNS with Firezone.
+</Alert>
+
+If the query doesn't match a Resource, the proxy forwards the query to one of
+the [upstream resolvers](#configuring-client-dns-upstream-resolvers) explained
+further below.
+
+## Configuring Client DNS upstream resolvers
+
+Upstream DNS in Client can be configured with the servers of your choosing so
+that all queries on Client devices will be forwarded to the servers you specify
+for all non-Firezone resources.
+
+Go to `Settings` -> `DNS` and enter IPv4 and/or IPv6 servers to use as fallback
+resolvers. Firezone Clients will use these servers in the order they are defined
+for any query that doesn't match a Resource the user has access to.
+
+<Alert color="warning">
+  Firezone Clients support only DNS over UDP/53 at this time. DNS-over-TLS and
+  DNS-over-HTTPS upstream servers are not supported yet.
+</Alert>
+
+If no custom resolvers are configured, Firezone Clients will fall back to their
+default system resolver, typically set by the DHCP server of their local
+network.
+
+<Alert color="info">
+  Custom resolvers such as
+  [Cloudflare](https://developers.cloudflare.com/1.1.1.1/setup/#1111-for-families)
+  or [NextDNS](https://nextdns.io") can be used to block malware, ads, adult
+  material and other content for all users in your Firezone account.
+</Alert>
+
+## Configuring Gateway resolvers
+
+Firezone makes no assumptions about the DNS environment in which the Gateway
+runs. It uses the default system resolver you've configured on the Gateway host.
+
+This resolver is used for DNS Resources defined in your Firezone account so it's
+important that your Gateway host has DNS configured properly for Clients to
+resolve names successfully.
+
+<NextStep href="/kb/authenticate">Next: Connect an Identity Provider</NextStep>
+
+<SupportOptions />

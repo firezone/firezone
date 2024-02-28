@@ -1,5 +1,5 @@
 defmodule API do
-  def static_paths, do: ~w(assets fonts images favicon.ico robots.txt)
+  def static_paths, do: ~w(assets fonts images)
 
   def router do
     quote do

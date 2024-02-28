@@ -5,7 +5,7 @@
 
 use boringtun::x25519::StaticSecret;
 use connlib_shared::{
-    messages::{ClientId, GatewayId, ResourceDescription, ReuseConnection},
+    messages::{ClientId, GatewayId, ResourceId, ReuseConnection},
     CallbackErrorFacade, Callbacks, Error, Result,
 };
 use device_channel::Device;
@@ -13,7 +13,7 @@ use futures_util::{future::BoxFuture, task::AtomicWaker, FutureExt};
 use peer::PacketTransform;
 use peer_store::PeerStore;
 use pnet_packet::Packet;
-use snownet::{IpPacket, Node, Server};
+use snownet::{Node, Server};
 use sockets::{Received, Sockets};
 use std::{
     collections::HashSet,
@@ -27,6 +27,7 @@ use std::{
 pub use client::ClientState;
 pub use control_protocol::{gateway::ResolvedResourceDescriptionDns, Request};
 pub use gateway::GatewayState;
+use ip_packet::IpPacket;
 
 mod client;
 mod control_protocol;
@@ -106,13 +107,13 @@ where
 
         match device.poll_read(&mut self.read_buf, cx)? {
             Poll::Ready(Some(packet)) => {
-                let Some((peer_id, packet)) = self.role_state.encapsulate(packet) else {
+                let Some((peer_id, packet)) = self.role_state.encapsulate(packet, Instant::now())
+                else {
                     cx.waker().wake_by_ref();
                     return Poll::Pending;
                 };
 
-                self.connections_state
-                    .send(peer_id, packet.as_immutable().into());
+                self.connections_state.send(peer_id, packet.as_immutable());
 
                 cx.waker().wake_by_ref();
             }
@@ -175,8 +176,7 @@ where
                     return Poll::Pending;
                 };
 
-                self.connections_state
-                    .send(peer_id, packet.as_immutable().into());
+                self.connections_state.send(peer_id, packet.as_immutable());
 
                 cx.waker().wake_by_ref();
             }
@@ -268,7 +268,7 @@ where
 
     fn try_send(&mut self, id: TId, packet: IpPacket) -> Result<()> {
         // TODO: handle NotConnected
-        let Some(transmit) = self.node.encapsulate(id, packet)? else {
+        let Some(transmit) = self.node.encapsulate(id, packet.into())? else {
             return Ok(());
         };
 
@@ -278,14 +278,15 @@ where
     }
 
     // TODO: passing the peer_store looks weird, we can just remove ConnectionState and move everything into Tunnel, there's no Mutexes any longer that justify this separation
-    fn poll_sockets<TTransform>(
+    fn poll_sockets<TTransform, TResource>(
         &mut self,
         device: &mut Device,
-        peer_store: &mut PeerStore<TId, TTransform>,
+        peer_store: &mut PeerStore<TId, TTransform, TResource>,
         cx: &mut Context<'_>,
     ) -> Poll<io::Result<()>>
     where
         TTransform: PacketTransform,
+        TResource: Clone,
     {
         let received = match ready!(self.sockets.poll_recv_from(cx)) {
             Ok(received) => received,
@@ -330,10 +331,7 @@ where
                 continue;
             };
 
-            let packet_len = packet.packet().len();
-            let packet = match peer
-                .untransform(packet.source(), &mut self.write_buf.as_mut()[..packet_len])
-            {
+            let packet = match peer.untransform(packet.into()) {
                 Ok(packet) => packet,
                 Err(e) => {
                     tracing::warn!(%conn_id, %local, %from, "Failed to transform packet: {e}");
@@ -342,7 +340,7 @@ where
                 }
             };
 
-            device.write(packet)?;
+            device.write(packet.as_immutable())?;
         }
 
         Poll::Ready(Ok(()))
@@ -394,14 +392,13 @@ pub enum Event<TId> {
         candidate: String,
     },
     ConnectionIntent {
-        resource: ResourceDescription,
+        resource: ResourceId,
         connected_gateway_ids: HashSet<GatewayId>,
-        reference: usize,
     },
     RefreshResources {
         connections: Vec<ReuseConnection>,
     },
-    SendPacket(device_channel::Packet<'static>),
+    SendPacket(IpPacket<'static>),
     StopPeer(TId),
 }
 

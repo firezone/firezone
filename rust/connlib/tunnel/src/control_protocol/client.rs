@@ -2,7 +2,6 @@ use std::{collections::HashSet, net::IpAddr};
 
 use boringtun::x25519::PublicKey;
 use connlib_shared::{
-    control::Reference,
     messages::{
         Answer, ClientPayload, DomainResponse, GatewayId, Key, Offer, Relay, RequestConnection,
         ResourceDescription, ResourceId,
@@ -44,18 +43,12 @@ where
         resource_id: ResourceId,
         gateway_id: GatewayId,
         relays: Vec<Relay>,
-        reference: Option<Reference>,
     ) -> Result<Request> {
         tracing::trace!("request_connection");
 
-        let reference: usize = reference
-            .ok_or(Error::InvalidReference)?
-            .parse()
-            .map_err(|_| Error::InvalidReference)?;
-
-        if let Some(connection) =
-            self.role_state
-                .attempt_to_reuse_connection(resource_id, gateway_id, reference)?
+        if let Some(connection) = self
+            .role_state
+            .attempt_to_reuse_connection(resource_id, gateway_id)?
         {
             // TODO: now we send reuse connections before connection is established but after
             // response is offered.
@@ -106,10 +99,11 @@ where
             &domain_response.as_ref().map(|d| d.domain.clone()),
         )?;
 
-        let mut peer: Peer<_, PacketTransformClient> =
-            Peer::new(ips.clone(), gateway_id, Default::default());
+        let resource_ids = HashSet::from([resource_id]);
+        let mut peer: Peer<_, PacketTransformClient, _> =
+            Peer::new(gateway_id, Default::default(), &ips, resource_ids);
         peer.transform.set_dns(self.role_state.dns_mapping());
-        self.role_state.peers.insert(peer);
+        self.role_state.peers.insert(peer, &[]);
 
         let peer_ips = if let Some(domain_response) = domain_response {
             self.dns_response(&resource_id, &domain_response, &gateway_id)?
@@ -117,7 +111,9 @@ where
             ips
         };
 
-        self.role_state.peers.add_ips(&gateway_id, &peer_ips);
+        self.role_state
+            .peers
+            .add_ips_with_resource(&gateway_id, &peer_ips, &resource_id);
 
         Ok(())
     }
@@ -232,7 +228,9 @@ where
 
         let peer_ips = self.dns_response(&resource_id, &domain_response, &gateway_id)?;
 
-        self.role_state.peers.add_ips(&gateway_id, &peer_ips);
+        self.role_state
+            .peers
+            .add_ips_with_resource(&gateway_id, &peer_ips, &resource_id);
 
         Ok(())
     }

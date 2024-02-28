@@ -3,6 +3,7 @@ package dev.firezone.android.features.settings.ui
 
 import android.os.Bundle
 import androidx.activity.viewModels
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentActivity
@@ -55,8 +56,15 @@ internal class SettingsActivity : AppCompatActivity() {
                 }
             }.attach()
 
-            btSaveSettings.setOnClickListener {
-                viewModel.onSaveSettingsCompleted()
+            val isUserSignedIn = intent.getBooleanExtra("isUserSignedIn", false)
+            if (isUserSignedIn) {
+                btSaveSettings.setOnClickListener {
+                    showSaveWarningDialog()
+                }
+            } else {
+                btSaveSettings.setOnClickListener {
+                    viewModel.onSaveSettingsCompleted()
+                }
             }
 
             btCancel.setOnClickListener {
@@ -80,6 +88,17 @@ internal class SettingsActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         viewModel.onViewResume(this@SettingsActivity)
+    }
+
+    private fun showSaveWarningDialog() {
+        AlertDialog.Builder(this).apply {
+            setTitle("Warning")
+            setMessage("Changed settings will not be applied until you sign out and sign back in.")
+            setPositiveButton("Okay") { dialog, which ->
+                viewModel.onSaveSettingsCompleted()
+            }
+            create().show()
+        }
     }
 
     override fun onStop() {

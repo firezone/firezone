@@ -191,7 +191,7 @@ internal class SettingsViewModel
             emit(Result.failure(e))
         }.flowOn(Dispatchers.IO)
 
-        private fun getLogZipPath(context: Context) = "${context.cacheDir.absolutePath}/connlib-logs.zip"
+        private fun getLogZipPath(context: Context) = "${context.cacheDir.absolutePath}/logs.zip"
 
         private fun onFieldUpdated() {
             _uiState.value =

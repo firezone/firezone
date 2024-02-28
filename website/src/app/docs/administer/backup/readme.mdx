@@ -7,13 +7,10 @@ import SupportOptions from "@/components/SupportOptions";
 Firezone can be safely backed up and restored in a couple of minutes under most
 circumstances.
 
-<Alert
-  color="info"
-  html={`
-This guide is written for Firezone deployments using <strong>Docker Engine</strong>
-on <strong>Linux</strong> only.
-`}
-/>
+<Alert color="info">
+  This guide is written for Firezone deployments using **Docker Engine** on
+  **Linux** only.
+</Alert>
 
 Unless your hosting provider supports taking live VM snapshots, you'll need to
 stop Firezone before backing it up. This ensures the Postgres data directory is

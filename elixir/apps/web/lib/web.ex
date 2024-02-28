@@ -17,7 +17,8 @@ defmodule Web do
   those modules here.
   """
 
-  def static_paths, do: ~w(assets fonts images .well-known favicon.ico robots.txt)
+  def static_paths,
+    do: ~w(assets fonts images .well-known)
 
   def router do
     quote do
@@ -56,6 +57,19 @@ defmodule Web do
         layout: Keyword.get(unquote(opts), :layout, {Web.Layouts, :app})
 
       unquote(html_helpers())
+
+      # we ignore Swoosh messages that can crash LV process in dev/test mode
+      if Mix.env() in [:dev, :test] do
+        def handle_info({:email, %Swoosh.Email{}}, socket) do
+          {:noreply, socket}
+        end
+      end
+
+      # ignore "disconnect" message that is broadcasted for some pages
+      # because of subscription for relay/gateway group events
+      def handle_info("disconnect", socket) do
+        {:noreply, socket}
+      end
     end
   end
 
