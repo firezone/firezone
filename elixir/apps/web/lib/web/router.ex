@@ -212,6 +212,14 @@ defmodule Web.Router do
 
         live "/billing", Billing
 
+        scope "/api_clients", ApiClients do
+          live "/", Index
+          live "/new", New
+          live "/:id/new_token", NewToken
+          live "/:id", Show
+          live "/:id/edit", Edit
+        end
+
         scope "/identity_providers", IdentityProviders do
           live "/", Index
           live "/new", New
