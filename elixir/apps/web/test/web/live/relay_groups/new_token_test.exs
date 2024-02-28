@@ -62,4 +62,21 @@ defmodule Web.Live.RelayGroups.NewTokenTest do
       |> live(~p"/#{account}/relay_groups/#{group}/new_token")
     end
   end
+
+  test "handles disconnect message", %{
+    account: account,
+    identity: identity,
+    group: group,
+    conn: conn
+  } do
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/relay_groups/#{group}/new_token")
+
+    ref = Process.monitor(lv.pid)
+    send(lv.pid, "disconnect")
+    lv_pid = lv.pid
+    assert_receive {:DOWN, ^ref, :process, ^lv_pid, {:shutdown, :left}}
+  end
 end

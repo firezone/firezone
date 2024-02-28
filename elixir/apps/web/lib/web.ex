@@ -57,6 +57,19 @@ defmodule Web do
         layout: Keyword.get(unquote(opts), :layout, {Web.Layouts, :app})
 
       unquote(html_helpers())
+
+      # we ignore Swoosh messages that can crash LV process in dev/test mode
+      if Mix.env() in [:dev, :test] do
+        def handle_info({:email, %Swoosh.Email{}}, socket) do
+          {:noreply, socket}
+        end
+      end
+
+      # and we ignore Domain.Tokens disconnect messages as they will be handled by the socket itself
+      def handle_info("disconnect", socket) do
+        send(socket.transport_pid, {:socket_close, self(), :disconnect})
+        {:noreply, socket}
+      end
     end
   end
 

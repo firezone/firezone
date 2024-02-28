@@ -45,4 +45,21 @@ defmodule Web.Live.Sites.NewTokenTest do
     assert element(lv, "#connection-status")
            |> render() =~ "Connected, click to continue"
   end
+
+  test "handles disconnect message", %{
+    account: account,
+    identity: identity,
+    group: group,
+    conn: conn
+  } do
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/sites/#{group}/new_token")
+
+    ref = Process.monitor(lv.pid)
+    send(lv.pid, "disconnect")
+    lv_pid = lv.pid
+    assert_receive {:DOWN, ^ref, :process, ^lv_pid, {:shutdown, :left}}
+  end
 end
