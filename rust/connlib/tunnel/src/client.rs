@@ -84,14 +84,8 @@ where
             .resource_ids
             .insert(resource_description.id(), resource_description);
 
-        self.callbacks.on_update_resources(
-            self.role_state
-                .resource_ids
-                .values()
-                .sorted()
-                .cloned()
-                .collect_vec(),
-        )?;
+        self.update_resource_list()?;
+
         Ok(())
     }
 
@@ -113,6 +107,10 @@ where
             if let Err(err) = self.remove_route(resource.address) {
                 tracing::error!(%id, %resource.address, "failed to remove route: {err:?}");
             }
+        }
+
+        if let Err(err) = self.update_resource_list() {
+            tracing::error!("Failed to update resource list: {err:#?}")
         }
 
         let Some(gateway_id) = self.role_state.resources_gateways.remove(&id) else {
@@ -150,6 +148,18 @@ where
             self.role_state.peers.remove(&gateway_id);
             // TODO: should we have a Node::remove_connection?
         }
+    }
+
+    fn update_resource_list(&self) -> connlib_shared::Result<()> {
+        self.callbacks.on_update_resources(
+            self.role_state
+                .resource_ids
+                .values()
+                .sorted()
+                .cloned()
+                .collect_vec(),
+        )?;
+        Ok(())
     }
 
     /// Sets the interface configuration and starts background tasks.
