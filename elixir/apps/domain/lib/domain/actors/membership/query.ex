@@ -93,6 +93,6 @@ defmodule Domain.Actors.Membership.Query do
   end
 
   def lock(queryable \\ all()) do
-    lock(queryable, "FOR UPDATE")
+    lock(queryable, "FOR NO KEY UPDATE")
   end
 end

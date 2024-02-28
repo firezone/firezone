@@ -44,7 +44,7 @@ defmodule Domain.Repo do
   def fetch_and_update(queryable, [with: changeset_fun], opts \\ [])
       when is_function(changeset_fun, 1) do
     transaction(fn ->
-      queryable = Ecto.Query.lock(queryable, "FOR UPDATE")
+      queryable = Ecto.Query.lock(queryable, "FOR NO KEY UPDATE")
 
       with {:ok, schema} <- fetch(queryable, opts) do
         schema

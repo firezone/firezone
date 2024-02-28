@@ -106,7 +106,7 @@ defmodule Domain.Actors.Actor.Query do
   end
 
   def lock(queryable \\ not_deleted()) do
-    lock(queryable, "FOR UPDATE")
+    lock(queryable, "FOR NO KEY UPDATE")
   end
 
   def with_assoc(queryable \\ not_deleted(), qual \\ :left, assoc) do

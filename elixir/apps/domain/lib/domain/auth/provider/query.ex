@@ -84,6 +84,6 @@ defmodule Domain.Auth.Provider.Query do
   end
 
   def lock(queryable \\ not_deleted()) do
-    lock(queryable, "FOR UPDATE")
+    lock(queryable, "FOR NO KEY UPDATE")
   end
 end
