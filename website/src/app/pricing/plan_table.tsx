@@ -18,13 +18,13 @@ export default function PlanTable() {
           <th></th>
           <th
             scope="col"
-            className="px-6 py-6 uppercase text-primary-450 tracking-light"
+            className="px-6 py-6 uppercase text-primary-450 text-center tracking-light"
           >
             Starter
           </th>
           <th
             scope="col"
-            className="px-6 py-6 uppercase text-primary-450 tracking-light"
+            className="px-6 py-6 uppercase text-primary-450 text-center tracking-light"
           >
             Enterprise
           </th>
@@ -49,8 +49,8 @@ export default function PlanTable() {
               <div className="tooltip-arrow" data-popper-arrow></div>
             </div>
           </td>
-          <td className="px-6 py-4">10</td>
-          <td className="px-6 py-4">No limit</td>
+          <td className="px-6 py-4 text-center">10</td>
+          <td className="px-6 py-4 text-center">No limit</td>
         </tr>
         <tr className="border-b border-1 border-neutral-200">
           <td className="px-6 py-4">
@@ -66,12 +66,12 @@ export default function PlanTable() {
               role="tooltip"
               className="absolute z-10 invisible inline-block px-3 py-2 text-xs font-medium text-white transition-opacity duration-100 bg-neutral-900 rounded shadow-sm opacity-90 tooltip"
             >
-              Machine accounts used to access resources without a user present
+              Machine accounts used to access Resources without a user present
               <div className="tooltip-arrow" data-popper-arrow></div>
             </div>
           </td>
-          <td className="px-6 py-4">10</td>
-          <td className="px-6 py-4">No limit</td>
+          <td className="px-6 py-4 text-center">10</td>
+          <td className="px-6 py-4 text-center">No limit</td>
         </tr>
         <tr className="border-b border-1 border-neutral-200">
           <td className="px-6 py-4">
@@ -87,13 +87,13 @@ export default function PlanTable() {
               role="tooltip"
               className="absolute z-10 invisible inline-block px-3 py-2 text-xs font-medium text-white transition-opacity duration-100 bg-neutral-900 rounded shadow-sm opacity-90 tooltip"
             >
-              Sites are a collection of gateways and resources that share the
+              Sites are a collection of Gateways and Resources that share the
               same network connectivity context. Typically a subnet or VPC.
               <div className="tooltip-arrow" data-popper-arrow></div>
             </div>
           </td>
-          <td className="px-6 py-4">3</td>
-          <td className="px-6 py-4">No limit</td>
+          <td className="px-6 py-4 text-center">3</td>
+          <td className="px-6 py-4 text-center">No limit</td>
         </tr>
         <tr className="border-b border-1 border-neutral-200">
           <td className="px-6 py-4">
@@ -109,13 +109,13 @@ export default function PlanTable() {
               role="tooltip"
               className="absolute z-10 invisible inline-block px-3 py-2 text-xs font-medium text-white transition-opacity duration-100 bg-neutral-900 rounded shadow-sm opacity-90 tooltip"
             >
-              Users with account-wide access to deploy gateways, manage billing,
-              and edit users, sites, or other configuration
+              Users with account-wide access to deploy Gateways, manage billing,
+              and edit users, Sites, or other configuration
               <div className="tooltip-arrow" data-popper-arrow></div>
             </div>
           </td>
-          <td className="px-6 py-4">1</td>
-          <td className="px-6 py-4">No limit</td>
+          <td className="px-6 py-4 text-center">1</td>
+          <td className="px-6 py-4 text-center">No limit</td>
         </tr>
         <tr className="border-b border-1 border-neutral-200">
           <td className="px-6 py-4">
@@ -131,13 +131,13 @@ export default function PlanTable() {
               role="tooltip"
               className="absolute z-10 invisible inline-block px-3 py-2 text-xs font-medium text-white transition-opacity duration-100 bg-neutral-900 rounded shadow-sm opacity-90 tooltip"
             >
-              Policies control access to resources (e.g. group “A” may access
-              resource “B”)
+              Policies control access to Resources (e.g. Group “A” may access
+              Resource “B”)
               <div className="tooltip-arrow" data-popper-arrow></div>
             </div>
           </td>
-          <td className="px-6 py-4">No limit</td>
-          <td className="px-6 py-4">No limit</td>
+          <td className="px-6 py-4 text-center">No limit</td>
+          <td className="px-6 py-4 text-center">No limit</td>
         </tr>
         <tr className="border-b border-1 border-neutral-200">
           <td className="px-6 py-4">
@@ -158,8 +158,8 @@ export default function PlanTable() {
               <div className="tooltip-arrow" data-popper-arrow></div>
             </div>
           </td>
-          <td className="px-6 py-4">No limit</td>
-          <td className="px-6 py-4">No limit</td>
+          <td className="px-6 py-4 text-center">No limit</td>
+          <td className="px-6 py-4 text-center">No limit</td>
         </tr>
         <tr className="border-b border-1 border-neutral-200">
           <td className="px-6 py-4">
@@ -175,13 +175,12 @@ export default function PlanTable() {
               role="tooltip"
               className="absolute z-10 invisible inline-block px-3 py-2 text-xs font-medium text-white transition-opacity duration-100 bg-neutral-900 rounded shadow-sm opacity-90 tooltip"
             >
-              Any device or machine that the Firezone client application
-              connects from
+              Any device or machine that the Firezone Client connects from
               <div className="tooltip-arrow" data-popper-arrow></div>
             </div>
           </td>
-          <td className="px-6 py-4">No limit</td>
-          <td className="px-6 py-4">No limit</td>
+          <td className="px-6 py-4 text-center">No limit</td>
+          <td className="px-6 py-4 text-center">No limit</td>
         </tr>
         <tr>
           <td className="px-6 pt-8 pb-4 text-lg font-semibold text-primary-450 tracking-light">
@@ -193,70 +192,74 @@ export default function PlanTable() {
         <tr className="border-b border-1 border-neutral-200">
           <td className="px-6 py-4">NAT hole punching</td>
           <td className="px-6 py-4">
-            <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
           <td className="px-6 py-4">
-            <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
         </tr>
         <tr className="border-b border-1 border-neutral-200">
           <td className="px-6 py-4">Cloud & local networks</td>
           <td className="px-6 py-4">
-            <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
           <td className="px-6 py-4">
-            <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
         </tr>
         <tr className="border-b border-1 border-neutral-200">
-          <td className="px-6 py-4">Native Firezone clients</td>
+          <td className="px-6 py-4">Native Firezone Clients</td>
           <td className="px-6 py-4">
-            <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
           <td className="px-6 py-4">
-            <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
         </tr>
         <tr className="border-b border-1 border-neutral-200">
           <td className="px-6 py-4">Split tunneling</td>
           <td className="px-6 py-4">
-            <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
           <td className="px-6 py-4">
-            <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
         </tr>
         <tr className="border-b border-1 border-neutral-200">
           <td className="px-6 py-4">DNS-based routing</td>
           <td className="px-6 py-4">
-            <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
           <td className="px-6 py-4">
-            <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
         </tr>
         <tr className="border-b border-1 border-neutral-200">
           <td className="px-6 py-4">Gateway load-balancing</td>
           <td className="px-6 py-4">
-            <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
           <td className="px-6 py-4">
-            <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
         </tr>
         <tr className="border-b border-1 border-neutral-200">
-          <td className="px-6 py-4">Automatic gateway failover</td>
+          <td className="px-6 py-4">Automatic Gateway failover</td>
           <td className="px-6 py-4">
-            <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
           <td className="px-6 py-4">
-            <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
         </tr>
         <tr className="border-b border-1 border-neutral-200">
           <td className="px-6 py-4">Global relay network</td>
-          <td className="px-6 py-4 flex-wrap">Standard throughput</td>
-          <td className="px-6 py-4 flex-wrap">Premium throughput</td>
+          <td className="px-6 py-4 flex-wrap text-center">
+            Standard performance
+          </td>
+          <td className="px-6 py-4 flex-wrap text-center">
+            Premium performance
+          </td>
         </tr>
         <tr>
           <td
@@ -269,33 +272,49 @@ export default function PlanTable() {
         <tr className="border-b border-1 border-neutral-200">
           <td className="px-6 py-4">Resource-level access policies</td>
           <td className="px-6 py-4">
-            <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
-          <td className="px-6 py-4">
-            <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
-          </td>
-        </tr>
-        <tr className="border-b border-1 border-neutral-200">
-          <td className="px-6 py-4">Universal OIDC connector</td>
-          <td className="px-6 py-4">
-            <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
-          </td>
-          <td className="px-6 py-4">
-            <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
+          <td className="px-6 py-4 justify-center">
+            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
         </tr>
         <tr className="border-b border-1 border-neutral-200">
-          <td className="px-6 py-4">Google Workspace integration</td>
-          <td className="px-6 py-4">&#8212;</td>
+          <td className="px-6 py-4">Email (OTP) authentication</td>
           <td className="px-6 py-4">
-            <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+          </td>
+          <td className="px-6 py-4">
+            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
         </tr>
         <tr className="border-b border-1 border-neutral-200">
-          <td className="px-6 py-4">User / group sync</td>
-          <td className="px-6 py-4">&#8212;</td>
+          <td className="px-6 py-4">OpenID Connect authentication</td>
           <td className="px-6 py-4">
-            <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+          </td>
+          <td className="px-6 py-4">
+            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+          </td>
+        </tr>
+        <tr className="border-b border-1 border-neutral-200">
+          <td className="px-6 py-4">Google Workspace sync</td>
+          <td className="px-6 py-4 text-center">&#8212;</td>
+          <td className="px-6 py-4">
+            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+          </td>
+        </tr>
+        <tr className="border-b border-1 border-neutral-200">
+          <td className="px-6 py-4">Microsoft Entra ID sync</td>
+          <td className="px-6 py-4 text-center">&#8212;</td>
+          <td className="px-6 py-4">
+            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+          </td>
+        </tr>
+        <tr className="border-b border-1 border-neutral-200">
+          <td className="px-6 py-4">Okta sync</td>
+          <td className="px-6 py-4 text-center">&#8212;</td>
+          <td className="px-6 py-4">
+            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
         </tr>
         <tr>
@@ -309,28 +328,28 @@ export default function PlanTable() {
         <tr className="border-b border-1 border-neutral-200">
           <td className="px-6 py-4">Daily key rotation</td>
           <td className="px-6 py-4">
-            <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
           <td className="px-6 py-4">
-            <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
         </tr>
         <tr className="border-b border-1 border-neutral-200">
           <td className="px-6 py-4">Policy authorization logs</td>
           <td className="px-6 py-4">
-            <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
           <td className="px-6 py-4">
-            <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
         </tr>
         <tr className="border-b border-1 border-neutral-200">
           <td className="px-6 py-4">GeoIP Mapping</td>
           <td className="px-6 py-4">
-            <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
           <td className="px-6 py-4">
-            <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
         </tr>
         <tr>
@@ -344,33 +363,33 @@ export default function PlanTable() {
         <tr className="border-b border-1 border-neutral-200">
           <td className="px-6 py-4">Community Forums</td>
           <td className="px-6 py-4">
-            <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
           <td className="px-6 py-4">
-            <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
         </tr>
         <tr className="border-b border-1 border-neutral-200">
           <td className="px-6 py-4">Community Slack</td>
           <td className="px-6 py-4">
-            <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
           <td className="px-6 py-4">
-            <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
         </tr>
         <tr className="border-b border-1 border-neutral-200">
           <td className="px-6 py-4">Priority Email</td>
-          <td className="px-6 py-4">&#8212;</td>
+          <td className="px-6 py-4 text-center">&#8212;</td>
           <td className="px-6 py-4">
-            <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
         </tr>
         <tr className="border-b border-1 border-neutral-200">
           <td className="px-6 py-4">Dedicated Slack</td>
-          <td className="px-6 py-4">&#8212;</td>
+          <td className="px-6 py-4 text-center">&#8212;</td>
           <td className="px-6 py-4">
-            <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
         </tr>
         <tr>

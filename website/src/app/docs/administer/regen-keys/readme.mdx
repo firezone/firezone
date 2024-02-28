@@ -11,24 +11,17 @@ do so using the same bootstrap scripts that were used when installing Firezone.
 
 ## Regenerate secrets
 
-<Alert
-  color="danger"
-  html={`
-Replacing the <code>DATABASE_ENCRYPTION_KEY</code> will render all encrypted data in the
-database useless. This <strong>will</strong> break your Firezone install unless you are
-starting with an empty database. You have been warned.
-`}
-/>
+<Alert color="danger">
+  Replacing the `DATABASE_ENCRYPTION_KEY` will render all encrypted data in the
+  database useless. This **will** break your Firezone install unless you are
+  starting with an empty database. You have been warned.
+</Alert>
 
-<Alert
-  color="warning"
-  html={`
-Replacing <code>GUARDIAN_SECRET_KEY</code>, <code>SECRET_KEY_BASE</code>,
-<code>LIVE_VIEW_SIGNING_SALT</code>,
-<code>COOKIE_SIGNING_SALT</code>, and <code>COOKIE_ENCRYPTION_SALT</code>
-will reset all browser sessions and REST API tokens.
-`}
-/>
+<Alert color="warning">
+  Replacing `GUARDIAN_SECRET_KEY`, `SECRET_KEY_BASE`, `LIVE_VIEW_SIGNING_SALT`,
+  `COOKIE_SIGNING_SALT`, and `COOKIE_ENCRYPTION_SALT` will reset all browser
+  sessions and REST API tokens.
+</Alert>
 
 Use the procedure below to regenerate secrets:
 
@@ -58,14 +51,11 @@ sudo firezone-ctl reconfigure
 
 ## Regenerate WireGuard private key
 
-<Alert
-  color="warning"
-  html={`
+<Alert color="warning">
   Replacing the WireGuard private key will render all existing device configs
   invalid. Only do so if you're prepared to also regenerate device configs after
   regenerating the WireGuard private key.
-`}
-/>
+</Alert>
 
 To regenerate WireGuard private key, simply move or rename the private key file.
 Firezone will generate a new one on next start.

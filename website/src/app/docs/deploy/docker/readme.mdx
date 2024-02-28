@@ -32,14 +32,11 @@ Docker offers a number of benefits over the old
   - `443/tcp`: To access the web UI.
   - `51820/udp`: VPN traffic listen port.
 
-<Alert
-  color="warning"
-  html={`
-Before deploying Firezone in <strong>production</strong>, you'll need a valid DNS record
-pointing to this instance. See <a href="/docs/deploy/#prepare-to-deploy">Prepare to
-Deploy</a> if you haven't done this already.
-`}
-/>
+<Alert color="warning">
+  Before deploying Firezone in **production**, you'll need a valid DNS record
+  pointing to this instance. See [Prepare to
+  deploy](/docs/deploy/#prepare-to-deploy) if you haven't done this already.
+</Alert>
 
 ## Step 2: Install server
 
@@ -158,13 +155,10 @@ on start.
 
 ## Step 5: Install client apps
 
-<Alert
-  color="info"
-  html={`
-Firezone currently uses WireGuard's <a href="https://www.wireguard.com/install">
-open-source client apps</a>.
-`}
-/>
+<Alert color="info">
+  Firezone currently uses WireGuard's [open-source client
+  apps](https://www.wireguard.com/install).
+</Alert>
 
 Once successfully deployed, users and devices can be added to connect to the VPN
 server:

@@ -24,7 +24,7 @@ export default function EarlyAccessForm() {
           Quite a lot, as it turns out! Here are some of the highlights:
         </p>
         <ul className="md:text-lg mb-6 list-inside list-disc space-y-2">
-          <li>Native clients for most major platforms</li>
+          <li>Native clients for all major platforms</li>
           <li>A new, snappy SaaS-delivered admin portal</li>
           <li>STUN peer discovery with firewall holepunching</li>
           <li>Group-based access policies built on zero trust principles</li>

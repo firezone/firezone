@@ -1,0 +1,36 @@
+import Alert from "@/components/DocsAlert";
+import SupportOptions from "@/components/SupportOptions";
+import PlanBadge from "@/components/PlanBadge";
+import NextStep from "@/components/NextStep";
+
+<PlanBadge plans={["starter", "enterprise"]}>
+
+# Create Groups
+
+</PlanBadge>
+
+Groups form the basis of the Firezone access control model. They are used to
+organize users and apply [Policies](/kb/deploy/policies) to them.
+
+Groups can be created by going to `Groups` -> `Add Group` and then entering an
+appropriate name for the group.
+
+<Alert color="info">
+  Automatic group sync is available for Google Workspace, Microsoft Entra ID,
+  and Okta providers with the Enterprise plan. [Read
+  more](/kb/authenticate/directory-sync) about how it works or [contact
+  sales](/contact/sales) to upgrade.
+</Alert>
+
+Groups cannot be nested, but a user can be a member of multiple groups. This
+allows you to create a flexible and powerful access control model without having
+to manage a complex hierarchy of groups within Firezone.
+
+<Alert color="warning">
+  Firezone automatically maintains a special `Everyone` group that contains all
+  of the users in your account. This group cannot be deleted or modified.
+</Alert>
+
+<NextStep href="/kb/deploy/users">Next: Create Users</NextStep>
+
+<SupportOptions />

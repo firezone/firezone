@@ -1,11 +1,11 @@
-import Content from "./readme.mdx";
+import _Page from "./_page";
 import { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Configuring DNS • Firezone Docs",
+  title: "Okta Authentication • Firezone Docs",
   description: "Firezone Documentation",
 };
 
 export default function Page() {
-  return <Content />;
+  return <_Page />;
 }

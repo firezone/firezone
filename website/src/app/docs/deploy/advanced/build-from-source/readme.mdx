@@ -4,43 +4,34 @@ import Alert from "@/components/DocsAlert";
 
 Building from source allows you to bring Firezone to unsupported platforms.
 
-<Alert
-  color="warning"
-  html={`
-You're entering unsupported territory. This is not for the faint of heart and
-will require being able to figure out snags you may hit on your own. If you're
-very comfortable with your environment of choice, then read on to learn how to
-build Firezone from source.
-`}
-/>
+<Alert color="warning">
+  You're entering unsupported territory. This is not for the faint of heart and
+  will require being able to figure out snags you may hit on your own. If you're
+  very comfortable with your environment of choice, then read on to learn how to
+  build Firezone from source.
+</Alert>
 
-<Alert
-  color="info"
-  html={`
-You will need to setup your own service management for Firezone (eg. runit,
-systemd, shell scripts). You will also need to install and configure your
-own database (eg. postgres) and reverse proxy (eg. caddy, nginx). Info
-about database configuration is
-<a href="/docs/deploy/advanced/external-database/#configure-firezone-to-connect">here</a>,
-and info about configuring a reverse proxy is
-<a href="/docs/deploy/advanced/reverse-proxy/#proxy-requirements">here</a>.
-`}
-/>
+<Alert color="info">
+  You will need to setup your own service management for Firezone (eg. runit,
+  systemd, shell scripts). You will also need to install and configure your own
+  database (eg. postgres) and reverse proxy (eg. caddy, nginx). Info about
+  database configuration is
+  [here](/docs/deploy/advanced/external-database/#configure-firezone-to-connect),
+  and info about configuring a reverse proxy is
+  [here](/docs/deploy/advanced/reverse-proxy/#proxy-requirements).
+</Alert>
 
 ## Prerequisites
 
-<Alert
-  color="info"
-  html={`
-Check the <code>.tool-versions</code> file
-<a href="https://github.com/firezone/firezone/blob/legacy/.tool-versions">here</a> for
-the versions we use for Erlang, Elixir, and Node. If your system supports it,
-you can install these using
-<a href="https://asdf-vm.com/guide/getting-started.html">asdf-vm</a> using a similar
-<code>.tool-versions</code> of your own to match versions. Your system's package manager
-may have them as well.
-`}
-/>
+<Alert color="info">
+  Check the `.tool-versions` file
+  [here](https://github.com/firezone/firezone/blob/legacy/.tool-versions) for
+  the versions we use for Erlang, Elixir, and Node. If your system supports it,
+  you can install these using
+  [asdf-vm](https://asdf-vm.com/guide/getting-started.html) using a similar
+  `.tool-versions` of your own to match versions. Your system's package manager
+  may have them as well.
+</Alert>
 
 **These must be available in the user's path that runs Firezone.**
 
@@ -95,12 +86,9 @@ up. Once that's done, you can use `firezone start` to start Firezone and run
 it to log into Firezone from a web browser to start setting up your brand new
 custom instance that you built by hand with a little bit of elbow grease :)
 
-<Alert
-  color="info"
-  html={`
-As mentioned at the top, it's recommended to use some sort of service
-management to start and stop Firezone easily without having to manually do it
-using the <code>firezone</code> binary directly. But the choice is yours, since
-you're in control!
-`}
-/>
+<Alert color="info">
+  As mentioned at the top, it's recommended to use some sort of service
+  management to start and stop Firezone easily without having to manually do it
+  using the `firezone` binary directly. But the choice is yours, since you're in
+  control!
+</Alert>

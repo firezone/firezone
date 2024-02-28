@@ -20,10 +20,7 @@ its output to a file instead:
 docker compose -f $HOME/.firezone/docker-compose.yml exec firezone bin/create-api-token > fz_token
 ```
 
-<Alert
-  color="warning"
-  html={`
-API tokens generated from the CLI are owned by the primary administrator
-specified by the <code>DEFAULT_ADMIN_EMAIL</code> environment variable.
-`}
-/>
+<Alert color="warning">
+  API tokens generated from the CLI are owned by the primary administrator
+  specified by the `DEFAULT_ADMIN_EMAIL` environment variable.
+</Alert>

@@ -60,7 +60,7 @@ export default function Page() {
               <li className="flex space-x-2.5">
                 <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
                 <span className="leading-tight text-neutral-900 ">
-                  Authenticate with email and OIDC
+                  Authenticate via email or OpenID Connect (OIDC)
                 </span>
               </li>
               <li className="flex space-x-2.5">
@@ -104,7 +104,7 @@ export default function Page() {
               <li className="flex space-x-2.5">
                 <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
                 <span className="leading-tight text-neutral-900 ">
-                  SSO with Google Workspace
+                  SSO with Google Workspace, Entra ID, and Okta
                 </span>
               </li>
               <li className="flex space-x-2.5">
@@ -116,19 +116,19 @@ export default function Page() {
               <li className="flex space-x-2.5">
                 <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
                 <span className="leading-tight text-neutral-900 ">
-                  Managed relay network
-                </span>
-              </li>
-              <li className="flex space-x-2.5">
-                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
-                <span className="leading-tight text-neutral-900 ">
                   Network access logs
                 </span>
               </li>
               <li className="flex space-x-2.5">
                 <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
                 <span className="leading-tight text-neutral-900 ">
-                  Dedicated Slack and email support
+                  Premium relay network
+                </span>
+              </li>
+              <li className="flex space-x-2.5">
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
+                <span className="leading-tight text-neutral-900 ">
+                  Dedicated Slack and live support
                 </span>
               </li>
             </ul>
@@ -234,7 +234,7 @@ export default function Page() {
             >
               less than 10 minutes
             </Link>
-            , and gateways can be added by running a simple Docker command.{" "}
+            , and Gateways can be added by running a simple Docker command.{" "}
             <Link href="/kb" className="hover:underline text-accent-500">
               Visit our docs
             </Link>{" "}
@@ -258,7 +258,7 @@ export default function Page() {
           </blockquote>
           <p className="mb-8">
             Network traffic is always end-to-end encrypted, and by default,
-            routes directly to gateways running on your infrastructure. In rare
+            routes directly to Gateways running on your infrastructure. In rare
             circumstances, encrypted traffic can pass through our global relay
             network if a direct connection cannot be established. Firezone can
             never decrypt the contents of your traffic.
@@ -272,7 +272,7 @@ export default function Page() {
             Please{" "}
             <Link
               href="mailto:support@firezone.dev"
-              className="hover:underline text-color-accent-500"
+              className="hover:underline text-accent-500"
             >
               contact support
             </Link>{" "}
@@ -308,22 +308,14 @@ export default function Page() {
           </blockquote>
           <p className="mb-8">
             Yes. Not-for-profit organizations and educational institutions are
-            eligible for a 50% discount. Contact us (support@firezone.dev) to
-            request the discount.
-          </p>
-
-          <a id="enhance-cybersecurity" className="pt-8"></a>
-          <blockquote className="font-semibold text-md p-2 my-2 border-s-4 border-neutral-300">
-            <p>
-              Other than using Firezone, is there anything I can do to improve
-              my cybersecurity?
-            </p>
-          </blockquote>
-          <p className="mb-8">
-            Firezone helps protect your network and private resources, however,
-            organizations should consider a balanced security and risk
-            management posture that takes into account all the different parts
-            of their business.
+            eligible for a 50% discount.{" "}
+            <Link
+              href="/contact/sales"
+              className="hover:underline text-accent-500"
+            >
+              Contact sales
+            </Link>{" "}
+            to request the discount.
           </p>
         </div>
       </section>

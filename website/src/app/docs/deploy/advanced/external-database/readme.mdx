@@ -17,15 +17,12 @@ database services like Amazon RDS. See the
 [configuration ](#configure-firezone-to-connect) section below for more
 information configuring Firezone with an external DB.
 
-<Alert
-  color="warning"
-  html={`
-Configuring Firezone to use an external database can be complicated and
-error-prone. We recommend using the bundled Postgres for Omnibus-based
-deployments or the official Postgres Docker image for Docker-based deployments
-if possible.
-`}
-/>
+<Alert color="warning">
+  Configuring Firezone to use an external database can be complicated and
+  error-prone. We recommend using the bundled Postgres for Omnibus-based
+  deployments or the official Postgres Docker image for Docker-based deployments
+  if possible.
+</Alert>
 
 ## Configure Firezone to Connect
 
@@ -51,14 +48,11 @@ the DB (fields in bold required):
 For more information, see the
 [environment variable reference ](/docs/reference/env-vars).
 
-<Alert
-  color="info"
-  html={`
-The official <code>postgres</code> docker image can be configured by setting environment
-variables for the container. See the Postgres image
-<a href="https://hub.docker.com/_/postgres">documentation</a> for more details.
-`}
-/>
+<Alert color="info">
+  The official `postgres` docker image can be configured by setting environment
+  variables for the container. See the Postgres image
+  [documentation](https://hub.docker.com/_/postgres) for more details.
+</Alert>
 
 </TabsItem>
 <TabsItem title="Omnibus">

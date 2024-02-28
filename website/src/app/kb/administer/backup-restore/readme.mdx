@@ -1,17 +1,17 @@
 # Backup and Restore
 
-In Firezone 1.x and above, all configuration is kept in the Admin portal and
-therefore no backup and restore procedures are necessary. WireGuard keys are
-generated ephemerally each time a Client or Gateway starts and don't need to be
-(nor should they be) saved.
+All critical configuration is kept in the Admin portal and therefore no backup
+and restore procedures are necessary. WireGuard keys are generated ephemerally
+each time a Client or Gateway starts and don't need to be (nor should they be)
+saved.
 
 That said, you may want to make sure to save the following configuration
-parameters in cases where you're replacing gateway VMs or headless clients tied
+parameters in cases where you're replacing Gateway VMs or headless clients tied
 to service accounts:
 
-- The `FIREZONE_TOKEN` environment variable authenticates gateways and clients
+- The `FIREZONE_TOKEN` environment variable authenticates Gateways and Clients
   to the portal and determines which configurations to load respectively. This
   is a secret that should **always** be saved in a safe place.
-- The `FIREZONE_ID` environment variable identifies gateways and clients to the
+- The `FIREZONE_ID` environment variable identifies Gateways and Clients to the
   portal for metadata tracking. We recommend saving this if you'd like to
   maintain consistency for display in the portal.

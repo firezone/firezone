@@ -78,7 +78,7 @@ defmodule Web.Settings.IdentityProviders.New do
       account={@account}
       opts={@opts}
       name="Microsoft Entra"
-      description="Authenticate users and synchronize users and groups with a custom Microsoft Entra connector."
+      description="Authenticate users and synchronize users and groups with a custom Microsoft Entra ID connector."
     />
     """
   end

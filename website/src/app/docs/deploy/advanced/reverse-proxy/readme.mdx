@@ -2,16 +2,13 @@ import Alert from "@/components/DocsAlert";
 
 # Custom Reverse Proxy
 
-<Alert
-  color="warning"
-  html={`
-Using a custom reverse proxy is an advanced configuration. The default bundled
-Nginx proxy (Omnibus-based deployments) and Caddy (Docker-based deployments)
-is suitable for the vast majority of use cases and is recommended for most
-users. There are important security risks if the reverse proxy is not set up
-correctly.
-`}
-/>
+<Alert color="warning">
+  Using a custom reverse proxy is an advanced configuration. The default bundled
+  Nginx proxy (Omnibus-based deployments) and Caddy (Docker-based deployments)
+  is suitable for the vast majority of use cases and is recommended for most
+  users. There are important security risks if the reverse proxy is not set up
+  correctly.
+</Alert>
 
 ## Introduction
 
@@ -36,24 +33,26 @@ reverse proxy.
   [X-Forwarded-For header works](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Forwarded-For),
   this is needed to parse the actual client's IP address to prevent IP spoofing.
 
-<Alert color="info" html={`
-The <code>external_trusted_proxies</code> list automatically implicitly includes the
-following private CIDR ranges, even if they're not specified in the
-configuration file:
-<ul>
-<li><code>127.0.0.0/8</code></li>
-<li><code>10.0.0.0/8</code></li>
-<li><code>172.16.0.0/12</code></li>
-<li><code>192.168.0.0/16</code></li>
-<li><code>::1/128</code></li>
-<li><code>fc00::/7</code></li>
-</ul>
+<Alert color="info">
+<div>
+    The `external_trusted_proxies` list automatically implicitly includes the
+    following private CIDR ranges, even if they're not specified in the
+    configuration file:
 
-This means any web requests originating from these IPs are automatically ignored
-from the <code>X-Forwarded-For</code> headers. If you're accessing Firezone from
-any IPs in this range (as seen by the Firezone web app), be sure to add them to
-the <code>default['firezone']['phoenix']['clients']</code> configuration option
-instead. `} />
+    - `127.0.0.0/8`
+    - `10.0.0.0/8`
+    - `172.16.0.0/12`
+    - `192.168.0.0/16`
+    - `::1/128`
+    - `fc00::/7`
+
+    This means any web requests originating from these IPs are automatically ignored
+    from the `X-Forwarded-For` headers. If you're accessing Firezone from any IPs in
+    this range (as seen by the Firezone web app), be sure to add them to the
+    `default['firezone']['phoenix']['clients']` configuration option instead.
+
+</div>
+</Alert>
 
 Read more about the configuration options
 [here](/docs/reference/configuration-file).

@@ -1,0 +1,66 @@
+# How Firezone DNS Works
+
+_Note: This blog post describes in detail how Firezone DNS works in all its
+complexity. If you're looking for a more high-level reference, read the
+[docs page on the subject instead](/kb/deploy/dns)._
+
+When a user signs in, the Firezone Client configures its host operating system
+to use a special, lightweight DNS proxy running inside the Client for all DNS
+queries on the system.
+
+This proxy lives at `100.100.111.0/24` for IPv4 queries and
+`fd00:2021:1111:8000:100:100:111:0/120` for IPv6 queries. These addresses are
+not routable on the public internet and are only used for DNS queries.
+
+```text
+user@host:~ % dig ifconfig.net
+
+; <<>> DiG 9.10.6 <<>> ifconfig.net
+;; global options: +cmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 51756
+;; flags: qr rd ra; QUERY: 1, ANSWER: 2, AUTHORITY: 0, ADDITIONAL: 0
+
+;; QUESTION SECTION:
+;ifconfig.net.			IN	A
+
+;; ANSWER SECTION:
+ifconfig.net.		300	IN	A	100.96.0.2
+ifconfig.net.		300	IN	A	100.96.0.1
+
+;; Query time: 262 msec
+;; SERVER: fd00:2021:1111:8000:100:100:111:0#53(fd00:2021:1111:8000:100:100:111:0)
+;; WHEN: Sat Feb 17 14:04:40 PST 2024
+;; MSG SIZE  rcvd: 86
+```
+
+The IP addresses the proxy chooses to "listen on" are determined by the
+[upstream resolvers](#configuring-client-dns-upstream-resolvers) available to
+the Client. For each IPv4 upstream resolver, the proxy listens on an address in
+the `100.100.111.0/24` range, and for each IPv6 upstream resolver, the proxy
+listens on an address in the `fd00:2021:1111:8000:100:100:111:0/120` range.
+
+When an application makes a DNS query, the proxy checks if the name matches a
+Firezone Resource that the user has access to. If it does, the Client then
+requests a Gateway serving that Resource to resolve the DNS query. When the
+Gateway responds, the proxy will create a temporary mapping between the actual
+IP address of the Resource and the dummy IP address it returned to the
+application. From this point onward, all subsequent packets to the dummy IP
+address are forwarded to the Gateway that resolved the query. These IPs are
+persisted for the duration of the Client's session.
+
+immediately responds with appropriate dummy IPs in the `100.64.96.0/11` and
+`fd00:2021:1111:8000/108` range and returns these to the application making the
+query. These IPs are remembered for the duration of the Client's session and
+used to intelligently route subsequent packets to a Firezone Gateway suitable
+for serving that Resource.
+
+If the proxy sees a query for a name that **is not** a Firezone Resource that
+the user has access to, it will forward the query to the upstream DNS server(s)
+configured by the admin in `Settings` -> `DNS`. If no upstream DNS servers are
+configured, the query is forwarded to the Client device's default system
+resolver(s) instead.
+
+This means that Clients are automatically configured for Split DNS in Firezone
+-- no other configuration is necessary other than adding the desired Resources
+in the admin portal.

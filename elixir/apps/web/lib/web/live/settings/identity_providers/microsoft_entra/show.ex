@@ -55,7 +55,7 @@ defmodule Web.Settings.IdentityProviders.MicrosoftEntra.Show do
           phx-click="disable"
           style="warning"
           icon="hero-lock-closed"
-          data-confirm="Are you sure want to disable this provider? Users will no longer be able to sign in with this provider and user / group sync will be paused."
+          data-confirm="Are you sure want to disable this provider? Users will no longer be able to sign in with this provider and directory sync will be paused."
         >
           Disable
         </.button>
