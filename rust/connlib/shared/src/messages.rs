@@ -20,6 +20,12 @@ use crate::Dname;
 pub struct GatewayId(Uuid);
 #[derive(Hash, Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ResourceId(Uuid);
+
+impl ResourceId {
+    pub fn random() -> ResourceId {
+        ResourceId(Uuid::new_v4())
+    }
+}
 #[derive(Hash, Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq)]
 pub struct ClientId(Uuid);
 #[derive(Hash, Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq)]

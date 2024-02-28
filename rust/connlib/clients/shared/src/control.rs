@@ -485,3 +485,39 @@ async fn upload(path: PathBuf, url: Url) -> io::Result<()> {
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn discards_old_connection_intent() {
+        let mut intents = SentConnectionIntents::default();
+
+        let resource = ResourceId::random();
+
+        intents.register_new_intent(1, resource);
+        intents.register_new_intent(2, resource);
+
+        let should_accept = intents.handle_connection_details_received(1, resource);
+
+        assert!(!should_accept);
+    }
+
+    #[test]
+    fn allows_unrelated_intents() {
+        let mut intents = SentConnectionIntents::default();
+
+        let resource1 = ResourceId::random();
+        let resource2 = ResourceId::random();
+
+        intents.register_new_intent(1, resource1);
+        intents.register_new_intent(2, resource2);
+
+        let should_accept_1 = intents.handle_connection_details_received(1, resource1);
+        let should_accept_2 = intents.handle_connection_details_received(2, resource2);
+
+        assert!(should_accept_1);
+        assert!(should_accept_2);
+    }
+}
