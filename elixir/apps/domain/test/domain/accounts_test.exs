@@ -427,6 +427,20 @@ defmodule Domain.AccountsTest do
 
       assert_receive :config_changed
     end
+
+    test "broadcasts disconnect message for the clients when account is disabled", %{
+      account: account
+    } do
+      attrs = %{
+        disabled_at: DateTime.utc_now()
+      }
+
+      :ok = Domain.PubSub.subscribe("account_clients:#{account.id}")
+
+      assert {:ok, _account} = update_account_by_id(account.id, attrs)
+
+      assert_receive "disconnect"
+    end
   end
 
   for feature <- Accounts.Features.__schema__(:fields) do

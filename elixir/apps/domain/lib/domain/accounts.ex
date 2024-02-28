@@ -79,6 +79,17 @@ defmodule Domain.Accounts do
       with: &Account.Changeset.update(&1, attrs),
       after_commit: &on_account_update/2
     )
+    |> case do
+      {:ok, %{disabled_at: nil} = account} ->
+        {:ok, account}
+
+      {:ok, account} ->
+        :ok = Domain.Clients.disconnect_account_clients(account)
+        {:ok, account}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
   end
 
   defp on_account_update(account, changeset) do

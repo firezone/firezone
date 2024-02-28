@@ -47,7 +47,7 @@ defmodule Domain.Auth.Adapters.UserPass do
     |> case do
       %{valid?: false} = nested_changeset ->
         {changeset, _original_type} =
-          Domain.Changeset.inject_embedded_changeset(
+          Repo.Changeset.inject_embedded_changeset(
             changeset,
             :provider_virtual_state,
             nested_changeset
@@ -66,7 +66,7 @@ defmodule Domain.Auth.Adapters.UserPass do
         {changeset, _original_type} =
           changeset
           |> Ecto.Changeset.put_change(:provider_state, %{"password_hash" => password_hash})
-          |> Domain.Changeset.inject_embedded_changeset(:provider_virtual_state, nested_changeset)
+          |> Repo.Changeset.inject_embedded_changeset(:provider_virtual_state, nested_changeset)
 
         changeset
     end

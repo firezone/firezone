@@ -18,12 +18,14 @@ defmodule Domain.Clients do
   end
 
   def count_by_account_id(account_id) do
-    Client.Query.by_account_id(account_id)
+    Client.Query.not_deleted()
+    |> Client.Query.by_account_id(account_id)
     |> Repo.aggregate(:count)
   end
 
   def count_1m_active_users_for_account(%Accounts.Account{} = account) do
-    Client.Query.by_account_id(account.id)
+    Client.Query.not_deleted()
+    |> Client.Query.by_account_id(account.id)
     |> Client.Query.by_last_seen_within(1, "month")
     |> Client.Query.select_distinct_actor_id()
     |> Client.Query.only_for_active_actors()
@@ -32,7 +34,8 @@ defmodule Domain.Clients do
   end
 
   def count_by_actor_id(actor_id) do
-    Client.Query.by_actor_id(actor_id)
+    Client.Query.not_deleted()
+    |> Client.Query.by_actor_id(actor_id)
     |> Repo.aggregate(:count)
   end
 
@@ -57,7 +60,8 @@ defmodule Domain.Clients do
   end
 
   def fetch_client_by_id!(id, opts \\ []) do
-    Client.Query.by_id(id)
+    Client.Query.not_deleted()
+    |> Client.Query.by_id(id)
     |> Repo.fetch!(Client.Query, opts)
   end
 
@@ -90,7 +94,8 @@ defmodule Domain.Clients do
 
     with :ok <- Auth.ensure_has_permissions(subject, required_permissions),
          true <- Validator.valid_uuid?(actor_id) do
-      Client.Query.by_actor_id(actor_id)
+      Client.Query.not_deleted()
+      |> Client.Query.by_actor_id(actor_id)
       |> Authorizer.for_subject(subject)
       |> Repo.list(Client.Query, opts)
     else
@@ -169,7 +174,8 @@ defmodule Domain.Clients do
 
   def update_client(%Client{} = client, attrs, %Auth.Subject{} = subject) do
     with :ok <- authorize_actor_client_management(client.actor_id, subject) do
-      Client.Query.by_id(client.id)
+      Client.Query.not_deleted()
+      |> Client.Query.by_id(client.id)
       |> Authorizer.for_subject(subject)
       |> Repo.fetch_and_update(Client.Query,
         with: &Client.Changeset.update(&1, attrs),
@@ -179,7 +185,9 @@ defmodule Domain.Clients do
   end
 
   def delete_client(%Client{} = client, %Auth.Subject{} = subject) do
-    queryable = Client.Query.by_id(client.id)
+    queryable =
+      Client.Query.not_deleted()
+      |> Client.Query.by_id(client.id)
 
     with :ok <- authorize_actor_client_management(client.actor_id, subject) do
       case delete_clients(queryable, subject) do
@@ -195,7 +203,8 @@ defmodule Domain.Clients do
 
   def delete_clients_for(%Actors.Actor{} = actor, %Auth.Subject{} = subject) do
     queryable =
-      Client.Query.by_actor_id(actor.id)
+      Client.Query.not_deleted()
+      |> Client.Query.by_actor_id(actor.id)
       |> Client.Query.by_account_id(actor.account_id)
 
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_clients_permission()),
@@ -217,20 +226,16 @@ defmodule Domain.Clients do
     {:ok, clients}
   end
 
-  def authorize_actor_client_management(%Actors.Actor{} = actor, %Auth.Subject{} = subject) do
+  defp authorize_actor_client_management(%Actors.Actor{} = actor, %Auth.Subject{} = subject) do
     authorize_actor_client_management(actor.id, subject)
   end
 
-  def authorize_actor_client_management(actor_id, %Auth.Subject{actor: %{id: actor_id}} = subject) do
+  defp authorize_actor_client_management(id, %Auth.Subject{actor: %{id: id}} = subject) do
     Auth.ensure_has_permissions(subject, Authorizer.manage_own_clients_permission())
   end
 
-  def authorize_actor_client_management(_actor_id, %Auth.Subject{} = subject) do
+  defp authorize_actor_client_management(_actor_id, %Auth.Subject{} = subject) do
     Auth.ensure_has_permissions(subject, Authorizer.manage_clients_permission())
-  end
-
-  def fetch_client_config!(%Client{} = client) do
-    Domain.Config.fetch_resolved_configs!(client.account_id, [:clients_upstream_dns])
   end
 
   def connect_client(%Client{} = client) do
@@ -274,6 +279,12 @@ defmodule Domain.Clients do
     PubSub.subscribe(actor_presence_topic(actor_or_id))
   end
 
+  def broadcast_to_account_clients(account_or_id, payload) do
+    account_or_id
+    |> account_topic()
+    |> PubSub.broadcast(payload)
+  end
+
   def broadcast_to_client(client_or_id, payload) do
     client_or_id
     |> client_topic()
@@ -292,5 +303,9 @@ defmodule Domain.Clients do
 
   def disconnect_actor_clients(actor_or_id) do
     broadcast_to_actor_clients(actor_or_id, "disconnect")
+  end
+
+  def disconnect_account_clients(account_or_id) do
+    broadcast_to_account_clients(account_or_id, "disconnect")
   end
 end

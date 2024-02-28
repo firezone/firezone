@@ -43,7 +43,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace do
   @impl true
   def provider_changeset(%Ecto.Changeset{} = changeset) do
     changeset
-    |> Domain.Changeset.cast_polymorphic_embed(:adapter_config,
+    |> Domain.Repo.Changeset.cast_polymorphic_embed(:adapter_config,
       required: true,
       with: fn current_attrs, attrs ->
         Ecto.embedded_load(GoogleWorkspace.Settings, current_attrs, :json)

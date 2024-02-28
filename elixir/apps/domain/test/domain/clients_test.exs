@@ -90,7 +90,7 @@ defmodule Domain.ClientsTest do
     end
   end
 
-  describe "fetch_client_by_id/2" do
+  describe "fetch_client_by_id/3" do
     test "returns error when UUID is invalid", %{unprivileged_subject: subject} do
       assert fetch_client_by_id("foo", subject) == {:error, :not_found}
     end
@@ -183,6 +183,48 @@ defmodule Domain.ClientsTest do
                       Clients.Authorizer.manage_own_clients_permission()
                     ]}
                  ]}}
+    end
+  end
+
+  describe "fetch_client_by_id!/2" do
+    test "raises when UUID is invalid" do
+      assert_raise Ecto.Query.CastError, fn ->
+        fetch_client_by_id!("foo")
+      end
+    end
+
+    test "raises when client does not exist" do
+      assert_raise Ecto.NoResultsError, fn ->
+        fetch_client_by_id!(Ecto.UUID.generate())
+      end
+    end
+
+    test "raises when client is deleted", %{
+      unprivileged_actor: actor
+    } do
+      client =
+        Fixtures.Clients.create_client(actor: actor)
+        |> Fixtures.Clients.delete_client()
+
+      assert_raise Ecto.NoResultsError, fn ->
+        fetch_client_by_id!(client.id)
+      end
+    end
+
+    test "returns client by id", %{unprivileged_actor: actor} do
+      client = Fixtures.Clients.create_client(actor: actor)
+      assert fetch_client_by_id!(client.id, preload: [:online?]) == client
+    end
+
+    test "preloads online status", %{unprivileged_actor: actor} do
+      client = Fixtures.Clients.create_client(actor: actor)
+
+      assert client = fetch_client_by_id!(client.id, preload: [:online?])
+      assert client.online? == false
+
+      assert connect_client(client) == :ok
+      assert client = fetch_client_by_id!(client.id, preload: [:online?])
+      assert client.online? == true
     end
   end
 
@@ -803,9 +845,13 @@ defmodule Domain.ClientsTest do
       Fixtures.Clients.create_client(actor: actor)
       Fixtures.Clients.create_client(actor: actor)
 
-      assert Repo.aggregate(Clients.Client.Query.by_actor_id(actor.id), :count) == 3
+      query =
+        Clients.Client.Query.not_deleted()
+        |> Clients.Client.Query.by_actor_id(actor.id)
+
+      assert Repo.aggregate(query, :count) == 3
       assert delete_clients_for(actor, subject) == :ok
-      assert Repo.aggregate(Clients.Client.Query.by_actor_id(actor.id), :count) == 0
+      assert Repo.aggregate(query, :count) == 0
     end
 
     test "does not remove clients that belong to another actor", %{
@@ -830,6 +876,47 @@ defmodule Domain.ClientsTest do
                 {:unauthorized,
                  reason: :missing_permissions,
                  missing_permissions: [Clients.Authorizer.manage_clients_permission()]}}
+    end
+  end
+
+  describe "connect_client/1" do
+    test "tracks client presence for account", %{account: account} do
+      client = Fixtures.Clients.create_client(account: account)
+      assert connect_client(client) == :ok
+
+      client = fetch_client_by_id!(client.id, preload: [:online?])
+      assert client.online? == true
+    end
+
+    test "tracks client presence for actor", %{account: account} do
+      actor = Fixtures.Actors.create_actor(account: account)
+      client = Fixtures.Clients.create_client(account: account, actor: actor)
+      assert connect_client(client) == :ok
+
+      assert broadcast_to_client(client, "test") == :ok
+
+      assert_receive "test"
+    end
+
+    test "subscribes to client events", %{account: account} do
+      actor = Fixtures.Actors.create_actor(account: account)
+      client = Fixtures.Clients.create_client(account: account, actor: actor)
+      assert connect_client(client) == :ok
+
+      assert disconnect_client(client) == :ok
+
+      assert_receive "disconnect"
+    end
+
+    test "subscribes to account events", %{account: account} do
+      actor = Fixtures.Actors.create_actor(account: account)
+      client = Fixtures.Clients.create_client(account: account, actor: actor)
+
+      assert connect_client(client) == :ok
+
+      assert disconnect_account_clients(account) == :ok
+
+      assert_receive "disconnect"
     end
   end
 end
