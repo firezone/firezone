@@ -33,7 +33,7 @@ account remains up-to-date with the latest identity data from Okta.
 
 Setting up the Okta connector is similar to the process of setting up a
 universal OIDC connector. The main difference is the addition of a few extra
-read-only scopes needed to enable sync.
+read-only scopes needed to enable directory sync.
 
 Follow the steps below to setup the Okta connector.
 
@@ -102,7 +102,8 @@ Fill in the **App integration name** field with `Firezone Connector`.
 [Download the Firezone logo](/images/kb/authenticate/okta/firezone-logo.png) to
 use for the app integration and upload it to Okta (optional).
 
-Ensure the **Refresh Token** grant type is selected.
+Ensure both the **Authorization Code** and **Refresh Token** grant types are
+selected.
 
 <Link
   href="/images/kb/authenticate/okta/5-app-name-grant-type.png"
@@ -132,6 +133,13 @@ In the **Sign-out redirect URIs** field, enter `https://app.firezone.dev`.
 
 In the **Assignments** tab, assign the app to the groups you want to have access
 to Firezone.
+
+<Alert color="warning">
+  The user setting up this connector must have access to the Okta application
+  being created. If you choose to "skip group assignment for now", please make
+  sure your user is assigned to this Okta app before finishing the setup in
+  Firezone.
+</Alert>
 
 Then click **Save**.
 
@@ -258,5 +266,5 @@ Ensure all fields are filled out, and click **Connect Identity Provider**.
 
 If you get successfully redirected back to your Firezone admin dashboard, you're
 done! Your Okta provider is now successfully configured. Users in your
-organization can now authenticate to Firezone using this provider and user /
-group sync will occur every few minutes.
+organization can authenticate to Firezone using this connector after the first
+directory sync is completed, and directory sync will occur every few minutes.

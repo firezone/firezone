@@ -129,10 +129,9 @@ Here's how it works:
   using it for new connection requests to Resources in the Site.
 - Existing Clients will remain connected to the Gateway until they themselves
   detect it to be unhealthy.
-- Clients detect unhealthy Gateways by maintaining keepalive timers with
-  Gateways they're connected to. If the keepalive timer expires, the Client will
-  disconnect from that Gateway and ask the portal for a new, healthy one to
-  connect to.
+- Clients identify unhealthy gateways using keepalive timers. If the timer
+  expires, the Client will disconnect from the unhealthy Gateway and request a
+  new, healthy one from the portal.
 - The client keepalive timer expires after **20 seconds**. This is the maximum
   time it takes for existing client connections to be rerouted to a healthy
   Gateway in the event of a Gateway failure.
@@ -146,10 +145,10 @@ interrupt existing connections to healthy Gateways.
 Similar to automatic failover, two or more Gateways deployed within a Site will
 automatic load balance client connections to Resources in that Site.
 
-When a Client wants to connect to a Resource, Firezone randomly picks a random
-healthy Gateway in the Site to serve the Resource being requested. The Client
-will then stay connected to that Gateway until either the Client disconnects or
-the Gateway becomes unhealthy.
+When a Client wants to connect to a Resource, Firezone randomly selects a
+healthy Gateway in the Site to handle the request. The Client maintains the
+connection to that Gateway until either the Client disconnects or the Gateway
+becomes unhealthy.
 
 Deploy as many Gateways as you need to handle the load of client connections to
 Resources in a Site. This effectively shards client connections across all
