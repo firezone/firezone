@@ -70,15 +70,19 @@ where
     CB: Callbacks + 'static,
 {
     pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Result<Event<GatewayId>>> {
-        let Some(device) = self.device.as_mut() else {
+        if self.device.is_none() {
             self.no_device_waker.register(cx.waker());
             return Poll::Pending;
         };
 
         match self.role_state.poll_next_event(cx) {
             Poll::Ready(Event::SendPacket(packet)) => {
-                device.write(packet)?;
+                self.device.as_mut().unwrap().write(packet)?;
                 cx.waker().wake_by_ref();
+            }
+            Poll::Ready(Event::DeviceConfigUpdated) => {
+                self.update_interface()?;
+                cx.waker().wake_by_ref()
             }
             Poll::Ready(other) => return Poll::Ready(Ok(other)),
             _ => (),
@@ -93,10 +97,11 @@ where
             _ => (),
         }
 
-        match self
-            .connections_state
-            .poll_sockets(device, &mut self.role_state.peers, cx)?
-        {
+        match self.connections_state.poll_sockets(
+            self.device.as_mut().unwrap(),
+            &mut self.role_state.peers,
+            cx,
+        )? {
             Poll::Ready(()) => {
                 cx.waker().wake_by_ref();
             }
@@ -105,7 +110,12 @@ where
 
         ready!(self.connections_state.sockets.poll_send_ready(cx))?; // Ensure socket is ready before we read from device.
 
-        match device.poll_read(&mut self.read_buf, cx)? {
+        match self
+            .device
+            .as_mut()
+            .unwrap()
+            .poll_read(&mut self.read_buf, cx)?
+        {
             Poll::Ready(Some(packet)) => {
                 let Some((peer_id, packet)) = self.role_state.encapsulate(packet, Instant::now())
                 else {
@@ -400,6 +410,7 @@ pub enum Event<TId> {
     },
     SendPacket(IpPacket<'static>),
     StopPeer(TId),
+    DeviceConfigUpdated,
 }
 
 async fn sleep_until(deadline: Instant) -> Instant {

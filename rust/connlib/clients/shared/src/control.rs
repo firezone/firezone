@@ -1,14 +1,9 @@
 use async_compression::tokio::bufread::GzipEncoder;
-use bimap::BiMap;
 use connlib_shared::control::{ChannelError, ErrorReply};
-use connlib_shared::messages::{DnsServer, GatewayResponse, IpDnsServer};
-use connlib_shared::IpProvider;
+use connlib_shared::messages::GatewayResponse;
 use firezone_tunnel::ClientTunnel;
-use ip_network::IpNetwork;
 use std::io;
-use std::net::IpAddr;
 use std::path::PathBuf;
-use std::str::FromStr;
 
 use crate::messages::{
     BroadcastGatewayIceCandidates, Connect, ConnectionDetails, EgressMessages,
@@ -28,10 +23,6 @@ use std::collections::HashMap;
 use tokio::io::BufReader;
 use tokio_util::codec::{BytesCodec, FramedRead};
 use url::Url;
-
-const DNS_PORT: u16 = 53;
-const DNS_SENTINELS_V4: &str = "100.100.111.0/24";
-const DNS_SENTINELS_V6: &str = "fd00:2021:1111:8000:100:100:111:0/120";
 
 pub struct ControlPlane<CB: Callbacks> {
     pub tunnel: ClientTunnel<CB>,
@@ -79,53 +70,6 @@ impl SentConnectionIntents {
     }
 }
 
-fn effective_dns_servers(
-    upstream_dns: Vec<DnsServer>,
-    default_resolvers: Vec<IpAddr>,
-) -> Vec<DnsServer> {
-    if !upstream_dns.is_empty() {
-        return upstream_dns;
-    }
-
-    let mut dns_servers = default_resolvers
-        .into_iter()
-        .filter(|ip| !IpNetwork::from_str(DNS_SENTINELS_V4).unwrap().contains(*ip))
-        .filter(|ip| !IpNetwork::from_str(DNS_SENTINELS_V6).unwrap().contains(*ip))
-        .peekable();
-
-    if dns_servers.peek().is_none() {
-        tracing::error!("No system default DNS servers available! Can't initialize resolver. DNS will be broken.");
-        return Vec::new();
-    }
-
-    dns_servers
-        .map(|ip| {
-            DnsServer::IpPort(IpDnsServer {
-                address: (ip, DNS_PORT).into(),
-            })
-        })
-        .collect()
-}
-
-fn sentinel_dns_mapping(dns: &[DnsServer]) -> BiMap<IpAddr, DnsServer> {
-    let mut ip_provider = IpProvider::new(
-        DNS_SENTINELS_V4.parse().unwrap(),
-        DNS_SENTINELS_V6.parse().unwrap(),
-    );
-
-    dns.iter()
-        .cloned()
-        .map(|i| {
-            (
-                ip_provider
-                    .get_proxy_ip_for(&i.ip())
-                    .expect("We only support up to 256 IpV4 DNS servers and 256 IpV6 DNS servers"),
-                i,
-            )
-        })
-        .collect()
-}
-
 impl<CB: Callbacks + 'static> ControlPlane<CB> {
     async fn init(
         &mut self,
@@ -134,23 +78,8 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
             resources,
         }: InitClient,
     ) -> Result<()> {
-        let effective_dns_servers = effective_dns_servers(
-            interface.upstream_dns.clone(),
-            self.tunnel
-                .callbacks()
-                .get_system_default_resolvers()
-                .ok()
-                .flatten()
-                .unwrap_or_default(),
-        );
-
-        let sentinel_mapping = sentinel_dns_mapping(&effective_dns_servers);
-
         if !self.tunnel_init {
-            if let Err(e) = self
-                .tunnel
-                .set_interface(&interface, sentinel_mapping.clone())
-            {
+            if let Err(e) = self.tunnel.set_interface(&interface) {
                 tracing::error!(error = ?e, "Error initializing interface");
                 return Err(e);
             } else {
@@ -164,6 +93,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
         } else {
             tracing::info!("Firezone reinitializated");
         }
+
         Ok(())
     }
 
@@ -425,10 +355,12 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                 });
             }
             Ok(firezone_tunnel::Event::StopPeer(_)) => {
-                // This should never bubbled up
-                // TODO: we might want to segregate events further
+                unimplemented!("Handled internally");
             }
             Ok(firezone_tunnel::Event::SendPacket(_)) => {
+                unimplemented!("Handled internally");
+            }
+            Ok(firezone_tunnel::Event::DeviceConfigUpdated) => {
                 unimplemented!("Handled internally");
             }
             Err(e) => {

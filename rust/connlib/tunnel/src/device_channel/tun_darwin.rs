@@ -1,5 +1,5 @@
 use connlib_shared::{messages::Interface as InterfaceConfig, Callbacks, Error, Result};
-use ip_network::IpNetwork;
+use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use libc::{
     ctl_info, fcntl, getpeername, getsockopt, ioctl, iovec, msghdr, recvmsg, sendmsg, sockaddr_ctl,
     socklen_t, AF_INET, AF_INET6, AF_SYSTEM, CTLIOCGINFO, F_GETFL, F_SETFL, IF_NAMESIZE,
@@ -143,23 +143,16 @@ impl Tun {
         Err(get_last_error())
     }
 
-    pub fn add_route(
+    pub fn set_routes(
         &self,
-        route: IpNetwork,
+        routes: Vec<IpNetwork>,
         callbacks: &impl Callbacks<Error = Error>,
     ) -> Result<Option<Self>> {
         // This will always be None in macos
-        callbacks.on_add_route(route)?;
-        Ok(None)
-    }
-
-    pub fn remove_route(
-        &self,
-        route: IpNetwork,
-        callbacks: &impl Callbacks<Error = Error>,
-    ) -> Result<Option<Self>> {
-        // This will always be None in macos
-        callbacks.on_remove_route(route)?;
+        callbacks.on_update_routes(
+            routes.iter().filter_map(ipv4).copied().collect(),
+            routes.iter().filter_map(ipv6).copied().collect(),
+        )?;
         Ok(None)
     }
 
@@ -232,4 +225,18 @@ fn name(fd: RawFd) -> Result<String> {
     }
 
     Ok(String::from_utf8_lossy(&tunnel_name[..(tunnel_name_len - 1) as usize]).to_string())
+}
+
+fn ipv4(ip: &IpNetwork) -> Option<&Ipv4Network> {
+    match ip {
+        IpNetwork::V4(v4) => Some(v4),
+        IpNetwork::V6(_) => None,
+    }
+}
+
+fn ipv6(ip: &IpNetwork) -> Option<&Ipv6Network> {
+    match ip {
+        IpNetwork::V4(_) => None,
+        IpNetwork::V6(v6) => Some(v6),
+    }
 }

@@ -2,7 +2,7 @@
 #![allow(clippy::unnecessary_cast, improper_ctypes, non_camel_case_types)]
 
 use connlib_client_shared::{file_logger, Callbacks, Error, ResourceDescription, Session};
-use ip_network::IpNetwork;
+use ip_network::{Ipv4Network, Ipv6Network};
 use secrecy::SecretString;
 use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
@@ -58,11 +58,8 @@ mod ffi {
         #[swift_bridge(swift_name = "onTunnelReady")]
         fn on_tunnel_ready(&self);
 
-        #[swift_bridge(swift_name = "onAddRoute")]
-        fn on_add_route(&self, route: String);
-
-        #[swift_bridge(swift_name = "onRemoveRoute")]
-        fn on_remove_route(&self, route: String);
+        #[swift_bridge(swift_name = "onUpdateRoutes")]
+        fn on_update_routes(&self, routeList4: String, routeList6: String);
 
         #[swift_bridge(swift_name = "onUpdateResources")]
         fn on_update_resources(&self, resourceList: String);
@@ -115,13 +112,15 @@ impl Callbacks for CallbackHandler {
         Ok(())
     }
 
-    fn on_add_route(&self, route: IpNetwork) -> Result<Option<RawFd>, Self::Error> {
-        self.inner.on_add_route(route.to_string());
-        Ok(None)
-    }
-
-    fn on_remove_route(&self, route: IpNetwork) -> Result<Option<RawFd>, Self::Error> {
-        self.inner.on_remove_route(route.to_string());
+    fn on_update_routes(
+        &self,
+        route_list_4: Vec<Ipv4Network>,
+        route_list_6: Vec<Ipv6Network>,
+    ) -> Result<Option<RawFd>, Self::Error> {
+        self.inner.on_update_routes(
+            serde_json::to_string(&route_list_4).unwrap(),
+            serde_json::to_string(&route_list_6).unwrap(),
+        );
         Ok(None)
     }
 

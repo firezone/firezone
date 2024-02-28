@@ -31,6 +31,7 @@ pub struct Tun {
     packet_rx: std::sync::Mutex<mpsc::Receiver<wintun::Packet>>,
     _recv_thread: std::thread::JoinHandle<()>,
     session: Arc<wintun::Session>,
+    routes: Vec<IpNetwork>,
 }
 
 impl Drop for Tun {
@@ -149,11 +150,27 @@ impl Tun {
             _recv_thread: recv_thread,
             packet_rx,
             session: Arc::clone(&session),
+            routes: Vec::new(),
         })
     }
 
     // It's okay if this blocks until the route is added in the OS.
-    pub fn add_route(&self, route: IpNetwork) -> Result<()> {
+    pub fn set_routes(&mut self, routes: Vec<IpNetwork>) -> Result<()> {
+        for route in routes.iter().filter(|r| !self.routes.contains(r)) {
+            self.add_route(*route)?;
+        }
+
+        for route in self.routes.iter().filter(|r| !routes.contains(r)) {
+            self.remove_route(*route)?;
+        }
+
+        self.routes = routes;
+
+        Ok(())
+    }
+
+    // It's okay if this blocks until the route is added in the OS.
+    fn add_route(&self, route: IpNetwork) -> Result<()> {
         const DUPLICATE_ERR: u32 = 0x80071392;
         let entry = self.forward_entry(route);
 
@@ -169,7 +186,7 @@ impl Tun {
     }
 
     // It's okay if this blocks until the route is added in the OS.
-    pub fn remove_route(&self, route: IpNetwork) -> Result<()> {
+    fn remove_route(&self, route: IpNetwork) -> Result<()> {
         let entry = self.forward_entry(route);
 
         // SAFETY: Windows shouldn't store the reference anywhere, it's just a way to pass lots of arguments at once. And no other thread sees this variable.

@@ -6,7 +6,7 @@ use crate::{dns, dns::DnsQuery, Event, Tunnel, DNS_QUERIES_QUEUE_SIZE};
 use bimap::BiMap;
 use connlib_shared::error::{ConnlibError as Error, ConnlibError};
 use connlib_shared::messages::{
-    DnsServer, GatewayId, Interface as InterfaceConfig, ResourceDescription,
+    DnsServer, GatewayId, Interface as InterfaceConfig, IpDnsServer, ResourceDescription,
     ResourceDescriptionCidr, ResourceDescriptionDns, ResourceId, ReuseConnection,
 };
 use connlib_shared::{Callbacks, Dname, IpProvider};
@@ -21,7 +21,9 @@ use hickory_resolver::config::{NameServerConfig, Protocol, ResolverConfig};
 use hickory_resolver::TokioAsyncResolver;
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::iter;
 use std::net::IpAddr;
+use std::str::FromStr;
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
 use tokio::time::{Interval, MissedTickBehavior};
@@ -30,6 +32,10 @@ use tokio::time::{Interval, MissedTickBehavior};
 const IPV4_RESOURCES: &str = "100.96.0.0/11";
 const IPV6_RESOURCES: &str = "fd00:2021:1111:8000::/107";
 const MAX_CONNECTION_REQUEST_DELAY: Duration = Duration::from_secs(10);
+
+const DNS_PORT: u16 = 53;
+const DNS_SENTINELS_V4: &str = "100.100.111.0/24";
+const DNS_SENTINELS_V6: &str = "fd00:2021:1111:8000:100:100:111:0/120";
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct DnsResource {
@@ -71,8 +77,6 @@ where
                     .insert(dns.address.clone(), dns.clone());
             }
             ResourceDescription::Cidr(cidr) => {
-                self.add_route(cidr.address)?;
-
                 self.role_state
                     .cidr_resources
                     .insert(cidr.address, cidr.clone());
@@ -84,6 +88,7 @@ where
             .insert(resource_description.id(), resource_description);
 
         self.update_resource_list()?;
+        self.update_routes()?;
 
         Ok(())
     }
@@ -99,12 +104,10 @@ where
             .deferred_dns_queries
             .retain(|(r, _), _| r.id != id);
 
-        if let Some(ResourceDescription::Cidr(resource)) = self.role_state.resource_ids.remove(&id)
-        {
-            // Note: hopefully the os doesn't coalece routes in a way that removing a more general route deletes the most specific
-            if let Err(err) = self.remove_route(resource.address) {
-                tracing::error!(%id, %resource.address, "failed to remove route: {err:?}");
-            }
+        self.role_state.resource_ids.remove(&id);
+
+        if let Err(err) = self.update_routes() {
+            tracing::error!(%id, "Failed to update routes: {err:?}");
         }
 
         if let Err(err) = self.update_resource_list() {
@@ -160,46 +163,43 @@ where
         Ok(())
     }
 
-    /// Sets the interface configuration and starts background tasks.
-    #[tracing::instrument(level = "trace", skip(self))]
-    pub fn set_interface(
-        &mut self,
-        config: &InterfaceConfig,
-        dns_mapping: BiMap<IpAddr, DnsServer>,
-    ) -> connlib_shared::Result<()> {
-        let device = Device::new(
-            config,
+    pub(crate) fn update_interface(&mut self) -> connlib_shared::Result<()> {
+        let dns_mapping = self.role_state.dns_mapping();
+        let mut device = Device::new(
+            self.role_state.interface_config.as_ref().expect("Developer error: we should always call update_interface after the interface config is set"),
             // We can just sort in here because sentinel ips are created in order
             dns_mapping.left_values().copied().sorted().collect(),
             self.callbacks(),
         )?;
 
+        device.set_routes(self.role_state.routes().collect_vec(), &self.callbacks)?;
+
         self.device = Some(device);
         self.no_device_waker.wake();
-
-        let mut errs = Vec::new();
-        for sentinel in dns_mapping.left_values() {
-            if let Err(e) = self.add_route((*sentinel).into()) {
-                tracing::warn!(err = ?e, %sentinel , "couldn't add route for sentinel");
-                errs.push(e);
-            }
-        }
-
-        if errs.len() == dns_mapping.left_values().len() && dns_mapping.left_values().len() > 0 {
-            return Err(errs.pop().unwrap());
-        }
-
-        self.role_state.set_dns_mapping(dns_mapping);
-
-        let res_v4 = self.add_route(IPV4_RESOURCES.parse().unwrap());
-        let res_v6 = self.add_route(IPV6_RESOURCES.parse().unwrap());
-        res_v4.or(res_v6)?;
 
         self.callbacks.on_tunnel_ready()?;
 
         tracing::debug!("background_loop_started");
 
         Ok(())
+    }
+
+    /// Sets the interface configuration and starts background tasks.
+    #[tracing::instrument(level = "trace", skip(self))]
+    pub fn set_interface(&mut self, config: &InterfaceConfig) -> connlib_shared::Result<()> {
+        self.role_state.interface_config = Some(config.clone());
+        let effective_dns_servers = effective_dns_servers(
+            config.upstream_dns.clone(),
+            self.callbacks()
+                .get_system_default_resolvers()
+                .ok()
+                .flatten()
+                .unwrap_or_default(),
+        );
+
+        let dns_mapping = sentinel_dns_mapping(&effective_dns_servers);
+        self.role_state.set_dns_mapping(dns_mapping);
+        self.update_interface()
     }
 
     /// Clean up a connection to a resource.
@@ -210,29 +210,13 @@ where
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    pub fn add_route(&mut self, route: IpNetwork) -> connlib_shared::Result<()> {
+    pub fn update_routes(&mut self) -> connlib_shared::Result<()> {
         let callbacks = self.callbacks().clone();
         let maybe_new_device = self
             .device
             .as_mut()
             .ok_or(Error::ControlProtocolError)?
-            .add_route(route, &callbacks)?;
-
-        if let Some(new_device) = maybe_new_device {
-            self.device = Some(new_device);
-        }
-
-        Ok(())
-    }
-
-    #[tracing::instrument(level = "trace", skip(self))]
-    pub fn remove_route(&mut self, route: IpNetwork) -> connlib_shared::Result<()> {
-        let callbacks = self.callbacks().clone();
-        let maybe_new_device = self
-            .device
-            .as_mut()
-            .ok_or(Error::ControlProtocolError)?
-            .remove_route(route, &callbacks)?;
+            .set_routes(self.role_state.routes().collect_vec(), &callbacks)?;
 
         if let Some(new_device) = maybe_new_device {
             self.device = Some(new_device);
@@ -280,6 +264,7 @@ pub struct ClientState {
     dns_resolvers: HashMap<IpAddr, TokioAsyncResolver>,
 
     buffered_events: VecDeque<Event<GatewayId>>,
+    interface_config: Option<InterfaceConfig>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -541,7 +526,7 @@ impl ClientState {
         self.resources_gateways.get(resource).copied()
     }
 
-    pub fn set_dns_mapping(&mut self, mapping: BiMap<IpAddr, DnsServer>) {
+    fn set_dns_mapping(&mut self, mapping: BiMap<IpAddr, DnsServer>) {
         self.dns_mapping = mapping.clone();
         self.dns_resolvers = create_resolvers(mapping);
     }
@@ -591,6 +576,15 @@ impl ClientState {
                 .get(&resource.id)
                 .is_some_and(|r_gateway_id| r_gateway_id == gateway_id)
         });
+    }
+
+    fn routes(&self) -> impl Iterator<Item = IpNetwork> + '_ {
+        self.cidr_resources
+            .iter()
+            .map(|(ip, _)| ip)
+            .chain(iter::once(IpNetwork::from_str(IPV4_RESOURCES).unwrap()))
+            .chain(iter::once(IpNetwork::from_str(IPV6_RESOURCES).unwrap()))
+            .chain(self.dns_mapping.left_values().copied().map(Into::into))
     }
 
     fn get_cidr_resource_by_destination(&self, destination: IpAddr) -> Option<ResourceId> {
@@ -734,6 +728,54 @@ impl Default for ClientState {
             dns_mapping: Default::default(),
             dns_resolvers: Default::default(),
             buffered_events: Default::default(),
+            interface_config: Default::default(),
         }
     }
+}
+
+fn effective_dns_servers(
+    upstream_dns: Vec<DnsServer>,
+    default_resolvers: Vec<IpAddr>,
+) -> Vec<DnsServer> {
+    if !upstream_dns.is_empty() {
+        return upstream_dns;
+    }
+
+    let mut dns_servers = default_resolvers
+        .into_iter()
+        .filter(|ip| !IpNetwork::from_str(DNS_SENTINELS_V4).unwrap().contains(*ip))
+        .filter(|ip| !IpNetwork::from_str(DNS_SENTINELS_V6).unwrap().contains(*ip))
+        .peekable();
+
+    if dns_servers.peek().is_none() {
+        tracing::error!("No system default DNS servers available! Can't initialize resolver. DNS will be broken.");
+        return Vec::new();
+    }
+
+    dns_servers
+        .map(|ip| {
+            DnsServer::IpPort(IpDnsServer {
+                address: (ip, DNS_PORT).into(),
+            })
+        })
+        .collect()
+}
+
+fn sentinel_dns_mapping(dns: &[DnsServer]) -> BiMap<IpAddr, DnsServer> {
+    let mut ip_provider = IpProvider::new(
+        DNS_SENTINELS_V4.parse().unwrap(),
+        DNS_SENTINELS_V6.parse().unwrap(),
+    );
+
+    dns.iter()
+        .cloned()
+        .map(|i| {
+            (
+                ip_provider
+                    .get_proxy_ip_for(&i.ip())
+                    .expect("We only support up to 256 IpV4 DNS servers and 256 IpV6 DNS servers"),
+                i,
+            )
+        })
+        .collect()
 }

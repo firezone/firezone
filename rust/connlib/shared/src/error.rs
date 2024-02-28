@@ -68,10 +68,6 @@ pub enum ConnlibError {
     OnSetInterfaceConfigFailed(String),
     #[error("`on_tunnel_ready` failed: {0}")]
     OnTunnelReadyFailed(String),
-    #[error("`on_add_route` failed: {0}")]
-    OnAddRouteFailed(String),
-    #[error("`on_remove_route` failed: {0}")]
-    OnRemoveRouteFailed(String),
     #[error("`on_update_resources` failed: {0}")]
     OnUpdateResourcesFailed(String),
     #[error("`get_system_default_resolvers` failed: {0}")]

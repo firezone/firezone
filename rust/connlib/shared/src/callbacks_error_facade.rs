@@ -1,6 +1,5 @@
 use crate::messages::ResourceDescription;
 use crate::{Callbacks, Error, Result};
-use ip_network::IpNetwork;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::path::PathBuf;
 
@@ -34,28 +33,6 @@ impl<CB: Callbacks> Callbacks for CallbackErrorFacade<CB> {
             .0
             .on_tunnel_ready()
             .map_err(|err| Error::OnTunnelReadyFailed(err.to_string()));
-        if let Err(err) = result.as_ref() {
-            tracing::error!(?err);
-        }
-        result
-    }
-
-    fn on_add_route(&self, route: IpNetwork) -> Result<Option<RawFd>> {
-        let result = self
-            .0
-            .on_add_route(route)
-            .map_err(|err| Error::OnAddRouteFailed(err.to_string()));
-        if let Err(err) = result.as_ref() {
-            tracing::error!(?err);
-        }
-        result
-    }
-
-    fn on_remove_route(&self, route: IpNetwork) -> Result<Option<RawFd>> {
-        let result = self
-            .0
-            .on_remove_route(route)
-            .map_err(|err| Error::OnRemoveRouteFailed(err.to_string()));
         if let Err(err) = result.as_ref() {
             tracing::error!(?err);
         }

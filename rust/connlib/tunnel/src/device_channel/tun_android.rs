@@ -1,6 +1,6 @@
 use crate::device_channel::ioctl;
 use connlib_shared::{messages::Interface as InterfaceConfig, Callbacks, Error, Result};
-use ip_network::IpNetwork;
+use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use std::net::IpAddr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::task::{Context, Poll};
@@ -61,28 +61,18 @@ impl Tun {
         self.name.as_str()
     }
 
-    pub fn add_route(
+    pub fn set_routes(
         &self,
-        route: IpNetwork,
+        routes: Vec<IpNetwork>,
         callbacks: &impl Callbacks<Error = Error>,
     ) -> Result<Option<Self>> {
         self.fd.close();
-        let fd = callbacks.on_add_route(route)?.ok_or(Error::NoFd)?;
-        let name = unsafe { interface_name(fd)? };
-
-        Ok(Some(Tun {
-            fd: Closeable::new(AsyncFd::new(fd)?),
-            name,
-        }))
-    }
-
-    pub fn remove_route(
-        &self,
-        route: IpNetwork,
-        callbacks: &impl Callbacks<Error = Error>,
-    ) -> Result<Option<Self>> {
-        self.fd.close();
-        let fd = callbacks.on_remove_route(route)?.ok_or(Error::NoFd)?;
+        let fd = callbacks
+            .on_update_routes(
+                routes.iter().filter_map(ipv4).copied().collect(),
+                routes.iter().filter_map(ipv6).copied().collect(),
+            )?
+            .ok_or(Error::NoFd)?;
         let name = unsafe { interface_name(fd)? };
 
         Ok(Some(Tun {
@@ -173,5 +163,19 @@ impl Closeable {
 
     fn close(&self) {
         self.closed.store(true, Ordering::Release);
+    }
+}
+
+fn ipv4(ip: &IpNetwork) -> Option<&Ipv4Network> {
+    match ip {
+        IpNetwork::V4(v4) => Some(v4),
+        IpNetwork::V6(_) => None,
+    }
+}
+
+fn ipv6(ip: &IpNetwork) -> Option<&Ipv6Network> {
+    match ip {
+        IpNetwork::V4(_) => None,
+        IpNetwork::V6(v6) => Some(v6),
     }
 }
