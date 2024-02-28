@@ -179,6 +179,7 @@ async fn main() -> Result<()> {
                 offer.public_key.into(),
                 stun_server.into_iter().collect(),
                 turn_server.into_iter().collect(),
+                Instant::now(),
             );
 
             redis_connection

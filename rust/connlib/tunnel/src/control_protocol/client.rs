@@ -1,4 +1,4 @@
-use std::{collections::HashSet, net::IpAddr};
+use std::{collections::HashSet, net::IpAddr, time::Instant};
 
 use boringtun::x25519::PublicKey;
 use connlib_shared::{
@@ -151,6 +151,7 @@ where
                     password: rtc_ice_params.password,
                 },
             },
+            Instant::now(),
         );
 
         self.new_peer(resource_id, gateway_id, domain_response)?;

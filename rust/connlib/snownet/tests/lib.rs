@@ -27,7 +27,7 @@ fn connection_without_candidates_times_out_after_10_seconds() {
     let start = Instant::now();
 
     let (mut alice, mut bob) = alice_and_bob(start);
-    let answer = send_offer(&mut alice, &mut bob);
+    let answer = send_offer(&mut alice, &mut bob, start);
 
     let accepted_at = start + Duration::from_secs(1);
     alice.accept_answer(1, bob.public_key(), answer, accepted_at);
@@ -44,7 +44,7 @@ fn connection_with_candidates_does_not_time_out_after_10_seconds() {
     let start = Instant::now();
 
     let (mut alice, mut bob) = alice_and_bob(start);
-    let answer = send_offer(&mut alice, &mut bob);
+    let answer = send_offer(&mut alice, &mut bob, start);
 
     let accepted_at = start + Duration::from_secs(1);
     alice.accept_answer(1, bob.public_key(), answer, accepted_at);
@@ -64,7 +64,7 @@ fn answer_after_stale_connection_does_not_panic() {
     let start = Instant::now();
 
     let (mut alice, mut bob) = alice_and_bob(start);
-    let answer = send_offer(&mut alice, &mut bob);
+    let answer = send_offer(&mut alice, &mut bob, start);
 
     let now = start + Duration::from_secs(10);
     alice.handle_timeout(now);
@@ -96,8 +96,14 @@ fn only_generate_candidate_event_after_answer() {
         "no event to be emitted before accepting the answer"
     );
 
-    let answer =
-        bob.accept_connection(1, offer, alice.public_key(), HashSet::new(), HashSet::new());
+    let answer = bob.accept_connection(
+        1,
+        offer,
+        alice.public_key(),
+        HashSet::new(),
+        HashSet::new(),
+        Instant::now(),
+    );
 
     alice.accept_answer(1, bob.public_key(), answer, Instant::now());
 
@@ -143,10 +149,17 @@ fn alice_and_bob(start: Instant) -> (ClientNode<u64>, ServerNode<u64>) {
     (alice, bob)
 }
 
-fn send_offer(alice: &mut ClientNode<u64>, bob: &mut ServerNode<u64>) -> Answer {
+fn send_offer(alice: &mut ClientNode<u64>, bob: &mut ServerNode<u64>, now: Instant) -> Answer {
     let offer = alice.new_connection(1, HashSet::new(), HashSet::new());
 
-    bob.accept_connection(1, offer, alice.public_key(), HashSet::new(), HashSet::new())
+    bob.accept_connection(
+        1,
+        offer,
+        alice.public_key(),
+        HashSet::new(),
+        HashSet::new(),
+        now,
+    )
 }
 
 fn relay(username: &str, pass: &str, realm: &str) -> (SocketAddr, String, String, String) {
