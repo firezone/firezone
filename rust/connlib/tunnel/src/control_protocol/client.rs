@@ -101,7 +101,6 @@ where
     ) -> Result<()> {
         let ips = self.role_state.create_peer_config_for_new_connection(
             resource_id,
-            gateway_id,
             &domain_response.as_ref().map(|d| d.domain.clone()),
         )?;
 
