@@ -112,6 +112,7 @@ async fn main() -> Result<()> {
                         password: answer.password,
                     },
                 },
+                Instant::now(),
             );
 
             let rx = spawn_candidate_task(redis_connection.clone(), "listener_candidates");
