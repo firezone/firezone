@@ -27,7 +27,8 @@ defmodule Domain.Resources do
     with :ok <-
            Auth.ensure_has_permissions(subject, Authorizer.view_available_resources_permission()),
          true <- Validator.valid_uuid?(id) do
-      Resource.Query.by_id(id)
+      Resource.Query.not_deleted()
+      |> Resource.Query.by_id(id)
       |> Resource.Query.by_account_id(subject.account.id)
       |> Resource.Query.by_authorized_actor_id(subject.actor.id)
       |> Repo.fetch(Resource.Query, opts)
@@ -39,7 +40,8 @@ defmodule Domain.Resources do
 
   def fetch_resource_by_id!(id) do
     if Validator.valid_uuid?(id) do
-      Resource.Query.by_id(id)
+      Resource.Query.not_deleted()
+      |> Resource.Query.by_id(id)
       |> Repo.one!()
     else
       {:error, :not_found}
@@ -108,7 +110,8 @@ defmodule Domain.Resources do
       ids = resources |> Enum.map(& &1.id) |> Enum.uniq()
 
       {:ok, peek} =
-        Resource.Query.by_id({:in, ids})
+        Resource.Query.not_deleted()
+        |> Resource.Query.by_id({:in, ids})
         |> Authorizer.for_subject(Resource, subject)
         |> Resource.Query.preload_few_actor_groups_for_each_resource(limit)
         |> Repo.peek(resources)
@@ -149,7 +152,8 @@ defmodule Domain.Resources do
 
   def update_resource(%Resource{} = resource, attrs, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_resources_permission()) do
-      Resource.Query.by_id(resource.id)
+      Resource.Query.not_deleted()
+      |> Resource.Query.by_id(resource.id)
       |> Authorizer.for_subject(Resource, subject)
       |> Repo.fetch_and_update(Resource.Query,
         with: fn resource ->
@@ -170,7 +174,8 @@ defmodule Domain.Resources do
 
   def delete_resource(%Resource{} = resource, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_resources_permission()) do
-      Resource.Query.by_id(resource.id)
+      Resource.Query.not_deleted()
+      |> Resource.Query.by_id(resource.id)
       |> Authorizer.for_subject(Resource, subject)
       |> Repo.fetch_and_update(Resource.Query,
         with: fn resource ->

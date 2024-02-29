@@ -18,7 +18,7 @@ defmodule Domain.ResourcesTest do
     }
   end
 
-  describe "fetch_resource_by_id/2" do
+  describe "fetch_resource_by_id/3" do
     test "returns error when resource does not exist", %{subject: subject} do
       assert fetch_resource_by_id(Ecto.UUID.generate(), subject) == {:error, :not_found}
     end
@@ -105,7 +105,7 @@ defmodule Domain.ResourcesTest do
     end
   end
 
-  describe "fetch_and_authorize_resource_by_id/2" do
+  describe "fetch_and_authorize_resource_by_id/3" do
     test "returns error when resource does not exist", %{subject: subject} do
       assert fetch_and_authorize_resource_by_id(Ecto.UUID.generate(), subject) ==
                {:error, :not_found}
@@ -318,7 +318,7 @@ defmodule Domain.ResourcesTest do
     end
   end
 
-  describe "list_authorized_resources/1" do
+  describe "list_authorized_resources/2" do
     test "returns empty list when there are no resources", %{subject: subject} do
       assert {:ok, [], _metadata} = list_authorized_resources(subject)
     end
@@ -526,7 +526,7 @@ defmodule Domain.ResourcesTest do
     end
   end
 
-  describe "list_resources/1" do
+  describe "list_resources/2" do
     test "returns empty list when there are no resources", %{subject: subject} do
       assert {:ok, [], _metadata} = list_resources(subject)
     end
@@ -571,6 +571,83 @@ defmodule Domain.ResourcesTest do
                  reason: :missing_permissions,
                  missing_permissions: [
                    Resources.Authorizer.manage_resources_permission()
+                 ]}}
+    end
+  end
+
+  describe "count_resources_for_gateway/2" do
+    test "returns zero when there are no resources associated to gateway", %{
+      account: account,
+      subject: subject
+    } do
+      gateway = Fixtures.Gateways.create_gateway(account: account)
+
+      assert count_resources_for_gateway(gateway, subject) == {:ok, 0}
+    end
+
+    test "does not count resources that are not associated to the gateway", %{
+      account: account,
+      subject: subject
+    } do
+      group = Fixtures.Gateways.create_group(account: account, subject: subject)
+      gateway = Fixtures.Gateways.create_gateway(account: account, group: group)
+
+      Fixtures.Resources.create_resource(
+        account: account,
+        connections: [%{gateway_group_id: group.id}]
+      )
+
+      Fixtures.Resources.create_resource(account: account)
+
+      assert count_resources_for_gateway(gateway, subject) == {:ok, 1}
+    end
+
+    test "does not count deleted resources associated to gateway", %{
+      account: account,
+      subject: subject
+    } do
+      group = Fixtures.Gateways.create_group(account: account, subject: subject)
+      gateway = Fixtures.Gateways.create_gateway(account: account, group: group)
+
+      Fixtures.Resources.create_resource(
+        account: account,
+        connections: [%{gateway_group_id: group.id}]
+      )
+
+      Fixtures.Resources.create_resource(
+        account: account,
+        connections: [%{gateway_group_id: group.id}]
+      )
+      |> delete_resource(subject)
+
+      assert count_resources_for_gateway(gateway, subject) == {:ok, 1}
+    end
+
+    test "returns error when subject has no permission to manage resources",
+         %{
+           account: account,
+           subject: subject
+         } do
+      group = Fixtures.Gateways.create_group(account: account, subject: subject)
+      gateway = Fixtures.Gateways.create_gateway(account: account, group: group)
+
+      Fixtures.Resources.create_resource(
+        account: account,
+        connections: [%{gateway_group_id: group.id}]
+      )
+
+      subject = Fixtures.Auth.remove_permissions(subject)
+
+      assert count_resources_for_gateway(gateway, subject) ==
+               {:error,
+                {:unauthorized,
+                 reason: :missing_permissions,
+                 missing_permissions: [
+                   {:one_of,
+                    [
+                      Resources.Authorizer.manage_resources_permission(),
+                      Resources.Authorizer.view_available_resources_permission()
+                    ]}
                  ]}}
     end
   end
@@ -803,83 +880,6 @@ defmodule Domain.ResourcesTest do
                 {:unauthorized,
                  reason: :missing_permissions,
                  missing_permissions: [Resources.Authorizer.manage_resources_permission()]}}
-    end
-  end
-
-  describe "count_resources_for_gateway/2" do
-    test "returns zero when there are no resources associated to gateway", %{
-      account: account,
-      subject: subject
-    } do
-      gateway = Fixtures.Gateways.create_gateway(account: account)
-
-      assert count_resources_for_gateway(gateway, subject) == {:ok, 0}
-    end
-
-    test "does not count resources that are not associated to the gateway", %{
-      account: account,
-      subject: subject
-    } do
-      group = Fixtures.Gateways.create_group(account: account, subject: subject)
-      gateway = Fixtures.Gateways.create_gateway(account: account, group: group)
-
-      Fixtures.Resources.create_resource(
-        account: account,
-        connections: [%{gateway_group_id: group.id}]
-      )
-
-      Fixtures.Resources.create_resource(account: account)
-
-      assert count_resources_for_gateway(gateway, subject) == {:ok, 1}
-    end
-
-    test "does not count deleted resources associated to gateway", %{
-      account: account,
-      subject: subject
-    } do
-      group = Fixtures.Gateways.create_group(account: account, subject: subject)
-      gateway = Fixtures.Gateways.create_gateway(account: account, group: group)
-
-      Fixtures.Resources.create_resource(
-        account: account,
-        connections: [%{gateway_group_id: group.id}]
-      )
-
-      Fixtures.Resources.create_resource(
-        account: account,
-        connections: [%{gateway_group_id: group.id}]
-      )
-      |> delete_resource(subject)
-
-      assert count_resources_for_gateway(gateway, subject) == {:ok, 1}
-    end
-
-    test "returns error when subject has no permission to manage resources",
-         %{
-           account: account,
-           subject: subject
-         } do
-      group = Fixtures.Gateways.create_group(account: account, subject: subject)
-      gateway = Fixtures.Gateways.create_gateway(account: account, group: group)
-
-      Fixtures.Resources.create_resource(
-        account: account,
-        connections: [%{gateway_group_id: group.id}]
-      )
-
-      subject = Fixtures.Auth.remove_permissions(subject)
-
-      assert count_resources_for_gateway(gateway, subject) ==
-               {:error,
-                {:unauthorized,
-                 reason: :missing_permissions,
-                 missing_permissions: [
-                   {:one_of,
-                    [
-                      Resources.Authorizer.manage_resources_permission(),
-                      Resources.Authorizer.view_available_resources_permission()
-                    ]}
-                 ]}}
     end
   end
 
