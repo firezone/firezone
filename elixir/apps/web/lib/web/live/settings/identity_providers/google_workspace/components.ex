@@ -62,7 +62,7 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.Components do
               <li>
                 <strong>App logo</strong>:
                 <.link
-                  href="https://www.firezone.dev/images/gco-oauth-screen-logo.png"
+                  href="https://www.firezone.dev/images/kb/authenticate/google/gcp-oauth-screen-logo.png"
                   class={link_style()}
                 >
                   Download here
