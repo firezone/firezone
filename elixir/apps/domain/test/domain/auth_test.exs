@@ -10,20 +10,20 @@ defmodule Domain.AuthTest do
     test "returns list of enabled adapters for an account" do
       account = Fixtures.Accounts.create_account(features: %{idp_sync: true})
 
-      assert list_user_provisioned_provider_adapters!(account) == [
-               openid_connect: [enabled: true],
+      assert Enum.sort(list_user_provisioned_provider_adapters!(account)) == [
                google_workspace: [enabled: true],
                microsoft_entra: [enabled: true],
-               okta: [enabled: true]
+               okta: [enabled: true],
+               openid_connect: [enabled: true]
              ]
 
       account = Fixtures.Accounts.create_account(features: %{idp_sync: false})
 
-      assert list_user_provisioned_provider_adapters!(account) == [
-               openid_connect: [enabled: true],
+      assert Enum.sort(list_user_provisioned_provider_adapters!(account)) == [
                google_workspace: [enabled: false],
                microsoft_entra: [enabled: false],
-               okta: [enabled: false]
+               okta: [enabled: false],
+               openid_connect: [enabled: true]
              ]
     end
   end
