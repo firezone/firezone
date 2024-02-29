@@ -78,6 +78,13 @@ defmodule Web.Sites.NewToken do
                 class="w-full text-xs whitespace-pre-line"
                 phx-no-format
               ><%= systemd_command(@env) %></.code_block>
+
+              <p class="p-4">
+                <strong>Important:</strong>
+                You'll need to make sure that the <code>iptables</code>
+                and <code>ip6tables</code>
+                commands are available on your system.
+              </p>
             </:tab>
             <:tab
               id="docker-instructions"
