@@ -87,7 +87,7 @@ config :domain, :enabled_features,
   self_hosted_relays: true,
   multi_site_resources: true
 
-config :domain, sign_up_allowed_domains: "firezone.dev"
+config :domain, sign_up_always_allowed_domains: []
 
 config :domain, docker_registry: "us-east1-docker.pkg.dev/firezone-staging/firezone"
 

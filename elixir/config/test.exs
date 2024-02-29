@@ -28,6 +28,8 @@ config :domain, Domain.GoogleCloudPlatform,
   project_id: "fz-test",
   service_account_email: "foo@iam.example.com"
 
+config :domain, sign_up_always_allowed_domains: []
+
 ###############################
 ##### Web #####################
 ###############################

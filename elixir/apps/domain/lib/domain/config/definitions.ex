@@ -557,13 +557,13 @@ defmodule Domain.Config.Definitions do
   String of comma separated email domains allowed to signup regardless of signup enabled state.
   If signups are enabled, this list is ignored.
   """
-  defconfig(:sign_up_allowed_domains, :string,
+  defconfig(:sign_up_always_allowed_domains, {:array, ",", :string},
     changeset: fn changeset, key ->
       changeset
-      |> Domain.Validator.validate_does_not_contain(key, " ", message: "cannot contain spaces")
-      |> Domain.Validator.validate_does_not_contain(key, ",,")
+      |> Ecto.Changeset.validate_required(key)
+      |> Domain.Validator.validate_fqdn(key)
     end,
-    default: ""
+    default: []
   )
 
   ##############################################

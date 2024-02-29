@@ -56,6 +56,8 @@ defmodule Web.SignUp do
   def mount(_params, _session, socket) do
     user_agent = Phoenix.LiveView.get_connect_info(socket, :user_agent)
     real_ip = Web.Auth.real_ip(socket)
+    sign_up_enabled = Config.sign_up_enabled?()
+    allowed_domains = Domain.Config.get_env(:domain, :sign_up_always_allowed_domains)
 
     changeset =
       Registration.changeset(
@@ -63,13 +65,9 @@ defmodule Web.SignUp do
           account: %{slug: "placeholder"},
           actor: %{type: :account_admin_user}
         },
-        true,
-        []
+        sign_up_enabled,
+        allowed_domains
       )
-
-    allowed_domains =
-      Domain.Config.get_env(:domain, :sign_up_allowed_domains)
-      |> String.split(",", trim: true)
 
     socket =
       assign(socket,
@@ -78,8 +76,8 @@ defmodule Web.SignUp do
         provider: nil,
         user_agent: user_agent,
         real_ip: real_ip,
-        sign_up_enabled?: Config.sign_up_enabled?(),
-        show_form?: Config.sign_up_enabled?() or allowed_domains != [],
+        sign_up_enabled?: sign_up_enabled,
+        show_form?: sign_up_enabled or allowed_domains != [],
         allowed_domains: allowed_domains,
         account_name_changed?: false,
         actor_name_changed?: false,

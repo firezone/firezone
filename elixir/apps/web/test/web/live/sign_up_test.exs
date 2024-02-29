@@ -71,7 +71,7 @@ defmodule Web.Live.SignUpTest do
   test "allows override to create new account and send a welcome email", %{conn: conn} do
     Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
     Domain.Config.feature_flag_override(:sign_up, false)
-    Domain.Config.put_env_override(:sign_up_allowed_domains, "example.com")
+    Domain.Config.put_env_override(:sign_up_always_allowed_domains, ["example.com"])
 
     account_name = "FooBar"
 
@@ -124,7 +124,7 @@ defmodule Web.Live.SignUpTest do
   test "prevents unauthorized email from creating new account", %{conn: conn} do
     Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
     Domain.Config.feature_flag_override(:sign_up, false)
-    Domain.Config.put_env_override(:sign_up_allowed_domains, "firezone.dev")
+    Domain.Config.put_env_override(:sign_up_always_allowed_domains, ["firezone.dev"])
 
     account_name = "FooBar"
 
@@ -186,13 +186,16 @@ defmodule Web.Live.SignUpTest do
            }
   end
 
-  test "renders changeset errors on submit when sign ups disabled", %{conn: conn} do
+  test "renders changeset errors on submit when sign up disabled and not on allow list", %{
+    conn: conn
+  } do
     Domain.Config.feature_flag_override(:sign_up, false)
+    Domain.Config.put_env_override(:sign_up_always_allowed_domains, ["firezone.dev"])
 
     attrs = %{
       account: %{name: "FooBar"},
       actor: %{name: "John Doe"},
-      email: "jdoe"
+      email: "jdoe@foo.com"
     }
 
     {:ok, lv, _html} = live(conn, ~p"/sign_up")
@@ -202,15 +205,14 @@ defmodule Web.Live.SignUpTest do
            |> render_submit()
            |> form_validation_errors() == %{
              "registration[email]" => [
-               "email domain is not allowed at this time",
-               "has invalid format"
+               "email domain is not allowed at this time"
              ]
            }
   end
 
   test "renders sign up disabled message", %{conn: conn} do
     Domain.Config.feature_flag_override(:sign_up, false)
-    Domain.Config.put_env_override(:sign_up_allowed_domains, "")
+    Domain.Config.put_env_override(:sign_up_always_allowed_domains, [])
 
     {:ok, _lv, html} = live(conn, ~p"/sign_up")
 
