@@ -97,6 +97,7 @@ using `systemd-resolved`, and you should set `FIREZONE_DNS_CONTROL` to
 to `/run/systemd/resolve/stub-resolv.conf`:
 
 ```bash
+stat /etc/resolv.conf
 sudo ln -sf /run/systemd/resolve/stub-resolv.conf /etc/resolv.conf
 ```
 
