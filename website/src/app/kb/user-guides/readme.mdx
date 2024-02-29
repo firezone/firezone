@@ -1,3 +1,10 @@
+import {
+  AndroidIcon,
+  AppleIcon,
+  WindowsIcon,
+  LinuxIcon,
+} from "@/components/Icons";
+
 # User Guides
 
 Guides for common end-user workflows in Firezone.
@@ -5,7 +12,17 @@ Guides for common end-user workflows in Firezone.
 Visit the appropriate page below for download instructions and more for your
 platform.
 
-- [Android / ChromeOS client](/kb/user-guides/android-client)
-- [macOS and iOS clients](/kb/user-guides/apple-client)
-- [Windows client](/kb/user-guides/windows-client)
-- [Linux client](/kb/user-guides/linux-client)
+<div class="mt-20 flex justify-between text-center space-x-5">
+  <AndroidIcon size="10" href="/kb/user-guides/android-client">
+    <p>Android client</p>
+  </AndroidIcon>
+  <AppleIcon size="10" href="/kb/user-guides/apple-client">
+    <p>macOS & iOS clients</p>
+  </AppleIcon>
+  <WindowsIcon size="10" href="/kb/user-guides/windows-client">
+    <p>Windows client</p>
+  </WindowsIcon>
+  <LinuxIcon size="10" href="/kb/user-guides/linux-client">
+    <p>Linux client</p>
+  </LinuxIcon>
+</div>
