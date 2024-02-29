@@ -25,7 +25,7 @@ defmodule Domain.Auth.Identity.Sync do
     |> Ecto.Multi.run(
       :insert_identities,
       fn repo, %{plan_identities: {insert, _update, _delete}} ->
-        upsert_identities(repo, provider, attrs_by_provider_identifier, insert)
+        insert_identities(repo, provider, attrs_by_provider_identifier, insert)
       end
     )
     |> Ecto.Multi.run(
@@ -89,6 +89,8 @@ defmodule Domain.Auth.Identity.Sync do
   end
 
   defp delete_identities(repo, provider, provider_identifiers_to_delete) do
+    provider_identifiers_to_delete = Enum.uniq(provider_identifiers_to_delete)
+
     {_count, identities} =
       Identity.Query.by_account_id(provider.account_id)
       |> Identity.Query.by_provider_id(provider.id)
@@ -104,13 +106,14 @@ defmodule Domain.Auth.Identity.Sync do
     {:ok, identities}
   end
 
-  defp upsert_identities(
+  defp insert_identities(
          repo,
          provider,
          attrs_by_provider_identifier,
          provider_identifiers_to_insert
        ) do
     provider_identifiers_to_insert
+    |> Enum.uniq()
     |> Enum.reduce_while({:ok, []}, fn provider_identifier, {:ok, acc} ->
       attrs = Map.get(attrs_by_provider_identifier, provider_identifier)
       changeset = Identity.Changeset.create_identity_and_actor(provider, attrs)
@@ -136,10 +139,13 @@ defmodule Domain.Auth.Identity.Sync do
       |> Enum.filter(fn identity ->
         identity.provider_identifier in provider_identifiers_to_update
       end)
+      # make sure that deleted identities are in the end in case of conflicts
+      |> Enum.sort_by(& &1.deleted_at, :desc)
       |> repo.preload(:actor)
       |> Map.new(&{&1.provider_identifier, &1})
 
     provider_identifiers_to_update
+    |> Enum.uniq()
     |> Enum.reduce_while({:ok, []}, fn provider_identifier, {:ok, acc} ->
       identity = Map.get(identity_by_provider_identifier, provider_identifier)
       attrs = Map.get(attrs_by_provider_identifier, provider_identifier)

@@ -22,6 +22,7 @@ defmodule Domain.Auth.Provider do
     field :last_syncs_failed, :integer
     field :last_sync_error, :string
     field :last_synced_at, :utc_datetime_usec
+    field :sync_disabled_at, :utc_datetime_usec
 
     field :disabled_at, :utc_datetime_usec
     field :deleted_at, :utc_datetime_usec

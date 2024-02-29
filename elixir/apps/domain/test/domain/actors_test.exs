@@ -957,6 +957,104 @@ defmodule Domain.ActorsTest do
                 insert_memberships: []
               }} = Repo.transaction(multi)
     end
+
+    test "deletes actors that are not processed by identity sync", %{
+      account: account,
+      provider: provider,
+      group1: group1,
+      group2: group2,
+      identity1: identity1,
+      identity2: identity2
+    } do
+      Fixtures.Actors.create_membership(
+        account: account,
+        group: group1,
+        actor_id: identity1.actor_id
+      )
+
+      Fixtures.Actors.create_membership(
+        account: account,
+        group: group2,
+        actor_id: identity2.actor_id
+      )
+
+      tuples_list = [
+        {group1.provider_identifier, identity1.provider_identifier},
+        {group2.provider_identifier, identity2.provider_identifier}
+      ]
+
+      actor_ids_by_provider_identifier = %{}
+
+      group_ids_by_provider_identifier = %{
+        group1.provider_identifier => group1.id,
+        group2.provider_identifier => group2.id
+      }
+
+      multi =
+        Ecto.Multi.new()
+        |> Ecto.Multi.put(:actor_ids_by_provider_identifier, actor_ids_by_provider_identifier)
+        |> Ecto.Multi.put(:group_ids_by_provider_identifier, group_ids_by_provider_identifier)
+        |> sync_provider_memberships_multi(provider, tuples_list)
+
+      assert {:ok,
+              %{
+                plan_memberships: {[], delete},
+                delete_memberships: {2, nil},
+                insert_memberships: []
+              }} = Repo.transaction(multi)
+
+      assert {group1.id, identity1.actor_id} in delete
+      assert {group2.id, identity2.actor_id} in delete
+    end
+
+    test "deletes groups that are not processed by groups sync", %{
+      account: account,
+      provider: provider,
+      group1: group1,
+      group2: group2,
+      identity1: identity1,
+      identity2: identity2
+    } do
+      Fixtures.Actors.create_membership(
+        account: account,
+        group: group1,
+        actor_id: identity1.actor_id
+      )
+
+      Fixtures.Actors.create_membership(
+        account: account,
+        group: group2,
+        actor_id: identity2.actor_id
+      )
+
+      tuples_list = [
+        {group1.provider_identifier, identity1.provider_identifier},
+        {group2.provider_identifier, identity2.provider_identifier}
+      ]
+
+      actor_ids_by_provider_identifier = %{
+        identity1.provider_identifier => identity1.actor_id,
+        identity2.provider_identifier => identity2.actor_id
+      }
+
+      group_ids_by_provider_identifier = %{}
+
+      multi =
+        Ecto.Multi.new()
+        |> Ecto.Multi.put(:actor_ids_by_provider_identifier, actor_ids_by_provider_identifier)
+        |> Ecto.Multi.put(:group_ids_by_provider_identifier, group_ids_by_provider_identifier)
+        |> sync_provider_memberships_multi(provider, tuples_list)
+
+      assert {:ok,
+              %{
+                plan_memberships: {[], delete},
+                delete_memberships: {2, nil},
+                insert_memberships: []
+              }} = Repo.transaction(multi)
+
+      assert {group1.id, identity1.actor_id} in delete
+      assert {group2.id, identity2.actor_id} in delete
+    end
   end
 
   describe "new_group/0" do
