@@ -400,6 +400,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1505bd5d3d116872e7271a6d4e16d81d0c8570876c8de68093a09ac269d8aac0"
 
 [[package]]
+name = "atomicwrites"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fc7b2dbe9169059af0f821e811180fddc971fc210c776c133c7819ccd6e478db"
+dependencies = [
+ "rustix 0.38.31",
+ "tempfile",
+ "windows-sys 0.52.0",
+]
+
+[[package]]
 name = "autocfg"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1119,6 +1130,8 @@ dependencies = [
 name = "connlib-shared"
 version = "1.0.0"
 dependencies = [
+ "anyhow",
+ "atomicwrites",
  "base64 0.21.7",
  "boringtun",
  "chrono",
@@ -1137,6 +1150,7 @@ dependencies = [
  "parking_lot",
  "rand 0.8.5",
  "rand_core 0.6.4",
+ "resolv-conf",
  "ring",
  "rtnetlink",
  "secrecy",
@@ -1144,6 +1158,7 @@ dependencies = [
  "serde_json",
  "snownet",
  "swift-bridge",
+ "tempfile",
  "thiserror",
  "tokio",
  "tokio-stream",
@@ -1904,6 +1919,7 @@ name = "firezone-linux-client"
 version = "1.0.0"
 dependencies = [
  "anyhow",
+ "atomicwrites",
  "clap",
  "connlib-client-shared",
  "connlib-shared",
@@ -1962,7 +1978,6 @@ dependencies = [
 name = "firezone-tunnel"
 version = "1.0.0"
 dependencies = [
- "anyhow",
  "async-trait",
  "bimap",
  "boringtun",
@@ -1985,7 +2000,6 @@ dependencies = [
  "pnet_packet",
  "quinn-udp",
  "rand_core 0.6.4",
- "resolv-conf",
  "rtnetlink",
  "sd-notify",
  "secrecy",
@@ -1993,7 +2007,6 @@ dependencies = [
  "serde_json",
  "snownet",
  "socket2 0.5.6",
- "tempfile",
  "thiserror",
  "tokio",
  "tracing",

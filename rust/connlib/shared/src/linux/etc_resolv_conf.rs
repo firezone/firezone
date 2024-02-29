@@ -1,11 +1,14 @@
-use connlib_shared::{
-    linux::{ETC_RESOLV_CONF, ETC_RESOLV_CONF_BACKUP},
-    Error, Result,
-};
+use crate::{Error, Result};
 use std::{net::IpAddr, path::Path};
 use tokio::io::AsyncWriteExt;
 
-/// Back up `/etc/resolve.conf` and then modify it in-place
+pub const ETC_RESOLV_CONF: &str = "/etc/resolv.conf";
+pub const ETC_RESOLV_CONF_BACKUP: &str = "/etc/resolv.conf.firezone-backup";
+
+/// Back up `/etc/resolv.conf`(sic) and then modify it in-place
+///
+/// This is async because it's called in a Tokio context and it's nice to use their
+/// `fs` module
 pub async fn configure_dns(dns_config: &[IpAddr]) -> Result<()> {
     configure_dns_at_paths(
         dns_config,
@@ -13,6 +16,15 @@ pub async fn configure_dns(dns_config: &[IpAddr]) -> Result<()> {
         Path::new(ETC_RESOLV_CONF_BACKUP),
     )
     .await
+}
+
+/// Revert changes Firezone made to `/etc/resolv.conf`
+///
+/// This is sync because it's called from the Linux CLI client where we don't have our own
+/// Tokio context.
+pub fn unconfigure_dns() -> Result<()> {
+    tracing::debug!("Unconfiguring `/etc/resolv.conf` not implemented yet");
+    Ok(())
 }
 
 async fn configure_dns_at_paths(
