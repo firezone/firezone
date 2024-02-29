@@ -1,7 +1,7 @@
 defmodule Domain.Actors do
   alias Domain.Actors.Membership
   alias Web.Clients
-  alias Domain.{Repo, Validator, PubSub}
+  alias Domain.{Repo, PubSub}
   alias Domain.{Accounts, Auth, Tokens, Clients, Policies, Billing}
   alias Domain.Actors.{Authorizer, Actor, Group}
   require Ecto.Query
@@ -27,7 +27,7 @@ defmodule Domain.Actors do
 
   def fetch_group_by_id(id, %Auth.Subject{} = subject, opts \\ []) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()),
-         true <- Validator.valid_uuid?(id) do
+         true <- Repo.valid_uuid?(id) do
       Group.Query.all()
       |> Group.Query.by_id(id)
       |> Authorizer.for_subject(subject)
@@ -310,7 +310,7 @@ defmodule Domain.Actors do
 
   def fetch_actor_by_id(id, %Auth.Subject{} = subject, opts \\ []) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()),
-         true <- Validator.valid_uuid?(id) do
+         true <- Repo.valid_uuid?(id) do
       Actor.Query.all()
       |> Actor.Query.by_id(id)
       |> Authorizer.for_subject(subject)
@@ -322,7 +322,7 @@ defmodule Domain.Actors do
   end
 
   def fetch_active_actor_by_id(id) do
-    if Validator.valid_uuid?(id) do
+    if Repo.valid_uuid?(id) do
       Actor.Query.not_disabled()
       |> Actor.Query.by_id(id)
       |> Repo.fetch(Actor.Query, [])

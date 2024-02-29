@@ -1,6 +1,6 @@
 defmodule Domain.Gateways do
   use Supervisor
-  alias Domain.{Repo, Auth, Validator, Geo, PubSub}
+  alias Domain.{Repo, Auth, Geo, PubSub}
   alias Domain.{Accounts, Resources, Tokens, Billing}
   alias Domain.Gateways.{Authorizer, Gateway, Group, Presence}
 
@@ -24,7 +24,7 @@ defmodule Domain.Gateways do
 
   def fetch_group_by_id(id, %Auth.Subject{} = subject, opts \\ []) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_gateways_permission()),
-         true <- Validator.valid_uuid?(id) do
+         true <- Repo.valid_uuid?(id) do
       Group.Query.all()
       |> Group.Query.by_id(id)
       |> Authorizer.for_subject(subject)
@@ -145,7 +145,7 @@ defmodule Domain.Gateways do
        ]}
 
     with :ok <- Auth.ensure_has_permissions(subject, required_permissions),
-         true <- Validator.valid_uuid?(id) do
+         true <- Repo.valid_uuid?(id) do
       Gateway.Query.all()
       |> Gateway.Query.by_id(id)
       |> Authorizer.for_subject(subject)

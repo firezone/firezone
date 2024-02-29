@@ -1,5 +1,5 @@
 defmodule Domain.Accounts do
-  alias Domain.{Repo, Validator, Config, PubSub}
+  alias Domain.{Repo, Config, PubSub}
   alias Domain.Auth
   alias Domain.Accounts.{Account, Features, Authorizer}
 
@@ -9,7 +9,7 @@ defmodule Domain.Accounts do
   end
 
   def all_accounts_by_ids(ids) do
-    if Enum.all?(ids, &Validator.valid_uuid?/1) do
+    if Enum.all?(ids, &Repo.valid_uuid?/1) do
       Account.Query.not_deleted()
       |> Account.Query.by_id({:in, ids})
       |> Repo.all()
@@ -20,7 +20,7 @@ defmodule Domain.Accounts do
 
   def fetch_account_by_id(id, %Auth.Subject{} = subject, opts \\ []) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_own_account_permission()),
-         true <- Validator.valid_uuid?(id) do
+         true <- Repo.valid_uuid?(id) do
       Account.Query.not_deleted()
       |> Account.Query.by_id(id)
       |> Authorizer.for_subject(subject)

@@ -34,7 +34,7 @@ defmodule Domain.Auth.Adapters.UserPass do
   @impl true
   def identity_changeset(%Provider{} = _provider, %Ecto.Changeset{} = changeset) do
     changeset
-    |> Domain.Validator.trim_change(:provider_identifier)
+    |> Domain.Repo.Changeset.trim_change(:provider_identifier)
     |> validate_password()
   end
 
@@ -58,8 +58,8 @@ defmodule Domain.Auth.Adapters.UserPass do
       %{valid?: true} = nested_changeset ->
         nested_changeset =
           nested_changeset
-          |> Domain.Validator.redact_field(:password)
-          |> Domain.Validator.redact_field(:password_confirmation)
+          |> Domain.Repo.Changeset.redact_field(:password)
+          |> Domain.Repo.Changeset.redact_field(:password_confirmation)
 
         password_hash = Ecto.Changeset.fetch_change!(nested_changeset, :password_hash)
 

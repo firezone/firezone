@@ -1,5 +1,5 @@
 defmodule Domain.Policies do
-  alias Domain.{Repo, Validator, PubSub}
+  alias Domain.{Repo, PubSub}
   alias Domain.{Auth, Accounts, Actors, Resources, Flows}
   alias Domain.Policies.{Authorizer, Policy}
 
@@ -12,7 +12,7 @@ defmodule Domain.Policies do
        ]}
 
     with :ok <- Auth.ensure_has_permissions(subject, required_permissions),
-         true <- Validator.valid_uuid?(id) do
+         true <- Repo.valid_uuid?(id) do
       Policy.Query.all()
       |> Policy.Query.by_id(id)
       |> Authorizer.for_subject(subject)

@@ -20,9 +20,8 @@ defmodule Domain do
   def changeset do
     quote do
       import Ecto.Changeset
-      # TODO: deprecate it
-      import Domain.Validator
       import Domain.Repo.Changeset
+      import Domain.Repo, only: [valid_uuid?: 1]
     end
   end
 

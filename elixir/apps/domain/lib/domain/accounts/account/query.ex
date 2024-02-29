@@ -1,6 +1,5 @@
 defmodule Domain.Accounts.Account.Query do
   use Domain, :query
-  alias Domain.Validator
 
   def all do
     from(accounts in Domain.Accounts.Account, as: :accounts)
@@ -37,7 +36,7 @@ defmodule Domain.Accounts.Account.Query do
   end
 
   def by_id_or_slug(queryable, id_or_slug) do
-    if Validator.valid_uuid?(id_or_slug) do
+    if Domain.Repo.valid_uuid?(id_or_slug) do
       by_id(queryable, id_or_slug)
     else
       by_slug(queryable, id_or_slug)

@@ -10,7 +10,7 @@ defmodule Domain.Tokens.Token.Query do
     |> where([tokens: tokens], is_nil(tokens.deleted_at))
   end
 
-  def not_expired(queryable \\ not_deleted()) do
+  def not_expired(queryable) do
     where(
       queryable,
       [tokens: tokens],
@@ -18,19 +18,19 @@ defmodule Domain.Tokens.Token.Query do
     )
   end
 
-  def expired(queryable \\ not_deleted()) do
+  def expired(queryable) do
     where(queryable, [tokens: tokens], tokens.expires_at <= ^DateTime.utc_now())
   end
 
-  def by_id(queryable \\ not_deleted(), id) do
+  def by_id(queryable, id) do
     where(queryable, [tokens: tokens], tokens.id == ^id)
   end
 
-  def by_type(queryable \\ not_deleted(), type) do
+  def by_type(queryable, type) do
     where(queryable, [tokens: tokens], tokens.type == ^type)
   end
 
-  def by_account_id(queryable \\ not_deleted(), account_id)
+  def by_account_id(queryable, account_id)
 
   def by_account_id(queryable, nil) do
     where(queryable, [tokens: tokens], is_nil(tokens.account_id))
@@ -40,29 +40,29 @@ defmodule Domain.Tokens.Token.Query do
     where(queryable, [tokens: tokens], tokens.account_id == ^account_id)
   end
 
-  def by_actor_id(queryable \\ not_deleted(), actor_id) do
+  def by_actor_id(queryable, actor_id) do
     where(queryable, [tokens: tokens], tokens.actor_id == ^actor_id)
   end
 
-  def by_identity_id(queryable \\ not_deleted(), identity_id) do
+  def by_identity_id(queryable, identity_id) do
     where(queryable, [tokens: tokens], tokens.identity_id == ^identity_id)
   end
 
-  def by_provider_id(queryable \\ not_deleted(), provider_id) do
+  def by_provider_id(queryable, provider_id) do
     queryable
     |> with_joined_identity()
     |> where([identity: identity], identity.provider_id == ^provider_id)
   end
 
-  def by_relay_group_id(queryable \\ not_deleted(), relay_group_id) do
+  def by_relay_group_id(queryable, relay_group_id) do
     where(queryable, [tokens: tokens], tokens.relay_group_id == ^relay_group_id)
   end
 
-  def by_gateway_group_id(queryable \\ not_deleted(), gateway_group_id) do
+  def by_gateway_group_id(queryable, gateway_group_id) do
     where(queryable, [tokens: tokens], tokens.gateway_group_id == ^gateway_group_id)
   end
 
-  def delete(queryable \\ not_deleted()) do
+  def delete(queryable) do
     queryable
     |> Ecto.Query.select([tokens: tokens], tokens)
     |> Ecto.Query.update([tokens: tokens],
@@ -72,13 +72,13 @@ defmodule Domain.Tokens.Token.Query do
     )
   end
 
-  def with_joined_account(queryable \\ not_deleted()) do
+  def with_joined_account(queryable) do
     with_named_binding(queryable, :account, fn queryable, binding ->
       join(queryable, :inner, [tokens: tokens], account in assoc(tokens, ^binding), as: ^binding)
     end)
   end
 
-  def with_joined_identity(queryable \\ not_deleted()) do
+  def with_joined_identity(queryable) do
     with_named_binding(queryable, :identity, fn queryable, binding ->
       join(queryable, :inner, [tokens: tokens], identity in assoc(tokens, ^binding), as: ^binding)
     end)

@@ -1,6 +1,6 @@
 defmodule Domain.Tokens do
   use Supervisor
-  alias Domain.{Repo, Validator}
+  alias Domain.{Repo}
   alias Domain.{Auth, Actors, Relays, Gateways}
   alias Domain.Tokens.{Token, Authorizer, Jobs}
   require Ecto.Query
@@ -27,8 +27,9 @@ defmodule Domain.Tokens do
        ]}
 
     with :ok <- Auth.ensure_has_permissions(subject, required_permissions),
-         true <- Validator.valid_uuid?(id) do
-      Token.Query.by_id(id)
+         true <- Repo.valid_uuid?(id) do
+      Token.Query.all()
+      |> Token.Query.by_id(id)
       |> Authorizer.for_subject(subject)
       |> Repo.fetch(Token.Query, opts)
     else
@@ -37,16 +38,18 @@ defmodule Domain.Tokens do
     end
   end
 
-  def list_tokens_for(%Auth.Subject{} = subject) do
+  def list_subject_tokens(%Auth.Subject{} = subject, opts \\ []) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_own_tokens_permission()) do
-      Token.Query.by_actor_id(subject.actor.id)
-      |> list_tokens(subject, [])
+      Token.Query.not_deleted()
+      |> Token.Query.by_actor_id(subject.actor.id)
+      |> list_tokens(subject, opts)
     end
   end
 
   def list_tokens_for(%Actors.Actor{} = actor, %Auth.Subject{} = subject, opts \\ []) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_tokens_permission()) do
-      Token.Query.by_actor_id(actor.id)
+      Token.Query.not_deleted()
+      |> Token.Query.by_actor_id(actor.id)
       |> list_tokens(subject, opts)
     end
   end
@@ -74,8 +77,9 @@ defmodule Domain.Tokens do
   (hardcoded token duration for Okta and Google Workspace).
   """
   def update_token(%Token{} = token, attrs) do
-    Token.Query.by_id(token.id)
+    Token.Query.not_deleted()
     |> Token.Query.not_expired()
+    |> Token.Query.by_id(token.id)
     |> Repo.fetch_and_update(Token.Query, with: &Token.Changeset.update(&1, attrs))
   end
 
@@ -116,10 +120,11 @@ defmodule Domain.Tokens do
   end
 
   defp fetch_token_for_use(id, account_id, context_type) do
-    Token.Query.by_id(id)
+    Token.Query.not_deleted()
+    |> Token.Query.not_expired()
+    |> Token.Query.by_id(id)
     |> Token.Query.by_account_id(account_id)
     |> Token.Query.by_type(context_type)
-    |> Token.Query.not_expired()
     |> Ecto.Query.update([tokens: tokens],
       set: [
         remaining_attempts:
@@ -172,7 +177,8 @@ defmodule Domain.Tokens do
     with :ok <- Auth.ensure_has_permissions(subject, required_permissions) do
       {:ok, _flows} = Domain.Flows.expire_flows_for(token, subject)
 
-      Token.Query.by_id(token.id)
+      Token.Query.not_deleted()
+      |> Token.Query.by_id(token.id)
       |> Authorizer.for_subject(subject)
       |> delete_tokens()
       |> case do
@@ -183,7 +189,8 @@ defmodule Domain.Tokens do
   end
 
   def delete_token_for(%Auth.Subject{} = subject) do
-    Token.Query.by_id(subject.token_id)
+    Token.Query.not_deleted()
+    |> Token.Query.by_id(subject.token_id)
     |> Authorizer.for_subject(subject)
     |> delete_tokens()
     |> case do
@@ -199,7 +206,8 @@ defmodule Domain.Tokens do
   def delete_tokens_for(%Auth.Identity{} = identity) do
     {:ok, _flows} = Domain.Flows.expire_flows_for(identity)
 
-    Token.Query.by_identity_id(identity.id)
+    Token.Query.not_deleted()
+    |> Token.Query.by_identity_id(identity.id)
     |> delete_tokens()
   end
 
@@ -207,7 +215,8 @@ defmodule Domain.Tokens do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_tokens_permission()) do
       {:ok, _flows} = Domain.Flows.expire_flows_for(actor, subject)
 
-      Token.Query.by_actor_id(actor.id)
+      Token.Query.not_deleted()
+      |> Token.Query.by_actor_id(actor.id)
       |> Authorizer.for_subject(subject)
       |> delete_tokens()
     end
@@ -217,7 +226,8 @@ defmodule Domain.Tokens do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_tokens_permission()) do
       {:ok, _flows} = Domain.Flows.expire_flows_for(identity, subject)
 
-      Token.Query.by_identity_id(identity.id)
+      Token.Query.not_deleted()
+      |> Token.Query.by_identity_id(identity.id)
       |> Authorizer.for_subject(subject)
       |> delete_tokens()
     end
@@ -227,7 +237,8 @@ defmodule Domain.Tokens do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_tokens_permission()) do
       {:ok, _flows} = Domain.Flows.expire_flows_for(provider, subject)
 
-      Token.Query.by_provider_id(provider.id)
+      Token.Query.not_deleted()
+      |> Token.Query.by_provider_id(provider.id)
       |> Authorizer.for_subject(subject)
       |> delete_tokens()
     end
@@ -235,7 +246,8 @@ defmodule Domain.Tokens do
 
   def delete_tokens_for(%Relays.Group{} = group, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_tokens_permission()) do
-      Token.Query.by_relay_group_id(group.id)
+      Token.Query.not_deleted()
+      |> Token.Query.by_relay_group_id(group.id)
       |> Authorizer.for_subject(subject)
       |> delete_tokens()
     end
@@ -243,21 +255,24 @@ defmodule Domain.Tokens do
 
   def delete_tokens_for(%Gateways.Group{} = group, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_tokens_permission()) do
-      Token.Query.by_gateway_group_id(group.id)
+      Token.Query.not_deleted()
+      |> Token.Query.by_gateway_group_id(group.id)
       |> Authorizer.for_subject(subject)
       |> delete_tokens()
     end
   end
 
   def delete_all_tokens_by_type_and_assoc(:email, %Auth.Identity{} = identity) do
-    Token.Query.by_type(:email)
+    Token.Query.not_deleted()
+    |> Token.Query.by_type(:email)
     |> Token.Query.by_account_id(identity.account_id)
     |> Token.Query.by_identity_id(identity.id)
     |> delete_tokens()
   end
 
   def delete_expired_tokens do
-    Token.Query.expired()
+    Token.Query.not_deleted()
+    |> Token.Query.expired()
     |> delete_tokens()
   end
 

@@ -386,7 +386,9 @@ defmodule Domain.GatewaysTest do
 
       assert {:ok, _group} = delete_group(group, subject)
 
-      assert Repo.aggregate(Resources.Resource.Query.by_gateway_group_id(group.id), :count) == 0
+      assert Resources.Resource.Query.not_deleted()
+             |> Resources.Resource.Query.by_gateway_group_id(group.id)
+             |> Repo.aggregate(:count) == 0
     end
 
     test "broadcasts disconnect message to all connected gateway sockets", %{

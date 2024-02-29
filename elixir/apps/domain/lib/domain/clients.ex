@@ -1,6 +1,6 @@
 defmodule Domain.Clients do
   use Supervisor
-  alias Domain.{Repo, Auth, Validator, PubSub}
+  alias Domain.{Repo, Auth, PubSub}
   alias Domain.{Accounts, Actors}
   alias Domain.Clients.{Client, Authorizer, Presence}
   require Ecto.Query
@@ -48,7 +48,7 @@ defmodule Domain.Clients do
        ]}
 
     with :ok <- Auth.ensure_has_permissions(subject, required_permissions),
-         true <- Validator.valid_uuid?(id) do
+         true <- Repo.valid_uuid?(id) do
       Client.Query.all()
       |> Client.Query.by_id(id)
       |> Authorizer.for_subject(subject)
@@ -93,7 +93,7 @@ defmodule Domain.Clients do
        ]}
 
     with :ok <- Auth.ensure_has_permissions(subject, required_permissions),
-         true <- Validator.valid_uuid?(actor_id) do
+         true <- Repo.valid_uuid?(actor_id) do
       Client.Query.not_deleted()
       |> Client.Query.by_actor_id(actor_id)
       |> Authorizer.for_subject(subject)

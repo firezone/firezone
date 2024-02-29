@@ -65,7 +65,7 @@ defmodule Domain.Auth do
   """
   use Supervisor
   require Ecto.Query
-  alias Domain.{Repo, Validator}
+  alias Domain.{Repo}
   alias Domain.{Accounts, Actors, Tokens}
   alias Domain.Auth.{Authorizer, Subject, Context, Permission, Roles, Role}
   alias Domain.Auth.{Adapters, Provider}
@@ -116,7 +116,7 @@ defmodule Domain.Auth do
 
   def fetch_provider_by_id(id, %Subject{} = subject, opts \\ []) do
     with :ok <- ensure_has_permissions(subject, Authorizer.manage_providers_permission()),
-         true <- Validator.valid_uuid?(id) do
+         true <- Repo.valid_uuid?(id) do
       Provider.Query.all()
       |> Provider.Query.by_id(id)
       |> Authorizer.for_subject(Provider, subject)
@@ -129,7 +129,7 @@ defmodule Domain.Auth do
 
   # used to during auth flow in the UI where Subject doesn't exist yet
   def fetch_active_provider_by_id(id, opts \\ []) do
-    if Validator.valid_uuid?(id) do
+    if Repo.valid_uuid?(id) do
       Provider.Query.not_disabled()
       |> Provider.Query.by_id(id)
       |> Repo.fetch(Provider.Query, opts)
@@ -299,7 +299,7 @@ defmodule Domain.Auth do
 
   def fetch_identity_by_id(id, %Subject{} = subject, opts \\ []) do
     with :ok <- ensure_has_permissions(subject, Authorizer.manage_identities_permission()),
-         true <- Validator.valid_uuid?(id) do
+         true <- Repo.valid_uuid?(id) do
       Identity.Query.not_deleted()
       |> Identity.Query.by_id(id)
       |> Authorizer.for_subject(Identity, subject)

@@ -1,5 +1,5 @@
 defmodule Domain.Resources do
-  alias Domain.{Repo, Validator, Auth, PubSub}
+  alias Domain.{Repo, Auth, PubSub}
   alias Domain.{Accounts, Gateways, Policies, Flows}
   alias Domain.Resources.{Authorizer, Resource, Connection}
 
@@ -12,7 +12,7 @@ defmodule Domain.Resources do
        ]}
 
     with :ok <- Auth.ensure_has_permissions(subject, required_permissions),
-         true <- Validator.valid_uuid?(id) do
+         true <- Repo.valid_uuid?(id) do
       Resource.Query.all()
       |> Resource.Query.by_id(id)
       |> Authorizer.for_subject(Resource, subject)
@@ -26,7 +26,7 @@ defmodule Domain.Resources do
   def fetch_and_authorize_resource_by_id(id, %Auth.Subject{} = subject, opts \\ []) do
     with :ok <-
            Auth.ensure_has_permissions(subject, Authorizer.view_available_resources_permission()),
-         true <- Validator.valid_uuid?(id) do
+         true <- Repo.valid_uuid?(id) do
       Resource.Query.not_deleted()
       |> Resource.Query.by_id(id)
       |> Resource.Query.by_account_id(subject.account.id)
@@ -39,7 +39,7 @@ defmodule Domain.Resources do
   end
 
   def fetch_resource_by_id!(id) do
-    if Validator.valid_uuid?(id) do
+    if Repo.valid_uuid?(id) do
       Resource.Query.not_deleted()
       |> Resource.Query.by_id(id)
       |> Repo.one!()

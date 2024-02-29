@@ -1,6 +1,6 @@
 defmodule Domain.Relays do
   use Supervisor
-  alias Domain.{Repo, Auth, Validator, Geo, PubSub}
+  alias Domain.{Repo, Auth, Geo, PubSub}
   alias Domain.{Accounts, Resources, Tokens}
   alias Domain.Relays.{Authorizer, Relay, Group, Presence}
 
@@ -18,7 +18,7 @@ defmodule Domain.Relays do
 
   def fetch_group_by_id(id, %Auth.Subject{} = subject, opts \\ []) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_relays_permission()),
-         true <- Validator.valid_uuid?(id) do
+         true <- Repo.valid_uuid?(id) do
       Group.Query.all()
       |> Group.Query.by_id(id)
       |> Authorizer.for_subject(subject)
@@ -148,7 +148,7 @@ defmodule Domain.Relays do
 
   def fetch_relay_by_id(id, %Auth.Subject{} = subject, opts \\ []) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_relays_permission()),
-         true <- Validator.valid_uuid?(id) do
+         true <- Repo.valid_uuid?(id) do
       Relay.Query.all()
       |> Relay.Query.by_id(id)
       |> Authorizer.for_subject(subject)
