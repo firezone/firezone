@@ -38,6 +38,10 @@ defmodule Domain.Policies do
     end
   end
 
+  def new_policy(attrs, %Auth.Subject{} = subject) do
+    Policy.Changeset.create(attrs, subject)
+  end
+
   def create_policy(attrs, %Auth.Subject{} = subject) do
     required_permissions = {:one_of, [Authorizer.manage_policies_permission()]}
 
@@ -58,7 +62,8 @@ defmodule Domain.Policies do
   def update_policy(%Policy{} = policy, attrs, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_policies_permission()),
          :ok <- ensure_has_access_to(subject, policy) do
-      Policy.Query.by_id(policy.id)
+      Policy.Query.not_deleted()
+      |> Policy.Query.by_id(policy.id)
       |> Authorizer.for_subject(subject)
       |> Repo.fetch_and_update(Policy.Query,
         with: &Policy.Changeset.update(&1, attrs),
@@ -69,7 +74,8 @@ defmodule Domain.Policies do
 
   def disable_policy(%Policy{} = policy, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_policies_permission()) do
-      Policy.Query.by_id(policy.id)
+      Policy.Query.not_deleted()
+      |> Policy.Query.by_id(policy.id)
       |> Authorizer.for_subject(subject)
       |> Repo.fetch_and_update(Policy.Query,
         with: &Policy.Changeset.disable(&1, subject),
@@ -88,7 +94,8 @@ defmodule Domain.Policies do
 
   def enable_policy(%Policy{} = policy, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_policies_permission()) do
-      Policy.Query.by_id(policy.id)
+      Policy.Query.not_deleted()
+      |> Policy.Query.by_id(policy.id)
       |> Authorizer.for_subject(subject)
       |> Repo.fetch_and_update(Policy.Query,
         with: &Policy.Changeset.enable/1,
@@ -98,7 +105,8 @@ defmodule Domain.Policies do
   end
 
   def delete_policy(%Policy{} = policy, %Auth.Subject{} = subject) do
-    Policy.Query.by_id(policy.id)
+    Policy.Query.not_deleted()
+    |> Policy.Query.by_id(policy.id)
     |> delete_policies(policy, subject)
     |> case do
       {:ok, [policy]} -> {:ok, policy}
@@ -108,24 +116,28 @@ defmodule Domain.Policies do
   end
 
   def delete_policies_for(%Resources.Resource{} = resource, %Auth.Subject{} = subject) do
-    Policy.Query.by_resource_id(resource.id)
+    Policy.Query.not_deleted()
+    |> Policy.Query.by_resource_id(resource.id)
     |> delete_policies(resource, subject)
   end
 
   def delete_policies_for(%Actors.Group{} = actor_group, %Auth.Subject{} = subject) do
-    Policy.Query.by_actor_group_id(actor_group.id)
+    Policy.Query.not_deleted()
+    |> Policy.Query.by_actor_group_id(actor_group.id)
     |> delete_policies(actor_group, subject)
   end
 
   def delete_policies_for(%Auth.Provider{} = provider, %Auth.Subject{} = subject) do
-    Policy.Query.by_actor_group_provider_id(provider.id)
+    Policy.Query.not_deleted()
+    |> Policy.Query.by_actor_group_provider_id(provider.id)
     |> delete_policies(provider, subject)
   end
 
   def delete_policies_for(%Actors.Group{} = actor_group) do
     {:ok, _flows} = Flows.expire_flows_for(actor_group)
 
-    Policy.Query.by_actor_group_id(actor_group.id)
+    Policy.Query.not_deleted()
+    |> Policy.Query.by_actor_group_id(actor_group.id)
     |> delete_policies()
   end
 
@@ -151,10 +163,6 @@ defmodule Domain.Policies do
       end)
 
     {:ok, policies}
-  end
-
-  def new_policy(attrs, %Auth.Subject{} = subject) do
-    Policy.Changeset.create(attrs, subject)
   end
 
   def ensure_has_access_to(%Auth.Subject{} = subject, %Policy{} = policy) do
@@ -210,7 +218,8 @@ defmodule Domain.Policies do
   def broadcast_access_events_for(action, actor_id, group_id) do
     {:ok, _flows} = maybe_expire_flows(action, actor_id, group_id)
 
-    Policy.Query.by_actor_group_id(group_id)
+    Policy.Query.not_deleted()
+    |> Policy.Query.by_actor_group_id(group_id)
     |> Repo.all()
     |> Enum.each(fn policy ->
       :ok = broadcast_to_actor(actor_id, access_event(action, policy))

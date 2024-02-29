@@ -18,7 +18,7 @@ defmodule Domain.PoliciesTest do
     }
   end
 
-  describe "fetch_policy_by_id/2" do
+  describe "fetch_policy_by_id/3" do
     test "returns error when policy does not exist", %{subject: subject} do
       assert fetch_policy_by_id(Ecto.UUID.generate(), subject) == {:error, :not_found}
     end
@@ -74,7 +74,7 @@ defmodule Domain.PoliciesTest do
     end
   end
 
-  describe "list_policies/1" do
+  describe "list_policies/2" do
     test "returns empty list when there are no policies", %{subject: subject} do
       assert {:ok, [], _metadata} = list_policies(subject)
     end
