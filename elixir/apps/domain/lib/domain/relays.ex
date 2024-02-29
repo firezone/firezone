@@ -81,7 +81,8 @@ defmodule Domain.Relays do
 
   def delete_group(%Group{} = group, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_relays_permission()) do
-      Group.Query.by_id(group.id)
+      Group.Query.not_deleted()
+      |> Group.Query.by_id(group.id)
       |> Authorizer.for_subject(subject)
       |> Group.Query.by_account_id(subject.account.id)
       |> Repo.fetch_and_update(Group.Query,
@@ -89,7 +90,8 @@ defmodule Domain.Relays do
           {:ok, _tokens} = Tokens.delete_tokens_for(group, subject)
 
           {_count, _} =
-            Relay.Query.by_group_id(group.id)
+            Relay.Query.not_deleted()
+            |> Relay.Query.by_group_id(group.id)
             |> Repo.update_all(set: [deleted_at: DateTime.utc_now()])
 
           Group.Changeset.delete(group)
@@ -135,7 +137,7 @@ defmodule Domain.Relays do
 
   def authenticate(encoded_token, %Auth.Context{} = context) when is_binary(encoded_token) do
     with {:ok, token} <- Tokens.use_token(encoded_token, context),
-         queryable = Group.Query.by_id(token.relay_group_id),
+         queryable = Group.Query.not_deleted() |> Group.Query.by_id(token.relay_group_id),
          {:ok, group} <- Repo.fetch(queryable, Group.Query, []) do
       {:ok, group, token}
     else
@@ -158,7 +160,8 @@ defmodule Domain.Relays do
   end
 
   def fetch_relay_by_id!(id, opts \\ []) do
-    Relay.Query.by_id(id)
+    Relay.Query.not_deleted()
+    |> Relay.Query.by_id(id)
     |> Repo.fetch!(Relay.Query, opts)
   end
 
@@ -220,22 +223,30 @@ defmodule Domain.Relays do
   end
 
   def list_connected_relays_for_resource(%Resources.Resource{} = _resource, :managed) do
-    connected_relays = global_groups_presence_topic() |> Presence.list()
+    connected_relays =
+      global_groups_presence_topic()
+      |> Presence.list()
+
     filter = &Relay.Query.public(&1)
     list_relays_for_resource(connected_relays, filter)
   end
 
   def list_connected_relays_for_resource(%Resources.Resource{} = resource, :self_hosted) do
-    connected_relays = resource.account_id |> account_presence_topic() |> Presence.list()
+    connected_relays =
+      resource.account_id
+      |> account_presence_topic()
+      |> Presence.list()
+
     filter = &Relay.Query.by_account_id(&1, resource.account_id)
     list_relays_for_resource(connected_relays, filter)
   end
 
   defp list_relays_for_resource(connected_relays, filter) do
+    connected_relay_ids = Map.keys(connected_relays)
+
     relays =
-      connected_relays
-      |> Map.keys()
-      |> Relay.Query.by_ids()
+      Relay.Query.not_deleted()
+      |> Relay.Query.by_ids(connected_relay_ids)
       |> filter.()
       |> Repo.all()
       |> Enum.map(fn relay ->
@@ -283,7 +294,8 @@ defmodule Domain.Relays do
 
   def delete_relay(%Relay{} = relay, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_relays_permission()) do
-      Relay.Query.by_id(relay.id)
+      Relay.Query.not_deleted()
+      |> Relay.Query.by_id(relay.id)
       |> Authorizer.for_subject(subject)
       |> Repo.fetch_and_update(Relay.Query,
         with: &Relay.Changeset.delete/1,
@@ -381,6 +393,12 @@ defmodule Domain.Relays do
     |> PubSub.broadcast(payload)
   end
 
+  defp broadcast_to_relays_in_account(account_or_id, payload) do
+    account_or_id
+    |> account_topic()
+    |> PubSub.broadcast(payload)
+  end
+
   defp broadcast_to_relays_in_group(group_or_id, payload) do
     group_or_id
     |> group_topic()
@@ -393,5 +411,9 @@ defmodule Domain.Relays do
 
   def disconnect_relays_in_group(group_or_id) do
     broadcast_to_relays_in_group(group_or_id, "disconnect")
+  end
+
+  def disconnect_relays_in_account(account_or_id) do
+    broadcast_to_relays_in_account(account_or_id, "disconnect")
   end
 end

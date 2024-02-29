@@ -17,7 +17,7 @@ defmodule Domain.RelaysTest do
     }
   end
 
-  describe "fetch_group_by_id/2" do
+  describe "fetch_group_by_id/3" do
     test "returns error when UUID is invalid", %{subject: subject} do
       assert fetch_group_by_id("foo", subject) == {:error, :not_found}
     end
@@ -82,7 +82,7 @@ defmodule Domain.RelaysTest do
     end
   end
 
-  describe "list_groups/1" do
+  describe "list_groups/2" do
     test "returns empty list when there are no groups", %{subject: subject} do
       assert {:ok, [], _metadata} = list_groups(subject)
     end
@@ -135,7 +135,7 @@ defmodule Domain.RelaysTest do
     end
   end
 
-  describe "new_group/0" do
+  describe "new_group/1" do
     test "returns group changeset" do
       assert %Ecto.Changeset{data: %Relays.Group{}, changes: changes} = new_group()
       assert Map.has_key?(changes, :name)
@@ -587,7 +587,7 @@ defmodule Domain.RelaysTest do
     end
   end
 
-  describe "fetch_relay_by_id/2" do
+  describe "fetch_relay_by_id/3" do
     test "returns error when UUID is invalid", %{subject: subject} do
       assert fetch_relay_by_id("foo", subject) == {:error, :not_found}
     end
@@ -641,7 +641,7 @@ defmodule Domain.RelaysTest do
     end
   end
 
-  describe "list_relays/1" do
+  describe "list_relays/2" do
     test "returns empty list when there are no relays", %{subject: subject} do
       assert {:ok, [], _metadata} = list_relays(subject)
     end
@@ -1129,6 +1129,53 @@ defmodule Domain.RelaysTest do
 
       assert connect_relay(relay, stamp_secret) == :ok
       assert {:error, {:already_tracked, _pid, _topic, _key}} = connect_relay(relay, stamp_secret)
+    end
+
+    test "tracks relay presence for account", %{account: account} do
+      relay = Fixtures.Relays.create_relay(account: account)
+      assert connect_relay(relay, "foo") == :ok
+
+      relay = fetch_relay_by_id!(relay.id, preload: [:online?])
+      assert relay.online? == true
+    end
+
+    test "tracks relay presence for actor", %{account: account} do
+      relay = Fixtures.Relays.create_relay(account: account)
+      assert connect_relay(relay, "foo") == :ok
+
+      assert broadcast_to_relay(relay, "test") == :ok
+
+      assert_receive "test"
+    end
+
+    test "subscribes to relay events", %{account: account} do
+      relay = Fixtures.Relays.create_relay(account: account)
+      assert connect_relay(relay, "foo") == :ok
+
+      assert disconnect_relay(relay) == :ok
+
+      assert_receive "disconnect"
+    end
+
+    test "subscribes to relay group events", %{account: account} do
+      group = Fixtures.Relays.create_group(account: account)
+      relay = Fixtures.Relays.create_relay(account: account, group: group)
+
+      assert connect_relay(relay, "foo") == :ok
+
+      assert disconnect_relays_in_group(group) == :ok
+
+      assert_receive "disconnect"
+    end
+
+    test "subscribes to account events", %{account: account} do
+      relay = Fixtures.Relays.create_relay(account: account)
+
+      assert connect_relay(relay, "foo") == :ok
+
+      assert disconnect_relays_in_account(account) == :ok
+
+      assert_receive "disconnect"
     end
   end
 end

@@ -10,19 +10,19 @@ defmodule Domain.Relays.Group.Query do
     |> where([groups: groups], is_nil(groups.deleted_at))
   end
 
-  def by_id(queryable \\ not_deleted(), id) do
+  def by_id(queryable, id) do
     where(queryable, [groups: groups], groups.id == ^id)
   end
 
-  def by_account_id(queryable \\ not_deleted(), account_id) do
+  def by_account_id(queryable, account_id) do
     where(queryable, [groups: groups], groups.account_id == ^account_id)
   end
 
-  def global(queryable \\ not_deleted()) do
+  def global(queryable) do
     where(queryable, [groups: groups], is_nil(groups.account_id))
   end
 
-  def global_or_by_account_id(queryable \\ not_deleted(), account_id) do
+  def global_or_by_account_id(queryable, account_id) do
     where(
       queryable,
       [groups: groups],
