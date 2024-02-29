@@ -8,10 +8,9 @@
 //! (Copied from <https://github.com/firezone/firezone/issues/3111#issuecomment-1887975171>)
 //!
 //! - Get the pdb corresponding to the client exe
-//! - `cargo install dump_syms`
+//! - `cargo install --locked dump_syms minidump-stackwalk`
 //! - Use dump_syms to convert the pdb to a syms file
-//! - Compile `minidump-stackwalk` with PR 891 merged
-//! - `minidump-stackwalker --symbols-path firezone.syms crash.dmp`
+//! - `minidump-stackwalk --symbols-path firezone.syms crash.dmp`
 
 use crate::client::known_dirs;
 use anyhow::{anyhow, bail, Context, Result};
