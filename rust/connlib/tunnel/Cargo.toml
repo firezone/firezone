@@ -27,7 +27,6 @@ pnet_packet = { version = "0.34" }
 futures-bounded = { workspace = true }
 hickory-resolver = { workspace = true, features = ["tokio-runtime"] }
 bimap = "0.6"
-resolv-conf = "0.7.0"
 socket2 = { version = "0.5" }
 snownet = { workspace = true }
 quinn-udp = { git = "https://github.com/quinn-rs/quinn", branch = "main"}

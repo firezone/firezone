@@ -9,6 +9,8 @@ edition = "2021"
 mock = []
 
 [dependencies]
+# Will be needed to safely modify `/etc/resolv.conf`
+atomicwrites = "0.4.3"
 secrecy = { workspace = true, features = ["serde", "bytes"] }
 base64 = { version = "0.21", default-features = false, features = ["std"] }
 boringtun = { workspace = true }
@@ -22,6 +24,7 @@ os_info = { version = "3", default-features = false }
 parking_lot = "0.12"
 rand = { version = "0.8", default-features = false, features = ["std"] }
 rand_core = { version = "0.6.4", default-features = false, features = ["std"] }
+resolv-conf = "0.7.0"
 serde = { version = "1.0", default-features = false, features = ["derive", "std"] }
 serde_json = { version = "1.0", default-features = false, features = ["std"] }
 thiserror = { version = "1.0", default-features = false }

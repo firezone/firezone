@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use clap::Parser;
 use connlib_client_shared::{file_logger, Callbacks, Session};
 use connlib_shared::linux::{
-    get_dns_control_from_env, DnsControlMethod, ETC_RESOLV_CONF, ETC_RESOLV_CONF_BACKUP,
+    get_dns_control_from_env, DnsControlMethod, etc_resolv_conf,
 };
 use firezone_cli_utils::{block_on_ctrl_c, setup_global_subscriber, CommonArgs};
 use secrecy::SecretString;
@@ -17,7 +17,7 @@ fn main() -> Result<()> {
 
     let dns_control_method = get_dns_control_from_env();
     let callbacks = CallbackHandler {
-        dns_control_method,
+        dns_control_method: dns_control_method.clone(),
         handle,
     };
 
@@ -34,6 +34,10 @@ fn main() -> Result<()> {
     tracing::info!("new_session");
 
     block_on_ctrl_c();
+
+    if let Some(DnsControlMethod::EtcResolvConf) = dns_control_method {
+        etc_resolv_conf::unconfigure_dns()?;
+    }
 
     session.disconnect(None);
     Ok(())
@@ -92,8 +96,8 @@ impl Callbacks for CallbackHandler {
 fn get_system_default_resolvers_resolv_conf() -> Result<Vec<IpAddr>> {
     // Assume that `configure_resolv_conf` has run in `tun_linux.rs`
 
-    let s = std::fs::read_to_string(ETC_RESOLV_CONF_BACKUP)
-        .or_else(|_| std::fs::read_to_string(ETC_RESOLV_CONF))
+    let s = std::fs::read_to_string(etc_resolv_conf::ETC_RESOLV_CONF_BACKUP)
+        .or_else(|_| std::fs::read_to_string(etc_resolv_conf::ETC_RESOLV_CONF))
         .context("`resolv.conf` should be readable")?;
     let parsed = resolv_conf::Config::parse(s).context("`resolv.conf` should be parsable")?;
 

@@ -1,7 +1,7 @@
 use crate::device_channel::ioctl;
 use crate::FIREZONE_MARK;
 use connlib_shared::{
-    linux::DnsControlMethod, messages::Interface as InterfaceConfig, Callbacks, Error, Result,
+    linux::{DnsControlMethod, etc_resolv_conf}, messages::Interface as InterfaceConfig, Callbacks, Error, Result,
 };
 use futures::TryStreamExt;
 use futures_util::future::BoxFuture;
@@ -28,7 +28,6 @@ use std::{
 };
 use tokio::io::unix::AsyncFd;
 
-mod etc_resolv_conf;
 mod utils;
 
 pub(crate) const SIOCGIFMTU: libc::c_ulong = libc::SIOCGIFMTU;
