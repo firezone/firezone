@@ -37,18 +37,20 @@ function crash_test() {
 
     # Fail if the crash file wasn't written
     stat "$DUMP_PATH"
-    rm "$DUMP_PATH"
 }
 
 function get_stacktrace() {
-    ls ../target/debug
     # Per `crash_handling.rs`
     SYMS_PATH="../target/debug/firezone-gui-client.syms"
     cargo install --locked dump_syms minidump-stackwalk
     dump_syms ../target/debug/firezone_gui_client.pdb ../target/debug/firezone-gui-client.exe --output "$SYMS_PATH"
+    ls ../target/debug
     minidump-stackwalk --symbols-path "$SYMS_PATH" "$DUMP_PATH"
 }
 
 smoke_test
 crash_test
 get_stacktrace
+
+# Clean up
+rm "$DUMP_PATH"
