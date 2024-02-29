@@ -3,7 +3,7 @@ defmodule Domain.Billing.Jobs do
   alias Domain.{Accounts, Billing, Actors, Clients, Gateways}
 
   every minutes(30), :check_account_limits do
-    Accounts.all_active_accounts()
+    Accounts.all_active_accounts!()
     |> Enum.each(fn account ->
       if Billing.enabled?() and Billing.account_provisioned?(account) do
         []

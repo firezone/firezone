@@ -7,7 +7,7 @@ defmodule Web.HomeController do
 
     {accounts, conn} =
       with {:ok, recent_account_ids, conn} <- Web.Auth.list_recent_account_ids(conn) do
-        accounts = Accounts.all_accounts_by_ids(recent_account_ids)
+        accounts = Accounts.all_accounts_by_ids!(recent_account_ids)
 
         # we remove all ids that are not returned by the query anymore
         conn =

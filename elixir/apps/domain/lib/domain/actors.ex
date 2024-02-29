@@ -331,7 +331,7 @@ defmodule Domain.Actors do
     end
   end
 
-  def all_actor_group_ids(%Actor{} = actor) do
+  def all_actor_group_ids!(%Actor{} = actor) do
     Membership.Query.by_actor_id(actor.id)
     |> Membership.Query.select_distinct_group_ids()
     |> Repo.all()

@@ -48,14 +48,20 @@ defmodule Domain.Resources do
     end
   end
 
-  def list_authorized_resources(%Auth.Subject{} = subject, opts \\ []) do
+  def all_authorized_resources(%Auth.Subject{} = subject, opts \\ []) do
     with :ok <-
            Auth.ensure_has_permissions(subject, Authorizer.view_available_resources_permission()) do
-      Resource.Query.not_deleted()
-      |> Resource.Query.by_account_id(subject.account.id)
-      |> Resource.Query.by_authorized_actor_id(subject.actor.id)
-      |> Resource.Query.with_at_least_one_gateway_group()
-      |> Repo.list(Resource.Query, opts)
+      {preload, opts} = Keyword.pop(opts, :preload, [])
+
+      resources =
+        Resource.Query.not_deleted()
+        |> Resource.Query.by_account_id(subject.account.id)
+        |> Resource.Query.by_authorized_actor_id(subject.actor.id)
+        |> Resource.Query.with_at_least_one_gateway_group()
+        |> Repo.all(opts)
+        |> Repo.preload(preload)
+
+      {:ok, resources}
     end
   end
 

@@ -270,7 +270,7 @@ defmodule Domain.AuthTest do
     end
   end
 
-  describe "all_active_providers_for_account/1" do
+  describe "all_active_providers_for_account!/1" do
     test "returns active providers for a given account" do
       account = Fixtures.Accounts.create_account()
 
@@ -293,7 +293,7 @@ defmodule Domain.AuthTest do
       {:ok, _provider} = disable_provider(oidc_provider, subject)
       {:ok, _provider} = delete_provider(email_provider, subject)
 
-      assert [provider] = all_active_providers_for_account(account)
+      assert [provider] = all_active_providers_for_account!(account)
       assert provider.id == userpass_provider.id
     end
 
@@ -301,18 +301,18 @@ defmodule Domain.AuthTest do
       Fixtures.Auth.create_userpass_provider()
 
       account = Fixtures.Accounts.create_account()
-      assert all_active_providers_for_account(account) == []
+      assert all_active_providers_for_account!(account) == []
     end
   end
 
-  describe "all_providers_pending_token_refresh_by_adapter/1" do
+  describe "all_providers_pending_token_refresh_by_adapter!/1" do
     test "returns empty list if there are no providers for an adapter" do
-      assert all_providers_pending_token_refresh_by_adapter(:google_workspace) == []
+      assert all_providers_pending_token_refresh_by_adapter!(:google_workspace) == []
     end
 
     test "returns empty list if there are no providers with token that will expire soon" do
       Fixtures.Auth.start_and_create_google_workspace_provider()
-      assert all_providers_pending_token_refresh_by_adapter(:google_workspace) == []
+      assert all_providers_pending_token_refresh_by_adapter!(:google_workspace) == []
     end
 
     test "ignores disabled providers" do
@@ -327,7 +327,7 @@ defmodule Domain.AuthTest do
         }
       })
 
-      assert all_providers_pending_token_refresh_by_adapter(:google_workspace) == []
+      assert all_providers_pending_token_refresh_by_adapter!(:google_workspace) == []
     end
 
     test "ignores deleted providers" do
@@ -342,7 +342,7 @@ defmodule Domain.AuthTest do
         }
       })
 
-      assert all_providers_pending_token_refresh_by_adapter(:google_workspace) == []
+      assert all_providers_pending_token_refresh_by_adapter!(:google_workspace) == []
     end
 
     test "ignores non-custom provisioners" do
@@ -358,7 +358,7 @@ defmodule Domain.AuthTest do
         }
       })
 
-      assert all_providers_pending_token_refresh_by_adapter(:google_workspace) == []
+      assert all_providers_pending_token_refresh_by_adapter!(:google_workspace) == []
     end
 
     test "returns providers with tokens that will expire in ~30 minutes" do
@@ -374,7 +374,7 @@ defmodule Domain.AuthTest do
       })
 
       assert [fetched_provider] =
-               all_providers_pending_token_refresh_by_adapter(:google_workspace)
+               all_providers_pending_token_refresh_by_adapter!(:google_workspace)
 
       assert fetched_provider.id == provider.id
     end
@@ -391,19 +391,19 @@ defmodule Domain.AuthTest do
         }
       })
 
-      assert all_providers_pending_token_refresh_by_adapter(:google_workspace) == []
+      assert all_providers_pending_token_refresh_by_adapter!(:google_workspace) == []
     end
   end
 
-  describe "all_providers_pending_sync_by_adapter/1" do
+  describe "all_providers_pending_sync_by_adapter!/1" do
     test "returns empty list if there are no providers for an adapter" do
-      assert all_providers_pending_sync_by_adapter(:google_workspace) == []
+      assert all_providers_pending_sync_by_adapter!(:google_workspace) == []
     end
 
     test "returns empty list if there are no providers that synced more than 10m ago" do
       {provider, _bypass} = Fixtures.Auth.start_and_create_google_workspace_provider()
       Domain.Fixture.update!(provider, %{last_synced_at: DateTime.utc_now()})
-      assert all_providers_pending_sync_by_adapter(:google_workspace) == []
+      assert all_providers_pending_sync_by_adapter!(:google_workspace) == []
     end
 
     test "ignores disabled providers" do
@@ -416,7 +416,7 @@ defmodule Domain.AuthTest do
         }
       })
 
-      assert all_providers_pending_sync_by_adapter(:google_workspace) == []
+      assert all_providers_pending_sync_by_adapter!(:google_workspace) == []
     end
 
     test "ignores deleted providers" do
@@ -429,7 +429,7 @@ defmodule Domain.AuthTest do
         }
       })
 
-      assert all_providers_pending_sync_by_adapter(:google_workspace) == []
+      assert all_providers_pending_sync_by_adapter!(:google_workspace) == []
     end
 
     test "ignores non-custom provisioners" do
@@ -442,7 +442,7 @@ defmodule Domain.AuthTest do
         }
       })
 
-      assert all_providers_pending_sync_by_adapter(:google_workspace) == []
+      assert all_providers_pending_sync_by_adapter!(:google_workspace) == []
     end
 
     test "returns providers that synced more than 10m ago" do
@@ -452,7 +452,7 @@ defmodule Domain.AuthTest do
       eleven_minutes_ago = DateTime.utc_now() |> DateTime.add(-11, :minute)
       Domain.Fixture.update!(provider2, %{last_synced_at: eleven_minutes_ago})
 
-      providers = all_providers_pending_sync_by_adapter(:google_workspace)
+      providers = all_providers_pending_sync_by_adapter!(:google_workspace)
 
       assert Enum.map(providers, & &1.id) |> Enum.sort() ==
                Enum.sort([provider1.id, provider2.id])
@@ -465,22 +465,22 @@ defmodule Domain.AuthTest do
 
       ninety_nine_minute_ago = DateTime.utc_now() |> DateTime.add(-99, :minute)
       Domain.Fixture.update!(provider, %{last_synced_at: ninety_nine_minute_ago})
-      assert all_providers_pending_sync_by_adapter(:google_workspace) == []
+      assert all_providers_pending_sync_by_adapter!(:google_workspace) == []
 
       one_hundred_one_minute_ago = DateTime.utc_now() |> DateTime.add(-101, :minute)
       Domain.Fixture.update!(provider, %{last_synced_at: one_hundred_one_minute_ago})
-      assert [_provider] = all_providers_pending_sync_by_adapter(:google_workspace)
+      assert [_provider] = all_providers_pending_sync_by_adapter!(:google_workspace)
 
       # max backoff: 4 hours
       provider = Domain.Fixture.update!(provider, %{last_syncs_failed: 300})
 
       three_hours_fifty_nine_minutes_ago = DateTime.utc_now() |> DateTime.add(-239, :minute)
       Domain.Fixture.update!(provider, %{last_synced_at: three_hours_fifty_nine_minutes_ago})
-      assert all_providers_pending_sync_by_adapter(:google_workspace) == []
+      assert all_providers_pending_sync_by_adapter!(:google_workspace) == []
 
       four_hours_one_minute_ago = DateTime.utc_now() |> DateTime.add(-241, :minute)
       Domain.Fixture.update!(provider, %{last_synced_at: four_hours_one_minute_ago})
-      assert [_provider] = all_providers_pending_sync_by_adapter(:google_workspace)
+      assert [_provider] = all_providers_pending_sync_by_adapter!(:google_workspace)
     end
 
     test "ignores providers with disabled sync" do
@@ -1882,14 +1882,14 @@ defmodule Domain.AuthTest do
     end
   end
 
-  describe "all_actor_ids_by_membership_rules/2" do
+  describe "all_actor_ids_by_membership_rules!/2" do
     test "returns actor ids by evaluating membership rules" do
       account = Fixtures.Accounts.create_account()
       identity = Fixtures.Auth.create_identity(account: account)
 
       rules = [%{operator: true}]
 
-      assert [actor_id] = all_actor_ids_by_membership_rules(account.id, rules)
+      assert [actor_id] = all_actor_ids_by_membership_rules!(account.id, rules)
       assert actor_id == identity.actor_id
     end
 
@@ -1899,7 +1899,7 @@ defmodule Domain.AuthTest do
 
       rules = [%{operator: true}]
 
-      assert all_actor_ids_by_membership_rules(account.id, rules) == []
+      assert all_actor_ids_by_membership_rules!(account.id, rules) == []
     end
 
     test "does not return identities for deleted actors" do
@@ -1910,7 +1910,7 @@ defmodule Domain.AuthTest do
 
       rules = [%{operator: true}]
 
-      assert all_actor_ids_by_membership_rules(account.id, rules) == []
+      assert all_actor_ids_by_membership_rules!(account.id, rules) == []
     end
 
     test "does not return identities for disabled actors" do
@@ -1921,7 +1921,7 @@ defmodule Domain.AuthTest do
 
       rules = [%{operator: true}]
 
-      assert all_actor_ids_by_membership_rules(account.id, rules) == []
+      assert all_actor_ids_by_membership_rules!(account.id, rules) == []
     end
 
     test "allows to use is_in operator" do
@@ -1938,7 +1938,7 @@ defmodule Domain.AuthTest do
       |> Ecto.Changeset.change(provider_state: %{"claims" => %{"group" => "user"}})
       |> Repo.update!()
 
-      assert [actor_id] = all_actor_ids_by_membership_rules(account.id, rules)
+      assert [actor_id] = all_actor_ids_by_membership_rules!(account.id, rules)
       assert actor_id == identity.actor_id
     end
 
@@ -1956,7 +1956,7 @@ defmodule Domain.AuthTest do
       |> Ecto.Changeset.change(provider_state: %{"claims" => %{"group" => "user"}})
       |> Repo.update!()
 
-      assert [actor_id] = all_actor_ids_by_membership_rules(account.id, rules)
+      assert [actor_id] = all_actor_ids_by_membership_rules!(account.id, rules)
       assert actor_id == identity.actor_id
     end
 
@@ -1974,7 +1974,7 @@ defmodule Domain.AuthTest do
       |> Ecto.Changeset.change(provider_state: %{"claims" => %{"group" => "foo"}})
       |> Repo.update!()
 
-      assert [actor_id] = all_actor_ids_by_membership_rules(account.id, rules)
+      assert [actor_id] = all_actor_ids_by_membership_rules!(account.id, rules)
       assert actor_id == identity.actor_id
     end
 
@@ -1994,7 +1994,7 @@ defmodule Domain.AuthTest do
       |> Ecto.Changeset.change(provider_state: %{"claims" => %{"group" => "user"}})
       |> Repo.update!()
 
-      assert [actor_id] = all_actor_ids_by_membership_rules(account.id, rules)
+      assert [actor_id] = all_actor_ids_by_membership_rules!(account.id, rules)
       assert actor_id == identity.actor_id
     end
   end

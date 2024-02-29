@@ -222,7 +222,7 @@ defmodule Domain.Relays do
     end)
   end
 
-  def list_connected_relays_for_resource(%Resources.Resource{} = _resource, :managed) do
+  def all_connected_relays_for_resource(%Resources.Resource{} = _resource, :managed) do
     connected_relays =
       global_groups_presence_topic()
       |> Presence.list()
@@ -231,7 +231,7 @@ defmodule Domain.Relays do
     list_relays_for_resource(connected_relays, filter)
   end
 
-  def list_connected_relays_for_resource(%Resources.Resource{} = resource, :self_hosted) do
+  def all_connected_relays_for_resource(%Resources.Resource{} = resource, :self_hosted) do
     connected_relays =
       resource.account_id
       |> account_presence_topic()

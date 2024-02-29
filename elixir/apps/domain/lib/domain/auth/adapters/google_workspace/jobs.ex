@@ -6,7 +6,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.Jobs do
   require Logger
 
   every minutes(5), :refresh_access_tokens do
-    providers = Domain.Auth.all_providers_pending_token_refresh_by_adapter(:google_workspace)
+    providers = Domain.Auth.all_providers_pending_token_refresh_by_adapter!(:google_workspace)
     Logger.debug("Refreshing access tokens for #{length(providers)} providers")
 
     Enum.each(providers, fn provider ->
@@ -33,7 +33,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.Jobs do
   end
 
   every minutes(3), :sync_directory do
-    providers = Domain.Auth.all_providers_pending_sync_by_adapter(:google_workspace)
+    providers = Domain.Auth.all_providers_pending_sync_by_adapter!(:google_workspace)
     Logger.debug("Syncing #{length(providers)} Google Workspace providers")
 
     providers

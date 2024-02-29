@@ -53,9 +53,14 @@ defmodule Domain.Accounts.Account.Query do
     ]
 
   @impl Domain.Repo.Query
-  def preloads do
-    [
+  def preloads,
+    do: [
       clients: {Domain.Clients.Client.Query.not_deleted(), Domain.Clients.Client.Query.preloads()}
     ]
-  end
+
+  def filters,
+    do: [
+      not_deleted: &not_deleted/1,
+      not_disabled: &not_disabled/1
+    ]
 end

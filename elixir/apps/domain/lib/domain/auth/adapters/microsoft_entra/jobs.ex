@@ -6,7 +6,7 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.Jobs do
   require Logger
 
   every minutes(5), :refresh_access_tokens do
-    providers = Domain.Auth.all_providers_pending_token_refresh_by_adapter(:microsoft_entra)
+    providers = Domain.Auth.all_providers_pending_token_refresh_by_adapter!(:microsoft_entra)
     Logger.debug("Refreshing access tokens for #{length(providers)} Microsoft Entra providers")
 
     Enum.each(providers, fn provider ->
@@ -33,7 +33,7 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.Jobs do
   end
 
   every minutes(3), :sync_directory do
-    providers = Domain.Auth.all_providers_pending_sync_by_adapter(:microsoft_entra)
+    providers = Domain.Auth.all_providers_pending_sync_by_adapter!(:microsoft_entra)
     Logger.debug("Syncing #{length(providers)} Microsoft Entra providers")
 
     providers

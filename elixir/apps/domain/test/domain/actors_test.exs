@@ -2054,7 +2054,7 @@ defmodule Domain.ActorsTest do
     end
   end
 
-  describe "all_actor_group_ids/1" do
+  describe "all_actor_group_ids!/1" do
     test "returns list of all group ids where an actor is a member" do
       account = Fixtures.Accounts.create_account()
       actor = Fixtures.Actors.create_actor(account: account)
@@ -2066,7 +2066,7 @@ defmodule Domain.ActorsTest do
       Fixtures.Actors.create_membership(account: account, actor: actor, group: group1)
       Fixtures.Actors.create_membership(account: account, actor: actor, group: group2)
 
-      assert Enum.sort(all_actor_group_ids(actor)) == Enum.sort([group1.id, group2.id])
+      assert Enum.sort(all_actor_group_ids!(actor)) == Enum.sort([group1.id, group2.id])
     end
   end
 

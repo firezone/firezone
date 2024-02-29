@@ -6,7 +6,7 @@ defmodule Domain.Auth.Adapters.Okta.Jobs do
   require Logger
 
   every minutes(5), :refresh_access_tokens do
-    providers = Domain.Auth.all_providers_pending_token_refresh_by_adapter(:okta)
+    providers = Domain.Auth.all_providers_pending_token_refresh_by_adapter!(:okta)
     Logger.debug("Refreshing access tokens for #{length(providers)} Okta providers")
 
     Enum.each(providers, fn provider ->
@@ -33,7 +33,7 @@ defmodule Domain.Auth.Adapters.Okta.Jobs do
   end
 
   every minutes(3), :sync_directory do
-    providers = Domain.Auth.all_providers_pending_sync_by_adapter(:okta)
+    providers = Domain.Auth.all_providers_pending_sync_by_adapter!(:okta)
     Logger.debug("Syncing #{length(providers)} Okta providers")
 
     providers

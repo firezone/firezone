@@ -228,7 +228,7 @@ defmodule Domain.Gateways do
     end
   end
 
-  def list_connected_gateways_for_resource(
+  def all_connected_gateways_for_resource(
         %Resources.Resource{} = resource,
         %Auth.Subject{} = subject,
         opts \\ []

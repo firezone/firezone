@@ -318,9 +318,9 @@ defmodule Domain.ResourcesTest do
     end
   end
 
-  describe "list_authorized_resources/2" do
+  describe "all_authorized_resources/1" do
     test "returns empty list when there are no resources", %{subject: subject} do
-      assert {:ok, [], _metadata} = list_authorized_resources(subject)
+      assert {:ok, []} = all_authorized_resources(subject)
     end
 
     test "returns empty list when there are no authorized resources", %{
@@ -328,7 +328,7 @@ defmodule Domain.ResourcesTest do
       subject: subject
     } do
       Fixtures.Resources.create_resource(account: account)
-      assert {:ok, [], _metadata} = list_authorized_resources(subject)
+      assert {:ok, []} = all_authorized_resources(subject)
     end
 
     test "does not list deleted resources", %{
@@ -355,7 +355,7 @@ defmodule Domain.ResourcesTest do
 
       resource |> Ecto.Changeset.change(deleted_at: DateTime.utc_now()) |> Repo.update!()
 
-      assert {:ok, [], _metadata} = list_authorized_resources(subject)
+      assert {:ok, []} = all_authorized_resources(subject)
     end
 
     test "does not list resources authorized by disabled policy", %{
@@ -376,7 +376,7 @@ defmodule Domain.ResourcesTest do
 
       {:ok, _policy} = Domain.Policies.disable_policy(policy, subject)
 
-      assert {:ok, [], _metadata} = list_authorized_resources(subject)
+      assert {:ok, []} = all_authorized_resources(subject)
     end
 
     test "returns authorized resources for account user subject", %{
@@ -404,7 +404,7 @@ defmodule Domain.ResourcesTest do
       Fixtures.Resources.create_resource(account: account)
       Fixtures.Resources.create_resource()
 
-      assert {:ok, [], _metadata} = list_authorized_resources(subject)
+      assert {:ok, []} = all_authorized_resources(subject)
 
       actor_group = Fixtures.Actors.create_group(account: account)
       Fixtures.Actors.create_membership(account: account, actor: actor, group: actor_group)
@@ -416,7 +416,7 @@ defmodule Domain.ResourcesTest do
           resource: resource1
         )
 
-      assert {:ok, resources, _metadata} = list_authorized_resources(subject)
+      assert {:ok, resources} = all_authorized_resources(subject)
       assert length(resources) == 1
       assert hd(resources).authorized_by_policy.id == policy.id
 
@@ -427,7 +427,7 @@ defmodule Domain.ResourcesTest do
           resource: resource2
         )
 
-      assert {:ok, resources2, _metadata} = list_authorized_resources(subject)
+      assert {:ok, resources2} = all_authorized_resources(subject)
       assert length(resources2) == 2
 
       assert hd(resources2 -- resources).authorized_by_policy.id == policy2.id
@@ -458,7 +458,7 @@ defmodule Domain.ResourcesTest do
       Fixtures.Resources.create_resource(account: account)
       Fixtures.Resources.create_resource()
 
-      assert {:ok, [], _metadata} = list_authorized_resources(subject)
+      assert {:ok, []} = all_authorized_resources(subject)
 
       actor_group = Fixtures.Actors.create_group(account: account)
       Fixtures.Actors.create_membership(account: account, actor: actor, group: actor_group)
@@ -470,7 +470,7 @@ defmodule Domain.ResourcesTest do
           resource: resource1
         )
 
-      assert {:ok, resources, _metadata} = list_authorized_resources(subject)
+      assert {:ok, resources} = all_authorized_resources(subject)
       assert length(resources) == 1
       assert hd(resources).authorized_by_policy.id == policy.id
 
@@ -480,7 +480,7 @@ defmodule Domain.ResourcesTest do
         resource: resource2
       )
 
-      assert {:ok, resources, _metadata} = list_authorized_resources(subject)
+      assert {:ok, resources} = all_authorized_resources(subject)
       assert length(resources) == 2
     end
 
@@ -507,10 +507,10 @@ defmodule Domain.ResourcesTest do
         resource: resource
       )
 
-      assert {:ok, [_resource], _metadata} = list_authorized_resources(subject)
+      assert {:ok, [_resource]} = all_authorized_resources(subject)
 
       Fixtures.Gateways.delete_group(gateway_group)
-      assert {:ok, [], _metadata} = list_authorized_resources(subject)
+      assert {:ok, []} = all_authorized_resources(subject)
     end
 
     test "returns error when subject has no permission to manage resources", %{
@@ -518,7 +518,7 @@ defmodule Domain.ResourcesTest do
     } do
       subject = Fixtures.Auth.remove_permissions(subject)
 
-      assert list_authorized_resources(subject) ==
+      assert all_authorized_resources(subject) ==
                {:error,
                 {:unauthorized,
                  reason: :missing_permissions,

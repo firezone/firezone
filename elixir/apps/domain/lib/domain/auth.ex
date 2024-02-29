@@ -160,13 +160,13 @@ defmodule Domain.Auth do
   end
 
   # used to build list of auth options for the UI
-  def all_active_providers_for_account(%Accounts.Account{} = account) do
+  def all_active_providers_for_account!(%Accounts.Account{} = account) do
     Provider.Query.not_disabled()
     |> Provider.Query.by_account_id(account.id)
     |> Repo.all()
   end
 
-  def all_providers_pending_token_refresh_by_adapter(adapter) do
+  def all_providers_pending_token_refresh_by_adapter!(adapter) do
     datetime_filter = DateTime.utc_now() |> DateTime.add(30, :minute)
 
     Provider.Query.not_disabled()
@@ -177,7 +177,7 @@ defmodule Domain.Auth do
     |> Repo.all()
   end
 
-  def all_providers_pending_sync_by_adapter(adapter) do
+  def all_providers_pending_sync_by_adapter!(adapter) do
     Provider.Query.not_disabled()
     |> Provider.Query.by_adapter(adapter)
     |> Provider.Query.by_provisioner(:custom)
@@ -330,7 +330,7 @@ defmodule Domain.Auth do
     Identity.Sync.sync_provider_identities_multi(provider, attrs_list)
   end
 
-  def all_actor_ids_by_membership_rules(account_id, membership_rules) do
+  def all_actor_ids_by_membership_rules!(account_id, membership_rules) do
     Identity.Query.not_disabled()
     |> Identity.Query.by_account_id(account_id)
     |> Identity.Query.by_membership_rules(membership_rules)

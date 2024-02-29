@@ -6,7 +6,7 @@ defmodule Web.SignIn do
 
   def mount(%{"account_id_or_slug" => account_id_or_slug} = params, _session, socket) do
     with {:ok, account} <- Accounts.fetch_account_by_id_or_slug(account_id_or_slug),
-         [_ | _] = providers <- Auth.all_active_providers_for_account(account) do
+         [_ | _] = providers <- Auth.all_active_providers_for_account!(account) do
       providers_by_adapter =
         providers
         |> group_providers_by_root_adapter()

@@ -3,12 +3,12 @@ defmodule Domain.Accounts do
   alias Domain.Auth
   alias Domain.Accounts.{Account, Features, Authorizer}
 
-  def all_active_accounts do
+  def all_active_accounts! do
     Account.Query.not_disabled()
     |> Repo.all()
   end
 
-  def all_accounts_by_ids(ids) do
+  def all_accounts_by_ids!(ids) do
     if Enum.all?(ids, &Repo.valid_uuid?/1) do
       Account.Query.not_deleted()
       |> Account.Query.by_id({:in, ids})

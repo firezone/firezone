@@ -34,8 +34,7 @@ defmodule Domain.Repo do
     {preload, opts} = Keyword.pop(opts, :preload, [])
 
     if schema = __MODULE__.one(queryable, opts) do
-      preloads_funs = Query.get_preloads_funs(query_module)
-      {schema, ecto_preloads} = Preloader.preload(schema, preload, preloads_funs)
+      {schema, ecto_preloads} = Preloader.preload(schema, preload, query_module)
       schema = __MODULE__.preload(schema, ecto_preloads)
       {:ok, schema}
     else
@@ -57,8 +56,7 @@ defmodule Domain.Repo do
     {preload, opts} = Keyword.pop(opts, :preload, [])
 
     schema = __MODULE__.one!(queryable, opts)
-    preloads_funs = Query.get_preloads_funs(query_module)
-    {schema, ecto_preloads} = Preloader.preload(schema, preload, preloads_funs)
+    {schema, ecto_preloads} = Preloader.preload(schema, preload, query_module)
     __MODULE__.preload(schema, ecto_preloads)
   end
 
@@ -148,8 +146,7 @@ defmodule Domain.Repo do
   end
 
   defp execute_preloads(schema, query_module, preload) do
-    preloads_funs = Query.get_preloads_funs(query_module)
-    {schema, ecto_preloads} = Preloader.preload(schema, preload, preloads_funs)
+    {schema, ecto_preloads} = Preloader.preload(schema, preload, query_module)
     __MODULE__.preload(schema, ecto_preloads)
   end
 
@@ -188,8 +185,7 @@ defmodule Domain.Repo do
         |> __MODULE__.all(opts)
         |> Paginator.metadata(paginator_opts)
 
-      preloads_funs = Query.get_preloads_funs(query_module)
-      {results, ecto_preloads} = Preloader.preload(results, preload, preloads_funs)
+      {results, ecto_preloads} = Preloader.preload(results, preload, query_module)
       results = __MODULE__.preload(results, ecto_preloads)
 
       {:ok, results, metadata}

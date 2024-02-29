@@ -4,52 +4,58 @@ defmodule Domain.Repo.Preloader do
   it accepts the same syntax as `Ecto.Repo.preload/2` and returns results with
   preloads and list of not overridden preloads that needs to be executed by Ecto.
   """
+  alias Domain.Repo.Query
+
+  def preload(schema, preload, query_module) do
+    preloads_funs = Query.get_preloads_funs(query_module)
+    handle_preloads(schema, preload, preloads_funs)
+  end
 
   # preload on a list of schemas, eg. on `Repo.list(..., preload: :identity)`
-  def preload(results, preloads, preloads_funs) when is_list(results) do
+  defp handle_preloads(results, preloads, preloads_funs) when is_list(results) do
     {results, ecto_preloads, []} =
       {results, [], preloads}
-      |> map_preloads(preloads_funs)
+      |> pop_and_handle_preload(preloads_funs)
 
     {results, ecto_preloads}
   end
 
   # preload on a schema, eg. on `Repo.fetch(..., preload: :identity)`
-  def preload(result, preloads, preloads_funs) do
+  defp handle_preloads(result, preloads, preloads_funs) do
     {[result], ecto_preloads, []} =
       {[result], [], preloads}
-      |> map_preloads(preloads_funs)
+      |> pop_and_handle_preload(preloads_funs)
 
     {result, ecto_preloads}
   end
 
   # there is no results so we remove all preloads
-  defp map_preloads({[], ecto_preloads, _preloads}, _preloads_funs) do
+  defp pop_and_handle_preload({[], ecto_preloads, _preloads}, _preloads_funs) do
     {[], ecto_preloads, []}
   end
 
   # when there are no more preloads to process we return the results
   # and preloads that will be executed by `Ecto.Repo.preload/2`
-  defp map_preloads({results, ecto_preloads, []}, _preloads_funs) do
+  defp pop_and_handle_preload({results, ecto_preloads, []}, _preloads_funs) do
     {results, ecto_preloads, []}
   end
 
   # for every preload we try to execute it and see if it has an override
-  defp map_preloads({results, ecto_preloads, [preload | preloads]}, preloads_funs) do
+  defp pop_and_handle_preload({results, ecto_preloads, [preload | preloads]}, preloads_funs) do
     {results, ecto_preloads, preloads}
-    |> map_preload(preload, preloads_funs)
-    |> map_preloads(preloads_funs)
+    |> handle_preload(preload, preloads_funs)
+    |> pop_and_handle_preload(preloads_funs)
   end
 
   # preload can also be a single atom: `preload: :foo`
-  defp map_preloads({results, ecto_preloads, preload}, preloads_funs) do
+  defp pop_and_handle_preload({results, ecto_preloads, preload}, preloads_funs) do
     {results, ecto_preloads, []}
-    |> map_preload(preload, preloads_funs)
-    |> map_preloads(preloads_funs)
+    |> handle_preload(preload, preloads_funs)
+    |> pop_and_handle_preload(preloads_funs)
   end
 
   # preload is nested, eg: preload: [actor: :identities]
-  defp map_preload(
+  defp handle_preload(
          {results, ecto_preloads, preloads},
          {preload, nested_preloads},
          preloads_funs
@@ -77,7 +83,7 @@ defmodule Domain.Repo.Preloader do
         results = Domain.Repo.preload(results, [{preload, query}])
 
         {results, nested_ecto_preloads} =
-          map_nested_preloads(results, preload, nested_preloads, nested_preload_funs)
+          handle_nested_preloads(results, preload, nested_preloads, nested_preload_funs)
 
         {
           results,
@@ -90,7 +96,7 @@ defmodule Domain.Repo.Preloader do
           apply_or_postpone_preload(results, preload, preload_fun)
 
         {results, nested_ecto_preloads} =
-          map_nested_preloads(results, preload, nested_preloads, nested_preload_funs)
+          handle_nested_preloads(results, preload, nested_preloads, nested_preload_funs)
 
         {
           results,
@@ -101,7 +107,7 @@ defmodule Domain.Repo.Preloader do
   end
 
   # preload is an atom
-  defp map_preload(
+  defp handle_preload(
          {results, ecto_preloads, preloads},
          preload,
          preloads_funs
@@ -118,13 +124,13 @@ defmodule Domain.Repo.Preloader do
     end
   end
 
-  defp map_nested_preloads(results, preload, nested_preloads, nested_preload_funs) do
+  defp handle_nested_preloads(results, preload, nested_preloads, nested_preload_funs) do
     {results, nested_ecto_preloads} =
       Enum.reduce(results, {[], []}, fn result, {results_acc, ecto_preloads_acc} ->
         {nested_result, ecto_preloads_to_prepend} =
           result
           |> Map.fetch!(preload)
-          |> preload(nested_preloads, nested_preload_funs)
+          |> handle_preloads(nested_preloads, nested_preload_funs)
 
         result = Map.put(result, preload, nested_result)
 

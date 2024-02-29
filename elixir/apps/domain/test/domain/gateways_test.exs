@@ -678,7 +678,7 @@ defmodule Domain.GatewaysTest do
     end
   end
 
-  describe "list_connected_gateways_for_resource/3" do
+  describe "all_connected_gateways_for_resource/3" do
     test "returns empty list when there are no online gateways", %{
       account: account,
       subject: subject
@@ -690,7 +690,7 @@ defmodule Domain.GatewaysTest do
       Fixtures.Gateways.create_gateway(account: account)
       |> Fixtures.Gateways.delete_gateway()
 
-      assert list_connected_gateways_for_resource(resource, subject) == {:ok, []}
+      assert all_connected_gateways_for_resource(resource, subject) == {:ok, []}
     end
 
     test "returns list of connected gateways for a given resource", %{
@@ -707,7 +707,7 @@ defmodule Domain.GatewaysTest do
 
       assert connect_gateway(gateway) == :ok
 
-      assert {:ok, [connected_gateway]} = list_connected_gateways_for_resource(resource, subject)
+      assert {:ok, [connected_gateway]} = all_connected_gateways_for_resource(resource, subject)
       assert connected_gateway.id == gateway.id
     end
 
@@ -720,7 +720,7 @@ defmodule Domain.GatewaysTest do
 
       assert connect_gateway(gateway) == :ok
 
-      assert list_connected_gateways_for_resource(resource, subject) == {:ok, []}
+      assert all_connected_gateways_for_resource(resource, subject) == {:ok, []}
     end
   end
 

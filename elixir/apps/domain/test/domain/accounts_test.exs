@@ -3,25 +3,25 @@ defmodule Domain.AccountsTest do
   import Domain.Accounts
   alias Domain.Accounts
 
-  describe "all_active_accounts/0" do
+  describe "all_active_accounts!/0" do
     test "returns all active accounts" do
       Fixtures.Accounts.create_account()
       Fixtures.Accounts.create_account() |> Fixtures.Accounts.disable_account()
       Fixtures.Accounts.create_account() |> Fixtures.Accounts.delete_account()
 
-      accounts = all_active_accounts()
+      accounts = all_active_accounts!()
       assert length(accounts) == 1
     end
   end
 
-  describe "all_accounts_by_ids/1" do
+  describe "all_accounts_by_ids!/1" do
     test "returns empty list when ids are empty" do
-      accounts = all_accounts_by_ids([])
+      accounts = all_accounts_by_ids!([])
       assert length(accounts) == 0
     end
 
     test "returns empty list when ids are invalid" do
-      accounts = all_accounts_by_ids(["foo", "bar"])
+      accounts = all_accounts_by_ids!(["foo", "bar"])
       assert length(accounts) == 0
     end
 
@@ -30,13 +30,13 @@ defmodule Domain.AccountsTest do
       account2 = Fixtures.Accounts.create_account()
       account3 = Fixtures.Accounts.create_account() |> Fixtures.Accounts.disable_account()
 
-      accounts = all_accounts_by_ids([account1.id, account2.id, account3.id])
+      accounts = all_accounts_by_ids!([account1.id, account2.id, account3.id])
       assert length(accounts) == 3
     end
 
     test "does not return deleted accounts" do
       account = Fixtures.Accounts.create_account() |> Fixtures.Accounts.delete_account()
-      accounts = all_accounts_by_ids([account.id])
+      accounts = all_accounts_by_ids!([account.id])
       assert length(accounts) == 0
     end
   end
