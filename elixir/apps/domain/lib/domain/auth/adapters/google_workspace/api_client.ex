@@ -1,7 +1,13 @@
 defmodule Domain.Auth.Adapters.GoogleWorkspace.APIClient do
+  @moduledoc """
+  Warning: DO NOT use `fields` parameter with Google API's,
+  or they will not return you pagination cursor 🫠.
+  """
   use Supervisor
 
   @pool_name __MODULE__.Finch
+
+  @max_results 350
 
   def start_link(_init_arg) do
     Supervisor.start_link(__MODULE__, nil, name: __MODULE__)
@@ -40,19 +46,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.APIClient do
           "customer" => "my_customer",
           "showDeleted" => false,
           "query" => "isSuspended=false isArchived=false",
-          "fields" =>
-            Enum.join(
-              ~w[
-                users/id
-                users/primaryEmail
-                users/name/fullName
-                users/orgUnitPath
-                users/creationTime
-                users/isEnforcedIn2Sv
-                users/isEnrolledIn2Sv
-              ],
-              ","
-            )
+          "maxResults" => @max_results
         })
       )
 
@@ -68,7 +62,8 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.APIClient do
       URI.parse("#{endpoint}/admin/directory/v1/groups")
       |> URI.append_query(
         URI.encode_query(%{
-          "customer" => "my_customer"
+          "customer" => "my_customer",
+          "maxResults" => @max_results
         })
       )
 
@@ -81,7 +76,14 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.APIClient do
       Domain.Config.fetch_env!(:domain, __MODULE__)
       |> Keyword.fetch!(:endpoint)
 
-    uri = URI.parse("#{endpoint}/admin/directory/v1/customer/my_customer/orgunits")
+    uri =
+      URI.parse("#{endpoint}/admin/directory/v1/customer/my_customer/orgunits")
+      |> URI.append_query(
+        URI.encode_query(%{
+          "maxResults" => @max_results
+        })
+      )
+
     list_all(uri, api_token, "organizationUnits")
   end
 
@@ -90,9 +92,14 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.APIClient do
       Domain.Config.fetch_env!(:domain, __MODULE__)
       |> Keyword.fetch!(:endpoint)
 
-    params = %{"includeDerivedMembership" => true}
-    uri = URI.parse("#{endpoint}/admin/directory/v1/groups/#{group_id}/members")
-    uri = URI.append_query(uri, URI.encode_query(params))
+    uri =
+      URI.parse("#{endpoint}/admin/directory/v1/groups/#{group_id}/members")
+      |> URI.append_query(
+        URI.encode_query(%{
+          "includeDerivedMembership" => true,
+          "maxResults" => @max_results
+        })
+      )
 
     with {:ok, members} <- list_all(uri, api_token, "members") do
       members =

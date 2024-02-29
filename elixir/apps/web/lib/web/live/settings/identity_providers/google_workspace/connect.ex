@@ -49,7 +49,8 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.Connect do
              adapter_state: identity.provider_state,
              disabled_at: nil,
              last_syncs_failed: 0,
-             last_sync_error: nil
+             last_sync_error: nil,
+             sync_disabled_at: nil
            },
            {:ok, _provider} <- Domain.Auth.update_provider(provider, attrs, subject) do
         redirect(conn,

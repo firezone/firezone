@@ -68,7 +68,7 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.Jobs do
       |> Ecto.Multi.update(:save_last_updated_at, fn _effects_so_far ->
         Auth.Provider.Changeset.sync_finished(provider)
       end)
-      |> Domain.Repo.transaction()
+      |> Domain.Repo.transaction(timeout: :timer.minutes(15))
       |> case do
         {:ok, effects} ->
           SyncLogger.log_effects(provider, effects)
@@ -80,14 +80,15 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.Jobs do
             reason: inspect(reason)
           )
 
-        {:error, op, value, changes_so_far} ->
+        {:error, step, reason, _effects_so_far} ->
           Logger.error("Failed to sync provider",
             provider_id: provider.id,
             account_id: provider.account_id,
-            op: op,
-            value: inspect(value),
-            changes_so_far: inspect(changes_so_far)
+            step: inspect(step),
+            reason: inspect(reason)
           )
+
+          {:error, reason}
       end
     else
       false ->
@@ -116,7 +117,7 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.Jobs do
         log_sync_error(provider, message)
 
       {:error, reason} ->
-        Logger.error("Failed syncing provider",
+        Logger.error("Failed to sync provider",
           account_id: provider.account_id,
           provider_id: provider.id,
           reason: inspect(reason)
@@ -132,9 +133,9 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.Jobs do
     ]
 
     if provider.last_syncs_failed >= 3 do
-      Logger.warning("Failed syncing provider", metadata)
+      Logger.warning("Failed to sync provider", metadata)
     else
-      Logger.info("Failed syncing provider", metadata)
+      Logger.info("Failed to sync provider", metadata)
     end
   end
 

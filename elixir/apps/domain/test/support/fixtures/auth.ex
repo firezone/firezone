@@ -280,7 +280,11 @@ defmodule Domain.Fixtures.Auth do
   end
 
   def fail_provider_sync(provider) do
-    update!(provider, last_sync_error: "Message from fixture", last_syncs_failed: 3)
+    update!(provider,
+      last_sync_error: "Message from fixture",
+      last_syncs_failed: 3,
+      sync_disabled_at: DateTime.utc_now()
+    )
   end
 
   def finish_provider_sync(provider) do

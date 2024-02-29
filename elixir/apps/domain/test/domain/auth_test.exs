@@ -10,20 +10,20 @@ defmodule Domain.AuthTest do
     test "returns list of enabled adapters for an account" do
       account = Fixtures.Accounts.create_account(features: %{idp_sync: true})
 
-      assert list_user_provisioned_provider_adapters!(account) == [
-               openid_connect: [enabled: true],
+      assert Enum.sort(list_user_provisioned_provider_adapters!(account)) == [
                google_workspace: [enabled: true],
                microsoft_entra: [enabled: true],
-               okta: [enabled: true]
+               okta: [enabled: true],
+               openid_connect: [enabled: true]
              ]
 
       account = Fixtures.Accounts.create_account(features: %{idp_sync: false})
 
-      assert list_user_provisioned_provider_adapters!(account) == [
-               openid_connect: [enabled: true],
+      assert Enum.sort(list_user_provisioned_provider_adapters!(account)) == [
                google_workspace: [enabled: false],
                microsoft_entra: [enabled: false],
-               okta: [enabled: false]
+               okta: [enabled: false],
+               openid_connect: [enabled: true]
              ]
     end
   end
@@ -481,6 +481,19 @@ defmodule Domain.AuthTest do
       four_hours_one_minute_ago = DateTime.utc_now() |> DateTime.add(-241, :minute)
       Domain.Fixture.update!(provider, %{last_synced_at: four_hours_one_minute_ago})
       assert {:ok, [_provider]} = list_providers_pending_sync_by_adapter(:google_workspace)
+    end
+
+    test "ignores providers with disabled sync" do
+      {provider, _bypass} = Fixtures.Auth.start_and_create_google_workspace_provider()
+
+      eleven_minutes_ago = DateTime.utc_now() |> DateTime.add(-11, :minute)
+
+      Domain.Fixture.update!(provider, %{
+        last_synced_at: eleven_minutes_ago,
+        sync_disabled_at: DateTime.utc_now()
+      })
+
+      assert list_providers_pending_sync_by_adapter(:google_workspace) == {:ok, []}
     end
   end
 
@@ -1805,6 +1818,65 @@ defmodule Domain.AuthTest do
 
       assert Repo.aggregate(Auth.Identity, :count) == 0
       assert Repo.aggregate(Domain.Actors.Actor, :count) == 0
+    end
+
+    test "resolves provider identifier conflicts across actors", %{
+      account: account,
+      provider: provider
+    } do
+      identity1 =
+        Fixtures.Auth.create_identity(
+          account: account,
+          provider: provider,
+          provider_identifier: "USER_ID1",
+          actor: [type: :account_admin_user]
+        )
+        |> Fixtures.Auth.delete_identity()
+
+      identity2 =
+        Fixtures.Auth.create_identity(
+          account: account,
+          provider: provider,
+          provider_identifier: "USER_ID1",
+          actor: [type: :account_admin_user]
+        )
+
+      attrs_list = [
+        %{
+          "actor" => %{
+            "name" => "Brian Manifold",
+            "type" => "account_user"
+          },
+          "provider_identifier" => "USER_ID1"
+        }
+      ]
+
+      multi = sync_provider_identities_multi(provider, attrs_list)
+
+      assert {:ok,
+              %{
+                identities: [_identity1, _identity2],
+                plan_identities: {[], update, []},
+                delete_identities: [],
+                insert_identities: [],
+                actor_ids_by_provider_identifier: actor_ids_by_provider_identifier
+              }} = Repo.transaction(multi)
+
+      assert length(update) == 2
+      assert update == ["USER_ID1", "USER_ID1"]
+
+      identity1 = Repo.get(Domain.Auth.Identity, identity1.id) |> Repo.preload(:actor)
+      assert identity1.deleted_at
+      assert identity1.actor.name != "Brian Manifold"
+
+      identity2 = Repo.get(Domain.Auth.Identity, identity2.id) |> Repo.preload(:actor)
+      refute identity2.deleted_at
+      assert identity2.actor.name == "Brian Manifold"
+
+      assert Map.get(actor_ids_by_provider_identifier, identity2.provider_identifier) ==
+               identity2.actor.id
+
+      assert Enum.count(actor_ids_by_provider_identifier) == 1
     end
   end
 

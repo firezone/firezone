@@ -115,6 +115,7 @@ defmodule Web.Settings.IdentityProviders.MicrosoftEntra.Show do
                 <div
                   :if={
                     (is_nil(@provider.last_synced_at) and not is_nil(@provider.last_sync_error)) or
+                      not is_nil(@provider.sync_disabled_at) or
                       (@provider.last_syncs_failed > 3 and not is_nil(@provider.last_sync_error))
                   }
                   class="p-3 mt-2 border-l-4 border-red-500 bg-red-100 rounded-md"

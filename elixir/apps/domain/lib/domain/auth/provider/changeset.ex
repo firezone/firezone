@@ -4,7 +4,9 @@ defmodule Domain.Auth.Provider.Changeset do
   alias Domain.Auth.{Subject, Provider, Adapters}
 
   @create_fields ~w[id name adapter provisioner adapter_config adapter_state disabled_at]a
-  @update_fields ~w[name adapter_config last_syncs_failed last_sync_error adapter_state provisioner disabled_at deleted_at]a
+  @update_fields ~w[name adapter_config
+                    last_syncs_failed last_sync_error sync_disabled_at
+                    adapter_state provisioner disabled_at deleted_at]a
   @required_fields ~w[name adapter adapter_config provisioner]a
 
   def create(account, attrs, %Subject{} = subject) do
@@ -47,6 +49,7 @@ defmodule Domain.Auth.Provider.Changeset do
     |> put_change(:last_synced_at, DateTime.utc_now())
     |> put_change(:last_sync_error, nil)
     |> put_change(:last_syncs_failed, 0)
+    |> put_change(:sync_disabled_at, nil)
   end
 
   def sync_failed(%Provider{} = provider, error) do
@@ -57,6 +60,11 @@ defmodule Domain.Auth.Provider.Changeset do
     |> put_change(:last_synced_at, nil)
     |> put_change(:last_sync_error, error)
     |> put_change(:last_syncs_failed, last_syncs_failed + 1)
+  end
+
+  def sync_requires_manual_intervention(%Provider{} = provider, error) do
+    sync_failed(provider, error)
+    |> put_change(:sync_disabled_at, DateTime.utc_now())
   end
 
   defp changeset(changeset) do

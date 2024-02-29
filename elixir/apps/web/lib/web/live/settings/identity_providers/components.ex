@@ -260,7 +260,8 @@ defmodule Web.Settings.IdentityProviders.Components do
     <div :if={not is_nil(@provider.last_synced_at)} class="flex items-center">
       <span class={[
         "w-3 h-3 rounded-full",
-        (@provider.last_syncs_failed > 3 && "bg-red-500") || "bg-green-500"
+        @provider.last_syncs_failed > 3 or (not is_nil(@provider.sync_disabled_at) && "bg-red-500") ||
+          "bg-green-500"
       ]}>
       </span>
       <span class="ml-3">
