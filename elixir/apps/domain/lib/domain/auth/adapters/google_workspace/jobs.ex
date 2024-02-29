@@ -148,7 +148,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.Jobs do
         :ok
 
       {:error, {401, %{"error" => %{"message" => message}}}} ->
-        Auth.Provider.Changeset.sync_failed(provider, message)
+        Auth.Provider.Changeset.sync_requires_manual_intervention(provider, message)
         |> Domain.Repo.update!()
 
         :ok

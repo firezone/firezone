@@ -482,6 +482,19 @@ defmodule Domain.AuthTest do
       Domain.Fixture.update!(provider, %{last_synced_at: four_hours_one_minute_ago})
       assert {:ok, [_provider]} = list_providers_pending_sync_by_adapter(:google_workspace)
     end
+
+    test "ignores providers with disabled sync" do
+      {provider, _bypass} = Fixtures.Auth.start_and_create_google_workspace_provider()
+
+      eleven_minutes_ago = DateTime.utc_now() |> DateTime.add(-11, :minute)
+
+      Domain.Fixture.update!(provider, %{
+        last_synced_at: eleven_minutes_ago,
+        sync_disabled_at: DateTime.utc_now()
+      })
+
+      assert list_providers_pending_sync_by_adapter(:google_workspace) == {:ok, []}
+    end
   end
 
   describe "new_provider/2" do
