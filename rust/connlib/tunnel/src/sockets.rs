@@ -1,11 +1,11 @@
 use bytes::Bytes;
-use core::slice;
+use core::slice::{self};
 use quinn_udp::{RecvMeta, UdpSockRef, UdpSocketState};
 use socket2::{SockAddr, Type};
 use std::{
     io::{self, IoSliceMut},
     net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
-    task::{ready, Context, Poll},
+    task::{ready, Context, Poll, Waker},
 };
 use tokio::{io::Interest, net::UdpSocket};
 
@@ -68,31 +68,33 @@ impl Sockets {
         self.socket_v6.as_ref().map(|s| s.socket.as_raw_fd())
     }
 
-    pub fn poll_send_ready(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+    pub fn poll_send(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
         if let Some(socket) = self.socket_v4.as_mut() {
-            ready!(socket.poll_send_ready(cx))?;
+            ready!(socket.poll_send(cx))?;
         }
 
         if let Some(socket) = self.socket_v6.as_mut() {
-            ready!(socket.poll_send_ready(cx))?;
+            ready!(socket.poll_send(cx))?;
         }
 
         Poll::Ready(Ok(()))
     }
 
-    pub fn try_send(&mut self, transmit: &Transmit) -> Result<usize> {
+    pub fn queue(&mut self, transmit: Transmit) -> Result<()> {
         tracing::trace!(target: "wire", action = "write", to = %transmit.dst, src = ?transmit.src, bytes = %transmit.payload.len());
 
         match transmit.dst {
             SocketAddr::V4(_) => {
-                let socket = self.socket_v4.as_ref().ok_or(Error::NoIpv4)?;
-                Ok(socket.try_send_to(transmit.src, transmit.dst, &transmit.payload)?)
+                let socket = self.socket_v4.as_mut().ok_or(Error::NoIpv4)?;
+                socket.queue(transmit.src, transmit.dst, &transmit.payload)
             }
             SocketAddr::V6(_) => {
-                let socket = self.socket_v6.as_ref().ok_or(Error::NoIpv6)?;
-                Ok(socket.try_send_to(transmit.src, transmit.dst, &transmit.payload)?)
+                let socket = self.socket_v6.as_mut().ok_or(Error::NoIpv6)?;
+                socket.queue(transmit.src, transmit.dst, &transmit.payload)
             }
         }
+
+        Ok(())
     }
 
     pub fn poll_recv_from<'a>(
@@ -122,6 +124,9 @@ struct Socket<const N: usize> {
     port: u16,
     socket: UdpSocket,
     buffer: Box<[u8; N]>,
+
+    buffered_transmits: Vec<quinn_udp::Transmit>,
+    waker: Option<Waker>,
 }
 
 impl<const N: usize> Socket<N> {
@@ -134,6 +139,8 @@ impl<const N: usize> Socket<N> {
             port,
             socket: tokio::net::UdpSocket::from_std(socket)?,
             buffer: Box::new([0u8; N]),
+            buffered_transmits: Default::default(),
+            waker: None,
         })
     }
 
@@ -146,6 +153,8 @@ impl<const N: usize> Socket<N> {
             port,
             socket: tokio::net::UdpSocket::from_std(socket)?,
             buffer: Box::new([0u8; N]),
+            buffered_transmits: Default::default(),
+            waker: None,
         })
     }
 
@@ -159,6 +168,7 @@ impl<const N: usize> Socket<N> {
             socket,
             buffer,
             state,
+            ..
         } = self;
 
         let bufs = &mut [IoSliceMut::new(buffer.as_mut())];
@@ -194,26 +204,44 @@ impl<const N: usize> Socket<N> {
         }
     }
 
-    fn poll_send_ready(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
-        self.socket.poll_send_ready(cx)
+    fn poll_send(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        ready!(self.socket.poll_send_ready(cx))?;
+
+        match self
+            .state
+            .send((&self.socket).into(), self.buffered_transmits.as_slice())
+        {
+            Ok(num_sent) => {
+                self.buffered_transmits.drain(..num_sent);
+
+                if self.buffered_transmits.len() < 100 {
+                    if let Some(waker) = self.waker.take() {
+                        waker.wake()
+                    }
+                }
+
+                Poll::Ready(Ok(()))
+            }
+            Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
+                if self.buffered_transmits.len() >= 1000 {
+                    self.waker = Some(cx.waker().clone());
+                    return Poll::Pending;
+                }
+
+                Poll::Ready(Ok(()))
+            }
+            Err(e) => Poll::Ready(Err(e)),
+        }
     }
 
-    fn try_send_to(
-        &self,
-        local: Option<SocketAddr>,
-        dest: SocketAddr,
-        buf: &[u8],
-    ) -> io::Result<usize> {
-        self.state.send(
-            (&self.socket).into(),
-            &[quinn_udp::Transmit {
-                destination: dest,
-                ecn: None,
-                contents: Bytes::copy_from_slice(buf),
-                segment_size: None,
-                src_ip: local.map(|s| s.ip()),
-            }],
-        )
+    fn queue(&mut self, local: Option<SocketAddr>, dest: SocketAddr, buf: &[u8]) {
+        self.buffered_transmits.push(quinn_udp::Transmit {
+            destination: dest,
+            ecn: None,
+            contents: Bytes::copy_from_slice(buf),
+            segment_size: None,
+            src_ip: local.map(|s| s.ip()),
+        });
     }
 }
 

@@ -70,64 +70,59 @@ where
     CB: Callbacks + 'static,
 {
     pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Result<Event<GatewayId>>> {
-        let Some(device) = self.device.as_mut() else {
-            self.no_device_waker.register(cx.waker());
-            return Poll::Pending;
-        };
-
-        match self.role_state.poll_next_event(cx) {
-            Poll::Ready(Event::SendPacket(packet)) => {
-                device.write(packet)?;
-                cx.waker().wake_by_ref();
-            }
-            Poll::Ready(other) => return Poll::Ready(Ok(other)),
-            _ => (),
-        }
-
-        match self.connections_state.poll_next_event(cx) {
-            Poll::Ready(Event::StopPeer(id)) => {
-                self.role_state.cleanup_connected_gateway(&id);
-                cx.waker().wake_by_ref();
-            }
-            Poll::Ready(other) => return Poll::Ready(Ok(other)),
-            _ => (),
-        }
-
-        match self
-            .connections_state
-            .poll_sockets(device, &mut self.role_state.peers, cx)?
-        {
-            Poll::Ready(()) => {
-                cx.waker().wake_by_ref();
-            }
-            Poll::Pending => {}
-        }
-
-        ready!(self.connections_state.sockets.poll_send_ready(cx))?; // Ensure socket is ready before we read from device.
-
-        match device.poll_read(&mut self.read_buf, cx)? {
-            Poll::Ready(Some(packet)) => {
-                let Some((peer_id, packet)) = self.role_state.encapsulate(packet, Instant::now())
-                else {
-                    cx.waker().wake_by_ref();
-                    return Poll::Pending;
-                };
-
-                self.connections_state.send(peer_id, packet.as_immutable());
-
-                cx.waker().wake_by_ref();
-            }
-            Poll::Ready(None) => {
-                tracing::info!("Device stopped");
-                self.device = None;
-
+        loop {
+            let Some(device) = self.device.as_mut() else {
                 self.no_device_waker.register(cx.waker());
                 return Poll::Pending;
-            }
-            Poll::Pending => {}
-        }
+            };
 
-        Poll::Pending
+            match self.role_state.poll_next_event(cx) {
+                Poll::Ready(Event::SendPacket(packet)) => {
+                    device.write(packet)?;
+                    continue;
+                }
+                Poll::Ready(other) => return Poll::Ready(Ok(other)),
+                _ => (),
+            }
+
+            match self.connections_state.poll_next_event(cx) {
+                Poll::Ready(Event::StopPeer(id)) => {
+                    self.role_state.cleanup_connected_gateway(&id);
+                    continue;
+                }
+                Poll::Ready(other) => return Poll::Ready(Ok(other)),
+                _ => (),
+            }
+
+            if self
+                .connections_state
+                .poll_sockets(device, &mut self.role_state.peers, cx)?
+                .is_ready()
+            {
+                match device.poll_read(&mut self.read_buf, cx)? {
+                    Poll::Ready(Some(packet)) => {
+                        let Some((peer_id, packet)) =
+                            self.role_state.encapsulate(packet, Instant::now())
+                        else {
+                            continue;
+                        };
+
+                        self.connections_state.send(peer_id, packet.as_immutable());
+                        continue;
+                    }
+                    Poll::Ready(None) => {
+                        tracing::info!("Device stopped");
+                        self.device = None;
+
+                        self.no_device_waker.register(cx.waker());
+                        return Poll::Pending;
+                    }
+                    Poll::Pending => {}
+                }
+            }
+
+            return Poll::Pending;
+        }
     }
 }
 
@@ -157,17 +152,10 @@ where
             _ => (),
         }
 
-        match self
+        ready!(self
             .connections_state
-            .poll_sockets(device, &mut self.role_state.peers, cx)?
-        {
-            Poll::Ready(()) => {
-                cx.waker().wake_by_ref();
-            }
-            Poll::Pending => {}
-        }
-
-        ready!(self.connections_state.sockets.poll_send_ready(cx))?; // Ensure socket is ready before we read from device.
+            .poll_sockets(device, &mut self.role_state.peers, cx)?);
+        cx.waker().wake_by_ref();
 
         match device.poll_read(&mut self.read_buf, cx)? {
             Poll::Ready(Some(packet)) => {
@@ -177,7 +165,6 @@ where
                 };
 
                 self.connections_state.send(peer_id, packet.as_immutable());
-
                 cx.waker().wake_by_ref();
             }
             Poll::Ready(None) => {
@@ -272,7 +259,7 @@ where
             return Ok(());
         };
 
-        self.sockets.try_send(&transmit)?;
+        self.sockets.queue(transmit)?;
 
         Ok(())
     }
@@ -288,6 +275,12 @@ where
         TTransform: PacketTransform,
         TResource: Clone,
     {
+        while let Some(transmit) = self.node.poll_transmit() {
+            let _ = self.sockets.queue(transmit);
+        }
+
+        ready!(self.sockets.poll_send(cx))?;
+
         let received = match ready!(self.sockets.poll_recv_from(cx)) {
             Ok(received) => received,
             Err(e) => {
@@ -347,16 +340,6 @@ where
     }
 
     fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Event<TId>> {
-        if let Err(e) = ready!(self.sockets.poll_send_ready(cx)) {
-            tracing::warn!("Failed to poll sockets for readiness: {e}");
-        };
-
-        while let Some(transmit) = self.node.poll_transmit() {
-            if let Err(e) = self.sockets.try_send(&transmit) {
-                tracing::warn!(src = ?transmit.src, dst = %transmit.dst, "Failed to send UDP packet: {e}");
-            }
-        }
-
         match self.node.poll_event() {
             Some(snownet::Event::SignalIceCandidate {
                 connection,
