@@ -43,7 +43,10 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.Jobs do
       |> Enum.chunk_every(5)
       |> Enum.each(fn providers ->
         Enum.map(providers, fn provider ->
-          Logger.debug("Syncing provider", provider_id: provider.id)
+          Logger.debug("Syncing provider",
+            account_id: provider.account_id,
+            provider_id: provider.id
+          )
 
           access_token = provider.adapter_state["access_token"]
 
@@ -116,6 +119,18 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.Jobs do
                   account_id: provider.account_id,
                   reason: inspect(reason)
                 )
+
+                {:error, reason}
+
+              {:error, step, reason, _effects_so_far} ->
+                Logger.error("Failed to sync provider",
+                  provider_id: provider.id,
+                  account_id: provider.account_id,
+                  step: inspect(step),
+                  reason: inspect(reason)
+                )
+
+                {:error, reason}
             end
           else
             false ->

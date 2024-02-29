@@ -90,14 +90,15 @@ defmodule Domain.Auth.Adapters.Okta.Jobs do
             reason: inspect(reason)
           )
 
-        {:error, op, value, changes_so_far} ->
+        {:error, step, reason, _effects_so_far} ->
           Logger.error("Failed to sync provider",
             provider_id: provider.id,
             account_id: provider.account_id,
-            op: op,
-            value: inspect(value),
-            changes_so_far: inspect(changes_so_far)
+            step: inspect(step),
+            reason: inspect(reason)
           )
+
+          {:error, reason}
       end
     else
       {:error, {status, %{"errorCode" => error_code, "errorSummary" => error_summary}}} ->
