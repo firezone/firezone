@@ -17,9 +17,15 @@ defmodule Domain.Actors.Membership.Sync do
            memberships: memberships
          } ->
         tuples =
-          Enum.map(tuples, fn {group_provider_identifier, actor_provider_identifier} ->
-            {Map.fetch!(group_ids_by_provider_identifier, group_provider_identifier),
-             Map.fetch!(actor_ids_by_provider_identifier, actor_provider_identifier)}
+          Enum.flat_map(tuples, fn {group_provider_identifier, actor_provider_identifier} ->
+            group_id = Map.get(group_ids_by_provider_identifier, group_provider_identifier)
+            actor_id = Map.get(actor_ids_by_provider_identifier, actor_provider_identifier)
+
+            if not is_nil(group_id) and not is_nil(actor_id) do
+              [{group_id, actor_id}]
+            else
+              []
+            end
           end)
 
         plan_memberships_update(tuples, memberships)

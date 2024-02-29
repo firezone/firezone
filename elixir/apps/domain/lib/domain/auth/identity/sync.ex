@@ -25,7 +25,7 @@ defmodule Domain.Auth.Identity.Sync do
     |> Ecto.Multi.run(
       :insert_identities,
       fn repo, %{plan_identities: {insert, _update, _delete}} ->
-        upsert_identities(repo, provider, attrs_by_provider_identifier, insert)
+        insert_identities(repo, provider, attrs_by_provider_identifier, insert)
       end
     )
     |> Ecto.Multi.run(
@@ -104,7 +104,7 @@ defmodule Domain.Auth.Identity.Sync do
     {:ok, identities}
   end
 
-  defp upsert_identities(
+  defp insert_identities(
          repo,
          provider,
          attrs_by_provider_identifier,
