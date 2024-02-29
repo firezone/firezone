@@ -21,10 +21,10 @@ defmodule Domain.Actors.Membership.Sync do
             group_id = Map.get(group_ids_by_provider_identifier, group_provider_identifier)
             actor_id = Map.get(actor_ids_by_provider_identifier, actor_provider_identifier)
 
-            if not is_nil(group_id) and not is_nil(actor_id) do
-              [{group_id, actor_id}]
-            else
+            if is_nil(group_id) or is_nil(actor_id) do
               []
+            else
+              [{group_id, actor_id}]
             end
           end)
 
