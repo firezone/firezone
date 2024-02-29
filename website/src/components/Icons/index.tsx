@@ -60,8 +60,8 @@ export function AppleIcon({
   children,
   href,
 }: {
-  size: number;
-  children: React.ReactNode;
+  size?: number;
+  children?: React.ReactNode;
   href: Route<string>;
 }) {
   let c = "mx-auto w-" + size + " h-" + size + " box-border fill-current";
@@ -85,8 +85,8 @@ export function WindowsIcon({
   children,
   href,
 }: {
-  size: number;
-  children: React.ReactNode;
+  size?: number;
+  children?: React.ReactNode;
   href: Route<string>;
 }) {
   let c = "mx-auto w-" + size + " h-" + size + " box-border fill-current";
@@ -105,8 +105,8 @@ export function LinuxIcon({
   children,
   href,
 }: {
-  size: number;
-  children: React.ReactNode;
+  size?: number;
+  children?: React.ReactNode;
   href: Route<string>;
 }) {
   let c = "mx-auto w-" + size + " h-" + size + " box-border fill-current";
@@ -176,8 +176,8 @@ export function AndroidIcon({
   children,
   href,
 }: {
-  size: number;
-  children: React.ReactNode;
+  size?: number;
+  children?: React.ReactNode;
   href: Route<string>;
 }) {
   let c = "mx-auto w-" + size + " h-" + size + " box-border fill-current";
