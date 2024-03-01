@@ -64,7 +64,7 @@ winreg = "0.52.0"
 wintun = "0.4.0"
 
 [target.'cfg(target_os = "windows")'.dependencies.windows]
-version = "0.52.0"
+version = "0.54.0"
 features = [
   # For implementing COM interfaces
   "implement",
