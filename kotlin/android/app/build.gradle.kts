@@ -202,7 +202,7 @@ dependencies {
     implementation("com.google.code.gson:gson:2.10.1")
 
     // Security
-    implementation("androidx.security:security-crypto:1.1.0-alpha05")
+    implementation("androidx.security:security-crypto:1.1.0-alpha06")
 
     // JUnit
     testImplementation("junit:junit:4.13.2")
