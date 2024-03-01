@@ -483,10 +483,15 @@ impl SentConnectionIntents {
             return false;
         }
 
-        debug_assert!(self
+        let has_intent = self
             .inner
             .get(&reference)
-            .is_some_and(|resource| resource == &r));
+            .is_some_and(|resource| resource == &r);
+
+        if !has_intent {
+            return false;
+        }
+
         self.inner.retain(|_, v| v != &r);
 
         true
@@ -533,5 +538,23 @@ mod tests {
 
         assert!(should_accept_1);
         assert!(should_accept_2);
+    }
+
+    #[test]
+    fn handles_out_of_order_responses() {
+        let mut intents = SentConnectionIntents::default();
+
+        let resource = ResourceId::random();
+
+        intents.register_new_intent(OutboundRequestId::for_test(1), resource);
+        intents.register_new_intent(OutboundRequestId::for_test(2), resource);
+
+        let should_accept_2 =
+            intents.handle_connection_details_received(OutboundRequestId::for_test(2), resource);
+        let should_accept_1 =
+            intents.handle_connection_details_received(OutboundRequestId::for_test(1), resource);
+
+        assert!(should_accept_2);
+        assert!(!should_accept_1);
     }
 }
