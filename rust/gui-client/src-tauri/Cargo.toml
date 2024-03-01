@@ -87,4 +87,6 @@ features = [
 [features]
 # this feature is used for production builds or when `devPath` points to the filesystem
 # DO NOT REMOVE!!
+# TODO: We can probably remove this, per <https://github.com/tauri-apps/tauri/releases/tag/tauri-v2.0.0-beta.8>
+# I don't know how to verify this change, so I won't do it right now.
 custom-protocol = ["tauri/custom-protocol"]
