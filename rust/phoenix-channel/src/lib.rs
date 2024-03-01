@@ -294,6 +294,8 @@ where
             // Priority 1: Keep local buffers small and send pending messages.
             if stream.poll_ready_unpin(cx).is_ready() {
                 if let Some(message) = self.pending_messages.pop() {
+                    tracing::trace!(target: "wire", to="portal", %message);
+
                     match stream.start_send_unpin(Message::Text(message)) {
                         Ok(()) => {}
                         Err(e) => {
@@ -307,16 +309,16 @@ where
             // Priority 2: Handle incoming messages.
             match stream.poll_next_unpin(cx) {
                 Poll::Ready(Some(Ok(message))) => {
-                    let Ok(text) = message.into_text() else {
+                    let Ok(message) = message.into_text() else {
                         tracing::warn!("Received non-text message from portal");
                         continue;
                     };
 
-                    tracing::trace!("Received message from portal: {text}");
+                    tracing::trace!(target: "wire", from="portal", %message);
 
                     let message = match serde_json::from_str::<
                         PhoenixMessage<TInboundMsg, TOutboundRes>,
-                    >(&text)
+                    >(&message)
                     {
                         Ok(m) => m,
                         Err(e) if e.is_io() || e.is_eof() => {
@@ -324,7 +326,7 @@ where
                             continue;
                         }
                         Err(e) => {
-                            tracing::warn!("Failed to deserialize message {text}: {e}");
+                            tracing::warn!("Failed to deserialize message {message}: {e}");
                             continue;
                         }
                     };
