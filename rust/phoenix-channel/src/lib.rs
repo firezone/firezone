@@ -194,7 +194,7 @@ where
         init_req: TInitReq,
         reconnect_backoff: ExponentialBackoff,
     ) -> Self {
-        let mut phoenix_channel = Self {
+        Self {
             reconnect_backoff,
             secret_url: secret_url.clone(),
             user_agent: user_agent.clone(),
@@ -210,10 +210,7 @@ where
             pending_join_requests: Default::default(),
             login,
             init_req: init_req.clone(),
-        };
-        phoenix_channel.join(login, init_req);
-
-        phoenix_channel
+        }
     }
 
     /// Join the provided room.
