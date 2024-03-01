@@ -188,6 +188,10 @@ fn kernel_version() -> Option<String> {
         return None;
     }
 
+    #[cfg_attr(
+        all(target_os = "linux", target_arch = "aarch64"),
+        allow(clippy::unnecessary_cast)
+    )]
     let version: Vec<u8> = utsname
         .release
         .split(|c| *c == 0)
