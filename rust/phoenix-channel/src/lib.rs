@@ -25,7 +25,7 @@ use url::Url;
 // See https://github.com/firezone/firezone/issues/2158
 pub struct PhoenixChannel<TInitReq, TInboundMsg, TOutboundRes> {
     state: State,
-    pending_messages: Vec<Message>,
+    pending_messages: Vec<String>,
     next_request_id: u64,
 
     heartbeat: Heartbeat,
@@ -294,7 +294,7 @@ where
             // Priority 1: Keep local buffers small and send pending messages.
             if stream.poll_ready_unpin(cx).is_ready() {
                 if let Some(message) = self.pending_messages.pop() {
-                    match stream.start_send_unpin(message) {
+                    match stream.start_send_unpin(Message::Text(message)) {
                         Ok(()) => {}
                         Err(e) => {
                             self.reconnect_on_transient_error(Error::WebSocket(e));
@@ -457,11 +457,11 @@ where
     ) -> OutboundRequestId {
         let request_id = self.fetch_add_request_id();
 
-        self.pending_messages.push(Message::Text(
-            // We don't care about the reply type when serializing
-            serde_json::to_string(&PhoenixMessage::<_, ()>::new(topic, payload, request_id))
-                .expect("we should always be able to serialize a join topic message"),
-        ));
+        // We don't care about the reply type when serializing
+        let msg = serde_json::to_string(&PhoenixMessage::<_, ()>::new(topic, payload, request_id))
+            .expect("we should always be able to serialize a join topic message");
+
+        self.pending_messages.push(msg);
 
         OutboundRequestId(request_id)
     }
