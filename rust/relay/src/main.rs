@@ -523,9 +523,7 @@ where
                     tracing::debug!(target: "relay", "Heartbeat sent to portal");
                     continue;
                 }
-                Some(Poll::Ready(Ok(
-                    Event::InboundMessage { msg: (), .. } | Event::InboundReq { req: (), .. },
-                )))
+                Some(Poll::Ready(Ok(Event::InboundMessage { msg: (), .. })))
                 | Some(Poll::Pending)
                 | None => {}
             }
