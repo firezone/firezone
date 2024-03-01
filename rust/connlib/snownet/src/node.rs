@@ -21,7 +21,7 @@ use str0m::{Candidate, CandidateKind, IceConnectionState};
 
 use crate::allocation::{Allocation, Socket};
 use crate::index::IndexLfsr;
-use crate::info::ConnectionInfo;
+use crate::stats::{ConnectionStats, NodeStats};
 use crate::stun_binding::StunBinding;
 use crate::utils::earliest;
 use crate::{IpPacket, MutableIpPacket};
@@ -65,6 +65,8 @@ pub struct Node<T, TId> {
 
     buffer: Box<[u8; MAX_UDP_SIZE]>,
 
+    stats: NodeStats,
+
     marker: PhantomData<T>,
 }
 
@@ -106,6 +108,7 @@ where
             allocations: HashMap::default(),
             last_now: now,
             connections: Default::default(),
+            stats: Default::default(),
         }
     }
 
@@ -113,9 +116,8 @@ where
         (&self.private_key).into()
     }
 
-    /// Lazily retrieve stats of all connections.
-    pub fn stats(&self) -> impl Iterator<Item = (TId, ConnectionInfo)> + '_ {
-        self.connections.stats(self.last_now)
+    pub fn stats(&self) -> (NodeStats, impl Iterator<Item = (TId, ConnectionStats)> + '_) {
+        (self.stats, self.connections.stats())
     }
 
     /// Add an address as a `host` candidate.
@@ -535,12 +537,16 @@ where
 
         for binding in self.bindings.values_mut() {
             if let Some(transmit) = binding.poll_transmit() {
+                self.stats.stun_bytes_to_relays += transmit.payload.len();
+
                 return Some(transmit);
             }
         }
 
         for allocation in self.allocations.values_mut() {
             if let Some(transmit) = allocation.poll_transmit() {
+                self.stats.stun_bytes_to_relays += transmit.payload.len();
+
                 return Some(transmit);
             }
         }
@@ -574,6 +580,7 @@ where
             next_timer_update: self.last_now,
             peer_socket: None,
             possible_sockets: HashSet::default(),
+            stats: Default::default(),
         }
     }
 
@@ -1050,10 +1057,8 @@ impl<TId> Connections<TId>
 where
     TId: Eq + Hash + Copy,
 {
-    fn stats(&self, now: Instant) -> impl Iterator<Item = (TId, ConnectionInfo)> + '_ {
-        self.established
-            .keys()
-            .map(move |id| (*id, ConnectionInfo { generated_at: now }))
+    fn stats(&self) -> impl Iterator<Item = (TId, ConnectionStats)> + '_ {
+        self.established.iter().map(move |(id, c)| (*id, c.stats))
     }
 
     fn agent_mut(&mut self, id: TId) -> Option<&mut IceAgent> {
@@ -1277,6 +1282,8 @@ struct Connection {
 
     stun_servers: HashSet<SocketAddr>,
     turn_servers: HashSet<SocketAddr>,
+
+    stats: ConnectionStats,
 }
 
 /// The socket of the peer we are connected to.
@@ -1366,6 +1373,8 @@ impl Connection {
                 .find(|(_, allocation)| allocation.has_socket(source));
 
             let Some((relay, allocation)) = allocation else {
+                self.stats.stun_bytes_to_peer_direct += packet.len();
+
                 // `source` did not match any of our allocated sockets, must be a local one then!
                 return Some(Transmit {
                     src: Some(source),
@@ -1380,6 +1389,8 @@ impl Connection {
                 tracing::trace!(%relay, peer = %dst, "Dropping packet because allocation does not offer a channel to peer");
                 continue;
             };
+
+            self.stats.stun_bytes_to_peer_relayed += channel_data.len();
 
             return Some(Transmit {
                 src: None,

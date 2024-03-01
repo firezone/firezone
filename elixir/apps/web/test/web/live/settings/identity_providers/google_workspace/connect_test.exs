@@ -207,6 +207,7 @@ defmodule Web.Live.Settings.IdentityProviders.GoogleWorkspace.Connect do
       assert provider = Repo.get(Domain.Auth.Provider, provider.id)
       assert provider.last_sync_error == nil
       assert provider.last_syncs_failed == 0
+      assert provider.sync_disabled_at == nil
     end
 
     test "redirects to the actors index when credentials are valid and return path is empty", %{
