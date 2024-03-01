@@ -50,7 +50,7 @@ defmodule API.MixProject do
       # Observability deps
       {:telemetry_metrics, "~> 0.6"},
       {:telemetry_poller, "~> 1.0"},
-      {:opentelemetry_cowboy, "~> 0.2.1"},
+      {:opentelemetry_cowboy, "~> 0.3.0"},
       {:opentelemetry_phoenix, "~> 1.1"},
 
       # Other deps
