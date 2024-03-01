@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::task::{ready, Context, Poll};
 use std::time::Duration;
 
@@ -24,7 +25,7 @@ where
         // Note: the dns fallback strategy is irrelevant for gateways
         let mut device = Device::new(config, vec![], self.callbacks())?;
         device.set_routes(
-            vec![PEERS_IPV4.parse().unwrap(), PEERS_IPV6.parse().unwrap()],
+            HashSet::from([PEERS_IPV4.parse().unwrap(), PEERS_IPV6.parse().unwrap()]),
             self.callbacks(),
         )?;
 
