@@ -104,6 +104,15 @@ export default function RootNavbar() {
                 <li>
                   <Link
                     onClick={hideDropdown}
+                    href="/contact/sales"
+                    className="text-neutral-800 block px-4 py-2 font-medium hover:underline hover:bg-neutral-100 hover:text-neutral-900"
+                  >
+                    Request Demo
+                  </Link>
+                </li>
+                <li>
+                  <Link
+                    onClick={hideDropdown}
                     href="https://github.com/orgs/firezone/projects/9"
                     className="text-neutral-800 block px-4 py-2 font-medium hover:underline hover:bg-neutral-100 hover:text-neutral-900"
                   >

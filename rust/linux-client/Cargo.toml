@@ -7,6 +7,8 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+# Will be needed to safely revert `/etc/resolv.conf`
+atomicwrites = "0.4.3"
 secrecy = { workspace = true }
 connlib-client-shared = { workspace = true }
 connlib-shared = { workspace = true }

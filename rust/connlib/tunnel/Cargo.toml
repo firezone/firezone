@@ -27,7 +27,6 @@ pnet_packet = { version = "0.34" }
 futures-bounded = { workspace = true }
 hickory-resolver = { workspace = true, features = ["tokio-runtime"] }
 bimap = "0.6"
-resolv-conf = "0.7.0"
 socket2 = { version = "0.5" }
 snownet = { workspace = true }
 quinn-udp = { git = "https://github.com/quinn-rs/quinn", branch = "main"}
@@ -37,9 +36,7 @@ hex = "0.4.3"
 log = "0.4"
 
 [dev-dependencies]
-anyhow = "1.0"
 serde_json = "1.0"
-tempfile = "3.10.0"
 
 # Linux tunnel dependencies
 [target.'cfg(target_os = "linux")'.dependencies]
