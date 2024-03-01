@@ -1,6 +1,6 @@
 mod heartbeat;
 
-use std::collections::HashSet;
+use std::collections::{HashSet, VecDeque};
 use std::{fmt, future, marker::PhantomData};
 
 use backoff::backoff::Backoff;
@@ -25,7 +25,7 @@ use url::Url;
 // See https://github.com/firezone/firezone/issues/2158
 pub struct PhoenixChannel<TInitReq, TInboundMsg, TOutboundRes> {
     state: State,
-    pending_messages: Vec<Message>,
+    pending_messages: VecDeque<Message>,
     next_request_id: u64,
 
     heartbeat: Heartbeat,
@@ -203,7 +203,7 @@ where
 
                 Ok(stream)
             })),
-            pending_messages: vec![],
+            pending_messages: Default::default(),
             _phantom: PhantomData,
             next_request_id: 0,
             heartbeat: Default::default(),
@@ -293,7 +293,7 @@ where
 
             // Priority 1: Keep local buffers small and send pending messages.
             if stream.poll_ready_unpin(cx).is_ready() {
-                if let Some(message) = self.pending_messages.pop() {
+                if let Some(message) = self.pending_messages.pop_front() {
                     match stream.start_send_unpin(message) {
                         Ok(()) => {}
                         Err(e) => {
@@ -457,7 +457,7 @@ where
     ) -> OutboundRequestId {
         let request_id = self.fetch_add_request_id();
 
-        self.pending_messages.push(Message::Text(
+        self.pending_messages.push_back(Message::Text(
             // We don't care about the reply type when serializing
             serde_json::to_string(&PhoenixMessage::<_, ()>::new(topic, payload, request_id))
                 .expect("we should always be able to serialize a join topic message"),
