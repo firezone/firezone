@@ -155,9 +155,6 @@ enum IPv4SubnetMaskLookup {
 }
 
 extension NetworkSettings {
-}
-
-extension NetworkSettings {
   static func parseRoutes4(routes4: [String]) -> [NEIPv4Route] {
     return routes4.map { route4 in
       let components = route4.split(separator: "/")

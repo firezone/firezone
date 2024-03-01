@@ -750,7 +750,7 @@ fn effective_dns_servers(
         .peekable();
 
     if dns_servers.peek().is_none() {
-        tracing::error!("No system default DNS servers available! Can't initialize resolver. DNS will be broken.");
+        tracing::error!("No system default DNS servers available! Can't initialize resolver. DNS interception will be disabled.");
         return Vec::new();
     }
 
@@ -775,7 +775,7 @@ fn sentinel_dns_mapping(dns: &[DnsServer]) -> BiMap<IpAddr, DnsServer> {
             (
                 ip_provider
                     .get_proxy_ip_for(&i.ip())
-                    .expect("We only support up to 256 IpV4 DNS servers and 256 IpV6 DNS servers"),
+                    .expect("We only support up to 256 IPv4 DNS servers and 256 IPv6 DNS servers"),
                 i,
             )
         })

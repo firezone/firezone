@@ -186,7 +186,7 @@ impl Tun {
         }
     }
 
-    // It's okay if this blocks until the route is added in the OS.
+    // It's okay if this blocks until the route is removed in the OS.
     fn remove_route(&self, route: IpNetwork) -> Result<()> {
         let entry = self.forward_entry(route);
 
