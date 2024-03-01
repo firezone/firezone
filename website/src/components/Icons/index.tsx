@@ -56,11 +56,11 @@ export function XIcon({ url }: { url: URL }) {
 }
 
 export function AppleIcon({
-  size = 5,
+  size,
   children,
   href,
 }: {
-  size?: number;
+  size: number;
   children?: React.ReactNode;
   href: Route<string>;
 }) {
@@ -81,11 +81,11 @@ export function AppleIcon({
 }
 
 export function WindowsIcon({
-  size = 5,
+  size,
   children,
   href,
 }: {
-  size?: number;
+  size: number;
   children?: React.ReactNode;
   href: Route<string>;
 }) {
@@ -101,11 +101,11 @@ export function WindowsIcon({
 }
 
 export function LinuxIcon({
-  size = 5,
+  size,
   children,
   href,
 }: {
-  size?: number;
+  size: number;
   children?: React.ReactNode;
   href: Route<string>;
 }) {
@@ -172,11 +172,11 @@ export function LinuxIcon({
 }
 
 export function AndroidIcon({
-  size = 5,
+  size,
   children,
   href,
 }: {
-  size?: number;
+  size: number;
   children?: React.ReactNode;
   href: Route<string>;
 }) {
