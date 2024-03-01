@@ -70,6 +70,8 @@ pub enum ConnlibError {
     OnTunnelReadyFailed(String),
     #[error("`on_update_resources` failed: {0}")]
     OnUpdateResourcesFailed(String),
+    #[error("`on_update_routes` failed: {0}")]
+    OnUpdateRoutesFailed(String),
     #[error("`get_system_default_resolvers` failed: {0}")]
     GetSystemDefaultResolverFailed(String),
     #[error("`protect_file_descriptor` failed: {0}")]
