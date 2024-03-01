@@ -459,12 +459,6 @@ impl connlib_client_shared::Callbacks for CallbackHandler {
         Ok(())
     }
 
-    fn on_tunnel_ready(&self) -> Result<(), Self::Error> {
-        tracing::info!("on_tunnel_ready");
-        self.ctlr_tx.try_send(ControllerRequest::TunnelReady)?;
-        Ok(())
-    }
-
     fn on_update_resources(&self, resources: Vec<ResourceDescription>) -> Result<(), Self::Error> {
         tracing::debug!("on_update_resources");
         self.resources.store(resources.into());

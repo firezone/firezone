@@ -66,8 +66,6 @@ pub enum ConnlibError {
     IfaceRead(std::io::Error),
     #[error("`on_set_interface_config` failed: {0}")]
     OnSetInterfaceConfigFailed(String),
-    #[error("`on_tunnel_ready` failed: {0}")]
-    OnTunnelReadyFailed(String),
     #[error("`on_update_resources` failed: {0}")]
     OnUpdateResourcesFailed(String),
     #[error("`on_update_routes` failed: {0}")]

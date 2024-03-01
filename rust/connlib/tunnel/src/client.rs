@@ -181,8 +181,6 @@ where
         self.device = Some(device);
         self.no_device_waker.wake();
 
-        self.callbacks.on_tunnel_ready()?;
-
         tracing::debug!("background_loop_started");
 
         Ok(())
