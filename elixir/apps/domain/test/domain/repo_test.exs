@@ -206,6 +206,27 @@ defmodule Domain.RepoTest do
       end
     end
 
+    test "allows to set custom order", %{
+      account: account,
+      query_module: query_module,
+      queryable: queryable
+    } do
+      dt1 = ~U[2000-01-01 00:00:00.000000Z]
+      dt2 = ~U[2000-01-02 00:00:00.000000Z]
+
+      Fixtures.Actors.create_actor(account: account)
+      |> Fixtures.Actors.update(deleted_at: dt1)
+
+      Fixtures.Actors.create_actor(account: account)
+      |> Fixtures.Actors.update(deleted_at: dt2)
+
+      assert {:ok, [%{deleted_at: ^dt1}, %{deleted_at: ^dt2}], _metadata} =
+               list(queryable, query_module, order_by: [{:actors, :asc, :deleted_at}])
+
+      assert {:ok, [%{deleted_at: ^dt2}, %{deleted_at: ^dt1}], _metadata} =
+               list(queryable, query_module, order_by: [{:actors, :desc, :deleted_at}])
+    end
+
     test "allows to filter results" do
       query_module = Domain.Accounts.Account.Query
       queryable = query_module.all()
@@ -234,6 +255,11 @@ defmodule Domain.RepoTest do
                  ]
                )
 
+      account_ids = Enum.map(accounts, & &1.id)
+      assert length(accounts) == 2
+      assert account2.id in account_ids
+      assert account3.id in account_ids
+
       assert {:ok, [^account1], _metadata} =
                list(queryable, query_module,
                  filter: [
@@ -244,8 +270,6 @@ defmodule Domain.RepoTest do
                     ]}
                  ]
                )
-
-      assert length(accounts) == 2
     end
 
     test "returns error on unknown filter", %{
@@ -396,6 +420,89 @@ defmodule Domain.RepoTest do
       # go back to first page
       assert {:ok, actors4, metadata4} =
                list(queryable, query_module,
+                 page: [limit: 4, cursor: metadata4.previous_page_cursor]
+               )
+
+      assert Enum.map(actors4, & &1.id) == first_page_ids
+      assert metadata4.limit == 4
+      assert metadata4.next_page_cursor
+      refute metadata4.previous_page_cursor
+    end
+
+    test "cursors work with the custom ordering", %{
+      account: account,
+      query_module: query_module,
+      queryable: queryable
+    } do
+      fixed_datetime = ~U[2000-01-01 00:00:00.000000Z]
+
+      actors =
+        for i <- 1..10 do
+          last_synced_at = DateTime.add(fixed_datetime, i, :second)
+
+          Fixtures.Actors.create_actor(account: account)
+          |> Fixtures.Actors.update(last_synced_at: last_synced_at)
+        end
+
+      actors = actors |> Enum.sort_by(&{&1.last_synced_at, &1.id}) |> Enum.reverse()
+
+      ids = Enum.map(actors, & &1.id)
+      {first_page_ids, rest_ids} = Enum.split(ids, 4)
+      {second_page_ids, rest_ids} = Enum.split(rest_ids, 4)
+      {third_page_ids, []} = Enum.split(rest_ids, 2)
+
+      # load first page with 4 entries
+      assert {:ok, actors1, metadata1} =
+               list(queryable, query_module,
+                 order_by: [{:actors, :desc, :last_synced_at}],
+                 page: [limit: 4]
+               )
+
+      assert Enum.map(actors1, & &1.id) == first_page_ids
+      assert metadata1.limit == 4
+      assert metadata1.next_page_cursor
+      refute metadata1.previous_page_cursor
+
+      # load next page with 4 more entries
+      assert {:ok, actors2, metadata2} =
+               list(queryable, query_module,
+                 order_by: [{:actors, :desc, :last_synced_at}],
+                 page: [limit: 4, cursor: metadata1.next_page_cursor]
+               )
+
+      assert Enum.map(actors2, & &1.id) == second_page_ids
+      assert metadata2.limit == 4
+      assert metadata2.next_page_cursor
+      assert metadata2.previous_page_cursor
+
+      # load next page with 2 more entries
+      assert {:ok, actors3, metadata3} =
+               list(queryable, query_module,
+                 order_by: [{:actors, :desc, :last_synced_at}],
+                 page: [limit: 4, cursor: metadata2.next_page_cursor]
+               )
+
+      assert Enum.map(actors3, & &1.id) == third_page_ids
+      assert metadata3.limit == 4
+      refute metadata3.next_page_cursor
+      assert metadata3.previous_page_cursor
+
+      # go back to 2nd page
+      assert {:ok, actors4, metadata4} =
+               list(queryable, query_module,
+                 order_by: [{:actors, :desc, :last_synced_at}],
+                 page: [limit: 4, cursor: metadata3.previous_page_cursor]
+               )
+
+      assert Enum.map(actors4, & &1.id) == second_page_ids
+      assert metadata4.limit == 4
+      assert metadata4.next_page_cursor
+      assert metadata4.previous_page_cursor
+
+      # go back to first page
+      assert {:ok, actors4, metadata4} =
+               list(queryable, query_module,
+                 order_by: [{:actors, :desc, :last_synced_at}],
                  page: [limit: 4, cursor: metadata4.previous_page_cursor]
                )
 

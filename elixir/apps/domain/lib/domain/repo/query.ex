@@ -1,5 +1,7 @@
 defmodule Domain.Repo.Query do
   alias Domain.Repo.Filter
+  import Ecto.Query
+
   @type direction :: :after | :before
 
   @type preload_fun ::
@@ -9,7 +11,9 @@ defmodule Domain.Repo.Query do
   @doc """
   Returns list of fields that are used for cursor based pagination.
   """
-  @callback cursor_fields() :: [atom()]
+  @callback cursor_fields() :: [
+              {binding :: atom(), :asc | :desc, field :: atom()}
+            ]
 
   @doc """
   Allows to define custom preloads for the schema.
@@ -103,7 +107,7 @@ defmodule Domain.Repo.Query do
         end
   """
   def apply_filter({%Ecto.Query{} = queryable, %Ecto.Query.DynamicExpr{} = dynamic}) do
-    where(queryable, ^dynamic_expr)
+    where(queryable, ^dynamic)
   end
 
   @doc """
@@ -141,13 +145,13 @@ defmodule Domain.Repo.Query do
 
   ## How to index a column for full-text search
 
-  To use this function, you need to have a GIN index on the column you want to search.
+  To make sure that search is efficient you need to have a GIN index on the column you want to search.
 
   You can create the `tsvector` using a migration like this:
 
       CREATE INDEX my_table_column_name_fulltext_idx ON my_table USING gin(to_tsvector('english', column_name))
 
-  For `ILIKE` to work efficiently, you should also create a trigram index:
+  For `ILIKE` a separate trigram GIN index is needed:
 
       CREATE INDEX my_table_column_name_trigram_idx ON my_table USING gin(unaccent(column_name) gin_trgm_ops)
 
@@ -155,7 +159,7 @@ defmodule Domain.Repo.Query do
   defmacro fulltext_search(field, search_query) do
     quote do
       fragment(
-        "to_tsvector('english', ?) @@ websearch_to_tsquery(?) OR unaccent(?) ILIKE '%' || unaccent(?) || '%'",
+        "(to_tsvector('english', ?) @@ websearch_to_tsquery(?) OR unaccent(?) ILIKE '%' || unaccent(?) || '%')",
         unquote(field),
         unquote(search_query),
         unquote(field),

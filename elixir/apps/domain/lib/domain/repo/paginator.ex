@@ -21,11 +21,11 @@ defmodule Domain.Repo.Paginator do
               limit: nil
   end
 
-  def init(query_module, opts) do
+  def init(query_module, order_by, opts) do
     limit = Keyword.get(opts, :limit, @default_limit)
     limit = max(min(limit, @max_limit), 1)
 
-    cursor_fields = Query.fetch_cursor_fields!(query_module)
+    cursor_fields = order_by ++ Query.fetch_cursor_fields!(query_module)
 
     if encoded_cursor = Keyword.get(opts, :cursor) do
       with {:ok, {direction, values}} <- decode_cursor(encoded_cursor) do
@@ -93,6 +93,7 @@ defmodule Domain.Repo.Paginator do
     queryable
   end
 
+  # ASC
   defp append_by_cursor_dynamic(nil, :before, {binding, :asc, field}, value) do
     dynamic([{^binding, b}], field(b, ^field) < ^value)
   end
@@ -112,6 +113,29 @@ defmodule Domain.Repo.Paginator do
     dynamic(
       [{^binding, b}],
       field(b, ^field) > ^value or (field(b, ^field) == ^value and ^dynamic)
+    )
+  end
+
+  # DESC
+  defp append_by_cursor_dynamic(nil, :before, {binding, :desc, field}, value) do
+    dynamic([{^binding, b}], field(b, ^field) > ^value)
+  end
+
+  defp append_by_cursor_dynamic(dynamic, :before, {binding, :desc, field}, value) do
+    dynamic(
+      [{^binding, b}],
+      field(b, ^field) > ^value or (field(b, ^field) == ^value and ^dynamic)
+    )
+  end
+
+  defp append_by_cursor_dynamic(nil, :after, {binding, :desc, field}, value) do
+    dynamic([{^binding, b}], field(b, ^field) < ^value)
+  end
+
+  defp append_by_cursor_dynamic(dynamic, :after, {binding, :desc, field}, value) do
+    dynamic(
+      [{^binding, b}],
+      field(b, ^field) < ^value or (field(b, ^field) == ^value and ^dynamic)
     )
   end
 

@@ -153,6 +153,30 @@ defmodule Domain.Repo do
   @doc """
   Similar to `Ecto.Repo.all/2`, fetches all results from the query but returns a tuple
   and allow to execute preloads and paginate through the results.
+
+  # Pagination
+
+  The `:page` option is used to paginate the results. Supported options:
+    * `:cursor` to fetch next or previous page. It is returned in the metadata of the previous request;
+    *`:limit` is used to limit the number of results returned, default: `50` and maximum is `100`.
+
+  The query module must implement `c:Domain.Repo.Query.cursor_fields/0` callback to define the pagination fields.
+
+  # Ordering
+
+  The `:order_by` option is used to order the results, it extend the pagination fields defined by the query module
+  and uses the same format as `t:Domain.Repo.Query.cursor_fields/0`.
+
+  # Preloading
+
+  The `:preload` option is used to preload associations. It works the same way as `Ecto.Repo.preload/2`,
+  but certain keys can be overloaded by the query module by implementing `c:Domain.Repo.preloads/0` callback.
+
+  # Filtering
+
+  The `:filter` option is used to filter the results, for more information see `Domain.Repo.Filter` moduledoc.
+
+  The query module must implement `c:Domain.Repo.Query.get_filters/0` callback to define the filters.
   """
   @spec list(
           queryable :: Ecto.Queryable.t(),
@@ -177,9 +201,10 @@ defmodule Domain.Repo do
   def list(queryable, query_module, opts \\ []) do
     {preload, opts} = Keyword.pop(opts, :preload, [])
     {filter, opts} = Keyword.pop(opts, :filter, [])
+    {order_by, opts} = Keyword.pop(opts, :order_by, [])
     {paginator_opts, opts} = Keyword.pop(opts, :page, [])
 
-    with {:ok, paginator_opts} <- Paginator.init(query_module, paginator_opts),
+    with {:ok, paginator_opts} <- Paginator.init(query_module, order_by, paginator_opts),
          {:ok, queryable} <- Filter.filter(queryable, query_module, filter) do
       {results, metadata} =
         queryable
