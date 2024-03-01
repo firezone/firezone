@@ -565,13 +565,18 @@ where
     ) -> Connection {
         agent.handle_timeout(self.last_now);
 
+        /// We set a Wireguard keep-alive to ensure the WG session doesn't timeout on an idle connection.
+        ///
+        /// Without such a timeout, using a tunnel after the REKEY_TIMEOUT requires handshaking a new session which delays the new application packet by 1 RTT.
+        const WG_KEEP_ALIVE: Option<u16> = Some(10);
+
         Connection {
             agent,
             tunnel: Tunn::new(
                 self.private_key.clone(),
                 remote,
                 Some(key),
-                None,
+                WG_KEEP_ALIVE,
                 self.index.next(),
                 Some(self.rate_limiter.clone()),
             ),
