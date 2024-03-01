@@ -7,3 +7,6 @@ terraform 1.6.6
 
 # Used for static analysis
 python 3.11.7
+
+# Used to lint Bash scripts
+shellcheck 0.9.0
