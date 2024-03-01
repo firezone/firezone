@@ -154,11 +154,8 @@ android {
 }
 
 dependencies {
-    val coreVersion = "1.12.0"
-    val navVersion = "2.7.6"
-
     // AndroidX
-    implementation("androidx.core:core-ktx:$coreVersion")
+    implementation("androidx.core:core-ktx:1.12.0")
     implementation("androidx.appcompat:appcompat:1.6.1")
     implementation("androidx.preference:preference-ktx:1.2.0")
 
@@ -172,16 +169,12 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-livedata-ktx:2.6.1")
 
     // Navigation
-    implementation("androidx.navigation:navigation-fragment-ktx:$navVersion")
-    implementation("androidx.navigation:navigation-ui-ktx:$navVersion")
-
-    // Safe Args
-    //
+    implementation("androidx.navigation:navigation-fragment-ktx:2.7.6")
+    implementation("androidx.navigation:navigation-ui-ktx:2.7.6")
 
     // Hilt
-    implementation("com.google.dagger:hilt-android:2.50")
+    implementation("com.google.dagger:hilt-android:2.51")
     implementation("androidx.constraintlayout:constraintlayout:2.1.4")
-    implementation("androidx.core:core-ktx:$coreVersion")
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.6.1")
     kapt("androidx.hilt:hilt-compiler:1.2.0")
     kapt("com.google.dagger:hilt-android-compiler:2.50")
@@ -217,7 +210,6 @@ dependencies {
     implementation("com.google.firebase:firebase-crashlytics-ktx")
     implementation("com.google.firebase:firebase-crashlytics-ndk")
     implementation("com.google.firebase:firebase-analytics-ktx")
-    implementation("com.google.firebase:firebase-installations-ktx")
 }
 
 cargo {
