@@ -462,7 +462,7 @@ defmodule Web.Actors.Show do
 
     {:ok, tokens} =
       Tokens.list_tokens_for(socket.assigns.actor, socket.assigns.subject,
-        preload: [identity: [:provider], created_by_identity: [:actor]]
+        preload: [identity: [:provider], created_by_identity: [:actor], clients: []]
       )
 
     socket =
@@ -479,7 +479,7 @@ defmodule Web.Actors.Show do
 
     {:ok, tokens} =
       Tokens.list_tokens_for(socket.assigns.actor, socket.assigns.subject,
-        preload: [identity: [:provider], created_by_identity: [:actor]]
+        preload: [identity: [:provider], created_by_identity: [:actor], clients: []]
       )
 
     socket =
