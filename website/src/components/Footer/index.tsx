@@ -4,7 +4,15 @@ import Link from "next/link";
 import Image from "next/image";
 import ConsentPreferences from "@/components/ConsentPreferences";
 
-import { LinkedInIcon, GitHubIcon, XIcon } from "@/components/Icons";
+import {
+  LinkedInIcon,
+  GitHubIcon,
+  XIcon,
+  AppleIcon,
+  WindowsIcon,
+  LinuxIcon,
+  AndroidIcon,
+} from "@/components/Icons";
 
 export default function Footer() {
   return (
@@ -175,13 +183,14 @@ export default function Footer() {
             Firezone<sup>™</sup> is a registered trademark of Firezone, Inc.
           </span>
         </div>
-        <hr className="mt-2 mb-2 border-neutral-200 sm:mx-auto lg:mb-8 lg:mt-4" />
-        <div className="sm:flex sm:items-center sm:justify-between">
-          <span className="text-xs text-neutral-900 sm:text-center ">
+        <hr className="my-2 border-neutral-200 sm:mx-auto lg:mb-8 lg:mt-4" />
+        <div className="flex grid sm:grid-cols-3">
+          <div className="text-xs text-neutral-900">
             © 2023{" "}
             <Link href="/" className="hover:underline">
               Firezone, Inc.
             </Link>{" "}
+            <br />
             <Link href="/privacy-policy" className="hover:underline">
               privacy
             </Link>
@@ -198,8 +207,14 @@ export default function Footer() {
             >
               do not sell or share my personal information
             </Link>
-          </span>
-          <div className="flex mt-4 space-x-6 sm:justify-center sm:mt-0">
+          </div>
+          <div className="flex p-2 items-center justify-center space-x-5">
+            <AppleIcon size={5} href="/kb/user-guides/apple-client" />
+            <WindowsIcon size={5} href="/kb/user-guides/windows-client" />
+            <LinuxIcon size={5} href="/kb/user-guides/linux-client" />
+            <AndroidIcon size={5} href="/kb/user-guides/android-client" />
+          </div>
+          <div className="flex p-2 items-center justify-center sm:justify-end space-x-5">
             <Link
               target="_blank"
               href={new URL("https://firezone.statuspage.io")}
