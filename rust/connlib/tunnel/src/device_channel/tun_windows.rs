@@ -151,7 +151,7 @@ impl Tun {
             _recv_thread: recv_thread,
             packet_rx,
             session: Arc::clone(&session),
-            routes: Vec::new(),
+            routes: HashSet::new(),
         })
     }
 
