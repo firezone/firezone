@@ -120,28 +120,18 @@ class TunnelService : VpnService() {
                 return true
             }
 
-            override fun onAddRoute(
-                addr: String,
-                prefix: Int,
+            override fun onUpdateRoutes(
+                routes4JSON: String,
+                routes6JSON: String,
             ): Int {
-                Log.d(TAG, "onAddRoute: $addr/$prefix")
-                Firebase.crashlytics.log("onAddRoute: $addr/$prefix")
+                Log.d(TAG, "onUpdateRoutes: $routes4JSON, $routes6JSON")
+                Firebase.crashlytics.log("onUpdateRoutes: $routes4JSON, $routes6JSON")
+                val routes4 = moshi.adapter<MutableList<Cidr>>().fromJson(routes4JSON)!!
+                val routes6 = moshi.adapter<MutableList<Cidr>>().fromJson(routes6JSON)!!
 
-                val route = Cidr(addr, prefix)
-                tunnelRoutes.add(route)
-
-                return buildVpnService()
-            }
-
-            override fun onRemoveRoute(
-                addr: String,
-                prefix: Int,
-            ): Int {
-                Log.d(TAG, "onRemoveRoute: $addr/$prefix")
-                Firebase.crashlytics.log("onRemoveRoute: $addr/$prefix")
-
-                val route = Cidr(addr, prefix)
-                tunnelRoutes.remove(route)
+                tunnelRoutes.clear()
+                tunnelRoutes.addAll(routes4)
+                tunnelRoutes.addAll(routes6)
 
                 return buildVpnService()
             }
