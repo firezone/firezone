@@ -31,7 +31,7 @@ where
         self.device = Some(device);
         self.no_device_waker.wake();
 
-        tracing::debug!("background_loop_started");
+        tracing::debug!(ip4 = %config.ipv4, ip6 = %config.ipv6, "TUN device initialized");
 
         Ok(())
     }

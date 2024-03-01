@@ -89,6 +89,8 @@ where
     }
 
     pub fn remove_resource(&mut self, id: ResourceId) {
+        tracing::info!(%id, "Removing resource");
+
         self.role_state.awaiting_connection.remove(&id);
         self.role_state
             .dns_resources_internal_ips
@@ -197,7 +199,7 @@ where
 
         self.callbacks.on_tunnel_ready()?;
 
-        tracing::debug!("background_loop_started");
+        tracing::debug!(ip4 = %config.ipv4, ip6 = %config.ipv6, "TUN device initialized");
 
         Ok(())
     }
