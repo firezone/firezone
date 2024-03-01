@@ -25,7 +25,7 @@ function gateway() {
 docker compose up -d gateway
 
 echo "# check original resolv.conf"
-client sh -c "cat /etc/resolv.conf.firezone-backup"
+client sh -c "cat /etc/resolv.conf.before-firezone"
 
 echo "# Make sure gateway can reach httpbin by DNS"
 gateway sh -c "curl --fail $HTTPBIN/get"

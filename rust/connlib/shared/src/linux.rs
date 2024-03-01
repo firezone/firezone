@@ -2,8 +2,7 @@
 
 const FIREZONE_DNS_CONTROL: &str = "FIREZONE_DNS_CONTROL";
 
-pub const ETC_RESOLV_CONF: &str = "/etc/resolv.conf";
-pub const ETC_RESOLV_CONF_BACKUP: &str = "/etc/resolv.conf.firezone-backup";
+pub mod etc_resolv_conf;
 
 #[derive(Clone, Debug)]
 pub enum DnsControlMethod {
@@ -12,7 +11,7 @@ pub enum DnsControlMethod {
     /// Only suitable for the Alpine CI containers and maybe something like an
     /// embedded system
     EtcResolvConf,
-    /// Cooperate with NetworkManager
+    /// Cooperate with NetworkManager (TODO)
     NetworkManager,
     /// Cooperate with `systemd-resolved`
     ///
