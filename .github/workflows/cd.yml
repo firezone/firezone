@@ -76,7 +76,7 @@ jobs:
       group: "staging-draft-release-${{ github.workflow }}-${{ github.ref }}"
       cancel-in-progress: true
     steps:
-      - uses: release-drafter/release-drafter@v5
+      - uses: release-drafter/release-drafter@v6
         id: update-release-draft
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
