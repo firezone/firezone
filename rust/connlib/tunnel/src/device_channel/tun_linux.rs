@@ -15,6 +15,7 @@ use netlink_packet_route::route::{RouteProtocol, RouteScope};
 use netlink_packet_route::rule::RuleAction;
 use rtnetlink::{new_connection, Error::NetlinkError, Handle};
 use rtnetlink::{RouteAddRequest, RuleAddRequest};
+use std::collections::HashSet;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::path::Path;
 use std::task::{Context, Poll};
@@ -50,7 +51,7 @@ pub struct Tun {
     fd: AsyncFd<RawFd>,
 
     worker: Option<BoxFuture<'static, Result<()>>>,
-    routes: Vec<IpNetwork>,
+    routes: HashSet<IpNetwork>,
 }
 
 impl fmt::Debug for Tun {
@@ -137,13 +138,13 @@ impl Tun {
             worker: Some(
                 set_iface_config(config.clone(), dns_config, handle, dns_control_method).boxed(),
             ),
-            routes: Vec::new(),
+            routes: HashSet::new(),
         })
     }
 
     pub fn set_routes(
         &mut self,
-        routes: Vec<IpNetwork>,
+        routes: HashSet<IpNetwork>,
         _: &impl Callbacks,
     ) -> Result<Option<Self>> {
         if routes == self.routes {
@@ -166,11 +167,11 @@ impl Tun {
                 .header
                 .index;
 
-            for route in routes.iter().filter(|r| !current_routes.contains(r)) {
+            for route in routes.difference(&current_routes) {
                 add_route(route, index, &handle).await;
             }
 
-            for route in current_routes.iter().filter(|r| !routes.contains(r)) {
+            for route in current_routes.difference(&routes) {
                 delete_route(route, index, &handle).await;
             }
 

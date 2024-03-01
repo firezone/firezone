@@ -1,6 +1,7 @@
 use connlib_shared::{messages::Interface as InterfaceConfig, Result};
 use ip_network::IpNetwork;
 use std::{
+    collections::HashSet,
     io,
     net::{IpAddr, SocketAddrV4, SocketAddrV6},
     os::windows::process::CommandExt,
@@ -31,7 +32,7 @@ pub struct Tun {
     packet_rx: std::sync::Mutex<mpsc::Receiver<wintun::Packet>>,
     _recv_thread: std::thread::JoinHandle<()>,
     session: Arc<wintun::Session>,
-    routes: Vec<IpNetwork>,
+    routes: HashSet<IpNetwork>,
 }
 
 impl Drop for Tun {
@@ -155,12 +156,12 @@ impl Tun {
     }
 
     // It's okay if this blocks until the route is added in the OS.
-    pub fn set_routes(&mut self, routes: Vec<IpNetwork>) -> Result<()> {
-        for route in routes.iter().filter(|r| !self.routes.contains(r)) {
+    pub fn set_routes(&mut self, routes: HashSet<IpNetwork>) -> Result<()> {
+        for route in routes.difference(&self.routes) {
             self.add_route(*route)?;
         }
 
-        for route in self.routes.iter().filter(|r| !routes.contains(r)) {
+        for route in self.routes.difference(&routes) {
             self.remove_route(*route)?;
         }
 

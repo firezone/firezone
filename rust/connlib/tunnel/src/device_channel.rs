@@ -24,6 +24,7 @@ use connlib_shared::messages::Interface;
 use connlib_shared::{Callbacks, Error};
 use ip_network::IpNetwork;
 use pnet_packet::Packet;
+use std::collections::HashSet;
 use std::io;
 use std::net::IpAddr;
 use std::task::{Context, Poll};
@@ -133,7 +134,7 @@ impl Device {
     #[cfg(target_family = "unix")]
     pub(crate) fn set_routes(
         &mut self,
-        routes: Vec<IpNetwork>,
+        routes: HashSet<IpNetwork>,
         callbacks: &impl Callbacks<Error = Error>,
     ) -> Result<Option<Device>, Error> {
         let Some(tun) = self.tun.set_routes(routes, callbacks)? else {
@@ -151,7 +152,7 @@ impl Device {
     #[cfg(target_family = "windows")]
     pub(crate) fn set_routes(
         &mut self,
-        routes: Vec<IpNetwork>,
+        routes: HashSet<IpNetwork>,
         _callbacks: &impl Callbacks<Error = Error>,
     ) -> Result<Option<Device>, Error> {
         self.tun.set_routes(routes)?;

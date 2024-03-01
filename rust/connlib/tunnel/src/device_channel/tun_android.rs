@@ -5,6 +5,7 @@ use std::net::IpAddr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::task::{Context, Poll};
 use std::{
+    collections::HashSet,
     io,
     os::fd::{AsRawFd, RawFd},
 };
@@ -63,7 +64,7 @@ impl Tun {
 
     pub fn set_routes(
         &self,
-        routes: Vec<IpNetwork>,
+        routes: HashSet<IpNetwork>,
         callbacks: &impl Callbacks<Error = Error>,
     ) -> Result<Option<Self>> {
         self.fd.close();

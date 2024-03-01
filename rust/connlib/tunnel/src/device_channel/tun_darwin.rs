@@ -8,6 +8,7 @@ use libc::{
 use std::net::IpAddr;
 use std::task::{Context, Poll};
 use std::{
+    collections::HashSet,
     io,
     mem::size_of,
     os::fd::{AsRawFd, RawFd},
@@ -145,7 +146,7 @@ impl Tun {
 
     pub fn set_routes(
         &self,
-        routes: Vec<IpNetwork>,
+        routes: HashSet<IpNetwork>,
         callbacks: &impl Callbacks<Error = Error>,
     ) -> Result<Option<Self>> {
         // This will always be None in macos

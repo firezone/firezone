@@ -174,7 +174,7 @@ where
             self.callbacks(),
         )?;
 
-        device.set_routes(self.role_state.routes().collect_vec(), &self.callbacks)?;
+        device.set_routes(self.role_state.routes().collect(), &self.callbacks)?;
 
         self.device = Some(device);
         self.no_device_waker.wake();
@@ -218,7 +218,7 @@ where
             .device
             .as_mut()
             .ok_or(Error::ControlProtocolError)?
-            .set_routes(self.role_state.routes().collect_vec(), &callbacks)?;
+            .set_routes(self.role_state.routes().collect(), &callbacks)?;
 
         if let Some(new_device) = maybe_new_device {
             self.device = Some(new_device);
