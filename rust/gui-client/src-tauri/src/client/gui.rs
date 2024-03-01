@@ -309,7 +309,7 @@ async fn smoke_test(ctlr_tx: CtlrTx) -> Result<()> {
     let quit_time = tokio::time::Instant::now() + Duration::from_secs(delay);
 
     // Write the settings so we can check the path for those
-    settings::apply_advanced_settings_inner(&settings::AdvancedSettings::default()).await?;
+    settings::save(&settings::AdvancedSettings::default()).await?;
 
     // Test log exporting
     let path = PathBuf::from("smoke_test_log_export.zip");
@@ -408,6 +408,8 @@ fn handle_system_tray_event(app: &tauri::AppHandle, event: TrayMenuEvent) -> Res
 }
 
 pub(crate) enum ControllerRequest {
+    /// The GUI wants us to use these settings in-memory, they've already been saved to disk
+    ApplySettings(AdvancedSettings),
     Disconnected,
     DisconnectedTokenExpired,
     /// The same as the arguments to `client::logging::export_logs_to`
@@ -580,6 +582,14 @@ impl Controller {
 
     async fn handle_request(&mut self, req: ControllerRequest) -> Result<()> {
         match req {
+            Req::ApplySettings(settings) => {
+                self.advanced_settings = settings;
+                // TODO: Update the logger here if we can. I can't remember if there
+                // was a reason why the reloading didn't work.
+                tracing::info!(
+                    "Applied new settings. Log level will take effect at next app start."
+                );
+            }
             Req::Disconnected => {
                 tracing::debug!("connlib disconnected, tearing down Session");
                 self.tunnel_ready = false;
