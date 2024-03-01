@@ -87,9 +87,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                 tracing::info!("Firezone Started!");
             }
 
-            for resource_description in resources {
-                self.add_resource(resource_description);
-            }
+            self.add_resources(resources);
         } else {
             tracing::info!("Firezone reinitializated");
         }
@@ -128,9 +126,9 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
         }
     }
 
-    pub fn add_resource(&mut self, resource_description: ResourceDescription) {
-        if let Err(e) = self.tunnel.add_resource(resource_description) {
-            tracing::error!(message = "Can't add resource", error = ?e);
+    pub fn add_resources(&mut self, resources: Vec<ResourceDescription>) {
+        if let Err(e) = self.tunnel.add_resources(&resources) {
+            tracing::error!(?resources, message = "Can't add resources", error = ?e);
         }
     }
 
@@ -232,7 +230,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                 self.connection_details(connection_details, reference)
             }
             Messages::Connect(connect) => self.connect(connect),
-            Messages::ResourceCreatedOrUpdated(resource) => self.add_resource(resource),
+            Messages::ResourceCreatedOrUpdated(resource) => self.add_resources(vec![resource]),
             Messages::ResourceDeleted(resource) => self.resource_deleted(resource.0),
             Messages::IceCandidates(ice_candidate) => self.add_ice_candidate(ice_candidate),
             Messages::SignedLogUrl(url) => {

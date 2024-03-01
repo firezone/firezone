@@ -60,32 +60,34 @@ where
     ///
     /// Once added, when a packet for the resource is intercepted a new data channel will be created
     /// and packets will be wrapped with wireguard and sent through it.
-    pub fn add_resource(
+    pub fn add_resources(
         &mut self,
-        resource_description: ResourceDescription,
+        resources: &[ResourceDescription],
     ) -> connlib_shared::Result<()> {
-        if let Some(resource) = self.role_state.resource_ids.get(&resource_description.id()) {
-            if resource.has_different_address(resource) {
-                self.remove_resource(resource.id());
+        for resource_description in resources {
+            if let Some(resource) = self.role_state.resource_ids.get(&resource_description.id()) {
+                if resource.has_different_address(resource) {
+                    self.remove_resource(resource.id());
+                }
             }
-        }
 
-        match &resource_description {
-            ResourceDescription::Dns(dns) => {
-                self.role_state
-                    .dns_resources
-                    .insert(dns.address.clone(), dns.clone());
+            match &resource_description {
+                ResourceDescription::Dns(dns) => {
+                    self.role_state
+                        .dns_resources
+                        .insert(dns.address.clone(), dns.clone());
+                }
+                ResourceDescription::Cidr(cidr) => {
+                    self.role_state
+                        .cidr_resources
+                        .insert(cidr.address, cidr.clone());
+                }
             }
-            ResourceDescription::Cidr(cidr) => {
-                self.role_state
-                    .cidr_resources
-                    .insert(cidr.address, cidr.clone());
-            }
-        }
 
-        self.role_state
-            .resource_ids
-            .insert(resource_description.id(), resource_description);
+            self.role_state
+                .resource_ids
+                .insert(resource_description.id(), resource_description.clone());
+        }
 
         self.update_resource_list()?;
         self.update_routes()?;
