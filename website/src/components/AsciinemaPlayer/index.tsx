@@ -1,7 +1,6 @@
 "use client";
 import React, { useEffect, useRef } from "react";
 import "asciinema-player/dist/bundle/asciinema-player.css";
-const AsciinemaPlayerLibrary = require("asciinema-player");
 
 type AsciinemaPlayerProps = {
   src: string;
@@ -28,6 +27,7 @@ const AsciinemaPlayer: React.FC<AsciinemaPlayerProps> = ({
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    const AsciinemaPlayerLibrary = require("asciinema-player");
     const currentRef = ref.current;
     AsciinemaPlayerLibrary.create(src, currentRef, asciinemaOptions);
   }, [src]);

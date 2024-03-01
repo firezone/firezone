@@ -1,6 +1,6 @@
+import { Metadata } from "next";
 import Post from "@/components/Blog/Post";
 import Content from "./readme.mdx";
-import { Metadata } from "next";
 
 export const metadata: Metadata = {
   title: "Release 0.6.0 • Firezone Blog",
