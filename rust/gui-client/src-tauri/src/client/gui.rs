@@ -419,7 +419,6 @@ pub(crate) enum ControllerRequest {
     GetAdvancedSettings(oneshot::Sender<AdvancedSettings>),
     SchemeRequest(Secret<SecureUrl>),
     SystemTrayMenu(TrayMenuEvent),
-    TunnelReady,
     UpdateAvailable(client::updates::Release),
     UpdateNotificationClicked(client::updates::Release),
 }
@@ -641,15 +640,6 @@ impl Controller {
             }
             Req::SystemTrayMenu(TrayMenuEvent::Quit) => {
                 bail!("Impossible error: `Quit` should be handled before this")
-            }
-            Req::TunnelReady => {
-                self.tunnel_ready = true;
-                self.refresh_system_tray_menu()?;
-
-                os::show_notification(
-                    "Firezone connected",
-                    "You are now signed in and able to access resources.",
-                )?;
             }
             Req::UpdateAvailable(release) => {
                 let title = format!("Firezone {} available for download", release.tag_name);
