@@ -177,7 +177,7 @@ dependencies {
     implementation("androidx.constraintlayout:constraintlayout:2.1.4")
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.6.1")
     kapt("androidx.hilt:hilt-compiler:1.2.0")
-    kapt("com.google.dagger:hilt-android-compiler:2.50")
+    kapt("com.google.dagger:hilt-android-compiler:2.51")
 
     // Retrofit 2
     implementation("com.squareup.retrofit2:retrofit:2.9.0")
