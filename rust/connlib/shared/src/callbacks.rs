@@ -26,13 +26,6 @@ pub trait Callbacks: Clone + Send + Sync {
         Ok(None)
     }
 
-    /// Called when the tunnel is connected.
-    // TODO: Remove this in favor of on_set_interface_config
-    fn on_tunnel_ready(&self) -> Result<(), Self::Error> {
-        tracing::trace!("tunnel_connected");
-        Ok(())
-    }
-
     /// Called when the route list changes.
     fn on_update_routes(
         &self,
