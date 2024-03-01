@@ -2,7 +2,7 @@
 //! advanced settings and code for manipulating diagnostic logs.
 
 use crate::client::{
-    gui::{ControllerRequest, Managed},
+    gui::{self, ControllerRequest, Managed},
     known_dirs,
 };
 use anyhow::{Context, Result};
@@ -46,6 +46,7 @@ fn advanced_settings_path() -> Result<PathBuf> {
         .join("advanced_settings.json"))
 }
 
+/// Saves the settings to disk and then applies them in-memory (except for logging)
 #[tauri::command]
 pub(crate) async fn apply_advanced_settings(
     managed: tauri::State<'_, Managed>,
@@ -54,9 +55,11 @@ pub(crate) async fn apply_advanced_settings(
     if managed.inner().inject_faults {
         tokio::time::sleep(Duration::from_secs(2)).await;
     }
-    apply_advanced_settings_inner(&settings)
+    apply_inner(&managed.ctlr_tx, settings)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+
+    Ok(())
 }
 
 #[tauri::command]
@@ -67,7 +70,7 @@ pub(crate) async fn reset_advanced_settings(
     if managed.inner().inject_faults {
         tokio::time::sleep(Duration::from_secs(2)).await;
     }
-    apply_advanced_settings_inner(&settings)
+    apply_inner(&managed.ctlr_tx, settings.clone())
         .await
         .map_err(|e| e.to_string())?;
 
@@ -89,13 +92,25 @@ pub(crate) async fn get_advanced_settings(
     Ok(rx.await.unwrap())
 }
 
-pub(crate) async fn apply_advanced_settings_inner(settings: &AdvancedSettings) -> Result<()> {
+/// Saves the settings to disk and then tells `Controller` to apply them in-memory
+pub(crate) async fn apply_inner(ctlr_tx: &gui::CtlrTx, settings: AdvancedSettings) -> Result<()> {
+    save(&settings).await?;
+    // TODO: Errors aren't handled here. But there isn't much that can go wrong
+    // since it's just applying a new `Settings` object in memory.
+    ctlr_tx
+        .send(ControllerRequest::ApplySettings(settings))
+        .await?;
+    Ok(())
+}
+
+/// Saves the settings to disk
+pub(crate) async fn save(settings: &AdvancedSettings) -> Result<()> {
     let path = advanced_settings_path()?;
     let dir = path
         .parent()
         .context("settings path should have a parent")?;
     tokio::fs::create_dir_all(dir).await?;
-    tokio::fs::write(path, serde_json::to_string(&settings)?).await?;
+    tokio::fs::write(path, serde_json::to_string(settings)?).await?;
     Ok(())
 }
 
