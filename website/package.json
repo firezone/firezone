@@ -20,7 +20,7 @@
     "@types/react": "18.2.61",
     "@types/react-dom": "18.2.18",
     "@types/react-syntax-highlighter": "^15.5.11",
-    "asciinema-player": "^3.6.3",
+    "asciinema-player": "^3.7.0",
     "autoprefixer": "10.4.16",
     "fast-xml-parser": "^4.3.3",
     "flowbite": "^2.3.0",
