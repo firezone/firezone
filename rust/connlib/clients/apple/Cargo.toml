@@ -10,7 +10,7 @@ mock = ["connlib-client-shared/mock"]
 [build-dependencies]
 anyhow = "1.0.80"
 swift-bridge-build = "0.1.52"
-walkdir = "2.3.3"
+walkdir = "2.5.0"
 
 [dependencies]
 secrecy = { workspace = true }
