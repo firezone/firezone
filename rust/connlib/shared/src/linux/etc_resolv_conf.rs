@@ -3,7 +3,7 @@ use std::{net::IpAddr, path::Path};
 use tokio::io::AsyncWriteExt;
 
 pub const ETC_RESOLV_CONF: &str = "/etc/resolv.conf";
-pub const ETC_RESOLV_CONF_BACKUP: &str = "/etc/resolv.conf.firezone-backup";
+pub const ETC_RESOLV_CONF_BACKUP: &str = "/etc/resolv.conf.before-firezone";
 
 /// Back up `/etc/resolv.conf`(sic) and then modify it in-place
 ///
