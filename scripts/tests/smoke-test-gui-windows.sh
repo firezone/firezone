@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# This script must run from an elevated shell so that Firezone won't try to elevate
+# Usage: This is made for CI, so it will change system-wide files without asking.
+# Read it before running on a dev system.
+# This script must run from an elevated shell so that Firezone won't try to elevate.
 
 set -euo pipefail
 
@@ -26,6 +28,9 @@ function smoke_test() {
     stat "$LOCALAPPDATA/$BUNDLE_ID/data/logs/"connlib*log
     stat "$LOCALAPPDATA/$BUNDLE_ID/data/wintun.dll"
     stat "$ProgramData/$BUNDLE_ID/config/device_id.json"
+
+    # Clean up so the test can be cycled
+    rm -rf "${LOCALAPPDATA:?}/${BUNDLE_ID:?}" "${ProgramData:?}/${BUNDLE_ID:?}"
 }
 
 function crash_test() {
@@ -48,6 +53,7 @@ function get_stacktrace() {
     minidump-stackwalk --symbols-path "$SYMS_PATH" "$DUMP_PATH"
 }
 
+smoke_test
 smoke_test
 crash_test
 get_stacktrace
