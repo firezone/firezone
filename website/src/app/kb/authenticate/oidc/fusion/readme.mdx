@@ -1,7 +1,13 @@
 import Alert from "@/components/DocsAlert";
+import SupportOptions from "@/components/SupportOptions";
+import PlanBadge from "@/components/PlanBadge";
 import Image from "next/image";
 
+<PlanBadge plans={["starter", "enterprise"]}>
+
 # SSO with Fusion Auth
+
+</PlanBadge>
 
 Firezone's universal OIDC connector has been tested to work successfully with
 [Fusion Auth](https://fusionauth.io). Follow this guide to set up Fusion Auth
@@ -91,11 +97,10 @@ for use with Firezone's OIDC connector.
 You should now be able authenticate users to Firezone using the identity
 provider just created.
 
-<Alert
-  color="warning"
-  html={`
-    Firezone <strong>does not</strong> automatically provision users or groups for identity providers
-    using the universal OIDC connector. You must create Actors and
-    associated Identities <strong>before</strong> the user will be able to sign in.
-  `}
-/>
+<Alert color="warning">
+  Firezone **does not** automatically provision users or groups for identity
+  providers using the universal OIDC connector. You must create Actors and
+  associated Identities **before** the user will be able to sign in.
+</Alert>
+
+<SupportOptions />

@@ -102,16 +102,11 @@ your network admin. If you are already logged into the portal, click the
 The following steps can be used on Linux devices to import the WireGuard
 configuration profile using Network Manager CLI (`nmcli`).
 
-<Alert
-  color="info"
-  html={`
-Importing the configuration file using the Network Manager GUI may fail
-with the following error if the profile has IPv6 support enabled:
-<code>
-ipv6.method: method "auto" is not supported for WireGuard
-</code>
-`}
-/>
+<Alert color="info">
+  Importing the configuration file using the Network Manager GUI may fail with
+  the following error if the profile has IPv6 support enabled: `ipv6.method:
+  method "auto" is not supported for WireGuard`
+</Alert>
 
 ### Step 1: Install the WireGuard tools
 
@@ -164,16 +159,11 @@ Using `nmcli`, import the downloaded configuration file:
 sudo nmcli connection import type wireguard file /path/to/configuration.conf
 ```
 
-<Alert
-  color="info"
-  html={`
-The WireGuard connection/interface will match the name of the
-configuration file. If required, the connection can be renamed after import:
-<code>
-nmcli connection modify [old name] connection.id [new name]
-</code>
-`}
-/>
+<Alert color="info">
+  The WireGuard connection/interface will match the name of the configuration
+  file. If required, the connection can be renamed after import: `nmcli
+  connection modify [old name] connection.id [new name]`
+</Alert>
 
 ### Step 4: Connect/disconnect
 

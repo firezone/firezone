@@ -98,7 +98,7 @@ export default function Page() {
                     className="text-accent-500 underline hover:no-underline"
                     href="/kb/deploy/sites?utm_source=website"
                   >
-                    site
+                    Site
                   </Link>
                 </span>
               </li>
@@ -110,7 +110,7 @@ export default function Page() {
                     className="text-accent-500 underline hover:no-underline"
                     href="/kb/deploy/gateways?utm_source=website"
                   >
-                    gateways
+                    Gateways
                   </Link>
                 </span>
               </li>
@@ -122,7 +122,7 @@ export default function Page() {
                     className="text-accent-500 underline hover:no-underline"
                     href="/kb/deploy/resources?utm_source=website"
                   >
-                    resource
+                    Resource
                   </Link>{" "}
                   (e.g. subnet, host or service)
                 </span>
@@ -185,7 +185,7 @@ export default function Page() {
               <li className="flex space-x-2.5">
                 <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
                 <span className="leading-tight text-lg text-neutral-900 ">
-                  Automatic gateway failover and load balancing
+                  Automatic Gateway failover and load balancing
                 </span>
               </li>
               <li className="flex space-x-2.5">
@@ -206,7 +206,7 @@ export default function Page() {
             </h4>
             <p className="text-xl text-neutral-900 my-4">
               Firezone establishes secure, direct tunnels between your users and
-              gateways, then gets out of the way. Gateways are deployed on your
+              Gateways, then gets out of the way. Gateways are deployed on your
               infrastructure, so you retain full control over your data at all
               times.
             </p>
@@ -214,7 +214,7 @@ export default function Page() {
               <li className="flex space-x-2.5">
                 <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
                 <span className="leading-tight text-lg text-neutral-900 ">
-                  Deploy gateways as Docker containers or standalone binaries
+                  Deploy Gateways as Docker containers or standalone binaries
                 </span>
               </li>
               <li className="flex space-x-2.5">
@@ -274,7 +274,7 @@ export default function Page() {
             <li className="flex space-x-5">
               <HiShieldCheck className="text-accent-600 flex-shrink-0 w-7 h-7" />
               <p>
-                <strong>Self-hosted gateways</strong> and end-to-end encryption
+                <strong>Self-hosted Gateways</strong> and end-to-end encryption
                 ensure we{" "}
                 <strong className="text-primary-450">can never</strong> see your
                 data.
@@ -320,7 +320,8 @@ export default function Page() {
                 your network, and revoke access when employees leave.
               </p>
               <p className="mt-2 text-neutral-900 text-xs">
-                * Currently available for Google Workspace
+                * Currently available for Google Workspace, Microsoft Entra ID,
+                and Okta.
               </p>
             </div>
           </div>
@@ -412,7 +413,7 @@ export default function Page() {
               <li className="flex space-x-2.5">
                 <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
                 <span className="leading-tight text-lg text-neutral-900 ">
-                  Highly available gateways
+                  Highly available Gateways
                 </span>
               </li>
               <li className="flex space-x-2.5">

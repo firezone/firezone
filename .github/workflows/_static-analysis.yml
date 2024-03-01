@@ -9,7 +9,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Check version is up to date
         run: |
-          make version
+          make -f scripts/Makefile version
           if [ -z "$(git status --porcelain)" ]; then
             # Working directory clean
             echo "Version manifests up to date"
@@ -19,6 +19,15 @@ jobs:
             git diff
             exit 1
           fi
+
+  link-check:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: lycheeverse/lychee-action@v1.9.3
+        with:
+          fail: true
+          args: --offline --verbose --no-progress **/*.md
 
   global-linter:
     runs-on: ubuntu-22.04
@@ -31,23 +40,23 @@ jobs:
         name: Restore Python Cache
         with:
           path: ~/.cache/pip
-          key: ubuntu-22.04-${{ runner.arch }}-pip-${{ hashFiles('requirements.txt') }}
+          key: ubuntu-22.04-${{ runner.arch }}-pip-${{ hashFiles('.github/requirements.txt') }}
           restore-keys: |
             ubuntu-22.04-${{ runner.arch }}-pip-
       - name: Install Python Dependencies
         run: |
-          pip install -r requirements.txt
+          pip install -r .github/requirements.txt
       - name: Install dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y shfmt
       - name: Run pre-commit
         run: |
-          pre-commit install
-          SKIP=no-commit-to-branch pre-commit run --all-files
+          pre-commit install --config .github/pre-commit-config.yaml
+          SKIP=no-commit-to-branch pre-commit run --all-files --config .github/pre-commit-config.yaml
       - uses: actions/cache/save@v4
         if: ${{ github.ref == 'refs/heads/main' }}
         name: Save Python Cache
         with:
           path: ~/.cache/pip
-          key: ubuntu-22.04-${{ runner.arch }}-pip-${{ hashFiles('requirements.txt') }}
+          key: ubuntu-22.04-${{ runner.arch }}-pip-${{ hashFiles('.github/requirements.txt') }}

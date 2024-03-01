@@ -6,16 +6,16 @@ use connlib_shared::{
 use futures::TryStreamExt;
 use futures_util::future::BoxFuture;
 use futures_util::FutureExt;
-use ip_network::IpNetwork;
+use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use libc::{
     close, fcntl, makedev, mknod, open, F_GETFL, F_SETFL, IFF_MULTI_QUEUE, IFF_NO_PI, IFF_TUN,
     O_NONBLOCK, O_RDWR, S_IFCHR,
 };
 use netlink_packet_route::route::{RouteProtocol, RouteScope};
 use netlink_packet_route::rule::RuleAction;
-use rtnetlink::RuleAddRequest;
 use rtnetlink::{new_connection, Error::NetlinkError, Handle};
-use std::net::IpAddr;
+use rtnetlink::{RouteAddRequest, RuleAddRequest};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::path::Path;
 use std::task::{Context, Poll};
 use std::{
@@ -154,26 +154,9 @@ impl Tun {
                 .header
                 .index;
 
-            let req = handle
-                .route()
-                .add()
-                .output_interface(index)
-                .protocol(RouteProtocol::Static)
-                .scope(RouteScope::Universe)
-                .table_id(FIREZONE_TABLE);
             let res = match route {
-                IpNetwork::V4(ipnet) => {
-                    req.v4()
-                        .destination_prefix(ipnet.network_address(), ipnet.netmask())
-                        .execute()
-                        .await
-                }
-                IpNetwork::V6(ipnet) => {
-                    req.v6()
-                        .destination_prefix(ipnet.network_address(), ipnet.netmask())
-                        .execute()
-                        .await
-                }
+                IpNetwork::V4(ipnet) => make_route_v4(index, &handle, ipnet).execute().await,
+                IpNetwork::V6(ipnet) => make_route_v6(index, &handle, ipnet).execute().await,
             };
 
             match res {
@@ -181,6 +164,53 @@ impl Tun {
                 Err(NetlinkError(err)) if err.raw_code() == FILE_ALREADY_EXISTS => Ok(()),
                 // TODO: we should be able to surface this error and handle it depending on
                 // if any of the added routes succeeded.
+                Err(err) => {
+                    tracing::error!(%route, "failed to add route: {err:#?}");
+                    Ok(())
+                }
+            }
+        };
+
+        match self.worker.take() {
+            None => self.worker = Some(add_route_worker.boxed()),
+            Some(current_worker) => {
+                self.worker = Some(
+                    async move {
+                        current_worker.await?;
+                        add_route_worker.await?;
+
+                        Ok(())
+                    }
+                    .boxed(),
+                )
+            }
+        }
+
+        Ok(None)
+    }
+
+    pub fn remove_route(&mut self, route: IpNetwork, _: &impl Callbacks) -> Result<Option<Self>> {
+        let handle = self.handle.clone();
+
+        let add_route_worker = async move {
+            let index = handle
+                .link()
+                .get()
+                .match_name(IFACE_NAME.to_string())
+                .execute()
+                .try_next()
+                .await?
+                .ok_or(Error::NoIface)?
+                .header
+                .index;
+
+            let message = match route {
+                IpNetwork::V4(ipnet) => make_route_v4(index, &handle, ipnet).message_mut().clone(),
+                IpNetwork::V6(ipnet) => make_route_v6(index, &handle, ipnet).message_mut().clone(),
+            };
+
+            match handle.route().del(message).execute().await {
+                Ok(_) => Ok(()),
                 Err(err) => {
                     tracing::error!(%route, "failed to add route: {err:#?}");
                     Ok(())
@@ -325,6 +355,28 @@ fn make_rule(handle: &Handle) -> RuleAddRequest {
         ));
 
     rule
+}
+
+fn make_route(idx: u32, handle: &Handle) -> RouteAddRequest {
+    handle
+        .route()
+        .add()
+        .output_interface(idx)
+        .protocol(RouteProtocol::Static)
+        .scope(RouteScope::Universe)
+        .table_id(FIREZONE_TABLE)
+}
+
+fn make_route_v4(idx: u32, handle: &Handle, route: Ipv4Network) -> RouteAddRequest<Ipv4Addr> {
+    make_route(idx, handle)
+        .v4()
+        .destination_prefix(route.network_address(), route.netmask())
+}
+
+fn make_route_v6(idx: u32, handle: &Handle, route: Ipv6Network) -> RouteAddRequest<Ipv6Addr> {
+    make_route(idx, handle)
+        .v6()
+        .destination_prefix(route.network_address(), route.netmask())
 }
 
 fn get_last_error() -> Error {

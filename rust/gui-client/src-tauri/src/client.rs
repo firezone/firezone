@@ -1,6 +1,6 @@
 use anyhow::Result;
 use clap::{Args, Parser};
-use std::{os::windows::process::CommandExt, path::PathBuf, process::Command};
+use std::path::PathBuf;
 
 mod about;
 mod auth;
@@ -16,6 +16,8 @@ mod network_changes;
 mod resolvers;
 mod settings;
 mod updates;
+
+#[cfg(target_os = "windows")]
 mod wintun_install;
 
 /// Output of `git describe` at compile time
@@ -34,10 +36,6 @@ pub(crate) enum Error {
     #[error("GUI module error: {0}")]
     Gui(#[from] gui::Error),
 }
-
-// Hides Powershell's console on Windows
-// <https://stackoverflow.com/questions/59692146/is-it-possible-to-use-the-standard-library-to-spawn-a-process-without-showing-th#60958956>
-const CREATE_NO_WINDOW: u32 = 0x08000000;
 
 /// The program's entry point, equivalent to `main`
 ///
@@ -69,22 +67,8 @@ pub(crate) fn run() -> Result<()> {
                 // We're already elevated, just run the GUI
                 run_gui(cli)
             } else {
-                // We're not elevated, ask Powershell to re-launch us, then exit
-                let current_exe = tauri_utils::platform::current_exe()?;
-                if current_exe.display().to_string().contains('\"') {
-                    anyhow::bail!("The exe path must not contain double quotes, it makes it hard to elevate with Powershell");
-                }
-                Command::new("powershell")
-                    .creation_flags(CREATE_NO_WINDOW)
-                    .arg("-Command")
-                    .arg("Start-Process")
-                    .arg("-FilePath")
-                    .arg(format!(r#""{}""#, current_exe.display()))
-                    .arg("-Verb")
-                    .arg("RunAs")
-                    .arg("-ArgumentList")
-                    .arg("elevated")
-                    .spawn()?;
+                // We're not elevated, ask Powershell / sudo to re-launch us, then exit
+                elevation::elevate()?;
                 Ok(())
             }
         }

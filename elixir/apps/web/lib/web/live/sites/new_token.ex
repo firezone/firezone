@@ -78,6 +78,13 @@ defmodule Web.Sites.NewToken do
                 class="w-full text-xs whitespace-pre-line"
                 phx-no-format
               ><%= systemd_command(@env) %></.code_block>
+
+              <p class="p-4">
+                <strong>Important:</strong>
+                You'll need to make sure that the <code>iptables</code>
+                and <code>ip6tables</code>
+                commands are available on your system.
+              </p>
             </:tab>
             <:tab
               id="docker-instructions"
@@ -150,14 +157,14 @@ defmodule Web.Sites.NewToken do
       {"RUST_LOG",
        Enum.join(
          [
-           "firezone_gateway=trace",
-           "firezone_tunnel=trace",
-           "connlib_shared=trace",
-           "tunnel_state=trace",
-           "phoenix_channel=debug",
+           "firezone_gateway=info",
+           "firezone_tunnel=info",
+           "connlib_shared=info",
+           "tunnel_state=info",
+           "phoenix_channel=info",
+           "boringtun=info",
            "str0m=info",
            "snownet=debug",
-           "webrtc=error",
            "warn"
          ],
          ","

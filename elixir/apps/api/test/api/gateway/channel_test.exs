@@ -57,8 +57,10 @@ defmodule API.Gateway.ChannelTest do
     } do
       assert_push "init", %{
         interface: interface,
-        ipv4_masquerade_enabled: true,
-        ipv6_masquerade_enabled: true
+        config: %{
+          ipv4_masquerade_enabled: true,
+          ipv6_masquerade_enabled: true
+        }
       }
 
       assert interface == %{

@@ -28,9 +28,6 @@ export default function KbSidebar() {
             <Item topLevel href="/kb" label="Overview" />
           </li>
           <li>
-            <Item topLevel href="/kb/faq" label="FAQ" />
-          </li>
-          <li>
             <Item topLevel href="/kb/quickstart" label="Quickstart" />
           </li>
           <li>
@@ -48,10 +45,19 @@ export default function KbSidebar() {
                 <Item href="/kb/deploy/resources" label="Resources" />
               </li>
               <li>
+                <Item href="/kb/deploy/groups" label="Groups" />
+              </li>
+              <li>
+                <Item href="/kb/deploy/users" label="Users" />
+              </li>
+              <li>
                 <Item href="/kb/deploy/policies" label="Policies" />
               </li>
               <li>
                 <Item href="/kb/deploy/clients" label="Clients" />
+              </li>
+              <li>
+                <Item href="/kb/deploy/dns" label="Configure DNS" />
               </li>
             </Collapse>
           </li>
@@ -67,22 +73,31 @@ export default function KbSidebar() {
                 <Item href="/kb/authenticate/email" label="Email (OTP)" />
               </li>
               <li>
-                <Item href="/kb/authenticate/google" label="Google Workspace" />
-              </li>
-              <li>
                 <Item href="/kb/authenticate/oidc" label="Universal OIDC" />
               </li>
               <li>
                 <Item
                   nested
                   href="/kb/authenticate/oidc/fusion"
-                  label="Fusion Auth (OIDC)"
+                  label="Fusion Auth"
                 />
               </li>
               <li>
+                <Item href="/kb/authenticate/google" label="Google Workspace" />
+              </li>
+              <li>
                 <Item
-                  href="/kb/authenticate/user-group-sync"
-                  label="User / Group sync"
+                  href="/kb/authenticate/entra"
+                  label="Microsoft Entra ID"
+                />
+              </li>
+              <li>
+                <Item href="/kb/authenticate/okta" label="Okta" />
+              </li>
+              <li>
+                <Item
+                  href="/kb/authenticate/directory-sync"
+                  label="Directory sync"
                 />
               </li>
               <li>
@@ -100,9 +115,6 @@ export default function KbSidebar() {
             >
               <li>
                 <Item href="/kb/administer/upgrading" label="Upgrading" />
-              </li>
-              <li>
-                <Item href="/kb/administer/dns" label="Configure DNS" />
               </li>
               <li>
                 <Item
@@ -155,6 +167,14 @@ export default function KbSidebar() {
               </li>
             </Collapse>
           </li>
+          <Collapse expanded={p.startsWith("/kb/reference")} label="Reference">
+            <li>
+              <Item href="/kb/reference/faq" label="FAQ" />
+            </li>
+            <li>
+              <Item href="/kb/reference/glossary" label="Glossary" />
+            </li>
+          </Collapse>
         </ul>
       </div>
     </aside>

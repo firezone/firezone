@@ -950,7 +950,7 @@ impl ChannelBindings {
 
         channel.set_confirmed(now);
 
-        tracing::info!(channel = %c, peer = %channel.peer, "Bound channel");
+        tracing::debug!(channel = %c, peer = %channel.peer, "Bound channel");
 
         true
     }

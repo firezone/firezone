@@ -516,16 +516,14 @@ where
                     req_id,
                     reason,
                 }))) => {
-                    tracing::warn!(target: "relay", "Request with ID {req_id} on topic {topic} failed: {reason}");
+                    tracing::warn!(target: "relay", "Request with ID {req_id} on topic {topic} failed: {reason:?}");
                     continue;
                 }
                 Some(Poll::Ready(Ok(Event::HeartbeatSent))) => {
                     tracing::debug!(target: "relay", "Heartbeat sent to portal");
                     continue;
                 }
-                Some(Poll::Ready(Ok(
-                    Event::InboundMessage { msg: (), .. } | Event::InboundReq { req: (), .. },
-                )))
+                Some(Poll::Ready(Ok(Event::InboundMessage { msg: (), .. })))
                 | Some(Poll::Pending)
                 | None => {}
             }

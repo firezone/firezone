@@ -8,10 +8,9 @@
 //! (Copied from <https://github.com/firezone/firezone/issues/3111#issuecomment-1887975171>)
 //!
 //! - Get the pdb corresponding to the client exe
-//! - `cargo install dump_syms`
+//! - `cargo install --locked dump_syms minidump-stackwalk`
 //! - Use dump_syms to convert the pdb to a syms file
-//! - Compile `minidump-stackwalk` with PR 891 merged
-//! - `minidump-stackwalker --symbols-path firezone.syms crash.dmp`
+//! - `minidump-stackwalk --symbols-path firezone.syms crash.dmp`
 
 use crate::client::known_dirs;
 use anyhow::{anyhow, bail, Context, Result};
@@ -69,6 +68,12 @@ fn start_server_and_connect() -> Result<(minidumper::Client, std::process::Child
     let socket_path = known_dirs::runtime()
         .context("`known_dirs::runtime` failed")?
         .join("crash_handler_pipe");
+    std::fs::create_dir_all(
+        socket_path
+            .parent()
+            .context("`known_dirs::runtime` should have a parent")?,
+    )
+    .context("Failed to create dir for crash_handler_pipe")?;
 
     let mut server = None;
 
@@ -118,11 +123,13 @@ impl minidumper::ServerHandler for Handler {
             .expect("Should be able to find logs dir to put crash dump in")
             .join("last_crash.dmp");
 
-        if let Some(dir) = dump_path.parent() {
-            if !dir.try_exists()? {
-                std::fs::create_dir_all(dir)?;
-            }
-        }
+        // `tracing` is unlikely to work inside the crash handler subprocess, so
+        // just print to stderr and it may show up on the terminal. This helps in CI / local dev.
+        eprintln!("Creating minidump at {}", dump_path.display());
+        let Some(dir) = dump_path.parent() else {
+            return Err(std::io::ErrorKind::NotFound.into());
+        };
+        std::fs::create_dir_all(dir)?;
         let file = File::create(&dump_path)?;
         Ok((file, dump_path))
     }
