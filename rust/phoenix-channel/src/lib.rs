@@ -10,7 +10,7 @@ use futures::future::BoxFuture;
 use futures::{FutureExt, SinkExt, StreamExt};
 use heartbeat::{Heartbeat, MissedLastHeartbeat};
 use rand_core::{OsRng, RngCore};
-use secrecy::{CloneableSecret, Secret};
+use secrecy::{CloneableSecret, ExposeSecret as _, Secret};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::task::{ready, Context, Poll};
 use tokio::net::TcpStream;
@@ -164,6 +164,13 @@ impl SecureUrl {
     pub fn from_url(url: Url) -> Self {
         Self { inner: url }
     }
+
+    /// Exposes the `host` of the URL.
+    ///
+    /// The host doesn't contain any secrets.
+    pub fn host(&self) -> Option<&str> {
+        self.inner.host_str()
+    }
 }
 
 impl CloneableSecret for SecureUrl {}
@@ -243,7 +250,13 @@ where
                         self.reconnect_backoff.reset();
                         self.state = State::Connected(stream);
 
-                        tracing::info!("Connected to portal");
+                        let host = self
+                            .secret_url
+                            .expose_secret()
+                            .host()
+                            .expect("always has host");
+
+                        tracing::info!(%host, "Connected to portal");
                         self.join(self.login, self.init_req.clone());
 
                         continue;
