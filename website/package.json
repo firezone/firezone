@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "@docsearch/react": "^3.5.2",
-    "@mdx-js/loader": "^2.3.0",
+    "@mdx-js/loader": "^3.0.1",
     "@mdx-js/react": "^3.0.0",
     "@next/mdx": "~14.1.0",
     "@types/mdx": "^2.0.11",
