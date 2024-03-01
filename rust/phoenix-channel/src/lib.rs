@@ -330,20 +330,12 @@ where
                     };
 
                     match message.payload {
-                        Payload::Message(msg) => match message.reference {
-                            None => {
-                                return Poll::Ready(Ok(Event::InboundMessage {
-                                    topic: message.topic,
-                                    msg,
-                                }));
-                            }
-                            Some(reference) => {
-                                return Poll::Ready(Ok(Event::InboundReq {
-                                    req_id: InboundRequestId(reference),
-                                    req: msg,
-                                }))
-                            }
-                        },
+                        Payload::Message(msg) => {
+                            return Poll::Ready(Ok(Event::InboundMessage {
+                                topic: message.topic,
+                                msg,
+                            }))
+                        }
                         Payload::Reply(Reply::Error { reason }) => {
                             return Poll::Ready(Ok(Event::ErrorResponse {
                                 topic: message.topic,
@@ -514,11 +506,6 @@ pub enum Event<TInboundMsg, TOutboundRes> {
     InboundMessage {
         topic: String,
         msg: TInboundMsg,
-    },
-    /// The server sent us a request and is expecting a response.
-    InboundReq {
-        req_id: InboundRequestId,
-        req: TInboundMsg,
     },
     Disconnect(String),
 }
