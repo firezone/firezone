@@ -233,7 +233,7 @@ nameserver 100.100.111.2
         let temp_dir = tempfile::TempDir::with_prefix("firezone-dns-test")?;
 
         let resolv_path = temp_dir.path().join("resolv.conf");
-        let backup_path = temp_dir.path().join("resolv.conf.firezone-backup");
+        let backup_path = temp_dir.path().join("resolv.conf.before-firezone");
 
         write_resolv_conf(&resolv_path, &[GOOGLE_DNS.into()])?;
 
@@ -257,7 +257,7 @@ nameserver 100.100.111.2
         let temp_dir = tempfile::TempDir::with_prefix("firezone-dns-test")?;
 
         let resolv_path = temp_dir.path().join("resolv.conf");
-        let backup_path = temp_dir.path().join("resolv.conf.firezone-backup");
+        let backup_path = temp_dir.path().join("resolv.conf.before-firezone");
 
         write_resolv_conf(&resolv_path, &[GOOGLE_DNS.into()])?;
 
@@ -275,7 +275,7 @@ nameserver 100.100.111.2
         let temp_dir = tempfile::TempDir::with_prefix("firezone-dns-test")?;
 
         let resolv_path = temp_dir.path().join("resolv.conf");
-        let backup_path = temp_dir.path().join("resolv.conf.firezone-backup");
+        let backup_path = temp_dir.path().join("resolv.conf.before-firezone");
 
         write_resolv_conf(&resolv_path, &[GOOGLE_DNS.into()])?;
 
