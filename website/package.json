@@ -29,7 +29,7 @@
     "md5": "^2.3.0",
     "mixpanel-browser": "^2.48.1",
     "next": "^14.0.4",
-    "next-hubspot": "^1.2.0",
+    "next-hubspot": "^1.3.0",
     "next-sitemap": "^4.2.3",
     "postcss": "8.4.35",
     "react": "18.2.0",
