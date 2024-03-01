@@ -206,6 +206,64 @@ defmodule Domain.RepoTest do
       end
     end
 
+    test "allows to filter results" do
+      query_module = Domain.Accounts.Account.Query
+      queryable = query_module.all()
+
+      account1 = Fixtures.Accounts.create_account(name: "Josh Account")
+      account2 = Fixtures.Accounts.create_account(name: "Jon's Account")
+      account3 = Fixtures.Accounts.create_account(name: "Somebody Else Account")
+
+      assert {:ok, [^account1], _metadata} =
+               list(queryable, query_module, filter: [slug: account1.slug])
+
+      assert {:ok, [^account3], _metadata} =
+               list(queryable, query_module, filter: [name: "Some"])
+
+      assert {:ok, [^account2], _metadata} =
+               list(queryable, query_module, filter: [name: "jon"])
+
+      assert {:ok, accounts, _metadata} =
+               list(queryable, query_module,
+                 filter: [
+                   {:or,
+                    [
+                      [name: "Some"],
+                      [name: "jon"]
+                    ]}
+                 ]
+               )
+
+      assert {:ok, [^account1], _metadata} =
+               list(queryable, query_module,
+                 filter: [
+                   {:and,
+                    [
+                      [name: "Josh"],
+                      [name: "Acc"]
+                    ]}
+                 ]
+               )
+
+      assert length(accounts) == 2
+    end
+
+    test "returns error on unknown filter", %{
+      query_module: query_module,
+      queryable: queryable
+    } do
+      assert list(queryable, query_module, filter: [unknown: "foo"]) ==
+               {:error, {:unknown_filter, name: :unknown}}
+    end
+
+    test "returns error on invalid filter type" do
+      query_module = Domain.Accounts.Account.Query
+      queryable = query_module.all()
+
+      assert list(queryable, query_module, filter: [name: 1]) ==
+               {:error, {:invalid_type, type: :string, value: 1}}
+    end
+
     test "returns up to 50 items by default", %{
       account: account,
       query_module: query_module,

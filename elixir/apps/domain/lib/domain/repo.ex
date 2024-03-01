@@ -3,7 +3,7 @@ defmodule Domain.Repo do
     otp_app: :domain,
     adapter: Ecto.Adapters.Postgres
 
-  alias Domain.Repo.{Paginator, Preloader, Query}
+  alias Domain.Repo.{Paginator, Preloader, Filter}
   require Ecto.Query
 
   @doc """
@@ -170,15 +170,17 @@ defmodule Domain.Repo do
         ) ::
           {:ok, [Ecto.Schema.t()], Paginator.Metadata.t()}
           | {:error, :invalid_cursor}
+          | {:error, {:unknown_filter, metadata :: Keyword.t()}}
+          | {:error, {:invalid_type, metadata :: Keyword.t()}}
+          | {:error, {:invalid_value, metadata :: Keyword.t()}}
           | {:error, term()}
   def list(queryable, query_module, opts \\ []) do
     {preload, opts} = Keyword.pop(opts, :preload, [])
-    # {filters, opts} = Keyword.pop(opts, :filters, %{})
-
-    # Pagination
+    {filter, opts} = Keyword.pop(opts, :filter, [])
     {paginator_opts, opts} = Keyword.pop(opts, :page, [])
 
-    with {:ok, paginator_opts} <- Paginator.init(query_module, paginator_opts) do
+    with {:ok, paginator_opts} <- Paginator.init(query_module, paginator_opts),
+         {:ok, queryable} <- Filter.filter(queryable, query_module, filter) do
       {results, metadata} =
         queryable
         |> Paginator.query(paginator_opts)

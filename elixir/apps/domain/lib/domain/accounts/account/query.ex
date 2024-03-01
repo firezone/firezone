@@ -58,9 +58,46 @@ defmodule Domain.Accounts.Account.Query do
       clients: {Domain.Clients.Client.Query.not_deleted(), Domain.Clients.Client.Query.preloads()}
     ]
 
+  @impl Domain.Repo.Query
   def filters,
     do: [
-      not_deleted: &not_deleted/1,
-      not_disabled: &not_disabled/1
+      %Domain.Repo.Filter{
+        name: :slug,
+        title: "Slug",
+        type: :string,
+        fun: &filter_by_slug_contains/2
+      },
+      %Domain.Repo.Filter{
+        name: :name,
+        title: "Name",
+        type: :string,
+        fun: &filter_by_name_fts/2
+      },
+      %Domain.Repo.Filter{
+        name: :status,
+        title: "Status",
+        type: {:list, :string},
+        values: [
+          {"Enabled", "enabled"},
+          {"Disabled", "disabled"}
+        ],
+        fun: &filter_by_status/2
+      }
     ]
+
+  def filter_by_slug_contains(queryable, slug) do
+    {queryable, dynamic([accounts: accounts], ilike(accounts.slug, ^"%#{slug}%"))}
+  end
+
+  def filter_by_name_fts(queryable, name) do
+    {queryable, dynamic([accounts: accounts], fulltext_search(accounts.name, ^name))}
+  end
+
+  def filter_by_status(queryable, "enabled") do
+    {queryable, dynamic([accounts: accounts], not is_nil(accounts.disabled_at))}
+  end
+
+  def filter_by_status(queryable, "disabled") do
+    {queryable, dynamic([accounts: accounts], not is_nil(accounts.disabled_at))}
+  end
 end
