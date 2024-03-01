@@ -25,7 +25,7 @@ use url::Url;
 // See https://github.com/firezone/firezone/issues/2158
 pub struct PhoenixChannel<TInitReq, TInboundMsg, TOutboundRes> {
     state: State,
-    pending_messages: Vec<Message>,
+    pending_messages: Vec<String>,
     next_request_id: u64,
 
     heartbeat: Heartbeat,
@@ -307,7 +307,9 @@ where
             // Priority 1: Keep local buffers small and send pending messages.
             if stream.poll_ready_unpin(cx).is_ready() {
                 if let Some(message) = self.pending_messages.pop() {
-                    match stream.start_send_unpin(message) {
+                    tracing::trace!(target: "wire", to="portal", %message);
+
+                    match stream.start_send_unpin(Message::Text(message)) {
                         Ok(()) => {}
                         Err(e) => {
                             self.reconnect_on_transient_error(Error::WebSocket(e));
@@ -320,16 +322,16 @@ where
             // Priority 2: Handle incoming messages.
             match stream.poll_next_unpin(cx) {
                 Poll::Ready(Some(Ok(message))) => {
-                    let Ok(text) = message.into_text() else {
+                    let Ok(message) = message.into_text() else {
                         tracing::warn!("Received non-text message from portal");
                         continue;
                     };
 
-                    tracing::trace!("Received message from portal: {text}");
+                    tracing::trace!(target: "wire", from="portal", %message);
 
                     let message = match serde_json::from_str::<
                         PhoenixMessage<TInboundMsg, TOutboundRes>,
-                    >(&text)
+                    >(&message)
                     {
                         Ok(m) => m,
                         Err(e) if e.is_io() || e.is_eof() => {
@@ -337,7 +339,7 @@ where
                             continue;
                         }
                         Err(e) => {
-                            tracing::warn!("Failed to deserialize message {text}: {e}");
+                            tracing::warn!("Failed to deserialize message {message}: {e}");
                             continue;
                         }
                     };
@@ -470,11 +472,11 @@ where
     ) -> OutboundRequestId {
         let request_id = self.fetch_add_request_id();
 
-        self.pending_messages.push(Message::Text(
-            // We don't care about the reply type when serializing
-            serde_json::to_string(&PhoenixMessage::<_, ()>::new(topic, payload, request_id))
-                .expect("we should always be able to serialize a join topic message"),
-        ));
+        // We don't care about the reply type when serializing
+        let msg = serde_json::to_string(&PhoenixMessage::<_, ()>::new(topic, payload, request_id))
+            .expect("we should always be able to serialize a join topic message");
+
+        self.pending_messages.push(msg);
 
         OutboundRequestId(request_id)
     }
