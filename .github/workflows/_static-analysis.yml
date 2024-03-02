@@ -20,7 +20,7 @@ jobs:
         run: |
           for prefix in $VALID_PREFIXES; do
             if [[ "${{ github.event.pull_request.title }}" == "$prefix"* ]]; then
-              echo "PR title ${{ github.event.pull_request.title }} is valid"
+              echo "PR title '${{ github.event.pull_request.title }}' is valid"
               exit 0
             fi
           done
