@@ -24,6 +24,30 @@ export default function Page() {
         </div>
         <div className="grid divide-y">
           <SummaryCard
+            title="March 2024 Product Update"
+            date="March 1, 2024"
+            href="/blog/mar-2024-product-update"
+            authorName="Jamil Bou Kheir"
+            authorAvatarSrc={gravatar("jamil@firezone.dev")}
+            type="Announcement"
+          >
+            <p className="mb-2">
+              Firezone{" "}
+              <Link
+                href="/blog/mar-2024-product-update"
+                className="text-accent-500 underline hover:no-underline"
+              >
+                1.0.0-pre.9 is released
+              </Link>
+              ! In this update:
+            </p>
+            <ul className="list-inside list-disc ml-4">
+              <li>Windows and Linux betas</li>
+              <li>Directory sync for Microsoft Entra ID and Okta</li>
+              <li>Improved performance and stability</li>
+            </ul>
+          </SummaryCard>
+          <SummaryCard
             title="Jaunary 2024 Product Update"
             date="January 1, 2024"
             href="/blog/jan-2024-product-update"
@@ -31,7 +55,7 @@ export default function Page() {
             authorAvatarSrc={gravatar("jamil@firezone.dev")}
             type="Announcement"
           >
-            <p>Happy new year from the Firezone team!</p>
+            <p className="mb-2">Happy new year from the Firezone team!</p>
 
             <p>
               After a long year of building, we're incredibly excited to

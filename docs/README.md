@@ -73,8 +73,8 @@ Firezone is:
   establishes tunnels on-the-fly at the time of access.
 - **Open:** Our entire product is open-source, allowing anyone to audit the
   codebase.
-- **Flexible:** Authenticate users via email, Google Workspace, or OIDC and sync
-  users and groups automatically.
+- **Flexible:** Authenticate users via email, Google Workspace, Okta, Entra ID,
+  or OIDC and sync users and groups automatically.
 - **Simple:** Deploy gateways and configure access in minutes with a snappy
   admin UI.
 
