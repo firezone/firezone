@@ -49,7 +49,7 @@ log = "0.4"
 [dev-dependencies]
 anyhow = "1.0"
 itertools = "0.12"
-tempfile = "3.10.0"
+tempfile = "3.10.1"
 
 [target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
 swift-bridge = { workspace = true }
