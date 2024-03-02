@@ -3,6 +3,20 @@ on:
   workflow_call:
 
 jobs:
+  pr-title-check:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Check PR title
+        if: ${{
+          github.event.pull_request
+          && !startsWith(github.event.pull_request.title, "feat")
+          && !startsWith(github.event.pull_request.title, "fix")
+          && !startsWith(github.event.pull_request.title, "refactor")
+          && !startsWith(github.event.pull_request.title, "chore")
+          && !startsWith(github.event.pull_request.title, "docs")
+          && !startsWith(github.event.pull_request.title, "security")
+          && !startsWith(github.event.pull_request.title, "deps") }}
+        run: echo "Invalid PR title ${{ github.event.pull_request.title }}. Must be one of: feat, fix, refactor, chore, docs, security, deps" && exit 1
   version-check:
     runs-on: macos-14
     steps:
