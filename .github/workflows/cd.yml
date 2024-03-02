@@ -272,6 +272,17 @@ jobs:
         run: pnpm install
       - name: Build release exe and MSI
         run: pnpm build
+      - name: Sign the MSI
+        if: ${{ runner.os == 'Windows' }}
+        shell: bash
+        env:
+          AZURE_KEY_VAULT_URI: ${{ secrets.AZURE_KEY_VAULT_URI }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CERT_NAME: ${{ secrets.AZURE_CERT_NAME }}
+          MSI_PATH: ../target/release/bundle/msi/Firezone_${{ env.VERSION }}_x64_en-US.msi
+        run: ../../scripts/build/sign-msi.sh
       - name: Rename artifacts and compute SHA256
         shell: bash
         run: ${{ matrix.rename-script }}
