@@ -76,6 +76,7 @@ jobs:
           done
 
   deploy-production:
+    # Only run from main or release so we never deploy old code against a newer DB schema
     if: github.ref == 'refs/heads/main' || github.event_name == 'release'
     needs: push-images-to-production-artifacts
     runs-on: ubuntu-22.04
@@ -124,7 +125,9 @@ jobs:
             "Apply Run from GitHub Actions CI ${{ inputs.tag || github.sha }}"
 
   publish-images-to-ghcr:
-    if: ${{ github.event_name == 'release' }}
+    # Run on release, or when deploying to production without a release to ensure the same images
+    # are available in the GitHub Container Registry as the ones deployed to production
+    if: ${{ github.event_name == 'release' || (github.ref == 'refs/heads/main' && inputs.foolproof == true) }}
     needs: deploy-production
     runs-on: ubuntu-22.04
     strategy:
