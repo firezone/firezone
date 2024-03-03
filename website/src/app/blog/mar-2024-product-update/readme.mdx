@@ -21,8 +21,8 @@ so let's dive right in.
 
 This update sees the release of Firezone
 [1.0.0-pre.9](https://github.com/firezone/firezone/releases/tag/1.0.0-pre.9),
-containing dozens of bug features, improvements, and a few new features. Here's
-a summary of what's new:
+containing dozens of bug fixes, improvements, and a few new features. Here's a
+summary of what's new:
 
 - The [Windows](#windows-client-beta) and [Linux](#linux-client-beta) clients
   are now available for beta testing.
@@ -66,14 +66,14 @@ Here's an quick example of how to connect to Firezone with it:
 sudo ./firezone-linux-x64 --token <your-service-account-token>
 ```
 
-Interested the Linux GUI client? It's coming! Track its progress on our
+Interested in the Linux GUI client? It's coming! Track its progress on our
 [public roadmap](https://github.com/orgs/firezone/projects/9/views/1?pane=issue&itemId=44218273).
 The GUI client will allow regular users to authenticate instead of requiring a
 Service Account to do so.
 
 ### Directory sync for Entra ID and Okta
 
-We've added support for directory sync with Microsoft Entra ID and Okta.
+We've also added support for directory sync with Microsoft Entra ID and Okta.
 
 Similar to the existing Google Workspace directory sync, this allows businesses
 to automatically sync their users and groups from Entra ID and Okta into
@@ -85,18 +85,19 @@ How it works:
    and Okta using their respective identity APIs.
 1. New users and groups are automatically added to Firezone, existing users and
    groups will be updated with the latest information, and deleted users and
-   groups will be **disabled** in Firezone _but not deleted_ -- this preserves
-   historical data.
+   groups will be **disabled** in Firezone _but not deleted_ (to preserve
+   historical access logs).
 1. Any affected policies are updated immediately to reflect the changes.
 
 This means whenever a user is deleted or removed from a Group, their access to
-affected resources in Firezone is revoked automatically within a few minutes.
+affected resources in Firezone is automatically revoked within a few minutes.
 
 #### What about nested groups?
 
 Have a nested org structure? We've got you covered -- Firezone handles that too.
 
-Let's say you had the following group membership structure in your IdP:
+Let's say you had the following group membership structure in your identity
+provider:
 
 ```yaml
 Everyone:
@@ -110,7 +111,8 @@ Everyone:
       - john@company.com
 ```
 
-You would see the following group memberships in Firezone after sync:
+You would then see the following group memberships in Firezone after a directory
+sync:
 
 ```yaml
 Group:Everyone:
@@ -129,17 +131,17 @@ Group:DevOps:
   - john@company.com
 ```
 
-By syncing group memberships recursively (known as "transitive memberships"),
-Firezone allows you to assign broad policies that include all the members of a
-group, not just the direct ones. This means fewer overall groups are needed to
-define your access controls, and fewer overall policies to manage.
+By syncing nested group memberships (also known as _transitive memberships_),
+Firezone allows you to assign broad policies that include all of the members of
+a group, not just the direct ones. This means fewer overall groups are needed to
+define your access controls, and fewer overall policies you need to manage.
 
 [Read more](/kb/authenticate/directory-sync) about how directory sync works in
 Firezone.
 
 ### New connectivity engine
 
-We've overhauled our connectivity engine that powers all NAT traversal in
+We've also overhauled the connectivity engine that powers all NAT traversal in
 Firezone to establish connections faster and more reliably.
 
 As you may recall, Firezone 1.0 features automatic NAT holepunching, which means
@@ -156,6 +158,19 @@ aptly named
 "[snownet](https://github.com/firezone/firezone/tree/main/rust/connlib/snownet)"
 (sorry, we couldn't resist), is a ground-up rewrite that addresses these issues
 and provides a solid foundation for future improvements.
+
+In most cases, initial connections to resources are now established in about a
+second or less. Once the connection is established, Firezone gets out of the way
+so your Client and Gateway talk directly to each other with no overhead.
+
+Best of all, this works even if your Client and Gateway are in the same LAN --
+Firezone figures out the best way to connect automatically. No need to "disable
+your VPN" when you come into the office, or muck around with routes when you
+leave. Firezone just works.
+
+And if a connection fails, Firezone will automatically establish a new one
+within a few seconds. This all happens behind the scenes, without any user
+intervention.
 
 ### Conclusion
 
