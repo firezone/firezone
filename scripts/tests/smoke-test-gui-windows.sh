@@ -3,15 +3,16 @@
 
 set -euo pipefail
 
-BUNDLE_ID="dev.firezone.client"
-DUMP_PATH="$LOCALAPPDATA/$BUNDLE_ID/data/logs/last_crash.dmp"
-PACKAGE=firezone-gui-client
-
 # This prevents a `shellcheck` lint warning about using an unset CamelCase var
 if [[ -z "$ProgramData" ]]; then
     echo "The env var \$ProgramData should be set to \`C:\ProgramData\` or similar"
     exit 1
 fi
+
+BUNDLE_ID="dev.firezone.client"
+DEVICE_ID_PATH="$ProgramData/$BUNDLE_ID/config/device_id.json"
+DUMP_PATH="$LOCALAPPDATA/$BUNDLE_ID/data/logs/last_crash.dmp"
+PACKAGE=firezone-gui-client
 
 function smoke_test() {
     # Make sure the files we want to check don't exist on the system yet
@@ -21,11 +22,24 @@ function smoke_test() {
     # Run the smoke test normally
     cargo run -p "$PACKAGE" -- smoke-test
 
+    # Note the device ID
+    DEVICE_ID_1=$(cat "$DEVICE_ID_PATH")
+
+    # Run the test again and make sure the device ID is not changed
+    cargo run -p "$PACKAGE" -- smoke-test
+    DEVICE_ID_2=$(cat "$DEVICE_ID_PATH")
+
+    if [ "$DEVICE_ID_1" != "$DEVICE_ID_2" ]
+    then
+        echo "The device ID should not change if the file is intact between runs"
+        exit 1
+    fi
+
     # Make sure the files were written in the right paths
     stat "$LOCALAPPDATA/$BUNDLE_ID/config/advanced_settings.json"
     stat "$LOCALAPPDATA/$BUNDLE_ID/data/logs/"connlib*log
     stat "$LOCALAPPDATA/$BUNDLE_ID/data/wintun.dll"
-    stat "$ProgramData/$BUNDLE_ID/config/device_id.json"
+    stat "$DEVICE_ID_PATH"
 }
 
 function crash_test() {
