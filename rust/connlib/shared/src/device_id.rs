@@ -1,7 +1,7 @@
 use std::fs;
 
 #[derive(thiserror::Error, Debug)]
-pub(crate) enum Error {
+pub enum Error {
     #[error("Couldn't create app-specific dir in `ProgramData`: {0}")]
     CreateProgramDataDir(std::io::Error),
     #[error("Can't find well-known folder")]
@@ -18,8 +18,8 @@ pub(crate) enum Error {
 /// Returns: The UUID as a String, suitable for sending verbatim to `connlib_client_shared::Session::connect`.
 ///
 /// Errors: If the disk is unwritable when initially generating the ID, or unwritable when re-generating an invalid ID.
-pub(crate) fn device_id() -> Result<String, Error> {
-    let dir = crate::client::known_dirs::device_id().ok_or(Error::KnownFolder)?;
+pub fn get() -> Result<String, Error> {
+    let dir = imp::path().ok_or(Error::KnownFolder)?;
     let path = dir.join("device_id.json");
 
     // Try to read it from the disk
@@ -57,5 +57,57 @@ struct DeviceIdJson {
 impl DeviceIdJson {
     fn device_id(&self) -> String {
         self.id.to_string()
+    }
+}
+
+#[cfg(target_os = "linux")]
+mod imp {
+    use std::path::PathBuf;
+    /// `/var/lib/$BUNDLE_ID/config/firezone-id`
+    ///
+    /// `/var/lib` because this is the correct place to put state data not meant for users
+    /// to touch, which is specific to one host and persists across reboots
+    /// <https://refspecs.linuxfoundation.org/FHS_3.0/fhs/ch05s08.html>
+    ///
+    /// `BUNDLE_ID` because we need our own subdir
+    ///
+    /// `config` to make how Windows has `config` and `data` both under `AppData/Local/$BUNDLE_ID`
+    ///
+    /// `firezone-id` is the name of the variable, it's okay if it's not hidden since the
+    /// FHS specifies that users should not know about the file layout in `/var`.
+    pub(crate) fn path() -> Option<PathBuf> {
+        Some(
+            PathBuf::from("/var/lib")
+                .join(crate::BUNDLE_ID)
+                .join("config")
+                .join("firezone-id"),
+        )
+    }
+}
+
+#[cfg(target_os = "windows")]
+mod imp {
+    use known_folders::{get_known_folder_path, KnownFolder};
+
+    /// e.g. `C:\ProgramData\dev.firezone.client\config`
+    ///
+    /// Device ID is stored here until <https://github.com/firezone/firezone/issues/3712> lands
+    pub(crate) fn path() -> Option<PathBuf> {
+        Some(
+            get_known_folder_path(KnownFolder::ProgramData)?
+                .join(BUNDLE_ID)
+                .join("config"),
+        )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn smoke() {
+        let dir = super::imp::path().expect("should have gotten Some(path)");
+        assert!(dir
+            .components()
+            .any(|x| x == std::path::Component::Normal("dev.firezone.client".as_ref())));
     }
 }

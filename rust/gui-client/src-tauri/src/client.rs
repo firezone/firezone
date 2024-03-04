@@ -7,7 +7,6 @@ mod auth;
 mod crash_handling;
 mod debug_commands;
 mod deep_link;
-mod device_id;
 mod elevation;
 mod gui;
 mod known_dirs;

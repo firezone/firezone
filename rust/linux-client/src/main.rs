@@ -19,10 +19,16 @@ fn main() -> Result<()> {
         handle,
     };
 
+    // AKA "Device ID", not the Firezone slug
+    let firezone_id = match cli.firezone_id {
+        Some(id) => id,
+        None => connlib_shared::device_id::get().context("Could not get `firezone_id` from CLI, could not read it from disk, could not generate it and save it to disk")?,
+    };
+
     let mut session = Session::connect(
         cli.common.api_url,
         SecretString::from(cli.common.token),
-        cli.firezone_id,
+        firezone_id,
         None,
         None,
         callbacks,
@@ -150,7 +156,7 @@ struct Cli {
     ///
     /// AKA `device_id` in the Windows and Linux GUI clients
     #[arg(short = 'i', long, env = "FIREZONE_ID")]
-    pub firezone_id: String,
+    pub firezone_id: Option<String>,
 
     /// File logging directory. Should be a path that's writeable by the current user.
     #[arg(short, long, env = "LOG_DIR")]

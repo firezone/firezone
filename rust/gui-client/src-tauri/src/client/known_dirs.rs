@@ -7,22 +7,12 @@
 //!
 //! I wanted the ProgramData folder on Windows, which `dirs` alone doesn't provide.
 
-pub(crate) use imp::{device_id, logs, runtime, session, settings};
+pub(crate) use imp::{logs, runtime, session, settings};
 
 #[cfg(target_os = "linux")]
 mod imp {
     use connlib_shared::BUNDLE_ID;
     use std::path::PathBuf;
-
-    /// e.g. `/home/alice/.config/dev.firezone.client/config`
-    ///
-    /// Device ID is stored here until <https://github.com/firezone/firezone/issues/3713> lands
-    ///
-    /// Linux has no direct equivalent to Window's `ProgramData` dir, `/var` doesn't seem
-    /// to be writable by normal users.
-    pub(crate) fn device_id() -> Option<PathBuf> {
-        Some(dirs::config_local_dir()?.join(BUNDLE_ID).join("config"))
-    }
 
     /// e.g. `/home/alice/.cache/dev.firezone.client/data/logs`
     ///
@@ -58,20 +48,7 @@ mod imp {
 
 #[cfg(target_os = "windows")]
 mod imp {
-    use connlib_shared::BUNDLE_ID;
-    use known_folders::{get_known_folder_path, KnownFolder};
     use std::path::PathBuf;
-
-    /// e.g. `C:\ProgramData\dev.firezone.client\config`
-    ///
-    /// Device ID is stored here until <https://github.com/firezone/firezone/issues/3712> lands
-    pub(crate) fn device_id() -> Option<PathBuf> {
-        Some(
-            get_known_folder_path(KnownFolder::ProgramData)?
-                .join(BUNDLE_ID)
-                .join("config"),
-        )
-    }
 
     /// e.g. `C:\Users\Alice\AppData\Local\dev.firezone.client\data\logs`
     ///
@@ -125,7 +102,7 @@ mod tests {
 
     #[test]
     fn smoke() {
-        for dir in [device_id(), logs(), runtime(), session(), settings()] {
+        for dir in [logs(), runtime(), session(), settings()] {
             let dir = dir.expect("should have gotten Some(path)");
             assert!(dir
                 .components()
