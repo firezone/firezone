@@ -400,6 +400,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1505bd5d3d116872e7271a6d4e16d81d0c8570876c8de68093a09ac269d8aac0"
 
 [[package]]
+name = "atomicwrites"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fc7b2dbe9169059af0f821e811180fddc971fc210c776c133c7819ccd6e478db"
+dependencies = [
+ "rustix 0.38.31",
+ "tempfile",
+ "windows-sys 0.52.0",
+]
+
+[[package]]
 name = "autocfg"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1119,6 +1130,8 @@ dependencies = [
 name = "connlib-shared"
 version = "1.0.0"
 dependencies = [
+ "anyhow",
+ "atomicwrites",
  "base64 0.21.7",
  "boringtun",
  "chrono",
@@ -1137,6 +1150,7 @@ dependencies = [
  "parking_lot",
  "rand 0.8.5",
  "rand_core 0.6.4",
+ "resolv-conf",
  "ring",
  "rtnetlink",
  "secrecy",
@@ -1144,6 +1158,7 @@ dependencies = [
  "serde_json",
  "snownet",
  "swift-bridge",
+ "tempfile",
  "thiserror",
  "tokio",
  "tokio-stream",
@@ -1904,6 +1919,7 @@ name = "firezone-linux-client"
 version = "1.0.0"
 dependencies = [
  "anyhow",
+ "atomicwrites",
  "clap",
  "connlib-client-shared",
  "connlib-shared",
@@ -1962,7 +1978,6 @@ dependencies = [
 name = "firezone-tunnel"
 version = "1.0.0"
 dependencies = [
- "anyhow",
  "async-trait",
  "bimap",
  "boringtun",
@@ -1985,7 +2000,6 @@ dependencies = [
  "pnet_packet",
  "quinn-udp",
  "rand_core 0.6.4",
- "resolv-conf",
  "rtnetlink",
  "sd-notify",
  "secrecy",
@@ -1993,7 +2007,6 @@ dependencies = [
  "serde_json",
  "snownet",
  "socket2 0.5.6",
- "tempfile",
  "thiserror",
  "tokio",
  "tracing",
@@ -2835,7 +2848,7 @@ dependencies = [
  "httpdate",
  "itoa 1.0.10",
  "pin-project-lite",
- "socket2 0.4.10",
+ "socket2 0.5.6",
  "tokio",
  "tower-service",
  "tracing",
@@ -6040,9 +6053,9 @@ checksum = "e1fc403891a21bcfb7c37834ba66a547a8f402146eba7265b5a6d88059c9ff2f"
 
 [[package]]
 name = "tauri"
-version = "1.6.0"
+version = "1.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0da520ff07c0745199204f7a7a62a8c6ee1666313b792b051ca170eca04649aa"
+checksum = "f078117725e36d55d29fafcbb4b1e909073807ca328ae8deb8c0b3843aac0fed"
 dependencies = [
  "anyhow",
  "cocoa 0.24.1",
@@ -6169,9 +6182,9 @@ dependencies = [
 
 [[package]]
 name = "tauri-runtime-wry"
-version = "0.14.4"
+version = "0.14.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a561ae38c6b27510c77a3ab4cf65bebe18fba51ca4569e023fb9e194ff4995fb"
+checksum = "067c56fc153b3caf406d7cd6de4486c80d1d66c0f414f39e94cb2f5543f6445f"
 dependencies = [
  "cocoa 0.24.1",
  "gtk",
@@ -6239,9 +6252,9 @@ dependencies = [
 
 [[package]]
 name = "tempfile"
-version = "3.10.0"
+version = "3.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a365e8cd18e44762ef95d87f284f4b5cd04107fec2ff3052bd6a3e6069669e67"
+checksum = "85b77fafb263dd9d05cbeac119526425676db3784113aa9295c88498cbf8bff1"
 dependencies = [
  "cfg-if",
  "fastrand 2.0.1",
@@ -7026,9 +7039,9 @@ checksum = "f3c4517f54858c779bbcbf228f4fca63d121bf85fbecb2dc578cdf4a39395690"
 
 [[package]]
 name = "walkdir"
-version = "2.4.0"
+version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d71d857dc86794ca4c280d616f7da00d2dbfd8cd788846559a6813e6aa4b54ee"
+checksum = "29790946404f91d9c5d06f9874efddea1dc06c5efe94541a7d6863108e3a5e4b"
 dependencies = [
  "same-file",
  "winapi-util",

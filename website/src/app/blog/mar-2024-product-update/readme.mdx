@@ -1,0 +1,185 @@
+import Image from "next/image";
+
+<p className="text-sm">
+  _This is the second post of our semi-monthly product newsletter aimed at
+  providing regular updates on the Firezone product. [Subscribe to future
+  updates](/product/newsletter)_.
+</p>
+
+<Image
+  src="/images/blog/mar-2024-product-update/release-1.0.0-pre.9.png"
+  alt="Release 1.0.0-pre.9"
+  width={500}
+  height={500}
+  className="mx-auto rounded shadow"
+/>
+
+Another month, another product update! We've got a lot to cover in this update,
+so let's dive right in.
+
+## In this update
+
+This update sees the release of Firezone
+[1.0.0-pre.9](https://github.com/firezone/firezone/releases/tag/1.0.0-pre.9),
+containing dozens of bug fixes, improvements, and a few new features. Here's a
+summary of what's new:
+
+- The [Windows](#windows-client-beta) and [Linux](#linux-client-beta) clients
+  are now available for beta testing.
+- Directory sync is [now available](#directory-sync-for-entra-id-and-okta) for
+  Microsoft Entra ID and Okta.
+- An all-new [connectivity engine](#new-connectivity-engine) that establishes
+  faster and more reliable connections.
+
+Continue reading below for more details.
+
+### Windows Client beta
+
+The Firezone Windows client is now available for beta testing!
+
+You'll need Windows 10 or higher and an x86-64 CPU to run the client.
+[See the docs](/kb/user-guides/windows-client) for more information and download
+links, or use
+[this direct link](https://github.com/firezone/firezone/releases/latest/download/firezone-windows-client-x64.msi)
+to get started right away.
+
+**Note**: Be sure to click **Allow** when prompted by the User Account Control
+dialog. If that dialog does not appear, you may need to manually run Firezone as
+an administrator by right-clicking the Firezone icon and select **Run as
+administrator**.
+
+### Linux Client beta
+
+The Firezone Linux client is also available for beta testing!
+
+This initial release operates exclusively in headless mode, which means you'll
+need a [Service Account](/kb/authenticate/service-accounts) token to
+authenticate it.
+
+[Read the docs](https://www.firezone.dev/kb/user-guides/linux-client) for more
+instructions and download links for your architecture.
+
+Here's an quick example of how to connect to Firezone with it:
+
+```bash
+# sudo is needed to manage DNS and open a tun interface
+sudo ./firezone-linux-x64 --token <your-service-account-token>
+```
+
+Interested in the Linux GUI client? It's coming! Track its progress on our
+[public roadmap](https://github.com/orgs/firezone/projects/9/views/1?pane=issue&itemId=44218273).
+The GUI client will allow regular users to authenticate instead of requiring a
+Service Account to do so.
+
+### Directory sync for Entra ID and Okta
+
+We've also added support for directory sync with Microsoft Entra ID and Okta.
+
+Similar to the existing Google Workspace directory sync, this allows businesses
+to automatically sync their users and groups from Entra ID and Okta into
+Firezone, making it easier to manage policies to control access to resources.
+
+How it works:
+
+1. Every few minutes, Firezone requests user and group information from Entra ID
+   and Okta using their respective identity APIs.
+1. New users and groups are automatically added to Firezone, existing users and
+   groups will be updated with the latest information, and deleted users and
+   groups will be **disabled** in Firezone _but not deleted_ (to preserve
+   historical access logs).
+1. Any affected policies are updated immediately to reflect the changes.
+
+This means whenever a user is deleted or removed from a Group, their access to
+affected resources in Firezone is automatically revoked within a few minutes.
+
+#### What about nested groups?
+
+Have a nested org structure? We've got you covered -- Firezone handles that too.
+
+Let's say you had the following group membership structure in your identity
+provider:
+
+```yaml
+Everyone:
+  - steve@company.com
+  Support:
+    - patrick@company.com
+  Engineering:
+    - bob@company.com
+    - alice@company.com
+    Devops:
+      - john@company.com
+```
+
+You would then see the following group memberships in Firezone after a directory
+sync:
+
+```yaml
+Group:Everyone:
+  - steve@company.com
+  - patrick@company.com
+  - bob@company.com
+  - alice@company.com
+  - john@company.com
+Group:Engineering:
+  - bob@company.com
+  - alice@company.com
+  - john@company.com
+Group:Support:
+  - patrick@company.com
+Group:DevOps:
+  - john@company.com
+```
+
+By syncing nested group memberships (also known as _transitive memberships_),
+Firezone allows you to assign broad policies that include all of the members of
+a group, not only the direct ones, just like you'd expect. This means fewer
+groups are needed to define your access controls, and fewer policies you need to
+manage.
+
+[Read more](/kb/authenticate/directory-sync) about how directory sync works in
+Firezone.
+
+### New connectivity engine
+
+We've also overhauled the connectivity engine that powers all NAT traversal in
+Firezone to establish connections faster and more reliably.
+
+As you may recall, Firezone 1.0 features automatic NAT holepunching, which means
+you don't need to open any ports on your firewall to use Firezone. This is
+achieved by implementing a collection of industry-standard techniques known
+collectively as [ICE](https://www.rfc-editor.org/info/rfc8445). Details of how
+ICE works are beyond the scope of this update, but the important thing to know
+is that it's a battle-tested method for establishing peer-to-peer connections in
+even the most challenging network environments.
+
+Our first implementation, while functional, suffered from several architectural
+issues that made it difficult to maintain and extend. Our new implementation,
+aptly named
+"[snownet](https://github.com/firezone/firezone/tree/main/rust/connlib/snownet)"
+(sorry, we couldn't resist), is a ground-up rewrite that addresses these issues
+and provides a solid foundation for future improvements.
+
+In most cases, initial connections to resources are now established in about a
+second or less. Once the connection is established, Firezone gets out of the way
+so your Client and Gateway talk directly to each other with no overhead.
+
+Best of all, this works even if your Client and Gateway are in the same LAN --
+Firezone figures out the best way to connect automatically. No need to "disable
+your VPN" when you come into the office, or muck around with routes when you
+leave. Firezone just works.
+
+And if a connection fails, Firezone will automatically establish a new one
+within a few seconds. This all happens behind the scenes, without any user
+intervention.
+
+### Conclusion
+
+Like what you see and want to give Firezone a try? We're still accepting early
+access sign ups for a while longer, so go here to
+[apply for early access](/product/early-access) and we'll be in touch.
+
+Want to see Firezone in action? [Request a demo](/product/demo) if you'd like a
+first-hand look at how Firezone can help your organization.
+
+That's all for this update!

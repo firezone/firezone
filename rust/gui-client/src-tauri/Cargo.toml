@@ -39,7 +39,7 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 semver = { version = "1.0.22", features = ["serde"] }
 subtle = "2.5.0"
-tauri = { version = "1.5", features = [ "dialog", "shell-open-api", "system-tray" ] }
+tauri = { version = "1.6", features = [ "dialog", "shell-open-api", "system-tray" ] }
 tauri-runtime = "0.14.2"
 tauri-utils = "1.5.3"
 thiserror = { version = "1.0", default-features = false }
@@ -87,4 +87,6 @@ features = [
 [features]
 # this feature is used for production builds or when `devPath` points to the filesystem
 # DO NOT REMOVE!!
+# TODO: We can probably remove this, per <https://github.com/tauri-apps/tauri/releases/tag/tauri-v2.0.0-beta.8>
+# I don't know how to verify this change, so I won't do it right now.
 custom-protocol = ["tauri/custom-protocol"]
