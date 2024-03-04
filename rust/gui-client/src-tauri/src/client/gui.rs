@@ -503,6 +503,7 @@ struct Controller {
     /// Tells us when to wake up and look for a new resource list. Tokio docs say that memory reads and writes are synchronized when notifying, so we don't need an extra mutex on the resources.
     notify_controller: Arc<Notify>,
     tunnel_ready: bool,
+    uptime: client::uptime::Tracker,
 }
 
 /// Everything related to a signed-in user session
@@ -634,7 +635,18 @@ impl Controller {
                     self.sign_out()?;
                 }
             }
-            Req::SystemTrayMenu(TrayMenuEvent::ShowWindow(window)) => self.show_window(window)?,
+            Req::SystemTrayMenu(TrayMenuEvent::ShowWindow(window)) => {
+                self.show_window(window)?;
+                // When the About or Settings windows are hidden / shown, log the
+                // run ID and uptime. This makes it easy to check client stability on
+                // dev or test systems without parsing the whole log file.
+                let uptime_info = self.uptime.info();
+                tracing::debug!(
+                    uptime_s = uptime_info.uptime.as_secs(),
+                    run_id = uptime_info.run_id.to_string(),
+                    "Uptime info"
+                );
+            }
             Req::SystemTrayMenu(TrayMenuEvent::Resource { id }) => self
                 .copy_resource(&id)
                 .context("Couldn't copy resource to clipboard")?,
@@ -784,6 +796,7 @@ async fn run_controller(
         logging_handles,
         notify_controller,
         tunnel_ready: false,
+        uptime: Default::default(),
     };
 
     if let Some(token) = controller
