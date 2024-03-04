@@ -3,29 +3,16 @@ on:
   workflow_call:
 
 jobs:
-  pr-title-check:
+  pr-lint:
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-22.04
+    permissions:
+      pull-requests: read
     steps:
-      - name: Check PR title
-        if: ${{ github.event.pull_request }}
+      - uses: amannn/action-semantic-pull-request@v5
         env:
-          VALID_PREFIXES: |
-            feat
-            fix
-            refactor
-            chore
-            docs
-            security
-            deps
-        run: |
-          for prefix in $VALID_PREFIXES; do
-            if [[ "${{ github.event.pull_request.title }}" == "$prefix"* ]]; then
-              echo "PR title '${{ github.event.pull_request.title }}' is valid"
-              exit 0
-            fi
-          done
-          echo "Invalid PR title ${{ github.event.pull_request.title }}. Must be one of: feat, fix, refactor, chore, docs, security, deps"
-          exit 1
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   version-check:
     runs-on: macos-14
     steps:
