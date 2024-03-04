@@ -12,7 +12,6 @@ inputs:
 runs:
   using: "composite"
   steps:
-
     # Setup sccache, works well for most Rust components
     - if: ${{ inputs.cache_backend == 'sccache' }}
       id: auth
@@ -29,6 +28,7 @@ runs:
       shell: bash
     - if: ${{ inputs.cache_backend == 'sccache' }}
       uses: mozilla-actions/sccache-action@v0.0.4
+      shell: bash
     - if: ${{ inputs.cache_backend == 'sccache' }}
       run: echo "RUSTC_WRAPPER=$SCCACHE_PATH" >> $GITHUB_ENV
       shell: bash
