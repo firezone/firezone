@@ -28,10 +28,12 @@ where
         let result_v6 = device.add_route(PEERS_IPV6.parse().unwrap(), self.callbacks());
         result_v4.or(result_v6)?;
 
+        let name = device.name().to_owned();
+
         self.device = Some(device);
         self.no_device_waker.wake();
 
-        tracing::debug!(ip4 = %config.ipv4, ip6 = %config.ipv6, "TUN device initialized");
+        tracing::debug!(ip4 = %config.ipv4, ip6 = %config.ipv6, %name, "TUN device initialized");
 
         Ok(())
     }

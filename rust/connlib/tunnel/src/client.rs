@@ -176,6 +176,8 @@ where
             self.callbacks(),
         )?;
 
+        let name = device.name().to_owned();
+
         self.device = Some(device);
         self.no_device_waker.wake();
 
@@ -199,7 +201,7 @@ where
 
         self.callbacks.on_tunnel_ready()?;
 
-        tracing::debug!(ip4 = %config.ipv4, ip6 = %config.ipv6, "TUN device initialized");
+        tracing::debug!(ip4 = %config.ipv4, ip6 = %config.ipv6, %name, "TUN device initialized");
 
         Ok(())
     }
