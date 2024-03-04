@@ -11,9 +11,7 @@ pub mod messages;
 
 /// Module to generate and store a persistent device ID on disk
 ///
-/// Only needed for Linux and Windows, for the Tauri and headless clients which do this
-/// in Rust.
-#[cfg(any(target_os = "linux", target_os = "windows"))]
+/// Only properly implemented on Linux and Windows (platforms with Tauri and headless client)
 pub mod device_id;
 
 // Must be compiled on Mac so the Mac runner can do `version-check` on `linux-client`
