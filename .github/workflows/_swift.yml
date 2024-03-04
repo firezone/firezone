@@ -91,12 +91,7 @@ jobs:
           fi
           security list-keychain -d user -s $KEYCHAIN_PATH
       - name: Disable IPv6 to workaround sccache issues
-        run: |
-          set -ex
-
-          sudo networksetup -listallnetworkservices
-          sudo networksetup -setv6off Wi-Fi
-          sudo networksetup -setv6off Ethernet
+        run: sudo networksetup -setv6off Ethernet
       - name: Build and sign app
         id: build
         env:
