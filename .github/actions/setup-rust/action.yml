@@ -27,7 +27,7 @@ runs:
       shell: bash
     - if: ${{ inputs.sccache_enabled == 'true' }}
       uses: mozilla-actions/sccache-action@v0.0.4
-    - if: ${{ inputs.sccache_enabled }}
+    - if: ${{ inputs.sccache_enabled == 'true' }}
       run: echo "RUSTC_WRAPPER=$SCCACHE_PATH" >> $GITHUB_ENV
       shell: bash
     - name: Extract Rust version
