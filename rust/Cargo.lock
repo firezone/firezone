@@ -1908,7 +1908,7 @@ dependencies = [
  "url",
  "uuid",
  "windows 0.52.0",
- "windows-implement 0.52.0",
+ "windows-implement 0.53.0",
  "winreg 0.52.0",
  "wintun",
  "zip",
@@ -7417,6 +7417,17 @@ name = "windows-implement"
 version = "0.52.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "12168c33176773b86799be25e2a2ba07c7aab9968b37541f1094dbd7a60c8946"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.51",
+]
+
+[[package]]
+name = "windows-implement"
+version = "0.53.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "942ac266be9249c84ca862f0a164a39533dc2f6f33dc98ec89c8da99b82ea0bd"
 dependencies = [
  "proc-macro2",
  "quote",
