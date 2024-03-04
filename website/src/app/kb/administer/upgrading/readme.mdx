@@ -1,5 +1,6 @@
 import { HiCheck } from "react-icons/hi2";
 import { TabsItem, TabsGroup } from "@/components/DocsTabs";
+import Image from "next/image";
 
 # Upgrading Firezone
 
@@ -57,6 +58,28 @@ Gateway, and then restarts it using the newer image with the same configuration.
 
 ```bash
 curl -s https://raw.githubusercontent.com/firezone/firezone/main/scripts/gateway-docker-upgrade.sh | bash
+```
+
+### Verification
+
+After running the upgrade, you can verify the Gateway is running the latest
+version by ensuring the sha256 hash of the pulled image matches the latest
+[artifact published on GitHub](https://github.com/firezone/firezone/pkgs/container/gateway/184806062?tag=latest):
+
+<Image
+  src="/images/kb/administer/upgrading/gateway-upgrade-verify.png"
+  width={500}
+  height={500}
+  className="mx-auto"
+  alt="Gateway upgrade verification"
+/>
+
+```bash
+# Get the sha256 hash of the your gateway image
+> docker inspect ghcr.io/firezone/gateway:1.0 --format='{{index .RepoDigests 0}}'
+
+# Ensure this hash matches the latest available image above
+ghcr.io/firezone/gateway@sha256:0516fa4a305fac10571238db2b7bf02e6adeda0fb5afc1fe7e8d0c4d0a93ebc6
 ```
 
 </TabsItem>
