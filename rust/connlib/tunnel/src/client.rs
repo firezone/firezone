@@ -88,9 +88,8 @@ where
         Ok(())
     }
 
+    #[tracing::instrument(level = "debug", skip_all, fields(%id))]
     pub fn remove_resource(&mut self, id: ResourceId) {
-        tracing::info!(%id, "Removing resource");
-
         self.role_state.awaiting_connection.remove(&id);
         self.role_state
             .dns_resources_internal_ips
@@ -114,6 +113,7 @@ where
         }
 
         let Some(gateway_id) = self.role_state.resources_gateways.remove(&id) else {
+            tracing::debug!("No gateway associated with resource");
             return;
         };
 
@@ -148,6 +148,8 @@ where
             self.role_state.peers.remove(&gateway_id);
             // TODO: should we have a Node::remove_connection?
         }
+
+        tracing::debug!("Resource removed")
     }
 
     fn update_resource_list(&self) -> connlib_shared::Result<()> {
