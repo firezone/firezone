@@ -60,6 +60,13 @@ impl DeviceIdJson {
     }
 }
 
+#[cfg(not(any(target_os = "linux", target_os = "windows")))]
+mod imp {
+    pub(crate) fn path() -> Option<std::path::PathBuf> {
+        panic!("This function is only implemented on Linux and Windows since those have pure-Rust clients")
+    }
+}
+
 #[cfg(target_os = "linux")]
 mod imp {
     use std::path::PathBuf;
@@ -78,14 +85,6 @@ mod imp {
                 .join(crate::BUNDLE_ID)
                 .join("config"),
         )
-    }
-}
-
-#[cfg(target_os = "macos")]
-mod imp {
-    pub(crate) fn path() -> Option<std::path::PathBuf> {
-        // If we get an all-Rust headless Mac client, this would actually be used.
-        panic!("This code path is not used on macOS, but this function must exist so that `version-check` can run Cargo on `linux-client`");
     }
 }
 
