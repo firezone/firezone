@@ -43,6 +43,7 @@ struct AuthView: View {
         Image("LogoText")
           .resizable()
           .scaledToFit()
+          .frame(maxWidth: 600)
           .padding(.horizontal, 10)
         Spacer()
         Button("Sign in") {

@@ -104,6 +104,7 @@ import SwiftUINavigationCore
             Image("LogoText")
               .resizable()
               .scaledToFit()
+              .frame(maxWidth: 600)
               .padding(.horizontal, 10)
           case .needsPermission(let model):
             AskPermissionView(model: model)
