@@ -30,18 +30,36 @@
 
 	<!-- Error Dialog -->
 	<string name="error_dialog_title">Error</string>
-	<string name="error_dialog_message">Oops! Something went wrong. Contact your admin if this issue persists.</string>
+	<string name="error_dialog_message">
+		Oops! Something went wrong. Contact your admin if this issue persists.
+	</string>
 	<string name="error_dialog_button_text">Ok</string>
 	<string name="enable_vpn_permission">Enable VPN Permission</string>
-	<string name="vpn_permission_description">Firezone requires the VPN permission in order to route packets from your device to protected resources in a secure manner. All communication is end-to-end encrypted; we can never decrypt or otherwise monitor your communication. Please grant the VPN permission by tapping the button below.</string>
+	<string name="vpn_permission_description">
+		Firezone requires the VPN permission in order to route packets from your device to protected
+		resources in a secure manner. All communication is end-to-end encrypted; we can never
+		decrypt or otherwise monitor your communication. Please grant the VPN permission by tapping
+		the button below.
+	</string>
 	<string name="request_permission">Request Permission</string>
 	<string name="signing_in_requires_chrome_browser">Signing in requires Chrome browser</string>
 
 	<!-- Managed Configuration -->
 	<string name="config_token_title">Token</string>
-	<string name="config_token_description">The token used for authentication. Set this to a service account token to enable headless operation.</string>
+	<string name="config_token_description">
+		The token used for authentication.
+		Set this to a service account token to enable headless operation.
+	</string>
 	<string name="config_allowed_applications_title">Allowed Applications</string>
-	<string name="config_allowed_applications_description">A comma-separated list of application package IDs that are allowed to use the Firezone tunnel. If this list is empty, all applications are allowed.</string>
+	<string name="config_allowed_applications_description">
+		A comma-separated list of application package IDs that are allowed to use the Firezone
+		tunnel. If this list is empty, all applications are allowed. Either "Allowed Applications"
+		OR "Disallowed Applications" may be set *but not* both.
+	</string>
 	<string name="config_disallowed_applications_title">Disallowed Applications</string>
-	<string name="config_disallowed_applications_description">A comma-separated list of application package IDs that are disallowed to use the Firezone tunnel and will be routed outside of it. If this list is empty, no applications are disallowed.</string>
+	<string name="config_disallowed_applications_description">A comma-separated list of application
+		package IDs that are disallowed to use the Firezone tunnel and will be routed outside of it.
+		If this list is empty, no applications are disallowed. Either "Allowed Applications" OR
+		"Disallowed Applications" may be set *but not* both.
+	</string>
 </resources>
