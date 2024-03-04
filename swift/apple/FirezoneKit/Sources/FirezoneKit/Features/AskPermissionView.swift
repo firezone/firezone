@@ -82,6 +82,9 @@ public struct AskPermissionView: View {
       content: {
         Spacer()
         Image("LogoText")
+          .resizable()
+          .scaledToFit()
+          .padding(.horizontal, 10)
         Spacer()
         if $model.needsTunnelPermission.wrappedValue {
 
