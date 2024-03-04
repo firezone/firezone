@@ -16,6 +16,7 @@ mod network_changes;
 mod resolvers;
 mod settings;
 mod updates;
+mod uptime;
 
 #[cfg(target_os = "windows")]
 mod wintun_install;
