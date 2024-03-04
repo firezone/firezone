@@ -352,10 +352,10 @@ where
         if self.stats_timer.poll_tick(cx).is_ready() {
             let (node_stats, conn_stats) = self.node.stats();
 
-            tracing::info!(target: "connlib::stats", "{node_stats:?}");
+            tracing::debug!(target: "connlib::stats", "{node_stats:?}");
 
             for (id, stats) in conn_stats {
-                tracing::info!(target: "connlib::stats", %id, "{stats:?}");
+                tracing::debug!(target: "connlib::stats", %id, "{stats:?}");
             }
 
             cx.waker().wake_by_ref();
