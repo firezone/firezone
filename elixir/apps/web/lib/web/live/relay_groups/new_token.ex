@@ -240,12 +240,12 @@ defmodule Web.RelayGroups.NewToken do
       {"RUST_LOG",
        Enum.join(
          [
-           "firezone_relay=trace",
-           "firezone_tunnel=trace",
-           "connlib_shared=trace",
-           "tunnel_state=trace",
-           "phoenix_channel=debug",
-           "snownet=debug",
+           "firezone_relay=info",
+           "firezone_tunnel=info",
+           "connlib_shared=info",
+           "tunnel_state=info",
+           "phoenix_channel=info",
+           "snownet=info",
            "str0m=info",
            "warn"
          ],
