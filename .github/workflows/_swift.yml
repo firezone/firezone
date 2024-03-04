@@ -29,7 +29,6 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-rust
         with:
-          cache_backend: sccache
           targets: aarch64-apple-darwin aarch64-apple-ios x86_64-apple-darwin
       - uses: actions/cache/restore@v4
         name: Restore Swift DerivedData Cache
