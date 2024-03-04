@@ -2,7 +2,7 @@ use std::fs;
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
-    #[error("Couldn't create app-specific dir in `ProgramData`: {0}")]
+    #[error("Couldn't create app-specific dir in `ProgramData` or `/var/lib`: {0}")]
     CreateProgramDataDir(std::io::Error),
     #[error("Can't find well-known folder")]
     KnownFolder,
@@ -92,10 +92,10 @@ mod imp {
     /// e.g. `C:\ProgramData\dev.firezone.client\config`
     ///
     /// Device ID is stored here until <https://github.com/firezone/firezone/issues/3712> lands
-    pub(crate) fn path() -> Option<PathBuf> {
+    pub(crate) fn path() -> Option<std::path::PathBuf> {
         Some(
             get_known_folder_path(KnownFolder::ProgramData)?
-                .join(BUNDLE_ID)
+                .join(crate::BUNDLE_ID)
                 .join("config"),
         )
     }
