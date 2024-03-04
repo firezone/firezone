@@ -635,8 +635,8 @@ impl Controller {
                     self.sign_out()?;
                 }
             }
-            Req::SystemTrayMenu(TrayMenuEvent::ToggleWindow(window)) => {
-                self.toggle_window(window)?;
+            Req::SystemTrayMenu(TrayMenuEvent::ShowWindow(window)) => {
+                self.show_window(window)?;
                 // When the About or Settings windows are hidden / shown, log the
                 // run ID and uptime. This makes it easy to check client stability on
                 // dev or test systems without parsing the whole log file.
@@ -756,7 +756,7 @@ impl Controller {
         Ok(())
     }
 
-    fn toggle_window(&self, window: system_tray_menu::Window) -> Result<()> {
+    fn show_window(&self, window: system_tray_menu::Window) -> Result<()> {
         let id = match window {
             system_tray_menu::Window::About => "about",
             system_tray_menu::Window::Settings => "settings",
