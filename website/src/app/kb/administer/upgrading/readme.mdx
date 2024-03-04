@@ -75,7 +75,7 @@ version by ensuring the sha256 hash of the pulled image matches the latest
 />
 
 ```bash
-# Get the sha256 hash of the your gateway image
+# Get the sha256 hash of the gateway image running on your system
 > docker inspect ghcr.io/firezone/gateway:1.0 --format='{{index .RepoDigests 0}}'
 
 # Ensure this hash matches the latest available image above
