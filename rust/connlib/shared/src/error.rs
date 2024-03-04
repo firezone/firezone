@@ -161,15 +161,10 @@ pub enum ConnlibError {
     #[error(transparent)]
     JoinError(#[from] JoinError),
 
-    // Error variants for `/etc/resolv.conf` DNS control
-    #[error("Failed to read `resolv.conf`: {0}")]
-    ReadResolvConf(std::io::Error),
-    #[error("Failed to parse `resolv.conf`")]
-    ParseResolvConf,
-    #[error("Failed to backup `resolv.conf`: {0}")]
-    WriteResolvConfBackup(std::io::Error),
-    #[error("Failed to rewrite `resolv.conf`: {0}")]
-    RewriteResolvConf(std::io::Error),
+    #[cfg(target_os = "linux")]
+    #[error("Error while rewriting `/etc/resolv.conf`: {0}")]
+    ResolvConf(#[from] crate::linux::etc_resolv_conf::Error),
+
     #[error(transparent)]
     Snownet(#[from] snownet::Error),
     #[error("Detected non-allowed packet in channel")]
