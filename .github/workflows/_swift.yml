@@ -29,6 +29,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-rust
         with:
+          # sccache fails on the macos-14 runners because for some reason they ask
+          # for a AAAA record for metadata.google.internal which doesn't exist.
+          cache_backend: sccache
           targets: aarch64-apple-darwin aarch64-apple-ios x86_64-apple-darwin
       - uses: actions/cache/restore@v4
         name: Restore Swift DerivedData Cache
@@ -87,6 +90,13 @@ jobs:
             security import $INSTALLER_CERT_PATH -P "$INSTALLER_CERT_PASS" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
           fi
           security list-keychain -d user -s $KEYCHAIN_PATH
+      - name: Disable IPv6 to workaround sccache issues
+        run: |
+          set -ex
+
+          sudo networksetup -listallnetworkservices
+          sudo networksetup -setv6off Wi-Fi
+          sudo networksetup -setv6off Ethernet
       - name: Build and sign app
         id: build
         env:
