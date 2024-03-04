@@ -130,6 +130,7 @@ import SwiftUINavigationCore
       .sheet(isPresented: $model.isSettingsSheetPresented) {
         SettingsView(model: model.settingsViewModel)
       }
+      .navigationViewStyle(StackNavigationViewStyle())
     }
   }
 #endif
