@@ -86,7 +86,7 @@ jobs:
     runs-on: ${{ matrix.runs-on }}
     defaults:
       run:
-        working-directory: ./rust/gui-client
+        working-directory: ./rust
     env:
       CONNLIB_LOG_UPLOAD_INTERVAL_SECS: 300
       # The Windows client ignores RUST_LOG because it uses a settings file instead
@@ -109,10 +109,10 @@ jobs:
         run: cargo build -p firezone-gui-client
       - name: Run smoke tests (Linux)
         if: ${{ runner.os == 'Linux' }}
-        run: bash ../../scripts/tests/smoke-test-gui-linux.sh
+        run: bash ../scripts/tests/smoke-test-gui-linux.sh
       - name: Run smoke tests (Windows)
         if: ${{ runner.os == 'Windows' }}
-        run: bash ../../scripts/tests/smoke-test-gui-windows.sh
+        run: bash ../scripts/tests/smoke-test-gui-windows.sh
 
   # This should be identical to `build-push-windows-release-artifacts` in `cd.yml` except for the Github permissions, needs tag, and uploading step
   build-gui:
