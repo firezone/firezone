@@ -3,7 +3,7 @@
 set -euo pipefail
 
 BUNDLE_ID="dev.firezone.client"
-DEVICE_ID_PATH="$HOME/.config/$BUNDLE_ID/config/device_id.json"
+DEVICE_ID_PATH="/var/lib/$BUNDLE_ID/config/firezone-id.json"
 DUMP_PATH="$HOME/.cache/$BUNDLE_ID/data/logs/last_crash.dmp"
 export FIREZONE_DISABLE_SYSTRAY=true
 PACKAGE=firezone-gui-client

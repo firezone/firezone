@@ -75,12 +75,14 @@ mod imp {
     ///
     /// `firezone-id` is the name of the variable, it's okay if it's not hidden since the
     /// FHS specifies that users should not know about the file layout in `/var`.
+    ///
+    /// The JSON format is cautious forward-compatibility in case we need anything else there.
     pub(crate) fn path() -> Option<PathBuf> {
         Some(
             PathBuf::from("/var/lib")
                 .join(crate::BUNDLE_ID)
                 .join("config")
-                .join("firezone-id"),
+                .join("firezone-id.json"),
         )
     }
 }
