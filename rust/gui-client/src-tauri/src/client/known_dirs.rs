@@ -118,3 +118,18 @@ mod imp {
         )
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn smoke() {
+        for dir in [device_id(), logs(), runtime(), session(), settings()] {
+            let dir = dir.expect("should have gotten Some(path)");
+            assert!(dir
+                .components()
+                .any(|x| x == std::path::Component::Normal("dev.firezone.client".as_ref())));
+        }
+    }
+}

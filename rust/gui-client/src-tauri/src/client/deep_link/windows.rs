@@ -162,3 +162,14 @@ fn set_registry_values(id: &str, exe: &str) -> Result<(), io::Error> {
 fn named_pipe_path(id: &str) -> String {
     format!(r"\\.\pipe\{}", id)
 }
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn named_pipe_path() {
+        assert_eq!(
+            super::named_pipe_path("dev.firezone.client"),
+            r"\\.\pipe\dev.firezone.client"
+        );
+    }
+}

@@ -267,6 +267,14 @@ mod tests {
         SecretString::new(x.into())
     }
 
+    #[test]
+    fn actor_name_path() {
+        assert!(super::actor_name_path()
+            .expect("`actor_name_path` should return Ok")
+            .components()
+            .any(|x| x == std::path::Component::Normal("dev.firezone.client".as_ref())));
+    }
+
     /// Runs everything in one test so that `cargo test` can't multi-thread it
     /// This should work around a bug we had <https://github.com/firezone/firezone/issues/3256>
     #[test]
