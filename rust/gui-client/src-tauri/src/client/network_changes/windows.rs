@@ -202,7 +202,8 @@ impl ComGuard {
     pub fn new() -> Result<Self, Error> {
         // SAFETY: Threading shouldn't be a problem since this is meant to initialize
         // COM per-thread anyway.
-        unsafe { Com::CoInitializeEx(None, Com::COINIT_MULTITHREADED) }.ok()
+        unsafe { Com::CoInitializeEx(None, Com::COINIT_MULTITHREADED) }
+            .ok()
             .map_err(Error::ComInitialize)?;
         Ok(Self {
             dropped: false,
