@@ -147,6 +147,8 @@ struct Cli {
     common: CommonArgs,
 
     /// Identifier used by the portal to identify and display the device.
+    ///
+    /// AKA `device_id` in the Windows and Linux GUI clients
     #[arg(short = 'i', long, env = "FIREZONE_ID")]
     pub firezone_id: String,
 

@@ -1,4 +1,4 @@
-use tokio::fs;
+use std::fs;
 
 #[derive(thiserror::Error, Debug)]
 pub(crate) enum Error {
@@ -18,13 +18,12 @@ pub(crate) enum Error {
 /// Returns: The UUID as a String, suitable for sending verbatim to `connlib_client_shared::Session::connect`.
 ///
 /// Errors: If the disk is unwritable when initially generating the ID, or unwritable when re-generating an invalid ID.
-pub(crate) async fn device_id() -> Result<String, Error> {
+pub(crate) fn device_id() -> Result<String, Error> {
     let dir = crate::client::known_dirs::device_id().ok_or(Error::KnownFolder)?;
     let path = dir.join("device_id.json");
 
-    // Try to read it back from disk
+    // Try to read it from the disk
     if let Some(j) = fs::read_to_string(&path)
-        .await
         .ok()
         .and_then(|s| serde_json::from_str::<DeviceIdJson>(&s).ok())
     {
@@ -38,14 +37,11 @@ pub(crate) async fn device_id() -> Result<String, Error> {
     let j = DeviceIdJson { id };
     // TODO: This file write has the same possible problems with power loss as described here https://github.com/firezone/firezone/pull/2757#discussion_r1416374516
     // Since the device ID is random, typically only written once in the device's lifetime, and the read will error out if it's corrupted, it's low-risk.
-    fs::create_dir_all(&dir)
-        .await
-        .map_err(Error::CreateProgramDataDir)?;
+    fs::create_dir_all(&dir).map_err(Error::CreateProgramDataDir)?;
     fs::write(
         &path,
         serde_json::to_string(&j).expect("Device ID should always be serializable"),
     )
-    .await
     .map_err(Error::WriteDeviceIdFile)?;
 
     let device_id = j.device_id();
