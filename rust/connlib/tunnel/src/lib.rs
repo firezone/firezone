@@ -256,7 +256,7 @@ where
             write_buf: Box::new([0; MAX_UDP_SIZE]),
             connection_pool_timeout: sleep_until(std::time::Instant::now()).boxed(),
             sockets: Sockets::new()?,
-            stats_timer: tokio::time::interval(Duration::from_secs(10)),
+            stats_timer: tokio::time::interval(Duration::from_secs(60)),
         })
     }
 
