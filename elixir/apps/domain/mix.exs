@@ -71,7 +71,7 @@ defmodule Domain.MixProject do
       {:opentelemetry, "~> 1.3"},
       {:opentelemetry_logger_metadata, "~> 0.1.0"},
       {:opentelemetry_exporter, "~> 1.5"},
-      {:opentelemetry_ecto, "~> 1.1"},
+      {:opentelemetry_ecto, "~> 1.2"},
       {:opentelemetry_finch, "~> 0.2.0"},
 
       # Mailer deps
