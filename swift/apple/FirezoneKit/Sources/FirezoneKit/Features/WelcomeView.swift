@@ -101,7 +101,7 @@ import SwiftUINavigationCore
         Group {
           switch model.state {
           case .uninitialized:
-            Image("LogoText")          
+            Image("LogoText")
               .resizable()
               .scaledToFit()
               .padding(.horizontal, 10)
