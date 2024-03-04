@@ -20,7 +20,7 @@ pub enum Error {
 /// Errors: If the disk is unwritable when initially generating the ID, or unwritable when re-generating an invalid ID.
 pub fn get() -> Result<String, Error> {
     let dir = imp::path().ok_or(Error::KnownFolder)?;
-    let path = dir.join("device_id.json");
+    let path = dir.join("firezone-id.json");
 
     // Try to read it from the disk
     if let Some(j) = fs::read_to_string(&path)
@@ -72,18 +72,20 @@ mod imp {
     /// `BUNDLE_ID` because we need our own subdir
     ///
     /// `config` to make how Windows has `config` and `data` both under `AppData/Local/$BUNDLE_ID`
-    ///
-    /// `firezone-id` is the name of the variable, it's okay if it's not hidden since the
-    /// FHS specifies that users should not know about the file layout in `/var`.
-    ///
-    /// The JSON format is cautious forward-compatibility in case we need anything else there.
     pub(crate) fn path() -> Option<PathBuf> {
         Some(
             PathBuf::from("/var/lib")
                 .join(crate::BUNDLE_ID)
-                .join("config")
-                .join("firezone-id.json"),
+                .join("config"),
         )
+    }
+}
+
+#[cfg(target_os = "macos")]
+mod imp {
+    pub(crate) fn path() -> Option<std::path::PathBuf> {
+        // If we get an all-Rust headless Mac client, this would actually be used.
+        panic!("This code path is not used on macOS, but this function must exist so that `version-check` can run Cargo on `linux-client`");
     }
 }
 

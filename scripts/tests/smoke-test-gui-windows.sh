@@ -10,7 +10,7 @@ if [[ -z "$ProgramData" ]]; then
 fi
 
 BUNDLE_ID="dev.firezone.client"
-DEVICE_ID_PATH="$ProgramData/$BUNDLE_ID/config/device_id.json"
+DEVICE_ID_PATH="$ProgramData/$BUNDLE_ID/config/firezone-id.json"
 DUMP_PATH="$LOCALAPPDATA/$BUNDLE_ID/data/logs/last_crash.dmp"
 PACKAGE=firezone-gui-client
 
