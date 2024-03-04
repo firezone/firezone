@@ -102,6 +102,9 @@ import SwiftUINavigationCore
           switch model.state {
           case .uninitialized:
             Image("LogoText")
+              .resizable()
+              .scaledToFit()
+              .padding(.horizontal, 10)
           case .needsPermission(let model):
             AskPermissionView(model: model)
           case .unauthenticated(let model):

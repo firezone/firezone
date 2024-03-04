@@ -41,6 +41,9 @@ struct AuthView: View {
       content: {
         Spacer()
         Image("LogoText")
+          .resizable()
+          .scaledToFit()
+          .padding(.horizontal, 10)
         Spacer()
         Button("Sign in") {
           Task {
