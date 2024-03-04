@@ -96,6 +96,8 @@ jobs:
         with:
           node-version: '20'
       - uses: ./.github/actions/setup-rust
+        with:
+          cache-backend: 'github'
       - uses: ./.github/actions/setup-tauri
       - name: pnpm install
         run: |
@@ -140,6 +142,8 @@ jobs:
         with:
           node-version: '20'
       - uses: ./.github/actions/setup-rust
+        with:
+          cache-backend: 'github'
       - uses: ./.github/actions/setup-tauri
       - name: Install pnpm deps
         run: pnpm install

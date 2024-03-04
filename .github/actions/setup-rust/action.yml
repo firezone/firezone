@@ -1,10 +1,10 @@
 name: "Setup Rust"
 description: "Sets up the correct Rust version and caching via sccache and a GCP backend"
 inputs:
-  sccache_enabled:
-    description: "Enable or disable the sccache service"
+  cache_backend:
+    description: "Choose between sccache or github"
     required: false
-    default: 'true'
+    default: 'sccache'
   targets:
     description: "Additional targets to install"
     required: false
@@ -12,7 +12,9 @@ inputs:
 runs:
   using: "composite"
   steps:
-    - if: ${{ inputs.sccache_enabled == 'true' }}
+
+    # Setup sccache, works well for most Rust components
+    - if: ${{ inputs.cache_backend == 'sccache' }}
       id: auth
       uses: google-github-actions/auth@v2
       with:
@@ -20,16 +22,26 @@ runs:
         service_account: "github-actions@github-iam-387915.iam.gserviceaccount.com"
         export_environment_variables: true
         create_credentials_file: true
-    - if: ${{ inputs.sccache_enabled == 'true' }}
+    - if: ${{ inputs.cache_backend == 'sccache' }}
       run: |
         echo "SCCACHE_GCS_BUCKET=firezone-staging-sccache" >> $GITHUB_ENV
         echo "SCCACHE_GCS_RW_MODE=READ_WRITE" >> $GITHUB_ENV
       shell: bash
-    - if: ${{ inputs.sccache_enabled == 'true' }}
+    - if: ${{ inputs.cache_backend == 'sccache' }}
       uses: mozilla-actions/sccache-action@v0.0.4
-    - if: ${{ inputs.sccache_enabled == 'true' }}
+    - if: ${{ inputs.cache_backend == 'sccache' }}
       run: echo "RUSTC_WRAPPER=$SCCACHE_PATH" >> $GITHUB_ENV
       shell: bash
+
+    # Setup GH actions cache, works better for Tauri clients and some libs
+    - if: ${{ inputs.cache_backend == 'github' }}
+      uses: Swatinem/rust-cache@v2
+      with:
+        save-if: ${{ github.ref_name == 'main' }}
+        key: ${{ runner.os }}-${{ runner.arch }}
+        workspaces: ./rust
+
+    # Common to either cache backend
     - name: Extract Rust version
       run: |
         RUST_TOOLCHAIN=$(grep 'channel' rust-toolchain.toml | awk -F '"' '{print $2}')
