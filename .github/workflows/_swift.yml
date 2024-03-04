@@ -14,10 +14,12 @@ jobs:
           - sdk: macosx
             runs-on: macos-14
             platform: macOS
+            xcode: '15.2'
             destination: platform=macOS
           - sdk: iphoneos
             runs-on: macos-14
             platform: iOS
+            xcode: '15.2'
             destination: generic/platform=iOS
     permissions:
       contents: read
@@ -100,6 +102,9 @@ jobs:
           # Needed because `productbuild` doesn't support picking this up automatically like Xcode does
           INSTALLER_CODE_SIGN_IDENTITY: "3rd Party Mac Developer Installer: Firezone, Inc. (47R2M6779T)"
         run: |
+          # Select Xcode version we use for building
+          sudo xcode-select -s /Applications/Xcode_${{ matrix.xcode }}.app
+
           # Copy xcconfig
           cp Firezone/xcconfig/release.xcconfig Firezone/xcconfig/config.xcconfig
 
