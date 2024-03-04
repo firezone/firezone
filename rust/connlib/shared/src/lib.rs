@@ -9,7 +9,14 @@ pub mod control;
 pub mod error;
 pub mod messages;
 
+/// Module to generate and store a persistent device ID on disk
+///
+/// Only needed for Linux and Windows, for the Tauri and headless clients which do this
+/// in Rust.
+#[cfg(any(target_os = "linux", target_os = "windows"))]
 pub mod device_id;
+
+#[cfg(target_os = "linux")]
 pub mod linux;
 
 #[cfg(target_os = "windows")]
