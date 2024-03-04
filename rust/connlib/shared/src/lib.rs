@@ -16,7 +16,7 @@ pub mod messages;
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 pub mod device_id;
 
-#[cfg(target_os = "linux")]
+// Must be compiled on Mac so the Mac runner can do `version-check` on `linux-client`
 pub mod linux;
 
 #[cfg(target_os = "windows")]
