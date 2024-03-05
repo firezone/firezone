@@ -248,8 +248,19 @@ public final class AuthStore: ObservableObject {
       let alert = NSAlert()
       alert.messageText = "Your Firezone session has ended"
       alert.informativeText = "Please sign in again to reconnect"
+      alert.addButton(withTitle: "Sign In")
+      alert.addButton(withTitle: "Cancel")
       NSApp.activate(ignoringOtherApps: true)
-      alert.runModal()
+      let response = alert.runModal()
+      if response == NSApplication.ModalResponse.alertFirstButtonReturn {
+        Task {
+          do {
+            try await self.signIn()
+          } catch {
+            self.logger.error("Error signing in: \(error)")
+          }
+        }
+      }
     }
   #endif
 
