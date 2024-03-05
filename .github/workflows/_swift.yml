@@ -98,7 +98,7 @@ jobs:
           INSTALLER_CODE_SIGN_IDENTITY: "3rd Party Mac Developer Installer: Firezone, Inc. (47R2M6779T)"
         run: |
           # Use the same Xcode version as development
-          sudo xcode-select -s /Applications/Xcode-${{ matrix.xcode }}.app
+          sudo xcode-select -s /Applications/Xcode_${{ matrix.xcode }}.app
 
           # Copy xcconfig
           cp Firezone/xcconfig/release.xcconfig Firezone/xcconfig/config.xcconfig
