@@ -36,10 +36,6 @@ updates:
         update-types:
           - minor
   - package-ecosystem: gradle
-    directory: rust/connlib/clients/android/connlib/
-    schedule:
-      interval: monthly
-  - package-ecosystem: gradle
     directory: kotlin/android/
     schedule:
       interval: monthly
