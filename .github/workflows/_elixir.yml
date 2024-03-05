@@ -53,7 +53,7 @@ jobs:
         run: mix deps.compile --skip-umbrella-children
       - uses: actions/cache/save@v4
         name: Save Elixir Deps Cache
-        if: ${{ steps.cache.outputs.cache-hit != 'true' }}
+        if: ${{ github.ref_name == 'main' }}
         env:
           cache-name: elixir-deps-${{ env.MIX_ENV }}
         with:
@@ -119,7 +119,7 @@ jobs:
         run: mix deps.compile --skip-umbrella-children
       - uses: actions/cache/save@v4
         name: Save Elixir Deps Cache
-        if: ${{ steps.cache.outputs.cache-hit != 'true' }}
+        if: ${{ github.ref_name == 'main' }}
         env:
           cache-name: elixir-deps-${{ env.MIX_ENV }}
         with:
@@ -142,7 +142,7 @@ jobs:
         if: ${{ steps.plt_cache.outputs.cache-hit != 'true' }}
         run: mix dialyzer --plt
       - uses: actions/cache/save@v4
-        if: ${{ steps.plt_cache.outputs.cache-hit != 'true' && github.ref == 'refs/heads/main' }}
+        if: ${{ github.ref_name == 'main' }}
         name: Save PLT cache
         with:
           key: ubuntu-22.04-${{ runner.arch }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ hashFiles('elixir/mix.lock') }}
@@ -186,7 +186,7 @@ jobs:
         run: mix deps.compile --skip-umbrella-children
       - uses: actions/cache/save@v4
         name: Save Elixir Deps Cache
-        if: ${{ steps.cache.outputs.cache-hit != 'true' }}
+        if: ${{ github.ref_name == 'main' }}
         env:
           cache-name: elixir-deps-${{ env.MIX_ENV }}
         with:
@@ -265,7 +265,7 @@ jobs:
         run: mix deps.compile --skip-umbrella-children
       - uses: actions/cache/save@v4
         name: Save Elixir Deps Cache
-        if: ${{ steps.cache.outputs.cache-hit != 'true' }}
+        if: ${{ github.ref_name == 'main' }}
         env:
           cache-name: elixir-deps-${{ env.MIX_ENV }}
         with:
@@ -414,7 +414,7 @@ jobs:
         run: mix deps.compile --skip-umbrella-children
       - uses: actions/cache/save@v4
         name: Save Elixir Deps Cache
-        if: ${{ steps.cache.outputs.cache-hit != 'true' }}
+        if: ${{ github.ref_name == 'main' }}
         env:
           cache-name: elixir-deps-${{ env.MIX_ENV }}
         with:
@@ -443,7 +443,7 @@ jobs:
           mix assets.setup
       - uses: actions/cache/save@v4
         name: Save pnpm Deps Cache
-        if: ${{ steps.pnpm-web-deps-cache.outputs.cache-hit != 'true' }}
+        if: ${{ github.ref_name == 'main' }}
         env:
           cache-name: pnpm-deps-web
         with:
@@ -470,7 +470,7 @@ jobs:
           mix assets.build
       - uses: actions/cache/save@v4
         name: Save Web Assets Cache
-        if: ${{ steps.pnpm-web-build-cache.outputs.cache-hit != 'true' }}
+        if: ${{ github.ref_name == 'main' }}
         env:
           cache-name: pnpm-build-web
         with:
