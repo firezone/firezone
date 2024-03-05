@@ -25,6 +25,7 @@ mod system_tray_menu;
 #[path = "gui/os_linux.rs"]
 mod os;
 
+// Stub only
 #[cfg(target_os = "macos")]
 #[path = "gui/os_macos.rs"]
 mod os;

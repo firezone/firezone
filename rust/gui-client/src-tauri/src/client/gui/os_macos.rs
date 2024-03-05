@@ -1,3 +1,4 @@
+//! This file is a stub only to do Tauri UI dev natively on a Mac.
 use super::{ControllerRequest, CtlrTx, Error};
 
 /// Show a notification in the bottom right of the screen

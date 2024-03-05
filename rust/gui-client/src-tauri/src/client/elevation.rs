@@ -14,6 +14,7 @@ mod imp {
     }
 }
 
+// Stub only
 #[cfg(target_os = "macos")]
 mod imp {
     use anyhow::Result;
