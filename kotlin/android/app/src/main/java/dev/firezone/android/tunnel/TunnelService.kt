@@ -330,16 +330,24 @@ class TunnelService : VpnService() {
             addAddress(tunnelIpv6Address!!, 128)
 
             appRestrictions.getString("allowedApplications")?.let {
-                Firebase.crashlytics.log("Allowed applications: $it")
-                it.split(",").forEach { p ->
-                    addAllowedApplication(p.trim())
+                if (it.isNotBlank()) {
+                    Firebase.crashlytics.log("Allowed applications: $it")
+                    it.split(",").forEach { p ->
+                        if (p.isNotBlank()) {
+                            addAllowedApplication(p.trim())
+                        }
+                    }
                 }
             }
 
             appRestrictions.getString("disallowedApplications")?.let {
-                Firebase.crashlytics.log("Disallowed applications: $it")
-                it.split(",").forEach { p ->
-                    addDisallowedApplication(p.trim())
+                if (it.isNotBlank()) {
+                    Firebase.crashlytics.log("Disallowed applications: $it")
+                    it.split(",").forEach { p ->
+                        if (p.isNotBlank()) {
+                            addDisallowedApplication(p.trim())
+                        }
+                    }
                 }
             }
 
