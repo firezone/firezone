@@ -59,16 +59,16 @@ function smoke_test() {
 
 function crash_test() {
     # Delete the crash file if present
-    rm -f "$DUMP_PATH"
+    sudo rm -f "$DUMP_PATH"
 
     # Fail if it returns success, this is supposed to crash
     sudo xvfb-run --auto-servernum ../target/debug/"$PACKAGE" --crash && exit 1
 
     # Fail if the crash file wasn't written
-    stat "$DUMP_PATH"
+    sudo stat "$DUMP_PATH"
 
     # Clean up
-    rm "$DUMP_PATH"
+    sudo rm "$DUMP_PATH"
 }
 
 # Run the tests twice to make sure it's okay for the directories to stay intact
