@@ -20,7 +20,7 @@ function smoke_test() {
     files=(
         "$LOCALAPPDATA/$BUNDLE_ID/config/advanced_settings.json"
         "$LOCALAPPDATA/$BUNDLE_ID/data/wintun.dll"
-        "$ProgramData/$BUNDLE_ID/config/device_id.json"
+        "$DEVICE_ID_PATH"
     )
 
     # Make sure the files we want to check don't exist on the system yet
