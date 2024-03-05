@@ -95,14 +95,27 @@ where
             }));
         }
 
-        // TODO: Log errors
-        runtime.spawn(connect(
-            url,
-            private_key,
-            os_version_override,
-            callbacks.clone(),
-            max_partition_time,
-        ));
+        runtime.spawn({
+            let callbacks = callbacks.clone();
+
+            async move {
+                match connect(
+                    url,
+                    private_key,
+                    os_version_override,
+                    callbacks.clone(),
+                    max_partition_time,
+                )
+                .await
+                {
+                    Ok(never) => match never {},
+                    Err(e) => {
+                        tracing::error!("Tunnel failed: {e:#}");
+                        let _ = callbacks.on_disconnect();
+                    }
+                }
+            }
+        });
 
         std::thread::spawn(move || {
             rx.blocking_recv();
