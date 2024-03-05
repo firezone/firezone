@@ -29,11 +29,6 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-rust
         with:
-          # sccache fails on the macos-14 runners because for some reason they ask
-          # for a AAAA record for metadata.google.internal which doesn't exist.
-          # So use Github's cache to work around this.
-          # See https://github.com/firezone/firezone/issues/2443
-          cache_backend: github
           targets: aarch64-apple-darwin aarch64-apple-ios x86_64-apple-darwin
       - uses: actions/cache/restore@v4
         name: Restore Swift DerivedData Cache
