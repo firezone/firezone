@@ -277,14 +277,19 @@ jobs:
       - name: Sign the MSI
         if: ${{ runner.os == 'Windows' }}
         shell: bash
-        env:
-          AZURE_KEY_VAULT_URI: ${{ secrets.AZURE_KEY_VAULT_URI }}
-          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          AZURE_CERT_NAME: ${{ secrets.AZURE_CERT_NAME }}
-          MSI_PATH: ../target/release/bundle/msi/Firezone_${{ env.VERSION }}_x64_en-US.msi
-        run: ../../scripts/build/sign-msi.sh
+        run: |
+          # Install the required tools
+          dotnet tool install --global AzureSignTool
+
+          # Sign the MSI file
+          AzureSignTool sign \
+              -kvu "${{ secrets.AZURE_KEY_VAULT_URI }}" \
+              -kvi "${{ secrets.AZURE_CLIENT_ID }}" \
+              -kvt "${{ secrets.AZURE_TENANT_ID }}" \
+              -kvs "${{ secrets.AZURE_CLIENT_SECRET }}" \
+              -kvc "${{ secrets.AZURE_CERT_NAME }}" \
+              -tr http://timestamp.digicert.com \
+              -v ../target/release/bundle/msi/Firezone_${{ env.VERSION }}_x64_en-US.msi
       - name: Rename artifacts and compute SHA256
         shell: bash
         run: ${{ matrix.rename-script }}
