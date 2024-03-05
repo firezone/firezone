@@ -7,6 +7,7 @@ use backoff::ExponentialBackoffBuilder;
 use connlib_shared::{get_user_agent, CallbackErrorFacade, Result};
 use firezone_tunnel::Tunnel;
 use phoenix_channel::PhoenixChannel;
+use std::convert::Infallible;
 use std::time::Duration;
 
 mod eventloop;
@@ -95,27 +96,13 @@ where
         }
 
         // TODO: Log errors
-        runtime.spawn({
-            let callbacks = callbacks.clone();
-
-            async move {
-                let tunnel = Tunnel::new(private_key, callbacks)?;
-                let portal = PhoenixChannel::connect(
-                    Secret::new(url),
-                    get_user_agent(os_version_override),
-                    PHOENIX_TOPIC,
-                    (),
-                    ExponentialBackoffBuilder::default()
-                        .with_max_elapsed_time(max_partition_time)
-                        .with_max_interval(MAX_RECONNECT_INTERVAL)
-                        .build(),
-                );
-
-                let mut eventloop = Eventloop::new(tunnel, portal);
-
-                std::future::poll_fn(|cx| eventloop.poll(cx)).await
-            }
-        });
+        runtime.spawn(connect(
+            url,
+            private_key,
+            os_version_override,
+            callbacks.clone(),
+            max_partition_time,
+        ));
 
         std::thread::spawn(move || {
             rx.blocking_recv();
@@ -166,4 +153,31 @@ where
             tracing::error!("Couldn't stop runtime: {err}");
         }
     }
+}
+
+pub async fn connect<CB>(
+    url: LoginUrl,
+    private_key: StaticSecret,
+    os_version_override: Option<String>,
+    callbacks: CB,
+    max_partition_time: Option<Duration>,
+) -> anyhow::Result<Infallible>
+where
+    CB: Callbacks + 'static,
+{
+    let tunnel = Tunnel::new(private_key, callbacks)?;
+    let portal = PhoenixChannel::connect(
+        Secret::new(url),
+        get_user_agent(os_version_override),
+        PHOENIX_TOPIC,
+        (),
+        ExponentialBackoffBuilder::default()
+            .with_max_elapsed_time(max_partition_time)
+            .with_max_interval(MAX_RECONNECT_INTERVAL)
+            .build(),
+    );
+
+    let mut eventloop = Eventloop::new(tunnel, portal);
+
+    std::future::poll_fn(|cx| eventloop.poll(cx)).await
 }

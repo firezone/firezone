@@ -1100,6 +1100,7 @@ dependencies = [
  "tracing-appender",
  "tracing-oslog",
  "tracing-subscriber",
+ "url",
  "walkdir",
 ]
 

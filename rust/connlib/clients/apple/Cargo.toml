@@ -24,6 +24,7 @@ tracing = { workspace = true }
 tracing-oslog = { git = "https://github.com/sbag13/tracing-oslog", rev = "0f82b8051c65de86191e1350afc7a26d5c670c29" }
 tracing-subscriber = "0.3"
 tracing-appender = "0.2"
+url = "2.5.0"
 
 [lib]
 name = "connlib"
