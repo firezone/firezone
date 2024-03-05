@@ -14,6 +14,20 @@ mod imp {
     }
 }
 
+// Stub only
+#[cfg(target_os = "macos")]
+mod imp {
+    use anyhow::Result;
+
+    pub(crate) fn check() -> Result<bool> {
+        Ok(true)
+    }
+
+    pub(crate) fn elevate() -> Result<()> {
+        unimplemented!()
+    }
+}
+
 #[cfg(target_os = "windows")]
 mod imp {
     use crate::client::wintun_install;

@@ -14,6 +14,11 @@ pub fn get() -> Result<Vec<IpAddr>, Error> {
     todo!()
 }
 
+#[cfg(target_os = "macos")]
+pub fn get() -> Result<Vec<IpAddr>, Error> {
+    todo!()
+}
+
 #[cfg(target_os = "windows")]
 pub fn get() -> Result<Vec<IpAddr>, Error> {
     Ok(ipconfig::get_adapters()?
