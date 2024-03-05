@@ -5,14 +5,7 @@ set -euo pipefail
 BUNDLE_ID="dev.firezone.client"
 
 DEVICE_ID_PATH="/var/lib/$BUNDLE_ID/config/firezone-id.json"
-# Normally this is all in $HOME. When using sudo, XDG apparently wants some of it under `/root`?
-# I'm guessing the rationale is this:
-# - Config can still come from $HOME because the program probably won't write it, and it's not private
-# - Cache has to go in `/root` because that could leak private data out of the sudo context, and
-#   we don't want an unprivileged user to tamper with that cache and control the sudo context
-#   when it reads the cache back.
-# But that's all a guess.
-LOGS_PATH="/root/.cache/$BUNDLE_ID/data/logs"
+LOGS_PATH="$HOME/.cache/$BUNDLE_ID/data/logs"
 DUMP_PATH="$LOGS_PATH/last_crash.dmp"
 SETTINGS_PATH="$HOME/.config/$BUNDLE_ID/config/advanced_settings.json"
 
@@ -30,7 +23,7 @@ function smoke_test() {
     sudo stat "$DEVICE_ID_PATH" && exit 1
 
     # Run the smoke test normally
-    sudo xvfb-run --auto-servernum ../target/debug/"$PACKAGE" smoke-test
+    sudo --preserve-env xvfb-run --auto-servernum ../target/debug/"$PACKAGE" smoke-test
 
     # Note the device ID
     DEVICE_ID_1=$(cat "$DEVICE_ID_PATH")
@@ -43,7 +36,7 @@ function smoke_test() {
     sudo stat "$DEVICE_ID_PATH"
 
     # Run the test again and make sure the device ID is not changed
-    sudo xvfb-run --auto-servernum ../target/debug/"$PACKAGE" smoke-test
+    sudo --preserve-env xvfb-run --auto-servernum ../target/debug/"$PACKAGE" smoke-test
     DEVICE_ID_2=$(cat "$DEVICE_ID_PATH")
 
     if [ "$DEVICE_ID_1" != "$DEVICE_ID_2" ]
@@ -63,7 +56,7 @@ function crash_test() {
     sudo rm -f "$DUMP_PATH"
 
     # Fail if it returns success, this is supposed to crash
-    sudo xvfb-run --auto-servernum ../target/debug/"$PACKAGE" --crash && exit 1
+    sudo --preserve-env xvfb-run --auto-servernum ../target/debug/"$PACKAGE" --crash && exit 1
 
     # Fail if the crash file wasn't written
     sudo stat "$DUMP_PATH"
