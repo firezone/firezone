@@ -21,6 +21,9 @@ use windows::Win32::{
     Networking::WinSock::{AF_INET, AF_INET6},
 };
 
+// wintun automatically appends " Tunnel" to this
+const TUNNEL_NAME: &str = "Firezone";
+
 // TODO: Double-check that all these get dropped gracefully on disconnect
 pub struct Tun {
     _adapter: Arc<wintun::Adapter>,
@@ -50,8 +53,6 @@ const DEFAULT_MTU: u32 = 1280;
 impl Tun {
     pub fn new(config: &InterfaceConfig, dns_config: Vec<IpAddr>) -> Result<Self> {
         const TUNNEL_UUID: &str = "e9245bc1-b8c1-44ca-ab1d-c6aad4f13b9c";
-        // wintun automatically appends " Tunnel" to this
-        const TUNNEL_NAME: &str = "Firezone";
 
         // SAFETY: we're loading a DLL from disk and it has arbitrary C code in it.
         // The Windows client, in `wintun_install` hashes the DLL at startup, before calling connlib, so it's unlikely for the DLL to be accidentally corrupted by the time we get here.
@@ -200,6 +201,10 @@ impl Tun {
                 Poll::Ready(Err(std::io::ErrorKind::Other.into()))
             }
         }
+    }
+
+    pub fn name(&self) -> &str {
+        TUNNEL_NAME
     }
 
     pub fn write4(&self, bytes: &[u8]) -> io::Result<usize> {

@@ -41,10 +41,6 @@ updates:
           - windows-implement
           - windows-sys
   - package-ecosystem: gradle
-    directory: rust/connlib/clients/android/connlib/
-    schedule:
-      interval: monthly
-  - package-ecosystem: gradle
     directory: kotlin/android/
     schedule:
       interval: monthly
@@ -69,6 +65,7 @@ updates:
           - androidx.core:core-ktx
           - androidx.appcompat:appcompat
           - androidx.preference:preference-ktx
+          - androidx.constraintlayout:constraintlayout
       lifecycle:
         patterns:
           - androidx.lifecycle:lifecycle-runtime-ktx
@@ -81,11 +78,9 @@ updates:
           - androidx.navigation:navigation-ui-ktx
       hilt:
         patterns:
-          - androidx.lifecycle:lifecycle-viewmodel-ktx
-          - androidx.constraintlayout:constraintlayout
           - androidx.hilt:hilt-compiler
           - com.google.dagger.hilt.android
-          - com.google.dagger:hilt.android
+          - com.google.dagger:hilt-android
           - com.google.dagger:hilt-android-compiler
       retrofit:
         patterns:
