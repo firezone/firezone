@@ -29,7 +29,6 @@ fn main() -> Result<()> {
         max_partition_time,
     )
     .unwrap();
-    tracing::info!("new_session");
 
     block_on_ctrl_c();
 

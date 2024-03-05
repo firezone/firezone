@@ -88,6 +88,7 @@ where
         Ok(())
     }
 
+    #[tracing::instrument(level = "debug", skip_all, fields(%id))]
     pub fn remove_resource(&mut self, id: ResourceId) {
         self.role_state.awaiting_connection.remove(&id);
         self.role_state
@@ -112,6 +113,7 @@ where
         }
 
         let Some(gateway_id) = self.role_state.resources_gateways.remove(&id) else {
+            tracing::debug!("No gateway associated with resource");
             return;
         };
 
@@ -146,6 +148,8 @@ where
             self.role_state.peers.remove(&gateway_id);
             // TODO: should we have a Node::remove_connection?
         }
+
+        tracing::debug!("Resource removed")
     }
 
     fn update_resource_list(&self) -> connlib_shared::Result<()> {
@@ -174,6 +178,8 @@ where
             self.callbacks(),
         )?;
 
+        let name = device.name().to_owned();
+
         self.device = Some(device);
         self.no_device_waker.wake();
 
@@ -197,7 +203,7 @@ where
 
         self.callbacks.on_tunnel_ready()?;
 
-        tracing::debug!("background_loop_started");
+        tracing::debug!(ip4 = %config.ipv4, ip6 = %config.ipv6, %name, "TUN device initialized");
 
         Ok(())
     }
