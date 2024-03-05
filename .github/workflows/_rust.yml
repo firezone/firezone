@@ -110,7 +110,7 @@ jobs:
         run: cargo build -p firezone-gui-client
       - name: Run smoke tests (Linux)
         if: ${{ runner.os == 'Linux' }}
-        run: bash ../../scripts/tests/smoke-test-gui-linux.sh
+        run: sudo bash ../../scripts/tests/smoke-test-gui-linux.sh
       - name: Run smoke tests (Windows)
         if: ${{ runner.os == 'Windows' }}
         run: bash ../../scripts/tests/smoke-test-gui-windows.sh
