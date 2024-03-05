@@ -19,8 +19,8 @@ tracing = { workspace = true, features = ["log"] }
 tracing-subscriber = { workspace = true, features = ["env-filter", "json", "fmt"] }
 tracing-stackdriver = { version = "0.9.0", features = ["opentelemetry"] }
 tracing-opentelemetry = "0.22.0"
-opentelemetry = { version = "0.20.0", features = ["rt-tokio", "metrics"] }
-opentelemetry_api = "0.20.0"
+opentelemetry = { version = "0.22.0", features = ["metrics"] }
+opentelemetry_sdk = { version = "0.22.0", features = ["metrics", "rt-tokio"] }
 opentelemetry-otlp = { version = "0.15.0", features = ["metrics"]}
 env_logger = "0.11.2"
 tracing-core = "0.1.31"

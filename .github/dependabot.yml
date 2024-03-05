@@ -29,7 +29,6 @@ updates:
       otel:
         patterns:
           - opentelemetry
-          - opentelemetry_api
           - opentelemetry-otlp
           - tracing-opentelemetry
           - tracing-stackdriver
