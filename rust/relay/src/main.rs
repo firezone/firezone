@@ -60,6 +60,10 @@ struct Args {
     /// If omitted, we won't connect to the portal on startup.
     #[arg(env = "FIREZONE_TOKEN")]
     token: Option<SecretString>,
+    /// Used as the human name for this Relay to display in the portal. If not provided,
+    /// the system hostname is used by default.
+    #[arg(env = "FIREZONE_NAME")]
+    name: Option<String>,
     /// A seed to use for all randomness operations.
     ///
     /// Only available in debug builds.
@@ -266,6 +270,9 @@ async fn connect_to_portal(
     if let Some(public_ip6_addr) = args.public_ip6_addr {
         url.query_pairs_mut()
             .append_pair("ipv6", &public_ip6_addr.to_string());
+    }
+    if let Some(name) = args.name.as_ref() {
+        url.query_pairs_mut().append_pair("name", name);
     }
 
     let (channel, Init {}) = phoenix_channel::init::<_, Init, _, _>(
