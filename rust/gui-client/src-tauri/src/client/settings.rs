@@ -110,7 +110,8 @@ pub(crate) async fn save(settings: &AdvancedSettings) -> Result<()> {
         .parent()
         .context("settings path should have a parent")?;
     tokio::fs::create_dir_all(dir).await?;
-    tokio::fs::write(path, serde_json::to_string(settings)?).await?;
+    tokio::fs::write(&path, serde_json::to_string(settings)?).await?;
+    tracing::debug!(?path, "Saved settings");
     Ok(())
 }
 
