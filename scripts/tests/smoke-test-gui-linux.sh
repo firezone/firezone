@@ -31,7 +31,8 @@ function smoke_test() {
 
     # Make sure the files were written in the right paths
     # TODO: Inject some bogus sign-in sequence to test the actor_name file
-    sudo stat "$LOGS_PATH/"connlib*log
+    # https://stackoverflow.com/questions/41321092
+    sudo bash -c 'stat "$LOGS_PATH/"connlib*log'
     sudo stat "$SETTINGS_PATH"
     sudo stat "$DEVICE_ID_PATH"
 
