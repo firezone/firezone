@@ -130,6 +130,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       let content = UNMutableNotificationContent()
       content.title = "Your Firezone session has ended"
       content.body = "Please sign in again to reconnect"
+      content.categoryIdentifier = NotificationIndentifier.sessionEndedNotificationCategory.rawValue
       let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
       let request = UNNotificationRequest(
         identifier: "FirezoneTunnelShutdown", content: content, trigger: trigger

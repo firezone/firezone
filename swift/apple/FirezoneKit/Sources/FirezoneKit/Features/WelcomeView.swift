@@ -49,7 +49,7 @@ import SwiftUINavigationCore
       self.appStore = appStore
       self.settingsViewModel = appStore.settingsViewModel
 
-      let notificationDecisionHelper = NotificationDecisionHelper(logger: appStore.logger)
+      let notificationDecisionHelper = NotificationDecisionHelper(logger: appStore.logger, authStore: appStore.authStore)
       self.notificationDecisionHelper = notificationDecisionHelper
 
       appStore.objectWillChange

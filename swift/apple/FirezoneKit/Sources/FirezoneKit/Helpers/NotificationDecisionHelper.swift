@@ -10,7 +10,13 @@ import UserNotifications
 // NotificationDecisionHelper helps with iOS local notifications.
 // It doesn't do anything in macOS.
 
-public class NotificationDecisionHelper {
+public enum NotificationIndentifier: String {
+  case sessionEndedNotificationCategory
+  case signInNotificationAction
+  case dismissNotificationAction
+}
+
+public class NotificationDecisionHelper: NSObject {
 
   enum NotificationDecision {
     case uninitialized
@@ -26,6 +32,7 @@ public class NotificationDecisionHelper {
   }
 
   private let logger: AppLogger
+  private let authStore: AuthStore
 
   @Published var notificationDecision: NotificationDecision = .uninitialized {
     didSet {
@@ -35,12 +42,35 @@ public class NotificationDecisionHelper {
     }
   }
 
-  public init(logger: AppLogger) {
+  public init(logger: AppLogger, authStore: AuthStore) {
 
     self.logger = logger
+    self.authStore = authStore
+
+    super.init()
 
     #if os(iOS)
-      UNUserNotificationCenter.current().getNotificationSettings { notificationSettings in
+      let notificationCenter = UNUserNotificationCenter.current()
+    notificationCenter.delegate = self
+
+      let signInAction = UNNotificationAction(
+        identifier: NotificationIndentifier.signInNotificationAction.rawValue,
+        title: "Sign In",
+        options: [.authenticationRequired, .foreground])
+      let dismissAction = UNNotificationAction(
+        identifier: NotificationIndentifier.dismissNotificationAction.rawValue,
+        title: "Dismiss",
+        options: [])
+      let notificationActions = [signInAction, dismissAction]
+      let certificateExpiryCategory = UNNotificationCategory(
+        identifier: NotificationIndentifier.sessionEndedNotificationCategory.rawValue,
+        actions: notificationActions,
+        intentIdentifiers: [],
+        hiddenPreviewsBodyPlaceholder: "",
+        options: [])
+
+      notificationCenter.setNotificationCategories([certificateExpiryCategory])
+      notificationCenter.getNotificationSettings { notificationSettings in
         self.logger.log(
           "NotificationDecisionHelper: getNotificationSettings returned. authorizationStatus is \(notificationSettings.authorizationStatus)"
         )
@@ -75,4 +105,30 @@ public class NotificationDecisionHelper {
       }
     }
   #endif
+}
+
+extension NotificationDecisionHelper: UNUserNotificationCenterDelegate {
+  public func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
+    self.logger.log("NotificationDecisionHelper: \(#function): 'Sign In' clicked in notification")
+      let actionId = response.actionIdentifier
+      let categoryId = response.notification.request.content.categoryIdentifier
+      if categoryId == NotificationIndentifier.sessionEndedNotificationCategory.rawValue,
+          actionId == NotificationIndentifier.signInNotificationAction.rawValue {
+        // User clicked on 'Sign In' in the notification
+        Task {
+          do {
+            try await self.authStore.signIn()
+          } catch {
+            self.logger.error("Error signing in: \(error)")
+          }
+          DispatchQueue.main.async {
+            completionHandler()
+          }
+        }
+      } else {
+        DispatchQueue.main.async {
+          completionHandler()
+        }
+      }
+  }
 }
