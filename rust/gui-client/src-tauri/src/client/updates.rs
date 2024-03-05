@@ -65,11 +65,14 @@ const LATEST_RELEASE_API_URL: &str =
 /// <https://docs.github.com/en/rest/about-the-rest-api/api-versions?apiVersion=2022-11-28>
 const GITHUB_API_VERSION: &str = "2022-11-28";
 
-/// The name of the Windows MSI asset.
+/// The name of the Windows MSI / Linux AppImage or deb asset.
 ///
-/// This ultimately comes from `cd.yml`, `git grep WCPYPXZF`
+/// These ultimately come from `cd.yml`, `git grep WCPYPXZF`
 #[cfg(target_os = "linux")]
 const ASSET_NAME: &str = "firezone-linux-gui-client_amd64.AppImage";
+
+#[cfg(target_os = "macos")]
+const ASSET_NAME: &str = "firezone-mac-unused-client_aarch64.dmg";
 
 #[cfg(target_os = "windows")]
 const ASSET_NAME: &str = "firezone-windows-client-x64.msi";

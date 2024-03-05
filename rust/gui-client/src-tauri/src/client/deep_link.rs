@@ -11,6 +11,10 @@ pub(crate) const FZ_SCHEME: &str = "firezone-fd0020211111";
 #[path = "deep_link/linux.rs"]
 mod imp;
 
+#[cfg(target_os = "macos")]
+#[path = "deep_link/macos.rs"]
+mod imp;
+
 #[cfg(target_os = "windows")]
 #[path = "deep_link/windows.rs"]
 mod imp;

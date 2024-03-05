@@ -25,6 +25,10 @@ mod system_tray_menu;
 #[path = "gui/os_linux.rs"]
 mod os;
 
+#[cfg(target_os = "macos")]
+#[path = "gui/os_macos.rs"]
+mod os;
+
 #[cfg(target_os = "windows")]
 #[path = "gui/os_windows.rs"]
 mod os;
