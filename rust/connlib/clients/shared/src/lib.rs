@@ -159,7 +159,7 @@ where
 /// Connects to the portal and starts a tunnel.
 ///
 /// When this function exits, the tunnel failed unrecoverably and you need to call it again.
-pub async fn connect<CB>(
+async fn connect<CB>(
     url: LoginUrl,
     private_key: StaticSecret,
     os_version_override: Option<String>,
