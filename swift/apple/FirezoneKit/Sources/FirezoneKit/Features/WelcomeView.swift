@@ -102,6 +102,10 @@ import SwiftUINavigationCore
           switch model.state {
           case .uninitialized:
             Image("LogoText")
+              .resizable()
+              .scaledToFit()
+              .frame(maxWidth: 600)
+              .padding(.horizontal, 10)
           case .needsPermission(let model):
             AskPermissionView(model: model)
           case .unauthenticated(let model):
@@ -127,6 +131,7 @@ import SwiftUINavigationCore
       .sheet(isPresented: $model.isSettingsSheetPresented) {
         SettingsView(model: model.settingsViewModel)
       }
+      .navigationViewStyle(StackNavigationViewStyle())
     }
   }
 #endif
