@@ -64,7 +64,7 @@ pub struct Tunnel<CB: Callbacks, TRoleState, TRole, TId> {
 
     connections_state: ConnectionState<TRole, TId>,
 
-    read_buf: [u8; MAX_UDP_SIZE],
+    read_buf: Box<[u8; MAX_UDP_SIZE]>,
 }
 
 impl<CB> Tunnel<CB, ClientState, snownet::Client, GatewayId>
