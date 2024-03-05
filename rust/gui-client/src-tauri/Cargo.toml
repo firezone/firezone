@@ -10,9 +10,9 @@ anyhow = { version = "1.0" }
 tauri-build = { version = "1.5", features = [] }
 
 [dependencies]
-arboard = { version = "3.3.1", default-features = false }
+arboard = { version = "3.3.2", default-features = false }
 anyhow = { version = "1.0" }
-arc-swap = "1.6.0"
+arc-swap = "1.7.0"
 chrono = { workspace = true }
 clap = { version = "4.4", features = ["derive",  "env"] }
 connlib-client-shared = { workspace = true }
@@ -57,14 +57,19 @@ dirs = "5.0.1"
 # Used for infinite `pending` on not-yet-implemented functions
 futures = "0.3.30"
 
+[target.'cfg(target_os = "macos")'.dependencies]
+dirs = "5.0.1"
+# Used for infinite `pending` on not-implemented functions
+futures = "0.3.30"
+
 [target.'cfg(target_os = "windows")'.dependencies]
 tauri-winrt-notification = "0.1.3"
-windows-implement = "0.52.0"
+windows-implement = "0.53.0"
 winreg = "0.52.0"
 wintun = "0.4.0"
 
 [target.'cfg(target_os = "windows")'.dependencies.windows]
-version = "0.52.0"
+version = "0.54.0"
 features = [
   # For implementing COM interfaces
   "implement",

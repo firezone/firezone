@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# This script must run from an elevated shell so that Firezone won't try to elevate
+# Usage: This is made for CI, so it will change system-wide files without asking.
+# Read it before running on a dev system.
+# This script must run from an elevated shell so that Firezone won't try to elevate.
 
 set -euo pipefail
 
@@ -14,18 +16,35 @@ if [[ -z "$ProgramData" ]]; then
 fi
 
 function smoke_test() {
+    files=(
+        "$LOCALAPPDATA/$BUNDLE_ID/config/advanced_settings.json"
+        "$LOCALAPPDATA/$BUNDLE_ID/data/wintun.dll"
+        "$ProgramData/$BUNDLE_ID/config/device_id.json"
+    )
+
     # Make sure the files we want to check don't exist on the system yet
-    stat "$LOCALAPPDATA/$BUNDLE_ID" && exit 1
-    stat "$ProgramData/$BUNDLE_ID" && exit 1
+    # I'm leaning on ChatGPT and `shellcheck` for the syntax here.
+    # Maybe this is about ready to be translated into Python or Rust.
+    for file in "${files[@]}"
+    do
+        stat "$file" && exit 1
+    done
 
     # Run the smoke test normally
     cargo run -p "$PACKAGE" -- smoke-test
 
     # Make sure the files were written in the right paths
-    stat "$LOCALAPPDATA/$BUNDLE_ID/config/advanced_settings.json"
+    for file in "${files[@]}"
+    do
+        stat "$file"
+    done
     stat "$LOCALAPPDATA/$BUNDLE_ID/data/logs/"connlib*log
-    stat "$LOCALAPPDATA/$BUNDLE_ID/data/wintun.dll"
-    stat "$ProgramData/$BUNDLE_ID/config/device_id.json"
+
+    # Clean up so the test can be cycled
+    for file in "${files[@]}"
+    do
+        rm "$file"
+    done
 }
 
 function crash_test() {
@@ -48,6 +67,7 @@ function get_stacktrace() {
     minidump-stackwalk --symbols-path "$SYMS_PATH" "$DUMP_PATH"
 }
 
+smoke_test
 smoke_test
 crash_test
 get_stacktrace

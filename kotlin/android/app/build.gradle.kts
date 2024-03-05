@@ -82,8 +82,8 @@ android {
             buildConfigField(
                 "String",
                 "LOG_FILTER",
-                "\"connlib_client_android=debug,firezone_tunnel=debug,phoenix_channel=debug,connlib_shared=debug," +
-                    "boringtun=debug,snownet=debug,str0m=info,connlib_client_shared=debug,warn\"",
+                "\"connlib_client_android=debug,firezone_tunnel=trace,phoenix_channel=debug,connlib_shared=debug," +
+                    "boringtun=debug,snownet=debug,str0m=debug,connlib_client_shared=debug,info\"",
             )
         }
 
@@ -126,8 +126,8 @@ android {
             buildConfigField(
                 "String",
                 "LOG_FILTER",
-                "\"connlib_client_android=info,firezone_tunnel=debug,phoenix_channel=info,connlib_shared=info," +
-                    "boringtun=debug,snownet=debug,str0m=info,connlib_client_shared=info,warn\"",
+                "\"connlib_client_android=info,firezone_tunnel=info,phoenix_channel=info,connlib_shared=info," +
+                    "boringtun=info,snownet=info,str0m=info,connlib_client_shared=info,warn\"",
             )
             firebaseAppDistribution {
                 serviceCredentialsFile = System.getenv("FIREBASE_CREDENTIALS_PATH")
@@ -157,7 +157,8 @@ dependencies {
     // AndroidX
     implementation("androidx.core:core-ktx:1.12.0")
     implementation("androidx.appcompat:appcompat:1.6.1")
-    implementation("androidx.preference:preference-ktx:1.2.0")
+    implementation("androidx.preference:preference-ktx:1.2.1")
+    implementation("androidx.constraintlayout:constraintlayout:2.1.4")
 
     // Material
     implementation("com.google.android.material:material:1.11.0")
@@ -173,9 +174,7 @@ dependencies {
     implementation("androidx.navigation:navigation-ui-ktx:2.7.7")
 
     // Hilt
-    implementation("com.google.dagger:hilt-android:2.51")
-    implementation("androidx.constraintlayout:constraintlayout:2.1.4")
-    implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.6.1")
+    implementation("com.google.dagger:hilt-android:2.50")
     kapt("androidx.hilt:hilt-compiler:1.2.0")
     kapt("com.google.dagger:hilt-android-compiler:2.50")
 

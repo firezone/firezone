@@ -13,7 +13,7 @@ pub(crate) enum Event {
     Resource { id: String },
     SignIn,
     SignOut,
-    ToggleWindow(Window),
+    ShowWindow(Window),
     Quit,
 }
 
@@ -34,9 +34,9 @@ impl FromStr for Event {
 
     fn from_str(s: &str) -> Result<Self, Error> {
         Ok(match s {
-            "/about" => Self::ToggleWindow(Window::About),
+            "/about" => Self::ShowWindow(Window::About),
             "/cancel_sign_in" => Self::CancelSignIn,
-            "/settings" => Self::ToggleWindow(Window::Settings),
+            "/settings" => Self::ShowWindow(Window::Settings),
             "/sign_in" => Self::SignIn,
             "/sign_out" => Self::SignOut,
             "/quit" => Self::Quit,
@@ -109,7 +109,7 @@ mod tests {
     fn systray_parse() {
         assert_eq!(
             Event::from_str("/about").unwrap(),
-            Event::ToggleWindow(Window::About)
+            Event::ShowWindow(Window::About)
         );
         assert_eq!(
             Event::from_str("/resource/1234").unwrap(),
