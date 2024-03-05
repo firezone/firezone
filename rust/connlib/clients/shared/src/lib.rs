@@ -95,27 +95,15 @@ where
             }));
         }
 
-        runtime.spawn({
-            let callbacks = callbacks.clone();
-
-            async move {
-                match connect(
-                    url,
-                    private_key,
-                    os_version_override,
-                    callbacks.clone(),
-                    max_partition_time,
-                )
-                .await
-                {
-                    Ok(never) => match never {},
-                    Err(e) => {
-                        tracing::error!("Tunnel failed: {e:#}");
-                        let _ = callbacks.on_disconnect();
-                    }
-                }
-            }
-        });
+        runtime.spawn(connect(
+            api_url,
+            token,
+            device_id,
+            device_name_override,
+            os_version_override,
+            callbacks.clone(),
+            max_partition_time,
+        ));
 
         std::thread::spawn(move || {
             rx.blocking_recv();
@@ -168,7 +156,36 @@ where
     }
 }
 
+/// Connects to the portal and starts a tunnel.
+///
+/// When this function exits, the tunnel failed unrecoverably and you need to call it again.
 pub async fn connect<CB>(
+    url: LoginUrl,
+    private_key: StaticSecret,
+    os_version_override: Option<String>,
+    callbacks: CB,
+    max_partition_time: Option<Duration>,
+) where
+    CB: Callbacks + 'static,
+{
+    match connect_inner(
+        url,
+        private_key,
+        os_version_override,
+        callbacks.clone(),
+        max_partition_time,
+    )
+    .await
+    {
+        Ok(never) => match never {},
+        Err(e) => {
+            tracing::error!("Tunnel failed: {e:#}");
+            let _ = callbacks.on_disconnect();
+        }
+    }
+}
+
+async fn connect_inner<CB>(
     url: LoginUrl,
     private_key: StaticSecret,
     os_version_override: Option<String>,
