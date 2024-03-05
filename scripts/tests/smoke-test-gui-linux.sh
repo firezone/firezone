@@ -5,10 +5,15 @@ set -euo pipefail
 BUNDLE_ID="dev.firezone.client"
 
 DEVICE_ID_PATH="/var/lib/$BUNDLE_ID/config/firezone-id.json"
-# Normally this is all in $HOME. When using sudo, XDG apparently wants it under `/root`?
+# Normally this is all in $HOME. When using sudo, XDG apparently wants some of it under `/root`?
+# I'm guessing the rationale is this:
+# - Config can still come from $HOME because the program probably won't write it, and it's not private
+# - Cache has to go in `/root` because that could leak private data out of the sudo context, and
+#   we don't want an unprivileged user to tamper with that cache and control the sudo context
+#   when it reads the cache back.
 LOGS_PATH="/root/.cache/$BUNDLE_ID/data/logs"
 DUMP_PATH="$LOGS_PATH/last_crash.dmp"
-SETTINGS_PATH="/root/.config/$BUNDLE_ID/config/advanced_settings.json"
+SETTINGS_PATH="$HOME/.config/$BUNDLE_ID/config/advanced_settings.json"
 
 export FIREZONE_DISABLE_SYSTRAY=true
 PACKAGE=firezone-gui-client
