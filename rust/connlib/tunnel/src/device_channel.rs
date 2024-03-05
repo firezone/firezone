@@ -130,6 +130,10 @@ impl Device {
         self.mtu
     }
 
+    pub(crate) fn name(&self) -> &str {
+        self.tun.name()
+    }
+
     #[cfg(target_family = "unix")]
     pub(crate) fn add_route(
         &mut self,
