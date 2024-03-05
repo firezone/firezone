@@ -38,6 +38,7 @@ pub(crate) enum Error {
 /// Set up logs after the process has started
 pub(crate) fn setup(log_filter: &str) -> Result<Handles, Error> {
     let log_path = log_path()?;
+    tracing::debug!(?log_path, "Log path");
 
     std::fs::create_dir_all(&log_path).map_err(Error::CreateDirAll)?;
     let (layer, logger) = file_logger::layer(&log_path);
