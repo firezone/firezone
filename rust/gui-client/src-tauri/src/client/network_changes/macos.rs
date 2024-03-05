@@ -9,7 +9,6 @@ pub(crate) fn run_debug() -> Result<()> {
     unimplemented!()
 }
 
-/// TODO: Implement for Linux
 pub(crate) fn check_internet() -> Result<bool> {
     tracing::error!("This is not the real macOS client, so `network_changes` is not implemented");
     Ok(true)

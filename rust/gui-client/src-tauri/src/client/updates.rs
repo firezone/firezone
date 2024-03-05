@@ -71,6 +71,7 @@ const GITHUB_API_VERSION: &str = "2022-11-28";
 #[cfg(target_os = "linux")]
 const ASSET_NAME: &str = "firezone-linux-gui-client_amd64.AppImage";
 
+/// Unused - The Tauri client is not supported for macOS
 #[cfg(target_os = "macos")]
 const ASSET_NAME: &str = "firezone-mac-unused-client_aarch64.dmg";
 

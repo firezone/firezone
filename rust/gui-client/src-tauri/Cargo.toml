@@ -59,7 +59,7 @@ futures = "0.3.30"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 dirs = "5.0.1"
-# Used for infinite `pending` on not-yet-implemented functions
+# Used for infinite `pending` on not-implemented functions
 futures = "0.3.30"
 
 [target.'cfg(target_os = "windows")'.dependencies]
