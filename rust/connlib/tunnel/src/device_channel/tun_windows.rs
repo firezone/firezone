@@ -159,7 +159,7 @@ impl Tun {
         let entry = self.forward_entry(route);
 
         // SAFETY: Windows shouldn't store the reference anywhere, it's just a way to pass lots of arguments at once. And no other thread sees this variable.
-        match unsafe { CreateIpForwardEntry2(&entry) } {
+        match unsafe { CreateIpForwardEntry2(&entry) }.ok() {
             Ok(()) => Ok(()),
             Err(e) if e.code().0 as u32 == DUPLICATE_ERR => {
                 tracing::debug!(%route, "Failed to add duplicate route, ignoring");
@@ -174,9 +174,7 @@ impl Tun {
         let entry = self.forward_entry(route);
 
         // SAFETY: Windows shouldn't store the reference anywhere, it's just a way to pass lots of arguments at once. And no other thread sees this variable.
-        unsafe {
-            DeleteIpForwardEntry2(&entry)?;
-        }
+        unsafe { DeleteIpForwardEntry2(&entry) }.ok()?;
         Ok(())
     }
 
@@ -304,7 +302,7 @@ fn set_iface_config(luid: wintun::NET_LUID_LH, mtu: u32) -> Result<()> {
         };
 
         // SAFETY: TODO
-        unsafe { GetIpInterfaceEntry(&mut row) }?;
+        unsafe { GetIpInterfaceEntry(&mut row) }.ok()?;
 
         // https://stackoverflow.com/questions/54857292/setipinterfaceentry-returns-error-invalid-parameter
         row.SitePrefixLength = 0;
@@ -313,7 +311,7 @@ fn set_iface_config(luid: wintun::NET_LUID_LH, mtu: u32) -> Result<()> {
         row.NlMtu = mtu;
 
         // SAFETY: TODO
-        unsafe { SetIpInterfaceEntry(&mut row) }?;
+        unsafe { SetIpInterfaceEntry(&mut row) }.ok()?;
     }
 
     // Set MTU for IPv6
@@ -325,7 +323,7 @@ fn set_iface_config(luid: wintun::NET_LUID_LH, mtu: u32) -> Result<()> {
         };
 
         // SAFETY: TODO
-        unsafe { GetIpInterfaceEntry(&mut row) }?;
+        unsafe { GetIpInterfaceEntry(&mut row) }.ok()?;
 
         // https://stackoverflow.com/questions/54857292/setipinterfaceentry-returns-error-invalid-parameter
         row.SitePrefixLength = 0;
@@ -334,7 +332,7 @@ fn set_iface_config(luid: wintun::NET_LUID_LH, mtu: u32) -> Result<()> {
         row.NlMtu = mtu;
 
         // SAFETY: TODO
-        unsafe { SetIpInterfaceEntry(&mut row) }?;
+        unsafe { SetIpInterfaceEntry(&mut row) }.ok()?;
     }
     Ok(())
 }
