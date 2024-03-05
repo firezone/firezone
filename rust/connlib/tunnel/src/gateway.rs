@@ -1,25 +1,31 @@
+use std::time::{Duration, Instant};
+
 use crate::device_channel::Device;
-use crate::ip_packet::MutableIpPacket;
+use crate::ip_packet::{IpPacket, MutableIpPacket};
 use crate::peer::{PacketTransformGateway, Peer};
 use crate::peer_store::PeerStore;
-use crate::utils::{stun, turn};
-use crate::Tunnel;
-use boringtun::x25519::PublicKey;
+use crate::sockets::Received;
+use crate::utils::{earliest, stun, turn};
+use crate::GatewayTunnel;
+use boringtun::x25519::StaticSecret;
+use bytes::Bytes;
 use chrono::{DateTime, Utc};
 use connlib_shared::messages::{
     Answer, ClientId, ConnectionAccepted, DomainResponse, Interface as InterfaceConfig, Key, Offer,
     Relay, ResourceId,
 };
-use connlib_shared::{Callbacks, Dname, Error, Result};
+use connlib_shared::{Callbacks, Dname, Error, PublicKey, Result};
 use ip_network::IpNetwork;
+use pnet_packet::Packet as _;
+use quinn_udp::Transmit;
 use secrecy::{ExposeSecret as _, Secret};
-use snownet::Server;
-use std::task::{ready, Context, Poll};
-use std::time::{Duration, Instant};
-use tokio::time::{interval, Interval, MissedTickBehavior};
+use snownet::ServerNode;
 
 const PEERS_IPV4: &str = "100.64.0.0/11";
 const PEERS_IPV6: &str = "fd00:2021:1111::/107";
+
+const RESOURCE_EXPIRY_INTERVAL: Duration = Duration::from_secs(1);
+const PRINT_STATS_INTERVAL: Duration = Duration::from_secs(60);
 
 /// Description of a resource that maps to a DNS record which had its domain already resolved.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -38,7 +44,7 @@ pub struct ResolvedResourceDescriptionDns {
 pub type ResourceDescription =
     connlib_shared::messages::ResourceDescription<ResolvedResourceDescriptionDns>;
 
-impl<CB> Tunnel<CB, GatewayState, Server, ClientId>
+impl<CB> GatewayTunnel<CB>
 where
     CB: Callbacks + 'static,
 {
@@ -46,10 +52,10 @@ where
     #[tracing::instrument(level = "trace", skip(self))]
     pub fn set_interface(&mut self, config: &InterfaceConfig) -> connlib_shared::Result<()> {
         // Note: the dns fallback strategy is irrelevant for gateways
-        let mut device = Device::new(config, vec![], self.callbacks())?;
+        let mut device = Device::new(config, vec![], &self.callbacks)?;
 
-        let result_v4 = device.add_route(PEERS_IPV4.parse().unwrap(), self.callbacks());
-        let result_v6 = device.add_route(PEERS_IPV6.parse().unwrap(), self.callbacks());
+        let result_v4 = device.add_route(PEERS_IPV4.parse().unwrap(), &self.callbacks);
+        let result_v6 = device.add_route(PEERS_IPV6.parse().unwrap(), &self.callbacks);
         result_v4.or(result_v6)?;
 
         let name = device.name().to_owned();
@@ -97,7 +103,7 @@ where
             ResourceDescription::Cidr(ref cidr) => vec![cidr.address],
         };
 
-        let answer = self.connections_state.node.accept_connection(
+        let answer = self.state.node.accept_connection(
             client_id,
             snownet::Offer {
                 session_key: key.expose_secret().0.into(),
@@ -107,12 +113,8 @@ where
                 },
             },
             client,
-            stun(&relays, |addr| {
-                self.connections_state.sockets.can_handle(addr)
-            }),
-            turn(&relays, |addr| {
-                self.connections_state.sockets.can_handle(addr)
-            }),
+            stun(&relays, |addr| self.sockets.can_handle(addr)),
+            turn(&relays, |addr| self.sockets.can_handle(addr)),
             Instant::now(),
         );
 
@@ -141,7 +143,7 @@ where
 
     /// Clean up a connection to a resource.
     pub fn cleanup_connection(&mut self, id: &ClientId) {
-        self.role_state.peers.remove(id);
+        self.state.peers.remove(id);
     }
 
     pub fn allow_access(
@@ -151,7 +153,7 @@ where
         expires_at: Option<DateTime<Utc>>,
         domain: Option<Dname>,
     ) -> Option<DomainResponse> {
-        let peer = self.role_state.peers.get_mut(&client)?;
+        let peer = self.state.peers.get_mut(&client)?;
 
         let (addresses, resource_id) = match &resource {
             ResourceDescription::Dns(r) => {
@@ -186,20 +188,18 @@ where
     }
 
     pub fn remove_access(&mut self, id: &ClientId, resource_id: &ResourceId) {
-        let Some(peer) = self.role_state.peers.get_mut(id) else {
+        let Some(peer) = self.state.peers.get_mut(id) else {
             return;
         };
 
         peer.transform.remove_resource(resource_id);
         if peer.transform.is_emptied() {
-            self.role_state.peers.remove(id);
+            self.state.peers.remove(id);
         }
     }
 
     pub fn add_ice_candidate(&mut self, conn_id: ClientId, ice_candidate: String) {
-        self.connections_state
-            .node
-            .add_remote_candidate(conn_id, ice_candidate);
+        self.state.node.add_remote_candidate(conn_id, ice_candidate);
     }
 
     fn new_peer(
@@ -217,7 +217,7 @@ where
                 .add_resource(address, resource.clone(), expires_at);
         }
 
-        self.role_state.peers.insert(peer, &ips);
+        self.state.peers.insert(peer, &ips);
 
         Ok(())
     }
@@ -225,27 +225,131 @@ where
 
 /// [`Tunnel`] state specific to gateways.
 pub struct GatewayState {
-    pub peers: PeerStore<ClientId, PacketTransformGateway, ()>,
-    expire_interval: Interval,
+    peers: PeerStore<ClientId, PacketTransformGateway, ()>,
+    node: ServerNode<ClientId>,
+
+    next_stats_at: Instant,
+    next_resource_expiry_at: Instant,
 }
 
 impl GatewayState {
-    pub(crate) fn encapsulate<'a>(
-        &mut self,
-        packet: MutableIpPacket<'a>,
-    ) -> Option<(ClientId, MutableIpPacket<'a>)> {
+    pub(crate) fn new(private_key: StaticSecret, now: Instant) -> Self {
+        Self {
+            peers: PeerStore::default(),
+            node: ServerNode::new(private_key, now),
+            next_stats_at: now + PRINT_STATS_INTERVAL,
+            next_resource_expiry_at: now + RESOURCE_EXPIRY_INTERVAL,
+        }
+    }
+
+    pub(crate) fn encapsulate(&mut self, packet: MutableIpPacket<'_>) -> Option<Transmit> {
         let dest = packet.destination();
 
         let peer = self.peers.peer_by_ip_mut(dest)?;
+        let connection = peer.conn_id;
         let packet = peer.transform(packet)?;
 
-        Some((peer.conn_id, packet))
+        let transmit = self
+            .node
+            .encapsulate(connection, packet.as_immutable().into())
+            .inspect_err(|e| tracing::debug!(%connection, "Failed to encapsulate packet: {e}"))
+            .ok()??;
+
+        Some(quinn_udp::Transmit {
+            destination: transmit.dst,
+            ecn: None,
+            contents: Bytes::copy_from_slice(transmit.payload.as_ref()),
+            segment_size: None,
+            src_ip: transmit.src.map(|s| s.ip()),
+        })
     }
 
-    pub fn poll(&mut self, cx: &mut Context<'_>) -> Poll<()> {
-        ready!(self.expire_interval.poll_tick(cx));
-        self.expire_resources();
-        Poll::Ready(())
+    pub(crate) fn decapsulate<'a>(
+        &mut self,
+        Received {
+            local,
+            from,
+            packet,
+        }: Received<'_>,
+        buffer: &'a mut [u8],
+    ) -> Option<IpPacket<'a>> {
+        let (connection, packet) = self
+            .node
+            .decapsulate(
+                local,
+                from,
+                packet.as_ref(),
+                std::time::Instant::now(), // TODO: Use `now` parameter here.
+                buffer,
+            )
+            .inspect_err(|e| tracing::debug!(%local, %from, num_bytes = %packet.len(), "Failed to decapsulate packet: {e}")).ok()??;
+
+        tracing::trace!(target: "wire", %local, %from, bytes = %packet.packet().len(), "read new packet");
+
+        let packet = self
+            .peers
+            .get_mut(&connection)?
+            .untransform(packet.into())
+            .inspect_err(
+                |e| tracing::warn!(%connection, %local, %from, "Failed to transform packet: {e}"),
+            )
+            .ok()?;
+
+        Some(packet.into_immutable())
+    }
+
+    pub(crate) fn poll_timeout(&mut self) -> Option<Instant> {
+        let node_timeout = self.node.poll_timeout();
+
+        earliest(
+            earliest(node_timeout, Some(self.next_resource_expiry_at)),
+            Some(self.next_stats_at),
+        )
+    }
+
+    pub(crate) fn handle_timeout(&mut self, now: Instant) {
+        self.node.handle_timeout(now);
+
+        if now >= self.next_resource_expiry_at {
+            self.expire_resources();
+            self.next_resource_expiry_at = now + RESOURCE_EXPIRY_INTERVAL
+        }
+
+        if now >= self.next_stats_at {
+            let (node_stats, conn_stats) = self.node.stats();
+
+            tracing::debug!(target: "connlib::stats", "{node_stats:?}");
+
+            for (id, stats) in conn_stats {
+                tracing::debug!(target: "connlib::stats", %id, "{stats:?}");
+            }
+
+            self.next_stats_at = now + PRINT_STATS_INTERVAL;
+        }
+    }
+
+    pub(crate) fn poll_event(&mut self) -> Option<Event> {
+        loop {
+            match self.node.poll_event() {
+                Some(snownet::Event::SignalIceCandidate {
+                    connection,
+                    candidate,
+                }) => {
+                    return Some(Event::SignalIceCandidate {
+                        conn_id: connection,
+                        candidate,
+                    })
+                }
+                Some(snownet::Event::ConnectionFailed(id)) => {
+                    self.peers.remove(&id);
+                    continue;
+                }
+                Some(snownet::Event::ConnectionEstablished(_)) => {
+                    continue;
+                }
+                None => return None,
+            }
+        }
     }
 
     fn expire_resources(&mut self) {
@@ -256,13 +360,9 @@ impl GatewayState {
     }
 }
 
-impl Default for GatewayState {
-    fn default() -> Self {
-        let mut expire_interval = interval(Duration::from_secs(1));
-        expire_interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
-        Self {
-            peers: Default::default(),
-            expire_interval,
-        }
-    }
+pub enum Event {
+    SignalIceCandidate {
+        conn_id: ClientId,
+        candidate: String,
+    },
 }

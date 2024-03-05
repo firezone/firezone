@@ -12,7 +12,7 @@ use connlib_shared::{
 #[cfg(not(target_os = "windows"))]
 use dns_lookup::{AddrInfoHints, AddrInfoIter, LookupError};
 use either::Either;
-use firezone_tunnel::{Event, GatewayTunnel, ResolvedResourceDescriptionDns};
+use firezone_tunnel::{GatewayTunnel, ResolvedResourceDescriptionDns};
 use ip_network::IpNetwork;
 use phoenix_channel::PhoenixChannel;
 use std::convert::Infallible;
@@ -48,8 +48,8 @@ impl Eventloop {
     #[tracing::instrument(name = "Eventloop::poll", skip_all, level = "debug")]
     pub fn poll(&mut self, cx: &mut Context<'_>) -> Poll<Result<Infallible>> {
         loop {
-            match self.tunnel.poll_next_event(cx)? {
-                Poll::Ready(firezone_tunnel::Event::SignalIceCandidate {
+            match self.tunnel.poll(cx)? {
+                Poll::Ready(firezone_tunnel::gateway::Event::SignalIceCandidate {
                     conn_id: client,
                     candidate,
                 }) => {
@@ -65,10 +65,6 @@ impl Eventloop {
 
                     continue;
                 }
-                Poll::Ready(Event::ConnectionIntent { .. }) => {
-                    unreachable!("Not used on the gateway, split the events!")
-                }
-                Poll::Ready(_) => continue,
                 Poll::Pending => {}
             }
 

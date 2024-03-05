@@ -93,6 +93,19 @@ impl Sockets {
         }
     }
 
+    pub fn try_send_quinn(&mut self, transmit: quinn_udp::Transmit) -> Result<usize> {
+        match transmit.destination {
+            SocketAddr::V4(_) => {
+                let socket = self.socket_v4.as_ref().ok_or(Error::NoIpv4)?;
+                Ok(socket.try_send_quinn_to(transmit)?)
+            }
+            SocketAddr::V6(_) => {
+                let socket = self.socket_v6.as_ref().ok_or(Error::NoIpv6)?;
+                Ok(socket.try_send_quinn_to(transmit)?)
+            }
+        }
+    }
+
     pub fn poll_recv_from<'a>(
         &'a mut self,
         cx: &mut Context<'_>,
@@ -263,6 +276,12 @@ impl<const N: usize> Socket<N> {
                 src_ip: local.map(|s| s.ip()),
             }],
         )
+    }
+
+    fn try_send_quinn_to(&self, transmit: quinn_udp::Transmit) -> io::Result<usize> {
+        tracing::trace!(target: "wire", to = "network", src = ?transmit.src_ip, dst = %transmit.destination, num_bytes = %transmit.contents.len());
+
+        self.state.send((&self.socket).into(), &[transmit])
     }
 }
 

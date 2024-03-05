@@ -5,14 +5,15 @@
 
 use boringtun::x25519::StaticSecret;
 use connlib_shared::{
-    messages::{ClientId, GatewayId, ResourceId, ReuseConnection},
+    messages::{GatewayId, ResourceId, ReuseConnection},
     CallbackErrorFacade, Callbacks, Error, Result,
 };
 use device_channel::Device;
 use futures_util::{task::AtomicWaker, FutureExt};
+use ip_packet::IpPacket;
 use peer::PacketTransform;
 use peer_store::PeerStore;
-use snownet::{Node, Server};
+use snownet::Node;
 use sockets::{Received, Sockets};
 use std::{
     collections::HashSet,
@@ -27,7 +28,8 @@ use std::{
 pub use client::ClientState;
 pub use control_protocol::client::Request;
 pub use gateway::{GatewayState, ResolvedResourceDescriptionDns};
-use ip_packet::IpPacket;
+
+pub mod gateway;
 
 mod client;
 mod control_protocol {
@@ -35,7 +37,6 @@ mod control_protocol {
 }
 mod device_channel;
 mod dns;
-mod gateway;
 mod ip_packet;
 mod peer;
 mod peer_store;
@@ -50,7 +51,6 @@ const REALM: &str = "firezone";
 #[cfg(target_os = "linux")]
 const FIREZONE_MARK: u32 = 0xfd002021;
 
-pub type GatewayTunnel<CB> = Tunnel<CB, GatewayState, Server, ClientId>;
 pub type ClientTunnel<CB> = Tunnel<CB, ClientState, snownet::Client, GatewayId>;
 
 /// Tunnel is a wireguard state machine that uses webrtc's ICE channels instead of UDP sockets to communicate between peers.
@@ -66,6 +66,21 @@ pub struct Tunnel<CB: Callbacks, TRoleState, TRole, TId> {
     connections_state: ConnectionState<TRole, TId>,
 
     read_buf: [u8; MAX_UDP_SIZE],
+}
+
+pub struct GatewayTunnel<CB: Callbacks> {
+    callbacks: CallbackErrorFacade<CB>,
+
+    state: GatewayState,
+
+    device: Option<Device>,
+    no_device_waker: AtomicWaker,
+
+    timeout: Option<Pin<Box<tokio::time::Sleep>>>,
+    sockets: Sockets,
+
+    write_buf: Box<[u8; MAX_UDP_SIZE]>,
+    read_buf: Box<[u8; MAX_UDP_SIZE]>,
 }
 
 impl<CB> Tunnel<CB, ClientState, snownet::Client, GatewayId>
@@ -132,16 +147,47 @@ where
     }
 }
 
-impl<CB> Tunnel<CB, GatewayState, Server, ClientId>
+impl<CB> GatewayTunnel<CB>
 where
     CB: Callbacks + 'static,
 {
-    pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Result<Event<ClientId>>> {
-        match self.role_state.poll(cx) {
-            Poll::Ready(()) => {
-                cx.waker().wake_by_ref();
+    pub fn new(private_key: StaticSecret, callbacks: CB) -> Result<Self> {
+        let now = Instant::now();
+
+        Ok(Self {
+            callbacks: CallbackErrorFacade(callbacks),
+            state: GatewayState::new(private_key, now),
+            device: None,
+            no_device_waker: AtomicWaker::new(),
+            timeout: None,
+            sockets: Sockets::new()?,
+            write_buf: Box::new([0; MAX_UDP_SIZE]),
+            read_buf: Box::new([0; MAX_UDP_SIZE]),
+        })
+    }
+
+    pub fn poll(&mut self, cx: &mut Context<'_>) -> Poll<Result<gateway::Event>> {
+        if let Some(timeout) = self.state.poll_timeout() {
+            let timeout = tokio::time::Instant::from_std(timeout);
+
+            match self.timeout.as_mut() {
+                Some(existing_timeout) if existing_timeout.deadline() != timeout => {
+                    existing_timeout.as_mut().reset(timeout)
+                }
+                Some(_) => {}
+                None => self.timeout = Some(Box::pin(tokio::time::sleep_until(timeout))),
             }
-            Poll::Pending => {}
+        }
+
+        if let Some(timeout) = self.timeout.as_mut() {
+            ready!(timeout.poll_unpin(cx));
+            self.state.handle_timeout(timeout.deadline().into());
+
+            cx.waker().wake_by_ref()
+        }
+
+        if let Some(event) = self.state.poll_event() {
+            return Poll::Ready(Ok(event));
         }
 
         let Some(device) = self.device.as_mut() else {
@@ -149,46 +195,30 @@ where
             return Poll::Pending;
         };
 
-        match self.connections_state.poll_next_event(cx) {
-            Poll::Ready(Event::StopPeer(id)) => {
-                self.role_state.peers.remove(&id);
-                cx.waker().wake_by_ref();
-            }
-            Poll::Ready(other) => return Poll::Ready(Ok(other)),
-            _ => (),
+        ready!(self.sockets.poll_send_ready(cx))?; // Ensure socket is ready before we read from device.
+
+        for received in ready!(self.sockets.poll_recv_from(cx))? {
+            let Some(packet) = self.state.decapsulate(received, self.write_buf.as_mut()) else {
+                continue;
+            };
+
+            device.write(packet)?;
         }
 
-        match self
-            .connections_state
-            .poll_sockets(device, &mut self.role_state.peers, cx)?
-        {
-            Poll::Ready(()) => {
-                cx.waker().wake_by_ref();
-            }
-            Poll::Pending => {}
-        }
-
-        ready!(self.connections_state.sockets.poll_send_ready(cx))?; // Ensure socket is ready before we read from device.
-
-        match device.poll_read(&mut self.read_buf, cx)? {
+        match device.poll_read(self.read_buf.as_mut(), cx)? {
             Poll::Ready(packet) => {
-                let Some((peer_id, packet)) = self.role_state.encapsulate(packet) else {
+                let Some(transmit) = self.state.encapsulate(packet) else {
                     cx.waker().wake_by_ref();
                     return Poll::Pending;
                 };
 
-                self.connections_state.send(peer_id, packet.as_immutable());
+                let _ = self.sockets.try_send_quinn(transmit);
 
                 cx.waker().wake_by_ref();
             }
             Poll::Pending => {
                 // device not ready for reading, moving on ..
             }
-        }
-
-        // After any state change, check what the new timeout is and reset it if necessary.
-        if self.connections_state.poll_timeout(cx).is_ready() {
-            cx.waker().wake_by_ref()
         }
 
         Poll::Pending
