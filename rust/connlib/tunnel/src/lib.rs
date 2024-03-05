@@ -106,7 +106,7 @@ where
         ready!(self.connections_state.sockets.poll_send_ready(cx))?; // Ensure socket is ready before we read from device.
 
         match device.poll_read(&mut self.read_buf, cx)? {
-            Poll::Ready(Some(packet)) => {
+            Poll::Ready(packet) => {
                 let Some((peer_id, packet)) = self.role_state.encapsulate(packet, Instant::now())
                 else {
                     cx.waker().wake_by_ref();
@@ -116,13 +116,6 @@ where
                 self.connections_state.send(peer_id, packet.as_immutable());
 
                 cx.waker().wake_by_ref();
-            }
-            Poll::Ready(None) => {
-                tracing::info!("Device stopped");
-                self.device = None;
-
-                self.no_device_waker.register(cx.waker());
-                return Poll::Pending;
             }
             Poll::Pending => {}
         }
@@ -170,7 +163,7 @@ where
         ready!(self.connections_state.sockets.poll_send_ready(cx))?; // Ensure socket is ready before we read from device.
 
         match device.poll_read(&mut self.read_buf, cx)? {
-            Poll::Ready(Some(packet)) => {
+            Poll::Ready(packet) => {
                 let Some((peer_id, packet)) = self.role_state.encapsulate(packet) else {
                     cx.waker().wake_by_ref();
                     return Poll::Pending;
@@ -179,13 +172,6 @@ where
                 self.connections_state.send(peer_id, packet.as_immutable());
 
                 cx.waker().wake_by_ref();
-            }
-            Poll::Ready(None) => {
-                tracing::info!("Device stopped");
-                self.device = None;
-
-                self.no_device_waker.register(cx.waker());
-                return Poll::Pending;
             }
             Poll::Pending => {
                 // device not ready for reading, moving on ..
