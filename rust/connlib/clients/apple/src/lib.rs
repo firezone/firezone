@@ -210,6 +210,6 @@ impl WrappedSession {
     }
 
     fn disconnect(&mut self) {
-        self.0.disconnect(None)
+        self.0.disconnect()
     }
 }

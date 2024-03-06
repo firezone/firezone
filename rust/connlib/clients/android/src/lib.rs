@@ -481,6 +481,6 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_di
     session: *mut Session<CallbackHandler>,
 ) {
     catch_and_throw(&mut env, |_| {
-        Box::from_raw(session).disconnect(None);
+        Box::from_raw(session).disconnect();
     });
 }

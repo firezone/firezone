@@ -602,7 +602,7 @@ impl Controller {
                 if let Some(mut session) = self.session.take() {
                     tracing::info!("disconnecting connlib");
                     // This is probably redundant since connlib shuts itself down if it's disconnected.
-                    session.connlib.disconnect(None);
+                    session.connlib.disconnect();
                 }
                 self.refresh_system_tray_menu()?;
             }
@@ -751,7 +751,7 @@ impl Controller {
             tracing::debug!("disconnecting connlib");
             // This is redundant if the token is expired, in that case
             // connlib already disconnected itself.
-            session.connlib.disconnect(None);
+            session.connlib.disconnect();
         } else {
             // Might just be because we got a double sign-out or
             // the user canceled the sign-in or something innocent.

@@ -36,7 +36,7 @@ fn main() -> Result<()> {
         etc_resolv_conf::unconfigure_dns()?;
     }
 
-    session.disconnect(None);
+    session.disconnect();
     Ok(())
 }
 

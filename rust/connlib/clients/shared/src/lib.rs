@@ -271,8 +271,10 @@ where
     ///
     /// For now this just drops the runtime, which should drop all pending tasks.
     /// Further cleanup should be done here. (Otherwise we can just drop [Session]).
-    pub fn disconnect(&mut self, error: Option<Error>) {
-        Self::disconnect_inner(self.runtime_stopper.clone(), &self.callbacks, error)
+    pub fn disconnect(&mut self) {
+        if let Err(err) = self.runtime_stopper.try_send(StopRuntime) {
+            tracing::error!("Couldn't stop runtime: {err}");
+        }
     }
 }
 
