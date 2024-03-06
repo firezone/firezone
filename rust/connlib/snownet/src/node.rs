@@ -284,16 +284,9 @@ where
 
         let (header, payload) = self.buffer.as_mut().split_at_mut(4);
 
-        let packet_len = match conn.tunnel.encapsulate(packet.packet(), payload) {
-            TunnResult::Done => return Ok(None),
-            TunnResult::Err(e) => return Err(Error::Encapsulate(e)),
-            TunnResult::WriteToNetwork(packet) => packet.len(),
-            TunnResult::WriteToTunnelV4(_, _) | TunnResult::WriteToTunnelV6(_, _) => {
-                unreachable!("never returned from encapsulate")
-            }
+        let Some(packet) = conn.encapsulate(packet.packet(), payload)? else {
+            return Ok(None);
         };
-
-        let packet = &payload[..packet_len];
 
         match socket {
             PeerSocket::Direct {
@@ -1475,6 +1468,23 @@ impl Connection {
         }
 
         Ok(())
+    }
+
+    fn encapsulate<'b>(
+        &mut self,
+        packet: &[u8],
+        buffer: &'b mut [u8],
+    ) -> Result<Option<&'b [u8]>, Error> {
+        let len = match self.tunnel.encapsulate(packet, buffer) {
+            TunnResult::Done => return Ok(None),
+            TunnResult::Err(e) => return Err(Error::Encapsulate(e)),
+            TunnResult::WriteToNetwork(packet) => packet.len(),
+            TunnResult::WriteToTunnelV4(_, _) | TunnResult::WriteToTunnelV6(_, _) => {
+                unreachable!("never returned from encapsulate")
+            }
+        };
+
+        Ok(Some(&buffer[..len]))
     }
 
     fn buffer_transmit(
