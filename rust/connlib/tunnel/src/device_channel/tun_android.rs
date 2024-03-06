@@ -67,6 +67,8 @@ impl Tun {
             self.fd = AsyncFd::new(fd)?;
             self.name = interface_name(fd)?;
         }
+
+        Ok(())
     }
 
     pub fn add_route(
