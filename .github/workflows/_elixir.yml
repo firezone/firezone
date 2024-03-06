@@ -9,6 +9,7 @@ jobs:
       matrix:
         dimA: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
         dimB: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+        dimC: [1, 2]
     runs-on: ubuntu-22.04
     defaults:
       run:
@@ -16,7 +17,7 @@ jobs:
     permissions:
       checks: write
     env:
-      TEST_DIM: ${{ matrix.dimA }}-${{ matrix.dimB }}
+      TEST_DIM: ${{ matrix.dimA }}-${{ matrix.dimB }}-${{ matrix.dimC }}
       MIX_ENV: test
       POSTGRES_HOST: localhost
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
