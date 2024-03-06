@@ -30,7 +30,10 @@ pub use gateway::GatewayState;
 use ip_packet::IpPacket;
 
 mod client;
-mod control_protocol;
+mod control_protocol {
+    pub mod client;
+    pub mod gateway;
+}
 mod device_channel;
 mod dns;
 mod gateway;
