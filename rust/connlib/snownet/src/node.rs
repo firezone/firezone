@@ -766,13 +766,13 @@ where
                 TunnResult::WriteToNetwork(bytes) => {
                     conn.set_remote_from_wg_activity(local, from, relayed);
 
-                    conn.encapsulate(bytes, &mut self.allocations, now);
+                    conn.buffer_transmit(bytes, &mut self.allocations, now);
 
                     while let TunnResult::WriteToNetwork(packet) =
                         conn.tunnel
                             .decapsulate(None, &[], self.buffer.as_mut_slice())
                     {
-                        conn.encapsulate(packet, &mut self.allocations, now);
+                        conn.buffer_transmit(packet, &mut self.allocations, now);
                     }
 
                     ControlFlow::Break(Ok(()))
@@ -1468,7 +1468,7 @@ impl Connection {
                 TunnResult::Done => {}
                 TunnResult::Err(e) => return Err(ConnectionError::Wireguard(e)),
                 TunnResult::WriteToNetwork(b) => {
-                    self.encapsulate(b, allocations, now);
+                    self.buffer_transmit(b, allocations, now);
                 }
                 _ => panic!("Unexpected result from update_timers"),
             };
@@ -1477,7 +1477,7 @@ impl Connection {
         Ok(())
     }
 
-    fn encapsulate(
+    fn buffer_transmit(
         &mut self,
         message: &[u8],
         allocations: &mut HashMap<SocketAddr, Allocation>,
@@ -1521,7 +1521,7 @@ impl Connection {
             return;
         };
 
-        self.encapsulate(bytes, allocations, now);
+        self.buffer_transmit(bytes, allocations, now);
     }
 
     /// Invalidates all local candidates with a lower or equal priority compared to the nominated one.
