@@ -30,7 +30,7 @@ defmodule Domain.Repo.Filter do
 
   @type numeric_type :: :integer | :number
   @type datetime_type :: :date | :time | :datetime
-  @type binary_type :: :string | {:string, :email | :phone_number | :uuid}
+  @type binary_type :: :string | {:string, :email | :phone_number | :uuid | :websearch}
   @type range_type :: {:range, numeric_type() | datetime_type()}
   @type type ::
           :boolean
@@ -48,6 +48,11 @@ defmodule Domain.Repo.Filter do
   association, it's necessary to update the queryable itself first and then
   return the dynamic expression to be applied separately.
 
+  Keep in mind that we should not use one-to-main assocs with the pagination,
+  because `LIMIT` will be applied to the underlying SQL query (which then returns
+  the main assoc N times, once per preload), not to the paginated results,
+  to avoid duplicating the results.
+
   For `:binary` types the function must have an arity of 1,
   and for all other types it must have an arity of 2.
   """
@@ -61,7 +66,7 @@ defmodule Domain.Repo.Filter do
           name: atom(),
           title: String.t(),
           type: type(),
-          values: [{name :: String.t(), value :: term()}] | Range.t() | nil,
+          values: [{value :: term(), name :: String.t()}] | Range.t() | nil,
           fun: fun()
         }
 
@@ -196,11 +201,11 @@ defmodule Domain.Repo.Filter do
       values == [] or values == nil ->
         :ok
 
-      not Enum.member?(values, value) ->
-        {:error, {:invalid_value, values: values, value: value}}
+      Enum.any?(values, fn {_name, val} -> val == value end) ->
+        :ok
 
       true ->
-        :ok
+        {:error, {:invalid_value, values: values, value: value}}
     end
   end
 
@@ -216,6 +221,7 @@ defmodule Domain.Repo.Filter do
 
   defp value_type_valid?({:string, :email}, value), do: is_binary(value)
   defp value_type_valid?({:string, :phone_number}, value), do: is_binary(value)
+  defp value_type_valid?({:string, :websearch}, value), do: is_binary(value)
   defp value_type_valid?({:string, :uuid}, value), do: Domain.Repo.valid_uuid?(value)
   defp value_type_valid?(:string, value), do: is_binary(value)
   defp value_type_valid?(:boolean, value), do: is_boolean(value)

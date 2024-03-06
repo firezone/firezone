@@ -46,6 +46,16 @@ defmodule Domain.Actors do
     end
   end
 
+  def all_group_options!(%Auth.Subject{} = subject) do
+    Group.Query.not_deleted()
+    |> Group.Query.by_account_id(subject.account.id)
+    |> Authorizer.for_subject(subject)
+    |> Repo.all()
+    |> Enum.map(fn group ->
+      {group.name, group.id}
+    end)
+  end
+
   # TODO: this should be a filter
   def list_editable_groups(%Auth.Subject{} = subject, opts \\ []) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
@@ -335,6 +345,16 @@ defmodule Domain.Actors do
     Membership.Query.by_actor_id(actor.id)
     |> Membership.Query.select_distinct_group_ids()
     |> Repo.all()
+  end
+
+  def all_actor_options!(%Auth.Subject{} = subject) do
+    Actor.Query.not_deleted()
+    |> Actor.Query.by_account_id(subject.account.id)
+    |> Authorizer.for_subject(subject)
+    |> Repo.all()
+    |> Enum.map(fn actor ->
+      {actor.name, actor.id}
+    end)
   end
 
   def list_actors(%Auth.Subject{} = subject, opts \\ []) do

@@ -105,6 +105,19 @@ defmodule Domain.Actors.Actor.Query do
     )
   end
 
+  def with_joined_identities(queryable) do
+    with_named_binding(queryable, :identities, fn queryable, binding ->
+      join(
+        queryable,
+        :left,
+        [actors: actors],
+        identities in ^Domain.Auth.Identity.Query.not_deleted(),
+        on: identities.actor_id == actors.id,
+        as: ^binding
+      )
+    end)
+  end
+
   def lock(queryable) do
     lock(queryable, "FOR UPDATE")
   end
@@ -123,4 +136,71 @@ defmodule Domain.Actors.Actor.Query do
       {:actors, :asc, :inserted_at},
       {:actors, :asc, :id}
     ]
+
+  @impl Domain.Repo.Query
+  def filters,
+    do: [
+      %Domain.Repo.Filter{
+        name: :name_or_email,
+        title: "Name or Email",
+        type: {:string, :websearch},
+        fun: &filter_by_name_or_email_fts/2
+      },
+      %Domain.Repo.Filter{
+        name: :type,
+        title: "Type",
+        type: :string,
+        values: [
+          {"Account User", "account_user"},
+          {"Account Admin User", "account_admin_user"},
+          {"Service Account", "service_account"},
+          {"API Client", "api_client"}
+        ],
+        fun: &filter_by_type/2
+      },
+      %Domain.Repo.Filter{
+        name: :provider_id,
+        title: "Provider",
+        type: {:string, :uuid},
+        values: [],
+        fun: &filter_by_identity_provider_id/2
+      }
+    ]
+
+  def filter_by_type(queryable, type) do
+    type = String.to_existing_atom(type)
+    {queryable, dynamic([actors: actors], actors.type == ^type)}
+  end
+
+  def filter_by_name_or_email_fts(queryable, name_or_email) do
+    # EXISTS () is used here because otherwise we would need a join and will duplicate rows
+    subquery =
+      Domain.Auth.Identity.Query.all()
+      |> where(
+        [identities: identities],
+        identities.actor_id == parent_as(:actors).id and
+          (ilike(
+             fragment("?->'userinfo'->>'email'", identities.provider_state),
+             ^"%#{name_or_email}%"
+           ) or ilike(identities.provider_identifier, ^"%#{name_or_email}%"))
+      )
+
+    {queryable,
+     dynamic(
+       [actors: actors],
+       fulltext_search(actors.name, ^name_or_email) or
+         exists(subquery)
+     )}
+  end
+
+  def filter_by_identity_provider_id(queryable, provider_id) do
+    subquery =
+      Domain.Auth.Identity.Query.all()
+      |> where(
+        [identities: identities],
+        identities.actor_id == parent_as(:actors).id and identities.provider_id == ^provider_id
+      )
+
+    {queryable, dynamic(exists(subquery))}
+  end
 end

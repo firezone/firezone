@@ -135,4 +135,24 @@ defmodule Domain.Resources.Resource.Query do
       {:resources, :asc, :inserted_at},
       {:resources, :asc, :id}
     ]
+
+  @impl Domain.Repo.Query
+  def filters,
+    do: [
+      %Domain.Repo.Filter{
+        name: :name_or_address,
+        title: "Name or Address",
+        type: {:string, :websearch},
+        fun: &filter_by_name_fts_or_address/2
+      }
+    ]
+
+  def filter_by_name_fts_or_address(queryable, name_or_address) do
+    {queryable,
+     dynamic(
+       [resources: resources],
+       fulltext_search(resources.name, ^name_or_address) or
+         ilike(resources.address, ^"%#{name_or_address}%")
+     )}
+  end
 end

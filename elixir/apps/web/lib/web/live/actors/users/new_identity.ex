@@ -9,7 +9,7 @@ defmodule Web.Actors.Users.NewIdentity do
          true <- actor.type in [:account_user, :account_admin_user] do
       providers =
         Auth.all_active_providers_for_account!(socket.assigns.account)
-        |> Enum.filter(providers, fn provider ->
+        |> Enum.filter(fn provider ->
           Auth.fetch_provider_capabilities!(provider)
           |> Keyword.fetch!(:provisioners)
           |> Enum.member?(:manual)

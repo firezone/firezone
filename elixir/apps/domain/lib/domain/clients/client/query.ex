@@ -103,4 +103,19 @@ defmodule Domain.Clients.Client.Query do
     do: [
       online?: &Domain.Clients.preload_clients_presence/1
     ]
+
+  @impl Domain.Repo.Query
+  def filters,
+    do: [
+      %Domain.Repo.Filter{
+        name: :name,
+        title: "Name",
+        type: {:string, :websearch},
+        fun: &filter_by_name_fts/2
+      }
+    ]
+
+  def filter_by_name_fts(queryable, name) do
+    {queryable, dynamic([clients: clients], fulltext_search(clients.name, ^name))}
+  end
 end

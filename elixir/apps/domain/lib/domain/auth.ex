@@ -166,6 +166,27 @@ defmodule Domain.Auth do
     |> Repo.all()
   end
 
+  def all_third_party_provider_options!(%Subject{} = subject) do
+    Provider.Query.not_deleted()
+    |> Provider.Query.by_account_id(subject.account.id)
+    |> Provider.Query.by_adapter({:not_in, [:email, :userpass]})
+    |> Authorizer.for_subject(Provider, subject)
+    |> Repo.all()
+    |> Enum.map(fn provider ->
+      {provider.name, provider.id}
+    end)
+  end
+
+  def all_provider_options!(%Subject{} = subject) do
+    Provider.Query.not_deleted()
+    |> Provider.Query.by_account_id(subject.account.id)
+    |> Authorizer.for_subject(Provider, subject)
+    |> Repo.all()
+    |> Enum.map(fn provider ->
+      {provider.name, provider.id}
+    end)
+  end
+
   def all_providers_pending_token_refresh_by_adapter!(adapter) do
     datetime_filter = DateTime.utc_now() |> DateTime.add(30, :minute)
 

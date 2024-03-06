@@ -146,4 +146,29 @@ defmodule Domain.Actors.Group.Query do
       {:groups, :asc, :inserted_at},
       {:groups, :asc, :id}
     ]
+
+  @impl Domain.Repo.Query
+  def filters,
+    do: [
+      %Domain.Repo.Filter{
+        name: :name,
+        title: "Name",
+        type: {:string, :websearch},
+        fun: &filter_by_name_fts/2
+      },
+      %Domain.Repo.Filter{
+        name: :provider_id,
+        title: "Provider",
+        type: {:string, :uuid},
+        fun: &filter_by_provider_id/2
+      }
+    ]
+
+  def filter_by_name_fts(queryable, name) do
+    {queryable, dynamic([groups: groups], fulltext_search(groups.name, ^name))}
+  end
+
+  def filter_by_provider_id(queryable, provider_id) do
+    {queryable, dynamic([groups: groups], groups.provider_id == ^provider_id)}
+  end
 end

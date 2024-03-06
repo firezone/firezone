@@ -236,7 +236,7 @@ defmodule Web.Auth do
     conn = Plug.Conn.fetch_cookies(conn, signed: [@recent_accounts_cookie_name])
 
     if recent_account_ids = Map.get(conn.cookies, @recent_accounts_cookie_name) do
-      {:ok, :erlang.binary_to_term(recent_account_ids, [:safe]), conn}
+      {:ok, Plug.Crypto.non_executable_binary_to_term(recent_account_ids, [:safe]), conn}
     else
       {:ok, [], conn}
     end

@@ -206,6 +206,8 @@ defmodule Domain.Repo do
 
     with {:ok, paginator_opts} <- Paginator.init(query_module, order_by, paginator_opts),
          {:ok, queryable} <- Filter.filter(queryable, query_module, filter) do
+      count = __MODULE__.aggregate(queryable, :count, :id)
+
       {results, metadata} =
         queryable
         |> Paginator.query(paginator_opts)
@@ -215,7 +217,7 @@ defmodule Domain.Repo do
       {results, ecto_preloads} = Preloader.preload(results, preload, query_module)
       results = __MODULE__.preload(results, ecto_preloads)
 
-      {:ok, results, metadata}
+      {:ok, results, %{metadata | count: count}}
     end
   end
 

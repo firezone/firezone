@@ -2,6 +2,16 @@ defmodule Web.Actors.Components do
   use Web, :component_library
   alias Domain.Actors
 
+  def last_seen_at(identities) do
+    identities
+    |> Enum.reject(&is_nil(&1.last_seen_at))
+    |> Enum.max_by(& &1.last_seen_at, DateTime, fn -> nil end)
+    |> case do
+      nil -> nil
+      identity -> identity.last_seen_at
+    end
+  end
+
   def actor_type(:service_account), do: "Service Account"
   def actor_type(_type), do: "User"
 

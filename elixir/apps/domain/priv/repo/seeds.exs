@@ -317,6 +317,13 @@ IO.puts("")
 
 IO.puts("Created Actor Groups: ")
 
+for _i <- 1..300 do
+  Actors.create_group(
+    %{name: Domain.Accounts.generate_unique_slug(), type: :static},
+    admin_subject
+  )
+end
+
 {:ok, eng_group} = Actors.create_group(%{name: "Engineering", type: :static}, admin_subject)
 {:ok, finance_group} = Actors.create_group(%{name: "Finance", type: :static}, admin_subject)
 {:ok, synced_group} = Actors.create_group(%{name: "Synced Group", type: :static}, admin_subject)

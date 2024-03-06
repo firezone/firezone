@@ -65,6 +65,16 @@ defmodule Domain.Resources do
     end
   end
 
+  def all_resource_options!(%Auth.Subject{} = subject) do
+    Resource.Query.not_deleted()
+    |> Resource.Query.by_account_id(subject.account.id)
+    |> Authorizer.for_subject(Resource, subject)
+    |> Repo.all()
+    |> Enum.map(fn resource ->
+      {resource.name, resource.id}
+    end)
+  end
+
   def list_resources(%Auth.Subject{} = subject, opts \\ []) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_resources_permission()) do
       Resource.Query.not_deleted()

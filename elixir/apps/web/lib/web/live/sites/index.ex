@@ -3,19 +3,30 @@ defmodule Web.Sites.Index do
   alias Domain.Gateways
 
   def mount(_params, _session, socket) do
-    subject = socket.assigns.subject
+    :ok = Gateways.subscribe_to_gateways_presence_in_account(socket.assigns.account)
 
-    with {:ok, groups} <-
-           Gateways.list_groups(subject, preload: [:gateways, connections: [:resource]]) do
-      :ok = Gateways.subscribe_to_gateways_presence_in_account(socket.assigns.account)
+    sortable_fields = [
+      {:groups, :name}
+    ]
 
+    {:ok, assign(socket, page_title: "Sites", sortable_fields: sortable_fields)}
+  end
+
+  def handle_params(params, uri, socket) do
+    {socket, list_opts} =
+      handle_rich_table_params(params, uri, socket, "groups", Gateways.Group.Query,
+        preload: [:gateways, connections: [:resource]]
+      )
+
+    with {:ok, groups, metadata} <-
+           Gateways.list_groups(socket.assigns.subject, list_opts) do
       socket =
         assign(socket,
           groups: groups,
-          page_title: "Sites"
+          metadata: metadata
         )
 
-      {:ok, socket}
+      {:noreply, socket}
     else
       {:error, _reason} -> raise Web.LiveErrors.NotFoundError
     end
@@ -37,8 +48,16 @@ defmodule Web.Sites.Index do
         </.add_button>
       </:action>
       <:content>
-        <.table id="groups" rows={@groups} row_id={&"group-#{&1.id}"}>
-          <:col :let={group} label="site">
+        <.rich_table
+          id="groups"
+          rows={@groups}
+          row_id={&"group-#{&1.id}"}
+          sortable_fields={@sortable_fields}
+          filters={@filters}
+          filter={@filter}
+          metadata={@metadata}
+        >
+          <:col :let={group} label="site" field={{:groups, :name}} order_by={@order_by}>
             <.link navigate={~p"/#{@account}/sites/#{group}"} class={[link_style()]}>
               <%= group.name %>
             </.link>
@@ -125,11 +144,14 @@ defmodule Web.Sites.Index do
               </div>
             </div>
           </:empty>
-        </.table>
+        </.rich_table>
       </:content>
     </.section>
     """
   end
+
+  def handle_event(event, params, socket) when event in ["paginate", "order_by", "filter"],
+    do: handle_rich_table_event(event, params, socket)
 
   def handle_info(
         %Phoenix.Socket.Broadcast{topic: "presences:account_gateways:" <> _account_id},

@@ -56,6 +56,8 @@ defmodule Web do
       use Phoenix.LiveView,
         layout: Keyword.get(unquote(opts), :layout, {Web.Layouts, :app})
 
+      import Web.LiveHelpers
+
       unquote(html_helpers())
 
       # we ignore Swoosh messages that can crash LV process in dev/test mode

@@ -78,8 +78,8 @@ defmodule Domain.Accounts.Account.Query do
         title: "Status",
         type: {:list, :string},
         values: [
-          {"Enabled", "enabled"},
-          {"Disabled", "disabled"}
+          {"enabled", "Enabled"},
+          {"disabled", "Disabled"}
         ],
         fun: &filter_by_status/2
       }

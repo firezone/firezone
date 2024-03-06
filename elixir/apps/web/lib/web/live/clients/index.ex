@@ -3,16 +3,29 @@ defmodule Web.Clients.Index do
   alias Domain.Clients
 
   def mount(_params, _session, socket) do
-    with {:ok, clients} <- Clients.list_clients(socket.assigns.subject, preload: :actor) do
-      :ok = Clients.subscribe_to_clients_presence_in_account(socket.assigns.subject.account)
+    :ok = Clients.subscribe_to_clients_presence_in_account(socket.assigns.subject.account)
 
+    sortable_fields = [
+      {:clients, :name}
+    ]
+
+    {:ok, assign(socket, page_title: "Clients", sortable_fields: sortable_fields)}
+  end
+
+  def handle_params(params, uri, socket) do
+    {socket, list_opts} =
+      handle_rich_table_params(params, uri, socket, "clients", Clients.Client.Query,
+        preload: :actor
+      )
+
+    with {:ok, clients, metadata} <- Clients.list_clients(socket.assigns.subject, list_opts) do
       socket =
         assign(socket,
           clients: clients,
-          page_title: "Clients"
+          metadata: metadata
         )
 
-      {:ok, socket}
+      {:noreply, socket}
     else
       {:error, _reason} -> raise Web.LiveErrors.NotFoundError
     end
@@ -29,9 +42,16 @@ defmodule Web.Clients.Index do
       </:title>
       <:content>
         <div class="bg-white overflow-hidden">
-          <!--<.resource_filter />-->
-          <.table id="clients" rows={@clients} row_id={&"client-#{&1.id}"}>
-            <:col :let={client} label="NAME">
+          <.rich_table
+            id="clients"
+            rows={@clients}
+            row_id={&"client-#{&1.id}"}
+            sortable_fields={@sortable_fields}
+            filters={@filters}
+            filter={@filter}
+            metadata={@metadata}
+          >
+            <:col :let={client} label="NAME" field={{:clients, :name}} order_by={@order_by}>
               <.link navigate={~p"/#{@account}/clients/#{client.id}"} class={[link_style()]}>
                 <%= client.name %>
               </.link>
@@ -49,13 +69,15 @@ defmodule Web.Clients.Index do
                 No clients to display. Clients are created automatically when a user connects to a resource.
               </div>
             </:empty>
-          </.table>
-          <!--<.paginator page={3} total_pages={100} collection_base_path={~p"/#{@account}/clients"} />-->
+          </.rich_table>
         </div>
       </:content>
     </.section>
     """
   end
+
+  def handle_event(event, params, socket) when event in ["paginate", "order_by", "filter"],
+    do: handle_rich_table_event(event, params, socket)
 
   def handle_info(
         %Phoenix.Socket.Broadcast{topic: "presences:account_clients:" <> _account_id},

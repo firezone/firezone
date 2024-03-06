@@ -15,17 +15,26 @@ defmodule Domain.Repo.Paginator do
   @max_limit 100
 
   defmodule Metadata do
-    # TODO: add count?
     defstruct previous_page_cursor: nil,
               next_page_cursor: nil,
-              limit: nil
+              limit: nil,
+              count: nil
   end
 
   def init(query_module, order_by, opts) do
     limit = Keyword.get(opts, :limit, @default_limit)
     limit = max(min(limit, @max_limit), 1)
 
-    cursor_fields = order_by ++ Query.fetch_cursor_fields!(query_module)
+    cursor_fields =
+      (order_by ++ Query.fetch_cursor_fields!(query_module))
+      |> Enum.reduce([], fn
+        {binding, _current_order, field}, [{binding, _prev_order, field} | _] = acc ->
+          acc
+
+        {binding, order, field}, acc ->
+          [{binding, order, field}] ++ acc
+      end)
+      |> Enum.reverse()
 
     if encoded_cursor = Keyword.get(opts, :cursor) do
       with {:ok, {direction, values}} <- decode_cursor(encoded_cursor) do
@@ -251,7 +260,13 @@ defmodule Domain.Repo.Paginator do
   def encode_cursor(direction, cursor_fields, schema) do
     values =
       Enum.map(cursor_fields, fn {_binding, _order, field} ->
-        Map.fetch!(schema, field)
+        case Map.fetch!(schema, field) do
+          %DateTime{} = dt -> {DateTime, DateTime.to_unix(dt)}
+          %NaiveDateTime{} = ndt -> {NaiveDateTime, NaiveDateTime.to_iso8601(ndt)}
+          %Date{} = date -> {Date, Date.to_iso8601(date)}
+          %Time{} = time -> {Time, Time.to_iso8601(time)}
+          other -> {:term, other}
+        end
       end)
 
     {direction, values}
@@ -263,6 +278,15 @@ defmodule Domain.Repo.Paginator do
     with {:ok, etf} <- Base.url_decode64(encoded, padding: false),
          {direction, values} <- Plug.Crypto.non_executable_binary_to_term(etf, [:safe]),
          false <- Enum.any?(values, &is_nil/1) do
+      values =
+        Enum.map(values, fn
+          {:term, term} -> term
+          {DateTime, iso8601} -> DateTime.from_unix!(iso8601)
+          {NaiveDateTime, iso8601} -> NaiveDateTime.from_iso8601!(iso8601)
+          {Date, iso8601} -> Date.from_iso8601!(iso8601)
+          {Time, iso8601} -> Time.from_iso8601!(iso8601)
+        end)
+
       {:ok, {direction, values}}
     else
       _ -> {:error, :invalid_cursor}

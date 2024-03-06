@@ -78,8 +78,17 @@ defmodule Web.FormComponents do
     ~H"""
     <div phx-feedback-for={@name}>
       <label class="flex items-center gap-2 text-neutral-900">
-        <input type="radio" id={@id} name={@name} value={@value} checked={@checked} class={~w[
-          w-4 h-4 border-neutral-300]} {@rest} />
+        <input
+          type="radio"
+          id={@id}
+          name={@name}
+          value={@value}
+          checked={@checked}
+          class={[
+            "w-4 h-4 border-neutral-300"
+          ]}
+          {@rest}
+        />
         <%= @label %>
         <%= if @inner_block, do: render_slot(@inner_block) %>
       </label>
@@ -118,9 +127,17 @@ defmodule Web.FormComponents do
     ~H"""
     <div phx-feedback-for={@name}>
       <.label for={@id}><%= @label %></.label>
-      <select id={@id} name={@name} class={~w[
-          bg-neutral-50 border border-neutral-300 text-neutral-900 text-sm rounded
-          block w-full p-2.5]} multiple={@multiple} {@rest}>
+      <select
+        id={@id}
+        name={@name}
+        class={[
+          "text-sm bg-neutral-50",
+          "border border-neutral-300 text-neutral-900 rounded",
+          "block w-full p-2.5"
+        ]}
+        multiple={@multiple}
+        {@rest}
+      >
         <option :if={@prompt} value=""><%= @prompt %></option>
 
         <%= for {label, options} <- @options do %>
@@ -142,9 +159,17 @@ defmodule Web.FormComponents do
     ~H"""
     <div phx-feedback-for={@name}>
       <.label for={@id}><%= @label %></.label>
-      <select id={@id} name={@name} class={~w[
-          bg-neutral-50 border border-neutral-300 text-neutral-900 text-sm rounded
-          block w-full p-2.5]} multiple={@multiple} {@rest}>
+      <select
+        id={@id}
+        name={@name}
+        class={[
+          "text-sm bg-neutral-50",
+          "border border-neutral-300 text-neutral-900 rounded",
+          "block w-full p-2.5"
+        ]}
+        multiple={@multiple}
+        {@rest}
+      >
         <option :if={@prompt} value=""><%= @prompt %></option>
         <%= Phoenix.HTML.Form.options_for_select(@options, @value) %>
       </select>

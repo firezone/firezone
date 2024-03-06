@@ -4,22 +4,38 @@ defmodule Web.Settings.IdentityProviders.Index do
   alias Domain.{Auth, Actors}
 
   def mount(_params, _session, socket) do
-    subject = socket.assigns.subject
-
-    with {:ok, providers} <- Auth.list_providers(subject),
-         {:ok, identities_count_by_provider_id} <-
-           Auth.fetch_identities_count_grouped_by_provider_id(subject),
+    with {:ok, identities_count_by_provider_id} <-
+           Auth.fetch_identities_count_grouped_by_provider_id(socket.assigns.subject),
          {:ok, groups_count_by_provider_id} <-
-           Actors.fetch_groups_count_grouped_by_provider_id(subject) do
+           Actors.fetch_groups_count_grouped_by_provider_id(socket.assigns.subject) do
+      sortable_fields = [
+        {:providers, :name}
+      ]
+
+      {:ok,
+       assign(socket,
+         page_title: "Identity Providers",
+         sortable_fields: sortable_fields,
+         identities_count_by_provider_id: identities_count_by_provider_id,
+         groups_count_by_provider_id: groups_count_by_provider_id
+       )}
+    else
+      _ -> raise Web.LiveErrors.NotFoundError
+    end
+  end
+
+  def handle_params(params, uri, socket) do
+    {socket, list_opts} =
+      handle_rich_table_params(params, uri, socket, "providers", Auth.Provider.Query)
+
+    with {:ok, providers, metadata} <- Auth.list_providers(socket.assigns.subject, list_opts) do
       socket =
         assign(socket,
-          identities_count_by_provider_id: identities_count_by_provider_id,
-          groups_count_by_provider_id: groups_count_by_provider_id,
           providers: providers,
-          page_title: "Identity Providers"
+          metadata: metadata
         )
 
-      {:ok, socket}
+      {:noreply, socket}
     else
       _ -> raise Web.LiveErrors.NotFoundError
     end
@@ -50,7 +66,15 @@ defmodule Web.Settings.IdentityProviders.Index do
       <:content>
         <.flash_group flash={@flash} />
         <div class="bg-white overflow-hidden">
-          <.table id="providers" rows={@providers} row_id={&"providers-#{&1.id}"}>
+          <.rich_table
+            id="providers"
+            rows={@providers}
+            row_id={&"providers-#{&1.id}"}
+            sortable_fields={@sortable_fields}
+            filters={@filters}
+            filter={@filter}
+            metadata={@metadata}
+          >
             <:col :let={provider} label="Name">
               <.link navigate={view_provider(@account, provider)} class={[link_style()]}>
                 <%= provider.name %>
@@ -80,7 +104,7 @@ defmodule Web.Settings.IdentityProviders.Index do
                 </div>
               </div>
             </:empty>
-          </.table>
+          </.rich_table>
         </div>
       </:content>
     </.section>

@@ -3,20 +3,27 @@ defmodule Web.Policies.Index do
   alias Domain.Policies
 
   def mount(_params, _session, socket) do
-    with {:ok, socket} <- load_policies_with_assocs(socket) do
-      :ok = Policies.subscribe_to_events_for_account(socket.assigns.account)
-      {:ok, assign(socket, page_title: "Policies")}
-    else
-      _other -> raise Web.LiveErrors.NotFoundError
-    end
+    :ok = Policies.subscribe_to_events_for_account(socket.assigns.account)
+    sortable_fields = []
+    {:ok, assign(socket, page_title: "Policies", sortable_fields: sortable_fields)}
   end
 
-  defp load_policies_with_assocs(socket) do
-    with {:ok, policies} <-
-           Policies.list_policies(socket.assigns.subject,
-             preload: [actor_group: [:provider], resource: []]
-           ) do
-      {:ok, assign(socket, policies: policies)}
+  def handle_params(params, uri, socket) do
+    {socket, list_opts} =
+      handle_rich_table_params(params, uri, socket, "policies", Policies.Policy.Query,
+        preload: [actor_group: [:provider], resource: []]
+      )
+
+    with {:ok, policies, metadata} <- Policies.list_policies(socket.assigns.subject, list_opts) do
+      socket =
+        assign(socket,
+          policies: policies,
+          metadata: metadata
+        )
+
+      {:noreply, socket}
+    else
+      _other -> raise Web.LiveErrors.NotFoundError
     end
   end
 
@@ -34,7 +41,15 @@ defmodule Web.Policies.Index do
         </.add_button>
       </:action>
       <:content>
-        <.table id="policies" rows={@policies} row_id={&"policies-#{&1.id}"}>
+        <.rich_table
+          id="policies"
+          rows={@policies}
+          row_id={&"policies-#{&1.id}"}
+          sortable_fields={@sortable_fields}
+          filters={@filters}
+          filter={@filter}
+          metadata={@metadata}
+        >
           <:col :let={policy} label="ID">
             <.link class={link_style()} navigate={~p"/#{@account}/policies/#{policy}"}>
               <%= policy.id %>
@@ -70,23 +85,33 @@ defmodule Web.Policies.Index do
               </div>
             </div>
           </:empty>
-        </.table>
+        </.rich_table>
       </:content>
     </.section>
     """
   end
 
+  def handle_event(event, params, socket) when event in ["paginate", "order_by", "filter"],
+    do: handle_rich_table_event(event, params, socket)
+
   def handle_info({:create_policy, _policy_id}, socket) do
-    {:ok, socket} = load_policies_with_assocs(socket)
     {:noreply, socket}
   end
 
-  def handle_info({_action, policy_id}, socket) do
+  def handle_info({:delete_policy, policy_id}, socket) do
     if Enum.find(socket.assigns.policies, fn policy -> policy.id == policy_id end) do
-      {:ok, socket} = load_policies_with_assocs(socket)
-      {:noreply, socket}
+      policies =
+        Enum.filter(socket.assigns.policies, fn
+          policy -> policy.id != policy_id
+        end)
+
+      {:noreply, assign(socket, policies: policies)}
     else
       {:noreply, socket}
     end
+  end
+
+  def handle_info({_action, _policy_id}, socket) do
+    handle_params(socket.assigns.params, socket.assigns.uri, socket)
   end
 end

@@ -12,7 +12,7 @@ defmodule Web.Groups.New do
   def render(assigns) do
     ~H"""
     <.breadcrumbs account={@account}>
-      <.breadcrumb path={~p"/#{@account}/groups"}>Actor Groups</.breadcrumb>
+      <.breadcrumb path={~p"/#{@account}/groups"}>Groups</.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/groups/new"}>Add</.breadcrumb>
     </.breadcrumbs>
     <.section>

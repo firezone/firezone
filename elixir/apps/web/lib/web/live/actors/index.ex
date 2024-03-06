@@ -4,17 +4,29 @@ defmodule Web.Actors.Index do
   alias Domain.Actors
 
   def mount(_params, _session, socket) do
-    with {:ok, actors} <-
-           Actors.list_actors(socket.assigns.subject, preload: [identities: :provider]),
+    sortable_fields = [
+      {:actors, :name}
+    ]
+
+    {:ok, assign(socket, page_title: "Actors", sortable_fields: sortable_fields)}
+  end
+
+  def handle_params(params, uri, socket) do
+    {socket, list_opts} =
+      handle_rich_table_params(params, uri, socket, "actors", Actors.Actor.Query,
+        preload: [identities: :provider]
+      )
+
+    with {:ok, actors, metadata} <- Actors.list_actors(socket.assigns.subject, list_opts),
          {:ok, actor_groups} <- Actors.peek_actor_groups(actors, 3, socket.assigns.subject) do
       socket =
         assign(socket,
           actors: actors,
           actor_groups: actor_groups,
-          page_title: "Actors"
+          metadata: metadata
         )
 
-      {:ok, socket}
+      {:noreply, socket}
     else
       {:error, _reason} -> raise Web.LiveErrors.NotFoundError
     end
@@ -38,12 +50,20 @@ defmodule Web.Actors.Index do
         Actors are the people and services that can access your resources.
       </:help>
       <:content>
-        <.table id="actors" rows={@actors} row_id={&"user-#{&1.id}"}>
-          <:col :let={actor} label="name" sortable="false">
+        <.rich_table
+          id="actors"
+          rows={@actors}
+          row_id={&"user-#{&1.id}"}
+          sortable_fields={@sortable_fields}
+          filters={@filters}
+          filter={@filter}
+          metadata={@metadata}
+        >
+          <:col :let={actor} label="name" field={{:actors, :name}} order_by={@order_by}>
             <.actor_name_and_role account={@account} actor={actor} />
           </:col>
 
-          <:col :let={actor} label="identifiers" sortable="false">
+          <:col :let={actor} label="identifiers">
             <div class="flex flex-wrap gap-y-2">
               <.identity_identifier
                 :for={identity <- actor.identities}
@@ -53,7 +73,7 @@ defmodule Web.Actors.Index do
             </div>
           </:col>
 
-          <:col :let={actor} label="groups" sortable="false">
+          <:col :let={actor} label="groups">
             <.peek peek={@actor_groups[actor.id]}>
               <:empty>
                 None
@@ -71,25 +91,15 @@ defmodule Web.Actors.Index do
             </.peek>
           </:col>
 
-          <:col :let={actor} label="last signed in" sortable="false">
+          <:col :let={actor} label="last signed in">
             <.relative_datetime datetime={last_seen_at(actor.identities)} />
           </:col>
-          <:empty>
-            <%= # Empty state should never be reachable in this view %>
-          </:empty>
-        </.table>
+        </.rich_table>
       </:content>
     </.section>
     """
   end
 
-  defp last_seen_at(identities) do
-    identities
-    |> Enum.reject(&is_nil(&1.last_seen_at))
-    |> Enum.max_by(& &1.last_seen_at, DateTime, fn -> nil end)
-    |> case do
-      nil -> nil
-      identity -> identity.last_seen_at
-    end
-  end
+  def handle_event(event, params, socket) when event in ["paginate", "order_by", "filter"],
+    do: handle_rich_table_event(event, params, socket)
 end

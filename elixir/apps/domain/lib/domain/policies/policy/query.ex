@@ -14,6 +14,10 @@ defmodule Domain.Policies.Policy.Query do
     where(queryable, [policies: policies], is_nil(policies.disabled_at))
   end
 
+  def disabled(queryable \\ not_deleted()) do
+    where(queryable, [policies: policies], not is_nil(policies.disabled_at))
+  end
+
   def by_id(queryable, id) do
     where(queryable, [policies: policies], policies.id == ^id)
   end
@@ -104,4 +108,47 @@ defmodule Domain.Policies.Policy.Query do
       {:policies, :asc, :inserted_at},
       {:policies, :asc, :id}
     ]
+
+  @impl Domain.Repo.Query
+  def filters,
+    do: [
+      %Domain.Repo.Filter{
+        name: :resource_id,
+        title: "Resource",
+        type: {:string, :uuid},
+        fun: &filter_by_resource_id/2
+      },
+      %Domain.Repo.Filter{
+        name: :actor_group_id,
+        title: "Actor",
+        type: {:string, :uuid},
+        fun: &filter_by_actor_group_id/2
+      },
+      %Domain.Repo.Filter{
+        name: :status,
+        title: "Status",
+        type: :string,
+        values: [
+          {"Active", "active"},
+          {"Disabled", "disabled"}
+        ],
+        fun: &filter_by_status/2
+      }
+    ]
+
+  def filter_by_resource_id(queryable, resource_id) do
+    {queryable, dynamic([policies: policies], policies.resource_id == ^resource_id)}
+  end
+
+  def filter_by_actor_group_id(queryable, actor_group_id) do
+    {queryable, dynamic([policies: policies], policies.actor_group_id == ^actor_group_id)}
+  end
+
+  def filter_by_status(queryable, "active") do
+    {queryable, dynamic([policies: policies], is_nil(policies.disabled_at))}
+  end
+
+  def filter_by_status(queryable, "disabled") do
+    {queryable, dynamic([policies: policies], not is_nil(policies.disabled_at))}
+  end
 end

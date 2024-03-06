@@ -45,15 +45,15 @@ defmodule Domain.Auth.Provider.Query do
   def only_ready_to_be_synced(queryable) do
     queryable
     |> where(
-      [provider: provider],
-      is_nil(provider.last_synced_at) or
+      [providers: providers],
+      is_nil(providers.last_synced_at) or
         fragment(
           "? + LEAST((interval '10 minute' * (COALESCE(?, 0) ^ 2 + 1)), interval '4 hours') < NOW()",
           providers.last_synced_at,
           providers.last_syncs_failed
         )
     )
-    |> where([provider: provider], is_nil(provider.sync_disabled_at))
+    |> where([providers: providers], is_nil(providers.sync_disabled_at))
   end
 
   def by_non_empty_refresh_token(queryable) do
