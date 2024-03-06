@@ -149,7 +149,7 @@ public struct AskPermissionView: View {
             .multilineTextAlignment(.center)
           #elseif os(iOS)
             Text(
-              "After tapping on the above button, tap on 'Allow' when prompted."
+              "After tapping the above button, tap 'Allow' when prompted."
             )
             .font(.caption)
             .multilineTextAlignment(.center)
@@ -157,7 +157,7 @@ public struct AskPermissionView: View {
         } else if $model.needsNotificationDecision.wrappedValue {
           #if os(iOS)
             Text(
-              "Firezone requires your permission to show local notifications whenever you become signed out of your account."
+              "Firezone requires your permission to show local notifications when you need to sign in again."
             )
             .font(.body)
             .multilineTextAlignment(.center)
@@ -174,7 +174,7 @@ public struct AskPermissionView: View {
             Spacer()
               .frame(maxHeight: 20)
             Text(
-              "After tapping on the above button, tap on 'Allow' when prompted."
+              "After tapping the above button, tap 'Allow' when prompted."
             )
             .font(.caption)
             .multilineTextAlignment(.center)
