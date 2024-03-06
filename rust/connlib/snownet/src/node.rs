@@ -589,6 +589,7 @@ where
             possible_sockets: Default::default(),
             stats: Default::default(),
             buffered_transmits: Default::default(),
+            buffer: Box::new([0u8; MAX_UDP_SIZE]),
             signalling_completed_at: now,
         }
     }
@@ -725,51 +726,19 @@ where
                 continue;
             }
 
-            return match conn.tunnel.decapsulate(None, packet, buffer) {
-                TunnResult::Done => ControlFlow::Break(Ok(())),
-                TunnResult::Err(e) => ControlFlow::Break(Err(Error::Decapsulate(e))),
+            let control_flow = conn.decapsulate(
+                from,
+                local,
+                packet,
+                relayed,
+                buffer,
+                &mut self.allocations,
+                now,
+            );
 
-                // For WriteToTunnel{V4,V6}, boringtun returns the source IP of the packet that was tunneled to us.
-                // I am guessing this was done for convenience reasons.
-                // In our API, we parse the packets directly as an IpPacket.
-                // Thus, the caller can query whatever data they'd like, not just the source IP so we don't return it in addition.
-                TunnResult::WriteToTunnelV4(packet, ip) => {
-                    conn.set_remote_from_wg_activity(local, from, relayed);
-
-                    let ipv4_packet =
-                        MutableIpv4Packet::new(packet).expect("boringtun verifies validity");
-                    debug_assert_eq!(ipv4_packet.get_source(), ip);
-
-                    ControlFlow::Continue((id, ipv4_packet.into()))
-                }
-                TunnResult::WriteToTunnelV6(packet, ip) => {
-                    conn.set_remote_from_wg_activity(local, from, relayed);
-
-                    let ipv6_packet =
-                        MutableIpv6Packet::new(packet).expect("boringtun verifies validity");
-                    debug_assert_eq!(ipv6_packet.get_source(), ip);
-
-                    ControlFlow::Continue((id, ipv6_packet.into()))
-                }
-
-                // During normal operation, i.e. when the tunnel is active, decapsulating a packet straight yields the decrypted packet.
-                // However, in case `Tunn` has buffered packets, they may be returned here instead.
-                // This should be fairly rare which is why we just allocate these and return them from `poll_transmit` instead.
-                // Overall, this results in a much nicer API for our caller and should not affect performance.
-                TunnResult::WriteToNetwork(bytes) => {
-                    conn.set_remote_from_wg_activity(local, from, relayed);
-
-                    conn.buffer_transmit(bytes, &mut self.allocations, now);
-
-                    while let TunnResult::WriteToNetwork(packet) =
-                        conn.tunnel
-                            .decapsulate(None, &[], self.buffer.as_mut_slice())
-                    {
-                        conn.buffer_transmit(packet, &mut self.allocations, now);
-                    }
-
-                    ControlFlow::Break(Ok(()))
-                }
+            return match control_flow {
+                ControlFlow::Continue(c) => ControlFlow::Continue((id, c)),
+                ControlFlow::Break(b) => ControlFlow::Break(b),
             };
         }
 
@@ -1295,6 +1264,7 @@ struct Connection {
     turn_servers: HashSet<SocketAddr>,
 
     stats: ConnectionStats,
+    buffer: Box<[u8; MAX_UDP_SIZE]>,
 
     signalling_completed_at: Instant,
 }
@@ -1342,7 +1312,7 @@ impl Connection {
         local: SocketAddr,
         dest: SocketAddr,
         relay_socket: Option<Socket>,
-    ) {
+    ) -> PeerSocket {
         let remote_socket = match relay_socket {
             Some(relay_socket) => PeerSocket::Relay {
                 relay: relay_socket.server(),
@@ -1358,6 +1328,8 @@ impl Connection {
             tracing::debug!(old = ?self.peer_socket, new = ?remote_socket, "Updating remote socket from WG activity");
             self.peer_socket = Some(remote_socket);
         }
+
+        remote_socket
     }
 
     #[must_use]
@@ -1446,9 +1418,9 @@ impl Connection {
             self.next_timer_update = now + Duration::from_secs(1);
 
             // Don't update wireguard timers until we are connected.
-            if self.peer_socket.is_none() {
+            let Some(peer_socket) = self.peer_socket else {
                 return Ok(());
-            }
+            };
 
             /// [`boringtun`] requires us to pass buffers in where it can construct its packets.
             ///
@@ -1461,7 +1433,7 @@ impl Connection {
                 TunnResult::Done => {}
                 TunnResult::Err(e) => return Err(ConnectionError::Wireguard(e)),
                 TunnResult::WriteToNetwork(b) => {
-                    self.buffer_transmit(b, allocations, now);
+                    make_owned_transmit(peer_socket, b, allocations, now);
                 }
                 _ => panic!("Unexpected result from update_timers"),
             };
@@ -1487,34 +1459,72 @@ impl Connection {
         Ok(Some(&buffer[..len]))
     }
 
-    fn buffer_transmit(
+    #[allow(clippy::too_many_arguments)]
+    fn decapsulate<'b>(
         &mut self,
-        message: &[u8],
+        from: SocketAddr,
+        local: SocketAddr,
+        packet: &[u8],
+        relayed: Option<Socket>,
+        buffer: &'b mut [u8],
         allocations: &mut HashMap<SocketAddr, Allocation>,
         now: Instant,
-    ) {
-        let Some(socket) = self.peer_socket else {
-            return;
-        };
+    ) -> ControlFlow<Result<(), Error>, MutableIpPacket<'b>> {
+        match self.tunnel.decapsulate(None, packet, buffer) {
+            TunnResult::Done => ControlFlow::Break(Ok(())),
+            TunnResult::Err(e) => ControlFlow::Break(Err(Error::Decapsulate(e))),
 
-        let transmit = match socket {
-            PeerSocket::Direct {
-                dest: remote,
-                source,
-            } => Transmit {
-                src: Some(source),
-                dst: remote,
-                payload: Cow::Owned(message.into()),
-            },
-            PeerSocket::Relay { relay, dest: peer } => {
-                match encode_as_channel_data(relay, peer, message, allocations, now) {
-                    Ok(transmit) => transmit,
-                    Err(_) => return,
-                }
+            // For WriteToTunnel{V4,V6}, boringtun returns the source IP of the packet that was tunneled to us.
+            // I am guessing this was done for convenience reasons.
+            // In our API, we parse the packets directly as an IpPacket.
+            // Thus, the caller can query whatever data they'd like, not just the source IP so we don't return it in addition.
+            TunnResult::WriteToTunnelV4(packet, ip) => {
+                self.set_remote_from_wg_activity(local, from, relayed);
+
+                let ipv4_packet =
+                    MutableIpv4Packet::new(packet).expect("boringtun verifies validity");
+                debug_assert_eq!(ipv4_packet.get_source(), ip);
+
+                ControlFlow::Continue(ipv4_packet.into())
             }
-        };
+            TunnResult::WriteToTunnelV6(packet, ip) => {
+                self.set_remote_from_wg_activity(local, from, relayed);
 
-        self.buffered_transmits.push_back(transmit);
+                let ipv6_packet =
+                    MutableIpv6Packet::new(packet).expect("boringtun verifies validity");
+                debug_assert_eq!(ipv6_packet.get_source(), ip);
+
+                ControlFlow::Continue(ipv6_packet.into())
+            }
+
+            // During normal operation, i.e. when the tunnel is active, decapsulating a packet straight yields the decrypted packet.
+            // However, in case `Tunn` has buffered packets, they may be returned here instead.
+            // This should be fairly rare which is why we just allocate these and return them from `poll_transmit` instead.
+            // Overall, this results in a much nicer API for our caller and should not affect performance.
+            TunnResult::WriteToNetwork(bytes) => {
+                let socket = self.set_remote_from_wg_activity(local, from, relayed);
+
+                self.buffered_transmits.extend(make_owned_transmit(
+                    socket,
+                    bytes,
+                    allocations,
+                    now,
+                ));
+
+                while let TunnResult::WriteToNetwork(packet) =
+                    self.tunnel.decapsulate(None, &[], self.buffer.as_mut())
+                {
+                    self.buffered_transmits.extend(make_owned_transmit(
+                        socket,
+                        packet,
+                        allocations,
+                        now,
+                    ));
+                }
+
+                ControlFlow::Break(Ok(()))
+            }
+        }
     }
 
     fn force_handshake(&mut self, allocations: &mut HashMap<SocketAddr, Allocation>, now: Instant) {
@@ -1531,7 +1541,11 @@ impl Connection {
             return;
         };
 
-        self.buffer_transmit(bytes, allocations, now);
+        let socket = self
+            .peer_socket
+            .expect("cannot force handshake without socket");
+
+        make_owned_transmit(socket, bytes, allocations, now);
     }
 
     /// Invalidates all local candidates with a lower or equal priority compared to the nominated one.
@@ -1569,6 +1583,29 @@ impl Connection {
             .iter()
             .find(|c| c.addr() == source)
     }
+}
+
+fn make_owned_transmit(
+    socket: PeerSocket,
+    message: &[u8],
+    allocations: &mut HashMap<SocketAddr, Allocation>,
+    now: Instant,
+) -> Option<Transmit<'static>> {
+    let transmit = match socket {
+        PeerSocket::Direct {
+            dest: remote,
+            source,
+        } => Transmit {
+            src: Some(source),
+            dst: remote,
+            payload: Cow::Owned(message.into()),
+        },
+        PeerSocket::Relay { relay, dest: peer } => {
+            encode_as_channel_data(relay, peer, message, allocations, now).ok()?
+        }
+    };
+
+    Some(transmit)
 }
 
 #[derive(Debug)]
