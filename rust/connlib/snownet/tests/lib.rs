@@ -89,8 +89,10 @@ fn second_connection_with_same_relay_reuses_allocation() {
         HashSet::from([relay("user1", "pass1", "realm1")]),
     );
 
-    let transmit = alice.poll_transmit().unwrap();
-    assert_eq!(transmit.dst, RELAY);
+    let transmit1 = alice.poll_transmit().unwrap();
+    let transmit2 = alice.poll_transmit().unwrap();
+    assert_eq!(transmit1.dst, RELAY);
+    assert_eq!(transmit2.dst, RELAY);
     assert!(alice.poll_transmit().is_none());
 
     let _ = alice.new_connection(
