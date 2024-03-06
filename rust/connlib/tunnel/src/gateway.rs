@@ -123,8 +123,6 @@ where
             resource_addresses.clone(),
         )?;
 
-        tracing::info!(%client_id, client = %hex::encode(client.as_bytes()), "Connection is ready");
-
         Ok(ConnectionAccepted {
             ice_parameters: Answer {
                 username: answer.credentials.username,
