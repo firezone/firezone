@@ -15,10 +15,10 @@ use snownet::Client;
 
 use crate::{
     client::DnsResource,
-    control_protocol::{stun, turn},
     device_channel::Device,
     dns,
     peer::PacketTransformClient,
+    utils::{stun, turn},
 };
 use crate::{peer::Peer, ClientState, Error, Request, Result, Tunnel};
 

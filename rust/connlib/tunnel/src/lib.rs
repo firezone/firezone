@@ -38,6 +38,7 @@ mod ip_packet;
 mod peer;
 mod peer_store;
 mod sockets;
+mod utils;
 
 const MAX_UDP_SIZE: usize = (1 << 16) - 1;
 const DNS_QUERIES_QUEUE_SIZE: usize = 100;

@@ -1,11 +1,11 @@
-use std::{collections::HashSet, fmt, hash::Hash, net::SocketAddr};
+use std::{fmt, hash::Hash};
 
 use connlib_shared::{
-    messages::{Relay, RequestConnection, ReuseConnection},
+    messages::{RequestConnection, ReuseConnection},
     Callbacks,
 };
 
-use crate::{Tunnel, REALM};
+use crate::Tunnel;
 
 mod client;
 pub mod gateway;
@@ -26,40 +26,4 @@ where
             .node
             .add_remote_candidate(conn_id, ice_candidate);
     }
-}
-
-fn stun(relays: &[Relay], predicate: impl Fn(&SocketAddr) -> bool) -> HashSet<SocketAddr> {
-    relays
-        .iter()
-        .filter_map(|r| {
-            if let Relay::Stun(r) = r {
-                Some(r.addr)
-            } else {
-                None
-            }
-        })
-        .filter(predicate)
-        .collect()
-}
-
-fn turn(
-    relays: &[Relay],
-    predicate: impl Fn(&SocketAddr) -> bool,
-) -> HashSet<(SocketAddr, String, String, String)> {
-    relays
-        .iter()
-        .filter_map(|r| {
-            if let Relay::Turn(r) = r {
-                Some((
-                    r.addr,
-                    r.username.clone(),
-                    r.password.clone(),
-                    REALM.to_string(),
-                ))
-            } else {
-                None
-            }
-        })
-        .filter(|(socket, _, _, _)| predicate(socket))
-        .collect()
 }

@@ -1,10 +1,9 @@
 use crate::{
     dns::is_subdomain,
     peer::{PacketTransformGateway, Peer},
+    utils::{stun, turn},
     Error, GatewayState, Tunnel,
 };
-
-use super::{stun, turn};
 use boringtun::x25519::PublicKey;
 use chrono::{DateTime, Utc};
 use connlib_shared::{
