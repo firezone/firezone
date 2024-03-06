@@ -114,8 +114,6 @@ impl Allocation {
             backoff: backoff::new(now, REQUEST_TIMEOUT),
         };
 
-        tracing::debug!(%server, "Requesting new allocation");
-
         allocation.authenticate_and_queue(make_allocate_request());
 
         allocation
