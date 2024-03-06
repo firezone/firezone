@@ -10,6 +10,11 @@ pub(crate) enum Error {
     WriteDeviceIdFile(std::io::Error),
 }
 
+pub(crate) struct DeviceId {
+    pub generated: bool,
+    pub id: String,
+}
+
 /// Returns the device ID, generating it and saving it to disk if needed.
 ///
 /// Per <https://github.com/firezone/firezone/issues/2697> and <https://github.com/firezone/firezone/issues/2711>,
@@ -18,7 +23,7 @@ pub(crate) enum Error {
 /// Returns: The UUID as a String, suitable for sending verbatim to `connlib_client_shared::Session::connect`.
 ///
 /// Errors: If the disk is unwritable when initially generating the ID, or unwritable when re-generating an invalid ID.
-pub(crate) async fn device_id() -> Result<String, Error> {
+pub(crate) async fn device_id() -> Result<DeviceId, Error> {
     let dir = crate::client::known_dirs::device_id().ok_or(Error::KnownFolder)?;
     let path = dir.join("device_id.json");
 
@@ -28,9 +33,12 @@ pub(crate) async fn device_id() -> Result<String, Error> {
         .ok()
         .and_then(|s| serde_json::from_str::<DeviceIdJson>(&s).ok())
     {
-        let device_id = j.device_id();
-        tracing::debug!(?device_id, "Loaded device ID from disk");
-        return Ok(device_id);
+        let id = j.device_id();
+        tracing::debug!(?id, "Loaded device ID from disk");
+        return Ok(DeviceId {
+            generated: false,
+            id,
+        });
     }
 
     // Couldn't read, it's missing or invalid, generate a new one and save it.
@@ -48,9 +56,12 @@ pub(crate) async fn device_id() -> Result<String, Error> {
     .await
     .map_err(Error::WriteDeviceIdFile)?;
 
-    let device_id = j.device_id();
-    tracing::debug!(?device_id, "Saved device ID to disk");
-    Ok(j.device_id())
+    let id = j.device_id();
+    tracing::debug!(?id, "Saved device ID to disk");
+    Ok(DeviceId {
+        generated: true,
+        id,
+    })
 }
 
 #[derive(serde::Deserialize, serde::Serialize)]

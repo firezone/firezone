@@ -8,7 +8,7 @@ use crate::client::{
     settings::{self, AdvancedSettings},
     Failure,
 };
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{bail, Context, Result};
 use arc_swap::ArcSwap;
 use connlib_client_shared::{file_logger, ResourceDescription};
 use connlib_shared::{control::SecureUrl, messages::ResourceId, BUNDLE_ID};
@@ -770,7 +770,7 @@ impl Controller {
         let win = self
             .app
             .get_window(id)
-            .ok_or_else(|| anyhow!("getting handle to `{id}` window"))?;
+            .context("Couldn't get handle to `{id}` window")?;
 
         win.show()?;
         win.unminimize()?;
@@ -790,6 +790,14 @@ async fn run_controller(
     let device_id = client::device_id::device_id()
         .await
         .context("Failed to read / create device ID")?;
+
+    if device_id.generated {
+        let win = app
+            .get_window("welcome")
+            .context("Couldn't get handle to Welcome window")?;
+        win.show()?;
+    }
+    let device_id = device_id.id;
 
     let mut controller = Controller {
         advanced_settings,
