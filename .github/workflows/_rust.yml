@@ -131,12 +131,6 @@ jobs:
     env:
       BINARY_DEST_PATH: ${{ matrix.binary-dest-path }}
       CONNLIB_LOG_UPLOAD_INTERVAL_SECS: 300
-      AZURE_KEY_VAULT_URI: ${{ secrets.AZURE_KEY_VAULT_URI }}
-      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-      AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-      AZURE_CERT_NAME: ${{ secrets.AZURE_CERT_NAME }}
-      VERSION: "1.0.0"
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node
@@ -148,16 +142,8 @@ jobs:
       - uses: ./.github/actions/setup-tauri
       - name: Install pnpm deps
         run: pnpm install
-      - name: Install AzureSignTool
-        if: ${{ runner.os == 'Windows' }}
-        shell: bash
-        run: dotnet tool install --global AzureSignTool
       - name: Build release exe and MSI
         run: pnpm build
-      - name: Sign the MSI
-        if: ${{ runner.os == 'Windows' }}
-        shell: bash
-        run: ../../scripts/build/sign.sh ../target/release/bundle/msi/Firezone_${{ env.VERSION }}_x64_en-US.msi
       - name: Rename artifacts and compute SHA256
         shell: bash
         run: ${{ matrix.rename-script }}
