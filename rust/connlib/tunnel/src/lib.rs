@@ -12,7 +12,6 @@ use device_channel::Device;
 use futures_util::{future::BoxFuture, task::AtomicWaker, FutureExt};
 use peer::PacketTransform;
 use peer_store::PeerStore;
-use pnet_packet::Packet;
 use snownet::{Node, Server};
 use sockets::{Received, Sockets};
 use std::{
@@ -324,8 +323,6 @@ where
                     continue;
                 }
             };
-
-            tracing::trace!(target: "wire", %local, %from, bytes = %packet.packet().len(), "read new packet");
 
             let Some(peer) = peer_store.get_mut(&conn_id) else {
                 tracing::error!(%conn_id, %local, %from, "Couldn't find connection");
