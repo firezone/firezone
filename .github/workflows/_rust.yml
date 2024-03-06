@@ -115,8 +115,6 @@ jobs:
   build-gui:
     name: build-gui-${{ matrix.runs-on }}
     runs-on: ${{ matrix.runs-on }}
-    permissions:
-      contents: read
     defaults:
       run:
         working-directory: ./rust/gui-client
@@ -146,28 +144,6 @@ jobs:
         run: pnpm install
       - name: Build release exe and MSI
         run: pnpm build
-      - name: Sign the MSI
-        if: ${{ runner.os == 'Windows' }}
-        env:
-          AZURE_KEY_VAULT_URI: ${{ secrets.AZURE_KEY_VAULT_URI }}
-          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-          AZURE_CERT_NAME: ${{ secrets.AZURE_CERT_NAME }}
-        shell: bash
-        run: |
-          # Install the required tools
-          dotnet tool install --global AzureSignTool
-
-          # Sign the MSI file
-          AzureSignTool sign \
-              --azure-key-vault-url "$AZURE_KEY_VAULT_URI" \
-              --azure-key-vault-client-id "$AZURE_CLIENT_ID" \
-              --azure-key-vault-tenant-id "$AZURE_TENANT_ID" \
-              --azure-key-vault-client-secret "$AZURE_CLIENT_SECRET" \
-              --azure-key-vault-certificate "$AZURE_CERT_NAME" \
-              --timestamp-rfc3161 "http://timestamp.digicert.com" \
-              --verbose ../target/release/bundle/msi/Firezone_1.0.0_x64_en-US.msi
       - name: Rename artifacts and compute SHA256
         shell: bash
         run: ${{ matrix.rename-script }}
