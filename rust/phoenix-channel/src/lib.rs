@@ -52,7 +52,6 @@ enum State {
 ///
 /// The provided URL must contain a host.
 /// Additionally, you must already provide any query parameters required for authentication.
-#[tracing::instrument(level = "debug", skip(payload, secret_url, reconnect_backoff))]
 #[allow(clippy::type_complexity)]
 pub async fn init<TInitReq, TInitRes, TInboundMsg, TOutboundRes>(
     secret_url: Secret<SecureUrl>,
@@ -83,8 +82,6 @@ where
         payload,
         reconnect_backoff,
     );
-
-    tracing::info!("Connected to portal, waiting for `init` message");
 
     let (channel, init_message) = loop {
         match future::poll_fn(|cx| channel.poll(cx)).await? {
