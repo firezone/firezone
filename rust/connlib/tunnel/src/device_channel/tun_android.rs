@@ -60,34 +60,37 @@ impl Tun {
         self.name.as_str()
     }
 
+    // SAFETY: must be called with a valid file descriptor
+    unsafe fn replace_fd(&mut self, fd: RawFd) -> Result<()> {
+        if self.fd.as_raw_fd() != fd {
+            unsafe { libc::close(self.fd.as_raw_fd()) };
+            self.fd = AsyncFd::new(fd)?;
+            self.name = interface_name(fd)?;
+        }
+    }
+
     pub fn add_route(
-        &self,
+        &mut self,
         route: IpNetwork,
         callbacks: &impl Callbacks<Error = Error>,
-    ) -> Result<Option<Self>> {
-        self.fd.close();
+    ) -> Result<()> {
         let fd = callbacks.on_add_route(route)?.ok_or(Error::NoFd)?;
-        let name = unsafe { interface_name(fd)? };
+        // SAFETY: we expect a valid fd from FFI
+        unsafe { self.replace_fd(fd)? };
 
-        Ok(Some(Tun {
-            fd: AsyncFd::new(fd)?,
-            name,
-        }))
+        Ok(())
     }
 
     pub fn remove_route(
-        &self,
+        &mut self,
         route: IpNetwork,
         callbacks: &impl Callbacks<Error = Error>,
-    ) -> Result<Option<Self>> {
-        self.fd.close();
+    ) -> Result<()> {
         let fd = callbacks.on_remove_route(route)?.ok_or(Error::NoFd)?;
-        let name = unsafe { interface_name(fd)? };
+        // SAFETY: we expect a valid fd from FFI
+        unsafe { self.replace_fd(fd)? };
 
-        Ok(Some(Tun {
-            fd: AsyncFd::new(fd)?,
-            name,
-        }))
+        Ok(())
     }
 }
 
