@@ -11,7 +11,7 @@ use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
 use pnet_packet::Packet;
 
-use crate::control_protocol::gateway::ResourceDescription;
+use crate::gateway::ResourceDescription;
 use crate::ip_packet::MutableIpPacket;
 
 type ExpiryingResource = (ResourceDescription, Option<DateTime<Utc>>);
