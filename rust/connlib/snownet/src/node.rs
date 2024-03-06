@@ -408,12 +408,10 @@ where
                         if conn.peer_socket != Some(remote_socket) {
                             let is_first_connection = conn.peer_socket.is_none();
 
-                            tracing::info!(old = ?conn.peer_socket, new = ?remote_socket, "Updating remote socket");
+                            tracing::info!(old = ?conn.peer_socket, new = ?remote_socket, duration_since_intent = ?conn.duration_since_intent(self.last_now), "Updating remote socket");
                             conn.peer_socket = Some(remote_socket);
 
                             conn.invalidate_candiates();
-
-                            tracing::info!(%id, "Sending wireguard handshake");
                             conn.force_handshake(&mut self.allocations, self.last_now);
 
                             if is_first_connection {
@@ -556,6 +554,7 @@ where
     }
 
     #[must_use]
+    #[allow(clippy::too_many_arguments)]
     fn init_connection(
         &mut self,
         mut agent: IceAgent,
@@ -563,6 +562,7 @@ where
         key: [u8; 32],
         allowed_stun_servers: HashSet<SocketAddr>,
         allowed_turn_servers: HashSet<SocketAddr>,
+        intent_sent_at: Instant,
         now: Instant,
     ) -> Connection {
         agent.handle_timeout(self.last_now);
@@ -590,6 +590,7 @@ where
             stats: Default::default(),
             buffered_transmits: Default::default(),
             buffer: Box::new([0u8; MAX_UDP_SIZE]),
+            intent_sent_at,
             signalling_completed_at: now,
         }
     }
@@ -726,6 +727,8 @@ where
                 continue;
             }
 
+            let handshake_complete_before_decapsulate = conn.wg_handshake_complete();
+
             let control_flow = conn.decapsulate(
                 from,
                 local,
@@ -735,6 +738,13 @@ where
                 &mut self.allocations,
                 now,
             );
+
+            let handshake_complete_after_decapsulate = conn.wg_handshake_complete();
+
+            // I can't think of a better way to detect this ...
+            if !handshake_complete_before_decapsulate && handshake_complete_after_decapsulate {
+                tracing::info!(%id, duration_since_intent = ?conn.duration_since_intent(now), "Completed wireguard handshake");
+            }
 
             return match control_flow {
                 ControlFlow::Continue(c) => ControlFlow::Continue((id, c)),
@@ -763,6 +773,8 @@ where
         id: TId,
         allowed_stun_servers: HashSet<SocketAddr>,
         allowed_turn_servers: HashSet<(SocketAddr, String, String, String)>,
+        intent_sent_at: Instant,
+        now: Instant,
     ) -> Offer {
         if self.connections.initial.remove(&id).is_some() {
             tracing::info!("Replacing existing initial connection");
@@ -795,20 +807,20 @@ where
             },
         };
 
-        let existing = self.connections.initial.insert(
-            id,
-            InitialConnection {
-                agent,
-                session_key,
-                stun_servers: allowed_stun_servers,
-                turn_servers: allowed_turn_servers,
-                created_at: self.last_now,
-            },
-        );
+        let initial_connection = InitialConnection {
+            agent,
+            session_key,
+            stun_servers: allowed_stun_servers,
+            turn_servers: allowed_turn_servers,
+            created_at: now,
+            intent_sent_at,
+        };
+        let duration_since_intent = initial_connection.duration_since_intent(now);
 
+        let existing = self.connections.initial.insert(id, initial_connection);
         debug_assert!(existing.is_none());
 
-        tracing::info!("Establishing new connection");
+        tracing::info!(?duration_since_intent, "Establishing new connection");
 
         params
     }
@@ -845,12 +857,14 @@ where
             *initial.session_key.expose_secret(),
             initial.stun_servers,
             initial.turn_servers,
+            initial.intent_sent_at,
             now,
         );
+        let duration_since_intent = connection.duration_since_intent(now);
 
         let existing = self.connections.established.insert(id, connection);
 
-        tracing::info!(remote = %hex::encode(remote.as_bytes()), "Signalling protocol completed");
+        tracing::info!(?duration_since_intent, remote = %hex::encode(remote.as_bytes()), "Signalling protocol completed");
 
         debug_assert!(existing.is_none());
     }
@@ -919,6 +933,7 @@ where
             *offer.session_key.expose_secret(),
             allowed_stun_servers,
             allowed_turn_servers,
+            now, // Technically, this isn't fully correct because gateways don't send intents so we just use the current time.
             now,
         );
         let existing = self.connections.established.insert(id, connection);
@@ -1245,6 +1260,13 @@ struct InitialConnection {
     turn_servers: HashSet<SocketAddr>,
 
     created_at: Instant,
+    intent_sent_at: Instant,
+}
+
+impl InitialConnection {
+    fn duration_since_intent(&self, now: Instant) -> Duration {
+        now.duration_since(self.intent_sent_at)
+    }
 }
 
 struct Connection {
@@ -1264,7 +1286,9 @@ struct Connection {
     turn_servers: HashSet<SocketAddr>,
 
     stats: ConnectionStats,
+
     buffer: Box<[u8; MAX_UDP_SIZE]>,
+    intent_sent_at: Instant,
 
     signalling_completed_at: Instant,
 }
@@ -1305,6 +1329,14 @@ impl Connection {
         let from_possible_remote = self.possible_sockets.contains(&addr);
 
         from_connected_remote || from_possible_remote
+    }
+
+    fn wg_handshake_complete(&self) -> bool {
+        self.tunnel.time_since_last_handshake().is_some()
+    }
+
+    fn duration_since_intent(&self, now: Instant) -> Duration {
+        now.duration_since(self.intent_sent_at)
     }
 
     fn set_remote_from_wg_activity(
@@ -1433,7 +1465,12 @@ impl Connection {
                 TunnResult::Done => {}
                 TunnResult::Err(e) => return Err(ConnectionError::Wireguard(e)),
                 TunnResult::WriteToNetwork(b) => {
-                    make_owned_transmit(peer_socket, b, allocations, now);
+                    self.buffered_transmits.extend(make_owned_transmit(
+                        peer_socket,
+                        b,
+                        allocations,
+                        now,
+                    ));
                 }
                 _ => panic!("Unexpected result from update_timers"),
             };
@@ -1545,7 +1582,8 @@ impl Connection {
             .peer_socket
             .expect("cannot force handshake without socket");
 
-        make_owned_transmit(socket, bytes, allocations, now);
+        self.buffered_transmits
+            .extend(make_owned_transmit(socket, bytes, allocations, now));
     }
 
     /// Invalidates all local candidates with a lower or equal priority compared to the nominated one.
@@ -1585,6 +1623,7 @@ impl Connection {
     }
 }
 
+#[must_use]
 fn make_owned_transmit(
     socket: PeerSocket,
     message: &[u8],

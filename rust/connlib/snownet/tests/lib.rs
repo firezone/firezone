@@ -10,12 +10,18 @@ use str0m::{net::Protocol, Candidate};
 
 #[test]
 fn connection_times_out_after_20_seconds() {
-    let start = Instant::now();
+    let (mut alice, _) = alice_and_bob(Instant::now());
 
-    let (mut alice, _) = alice_and_bob(start);
+    let created_at = Instant::now();
 
-    let _ = alice.new_connection(1, HashSet::new(), HashSet::new());
-    alice.handle_timeout(start + Duration::from_secs(20));
+    let _ = alice.new_connection(
+        1,
+        HashSet::new(),
+        HashSet::new(),
+        Instant::now(),
+        created_at,
+    );
+    alice.handle_timeout(created_at + Duration::from_secs(20));
 
     assert_eq!(alice.poll_event().unwrap(), Event::ConnectionFailed(1));
 }
@@ -88,7 +94,13 @@ fn only_generate_candidate_event_after_answer() {
         Instant::now(),
     );
 
-    let offer = alice.new_connection(1, HashSet::new(), HashSet::new());
+    let offer = alice.new_connection(
+        1,
+        HashSet::new(),
+        HashSet::new(),
+        Instant::now(),
+        Instant::now(),
+    );
 
     assert_eq!(
         alice.poll_event(),
@@ -127,6 +139,8 @@ fn second_connection_with_same_relay_reuses_allocation() {
         1,
         HashSet::new(),
         HashSet::from([relay("user1", "pass1", "realm1")]),
+        Instant::now(),
+        Instant::now(),
     );
 
     let transmit = alice.poll_transmit().unwrap();
@@ -137,6 +151,8 @@ fn second_connection_with_same_relay_reuses_allocation() {
         2,
         HashSet::new(),
         HashSet::from([relay("user1", "pass1", "realm1")]),
+        Instant::now(),
+        Instant::now(),
     );
 
     assert!(alice.poll_transmit().is_none());
@@ -150,7 +166,7 @@ fn alice_and_bob(start: Instant) -> (ClientNode<u64>, ServerNode<u64>) {
 }
 
 fn send_offer(alice: &mut ClientNode<u64>, bob: &mut ServerNode<u64>, now: Instant) -> Answer {
-    let offer = alice.new_connection(1, HashSet::new(), HashSet::new());
+    let offer = alice.new_connection(1, HashSet::new(), HashSet::new(), Instant::now(), now);
 
     bob.accept_connection(
         1,

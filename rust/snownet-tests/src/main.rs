@@ -82,6 +82,8 @@ async fn main() -> Result<()> {
                 1,
                 stun_server.into_iter().collect(),
                 turn_server.into_iter().collect(),
+                Instant::now(),
+                Instant::now(),
             );
 
             redis_connection
