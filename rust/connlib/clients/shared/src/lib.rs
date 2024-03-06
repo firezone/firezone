@@ -83,10 +83,7 @@ where
 
         let callbacks = CallbackErrorFacade(callbacks);
         let (tx, mut rx) = tokio::sync::mpsc::channel(1);
-        let this = Self {
-            runtime_stopper: tx.clone(),
-            callbacks,
-        };
+
         // In android we get an stack-overflow due to tokio
         // taking too much of the stack-space:
         // See: https://github.com/firezone/firezone/issues/2227
@@ -95,7 +92,7 @@ where
             .enable_all()
             .build()?;
         {
-            let callbacks = this.callbacks.clone();
+            let callbacks = callbacks.clone();
             let default_panic_hook = std::panic::take_hook();
             std::panic::set_hook(Box::new({
                 let tx = tx.clone();
@@ -116,13 +113,13 @@ where
 
         Self::connect_inner(
             &runtime,
-            tx,
+            tx.clone(),
             api_url.try_into().map_err(|_| Error::UriError)?,
             token,
             device_id,
             device_name_override,
             os_version_override,
-            this.callbacks.clone(),
+            callbacks.clone(),
             max_partition_time,
         );
         std::thread::spawn(move || {
@@ -130,7 +127,10 @@ where
             runtime.shutdown_background();
         });
 
-        Ok(this)
+        Ok(Self {
+            runtime_stopper: tx,
+            callbacks,
+        })
     }
 
     // TODO: Refactor this when we refactor PhoenixChannel.
