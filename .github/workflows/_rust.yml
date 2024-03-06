@@ -115,6 +115,8 @@ jobs:
   build-gui:
     name: build-gui-${{ matrix.runs-on }}
     runs-on: ${{ matrix.runs-on }}
+    permissions:
+      contents: read
     defaults:
       run:
         working-directory: ./rust/gui-client
