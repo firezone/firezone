@@ -106,7 +106,7 @@ updates:
           - com.google.firebase:firebase-analytics-ktx
 
   - package-ecosystem: swift
-    directory: swift/apple/FirezoneKit/
+    directory: swift/apple/Firezone.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/
     schedule:
       interval: monthly
   - package-ecosystem: npm
@@ -114,7 +114,7 @@ updates:
     schedule:
       interval: monthly
   - package-ecosystem: npm
-    directory: rust/windows-client/
+    directory: rust/gui-client/
     schedule:
       interval: monthly
   - package-ecosystem: npm
