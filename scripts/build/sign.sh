@@ -3,6 +3,7 @@ set -euo pipefail
 
 if ! command -v AzureSignTool &>/dev/null; then
     echo "AzureSignTool not installed. Signing will be skipped."
+    exit
 fi
 
 AzureSignTool sign \
