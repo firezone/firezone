@@ -179,8 +179,6 @@ where
         expires_at: Option<DateTime<Utc>>,
         resource_addresses: Vec<IpNetwork>,
     ) -> Result<()> {
-        tracing::trace!(?ips, "new_data_channel_open");
-
         let mut peer = Peer::new(client_id, PacketTransformGateway::default(), &ips, ());
 
         for address in resource_addresses {
