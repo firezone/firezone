@@ -12,7 +12,7 @@ mock = []
 # Will be needed to safely modify `/etc/resolv.conf`
 atomicwrites = "0.4.3"
 secrecy = { workspace = true, features = ["serde", "bytes"] }
-base64 = { version = "0.21", default-features = false, features = ["std"] }
+base64 = { version = "0.22", default-features = false, features = ["std"] }
 boringtun = { workspace = true }
 chrono = { workspace = true }
 futures =  { version = "0.3", default-features = false, features = ["std", "async-await", "executor"] }
