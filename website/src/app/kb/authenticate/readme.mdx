@@ -36,7 +36,7 @@ The table below summarizes the session lifetimes for various components.
 | ------------------- | --------------------------------- | --------------------------------------------------------------------------- |
 | Admin portal web UI | Email authentication              | **10 hours**                                                                |
 | Admin portal web UI | OIDC and other identity providers | Copied from the OIDC access token lifetime, up to a maximum of **10 hours** |
-| Client applications | All identity providers            | **10 hours**                                                                |
+| Client applications | All identity providers            | **1 week**                                                                  |
 | Service accounts    | N/A                               | **365 days** by default, configurable per token                             |
 | Gateways            | N/A                               | **Indefinitely**. Tokens must be explicitly revoked in the portal UI.       |
 
