@@ -18,7 +18,7 @@
     "@types/mixpanel-browser": "^2.49.0",
     "@types/node": "20.11.24",
     "@types/react": "18.2.63",
-    "@types/react-dom": "18.2.19",
+    "@types/react-dom": "18.2.20",
     "@types/react-syntax-highlighter": "^15.5.11",
     "asciinema-player": "^3.7.0",
     "autoprefixer": "10.4.18",
