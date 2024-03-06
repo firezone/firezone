@@ -156,7 +156,7 @@ impl Allocation {
         self.authenticate_and_queue(make_refresh_request());
     }
 
-    #[tracing::instrument(level = "debug", skip_all, fields(relay = %self.server, id, method, class, rtt))]
+    #[tracing::instrument(level = "debug", skip_all, fields(id, method, class, rtt))]
     pub fn handle_input(
         &mut self,
         from: SocketAddr,
