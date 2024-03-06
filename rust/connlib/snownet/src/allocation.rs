@@ -399,6 +399,8 @@ impl Allocation {
             .allocation_expires_at()
             .is_some_and(|expires_at| now >= expires_at)
         {
+            tracing::debug!("Allocation is expired");
+
             self.invalidate_allocation();
         }
 
