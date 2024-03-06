@@ -814,6 +814,12 @@ where
             .iter()
             .map(|(server, _, _, _)| server)
             .copied()
+            .collect::<HashSet<_>>();
+
+        let allowed_stun_servers = allowed_stun_servers
+            .iter()
+            .chain(allowed_turn_servers.iter())
+            .copied()
             .collect();
 
         let mut agent = IceAgent::new();
@@ -919,6 +925,12 @@ where
             .iter()
             .map(|(server, _, _, _)| server)
             .copied()
+            .collect::<HashSet<_>>();
+
+        let allowed_stun_servers = allowed_stun_servers
+            .iter()
+            .chain(allowed_turn_servers.iter())
+            .copied()
             .collect();
 
         let mut agent = IceAgent::new();
@@ -962,7 +974,7 @@ impl<T, TId> Node<T, TId>
 where
     TId: Eq + Hash + Copy + fmt::Display,
 {
-    fn upsert_stun_servers(&mut self, servers: &HashSet<SocketAddr>) {
+    fn upsert_stun_servers<'s>(&mut self, servers: impl IntoIterator<Item = &'s SocketAddr>) {
         for server in servers {
             if !self.bindings.contains_key(server) {
                 tracing::info!(address = %server, "Adding new STUN server");
@@ -973,8 +985,11 @@ where
         }
     }
 
-    fn upsert_turn_servers(&mut self, servers: &HashSet<(SocketAddr, String, String, String)>) {
-        for (server, username, password, realm) in servers {
+    fn upsert_turn_servers<'s>(
+        &mut self,
+        servers: impl IntoIterator<Item = &'s (SocketAddr, String, String, String)> + Clone,
+    ) {
+        for (server, username, password, realm) in servers.clone() {
             let Ok(username) = Username::new(username.to_owned()) else {
                 tracing::debug!(%username, "Invalid TURN username");
                 continue;
@@ -996,6 +1011,9 @@ where
 
             tracing::info!(address = %server, "Added new TURN server");
         }
+
+        // We treat all TURN servers as STUN servers to speed up discovery of our srflx candidate on cold-starts.
+        self.upsert_stun_servers(servers.into_iter().map(|(s, _, _, _)| s))
     }
 
     fn seed_agent_with_local_candidates(
