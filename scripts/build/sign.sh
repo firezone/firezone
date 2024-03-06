@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+if ! command -v AzureSignTool &>/dev/null; then
+    echo "AzureSignTool not installed. Signing will be skipped."
+fi
+
 AzureSignTool sign \
     --azure-key-vault-url "$AZURE_KEY_VAULT_URI" \
     --azure-key-vault-client-id "$AZURE_CLIENT_ID" \
