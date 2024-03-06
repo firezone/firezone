@@ -37,7 +37,9 @@ impl FromStr for Key {
         // TODO: https://github.com/marshallpierce/rust-base64/issues/210
         let bytes_decoded = STANDARD.decode(s)?;
         if bytes_decoded.len() != KEY_SIZE {
-            Err(Error::Base64DecodeError(base64::DecodeError::InvalidLength))
+            Err(Error::Base64DecodeError(
+                base64::DecodeError::InvalidLength(bytes_decoded.len()),
+            ))
         } else {
             key_bytes.copy_from_slice(&bytes_decoded);
             Ok(Key(key_bytes))

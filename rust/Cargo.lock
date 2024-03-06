@@ -553,6 +553,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9d297deb1925b89f2ccc13d7635fa0714f12c87adce1c75356b39ca9b7178567"
 
 [[package]]
+name = "base64"
+version = "0.22.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9475866fec1451be56a3c2400fd081ff546538961565ccb5b7142cbd22bc7a51"
+
+[[package]]
 name = "bimap"
 version = "0.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1132,7 +1138,7 @@ version = "1.0.0"
 dependencies = [
  "anyhow",
  "atomicwrites",
- "base64 0.21.7",
+ "base64 0.22.0",
  "boringtun",
  "chrono",
  "dns-lookup",
@@ -1949,7 +1955,7 @@ dependencies = [
  "anyhow",
  "axum 0.7.4",
  "backoff",
- "base64 0.21.7",
+ "base64 0.22.0",
  "bytecodec",
  "bytes",
  "clap",
@@ -4379,7 +4385,7 @@ version = "1.0.0"
 dependencies = [
  "anyhow",
  "backoff",
- "base64 0.21.7",
+ "base64 0.22.0",
  "futures",
  "rand_core 0.6.4",
  "secrecy",
