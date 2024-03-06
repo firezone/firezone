@@ -25,14 +25,13 @@ use std::{
 };
 
 pub use client::ClientState;
-pub use control_protocol::{client::Request, gateway::ResolvedResourceDescriptionDns};
-pub use gateway::GatewayState;
+pub use control_protocol::client::Request;
+pub use gateway::{GatewayState, ResolvedResourceDescriptionDns};
 use ip_packet::IpPacket;
 
 mod client;
 mod control_protocol {
     pub mod client;
-    pub mod gateway;
 }
 mod device_channel;
 mod dns;
