@@ -39,7 +39,7 @@ public struct TunnelShutdownEvent: Codable, CustomStringConvertible {
       switch self {
       case .stopped(let reason):
         if reason == .userInitiated {
-          return .signoutImmediately
+          return .signoutImmediatelySilently
         } else if reason == .userLogout || reason == .userSwitch {
           return .doNothing
         } else {
@@ -57,6 +57,7 @@ public struct TunnelShutdownEvent: Codable, CustomStringConvertible {
   public enum Action {
     case doNothing
     case signoutImmediately
+    case signoutImmediatelySilently
     case retryThenSignout
   }
 

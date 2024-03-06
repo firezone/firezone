@@ -209,6 +209,10 @@ public final class AuthStore: ObservableObject {
         #if os(macOS)
           SessionNotificationHelper.showSignedOutAlertmacOS(logger: self.logger, authStore: self)
         #endif
+      case .signoutImmediatelySilently:
+        Task {
+          await self.signOut()
+        }
       case .retryThenSignout:
         self.retryStartTunnel()
       case .doNothing:
