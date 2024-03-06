@@ -71,9 +71,13 @@ where
     #[tracing::instrument(name = "Eventloop::poll", skip_all, level = "debug")]
     pub fn poll(&mut self, cx: &mut Context<'_>) -> Poll<Result<Infallible>> {
         loop {
-            match self.tunnel.poll_next_event(cx)? {
-                Poll::Ready(event) => {
+            match self.tunnel.poll_next_event(cx) {
+                Poll::Ready(Ok(event)) => {
                     self.handle_tunnel_event(event);
+                    continue;
+                }
+                Poll::Ready(Err(e)) => {
+                    tracing::error!("Tunnel failed: {e}");
                     continue;
                 }
                 Poll::Pending => {}
