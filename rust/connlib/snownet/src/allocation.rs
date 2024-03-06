@@ -114,8 +114,6 @@ impl Allocation {
             backoff: backoff::new(now, REQUEST_TIMEOUT),
         };
 
-        tracing::debug!(%server, "Requesting new allocation");
-
         allocation.authenticate_and_queue(make_allocate_request());
 
         allocation
@@ -158,7 +156,7 @@ impl Allocation {
         self.authenticate_and_queue(make_refresh_request());
     }
 
-    #[tracing::instrument(level = "debug", skip_all, fields(relay = %self.server, id, method, class, rtt))]
+    #[tracing::instrument(level = "debug", skip_all, fields(id, method, class, rtt))]
     pub fn handle_input(
         &mut self,
         from: SocketAddr,
@@ -391,6 +389,7 @@ impl Allocation {
         Some((peer, payload, socket))
     }
 
+    #[tracing::instrument(level = "debug", skip_all, fields(relay = %self.server))]
     pub fn handle_timeout(&mut self, now: Instant) {
         self.update_now(now);
 
@@ -398,14 +397,16 @@ impl Allocation {
             .allocation_expires_at()
             .is_some_and(|expires_at| now >= expires_at)
         {
+            tracing::debug!("Allocation is expired");
+
             self.invalidate_allocation();
         }
 
-        while let Some(timed_out_request) =
+        while let Some((timed_out_request, backoff)) =
             self.sent_requests
                 .iter()
                 .find_map(|(id, (_, sent_at, backoff))| {
-                    (now.duration_since(*sent_at) >= *backoff).then_some(*id)
+                    (now.duration_since(*sent_at) >= *backoff).then_some((*id, *backoff))
                 })
         {
             let (request, _, _) = self
@@ -413,7 +414,7 @@ impl Allocation {
                 .remove(&timed_out_request)
                 .expect("ID is from list");
 
-            tracing::debug!(id = ?request.transaction_id(), method = %request.method(), "Request timed out, re-sending");
+            tracing::debug!(id = ?request.transaction_id(), method = %request.method(), "Request timed out after {backoff:?}, re-sending");
 
             self.authenticate_and_queue(request);
         }
@@ -434,6 +435,9 @@ impl Allocation {
             .channel_bindings
             .channels_to_refresh(now, |number| {
                 self.channel_binding_in_flight_by_number(number)
+            })
+            .inspect(|(number, peer)| {
+                tracing::debug!(%number, %peer, "Channel is due for a refresh");
             })
             .map(|(number, peer)| make_channel_bind_request(peer, number))
             .collect::<Vec<_>>(); // Need to allocate here to satisfy borrow-checker. Number of channel refresh messages should be small so this shouldn't be a big impact.
@@ -685,7 +689,7 @@ impl Allocation {
     /// Returns: Whether we actually queued a message.
     fn authenticate_and_queue(&mut self, message: Message<Attribute>) -> bool {
         let Some(backoff) = self.backoff.next_backoff() else {
-            tracing::warn!(
+            tracing::debug!(
                 "Unable to queue {} because we've exceeded our backoffs",
                 message.method()
             );
