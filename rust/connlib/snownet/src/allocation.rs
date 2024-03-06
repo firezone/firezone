@@ -404,11 +404,11 @@ impl Allocation {
             self.invalidate_allocation();
         }
 
-        while let Some(timed_out_request) =
+        while let Some((timed_out_request, backoff)) =
             self.sent_requests
                 .iter()
                 .find_map(|(id, (_, sent_at, backoff))| {
-                    (now.duration_since(*sent_at) >= *backoff).then_some(*id)
+                    (now.duration_since(*sent_at) >= *backoff).then_some((*id, *backoff))
                 })
         {
             let (request, _, _) = self
@@ -416,7 +416,7 @@ impl Allocation {
                 .remove(&timed_out_request)
                 .expect("ID is from list");
 
-            tracing::debug!(id = ?request.transaction_id(), method = %request.method(), "Request timed out, re-sending");
+            tracing::debug!(id = ?request.transaction_id(), method = %request.method(), "Request timed out after {backoff:?}, re-sending");
 
             self.authenticate_and_queue(request);
         }
