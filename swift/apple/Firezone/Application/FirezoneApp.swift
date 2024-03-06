@@ -29,7 +29,7 @@ struct FirezoneApp: App {
         StateObject(
           wrappedValue: AskPermissionViewModel(
             tunnelStore: appStore.tunnelStore,
-            notificationDecisionHelper: SessionNotificationHelper(logger: appStore.logger, authStore: appStore.authStore)
+            sessionNotificationHelper: SessionNotificationHelper(logger: appStore.logger, authStore: appStore.authStore)
           )
         )
       appDelegate.appStore = appStore

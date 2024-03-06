@@ -40,7 +40,7 @@ import SwiftUINavigationCore
     }
 
     private let appStore: AppStore
-    private let notificationDecisionHelper: SessionNotificationHelper
+    private let sessionNotificationHelper: SessionNotificationHelper
 
     let settingsViewModel: SettingsViewModel
     @Published var isSettingsSheetPresented = false
@@ -49,8 +49,8 @@ import SwiftUINavigationCore
       self.appStore = appStore
       self.settingsViewModel = appStore.settingsViewModel
 
-      let notificationDecisionHelper = SessionNotificationHelper(logger: appStore.logger, authStore: appStore.authStore)
-      self.notificationDecisionHelper = notificationDecisionHelper
+      let sessionNotificationHelper = SessionNotificationHelper(logger: appStore.logger, authStore: appStore.authStore)
+      self.sessionNotificationHelper = sessionNotificationHelper
 
       appStore.objectWillChange
         .receive(on: mainQueue)
@@ -59,7 +59,7 @@ import SwiftUINavigationCore
 
       Publishers.CombineLatest(
         appStore.authStore.$loginStatus,
-        notificationDecisionHelper.$notificationDecision
+        sessionNotificationHelper.$notificationDecision
       )
       .receive(on: mainQueue)
       .sink(receiveValue: { [weak self] loginStatus, notificationDecision in
@@ -73,7 +73,7 @@ import SwiftUINavigationCore
           self.state = .needsPermission(
             AskPermissionViewModel(
               tunnelStore: self.appStore.tunnelStore,
-              notificationDecisionHelper: self.notificationDecisionHelper
+              sessionNotificationHelper: self.sessionNotificationHelper
             )
           )
         case (.signedOut, .determined):

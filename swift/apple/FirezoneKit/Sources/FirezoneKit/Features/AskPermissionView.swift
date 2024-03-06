@@ -11,7 +11,7 @@ import SwiftUI
 @MainActor
 public final class AskPermissionViewModel: ObservableObject {
   public var tunnelStore: TunnelStore
-  private var notificationDecisionHelper: SessionNotificationHelper
+  private var sessionNotificationHelper: SessionNotificationHelper
 
   private var cancellables: Set<AnyCancellable> = []
 
@@ -29,9 +29,9 @@ public final class AskPermissionViewModel: ObservableObject {
 
   @Published var needsNotificationDecision = false
 
-  public init(tunnelStore: TunnelStore, notificationDecisionHelper: SessionNotificationHelper) {
+  public init(tunnelStore: TunnelStore, sessionNotificationHelper: SessionNotificationHelper) {
     self.tunnelStore = tunnelStore
-    self.notificationDecisionHelper = notificationDecisionHelper
+    self.sessionNotificationHelper = sessionNotificationHelper
 
     tunnelStore.$tunnelAuthStatus
       .filter { $0.isInitialized }
@@ -50,7 +50,7 @@ public final class AskPermissionViewModel: ObservableObject {
       }
       .store(in: &cancellables)
 
-    notificationDecisionHelper.$notificationDecision
+    sessionNotificationHelper.$notificationDecision
       .filter { $0.isInitialized }
       .sink { [weak self] notificationDecision in
         guard let self = self else { return }
@@ -85,7 +85,7 @@ public final class AskPermissionViewModel: ObservableObject {
 
   #if os(iOS)
     func grantNotificationButtonTapped() {
-      self.notificationDecisionHelper.askUserForNotificationPermissions()
+      self.sessionNotificationHelper.askUserForNotificationPermissions()
     }
   #endif
 
