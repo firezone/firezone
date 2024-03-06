@@ -81,8 +81,6 @@ impl Sockets {
     }
 
     pub fn try_send(&mut self, transmit: &Transmit) -> Result<usize> {
-        tracing::trace!(target: "wire", action = "write", to = %transmit.dst, src = ?transmit.src, bytes = %transmit.payload.len());
-
         match transmit.dst {
             SocketAddr::V4(_) => {
                 let socket = self.socket_v4.as_ref().ok_or(Error::NoIpv4)?;
@@ -227,13 +225,18 @@ impl<const N: usize> Socket<N> {
 
                 let local = SocketAddr::new(local_ip, *port);
 
-                return Poll::Ready(Ok(buffer[..meta.len].chunks(meta.stride).map(
-                    move |packet| Received {
+                let iter = buffer[..meta.len]
+                    .chunks(meta.stride)
+                    .map(move |packet| Received {
                         local,
                         from: meta.addr,
                         packet,
-                    },
-                )));
+                    })
+                    .inspect(|r| {
+                        tracing::trace!(target: "wire", from = "network", src = %r.from, dst = %r.local, num_bytes = %r.packet.len());
+                    });
+
+                return Poll::Ready(Ok(iter));
             }
         }
     }
@@ -248,6 +251,8 @@ impl<const N: usize> Socket<N> {
         dest: SocketAddr,
         buf: &[u8],
     ) -> io::Result<usize> {
+        tracing::trace!(target: "wire", to = "network", src = ?local, dst = %dest, num_bytes = %buf.len());
+
         self.state.send(
             (&self.socket).into(),
             &[quinn_udp::Transmit {
