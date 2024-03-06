@@ -24,12 +24,14 @@ use std::{
 };
 
 pub use client::ClientState;
-pub use control_protocol::{gateway::ResolvedResourceDescriptionDns, Request};
-pub use gateway::GatewayState;
+pub use control_protocol::client::Request;
+pub use gateway::{GatewayState, ResolvedResourceDescriptionDns};
 use ip_packet::IpPacket;
 
 mod client;
-mod control_protocol;
+mod control_protocol {
+    pub mod client;
+}
 mod device_channel;
 mod dns;
 mod gateway;
@@ -37,6 +39,7 @@ mod ip_packet;
 mod peer;
 mod peer_store;
 mod sockets;
+mod utils;
 
 const MAX_UDP_SIZE: usize = (1 << 16) - 1;
 const DNS_QUERIES_QUEUE_SIZE: usize = 100;
