@@ -7,7 +7,6 @@
 import Dependencies
 import FirezoneKit
 import NetworkExtension
-import UserNotifications
 import os
 
 enum PacketTunnelProviderError: Error {
@@ -113,37 +112,10 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
     #if os(iOS)
       if reason.action == .signoutImmediately {
-        UNUserNotificationCenter.current().getNotificationSettings { notificationSettings in
-          if notificationSettings.authorizationStatus == .authorized {
-            self.logger.log(
-              "Notifications are allowed. Alert style is \(notificationSettings.alertStyle.rawValue)"
-            )
-            self.showSignedOutNotificationiOS()
-          }
-        }
+        SessionNotificationHelper.showSignedOutNotificationiOS(logger: self.logger)
       }
     #endif
   }
-
-  #if os(iOS)
-    func showSignedOutNotificationiOS() {
-      let content = UNMutableNotificationContent()
-      content.title = "Your Firezone session has ended"
-      content.body = "Please sign in again to reconnect"
-      content.categoryIdentifier = NotificationIndentifier.sessionEndedNotificationCategory.rawValue
-      let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
-      let request = UNNotificationRequest(
-        identifier: "FirezoneTunnelShutdown", content: content, trigger: trigger
-      )
-      UNUserNotificationCenter.current().add(request) { error in
-        if let error = error {
-          self.logger.error("showSignedOutNotificationiOS: Error requesting notification: \(error)")
-        } else {
-          self.logger.error("showSignedOutNotificationiOS: Successfully requested notification")
-        }
-      }
-    }
-  #endif
 }
 
 extension NEProviderStopReason: CustomStringConvertible {

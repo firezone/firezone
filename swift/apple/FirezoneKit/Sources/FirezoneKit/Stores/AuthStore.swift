@@ -207,7 +207,7 @@ public final class AuthStore: ObservableObject {
           await self.signOut()
         }
         #if os(macOS)
-          self.showSignedOutAlertmacOS()
+          SessionNotificationHelper.showSignedOutAlertmacOS(logger: self.logger, authStore: self)
         #endif
       case .retryThenSignout:
         self.retryStartTunnel()
@@ -238,31 +238,10 @@ public final class AuthStore: ObservableObject {
         await self.signOut()
       }
       #if os(macOS)
-        self.showSignedOutAlertmacOS()
+        SessionNotificationHelper.showSignedOutAlertmacOS(logger: self.logger, authStore: self)
       #endif
     }
   }
-
-  #if os(macOS)
-    private func showSignedOutAlertmacOS() {
-      let alert = NSAlert()
-      alert.messageText = "Your Firezone session has ended"
-      alert.informativeText = "Please sign in again to reconnect"
-      alert.addButton(withTitle: "Sign In")
-      alert.addButton(withTitle: "Cancel")
-      NSApp.activate(ignoringOtherApps: true)
-      let response = alert.runModal()
-      if response == NSApplication.ModalResponse.alertFirstButtonReturn {
-        Task {
-          do {
-            try await self.signIn()
-          } catch {
-            self.logger.error("Error signing in: \(error)")
-          }
-        }
-      }
-    }
-  #endif
 
   private func handleLoginStatusChanged() {
     logger.log("\(#function): Login status: \(self.loginStatus)")

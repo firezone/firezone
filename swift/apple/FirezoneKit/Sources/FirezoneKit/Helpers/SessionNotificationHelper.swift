@@ -4,8 +4,16 @@
 //  LICENSE: Apache-2.0
 //
 
+#if os(macOS)
+import AppKit
+#endif
+
 import Foundation
+
+#if os(iOS)
 import UserNotifications
+#endif
+
 
 // NotificationDecisionHelper helps with iOS local notifications.
 // It doesn't do anything in macOS.
@@ -105,15 +113,67 @@ public class SessionNotificationHelper: NSObject {
       }
     }
   #endif
+
+  #if os(iOS)
+    // In iOS, use User Notifications.
+    // This gets called from the tunnel side.
+    public static func showSignedOutNotificationiOS(logger: AppLogger) {
+      UNUserNotificationCenter.current().getNotificationSettings { notificationSettings in
+        if notificationSettings.authorizationStatus == .authorized {
+          logger.log(
+            "Notifications are allowed. Alert style is \(notificationSettings.alertStyle.rawValue)"
+          )
+          let content = UNMutableNotificationContent()
+          content.title = "Your Firezone session has ended"
+          content.body = "Please sign in again to reconnect"
+          content.categoryIdentifier = NotificationIndentifier.sessionEndedNotificationCategory.rawValue
+          let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
+          let request = UNNotificationRequest(
+            identifier: "FirezoneTunnelShutdown", content: content, trigger: trigger
+          )
+          UNUserNotificationCenter.current().add(request) { error in
+            if let error = error {
+              logger.error("showSignedOutNotificationiOS: Error requesting notification: \(error)")
+            } else {
+              logger.error("showSignedOutNotificationiOS: Successfully requested notification")
+            }
+          }
+        }
+      }
+    }
+  #elseif os(macOS)
+    // In macOS, use a Cocoa alert.
+    // This gets called from the app side.
+    static func showSignedOutAlertmacOS(logger: AppLogger, authStore: AuthStore) {
+      let alert = NSAlert()
+      alert.messageText = "Your Firezone session has ended"
+      alert.informativeText = "Please sign in again to reconnect"
+      alert.addButton(withTitle: "Sign In")
+      alert.addButton(withTitle: "Cancel")
+      NSApp.activate(ignoringOtherApps: true)
+      let response = alert.runModal()
+      if response == NSApplication.ModalResponse.alertFirstButtonReturn {
+        logger.log("NotificationDecisionHelper: \(#function): 'Sign In' clicked in notification")
+        Task {
+          do {
+            try await authStore.signIn()
+          } catch {
+            logger.error("Error signing in: \(error)")
+          }
+        }
+      }
+    }
+    #endif
 }
 
-extension SessionNotificationHelper: UNUserNotificationCenterDelegate {
-  public func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
-    self.logger.log("NotificationDecisionHelper: \(#function): 'Sign In' clicked in notification")
+#if os(iOS)
+  extension SessionNotificationHelper: UNUserNotificationCenterDelegate {
+    public func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
+      self.logger.log("NotificationDecisionHelper: \(#function): 'Sign In' clicked in notification")
       let actionId = response.actionIdentifier
       let categoryId = response.notification.request.content.categoryIdentifier
       if categoryId == NotificationIndentifier.sessionEndedNotificationCategory.rawValue,
-          actionId == NotificationIndentifier.signInNotificationAction.rawValue {
+         actionId == NotificationIndentifier.signInNotificationAction.rawValue {
         // User clicked on 'Sign In' in the notification
         Task {
           do {
@@ -130,5 +190,6 @@ extension SessionNotificationHelper: UNUserNotificationCenterDelegate {
           completionHandler()
         }
       }
+    }
   }
-}
+#endif
