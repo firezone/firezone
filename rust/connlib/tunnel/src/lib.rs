@@ -25,7 +25,7 @@ use std::{
 };
 
 pub use client::ClientState;
-pub use control_protocol::{gateway::ResolvedResourceDescriptionDns, Request};
+pub use control_protocol::{client::Request, gateway::ResolvedResourceDescriptionDns};
 pub use gateway::GatewayState;
 use ip_packet::IpPacket;
 

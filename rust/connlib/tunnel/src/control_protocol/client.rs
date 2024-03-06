@@ -4,7 +4,7 @@ use boringtun::x25519::PublicKey;
 use connlib_shared::{
     messages::{
         Answer, ClientPayload, DomainResponse, GatewayId, Key, Offer, Relay, RequestConnection,
-        ResourceDescription, ResourceId,
+        ResourceDescription, ResourceId, ReuseConnection,
     },
     Callbacks,
 };
@@ -20,7 +20,13 @@ use crate::{
     peer::PacketTransformClient,
     utils::{stun, turn},
 };
-use crate::{peer::Peer, ClientState, Error, Request, Result, Tunnel};
+use crate::{peer::Peer, ClientState, Error, Result, Tunnel};
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Request {
+    NewConnection(RequestConnection),
+    ReuseConnection(ReuseConnection),
+}
 
 impl<CB> Tunnel<CB, ClientState, Client, GatewayId>
 where

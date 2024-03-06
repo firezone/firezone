@@ -1,20 +1,11 @@
 use std::{fmt, hash::Hash};
 
-use connlib_shared::{
-    messages::{RequestConnection, ReuseConnection},
-    Callbacks,
-};
+use connlib_shared::Callbacks;
 
 use crate::Tunnel;
 
-mod client;
+pub mod client;
 pub mod gateway;
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Request {
-    NewConnection(RequestConnection),
-    ReuseConnection(ReuseConnection),
-}
 
 impl<CB, TRoleState, TRole, TId> Tunnel<CB, TRoleState, TRole, TId>
 where
