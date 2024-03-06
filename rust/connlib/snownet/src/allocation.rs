@@ -691,7 +691,7 @@ impl Allocation {
     /// Returns: Whether we actually queued a message.
     fn authenticate_and_queue(&mut self, message: Message<Attribute>) -> bool {
         let Some(backoff) = self.backoff.next_backoff() else {
-            tracing::warn!(
+            tracing::debug!(
                 "Unable to queue {} because we've exceeded our backoffs",
                 message.method()
             );
