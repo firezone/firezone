@@ -391,6 +391,7 @@ impl Allocation {
         Some((peer, payload, socket))
     }
 
+    #[tracing::instrument(level = "debug", skip_all, fields(relay = %self.server))]
     pub fn handle_timeout(&mut self, now: Instant) {
         self.update_now(now);
 
