@@ -25,6 +25,11 @@ mod system_tray_menu;
 #[path = "gui/os_linux.rs"]
 mod os;
 
+// Stub only
+#[cfg(target_os = "macos")]
+#[path = "gui/os_macos.rs"]
+mod os;
+
 #[cfg(target_os = "windows")]
 #[path = "gui/os_windows.rs"]
 mod os;
@@ -311,7 +316,7 @@ async fn smoke_test(ctlr_tx: CtlrTx) -> Result<()> {
     let quit_time = tokio::time::Instant::now() + Duration::from_secs(delay);
 
     // Write the settings so we can check the path for those
-    settings::apply_advanced_settings_inner(&settings::AdvancedSettings::default()).await?;
+    settings::save(&settings::AdvancedSettings::default()).await?;
 
     // Test log exporting
     let path = PathBuf::from("smoke_test_log_export.zip");
@@ -410,6 +415,8 @@ fn handle_system_tray_event(app: &tauri::AppHandle, event: TrayMenuEvent) -> Res
 }
 
 pub(crate) enum ControllerRequest {
+    /// The GUI wants us to use these settings in-memory, they've already been saved to disk
+    ApplySettings(AdvancedSettings),
     Disconnected,
     DisconnectedTokenExpired,
     /// The same as the arguments to `client::logging::export_logs_to`
@@ -503,6 +510,7 @@ struct Controller {
     /// Tells us when to wake up and look for a new resource list. Tokio docs say that memory reads and writes are synchronized when notifying, so we don't need an extra mutex on the resources.
     notify_controller: Arc<Notify>,
     tunnel_ready: bool,
+    uptime: client::uptime::Tracker,
 }
 
 /// Everything related to a signed-in user session
@@ -582,6 +590,14 @@ impl Controller {
 
     async fn handle_request(&mut self, req: ControllerRequest) -> Result<()> {
         match req {
+            Req::ApplySettings(settings) => {
+                self.advanced_settings = settings;
+                // TODO: Update the logger here if we can. I can't remember if there
+                // was a reason why the reloading didn't work.
+                tracing::info!(
+                    "Applied new settings. Log level will take effect at next app start."
+                );
+            }
             Req::Disconnected => {
                 tracing::debug!("connlib disconnected, tearing down Session");
                 self.tunnel_ready = false;
@@ -626,8 +642,17 @@ impl Controller {
                     self.sign_out()?;
                 }
             }
-            Req::SystemTrayMenu(TrayMenuEvent::ToggleWindow(window)) => {
-                self.toggle_window(window)?
+            Req::SystemTrayMenu(TrayMenuEvent::ShowWindow(window)) => {
+                self.show_window(window)?;
+                // When the About or Settings windows are hidden / shown, log the
+                // run ID and uptime. This makes it easy to check client stability on
+                // dev or test systems without parsing the whole log file.
+                let uptime_info = self.uptime.info();
+                tracing::debug!(
+                    uptime_s = uptime_info.uptime.as_secs(),
+                    run_id = uptime_info.run_id.to_string(),
+                    "Uptime info"
+                );
             }
             Req::SystemTrayMenu(TrayMenuEvent::Resource { id }) => self
                 .copy_resource(&id)
@@ -738,7 +763,7 @@ impl Controller {
         Ok(())
     }
 
-    fn toggle_window(&self, window: system_tray_menu::Window) -> Result<()> {
+    fn show_window(&self, window: system_tray_menu::Window) -> Result<()> {
         let id = match window {
             system_tray_menu::Window::About => "about",
             system_tray_menu::Window::Settings => "settings",
@@ -778,6 +803,7 @@ async fn run_controller(
         logging_handles,
         notify_controller,
         tunnel_ready: false,
+        uptime: Default::default(),
     };
 
     if let Some(token) = controller

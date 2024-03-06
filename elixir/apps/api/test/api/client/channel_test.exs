@@ -131,7 +131,7 @@ defmodule API.Client.ChannelTest do
         })
         |> subscribe_and_join(API.Client.Channel, "client")
 
-      assert_push "disconnect", %{"reason" => "token_expired"}, 250
+      assert_push "disconnect", %{reason: :token_expired}, 250
       assert_receive {:EXIT, _pid, {:shutdown, :token_expired}}
       assert_receive {:socket_close, _pid, {:shutdown, :token_expired}}
     end
@@ -207,7 +207,7 @@ defmodule API.Client.ChannelTest do
       assert_push "init", %{}
       Process.flag(:trap_exit, true)
       Domain.Clients.broadcast_to_client(client, :token_expired)
-      assert_push "disconnect", %{"reason" => "token_expired"}, 250
+      assert_push "disconnect", %{reason: :token_expired}, 250
     end
 
     test "subscribes for resource events", %{
@@ -269,7 +269,7 @@ defmodule API.Client.ChannelTest do
       channel_pid = socket.channel_pid
 
       send(channel_pid, :token_expired)
-      assert_push "disconnect", %{"reason" => "token_expired"}
+      assert_push "disconnect", %{reason: :token_expired}
 
       assert_receive {:EXIT, ^channel_pid, {:shutdown, :token_expired}}
     end
@@ -470,7 +470,7 @@ defmodule API.Client.ChannelTest do
       Domain.Config.put_env_override(Domain.Instrumentation, client_logs_enabled: false)
 
       ref = push(socket, "create_log_sink", %{})
-      assert_reply ref, :error, :disabled
+      assert_reply ref, :error, %{reason: :disabled}
     end
 
     test "returns a signed URL which can be used to upload the logs", %{
@@ -509,7 +509,7 @@ defmodule API.Client.ChannelTest do
   describe "handle_in/3 prepare_connection" do
     test "returns error when resource is not found", %{socket: socket} do
       ref = push(socket, "prepare_connection", %{"resource_id" => Ecto.UUID.generate()})
-      assert_reply ref, :error, :not_found
+      assert_reply ref, :error, %{reason: :not_found}
     end
 
     test "returns error when there are no online relays", %{
@@ -517,7 +517,7 @@ defmodule API.Client.ChannelTest do
       socket: socket
     } do
       ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
-      assert_reply ref, :error, :offline
+      assert_reply ref, :error, %{reason: :offline}
     end
 
     test "returns error when all gateways are offline", %{
@@ -525,7 +525,7 @@ defmodule API.Client.ChannelTest do
       socket: socket
     } do
       ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
-      assert_reply ref, :error, :offline
+      assert_reply ref, :error, %{reason: :offline}
     end
 
     test "returns error when client has no policy allowing access to resource", %{
@@ -542,7 +542,7 @@ defmodule API.Client.ChannelTest do
       }
 
       ref = push(socket, "prepare_connection", attrs)
-      assert_reply ref, :error, :not_found
+      assert_reply ref, :error, %{reason: :not_found}
     end
 
     test "returns error when all gateways connected to the resource are offline", %{
@@ -554,7 +554,7 @@ defmodule API.Client.ChannelTest do
       :ok = Domain.Gateways.connect_gateway(gateway)
 
       ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
-      assert_reply ref, :error, :offline
+      assert_reply ref, :error, %{reason: :offline}
     end
 
     test "returns online gateway and relays connected to the resource", %{
@@ -836,7 +836,7 @@ defmodule API.Client.ChannelTest do
       }
 
       ref = push(socket, "reuse_connection", attrs)
-      assert_reply ref, :error, :not_found
+      assert_reply ref, :error, %{reason: :not_found}
     end
 
     test "returns error when gateway is not found", %{dns_resource: resource, socket: socket} do
@@ -847,7 +847,7 @@ defmodule API.Client.ChannelTest do
       }
 
       ref = push(socket, "reuse_connection", attrs)
-      assert_reply ref, :error, :not_found
+      assert_reply ref, :error, %{reason: :not_found}
     end
 
     test "returns error when gateway is not connected to resource", %{
@@ -865,7 +865,7 @@ defmodule API.Client.ChannelTest do
       }
 
       ref = push(socket, "reuse_connection", attrs)
-      assert_reply ref, :error, :offline
+      assert_reply ref, :error, %{reason: :offline}
     end
 
     test "returns error when client has no policy allowing access to resource", %{
@@ -884,7 +884,7 @@ defmodule API.Client.ChannelTest do
       }
 
       ref = push(socket, "reuse_connection", attrs)
-      assert_reply ref, :error, :not_found
+      assert_reply ref, :error, %{reason: :not_found}
     end
 
     test "returns error when gateway is offline", %{
@@ -899,7 +899,7 @@ defmodule API.Client.ChannelTest do
       }
 
       ref = push(socket, "reuse_connection", attrs)
-      assert_reply ref, :error, :offline
+      assert_reply ref, :error, %{reason: :offline}
     end
 
     test "broadcasts allow_access to the gateways and then returns connect message", %{
@@ -995,7 +995,7 @@ defmodule API.Client.ChannelTest do
       }
 
       ref = push(socket, "request_connection", attrs)
-      assert_reply ref, :error, :not_found
+      assert_reply ref, :error, %{reason: :not_found}
     end
 
     test "returns error when gateway is not found", %{dns_resource: resource, socket: socket} do
@@ -1007,7 +1007,7 @@ defmodule API.Client.ChannelTest do
       }
 
       ref = push(socket, "request_connection", attrs)
-      assert_reply ref, :error, :not_found
+      assert_reply ref, :error, %{reason: :not_found}
     end
 
     test "returns error when gateway is not connected to resource", %{
@@ -1026,7 +1026,7 @@ defmodule API.Client.ChannelTest do
       }
 
       ref = push(socket, "request_connection", attrs)
-      assert_reply ref, :error, :offline
+      assert_reply ref, :error, %{reason: :offline}
     end
 
     test "returns error when client has no policy allowing access to resource", %{
@@ -1046,7 +1046,7 @@ defmodule API.Client.ChannelTest do
       }
 
       ref = push(socket, "request_connection", attrs)
-      assert_reply ref, :error, :not_found
+      assert_reply ref, :error, %{reason: :not_found}
     end
 
     test "returns error when gateway is offline", %{
@@ -1062,7 +1062,7 @@ defmodule API.Client.ChannelTest do
       }
 
       ref = push(socket, "request_connection", attrs)
-      assert_reply ref, :error, :offline
+      assert_reply ref, :error, %{reason: :offline}
     end
 
     test "broadcasts request_connection to the gateways and then returns connect message", %{

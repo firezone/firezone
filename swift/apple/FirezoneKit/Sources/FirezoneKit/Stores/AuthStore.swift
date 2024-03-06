@@ -10,6 +10,10 @@ import Foundation
 import NetworkExtension
 import OSLog
 
+#if os(macOS)
+  import AppKit
+#endif
+
 @MainActor
 public final class AuthStore: ObservableObject {
   enum LoginStatus: CustomStringConvertible {
@@ -202,6 +206,13 @@ public final class AuthStore: ObservableObject {
         Task {
           await self.signOut()
         }
+        #if os(macOS)
+          SessionNotificationHelper.showSignedOutAlertmacOS(logger: self.logger, authStore: self)
+        #endif
+      case .signoutImmediatelySilently:
+        Task {
+          await self.signOut()
+        }
       case .retryThenSignout:
         self.retryStartTunnel()
       case .doNothing:
@@ -230,6 +241,9 @@ public final class AuthStore: ObservableObject {
       Task {
         await self.signOut()
       }
+      #if os(macOS)
+        SessionNotificationHelper.showSignedOutAlertmacOS(logger: self.logger, authStore: self)
+      #endif
     }
   }
 

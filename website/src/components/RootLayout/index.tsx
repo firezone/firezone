@@ -16,18 +16,14 @@ const source_sans_3 = Source_Sans_3({
 import { HiArrowLongRight } from "react-icons/hi2";
 import { useMixpanel } from "react-mixpanel-browser";
 import { usePathname, useSearchParams } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, Suspense } from "react";
 
 export const metadata: Metadata = {
   title: "WireGuard® for Enterprise • Firezone",
   description: "Open-source, zero-trust access platform built on WireGuard®",
 };
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+function Mixpanel() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const mixpanel = useMixpanel();
@@ -44,6 +40,15 @@ export default function RootLayout({
       $current_url: url,
     });
   }, [pathname, searchParams, mixpanel]);
+
+  return null;
+}
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
     <html lang="en">
       <Script
@@ -51,6 +56,9 @@ export default function RootLayout({
         data-auto-block="off"
         data-website-uuid="c4df1a31-22d9-4000-82e6-a86cbec0bba0"
       ></Script>
+      <Suspense>
+        <Mixpanel />
+      </Suspense>
       <body className={source_sans_3.className}>
         <div className="min-h-screen h-auto antialiased">
           <RootNavbar />

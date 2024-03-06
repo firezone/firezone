@@ -9,7 +9,7 @@
 
 pub(crate) use imp::{device_id, logs, runtime, session, settings};
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 mod imp {
     use connlib_shared::BUNDLE_ID;
     use std::path::PathBuf;
@@ -116,5 +116,20 @@ mod imp {
                 .ok()?
                 .join("config"),
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn smoke() {
+        for dir in [device_id(), logs(), runtime(), session(), settings()] {
+            let dir = dir.expect("should have gotten Some(path)");
+            assert!(dir
+                .components()
+                .any(|x| x == std::path::Component::Normal("dev.firezone.client".as_ref())));
+        }
     }
 }

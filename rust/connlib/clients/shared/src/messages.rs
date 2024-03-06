@@ -161,7 +161,6 @@ mod test {
     };
 
     use chrono::NaiveDateTime;
-    use connlib_shared::control::ErrorInfo;
 
     use crate::messages::{ConnectionDetails, EgressMessages, ReplyMessages};
 
@@ -403,13 +402,13 @@ mod test {
 
     #[test]
     fn create_log_sink_error_response() {
-        let json = r#"{"event":"phx_reply","ref":"unique_log_sink_ref","topic":"client","payload":{"status":"error","response":"disabled"}}"#;
+        let json = r#"{"event":"phx_reply","ref":"unique_log_sink_ref","topic":"client","payload":{"status":"error","response":{"reason": "disabled"}}}"#;
 
         let actual =
             serde_json::from_str::<PhoenixMessage<EgressMessages, ReplyMessages>>(json).unwrap();
         let expected = PhoenixMessage::new_err_reply(
             "client",
-            ErrorInfo::Disabled,
+            connlib_shared::control::ErrorReply::Disabled,
             "unique_log_sink_ref".to_owned(),
         );
 

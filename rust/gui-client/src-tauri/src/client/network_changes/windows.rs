@@ -37,7 +37,7 @@ use anyhow::Result;
 use std::sync::Arc;
 use tokio::{runtime::Runtime, sync::Notify};
 use windows::{
-    core::{ComInterface, Result as WinResult, GUID},
+    core::{Interface, Result as WinResult, GUID},
     Win32::{
         Networking::NetworkListManager::{
             INetworkEvents, INetworkEvents_Impl, INetworkListManager, NetworkListManager,
@@ -203,6 +203,7 @@ impl ComGuard {
         // SAFETY: Threading shouldn't be a problem since this is meant to initialize
         // COM per-thread anyway.
         unsafe { Com::CoInitializeEx(None, Com::COINIT_MULTITHREADED) }
+            .ok()
             .map_err(Error::ComInitialize)?;
         Ok(Self {
             dropped: false,

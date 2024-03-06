@@ -66,7 +66,7 @@ public final class AppStore: ObservableObject {
   public let settingsViewModel: SettingsViewModel
 
   private var cancellables: Set<AnyCancellable> = []
-  let logger: AppLogger
+  public let logger: AppLogger
 
   public init() {
     let logger = AppLogger(process: .app, folderURL: SharedAccess.appLogFolderURL)

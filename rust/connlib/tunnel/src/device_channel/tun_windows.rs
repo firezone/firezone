@@ -21,6 +21,9 @@ use windows::Win32::{
     Networking::WinSock::{AF_INET, AF_INET6},
 };
 
+// wintun automatically appends " Tunnel" to this
+const TUNNEL_NAME: &str = "Firezone";
+
 // TODO: Double-check that all these get dropped gracefully on disconnect
 pub struct Tun {
     _adapter: Arc<wintun::Adapter>,
@@ -50,8 +53,6 @@ const DEFAULT_MTU: u32 = 1280;
 impl Tun {
     pub fn new(config: &InterfaceConfig, dns_config: Vec<IpAddr>) -> Result<Self> {
         const TUNNEL_UUID: &str = "e9245bc1-b8c1-44ca-ab1d-c6aad4f13b9c";
-        // wintun automatically appends " Tunnel" to this
-        const TUNNEL_NAME: &str = "Firezone";
 
         // SAFETY: we're loading a DLL from disk and it has arbitrary C code in it.
         // The Windows client, in `wintun_install` hashes the DLL at startup, before calling connlib, so it's unlikely for the DLL to be accidentally corrupted by the time we get here.
@@ -158,7 +159,7 @@ impl Tun {
         let entry = self.forward_entry(route);
 
         // SAFETY: Windows shouldn't store the reference anywhere, it's just a way to pass lots of arguments at once. And no other thread sees this variable.
-        match unsafe { CreateIpForwardEntry2(&entry) } {
+        match unsafe { CreateIpForwardEntry2(&entry) }.ok() {
             Ok(()) => Ok(()),
             Err(e) if e.code().0 as u32 == DUPLICATE_ERR => {
                 tracing::debug!(%route, "Failed to add duplicate route, ignoring");
@@ -173,9 +174,7 @@ impl Tun {
         let entry = self.forward_entry(route);
 
         // SAFETY: Windows shouldn't store the reference anywhere, it's just a way to pass lots of arguments at once. And no other thread sees this variable.
-        unsafe {
-            DeleteIpForwardEntry2(&entry)?;
-        }
+        unsafe { DeleteIpForwardEntry2(&entry) }.ok()?;
         Ok(())
     }
 
@@ -202,6 +201,10 @@ impl Tun {
                 Poll::Ready(Err(std::io::ErrorKind::Other.into()))
             }
         }
+    }
+
+    pub fn name(&self) -> &str {
+        TUNNEL_NAME
     }
 
     pub fn write4(&self, bytes: &[u8]) -> io::Result<usize> {
@@ -299,7 +302,7 @@ fn set_iface_config(luid: wintun::NET_LUID_LH, mtu: u32) -> Result<()> {
         };
 
         // SAFETY: TODO
-        unsafe { GetIpInterfaceEntry(&mut row) }?;
+        unsafe { GetIpInterfaceEntry(&mut row) }.ok()?;
 
         // https://stackoverflow.com/questions/54857292/setipinterfaceentry-returns-error-invalid-parameter
         row.SitePrefixLength = 0;
@@ -308,7 +311,7 @@ fn set_iface_config(luid: wintun::NET_LUID_LH, mtu: u32) -> Result<()> {
         row.NlMtu = mtu;
 
         // SAFETY: TODO
-        unsafe { SetIpInterfaceEntry(&mut row) }?;
+        unsafe { SetIpInterfaceEntry(&mut row) }.ok()?;
     }
 
     // Set MTU for IPv6
@@ -320,7 +323,7 @@ fn set_iface_config(luid: wintun::NET_LUID_LH, mtu: u32) -> Result<()> {
         };
 
         // SAFETY: TODO
-        unsafe { GetIpInterfaceEntry(&mut row) }?;
+        unsafe { GetIpInterfaceEntry(&mut row) }.ok()?;
 
         // https://stackoverflow.com/questions/54857292/setipinterfaceentry-returns-error-invalid-parameter
         row.SitePrefixLength = 0;
@@ -329,7 +332,7 @@ fn set_iface_config(luid: wintun::NET_LUID_LH, mtu: u32) -> Result<()> {
         row.NlMtu = mtu;
 
         // SAFETY: TODO
-        unsafe { SetIpInterfaceEntry(&mut row) }?;
+        unsafe { SetIpInterfaceEntry(&mut row) }.ok()?;
     }
     Ok(())
 }

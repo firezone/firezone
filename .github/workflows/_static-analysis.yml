@@ -3,6 +3,16 @@ on:
   workflow_call:
 
 jobs:
+  pr-lint:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-22.04
+    permissions:
+      pull-requests: read
+    steps:
+      - uses: amannn/action-semantic-pull-request@v5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   version-check:
     runs-on: macos-14
     steps:
@@ -24,7 +34,7 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
-      - uses: lycheeverse/lychee-action@v1.9.0
+      - uses: lycheeverse/lychee-action@v1.9.3
         with:
           fail: true
           args: --offline --verbose --no-progress **/*.md

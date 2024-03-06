@@ -1,7 +1,9 @@
+import Alert from "@/components/DocsAlert";
+
 # Linux Client
 
-Firezone supports Linux with a native client for ARM v7, ARM64, and Intel x64
-architectures.
+Firezone supports Linux with a native, headless client for ARMv7l, ARM64, and
+x86-64 architectures.
 
 The Linux Client is a lightweight, standalone binary that runs in the background
 using a service account token.
@@ -9,7 +11,7 @@ using a service account token.
 ## Prerequisites
 
 - Any Linux-based OS with kernel 3.10 or higher
-- ARM64, ARMv7, or Intel x64 CPU
+- ARM64, ARMv7l, or x86-64 CPU
 - Administrator access to your Firezone account in order to create a Service
   Account and generate a token
 
@@ -19,11 +21,11 @@ The Linux Client is currently in beta and can be downloaded from our
 [main repository's releases page](https://github.com/firezone/firezone/releases).
 Alternatively, download the latest Client binary using one of the links below:
 
-- [Download the Linux Client for `x86_64`](https://github.com/firezone/firezone/releases/latest/download/linux-client-x64)
-- [Download the Linux Client for `armv7l`](https://github.com/firezone/firezone/releases/latest/download/linux-client-arm)
-- [Download the Linux Client for `arm64`](https://github.com/firezone/firezone/releases/latest/download/linux-client-arm64)
+- [Download the Linux Client for `x86-64`](https://github.com/firezone/firezone/releases/latest/download/linux-client-x64)
+- [Download the Linux Client for `ARMv7l`](https://github.com/firezone/firezone/releases/latest/download/linux-client-arm)
+- [Download the Linux Client for `ARM64`](https://github.com/firezone/firezone/releases/latest/download/linux-client-arm64)
 
-## Running the Linux Client
+## Usage
 
 The Linux Client requires a Service Account token to authenticate to Firezone.
 If you don't already have a token generated, follow the instructions in the
@@ -35,6 +37,19 @@ command:
 ```bash
 sudo ./linux-client-x64 <TOKEN>
 ```
+
+Set some environment variables to configure it:
+
+```bash
+FIREZONE_NAME="Development Webserver"
+FIREZONE_ID="some unique identifier"
+DNS_CONTROL="systemd-resolved" # or "etc-resolv-conf"
+LOG_DIR="./"
+sudo -E ./linux-client-x64 <TOKEN>
+```
+
+See [below](#environment-variable-reference) for a full list of environment
+variables.
 
 A sample output of the help command is shown below:
 
@@ -54,3 +69,68 @@ Options:
   -h, --help                           Print help
   -V, --version                        Print version
 ```
+
+## Split DNS
+
+The Linux Client supports Split DNS, which you can enable by setting the
+`FIREZONE_DNS_CONTROL` environment variable to `systemd-resolved` or
+`etc-resolv-conf`. If you don't set this variable, Split DNS will be disabled.
+
+When Split DNS is enabled, the Linux Client will override the system's DNS
+resolver with its internal proxy. To do this, the Linux client needs to know how
+DNS resolution is currently being handled on your system.
+
+### systemd-resolved
+
+On most modern Linux distributions, DNS resolution is handled by
+`systemd-resolved`. If this is the case for you, set `FIREZONE_DNS_CONTROL` to
+`systemd-resolved`. If you're not sure, you can check by running the following
+command:
+
+```bash
+systemctl status systemd-resolved
+```
+
+### NetworkManager
+
+In most cases, if you're using NetworkManager your system is likely already
+using `systemd-resolved`, and you should set `FIREZONE_DNS_CONTROL` to
+`systemd-resolved`. You'll need to ensure that `/etc/resolv.conf` is a symlink
+to `/run/systemd/resolve/stub-resolv.conf`:
+
+```bash
+stat /etc/resolv.conf
+sudo ln -sf /run/systemd/resolve/stub-resolv.conf /etc/resolv.conf
+```
+
+When NetworkManager detects that symlink exists, it will automatically use
+`systemd-resolved` for DNS resolution.
+
+### /etc/resolv.conf
+
+If you're not using `systemd-resolved`, Firezone supports using the
+`/etc/resolv.conf` file to configure Split DNS as a fallback. To do this, set
+`FIREZONE_DNS_CONTROL` to `etc-resolv-conf`, and the Linux Client will override
+the `/etc/resolv.conf` file with the Firezone internal proxy.
+
+<Alert color="warning">
+  The Linux Client **will not revert** `/etc/resolv.conf` when it exits, so this
+  is best for disposable "cattle" systems like Docker containers or VMs that can
+  be rebuilt from scripts.
+</Alert>
+
+[Read more](/kb/deploy/dns) about how DNS works in Firezone.
+
+## Environment variable reference
+
+Here's an exhaustive list of environment variables you can use for the Linux
+client.
+
+| Variable Name          | Default Value       | Description                                                                                                                                                                                             |
+| ---------------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `FIREZONE_TOKEN`       |                     | Service account token generated by the portal to authenticate this Client.                                                                                                                              |
+| `FIREZONE_NAME`        | `<system hostname>` | Friendly name for this client to display in the UI.                                                                                                                                                     |
+| `FIREZONE_ID`          |                     | Identifier used by the portal to identify this client for metadata and display purposes.                                                                                                                |
+| `FIREZONE_DNS_CONTROL` |                     | The DNS control method to use. Set to `systemd-resolved` to use systemd-resolved for Split DNS, or `etc-resolv-conf` to use the `/etc/resolv.conf` file. If left blank, Split DNS will be **disabled**. |
+| `LOG_DIR`              |                     | File logging directory. Should be a path that's writeable by the current user. If unset, logs will be written to STDOUT only.                                                                           |
+| `RUST_LOG`             | `error`             | Log level for the client. Set to `debug` for verbose logging. Read more about configuring Rust log levels [here](https://docs.rs/env_logger/latest/env_logger/).                                        |

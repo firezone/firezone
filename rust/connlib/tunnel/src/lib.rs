@@ -21,7 +21,7 @@ use std::{
     hash::Hash,
     io,
     task::{ready, Context, Poll},
-    time::Instant,
+    time::{Duration, Instant},
 };
 
 pub use client::ClientState;
@@ -242,6 +242,7 @@ struct ConnectionState<TRole, TId> {
     pub node: Node<TRole, TId>,
     write_buf: Box<[u8; MAX_UDP_SIZE]>,
     connection_pool_timeout: BoxFuture<'static, std::time::Instant>,
+    stats_timer: tokio::time::Interval,
     sockets: Sockets,
 }
 
@@ -255,6 +256,7 @@ where
             write_buf: Box::new([0; MAX_UDP_SIZE]),
             connection_pool_timeout: sleep_until(std::time::Instant::now()).boxed(),
             sockets: Sockets::new()?,
+            stats_timer: tokio::time::interval(Duration::from_secs(60)),
         })
     }
 
@@ -347,6 +349,18 @@ where
     }
 
     fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Event<TId>> {
+        if self.stats_timer.poll_tick(cx).is_ready() {
+            let (node_stats, conn_stats) = self.node.stats();
+
+            tracing::debug!(target: "connlib::stats", "{node_stats:?}");
+
+            for (id, stats) in conn_stats {
+                tracing::debug!(target: "connlib::stats", %id, "{stats:?}");
+            }
+
+            cx.waker().wake_by_ref();
+        }
+
         if let Err(e) = ready!(self.sockets.poll_send_ready(cx)) {
             tracing::warn!("Failed to poll sockets for readiness: {e}");
         };
