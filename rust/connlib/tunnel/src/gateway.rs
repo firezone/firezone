@@ -72,10 +72,10 @@ where
     #[allow(clippy::too_many_arguments)]
     pub fn set_peer_connection_request(
         &mut self,
-        client: ClientId,
+        client_id: ClientId,
         key: Secret<Key>,
         offer: Offer,
-        gateway: PublicKey,
+        client: PublicKey,
         ips: Vec<IpNetwork>,
         relays: Vec<Relay>,
         domain: Option<Dname>,
@@ -98,7 +98,7 @@ where
         };
 
         let answer = self.connections_state.node.accept_connection(
-            client,
+            client_id,
             snownet::Offer {
                 session_key: key.expose_secret().0.into(),
                 credentials: snownet::Credentials {
@@ -106,7 +106,7 @@ where
                     password: offer.password,
                 },
             },
-            gateway,
+            client,
             stun(&relays, |addr| {
                 self.connections_state.sockets.can_handle(addr)
             }),
@@ -117,13 +117,13 @@ where
 
         self.new_peer(
             ips,
-            client,
+            client_id,
             resource,
             expires_at,
             resource_addresses.clone(),
         )?;
 
-        tracing::info!(%client, gateway = %hex::encode(gateway.as_bytes()), "Connection is ready");
+        tracing::info!(%client_id, client = %hex::encode(client.as_bytes()), "Connection is ready");
 
         Ok(ConnectionAccepted {
             ice_parameters: Answer {
