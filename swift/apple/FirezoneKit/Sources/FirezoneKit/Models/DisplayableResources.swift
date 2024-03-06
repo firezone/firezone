@@ -28,7 +28,7 @@ public class DisplayableResources {
   public init(version: UInt64, resources: [Resource]) {
     self.version = version
     self.versionString = "\(version)"
-    self.orderedResources = resources.sorted { $0.name < $1.name }
+    self.orderedResources = resources
   }
 
   public convenience init() {
@@ -38,7 +38,7 @@ public class DisplayableResources {
   public func update(resources: [Resource]) {
     self.version = self.version &+ 1  // Overflow is ok
     self.versionString = "\(version)"
-    self.orderedResources = resources.sorted { $0.name < $1.name }
+    self.orderedResources = resources
   }
 }
 
