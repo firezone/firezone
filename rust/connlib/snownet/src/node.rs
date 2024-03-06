@@ -421,8 +421,7 @@ where
                             conn.invalidate_candiates();
 
                             tracing::info!(%id, "Sending wireguard handshake");
-                            self.buffered_transmits
-                                .extend(conn.force_handshake(&mut self.allocations, self.last_now));
+                            conn.force_handshake(&mut self.allocations, self.last_now);
 
                             if is_first_connection {
                                 return Some(Event::ConnectionEstablished(id));
@@ -476,9 +475,7 @@ where
 
         for (id, c) in self.connections.iter_established_mut() {
             match c.handle_timeout(now, &mut self.allocations) {
-                Ok(Some(transmit)) => {
-                    self.buffered_transmits.push_back(transmit);
-                }
+                Ok(()) => {}
                 Err(ConnectionError::Wireguard(WireGuardError::ConnectionExpired)) => {
                     expired_connections.push(id);
                 }
@@ -488,7 +485,6 @@ where
                 Err(ConnectionError::Wireguard(e)) => {
                     tracing::warn!(%id, ?e);
                 }
-                _ => {}
             };
         }
 
@@ -597,8 +593,9 @@ where
             turn_servers: allowed_turn_servers,
             next_timer_update: self.last_now,
             peer_socket: None,
-            possible_sockets: HashSet::default(),
+            possible_sockets: Default::default(),
             stats: Default::default(),
+            buffered_transmits: Default::default(),
             signalling_completed_at: now,
         }
     }
@@ -769,21 +766,13 @@ where
                 TunnResult::WriteToNetwork(bytes) => {
                     conn.set_remote_from_wg_activity(local, from, relayed);
 
-                    self.buffered_transmits.extend(conn.encapsulate(
-                        bytes,
-                        &mut self.allocations,
-                        now,
-                    ));
+                    conn.encapsulate(bytes, &mut self.allocations, now);
 
                     while let TunnResult::WriteToNetwork(packet) =
                         conn.tunnel
                             .decapsulate(None, &[], self.buffer.as_mut_slice())
                     {
-                        self.buffered_transmits.extend(conn.encapsulate(
-                            packet,
-                            &mut self.allocations,
-                            now,
-                        ));
+                        conn.encapsulate(packet, &mut self.allocations, now);
                     }
 
                     ControlFlow::Break(Ok(()))
@@ -1307,6 +1296,8 @@ struct Connection {
     // Socket addresses from which we might receive data (even before we are connected).
     possible_sockets: HashSet<SocketAddr>,
 
+    buffered_transmits: VecDeque<Transmit<'static>>,
+
     stun_servers: HashSet<SocketAddr>,
     turn_servers: HashSet<SocketAddr>,
 
@@ -1399,6 +1390,10 @@ impl Connection {
         allocations: &mut HashMap<SocketAddr, Allocation>,
         now: Instant,
     ) -> Option<Transmit<'static>> {
+        if let Some(transmit) = self.buffered_transmits.pop_front() {
+            return Some(transmit);
+        }
+
         loop {
             let transmit = self.agent.poll_transmit()?;
             let source = transmit.source;
@@ -1442,7 +1437,7 @@ impl Connection {
         &mut self,
         now: Instant,
         allocations: &mut HashMap<SocketAddr, Allocation>,
-    ) -> Result<Option<Transmit<'static>>, ConnectionError> {
+    ) -> Result<(), ConnectionError> {
         self.agent.handle_timeout(now);
 
         if self
@@ -1459,7 +1454,7 @@ impl Connection {
 
             // Don't update wireguard timers until we are connected.
             if self.peer_socket.is_none() {
-                return Ok(None);
+                return Ok(());
             }
 
             /// [`boringtun`] requires us to pass buffers in where it can construct its packets.
@@ -1473,47 +1468,46 @@ impl Connection {
                 TunnResult::Done => {}
                 TunnResult::Err(e) => return Err(ConnectionError::Wireguard(e)),
                 TunnResult::WriteToNetwork(b) => {
-                    let Some(transmit) = self.encapsulate(b, allocations, now) else {
-                        return Ok(None);
-                    };
-
-                    return Ok(Some(transmit.into_owned()));
+                    self.encapsulate(b, allocations, now);
                 }
                 _ => panic!("Unexpected result from update_timers"),
             };
         }
 
-        Ok(None)
+        Ok(())
     }
 
-    #[must_use]
     fn encapsulate(
-        &self,
+        &mut self,
         message: &[u8],
         allocations: &mut HashMap<SocketAddr, Allocation>,
         now: Instant,
-    ) -> Option<Transmit<'static>> {
-        match self.peer_socket? {
+    ) {
+        let Some(socket) = self.peer_socket else {
+            return;
+        };
+
+        let transmit = match socket {
             PeerSocket::Direct {
                 dest: remote,
                 source,
-            } => Some(Transmit {
+            } => Transmit {
                 src: Some(source),
                 dst: remote,
                 payload: Cow::Owned(message.into()),
-            }),
+            },
             PeerSocket::Relay { relay, dest: peer } => {
-                encode_as_channel_data(relay, peer, message, allocations, now).ok()
+                match encode_as_channel_data(relay, peer, message, allocations, now) {
+                    Ok(transmit) => transmit,
+                    Err(_) => return,
+                }
             }
-        }
+        };
+
+        self.buffered_transmits.push_back(transmit);
     }
 
-    #[must_use]
-    fn force_handshake(
-        &mut self,
-        allocations: &mut HashMap<SocketAddr, Allocation>,
-        now: Instant,
-    ) -> Option<Transmit<'static>> {
+    fn force_handshake(&mut self, allocations: &mut HashMap<SocketAddr, Allocation>, now: Instant) {
         /// [`boringtun`] requires us to pass buffers in where it can construct its packets.
         ///
         /// When updating the timers, the largest packet that we may have to send is `148` bytes as per `HANDSHAKE_INIT_SZ` constant in [`boringtun`].
@@ -1524,10 +1518,10 @@ impl Connection {
         let TunnResult::WriteToNetwork(bytes) =
             self.tunnel.format_handshake_initiation(&mut buf, true)
         else {
-            return None;
+            return;
         };
 
-        self.encapsulate(bytes, allocations, now)
+        self.encapsulate(bytes, allocations, now);
     }
 
     /// Invalidates all local candidates with a lower or equal priority compared to the nominated one.
