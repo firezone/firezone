@@ -438,6 +438,9 @@ impl Allocation {
             .channels_to_refresh(now, |number| {
                 self.channel_binding_in_flight_by_number(number)
             })
+            .inspect(|(number, peer)| {
+                tracing::debug!(%number, %peer, "Channel is due for a refresh");
+            })
             .map(|(number, peer)| make_channel_bind_request(peer, number))
             .collect::<Vec<_>>(); // Need to allocate here to satisfy borrow-checker. Number of channel refresh messages should be small so this shouldn't be a big impact.
 
