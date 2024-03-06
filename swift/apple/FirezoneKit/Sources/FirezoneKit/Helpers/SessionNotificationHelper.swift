@@ -1,5 +1,5 @@
 //
-//  NotificationDecisionHelper.swift
+//  SessionNotificationHelper.swift
 //  (c) 2024 Firezone, Inc.
 //  LICENSE: Apache-2.0
 //
@@ -16,7 +16,7 @@ public enum NotificationIndentifier: String {
   case dismissNotificationAction
 }
 
-public class NotificationDecisionHelper: NSObject {
+public class SessionNotificationHelper: NSObject {
 
   enum NotificationDecision {
     case uninitialized
@@ -107,7 +107,7 @@ public class NotificationDecisionHelper: NSObject {
   #endif
 }
 
-extension NotificationDecisionHelper: UNUserNotificationCenterDelegate {
+extension SessionNotificationHelper: UNUserNotificationCenterDelegate {
   public func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
     self.logger.log("NotificationDecisionHelper: \(#function): 'Sign In' clicked in notification")
       let actionId = response.actionIdentifier

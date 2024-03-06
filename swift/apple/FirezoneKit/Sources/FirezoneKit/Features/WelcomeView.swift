@@ -40,7 +40,7 @@ import SwiftUINavigationCore
     }
 
     private let appStore: AppStore
-    private let notificationDecisionHelper: NotificationDecisionHelper
+    private let notificationDecisionHelper: SessionNotificationHelper
 
     let settingsViewModel: SettingsViewModel
     @Published var isSettingsSheetPresented = false
@@ -49,7 +49,7 @@ import SwiftUINavigationCore
       self.appStore = appStore
       self.settingsViewModel = appStore.settingsViewModel
 
-      let notificationDecisionHelper = NotificationDecisionHelper(logger: appStore.logger, authStore: appStore.authStore)
+      let notificationDecisionHelper = SessionNotificationHelper(logger: appStore.logger, authStore: appStore.authStore)
       self.notificationDecisionHelper = notificationDecisionHelper
 
       appStore.objectWillChange

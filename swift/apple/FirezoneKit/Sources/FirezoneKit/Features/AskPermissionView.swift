@@ -11,7 +11,7 @@ import SwiftUI
 @MainActor
 public final class AskPermissionViewModel: ObservableObject {
   public var tunnelStore: TunnelStore
-  private var notificationDecisionHelper: NotificationDecisionHelper
+  private var notificationDecisionHelper: SessionNotificationHelper
 
   private var cancellables: Set<AnyCancellable> = []
 
@@ -29,7 +29,7 @@ public final class AskPermissionViewModel: ObservableObject {
 
   @Published var needsNotificationDecision = false
 
-  public init(tunnelStore: TunnelStore, notificationDecisionHelper: NotificationDecisionHelper) {
+  public init(tunnelStore: TunnelStore, notificationDecisionHelper: SessionNotificationHelper) {
     self.tunnelStore = tunnelStore
     self.notificationDecisionHelper = notificationDecisionHelper
 
