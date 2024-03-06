@@ -15,8 +15,9 @@ import UserNotifications
 #endif
 
 
-// NotificationDecisionHelper helps with iOS local notifications.
-// It doesn't do anything in macOS.
+// SessionNotificationHelper helps with showing iOS local notifications
+// when the session ends.
+// In macOS, it helps with showing an alert when the session ends.
 
 public enum NotificationIndentifier: String {
   case sessionEndedNotificationCategory
