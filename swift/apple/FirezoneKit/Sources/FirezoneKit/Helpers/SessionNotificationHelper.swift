@@ -46,7 +46,7 @@ public class SessionNotificationHelper: NSObject {
   @Published var notificationDecision: NotificationDecision = .uninitialized {
     didSet {
       self.logger.log(
-        "NotificationDecisionHelper: notificationDecision changed to \(notificationDecision)"
+        "SessionNotificationHelper: notificationDecision changed to \(notificationDecision)"
       )
     }
   }
@@ -81,7 +81,7 @@ public class SessionNotificationHelper: NSObject {
       notificationCenter.setNotificationCategories([certificateExpiryCategory])
       notificationCenter.getNotificationSettings { notificationSettings in
         self.logger.log(
-          "NotificationDecisionHelper: getNotificationSettings returned. authorizationStatus is \(notificationSettings.authorizationStatus)"
+          "SessionNotificationHelper: getNotificationSettings returned. authorizationStatus is \(notificationSettings.authorizationStatus)"
         )
         switch notificationSettings.authorizationStatus {
         case .notDetermined:
@@ -103,11 +103,11 @@ public class SessionNotificationHelper: NSObject {
       let notificationCenter = UNUserNotificationCenter.current()
       notificationCenter.requestAuthorization(options: [.sound, .alert]) { isAuthorized, error in
         self.logger.log(
-          "NotificationDecisionHelper.askUserForNotificationPermissions: isAuthorized = \(isAuthorized)"
+          "SessionNotificationHelper.askUserForNotificationPermissions: isAuthorized = \(isAuthorized)"
         )
         if let error = error {
           self.logger.log(
-            "NotificationDecisionHelper.askUserForNotificationPermissions: Error: \(error)"
+            "SessionNotificationHelper.askUserForNotificationPermissions: Error: \(error)"
           )
         }
         self.notificationDecision = .determined(isNotificationAllowed: isAuthorized)
@@ -154,7 +154,7 @@ public class SessionNotificationHelper: NSObject {
       NSApp.activate(ignoringOtherApps: true)
       let response = alert.runModal()
       if response == NSApplication.ModalResponse.alertFirstButtonReturn {
-        logger.log("NotificationDecisionHelper: \(#function): 'Sign In' clicked in notification")
+        logger.log("SessionNotificationHelper: \(#function): 'Sign In' clicked in notification")
         Task {
           do {
             try await authStore.signIn()
@@ -170,7 +170,7 @@ public class SessionNotificationHelper: NSObject {
 #if os(iOS)
   extension SessionNotificationHelper: UNUserNotificationCenterDelegate {
     public func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
-      self.logger.log("NotificationDecisionHelper: \(#function): 'Sign In' clicked in notification")
+      self.logger.log("SessionNotificationHelper: \(#function): 'Sign In' clicked in notification")
       let actionId = response.actionIdentifier
       let categoryId = response.notification.request.content.categoryIdentifier
       if categoryId == NotificationIndentifier.sessionEndedNotificationCategory.rawValue,
