@@ -76,7 +76,7 @@ impl Eventloop {
                 Poll::Ready((Ok(Ok(resource)), Either::Left(req))) => {
                     let ips = req.client.peer.ips();
 
-                    match self.tunnel.set_peer_connection_request(
+                    match self.tunnel.accept(
                         req.client.id,
                         req.client.peer.preshared_key,
                         req.client.payload.ice_parameters,

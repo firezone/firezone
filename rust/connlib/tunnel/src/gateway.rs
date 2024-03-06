@@ -70,7 +70,7 @@ where
     /// # Returns
     /// The connection details
     #[allow(clippy::too_many_arguments)]
-    pub fn set_peer_connection_request(
+    pub fn accept(
         &mut self,
         client_id: ClientId,
         key: Secret<Key>,
