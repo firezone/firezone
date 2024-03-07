@@ -127,13 +127,20 @@ pub enum Error {
     CloseMessage,
 }
 
-#[derive(Debug, PartialEq, Eq, Hash)]
+#[derive(Debug, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub struct OutboundRequestId(u64);
 
 impl OutboundRequestId {
     #[cfg(test)]
     pub(crate) fn new(id: u64) -> Self {
         Self(id)
+    }
+
+    /// Internal function to make a copy.
+    ///
+    /// Not exposed publicly because these IDs are meant to be unique.
+    pub(crate) fn copy(&self) -> Self {
+        Self(self.0)
     }
 }
 
@@ -348,15 +355,12 @@ where
                         Payload::Reply(Reply::Error { reason }) => {
                             return Poll::Ready(Ok(Event::ErrorResponse {
                                 topic: message.topic,
-                                req_id: OutboundRequestId(
-                                    message.reference.ok_or(Error::MissingReplyId)?,
-                                ),
+                                req_id: message.reference.ok_or(Error::MissingReplyId)?,
                                 reason,
                             }));
                         }
                         Payload::Reply(Reply::Ok(OkReply::Message(reply))) => {
-                            let req_id =
-                                OutboundRequestId(message.reference.ok_or(Error::MissingReplyId)?);
+                            let req_id = message.reference.ok_or(Error::MissingReplyId)?;
 
                             if self.pending_join_requests.remove(&req_id) {
                                 tracing::info!("Joined {} room on portal", message.topic);
@@ -374,26 +378,20 @@ where
                             }));
                         }
                         Payload::Reply(Reply::Ok(OkReply::NoMessage(Empty {}))) => {
-                            let id =
-                                OutboundRequestId(message.reference.ok_or(Error::MissingReplyId)?);
+                            let id = message.reference.ok_or(Error::MissingReplyId)?;
 
-                            if self.heartbeat.maybe_handle_reply(id) {
+                            if self.heartbeat.maybe_handle_reply(id.copy()) {
                                 continue;
                             }
 
-                            tracing::trace!(
-                                "Received empty reply for request {:?}",
-                                message.reference
-                            );
+                            tracing::trace!("Received empty reply for request {id:?}");
 
                             continue;
                         }
                         Payload::Error(Empty {}) => {
                             return Poll::Ready(Ok(Event::ErrorResponse {
                                 topic: message.topic,
-                                req_id: OutboundRequestId(
-                                    message.reference.ok_or(Error::MissingReplyId)?,
-                                ),
+                                req_id: message.reference.ok_or(Error::MissingReplyId)?,
                                 reason: ErrorReply::Other,
                             }))
                         }
@@ -459,19 +457,23 @@ where
         let request_id = self.fetch_add_request_id();
 
         // We don't care about the reply type when serializing
-        let msg = serde_json::to_string(&PhoenixMessage::<_, ()>::new(topic, payload, request_id))
-            .expect("we should always be able to serialize a join topic message");
+        let msg = serde_json::to_string(&PhoenixMessage::<_, ()>::new(
+            topic,
+            payload,
+            request_id.copy(),
+        ))
+        .expect("we should always be able to serialize a join topic message");
 
         self.pending_messages.push_back(msg);
 
-        OutboundRequestId(request_id)
+        request_id
     }
 
-    fn fetch_add_request_id(&mut self) -> u64 {
+    fn fetch_add_request_id(&mut self) -> OutboundRequestId {
         let next_id = self.next_request_id;
         self.next_request_id += 1;
 
-        next_id
+        OutboundRequestId(next_id)
     }
 
     /// Cast this instance of [PhoenixChannel] to new message types.
@@ -519,14 +521,14 @@ pub enum Event<TInboundMsg, TOutboundRes> {
     Disconnect(String),
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Deserialize, Serialize)]
+#[derive(Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub struct PhoenixMessage<T, R> {
     // TODO: we should use a newtype pattern for topics
     topic: String,
     #[serde(flatten)]
     payload: Payload<T, R>,
     #[serde(rename = "ref")]
-    reference: Option<u64>,
+    reference: Option<OutboundRequestId>,
 }
 
 #[derive(Debug, PartialEq, Eq, Deserialize, Serialize, Clone)]
@@ -578,7 +580,7 @@ pub enum ErrorReply {
 }
 
 impl<T, R> PhoenixMessage<T, R> {
-    pub fn new(topic: impl Into<String>, payload: T, reference: u64) -> Self {
+    pub fn new(topic: impl Into<String>, payload: T, reference: OutboundRequestId) -> Self {
         Self {
             topic: topic.into(),
             payload: Payload::Message(payload),
