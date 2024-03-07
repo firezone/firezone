@@ -210,6 +210,10 @@ impl SecureUrl {
     pub fn host(&self) -> Option<&str> {
         self.inner.host_str()
     }
+
+    pub fn port(&self) -> Option<u16> {
+        self.inner.port()
+    }
 }
 
 impl CloneableSecret for SecureUrl {}
@@ -631,18 +635,28 @@ fn make_request(secret_url: Secret<SecureUrl>, user_agent: String) -> Request {
     OsRng.fill_bytes(&mut r);
     let key = base64::engine::general_purpose::STANDARD.encode(r);
 
-    let req = Request::builder()
+    let mut req_builder = Request::builder()
         .method("GET")
         .header("Connection", "Upgrade")
         .header("Upgrade", "websocket")
         .header("Sec-WebSocket-Version", "13")
         .header("Sec-WebSocket-Key", key)
         .header("User-Agent", user_agent)
-        .uri(secret_url.expose_secret().inner.as_str())
-        .body(())
-        .expect("building static request always works");
+        .uri(secret_url.expose_secret().inner.as_str());
 
-    req
+    if let Some(host) = secret_url.expose_secret().host() {
+        let host = secret_url
+            .expose_secret()
+            .port()
+            .map(|port| format!("{host}:{port}"))
+            .unwrap_or(host.to_string());
+
+        req_builder = req_builder.header("Host", host);
+    }
+
+    req_builder
+        .body(())
+        .expect("building static request always works")
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
