@@ -14,7 +14,7 @@ arboard = { version = "3.3.2", default-features = false }
 anyhow = { version = "1.0" }
 arc-swap = "1.7.0"
 chrono = { workspace = true }
-clap = { version = "4.4", features = ["derive",  "env"] }
+clap = { version = "4.5", features = ["derive",  "env"] }
 connlib-client-shared = { workspace = true }
 connlib-shared = { workspace = true }
 crash-handler = "0.6.1"
