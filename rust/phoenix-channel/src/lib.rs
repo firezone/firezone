@@ -113,8 +113,6 @@ pub struct UnexpectedEventDuringInit(String);
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    #[error("provided URI is missing a host")]
-    MissingHost,
     #[error("websocket failed")]
     WebSocket(#[from] tokio_tungstenite::tungstenite::Error),
     #[error("failed to serialize message")]
@@ -210,7 +208,7 @@ where
             secret_url: secret_url.clone(),
             user_agent: user_agent.clone(),
             state: State::Connecting(Box::pin(async move {
-                let (stream, _) = connect_async(make_request(secret_url, user_agent)?).await?;
+                let (stream, _) = connect_async(make_request(secret_url, user_agent)).await?;
 
                 Ok(stream)
             })),
@@ -296,7 +294,7 @@ where
                             tokio::time::sleep(backoff).await;
 
                             let (stream, _) =
-                                connect_async(make_request(secret_url, user_agent)?).await?;
+                                connect_async(make_request(secret_url, user_agent)).await?;
 
                             Ok(stream)
                         }));
@@ -600,19 +598,8 @@ impl<T, R> PhoenixMessage<T, R> {
 }
 
 // This is basically the same as tungstenite does but we add some new headers (namely user-agent)
-fn make_request(secret_url: Secret<SecureUrl>, user_agent: String) -> Result<Request, Error> {
+fn make_request(secret_url: Secret<SecureUrl>, user_agent: String) -> Request {
     use secrecy::ExposeSecret;
-
-    let host = secret_url
-        .expose_secret()
-        .inner
-        .host()
-        .ok_or(Error::MissingHost)?;
-    let host = if let Some(port) = secret_url.expose_secret().inner.port() {
-        format!("{host}:{port}")
-    } else {
-        host.to_string()
-    };
 
     let mut r = [0u8; 16];
     OsRng.fill_bytes(&mut r);
@@ -620,7 +607,6 @@ fn make_request(secret_url: Secret<SecureUrl>, user_agent: String) -> Result<Req
 
     let req = Request::builder()
         .method("GET")
-        .header("Host", host)
         .header("Connection", "Upgrade")
         .header("Upgrade", "websocket")
         .header("Sec-WebSocket-Version", "13")
@@ -630,7 +616,7 @@ fn make_request(secret_url: Secret<SecureUrl>, user_agent: String) -> Result<Req
         .body(())
         .expect("building static request always works");
 
-    Ok(req)
+    req
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
