@@ -417,13 +417,11 @@ where
 
                             conn.invalidate_candiates();
 
+                            tracing::info!(%id, "Sending wireguard handshake");
+                            self.buffered_transmits
+                                .extend(conn.force_handshake(&mut self.allocations, self.last_now));
+
                             if is_first_connection {
-                                tracing::info!(%id, "Starting wireguard handshake");
-
-                                self.buffered_transmits.extend(
-                                    conn.force_handshake(&mut self.allocations, self.last_now),
-                                );
-
                                 return Some(Event::ConnectionEstablished(id));
                             }
                         }

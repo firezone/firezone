@@ -12,7 +12,6 @@ use device_channel::Device;
 use futures_util::{future::BoxFuture, task::AtomicWaker, FutureExt};
 use peer::PacketTransform;
 use peer_store::PeerStore;
-use pnet_packet::Packet;
 use snownet::{Node, Server};
 use sockets::{Received, Sockets};
 use std::{
@@ -25,12 +24,14 @@ use std::{
 };
 
 pub use client::ClientState;
-pub use control_protocol::{gateway::ResolvedResourceDescriptionDns, Request};
-pub use gateway::GatewayState;
+pub use control_protocol::client::Request;
+pub use gateway::{GatewayState, ResolvedResourceDescriptionDns};
 use ip_packet::IpPacket;
 
 mod client;
-mod control_protocol;
+mod control_protocol {
+    pub mod client;
+}
 mod device_channel;
 mod dns;
 mod gateway;
@@ -38,6 +39,7 @@ mod ip_packet;
 mod peer;
 mod peer_store;
 mod sockets;
+mod utils;
 
 const MAX_UDP_SIZE: usize = (1 << 16) - 1;
 const DNS_QUERIES_QUEUE_SIZE: usize = 100;
@@ -106,7 +108,7 @@ where
         ready!(self.connections_state.sockets.poll_send_ready(cx))?; // Ensure socket is ready before we read from device.
 
         match device.poll_read(&mut self.read_buf, cx)? {
-            Poll::Ready(Some(packet)) => {
+            Poll::Ready(packet) => {
                 let Some((peer_id, packet)) = self.role_state.encapsulate(packet, Instant::now())
                 else {
                     cx.waker().wake_by_ref();
@@ -116,13 +118,6 @@ where
                 self.connections_state.send(peer_id, packet.as_immutable());
 
                 cx.waker().wake_by_ref();
-            }
-            Poll::Ready(None) => {
-                tracing::info!("Device stopped");
-                self.device = None;
-
-                self.no_device_waker.register(cx.waker());
-                return Poll::Pending;
             }
             Poll::Pending => {}
         }
@@ -170,7 +165,7 @@ where
         ready!(self.connections_state.sockets.poll_send_ready(cx))?; // Ensure socket is ready before we read from device.
 
         match device.poll_read(&mut self.read_buf, cx)? {
-            Poll::Ready(Some(packet)) => {
+            Poll::Ready(packet) => {
                 let Some((peer_id, packet)) = self.role_state.encapsulate(packet) else {
                     cx.waker().wake_by_ref();
                     return Poll::Pending;
@@ -179,13 +174,6 @@ where
                 self.connections_state.send(peer_id, packet.as_immutable());
 
                 cx.waker().wake_by_ref();
-            }
-            Poll::Ready(None) => {
-                tracing::info!("Device stopped");
-                self.device = None;
-
-                self.no_device_waker.register(cx.waker());
-                return Poll::Pending;
             }
             Poll::Pending => {
                 // device not ready for reading, moving on ..
@@ -324,8 +312,6 @@ where
                     continue;
                 }
             };
-
-            tracing::trace!(target: "wire", %local, %from, bytes = %packet.packet().len(), "read new packet");
 
             let Some(peer) = peer_store.get_mut(&conn_id) else {
                 tracing::error!(%conn_id, %local, %from, "Couldn't find connection");
