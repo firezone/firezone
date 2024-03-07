@@ -807,20 +807,8 @@ where
             tracing::info!("Replacing existing established connection");
         };
 
-        self.upsert_stun_servers(&allowed_stun_servers);
-        self.upsert_turn_servers(&allowed_turn_servers);
-
-        let allowed_turn_servers = allowed_turn_servers
-            .iter()
-            .map(|(server, _, _, _)| server)
-            .copied()
-            .collect::<HashSet<_>>();
-
-        let allowed_stun_servers = allowed_stun_servers
-            .iter()
-            .chain(allowed_turn_servers.iter())
-            .copied()
-            .collect();
+        let (allowed_stun_servers, allowed_turn_servers) =
+            self.upsert_stun_and_turn_servers(allowed_stun_servers, allowed_turn_servers);
 
         let mut agent = IceAgent::new();
         agent.set_controlling(true);
@@ -918,20 +906,8 @@ where
             tracing::info!("Replacing existing established connection");
         };
 
-        self.upsert_stun_servers(&allowed_stun_servers);
-        self.upsert_turn_servers(&allowed_turn_servers);
-
-        let allowed_turn_servers = allowed_turn_servers
-            .iter()
-            .map(|(server, _, _, _)| server)
-            .copied()
-            .collect::<HashSet<_>>();
-
-        let allowed_stun_servers = allowed_stun_servers
-            .iter()
-            .chain(allowed_turn_servers.iter())
-            .copied()
-            .collect();
+        let (allowed_stun_servers, allowed_turn_servers) =
+            self.upsert_stun_and_turn_servers(allowed_stun_servers, allowed_turn_servers);
 
         let mut agent = IceAgent::new();
         agent.set_controlling(false);
@@ -974,8 +950,12 @@ impl<T, TId> Node<T, TId>
 where
     TId: Eq + Hash + Copy + fmt::Display,
 {
-    fn upsert_stun_servers<'s>(&mut self, servers: impl IntoIterator<Item = &'s SocketAddr>) {
-        for server in servers {
+    fn upsert_stun_and_turn_servers(
+        &mut self,
+        mut stun: HashSet<SocketAddr>,
+        turn: HashSet<(SocketAddr, String, String, String)>,
+    ) -> (HashSet<SocketAddr>, HashSet<SocketAddr>) {
+        for server in stun.iter() {
             if !self.bindings.contains_key(server) {
                 tracing::info!(address = %server, "Adding new STUN server");
 
@@ -983,13 +963,8 @@ where
                     .insert(*server, StunBinding::new(*server, self.last_now));
             }
         }
-    }
 
-    fn upsert_turn_servers<'s>(
-        &mut self,
-        servers: impl IntoIterator<Item = &'s (SocketAddr, String, String, String)> + Clone,
-    ) {
-        for (server, username, password, realm) in servers.clone() {
+        for (server, username, password, realm) in turn.iter() {
             let Ok(username) = Username::new(username.to_owned()) else {
                 tracing::debug!(%username, "Invalid TURN username");
                 continue;
@@ -1012,8 +987,14 @@ where
             tracing::info!(address = %server, "Added new TURN server");
         }
 
-        // We treat all TURN servers as STUN servers to speed up discovery of our srflx candidate on cold-starts.
-        self.upsert_stun_servers(servers.into_iter().map(|(s, _, _, _)| s))
+        let allowed_turn = turn
+            .into_iter()
+            .map(|(s, _, _, _)| s)
+            .collect::<HashSet<_>>();
+
+        stun.extend(allowed_turn.clone());
+
+        (stun, allowed_turn)
     }
 
     fn seed_agent_with_local_candidates(
