@@ -5,7 +5,7 @@ use crate::{
     },
     PHOENIX_TOPIC,
 };
-use anyhow::{Context as _, Result};
+use anyhow::Result;
 use async_compression::tokio::bufread::GzipEncoder;
 use bimap::BiMap;
 use connlib_shared::{
@@ -69,7 +69,10 @@ where
     C: Callbacks + 'static,
 {
     #[tracing::instrument(name = "Eventloop::poll", skip_all, level = "debug")]
-    pub fn poll(&mut self, cx: &mut Context<'_>) -> Poll<Result<Infallible>> {
+    pub fn poll(
+        &mut self,
+        cx: &mut Context<'_>,
+    ) -> Poll<Result<Infallible, phoenix_channel::Error>> {
         loop {
             match self.tunnel.poll_next_event(cx) {
                 Poll::Ready(Ok(event)) => {
@@ -85,7 +88,7 @@ where
 
             match self.portal.poll(cx)? {
                 Poll::Ready(event) => {
-                    self.handle_portal_event(event)?;
+                    self.handle_portal_event(event);
                     continue;
                 }
                 Poll::Pending => {}
@@ -146,10 +149,10 @@ where
     fn handle_portal_event(
         &mut self,
         event: phoenix_channel::Event<IngressMessages, ReplyMessages>,
-    ) -> Result<()> {
+    ) {
         match event {
             phoenix_channel::Event::InboundMessage { msg, .. } => {
-                self.handle_portal_inbound_message(msg)?;
+                self.handle_portal_inbound_message(msg);
             }
             phoenix_channel::Event::SuccessResponse { res, req_id, .. } => {
                 self.handle_portal_success_reply(res, req_id);
@@ -160,11 +163,9 @@ where
             phoenix_channel::Event::HeartbeatSent => {}
             phoenix_channel::Event::JoinedRoom { .. } => {}
         }
-
-        Ok(())
     }
 
-    fn handle_portal_inbound_message(&mut self, msg: IngressMessages) -> Result<()> {
+    fn handle_portal_inbound_message(&mut self, msg: IngressMessages) {
         match msg {
             IngressMessages::ConfigChanged(_) => {
                 tracing::warn!("Config changes are not yet implemented");
@@ -194,9 +195,13 @@ where
                 let sentinel_mapping = sentinel_dns_mapping(&effective_dns_servers);
 
                 if !self.tunnel_init {
-                    self.tunnel
+                    if let Err(e) = self
+                        .tunnel
                         .set_interface(&interface, sentinel_mapping.clone())
-                        .context("Failed to initialize interface")?;
+                    {
+                        tracing::warn!("Failed to set interface on tunnel: {e}");
+                        return;
+                    }
 
                     self.tunnel_init = true;
                     tracing::info!("Firezone Started!");
@@ -219,8 +224,6 @@ where
                 self.tunnel.remove_resource(resource);
             }
         }
-
-        Ok(())
     }
 
     fn handle_portal_success_reply(&mut self, res: ReplyMessages, req_id: OutboundRequestId) {
