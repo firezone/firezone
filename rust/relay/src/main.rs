@@ -9,7 +9,7 @@ use futures::channel::mpsc;
 use futures::{future, FutureExt, SinkExt, StreamExt};
 use opentelemetry::{sdk, KeyValue};
 use opentelemetry_otlp::WithExportConfig;
-use phoenix_channel::{Error, Event, PhoenixChannel, SecureUrl};
+use phoenix_channel::{Event, PhoenixChannel, SecureUrl};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use secrecy::{Secret, SecretString};
@@ -501,10 +501,6 @@ where
 
             // Priority 5: Handle portal messages
             match self.channel.as_mut().map(|c| c.poll(cx)) {
-                Some(Poll::Ready(Err(Error::Serde(e)))) => {
-                    tracing::warn!(target: "relay", "Failed to deserialize portal message: {e}");
-                    continue; // This is not a hard-error, we can continue.
-                }
                 Some(Poll::Ready(Err(e))) => {
                     return Poll::Ready(Err(anyhow!("Portal connection failed: {e}")));
                 }

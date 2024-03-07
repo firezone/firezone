@@ -14,6 +14,7 @@ use secrecy::{CloneableSecret, ExposeSecret as _, Secret};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::task::{ready, Context, Poll};
 use tokio::net::TcpStream;
+use tokio_tungstenite::tungstenite::http::StatusCode;
 use tokio_tungstenite::{
     connect_async,
     tungstenite::{handshake::client::Request, Message},
@@ -45,7 +46,9 @@ pub struct PhoenixChannel<TInitReq, TInboundMsg, TOutboundRes> {
 
 enum State {
     Connected(WebSocketStream<MaybeTlsStream<TcpStream>>),
-    Connecting(BoxFuture<'static, Result<WebSocketStream<MaybeTlsStream<TcpStream>>, Error>>),
+    Connecting(
+        BoxFuture<'static, Result<WebSocketStream<MaybeTlsStream<TcpStream>>, InternalError>>,
+    ),
 }
 
 /// Creates a new [PhoenixChannel] to the given endpoint and waits for an `init` message.
@@ -113,16 +116,50 @@ pub struct UnexpectedEventDuringInit(String);
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    #[error("websocket failed")]
-    WebSocket(#[from] tokio_tungstenite::tungstenite::Error),
-    #[error("failed to serialize message")]
-    Serde(#[from] serde_json::Error),
-    #[error("server did not reply to our heartbeat")]
-    MissedHeartbeat,
-    #[error("connection close message")]
-    CloseMessage,
+    #[error("client error: {0}")]
+    ClientError(StatusCode),
     #[error("token expired")]
     TokenExpired,
+    #[error("max retries reached")]
+    MaxRetriesReached,
+}
+
+impl Error {
+    pub fn is_authentication_error(&self) -> bool {
+        match self {
+            Error::ClientError(s) => s == &StatusCode::UNAUTHORIZED || s == &StatusCode::FORBIDDEN,
+            Error::TokenExpired => true,
+            Error::MaxRetriesReached => false,
+        }
+    }
+}
+
+enum InternalError {
+    WebSocket(tokio_tungstenite::tungstenite::Error),
+    Serde(serde_json::Error),
+    MissedHeartbeat,
+    CloseMessage,
+}
+
+impl fmt::Display for InternalError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            InternalError::WebSocket(tokio_tungstenite::tungstenite::Error::Http(http)) => {
+                let status = http.status();
+                let body = http
+                    .body()
+                    .as_deref()
+                    .map(String::from_utf8_lossy)
+                    .unwrap_or_default();
+
+                write!(f, "http error: {status} - {body}")
+            }
+            InternalError::WebSocket(e) => write!(f, "websocket connection failed: {e}"),
+            InternalError::Serde(e) => write!(f, "failed to deserialize message: {e}"),
+            InternalError::MissedHeartbeat => write!(f, "portal did not respond to our heartbeat"),
+            InternalError::CloseMessage => write!(f, "portal closed the websocket connection"),
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Deserialize, Serialize)]
@@ -208,7 +245,9 @@ where
             secret_url: secret_url.clone(),
             user_agent: user_agent.clone(),
             state: State::Connecting(Box::pin(async move {
-                let (stream, _) = connect_async(make_request(secret_url, user_agent)).await?;
+                let (stream, _) = connect_async(make_request(secret_url, user_agent))
+                    .await
+                    .map_err(InternalError::WebSocket)?;
 
                 Ok(stream)
             })),
@@ -260,41 +299,28 @@ where
 
                         continue;
                     }
+                    Err(InternalError::WebSocket(tokio_tungstenite::tungstenite::Error::Http(
+                        r,
+                    ))) if r.status().is_client_error() => {
+                        return Poll::Ready(Err(Error::ClientError(r.status())));
+                    }
                     Err(e) => {
-                        if let Error::WebSocket(tokio_tungstenite::tungstenite::Error::Http(r)) = &e
-                        {
-                            let status = r.status();
-
-                            if status.is_client_error() {
-                                let body = r
-                                    .body()
-                                    .as_deref()
-                                    .map(String::from_utf8_lossy)
-                                    .unwrap_or_default();
-
-                                tracing::warn!(
-                                    "Fatal client error ({status}) in portal connection: {body}"
-                                );
-
-                                return Poll::Ready(Err(e));
-                            }
-                        };
-
                         let Some(backoff) = self.reconnect_backoff.next_backoff() else {
                             tracing::warn!("Reconnect backoff expired");
-                            return Poll::Ready(Err(e));
+                            return Poll::Ready(Err(Error::MaxRetriesReached));
                         };
 
                         let secret_url = self.secret_url.clone();
                         let user_agent = self.user_agent.clone();
 
-                        tracing::debug!(?backoff, max_elapsed_time = ?self.reconnect_backoff.max_elapsed_time, "Reconnecting to portal on transient client error: {:#}", anyhow::Error::from(e));
+                        tracing::debug!(?backoff, max_elapsed_time = ?self.reconnect_backoff.max_elapsed_time, "Reconnecting to portal on transient client error: {e}");
 
                         self.state = State::Connecting(Box::pin(async move {
                             tokio::time::sleep(backoff).await;
 
-                            let (stream, _) =
-                                connect_async(make_request(secret_url, user_agent)).await?;
+                            let (stream, _) = connect_async(make_request(secret_url, user_agent))
+                                .await
+                                .map_err(InternalError::WebSocket)?;
 
                             Ok(stream)
                         }));
@@ -311,7 +337,7 @@ where
                     match stream.start_send_unpin(Message::Text(message)) {
                         Ok(()) => {}
                         Err(e) => {
-                            self.reconnect_on_transient_error(Error::WebSocket(e));
+                            self.reconnect_on_transient_error(InternalError::WebSocket(e));
                         }
                     }
                     continue;
@@ -334,7 +360,7 @@ where
                     {
                         Ok(m) => m,
                         Err(e) if e.is_io() || e.is_eof() => {
-                            self.reconnect_on_transient_error(Error::Serde(e));
+                            self.reconnect_on_transient_error(InternalError::Serde(e));
                             continue;
                         }
                         Err(e) => {
@@ -395,7 +421,7 @@ where
                             continue;
                         }
                         (Payload::Close(Empty {}), _) => {
-                            self.reconnect_on_transient_error(Error::CloseMessage);
+                            self.reconnect_on_transient_error(InternalError::CloseMessage);
                             continue;
                         }
                         (
@@ -409,7 +435,7 @@ where
                     }
                 }
                 Poll::Ready(Some(Err(e))) => {
-                    self.reconnect_on_transient_error(Error::WebSocket(e));
+                    self.reconnect_on_transient_error(InternalError::WebSocket(e));
                     continue;
                 }
                 _ => (),
@@ -424,7 +450,7 @@ where
                     return Poll::Ready(Ok(Event::HeartbeatSent));
                 }
                 Poll::Ready(Err(MissedLastHeartbeat {})) => {
-                    self.reconnect_on_transient_error(Error::MissedHeartbeat);
+                    self.reconnect_on_transient_error(InternalError::MissedHeartbeat);
                     continue;
                 }
                 _ => (),
@@ -436,7 +462,7 @@ where
                     tracing::trace!("Flushed websocket");
                 }
                 Poll::Ready(Err(e)) => {
-                    self.reconnect_on_transient_error(Error::WebSocket(e));
+                    self.reconnect_on_transient_error(InternalError::WebSocket(e));
                     continue;
                 }
                 Poll::Pending => {}
@@ -449,7 +475,7 @@ where
     /// Sets the channels state to [`State::Connecting`] with the given error.
     ///
     /// The [`PhoenixChannel::poll`] function will handle the reconnect if appropriate for the given error.
-    fn reconnect_on_transient_error(&mut self, e: Error) {
+    fn reconnect_on_transient_error(&mut self, e: InternalError) {
         self.state = State::Connecting(future::ready(Err(e)).boxed())
     }
 
