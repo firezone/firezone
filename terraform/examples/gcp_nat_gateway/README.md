@@ -34,10 +34,53 @@ this example:
 
 Variables in **bold** are required.
 
-| Name             | Description                                                   |  Type  | Default |
-| ---------------- | ------------------------------------------------------------- | :----: | :-----: |
-| **project_id**   | The GCP project ID to deploy the Gateway(s) into.             | string |    -    |
-| **zone**         | The GCP zone to deploy the Gateway(s) into. E.g. `us-west1-a` | string |    -    |
-| **machine_type** | The type of GCP instance to deploy the Gateway(s) as.         | string |    -    |
-| **token**        | The token used to authenticate the Gateway with Firezone.     | string |    -    |
-| replicas         | The number of Gateways to deploy.                             | number |    3    |
+| Name           | Description                                                            |  Type  |     Default     |
+| -------------- | ---------------------------------------------------------------------- | :----: | :-------------: |
+| **project_id** | The project ID to deploy the Gateway(s) into.                          | string |        -        |
+| **region**     | The region to deploy the Gateway(s) into. E.g. `us-west1`              | string |        -        |
+| **zone**       | The availability zone to deploy the Gateway(s) into. E.g. `us-west1-a` | string |        -        |
+| **token**      | The token used to authenticate the Gateway with Firezone.              | string |        -        |
+| machine_type   | The type of GCP instance to deploy the Gateway(s) as.                  | string | `n1-standard-1` |
+| replicas       | The number of Gateways to deploy.                                      | number |        3        |
+
+## Sizing
+
+Simply update the number of replicas to deploy more or fewer Gateways. There's
+no limit to the number of Gateways you can deploy in a single VPC.
+
+We've tested with `f1-micro` instances which still work quite well for most
+applications. However, you may want to consider a larger instance type if you
+have a high volume of traffic or lots of concurrent connections.
+
+## Deployment
+
+1. Set the necessary Terraform variables in a `terraform.tfvars` file. For
+   example:
+
+   ```hcl
+   project_id = "my-gcp-project"
+   region     = "us-west1"
+   zone       = "us-west1-a"
+   token      = "<YOUR GATEWAY TOKEN>"
+   ```
+
+1. Run `terraform init` to initialize the working directory and download the
+   required providers.
+1. Run `terraform apply` to deploy the Gateway(s) into your GCP project.
+
+You can see the static IP address assigned to the Cloud NAT in the Terraform
+output. This is the IP address that your Gateway(s) will use to egress traffic.
+
+You can verify all Gateways are using this IP by viewing the Site in the
+Firezone admin portal:
+
+<center>
+
+![Online Gateways](./online-gateways.png)
+
+</center>
+
+## Upgrading
+
+To upgrade the Gateway(s) to the latest version, simply update the `token` and
+issue a `terraform apply` which will trigger a rolling update of the Gateway(s).

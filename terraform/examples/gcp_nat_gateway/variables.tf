@@ -22,13 +22,13 @@ variable "zone" {
 }
 
 variable "replicas" {
-  type = number
+  type        = number
   description = "Number of Gateway replicas to deploy in the availability zone."
-  default = 3
+  default     = 3
 }
 
 variable "machine_type" {
-  type = string
+  type    = string
   default = "n1-standard-1"
 }
 

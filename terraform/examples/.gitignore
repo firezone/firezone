@@ -1,6 +1,5 @@
 # Ignore examples' state
-/**/.terraform
-/**/.terraform.lock.hcl
-/**/terraform.tfstate
-/**/terraform.tfstate.backup
-/**/terraform.tfvars
+**/.terraform*
+**/terraform.tfstate
+**/terraform.tfstate.backup
+**/terraform.tfvars
