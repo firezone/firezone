@@ -21,7 +21,8 @@ this example:
 
 All Gateways deployed in this example will automatically failover and load
 balance for each other. No other configuration is necessary. To perform upgrades
-with downtime, see [upgrading](#upgrading).
+with minimal downtime, see
+[minimal downtime upgrades](#minimal-downtime-upgrades).
 
 ## Prerequisites
 
@@ -60,8 +61,9 @@ have a high volume of traffic or lots of concurrent connections.
 
 ## Deployment
 
-1. Set the necessary Terraform variables in a `terraform.tfvars` file. For
-   example:
+1. Configure the necessary Terraform
+   [variables](https://developer.hashicorp.com/terraform/language/values/variables).
+   Here's an example `terraform.tfvars`:
 
    ```hcl
    project_id = "my-gcp-project"
@@ -78,7 +80,8 @@ You can see the static IP address assigned to the Cloud NAT in the Terraform
 output. This is the IP address that your Gateway(s) will use to egress traffic.
 
 You can verify all Gateways are using this IP by viewing the Site in the
-Firezone admin portal:
+Firezone admin portal, where you should now see the Gateway(s) listed as
+`Online`.
 
 <center>
 
