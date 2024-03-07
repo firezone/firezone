@@ -108,7 +108,7 @@ resource "google_compute_instance_from_template" "gateway" {
 
   # Set necessary environment variables
   FIREZONE_NAME="gateway-${count.index}"
-  FIREZONE_ID="gateway-${google_cloud_subnetwork.firezone.id}-${count.index}"
+  FIREZONE_ID="gateway-${google_compute_subnetwork.firezone.id}-${count.index}"
   FIREZONE_TOKEN="${var.token}"
   FIREZONE_API_URL="wss://api.firezone.dev"
   RUST_LOG="${var.log_level}"
