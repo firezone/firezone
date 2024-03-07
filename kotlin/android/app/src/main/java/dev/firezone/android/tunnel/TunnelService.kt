@@ -329,32 +329,31 @@ class TunnelService : VpnService() {
             Firebase.crashlytics.log("IPv6 Address: $tunnelIpv6Address")
             addAddress(tunnelIpv6Address!!, 128)
 
-            appRestrictions.getString("allowedApplications")?.let {
-                if (it.isNotBlank()) {
-                    Firebase.crashlytics.log("Allowed applications: $it")
-                    it.split(",").forEach { p ->
-                        if (p.isNotBlank()) {
-                            addAllowedApplication(p.trim())
-                        }
-                    }
-                }
-            }
-
-            appRestrictions.getString("disallowedApplications")?.let {
-                if (it.isNotBlank()) {
-                    Firebase.crashlytics.log("Disallowed applications: $it")
-                    it.split(",").forEach { p ->
-                        if (p.isNotBlank()) {
-                            addDisallowedApplication(p.trim())
-                        }
-                    }
-                }
-            }
+            updateAllowedDisallowedApplications("allowedApplications", ::addAllowedApplication)
+            updateAllowedDisallowedApplications("disallowedApplications", ::addDisallowedApplication)
 
             setSession(SESSION_NAME)
             setMtu(MTU)
         }.establish()!!.let {
             return it.detachFd()
+        }
+    }
+
+    private fun updateAllowedDisallowedApplications(
+        key: String,
+        allowOrDisallow: (String) -> Unit,
+    ) {
+        val applications = appRestrictions.getString(key)
+        Log.d(TAG, "$key: $applications")
+        Firebase.crashlytics.log("$key: $applications")
+        applications?.let {
+            if (it.isNotBlank()) {
+                it.split(",").forEach { p ->
+                    if (p.isNotBlank()) {
+                        allowOrDisallow(p.trim())
+                    }
+                }
+            }
         }
     }
 
