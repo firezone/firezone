@@ -73,7 +73,8 @@ FROM chef as planner
 
 COPY . .
 
-RUN cargo chef prepare --recipe-path recipe.json
+ARG PACKAGE
+RUN cargo chef prepare --recipe-path recipe.json --bin ${PACKAGE}
 
 # Build dependencies and application application
 FROM chef as builder
