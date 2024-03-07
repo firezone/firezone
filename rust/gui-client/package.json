@@ -13,7 +13,7 @@
   "dependencies": {
     "@tauri-apps/api": "^1.0",
     "@tauri-apps/cli": "^1.0",
-    "flowbite": "^2.2.1"
+    "flowbite": "^2.3.0"
   },
   "devDependencies": {
     "@types/node": "20",
