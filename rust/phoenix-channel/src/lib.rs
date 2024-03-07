@@ -398,16 +398,8 @@ where
                             continue;
                         }
                         Payload::Error(Empty {}) => {
-                            let Some(req_id) = message.reference else {
-                                tracing::warn!("Discarding reply because server omitted reference");
-                                continue;
-                            };
-
-                            return Poll::Ready(Ok(Event::ErrorResponse {
-                                topic: message.topic,
-                                req_id,
-                                reason: ErrorReply::Other,
-                            }));
+                            tracing::debug!(r#ref = ?message.reference, topic = &message.topic, "Received empty error response");
+                            continue;
                         }
                         Payload::Close(Empty {}) => {
                             self.reconnect_on_transient_error(Error::CloseMessage);
