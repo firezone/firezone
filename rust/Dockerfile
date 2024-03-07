@@ -1,6 +1,6 @@
 ARG ALPINE_VERSION="3.19"
 
-FROM rust:1.74-alpine as rust
+FROM rust:1.76-alpine as rust
 
 RUN set -xe \
   # Upgrade Alpine and base packages

@@ -39,7 +39,7 @@ defmodule Web.Settings.DNS do
           resolver will be used.
         </p>
         <p class="ml-4 mb-4 text-neutral-600">
-          <.website_link href="/kb/administer/dns">
+          <.website_link href="/kb/deploy/dns">
             Read more about configuring DNS in Firezone.
           </.website_link>
         </p>
