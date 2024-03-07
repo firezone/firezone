@@ -343,31 +343,25 @@ where
                         }
                     };
 
-                    match message.payload {
-                        Payload::Message(msg) => {
+                    match (message.payload, message.reference) {
+                        (Payload::Message(msg), _) => {
                             return Poll::Ready(Ok(Event::InboundMessage {
                                 topic: message.topic,
                                 msg,
                             }))
                         }
-                        Payload::Reply(Reply::Error { reason }) => {
-                            let Some(req_id) = message.reference else {
-                                tracing::warn!("Discarding reply because server omitted reference");
-                                continue;
-                            };
-
+                        (Payload::Reply(_), None) => {
+                            tracing::warn!("Discarding reply because server omitted reference");
+                            continue;
+                        }
+                        (Payload::Reply(Reply::Error { reason }), Some(req_id)) => {
                             return Poll::Ready(Ok(Event::ErrorResponse {
                                 topic: message.topic,
                                 req_id,
                                 reason,
                             }));
                         }
-                        Payload::Reply(Reply::Ok(OkReply::Message(reply))) => {
-                            let Some(req_id) = message.reference else {
-                                tracing::warn!("Discarding reply because server omitted reference");
-                                continue;
-                            };
-
+                        (Payload::Reply(Reply::Ok(OkReply::Message(reply))), Some(req_id)) => {
                             if self.pending_join_requests.remove(&req_id) {
                                 tracing::info!("Joined {} room on portal", message.topic);
 
@@ -383,12 +377,7 @@ where
                                 res: reply,
                             }));
                         }
-                        Payload::Reply(Reply::Ok(OkReply::NoMessage(Empty {}))) => {
-                            let Some(req_id) = message.reference else {
-                                tracing::warn!("Discarding reply because server omitted reference");
-                                continue;
-                            };
-
+                        (Payload::Reply(Reply::Ok(OkReply::NoMessage(Empty {}))), Some(req_id)) => {
                             if self.heartbeat.maybe_handle_reply(req_id.copy()) {
                                 continue;
                             }
@@ -397,15 +386,19 @@ where
 
                             continue;
                         }
-                        Payload::Error(Empty {}) => {
-                            tracing::debug!(r#ref = ?message.reference, topic = &message.topic, "Received empty error response");
+                        (Payload::Error(Empty {}), reference) => {
+                            tracing::debug!(
+                                ?reference,
+                                topic = &message.topic,
+                                "Received empty error response"
+                            );
                             continue;
                         }
-                        Payload::Close(Empty {}) => {
+                        (Payload::Close(Empty {}), _) => {
                             self.reconnect_on_transient_error(Error::CloseMessage);
                             continue;
                         }
-                        Payload::Disconnect { reason } => {
+                        (Payload::Disconnect { reason }, _) => {
                             return Poll::Ready(Ok(Event::Disconnect(reason)));
                         }
                     }
