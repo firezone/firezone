@@ -123,6 +123,8 @@ pub enum Error {
     MissedHeartbeat,
     #[error("connection close message")]
     CloseMessage,
+    #[error("token expired")]
+    TokenExpired,
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Deserialize, Serialize)]
@@ -398,8 +400,13 @@ where
                             self.reconnect_on_transient_error(Error::CloseMessage);
                             continue;
                         }
-                        (Payload::Disconnect { reason }, _) => {
-                            return Poll::Ready(Ok(Event::Disconnect(reason)));
+                        (
+                            Payload::Disconnect {
+                                reason: DisconnectReason::TokenExpired,
+                            },
+                            _,
+                        ) => {
+                            return Poll::Ready(Err(Error::TokenExpired));
                         }
                     }
                 }
@@ -517,7 +524,6 @@ pub enum Event<TInboundMsg, TOutboundRes> {
         topic: String,
         msg: TInboundMsg,
     },
-    Disconnect(String),
 }
 
 #[derive(Debug, PartialEq, Eq, Deserialize, Serialize)]
@@ -540,7 +546,7 @@ enum Payload<T, R> {
     #[serde(rename = "phx_close")]
     Close(Empty),
     #[serde(rename = "disconnect")]
-    Disconnect { reason: String },
+    Disconnect { reason: DisconnectReason },
     #[serde(untagged)]
     Message(T),
 }
@@ -570,12 +576,17 @@ enum OkReply<T> {
 pub enum ErrorReply {
     #[serde(rename = "unmatched topic")]
     UnmatchedTopic,
-    TokenExpired,
     NotFound,
     Offline,
     Disabled,
     #[serde(other)]
     Other,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum DisconnectReason {
+    TokenExpired,
 }
 
 impl<T, R> PhoenixMessage<T, R> {
@@ -728,7 +739,7 @@ mod tests {
         "#;
         let actual_reply: Payload<(), ()> = serde_json::from_str(actual_reply).unwrap();
         let expected_reply = Payload::<(), ()>::Disconnect {
-            reason: "token_expired".to_string(),
+            reason: DisconnectReason::TokenExpired,
         };
         assert_eq!(actual_reply, expected_reply);
     }

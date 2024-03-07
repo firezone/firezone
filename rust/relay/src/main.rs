@@ -501,9 +501,6 @@ where
 
             // Priority 5: Handle portal messages
             match self.channel.as_mut().map(|c| c.poll(cx)) {
-                Some(Poll::Ready(Ok(Event::Disconnect(reason)))) => {
-                    return Poll::Ready(Err(anyhow!("Connection closed by portal: {reason}")));
-                }
                 Some(Poll::Ready(Err(Error::Serde(e)))) => {
                     tracing::warn!(target: "relay", "Failed to deserialize portal message: {e}");
                     continue; // This is not a hard-error, we can continue.
