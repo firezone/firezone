@@ -6,16 +6,16 @@ settings:
 
 dependencies:
   '@fontsource/source-sans-3':
-    specifier: ^5.0.18
-    version: 5.0.18
+    specifier: ^5.0.19
+    version: 5.0.19
   flowbite:
     specifier: ^2.3.0
     version: 2.3.0
 
 packages:
 
-  /@fontsource/source-sans-3@5.0.18:
-    resolution: {integrity: sha512-us4td6UVlZsi6kjPkrCbHLAFNuevxcZu/vIKjw854TAMngYcSY1WuwOldRsfCgnA7COBnRqtWjil7fkNM4nDAA==}
+  /@fontsource/source-sans-3@5.0.19:
+    resolution: {integrity: sha512-ubY+8u88suj6RoS4hMCzIguHWFc9ZYsrL1CvQMXx192dRuSwx/M+ezJVV2Db/qM44UlKmRJgCX4RvX2s5DDsVg==}
     dev: false
 
   /@popperjs/core@2.11.8:

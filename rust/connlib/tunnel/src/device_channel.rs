@@ -71,7 +71,7 @@ impl Device {
         &mut self,
         buf: &'b mut [u8],
         cx: &mut Context<'_>,
-    ) -> Poll<io::Result<Option<MutableIpPacket<'b>>>> {
+    ) -> Poll<io::Result<MutableIpPacket<'b>>> {
         use pnet_packet::Packet as _;
 
         if self.mtu_refreshed_at.elapsed() > Duration::from_secs(30) {
@@ -81,7 +81,10 @@ impl Device {
         let n = std::task::ready!(self.tun.poll_read(&mut buf[..self.mtu()], cx))?;
 
         if n == 0 {
-            return Poll::Ready(Ok(None));
+            return Poll::Ready(Err(io::Error::new(
+                io::ErrorKind::UnexpectedEof,
+                "device is closed",
+            )));
         }
 
         let packet = MutableIpPacket::new(&mut buf[..n]).ok_or_else(|| {
@@ -93,7 +96,7 @@ impl Device {
 
         tracing::trace!(target: "wire", action = "read", from = "device", dest = %packet.destination(), bytes = %packet.packet().len());
 
-        Poll::Ready(Ok(Some(packet)))
+        Poll::Ready(Ok(packet))
     }
 
     #[cfg(target_family = "windows")]
@@ -101,7 +104,7 @@ impl Device {
         &self,
         buf: &'b mut [u8],
         cx: &mut Context<'_>,
-    ) -> Poll<io::Result<Option<MutableIpPacket<'b>>>> {
+    ) -> Poll<io::Result<MutableIpPacket<'b>>> {
         use pnet_packet::Packet as _;
 
         if self.mtu_refreshed_at.elapsed() > Duration::from_secs(30) {
@@ -111,7 +114,10 @@ impl Device {
         let n = std::task::ready!(self.tun.poll_read(&mut buf[..self.mtu()], cx))?;
 
         if n == 0 {
-            return Poll::Ready(Ok(None));
+            return Poll::Ready(Err(io::Error::new(
+                io::ErrorKind::UnexpectedEof,
+                "device is closed",
+            )));
         }
 
         let packet = MutableIpPacket::new(&mut buf[..n]).ok_or_else(|| {
@@ -123,11 +129,15 @@ impl Device {
 
         tracing::trace!(target: "wire", action = "read", from = "device", dest = %packet.destination(), bytes = %packet.packet().len());
 
-        Poll::Ready(Ok(Some(packet)))
+        Poll::Ready(Ok(packet))
     }
 
     pub(crate) fn mtu(&self) -> usize {
         self.mtu
+    }
+
+    pub(crate) fn name(&self) -> &str {
+        self.tun.name()
     }
 
     #[cfg(target_family = "unix")]

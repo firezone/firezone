@@ -40,6 +40,7 @@ import SwiftUINavigationCore
     }
 
     private let appStore: AppStore
+    private let sessionNotificationHelper: SessionNotificationHelper
 
     let settingsViewModel: SettingsViewModel
     @Published var isSettingsSheetPresented = false
@@ -48,32 +49,40 @@ import SwiftUINavigationCore
       self.appStore = appStore
       self.settingsViewModel = appStore.settingsViewModel
 
+      let sessionNotificationHelper = SessionNotificationHelper(logger: appStore.logger, authStore: appStore.authStore)
+      self.sessionNotificationHelper = sessionNotificationHelper
+
       appStore.objectWillChange
         .receive(on: mainQueue)
         .sink { [weak self] in self?.objectWillChange.send() }
         .store(in: &cancellables)
 
-      appStore.authStore.$loginStatus
-        .receive(on: mainQueue)
-        .sink(receiveValue: { [weak self] loginStatus in
-          guard let self else {
-            return
-          }
-
-          switch loginStatus {
-          case .signedIn:
-            self.state = .authenticated(MainViewModel(appStore: self.appStore))
-          case .signedOut:
-            self.state = .unauthenticated(AuthViewModel(authStore: self.appStore.authStore))
-          case .needsTunnelCreationPermission:
-            self.state = .needsPermission(
-              AskPermissionViewModel(tunnelStore: self.appStore.tunnelStore)
+      Publishers.CombineLatest(
+        appStore.authStore.$loginStatus,
+        sessionNotificationHelper.$notificationDecision
+      )
+      .receive(on: mainQueue)
+      .sink(receiveValue: { [weak self] loginStatus, notificationDecision in
+        guard let self else {
+          return
+        }
+        switch (loginStatus, notificationDecision) {
+        case (.uninitialized, _), (_, .uninitialized):
+          self.state = .uninitialized
+        case (.needsTunnelCreationPermission, _), (_, .notDetermined):
+          self.state = .needsPermission(
+            AskPermissionViewModel(
+              tunnelStore: self.appStore.tunnelStore,
+              sessionNotificationHelper: self.sessionNotificationHelper
             )
-          case .uninitialized:
-            self.state = .uninitialized
-          }
-        })
-        .store(in: &cancellables)
+          )
+        case (.signedOut, .determined):
+          self.state = .unauthenticated(AuthViewModel(authStore: self.appStore.authStore))
+        case (.signedIn, .determined):
+          self.state = .authenticated(MainViewModel(appStore: self.appStore))
+        }
+      })
+      .store(in: &cancellables)
     }
 
     func settingsButtonTapped() {

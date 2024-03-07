@@ -16,11 +16,6 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runs-on:
-          # We only need to run static analysis checks per OS family
-          - ubuntu-22.04
-          - macos-14
-          - windows-2022
         # TODO: https://github.com/rust-lang/cargo/issues/5220
         include:
           - runs-on: ubuntu-22.04
@@ -97,6 +92,8 @@ jobs:
         with:
           node-version: '20'
       - uses: ./.github/actions/setup-rust
+        with:
+          cache_backend: github
       - uses: ./.github/actions/setup-tauri
       - name: pnpm install
         run: |
@@ -141,6 +138,8 @@ jobs:
         with:
           node-version: '20'
       - uses: ./.github/actions/setup-rust
+        with:
+          cache_backend: github
       - uses: ./.github/actions/setup-tauri
       - name: Install pnpm deps
         run: pnpm install

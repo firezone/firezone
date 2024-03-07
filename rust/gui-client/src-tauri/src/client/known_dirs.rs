@@ -9,7 +9,7 @@
 
 pub(crate) use imp::{logs, runtime, session, settings};
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 mod imp {
     use connlib_shared::BUNDLE_ID;
     use std::path::PathBuf;

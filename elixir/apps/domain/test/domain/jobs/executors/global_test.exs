@@ -30,6 +30,7 @@ defmodule Domain.Jobs.Executors.GlobalTest do
 
   test "registers itself as a leader if there is no global name registered" do
     assert {:ok, pid} = start_link({{__MODULE__, :send_test_message}, 25, test_pid: self()})
+    assert_receive {:executed, ^pid, _time}, 500
     name = {Domain.Jobs.Executors.Global, __MODULE__, :send_test_message}
     assert :global.whereis_name(name) == pid
 
@@ -53,6 +54,8 @@ defmodule Domain.Jobs.Executors.GlobalTest do
 
     assert {:ok, fallback2_pid} =
              start_link({{__MODULE__, :send_test_message}, 25, test_pid: self()})
+
+    assert_receive {:executed, ^leader_pid, _time}, 500
 
     name = {Domain.Jobs.Executors.Global, __MODULE__, :send_test_message}
     assert :global.whereis_name(name) == leader_pid
