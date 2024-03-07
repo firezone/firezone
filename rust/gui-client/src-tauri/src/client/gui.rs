@@ -415,7 +415,6 @@ fn handle_system_tray_event(app: &tauri::AppHandle, event: TrayMenuEvent) -> Res
 pub(crate) enum ControllerRequest {
     /// The GUI wants us to use these settings in-memory, they've already been saved to disk
     ApplySettings(AdvancedSettings),
-    Disconnected,
     DisconnectedTokenExpired,
     /// The same as the arguments to `client::logging::export_logs_to`
     ExportLogs {
@@ -453,13 +452,8 @@ impl connlib_client_shared::Callbacks for CallbackHandler {
 
     fn on_disconnect(&self, error: &connlib_client_shared::Error) -> Result<(), Self::Error> {
         tracing::debug!("on_disconnect {error:?}");
-        self.ctlr_tx.try_send(match error {
-            Some(connlib_client_shared::Error::ClosedByPortal) => {
-                // TODO: this can happen for other reasons
-                ControllerRequest::DisconnectedTokenExpired
-            }
-            _ => ControllerRequest::Disconnected,
-        })?;
+        self.ctlr_tx
+            .try_send(ControllerRequest::DisconnectedTokenExpired)?;
         Ok(())
     }
 
@@ -592,16 +586,6 @@ impl Controller {
                 tracing::info!(
                     "Applied new settings. Log level will take effect at next app start."
                 );
-            }
-            Req::Disconnected => {
-                tracing::debug!("connlib disconnected, tearing down Session");
-                self.tunnel_ready = false;
-                if let Some(mut session) = self.session.take() {
-                    tracing::info!("disconnecting connlib");
-                    // This is probably redundant since connlib shuts itself down if it's disconnected.
-                    session.connlib.disconnect();
-                }
-                self.refresh_system_tray_menu()?;
             }
             Req::DisconnectedTokenExpired => {
                 tracing::info!("Token expired");
