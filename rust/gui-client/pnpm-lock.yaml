@@ -18,7 +18,7 @@ dependencies:
 devDependencies:
   '@types/node':
     specifier: '20'
-    version: 20.11.15
+    version: 20.11.25
   http-server:
     specifier: ^14.1.1
     version: 14.1.1
@@ -225,8 +225,8 @@ packages:
       '@tauri-apps/cli-win32-x64-msvc': 1.5.10
     dev: false
 
-  /@types/node@20.11.15:
-    resolution: {integrity: sha512-gscmuADZfvNULx1eyirVbr3kVOVZtpQtzKMCZpeSZcN6MfbkRXAR4s9/gsQ4CzxLHw6EStDtKLNtSDL3vbq05A==}
+  /@types/node@20.11.25:
+    resolution: {integrity: sha512-TBHyJxk2b7HceLVGFcpAUjsa5zIdsPWlR6XHfyGzd0SFu+/NFgQgMAl96MSDZgQDvJAvV6BKsFOrt6zIL09JDw==}
     dependencies:
       undici-types: 5.26.5
     dev: true
