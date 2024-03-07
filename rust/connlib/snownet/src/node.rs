@@ -629,7 +629,7 @@ where
         let handled = binding.handle_input(from, local, packet, now);
 
         if !handled {
-            tracing::debug!("Packet was a STUN message but not accepted");
+            return ControlFlow::Continue(()); // The packet might be for an `Allocation` that we have on the same server.
         }
 
         ControlFlow::Break(())
