@@ -56,7 +56,6 @@ FROM rust as chef
 ARG CARGO_CHEF_VERSION
 RUN set -xe \
   && apk add --no-cache musl-dev  \
-  && cargo install cargo-chef --locked --version=${CARGO_CHEF_VERSION} \
   && rm -rf $CARGO_HOME/registry/
 
 ## See https://github.com/LukeMathWalker/cargo-chef/issues/231.
@@ -73,17 +72,17 @@ FROM chef as planner
 
 COPY . .
 
-ARG PACKAGE
-RUN cargo chef prepare --recipe-path recipe.json --bin ${PACKAGE}
+#ARG PACKAGE
+#RUN cargo chef prepare --recipe-path recipe.json --bin ${PACKAGE}
 
 # Build dependencies and application application
 FROM chef as builder
 
-COPY --from=planner /build/recipe.json .
+#COPY --from=planner /build/recipe.json .
 
 ARG PACKAGE
-RUN set -xe \
-  && cargo chef cook --recipe-path recipe.json --bin ${PACKAGE}
+#RUN set -xe \
+#  && cargo chef cook --recipe-path recipe.json --bin ${PACKAGE}
 
 COPY . .
 
