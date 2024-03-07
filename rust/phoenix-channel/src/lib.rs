@@ -119,8 +119,6 @@ pub enum Error {
     WebSocket(#[from] tokio_tungstenite::tungstenite::Error),
     #[error("failed to serialize message")]
     Serde(#[from] serde_json::Error),
-    #[error("server sent a reply without a reference")]
-    MissingReplyId,
     #[error("server did not reply to our heartbeat")]
     MissedHeartbeat,
     #[error("connection close message")]
@@ -353,14 +351,22 @@ where
                             }))
                         }
                         Payload::Reply(Reply::Error { reason }) => {
+                            let Some(req_id) = message.reference else {
+                                tracing::warn!("Discarding reply because server omitted reference");
+                                continue;
+                            };
+
                             return Poll::Ready(Ok(Event::ErrorResponse {
                                 topic: message.topic,
-                                req_id: message.reference.ok_or(Error::MissingReplyId)?,
+                                req_id,
                                 reason,
                             }));
                         }
                         Payload::Reply(Reply::Ok(OkReply::Message(reply))) => {
-                            let req_id = message.reference.ok_or(Error::MissingReplyId)?;
+                            let Some(req_id) = message.reference else {
+                                tracing::warn!("Discarding reply because server omitted reference");
+                                continue;
+                            };
 
                             if self.pending_join_requests.remove(&req_id) {
                                 tracing::info!("Joined {} room on portal", message.topic);
@@ -378,22 +384,30 @@ where
                             }));
                         }
                         Payload::Reply(Reply::Ok(OkReply::NoMessage(Empty {}))) => {
-                            let id = message.reference.ok_or(Error::MissingReplyId)?;
+                            let Some(req_id) = message.reference else {
+                                tracing::warn!("Discarding reply because server omitted reference");
+                                continue;
+                            };
 
-                            if self.heartbeat.maybe_handle_reply(id.copy()) {
+                            if self.heartbeat.maybe_handle_reply(req_id.copy()) {
                                 continue;
                             }
 
-                            tracing::trace!("Received empty reply for request {id:?}");
+                            tracing::trace!("Received empty reply for request {req_id:?}");
 
                             continue;
                         }
                         Payload::Error(Empty {}) => {
+                            let Some(req_id) = message.reference else {
+                                tracing::warn!("Discarding reply because server omitted reference");
+                                continue;
+                            };
+
                             return Poll::Ready(Ok(Event::ErrorResponse {
                                 topic: message.topic,
-                                req_id: message.reference.ok_or(Error::MissingReplyId)?,
+                                req_id,
                                 reason: ErrorReply::Other,
-                            }))
+                            }));
                         }
                         Payload::Close(Empty {}) => {
                             self.reconnect_on_transient_error(Error::CloseMessage);
