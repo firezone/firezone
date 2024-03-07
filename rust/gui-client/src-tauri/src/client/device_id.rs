@@ -11,7 +11,8 @@ pub(crate) enum Error {
 }
 
 pub(crate) struct DeviceId {
-    pub generated: bool,
+    /// True iff the device ID was not found on disk and we had to generate it, meaning this is the app's first run since installing.
+    pub is_first_time: bool,
     pub id: String,
 }
 
@@ -36,7 +37,7 @@ pub(crate) async fn device_id() -> Result<DeviceId, Error> {
         let id = j.device_id();
         tracing::debug!(?id, "Loaded device ID from disk");
         return Ok(DeviceId {
-            generated: false,
+            is_first_time: false,
             id,
         });
     }
@@ -59,7 +60,7 @@ pub(crate) async fn device_id() -> Result<DeviceId, Error> {
     let id = j.device_id();
     tracing::debug!(?id, "Saved device ID to disk");
     Ok(DeviceId {
-        generated: true,
+        is_first_time: true,
         id,
     })
 }

@@ -791,7 +791,7 @@ async fn run_controller(
         .await
         .context("Failed to read / create device ID")?;
 
-    if device_id.generated {
+    if device_id.is_first_time {
         let win = app
             .get_window("welcome")
             .context("Couldn't get handle to Welcome window")?;
