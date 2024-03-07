@@ -452,8 +452,7 @@ impl connlib_client_shared::Callbacks for CallbackHandler {
 
     fn on_disconnect(&self, error: &connlib_client_shared::Error) -> Result<(), Self::Error> {
         tracing::debug!("on_disconnect {error:?}");
-        self.ctlr_tx
-            .try_send(ControllerRequest::Disconnected)?;
+        self.ctlr_tx.try_send(ControllerRequest::Disconnected)?;
         Ok(())
     }
 
