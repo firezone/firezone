@@ -54,10 +54,6 @@ jobs:
             packages: -p connlib-client-apple -p snownet
           - runs-on: macos-14
             packages: -p connlib-client-apple -p snownet
-          - runs-on: windows-2019
-            packages: -p firezone-gui-client -p connlib-client-shared -p snownet
-          - runs-on: windows-2022
-            packages: -p firezone-gui-client -p connlib-client-shared -p snownet
     runs-on: ${{ matrix.runs-on }}
     steps:
       - uses: actions/checkout@v4
@@ -102,6 +98,8 @@ jobs:
         run: pnpm tsc
       - name: Compile Tailwind
         run: pnpm tailwindcss -i src/input.css -o src/output.css
+      - name: Run unit tests
+        run: cargo test --all-features -p firezone-gui-client -p connlib-client-shared -p snownet
       - name: Build client
         run: cargo build -p firezone-gui-client
       - name: Run smoke tests (Linux)
