@@ -415,7 +415,7 @@ fn handle_system_tray_event(app: &tauri::AppHandle, event: TrayMenuEvent) -> Res
 pub(crate) enum ControllerRequest {
     /// The GUI wants us to use these settings in-memory, they've already been saved to disk
     ApplySettings(AdvancedSettings),
-    DisconnectedTokenExpired,
+    Disconnected,
     /// The same as the arguments to `client::logging::export_logs_to`
     ExportLogs {
         path: PathBuf,
@@ -453,7 +453,7 @@ impl connlib_client_shared::Callbacks for CallbackHandler {
     fn on_disconnect(&self, error: &connlib_client_shared::Error) -> Result<(), Self::Error> {
         tracing::debug!("on_disconnect {error:?}");
         self.ctlr_tx
-            .try_send(ControllerRequest::DisconnectedTokenExpired)?;
+            .try_send(ControllerRequest::Disconnected)?;
         Ok(())
     }
 
@@ -587,8 +587,8 @@ impl Controller {
                     "Applied new settings. Log level will take effect at next app start."
                 );
             }
-            Req::DisconnectedTokenExpired => {
-                tracing::info!("Token expired");
+            Req::Disconnected => {
+                tracing::info!("Disconnected by connlib");
                 self.sign_out()?;
                 os::show_notification(
                     "Firezone disconnected",
