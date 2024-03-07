@@ -337,7 +337,7 @@ mod test {
                         addr: "189.172.73.111:3478".parse().unwrap(),
                     }),
                     Relay::Turn(Turn {
-                        expires_at: DateTime::from_timestamp(1686629954, 0).unwrap().and_utc(),
+                        expires_at: DateTime::from_timestamp(1686629954, 0).unwrap(),
                         addr: "189.172.73.111:3478".parse().unwrap(),
                         username: "1686629954:C7I74wXYFdFugMYM".to_string(),
                         password: "OXXRDJ7lJN1cm+4+2BWgL87CxDrvpVrn5j3fnJHye98".to_string(),
@@ -346,7 +346,7 @@ mod test {
                         addr: "[::1]:3478".parse().unwrap(),
                     }),
                     Relay::Turn(Turn {
-                        expires_at: DateTime::from_timestamp(1686629954, 0).unwrap().and_utc(),
+                        expires_at: DateTime::from_timestamp(1686629954, 0).unwrap(),
                         addr: "[::1]:3478".parse().unwrap(),
                         username: "1686629954:dpHxHfNfOhxPLfMG".to_string(),
                         password: "8Wtb+3YGxO6ia23JUeSEfZ2yFD6RhGLkbgZwqjebyKY".to_string(),
