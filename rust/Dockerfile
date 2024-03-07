@@ -1,3 +1,5 @@
+ARG ALPINE_VERSION="3.19"
+
 # This image is used to prepare Cargo Chef which is used to cache dependencies
 FROM rust:1.74-alpine as chef
 
