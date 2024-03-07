@@ -156,16 +156,6 @@ class TunnelService : VpnService() {
                 }.toTypedArray()
             }
 
-            // Something called disconnect() already, so assume it was user or system initiated.
-            override fun onDisconnect(): Boolean {
-                Log.d(TAG, "onDisconnect")
-                Firebase.crashlytics.log("onDisconnect")
-
-                shutdown()
-
-                return true
-            }
-
             // Unexpected disconnect, most likely a 401. Clear the token and initiate a stop of the
             // service.
             override fun onDisconnect(error: String): Boolean {
@@ -211,6 +201,8 @@ class TunnelService : VpnService() {
         connlibSessionPtr!!.let {
             ConnlibSession.disconnect(it)
         }
+
+        shutdown()
     }
 
     private fun shutdown() {

@@ -136,9 +136,8 @@ impl Callbacks for CallbackHandler {
         Ok(())
     }
 
-    fn on_disconnect(&self, error: Option<&Error>) -> Result<(), Self::Error> {
-        self.inner
-            .on_disconnect(error.map(ToString::to_string).unwrap_or_default());
+    fn on_disconnect(&self, error: &Error) -> Result<(), Self::Error> {
+        self.inner.on_disconnect(error.to_string());
         Ok(())
     }
 

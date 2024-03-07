@@ -451,10 +451,7 @@ enum CallbackError {
 impl connlib_client_shared::Callbacks for CallbackHandler {
     type Error = CallbackError;
 
-    fn on_disconnect(
-        &self,
-        error: Option<&connlib_client_shared::Error>,
-    ) -> Result<(), Self::Error> {
+    fn on_disconnect(&self, error: &connlib_client_shared::Error) -> Result<(), Self::Error> {
         tracing::debug!("on_disconnect {error:?}");
         self.ctlr_tx.try_send(match error {
             Some(connlib_client_shared::Error::ClosedByPortal) => {

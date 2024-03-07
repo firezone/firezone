@@ -269,10 +269,10 @@ impl Callbacks for CallbackHandler {
         })
     }
 
-    fn on_disconnect(&self, error: Option<&Error>) -> Result<(), Self::Error> {
+    fn on_disconnect(&self, error: &Error) -> Result<(), Self::Error> {
         self.env(|mut env| {
             let error = env
-                .new_string(serde_json::to_string(&error.map(ToString::to_string))?)
+                .new_string(serde_json::to_string(&error.to_string())?)
                 .map_err(|source| CallbackError::NewStringFailed {
                     name: "error",
                     source,

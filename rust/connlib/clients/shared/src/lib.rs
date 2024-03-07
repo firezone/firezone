@@ -264,7 +264,9 @@ where
             tracing::error!("Couldn't stop runtime: {err}");
         }
 
-        let _ = callbacks.on_disconnect(error.as_ref());
+        if let Some(error) = error {
+            let _ = callbacks.on_disconnect(&error);
+        }
     }
 
     /// Cleanup a [Session].
