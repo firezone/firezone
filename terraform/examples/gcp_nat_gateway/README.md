@@ -17,6 +17,12 @@ this example:
 - Enabling a team of remote contractors access to a regionally-locked
   application or service.
 
+## High availability
+
+All Gateways deployed in this example will automatically failover and load
+balance for each other. No other configuration is necessary. To perform upgrades
+with downtime, see [upgrading](#upgrading).
+
 ## Prerequisites
 
 1. [Terraform](https://www.terraform.io/downloads.html)
@@ -34,14 +40,14 @@ this example:
 
 Variables in **bold** are required.
 
-| Name           | Description                                                            |  Type  |     Default     |
-| -------------- | ---------------------------------------------------------------------- | :----: | :-------------: |
-| **project_id** | The project ID to deploy the Gateway(s) into.                          | string |        -        |
-| **region**     | The region to deploy the Gateway(s) into. E.g. `us-west1`              | string |        -        |
-| **zone**       | The availability zone to deploy the Gateway(s) into. E.g. `us-west1-a` | string |        -        |
-| **token**      | The token used to authenticate the Gateway with Firezone.              | string |        -        |
-| machine_type   | The type of GCP instance to deploy the Gateway(s) as.                  | string | `n1-standard-1` |
-| replicas       | The number of Gateways to deploy.                                      | number |        3        |
+| Name           | Description                                                            |  Type  |  Default   |
+| -------------- | ---------------------------------------------------------------------- | :----: | :--------: |
+| **project_id** | The project ID to deploy the Gateway(s) into.                          | string |     -      |
+| **region**     | The region to deploy the Gateway(s) into. E.g. `us-west1`              | string |     -      |
+| **zone**       | The availability zone to deploy the Gateway(s) into. E.g. `us-west1-a` | string |     -      |
+| **token**      | The token used to authenticate the Gateway with Firezone.              | string |     -      |
+| machine_type   | The type of GCP instance to deploy the Gateway(s) as.                  | string | `f1-micro` |
+| replicas       | The number of Gateways to deploy.                                      | number |     3      |
 
 ## Sizing
 
@@ -83,4 +89,18 @@ Firezone admin portal:
 ## Upgrading
 
 To upgrade the Gateway(s) to the latest version, simply update the `token` and
-issue a `terraform apply` which will trigger a rolling update of the Gateway(s).
+issue a `terraform apply` which will trigger a redeployment of the Gateway(s).
+
+This will incur about a minute or two of downtime as Terraform destroys the
+existing Gateway(s) and deploys new ones in their place.
+
+### Minimal downtime upgrades
+
+To achieve a minimal downtime upgrade, add more
+`google_compute_instance_template`s, each with their own `token`. When it comes
+time to upgrade, update the `token` variable for each one individually, issuing
+a `terraform apply` in between. We recommend 3 or more
+`google_compute_instance_template`s if you plan to use this method.
+
+This will ensure that at least two groups of Gateways are always online and
+serving traffic as you roll over the old ones.
