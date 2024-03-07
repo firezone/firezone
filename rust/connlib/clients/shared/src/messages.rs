@@ -160,7 +160,7 @@ mod test {
         },
     };
 
-    use chrono::NaiveDateTime;
+    use chrono::DateTime;
 
     use crate::messages::{ConnectionDetails, EgressMessages, ReplyMessages};
 
