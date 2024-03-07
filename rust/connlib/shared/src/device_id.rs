@@ -1,14 +1,6 @@
+use anyhow::{Context, Result};
 use std::fs;
-
-#[derive(thiserror::Error, Debug)]
-pub enum Error {
-    #[error("Couldn't create app-specific dir in `ProgramData` or `/var/lib`: {0}")]
-    CreateProgramDataDir(std::io::Error),
-    #[error("Can't find well-known folder")]
-    KnownFolder,
-    #[error("Couldn't write device ID file: {0}")]
-    WriteDeviceIdFile(std::io::Error),
-}
+use std::io::Write;
 
 /// Returns the device ID, generating it and saving it to disk if needed.
 ///
@@ -18,8 +10,8 @@ pub enum Error {
 /// Returns: The UUID as a String, suitable for sending verbatim to `connlib_client_shared::Session::connect`.
 ///
 /// Errors: If the disk is unwritable when initially generating the ID, or unwritable when re-generating an invalid ID.
-pub fn get() -> Result<String, Error> {
-    let dir = imp::path().ok_or(Error::KnownFolder)?;
+pub fn get() -> Result<String> {
+    let dir = imp::path().context("Failed to compute path for firezone-id file")?;
     let path = dir.join("firezone-id.json");
 
     // Try to read it from the disk
@@ -37,12 +29,15 @@ pub fn get() -> Result<String, Error> {
     let j = DeviceIdJson { id };
     // TODO: This file write has the same possible problems with power loss as described here https://github.com/firezone/firezone/pull/2757#discussion_r1416374516
     // Since the device ID is random, typically only written once in the device's lifetime, and the read will error out if it's corrupted, it's low-risk.
-    fs::create_dir_all(&dir).map_err(Error::CreateProgramDataDir)?;
-    fs::write(
-        &path,
-        serde_json::to_string(&j).expect("Device ID should always be serializable"),
-    )
-    .map_err(Error::WriteDeviceIdFile)?;
+    fs::create_dir_all(&dir).context("Failed to create dir for firezone-id")?;
+
+    let content =
+        serde_json::to_string(&j).context("Impossible: Failed to serialize firezone-id")?;
+
+    let file =
+        atomicwrites::AtomicFile::new(&path, atomicwrites::OverwriteBehavior::DisallowOverwrite);
+    file.write(|f| f.write_all(content.as_bytes()))
+        .context("Failed to write firezone-id file")?;
 
     let device_id = j.device_id();
     tracing::debug!(?device_id, "Saved device ID to disk");
