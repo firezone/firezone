@@ -1,7 +1,20 @@
 ARG ALPINE_VERSION="3.19"
 
+FROM rust:1.74-alpine as rust
+
+RUN set -xe \
+  # Upgrade Alpine and base packages
+  && apk --no-cache --update-cache --available upgrade \
+  # Install required deps
+  && apk add --no-cache --update-cache \
+  ca-certificates \
+  gcc
+
 # This image is used to prepare Cargo Chef which is used to cache dependencies
-FROM rust:1.74-alpine as chef
+FROM rust as chef
+RUN set -xe \
+  && apk add --no-cache musl-dev \
+  && rm -rf $CARGO_HOME/registry/
 
 ## See https://github.com/LukeMathWalker/cargo-chef/issues/231.
 COPY rust-toolchain.toml rust-toolchain.toml
