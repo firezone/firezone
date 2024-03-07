@@ -5,7 +5,11 @@ use connlib_shared::BUNDLE_ID;
 ///
 /// May say "Windows Powershell" and have the wrong icon in dev mode
 /// See <https://github.com/tauri-apps/tauri/issues/3700>
+///
+/// Does not work on aarch64 Windows: <https://github.com/firezone/firezone/issues/4035>
 pub(crate) fn show_notification(title: &str, body: &str) -> Result<(), Error> {
+    tracing::debug!(?title, ?body, "show_notification");
+
     tauri_winrt_notification::Toast::new(BUNDLE_ID)
         .title(title)
         .text1(body)
