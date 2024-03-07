@@ -1,6 +1,18 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+hostname=$(hostname)
+FIREZONE_NAME=${FIREZONE_NAME:-$hostname}
+FIREZONE_ID=${FIREZONE_ID:-}
+FIREZONE_TOKEN=${FIREZONE_TOKEN:-}
+FIREZONE_API_URL=${FIREZONE_API_URL:-wss://api.firezone.dev}
+RUST_LOG=${RUST_LOG:-info}
+
+if [ -z "$FIREZONE_TOKEN" ]; then
+    echo "FIREZONE_TOKEN is required"
+    exit 1
+fi
+
 # Setup user and group
 sudo groupadd -f firezone
 id -u firezone >/dev/null 2>&1 || sudo useradd -r -g firezone -s /sbin/nologin firezone
