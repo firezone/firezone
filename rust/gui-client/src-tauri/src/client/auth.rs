@@ -310,7 +310,7 @@ mod tests {
         };
         assert_eq!(
             req.to_url(&auth_base_url).expose_secret(),
-            "https://app.firez.one?as=client&nonce=some_nonce&state=some_state"
+            "https://app.firez.one/?as=client&nonce=some_nonce&state=some_state"
         );
     }
 
