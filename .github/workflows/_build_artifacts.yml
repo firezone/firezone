@@ -4,7 +4,8 @@ on:
   workflow_call:
     inputs:
       profile:
-        required: true
+        required: false
+        default: debug
         type: string
 
 env:
@@ -142,9 +143,6 @@ jobs:
           - target: armv7-unknown-linux-musleabihf  # E.g. Raspberry Pi
             platform: linux/arm/v7
             shortname: arm
-          - target: mips64-unknown-linux-muslabi64 # E.g. UniFi Routers
-            platform: linux/mips64le
-            shortname: mips64
         name:
           - package: firezone-linux-client
             artifact: linux-client
@@ -169,7 +167,10 @@ jobs:
         run: |
           set -xe
 
-          cross build --${{ inputs.profile }} -p ${{ matrix.name.package }} --target ${{ matrix.arch.target }}
+          # Cross doesn't like to be passed --debug
+          profile=${{ inputs.profile == 'debug' ?? '' : '--release' }}
+
+          cross build $profile -p ${{ matrix.name.package }} --target ${{ matrix.arch.target }}
 
           # Used for release artifact
           cp target/${{ matrix.arch.target }}/${{ inputs.profile }}/${{ matrix.name.package }} $BINARY_DEST_PATH

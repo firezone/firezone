@@ -14,8 +14,6 @@ jobs:
   build-artifacts:
     uses: ./.github/workflows/_build_artifacts.yml
     secrets: inherit
-    with:
-      profile: debug
   kotlin:
     uses: ./.github/workflows/_kotlin.yml
     secrets: inherit
