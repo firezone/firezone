@@ -144,6 +144,12 @@ defmodule Domain.Resources.Resource.Query do
         title: "Name or Address",
         type: {:string, :websearch},
         fun: &filter_by_name_fts_or_address/2
+      },
+      %Domain.Repo.Filter{
+        name: :gateway_group_id,
+        type: {:string, :uuid},
+        values: [],
+        fun: &filter_by_gateway_group_id/2
       }
     ]
 
@@ -154,5 +160,10 @@ defmodule Domain.Resources.Resource.Query do
        fulltext_search(resources.name, ^name_or_address) or
          ilike(resources.address, ^"%#{name_or_address}%")
      )}
+  end
+
+  def filter_by_gateway_group_id(queryable, gateway_group_id) do
+    {with_joined_connections(queryable),
+     dynamic([connections: connections], connections.gateway_group_id == ^gateway_group_id)}
   end
 end

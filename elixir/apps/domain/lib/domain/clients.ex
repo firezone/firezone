@@ -80,8 +80,8 @@ defmodule Domain.Clients do
     end
   end
 
-  def list_clients_for_actor(%Actors.Actor{} = actor, %Auth.Subject{} = subject) do
-    list_clients_by_actor_id(actor.id, subject)
+  def list_clients_for(%Actors.Actor{} = actor, %Auth.Subject{} = subject, opts) do
+    list_clients_by_actor_id(actor.id, subject, opts)
   end
 
   def list_clients_by_actor_id(actor_id, %Auth.Subject{} = subject, opts \\ []) do

@@ -34,6 +34,10 @@ defmodule Domain.Auth.Identity.Query do
     where(queryable, [identities: identities], identities.account_id == ^account_id)
   end
 
+  def by_actor_id(queryable, {:in, actor_ids}) do
+    where(queryable, [identities: identities], identities.actor_id in ^actor_ids)
+  end
+
   def by_actor_id(queryable, actor_id) do
     where(queryable, [identities: identities], identities.actor_id == ^actor_id)
   end
@@ -175,6 +179,15 @@ defmodule Domain.Auth.Identity.Query do
     |> select([identities: identities], %{
       provider_id: identities.provider_id,
       count: count(identities.id)
+    })
+  end
+
+  def min_last_seen_at_grouped_by_actor_id(queryable) do
+    queryable
+    |> group_by([identities: identities], identities.actor_id)
+    |> select([identities: identities], %{
+      actor_id: identities.actor_id,
+      count: min(identities.last_seen_at)
     })
   end
 

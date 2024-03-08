@@ -357,6 +357,15 @@ defmodule Domain.Actors do
     end)
   end
 
+  def preload_last_seen_at(actors) do
+    actor_ids = Enum.map(actors, & &1.id)
+    last_seen_at = Auth.min_last_seen_at_by_actor_ids(actor_ids)
+
+    Enum.map(actors, fn actor ->
+      %{actor | last_seen_at: Map.get(last_seen_at, actor.id)}
+    end)
+  end
+
   def list_actors(%Auth.Subject{} = subject, opts \\ []) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
       Actor.Query.not_deleted()

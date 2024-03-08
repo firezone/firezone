@@ -120,7 +120,7 @@ defmodule Domain.Policies.Policy.Query do
       },
       %Domain.Repo.Filter{
         name: :actor_group_id,
-        title: "Actor",
+        title: "Actor Group",
         type: {:string, :uuid},
         fun: &filter_by_actor_group_id/2
       },

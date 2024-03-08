@@ -80,4 +80,28 @@ defmodule Domain.Relays.Relay.Query do
     do: [
       online?: &Domain.Relays.preload_relays_presence/1
     ]
+
+  @impl Domain.Repo.Query
+  def filters,
+    do: [
+      %Domain.Repo.Filter{
+        name: :relay_group_id,
+        type: {:string, :uuid},
+        values: [],
+        fun: &filter_by_group_id/2
+      },
+      %Domain.Repo.Filter{
+        name: :ids,
+        type: {:list, {:string, :uuid}},
+        fun: &filter_by_ids/2
+      }
+    ]
+
+  def filter_by_group_id(queryable, group_id) do
+    {queryable, dynamic([relays: relays], relays.group_id == ^group_id)}
+  end
+
+  def filter_by_ids(queryable, ids) do
+    {queryable, dynamic([relays: relays], relays.id in ^ids)}
+  end
 end

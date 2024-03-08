@@ -258,40 +258,42 @@ defmodule Domain.Repo.Paginator do
 
   @doc false
   def encode_cursor(direction, cursor_fields, schema) do
-    values =
-      Enum.map(cursor_fields, fn {_binding, _order, field} ->
-        case Map.fetch!(schema, field) do
-          %DateTime{} = dt -> {DateTime, DateTime.to_unix(dt)}
-          %NaiveDateTime{} = ndt -> {NaiveDateTime, NaiveDateTime.to_iso8601(ndt)}
-          %Date{} = date -> {Date, Date.to_iso8601(date)}
-          %Time{} = time -> {Time, Time.to_iso8601(time)}
-          other -> {:term, other}
-        end
-      end)
-
-    {direction, values}
+    {direction, compress_cursor(schema, cursor_fields)}
     |> :erlang.term_to_binary()
     |> Base.url_encode64(padding: false)
+  end
+
+  defp compress_cursor(schema, cursor_fields) do
+    Enum.map(cursor_fields, fn {_binding, _order, field} ->
+      case Map.fetch!(schema, field) do
+        %DateTime{} = dt -> {DateTime, DateTime.to_unix(dt, :nanosecond)}
+        %NaiveDateTime{} = ndt -> {NaiveDateTime, NaiveDateTime.to_iso8601(ndt)}
+        %Date{} = date -> {Date, Date.to_iso8601(date)}
+        %Time{} = time -> {Time, Time.to_iso8601(time)}
+        other -> {:t, other}
+      end
+    end)
   end
 
   defp decode_cursor(encoded) do
     with {:ok, etf} <- Base.url_decode64(encoded, padding: false),
          {direction, values} <- Plug.Crypto.non_executable_binary_to_term(etf, [:safe]),
          false <- Enum.any?(values, &is_nil/1) do
-      values =
-        Enum.map(values, fn
-          {:term, term} -> term
-          {DateTime, iso8601} -> DateTime.from_unix!(iso8601)
-          {NaiveDateTime, iso8601} -> NaiveDateTime.from_iso8601!(iso8601)
-          {Date, iso8601} -> Date.from_iso8601!(iso8601)
-          {Time, iso8601} -> Time.from_iso8601!(iso8601)
-        end)
-
-      {:ok, {direction, values}}
+      {:ok, {direction, decompress_cursor(values)}}
     else
       _ -> {:error, :invalid_cursor}
     end
   rescue
     _e -> {:error, :invalid_cursor}
+  end
+
+  defp decompress_cursor(cursor_fields) do
+    Enum.map(cursor_fields, fn
+      {:t, term} -> term
+      {DateTime, iso8601} -> DateTime.from_unix!(iso8601, :nanosecond)
+      {NaiveDateTime, iso8601} -> NaiveDateTime.from_iso8601!(iso8601)
+      {Date, iso8601} -> Date.from_iso8601!(iso8601)
+      {Time, iso8601} -> Time.from_iso8601!(iso8601)
+    end)
   end
 end

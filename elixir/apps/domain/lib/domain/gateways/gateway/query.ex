@@ -66,7 +66,7 @@ defmodule Domain.Gateways.Gateway.Query do
   @impl Domain.Repo.Query
   def cursor_fields,
     do: [
-      {:gateways, :asc, :inserted_at},
+      {:gateways, :asc, :last_seen_at},
       {:gateways, :asc, :id}
     ]
 
@@ -75,5 +75,30 @@ defmodule Domain.Gateways.Gateway.Query do
     [
       online?: &Domain.Gateways.preload_gateways_presence/1
     ]
+  end
+
+  @impl Domain.Repo.Query
+  def filters,
+    do: [
+      %Domain.Repo.Filter{
+        name: :gateway_group_id,
+        title: "Site",
+        type: {:string, :uuid},
+        values: [],
+        fun: &filter_by_group_id/2
+      },
+      %Domain.Repo.Filter{
+        name: :ids,
+        type: {:list, {:string, :uuid}},
+        fun: &filter_by_ids/2
+      }
+    ]
+
+  def filter_by_group_id(queryable, group_id) do
+    {queryable, dynamic([gateways: gateways], gateways.group_id == ^group_id)}
+  end
+
+  def filter_by_ids(queryable, ids) do
+    {queryable, dynamic([gateways: gateways], gateways.id in ^ids)}
   end
 end

@@ -138,6 +138,12 @@ defmodule Domain.Actors.Actor.Query do
     ]
 
   @impl Domain.Repo.Query
+  def preloads,
+    do: [
+      last_seen_at: &Domain.Actors.preload_last_seen_at/1
+    ]
+
+  @impl Domain.Repo.Query
   def filters,
     do: [
       %Domain.Repo.Filter{

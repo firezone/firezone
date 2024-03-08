@@ -62,9 +62,14 @@ defmodule Domain.Repo.Filter do
           | (Ecto.Queryable.t() ->
                {Ecto.Queryable.t(), %Ecto.Query.DynamicExpr{}})
 
+  @doc """
+  Defines a filter.
+
+  Setting `title` to `nil` will hide it from rendering by `Web.LiveTable`.
+  """
   @type t :: %__MODULE__{
           name: atom(),
-          title: String.t(),
+          title: String.t() | nil,
           type: type(),
           values: [{value :: term(), name :: String.t()}] | Range.t() | nil,
           fun: fun()
