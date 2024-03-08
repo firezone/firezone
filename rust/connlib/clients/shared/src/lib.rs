@@ -191,7 +191,7 @@ async fn connect<CB>(
         Ok(never) => match never {},
         Err(e) => {
             tracing::error!("Eventloop failed: {e}");
-            let _ = callbacks.on_disconnect(todo!("invalidate token in case of auth error"));
+            let _ = callbacks.on_disconnect(&Error::PortalConnectionFailed); // TMP Error until we have a narrower API for `onDisconnect`
         }
     }
 }
