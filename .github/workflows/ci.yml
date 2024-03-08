@@ -15,17 +15,17 @@ jobs:
   # benefit to running them in CD in addition to the PR and
   # merge group workflows is negligible.
   kotlin:
-    if: github.workflow == "Continuous Integration"
+    if: github.workflow == 'Continuous Integration'
     uses: ./.github/workflows/_kotlin.yml
     secrets: inherit
   swift:
-    if: github.workflow == "Continuous Integration"
+    if: github.workflow == 'Continuous Integration'
     uses: ./.github/workflows/_swift.yml
     secrets: inherit
 
   # We build tauri artifacts in CD, no need to build it before here.
   tauri:
-    if: github.workflow == "Continuous Integration"
+    if: github.workflow == 'Continuous Integration'
     uses: ./.github/workflows/_tauri.yml
     secrets: inherit
 
@@ -38,14 +38,14 @@ jobs:
     uses: ./.github/workflows/_rust.yml
     secrets: inherit
   static-analysis:
-    if: github.workflow == "Continuous Integration"
+    if: github.workflow == 'Continuous Integration'
     uses: ./.github/workflows/_static-analysis.yml
   terraform:
-    if: github.workflow == "Continuous Integration"
+    if: github.workflow == 'Continuous Integration'
     uses: ./.github/workflows/_terraform.yml
     secrets: inherit
   codeql:
-    if: github.workflow == "Continuous Integration"
+    if: github.workflow == 'Continuous Integration'
     uses: ./.github/workflows/_codeql.yml
     secrets: inherit
 
