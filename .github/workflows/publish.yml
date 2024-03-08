@@ -1,27 +1,11 @@
-name: Publish artifacts and deploy production
-run-name: Triggered from ${{ github.event_name }} by ${{ github.actor }}
+name: Deploy Production and Publish Images
+run-name: Triggered by ${{ github.actor }}
 on:
   release:
     types:
       - published
-  # We temporary allow to run deployments to production without publishing a release
-  # to make sure that the deployment works as expected
-  workflow_dispatch:
-    inputs:
-      tag:
-        description:
-          "Image tag to deploy (defaults to the last commit SHA in the branch)"
-        required: false
-      foolproof:
-        description: "Deploy to production bypassing releases (hotfixes only!)"
-        required: true
-        type: boolean
 
 env:
-  # TODO: when a manual release is pushed this version will be used all the time,
-  # but for hotfixes we must make sure that the `make version` is called before it.defaults:
-  # Maybe we can make it part of cd.yml?
-  #
   # mark:automatic-version
   VERSION: "1.0.0"
 
@@ -30,105 +14,13 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  push-images-to-production-artifacts:
-    if:
-      ${{ github.event_name == 'release' || (github.ref == 'refs/heads/main' && inputs.foolproof == true) }}
-    runs-on: ubuntu-22.04
-    strategy:
-      fail-fast: false
-    permissions:
-      # Needed to upload artifacts to a release
-      packages: write
-      # Needed to login to GCP
-      id-token: write
-    steps:
-      - uses: actions/checkout@v4
-      - name: Login to staging registry
-        uses: ./.github/actions/gcp-docker-login
-        id: login-staging
-        with:
-          project: firezone-staging
-      - name: Login to production registry
-        uses: ./.github/actions/gcp-docker-login
-        id: login-production
-        with:
-          project: firezone-prod
-      - name: Pull and push images
-        run: |
-          set -xe
-          IMAGES=(relay api gateway web)
-          MAJOR_VERSION="${VERSION%%.*}"
-          MAJOR_MINOR_VERSION="${VERSION%.*}"
-
-          for image in "${IMAGES[@]}"; do
-            SOURCE_TAG=${{ steps.login-staging.outputs.registry }}/firezone/${image}:${{ inputs.tag || github.sha }}
-            docker pull --platform linux/amd64 ${SOURCE_TAG}
-
-            echo "Retagging ${image} from ${SOURCE_TAG}"
-
-            docker tag ${SOURCE_TAG} ${{ steps.login-production.outputs.registry }}/firezone/${image}:${{ inputs.tag || github.sha }}
-            docker tag ${SOURCE_TAG} ${{ steps.login-production.outputs.registry }}/firezone/${image}:${{ env.VERSION }}-${{ inputs.tag || github.sha }}
-            docker tag ${SOURCE_TAG} ${{ steps.login-production.outputs.registry }}/firezone/${image}:${{ env.VERSION }}
-            docker tag ${SOURCE_TAG} ${{ steps.login-production.outputs.registry }}/firezone/${image}:${MAJOR_VERSION}
-            docker tag ${SOURCE_TAG} ${{ steps.login-production.outputs.registry }}/firezone/${image}:${MAJOR_MINOR_VERSION}
-
-            docker push --all-tags ${{ steps.login-production.outputs.registry }}/firezone/${image}
-          done
-
   deploy-production:
-    if: github.ref == 'refs/heads/main' || github.event_name == 'release'
-    needs: push-images-to-production-artifacts
-    runs-on: ubuntu-22.04
-    permissions:
-      contents: write
-    env:
-      TF_CLOUD_ORGANIZATION: "firezone"
-      TF_API_TOKEN: "${{ secrets.TF_API_TOKEN }}"
-      TF_WORKSPACE: "production"
-    steps:
-      - name: Get Terraform Version
-        run: |
-          TERRAFORM_VERSION=$(cat .tool-versions | grep terraform | awk '{ print $NF; }')
-          echo "TERRAFORM_VERSION=${TERRAFORM_VERSION}" >> $GITHUB_ENV
-      - uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: ${{ env.TERRAFORM_VERSION }}
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.workflow_run.head_branch }}
-      - name: Upload Configuration
-        uses: hashicorp/tfc-workflows-github/actions/upload-configuration@v1.2.0
-        id: apply-upload
-        with:
-          workspace: ${{ env.TF_WORKSPACE }}
-          # Subdirectory is set in the project settings:
-          # https://app.terraform.io/app/firezone/workspaces/production/settings/general
-          directory: "./"
-      - name: Create Plan Run
-        uses: hashicorp/tfc-workflows-github/actions/create-run@v1.2.0
-        id: apply-run
-        env:
-          TF_VAR_image_tag:
-            '"${{ env.VERSION }}-${{ inputs.tag || github.sha }}"'
-        with:
-          workspace: ${{ env.TF_WORKSPACE }}
-          configuration_version:
-            ${{ steps.apply-upload.outputs.configuration_version_id }}
-      - name: Apply
-        uses: hashicorp/tfc-workflows-github/actions/apply-run@v1.2.0
-        if: fromJSON(steps.apply-run.outputs.payload).data.attributes.actions.IsConfirmable
-        id: apply
-        with:
-          run: ${{ steps.apply-run.outputs.run_id }}
-          comment:
-            "Apply Run from GitHub Actions CI ${{ inputs.tag || github.sha }}"
+    secrets: inherit
+    uses: ./.github/workflows/_deploy_production.yml
 
   publish-images-to-ghcr:
-    if: ${{ github.event_name == 'release' }}
     needs: deploy-production
     runs-on: ubuntu-22.04
-    strategy:
-      fail-fast: false
     permissions:
       # Needed to upload artifacts to a release
       packages: write

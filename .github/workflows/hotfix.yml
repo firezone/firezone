@@ -1,0 +1,45 @@
+name: Hotfix Production
+run-name: Triggered by ${{ github.actor }}
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Image tag to deploy. Defaults to the last commit SHA in the branch."
+        type: string
+        default: ${{ github.sha }}
+        required: false
+
+concurrency:
+  group: "hotfix-production-${{ github.workflow }}-${{ github.ref }}"
+  cancel-in-progress: false
+
+jobs:
+  # This is a hotfix, so we need to be careful that we don't deploy a control plane
+  # that doesn't work with the latest published clients and gateways.
+  integration-tests:
+    uses: ./.github/workflows/_integration_tests.yml
+    secrets: inherit
+    with:
+      api_image: us-east1-docker.pkg.dev/firezone-staging/firezone/api
+      api_tag: ${{ inputs.tag }}
+      web_image: us-east1-docker.pkg.dev/firezone-staging/firezone/web
+      web_tag: ${{ inputs.tag }}
+      relay_image: us-east1-docker.pkg.dev/firezone-staging/firezone/relay
+      relay_tag: ${{ inputs.tag }}
+      # Should match relay version
+      snownet_image: us-east1-docker.pkg.dev/firezone-staging/firezone/snownet-tests
+      snownet_tag: ${{ inputs.tag }}
+
+      # Use the earliest supported version of the gateway and client.
+      # Today that's the same as the latest published one.
+      gateway_image: ghcr.io/firezone/gateway
+      gateway_tag: latest
+      client_image: ghcr.io/firezone/client
+      client_tag: latest
+
+  deploy-production:
+    needs: integration-tests
+    secrets: inherit
+    uses: /.github/workflows/_deploy_production.yml
+    with:
+      tag: ${{ inputs.tag }}

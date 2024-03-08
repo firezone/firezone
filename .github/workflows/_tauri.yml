@@ -1,18 +1,22 @@
 name: Tauri
 on:
   workflow_call:
+    inputs:
+      release_tag:
+        required: false
+        type: string
   workflow_dispatch:
 
 permissions:
-  contents: 'read'
-  id-token: 'write'
+  # For saving to release
+  contents: write
+  id-token: write
 
 defaults:
   run:
     working-directory: ./rust/gui-client
 
 jobs:
-  # This should be identical to `build-push-windows-release-artifacts` in `cd.yml` except for the Github permissions, needs tag, and uploading step
   build-gui:
     name: build-gui-${{ matrix.runs-on }}
     runs-on: ${{ matrix.runs-on }}
@@ -23,55 +27,67 @@ jobs:
           - runs-on: ubuntu-20.04
             binary-dest-path: firezone-linux-gui-client
             rename-script: ../../scripts/build/tauri-rename-ubuntu.sh
+            upload-script: ../../scripts/build/tauri-upload-ubuntu.sh
+            artifacts:
+              - target/release/firezone-linux-gui-client-amd64
+              - target/release/firezone-linux-gui-client_amd64.AppImage
+              - target/release/firezone-linux-gui-client_amd64.deb
           - runs-on: windows-2019
             binary-dest-path: firezone-windows-client
             rename-script: ../../scripts/build/tauri-rename-windows.sh
+            upload-script: ../../scripts/build/tauri-upload-windows.sh
+            artifacts:
+              - target/release/firezone-windows-client-x64.exe
+              - target/release/firezone-windows-client-x64.msi
+              - target/release/firezone-windows-client-x64.pdb
     env:
       BINARY_DEST_PATH: ${{ matrix.binary-dest-path }}
       CONNLIB_LOG_UPLOAD_INTERVAL_SECS: 300
+      AZURE_KEY_VAULT_URI: ${{ secrets.AZURE_KEY_VAULT_URI }}
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+      AZURE_CERT_NAME: ${{ secrets.AZURE_CERT_NAME }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node
-        with:
-          node-version: '20'
       - uses: ./.github/actions/setup-rust
         with:
           cache_backend: github
       - uses: ./.github/actions/setup-tauri
       - name: Install pnpm deps
         run: pnpm install
+      - name: Install AzureSignTool
+        if: ${{ runner.os == 'Windows' }}
+        shell: bash
+        run: dotnet tool install --global AzureSignTool
       - name: Build release exe and MSI
+        # Signs the exe before bundling it into the MSI
         run: pnpm build
+      # We need to sign the exe inside the MSI. Currently
+      # we do this in a "beforeBundleCommand" hook in tauri.windows.conf.json.
+      # But this will soon be natively supported in Tauri.
+      # TODO: Use Tauri's native MSI signing with support for EV certs
+      # See https://github.com/tauri-apps/tauri/pull/8718
+      - name: Sign the MSI
+        if: ${{ runner.os == 'Windows' }}
+        shell: bash
+        run: ../../scripts/build/sign.sh ../target/release/bundle/msi/Firezone_${{ env.VERSION }}_x64_en-US.msi
       - name: Rename artifacts and compute SHA256
         shell: bash
         run: ${{ matrix.rename-script }}
-      - name: Save Linux client
-        if: ${{ runner.os == 'Linux' }}
-        uses: ./.github/actions/upload-gui-artifact
+      - name: Upload workflow artifacts
+        uses: actions/upload-artifact@v4
         with:
-          base: ${{ env.BINARY_DEST_PATH }}-amd64
-      - name: Save Linux AppImage
-        if: ${{ runner.os == 'Linux' }}
-        uses: ./.github/actions/upload-gui-artifact
-        with:
-          base: ${{ env.BINARY_DEST_PATH }}_amd64.AppImage
-      - name: Save Linux deb package
-        if: ${{ runner.os == 'Linux' }}
-        uses: ./.github/actions/upload-gui-artifact
-        with:
-          base: ${{ env.BINARY_DEST_PATH }}_amd64.deb
-      - name: Save Windows client
-        if: ${{ runner.os == 'Windows' }}
-        uses: ./.github/actions/upload-gui-artifact
-        with:
-          base: ${{ env.BINARY_DEST_PATH }}-x64.exe
-      - name: Save Windows MSI installer
-        if: ${{ runner.os == 'Windows' }}
-        uses: ./.github/actions/upload-gui-artifact
-        with:
-          base: ${{ env.BINARY_DEST_PATH }}-x64.msi
-      - name: Save Windows debug symbols
-        if: ${{ runner.os == 'Windows' }}
-        uses: ./.github/actions/upload-gui-artifact
-        with:
-          base: ${{ env.BINARY_DEST_PATH }}-x64.pdb
+          name: ${{ matrix.binary-dest-path }}
+          path: ${{ matrix.artifacts }}
+
+      # Only for builds on main
+      - name: Upload Release Assets
+        if: ${{ inputs.release_tag }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+          TAG_NAME: ${{ needs.update-release-draft.outputs.tag_name }}
+        shell: bash
+        run: ${{ matrix.upload_script }}
