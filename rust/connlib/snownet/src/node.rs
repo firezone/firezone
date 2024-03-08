@@ -412,6 +412,7 @@ where
         self.buffered_transmits.pop_front()
     }
 
+    #[allow(clippy::too_many_arguments)]
     #[must_use]
     #[allow(clippy::too_many_arguments)]
     fn init_connection(
@@ -424,7 +425,7 @@ where
         intent_sent_at: Instant,
         now: Instant,
     ) -> Connection {
-        agent.handle_timeout(self.last_now);
+        agent.handle_timeout(now);
 
         /// We set a Wireguard keep-alive to ensure the WG session doesn't timeout on an idle connection.
         ///
@@ -443,7 +444,7 @@ where
             ),
             stun_servers: allowed_stun_servers,
             turn_servers: allowed_turn_servers,
-            next_timer_update: self.last_now,
+            next_timer_update: now,
             peer_socket: None,
             possible_sockets: Default::default(),
             stats: Default::default(),
