@@ -862,6 +862,11 @@ where
         params
     }
 
+    /// Whether we have sent an [`Offer`] for this connection and are currently expecting an [`Answer`].
+    pub fn is_expecting_answer(&self, id: TId) -> bool {
+        self.connections.initial.contains_key(&id)
+    }
+
     /// Accept an [`Answer`] from the remote for a connection previously created via [`Node::new_connection`].
     #[tracing::instrument(level = "info", skip_all, fields(%id))]
     pub fn accept_answer(&mut self, id: TId, remote: PublicKey, answer: Answer, now: Instant) {

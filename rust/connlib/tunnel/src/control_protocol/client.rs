@@ -64,6 +64,10 @@ where
             return Ok(Request::ReuseConnection(connection));
         }
 
+        if self.connections_state.node.is_expecting_answer(gateway_id) {
+            return Err(Error::PendingConnection);
+        }
+
         let domain = self
             .role_state
             .get_awaiting_connection_domain(&resource_id)?
