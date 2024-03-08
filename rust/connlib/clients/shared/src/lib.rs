@@ -75,7 +75,6 @@ where
             .build()?;
         {
             let callbacks = callbacks.clone();
-            let callbacks = callbacks.clone();
             let default_panic_hook = std::panic::take_hook();
             std::panic::set_hook(Box::new({
                 let tx = tx.clone();
