@@ -362,6 +362,10 @@ where
             connection.handle_timeout(id, now, &mut self.allocations, &mut self.pending_events);
         }
 
+        for (id, connection) in self.connections.initial.iter_mut() {
+            connection.handle_timeout(id, now);
+        }
+
         for binding in self.bindings.values_mut() {
             binding.handle_timeout(now);
         }
@@ -378,8 +382,7 @@ where
         }
 
         self.connections.initial.retain(|id, conn| {
-            if now.duration_since(conn.created_at) >= Duration::from_secs(20) {
-                tracing::info!(%id, "Connection setup timed out (no answer received)");
+            if conn.is_failed {
                 self.pending_events.push_back(Event::ConnectionFailed(*id));
                 return false;
             }
@@ -717,6 +720,7 @@ where
             turn_servers: allowed_turn_servers,
             created_at: now,
             intent_sent_at,
+            is_failed: false,
         };
         let duration_since_intent = initial_connection.duration_since_intent(now);
 
@@ -1164,9 +1168,21 @@ struct InitialConnection {
 
     created_at: Instant,
     intent_sent_at: Instant,
+
+    is_failed: bool,
 }
 
 impl InitialConnection {
+    fn handle_timeout<TId>(&mut self, id: TId, now: Instant)
+    where
+        TId: fmt::Display,
+    {
+        if now.duration_since(self.created_at) >= Duration::from_secs(20) {
+            tracing::info!(%id, "Connection setup timed out (no answer received)");
+            self.is_failed = true;
+        }
+    }
+
     fn duration_since_intent(&self, now: Instant) -> Duration {
         now.duration_since(self.intent_sent_at)
     }
