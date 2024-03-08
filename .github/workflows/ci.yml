@@ -52,7 +52,12 @@ jobs:
       id-token: write
       pull-requests: write
     env:
-      VERSION: ${{ github.sha }}
+      API_TAG: ${{ github.sha }}
+      WEB_TAG: ${{ github.sha }}
+      GATEWAY_TAG: ${{ github.sha }}
+      CLIENT_TAG: ${{ github.sha }}
+      RELAY_TAG: ${{ github.sha }}
+      ELIXIR_TAG: ${{ github.sha }}
     strategy:
       fail-fast: false
       matrix:

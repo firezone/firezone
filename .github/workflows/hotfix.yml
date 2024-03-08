@@ -20,14 +20,11 @@ jobs:
     uses: ./.github/workflows/_integration_tests.yml
     secrets: inherit
     with:
-      api_image: us-east1-docker.pkg.dev/firezone-staging/firezone/api
       api_tag: ${{ inputs.tag }}
-      web_image: us-east1-docker.pkg.dev/firezone-staging/firezone/web
       web_tag: ${{ inputs.tag }}
-      relay_image: us-east1-docker.pkg.dev/firezone-staging/firezone/relay
       relay_tag: ${{ inputs.tag }}
+      elixir_tag: ${{ inputs.tag }}
       # Should match relay version
-      snownet_image: us-east1-docker.pkg.dev/firezone-staging/firezone/snownet-tests
       snownet_tag: ${{ inputs.tag }}
 
       # Use the earliest supported version of the gateway and client.

@@ -315,7 +315,7 @@ services:
         - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/cache/elixir:main
       args:
         APPLICATION_NAME: api
-    image: us-east1-docker.pkg.dev/firezone-staging/firezone/elixir:${VERSION:-main}
+    image: ${ELIXIR_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/firezone/elixir}:${ELIXIR_TAG:-main}
     hostname: elixir
     environment:
       # Web Server

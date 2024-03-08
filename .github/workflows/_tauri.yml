@@ -12,6 +12,10 @@ permissions:
   contents: write
   id-token: write
 
+env:
+  # mark:automatic-version
+  VERSION: "1.0.0"
+
 defaults:
   run:
     working-directory: ./rust/gui-client

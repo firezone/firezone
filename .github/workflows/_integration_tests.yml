@@ -19,6 +19,14 @@ on:
         required: false
         type: string
         default: ${{ github.sha }}
+      elixir_image:
+        required: false
+        type: string
+        default: us-east1-docker.pkg.dev/firezone-staging/firezone/elixir
+      elixir_tag:
+        required: false
+        type: string
+        default: ${{ github.sha }}
       relay_image:
         required: false
         type: string
@@ -105,6 +113,8 @@ jobs:
       GATEWAY_TAG: ${{ inputs.gateway_tag }}
       CLIENT_IMAGE: ${{ inputs.client_image }}
       CLIENT_TAG: ${{ inputs.client_tag }}
+      ELIXIR_IMAGE: ${{ inputs.elixir_image }}
+      ELIXIR_TAG: ${{ inputs.elixir_tag }}
     strategy:
       fail-fast: false
       matrix:
