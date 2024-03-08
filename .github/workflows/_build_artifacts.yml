@@ -126,6 +126,9 @@ jobs:
   build-data-plane:
     name: build-${{ matrix.name.image_name }}-${{ matrix.arch.shortname }}
     runs-on: ubuntu-22.04
+    defaults:
+      run:
+        working-directory: rust
     strategy:
       fail-fast: false
       matrix:
