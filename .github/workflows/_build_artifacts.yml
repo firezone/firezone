@@ -184,7 +184,7 @@ jobs:
           # Used for Docker images
           cp target/${{ matrix.arch.target }}/${{ inputs.profile }}/${{ matrix.name.package }} ${{ matrix.name.package }}
       - name: Upload Release Assets
-        if: inputs.profile == 'release'
+        if: ${{ inputs.profile == 'release' && contains(fromJSON('["client", "gateway"]'),  matrix.name.artifact) }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
