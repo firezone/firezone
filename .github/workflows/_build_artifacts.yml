@@ -168,7 +168,7 @@ jobs:
           set -xe
 
           # Cross doesn't like to be passed --debug
-          profile=${{ inputs.profile == 'debug' ?? '' : '--release' }}
+          profile=${{ inputs.profile == 'debug' && '' || '--release' }}
 
           cross build $profile -p ${{ matrix.name.package }} --target ${{ matrix.arch.target }}
 
