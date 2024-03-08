@@ -347,7 +347,8 @@ where
 
     /// Advances time within the [`Node`].
     ///
-    /// This advances time within the ICE agent, updates timers within all wireguard connections as well as resets wireguard's rate limiter (if necessary).
+    /// This function is the main "work-horse" outside of encapsulating or decapsulating network packets.
+    /// Any significant state changes happens in here.
     pub fn handle_timeout(&mut self, now: Instant) {
         self.bindings_and_allocations_drain_events();
 
