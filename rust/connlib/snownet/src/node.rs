@@ -353,7 +353,13 @@ where
         self.bindings_and_allocations_drain_events();
 
         for (id, connection) in self.connections.iter_established_mut() {
-            connection.handle_timeout(id, now, &mut self.allocations, &mut self.pending_events);
+            connection.handle_timeout(
+                id,
+                now,
+                &mut self.allocations,
+                &mut self.pending_events,
+                &mut self.buffered_transmits,
+            );
         }
 
         for (id, connection) in self.connections.initial.iter_mut() {
@@ -381,12 +387,6 @@ where
     /// Returns buffered data that needs to be sent on the socket.
     #[must_use]
     pub fn poll_transmit(&mut self) -> Option<Transmit<'static>> {
-        for (_, conn) in self.connections.iter_established_mut() {
-            if let Some(transmit) = conn.poll_transmit() {
-                return Some(transmit);
-            }
-        }
-
         for binding in self.bindings.values_mut() {
             if let Some(transmit) = binding.poll_transmit() {
                 self.stats.stun_bytes_to_relays += transmit.payload.len();
@@ -442,7 +442,6 @@ where
             peer_socket: None,
             possible_sockets: Default::default(),
             stats: Default::default(),
-            buffered_transmits: Default::default(),
             buffer: Box::new([0u8; MAX_UDP_SIZE]),
             intent_sent_at,
             is_failed: false,
@@ -591,6 +590,7 @@ where
                 relayed,
                 buffer,
                 &mut self.allocations,
+                &mut self.buffered_transmits,
                 now,
             );
 
@@ -1202,8 +1202,6 @@ struct Connection {
     // Socket addresses from which we might receive data (even before we are connected).
     possible_sockets: HashSet<SocketAddr>,
 
-    buffered_transmits: VecDeque<Transmit<'static>>,
-
     stun_servers: HashSet<SocketAddr>,
     turn_servers: HashSet<SocketAddr>,
 
@@ -1305,17 +1303,13 @@ impl Connection {
         Some(self.signalling_completed_at + CANDIDATE_TIMEOUT)
     }
 
-    #[must_use]
-    fn poll_transmit(&mut self) -> Option<Transmit<'static>> {
-        self.buffered_transmits.pop_front()
-    }
-
     fn handle_timeout<TId>(
         &mut self,
         id: TId,
         now: Instant,
         allocations: &mut HashMap<SocketAddr, Allocation>,
         events: &mut VecDeque<Event<TId>>,
+        transmits: &mut VecDeque<Transmit<'static>>,
     ) where
         TId: fmt::Display + Copy,
     {
@@ -1357,12 +1351,7 @@ impl Connection {
                     tracing::warn!(%id, ?e);
                 }
                 TunnResult::WriteToNetwork(b) => {
-                    self.buffered_transmits.extend(make_owned_transmit(
-                        peer_socket,
-                        b,
-                        allocations,
-                        now,
-                    ));
+                    transmits.extend(make_owned_transmit(peer_socket, b, allocations, now));
                 }
                 _ => panic!("Unexpected result from update_timers"),
             };
@@ -1423,7 +1412,7 @@ impl Connection {
                         self.peer_socket = Some(remote_socket);
 
                         self.invalidate_candiates();
-                        self.force_handshake(allocations, now);
+                        self.force_handshake(allocations, transmits, now);
 
                         if is_first_connection {
                             events.push_back(Event::ConnectionEstablished(id))
@@ -1448,7 +1437,7 @@ impl Connection {
                 self.stats.stun_bytes_to_peer_direct += packet.len();
 
                 // `source` did not match any of our allocated sockets, must be a local one then!
-                self.buffered_transmits.push_back(Transmit {
+                transmits.push_back(Transmit {
                     src: Some(source),
                     dst,
                     payload: Cow::Owned(packet.into()),
@@ -1465,7 +1454,7 @@ impl Connection {
 
             self.stats.stun_bytes_to_peer_relayed += channel_data.len();
 
-            self.buffered_transmits.push_back(Transmit {
+            transmits.push_back(Transmit {
                 src: None,
                 dst: *relay,
                 payload: Cow::Owned(channel_data),
@@ -1499,6 +1488,7 @@ impl Connection {
         relayed: Option<Socket>,
         buffer: &'b mut [u8],
         allocations: &mut HashMap<SocketAddr, Allocation>,
+        transmits: &mut VecDeque<Transmit<'static>>,
         now: Instant,
     ) -> ControlFlow<Result<(), Error>, MutableIpPacket<'b>> {
         match self.tunnel.decapsulate(None, packet, buffer) {
@@ -1535,22 +1525,12 @@ impl Connection {
             TunnResult::WriteToNetwork(bytes) => {
                 let socket = self.set_remote_from_wg_activity(local, from, relayed);
 
-                self.buffered_transmits.extend(make_owned_transmit(
-                    socket,
-                    bytes,
-                    allocations,
-                    now,
-                ));
+                transmits.extend(make_owned_transmit(socket, bytes, allocations, now));
 
                 while let TunnResult::WriteToNetwork(packet) =
                     self.tunnel.decapsulate(None, &[], self.buffer.as_mut())
                 {
-                    self.buffered_transmits.extend(make_owned_transmit(
-                        socket,
-                        packet,
-                        allocations,
-                        now,
-                    ));
+                    transmits.extend(make_owned_transmit(socket, packet, allocations, now));
                 }
 
                 ControlFlow::Break(Ok(()))
@@ -1558,7 +1538,12 @@ impl Connection {
         }
     }
 
-    fn force_handshake(&mut self, allocations: &mut HashMap<SocketAddr, Allocation>, now: Instant) {
+    fn force_handshake(
+        &mut self,
+        allocations: &mut HashMap<SocketAddr, Allocation>,
+        transmits: &mut VecDeque<Transmit<'static>>,
+        now: Instant,
+    ) {
         /// [`boringtun`] requires us to pass buffers in where it can construct its packets.
         ///
         /// When updating the timers, the largest packet that we may have to send is `148` bytes as per `HANDSHAKE_INIT_SZ` constant in [`boringtun`].
@@ -1576,8 +1561,7 @@ impl Connection {
             .peer_socket
             .expect("cannot force handshake without socket");
 
-        self.buffered_transmits
-            .extend(make_owned_transmit(socket, bytes, allocations, now));
+        transmits.extend(make_owned_transmit(socket, bytes, allocations, now));
     }
 
     /// Invalidates all local candidates with a lower or equal priority compared to the nominated one.
