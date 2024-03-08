@@ -183,6 +183,9 @@ defmodule Domain.Repo do
           query_module :: module(),
           opts ::
             [
+              {:limit, non_neg_integer()},
+              {:order_by, Domain.Repo.Query.cursor_fields()},
+              {:filter, Domain.Repo.Filter.filters()},
               {:preload, term()},
               {:page,
                [
