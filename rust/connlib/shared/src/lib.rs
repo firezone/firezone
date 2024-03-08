@@ -9,6 +9,12 @@ pub mod control;
 pub mod error;
 pub mod messages;
 
+/// Module to generate and store a persistent device ID on disk
+///
+/// Only properly implemented on Linux and Windows (platforms with Tauri and headless client)
+pub mod device_id;
+
+// Must be compiled on Mac so the Mac runner can do `version-check` on `linux-client`
 pub mod linux;
 
 #[cfg(target_os = "windows")]

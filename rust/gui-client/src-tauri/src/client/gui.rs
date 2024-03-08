@@ -767,9 +767,8 @@ async fn run_controller(
     advanced_settings: AdvancedSettings,
     notify_controller: Arc<Notify>,
 ) -> Result<()> {
-    let device_id = client::device_id::device_id()
-        .await
-        .context("Failed to read / create device ID")?;
+    let device_id =
+        connlib_shared::device_id::get().context("Failed to read / create device ID")?;
 
     let mut controller = Controller {
         advanced_settings,
