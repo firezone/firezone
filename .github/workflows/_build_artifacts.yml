@@ -164,11 +164,14 @@ jobs:
         with:
           tool: cross
       - name: Build binaries
-        env:
-          # Cross doesn't like to be passed --debug
-          PROFILE: "${{ inputs.profile == 'debug' && '' || '--release'}}"
         run: |
           set -xe
+
+          if [ "${{ inputs.profile }}" == "release" ]; then
+            PROFILE="--release"
+          else
+            PROFILE=""
+          fi
 
           cross build $PROFILE -p ${{ matrix.name.package }} --target ${{ matrix.arch.target }}
 
