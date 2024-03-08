@@ -3,49 +3,69 @@
 set -euo pipefail
 
 BUNDLE_ID="dev.firezone.client"
-DUMP_PATH="$HOME/.cache/$BUNDLE_ID/data/logs/last_crash.dmp"
+
+DEVICE_ID_PATH="/var/lib/$BUNDLE_ID/config/firezone-id.json"
+LOGS_PATH="$HOME/.cache/$BUNDLE_ID/data/logs"
+DUMP_PATH="$LOGS_PATH/last_crash.dmp"
+SETTINGS_PATH="$HOME/.config/$BUNDLE_ID/config/advanced_settings.json"
+
 export FIREZONE_DISABLE_SYSTRAY=true
 PACKAGE=firezone-gui-client
 export RUST_LOG=firezone_gui_client=debug,warn
 export WEBKIT_DISABLE_COMPOSITING_MODE=1
 
+cargo build -p "$PACKAGE"
+
 function smoke_test() {
     # Make sure the files we want to check don't exist on the system yet
-    stat "$HOME/.cache/$BUNDLE_ID/data/logs" && exit 1
-    stat "$HOME/.config/$BUNDLE_ID/config/advanced_settings.json" && exit 1
-    stat "$HOME/.config/$BUNDLE_ID/config/device_id.json" && exit 1
+    sudo stat "$LOGS_PATH" && exit 1
+    sudo stat "$SETTINGS_PATH" && exit 1
+    sudo stat "$DEVICE_ID_PATH" && exit 1
 
     # Run the smoke test normally
-    xvfb-run --auto-servernum cargo run -p "$PACKAGE" -- smoke-test
+    sudo --preserve-env xvfb-run --auto-servernum ../target/debug/"$PACKAGE" smoke-test
+
+    # Note the device ID
+    DEVICE_ID_1=$(cat "$DEVICE_ID_PATH")
 
     # Make sure the files were written in the right paths
     # TODO: Inject some bogus sign-in sequence to test the actor_name file
-    stat "$HOME/.cache/$BUNDLE_ID/data/logs/"connlib*log
-    stat "$HOME/.config/$BUNDLE_ID/config/advanced_settings.json"
-    stat "$HOME/.config/$BUNDLE_ID/config/device_id.json"
+    # https://stackoverflow.com/questions/41321092
+    sudo bash -c "stat \"${LOGS_PATH}/\"connlib*log"
+    sudo stat "$SETTINGS_PATH"
+    sudo stat "$DEVICE_ID_PATH"
+
+    # Run the test again and make sure the device ID is not changed
+    sudo --preserve-env xvfb-run --auto-servernum ../target/debug/"$PACKAGE" smoke-test
+    DEVICE_ID_2=$(cat "$DEVICE_ID_PATH")
+
+    if [ "$DEVICE_ID_1" != "$DEVICE_ID_2" ]
+    then
+        echo "The device ID should not change if the file is intact between runs"
+        exit 1
+    fi
 
     # Clean up the files but not the folders
-    rm -rf "$HOME/.cache/$BUNDLE_ID/data/logs"
-    rm "$HOME/.config/$BUNDLE_ID/config/advanced_settings.json"
-    rm "$HOME/.config/$BUNDLE_ID/config/device_id.json"
+    sudo rm -rf "$LOGS_PATH"
+    sudo rm "$SETTINGS_PATH"
+    sudo rm "$DEVICE_ID_PATH"
 }
 
 function crash_test() {
     # Delete the crash file if present
-    rm -f "$DUMP_PATH"
+    sudo rm -f "$DUMP_PATH"
 
     # Fail if it returns success, this is supposed to crash
-    xvfb-run --auto-servernum cargo run -p "$PACKAGE" -- --crash && exit 1
+    sudo --preserve-env xvfb-run --auto-servernum ../target/debug/"$PACKAGE" --crash && exit 1
 
     # Fail if the crash file wasn't written
-    stat "$DUMP_PATH"
+    sudo stat "$DUMP_PATH"
 
     # Clean up
-    rm "$DUMP_PATH"
+    sudo rm "$DUMP_PATH"
 }
 
-# Run the tests twice to make sure it's okay for the directories to stay intact,
-# and to make sure the tests can cycle.
+# Run the tests twice to make sure it's okay for the directories to stay intact
 smoke_test
 smoke_test
 crash_test

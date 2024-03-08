@@ -9,6 +9,7 @@ edition = "2021"
 mock = []
 
 [dependencies]
+anyhow = "1.0.80"
 # Will be needed to safely modify `/etc/resolv.conf`
 atomicwrites = "0.4.3"
 secrecy = { workspace = true, features = ["serde", "bytes"] }
@@ -28,7 +29,7 @@ resolv-conf = "0.7.0"
 serde = { version = "1.0", default-features = false, features = ["derive", "std"] }
 serde_json = { version = "1.0", default-features = false, features = ["std"] }
 thiserror = { version = "1.0", default-features = false }
-tokio = { version = "1.36", default-features = false, features = ["rt", "rt-multi-thread"]}
+tokio = { version = "1.36", default-features = false, features = ["fs", "rt", "rt-multi-thread"]}
 tokio-stream = { version = "0.1", features = ["time"] }
 tokio-tungstenite = { version = "0.21", default-features = false, features = ["connect", "handshake", "rustls-tls-webpki-roots"] }
 tracing = { workspace = true }
