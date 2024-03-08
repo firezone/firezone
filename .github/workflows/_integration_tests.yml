@@ -6,7 +6,7 @@ on:
       api_image:
         required: false
         type: string
-        default: us-east1-docker.pkg.dev/firezone-staging/firezone/api
+        default: 'us-east1-docker.pkg.dev/firezone-staging/firezone/api'
       api_tag:
         required: false
         type: string
@@ -14,7 +14,7 @@ on:
       web_image:
         required: false
         type: string
-        default: us-east1-docker.pkg.dev/firezone-staging/firezone/web
+        default: 'us-east1-docker.pkg.dev/firezone-staging/firezone/web'
       web_tag:
         required: false
         type: string
@@ -22,7 +22,7 @@ on:
       elixir_image:
         required: false
         type: string
-        default: us-east1-docker.pkg.dev/firezone-staging/firezone/elixir
+        default: 'us-east1-docker.pkg.dev/firezone-staging/firezone/elixir'
       elixir_tag:
         required: false
         type: string
@@ -30,7 +30,7 @@ on:
       relay_image:
         required: false
         type: string
-        default: us-east1-docker.pkg.dev/firezone-staging/firezone/relay
+        default: 'us-east1-docker.pkg.dev/firezone-staging/firezone/relay'
       relay_tag:
         required: false
         type: string
@@ -38,7 +38,7 @@ on:
       gateway_image:
         required: false
         type: string
-        default: us-east1-docker.pkg.dev/firezone-staging/firezone/gateway
+        default: 'us-east1-docker.pkg.dev/firezone-staging/firezone/gateway'
       gateway_tag:
         required: false
         type: string
@@ -46,7 +46,7 @@ on:
       client_image:
         required: false
         type: string
-        default: us-east1-docker.pkg.dev/firezone-staging/firezone/gateway
+        default: 'us-east1-docker.pkg.dev/firezone-staging/firezone/gateway'
       client_tag:
         required: false
         type: string
@@ -54,7 +54,7 @@ on:
       snownet_image:
         required: false
         type: string
-        default: us-east1-docker.pkg.dev/firezone-staging/firezone/snownet-tests
+        default: 'us-east1-docker.pkg.dev/firezone-staging/firezone/snownet-tests'
       snownet_tag:
         required: false
         type: string
