@@ -65,7 +65,6 @@ jobs:
           comment: "Apply Run from GitHub Actions CI ${{ github.sha }}"
 
   update-release-draft:
-    needs: deploy-staging
     runs-on: ubuntu-22.04
     permissions:
       # write permission is required to create a github release
@@ -236,12 +235,12 @@ jobs:
 
   # Build GUI for Windows / Linux
   build-push-gui-release-artifacts:
+    needs: update-release-draft
     name: build-gui-${{ matrix.runs-on }}
     runs-on: ${{ matrix.runs-on }}
     permissions:
       id-token: write
       contents: write
-    needs: update-release-draft
     defaults:
       run:
         working-directory: ./rust/gui-client
