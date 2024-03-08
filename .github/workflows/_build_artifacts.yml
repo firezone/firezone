@@ -153,6 +153,9 @@ jobs:
           - package: firezone-gateway
             artifact: gateway
             image_name: gateway
+          - package: snownet-tests
+            artifact: snownet-tests
+            image_name: snownet-tests
     env:
       BINARY_DEST_PATH: ${{ matrix.name.artifact }}-${{ matrix.arch.shortname }}
     steps:
