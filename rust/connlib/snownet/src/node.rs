@@ -273,6 +273,7 @@ where
         &'s mut self,
         connection: TId,
         packet: IpPacket<'_>,
+        now: Instant,
     ) -> Result<Option<Transmit<'s>>, Error> {
         let conn = self
             .connections
@@ -302,8 +303,7 @@ where
                     tracing::warn!(%relay, "No allocation");
                     return Ok(None);
                 };
-                let Some(total_length) =
-                    allocation.encode_to_slice(peer, packet, header, self.last_now)
+                let Some(total_length) = allocation.encode_to_slice(peer, packet, header, now)
                 else {
                     tracing::warn!(%peer, "No channel");
                     return Ok(None);

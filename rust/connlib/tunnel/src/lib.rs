@@ -269,7 +269,7 @@ where
 
     fn try_send(&mut self, id: TId, packet: IpPacket) -> Result<()> {
         // TODO: handle NotConnected
-        let Some(transmit) = self.node.encapsulate(id, packet.into())? else {
+        let Some(transmit) = self.node.encapsulate(id, packet.into(), Instant::now())? else {
             return Ok(());
         };
 

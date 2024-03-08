@@ -358,7 +358,7 @@ impl<T> Eventloop<T> {
     }
 
     fn send_to(&mut self, id: u64, packet: IpPacket<'_>) -> Result<()> {
-        let Some(transmit) = self.pool.encapsulate(id, packet)? else {
+        let Some(transmit) = self.pool.encapsulate(id, packet, Instant::now())? else {
             return Ok(());
         };
 
