@@ -88,8 +88,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node
-        with:
-          node-version: '20'
       - uses: ./.github/actions/setup-rust
         with:
           cache_backend: github

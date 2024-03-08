@@ -276,6 +276,7 @@ jobs:
           - relay
           - gateway
           - client
+          - snownet-tests
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/gcp-docker-login
