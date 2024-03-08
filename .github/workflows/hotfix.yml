@@ -40,6 +40,6 @@ jobs:
   deploy-production:
     needs: integration-tests
     secrets: inherit
-    uses: /.github/workflows/_deploy_production.yml
+    uses: ./.github/workflows/_deploy_production.yml
     with:
       tag: ${{ inputs.tag }}
