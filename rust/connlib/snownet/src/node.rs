@@ -436,21 +436,8 @@ where
     pub fn handle_timeout(&mut self, now: Instant) {
         self.last_now = now;
 
-        for (id, c) in self.connections.iter_established_mut() {
-            match c.handle_timeout(now, &mut self.allocations) {
-                Ok(()) => {}
-                Err(ConnectionError::Wireguard(WireGuardError::ConnectionExpired)) => {
-                    tracing::info!(%id, "Connection failed (wireguard tunnel expired)");
-                    c.is_failed = true;
-                }
-                Err(ConnectionError::CandidateTimeout) => {
-                    tracing::info!(%id, "Connection failed (no candidates received)");
-                    c.is_failed = true;
-                }
-                Err(ConnectionError::Wireguard(e)) => {
-                    tracing::warn!(%id, ?e);
-                }
-            };
+        for (id, connection) in self.connections.iter_established_mut() {
+            connection.handle_timeout(id, now, &mut self.allocations);
         }
 
         for binding in self.bindings.values_mut() {
@@ -1426,18 +1413,23 @@ impl Connection {
         }
     }
 
-    fn handle_timeout(
+    fn handle_timeout<TId>(
         &mut self,
+        id: TId,
         now: Instant,
         allocations: &mut HashMap<SocketAddr, Allocation>,
-    ) -> Result<(), ConnectionError> {
+    ) where
+        TId: fmt::Display,
+    {
         self.agent.handle_timeout(now);
 
         if self
             .candidate_timeout()
             .is_some_and(|timeout| now >= timeout)
         {
-            return Err(ConnectionError::CandidateTimeout);
+            tracing::info!(%id, "Connection failed (no candidates received)");
+            self.is_failed = true;
+            return;
         }
 
         // TODO: `boringtun` is impure because it calls `Instant::now`.
@@ -1447,7 +1439,7 @@ impl Connection {
 
             // Don't update wireguard timers until we are connected.
             let Some(peer_socket) = self.peer_socket else {
-                return Ok(());
+                return;
             };
 
             /// [`boringtun`] requires us to pass buffers in where it can construct its packets.
@@ -1459,7 +1451,13 @@ impl Connection {
 
             match self.tunnel.update_timers(&mut buf) {
                 TunnResult::Done => {}
-                TunnResult::Err(e) => return Err(ConnectionError::Wireguard(e)),
+                TunnResult::Err(WireGuardError::ConnectionExpired) => {
+                    tracing::info!(%id, "Connection failed (wireguard tunnel expired)");
+                    self.is_failed = true;
+                }
+                TunnResult::Err(e) => {
+                    tracing::warn!(%id, ?e);
+                }
                 TunnResult::WriteToNetwork(b) => {
                     self.buffered_transmits.extend(make_owned_transmit(
                         peer_socket,
@@ -1471,8 +1469,6 @@ impl Connection {
                 _ => panic!("Unexpected result from update_timers"),
             };
         }
-
-        Ok(())
     }
 
     fn encapsulate<'b>(
@@ -1641,10 +1637,4 @@ fn make_owned_transmit(
     };
 
     Some(transmit)
-}
-
-#[derive(Debug)]
-enum ConnectionError {
-    Wireguard(WireGuardError),
-    CandidateTimeout,
 }
