@@ -38,14 +38,11 @@ jobs:
     uses: ./.github/workflows/_rust.yml
     secrets: inherit
   static-analysis:
-    if: github.workflow == 'Continuous Integration'
     uses: ./.github/workflows/_static-analysis.yml
   terraform:
-    if: github.workflow == 'Continuous Integration'
     uses: ./.github/workflows/_terraform.yml
     secrets: inherit
   codeql:
-    if: github.workflow == 'Continuous Integration'
     uses: ./.github/workflows/_codeql.yml
     secrets: inherit
 
@@ -68,6 +65,11 @@ jobs:
             context: elixir
             build-args: |
               APPLICATION_NAME=web
+          - image_name: elixir
+            target: compiler
+            context: elixir
+            build-args: |
+              APPLICATION_NAME=api
           - image_name: gateway
             target: debug
             context: rust
@@ -88,11 +90,6 @@ jobs:
             context: rust
             build-args: |
               PACKAGE=snownet-tests
-          - image_name: elixir
-            target: compiler
-            context: elixir
-            build-args: |
-              APPLICATION_NAME=api
     permissions:
       contents: read
       id-token: write
