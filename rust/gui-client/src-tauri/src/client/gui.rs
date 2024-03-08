@@ -416,7 +416,6 @@ pub(crate) enum ControllerRequest {
     /// The GUI wants us to use these settings in-memory, they've already been saved to disk
     ApplySettings(AdvancedSettings),
     Disconnected,
-    DisconnectedTokenExpired,
     /// The same as the arguments to `client::logging::export_logs_to`
     ExportLogs {
         path: PathBuf,
@@ -451,18 +450,9 @@ enum CallbackError {
 impl connlib_client_shared::Callbacks for CallbackHandler {
     type Error = CallbackError;
 
-    fn on_disconnect(
-        &self,
-        error: Option<&connlib_client_shared::Error>,
-    ) -> Result<(), Self::Error> {
+    fn on_disconnect(&self, error: &connlib_client_shared::Error) -> Result<(), Self::Error> {
         tracing::debug!("on_disconnect {error:?}");
-        self.ctlr_tx.try_send(match error {
-            Some(connlib_client_shared::Error::ClosedByPortal) => {
-                // TODO: this can happen for other reasons
-                ControllerRequest::DisconnectedTokenExpired
-            }
-            _ => ControllerRequest::Disconnected,
-        })?;
+        self.ctlr_tx.try_send(ControllerRequest::Disconnected)?;
         Ok(())
     }
 
@@ -597,17 +587,7 @@ impl Controller {
                 );
             }
             Req::Disconnected => {
-                tracing::debug!("connlib disconnected, tearing down Session");
-                self.tunnel_ready = false;
-                if let Some(mut session) = self.session.take() {
-                    tracing::info!("disconnecting connlib");
-                    // This is probably redundant since connlib shuts itself down if it's disconnected.
-                    session.connlib.disconnect(None);
-                }
-                self.refresh_system_tray_menu()?;
-            }
-            Req::DisconnectedTokenExpired => {
-                tracing::info!("Token expired");
+                tracing::info!("Disconnected by connlib");
                 self.sign_out()?;
                 os::show_notification(
                     "Firezone disconnected",
@@ -751,7 +731,7 @@ impl Controller {
             tracing::debug!("disconnecting connlib");
             // This is redundant if the token is expired, in that case
             // connlib already disconnected itself.
-            session.connlib.disconnect(None);
+            session.connlib.disconnect();
         } else {
             // Might just be because we got a double sign-out or
             // the user canceled the sign-in or something innocent.

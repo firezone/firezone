@@ -36,7 +36,7 @@ fn main() -> Result<()> {
         etc_resolv_conf::unconfigure_dns()?;
     }
 
-    session.disconnect(None);
+    session.disconnect();
     Ok(())
 }
 
@@ -71,10 +71,7 @@ impl Callbacks for CallbackHandler {
         Ok(Some(default_resolvers))
     }
 
-    fn on_disconnect(
-        &self,
-        error: Option<&connlib_client_shared::Error>,
-    ) -> Result<(), Self::Error> {
+    fn on_disconnect(&self, error: &connlib_client_shared::Error) -> Result<(), Self::Error> {
         tracing::error!(?error, "Disconnected");
         Ok(())
     }
