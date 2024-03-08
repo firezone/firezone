@@ -64,8 +64,6 @@ pub struct Node<T, TId> {
     connections: Connections<TId>,
     pending_events: VecDeque<Event<TId>>,
 
-    last_now: Instant,
-
     buffer: Box<[u8; MAX_UDP_SIZE]>,
 
     stats: NodeStats,
@@ -95,7 +93,7 @@ impl<T, TId> Node<T, TId>
 where
     TId: Eq + Hash + Copy + fmt::Display,
 {
-    pub fn new(private_key: StaticSecret, now: Instant) -> Self {
+    pub fn new(private_key: StaticSecret) -> Self {
         let public_key = &(&private_key).into();
         Self {
             private_key,
@@ -109,7 +107,6 @@ where
             buffer: Box::new([0u8; MAX_UDP_SIZE]),
             bindings: HashMap::default(),
             allocations: HashMap::default(),
-            last_now: now,
             connections: Default::default(),
             stats: Default::default(),
         }
@@ -352,8 +349,6 @@ where
     ///
     /// This advances time within the ICE agent, updates timers within all wireguard connections as well as resets wireguard's rate limiter (if necessary).
     pub fn handle_timeout(&mut self, now: Instant) {
-        self.last_now = now;
-
         self.bindings_and_allocations_drain_events();
 
         for (id, connection) in self.connections.iter_established_mut() {

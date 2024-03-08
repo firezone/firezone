@@ -251,7 +251,7 @@ where
 {
     fn new(private_key: StaticSecret) -> Result<Self> {
         Ok(ConnectionState {
-            node: Node::new(private_key, std::time::Instant::now()),
+            node: Node::new(private_key),
             write_buf: Box::new([0; MAX_UDP_SIZE]),
             sockets: Sockets::new()?,
             stats_timer: tokio::time::interval(Duration::from_secs(60)),

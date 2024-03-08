@@ -76,7 +76,7 @@ async fn main() -> Result<()> {
 
     match role {
         Role::Dialer => {
-            let mut pool = ClientNode::<u64>::new(private_key, Instant::now());
+            let mut pool = ClientNode::<u64>::new(private_key);
 
             let offer = pool.new_connection(
                 1,
@@ -161,7 +161,7 @@ async fn main() -> Result<()> {
             }
         }
         Role::Listener => {
-            let mut pool = ServerNode::<u64>::new(private_key, Instant::now());
+            let mut pool = ServerNode::<u64>::new(private_key);
 
             let offer = redis_connection
                 .blpop::<_, (String, wire::Offer)>("offers", 10.0)
