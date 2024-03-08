@@ -328,84 +328,6 @@ where
     pub fn poll_event(&mut self) -> Option<Event<TId>> {
         self.bindings_and_allocations_drain_events();
 
-        for (id, conn) in self.connections.iter_established_mut() {
-            while let Some(event) = conn.agent.poll_event() {
-                match event {
-                    IceAgentEvent::DiscoveredRecv { source, .. } => {
-                        conn.possible_sockets.insert(source);
-                    }
-                    IceAgentEvent::IceConnectionStateChange(IceConnectionState::Disconnected) => {
-                        tracing::info!(%id, "Connection failed (ICE timeout)");
-                        conn.is_failed = true;
-                    }
-                    IceAgentEvent::NominatedSend {
-                        destination,
-                        source,
-                        ..
-                    } => {
-                        let candidate = conn
-                            .local_candidate(source)
-                            .expect("to only nominate existing candidates");
-
-                        let remote_socket = match candidate.kind() {
-                            CandidateKind::Relayed => {
-                                let relay =
-                                    self.allocations.iter().find_map(|(relay, allocation)| {
-                                        allocation.has_socket(source).then_some(*relay)
-                                    });
-
-                                let Some(relay) = relay else {
-                                    debug_assert!(
-                                        false,
-                                        "Should only nominate candidates from known relays"
-                                    );
-                                    continue;
-                                };
-
-                                PeerSocket::Relay {
-                                    relay,
-                                    dest: destination,
-                                }
-                            }
-                            CandidateKind::ServerReflexive | CandidateKind::Host => {
-                                PeerSocket::Direct {
-                                    dest: destination,
-                                    source,
-                                }
-                            }
-                            CandidateKind::PeerReflexive => {
-                                unreachable!("local candidate is never `PeerReflexive`")
-                            }
-                        };
-
-                        if conn.peer_socket != Some(remote_socket) {
-                            let is_first_connection = conn.peer_socket.is_none();
-
-                            tracing::info!(old = ?conn.peer_socket, new = ?remote_socket, duration_since_intent = ?conn.duration_since_intent(self.last_now), "Updating remote socket");
-                            conn.peer_socket = Some(remote_socket);
-
-                            conn.invalidate_candiates();
-                            conn.force_handshake(&mut self.allocations, self.last_now);
-
-                            if is_first_connection {
-                                return Some(Event::ConnectionEstablished(id));
-                            }
-                        }
-                    }
-                    _ => {}
-                }
-            }
-        }
-
-        self.connections.established.retain(|id, conn| {
-            if conn.is_failed {
-                self.pending_events.push_back(Event::ConnectionFailed(*id));
-                return false;
-            }
-
-            true
-        });
-
         self.pending_events.pop_front()
     }
 
@@ -437,7 +359,7 @@ where
         self.last_now = now;
 
         for (id, connection) in self.connections.iter_established_mut() {
-            connection.handle_timeout(id, now, &mut self.allocations);
+            connection.handle_timeout(id, now, &mut self.allocations, &mut self.pending_events);
         }
 
         for binding in self.bindings.values_mut() {
@@ -1418,8 +1340,9 @@ impl Connection {
         id: TId,
         now: Instant,
         allocations: &mut HashMap<SocketAddr, Allocation>,
+        events: &mut VecDeque<Event<TId>>,
     ) where
-        TId: fmt::Display,
+        TId: fmt::Display + Copy,
     {
         self.agent.handle_timeout(now);
 
@@ -1468,6 +1391,72 @@ impl Connection {
                 }
                 _ => panic!("Unexpected result from update_timers"),
             };
+        }
+
+        while let Some(event) = self.agent.poll_event() {
+            match event {
+                IceAgentEvent::DiscoveredRecv { source, .. } => {
+                    self.possible_sockets.insert(source);
+                }
+                IceAgentEvent::IceConnectionStateChange(IceConnectionState::Disconnected) => {
+                    tracing::info!(%id, "Connection failed (ICE timeout)");
+                    self.is_failed = true;
+                }
+                IceAgentEvent::NominatedSend {
+                    destination,
+                    source,
+                    ..
+                } => {
+                    let candidate = self
+                        .local_candidate(source)
+                        .expect("to only nominate existing candidates");
+
+                    let remote_socket = match candidate.kind() {
+                        CandidateKind::Relayed => {
+                            let relay = allocations.iter().find_map(|(relay, allocation)| {
+                                allocation.has_socket(source).then_some(*relay)
+                            });
+
+                            let Some(relay) = relay else {
+                                debug_assert!(
+                                    false,
+                                    "Should only nominate candidates from known relays"
+                                );
+                                continue;
+                            };
+
+                            PeerSocket::Relay {
+                                relay,
+                                dest: destination,
+                            }
+                        }
+                        CandidateKind::ServerReflexive | CandidateKind::Host => {
+                            PeerSocket::Direct {
+                                dest: destination,
+                                source,
+                            }
+                        }
+                        CandidateKind::PeerReflexive => {
+                            unreachable!("local candidate is never `PeerReflexive`")
+                        }
+                    };
+
+                    if self.peer_socket != Some(remote_socket) {
+                        let is_first_connection = self.peer_socket.is_none();
+
+                        tracing::info!(old = ?self.peer_socket, new = ?remote_socket, duration_since_intent = ?self.duration_since_intent(now), "Updating remote socket");
+                        self.peer_socket = Some(remote_socket);
+
+                        self.invalidate_candiates();
+                        self.force_handshake(allocations, now);
+
+                        if is_first_connection {
+                            events.push_back(Event::ConnectionEstablished(id))
+                        }
+                    }
+                }
+                _ => {}
+            }
         }
     }
 
