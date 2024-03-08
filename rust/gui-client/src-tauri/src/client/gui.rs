@@ -11,7 +11,7 @@ use crate::client::{
 use anyhow::{anyhow, bail, Context, Result};
 use arc_swap::ArcSwap;
 use connlib_client_shared::{file_logger, ResourceDescription};
-use connlib_shared::{control::SecureUrl, messages::ResourceId, BUNDLE_ID};
+use connlib_shared::{control::SecureUrl, messages::ResourceId, LoginUrl, BUNDLE_ID};
 use secrecy::{ExposeSecret, Secret, SecretString};
 use std::{net::IpAddr, path::PathBuf, str::FromStr, sync::Arc, time::Duration};
 use system_tray_menu::Event as TrayMenuEvent;
@@ -527,11 +527,10 @@ impl Controller {
             api_url = api_url.to_string(),
             "Calling connlib Session::connect"
         );
+        let login = LoginUrl::client(api_url, token, self.device_id.clone(), None)?;
+
         let connlib = connlib_client_shared::Session::connect(
-            api_url,
-            token,
-            self.device_id.clone(),
-            None, // `get_host_name` over in connlib gets the system's name automatically
+            login,
             None,
             callback_handler.clone(),
             Some(MAX_PARTITION_TIME),

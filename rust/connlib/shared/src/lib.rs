@@ -25,16 +25,19 @@ pub use callbacks_error_facade::CallbackErrorFacade;
 pub use error::ConnlibError as Error;
 pub use error::Result;
 
-use boringtun::x25519::{PublicKey, StaticSecret};
+use boringtun::x25519::PublicKey;
+use boringtun::x25519::StaticSecret;
 use ip_network::Ipv4Network;
 use ip_network::Ipv6Network;
 use messages::Key;
 use ring::digest::{Context, SHA256};
+use secrecy::Secret;
 use secrecy::{ExposeSecret, SecretString};
 use std::net::IpAddr;
 use std::net::Ipv4Addr;
 use std::net::Ipv6Addr;
 use url::Url;
+use uuid::Uuid;
 
 pub type Dname = domain::base::Dname<Vec<u8>>;
 
@@ -68,39 +71,77 @@ const LIB_NAME: &str = "connlib";
 #[cfg(not(target_os = "windows"))]
 const HOST_NAME_MAX: usize = 256;
 
-/// Creates a new login URL to use with the portal.
-pub fn login_url(
-    mode: Mode,
-    api_url: Url,
-    token: SecretString,
-    device_id: String,
-    firezone_name: Option<String>,
-) -> Result<(Url, StaticSecret)> {
-    let private_key = StaticSecret::random_from_rng(rand::rngs::OsRng);
-    let name = firezone_name
-        .or(get_host_name())
-        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
-    let external_id = sha256(device_id);
-
-    let url = get_websocket_path(
-        api_url,
-        token,
-        match mode {
-            Mode::Client => "client",
-            Mode::Gateway => "gateway",
-        },
-        &Key(PublicKey::from(&private_key).to_bytes()),
-        &external_id,
-        &name,
-    )?;
-
-    Ok((url, private_key))
+pub struct LoginUrl {
+    url: Url,
+    private_key: StaticSecret,
 }
 
-// FIXME: This is a terrible name :(
-pub enum Mode {
-    Client,
-    Gateway,
+impl LoginUrl {
+    pub fn client<E>(
+        url: impl TryInto<Url, Error = E>,
+        firezone_token: SecretString,
+        device_id: String,
+        device_name: Option<String>,
+    ) -> std::result::Result<Self, LoginUrlError<E>> {
+        let private_key = StaticSecret::random_from_rng(rand::rngs::OsRng);
+
+        let external_id = sha256(device_id);
+        let device_name = device_name
+            .or(get_host_name())
+            .unwrap_or_else(|| Uuid::new_v4().to_string());
+
+        let url = get_websocket_path(
+            url.try_into().map_err(LoginUrlError::InvalidUrl)?,
+            firezone_token,
+            "client",
+            &Key(PublicKey::from(&private_key).to_bytes()),
+            &external_id,
+            &device_name,
+        )?;
+
+        Ok(LoginUrl { url, private_key })
+    }
+
+    pub fn gateway<E>(
+        url: impl TryInto<Url, Error = E>,
+        firezone_token: SecretString,
+        device_id: String,
+        device_name: Option<String>,
+    ) -> std::result::Result<Self, LoginUrlError<E>> {
+        let private_key = StaticSecret::random_from_rng(rand::rngs::OsRng);
+
+        let external_id = sha256(device_id);
+        let device_name = device_name
+            .or(get_host_name())
+            .unwrap_or_else(|| Uuid::new_v4().to_string());
+
+        let url = get_websocket_path(
+            url.try_into().map_err(LoginUrlError::InvalidUrl)?,
+            firezone_token,
+            "gateway",
+            &Key(PublicKey::from(&private_key).to_bytes()),
+            &external_id,
+            &device_name,
+        )?;
+
+        Ok(LoginUrl { url, private_key })
+    }
+
+    pub fn url(&self) -> SecretString {
+        Secret::new(self.url.to_string())
+    }
+
+    pub fn private_key(&self) -> StaticSecret {
+        self.private_key.clone()
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum LoginUrlError<E> {
+    #[error("invalid scheme `{0}`; only http(s) and ws(s) are allowed")]
+    InvalidUrlScheme(String),
+    #[error("failed to parse URL: {0}")]
+    InvalidUrl(E),
 }
 
 pub struct IpProvider {
@@ -226,17 +267,6 @@ fn get_host_name() -> Option<String> {
     hostname::get().ok().and_then(|x| x.into_string().ok())
 }
 
-fn set_ws_scheme(url: &mut Url) -> Result<()> {
-    let scheme = match url.scheme() {
-        "http" | "ws" => "ws",
-        "https" | "wss" => "wss",
-        _ => return Err(Error::UriScheme),
-    };
-    url.set_scheme(scheme)
-        .expect("Developer error: the match before this should make sure we can set this");
-    Ok(())
-}
-
 fn sha256(input: String) -> String {
     let mut ctx = Context::new(&SHA256);
     ctx.update(input.as_bytes());
@@ -250,18 +280,21 @@ fn sha256(input: String) -> String {
     })
 }
 
-fn get_websocket_path(
+fn get_websocket_path<E>(
     mut api_url: Url,
     secret: SecretString,
     mode: &str,
     public_key: &Key,
     external_id: &str,
     name: &str,
-) -> Result<Url> {
+) -> std::result::Result<Url, LoginUrlError<E>> {
     set_ws_scheme(&mut api_url)?;
 
     {
-        let mut paths = api_url.path_segments_mut().map_err(|_| Error::UriError)?;
+        let mut paths = api_url
+            .path_segments_mut()
+            .expect("scheme guarantees valid URL");
+
         paths.pop_if_empty();
         paths.push(mode);
         paths.push("websocket");
@@ -277,4 +310,17 @@ fn get_websocket_path(
     }
 
     Ok(api_url)
+}
+
+fn set_ws_scheme<E>(url: &mut Url) -> std::result::Result<(), LoginUrlError<E>> {
+    let scheme = match url.scheme() {
+        "http" | "ws" => "ws",
+        "https" | "wss" => "wss",
+        other => return Err(LoginUrlError::InvalidUrlScheme(other.to_owned())),
+    };
+
+    url.set_scheme(scheme)
+        .expect("Developer error: the match before this should make sure we can set this");
+
+    Ok(())
 }
