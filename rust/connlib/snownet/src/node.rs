@@ -388,7 +388,7 @@ where
     #[must_use]
     pub fn poll_transmit(&mut self) -> Option<Transmit<'static>> {
         for (_, conn) in self.connections.iter_established_mut() {
-            if let Some(transmit) = conn.poll_transmit(&mut self.allocations, self.last_now) {
+            if let Some(transmit) = conn.poll_transmit() {
                 return Some(transmit);
             }
         }
@@ -1312,52 +1312,8 @@ impl Connection {
     }
 
     #[must_use]
-    fn poll_transmit(
-        &mut self,
-        allocations: &mut HashMap<SocketAddr, Allocation>,
-        now: Instant,
-    ) -> Option<Transmit<'static>> {
-        if let Some(transmit) = self.buffered_transmits.pop_front() {
-            return Some(transmit);
-        }
-
-        loop {
-            let transmit = self.agent.poll_transmit()?;
-            let source = transmit.source;
-            let dst = transmit.destination;
-            let packet = transmit.contents;
-
-            // Check if `str0m` wants us to send from a "remote" socket, i.e. one that we allocated with a relay.
-            let allocation = allocations
-                .iter_mut()
-                .find(|(_, allocation)| allocation.has_socket(source));
-
-            let Some((relay, allocation)) = allocation else {
-                self.stats.stun_bytes_to_peer_direct += packet.len();
-
-                // `source` did not match any of our allocated sockets, must be a local one then!
-                return Some(Transmit {
-                    src: Some(source),
-                    dst,
-                    payload: Cow::Owned(packet.into()),
-                });
-            };
-
-            // Payload should be sent from a "remote socket", let's wrap it in a channel data message!
-            let Some(channel_data) = allocation.encode_to_vec(dst, &packet, now) else {
-                // Unlikely edge-case, drop the packet and continue.
-                tracing::trace!(%relay, peer = %dst, "Dropping packet because allocation does not offer a channel to peer");
-                continue;
-            };
-
-            self.stats.stun_bytes_to_peer_relayed += channel_data.len();
-
-            return Some(Transmit {
-                src: None,
-                dst: *relay,
-                payload: Cow::Owned(channel_data),
-            });
-        }
+    fn poll_transmit(&mut self) -> Option<Transmit<'static>> {
+        self.buffered_transmits.pop_front()
     }
 
     fn handle_timeout<TId>(
@@ -1482,6 +1438,44 @@ impl Connection {
                 }
                 _ => {}
             }
+        }
+
+        while let Some(transmit) = self.agent.poll_transmit() {
+            let source = transmit.source;
+            let dst = transmit.destination;
+            let packet = transmit.contents;
+
+            // Check if `str0m` wants us to send from a "remote" socket, i.e. one that we allocated with a relay.
+            let allocation = allocations
+                .iter_mut()
+                .find(|(_, allocation)| allocation.has_socket(source));
+
+            let Some((relay, allocation)) = allocation else {
+                self.stats.stun_bytes_to_peer_direct += packet.len();
+
+                // `source` did not match any of our allocated sockets, must be a local one then!
+                self.buffered_transmits.push_back(Transmit {
+                    src: Some(source),
+                    dst,
+                    payload: Cow::Owned(packet.into()),
+                });
+                continue;
+            };
+
+            // Payload should be sent from a "remote socket", let's wrap it in a channel data message!
+            let Some(channel_data) = allocation.encode_to_vec(dst, &packet, now) else {
+                // Unlikely edge-case, drop the packet and continue.
+                tracing::trace!(%relay, peer = %dst, "Dropping packet because allocation does not offer a channel to peer");
+                continue;
+            };
+
+            self.stats.stun_bytes_to_peer_relayed += channel_data.len();
+
+            self.buffered_transmits.push_back(Transmit {
+                src: None,
+                dst: *relay,
+                payload: Cow::Owned(channel_data),
+            });
         }
     }
 
