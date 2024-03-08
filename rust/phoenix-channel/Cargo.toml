@@ -24,6 +24,7 @@ uuid = { version = "1.7", default-features = false, features = ["std", "v4"] }
 sha2 = "0.10.8"
 hex = "0.4"
 libc = "0.2"
+hostname = "0.3.1" # Hickory already depends on `hostname` so this isn't new
 
 [dev-dependencies]
 tokio = { version = "1.36.0", features = ["macros", "rt"] }
