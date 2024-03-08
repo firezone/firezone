@@ -1,7 +1,7 @@
 defmodule Web.Actors.Show do
   use Web, :live_view
   import Web.Actors.Components
-  alias Domain.{Auth, Tokens, Flows, Clients}
+  alias Domain.{Accounts, Auth, Tokens, Flows, Clients}
   alias Domain.Actors
 
   def mount(%{"id" => id}, _token, socket) do
@@ -30,7 +30,7 @@ defmodule Web.Actors.Show do
          flows: flows,
          tokens: tokens,
          page_title: "Actor #{actor.name}",
-         flow_activities_enabled?: Domain.Config.flow_activities_enabled?()
+         flow_activities_enabled?: Accounts.flow_activities_enabled?(socket.assigns.account)
        )}
     else
       _other -> raise Web.LiveErrors.NotFoundError
@@ -462,7 +462,7 @@ defmodule Web.Actors.Show do
 
     {:ok, tokens} =
       Tokens.list_tokens_for(socket.assigns.actor, socket.assigns.subject,
-        preload: [identity: [:provider], created_by_identity: [:actor]]
+        preload: [identity: [:provider], created_by_identity: [:actor], clients: []]
       )
 
     socket =
@@ -479,7 +479,7 @@ defmodule Web.Actors.Show do
 
     {:ok, tokens} =
       Tokens.list_tokens_for(socket.assigns.actor, socket.assigns.subject,
-        preload: [identity: [:provider], created_by_identity: [:actor]]
+        preload: [identity: [:provider], created_by_identity: [:actor], clients: []]
       )
 
     socket =

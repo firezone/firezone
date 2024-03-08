@@ -10,12 +10,6 @@ defmodule Web.Router do
     plug :put_root_layout, {Web.Layouts, :root}
   end
 
-  pipeline :api do
-    plug :accepts, ["json"]
-    plug :ensure_authenticated
-    plug :ensure_authenticated_actor_type, :service_account
-  end
-
   pipeline :public do
     plug :accepts, ["html", "xml"]
   end
@@ -89,6 +83,10 @@ defmodule Web.Router do
   scope "/:account_id_or_slug", Web do
     pipe_through [:browser, :account]
 
+    live_session :client_redirect, on_mount: [Web.Sandbox, {Web.Auth, :mount_account}] do
+      live "/sign_in/success", SignIn.Success
+    end
+
     scope "/sign_in/providers/:provider_id" do
       # UserPass
       post "/verify_credentials", AuthController, :verify_credentials
@@ -136,8 +134,6 @@ defmodule Web.Router do
         end
 
         live "/:id/edit", Edit
-        # TODO: REMOVEME it's just another identity
-        live "/:id/new_token", NewToken
       end
 
       scope "/groups", Groups do
@@ -204,6 +200,7 @@ defmodule Web.Router do
 
       scope "/settings", Settings do
         live "/account", Account
+        live "/billing", Billing
 
         scope "/identity_providers", IdentityProviders do
           live "/", Index

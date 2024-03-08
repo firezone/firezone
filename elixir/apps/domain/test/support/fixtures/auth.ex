@@ -280,7 +280,11 @@ defmodule Domain.Fixtures.Auth do
   end
 
   def fail_provider_sync(provider) do
-    update!(provider, last_sync_error: "Message from fixture", last_syncs_failed: 3)
+    update!(provider,
+      last_sync_error: "Message from fixture",
+      last_syncs_failed: 3,
+      sync_disabled_at: DateTime.utc_now()
+    )
   end
 
   def finish_provider_sync(provider) do
@@ -448,7 +452,7 @@ defmodule Domain.Fixtures.Auth do
 
     {identity, attrs} =
       pop_assoc_fixture(attrs, :identity, fn assoc_attrs ->
-        if actor.type == :service_account do
+        if actor.type in [:service_account, :api_client] do
           nil
         else
           assoc_attrs
@@ -467,10 +471,17 @@ defmodule Domain.Fixtures.Auth do
         DateTime.utc_now() |> DateTime.add(60, :second)
       end)
 
+    context_type =
+      case actor.type do
+        :service_account -> :client
+        :api_client -> :api_client
+        _ -> :browser
+      end
+
     {context, attrs} =
       pop_assoc_fixture(attrs, :context, fn assoc_attrs ->
         assoc_attrs
-        |> Enum.into(%{type: if(actor.type == :service_account, do: :client, else: :browser)})
+        |> Enum.into(%{type: context_type})
         |> build_context()
       end)
 

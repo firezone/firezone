@@ -44,19 +44,17 @@ defmodule Web.Sites.NewToken do
         Gateways require egress connectivity to the control plane API and relay servers.
         <strong>No ingress firewall rules</strong>
         are required or recommended. See our
-        <.link
-          href="https://www.firezone.dev/kb/deploy/gateways#firewall-considerations?utm_source=product"
-          class={link_style()}
-        >
+        <.website_link href="/kb/deploy/gateways#firewall-considerations">
           deploy guide
-        </.link>
+        </.website_link>
         for more information.
       </:help>
       <:help>
-        <.link
-          href="http://www.firezone.dev/kb/deploy/gateways?utm_source=product"
-          class="text-accent-500 hover:underline"
-        >Read the gateway deployment guide for more detailed instructions</.link>.
+        Read the
+        <.website_link href="/kb/deploy/gateways">
+          gateway deployment guide
+        </.website_link>
+        for more detailed instructions.
       </:help>
       <:content>
         <div class="py-8 px-4 mx-auto max-w-2xl lg:py-16">
@@ -80,6 +78,13 @@ defmodule Web.Sites.NewToken do
                 class="w-full text-xs whitespace-pre-line"
                 phx-no-format
               ><%= systemd_command(@env) %></.code_block>
+
+              <p class="p-4">
+                <strong>Important:</strong>
+                You'll need to make sure that the <code>iptables</code>
+                and <code>ip6tables</code>
+                commands are available on your system.
+              </p>
             </:tab>
             <:tab
               id="docker-instructions"
@@ -111,10 +116,10 @@ defmodule Web.Sites.NewToken do
 
           <div id="connection-status" class="flex justify-between items-center">
             <p class="text-sm">
-              Gateway not connecting? See our <.link
-                class="text-accent-500 hover:underline"
-                href="https://www.firezone.dev/kb/administer/troubleshooting#gateway-not-connecting"
-              >gateway troubleshooting guide</.link>.
+              Gateway not connecting? See our
+              <.website_link href="/kb/administer/troubleshooting#gateway-not-connecting">
+                gateway troubleshooting guide
+              </.website_link>.
             </p>
             <.initial_connection_status
               :if={@env}
@@ -152,12 +157,14 @@ defmodule Web.Sites.NewToken do
       {"RUST_LOG",
        Enum.join(
          [
-           "firezone_gateway=trace",
-           "firezone_tunnel=trace",
-           "connlib_shared=trace",
-           "tunnel_state=trace",
-           "phoenix_channel=debug",
-           "webrtc=error",
+           "firezone_gateway=info",
+           "firezone_tunnel=info",
+           "connlib_shared=info",
+           "tunnel_state=info",
+           "phoenix_channel=info",
+           "boringtun=info",
+           "str0m=info",
+           "snownet=debug",
            "warn"
          ],
          ","
@@ -180,6 +187,7 @@ defmodule Web.Sites.NewToken do
       "--sysctl net.ipv6.conf.all.disable_ipv6=0",
       "--sysctl net.ipv6.conf.all.forwarding=1",
       "--sysctl net.ipv6.conf.default.forwarding=1",
+      "--device=\"/dev/net/tun:/dev/net/tun\"",
       Enum.map(env ++ [{"FIREZONE_ENABLE_MASQUERADE", "1"}], fn {key, value} ->
         "--env #{key}=\"#{value}\""
       end),

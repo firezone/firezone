@@ -35,10 +35,11 @@ updates:
           - tracing-stackdriver
         update-types:
           - minor
-  - package-ecosystem: gradle
-    directory: rust/connlib/clients/android/connlib/
-    schedule:
-      interval: monthly
+      windows:
+        patterns:
+          - windows
+          - windows-implement
+          - windows-sys
   - package-ecosystem: gradle
     directory: kotlin/android/
     schedule:
@@ -59,12 +60,53 @@ updates:
     schedule:
       interval: monthly
     groups:
+      AndroidX:
+        patterns:
+          - androidx.core:core-ktx
+          - androidx.appcompat:appcompat
+          - androidx.preference:preference-ktx
+          - androidx.constraintlayout:constraintlayout
+      lifecycle:
+        patterns:
+          - androidx.lifecycle:lifecycle-runtime-ktx
+          - androidx.lifecycle:lifecycle-extensions
+          - androidx.lifecycle:lifecycle-viewmodel-ktx
+          - androidx.lifecycle:lifecycle-livedata-ktx
+      navigation:
+        patterns:
+          - androidx.navigation:navigation-fragment-ktx
+          - androidx.navigation:navigation-ui-ktx
       hilt:
         patterns:
+          - androidx.hilt:hilt-compiler
           - com.google.dagger.hilt.android
+          - com.google.dagger:hilt-android
           - com.google.dagger:hilt-android-compiler
+      retrofit:
+        patterns:
+          - com.squareup.retrofit2:retrofit
+          - com.squareup.retrofit2:converter-moshi
+      okhttp:
+        patterns:
+          - com.squareup.okhttp3:okhttp
+          - com.squareup.okhttp3:logging-interceptor
+      moshi:
+        patterns:
+          - com.squareup.moshi:moshi
+          - com.squareup.moshi:moshi-kotlin
+      junit:
+        patterns:
+          - junit:junit
+          - androidx.test.ext:junit
+          - androidx.browser:browser
+      firebase:
+        patterns:
+          - com.google.firebase:firebase-crashlytics-ktx
+          - com.google.firebase:firebase-crashlytics-ndk
+          - com.google.firebase:firebase-analytics-ktx
+
   - package-ecosystem: swift
-    directory: swift/apple/FirezoneKit/
+    directory: swift/apple/Firezone.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/
     schedule:
       interval: monthly
   - package-ecosystem: npm
@@ -72,7 +114,7 @@ updates:
     schedule:
       interval: monthly
   - package-ecosystem: npm
-    directory: rust/windows-client/
+    directory: rust/gui-client/
     schedule:
       interval: monthly
   - package-ecosystem: npm

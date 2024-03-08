@@ -957,6 +957,104 @@ defmodule Domain.ActorsTest do
                 insert_memberships: []
               }} = Repo.transaction(multi)
     end
+
+    test "deletes actors that are not processed by identity sync", %{
+      account: account,
+      provider: provider,
+      group1: group1,
+      group2: group2,
+      identity1: identity1,
+      identity2: identity2
+    } do
+      Fixtures.Actors.create_membership(
+        account: account,
+        group: group1,
+        actor_id: identity1.actor_id
+      )
+
+      Fixtures.Actors.create_membership(
+        account: account,
+        group: group2,
+        actor_id: identity2.actor_id
+      )
+
+      tuples_list = [
+        {group1.provider_identifier, identity1.provider_identifier},
+        {group2.provider_identifier, identity2.provider_identifier}
+      ]
+
+      actor_ids_by_provider_identifier = %{}
+
+      group_ids_by_provider_identifier = %{
+        group1.provider_identifier => group1.id,
+        group2.provider_identifier => group2.id
+      }
+
+      multi =
+        Ecto.Multi.new()
+        |> Ecto.Multi.put(:actor_ids_by_provider_identifier, actor_ids_by_provider_identifier)
+        |> Ecto.Multi.put(:group_ids_by_provider_identifier, group_ids_by_provider_identifier)
+        |> sync_provider_memberships_multi(provider, tuples_list)
+
+      assert {:ok,
+              %{
+                plan_memberships: {[], delete},
+                delete_memberships: {2, nil},
+                insert_memberships: []
+              }} = Repo.transaction(multi)
+
+      assert {group1.id, identity1.actor_id} in delete
+      assert {group2.id, identity2.actor_id} in delete
+    end
+
+    test "deletes groups that are not processed by groups sync", %{
+      account: account,
+      provider: provider,
+      group1: group1,
+      group2: group2,
+      identity1: identity1,
+      identity2: identity2
+    } do
+      Fixtures.Actors.create_membership(
+        account: account,
+        group: group1,
+        actor_id: identity1.actor_id
+      )
+
+      Fixtures.Actors.create_membership(
+        account: account,
+        group: group2,
+        actor_id: identity2.actor_id
+      )
+
+      tuples_list = [
+        {group1.provider_identifier, identity1.provider_identifier},
+        {group2.provider_identifier, identity2.provider_identifier}
+      ]
+
+      actor_ids_by_provider_identifier = %{
+        identity1.provider_identifier => identity1.actor_id,
+        identity2.provider_identifier => identity2.actor_id
+      }
+
+      group_ids_by_provider_identifier = %{}
+
+      multi =
+        Ecto.Multi.new()
+        |> Ecto.Multi.put(:actor_ids_by_provider_identifier, actor_ids_by_provider_identifier)
+        |> Ecto.Multi.put(:group_ids_by_provider_identifier, group_ids_by_provider_identifier)
+        |> sync_provider_memberships_multi(provider, tuples_list)
+
+      assert {:ok,
+              %{
+                plan_memberships: {[], delete},
+                delete_memberships: {2, nil},
+                insert_memberships: []
+              }} = Repo.transaction(multi)
+
+      assert {group1.id, identity1.actor_id} in delete
+      assert {group2.id, identity2.actor_id} in delete
+    end
   end
 
   describe "new_group/0" do
@@ -1962,7 +2060,7 @@ defmodule Domain.ActorsTest do
     end
   end
 
-  describe "create_actor/4" do
+  describe "create_actor/2" do
     setup do
       account = Fixtures.Accounts.create_account()
 
@@ -2020,7 +2118,7 @@ defmodule Domain.ActorsTest do
     end
   end
 
-  describe "create_actor/5" do
+  describe "create_actor/3" do
     setup do
       account = Fixtures.Accounts.create_account()
       actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
@@ -2045,6 +2143,78 @@ defmodule Domain.ActorsTest do
       assert actor.type == attrs.type
       assert is_nil(actor.disabled_at)
       assert is_nil(actor.deleted_at)
+    end
+
+    test "returns error when seats limit is exceeded (admins)", %{
+      account: account,
+      subject: subject
+    } do
+      {:ok, account} =
+        Domain.Accounts.update_account(account, %{
+          limits: %{
+            monthly_active_users_count: 1
+          }
+        })
+
+      Fixtures.Clients.create_client(actor: [type: :account_admin_user], account: account)
+
+      attrs = Fixtures.Actors.actor_attrs()
+
+      assert create_actor(account, attrs, subject) == {:error, :seats_limit_reached}
+    end
+
+    test "returns error when admins limit is exceeded", %{
+      account: account,
+      subject: subject
+    } do
+      {:ok, account} =
+        Domain.Accounts.update_account(account, %{
+          limits: %{
+            account_admin_users_count: 1
+          }
+        })
+
+      Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+
+      attrs = Fixtures.Actors.actor_attrs(type: :account_admin_user)
+
+      assert create_actor(account, attrs, subject) == {:error, :seats_limit_reached}
+    end
+
+    test "returns error when seats limit is exceeded (users)", %{
+      account: account,
+      subject: subject
+    } do
+      {:ok, account} =
+        Domain.Accounts.update_account(account, %{
+          limits: %{
+            monthly_active_users_count: 1
+          }
+        })
+
+      Fixtures.Clients.create_client(actor: [type: :account_user], account: account)
+
+      attrs = Fixtures.Actors.actor_attrs()
+
+      assert create_actor(account, attrs, subject) == {:error, :seats_limit_reached}
+    end
+
+    test "returns error when service accounts limit is exceeded", %{
+      account: account,
+      subject: subject
+    } do
+      {:ok, account} =
+        Domain.Accounts.update_account(account, %{
+          limits: %{
+            service_accounts_count: 1
+          }
+        })
+
+      Fixtures.Actors.create_actor(type: :service_account, account: account)
+
+      attrs = Fixtures.Actors.actor_attrs(type: :service_account)
+
+      assert create_actor(account, attrs, subject) == {:error, :service_accounts_limit_reached}
     end
 
     test "returns error when subject can not create actors", %{

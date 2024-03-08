@@ -3,15 +3,15 @@ defmodule API.Client.ChannelTest do
   alias Domain.Mocks.GoogleCloudPlatform
 
   setup do
-    account = Fixtures.Accounts.create_account()
-
-    Fixtures.Config.upsert_configuration(
-      account: account,
-      clients_upstream_dns: [
-        %{protocol: "ip_port", address: "1.1.1.1"},
-        %{protocol: "ip_port", address: "8.8.8.8:53"}
-      ]
-    )
+    account =
+      Fixtures.Accounts.create_account(
+        config: %{
+          clients_upstream_dns: [
+            %{protocol: "ip_port", address: "1.1.1.1"},
+            %{protocol: "ip_port", address: "8.8.8.8:53"}
+          ]
+        }
+      )
 
     actor_group = Fixtures.Actors.create_group(account: account)
     actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
@@ -131,7 +131,7 @@ defmodule API.Client.ChannelTest do
         })
         |> subscribe_and_join(API.Client.Channel, "client")
 
-      assert_push "disconnect", %{"reason" => "token_expired"}, 250
+      assert_push "disconnect", %{reason: :token_expired}, 250
       assert_receive {:EXIT, _pid, {:shutdown, :token_expired}}
       assert_receive {:socket_close, _pid, {:shutdown, :token_expired}}
     end
@@ -207,7 +207,7 @@ defmodule API.Client.ChannelTest do
       assert_push "init", %{}
       Process.flag(:trap_exit, true)
       Domain.Clients.broadcast_to_client(client, :token_expired)
-      assert_push "disconnect", %{"reason" => "token_expired"}, 250
+      assert_push "disconnect", %{reason: :token_expired}, 250
     end
 
     test "subscribes for resource events", %{
@@ -269,7 +269,7 @@ defmodule API.Client.ChannelTest do
       channel_pid = socket.channel_pid
 
       send(channel_pid, :token_expired)
-      assert_push "disconnect", %{"reason" => "token_expired"}
+      assert_push "disconnect", %{reason: :token_expired}
 
       assert_receive {:EXIT, ^channel_pid, {:shutdown, :token_expired}}
     end
@@ -470,7 +470,7 @@ defmodule API.Client.ChannelTest do
       Domain.Config.put_env_override(Domain.Instrumentation, client_logs_enabled: false)
 
       ref = push(socket, "create_log_sink", %{})
-      assert_reply ref, :error, :disabled
+      assert_reply ref, :error, %{reason: :disabled}
     end
 
     test "returns a signed URL which can be used to upload the logs", %{
@@ -509,7 +509,7 @@ defmodule API.Client.ChannelTest do
   describe "handle_in/3 prepare_connection" do
     test "returns error when resource is not found", %{socket: socket} do
       ref = push(socket, "prepare_connection", %{"resource_id" => Ecto.UUID.generate()})
-      assert_reply ref, :error, :not_found
+      assert_reply ref, :error, %{reason: :not_found}
     end
 
     test "returns error when there are no online relays", %{
@@ -517,7 +517,7 @@ defmodule API.Client.ChannelTest do
       socket: socket
     } do
       ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
-      assert_reply ref, :error, :offline
+      assert_reply ref, :error, %{reason: :offline}
     end
 
     test "returns error when all gateways are offline", %{
@@ -525,7 +525,7 @@ defmodule API.Client.ChannelTest do
       socket: socket
     } do
       ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
-      assert_reply ref, :error, :offline
+      assert_reply ref, :error, %{reason: :offline}
     end
 
     test "returns error when client has no policy allowing access to resource", %{
@@ -542,7 +542,7 @@ defmodule API.Client.ChannelTest do
       }
 
       ref = push(socket, "prepare_connection", attrs)
-      assert_reply ref, :error, :not_found
+      assert_reply ref, :error, %{reason: :not_found}
     end
 
     test "returns error when all gateways connected to the resource are offline", %{
@@ -554,7 +554,7 @@ defmodule API.Client.ChannelTest do
       :ok = Domain.Gateways.connect_gateway(gateway)
 
       ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
-      assert_reply ref, :error, :offline
+      assert_reply ref, :error, %{reason: :offline}
     end
 
     test "returns online gateway and relays connected to the resource", %{
@@ -597,8 +597,8 @@ defmodule API.Client.ChannelTest do
       assert gateway_id == gateway.id
       assert gateway_last_seen_remote_ip == gateway.last_seen_remote_ip
 
-      ipv4_turn_uri = "turn:#{global_relay.ipv4}:#{global_relay.port}"
-      ipv6_turn_uri = "turn:[#{global_relay.ipv6}]:#{global_relay.port}"
+      ipv4_turn_uri = "#{global_relay.ipv4}:#{global_relay.port}"
+      ipv6_turn_uri = "[#{global_relay.ipv6}]:#{global_relay.port}"
 
       assert [
                %{
@@ -606,14 +606,14 @@ defmodule API.Client.ChannelTest do
                  expires_at: expires_at_unix,
                  password: password1,
                  username: username1,
-                 uri: ^ipv4_turn_uri
+                 addr: ^ipv4_turn_uri
                },
                %{
                  type: :turn,
                  expires_at: expires_at_unix,
                  password: password2,
                  username: username2,
-                 uri: ^ipv6_turn_uri
+                 addr: ^ipv6_turn_uri
                }
              ] = relays
 
@@ -684,8 +684,8 @@ defmodule API.Client.ChannelTest do
       assert gateway_id == gateway.id
       assert gateway_last_seen_remote_ip == gateway.last_seen_remote_ip
 
-      ipv4_turn_uri = "turn:#{relay.ipv4}:#{relay.port}"
-      ipv6_turn_uri = "turn:[#{relay.ipv6}]:#{relay.port}"
+      ipv4_turn_uri = "#{relay.ipv4}:#{relay.port}"
+      ipv6_turn_uri = "[#{relay.ipv6}]:#{relay.port}"
 
       assert [
                %{
@@ -693,14 +693,14 @@ defmodule API.Client.ChannelTest do
                  expires_at: expires_at_unix,
                  password: password1,
                  username: username1,
-                 uri: ^ipv4_turn_uri
+                 addr: ^ipv4_turn_uri
                },
                %{
                  type: :turn,
                  expires_at: expires_at_unix,
                  password: password2,
                  username: username2,
-                 uri: ^ipv6_turn_uri
+                 addr: ^ipv6_turn_uri
                }
              ] = relays
 
@@ -771,17 +771,17 @@ defmodule API.Client.ChannelTest do
       assert gateway_id == gateway.id
       assert gateway_last_seen_remote_ip == gateway.last_seen_remote_ip
 
-      ipv4_turn_uri = "stun:#{global_relay.ipv4}:#{global_relay.port}"
-      ipv6_turn_uri = "stun:[#{global_relay.ipv6}]:#{global_relay.port}"
+      ipv4_turn_uri = "#{global_relay.ipv4}:#{global_relay.port}"
+      ipv6_turn_uri = "[#{global_relay.ipv6}]:#{global_relay.port}"
 
       assert [
                %{
                  type: :stun,
-                 uri: ^ipv4_turn_uri
+                 addr: ^ipv4_turn_uri
                },
                %{
                  type: :stun,
-                 uri: ^ipv6_turn_uri
+                 addr: ^ipv6_turn_uri
                }
              ] = relays
     end
@@ -836,7 +836,7 @@ defmodule API.Client.ChannelTest do
       }
 
       ref = push(socket, "reuse_connection", attrs)
-      assert_reply ref, :error, :not_found
+      assert_reply ref, :error, %{reason: :not_found}
     end
 
     test "returns error when gateway is not found", %{dns_resource: resource, socket: socket} do
@@ -847,7 +847,7 @@ defmodule API.Client.ChannelTest do
       }
 
       ref = push(socket, "reuse_connection", attrs)
-      assert_reply ref, :error, :not_found
+      assert_reply ref, :error, %{reason: :not_found}
     end
 
     test "returns error when gateway is not connected to resource", %{
@@ -865,7 +865,7 @@ defmodule API.Client.ChannelTest do
       }
 
       ref = push(socket, "reuse_connection", attrs)
-      assert_reply ref, :error, :offline
+      assert_reply ref, :error, %{reason: :offline}
     end
 
     test "returns error when client has no policy allowing access to resource", %{
@@ -884,7 +884,7 @@ defmodule API.Client.ChannelTest do
       }
 
       ref = push(socket, "reuse_connection", attrs)
-      assert_reply ref, :error, :not_found
+      assert_reply ref, :error, %{reason: :not_found}
     end
 
     test "returns error when gateway is offline", %{
@@ -899,7 +899,7 @@ defmodule API.Client.ChannelTest do
       }
 
       ref = push(socket, "reuse_connection", attrs)
-      assert_reply ref, :error, :offline
+      assert_reply ref, :error, %{reason: :offline}
     end
 
     test "broadcasts allow_access to the gateways and then returns connect message", %{
@@ -995,7 +995,7 @@ defmodule API.Client.ChannelTest do
       }
 
       ref = push(socket, "request_connection", attrs)
-      assert_reply ref, :error, :not_found
+      assert_reply ref, :error, %{reason: :not_found}
     end
 
     test "returns error when gateway is not found", %{dns_resource: resource, socket: socket} do
@@ -1007,7 +1007,7 @@ defmodule API.Client.ChannelTest do
       }
 
       ref = push(socket, "request_connection", attrs)
-      assert_reply ref, :error, :not_found
+      assert_reply ref, :error, %{reason: :not_found}
     end
 
     test "returns error when gateway is not connected to resource", %{
@@ -1026,7 +1026,7 @@ defmodule API.Client.ChannelTest do
       }
 
       ref = push(socket, "request_connection", attrs)
-      assert_reply ref, :error, :offline
+      assert_reply ref, :error, %{reason: :offline}
     end
 
     test "returns error when client has no policy allowing access to resource", %{
@@ -1046,7 +1046,7 @@ defmodule API.Client.ChannelTest do
       }
 
       ref = push(socket, "request_connection", attrs)
-      assert_reply ref, :error, :not_found
+      assert_reply ref, :error, %{reason: :not_found}
     end
 
     test "returns error when gateway is offline", %{
@@ -1062,7 +1062,7 @@ defmodule API.Client.ChannelTest do
       }
 
       ref = push(socket, "request_connection", attrs)
-      assert_reply ref, :error, :offline
+      assert_reply ref, :error, %{reason: :offline}
     end
 
     test "broadcasts request_connection to the gateways and then returns connect message", %{

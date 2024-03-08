@@ -1,0 +1,72 @@
+{
+ "build": {
+    "beforeDevCommand": "",
+    "beforeBuildCommand": "",
+    "devPath": "../src",
+    "distDir": "../src",
+    "withGlobalTauri": true
+  },
+  "package": {
+    "productName": "Firezone"
+  },
+  "tauri": {
+    "allowlist": {
+      "all": false,
+      "shell": {
+        "all": false,
+        "open": false
+      }
+    },
+    "bundle": {
+      "active": true,
+      "targets": ["appimage", "deb", "msi"],
+      "identifier": "dev.firezone.client",
+      "icon": [
+        "icons/32x32.png",
+        "icons/128x128.png",
+        "icons/128x128@2x.png",
+        "icons/firezone.ico",
+        "icons/Square107x107Logo.png",
+        "icons/Square142x142Logo.png",
+        "icons/Square150x150Logo.png",
+        "icons/Square284x284Logo.png",
+        "icons/Square30x30Logo.png",
+        "icons/Square310x310Logo.png",
+        "icons/Square44x44Logo.png",
+        "icons/Square71x71Logo.png",
+        "icons/Square89x89Logo.png"
+      ],
+      "publisher": "Firezone",
+      "shortDescription": "Firezone"
+    },
+    "security": {
+      "csp": null
+    },
+    "systemTray": {
+      "iconPath": "icons/firezone.ico",
+      "iconAsTemplate": true
+    },
+    "windows": [
+      {
+        "label": "about",
+        "title": "About Firezone",
+        "url": "about.html",
+        "fullscreen": false,
+        "resizable": true,
+        "width": 640,
+        "height": 480,
+        "visible": false
+      },
+      {
+        "label": "settings",
+        "title": "Settings",
+        "url": "settings.html",
+        "fullscreen": false,
+        "resizable": true,
+        "width": 640,
+        "height": 480,
+        "visible": true
+      }
+    ]
+  }
+}

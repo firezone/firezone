@@ -1,0 +1,38 @@
+import Alert from "@/components/DocsAlert";
+import SupportOptions from "@/components/SupportOptions";
+import NextStep from "@/components/NextStep";
+import PlanBadge from "@/components/PlanBadge";
+
+<PlanBadge plans={["starter", "enterprise"]}>
+
+# Create Users
+
+</PlanBadge>
+
+Users can be created by going to `Actors` -> `Add Actor` and then selecting
+`User` as the actor type.
+
+<Alert color="info">
+  Automatic user sync is available for Google Workspace, Microsoft Entra ID, and
+  Okta providers with the Enterprise plan. [Read
+  more](/kb/authenticate/directory-sync) about how it works or [contact
+  sales](/contact/sales) to upgrade.
+</Alert>
+
+Users with the `User` role can only sign in to the Firezone Clients to access
+Resources, while users with the `Admin` can sign in to the admin portal to
+perform administrative tasks as well as sign in to Firezone Clients to access
+Resources.
+
+Optionally, you can choose to assign the user to one or more groups. This will
+ultimately determine the policies that apply to the user, so it's important to
+ensure that the groups have the correct policies defined.
+
+<Alert color="warning">
+  Each user is automatically placed in the special `Everyone` group upon
+  creation.
+</Alert>
+
+<NextStep href="/kb/deploy/policies">Next: Create Policies</NextStep>
+
+<SupportOptions />

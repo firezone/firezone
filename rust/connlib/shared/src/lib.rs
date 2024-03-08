@@ -32,6 +32,21 @@ use url::Url;
 
 pub type Dname = domain::base::Dname<Vec<u8>>;
 
+/// Bundle ID / App ID that the client uses to distinguish itself from other programs on the system
+///
+/// e.g. In ProgramData and AppData we use this to name our subdirectories for configs and data,
+/// and Windows may use it to track things like the MSI installer, notification titles,
+/// deep link registration, etc.
+///
+/// This should be identical to the `tauri.bundle.identifier` over in `tauri.conf.json`,
+/// but sometimes I need to use this before Tauri has booted up, or in a place where
+/// getting the Tauri app handle would be awkward.
+///
+/// Luckily this is also the AppUserModelId that Windows uses to label notifications,
+/// so if your dev system has Firezone installed by MSI, the notifications will look right.
+/// <https://learn.microsoft.com/en-us/windows/configuration/find-the-application-user-model-id-of-an-installed-app>
+pub const BUNDLE_ID: &str = "dev.firezone.client";
+
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 const LIB_NAME: &str = "connlib";
 
@@ -173,6 +188,10 @@ fn kernel_version() -> Option<String> {
         return None;
     }
 
+    #[cfg_attr(
+        all(target_os = "linux", target_arch = "aarch64"),
+        allow(clippy::unnecessary_cast)
+    )]
     let version: Vec<u8> = utsname
         .release
         .split(|c| *c == 0)

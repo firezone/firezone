@@ -1,7 +1,8 @@
-/* Licensed under Apache 2.0 (C) 2023 Firezone, Inc. */
+/* Licensed under Apache 2.0 (C) 2024 Firezone, Inc. */
 package dev.firezone.android.features.splash.ui
 
 import android.content.Context
+import android.os.Bundle
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
@@ -10,7 +11,6 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.firezone.android.core.data.Repository
 import dev.firezone.android.tunnel.TunnelService
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -21,6 +21,7 @@ internal class SplashViewModel
     @Inject
     constructor(
         private val repo: Repository,
+        private val applicationRestrictions: Bundle,
     ) : ViewModel() {
         private val actionMutableLiveData = MutableLiveData<ViewAction>()
         val actionLiveData: LiveData<ViewAction> = actionMutableLiveData
@@ -32,15 +33,14 @@ internal class SplashViewModel
                 if (!hasVpnPermissions(context)) {
                     actionMutableLiveData.postValue(ViewAction.NavigateToVpnPermission)
                 } else {
-                    repo.getToken().collect {
-                        if (it.isNullOrBlank()) {
-                            actionMutableLiveData.postValue(ViewAction.NavigateToSignIn)
-                        } else {
-                            // token will be re-read by the TunnelService
-                            if (!TunnelService.isRunning(context)) TunnelService.start(context)
+                    val token = applicationRestrictions.getString("token") ?: repo.getTokenSync()
+                    if (token.isNullOrBlank()) {
+                        actionMutableLiveData.postValue(ViewAction.NavigateToSignIn)
+                    } else {
+                        // token will be re-read by the TunnelService
+                        if (!TunnelService.isRunning(context)) TunnelService.start(context)
 
-                            actionMutableLiveData.postValue(ViewAction.NavigateToSession)
-                        }
+                        actionMutableLiveData.postValue(ViewAction.NavigateToSession)
                     }
                 }
             }

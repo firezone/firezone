@@ -6,8 +6,8 @@ edition = "2021"
 
 [dependencies]
 secrecy = { workspace = true }
-anyhow = "1.0.75"
-clap = { version = "4.4.18", features = ["derive", "env"] }
+anyhow = "1.0.80"
+clap = { version = "4.5.2", features = ["derive", "env"] }
 bytecodec = "0.4.15"
 futures = "0.3.29"
 hex = "0.4.3"
@@ -22,11 +22,11 @@ tracing-opentelemetry = "0.21.0"
 opentelemetry = { version = "0.20.0", features = ["rt-tokio", "metrics"] }
 opentelemetry_api = "0.20.0"
 opentelemetry-otlp = { version = "0.13.0", features = ["metrics"]}
-env_logger = "0.10.2"
+env_logger = "0.11.3"
 tracing-core = "0.1.31"
 bytes = "1.4.0"
 sha2 = "0.10.8"
-base64 = "0.21.7"
+base64 = "0.22.0"
 once_cell = "1.17.1"
 proptest = { version = "1.4.0", optional = true }
 test-strategy = "0.3.1"
@@ -36,12 +36,11 @@ phoenix-channel = { path = "../phoenix-channel" }
 url = "2.4.1"
 serde = { version = "1.0.196", features = ["derive"] }
 trackable = "1.3.0"
-socket2 = "0.5.5"
+socket2 = "0.5.6"
 axum = { version = "0.7.3", default-features = false, features = ["http1", "tokio"] }
 backoff = "0.4"
 
 [dev-dependencies]
-webrtc = { workspace = true }
 redis = { version = "0.24.0", default-features = false, features = ["tokio-comp"] }
 difference = "2.0.0"
 

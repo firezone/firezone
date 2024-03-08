@@ -69,6 +69,36 @@ defmodule Web.Acceptance.AuthTest do
     end
   end
 
+  feature "signs out browser session if token is revoked", %{session: session} do
+    account = Fixtures.Accounts.create_account()
+    provider = Fixtures.Auth.create_userpass_provider(account: account)
+    password = "Firezone1234"
+
+    identity =
+      Fixtures.Auth.create_identity(
+        account: account,
+        provider: provider,
+        actor: [type: :account_admin_user],
+        provider_virtual_state: %{"password" => password, "password_confirmation" => password}
+      )
+
+    session
+    |> visit(~p"/#{account}")
+    |> Auth.authenticate(identity)
+    |> visit(~p"/#{account}/actors")
+
+    {:ok, _tokens} = Domain.Tokens.delete_tokens_for(identity)
+
+    wait_for(
+      fn ->
+        assert_el(session, Query.text("You must sign in to access this page."))
+      end,
+      10_000
+    )
+
+    assert_path(session, ~p"/#{account}")
+  end
+
   feature "does not allow regular user to navigate to admin routes", %{session: session} do
     account = Fixtures.Accounts.create_account()
     provider = Fixtures.Auth.create_userpass_provider(account: account)

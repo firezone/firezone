@@ -58,7 +58,11 @@ defmodule Web.SignIn do
             <.flash flash={@flash} kind={:error} />
             <.flash flash={@flash} kind={:info} />
 
-            <.intersperse_blocks>
+            <.flash :if={not Accounts.account_active?(@account)} kind={:error} style="wide">
+              This account has been disabled, please contact your administrator.
+            </.flash>
+
+            <.intersperse_blocks :if={not disabled?(@account, @params)}>
               <:separator>
                 <.separator />
               </:separator>
@@ -105,14 +109,22 @@ defmodule Web.SignIn do
         <div :if={Web.Auth.fetch_auth_context_type!(@params) == :browser} class="mx-auto p-6 sm:p-8">
           <p class="py-2">
             Meant to sign in from a client instead?
-            <a href="https://firezone.dev/kb/user-guides?utm_source=product" class={link_style()}>
+            <.website_link href="/kb/user-guides">
               Read the docs.
-            </a>
+            </.website_link>
           </p>
         </div>
       </div>
     </section>
     """
+  end
+
+  def disabled?(account, params) do
+    # We allow to sign in to Web UI even for disabled accounts
+    case Web.Auth.fetch_auth_context_type!(params) do
+      :client -> not Accounts.account_active?(account)
+      :browser -> false
+    end
   end
 
   def separator(assigns) do

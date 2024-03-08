@@ -1,28 +1,32 @@
 import PlanBadge from "@/components/PlanBadge";
 import Alert from "@/components/DocsAlert";
+import SupportOptions from "@/components/SupportOptions";
 
-<PlanBadge plans={["starter", "enterprise"]} />
+<PlanBadge plans={["starter", "enterprise"]}>
 
-# Email authentication
+# Email (OTP) authentication
+
+</PlanBadge>
 
 Firezone supports email authentication using a one-time password (OTP).
 
 This connector is enabled by default for all plans and is designed to get you up
-and running with Firezone quickly. For production deployments, we highly
-recommend setting up [OIDC](/kb/authenticate/oidc) or
-[Google Workspace](/kb/authenticate/google).
+and running with Firezone quickly. For production deployments, we recommend
+setting up [Universal OIDC](/kb/authenticate/oidc),
+[Google Workspace](/kb/authenticate/google),
+[Microsoft Entra ID](/kb/authenticate/entra), or [Okta](/kb/authenticate/okta)
+authentication.
 
 Firezone's OTP-based email authentication connector sends a one-time password to
 the user's email each time authentication is requested. This password is
 short-lived and can only be used to authenticate once.
 
-<Alert
-  color="info"
-  html={`
-    Users authenticated via the email connector will need to be added and removed
-    from groups manually.
-  `}
-/>
+<Alert color="warning">
+  User / group sync is **not supported** with the Email (OTP) connector. See the
+  [Google Workspace](/kb/authenticate/google), [Microsoft Entra
+  ID](/kb/authenticate/entra), or [Okta](/kb/authenticate/okta) connectors for
+  automatic directory sync.
+</Alert>
 
 ## Disabling email authentication
 
@@ -31,3 +35,5 @@ account, forcing all users and admins to authenticate with another connector.
 However, this can lead to issues signing in if one of your other authentication
 connectors stops working. For that reason, you may want to leave the email
 authentication connector enabled with at least one admin for recovery purposes.
+
+<SupportOptions />

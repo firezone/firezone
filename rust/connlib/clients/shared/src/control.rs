@@ -1,32 +1,31 @@
 use async_compression::tokio::bufread::GzipEncoder;
 use bimap::BiMap;
-use connlib_shared::control::ChannelError;
-use connlib_shared::control::KnownError;
-use connlib_shared::control::Reason;
+use connlib_shared::control::{ChannelError, ErrorReply};
 use connlib_shared::messages::{DnsServer, GatewayResponse, IpDnsServer};
 use connlib_shared::IpProvider;
+use firezone_tunnel::ClientTunnel;
 use ip_network::IpNetwork;
+use std::io;
 use std::net::IpAddr;
 use std::path::PathBuf;
 use std::str::FromStr;
-use std::{io, sync::Arc};
 
 use crate::messages::{
     BroadcastGatewayIceCandidates, Connect, ConnectionDetails, EgressMessages,
     GatewayIceCandidates, InitClient, Messages,
 };
 use connlib_shared::{
-    control::{ErrorInfo, PhoenixSenderWithTopic, Reference},
+    control::{PhoenixSenderWithTopic, Reference},
     messages::{GatewayId, ResourceDescription, ResourceId},
     Callbacks,
     Error::{self},
     Result,
 };
 
-use firezone_tunnel::{ClientState, Request, Tunnel};
+use firezone_tunnel::Request;
 use reqwest::header::{CONTENT_ENCODING, CONTENT_TYPE};
+use std::collections::HashMap;
 use tokio::io::BufReader;
-use tokio::sync::Mutex;
 use tokio_util::codec::{BytesCodec, FramedRead};
 use url::Url;
 
@@ -35,9 +34,49 @@ const DNS_SENTINELS_V4: &str = "100.100.111.0/24";
 const DNS_SENTINELS_V6: &str = "fd00:2021:1111:8000:100:100:111:0/120";
 
 pub struct ControlPlane<CB: Callbacks> {
-    pub tunnel: Arc<Tunnel<CB, ClientState>>,
+    pub tunnel: ClientTunnel<CB>,
     pub phoenix_channel: PhoenixSenderWithTopic,
-    pub tunnel_init: Mutex<bool>,
+    pub tunnel_init: bool,
+
+    pub next_request_id: usize,
+    pub sent_connection_intents: SentConnectionIntents,
+}
+
+#[derive(Default)]
+pub struct SentConnectionIntents {
+    inner: HashMap<usize, ResourceId>,
+}
+
+impl SentConnectionIntents {
+    fn register_new_intent(&mut self, id: usize, resource: ResourceId) {
+        self.inner.insert(id, resource);
+    }
+
+    /// To be called when we receive the connection details for a particular resource.
+    ///
+    /// Returns whether we should accept them.
+    fn handle_connection_details_received(&mut self, reference: usize, r: ResourceId) -> bool {
+        let has_more_recent_intent = self
+            .inner
+            .iter()
+            .any(|(req, resource)| req > &reference && resource == &r);
+
+        if has_more_recent_intent {
+            return false;
+        }
+
+        debug_assert!(self
+            .inner
+            .get(&reference)
+            .is_some_and(|resource| resource == &r));
+        self.inner.retain(|_, v| v != &r);
+
+        true
+    }
+
+    fn handle_error(&mut self, reference: usize) -> Option<ResourceId> {
+        self.inner.remove(&reference)
+    }
 }
 
 fn effective_dns_servers(
@@ -107,26 +146,23 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
 
         let sentinel_mapping = sentinel_dns_mapping(&effective_dns_servers);
 
-        {
-            let mut init = self.tunnel_init.lock().await;
-            if !*init {
-                if let Err(e) = self
-                    .tunnel
-                    .set_interface(&interface, sentinel_mapping.clone())
-                {
-                    tracing::error!(error = ?e, "Error initializing interface");
-                    return Err(e);
-                } else {
-                    *init = true;
-                    tracing::info!("Firezone Started!");
-                }
-
-                for resource_description in resources {
-                    self.add_resource(resource_description);
-                }
+        if !self.tunnel_init {
+            if let Err(e) = self
+                .tunnel
+                .set_interface(&interface, sentinel_mapping.clone())
+            {
+                tracing::error!(error = ?e, "Error initializing interface");
+                return Err(e);
             } else {
-                tracing::info!("Firezone reinitializated");
+                self.tunnel_init = true;
+                tracing::info!("Firezone Started!");
             }
+
+            for resource_description in resources {
+                self.add_resource(resource_description);
+            }
+        } else {
+            tracing::info!("Firezone reinitializated");
         }
         Ok(())
     }
@@ -162,19 +198,19 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
         }
     }
 
-    pub fn add_resource(&self, resource_description: ResourceDescription) {
+    pub fn add_resource(&mut self, resource_description: ResourceDescription) {
         if let Err(e) = self.tunnel.add_resource(resource_description) {
             tracing::error!(message = "Can't add resource", error = ?e);
         }
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    fn resource_deleted(&self, id: ResourceId) {
-        // TODO
+    fn resource_deleted(&mut self, id: ResourceId) {
+        self.tunnel.remove_resource(id);
     }
 
     fn connection_details(
-        &self,
+        &mut self,
         ConnectionDetails {
             gateway_id,
             resource_id,
@@ -183,60 +219,71 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
         }: ConnectionDetails,
         reference: Option<Reference>,
     ) {
-        let tunnel = Arc::clone(&self.tunnel);
+        let Some(reference) = reference.as_ref().and_then(|r| r.parse::<usize>().ok()) else {
+            tracing::warn!(?reference, "Failed to parse reference as usize");
+            return;
+        };
+
+        if !self
+            .sent_connection_intents
+            .handle_connection_details_received(reference, resource_id)
+        {
+            tracing::debug!("Discarding stale connection details");
+
+            return;
+        }
+
         let mut control_signaler = self.phoenix_channel.clone();
-        tokio::spawn(async move {
-            let err = match tunnel
-                .request_connection(resource_id, gateway_id, relays, reference)
-                .await
-            {
-                Ok(Request::NewConnection(connection_request)) => {
-                    if let Err(err) = control_signaler
-                        // TODO: create a reference number and keep track for the response
+
+        let err = match self
+            .tunnel
+            .request_connection(resource_id, gateway_id, relays)
+        {
+            Ok(Request::NewConnection(connection_request)) => {
+                tokio::spawn(async move {
+                    // TODO: create a reference number and keep track for the response
+                    // Note: We used to clean up connections here upon failures with the _channel_ to the underlying portal connection.
+                    // This is deemed unnecessary during the migration period to `phoenix-channel` because it means that the receiver is deallocated at which point we are probably shutting down?
+                    let _ = control_signaler
                         .send_with_ref(
                             EgressMessages::RequestConnection(connection_request),
                             resource_id,
                         )
-                        .await
-                    {
-                        err
-                    } else {
-                        return;
-                    }
-                }
-                Ok(Request::ReuseConnection(connection_request)) => {
-                    if let Err(err) = control_signaler
-                        // TODO: create a reference number and keep track for the response
+                        .await;
+                });
+                return;
+            }
+            Ok(Request::ReuseConnection(connection_request)) => {
+                tokio::spawn(async move {
+                    // TODO: create a reference number and keep track for the response
+                    // Note: We used to clean up connections here upon failures with the _channel_ to the underlying portal connection.
+                    // This is deemed unnecessary during the migration period to `phoenix-channel` because it means that the receiver is deallocated at which point we are probably shutting down?
+                    let _ = control_signaler
                         .send_with_ref(
                             EgressMessages::ReuseConnection(connection_request),
                             resource_id,
                         )
-                        .await
-                    {
-                        err
-                    } else {
-                        return;
-                    }
-                }
-                Err(err) => err,
-            };
+                        .await;
+                });
+                return;
+            }
+            Err(err) => err,
+        };
 
-            tunnel.cleanup_connection(resource_id);
-            tracing::error!("Error request connection details: {err}");
-        });
+        self.tunnel.cleanup_connection(resource_id);
+        tracing::error!("Error request connection details: {err}");
     }
 
-    async fn add_ice_candidate(
-        &self,
+    #[tracing::instrument(level = "trace", skip_all, fields(gateway = %gateway_id))]
+    fn add_ice_candidate(
+        &mut self,
         GatewayIceCandidates {
             gateway_id,
             candidates,
         }: GatewayIceCandidates,
     ) {
         for candidate in candidates {
-            if let Err(e) = self.tunnel.add_ice_candidate(gateway_id, candidate).await {
-                tracing::error!(err = ?e,"add_ice_candidate");
-            }
+            self.tunnel.add_ice_candidate(gateway_id, candidate)
         }
     }
 
@@ -257,7 +304,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
             Messages::Connect(connect) => self.connect(connect),
             Messages::ResourceCreatedOrUpdated(resource) => self.add_resource(resource),
             Messages::ResourceDeleted(resource) => self.resource_deleted(resource.0),
-            Messages::IceCandidates(ice_candidate) => self.add_ice_candidate(ice_candidate).await,
+            Messages::IceCandidates(ice_candidate) => self.add_ice_candidate(ice_candidate),
             Messages::SignedLogUrl(url) => {
                 let Some(path) = self.tunnel.callbacks().roll_log_file() else {
                     return Ok(());
@@ -285,40 +332,31 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
         topic: String,
     ) -> Result<()> {
         match (reply_error, reference) {
-            (ChannelError::ErrorReply(ErrorInfo::Offline), Some(reference)) => {
-                let Ok(resource_id) = reference.parse::<ResourceId>() else {
-                    tracing::warn!("The portal responded with an Offline error. Is the Resource associated with any online Gateways or Relays?");
+            (ChannelError::ErrorReply(ErrorReply::Offline), Some(reference)) => {
+                let Ok(request_id) = reference.parse::<usize>() else {
                     return Ok(());
                 };
-                // TODO: Rate limit the number of attempts of getting the relays before just trying a local network connection
-                self.tunnel.cleanup_connection(resource_id);
+
+                let Some(resource) = self.sent_connection_intents.handle_error(request_id) else {
+                    return Ok(());
+                };
+
+                tracing::debug!(%resource, "Resource is offline");
+
+                self.tunnel.cleanup_connection(resource);
             }
-            (
-                ChannelError::ErrorReply(ErrorInfo::Reason(Reason::Known(
-                    KnownError::UnmatchedTopic,
-                ))),
-                _,
-            ) => {
+            (ChannelError::ErrorReply(ErrorReply::UnmatchedTopic), _) => {
                 if let Err(e) = self.phoenix_channel.get_sender().join_topic(topic).await {
                     tracing::debug!(err = ?e, "couldn't join topic: {e:#?}");
                 }
             }
-            (
-                ChannelError::ErrorReply(ErrorInfo::Reason(Reason::Known(
-                    KnownError::TokenExpired,
-                ))),
-                _,
-            )
+            (ChannelError::ErrorReply(ErrorReply::TokenExpired), _)
             | (ChannelError::ErrorMsg(Error::ClosedByPortal), _) => {
                 return Err(Error::ClosedByPortal);
             }
             _ => {}
         }
         Ok(())
-    }
-
-    pub async fn stats_event(&mut self) {
-        tracing::debug!(target: "tunnel_state", stats = ?self.tunnel.stats());
     }
 
     pub async fn request_log_upload_url(&mut self) {
@@ -349,17 +387,21 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
             Ok(firezone_tunnel::Event::ConnectionIntent {
                 resource,
                 connected_gateway_ids,
-                reference,
             }) => {
+                let id = self.next_request_id;
+                self.next_request_id += 1;
+                self.sent_connection_intents
+                    .register_new_intent(id, resource);
+
                 if let Err(e) = self
                     .phoenix_channel
                     .clone()
                     .send_with_ref(
                         EgressMessages::PrepareConnection {
-                            resource_id: resource.id(),
+                            resource_id: resource,
                             connected_gateway_ids,
                         },
-                        reference,
+                        id,
                     )
                     .await
                 {
@@ -382,11 +424,15 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
                     }
                 });
             }
+            Ok(firezone_tunnel::Event::StopPeer(_)) => {
+                // This should never bubbled up
+                // TODO: we might want to segregate events further
+            }
             Ok(firezone_tunnel::Event::SendPacket(_)) => {
                 unimplemented!("Handled internally");
             }
             Err(e) => {
-                tracing::error!("Tunnel failed: {e}");
+                tracing::error!("Tunnel failed: {e:#?}");
             }
         }
     }
@@ -426,4 +472,40 @@ async fn upload(path: PathBuf, url: Url) -> io::Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn discards_old_connection_intent() {
+        let mut intents = SentConnectionIntents::default();
+
+        let resource = ResourceId::random();
+
+        intents.register_new_intent(1, resource);
+        intents.register_new_intent(2, resource);
+
+        let should_accept = intents.handle_connection_details_received(1, resource);
+
+        assert!(!should_accept);
+    }
+
+    #[test]
+    fn allows_unrelated_intents() {
+        let mut intents = SentConnectionIntents::default();
+
+        let resource1 = ResourceId::random();
+        let resource2 = ResourceId::random();
+
+        intents.register_new_intent(1, resource1);
+        intents.register_new_intent(2, resource2);
+
+        let should_accept_1 = intents.handle_connection_details_received(1, resource1);
+        let should_accept_2 = intents.handle_connection_details_received(2, resource2);
+
+        assert!(should_accept_1);
+        assert!(should_accept_2);
+    }
 }

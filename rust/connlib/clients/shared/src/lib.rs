@@ -12,10 +12,10 @@ use messages::IngressMessages;
 use messages::Messages;
 use messages::ReplyMessages;
 use secrecy::{Secret, SecretString};
-use std::sync::Arc;
+use std::future::poll_fn;
 use std::time::Duration;
 use tokio::time::{Interval, MissedTickBehavior};
-use tokio::{runtime::Runtime, sync::Mutex, time::Instant};
+use tokio::{runtime::Runtime, time::Instant};
 use url::Url;
 
 mod control;
@@ -83,10 +83,7 @@ where
 
         let callbacks = CallbackErrorFacade(callbacks);
         let (tx, mut rx) = tokio::sync::mpsc::channel(1);
-        let this = Self {
-            runtime_stopper: tx.clone(),
-            callbacks,
-        };
+
         // In android we get an stack-overflow due to tokio
         // taking too much of the stack-space:
         // See: https://github.com/firezone/firezone/issues/2227
@@ -95,7 +92,7 @@ where
             .enable_all()
             .build()?;
         {
-            let callbacks = this.callbacks.clone();
+            let callbacks = callbacks.clone();
             let default_panic_hook = std::panic::take_hook();
             std::panic::set_hook(Box::new({
                 let tx = tx.clone();
@@ -105,7 +102,9 @@ where
                         .payload()
                         .downcast_ref::<&str>()
                         .map(|s| Error::Panic(s.to_string()))
-                        .unwrap_or(Error::PanicNonStringPayload);
+                        .unwrap_or(Error::PanicNonStringPayload(
+                            info.location().map(ToString::to_string),
+                        ));
                     Self::disconnect_inner(tx, &callbacks, Some(err));
                     default_panic_hook(info);
                 }
@@ -114,13 +113,13 @@ where
 
         Self::connect_inner(
             &runtime,
-            tx,
+            tx.clone(),
             api_url.try_into().map_err(|_| Error::UriError)?,
             token,
             device_id,
             device_name_override,
             os_version_override,
-            this.callbacks.clone(),
+            callbacks.clone(),
             max_partition_time,
         );
         std::thread::spawn(move || {
@@ -128,7 +127,10 @@ where
             runtime.shutdown_background();
         });
 
-        Ok(this)
+        Ok(Self {
+            runtime_stopper: tx,
+            callbacks,
+        })
     }
 
     // TODO: Refactor this when we refactor PhoenixChannel.
@@ -168,22 +170,23 @@ where
             });
 
             let tunnel = fatal_error!(
-                Tunnel::new(private_key, callbacks.clone()).await,
+                Tunnel::new(private_key, callbacks.clone()),
                 runtime_stopper,
                 &callbacks
             );
 
             let mut control_plane = ControlPlane {
-                tunnel: Arc::new(tunnel),
+                tunnel,
                 phoenix_channel: connection.sender_with_topic("client".to_owned()),
-                tunnel_init: Mutex::new(false),
+                tunnel_init: false,
+                next_request_id: 0,
+                sent_connection_intents: Default::default(),
             };
 
             tokio::spawn({
                 let runtime_stopper = runtime_stopper.clone();
                 let callbacks = callbacks.clone();
                 async move {
-                let mut log_stats_interval = tokio::time::interval(Duration::from_secs(10));
                 let mut upload_logs_interval = upload_interval();
                 loop {
                     tokio::select! {
@@ -198,8 +201,7 @@ where
                                 },
                             }
                         },
-                        event = control_plane.tunnel.next_event() => control_plane.handle_tunnel_event(event).await,
-                        _ = log_stats_interval.tick() => control_plane.stats_event().await,
+                        event = poll_fn(|cx| control_plane.tunnel.poll_next_event(cx)) => control_plane.handle_tunnel_event(event).await,
                         _ = upload_logs_interval.tick() => control_plane.request_log_upload_url().await,
                         else => break
                     }
@@ -262,15 +264,19 @@ where
             tracing::error!("Couldn't stop runtime: {err}");
         }
 
-        let _ = callbacks.on_disconnect(error.as_ref());
+        if let Some(error) = error {
+            let _ = callbacks.on_disconnect(&error);
+        }
     }
 
     /// Cleanup a [Session].
     ///
     /// For now this just drops the runtime, which should drop all pending tasks.
     /// Further cleanup should be done here. (Otherwise we can just drop [Session]).
-    pub fn disconnect(&mut self, error: Option<Error>) {
-        Self::disconnect_inner(self.runtime_stopper.clone(), &self.callbacks, error)
+    pub fn disconnect(&mut self) {
+        if let Err(err) = self.runtime_stopper.try_send(StopRuntime) {
+            tracing::error!("Couldn't stop runtime: {err}");
+        }
     }
 }
 

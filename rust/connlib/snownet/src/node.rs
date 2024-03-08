@@ -21,14 +21,16 @@ use str0m::{Candidate, CandidateKind, IceConnectionState};
 
 use crate::allocation::{Allocation, Socket};
 use crate::index::IndexLfsr;
-use crate::info::ConnectionInfo;
+use crate::stats::{ConnectionStats, NodeStats};
 use crate::stun_binding::StunBinding;
 use crate::utils::earliest;
 use crate::{IpPacket, MutableIpPacket};
 use boringtun::noise::errors::WireGuardError;
 use std::borrow::Cow;
 use std::iter;
+use std::ops::ControlFlow;
 use stun_codec::rfc5389::attributes::{Realm, Username};
+use tracing::{field, Span};
 
 // Note: Taken from boringtun
 const HANDSHAKE_RATE_LIMIT: u64 = 100;
@@ -62,6 +64,8 @@ pub struct Node<T, TId> {
     last_now: Instant,
 
     buffer: Box<[u8; MAX_UDP_SIZE]>,
+
+    stats: NodeStats,
 
     marker: PhantomData<T>,
 }
@@ -104,6 +108,7 @@ where
             allocations: HashMap::default(),
             last_now: now,
             connections: Default::default(),
+            stats: Default::default(),
         }
     }
 
@@ -111,9 +116,8 @@ where
         (&self.private_key).into()
     }
 
-    /// Lazily retrieve stats of all connections.
-    pub fn stats(&self) -> impl Iterator<Item = (TId, ConnectionInfo)> + '_ {
-        self.connections.stats(self.last_now)
+    pub fn stats(&self) -> (NodeStats, impl Iterator<Item = (TId, ConnectionStats)> + '_) {
+        (self.stats, self.connections.stats())
     }
 
     /// Add an address as a `host` candidate.
@@ -145,6 +149,7 @@ where
         Ok(())
     }
 
+    #[tracing::instrument(level = "debug", skip_all, fields(%id))]
     pub fn add_remote_candidate(&mut self, id: TId, candidate: String) {
         let candidate = match Candidate::from_sdp_string(&candidate) {
             Ok(c) => c,
@@ -158,16 +163,54 @@ where
             agent.add_remote_candidate(candidate.clone());
         }
 
-        // Each remote candidate might be source of traffic: Bind a channel for each.
-        if let Some(conn) = self.connections.get_established_mut(&id) {
-            for relay in &conn.turn_servers {
-                let Some(allocation) = self.allocations.get_mut(relay) else {
-                    continue;
-                };
-
-                allocation.bind_channel(candidate.addr(), self.last_now);
+        match candidate.kind() {
+            CandidateKind::Host => {
+                // Binding a TURN channel for host candidates does not make sense.
+                // They are only useful to circumvent restrictive NATs in which case we are either talking to another relay candidate or a server-reflexive address.
+                return;
             }
+
+            CandidateKind::Relayed => {
+                let now = self.last_now;
+
+                // Optimisatically try to bind the channel only on the same relay as the remote peer.
+                if let Some(allocation) = self.same_relay_as_peer(id, &candidate) {
+                    allocation.bind_channel(candidate.addr(), now);
+                    return;
+                }
+            }
+            CandidateKind::ServerReflexive | CandidateKind::PeerReflexive => {}
         }
+
+        // In other cases, bind on all relays.
+        for relay in self.connections.allowed_turn_servers(&id) {
+            let Some(allocation) = self.allocations.get_mut(relay) else {
+                continue;
+            };
+
+            allocation.bind_channel(candidate.addr(), self.last_now);
+        }
+    }
+
+    /// Attempts to find the [`Allocation`] on the same relay as the remote's candidate.
+    ///
+    /// To do that, we need to check all candidates of each allocation and compare their IP.
+    /// The same relay might be reachable over IPv4 and IPv6.
+    #[must_use]
+    fn same_relay_as_peer(&mut self, id: TId, candidate: &Candidate) -> Option<&mut Allocation> {
+        self.allocations
+            .iter_mut()
+            .filter(|(relay, _)| {
+                self.connections
+                    .allowed_turn_servers(&id)
+                    .any(|allowed| allowed == *relay)
+            })
+            .find_map(|(_, allocation)| {
+                allocation
+                    .current_candidates()
+                    .any(|c| c.addr().ip() == candidate.addr().ip())
+                    .then_some(allocation)
+            })
     }
 
     /// Decapsulate an incoming packet.
@@ -177,6 +220,7 @@ where
     /// - `Ok(None)` if the packet was handled internally, for example, a response from a TURN server.
     /// - `Ok(Some)` if the packet was an encrypted wireguard packet from a peer.
     ///   The `Option` contains the connection on which the packet was decrypted.
+    #[tracing::instrument(level = "debug", skip_all, fields(%from, num_bytes = %packet.len()))]
     pub fn decapsulate<'s>(
         &mut self,
         local: SocketAddr,
@@ -187,117 +231,33 @@ where
     ) -> Result<Option<(TId, MutableIpPacket<'s>)>, Error> {
         self.add_local_as_host_candidate(local)?;
 
-        // First, check if a `StunBinding` wants the packet
-        if let Some(binding) = self.bindings.get_mut(&from) {
-            if binding.handle_input(from, local, packet, now) {
-                return Ok(None);
-            }
+        match self.bindings_try_handle(from, local, packet, now) {
+            ControlFlow::Continue(()) => {}
+            ControlFlow::Break(()) => return Ok(None),
         }
 
-        // Next, check if an `Allocation` wants the packet
-        if let Some(allocation) = self.allocations.get_mut(&from) {
-            if allocation.handle_input(from, local, packet, now) {
-                return Ok(None);
+        let (from, packet, relayed) = match self.allocations_try_handle(from, local, packet, now) {
+            ControlFlow::Continue(c) => c,
+            ControlFlow::Break(()) => return Ok(None),
+        };
+
+        // For our agents, it is important what the initial "destination" of the packet was.
+        let destination = relayed.map(|s| s.address()).unwrap_or(local);
+
+        match self.agents_try_handle(from, destination, packet, now) {
+            ControlFlow::Continue(()) => {}
+            ControlFlow::Break(Ok(())) => return Ok(None),
+            ControlFlow::Break(Err(e)) => return Err(e),
+        };
+
+        let (id, packet) =
+            match self.connections_try_handle(from, local, packet, relayed, buffer, now) {
+                ControlFlow::Continue(c) => c,
+                ControlFlow::Break(Ok(())) => return Ok(None),
+                ControlFlow::Break(Err(e)) => return Err(e),
             };
-        }
 
-        // Next, the packet could be a channel-data message, unwrap if that is the case.
-        let (from, packet, relay_socket) = self
-            .allocations
-            .get_mut(&from)
-            .and_then(|a| {
-                let (from, packet, socket) = a.decapsulate(from, packet, now)?;
-
-                Some((from, packet, Some(socket)))
-            })
-            .unwrap_or((from, packet, None));
-
-        // Next: If we can parse the message as a STUN message, cycle through all agents to check which one it is for.
-        if let Ok(message) = StunMessage::parse(packet) {
-            for (_, agent) in self.connections.agents_mut() {
-                if agent.accepts_message(&message) {
-                    agent.handle_packet(
-                        now,
-                        StunPacket {
-                            proto: Protocol::Udp,
-                            source: from,
-                            destination: relay_socket.map(|s| s.address()).unwrap_or(local),
-                            message,
-                        },
-                    );
-                    return Ok(None);
-                }
-            }
-
-            return Err(Error::UnhandledStunMessage {
-                num_agents: self.connections.len(),
-            });
-        }
-
-        for (id, conn) in self.connections.iter_established_mut() {
-            if !conn.accepts(from) {
-                continue;
-            }
-
-            return match conn.tunnel.decapsulate(None, packet, buffer) {
-                TunnResult::Done => Ok(None),
-                TunnResult::Err(e) => Err(Error::Decapsulate(e)),
-
-                // For WriteToTunnel{V4,V6}, boringtun returns the source IP of the packet that was tunneled to us.
-                // I am guessing this was done for convenience reasons.
-                // In our API, we parse the packets directly as an IpPacket.
-                // Thus, the caller can query whatever data they'd like, not just the source IP so we don't return it in addition.
-                TunnResult::WriteToTunnelV4(packet, ip) => {
-                    conn.set_remote_from_wg_activity(local, from, relay_socket);
-
-                    let ipv4_packet =
-                        MutableIpv4Packet::new(packet).expect("boringtun verifies validity");
-                    debug_assert_eq!(ipv4_packet.get_source(), ip);
-
-                    Ok(Some((id, ipv4_packet.into())))
-                }
-                TunnResult::WriteToTunnelV6(packet, ip) => {
-                    conn.set_remote_from_wg_activity(local, from, relay_socket);
-
-                    let ipv6_packet =
-                        MutableIpv6Packet::new(packet).expect("boringtun verifies validity");
-                    debug_assert_eq!(ipv6_packet.get_source(), ip);
-
-                    Ok(Some((id, ipv6_packet.into())))
-                }
-
-                // During normal operation, i.e. when the tunnel is active, decapsulating a packet straight yields the decrypted packet.
-                // However, in case `Tunn` has buffered packets, they may be returned here instead.
-                // This should be fairly rare which is why we just allocate these and return them from `poll_transmit` instead.
-                // Overall, this results in a much nicer API for our caller and should not affect performance.
-                TunnResult::WriteToNetwork(bytes) => {
-                    conn.set_remote_from_wg_activity(local, from, relay_socket);
-
-                    self.buffered_transmits.extend(conn.encapsulate(
-                        bytes,
-                        &mut self.allocations,
-                        now,
-                    ));
-
-                    while let TunnResult::WriteToNetwork(packet) =
-                        conn.tunnel
-                            .decapsulate(None, &[], self.buffer.as_mut_slice())
-                    {
-                        self.buffered_transmits.extend(conn.encapsulate(
-                            packet,
-                            &mut self.allocations,
-                            now,
-                        ));
-                    }
-
-                    Ok(None)
-                }
-            };
-        }
-
-        Err(Error::UnhandledPacket {
-            num_tunnels: self.connections.iter_established_mut().count(),
-        })
+        Ok(Some((id, packet)))
     }
 
     /// Encapsulate an outgoing IP packet.
@@ -305,6 +265,7 @@ where
     /// Wireguard is an IP tunnel, so we "enforce" that only IP packets are sent through it.
     /// We say "enforce" an [`IpPacket`] can be created from an (almost) arbitrary byte buffer at virtually no cost.
     /// Nevertheless, using [`IpPacket`] in our API has good documentation value.
+    #[tracing::instrument(level = "debug", skip_all, fields(id = %connection))]
     pub fn encapsulate<'s>(
         &'s mut self,
         connection: TId,
@@ -314,6 +275,9 @@ where
             .connections
             .get_established_mut(&connection)
             .ok_or(Error::NotConnected)?;
+
+        // Must bail early if we don't have a socket yet to avoid running into WG timeouts.
+        let socket = conn.peer_socket.ok_or(Error::NotConnected)?;
 
         let (header, payload) = self.buffer.as_mut().split_at_mut(4);
 
@@ -328,7 +292,7 @@ where
 
         let packet = &payload[..packet_len];
 
-        match conn.peer_socket.ok_or(Error::NotConnected)? {
+        match socket {
             PeerSocket::Direct {
                 dest: remote,
                 source,
@@ -364,6 +328,7 @@ where
     }
 
     /// Returns a pending [`Event`] from the pool.
+    #[must_use]
     pub fn poll_event(&mut self) -> Option<Event<TId>> {
         let binding_events = self.bindings.iter_mut().flat_map(|(server, binding)| {
             iter::from_fn(|| binding.poll_event().map(|e| (*server, e)))
@@ -410,10 +375,7 @@ where
                         ..
                     } => {
                         let candidate = conn
-                            .agent
-                            .local_candidates()
-                            .iter()
-                            .find(|c| c.addr() == source)
+                            .local_candidate(source)
                             .expect("to only nominate existing candidates");
 
                         let remote_socket = match candidate.kind() {
@@ -453,6 +415,12 @@ where
                             tracing::info!(old = ?conn.peer_socket, new = ?remote_socket, "Updating remote socket");
                             conn.peer_socket = Some(remote_socket);
 
+                            conn.invalidate_candiates();
+
+                            tracing::info!(%id, "Sending wireguard handshake");
+                            self.buffered_transmits
+                                .extend(conn.force_handshake(&mut self.allocations, self.last_now));
+
                             if is_first_connection {
                                 return Some(Event::ConnectionEstablished(id));
                             }
@@ -477,6 +445,7 @@ where
     ///
     /// This function only takes `&mut self` because it caches certain computations internally.
     /// The returned timestamp will **not** change unless other state is modified.
+    #[must_use]
     pub fn poll_timeout(&mut self) -> Option<Instant> {
         let mut connection_timeout = None;
 
@@ -556,6 +525,7 @@ where
     }
 
     /// Returns buffered data that needs to be sent on the socket.
+    #[must_use]
     pub fn poll_transmit(&mut self) -> Option<Transmit<'static>> {
         for (_, conn) in self.connections.iter_established_mut() {
             if let Some(transmit) = conn.poll_transmit(&mut self.allocations, self.last_now) {
@@ -565,12 +535,16 @@ where
 
         for binding in self.bindings.values_mut() {
             if let Some(transmit) = binding.poll_transmit() {
+                self.stats.stun_bytes_to_relays += transmit.payload.len();
+
                 return Some(transmit);
             }
         }
 
         for allocation in self.allocations.values_mut() {
             if let Some(transmit) = allocation.poll_transmit() {
+                self.stats.stun_bytes_to_relays += transmit.payload.len();
+
                 return Some(transmit);
             }
         }
@@ -578,6 +552,7 @@ where
         self.buffered_transmits.pop_front()
     }
 
+    #[must_use]
     fn init_connection(
         &mut self,
         mut agent: IceAgent,
@@ -588,13 +563,18 @@ where
     ) -> Connection {
         agent.handle_timeout(self.last_now);
 
+        /// We set a Wireguard keep-alive to ensure the WG session doesn't timeout on an idle connection.
+        ///
+        /// Without such a timeout, using a tunnel after the REKEY_TIMEOUT requires handshaking a new session which delays the new application packet by 1 RTT.
+        const WG_KEEP_ALIVE: Option<u16> = Some(10);
+
         Connection {
             agent,
             tunnel: Tunn::new(
                 self.private_key.clone(),
                 remote,
                 Some(key),
-                None,
+                WG_KEEP_ALIVE,
                 self.index.next(),
                 Some(self.rate_limiter.clone()),
             ),
@@ -603,6 +583,7 @@ where
             next_timer_update: self.last_now,
             peer_socket: None,
             possible_sockets: HashSet::default(),
+            stats: Default::default(),
         }
     }
 
@@ -630,6 +611,174 @@ where
 
         Ok(())
     }
+
+    #[must_use]
+    fn bindings_try_handle(
+        &mut self,
+        from: SocketAddr,
+        local: SocketAddr,
+        packet: &[u8],
+        now: Instant,
+    ) -> ControlFlow<()> {
+        let Some(binding) = self.bindings.get_mut(&from) else {
+            return ControlFlow::Continue(());
+        };
+
+        let handled = binding.handle_input(from, local, packet, now);
+
+        if !handled {
+            tracing::debug!("Packet was a STUN message but not accepted");
+        }
+
+        ControlFlow::Break(())
+    }
+
+    /// Tries to handle the packet using one of our [`Allocation`]s.
+    #[must_use]
+    fn allocations_try_handle<'p>(
+        &mut self,
+        from: SocketAddr,
+        local: SocketAddr,
+        packet: &'p [u8],
+        now: Instant,
+    ) -> ControlFlow<(), (SocketAddr, &'p [u8], Option<Socket>)> {
+        // First, check whether the packet is from a known allocation.
+        let Some(allocation) = self.allocations.get_mut(&from) else {
+            return ControlFlow::Continue((from, packet, None));
+        };
+
+        // See <https://www.rfc-editor.org/rfc/rfc8656#name-channels-2> for details on de-multiplexing.
+        match packet.first() {
+            Some(0..=3) => {
+                if allocation.handle_input(from, local, packet, now) {
+                    return ControlFlow::Break(());
+                }
+
+                tracing::debug!("Packet was a STUN message but not accepted");
+
+                ControlFlow::Break(()) // Stop processing the packet.
+            }
+            Some(64..=79) => {
+                if let Some((from, packet, socket)) = allocation.decapsulate(from, packet, now) {
+                    return ControlFlow::Continue((from, packet, Some(socket)));
+                }
+
+                tracing::debug!("Packet was a channel data message but not accepted");
+
+                ControlFlow::Break(()) // Stop processing the packet.
+            }
+            _ => ControlFlow::Continue((from, packet, None)),
+        }
+    }
+
+    #[must_use]
+    fn agents_try_handle(
+        &mut self,
+        from: SocketAddr,
+        destination: SocketAddr,
+        packet: &[u8],
+        now: Instant,
+    ) -> ControlFlow<Result<(), Error>> {
+        let Ok(message) = StunMessage::parse(packet) else {
+            return ControlFlow::Continue(());
+        };
+
+        for (_, agent) in self.connections.agents_mut() {
+            if agent.accepts_message(&message) {
+                agent.handle_packet(
+                    now,
+                    StunPacket {
+                        proto: Protocol::Udp,
+                        source: from,
+                        destination,
+                        message,
+                    },
+                );
+
+                return ControlFlow::Break(Ok(()));
+            }
+        }
+
+        ControlFlow::Break(Err(Error::UnhandledStunMessage {
+            num_agents: self.connections.len(),
+        }))
+    }
+
+    #[must_use]
+    fn connections_try_handle<'b>(
+        &mut self,
+        from: SocketAddr,
+        local: SocketAddr,
+        packet: &[u8],
+        relayed: Option<Socket>,
+        buffer: &'b mut [u8],
+        now: Instant,
+    ) -> ControlFlow<Result<(), Error>, (TId, MutableIpPacket<'b>)> {
+        for (id, conn) in self.connections.iter_established_mut() {
+            if !conn.accepts(from) {
+                continue;
+            }
+
+            return match conn.tunnel.decapsulate(None, packet, buffer) {
+                TunnResult::Done => ControlFlow::Break(Ok(())),
+                TunnResult::Err(e) => ControlFlow::Break(Err(Error::Decapsulate(e))),
+
+                // For WriteToTunnel{V4,V6}, boringtun returns the source IP of the packet that was tunneled to us.
+                // I am guessing this was done for convenience reasons.
+                // In our API, we parse the packets directly as an IpPacket.
+                // Thus, the caller can query whatever data they'd like, not just the source IP so we don't return it in addition.
+                TunnResult::WriteToTunnelV4(packet, ip) => {
+                    conn.set_remote_from_wg_activity(local, from, relayed);
+
+                    let ipv4_packet =
+                        MutableIpv4Packet::new(packet).expect("boringtun verifies validity");
+                    debug_assert_eq!(ipv4_packet.get_source(), ip);
+
+                    ControlFlow::Continue((id, ipv4_packet.into()))
+                }
+                TunnResult::WriteToTunnelV6(packet, ip) => {
+                    conn.set_remote_from_wg_activity(local, from, relayed);
+
+                    let ipv6_packet =
+                        MutableIpv6Packet::new(packet).expect("boringtun verifies validity");
+                    debug_assert_eq!(ipv6_packet.get_source(), ip);
+
+                    ControlFlow::Continue((id, ipv6_packet.into()))
+                }
+
+                // During normal operation, i.e. when the tunnel is active, decapsulating a packet straight yields the decrypted packet.
+                // However, in case `Tunn` has buffered packets, they may be returned here instead.
+                // This should be fairly rare which is why we just allocate these and return them from `poll_transmit` instead.
+                // Overall, this results in a much nicer API for our caller and should not affect performance.
+                TunnResult::WriteToNetwork(bytes) => {
+                    conn.set_remote_from_wg_activity(local, from, relayed);
+
+                    self.buffered_transmits.extend(conn.encapsulate(
+                        bytes,
+                        &mut self.allocations,
+                        now,
+                    ));
+
+                    while let TunnResult::WriteToNetwork(packet) =
+                        conn.tunnel
+                            .decapsulate(None, &[], self.buffer.as_mut_slice())
+                    {
+                        self.buffered_transmits.extend(conn.encapsulate(
+                            packet,
+                            &mut self.allocations,
+                            now,
+                        ));
+                    }
+
+                    ControlFlow::Break(Ok(()))
+                }
+            };
+        }
+
+        ControlFlow::Break(Err(Error::UnhandledPacket {
+            num_tunnels: self.connections.iter_established_mut().count(),
+        }))
+    }
 }
 
 impl<TId> Node<Client, TId>
@@ -640,6 +789,8 @@ where
     ///
     /// Out of all configured STUN and TURN servers, the connection will only use the ones provided here.
     /// The returned [`Offer`] must be passed to the remote via a signalling channel.
+    #[tracing::instrument(level = "info", skip_all, fields(%id))]
+    #[must_use]
     pub fn new_connection(
         &mut self,
         id: TId,
@@ -647,11 +798,11 @@ where
         allowed_turn_servers: HashSet<(SocketAddr, String, String, String)>,
     ) -> Offer {
         if self.connections.initial.remove(&id).is_some() {
-            tracing::info!(%id, "Replacing existing initial connection");
+            tracing::info!("Replacing existing initial connection");
         };
 
         if self.connections.established.remove(&id).is_some() {
-            tracing::info!(%id, "Replacing existing established connection");
+            tracing::info!("Replacing existing established connection");
         };
 
         self.upsert_stun_servers(&allowed_stun_servers);
@@ -665,13 +816,6 @@ where
 
         let mut agent = IceAgent::new();
         agent.set_controlling(true);
-
-        self.seed_agent_with_local_candidates(
-            id,
-            &mut agent,
-            &allowed_stun_servers,
-            &allowed_turn_servers,
-        );
 
         let session_key = Secret::new(random());
         let ice_creds = agent.local_credentials();
@@ -697,11 +841,13 @@ where
 
         debug_assert!(existing.is_none());
 
+        tracing::info!("Establishing new connection");
+
         params
     }
 
     /// Accept an [`Answer`] from the remote for a connection previously created via [`Node::new_connection`].
-    #[tracing::instrument(level = "debug", skip_all, fields(%id, remote = %hex::encode(remote.as_bytes())))]
+    #[tracing::instrument(level = "info", skip_all, fields(%id))]
     pub fn accept_answer(&mut self, id: TId, remote: PublicKey, answer: Answer) {
         let Some(initial) = self.connections.initial.remove(&id) else {
             tracing::debug!("No initial connection state, ignoring answer"); // This can happen if the connection setup timed out.
@@ -714,6 +860,13 @@ where
             pass: answer.credentials.password,
         });
 
+        self.seed_agent_with_local_candidates(
+            id,
+            &mut agent,
+            &initial.stun_servers,
+            &initial.turn_servers,
+        );
+
         let connection = self.init_connection(
             agent,
             remote,
@@ -723,6 +876,8 @@ where
         );
 
         let existing = self.connections.established.insert(id, connection);
+
+        tracing::info!(remote = %hex::encode(remote.as_bytes()), "Signalling protocol completed");
 
         debug_assert!(existing.is_none());
     }
@@ -736,6 +891,8 @@ where
     ///
     /// Out of all configured STUN and TURN servers, the connection will only use the ones provided here.
     /// The returned [`Answer`] must be passed to the remote via a signalling channel.
+    #[tracing::instrument(level = "info", skip_all, fields(%id))]
+    #[must_use]
     pub fn accept_connection(
         &mut self,
         id: TId,
@@ -750,7 +907,7 @@ where
         );
 
         if self.connections.established.remove(&id).is_some() {
-            tracing::info!(%id, "Replacing existing established connection");
+            tracing::info!("Replacing existing established connection");
         };
 
         self.upsert_stun_servers(&allowed_stun_servers);
@@ -793,6 +950,8 @@ where
 
         debug_assert!(existing.is_none());
 
+        tracing::info!("Created new connection");
+
         answer
     }
 }
@@ -824,7 +983,7 @@ where
             };
 
             if let Some(existing) = self.allocations.get_mut(server) {
-                existing.refresh(username, password, realm);
+                existing.refresh(username, password, realm, self.last_now);
                 continue;
             }
 
@@ -901,10 +1060,8 @@ impl<TId> Connections<TId>
 where
     TId: Eq + Hash + Copy,
 {
-    fn stats(&self, now: Instant) -> impl Iterator<Item = (TId, ConnectionInfo)> + '_ {
-        self.established
-            .keys()
-            .map(move |id| (*id, ConnectionInfo { generated_at: now }))
+    fn stats(&self) -> impl Iterator<Item = (TId, ConnectionStats)> + '_ {
+        self.established.iter().map(move |(id, c)| (*id, c.stats))
     }
 
     fn agent_mut(&mut self, id: TId) -> Option<&mut IceAgent> {
@@ -926,6 +1083,21 @@ where
 
     fn get_established_mut(&mut self, id: &TId) -> Option<&mut Connection> {
         self.established.get_mut(id)
+    }
+
+    fn allowed_turn_servers(&self, id: &TId) -> impl Iterator<Item = &SocketAddr> + '_ {
+        let initial = self
+            .initial
+            .get(id)
+            .into_iter()
+            .flat_map(|c| c.turn_servers.iter());
+        let established = self
+            .established
+            .get(id)
+            .into_iter()
+            .flat_map(|c| c.turn_servers.iter());
+
+        initial.chain(established)
     }
 
     fn iter_established_mut(&mut self) -> impl Iterator<Item = (TId, &mut Connection)> {
@@ -1113,6 +1285,8 @@ struct Connection {
 
     stun_servers: HashSet<SocketAddr>,
     turn_servers: HashSet<SocketAddr>,
+
+    stats: ConnectionStats,
 }
 
 /// The socket of the peer we are connected to.
@@ -1128,11 +1302,21 @@ enum PeerSocket {
     },
 }
 
+impl PeerSocket {
+    fn our_socket(&self) -> SocketAddr {
+        match self {
+            PeerSocket::Direct { source, .. } => *source,
+            PeerSocket::Relay { relay, .. } => *relay,
+        }
+    }
+}
+
 impl Connection {
     /// Checks if we want to accept a packet from a certain address.
     ///
     /// Whilst we establish connections, we may see traffic from a certain address, prior to the negotiation being fully complete.
     /// We already want to accept that traffic and not throw it away.
+    #[must_use]
     fn accepts(&self, addr: SocketAddr) -> bool {
         let from_connected_remote = self.peer_socket.is_some_and(|r| match r {
             PeerSocket::Direct { dest, .. } => dest == addr,
@@ -1166,6 +1350,7 @@ impl Connection {
         }
     }
 
+    #[must_use]
     fn poll_timeout(&mut self) -> Option<Instant> {
         let agent_timeout = self.agent.poll_timeout();
         let next_wg_timer = Some(self.next_timer_update);
@@ -1173,6 +1358,7 @@ impl Connection {
         earliest(agent_timeout, next_wg_timer)
     }
 
+    #[must_use]
     fn poll_transmit(
         &mut self,
         allocations: &mut HashMap<SocketAddr, Allocation>,
@@ -1190,6 +1376,8 @@ impl Connection {
                 .find(|(_, allocation)| allocation.has_socket(source));
 
             let Some((relay, allocation)) = allocation else {
+                self.stats.stun_bytes_to_peer_direct += packet.len();
+
                 // `source` did not match any of our allocated sockets, must be a local one then!
                 return Some(Transmit {
                     src: Some(source),
@@ -1201,9 +1389,11 @@ impl Connection {
             // Payload should be sent from a "remote socket", let's wrap it in a channel data message!
             let Some(channel_data) = allocation.encode_to_vec(dst, &packet, now) else {
                 // Unlikely edge-case, drop the packet and continue.
-                tracing::debug!(%relay, peer = %dst, "Dropping packet because allocation does not offer a channel to peer");
+                tracing::trace!(%relay, peer = %dst, "Dropping packet because allocation does not offer a channel to peer");
                 continue;
             };
+
+            self.stats.stun_bytes_to_peer_relayed += channel_data.len();
 
             return Some(Transmit {
                 src: None,
@@ -1254,6 +1444,7 @@ impl Connection {
         Ok(None)
     }
 
+    #[must_use]
     fn encapsulate(
         &self,
         message: &[u8],
@@ -1273,5 +1464,63 @@ impl Connection {
                 encode_as_channel_data(relay, peer, message, allocations, now).ok()
             }
         }
+    }
+
+    #[must_use]
+    fn force_handshake(
+        &mut self,
+        allocations: &mut HashMap<SocketAddr, Allocation>,
+        now: Instant,
+    ) -> Option<Transmit<'static>> {
+        /// [`boringtun`] requires us to pass buffers in where it can construct its packets.
+        ///
+        /// When updating the timers, the largest packet that we may have to send is `148` bytes as per `HANDSHAKE_INIT_SZ` constant in [`boringtun`].
+        const MAX_SCRATCH_SPACE: usize = 148;
+
+        let mut buf = [0u8; MAX_SCRATCH_SPACE];
+
+        let TunnResult::WriteToNetwork(bytes) =
+            self.tunnel.format_handshake_initiation(&mut buf, true)
+        else {
+            return None;
+        };
+
+        self.encapsulate(bytes, allocations, now)
+    }
+
+    /// Invalidates all local candidates with a lower or equal priority compared to the nominated one.
+    ///
+    /// Each time we nominate a candidate pair, we don't really want to keep all the others active because it creates a lot of noise.
+    /// At the same time, we want to retain trickle ICE and allow the ICE agent to find a _better_ pair, hence we invalidate by priority.
+    #[tracing::instrument(level = "debug", skip_all, fields(nominated_prio))]
+    fn invalidate_candiates(&mut self) {
+        let Some(socket) = self.peer_socket else {
+            return;
+        };
+
+        let Some(nominated) = self.local_candidate(socket.our_socket()).cloned() else {
+            return;
+        };
+
+        Span::current().record("nominated_prio", field::display(&nominated.prio()));
+
+        let irrelevant_candidates = self
+            .agent
+            .local_candidates()
+            .iter()
+            .filter(|c| c.prio() <= nominated.prio() && c != &&nominated)
+            .cloned()
+            .collect::<Vec<_>>();
+
+        for candidate in irrelevant_candidates {
+            self.agent.invalidate_candidate(&candidate);
+        }
+    }
+
+    fn local_candidate(&self, source: SocketAddr) -> Option<&Candidate> {
+        self.agent
+            .local_candidates()
+            .iter()
+            .find(|c| c.addr() == source)
     }
 }

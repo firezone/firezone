@@ -40,12 +40,6 @@ pub enum ConnlibError {
     /// Serde's serialize error.
     #[error(transparent)]
     SerializeError(#[from] serde_json::Error),
-    /// Webrtc error
-    #[error("ICE-related error: {0}")]
-    IceError(#[from] webrtc::Error),
-    /// Webrtc error regarding data channel.
-    #[error("ICE-data error: {0}")]
-    IceDataError(#[from] webrtc::data::Error),
     /// Error while sending through an async channelchannel.
     #[error("Error sending message through an async channel")]
     SendChannelError,
@@ -82,6 +76,8 @@ pub enum ConnlibError {
     OnUpdateResourcesFailed(String),
     #[error("`get_system_default_resolvers` failed: {0}")]
     GetSystemDefaultResolverFailed(String),
+    #[error("`protect_file_descriptor` failed: {0}")]
+    ProtectFileDescriptorFailed(String),
     /// Glob for errors without a type.
     #[error("Other error: {0}")]
     Other(&'static str),
@@ -110,7 +106,7 @@ pub enum ConnlibError {
     Panic(String),
     /// A panic occurred with a non-string payload.
     #[error("Panicked with a non-string payload")]
-    PanicNonStringPayload,
+    PanicNonStringPayload(Option<String>),
     /// Received connection details that might be stale
     #[error("Unexpected connection details")]
     UnexpectedConnectionDetails,
@@ -165,14 +161,22 @@ pub enum ConnlibError {
     #[error(transparent)]
     JoinError(#[from] JoinError),
 
-    #[error("Failed to read `resolv.conf`: {0}")]
-    ReadResolvConf(std::io::Error),
-    #[error("Failed to parse `resolv.conf`")]
-    ParseResolvConf,
-    #[error("Failed to backup `resolv.conf`: {0}")]
-    WriteResolvConfBackup(std::io::Error),
-    #[error("Failed to rewrite `resolv.conf`: {0}")]
-    RewriteResolvConf(std::io::Error),
+    #[cfg(target_os = "linux")]
+    #[error("Error while rewriting `/etc/resolv.conf`: {0}")]
+    ResolvConf(#[from] crate::linux::etc_resolv_conf::Error),
+
+    #[error(transparent)]
+    Snownet(#[from] snownet::Error),
+    #[error("Detected non-allowed packet in channel")]
+    UnallowedPacket,
+    #[error("No available ipv4 socket")]
+    NoIpv4,
+    #[error("No available ipv6 socket")]
+    NoIpv6,
+
+    // Error variants for `systemd-resolved` DNS control
+    #[error("Failed to control system DNS with `resolvectl`")]
+    ResolvectlFailed,
 }
 
 impl ConnlibError {
@@ -182,26 +186,6 @@ impl ConnlibError {
             Self::PortalConnectionError(tokio_tungstenite::tungstenite::error::Error::Http(e))
             if e.status().is_client_error()
         )
-    }
-
-    /// Whether this error is fatal to the underlying connection.
-    pub fn is_fatal_connection_error(&self) -> bool {
-        if let Self::WireguardError(e) = self {
-            return matches!(
-                e,
-                WireGuardError::ConnectionExpired | WireGuardError::NoCurrentSession
-            );
-        }
-
-        if let Self::IceDataError(e) = self {
-            return matches!(
-                e,
-                webrtc::data::Error::ErrStreamClosed
-                    | webrtc::data::Error::Sctp(webrtc::sctp::Error::ErrStreamClosed)
-            );
-        }
-
-        false
     }
 }
 

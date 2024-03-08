@@ -16,7 +16,7 @@ use stun_codec::{
     Attribute, Message, TransactionId,
 };
 
-const STUN_TIMEOUT: Duration = Duration::from_secs(5);
+const STUN_TIMEOUT: Duration = Duration::from_secs(1);
 const STUN_REFRESH: Duration = Duration::from_secs(5 * 60);
 
 /// A SANS-IO state machine that obtains a server-reflexive candidate from the configured STUN server.
@@ -78,8 +78,10 @@ impl StunBinding {
             return false;
         };
 
+        let transaction_id = message.transaction_id();
+
         match self.state {
-            State::SentRequest { id, .. } if id == message.transaction_id() => {
+            State::SentRequest { id, .. } if id == transaction_id => {
                 self.state = State::ReceivedResponse { at: now }
             }
             _ => {
@@ -280,20 +282,20 @@ mod tests {
             "Expect initial STUN binding"
         );
 
-        now += Duration::from_secs(1);
+        now += Duration::from_millis(500);
 
         stun_binding.handle_timeout(now);
         assert!(
             stun_binding.poll_transmit().is_none(),
-            "Expect no retry after 1 second"
+            "Expect no retry after 500ms"
         );
 
-        now += Duration::from_secs(4);
+        now += Duration::from_millis(500);
 
         stun_binding.handle_timeout(now);
         let request = stun_binding
             .poll_transmit()
-            .expect("expect retry after 5 seconds");
+            .expect("expect retry after 1 seconds");
 
         now += Duration::from_secs(1);
 
@@ -309,8 +311,8 @@ mod tests {
 
         assert_eq!(
             stun_binding.poll_timeout().unwrap(),
-            now + Duration::from_secs(5),
-            "backoff should be back to 5 seconds timeout"
+            now + Duration::from_secs(1),
+            "backoff should be back to 1 seconds timeout"
         );
     }
 

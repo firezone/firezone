@@ -1,4 +1,4 @@
-/* Licensed under Apache 2.0 (C) 2023 Firezone, Inc. */
+/* Licensed under Apache 2.0 (C) 2024 Firezone, Inc. */
 package dev.firezone.android.features.signin.ui
 
 import android.content.Intent
@@ -37,8 +37,13 @@ internal class SignInFragment : Fragment(R.layout.fragment_sign_in) {
                 requireActivity().finish()
             }
             btSettings.setOnClickListener {
+                val bundle =
+                    Bundle().apply {
+                        putBoolean("isUserSignedIn", false)
+                    }
                 findNavController().navigate(
                     R.id.settingsActivity,
+                    bundle,
                 )
             }
         }

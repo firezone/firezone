@@ -44,7 +44,10 @@ android {
 
     namespace = "dev.firezone.android"
     compileSdk = 34
-    ndkVersion = "26.1.10909125"
+
+    // Life is easier if we just match the default NDK on the Ubuntu 22.04 runners
+    // https://github.com/actions/runner-images/blob/main/images/ubuntu/Ubuntu2204-Readme.md#android
+    ndkVersion = "25.2.9519653"
 
     defaultConfig {
         applicationId = "dev.firezone.android"
@@ -80,7 +83,7 @@ android {
                 "String",
                 "LOG_FILTER",
                 "\"connlib_client_android=debug,firezone_tunnel=trace,phoenix_channel=debug,connlib_shared=debug," +
-                    "connlib_client_shared=debug,warn\"",
+                    "boringtun=debug,snownet=debug,str0m=debug,connlib_client_shared=debug,info\"",
             )
         }
 
@@ -123,8 +126,8 @@ android {
             buildConfigField(
                 "String",
                 "LOG_FILTER",
-                "\"connlib_client_android=info,firezone_tunnel=trace,phoenix_channel=info,connlib_shared=info," +
-                    "connlib_client_shared=info,webrtc=error,warn\"",
+                "\"connlib_client_android=info,firezone_tunnel=info,phoenix_channel=info,connlib_shared=info," +
+                    "boringtun=info,snownet=info,str0m=info,connlib_client_shared=info,warn\"",
             )
             firebaseAppDistribution {
                 serviceCredentialsFile = System.getenv("FIREBASE_CREDENTIALS_PATH")
@@ -151,13 +154,11 @@ android {
 }
 
 dependencies {
-    val coreVersion = "1.12.0"
-    val navVersion = "2.7.6"
-
     // AndroidX
-    implementation("androidx.core:core-ktx:$coreVersion")
+    implementation("androidx.core:core-ktx:1.12.0")
     implementation("androidx.appcompat:appcompat:1.6.1")
-    implementation("androidx.preference:preference-ktx:1.2.0")
+    implementation("androidx.preference:preference-ktx:1.2.1")
+    implementation("androidx.constraintlayout:constraintlayout:2.1.4")
 
     // Material
     implementation("com.google.android.material:material:1.11.0")
@@ -165,22 +166,16 @@ dependencies {
     // Lifecycle
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
     implementation("androidx.lifecycle:lifecycle-extensions:2.2.0")
-    implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.6.1")
-    implementation("androidx.lifecycle:lifecycle-livedata-ktx:2.6.1")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.7.0")
+    implementation("androidx.lifecycle:lifecycle-livedata-ktx:2.7.0")
 
     // Navigation
-    implementation("androidx.navigation:navigation-fragment-ktx:$navVersion")
-    implementation("androidx.navigation:navigation-ui-ktx:$navVersion")
-
-    // Safe Args
-    //
+    implementation("androidx.navigation:navigation-fragment-ktx:2.7.7")
+    implementation("androidx.navigation:navigation-ui-ktx:2.7.7")
 
     // Hilt
     implementation("com.google.dagger:hilt-android:2.50")
-    implementation("androidx.constraintlayout:constraintlayout:2.1.4")
-    implementation("androidx.core:core-ktx:$coreVersion")
-    implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.6.1")
-    kapt("androidx.hilt:hilt-compiler:1.0.0")
+    kapt("androidx.hilt:hilt-compiler:1.2.0")
     kapt("com.google.dagger:hilt-android-compiler:2.50")
 
     // Retrofit 2
@@ -199,22 +194,20 @@ dependencies {
     implementation("com.google.code.gson:gson:2.10.1")
 
     // Security
-    implementation("androidx.security:security-crypto:1.1.0-alpha05")
+    implementation("androidx.security:security-crypto:1.1.0-alpha06")
 
     // JUnit
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
-    implementation("androidx.browser:browser:1.7.0")
 
     // Import the BoM for the Firebase platform
-    implementation(platform("com.google.firebase:firebase-bom:32.7.1"))
+    implementation(platform("com.google.firebase:firebase-bom:32.7.3"))
 
     // Add the dependencies for the Crashlytics and Analytics libraries
     // When using the BoM, you don't specify versions in Firebase library dependencies
     implementation("com.google.firebase:firebase-crashlytics-ktx")
     implementation("com.google.firebase:firebase-crashlytics-ndk")
     implementation("com.google.firebase:firebase-analytics-ktx")
-    implementation("com.google.firebase:firebase-installations-ktx")
 }
 
 cargo {

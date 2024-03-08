@@ -14,7 +14,7 @@ use pnet_packet::{
 const DNS_PORT: u16 = 53;
 
 #[derive(Debug, PartialEq)]
-pub(crate) enum MutableIpPacket<'a> {
+pub enum MutableIpPacket<'a> {
     MutableIpv4Packet(MutableIpv4Packet<'a>),
     MutableIpv6Packet(MutableIpv6Packet<'a>),
 }
@@ -39,6 +39,14 @@ impl<'a> MutableIpPacket<'a> {
         };
 
         Some(packet)
+    }
+
+    #[inline]
+    pub(crate) fn source(&self) -> IpAddr {
+        match self {
+            MutableIpPacket::MutableIpv4Packet(i) => i.get_source().into(),
+            MutableIpPacket::MutableIpv6Packet(i) => i.get_source().into(),
+        }
     }
 
     #[inline]
@@ -187,16 +195,29 @@ impl<'a> MutableIpPacket<'a> {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Version {
-    Ipv4,
-    Ipv6,
-}
-
 #[derive(Debug, PartialEq)]
 pub enum IpPacket<'a> {
     Ipv4Packet(Ipv4Packet<'a>),
     Ipv6Packet(Ipv6Packet<'a>),
+}
+
+// TODO: Create our own `ip_packet` crate that `snownet and `firezone-tunnel` can depend on.
+impl<'a> From<IpPacket<'a>> for snownet::IpPacket<'a> {
+    fn from(value: IpPacket<'a>) -> Self {
+        match value {
+            IpPacket::Ipv4Packet(p) => Self::Ipv4(p),
+            IpPacket::Ipv6Packet(p) => Self::Ipv6(p),
+        }
+    }
+}
+
+impl<'a> From<snownet::MutableIpPacket<'a>> for MutableIpPacket<'a> {
+    fn from(value: snownet::MutableIpPacket<'a>) -> Self {
+        match value {
+            snownet::MutableIpPacket::Ipv4(p) => Self::MutableIpv4Packet(p),
+            snownet::MutableIpPacket::Ipv6(p) => Self::MutableIpv6Packet(p),
+        }
+    }
 }
 
 impl<'a> IpPacket<'a> {
@@ -213,13 +234,6 @@ impl<'a> IpPacket<'a> {
     pub(crate) fn to_owned(&self) -> IpPacket<'static> {
         // This should never fail as the provided buffer is a vec (unless oom)
         IpPacket::owned(self.packet().to_vec()).unwrap()
-    }
-
-    pub(crate) fn version(&self) -> Version {
-        match self {
-            IpPacket::Ipv4Packet(_) => Version::Ipv4,
-            IpPacket::Ipv6Packet(_) => Version::Ipv6,
-        }
     }
 
     pub(crate) fn is_icmpv6(&self) -> bool {

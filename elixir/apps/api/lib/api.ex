@@ -1,5 +1,5 @@
 defmodule API do
-  def static_paths, do: ~w(assets fonts images favicon.ico robots.txt)
+  def static_paths, do: ~w(assets fonts images robots.txt)
 
   def router do
     quote do
@@ -18,8 +18,7 @@ defmodule API do
   def controller do
     quote do
       use Phoenix.Controller,
-        formats: [:html, :json],
-        layouts: [html: API.Layouts]
+        formats: [:json]
 
       import Plug.Conn
 

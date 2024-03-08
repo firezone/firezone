@@ -73,7 +73,7 @@ impl<CB: Callbacks> Callbacks for CallbackErrorFacade<CB> {
         result
     }
 
-    fn on_disconnect(&self, error: Option<&Error>) -> Result<()> {
+    fn on_disconnect(&self, error: &Error) -> Result<()> {
         if let Err(err) = self.0.on_disconnect(error) {
             tracing::error!(?err, "`on_disconnect` failed");
         }
@@ -91,5 +91,12 @@ impl<CB: Callbacks> Callbacks for CallbackErrorFacade<CB> {
         self.0
             .get_system_default_resolvers()
             .map_err(|err| Error::GetSystemDefaultResolverFailed(err.to_string()))
+    }
+
+    #[cfg(target_os = "android")]
+    fn protect_file_descriptor(&self, file_descriptor: std::os::fd::RawFd) -> Result<()> {
+        self.0
+            .protect_file_descriptor(file_descriptor)
+            .map_err(|err| Error::ProtectFileDescriptorFailed(err.to_string()))
     }
 }

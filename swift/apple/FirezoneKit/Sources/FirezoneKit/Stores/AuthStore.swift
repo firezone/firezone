@@ -1,6 +1,6 @@
 //
 //  AuthStore.swift
-//  (c) 2023 Firezone, Inc.
+//  (c) 2024 Firezone, Inc.
 //  LICENSE: Apache-2.0
 //
 
@@ -9,6 +9,10 @@ import Dependencies
 import Foundation
 import NetworkExtension
 import OSLog
+
+#if os(macOS)
+  import AppKit
+#endif
 
 @MainActor
 public final class AuthStore: ObservableObject {
@@ -202,6 +206,13 @@ public final class AuthStore: ObservableObject {
         Task {
           await self.signOut()
         }
+        #if os(macOS)
+          SessionNotificationHelper.showSignedOutAlertmacOS(logger: self.logger, authStore: self)
+        #endif
+      case .signoutImmediatelySilently:
+        Task {
+          await self.signOut()
+        }
       case .retryThenSignout:
         self.retryStartTunnel()
       case .doNothing:
@@ -230,6 +241,9 @@ public final class AuthStore: ObservableObject {
       Task {
         await self.signOut()
       }
+      #if os(macOS)
+        SessionNotificationHelper.showSignedOutAlertmacOS(logger: self.logger, authStore: self)
+      #endif
     }
   }
 

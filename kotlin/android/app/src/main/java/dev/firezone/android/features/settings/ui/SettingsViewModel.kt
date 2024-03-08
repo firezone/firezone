@@ -1,4 +1,4 @@
-/* Licensed under Apache 2.0 (C) 2023 Firezone, Inc. */
+/* Licensed under Apache 2.0 (C) 2024 Firezone, Inc. */
 package dev.firezone.android.features.settings.ui
 
 import android.content.Context
@@ -61,8 +61,6 @@ internal class SettingsViewModel
             val directory = File(context.cacheDir.absolutePath + "/logs")
             val totalSize = directory.walkTopDown().filter { it.isFile }.map { it.length() }.sum()
 
-            deleteLogZip(context)
-
             _uiState.value =
                 _uiState.value.copy(
                     logSizeBytes = totalSize,
@@ -114,11 +112,11 @@ internal class SettingsViewModel
             viewModelScope.launch {
                 val logDir = context.cacheDir.absolutePath + "/logs"
                 val sourceFolder = File(logDir)
-                val zipFile = File("$logDir/connlib-logs.zip")
+                val zipFile = File(getLogZipPath(context))
 
                 zipFolder(sourceFolder, zipFile).collect()
 
-                val shareIntent =
+                val sendIntent =
                     Intent(Intent.ACTION_SEND).apply {
                         putExtra(
                             Intent.EXTRA_SUBJECT,
@@ -142,6 +140,7 @@ internal class SettingsViewModel
                         flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
                         data = fileURI
                     }
+                val shareIntent = Intent.createChooser(sendIntent, null)
                 context.startActivity(shareIntent)
             }
         }
@@ -159,6 +158,13 @@ internal class SettingsViewModel
                     logFilter,
                 ),
             )
+        }
+
+        fun deleteLogZip(context: Context) {
+            val zipFile = File(getLogZipPath(context))
+            if (zipFile.exists()) {
+                zipFile.delete()
+            }
         }
 
         private suspend fun zipFolder(
@@ -185,13 +191,7 @@ internal class SettingsViewModel
             emit(Result.failure(e))
         }.flowOn(Dispatchers.IO)
 
-        private fun deleteLogZip(context: Context) {
-            val logDir = context.cacheDir.absolutePath + "/logs"
-            val zipFile = File("$logDir/connlib-logs.zip")
-            if (zipFile.exists()) {
-                zipFile.delete()
-            }
-        }
+        private fun getLogZipPath(context: Context) = "${context.cacheDir.absolutePath}/logs.zip"
 
         private fun onFieldUpdated() {
             _uiState.value =

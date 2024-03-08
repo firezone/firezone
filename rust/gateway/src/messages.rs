@@ -8,19 +8,23 @@ use connlib_shared::{
 };
 use serde::{Deserialize, Serialize};
 use std::net::IpAddr;
-use webrtc::ice_transport::ice_candidate::RTCIceCandidate;
 
 // TODO: Should this have a resource?
 #[derive(Debug, PartialEq, Eq, Deserialize, Serialize, Clone)]
 pub struct InitGateway {
     pub interface: Interface,
-    pub ipv4_masquerade_enabled: bool,
-    pub ipv6_masquerade_enabled: bool,
+    pub config: Config,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct Actor {
     pub id: ActorId,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+pub struct Config {
+    pub ipv4_masquerade_enabled: bool,
+    pub ipv6_masquerade_enabled: bool,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -87,15 +91,20 @@ pub struct AllowAccess {
     pub reference: String,
 }
 
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+pub struct RejectAccess {
+    pub client_id: ClientId,
+    pub resource_id: ResourceId,
+}
+
 // These messages are the messages that can be received
 // either by a client or a gateway by the client.
 #[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "snake_case", tag = "event", content = "payload")]
-// TODO: We will need to re-visit webrtc-rs
-#[allow(clippy::large_enum_variant)]
 pub enum IngressMessages {
     RequestConnection(RequestConnection),
     AllowAccess(AllowAccess),
+    RejectAccess(RejectAccess),
     IceCandidates(ClientIceCandidates),
     Init(InitGateway),
 }
@@ -106,7 +115,7 @@ pub struct BroadcastClientIceCandidates {
     /// Client's id the ice candidates are meant for
     pub client_ids: Vec<ClientId>,
     /// Actual RTC ice candidates
-    pub candidates: Vec<RTCIceCandidate>,
+    pub candidates: Vec<String>,
 }
 
 /// A client's ice candidate message.
@@ -115,15 +124,13 @@ pub struct ClientIceCandidates {
     /// Client's id the ice candidates came from
     pub client_id: ClientId,
     /// Actual RTC ice candidates
-    pub candidates: Vec<RTCIceCandidate>,
+    pub candidates: Vec<String>,
 }
 
 // These messages can be sent from a gateway
 // to a control pane.
 #[derive(Debug, Deserialize, Serialize, Clone)]
 #[serde(rename_all = "snake_case", tag = "event", content = "payload")]
-// TODO: We will need to re-visit webrtc-rs
-#[allow(clippy::large_enum_variant)]
 pub enum EgressMessages {
     ConnectionReady(ConnectionReady),
     Metrics(Metrics),
@@ -139,10 +146,9 @@ pub struct ConnectionReady {
 
 #[cfg(test)]
 mod test {
-    use connlib_shared::{control::PhoenixMessage, messages::Interface};
+    use super::*;
+    use connlib_shared::control::PhoenixMessage;
     use phoenix_channel::InitMessage;
-
-    use super::{IngressMessages, InitGateway};
 
     #[test]
     fn request_connection_message() {
@@ -162,9 +168,8 @@ mod test {
                     },
                     "payload": {
                         "ice_parameters": {
-                            "ice_lite":false,
-                            "password": "xEwoXEzHuSyrcgOCSRnwOXQVnbnbeGeF",
-                            "username_fragment": "PvCPFevCOgkvVCtH"
+                            "username": "PvCPFevCOgkvVCtH",
+                            "password": "xEwoXEzHuSyrcgOCSRnwOXQVnbnbeGeF"
                         }
                     }
                 },
@@ -182,13 +187,13 @@ mod test {
                 "relays": [
                     {
                         "type": "stun",
-                        "uri": "stun:172.28.0.101:3478"
+                        "addr": "172.28.0.101:3478"
                     },
                     {
                         "type": "turn",
                         "username": "1719367575:ZQHcVGkdnfgGmcP1",
                         "password": "ZWYiBeFHOJyYq0mcwAXjRpcuXIJJpzWlOXVdxwttrWg",
-                        "uri": "turn:172.28.0.101:3478",
+                        "addr": "172.28.0.101:3478",
                         "expires_at": 1719367575
                     }
                 ]
@@ -205,11 +210,13 @@ mod test {
                 ipv6: "fd00:2021:1111::2c:f6ab".parse().unwrap(),
                 upstream_dns: vec![],
             },
-            ipv4_masquerade_enabled: true,
-            ipv6_masquerade_enabled: true,
+            config: Config {
+                ipv4_masquerade_enabled: true,
+                ipv6_masquerade_enabled: true,
+            },
         });
 
-        let message = r#"{"event":"init","ref":null,"topic":"gateway","payload":{"interface":{"ipv6":"fd00:2021:1111::2c:f6ab","ipv4":"100.115.164.78"},"ipv4_masquerade_enabled":true,"ipv6_masquerade_enabled":true}}"#;
+        let message = r#"{"event":"init","ref":null,"topic":"gateway","payload":{"interface":{"ipv6":"fd00:2021:1111::2c:f6ab","ipv4":"100.115.164.78"},"config":{"ipv4_masquerade_enabled":true,"ipv6_masquerade_enabled":true}}}"#;
         let ingress_message = serde_json::from_str::<InitMessage<InitGateway>>(message).unwrap();
         assert_eq!(m, ingress_message);
     }

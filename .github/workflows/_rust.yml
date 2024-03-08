@@ -16,11 +16,6 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runs-on:
-          # We only need to run static analysis checks per OS family
-          - ubuntu-22.04
-          - macos-14
-          - windows-2022
         # TODO: https://github.com/rust-lang/cargo/issues/5220
         include:
           - runs-on: ubuntu-22.04
@@ -28,11 +23,12 @@ jobs:
           - runs-on: macos-14
             packages: -p connlib-client-apple -p snownet
           - runs-on: windows-2022
-            packages: -p connlib-client-shared -p firezone-windows-client -p snownet
+            packages: -p connlib-client-shared -p firezone-gui-client -p snownet
     runs-on: ${{ matrix.runs-on }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-rust
+      - uses: ./.github/actions/setup-tauri
       - run: cargo fmt -- --check
       - run: |
           cargo doc --all-features --no-deps --document-private-items ${{ matrix.packages }}
@@ -49,9 +45,9 @@ jobs:
         # TODO: https://github.com/rust-lang/cargo/issues/5220
         include:
           - runs-on: ubuntu-20.04
-            packages: -p firezone-linux-client -p firezone-gateway -p connlib-client-android -p snownet
+            packages: --workspace
           - runs-on: ubuntu-22.04
-            packages: -p firezone-linux-client -p firezone-gateway -p connlib-client-android -p snownet
+            packages: --workspace
           - runs-on: macos-12
             packages: -p connlib-client-apple -p snownet
           - runs-on: macos-13
@@ -59,23 +55,33 @@ jobs:
           - runs-on: macos-14
             packages: -p connlib-client-apple -p snownet
           - runs-on: windows-2019
-            packages: -p firezone-windows-client -p connlib-client-shared -p snownet
+            packages: -p firezone-gui-client -p connlib-client-shared -p snownet
           - runs-on: windows-2022
-            packages: -p firezone-windows-client -p connlib-client-shared -p snownet
+            packages: -p firezone-gui-client -p connlib-client-shared -p snownet
     runs-on: ${{ matrix.runs-on }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-rust
+      - uses: ./.github/actions/setup-tauri
       - run: cargo test --all-features ${{ matrix.packages }}
 
   # Runs the Windows client smoke test, built in debug mode. We can't run it in release
   # mode because of a known issue: <https://github.com/firezone/firezone/blob/456e044f882c2bb314e19cc44c0d19c5ad817b7c/rust/windows-client/src-tauri/src/client.rs#L162-L164>
-  windows-smoke-test:
-    name: windows-smoke-test
-    runs-on: windows-2019
+  gui-smoke-test:
+    name: gui-smoke-test-${{ matrix.runs-on }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runs-on: ubuntu-20.04
+          # Broken on 22.04 <https://github.com/firezone/firezone/issues/3699>
+          #- runs-on: ubuntu-22.04
+          - runs-on: windows-2019
+          - runs-on: windows-2022
+    runs-on: ${{ matrix.runs-on }}
     defaults:
       run:
-        working-directory: ./rust/windows-client
+        working-directory: ./rust/gui-client
     env:
       CONNLIB_LOG_UPLOAD_INTERVAL_SECS: 300
       # The Windows client ignores RUST_LOG because it uses a settings file instead
@@ -86,18 +92,8 @@ jobs:
           node-version: '20'
       - uses: ./.github/actions/setup-rust
         with:
-          targets: x86_64-pc-windows-msvc
-        # This is the "Evergreen" bootstrapper from Microsoft
-        # <https://developer.microsoft.com/en-us/microsoft-edge/webview2/?form=MA13LH#download>
-        # Unfortunately, this makes the test non-deterministic.
-        # Controlling the version would be difficult.
-      - name: Download WebView2 bootstrapper
-        run: Invoke-WebRequest -Uri https://go.microsoft.com/fwlink/p/?LinkId=2124703 -OutFile WebView2Installer.exe
-        # This downloads about 200 MB and takes about 5 minutes on my VM
-        # So we could fault in WebView2 from the client exe without the MSI if we needed.
-        # Currently the MSI does this and it's a little janky.
-      - name: Install WebView2
-        run: Start-Process WebView2Installer.exe -ArgumentList "/install" -Wait
+          cache_backend: github
+      - uses: ./.github/actions/setup-tauri
       - name: pnpm install
         run: |
           pnpm install
@@ -107,30 +103,33 @@ jobs:
       - name: Compile Tailwind
         run: pnpm tailwindcss -i src/input.css -o src/output.css
       - name: Build client
-        run: cargo build -p firezone-windows-client
-      - name: Run smoke test
-        run: cargo run -p firezone-windows-client -- smoke-test
-      - name: Test that the crash handler produces a crash dump
-        run: bash scripts/crash-handling-smoke-test.bash
+        run: cargo build -p firezone-gui-client
+      - name: Run smoke tests (Linux)
+        if: ${{ runner.os == 'Linux' }}
+        run: bash ../../scripts/tests/smoke-test-gui-linux.sh
+      - name: Run smoke tests (Windows)
+        if: ${{ runner.os == 'Windows' }}
+        run: bash ../../scripts/tests/smoke-test-gui-windows.sh
 
   # This should be identical to `build-push-windows-release-artifacts` in `cd.yml` except for the Github permissions, needs tag, and uploading step
-  build-tauri:
-    name: build-tauri-${{ matrix.name }}
-    runs-on: windows-2019
+  build-gui:
+    name: build-gui-${{ matrix.runs-on }}
+    runs-on: ${{ matrix.runs-on }}
     defaults:
       run:
-        working-directory: ./rust/windows-client
+        working-directory: ./rust/gui-client
     strategy:
       fail-fast: false
-      # The matrix is 1x1 to match the style of build-push-linux-release-artifacts
-      # In the future we could try to cross-compile aarch64-windows here.
       matrix:
         include:
-          - package: firezone-windows-client
-            artifact: firezone-windows-client
-            name: windows-client
+          - runs-on: ubuntu-20.04
+            binary-dest-path: firezone-linux-gui-client
+            rename-script: ../../scripts/build/tauri-rename-ubuntu.sh
+          - runs-on: windows-2019
+            binary-dest-path: firezone-windows-client
+            rename-script: ../../scripts/build/tauri-rename-windows.sh
     env:
-      BINARY_DEST_PATH: ${{ matrix.artifact }}
+      BINARY_DEST_PATH: ${{ matrix.binary-dest-path }}
       CONNLIB_LOG_UPLOAD_INTERVAL_SECS: 300
     steps:
       - uses: actions/checkout@v4
@@ -139,54 +138,42 @@ jobs:
           node-version: '20'
       - uses: ./.github/actions/setup-rust
         with:
-          targets: x86_64-pc-windows-msvc
+          cache_backend: github
+      - uses: ./.github/actions/setup-tauri
       - name: Install pnpm deps
         run: pnpm install
       - name: Build release exe and MSI
         run: pnpm build
-      - name: Compute SHA256 and rename
-        run: |
-          # Used for release artifact
-          # In release mode the name comes from tauri.conf.json
-          cp "../target/release/Firezone.exe" "${{ env.BINARY_DEST_PATH }}-x64.exe"
-          cp "../target/release/bundle/msi/*.msi" "${{ env.BINARY_DEST_PATH }}-x64.msi"
-          cp "../target/release/firezone_windows_client.pdb" "${{ env.BINARY_DEST_PATH }}-x64.pdb"
-
-          Get-FileHash ${{ env.BINARY_DEST_PATH }}-x64.exe -Algorithm SHA256 | Select-Object Hash > ${{ env.BINARY_DEST_PATH }}-x64.exe.sha256sum.txt
-          Get-FileHash ${{ env.BINARY_DEST_PATH }}-x64.msi -Algorithm SHA256 | Select-Object Hash > ${{ env.BINARY_DEST_PATH }}-x64.msi.sha256sum.txt
-          Get-FileHash ${{ env.BINARY_DEST_PATH }}-x64.pdb -Algorithm SHA256 | Select-Object Hash > ${{ env.BINARY_DEST_PATH }}-x64.pdb.sha256sum.txt
-
-          # This might catch regressions in #3384, depending how CI runners
-          # handle exit codes
-          git diff --exit-code
+      - name: Rename artifacts and compute SHA256
+        shell: bash
+        run: ${{ matrix.rename-script }}
+      - name: Save Linux client
+        if: ${{ runner.os == 'Linux' }}
+        uses: ./.github/actions/upload-gui-artifact
+        with:
+          base: ${{ env.BINARY_DEST_PATH }}-amd64
+      - name: Save Linux AppImage
+        if: ${{ runner.os == 'Linux' }}
+        uses: ./.github/actions/upload-gui-artifact
+        with:
+          base: ${{ env.BINARY_DEST_PATH }}_amd64.AppImage
+      - name: Save Linux deb package
+        if: ${{ runner.os == 'Linux' }}
+        uses: ./.github/actions/upload-gui-artifact
+        with:
+          base: ${{ env.BINARY_DEST_PATH }}_amd64.deb
       - name: Save Windows client
-        uses: actions/upload-artifact@v4
+        if: ${{ runner.os == 'Windows' }}
+        uses: ./.github/actions/upload-gui-artifact
         with:
-          name: ${{ matrix.artifact }}-x64
-          path: |
-            ${{ github.workspace }}/rust/windows-client/${{ matrix.artifact }}-x64.exe
-            ${{ github.workspace }}/rust/windows-client/${{ matrix.artifact }}-x64.exe.sha256sum.txt
-      - name: Save Windows installer
-        uses: actions/upload-artifact@v4
+          base: ${{ env.BINARY_DEST_PATH }}-x64.exe
+      - name: Save Windows MSI installer
+        if: ${{ runner.os == 'Windows' }}
+        uses: ./.github/actions/upload-gui-artifact
         with:
-          name: ${{ matrix.artifact }}-x64-msi
-          path: |
-            ${{ github.workspace }}/rust/windows-client/${{ matrix.artifact }}-x64.msi
-            ${{ github.workspace }}/rust/windows-client/${{ matrix.artifact }}-x64.msi.sha256sum.txt
+          base: ${{ env.BINARY_DEST_PATH }}-x64.msi
       - name: Save Windows debug symbols
-        uses: actions/upload-artifact@v4
+        if: ${{ runner.os == 'Windows' }}
+        uses: ./.github/actions/upload-gui-artifact
         with:
-          name: ${{ matrix.artifact }}-x64-pdb
-          path: |
-            ${{ github.workspace }}/rust/windows-client/${{ matrix.artifact }}-x64.pdb
-            ${{ github.workspace }}/rust/windows-client/${{ matrix.artifact }}-x64.pdb.sha256sum.txt
-
-  smoke-test-relay:
-    runs-on: ubuntu-22.04
-    defaults:
-      run:
-        working-directory: ./rust/relay
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/setup-rust
-      - run: ./run_smoke_test.sh
+          base: ${{ env.BINARY_DEST_PATH }}-x64.pdb

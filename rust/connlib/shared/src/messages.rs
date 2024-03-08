@@ -9,7 +9,6 @@ use ip_network::IpNetwork;
 use serde::{Deserialize, Serialize};
 use std::{fmt, str::FromStr};
 use uuid::Uuid;
-use webrtc::ice_transport::ice_parameters::RTCIceParameters;
 
 mod key;
 
@@ -21,6 +20,12 @@ use crate::Dname;
 pub struct GatewayId(Uuid);
 #[derive(Hash, Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ResourceId(Uuid);
+
+impl ResourceId {
+    pub fn random() -> ResourceId {
+        ResourceId(Uuid::new_v4())
+    }
+}
 #[derive(Hash, Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq)]
 pub struct ClientId(Uuid);
 #[derive(Hash, Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq)]
@@ -75,6 +80,12 @@ pub struct Peer {
     pub preshared_key: SecretKey,
 }
 
+impl Peer {
+    pub fn ips(&self) -> Vec<IpNetwork> {
+        vec![self.ipv4.into(), self.ipv6.into()]
+    }
+}
+
 impl PartialEq for Peer {
     fn eq(&self, other: &Self) -> bool {
         self.persistent_keepalive.eq(&other.persistent_keepalive)
@@ -100,9 +111,9 @@ pub struct RequestConnection {
     pub client_payload: ClientPayload,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct ClientPayload {
-    pub ice_parameters: RTCIceParameters,
+    pub ice_parameters: Offer,
     pub domain: Option<Dname>,
 }
 
@@ -136,15 +147,39 @@ pub enum ResourceDescription<TDNS = ResourceDescriptionDns> {
     Cidr(ResourceDescriptionCidr),
 }
 
+impl PartialOrd for ResourceDescription {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for ResourceDescription {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        (self.name(), self.id()).cmp(&(other.name(), other.id()))
+    }
+}
+
 #[derive(Debug, Deserialize, Serialize, Clone, Hash, PartialEq, Eq)]
 pub struct DomainResponse {
     pub domain: Dname,
     pub address: Vec<IpAddr>,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Answer {
+    pub username: String,
+    pub password: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Offer {
+    pub username: String,
+    pub password: String,
+}
+
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct ConnectionAccepted {
-    pub ice_parameters: RTCIceParameters,
+    pub ice_parameters: Answer,
     pub domain_response: Option<DomainResponse>,
 }
 
@@ -200,6 +235,18 @@ impl ResourceDescription {
         match self {
             ResourceDescription::Dns(r) => Cow::from(&r.address),
             ResourceDescription::Cidr(r) => Cow::from(r.address.to_string()),
+        }
+    }
+
+    pub fn has_different_address(&self, other: &ResourceDescription) -> bool {
+        match (self, other) {
+            (ResourceDescription::Dns(dns_a), ResourceDescription::Dns(dns_b)) => {
+                dns_a.address != dns_b.address
+            }
+            (ResourceDescription::Cidr(cidr_a), ResourceDescription::Cidr(cidr_b)) => {
+                cidr_a.address != cidr_b.address
+            }
+            _ => true,
         }
     }
 }
@@ -285,8 +332,8 @@ pub struct Turn {
     //// Expire time of the username/password in unix millisecond timestamp UTC
     #[serde(with = "ts_seconds")]
     pub expires_at: DateTime<Utc>,
-    /// URI of the relay
-    pub uri: String,
+    /// Address of the relay
+    pub addr: SocketAddr,
     /// Username for the relay
     pub username: String,
     // TODO: SecretString
@@ -297,6 +344,73 @@ pub struct Turn {
 /// Stun kind of relay
 #[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
 pub struct Stun {
-    /// URI for the relay
-    pub uri: String,
+    /// Address for the relay
+    pub addr: SocketAddr,
+}
+
+#[cfg(test)]
+mod tests {
+    use std::str::FromStr;
+
+    use itertools::Itertools;
+
+    use super::{ResourceDescription, ResourceDescriptionDns, ResourceId};
+
+    fn fake_resource(name: &str, uuid: &str) -> ResourceDescription {
+        ResourceDescription::Dns(ResourceDescriptionDns {
+            id: ResourceId::from_str(uuid).unwrap(),
+            name: name.to_string(),
+            address: "unused.example.com".to_string(),
+        })
+    }
+
+    #[test]
+    fn sort_resources_normal() {
+        let cloudflare = fake_resource("Cloudflare DNS", "2efe9c25-bd92-49a0-99d7-8b92da014dd5");
+        let example = fake_resource("Example", "613eaf56-6efa-45e5-88aa-ea4ad64d8c18");
+        let fast = fake_resource("Fast.com", "624b7154-08f6-4c9e-bac0-c3a587fc9322");
+        let metabase_1 = fake_resource("Metabase", "98ee1682-8192-4f15-b4a6-03178dfa7f95");
+        let metabase_2 = fake_resource("Metabase", "e431d1b8-afc2-4f93-95c2-0d15413f5422");
+        let ifconfig = fake_resource("ifconfig.net", "6b7188f5-00ac-41dc-9ddd-57e2384f31ef");
+        let ten = fake_resource("10", "9d1907cc-0693-4063-b388-4d29524e2514");
+        let nine = fake_resource("9", "a7b66f28-9cd1-40fc-bdc4-4763ed92ea41");
+        let emoji = fake_resource("🫠", "7d08cfca-8737-4c5e-a88e-e92574657217");
+
+        let resource_descriptions = vec![
+            nine.clone(),
+            ten.clone(),
+            fast.clone(),
+            ifconfig.clone(),
+            emoji.clone(),
+            example.clone(),
+            cloudflare.clone(),
+            metabase_2.clone(),
+            metabase_1.clone(),
+        ];
+
+        let expected = vec![
+            // Numbers first
+            // Numbers are sorted byte-wise, if they don't use leading zeroes
+            // they won't be in numeric order
+            ten.clone(),
+            nine.clone(),
+            // Then uppercase, in alphabetical order
+            cloudflare.clone(),
+            example.clone(),
+            fast.clone(),
+            // UUIDs tie-break if the names are identical
+            metabase_1.clone(),
+            metabase_2.clone(),
+            // Lowercase comes after all uppercase are done
+            ifconfig.clone(),
+            // Emojis start with a leading '1' bit, so they come after all
+            // [Basic Latin](https://en.wikipedia.org/wiki/Basic_Latin_\(Unicode_block\)) chars
+            emoji.clone(),
+        ];
+
+        assert_eq!(
+            resource_descriptions.into_iter().sorted().collect_vec(),
+            expected
+        );
+    }
 }

@@ -316,6 +316,7 @@ resource "google_monitoring_alert_policy" "genservers_crash_policy" {
       filter = <<-EOT
       resource.type="gce_instance"
       severity>=ERROR
+      -"invalid ssh key entry - expired key"
       EOT
     }
   }

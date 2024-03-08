@@ -3,10 +3,11 @@
 mkdir -p /var/firezone
 
 setup_telemetry() {
-  [ -f /var/firezone/.tid ] || cat /proc/sys/kernel/random/uuid > /var/firezone/.tid
-  export TELEMETRY_ID=$(cat /var/firezone/.tid)
+    [ -f /var/firezone/.tid ] || cat /proc/sys/kernel/random/uuid >/var/firezone/.tid
+    tid=$(cat /var/firezone/.tid)
+    export TELEMETRY_ID="$tid"
 }
 
 setup_telemetry
 
-cd -P -- "$(dirname -- "$0")"
+cd -P -- "$(dirname -- "$0")" || exit 1

@@ -2,7 +2,7 @@ defmodule API.Client.Channel do
   use API, :channel
   alias API.Client.Views
   alias Domain.Instrumentation
-  alias Domain.{Config, Clients, Actors, Resources, Gateways, Relays, Policies, Flows}
+  alias Domain.{Accounts, Clients, Actors, Resources, Gateways, Relays, Policies, Flows}
   require Logger
   require OpenTelemetry.Tracer
 
@@ -39,7 +39,7 @@ defmodule API.Client.Channel do
       Process.send_after(self(), :token_expired, expires_in)
       {:ok, socket}
     else
-      {:error, %{"reason" => "token_expired"}}
+      {:error, %{reason: :token_expired}}
     end
   end
 
@@ -51,8 +51,8 @@ defmodule API.Client.Channel do
     OpenTelemetry.Tracer.with_span "client.after_join" do
       :ok = Clients.connect_client(socket.assigns.client)
 
-      # Subscribe for config updates
-      :ok = Config.subscribe_to_events_in_account(socket.assigns.client.account_id)
+      # Subscribe for account config updates
+      :ok = Accounts.subscribe_to_events_in_account(socket.assigns.client.account_id)
 
       {:ok, resources} =
         Resources.list_authorized_resources(socket.assigns.subject,
@@ -76,7 +76,11 @@ defmodule API.Client.Channel do
       :ok =
         push(socket, "init", %{
           resources: Views.Resource.render_many(resources),
-          interface: Views.Interface.render(socket.assigns.client)
+          interface:
+            Views.Interface.render(%{
+              socket.assigns.client
+              | account: socket.assigns.subject.account
+            })
         })
 
       {:noreply, socket}
@@ -86,7 +90,11 @@ defmodule API.Client.Channel do
   def handle_info(:config_changed, socket) do
     :ok =
       push(socket, "config_changed", %{
-        interface: Views.Interface.render(socket.assigns.client)
+        interface:
+          Views.Interface.render(%{
+            socket.assigns.client
+            | account: socket.assigns.subject.account
+          })
       })
 
     {:noreply, socket}
@@ -99,7 +107,7 @@ defmodule API.Client.Channel do
     OpenTelemetry.Tracer.set_current_span(socket.assigns.opentelemetry_span_ctx)
 
     OpenTelemetry.Tracer.with_span "client.token_expired" do
-      push(socket, "disconnect", %{"reason" => "token_expired"})
+      push(socket, "disconnect", %{reason: :token_expired})
       {:stop, {:shutdown, :token_expired}, socket}
     end
   end
@@ -107,7 +115,7 @@ defmodule API.Client.Channel do
   # This message is sent using Clients.broadcast_to_client/1 eg. when the client is deleted
   def handle_info("disconnect", socket) do
     OpenTelemetry.Tracer.with_span "client.disconnect" do
-      push(socket, "disconnect", %{"reason" => "token_expired"})
+      push(socket, "disconnect", %{reason: :token_expired})
       send(socket.transport_pid, %Phoenix.Socket.Broadcast{event: "disconnect"})
       {:stop, :shutdown, socket}
     end
@@ -277,7 +285,7 @@ defmodule API.Client.Channel do
     OpenTelemetry.Tracer.with_span "client.create_log_sink" do
       case Instrumentation.create_remote_log_sink(socket.assigns.client, actor_name, account_slug) do
         {:ok, signed_url} -> {:reply, {:ok, signed_url}, socket}
-        {:error, :disabled} -> {:reply, {:error, :disabled}, socket}
+        {:error, :disabled} -> {:reply, {:error, %{reason: :disabled}}, socket}
       end
     end
   end
@@ -335,11 +343,11 @@ defmodule API.Client.Channel do
       else
         {:ok, []} ->
           OpenTelemetry.Tracer.set_status(:error, "offline")
-          {:reply, {:error, :offline}, socket}
+          {:reply, {:error, %{reason: :offline}}, socket}
 
         {:error, :not_found} ->
           OpenTelemetry.Tracer.set_status(:error, "not_found")
-          {:reply, {:error, :not_found}, socket}
+          {:reply, {:error, %{reason: :not_found}}, socket}
       end
     end
   end
@@ -388,11 +396,11 @@ defmodule API.Client.Channel do
       else
         {:error, :not_found} ->
           OpenTelemetry.Tracer.set_status(:error, "not_found")
-          {:reply, {:error, :not_found}, socket}
+          {:reply, {:error, %{reason: :not_found}}, socket}
 
         false ->
           OpenTelemetry.Tracer.set_status(:error, "offline")
-          {:reply, {:error, :offline}, socket}
+          {:reply, {:error, %{reason: :offline}}, socket}
       end
     end
   end
@@ -444,11 +452,11 @@ defmodule API.Client.Channel do
       else
         {:error, :not_found} ->
           OpenTelemetry.Tracer.set_status(:error, "not_found")
-          {:reply, {:error, :not_found}, socket}
+          {:reply, {:error, %{reason: :not_found}}, socket}
 
         false ->
           OpenTelemetry.Tracer.set_status(:error, "offline")
-          {:reply, {:error, :offline}, socket}
+          {:reply, {:error, %{reason: :offline}}, socket}
       end
     end
   end

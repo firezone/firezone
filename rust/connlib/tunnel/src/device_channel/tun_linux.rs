@@ -1,19 +1,23 @@
 use crate::device_channel::ioctl;
+use crate::FIREZONE_MARK;
 use connlib_shared::{
-    linux::DnsControlMethod, messages::Interface as InterfaceConfig, Callbacks, Error, Result,
+    linux::{etc_resolv_conf, DnsControlMethod},
+    messages::Interface as InterfaceConfig,
+    Callbacks, Error, Result,
 };
 use futures::TryStreamExt;
 use futures_util::future::BoxFuture;
 use futures_util::FutureExt;
-use ip_network::IpNetwork;
+use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use libc::{
     close, fcntl, makedev, mknod, open, F_GETFL, F_SETFL, IFF_MULTI_QUEUE, IFF_NO_PI, IFF_TUN,
     O_NONBLOCK, O_RDWR, S_IFCHR,
 };
-use netlink_packet_route::RT_SCOPE_UNIVERSE;
-use parking_lot::Mutex;
+use netlink_packet_route::route::{RouteProtocol, RouteScope};
+use netlink_packet_route::rule::RuleAction;
 use rtnetlink::{new_connection, Error::NetlinkError, Handle};
-use std::net::IpAddr;
+use rtnetlink::{RouteAddRequest, RuleAddRequest};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::path::Path;
 use std::task::{Context, Poll};
 use std::{
@@ -26,7 +30,6 @@ use std::{
 };
 use tokio::io::unix::AsyncFd;
 
-mod etc_resolv_conf;
 mod utils;
 
 pub(crate) const SIOCGIFMTU: libc::c_ulong = libc::SIOCGIFMTU;
@@ -35,9 +38,9 @@ const IFACE_NAME: &str = "tun-firezone";
 const TUNSETIFF: libc::c_ulong = 0x4004_54ca;
 const TUN_DEV_MAJOR: u32 = 10;
 const TUN_DEV_MINOR: u32 = 200;
-const RT_PROT_STATIC: u8 = 4;
 const DEFAULT_MTU: u32 = 1280;
 const FILE_ALREADY_EXISTS: i32 = -17;
+const FIREZONE_TABLE: u32 = 0x2021_fd00;
 
 // Safety: We know that this is a valid C string.
 const TUN_FILE: &CStr = unsafe { CStr::from_bytes_with_nul_unchecked(b"/dev/net/tun\0") };
@@ -47,7 +50,7 @@ pub struct Tun {
     connection: tokio::task::JoinHandle<()>,
     fd: AsyncFd<RawFd>,
 
-    worker: Mutex<Option<BoxFuture<'static, Result<()>>>>,
+    worker: Option<BoxFuture<'static, Result<()>>>,
 }
 
 impl fmt::Debug for Tun {
@@ -76,15 +79,14 @@ impl Tun {
         write(self.fd.as_raw_fd(), buf)
     }
 
-    pub fn poll_read(&self, buf: &mut [u8], cx: &mut Context<'_>) -> Poll<io::Result<usize>> {
-        let mut guard = self.worker.lock();
-        if let Some(worker) = guard.as_mut() {
+    pub fn poll_read(&mut self, buf: &mut [u8], cx: &mut Context<'_>) -> Poll<io::Result<usize>> {
+        if let Some(worker) = self.worker.as_mut() {
             match worker.poll_unpin(cx) {
                 Poll::Ready(Ok(())) => {
-                    *guard = None;
+                    self.worker = None;
                 }
                 Poll::Ready(Err(e)) => {
-                    *guard = None;
+                    self.worker = None;
                     return Poll::Ready(Err(io::Error::new(io::ErrorKind::Other, e)));
                 }
                 Poll::Pending => return Poll::Pending,
@@ -99,6 +101,8 @@ impl Tun {
         dns_config: Vec<IpAddr>,
         _: &impl Callbacks,
     ) -> Result<Self> {
+        tracing::debug!(?dns_config);
+
         // TODO: Tech debt: <https://github.com/firezone/firezone/issues/3636>
         // TODO: Gateways shouldn't set up DNS, right? Only clients?
         // TODO: Move this configuration up to the client
@@ -130,13 +134,13 @@ impl Tun {
             handle: handle.clone(),
             connection: join_handle,
             fd: AsyncFd::new(fd)?,
-            worker: Mutex::new(Some(
+            worker: Some(
                 set_iface_config(config.clone(), dns_config, handle, dns_control_method).boxed(),
-            )),
+            ),
         })
     }
 
-    pub fn add_route(&self, route: IpNetwork, _: &impl Callbacks) -> Result<Option<Self>> {
+    pub fn add_route(&mut self, route: IpNetwork, _: &impl Callbacks) -> Result<Option<Self>> {
         let handle = self.handle.clone();
 
         let add_route_worker = async move {
@@ -151,25 +155,9 @@ impl Tun {
                 .header
                 .index;
 
-            let req = handle
-                .route()
-                .add()
-                .output_interface(index)
-                .protocol(RT_PROT_STATIC)
-                .scope(RT_SCOPE_UNIVERSE);
             let res = match route {
-                IpNetwork::V4(ipnet) => {
-                    req.v4()
-                        .destination_prefix(ipnet.network_address(), ipnet.netmask())
-                        .execute()
-                        .await
-                }
-                IpNetwork::V6(ipnet) => {
-                    req.v6()
-                        .destination_prefix(ipnet.network_address(), ipnet.netmask())
-                        .execute()
-                        .await
-                }
+                IpNetwork::V4(ipnet) => make_route_v4(index, &handle, ipnet).execute().await,
+                IpNetwork::V6(ipnet) => make_route_v6(index, &handle, ipnet).execute().await,
             };
 
             match res {
@@ -184,11 +172,57 @@ impl Tun {
             }
         };
 
-        let mut guard = self.worker.lock();
-        match guard.take() {
-            None => *guard = Some(add_route_worker.boxed()),
+        match self.worker.take() {
+            None => self.worker = Some(add_route_worker.boxed()),
             Some(current_worker) => {
-                *guard = Some(
+                self.worker = Some(
+                    async move {
+                        current_worker.await?;
+                        add_route_worker.await?;
+
+                        Ok(())
+                    }
+                    .boxed(),
+                )
+            }
+        }
+
+        Ok(None)
+    }
+
+    pub fn remove_route(&mut self, route: IpNetwork, _: &impl Callbacks) -> Result<Option<Self>> {
+        let handle = self.handle.clone();
+
+        let add_route_worker = async move {
+            let index = handle
+                .link()
+                .get()
+                .match_name(IFACE_NAME.to_string())
+                .execute()
+                .try_next()
+                .await?
+                .ok_or(Error::NoIface)?
+                .header
+                .index;
+
+            let message = match route {
+                IpNetwork::V4(ipnet) => make_route_v4(index, &handle, ipnet).message_mut().clone(),
+                IpNetwork::V6(ipnet) => make_route_v6(index, &handle, ipnet).message_mut().clone(),
+            };
+
+            match handle.route().del(message).execute().await {
+                Ok(_) => Ok(()),
+                Err(err) => {
+                    tracing::error!(%route, "failed to add route: {err:#?}");
+                    Ok(())
+                }
+            }
+        };
+
+        match self.worker.take() {
+            None => self.worker = Some(add_route_worker.boxed()),
+            Some(current_worker) => {
+                self.worker = Some(
                     async move {
                         current_worker.await?;
                         add_route_worker.await?;
@@ -249,6 +283,33 @@ async fn set_iface_config(
         .await;
 
     handle.link().set(index).up().execute().await?;
+
+    if res_v4.is_ok() {
+        if let Err(e) = make_rule(&handle).v4().execute().await {
+            if !matches!(&e, NetlinkError(err) if err.raw_code() == FILE_ALREADY_EXISTS) {
+                tracing::warn!(
+                    "Couldn't add ip rule for ipv4: {e:?}, ipv4 packets won't be routed"
+                );
+            }
+            // TODO: Be smarter about this
+        } else {
+            tracing::debug!("Successfully created ip rule for ipv4");
+        }
+    }
+
+    if res_v6.is_ok() {
+        if let Err(e) = make_rule(&handle).v6().execute().await {
+            if !matches!(&e, NetlinkError(err) if err.raw_code() == FILE_ALREADY_EXISTS) {
+                tracing::warn!(
+                    "Couldn't add ip rule for ipv6: {e:?}, ipv6 packets won't be routed"
+                );
+            }
+            // TODO: Be smarter about this
+        } else {
+            tracing::debug!("Successfully created ip rule for ipv6");
+        }
+    }
+
     res_v4.or(res_v6)?;
 
     match dns_control_method {
@@ -273,6 +334,50 @@ async fn set_iface_config(
     }
 
     Ok(())
+}
+
+fn make_rule(handle: &Handle) -> RuleAddRequest {
+    let mut rule = handle
+        .rule()
+        .add()
+        .fw_mark(FIREZONE_MARK)
+        .table_id(FIREZONE_TABLE)
+        .action(RuleAction::ToTable);
+
+    rule.message_mut()
+        .header
+        .flags
+        .push(netlink_packet_route::rule::RuleFlag::Invert);
+
+    rule.message_mut()
+        .attributes
+        .push(netlink_packet_route::rule::RuleAttribute::Protocol(
+            RouteProtocol::Kernel,
+        ));
+
+    rule
+}
+
+fn make_route(idx: u32, handle: &Handle) -> RouteAddRequest {
+    handle
+        .route()
+        .add()
+        .output_interface(idx)
+        .protocol(RouteProtocol::Static)
+        .scope(RouteScope::Universe)
+        .table_id(FIREZONE_TABLE)
+}
+
+fn make_route_v4(idx: u32, handle: &Handle, route: Ipv4Network) -> RouteAddRequest<Ipv4Addr> {
+    make_route(idx, handle)
+        .v4()
+        .destination_prefix(route.network_address(), route.netmask())
+}
+
+fn make_route_v6(idx: u32, handle: &Handle, route: Ipv6Network) -> RouteAddRequest<Ipv6Addr> {
+    make_route(idx, handle)
+        .v6()
+        .destination_prefix(route.network_address(), route.netmask())
 }
 
 fn get_last_error() -> Error {
@@ -355,11 +460,32 @@ async fn configure_network_manager(_dns_config: &[IpAddr]) -> Result<()> {
     ))
 }
 
-async fn configure_systemd_resolved(_dns_config: &[IpAddr]) -> Result<()> {
-    // TODO: Call `resolvectl` here
-    Err(Error::Other(
-        "DNS control with `systemd-resolved` is not implemented yet",
-    ))
+async fn configure_systemd_resolved(dns_config: &[IpAddr]) -> Result<()> {
+    let status = tokio::process::Command::new("resolvectl")
+        .arg("dns")
+        .arg(IFACE_NAME)
+        .args(dns_config.iter().map(ToString::to_string))
+        .status()
+        .await
+        .map_err(|_| Error::ResolvectlFailed)?;
+    if !status.success() {
+        return Err(Error::ResolvectlFailed);
+    }
+
+    let status = tokio::process::Command::new("resolvectl")
+        .arg("domain")
+        .arg(IFACE_NAME)
+        .arg("~.")
+        .status()
+        .await
+        .map_err(|_| Error::ResolvectlFailed)?;
+    if !status.success() {
+        return Err(Error::ResolvectlFailed);
+    }
+
+    tracing::info!(?dns_config, "Configured DNS sentinels with `resolvectl`");
+
+    Ok(())
 }
 
 #[repr(C)]

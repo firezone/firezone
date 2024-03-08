@@ -12,7 +12,7 @@ members = [
   "snownet-tests",
   "phoenix-channel",
   "relay",
-  "windows-client/src-tauri",
+  "gui-client/src-tauri",
 ]
 
 resolver = "2"
@@ -25,20 +25,20 @@ backoff = { version = "0.4", features = ["tokio"] }
 tracing = { version = "0.1.40" }
 tracing-subscriber = { version = "0.3.17", features = ["parking_lot"] }
 secrecy = "0.8"
-hickory-resolver = { version = "0.24", features = ["tokio-runtime"] }
-webrtc = "0.9"
+hickory-resolver = { git = "https://github.com/hickory-dns/hickory-dns", rev="a3669bd80f3f7b97f0c301c15f1cba6368d97b63", features = ["tokio-runtime"] }
 str0m = { version = "0.4", default-features = false }
 futures-bounded = "0.2.1"
 domain = { version = "0.9", features = ["serde"] }
 dns-lookup = "2.0"
 tokio-tungstenite = "0.21"
+rtnetlink = { version = "0.14.1", default-features = false, features = ["tokio_socket"] }
 
 connlib-client-android = { path = "connlib/clients/android"}
 connlib-client-apple = { path = "connlib/clients/apple"}
 connlib-client-shared = { path = "connlib/clients/shared"}
 firezone-gateway = { path = "gateway"}
 firezone-linux-client = { path = "linux-client"}
-firezone-windows-client = { path = "windows-client/src-tauri"}
+firezone-gui-client = { path = "gui-client/src-tauri"}
 firezone-cli-utils = { path = "firezone-cli-utils"}
 snownet = { path = "connlib/snownet"}
 firezone-relay = { path = "relay"}
@@ -48,14 +48,17 @@ phoenix-channel = { path = "phoenix-channel"}
 
 [patch.crates-io]
 boringtun = { git = "https://github.com/cloudflare/boringtun", branch = "master" }
-webrtc = { git = "https://github.com/firezone/webrtc", branch = "expose-new-endpoint" }
-str0m = { git = "https://github.com/algesten/str0m", branch = "main" }
+str0m = { git = "https://github.com/firezone/str0m", branch = "reduce-ice-timeout" }
+
+[patch."https://github.com/quinn-rs/quinn"]
+# waiting for https://github.com/quinn-rs/quinn/pull/1758
+quinn-udp = { git = "https://github.com/conectado/quinn", branch = "main" }
 
 [profile.release]
 strip = true
 
 # Override build settings just for the Windows client, so we get a pdb
-[profile.release.package.firezone-windows-client]
+[profile.release.package.firezone-gui-client]
 # Generate debug symbols for the crash handler to use, even if the exe itself is optimized
 debug = "full"
 # Split out debug info from the exe. This is already default on Windows.

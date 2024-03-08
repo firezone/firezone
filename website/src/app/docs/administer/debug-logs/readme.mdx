@@ -2,12 +2,9 @@ import Alert from "@/components/DocsAlert";
 
 # Debug Logs
 
-<Alert
-  color="info"
-  html={`
-This article is written for Docker based deployments of Firezone.
-`}
-/>
+<Alert color="info">
+  This article is written for Docker based deployments of Firezone.
+</Alert>
 
 Docker deployments of Firezone consist of 3 running containers:
 
@@ -45,8 +42,7 @@ Examples of popular plugins, configurations, and use cases are:
 
 - Export container logs to your SIEM or observability platform (i.e.
   [Splunk](https://docs.docker.com/config/containers/logging/splunk) or
-  [Google Cloud Logging](https://docs.docker.com/config/containers/logging/gcplogs)
-  )
+  [Google Cloud Logging](https://docs.docker.com/config/containers/logging/gcplogs))
 - Enable log rotation and max file size.
 - [Customize log driver output](https://docs.docker.com/config/containers/logging/log_tags)
   with tags.

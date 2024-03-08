@@ -1,6 +1,6 @@
 //
 //  AppStore.swift
-//  (c) 2023 Firezone, Inc.
+//  (c) 2024 Firezone, Inc.
 //  LICENSE: Apache-2.0
 //
 
@@ -66,7 +66,7 @@ public final class AppStore: ObservableObject {
   public let settingsViewModel: SettingsViewModel
 
   private var cancellables: Set<AnyCancellable> = []
-  let logger: AppLogger
+  public let logger: AppLogger
 
   public init() {
     let logger = AppLogger(process: .app, folderURL: SharedAccess.appLogFolderURL)

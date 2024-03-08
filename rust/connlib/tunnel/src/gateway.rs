@@ -1,146 +1,267 @@
 use crate::device_channel::Device;
-use crate::peer::PacketTransformGateway;
-use crate::{
-    ConnectedPeer, Event, RoleState, Tunnel, ICE_GATHERING_TIMEOUT_SECONDS,
-    MAX_CONCURRENT_ICE_GATHERING,
+use crate::ip_packet::MutableIpPacket;
+use crate::peer::{PacketTransformGateway, Peer};
+use crate::peer_store::PeerStore;
+use crate::utils::{stun, turn};
+use crate::Tunnel;
+use boringtun::x25519::PublicKey;
+use chrono::{DateTime, Utc};
+use connlib_shared::messages::{
+    Answer, ClientId, ConnectionAccepted, DomainResponse, Interface as InterfaceConfig, Key, Offer,
+    Relay, ResourceId,
 };
-use connlib_shared::messages::{ClientId, Interface as InterfaceConfig};
-use connlib_shared::Callbacks;
-use futures::channel::mpsc::Receiver;
-use futures_bounded::{PushError, StreamMap};
-use ip_network_table::IpNetworkTable;
-use itertools::Itertools;
-use std::collections::VecDeque;
-use std::sync::Arc;
+use connlib_shared::{Callbacks, Dname, Error, Result};
+use ip_network::IpNetwork;
+use secrecy::{ExposeSecret as _, Secret};
+use snownet::Server;
 use std::task::{ready, Context, Poll};
 use std::time::Duration;
-use webrtc::ice_transport::ice_candidate::RTCIceCandidate;
+use tokio::time::{interval, Interval, MissedTickBehavior};
 
 const PEERS_IPV4: &str = "100.64.0.0/11";
 const PEERS_IPV6: &str = "fd00:2021:1111::/107";
 
-impl<CB> Tunnel<CB, GatewayState>
+/// Description of a resource that maps to a DNS record which had its domain already resolved.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ResolvedResourceDescriptionDns {
+    pub id: ResourceId,
+    /// Internal resource's domain name.
+    pub domain: String,
+    /// Name of the resource.
+    ///
+    /// Used only for display.
+    pub name: String,
+
+    pub addresses: Vec<IpNetwork>,
+}
+
+pub type ResourceDescription =
+    connlib_shared::messages::ResourceDescription<ResolvedResourceDescriptionDns>;
+
+impl<CB> Tunnel<CB, GatewayState, Server, ClientId>
 where
     CB: Callbacks + 'static,
 {
     /// Sets the interface configuration and starts background tasks.
     #[tracing::instrument(level = "trace", skip(self))]
-    pub fn set_interface(&self, config: &InterfaceConfig) -> connlib_shared::Result<()> {
+    pub fn set_interface(&mut self, config: &InterfaceConfig) -> connlib_shared::Result<()> {
         // Note: the dns fallback strategy is irrelevant for gateways
-        let device = Arc::new(Device::new(config, vec![], self.callbacks())?);
+        let mut device = Device::new(config, vec![], self.callbacks())?;
 
         let result_v4 = device.add_route(PEERS_IPV4.parse().unwrap(), self.callbacks());
         let result_v6 = device.add_route(PEERS_IPV6.parse().unwrap(), self.callbacks());
         result_v4.or(result_v6)?;
 
-        self.device.store(Some(device.clone()));
+        let name = device.name().to_owned();
+
+        self.device = Some(device);
         self.no_device_waker.wake();
 
-        tracing::debug!("background_loop_started");
+        tracing::debug!(ip4 = %config.ipv4, ip6 = %config.ipv6, %name, "TUN device initialized");
 
         Ok(())
     }
 
+    /// Accept a connection request from a client.
+    ///
+    /// Sets a connection to a remote SDP, creates the local SDP
+    /// and returns it.
+    ///
+    /// # Returns
+    /// The connection details
+    #[allow(clippy::too_many_arguments)]
+    pub fn accept(
+        &mut self,
+        client_id: ClientId,
+        key: Secret<Key>,
+        offer: Offer,
+        client: PublicKey,
+        ips: Vec<IpNetwork>,
+        relays: Vec<Relay>,
+        domain: Option<Dname>,
+        expires_at: Option<DateTime<Utc>>,
+        resource: ResourceDescription,
+    ) -> Result<ConnectionAccepted> {
+        let resource_addresses = match &resource {
+            ResourceDescription::Dns(r) => {
+                let Some(domain) = domain.clone() else {
+                    return Err(Error::ControlProtocolError);
+                };
+
+                if !crate::dns::is_subdomain(&domain, &r.domain) {
+                    return Err(Error::InvalidResource);
+                }
+
+                r.addresses.clone()
+            }
+            ResourceDescription::Cidr(ref cidr) => vec![cidr.address],
+        };
+
+        let answer = self.connections_state.node.accept_connection(
+            client_id,
+            snownet::Offer {
+                session_key: key.expose_secret().0.into(),
+                credentials: snownet::Credentials {
+                    username: offer.username,
+                    password: offer.password,
+                },
+            },
+            client,
+            stun(&relays, |addr| {
+                self.connections_state.sockets.can_handle(addr)
+            }),
+            turn(&relays, |addr| {
+                self.connections_state.sockets.can_handle(addr)
+            }),
+        );
+
+        self.new_peer(
+            ips,
+            client_id,
+            resource,
+            expires_at,
+            resource_addresses.clone(),
+        )?;
+
+        Ok(ConnectionAccepted {
+            ice_parameters: Answer {
+                username: answer.credentials.username,
+                password: answer.credentials.password,
+            },
+            domain_response: domain.map(|domain| DomainResponse {
+                domain,
+                address: resource_addresses
+                    .into_iter()
+                    .map(|ip| ip.network_address())
+                    .collect(),
+            }),
+        })
+    }
+
     /// Clean up a connection to a resource.
-    // FIXME: this cleanup connection is wrong!
-    pub fn cleanup_connection(&self, id: ClientId) {
-        self.peer_connections.lock().remove(&id);
+    pub fn cleanup_connection(&mut self, id: &ClientId) {
+        self.role_state.peers.remove(id);
+    }
+
+    pub fn allow_access(
+        &mut self,
+        resource: ResourceDescription,
+        client: ClientId,
+        expires_at: Option<DateTime<Utc>>,
+        domain: Option<Dname>,
+    ) -> Option<DomainResponse> {
+        let peer = self.role_state.peers.get_mut(&client)?;
+
+        let (addresses, resource_id) = match &resource {
+            ResourceDescription::Dns(r) => {
+                let Some(domain) = domain.clone() else {
+                    return None;
+                };
+
+                if !crate::dns::is_subdomain(&domain, &r.domain) {
+                    return None;
+                }
+
+                (r.addresses.clone(), r.id)
+            }
+            ResourceDescription::Cidr(cidr) => (vec![cidr.address], cidr.id),
+        };
+
+        for address in &addresses {
+            peer.transform
+                .add_resource(*address, resource.clone(), expires_at);
+        }
+
+        tracing::info!(%client, resource = %resource_id, expires = ?expires_at.map(|e| e.to_rfc3339()), "Allowing access to resource");
+
+        if let Some(domain) = domain {
+            return Some(DomainResponse {
+                domain,
+                address: addresses.iter().map(|i| i.network_address()).collect(),
+            });
+        }
+
+        None
+    }
+
+    pub fn remove_access(&mut self, id: &ClientId, resource_id: &ResourceId) {
+        let Some(peer) = self.role_state.peers.get_mut(id) else {
+            return;
+        };
+
+        peer.transform.remove_resource(resource_id);
+        if peer.transform.is_emptied() {
+            self.role_state.peers.remove(id);
+        }
+    }
+
+    pub fn add_ice_candidate(&mut self, conn_id: ClientId, ice_candidate: String) {
+        self.connections_state
+            .node
+            .add_remote_candidate(conn_id, ice_candidate);
+    }
+
+    fn new_peer(
+        &mut self,
+        ips: Vec<IpNetwork>,
+        client_id: ClientId,
+        resource: ResourceDescription,
+        expires_at: Option<DateTime<Utc>>,
+        resource_addresses: Vec<IpNetwork>,
+    ) -> Result<()> {
+        let mut peer = Peer::new(client_id, PacketTransformGateway::default(), &ips, ());
+
+        for address in resource_addresses {
+            peer.transform
+                .add_resource(address, resource.clone(), expires_at);
+        }
+
+        self.role_state.peers.insert(peer, &ips);
+
+        Ok(())
     }
 }
 
 /// [`Tunnel`] state specific to gateways.
 pub struct GatewayState {
-    pub candidate_receivers: StreamMap<ClientId, RTCIceCandidate>,
-    #[allow(clippy::type_complexity)]
-    pub peers_by_ip: IpNetworkTable<ConnectedPeer<ClientId, PacketTransformGateway>>,
+    pub peers: PeerStore<ClientId, PacketTransformGateway, ()>,
+    expire_interval: Interval,
 }
 
 impl GatewayState {
-    pub fn add_new_ice_receiver(&mut self, id: ClientId, receiver: Receiver<RTCIceCandidate>) {
-        match self.candidate_receivers.try_push(id, receiver) {
-            Ok(()) => {}
-            Err(PushError::BeyondCapacity(_)) => {
-                tracing::warn!("Too many active ICE candidate receivers at a time")
-            }
-            Err(PushError::Replaced(_)) => {
-                tracing::warn!(%id, "Replaced old ICE candidate receiver with new one")
-            }
-        }
+    pub(crate) fn encapsulate<'a>(
+        &mut self,
+        packet: MutableIpPacket<'a>,
+    ) -> Option<(ClientId, MutableIpPacket<'a>)> {
+        let dest = packet.destination();
+
+        let peer = self.peers.peer_by_ip_mut(dest)?;
+        let packet = peer.transform(packet)?;
+
+        Some((peer.conn_id, packet))
+    }
+
+    pub fn poll(&mut self, cx: &mut Context<'_>) -> Poll<()> {
+        ready!(self.expire_interval.poll_tick(cx));
+        self.expire_resources();
+        Poll::Ready(())
+    }
+
+    fn expire_resources(&mut self) {
+        self.peers
+            .iter_mut()
+            .for_each(|p| p.transform.expire_resources());
+        self.peers.retain(|_, p| !p.transform.is_emptied());
     }
 }
 
 impl Default for GatewayState {
     fn default() -> Self {
+        let mut expire_interval = interval(Duration::from_secs(1));
+        expire_interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
         Self {
-            candidate_receivers: StreamMap::new(
-                Duration::from_secs(ICE_GATHERING_TIMEOUT_SECONDS),
-                MAX_CONCURRENT_ICE_GATHERING,
-            ),
-            peers_by_ip: IpNetworkTable::new(),
+            peers: Default::default(),
+            expire_interval,
         }
-    }
-}
-
-impl RoleState for GatewayState {
-    type Id = ClientId;
-
-    fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Event<Self::Id>> {
-        loop {
-            match ready!(self.candidate_receivers.poll_next_unpin(cx)) {
-                (conn_id, Some(Ok(c))) => {
-                    return Poll::Ready(Event::SignalIceCandidate {
-                        conn_id,
-                        candidate: c,
-                    });
-                }
-                (id, Some(Err(e))) => {
-                    tracing::warn!(gateway_id = %id, "ICE gathering timed out: {e}")
-                }
-                (_, None) => {}
-            }
-        }
-    }
-
-    fn remove_peers(&mut self, conn_id: ClientId) {
-        self.peers_by_ip.retain(|_, p| p.inner.conn_id != conn_id);
-    }
-
-    fn refresh_peers(&mut self) -> VecDeque<Self::Id> {
-        let mut peers_to_stop = VecDeque::new();
-        for (_, peer) in self.peers_by_ip.iter().unique_by(|(_, p)| p.inner.conn_id) {
-            let conn_id = peer.inner.conn_id;
-
-            peer.inner.transform.expire_resources();
-
-            if peer.inner.transform.is_emptied() {
-                tracing::trace!(%conn_id, "peer_expired");
-                peers_to_stop.push_back(conn_id);
-
-                continue;
-            }
-
-            let bytes = match peer.inner.update_timers() {
-                Ok(Some(bytes)) => bytes,
-                Ok(None) => continue,
-                Err(e) => {
-                    tracing::error!("Failed to update timers for peer: {e}");
-                    if e.is_fatal_connection_error() {
-                        peers_to_stop.push_back(conn_id);
-                    }
-
-                    continue;
-                }
-            };
-
-            let peer_channel = peer.channel.clone();
-
-            tokio::spawn(async move {
-                if let Err(e) = peer_channel.send(bytes).await {
-                    tracing::error!("Failed to send packet to peer: {e:#}");
-                }
-            });
-        }
-
-        peers_to_stop
     }
 }

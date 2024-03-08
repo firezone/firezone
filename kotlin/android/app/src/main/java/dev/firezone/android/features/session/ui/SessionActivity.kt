@@ -1,4 +1,4 @@
-/* Licensed under Apache 2.0 (C) 2023 Firezone, Inc. */
+/* Licensed under Apache 2.0 (C) 2024 Firezone, Inc. */
 package dev.firezone.android.features.session.ui
 
 import android.content.ComponentName
@@ -15,6 +15,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import dagger.hilt.android.AndroidEntryPoint
 import dev.firezone.android.core.utils.ClipboardUtils
 import dev.firezone.android.databinding.ActivitySessionBinding
+import dev.firezone.android.features.settings.ui.SettingsActivity
 import dev.firezone.android.tunnel.TunnelService
 import dev.firezone.android.tunnel.model.Resource
 
@@ -76,6 +77,13 @@ internal class SessionActivity : AppCompatActivity() {
             viewModel.clearToken()
             viewModel.clearActorName()
             tunnelService?.disconnect()
+        }
+
+        binding.btSettings.setOnClickListener {
+            Log.d(TAG, "Settings button clicked")
+            val intent = Intent(this, SettingsActivity::class.java)
+            intent.putExtra("isUserSignedIn", true)
+            startActivity(intent)
         }
 
         binding.tvActorName.text = viewModel.getActorName()

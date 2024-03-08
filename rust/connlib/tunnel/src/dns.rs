@@ -1,7 +1,5 @@
 use crate::client::DnsResource;
-use crate::device_channel::Packet;
-use crate::ip_packet::{to_dns, IpPacket, MutableIpPacket, Version};
-use crate::{get_v4, get_v6, DnsQuery};
+use crate::ip_packet::{to_dns, IpPacket, MutableIpPacket};
 use connlib_shared::error::ConnlibError;
 use connlib_shared::messages::{DnsServer, ResourceDescriptionDns};
 use connlib_shared::Dname;
@@ -11,6 +9,7 @@ use domain::base::{
     Message, MessageBuilder, Question, ToDname,
 };
 use hickory_resolver::lookup::Lookup;
+use hickory_resolver::proto::error::{ProtoError, ProtoErrorKind};
 use hickory_resolver::proto::op::{Message as TrustDnsMessage, MessageType};
 use hickory_resolver::proto::rr::RecordType;
 use itertools::Itertools;
@@ -18,7 +17,7 @@ use pnet_packet::{udp::MutableUdpPacket, MutablePacket, Packet as UdpPacket, Pac
 use std::collections::{HashMap, HashSet};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
-const DNS_TTL: u32 = 300;
+const DNS_TTL: u32 = 1;
 const UDP_HEADER_SIZE: usize = 8;
 const REVERSE_DNS_ADDRESS_END: &str = "arpa";
 const REVERSE_DNS_ADDRESS_V4: &str = "in-addr";
@@ -29,6 +28,34 @@ pub(crate) enum ResolveStrategy<T, U, V> {
     LocalResponse(T),
     ForwardQuery(U),
     DeferredResponse(V),
+}
+
+#[derive(Debug)]
+pub struct DnsQuery<'a> {
+    pub name: String,
+    pub record_type: RecordType,
+    // We could be much more efficient with this field,
+    // we only need the header to create the response.
+    pub query: crate::ip_packet::IpPacket<'a>,
+}
+
+impl<'a> DnsQuery<'a> {
+    pub(crate) fn into_owned(self) -> DnsQuery<'static> {
+        let Self {
+            name,
+            record_type,
+            query,
+        } = self;
+        let buf = query.packet().to_vec();
+        let query = crate::ip_packet::IpPacket::owned(buf)
+            .expect("We are constructing the ip packet from an ip packet");
+
+        DnsQuery {
+            name,
+            record_type,
+            query,
+        }
+    }
 }
 
 struct DnsQueryParams {
@@ -65,7 +92,7 @@ pub(crate) fn parse<'a>(
     dns_resources_internal_ips: &HashMap<DnsResource, HashSet<IpAddr>>,
     dns_mapping: &bimap::BiMap<IpAddr, DnsServer>,
     packet: IpPacket<'a>,
-) -> Option<ResolveStrategy<Packet<'static>, DnsQuery<'a>, (DnsResource, Rtype)>> {
+) -> Option<ResolveStrategy<IpPacket<'static>, DnsQuery<'a>, (DnsResource, Rtype)>> {
     dns_mapping.get_by_left(&packet.destination())?;
     let datagram = packet.as_udp()?;
     let message = to_dns(&datagram)?;
@@ -99,7 +126,7 @@ pub(crate) fn parse<'a>(
 pub(crate) fn create_local_answer<'a>(
     ips: &HashSet<IpAddr>,
     packet: IpPacket<'a>,
-) -> Option<Packet<'a>> {
+) -> Option<IpPacket<'a>> {
     let datagram = packet.as_udp().unwrap();
     let message = to_dns(&datagram).unwrap();
     let question = message.first_question().unwrap();
@@ -130,7 +157,7 @@ pub(crate) fn create_local_answer<'a>(
 pub(crate) fn build_response_from_resolve_result(
     original_pkt: IpPacket<'_>,
     response: hickory_resolver::error::ResolveResult<Lookup>,
-) -> Result<Option<Packet>, ConnlibError> {
+) -> Result<Option<IpPacket>, ConnlibError> {
     let Some(mut message) = as_dns_message(&original_pkt) else {
         debug_assert!(false, "The original message should be a DNS query for us to ever call write_dns_lookup_response");
         return Ok(None);
@@ -140,11 +167,15 @@ pub(crate) fn build_response_from_resolve_result(
 
     let response = match response.map_err(|err| err.kind().clone()) {
         Ok(response) => message.add_answers(response.records().to_vec()),
-        Err(hickory_resolver::error::ResolveErrorKind::NoRecordsFound {
-            soa,
-            response_code,
-            ..
-        }) => {
+        Err(hickory_resolver::error::ResolveErrorKind::Proto(ProtoError { kind, .. }))
+            if matches!(*kind, ProtoErrorKind::NoRecordsFound { .. }) =>
+        {
+            let ProtoErrorKind::NoRecordsFound {
+                soa, response_code, ..
+            } = *kind
+            else {
+                panic!("Impossible - We matched on `ProtoErrorKind::NoRecordsFound` but then could not destructure that same variant");
+            };
             if let Some(soa) = soa {
                 message.add_name_server(soa.clone().into_record_of_rdata());
             }
@@ -161,8 +192,10 @@ pub(crate) fn build_response_from_resolve_result(
     Ok(packet)
 }
 
-fn build_response(original_pkt: IpPacket<'_>, mut dns_answer: Vec<u8>) -> Option<Packet<'static>> {
-    let version = original_pkt.version();
+fn build_response(
+    original_pkt: IpPacket<'_>,
+    mut dns_answer: Vec<u8>,
+) -> Option<IpPacket<'static>> {
     let response_len = dns_answer.len();
     let original_dgm = original_pkt.as_udp()?;
     let hdr_len = original_pkt.packet_size() - original_dgm.payload().len();
@@ -185,12 +218,8 @@ fn build_response(original_pkt: IpPacket<'_>, mut dns_answer: Vec<u8>) -> Option
     let udp_checksum = pkt.to_immutable().udp_checksum(&pkt.as_immutable_udp()?);
     pkt.as_udp()?.set_checksum(udp_checksum);
     pkt.set_ipv4_checksum();
-    let packet = match version {
-        Version::Ipv4 => Packet::Ipv4(res_buf.into()),
-        Version::Ipv6 => Packet::Ipv6(res_buf.into()),
-    };
 
-    Some(packet)
+    Some(IpPacket::owned(res_buf).unwrap())
 }
 
 fn build_dns_with_answer<N>(
@@ -416,6 +445,20 @@ fn reverse_dns_addr_v6<'a>(dns_parts: &mut impl Iterator<Item = &'a str>) -> Opt
         .join(":")
         .parse()
         .ok()
+}
+
+fn get_v4(ip: IpAddr) -> Option<Ipv4Addr> {
+    match ip {
+        IpAddr::V4(v4) => Some(v4),
+        IpAddr::V6(_) => None,
+    }
+}
+
+fn get_v6(ip: IpAddr) -> Option<Ipv6Addr> {
+    match ip {
+        IpAddr::V4(_) => None,
+        IpAddr::V6(v6) => Some(v6),
+    }
 }
 
 #[cfg(test)]

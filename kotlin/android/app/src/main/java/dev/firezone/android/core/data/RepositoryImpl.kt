@@ -1,9 +1,8 @@
-/* Licensed under Apache 2.0 (C) 2023 Firezone, Inc. */
+/* Licensed under Apache 2.0 (C) 2024 Firezone, Inc. */
 package dev.firezone.android.core.data
 
 import android.content.Context
 import android.content.SharedPreferences
-import android.os.Bundle
 import dev.firezone.android.BuildConfig
 import dev.firezone.android.core.data.model.Config
 import kotlinx.coroutines.CoroutineDispatcher
@@ -19,7 +18,6 @@ internal class RepositoryImpl
         private val context: Context,
         private val coroutineDispatcher: CoroutineDispatcher,
         private val sharedPreferences: SharedPreferences,
-        private val appRestrictions: Bundle,
     ) : Repository {
         override fun getConfigSync(): Config {
             return Config(
@@ -69,15 +67,10 @@ internal class RepositoryImpl
 
         override fun getToken(): Flow<String?> =
             flow {
-                emit(
-                    appRestrictions.getString(TOKEN_KEY, null)
-                        ?: sharedPreferences.getString(TOKEN_KEY, null),
-                )
+                emit(sharedPreferences.getString(TOKEN_KEY, null))
             }.flowOn(coroutineDispatcher)
 
-        override fun getTokenSync(): String? =
-            appRestrictions.getString(TOKEN_KEY, null)
-                ?: sharedPreferences.getString(TOKEN_KEY, null)
+        override fun getTokenSync(): String? = sharedPreferences.getString(TOKEN_KEY, null)
 
         override fun getStateSync(): String? = sharedPreferences.getString(STATE_KEY, null)
 

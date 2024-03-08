@@ -1,9 +1,9 @@
 defmodule Web.RelayGroups.NewToken do
   use Web, :live_view
-  alias Domain.Relays
+  alias Domain.{Accounts, Relays}
 
   def mount(%{"id" => id}, _session, socket) do
-    with true <- Domain.Config.self_hosted_relays_enabled?(),
+    with true <- Accounts.self_hosted_relays_enabled?(socket.assigns.account),
          {:ok, group} <- Relays.fetch_group_by_id(id, socket.assigns.subject) do
       {group, env} =
         if connected?(socket) do
@@ -197,10 +197,10 @@ defmodule Web.RelayGroups.NewToken do
 
           <div id="connection-status" class="flex justify-between items-center">
             <p class="text-sm">
-              Relay not connecting? See our <.link
-                class="text-accent-500 hover:underline"
-                href="https://www.firezone.dev/kb/administer/troubleshooting#relay-not-connecting"
-              >relay troubleshooting guide</.link>.
+              Relay not connecting? See our
+              <.website_link href="/kb/administer/troubleshooting">
+                relay troubleshooting guide
+              </.website_link>.
             </p>
             <.initial_connection_status
               :if={@env}
@@ -240,11 +240,13 @@ defmodule Web.RelayGroups.NewToken do
       {"RUST_LOG",
        Enum.join(
          [
-           "firezone_relay=trace",
-           "firezone_tunnel=trace",
-           "connlib_shared=trace",
-           "tunnel_state=trace",
-           "phoenix_channel=debug",
+           "firezone_relay=info",
+           "firezone_tunnel=info",
+           "connlib_shared=info",
+           "tunnel_state=info",
+           "phoenix_channel=info",
+           "snownet=info",
+           "str0m=info",
            "warn"
          ],
          ","
@@ -268,6 +270,7 @@ defmodule Web.RelayGroups.NewToken do
       "--sysctl net.ipv6.conf.all.disable_ipv6=0",
       "--sysctl net.ipv6.conf.all.forwarding=1",
       "--sysctl net.ipv6.conf.default.forwarding=1",
+      "--device=\"/dev/net/tun:/dev/net/tun\"",
       Enum.map(env, fn {key, value} -> "--env #{key}=\"#{value}\"" end),
       "--env FIREZONE_NAME=$(hostname)",
       "#{Domain.Config.fetch_env!(:domain, :docker_registry)}/relay:#{major_minor_version()}"

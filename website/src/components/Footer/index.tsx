@@ -4,7 +4,15 @@ import Link from "next/link";
 import Image from "next/image";
 import ConsentPreferences from "@/components/ConsentPreferences";
 
-import { LinkedInIcon, GitHubIcon, XIcon } from "@/components/Icons";
+import {
+  LinkedInIcon,
+  GitHubIcon,
+  XIcon,
+  AppleIcon,
+  WindowsIcon,
+  LinuxIcon,
+  AndroidIcon,
+} from "@/components/Icons";
 
 export default function Footer() {
   return (
@@ -12,24 +20,26 @@ export default function Footer() {
       <div className="mx-auto w-full max-w-screen-xl p-4 py-6 lg:py-8">
         <div className="md:flex md:justify-between">
           <div className="flex justify-between md:w-1/2 w-full mb-6 md:mb-0">
-            <Link href="/">
-              <Image
-                width={150}
-                height={150}
-                src="/images/logo-text.svg"
-                className="h-auto"
-                alt="Firezone Logo"
-              />
-            </Link>
-            <Link href="https://www.ycombinator.com/companies/firezone">
-              <Image
-                width={150}
-                height={150}
-                src="/images/yc-logo.svg"
-                className="h-auto"
-                alt="YC Logo"
-              />
-            </Link>
+            <div>
+              <Link href="/">
+                <Image
+                  width={150}
+                  height={150}
+                  src="/images/logo-text.svg"
+                  alt="Firezone Logo"
+                />
+              </Link>
+            </div>
+            <div>
+              <Link href="https://www.ycombinator.com/companies/firezone">
+                <Image
+                  width={150}
+                  height={150}
+                  src="/images/yc-logo.svg"
+                  alt="YC Logo"
+                />
+              </Link>
+            </div>
           </div>
           <div className="grid grid-cols-2 gap-8 sm:gap-6 sm:grid-cols-3">
             <div>
@@ -173,13 +183,14 @@ export default function Footer() {
             Firezone<sup>™</sup> is a registered trademark of Firezone, Inc.
           </span>
         </div>
-        <hr className="mt-2 mb-2 border-neutral-200 sm:mx-auto lg:mb-8 lg:mt-4" />
-        <div className="sm:flex sm:items-center sm:justify-between">
-          <span className="text-xs text-neutral-900 sm:text-center ">
+        <hr className="my-2 border-neutral-200 sm:mx-auto lg:mb-8 lg:mt-4" />
+        <div className="flex grid sm:grid-cols-3">
+          <div className="text-xs text-neutral-900">
             © 2023{" "}
             <Link href="/" className="hover:underline">
               Firezone, Inc.
             </Link>{" "}
+            <br />
             <Link href="/privacy-policy" className="hover:underline">
               privacy
             </Link>
@@ -196,8 +207,14 @@ export default function Footer() {
             >
               do not sell or share my personal information
             </Link>
-          </span>
-          <div className="flex mt-4 space-x-6 sm:justify-center sm:mt-0">
+          </div>
+          <div className="flex p-2 items-center justify-center space-x-5">
+            <AppleIcon size={5} href="/kb/user-guides/apple-client" />
+            <WindowsIcon size={5} href="/kb/user-guides/windows-client" />
+            <LinuxIcon size={5} href="/kb/user-guides/linux-client" />
+            <AndroidIcon size={5} href="/kb/user-guides/android-client" />
+          </div>
+          <div className="flex p-2 items-center justify-center sm:justify-end space-x-5">
             <Link
               target="_blank"
               href={new URL("https://firezone.statuspage.io")}

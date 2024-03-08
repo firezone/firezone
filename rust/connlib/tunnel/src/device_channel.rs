@@ -18,21 +18,22 @@ mod tun;
 #[path = "device_channel/tun_android.rs"]
 mod tun;
 
-use crate::ip_packet::MutableIpPacket;
+use crate::ip_packet::{IpPacket, MutableIpPacket};
 use connlib_shared::error::ConnlibError;
 use connlib_shared::messages::Interface;
 use connlib_shared::{Callbacks, Error};
 use ip_network::IpNetwork;
-use std::borrow::Cow;
+use pnet_packet::Packet;
 use std::io;
 use std::net::IpAddr;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::task::{Context, Poll};
+use std::time::{Duration, Instant};
 use tun::Tun;
 
 pub struct Device {
-    mtu: AtomicUsize,
+    mtu: usize,
     tun: Tun,
+    mtu_refreshed_at: Instant,
 }
 
 impl Device {
@@ -43,9 +44,13 @@ impl Device {
         callbacks: &impl Callbacks<Error = Error>,
     ) -> Result<Device, ConnlibError> {
         let tun = Tun::new(config, dns_config, callbacks)?;
-        let mtu = AtomicUsize::new(ioctl::interface_mtu_by_name(tun.name())?);
+        let mtu = ioctl::interface_mtu_by_name(tun.name())?;
 
-        Ok(Device { mtu, tun })
+        Ok(Device {
+            mtu,
+            tun,
+            mtu_refreshed_at: Instant::now(),
+        })
     }
 
     #[cfg(target_family = "windows")]
@@ -56,30 +61,42 @@ impl Device {
     ) -> Result<Device, ConnlibError> {
         Ok(Device {
             tun: Tun::new(config, dns_config)?,
-            mtu: AtomicUsize::new(1_280),
+            mtu: 1_280,
+            mtu_refreshed_at: Instant::now(),
         })
     }
 
     #[cfg(target_family = "unix")]
     pub(crate) fn poll_read<'b>(
-        &self,
+        &mut self,
         buf: &'b mut [u8],
         cx: &mut Context<'_>,
-    ) -> Poll<io::Result<Option<MutableIpPacket<'b>>>> {
+    ) -> Poll<io::Result<MutableIpPacket<'b>>> {
+        use pnet_packet::Packet as _;
+
+        if self.mtu_refreshed_at.elapsed() > Duration::from_secs(30) {
+            self.refresh_mtu()?;
+        }
+
         let n = std::task::ready!(self.tun.poll_read(&mut buf[..self.mtu()], cx))?;
 
         if n == 0 {
-            return Poll::Ready(Ok(None));
+            return Poll::Ready(Err(io::Error::new(
+                io::ErrorKind::UnexpectedEof,
+                "device is closed",
+            )));
         }
 
-        Poll::Ready(Ok(Some(MutableIpPacket::new(&mut buf[..n]).ok_or_else(
-            || {
-                io::Error::new(
-                    io::ErrorKind::InvalidInput,
-                    "received bytes are not an IP packet",
-                )
-            },
-        )?)))
+        let packet = MutableIpPacket::new(&mut buf[..n]).ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "received bytes are not an IP packet",
+            )
+        })?;
+
+        tracing::trace!(target: "wire", action = "read", from = "device", dest = %packet.destination(), bytes = %packet.packet().len());
+
+        Poll::Ready(Ok(packet))
     }
 
     #[cfg(target_family = "windows")]
@@ -87,44 +104,92 @@ impl Device {
         &self,
         buf: &'b mut [u8],
         cx: &mut Context<'_>,
-    ) -> Poll<io::Result<Option<MutableIpPacket<'b>>>> {
+    ) -> Poll<io::Result<MutableIpPacket<'b>>> {
+        use pnet_packet::Packet as _;
+
+        if self.mtu_refreshed_at.elapsed() > Duration::from_secs(30) {
+            self.refresh_mtu()?;
+        }
+
         let n = std::task::ready!(self.tun.poll_read(&mut buf[..self.mtu()], cx))?;
 
         if n == 0 {
-            return Poll::Ready(Ok(None));
+            return Poll::Ready(Err(io::Error::new(
+                io::ErrorKind::UnexpectedEof,
+                "device is closed",
+            )));
         }
 
-        Poll::Ready(Ok(Some(MutableIpPacket::new(&mut buf[..n]).ok_or_else(
-            || {
-                io::Error::new(
-                    io::ErrorKind::InvalidInput,
-                    "received bytes are not an IP packet",
-                )
-            },
-        )?)))
+        let packet = MutableIpPacket::new(&mut buf[..n]).ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "received bytes are not an IP packet",
+            )
+        })?;
+
+        tracing::trace!(target: "wire", action = "read", from = "device", dest = %packet.destination(), bytes = %packet.packet().len());
+
+        Poll::Ready(Ok(packet))
     }
 
     pub(crate) fn mtu(&self) -> usize {
-        self.mtu.load(Ordering::Relaxed)
+        self.mtu
+    }
+
+    pub(crate) fn name(&self) -> &str {
+        self.tun.name()
     }
 
     #[cfg(target_family = "unix")]
     pub(crate) fn add_route(
-        &self,
+        &mut self,
         route: IpNetwork,
         callbacks: &impl Callbacks<Error = Error>,
     ) -> Result<Option<Device>, Error> {
         let Some(tun) = self.tun.add_route(route, callbacks)? else {
             return Ok(None);
         };
-        let mtu = AtomicUsize::new(ioctl::interface_mtu_by_name(tun.name())?);
+        let mtu = ioctl::interface_mtu_by_name(tun.name())?;
 
-        Ok(Some(Device { mtu, tun }))
+        Ok(Some(Device {
+            mtu,
+            tun,
+            mtu_refreshed_at: Instant::now(),
+        }))
+    }
+
+    #[cfg(target_family = "unix")]
+    pub(crate) fn remove_route(
+        &mut self,
+        route: IpNetwork,
+        callbacks: &impl Callbacks<Error = Error>,
+    ) -> Result<Option<Device>, Error> {
+        let Some(tun) = self.tun.remove_route(route, callbacks)? else {
+            return Ok(None);
+        };
+        let mtu = ioctl::interface_mtu_by_name(tun.name())?;
+
+        Ok(Some(Device {
+            mtu,
+            tun,
+            mtu_refreshed_at: Instant::now(),
+        }))
     }
 
     #[cfg(target_family = "windows")]
+    pub(crate) fn remove_route(
+        &mut self,
+        route: IpNetwork,
+        _callbacks: &impl Callbacks<Error = Error>,
+    ) -> Result<Option<Device>, Error> {
+        self.tun.remove_route(route)?;
+        Ok(None)
+    }
+
+    #[cfg(target_family = "windows")]
+    #[allow(unused_mut)]
     pub(crate) fn add_route(
-        &self,
+        &mut self,
         route: IpNetwork,
         _: &impl Callbacks<Error = Error>,
     ) -> Result<Option<Device>, Error> {
@@ -133,30 +198,28 @@ impl Device {
     }
 
     #[cfg(target_family = "unix")]
-    pub(crate) fn refresh_mtu(&self) -> Result<usize, Error> {
+    fn refresh_mtu(&mut self) -> io::Result<()> {
         let mtu = ioctl::interface_mtu_by_name(self.tun.name())?;
-        self.mtu.store(mtu, Ordering::Relaxed);
+        self.mtu = mtu;
+        self.mtu_refreshed_at = Instant::now();
 
-        Ok(mtu)
+        Ok(())
     }
 
     #[cfg(target_family = "windows")]
-    pub(crate) fn refresh_mtu(&self) -> Result<usize, Error> {
+    fn refresh_mtu(&self) -> io::Result<()> {
         // TODO
-        Ok(0)
+        Ok(())
     }
 
-    pub fn write(&self, packet: Packet<'_>) -> io::Result<usize> {
+    pub fn write(&self, packet: IpPacket<'_>) -> io::Result<usize> {
+        tracing::trace!(target: "wire", action = "write", to = "device", bytes = %packet.packet().len());
+
         match packet {
-            Packet::Ipv4(msg) => self.tun.write4(&msg),
-            Packet::Ipv6(msg) => self.tun.write6(&msg),
+            IpPacket::Ipv4Packet(msg) => self.tun.write4(msg.packet()),
+            IpPacket::Ipv6Packet(msg) => self.tun.write6(msg.packet()),
         }
     }
-}
-
-pub enum Packet<'a> {
-    Ipv4(Cow<'a, [u8]>),
-    Ipv6(Cow<'a, [u8]>),
 }
 
 #[cfg(target_family = "unix")]
@@ -165,7 +228,7 @@ mod ioctl {
     use std::os::fd::RawFd;
     use tun::SIOCGIFMTU;
 
-    pub(crate) fn interface_mtu_by_name(name: &str) -> Result<usize, ConnlibError> {
+    pub(crate) fn interface_mtu_by_name(name: &str) -> io::Result<usize> {
         let socket = Socket::ip4()?;
         let mut request = Request::<GetInterfaceMtuPayload>::new(name)?;
 
@@ -186,11 +249,11 @@ mod ioctl {
         fd: RawFd,
         code: libc::c_ulong,
         req: &mut Request<P>,
-    ) -> Result<(), ConnlibError> {
+    ) -> io::Result<()> {
         let ret = unsafe { libc::ioctl(fd, code as _, req) };
 
         if ret < 0 {
-            return Err(io::Error::last_os_error().into());
+            return Err(io::Error::last_os_error());
         }
 
         Ok(())

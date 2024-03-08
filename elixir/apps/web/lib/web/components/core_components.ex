@@ -328,7 +328,11 @@ defmodule Web.CoreComponents do
   attr :id, :string, default: "flash", doc: "the optional id of flash container"
   attr :flash, :map, default: %{}, doc: "the map of flash messages to display"
   attr :title, :string, default: nil
-  attr :kind, :atom, values: [:success, :info, :error], doc: "used for styling and flash lookup"
+
+  attr :kind, :atom,
+    values: [:success, :info, :warning, :error],
+    doc: "used for styling and flash lookup"
+
   attr :rest, :global, doc: "the arbitrary HTML attributes to add to the flash container"
   attr :style, :string, default: "pill"
 
@@ -1168,4 +1172,61 @@ defmodule Web.CoreComponents do
   end
 
   def provider_icon(assigns), do: ~H""
+
+  def feature_name(%{feature: :idp_sync} = assigns) do
+    ~H"""
+    Automatically sync users and groups
+    """
+  end
+
+  def feature_name(%{feature: :flow_activities} = assigns) do
+    ~H"""
+    See detailed flow activities <span>(beta)</span>
+    """
+  end
+
+  def feature_name(%{feature: :multi_site_resources} = assigns) do
+    ~H"""
+    Define globally-distributed resources <span>(beta)</span>
+    """
+  end
+
+  def feature_name(%{feature: :traffic_filters} = assigns) do
+    ~H"""
+    Filter traffic using protocol and port rules <span>(beta)</span>
+    """
+  end
+
+  def feature_name(%{feature: :self_hosted_relays} = assigns) do
+    ~H"""
+    Host your own relays <span>(beta)</span>
+    """
+  end
+
+  def feature_name(assigns) do
+    ~H""
+  end
+
+  def mailto_support(account, subject, email_subject) do
+    body =
+      """
+
+
+      ---
+      Please do not remove this part of the email.
+      Account Name: #{account.name}
+      Account Slug: #{account.slug}
+      Account ID: #{account.id}
+      Actor ID: #{subject.actor.id}
+      """
+
+    "mailto:support@firezone.dev?subject=#{URI.encode_www_form(email_subject)}&body=#{URI.encode_www_form(body)}"
+  end
+
+  def link_style do
+    [
+      "text-accent-500",
+      "hover:underline"
+    ]
+  end
 end
