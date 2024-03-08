@@ -124,21 +124,21 @@ import SwiftUI
               Text("No resources")
             } else {
               ForEach(self.model.orderedResources) { resource in
-                HStack {
-                  Text(resource.name)
-                  Spacer()
-                  Text(resource.location)
-                    .foregroundColor(.secondary)
-                  Button(
-                    role: .none,
-                    action: { self.copyResourceTapped(resource) },
-                    label: {
-                      Label("", systemImage: "doc.on.doc")
-                        .symbolRenderingMode(.monochrome)
-                        .foregroundColor(.secondary)
-                    }
-                  )
-                }
+                Menu(content: {
+                  Button {
+                    self.copyResourceTapped(resource)
+                  } label: {
+                    Label("Copy Address", systemImage: "doc.on.doc")
+                  }
+                }, label : {
+                  HStack {
+                    Text(resource.name)
+                      .foregroundColor(.primary)
+                    Spacer()
+                    Text(resource.location)
+                      .foregroundColor(.secondary)
+                  }
+                })
               }
             }
           }
