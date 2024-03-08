@@ -326,8 +326,6 @@ where
     /// Returns a pending [`Event`] from the pool.
     #[must_use]
     pub fn poll_event(&mut self) -> Option<Event<TId>> {
-        self.bindings_and_allocations_drain_events();
-
         self.pending_events.pop_front()
     }
 
@@ -357,6 +355,8 @@ where
     /// This advances time within the ICE agent, updates timers within all wireguard connections as well as resets wireguard's rate limiter (if necessary).
     pub fn handle_timeout(&mut self, now: Instant) {
         self.last_now = now;
+
+        self.bindings_and_allocations_drain_events();
 
         for (id, connection) in self.connections.iter_established_mut() {
             connection.handle_timeout(id, now, &mut self.allocations, &mut self.pending_events);
