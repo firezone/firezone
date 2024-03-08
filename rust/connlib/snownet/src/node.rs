@@ -674,8 +674,8 @@ where
             tracing::info!("Replacing existing established connection");
         };
 
-        self.upsert_stun_servers(&allowed_stun_servers);
-        self.upsert_turn_servers(&allowed_turn_servers);
+        self.upsert_stun_servers(&allowed_stun_servers, now);
+        self.upsert_turn_servers(&allowed_turn_servers, now);
 
         let allowed_turn_servers = allowed_turn_servers
             .iter()
@@ -789,8 +789,8 @@ where
             tracing::info!("Replacing existing established connection");
         };
 
-        self.upsert_stun_servers(&allowed_stun_servers);
-        self.upsert_turn_servers(&allowed_turn_servers);
+        self.upsert_stun_servers(&allowed_stun_servers, now);
+        self.upsert_turn_servers(&allowed_turn_servers, now);
 
         let allowed_turn_servers = allowed_turn_servers
             .iter()
@@ -841,18 +841,22 @@ impl<T, TId> Node<T, TId>
 where
     TId: Eq + Hash + Copy + fmt::Display,
 {
-    fn upsert_stun_servers(&mut self, servers: &HashSet<SocketAddr>) {
+    fn upsert_stun_servers(&mut self, servers: &HashSet<SocketAddr>, now: Instant) {
         for server in servers {
             if !self.bindings.contains_key(server) {
                 tracing::info!(address = %server, "Adding new STUN server");
 
                 self.bindings
-                    .insert(*server, StunBinding::new(*server, self.last_now));
+                    .insert(*server, StunBinding::new(*server, now));
             }
         }
     }
 
-    fn upsert_turn_servers(&mut self, servers: &HashSet<(SocketAddr, String, String, String)>) {
+    fn upsert_turn_servers(
+        &mut self,
+        servers: &HashSet<(SocketAddr, String, String, String)>,
+        now: Instant,
+    ) {
         for (server, username, password, realm) in servers {
             let Ok(username) = Username::new(username.to_owned()) else {
                 tracing::debug!(%username, "Invalid TURN username");
@@ -864,13 +868,13 @@ where
             };
 
             if let Some(existing) = self.allocations.get_mut(server) {
-                existing.refresh(username, password, realm, self.last_now);
+                existing.refresh(username, password, realm, now);
                 continue;
             }
 
             self.allocations.insert(
                 *server,
-                Allocation::new(*server, username, password.clone(), realm, self.last_now),
+                Allocation::new(*server, username, password.clone(), realm, now),
             );
 
             tracing::info!(address = %server, "Added new TURN server");
