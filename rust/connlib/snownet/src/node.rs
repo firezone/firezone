@@ -381,23 +381,7 @@ where
             self.next_rate_limiter_reset = Some(now + Duration::from_secs(1));
         }
 
-        self.connections.initial.retain(|id, conn| {
-            if conn.is_failed {
-                self.pending_events.push_back(Event::ConnectionFailed(*id));
-                return false;
-            }
-
-            true
-        });
-
-        self.connections.established.retain(|id, conn| {
-            if conn.is_failed {
-                self.pending_events.push_back(Event::ConnectionFailed(*id));
-                return false;
-            }
-
-            true
-        });
+        self.connections.remove_failed(&mut self.pending_events);
     }
 
     /// Returns buffered data that needs to be sent on the socket.
@@ -957,6 +941,26 @@ impl<TId> Connections<TId>
 where
     TId: Eq + Hash + Copy,
 {
+    fn remove_failed(&mut self, events: &mut VecDeque<Event<TId>>) {
+        self.initial.retain(|id, conn| {
+            if conn.is_failed {
+                events.push_back(Event::ConnectionFailed(*id));
+                return false;
+            }
+
+            true
+        });
+
+        self.established.retain(|id, conn| {
+            if conn.is_failed {
+                events.push_back(Event::ConnectionFailed(*id));
+                return false;
+            }
+
+            true
+        });
+    }
+
     fn stats(&self) -> impl Iterator<Item = (TId, ConnectionStats)> + '_ {
         self.established.iter().map(move |(id, c)| (*id, c.stats))
     }
