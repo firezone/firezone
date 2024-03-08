@@ -402,7 +402,8 @@ impl<T> Eventloop<T> {
         if let Poll::Ready(Some(wire::Candidate { conn, candidate })) =
             self.candidate_rx.poll_next_unpin(cx)
         {
-            self.pool.add_remote_candidate(conn, candidate);
+            self.pool
+                .add_remote_candidate(conn, candidate, Instant::now());
 
             cx.waker().wake_by_ref();
             return Poll::Pending;

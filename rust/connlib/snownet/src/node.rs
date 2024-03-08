@@ -153,7 +153,7 @@ where
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(%id))]
-    pub fn add_remote_candidate(&mut self, id: TId, candidate: String) {
+    pub fn add_remote_candidate(&mut self, id: TId, candidate: String, now: Instant) {
         let candidate = match Candidate::from_sdp_string(&candidate) {
             Ok(c) => c,
             Err(e) => {
@@ -174,8 +174,6 @@ where
             }
 
             CandidateKind::Relayed => {
-                let now = self.last_now;
-
                 // Optimisatically try to bind the channel only on the same relay as the remote peer.
                 if let Some(allocation) = self.same_relay_as_peer(id, &candidate) {
                     allocation.bind_channel(candidate.addr(), now);
@@ -191,7 +189,7 @@ where
                 continue;
             };
 
-            allocation.bind_channel(candidate.addr(), self.last_now);
+            allocation.bind_channel(candidate.addr(), now);
         }
     }
 
