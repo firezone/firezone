@@ -140,7 +140,7 @@ impl Tun {
         })
     }
 
-    pub fn add_route(&mut self, route: IpNetwork, _: &impl Callbacks) -> Result<Option<Self>> {
+    pub fn add_route(&mut self, route: IpNetwork, _: &impl Callbacks) -> Result<()> {
         let handle = self.handle.clone();
 
         let add_route_worker = async move {
@@ -187,10 +187,10 @@ impl Tun {
             }
         }
 
-        Ok(None)
+        Ok(())
     }
 
-    pub fn remove_route(&mut self, route: IpNetwork, _: &impl Callbacks) -> Result<Option<Self>> {
+    pub fn remove_route(&mut self, route: IpNetwork, _: &impl Callbacks) -> Result<()> {
         let handle = self.handle.clone();
 
         let add_route_worker = async move {
@@ -234,7 +234,7 @@ impl Tun {
             }
         }
 
-        Ok(None)
+        Ok(())
     }
 
     pub fn name(&self) -> &str {

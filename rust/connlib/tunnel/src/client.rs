@@ -218,15 +218,10 @@ where
     #[tracing::instrument(level = "trace", skip(self))]
     pub fn add_route(&mut self, route: IpNetwork) -> connlib_shared::Result<()> {
         let callbacks = self.callbacks().clone();
-        let maybe_new_device = self
-            .device
+        self.device
             .as_mut()
             .ok_or(Error::ControlProtocolError)?
             .add_route(route, &callbacks)?;
-
-        if let Some(new_device) = maybe_new_device {
-            self.device = Some(new_device);
-        }
 
         Ok(())
     }
@@ -234,15 +229,10 @@ where
     #[tracing::instrument(level = "trace", skip(self))]
     pub fn remove_route(&mut self, route: IpNetwork) -> connlib_shared::Result<()> {
         let callbacks = self.callbacks().clone();
-        let maybe_new_device = self
-            .device
+        self.device
             .as_mut()
             .ok_or(Error::ControlProtocolError)?
             .remove_route(route, &callbacks)?;
-
-        if let Some(new_device) = maybe_new_device {
-            self.device = Some(new_device);
-        }
 
         Ok(())
     }

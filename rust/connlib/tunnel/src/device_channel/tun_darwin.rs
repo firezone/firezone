@@ -147,20 +147,20 @@ impl Tun {
         &self,
         route: IpNetwork,
         callbacks: &impl Callbacks<Error = Error>,
-    ) -> Result<Option<Self>> {
+    ) -> Result<()> {
         // This will always be None in macos
         callbacks.on_add_route(route)?;
-        Ok(None)
+        Ok(())
     }
 
     pub fn remove_route(
         &self,
         route: IpNetwork,
         callbacks: &impl Callbacks<Error = Error>,
-    ) -> Result<Option<Self>> {
+    ) -> Result<()> {
         // This will always be None in macos
         callbacks.on_remove_route(route)?;
-        Ok(None)
+        Ok(())
     }
 
     pub fn name(&self) -> &str {
