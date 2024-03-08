@@ -170,7 +170,7 @@ jobs:
         run: |
           set -xe
 
-          if [ "${{ inputs.profile }}" == "release" ]; then
+          if [[ "${{ inputs.profile }}" == "release" ]]; then
             PROFILE="--release"
           else
             PROFILE=""
