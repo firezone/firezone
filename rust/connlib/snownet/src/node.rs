@@ -326,33 +326,7 @@ where
     /// Returns a pending [`Event`] from the pool.
     #[must_use]
     pub fn poll_event(&mut self) -> Option<Event<TId>> {
-        let binding_events = self.bindings.iter_mut().flat_map(|(server, binding)| {
-            iter::from_fn(|| binding.poll_event().map(|e| (*server, e)))
-        });
-        let allocation_events = self
-            .allocations
-            .iter_mut()
-            .flat_map(|(server, allocation)| {
-                iter::from_fn(|| allocation.poll_event().map(|e| (*server, e)))
-            });
-
-        for (server, event) in binding_events.chain(allocation_events) {
-            match event {
-                CandidateEvent::New(candidate) => {
-                    add_candidates(
-                        server,
-                        candidate,
-                        &mut self.connections,
-                        &mut self.pending_events,
-                    );
-                }
-                CandidateEvent::Invalid(candidate) => {
-                    for (_, agent) in self.connections.agents_mut() {
-                        agent.invalidate_candidate(&candidate);
-                    }
-                }
-            }
-        }
+        self.bindings_and_allocations_drain_events();
 
         let mut failed_connections = vec![];
 
@@ -755,6 +729,36 @@ where
         ControlFlow::Break(Err(Error::UnhandledPacket {
             num_tunnels: self.connections.iter_established_mut().count(),
         }))
+    }
+
+    fn bindings_and_allocations_drain_events(&mut self) {
+        let binding_events = self.bindings.iter_mut().flat_map(|(server, binding)| {
+            iter::from_fn(|| binding.poll_event().map(|e| (*server, e)))
+        });
+        let allocation_events = self
+            .allocations
+            .iter_mut()
+            .flat_map(|(server, allocation)| {
+                iter::from_fn(|| allocation.poll_event().map(|e| (*server, e)))
+            });
+
+        for (server, event) in binding_events.chain(allocation_events) {
+            match event {
+                CandidateEvent::New(candidate) => {
+                    add_candidates(
+                        server,
+                        candidate,
+                        &mut self.connections,
+                        &mut self.pending_events,
+                    );
+                }
+                CandidateEvent::Invalid(candidate) => {
+                    for (_, agent) in self.connections.agents_mut() {
+                        agent.invalidate_candidate(&candidate);
+                    }
+                }
+            }
+        }
     }
 }
 
