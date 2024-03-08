@@ -328,8 +328,6 @@ where
     pub fn poll_event(&mut self) -> Option<Event<TId>> {
         self.bindings_and_allocations_drain_events();
 
-        let mut failed_connections = vec![];
-
         for (id, conn) in self.connections.iter_established_mut() {
             while let Some(event) = conn.agent.poll_event() {
                 match event {
@@ -337,7 +335,8 @@ where
                         conn.possible_sockets.insert(source);
                     }
                     IceAgentEvent::IceConnectionStateChange(IceConnectionState::Disconnected) => {
-                        failed_connections.push(id);
+                        tracing::info!(%id, "Connection failed (ICE timeout)");
+                        conn.is_failed = true;
                     }
                     IceAgentEvent::NominatedSend {
                         destination,
@@ -398,12 +397,14 @@ where
             }
         }
 
-        for conn in failed_connections {
-            tracing::info!(id = %conn, "Connection failed (ICE timeout)");
+        self.connections.established.retain(|id, conn| {
+            if conn.is_failed {
+                self.pending_events.push_back(Event::ConnectionFailed(*id));
+                return false;
+            }
 
-            self.connections.established.remove(&conn);
-            self.pending_events.push_back(Event::ConnectionFailed(conn));
-        }
+            true
+        });
 
         self.pending_events.pop_front()
     }
@@ -435,36 +436,21 @@ where
     pub fn handle_timeout(&mut self, now: Instant) {
         self.last_now = now;
 
-        let mut expired_connections = vec![];
-        let mut no_candidates_received = vec![];
-
         for (id, c) in self.connections.iter_established_mut() {
             match c.handle_timeout(now, &mut self.allocations) {
                 Ok(()) => {}
                 Err(ConnectionError::Wireguard(WireGuardError::ConnectionExpired)) => {
-                    expired_connections.push(id);
+                    tracing::info!(%id, "Connection failed (wireguard tunnel expired)");
+                    c.is_failed = true;
                 }
                 Err(ConnectionError::CandidateTimeout) => {
-                    no_candidates_received.push(id);
+                    tracing::info!(%id, "Connection failed (no candidates received)");
+                    c.is_failed = true;
                 }
                 Err(ConnectionError::Wireguard(e)) => {
                     tracing::warn!(%id, ?e);
                 }
             };
-        }
-
-        for conn in expired_connections {
-            tracing::info!(id = %conn, "Connection failed (wireguard tunnel expired)");
-
-            self.connections.established.remove(&conn);
-            self.pending_events.push_back(Event::ConnectionFailed(conn))
-        }
-
-        for conn in no_candidates_received {
-            tracing::info!(id = %conn, "Connection failed (no candidates received)");
-
-            self.connections.established.remove(&conn);
-            self.pending_events.push_back(Event::ConnectionFailed(conn))
         }
 
         for binding in self.bindings.values_mut() {
@@ -482,21 +468,24 @@ where
             self.next_rate_limiter_reset = Some(now + Duration::from_secs(1));
         }
 
-        let stale_connections = self
-            .connections
-            .initial
-            .iter()
-            .filter_map(|(id, conn)| {
-                (now.duration_since(conn.created_at) >= Duration::from_secs(20)).then_some(*id)
-            })
-            .collect::<Vec<_>>();
+        self.connections.initial.retain(|id, conn| {
+            if now.duration_since(conn.created_at) >= Duration::from_secs(20) {
+                tracing::info!(%id, "Connection setup timed out (no answer received)");
+                self.pending_events.push_back(Event::ConnectionFailed(*id));
+                return false;
+            }
 
-        for conn in stale_connections {
-            tracing::info!(id = %conn, "Connection setup timed out (no answer received)");
+            true
+        });
 
-            self.connections.initial.remove(&conn);
-            self.pending_events.push_back(Event::ConnectionFailed(conn));
-        }
+        self.connections.established.retain(|id, conn| {
+            if conn.is_failed {
+                self.pending_events.push_back(Event::ConnectionFailed(*id));
+                return false;
+            }
+
+            true
+        });
     }
 
     /// Returns buffered data that needs to be sent on the socket.
@@ -565,6 +554,7 @@ where
             buffered_transmits: Default::default(),
             buffer: Box::new([0u8; MAX_UDP_SIZE]),
             intent_sent_at,
+            is_failed: false,
             signalling_completed_at: now,
         }
     }
@@ -1293,6 +1283,8 @@ struct Connection {
 
     buffer: Box<[u8; MAX_UDP_SIZE]>,
     intent_sent_at: Instant,
+
+    is_failed: bool,
 
     signalling_completed_at: Instant,
 }
