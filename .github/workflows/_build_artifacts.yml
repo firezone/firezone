@@ -67,16 +67,16 @@ jobs:
         include:
           - image_name: api
             target: runtime
-            build-args:
-              - APPLICATION_NAME=api
+            build-args: |
+              APPLICATION_NAME=api
           - image_name: web
             target: runtime
-            build-args:
-              - APPLICATION_NAME=web
+            build-args: |
+              APPLICATION_NAME=web
           - image_name: elixir
             target: compiler
-            build-args:
-              - APPLICATION_NAME=api
+            build-args: |
+              APPLICATION_NAME=api
     steps:
       - uses: actions/checkout@v4
       - name: Set up Docker Buildx
@@ -110,8 +110,7 @@ jobs:
         id: build
         uses: docker/build-push-action@v5
         with:
-          build-args: |
-            ${{ matrix.build-args }}
+          build-args: ${{ matrix.build-args }}
           context: elixir
           cache-from: |
             type=registry,ref=${{ steps.login.outputs.registry }}/cache/${{ matrix.image_name }}:${{ env.CACHE_TAG }}
