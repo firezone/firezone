@@ -49,6 +49,27 @@ pub enum Server {}
 pub enum Client {}
 
 /// A node within a `snownet` network maintains connections to several other nodes.
+///
+/// [`Node`] is built in a SANS-IO fashion, meaning it neither advances time nor network state on its own.
+/// Instead, you need to call one of the following functions:
+///
+/// - [`Node::decapsulate`] for handling incoming network traffic
+/// - [`Node::encapsulate`] for handling outgoing network traffic
+/// - [`Node::handle_timeout`] for waking the [`Node`]
+///
+/// As a counterpart, the following functions inform you about state changes and "actions" the [`Node`] would like to take:
+///
+/// - [`Node::poll_timeout`] for learning when to "wake" the [`Node`]
+/// - [`Node::poll_transmit`] for transferring buffered data
+/// - [`Node::poll_event`] for learning about state changes
+///
+/// These sets of functions need to be combined into an event-loop by the caller.
+/// Any time you change a [`Node`]'s state, you should call [`Node::poll_timeout`] to accurately update, when the [`Node`] wants to be woken up for any time-based actions.
+/// In other words, it should be a loop of:
+///
+/// 1. Change [`Node`]'s state (either via network messages, adding a new connection, etc)
+/// 2. Check [`Node::poll_timeout`] for when to wake the [`Node`]
+/// 3. Call [`Node::handle_timeout`] once that time is reached
 pub struct Node<T, TId> {
     private_key: StaticSecret,
     index: IndexLfsr,
