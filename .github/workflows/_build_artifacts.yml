@@ -5,7 +5,7 @@ on:
     inputs:
       profile:
         required: false
-        default: debug
+        default: 'debug'
         type: string
 
 env:
@@ -164,13 +164,13 @@ jobs:
         with:
           tool: cross
       - name: Build binaries
+        env:
+          # Cross doesn't like to be passed --debug
+          PROFILE: "${{ inputs.profile == 'debug' && '' || '--release'}}"
         run: |
           set -xe
 
-          # Cross doesn't like to be passed --debug
-          profile=${{ inputs.profile == 'debug' && '' || '--release' }}
-
-          cross build $profile -p ${{ matrix.name.package }} --target ${{ matrix.arch.target }}
+          cross build $PROFILE -p ${{ matrix.name.package }} --target ${{ matrix.arch.target }}
 
           # Used for release artifact
           cp target/${{ matrix.arch.target }}/${{ inputs.profile }}/${{ matrix.name.package }} $BINARY_DEST_PATH
