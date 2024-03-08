@@ -2,7 +2,7 @@
 #![allow(clippy::unnecessary_cast, improper_ctypes, non_camel_case_types)]
 
 use connlib_client_shared::{
-    file_logger, Callbacks, Error, LoginUrl, ResourceDescription, Session,
+    file_logger, keypair, Callbacks, Error, LoginUrl, ResourceDescription, Session,
 };
 use ip_network::IpNetwork;
 use secrecy::SecretString;
@@ -193,11 +193,19 @@ impl WrappedSession {
     ) -> Result<Self, String> {
         let secret = SecretString::from(token);
 
-        let login = LoginUrl::client(api_url.as_str(), secret, device_id, device_name_override)
-            .map_err(|e| e.to_string())?;
+        let (private_key, public_key) = keypair();
+        let login = LoginUrl::client(
+            api_url.as_str(),
+            &secret,
+            device_id,
+            device_name_override,
+            public_key.to_bytes(),
+        )
+        .map_err(|e| e.to_string())?;
 
         let session = Session::connect(
             login,
+            private_key,
             os_version_override,
             CallbackHandler {
                 inner: Arc::new(callback_handler),

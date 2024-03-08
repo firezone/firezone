@@ -3,19 +3,17 @@ use crate::messages::InitGateway;
 use anyhow::{Context, Result};
 use backoff::ExponentialBackoffBuilder;
 use clap::Parser;
-use connlib_shared::{get_user_agent, Callbacks, LoginUrl};
+use connlib_shared::{get_user_agent, keypair, Callbacks, LoginUrl, StaticSecret};
 use firezone_cli_utils::{setup_global_subscriber, CommonArgs};
 use firezone_tunnel::GatewayTunnel;
 use futures::{future, TryFutureExt};
-use phoenix_channel::SecureUrl;
-use secrecy::{ExposeSecret as _, Secret, SecretString};
+use secrecy::{Secret, SecretString};
 use std::convert::Infallible;
 use std::path::Path;
 use std::pin::pin;
 use tokio::io::AsyncWriteExt;
 use tokio::signal::ctrl_c;
 use tracing_subscriber::layer;
-use url::Url;
 use uuid::Uuid;
 
 mod eventloop;
@@ -42,14 +40,17 @@ async fn try_main() -> Result<()> {
 
     let firezone_id = get_firezone_id(cli.firezone_id).await
         .context("Couldn't read FIREZONE_ID or write it to disk: Please provide it through the env variable or provide rw access to /var/lib/firezone/")?;
+
+    let (private_key, public_key) = keypair();
     let login = LoginUrl::gateway(
         cli.common.api_url,
-        SecretString::new(cli.common.token),
+        &SecretString::new(cli.common.token),
         firezone_id,
         cli.common.firezone_name,
+        public_key.to_bytes(),
     )?;
 
-    let task = tokio::spawn(run(login)).err_into();
+    let task = tokio::spawn(run(login, private_key)).err_into();
 
     let ctrl_c = pin!(ctrl_c().map_err(anyhow::Error::new));
 
@@ -87,13 +88,11 @@ async fn get_firezone_id(env_id: Option<String>) -> Result<String> {
     Ok(id)
 }
 
-async fn run(login: LoginUrl) -> Result<Infallible> {
-    let mut tunnel = GatewayTunnel::new(login.private_key(), CallbackHandler)?;
+async fn run(login: LoginUrl, private_key: StaticSecret) -> Result<Infallible> {
+    let mut tunnel = GatewayTunnel::new(private_key, CallbackHandler)?;
 
     let (portal, init) = phoenix_channel::init::<_, InitGateway, _, _>(
-        Secret::new(SecureUrl::from_url(
-            Url::parse(login.url().expose_secret().as_ref()).expect("we know it is a valid URL"),
-        )),
+        Secret::new(login),
         get_user_agent(None),
         PHOENIX_TOPIC,
         (),

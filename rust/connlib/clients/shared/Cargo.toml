@@ -29,6 +29,8 @@ async-compression = { version = "0.4.6", features = ["tokio", "gzip"] }
 parking_lot = "0.12"
 bimap = "0.6"
 ip_network = { version = "0.4", default-features = false }
+phoenix-channel = { workspace = true }
+
 
 [target.'cfg(target_os = "android")'.dependencies]
 tracing = { workspace = true, features = ["std", "attributes"] }

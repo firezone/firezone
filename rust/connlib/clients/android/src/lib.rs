@@ -4,7 +4,7 @@
 // ecosystem, so it's used here for consistency.
 
 use connlib_client_shared::{
-    file_logger, Callbacks, Error, LoginUrl, LoginUrlError, ResourceDescription, Session,
+    file_logger, keypair, Callbacks, Error, LoginUrl, LoginUrlError, ResourceDescription, Session,
 };
 use ip_network::IpNetwork;
 use jni::{
@@ -415,10 +415,18 @@ fn connect(
         handle,
     };
 
-    let login = LoginUrl::client(api_url.as_str(), secret, device_id, Some(device_name))?;
+    let (private_key, public_key) = keypair();
+    let login = LoginUrl::client(
+        api_url.as_str(),
+        &secret,
+        device_id,
+        Some(device_name),
+        public_key.to_bytes(),
+    )?;
 
     let session = Session::connect(
         login,
+        private_key,
         Some(os_version),
         callback_handler,
         Some(MAX_PARTITION_TIME),

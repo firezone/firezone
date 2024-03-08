@@ -9,7 +9,7 @@ use futures::channel::mpsc;
 use futures::{future, FutureExt, SinkExt, StreamExt};
 use opentelemetry::{sdk, KeyValue};
 use opentelemetry_otlp::WithExportConfig;
-use phoenix_channel::{Event, PhoenixChannel, SecureUrl};
+use phoenix_channel::{Event, LoginUrl, PhoenixChannel};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use secrecy::{Secret, SecretString};
@@ -250,33 +250,21 @@ fn env_filter() -> EnvFilter {
 async fn connect_to_portal(
     args: &Args,
     token: &SecretString,
-    mut url: Url,
+    url: Url,
     stamp_secret: &SecretString,
 ) -> Result<Option<PhoenixChannel<JoinMessage, (), ()>>> {
     use secrecy::ExposeSecret;
 
-    if !url.path().is_empty() {
-        tracing::warn!(target: "relay", "Overwriting path component of portal URL with '/relay/websocket'");
-    }
-
-    url.set_path("relay/websocket");
-    url.query_pairs_mut()
-        .append_pair("token", token.expose_secret().as_str());
-
-    if let Some(public_ip4_addr) = args.public_ip4_addr {
-        url.query_pairs_mut()
-            .append_pair("ipv4", &public_ip4_addr.to_string());
-    }
-    if let Some(public_ip6_addr) = args.public_ip6_addr {
-        url.query_pairs_mut()
-            .append_pair("ipv6", &public_ip6_addr.to_string());
-    }
-    if let Some(name) = args.name.as_ref() {
-        url.query_pairs_mut().append_pair("name", name);
-    }
+    let login = LoginUrl::relay(
+        url,
+        token,
+        args.name.clone(),
+        args.public_ip4_addr,
+        args.public_ip6_addr,
+    )?;
 
     let (channel, Init {}) = phoenix_channel::init::<_, Init, _, _>(
-        Secret::from(SecureUrl::from_url(url)),
+        Secret::new(login),
         format!("relay/{}", env!("CARGO_PKG_VERSION")),
         "relay",
         JoinMessage {

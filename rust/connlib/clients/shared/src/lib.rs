@@ -1,22 +1,21 @@
 //! Main connlib library for clients.
 pub use connlib_shared::messages::ResourceDescription;
-pub use connlib_shared::{Callbacks, Error, LoginUrl, LoginUrlError};
+pub use connlib_shared::{keypair, Callbacks, Error, LoginUrl, LoginUrlError};
 pub use tracing_appender::non_blocking::WorkerGuard;
 
 use backoff::{backoff::Backoff, ExponentialBackoffBuilder};
-use connlib_shared::control::SecureUrl;
+use connlib_shared::StaticSecret;
 use connlib_shared::{control::PhoenixChannel, CallbackErrorFacade, Result};
 use control::ControlPlane;
 use firezone_tunnel::Tunnel;
 use messages::IngressMessages;
 use messages::Messages;
 use messages::ReplyMessages;
-use secrecy::{ExposeSecret, Secret};
+use secrecy::Secret;
 use std::future::poll_fn;
 use std::time::Duration;
 use tokio::time::{Interval, MissedTickBehavior};
 use tokio::{runtime::Runtime, time::Instant};
-use url::Url;
 
 mod control;
 pub mod file_logger;
@@ -68,6 +67,7 @@ where
     // TODO: token should be something like SecretString but we need to think about FFI compatibility
     pub fn connect(
         url: LoginUrl,
+        private_key: StaticSecret,
         os_version_override: Option<String>,
         callbacks: CB,
         max_partition_time: Option<Duration>,
@@ -112,6 +112,7 @@ where
             &runtime,
             tx.clone(),
             url,
+            private_key,
             os_version_override,
             callbacks.clone(),
             max_partition_time,
@@ -134,6 +135,7 @@ where
         runtime: &Runtime,
         runtime_stopper: tokio::sync::mpsc::Sender<StopRuntime>,
         url: LoginUrl,
+        private_key: StaticSecret,
         os_version_override: Option<String>,
         callbacks: CallbackErrorFacade<CB>,
         max_partition_time: Option<Duration>,
@@ -144,7 +146,7 @@ where
             // to force queue ordering.
             let (control_plane_sender, mut control_plane_receiver) = tokio::sync::mpsc::channel(1);
 
-            let mut connection = PhoenixChannel::<_, IngressMessages, ReplyMessages, Messages>::new(Secret::new(SecureUrl::from_url(Url::parse(url.url().expose_secret().as_ref()).expect("we know it is a valid URL"))), os_version_override, move |msg, reference, topic| {
+            let mut connection = PhoenixChannel::<_, IngressMessages, ReplyMessages, Messages>::new(Secret::new(url), os_version_override, move |msg, reference, topic| {
                 let control_plane_sender = control_plane_sender.clone();
                 async move {
                     tracing::trace!(?msg);
@@ -155,7 +157,7 @@ where
             });
 
             let tunnel = fatal_error!(
-                Tunnel::new(url.private_key(), callbacks.clone()),
+                Tunnel::new(private_key, callbacks.clone()),
                 runtime_stopper,
                 &callbacks
             );
