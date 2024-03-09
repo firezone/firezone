@@ -20,12 +20,17 @@ const HOST_NAME_MAX: usize = 256;
 #[derive(Clone)]
 pub struct LoginUrl {
     url: Url,
+
+    // Invariant: Must stay the same as the host in `url`.
+    // This is duplicated here because `Url::host` is fallible.
+    // If we don't duplicate it, we'd have to do extra error handling in several places instead of just one place.
     host: String,
 }
 
 impl Zeroize for LoginUrl {
     fn zeroize(&mut self) {
-        let placeholder = Url::parse("http://a.com").expect("placeholder URL to be valid");
+        let placeholder = Url::parse("http://a.com")
+            .expect("placeholder URL should always be valid, it's hard-coded");
         let _ = std::mem::replace(&mut self.url, placeholder);
     }
 }
@@ -126,6 +131,7 @@ impl LoginUrl {
     }
 }
 
+/// Parse the host from a URL, including port if present. e.g. `example.com:8080`.
 fn parse_host<E>(url: &Url) -> Result<String, LoginUrlError<E>> {
     let host = url.host_str().ok_or(LoginUrlError::MissingHost)?;
 
