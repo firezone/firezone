@@ -1,5 +1,6 @@
 name: Continuous Delivery
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
@@ -17,6 +18,7 @@ jobs:
       profile: release
   integration-tests:
     uses: ./.github/workflows/_integration_tests.yml
+    needs: build-artifacts
     secrets: inherit
 
   deploy-staging:

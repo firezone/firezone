@@ -3,7 +3,7 @@ on:
   pull_request:
   merge_group:
     types: [checks_requested]
-  workflow_call:
+  workflow_dispatch:
 
 # Cancel old workflow runs if new code is pushed
 concurrency:
@@ -11,9 +11,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build-artifacts:
-    uses: ./.github/workflows/_build_artifacts.yml
-    secrets: inherit
   kotlin:
     uses: ./.github/workflows/_kotlin.yml
     secrets: inherit
@@ -37,13 +34,15 @@ jobs:
     uses: ./.github/workflows/_codeql.yml
     secrets: inherit
 
+  build-artifacts:
+    uses: ./.github/workflows/_build_artifacts.yml
+    secrets: inherit
   integration-tests:
     uses: ./.github/workflows/_integration_tests.yml
     needs: build-artifacts
     secrets: inherit
 
   perf-tests:
-    if: github.event_name == 'pull_request'
     name: perf-tests-${{ matrix.test_name }}
     needs: build-artifacts
     runs-on: ubuntu-22.04
