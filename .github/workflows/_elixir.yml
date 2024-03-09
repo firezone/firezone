@@ -265,7 +265,7 @@ jobs:
           ref: ${{ github.base_ref }}
       - name: Migrate DB to base ref
         run: mix ecto.migrate
-      - name: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           ref: ${{ github.ref }}
       - name: Run new migrations
