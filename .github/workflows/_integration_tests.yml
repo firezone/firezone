@@ -46,7 +46,7 @@ on:
       client_image:
         required: false
         type: string
-        default: 'us-east1-docker.pkg.dev/firezone-staging/firezone/gateway'
+        default: 'us-east1-docker.pkg.dev/firezone-staging/firezone/client'
       client_tag:
         required: false
         type: string
