@@ -1081,6 +1081,7 @@ dependencies = [
  "tracing-android",
  "tracing-appender",
  "tracing-subscriber",
+ "url",
 ]
 
 [[package]]
@@ -1116,6 +1117,7 @@ dependencies = [
  "firezone-tunnel",
  "ip_network",
  "parking_lot",
+ "phoenix-channel",
  "reqwest",
  "secrecy",
  "serde",
@@ -1146,7 +1148,6 @@ dependencies = [
  "futures",
  "futures-util",
  "hickory-resolver",
- "hostname",
  "ip_network",
  "itertools 0.12.1",
  "known-folders",
@@ -1154,6 +1155,7 @@ dependencies = [
  "log",
  "os_info",
  "parking_lot",
+ "phoenix-channel",
  "rand 0.8.5",
  "rand_core 0.6.4",
  "resolv-conf",
@@ -4387,15 +4389,20 @@ dependencies = [
  "backoff",
  "base64 0.22.0",
  "futures",
+ "hex",
+ "hostname",
+ "libc",
  "rand_core 0.6.4",
  "secrecy",
  "serde",
  "serde_json",
+ "sha2",
  "thiserror",
  "tokio",
  "tokio-tungstenite",
  "tracing",
  "url",
+ "uuid",
 ]
 
 [[package]]

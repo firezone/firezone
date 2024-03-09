@@ -1,22 +1,21 @@
 //! Main connlib library for clients.
 pub use connlib_shared::messages::ResourceDescription;
-pub use connlib_shared::{Callbacks, Error};
+pub use connlib_shared::{keypair, Callbacks, Error, LoginUrl, LoginUrlError};
 pub use tracing_appender::non_blocking::WorkerGuard;
 
 use backoff::{backoff::Backoff, ExponentialBackoffBuilder};
-use connlib_shared::control::SecureUrl;
-use connlib_shared::{control::PhoenixChannel, login_url, CallbackErrorFacade, Mode, Result};
+use connlib_shared::StaticSecret;
+use connlib_shared::{control::PhoenixChannel, CallbackErrorFacade, Result};
 use control::ControlPlane;
 use firezone_tunnel::Tunnel;
 use messages::IngressMessages;
 use messages::Messages;
 use messages::ReplyMessages;
-use secrecy::{Secret, SecretString};
+use secrecy::Secret;
 use std::future::poll_fn;
 use std::time::Duration;
 use tokio::time::{Interval, MissedTickBehavior};
 use tokio::{runtime::Runtime, time::Instant};
-use url::Url;
 
 mod control;
 pub mod file_logger;
@@ -67,10 +66,8 @@ where
     /// * `device_id` - The cleartext device ID. connlib will obscure this with a hash internally.
     // TODO: token should be something like SecretString but we need to think about FFI compatibility
     pub fn connect(
-        api_url: impl TryInto<Url>,
-        token: SecretString,
-        device_id: String,
-        device_name_override: Option<String>,
+        url: LoginUrl,
+        private_key: StaticSecret,
         os_version_override: Option<String>,
         callbacks: CB,
         max_partition_time: Option<Duration>,
@@ -114,10 +111,8 @@ where
         Self::connect_inner(
             &runtime,
             tx.clone(),
-            api_url.try_into().map_err(|_| Error::UriError)?,
-            token,
-            device_id,
-            device_name_override,
+            url,
+            private_key,
             os_version_override,
             callbacks.clone(),
             max_partition_time,
@@ -139,27 +134,19 @@ where
     fn connect_inner(
         runtime: &Runtime,
         runtime_stopper: tokio::sync::mpsc::Sender<StopRuntime>,
-        api_url: Url,
-        token: SecretString,
-        device_id: String,
-        device_name_override: Option<String>,
+        url: LoginUrl,
+        private_key: StaticSecret,
         os_version_override: Option<String>,
         callbacks: CallbackErrorFacade<CB>,
         max_partition_time: Option<Duration>,
     ) {
         runtime.spawn(async move {
-            let (connect_url, private_key) = fatal_error!(
-                login_url(Mode::Client, api_url, token, device_id, device_name_override),
-                runtime_stopper,
-                &callbacks
-            );
-
             // This is kinda hacky, the buffer size is 1 so that we make sure that we
             // process one message at a time, blocking if a previous message haven't been processed
             // to force queue ordering.
             let (control_plane_sender, mut control_plane_receiver) = tokio::sync::mpsc::channel(1);
 
-            let mut connection = PhoenixChannel::<_, IngressMessages, ReplyMessages, Messages>::new(Secret::new(SecureUrl::from_url(connect_url)), os_version_override, move |msg, reference, topic| {
+            let mut connection = PhoenixChannel::<_, IngressMessages, ReplyMessages, Messages>::new(Secret::new(url), os_version_override, move |msg, reference, topic| {
                 let control_plane_sender = control_plane_sender.clone();
                 async move {
                     tracing::trace!(?msg);

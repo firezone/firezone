@@ -3,7 +3,9 @@
 // However, this consideration has made it idiomatic for Java FFI in the Rust
 // ecosystem, so it's used here for consistency.
 
-use connlib_client_shared::{file_logger, Callbacks, Error, ResourceDescription, Session};
+use connlib_client_shared::{
+    file_logger, keypair, Callbacks, Error, LoginUrl, LoginUrlError, ResourceDescription, Session,
+};
 use ip_network::IpNetwork;
 use jni::{
     objects::{GlobalRef, JByteArray, JClass, JObject, JObjectArray, JString, JValue, JValueGen},
@@ -366,6 +368,8 @@ enum ConnectError {
     GetJavaVmFailed(#[source] jni::errors::Error),
     #[error(transparent)]
     ConnectFailed(#[from] Error),
+    #[error(transparent)]
+    InvalidLoginUrl(#[from] LoginUrlError<url::ParseError>),
 }
 
 macro_rules! string_from_jstring {
@@ -411,11 +415,18 @@ fn connect(
         handle,
     };
 
-    let session = Session::connect(
+    let (private_key, public_key) = keypair();
+    let login = LoginUrl::client(
         api_url.as_str(),
-        secret,
+        &secret,
         device_id,
         Some(device_name),
+        public_key.to_bytes(),
+    )?;
+
+    let session = Session::connect(
+        login,
+        private_key,
         Some(os_version),
         callback_handler,
         Some(MAX_PARTITION_TIME),
