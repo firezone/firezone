@@ -1,7 +1,11 @@
 use anyhow::{Context, Result};
 use clap::Parser;
 use connlib_client_shared::{file_logger, Callbacks, Session};
-use connlib_shared::linux::{etc_resolv_conf, get_dns_control_from_env, DnsControlMethod};
+use connlib_shared::{
+    keypair,
+    linux::{etc_resolv_conf, get_dns_control_from_env, DnsControlMethod},
+    LoginUrl,
+};
 use firezone_cli_utils::{block_on_ctrl_c, setup_global_subscriber, CommonArgs};
 use secrecy::SecretString;
 use std::{net::IpAddr, path::PathBuf, str::FromStr};
@@ -25,16 +29,17 @@ fn main() -> Result<()> {
         None => connlib_shared::device_id::get().context("Could not get `firezone_id` from CLI, could not read it from disk, could not generate it and save it to disk")?,
     };
 
-    let mut session = Session::connect(
+    let (private_key, public_key) = keypair();
+    let login = LoginUrl::client(
         cli.common.api_url,
-        SecretString::from(cli.common.token),
+        &SecretString::from(cli.common.token),
         firezone_id,
         None,
-        None,
-        callbacks,
-        max_partition_time,
-    )
-    .unwrap();
+        public_key.to_bytes(),
+    )?;
+
+    let mut session =
+        Session::connect(login, private_key, None, callbacks, max_partition_time).unwrap();
 
     block_on_ctrl_c();
 

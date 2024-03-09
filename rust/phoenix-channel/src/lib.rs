@@ -1,4 +1,5 @@
 mod heartbeat;
+mod login_url;
 
 use std::collections::{HashSet, VecDeque};
 use std::{fmt, future, marker::PhantomData};
@@ -10,7 +11,7 @@ use futures::future::BoxFuture;
 use futures::{FutureExt, SinkExt, StreamExt};
 use heartbeat::{Heartbeat, MissedLastHeartbeat};
 use rand_core::{OsRng, RngCore};
-use secrecy::{CloneableSecret, ExposeSecret as _, Secret};
+use secrecy::{ExposeSecret as _, Secret};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::task::{ready, Context, Poll};
 use tokio::net::TcpStream;
@@ -20,7 +21,8 @@ use tokio_tungstenite::{
     tungstenite::{handshake::client::Request, Message},
     MaybeTlsStream, WebSocketStream,
 };
-use url::Url;
+
+pub use login_url::{LoginUrl, LoginUrlError};
 
 // TODO: Refactor this PhoenixChannel to be compatible with the needs of the client and gateway
 // See https://github.com/firezone/firezone/issues/2158
@@ -36,7 +38,7 @@ pub struct PhoenixChannel<TInitReq, TInboundMsg, TOutboundRes> {
     pending_join_requests: HashSet<OutboundRequestId>,
 
     // Stored here to allow re-connecting.
-    secret_url: Secret<SecureUrl>,
+    url: Secret<LoginUrl>,
     user_agent: String,
     reconnect_backoff: ExponentialBackoff,
 
@@ -57,7 +59,7 @@ enum State {
 /// Additionally, you must already provide any query parameters required for authentication.
 #[allow(clippy::type_complexity)]
 pub async fn init<TInitReq, TInitRes, TInboundMsg, TOutboundRes>(
-    secret_url: Secret<SecureUrl>,
+    url: Secret<LoginUrl>,
     user_agent: String,
     login_topic: &'static str,
     payload: TInitReq,
@@ -79,7 +81,7 @@ where
     TOutboundRes: DeserializeOwned,
 {
     let mut channel = PhoenixChannel::<_, InitMessage<TInitRes>, ()>::connect(
-        secret_url,
+        url,
         user_agent,
         login_topic,
         payload,
@@ -194,37 +196,6 @@ impl fmt::Display for InboundRequestId {
     }
 }
 
-#[derive(Clone)]
-pub struct SecureUrl {
-    inner: Url,
-}
-
-impl SecureUrl {
-    pub fn from_url(url: Url) -> Self {
-        Self { inner: url }
-    }
-
-    /// Exposes the `host` of the URL.
-    ///
-    /// The host doesn't contain any secrets.
-    pub fn host(&self) -> Option<&str> {
-        self.inner.host_str()
-    }
-
-    pub fn port(&self) -> Option<u16> {
-        self.inner.port()
-    }
-}
-
-impl CloneableSecret for SecureUrl {}
-
-impl secrecy::Zeroize for SecureUrl {
-    fn zeroize(&mut self) {
-        let placeholder = Url::parse("http://a.com").expect("placeholder URL to be valid");
-        let _ = std::mem::replace(&mut self.inner, placeholder);
-    }
-}
-
 impl<TInitReq, TInboundMsg, TOutboundRes> PhoenixChannel<TInitReq, TInboundMsg, TOutboundRes>
 where
     TInitReq: Serialize + Clone,
@@ -238,7 +209,7 @@ where
     ///
     /// Once the connection is established,
     pub fn connect(
-        secret_url: Secret<SecureUrl>,
+        url: Secret<LoginUrl>,
         user_agent: String,
         login: &'static str,
         init_req: TInitReq,
@@ -246,10 +217,10 @@ where
     ) -> Self {
         Self {
             reconnect_backoff,
-            secret_url: secret_url.clone(),
+            url: url.clone(),
             user_agent: user_agent.clone(),
             state: State::Connecting(Box::pin(async move {
-                let (stream, _) = connect_async(make_request(secret_url, user_agent))
+                let (stream, _) = connect_async(make_request(url, user_agent))
                     .await
                     .map_err(InternalError::WebSocket)?;
 
@@ -292,11 +263,7 @@ where
                         self.reconnect_backoff.reset();
                         self.state = State::Connected(stream);
 
-                        let host = self
-                            .secret_url
-                            .expose_secret()
-                            .host()
-                            .expect("always has host");
+                        let host = self.url.expose_secret().host();
 
                         tracing::info!(%host, "Connected to portal");
                         self.join(self.login, self.init_req.clone());
@@ -314,7 +281,7 @@ where
                             return Poll::Ready(Err(Error::MaxRetriesReached));
                         };
 
-                        let secret_url = self.secret_url.clone();
+                        let secret_url = self.url.clone();
                         let user_agent = self.user_agent.clone();
 
                         tracing::debug!(?backoff, max_elapsed_time = ?self.reconnect_backoff.max_elapsed_time, "Reconnecting to portal on transient client error: {e}");
@@ -521,7 +488,7 @@ where
             heartbeat: self.heartbeat,
             _phantom: PhantomData,
             pending_join_requests: self.pending_join_requests,
-            secret_url: self.secret_url,
+            url: self.url,
             user_agent: self.user_agent,
             reconnect_backoff: self.reconnect_backoff,
             login: self.login,
@@ -628,33 +595,22 @@ impl<T, R> PhoenixMessage<T, R> {
 }
 
 // This is basically the same as tungstenite does but we add some new headers (namely user-agent)
-fn make_request(secret_url: Secret<SecureUrl>, user_agent: String) -> Request {
-    use secrecy::ExposeSecret;
+fn make_request(url: Secret<LoginUrl>, user_agent: String) -> Request {
+    use secrecy::ExposeSecret as _;
 
     let mut r = [0u8; 16];
     OsRng.fill_bytes(&mut r);
     let key = base64::engine::general_purpose::STANDARD.encode(r);
 
-    let mut req_builder = Request::builder()
+    Request::builder()
         .method("GET")
+        .header("Host", url.expose_secret().host())
         .header("Connection", "Upgrade")
         .header("Upgrade", "websocket")
         .header("Sec-WebSocket-Version", "13")
         .header("Sec-WebSocket-Key", key)
         .header("User-Agent", user_agent)
-        .uri(secret_url.expose_secret().inner.as_str());
-
-    if let Some(host) = secret_url.expose_secret().host() {
-        let host = secret_url
-            .expose_secret()
-            .port()
-            .map(|port| format!("{host}:{port}"))
-            .unwrap_or(host.to_string());
-
-        req_builder = req_builder.header("Host", host);
-    }
-
-    req_builder
+        .uri(url.expose_secret().inner().as_str())
         .body(())
         .expect("building static request always works")
 }
