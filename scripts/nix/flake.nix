@@ -51,7 +51,7 @@
           };
 
           devShell = pkgs.mkShell {
-            packages = [ pkgs.cargo-tauri ];
+            packages = [ pkgs.cargo-tauri pkgs.iptables ];
             buildInputs = [
               (pkgs.rust-bin.fromRustupToolchainFile ../../rust/rust-toolchain.toml)
             ] ++ packages;

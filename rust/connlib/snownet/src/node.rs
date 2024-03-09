@@ -35,6 +35,9 @@ use tracing::{field, Span};
 // Note: Taken from boringtun
 const HANDSHAKE_RATE_LIMIT: u64 = 100;
 
+/// How long we will at most wait for a candidate from the remote.
+const CANDIDATE_TIMEOUT: Duration = Duration::from_secs(10);
+
 const MAX_UDP_SIZE: usize = (1 << 16) - 1;
 
 /// Manages a set of wireguard connections for a server.
@@ -469,16 +472,20 @@ where
         self.last_now = now;
 
         let mut expired_connections = vec![];
+        let mut no_candidates_received = vec![];
 
         for (id, c) in self.connections.iter_established_mut() {
             match c.handle_timeout(now, &mut self.allocations) {
                 Ok(Some(transmit)) => {
                     self.buffered_transmits.push_back(transmit);
                 }
-                Err(WireGuardError::ConnectionExpired) => {
+                Err(ConnectionError::Wireguard(WireGuardError::ConnectionExpired)) => {
                     expired_connections.push(id);
                 }
-                Err(e) => {
+                Err(ConnectionError::CandidateTimeout) => {
+                    no_candidates_received.push(id);
+                }
+                Err(ConnectionError::Wireguard(e)) => {
                     tracing::warn!(%id, ?e);
                 }
                 _ => {}
@@ -487,6 +494,13 @@ where
 
         for conn in expired_connections {
             tracing::info!(id = %conn, "Connection failed (wireguard tunnel expired)");
+
+            self.connections.established.remove(&conn);
+            self.pending_events.push_back(Event::ConnectionFailed(conn))
+        }
+
+        for conn in no_candidates_received {
+            tracing::info!(id = %conn, "Connection failed (no candidates received)");
 
             self.connections.established.remove(&conn);
             self.pending_events.push_back(Event::ConnectionFailed(conn))
@@ -560,6 +574,7 @@ where
         key: [u8; 32],
         allowed_stun_servers: HashSet<SocketAddr>,
         allowed_turn_servers: HashSet<SocketAddr>,
+        now: Instant,
     ) -> Connection {
         agent.handle_timeout(self.last_now);
 
@@ -584,6 +599,7 @@ where
             peer_socket: None,
             possible_sockets: HashSet::default(),
             stats: Default::default(),
+            signalling_completed_at: now,
         }
     }
 
@@ -846,9 +862,14 @@ where
         params
     }
 
+    /// Whether we have sent an [`Offer`] for this connection and are currently expecting an [`Answer`].
+    pub fn is_expecting_answer(&self, id: TId) -> bool {
+        self.connections.initial.contains_key(&id)
+    }
+
     /// Accept an [`Answer`] from the remote for a connection previously created via [`Node::new_connection`].
     #[tracing::instrument(level = "info", skip_all, fields(%id))]
-    pub fn accept_answer(&mut self, id: TId, remote: PublicKey, answer: Answer) {
+    pub fn accept_answer(&mut self, id: TId, remote: PublicKey, answer: Answer, now: Instant) {
         let Some(initial) = self.connections.initial.remove(&id) else {
             tracing::debug!("No initial connection state, ignoring answer"); // This can happen if the connection setup timed out.
             return;
@@ -873,6 +894,7 @@ where
             *initial.session_key.expose_secret(),
             initial.stun_servers,
             initial.turn_servers,
+            now,
         );
 
         let existing = self.connections.established.insert(id, connection);
@@ -900,6 +922,7 @@ where
         remote: PublicKey,
         allowed_stun_servers: HashSet<SocketAddr>,
         allowed_turn_servers: HashSet<(SocketAddr, String, String, String)>,
+        now: Instant,
     ) -> Answer {
         debug_assert!(
             !self.connections.initial.contains_key(&id),
@@ -945,6 +968,7 @@ where
             *offer.session_key.expose_secret(),
             allowed_stun_servers,
             allowed_turn_servers,
+            now,
         );
         let existing = self.connections.established.insert(id, connection);
 
@@ -1287,6 +1311,8 @@ struct Connection {
     turn_servers: HashSet<SocketAddr>,
 
     stats: ConnectionStats,
+
+    signalling_completed_at: Instant,
 }
 
 /// The socket of the peer we are connected to.
@@ -1354,8 +1380,17 @@ impl Connection {
     fn poll_timeout(&mut self) -> Option<Instant> {
         let agent_timeout = self.agent.poll_timeout();
         let next_wg_timer = Some(self.next_timer_update);
+        let candidate_timeout = self.candidate_timeout();
 
-        earliest(agent_timeout, next_wg_timer)
+        earliest(agent_timeout, earliest(next_wg_timer, candidate_timeout))
+    }
+
+    fn candidate_timeout(&self) -> Option<Instant> {
+        if !self.agent.remote_candidates().is_empty() {
+            return None;
+        }
+
+        Some(self.signalling_completed_at + CANDIDATE_TIMEOUT)
     }
 
     #[must_use]
@@ -1407,8 +1442,15 @@ impl Connection {
         &mut self,
         now: Instant,
         allocations: &mut HashMap<SocketAddr, Allocation>,
-    ) -> Result<Option<Transmit<'static>>, WireGuardError> {
+    ) -> Result<Option<Transmit<'static>>, ConnectionError> {
         self.agent.handle_timeout(now);
+
+        if self
+            .candidate_timeout()
+            .is_some_and(|timeout| now >= timeout)
+        {
+            return Err(ConnectionError::CandidateTimeout);
+        }
 
         // TODO: `boringtun` is impure because it calls `Instant::now`.
 
@@ -1429,7 +1471,7 @@ impl Connection {
 
             match self.tunnel.update_timers(&mut buf) {
                 TunnResult::Done => {}
-                TunnResult::Err(e) => return Err(e),
+                TunnResult::Err(e) => return Err(ConnectionError::Wireguard(e)),
                 TunnResult::WriteToNetwork(b) => {
                     let Some(transmit) = self.encapsulate(b, allocations, now) else {
                         return Ok(None);
@@ -1523,4 +1565,10 @@ impl Connection {
             .iter()
             .find(|c| c.addr() == source)
     }
+}
+
+#[derive(Debug)]
+enum ConnectionError {
+    Wireguard(WireGuardError),
+    CandidateTimeout,
 }

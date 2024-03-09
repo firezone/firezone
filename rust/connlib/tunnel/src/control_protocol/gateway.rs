@@ -1,25 +1,22 @@
-use crate::device_channel::Device;
-use crate::ip_packet::MutableIpPacket;
-use crate::peer::{PacketTransformGateway, Peer};
-use crate::peer_store::PeerStore;
-use crate::utils::{stun, turn};
-use crate::Tunnel;
+use crate::{
+    dns::is_subdomain,
+    peer::{PacketTransformGateway, Peer},
+    Error, GatewayState, Tunnel,
+};
+
+use super::{stun, turn};
 use boringtun::x25519::PublicKey;
 use chrono::{DateTime, Utc};
-use connlib_shared::messages::{
-    Answer, ClientId, ConnectionAccepted, DomainResponse, Interface as InterfaceConfig, Key, Offer,
-    Relay, ResourceId,
+use connlib_shared::{
+    messages::{
+        Answer, ClientId, ConnectionAccepted, DomainResponse, Key, Offer, Relay, ResourceId,
+    },
+    Callbacks, Dname, Result,
 };
-use connlib_shared::{Callbacks, Dname, Error, Result};
 use ip_network::IpNetwork;
 use secrecy::{ExposeSecret as _, Secret};
-use snownet::Server;
-use std::task::{ready, Context, Poll};
-use std::time::{Duration, Instant};
-use tokio::time::{interval, Interval, MissedTickBehavior};
-
-const PEERS_IPV4: &str = "100.64.0.0/11";
-const PEERS_IPV6: &str = "fd00:2021:1111::/107";
+use snownet::{Credentials, Server};
+use std::time::Instant;
 
 /// Description of a resource that maps to a DNS record which had its domain already resolved.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -42,26 +39,6 @@ impl<CB> Tunnel<CB, GatewayState, Server, ClientId>
 where
     CB: Callbacks + 'static,
 {
-    /// Sets the interface configuration and starts background tasks.
-    #[tracing::instrument(level = "trace", skip(self))]
-    pub fn set_interface(&mut self, config: &InterfaceConfig) -> connlib_shared::Result<()> {
-        // Note: the dns fallback strategy is irrelevant for gateways
-        let mut device = Device::new(config, vec![], self.callbacks())?;
-
-        let result_v4 = device.add_route(PEERS_IPV4.parse().unwrap(), self.callbacks());
-        let result_v6 = device.add_route(PEERS_IPV6.parse().unwrap(), self.callbacks());
-        result_v4.or(result_v6)?;
-
-        let name = device.name().to_owned();
-
-        self.device = Some(device);
-        self.no_device_waker.wake();
-
-        tracing::debug!(ip4 = %config.ipv4, ip6 = %config.ipv6, %name, "TUN device initialized");
-
-        Ok(())
-    }
-
     /// Accept a connection request from a client.
     ///
     /// Sets a connection to a remote SDP, creates the local SDP
@@ -70,12 +47,12 @@ where
     /// # Returns
     /// The connection details
     #[allow(clippy::too_many_arguments)]
-    pub fn accept(
+    pub fn set_peer_connection_request(
         &mut self,
-        client_id: ClientId,
+        client: ClientId,
         key: Secret<Key>,
         offer: Offer,
-        client: PublicKey,
+        gateway: PublicKey,
         ips: Vec<IpNetwork>,
         relays: Vec<Relay>,
         domain: Option<Dname>,
@@ -88,7 +65,7 @@ where
                     return Err(Error::ControlProtocolError);
                 };
 
-                if !crate::dns::is_subdomain(&domain, &r.domain) {
+                if !is_subdomain(&domain, &r.domain) {
                     return Err(Error::InvalidResource);
                 }
 
@@ -98,15 +75,15 @@ where
         };
 
         let answer = self.connections_state.node.accept_connection(
-            client_id,
+            client,
             snownet::Offer {
                 session_key: key.expose_secret().0.into(),
-                credentials: snownet::Credentials {
+                credentials: Credentials {
                     username: offer.username,
                     password: offer.password,
                 },
             },
-            client,
+            gateway,
             stun(&relays, |addr| {
                 self.connections_state.sockets.can_handle(addr)
             }),
@@ -118,11 +95,13 @@ where
 
         self.new_peer(
             ips,
-            client_id,
+            client,
             resource,
             expires_at,
             resource_addresses.clone(),
         )?;
+
+        tracing::info!(%client, gateway = %hex::encode(gateway.as_bytes()), "Connection is ready");
 
         Ok(ConnectionAccepted {
             ice_parameters: Answer {
@@ -137,11 +116,6 @@ where
                     .collect(),
             }),
         })
-    }
-
-    /// Clean up a connection to a resource.
-    pub fn cleanup_connection(&mut self, id: &ClientId) {
-        self.role_state.peers.remove(id);
     }
 
     pub fn allow_access(
@@ -159,7 +133,7 @@ where
                     return None;
                 };
 
-                if !crate::dns::is_subdomain(&domain, &r.domain) {
+                if !is_subdomain(&domain, &r.domain) {
                     return None;
                 }
 
@@ -185,23 +159,6 @@ where
         None
     }
 
-    pub fn remove_access(&mut self, id: &ClientId, resource_id: &ResourceId) {
-        let Some(peer) = self.role_state.peers.get_mut(id) else {
-            return;
-        };
-
-        peer.transform.remove_resource(resource_id);
-        if peer.transform.is_emptied() {
-            self.role_state.peers.remove(id);
-        }
-    }
-
-    pub fn add_ice_candidate(&mut self, conn_id: ClientId, ice_candidate: String) {
-        self.connections_state
-            .node
-            .add_remote_candidate(conn_id, ice_candidate);
-    }
-
     fn new_peer(
         &mut self,
         ips: Vec<IpNetwork>,
@@ -210,6 +167,8 @@ where
         expires_at: Option<DateTime<Utc>>,
         resource_addresses: Vec<IpNetwork>,
     ) -> Result<()> {
+        tracing::trace!(?ips, "new_data_channel_open");
+
         let mut peer = Peer::new(client_id, PacketTransformGateway::default(), &ips, ());
 
         for address in resource_addresses {
@@ -220,49 +179,5 @@ where
         self.role_state.peers.insert(peer, &ips);
 
         Ok(())
-    }
-}
-
-/// [`Tunnel`] state specific to gateways.
-pub struct GatewayState {
-    pub peers: PeerStore<ClientId, PacketTransformGateway, ()>,
-    expire_interval: Interval,
-}
-
-impl GatewayState {
-    pub(crate) fn encapsulate<'a>(
-        &mut self,
-        packet: MutableIpPacket<'a>,
-    ) -> Option<(ClientId, MutableIpPacket<'a>)> {
-        let dest = packet.destination();
-
-        let peer = self.peers.peer_by_ip_mut(dest)?;
-        let packet = peer.transform(packet)?;
-
-        Some((peer.conn_id, packet))
-    }
-
-    pub fn poll(&mut self, cx: &mut Context<'_>) -> Poll<()> {
-        ready!(self.expire_interval.poll_tick(cx));
-        self.expire_resources();
-        Poll::Ready(())
-    }
-
-    fn expire_resources(&mut self) {
-        self.peers
-            .iter_mut()
-            .for_each(|p| p.transform.expire_resources());
-        self.peers.retain(|_, p| !p.transform.is_emptied());
-    }
-}
-
-impl Default for GatewayState {
-    fn default() -> Self {
-        let mut expire_interval = interval(Duration::from_secs(1));
-        expire_interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
-        Self {
-            peers: Default::default(),
-            expire_interval,
-        }
     }
 }

@@ -335,6 +335,17 @@ where
     }
 
     fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Event<TId>> {
+        if let Poll::Ready(prev_timeout) = self.connection_pool_timeout.poll_unpin(cx) {
+            self.node.handle_timeout(prev_timeout);
+            if let Some(new_timeout) = self.node.poll_timeout() {
+                debug_assert_ne!(prev_timeout, new_timeout, "Timer busy loop!");
+
+                self.connection_pool_timeout = sleep_until(new_timeout).boxed();
+            }
+
+            cx.waker().wake_by_ref();
+        }
+
         if self.stats_timer.poll_tick(cx).is_ready() {
             let (node_stats, conn_stats) = self.node.stats();
 
@@ -371,15 +382,6 @@ where
                 return Poll::Ready(Event::StopPeer(id));
             }
             _ => {}
-        }
-
-        if let Poll::Ready(instant) = self.connection_pool_timeout.poll_unpin(cx) {
-            self.node.handle_timeout(instant);
-            if let Some(timeout) = self.node.poll_timeout() {
-                self.connection_pool_timeout = sleep_until(timeout).boxed();
-            }
-
-            cx.waker().wake_by_ref();
         }
 
         Poll::Pending

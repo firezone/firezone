@@ -1,4 +1,4 @@
-use std::{collections::HashSet, net::IpAddr};
+use std::{collections::HashSet, net::IpAddr, time::Instant};
 
 use boringtun::x25519::PublicKey;
 use connlib_shared::{
@@ -64,6 +64,10 @@ where
             return Ok(Request::ReuseConnection(connection));
         }
 
+        if self.connections_state.node.is_expecting_answer(gateway_id) {
+            return Err(Error::PendingConnection);
+        }
+
         let domain = self
             .role_state
             .get_awaiting_connection_domain(&resource_id)?
@@ -101,7 +105,6 @@ where
     ) -> Result<()> {
         let ips = self.role_state.create_peer_config_for_new_connection(
             resource_id,
-            gateway_id,
             &domain_response.as_ref().map(|d| d.domain.clone()),
         )?;
 
@@ -151,6 +154,7 @@ where
                     password: rtc_ice_params.password,
                 },
             },
+            Instant::now(),
         );
 
         self.new_peer(resource_id, gateway_id, domain_response)?;
