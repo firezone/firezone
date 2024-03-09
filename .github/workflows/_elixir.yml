@@ -263,7 +263,8 @@ jobs:
           mix ecto.create
       - name: Migrate DB to main
         run: |
-          git checkout main
+          git fetch origin main
+          git checkout origin/main
           mix ecto.migrate
       - name: Run new migrations
         run: |
