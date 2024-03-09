@@ -261,14 +261,13 @@ jobs:
       - name: Create Database
         run: |
           mix ecto.create
-      - name: Migrate DB to main
+      - name: Migrate DB to base ref
         run: |
-          git fetch origin main
-          git checkout origin/main
+          git checkout ${{ github.base_ref }}
           mix ecto.migrate
       - name: Run new migrations
         run: |
-          git checkout ${{ github.ref }}
+          git checkout ${{ github.ref_name }}
           mix ecto.migrate
       - name: Run Seed
         run: mix ecto.seed
