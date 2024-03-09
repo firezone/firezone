@@ -225,6 +225,7 @@ jobs:
           images:
             ${{ steps.login.outputs.registry }}/firezone/${{matrix.name.image_name }}
           tags: |
+            type=raw,value=latest
             type=raw,value=${{ github.sha }}
             type=raw,value=${{ env.VERSION }}
             type=raw,value=${{ env.VERSION }}-${{ github.sha }}
@@ -308,6 +309,7 @@ jobs:
           images:
             ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}
           tags: |
+            type=raw,value=latest
             type=raw,value=${{ github.sha }}
             type=raw,value=${{ env.VERSION }}
             type=raw,value=${{ env.VERSION }}-${{ github.sha }}
