@@ -272,10 +272,10 @@ pub struct ClientState {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct AwaitingConnectionDetails {
-    domain: Option<Dname>,
+pub(crate) struct AwaitingConnectionDetails {
+    pub domain: Option<Dname>,
     gateways: HashSet<GatewayId>,
-    last_intent_sent_at: Instant,
+    pub last_intent_sent_at: Instant,
 }
 
 impl ClientState {
@@ -352,15 +352,13 @@ impl ClientState {
         }
     }
 
-    pub(crate) fn get_awaiting_connection_domain(
+    pub(crate) fn get_awaiting_connection(
         &self,
         resource: &ResourceId,
-    ) -> Result<&Option<Dname>, ConnlibError> {
-        Ok(&self
-            .awaiting_connection
+    ) -> Result<&AwaitingConnectionDetails, ConnlibError> {
+        self.awaiting_connection
             .get(resource)
-            .ok_or(Error::UnexpectedConnectionDetails)?
-            .domain)
+            .ok_or(Error::UnexpectedConnectionDetails)
     }
 
     pub(crate) fn attempt_to_reuse_connection(
@@ -373,7 +371,7 @@ impl ClientState {
             .get(&resource)
             .ok_or(Error::UnknownResource)?;
 
-        let domain = self.get_awaiting_connection_domain(&resource)?.clone();
+        let domain = self.get_awaiting_connection(&resource)?.domain.clone();
 
         if self.is_connected_to(resource, &domain) {
             return Err(Error::UnexpectedConnectionDetails);
