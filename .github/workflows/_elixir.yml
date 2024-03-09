@@ -233,7 +233,7 @@ jobs:
           elixir-version: ${{ steps.versions.outputs.elixir }}
       - uses: actions/cache/restore@v4
         name: Restore Elixir Deps Cache
-        id: cache
+        id: cache-1
         with:
           path: |
             elixir/deps
@@ -266,17 +266,9 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.ref }}
-      - name: Tool Versions
-        id: versions
-        uses: marocchino/tool-versions-action@v1.2.0
-      - uses: erlef/setup-beam@v1
-        id: setup-beam
-        with:
-          otp-version: ${{ steps.versions.outputs.erlang }}
-          elixir-version: ${{ steps.versions.outputs.elixir }}
       - uses: actions/cache/restore@v4
         name: Restore Elixir Deps Cache
-        id: cache
+        id: cache-2
         with:
           path: |
             elixir/deps
@@ -296,15 +288,6 @@ jobs:
             elixir/deps
             elixir/_build/${{ env.MIX_ENV }}
           key: ${{ steps.cache.outputs.cache-primary-key }}
-      - name: Compile
-        run: mix compile --warnings-as-errors
-      - name: Create Database
-        run: mix ecto.create
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.base_ref }}
-      - name: Migrate DB
-        run: mix ecto.migrate
       - name: Run new migrations
         run: mix ecto.migrate
       - name: Run Seed
