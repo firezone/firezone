@@ -4,7 +4,7 @@ pub use connlib_shared::{keypair, Callbacks, Error, LoginUrl, LoginUrlError, Sta
 pub use tracing_appender::non_blocking::WorkerGuard;
 
 use backoff::ExponentialBackoffBuilder;
-use connlib_shared::{get_user_agent, CallbackErrorFacade, Result};
+use connlib_shared::{get_user_agent, CallbackErrorFacade};
 use firezone_tunnel::Tunnel;
 use phoenix_channel::PhoenixChannel;
 use std::time::Duration;
