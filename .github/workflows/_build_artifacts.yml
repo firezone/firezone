@@ -111,12 +111,13 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           build-args: ${{ matrix.build-args }}
+          target: ${{ matrix.target }}
           context: elixir
           cache-from: |
             type=registry,ref=${{ steps.login.outputs.registry }}/cache/${{ matrix.image_name }}:${{ env.CACHE_TAG }}
             type=registry,ref=${{ steps.login.outputs.registry }}/cache/${{ matrix.image_name }}:main
           cache-to: |
-            type=registry,ref=${{steps.login.outputs.registry}}/cache/${{ matrix.image_name}}:${{ env.CACHE_TAG }},mode=max
+            type=registry,ref=${{steps.login.outputs.registry}}/cache/${{ matrix.image_name}}:${{ (github.ref_name == 'main' && 'main') || env.CACHE_TAG }},mode=max
           push: true
           tags: |
             ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ github.sha }}
