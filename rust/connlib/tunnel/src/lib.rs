@@ -240,7 +240,7 @@ where
 struct ConnectionState<TRole, TId> {
     pub node: Node<TRole, TId>,
     write_buf: Box<[u8; MAX_UDP_SIZE]>,
-    timeout: Pin<Box<tokio::time::Sleep>>,
+    timeout: Option<Pin<Box<tokio::time::Sleep>>>,
     stats_timer: tokio::time::Interval,
     sockets: Sockets,
 }
@@ -255,7 +255,7 @@ where
             write_buf: Box::new([0; MAX_UDP_SIZE]),
             sockets: Sockets::new()?,
             stats_timer: tokio::time::interval(Duration::from_secs(60)),
-            timeout: Box::pin(tokio::time::sleep_until(Instant::now().into())),
+            timeout: None,
         })
     }
 
@@ -391,15 +391,27 @@ where
         if let Some(timeout) = self.node.poll_timeout() {
             let timeout = tokio::time::Instant::from_std(timeout);
 
-            if timeout != self.timeout.deadline() {
-                self.timeout.as_mut().reset(timeout)
+            match self.timeout.as_mut() {
+                Some(existing_timeout) if existing_timeout.deadline() != timeout => {
+                    existing_timeout.as_mut().reset(timeout)
+                }
+                Some(_) => {}
+                None => self.timeout = Some(Box::pin(tokio::time::sleep_until(timeout))),
             }
         }
 
-        ready!(self.timeout.poll_unpin(cx));
-        self.node.handle_timeout(self.timeout.deadline().into());
+        if let Some(timeout) = self.timeout.as_mut() {
+            ready!(timeout.poll_unpin(cx));
+            self.node.handle_timeout(timeout.deadline().into());
 
-        Poll::Ready(())
+            return Poll::Ready(());
+        }
+
+        // Technically, we should set a waker here because we don't have a timer.
+        // But the only place where we set a timer is a few lines up.
+        // That is the same path that will re-poll it so there is no point in using a waker.
+        // We might want to consider making a `MaybeSleep` type that encapsulates a waker so we don't need to think about it as hard.
+        Poll::Pending
     }
 }
 
