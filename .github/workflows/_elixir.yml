@@ -259,17 +259,17 @@ jobs:
       - name: Compile
         run: mix compile --warnings-as-errors
       - name: Create Database
-        run: |
-          mix ecto.create
+        run: mix ecto.create
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.base_ref }}
       - name: Migrate DB to base ref
-        run: |
-          git fetch origin ${{ github.base_ref }}
-          git checkout origin/${{ github.base_ref }}
-          mix ecto.migrate
+        run: mix ecto.migrate
+      - name: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
       - name: Run new migrations
-        run: |
-          git checkout ${{ github.ref_name }}
-          mix ecto.migrate
+        run: mix ecto.migrate
       - name: Run Seed
         run: mix ecto.seed
 
