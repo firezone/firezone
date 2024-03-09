@@ -219,13 +219,10 @@ jobs:
           --health-cmd pg_isready --health-interval 10s --health-timeout 5s
           --health-retries 5
     steps:
+      # Checkout base_ref first
       - uses: actions/checkout@v4
-      - name: Install package dependencies
-        run: |
-          sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
-          wget -qO- https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo tee /etc/apt/trusted.gpg.d/pgdg.asc &>/dev/null
-          sudo apt update
-          sudo apt-get install -q -y postgresql-client
+        with:
+          ref: ${{ github.base_ref }}
       - name: Tool Versions
         id: versions
         uses: marocchino/tool-versions-action@v1.2.0
@@ -265,9 +262,49 @@ jobs:
           ref: ${{ github.base_ref }}
       - name: Migrate DB to base ref
         run: mix ecto.migrate
+      # Then checkout current ref and run migrations
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.ref }}
+      - name: Tool Versions
+        id: versions
+        uses: marocchino/tool-versions-action@v1.2.0
+      - uses: erlef/setup-beam@v1
+        id: setup-beam
+        with:
+          otp-version: ${{ steps.versions.outputs.erlang }}
+          elixir-version: ${{ steps.versions.outputs.elixir }}
+      - uses: actions/cache/restore@v4
+        name: Restore Elixir Deps Cache
+        id: cache
+        with:
+          path: |
+            elixir/deps
+            elixir/_build/${{ env.MIX_ENV }}
+          key: ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ hashFiles('elixir/mix.lock') }}
+      - name: Install Dependencies
+        if: ${{ steps.cache.outputs.cache-hit != 'true' }}
+        run: mix deps.get --only $MIX_ENV
+      - name: Compile Dependencies
+        if: ${{ steps.cache.outputs.cache-hit != 'true' }}
+        run: mix deps.compile --skip-umbrella-children
+      - uses: actions/cache/save@v4
+        name: Save Elixir Deps Cache
+        if: ${{ steps.cache.outputs.cache-hit != 'true'}}
+        with:
+          path: |
+            elixir/deps
+            elixir/_build/${{ env.MIX_ENV }}
+          key: ${{ steps.cache.outputs.cache-primary-key }}
+      - name: Compile
+        run: mix compile --warnings-as-errors
+      - name: Create Database
+        run: mix ecto.create
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.base_ref }}
+      - name: Migrate DB
+        run: mix ecto.migrate
       - name: Run new migrations
         run: mix ecto.migrate
       - name: Run Seed
