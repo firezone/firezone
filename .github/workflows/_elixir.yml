@@ -263,6 +263,7 @@ jobs:
           mix ecto.create
       - name: Migrate DB to base ref
         run: |
+          git fetch origin ${{ github.base_ref }}
           git checkout origin/${{ github.base_ref }}
           mix ecto.migrate
       - name: Run new migrations
