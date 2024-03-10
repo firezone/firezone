@@ -172,17 +172,29 @@ where
                 // They are only useful to circumvent restrictive NATs in which case we are either talking to another relay candidate or a server-reflexive address.
                 return;
             }
-
-            CandidateKind::Relayed => {
-                let now = self.last_now;
-
-                // Optimisatically try to bind the channel only on the same relay as the remote peer.
-                if let Some(allocation) = self.same_relay_as_peer(id, &candidate) {
-                    allocation.bind_channel(candidate.addr(), now);
-                    return;
-                }
+            CandidateKind::ServerReflexive => {
+                // Binding a TURN channel to a srflx candidate may makes sense but is likely unnecessary.
+                // Even if only one of the two partys is behind restrictive NAT, that party's srflx candidate uses a random port mapping.
+                // Hence, binding a channel to that one is not useful because traffic to this party's allocation will use a different port.
+                return;
             }
-            CandidateKind::ServerReflexive | CandidateKind::PeerReflexive => {}
+            CandidateKind::PeerReflexive => {
+                // prflx candidates are generated implicitly during ICE and never exchanged via the signaling layer.
+                return;
+            }
+            CandidateKind::Relayed => {
+                // Relay candidates are the most useful channel bindings.
+                // This is because the address of an allocation (i.e. the relay candidate) are stable not affected by NATs.
+                // Thus, binding a channel to another relay candidate will always create a routable path.
+            }
+        }
+
+        let now = self.last_now;
+
+        // Optimisatically try to bind the channel only on the same relay as the remote peer.
+        if let Some(allocation) = self.same_relay_as_peer(id, &candidate) {
+            allocation.bind_channel(candidate.addr(), now);
+            return;
         }
 
         // In other cases, bind on all relays.
