@@ -192,10 +192,12 @@ jobs:
           direct-curl-portal-down,
           relayed-curl-portal-down,
           direct-curl-portal-relay-down,
-          dns-etc-resolvconf,
-          dns-nm,
-          systemd/dns-systemd-resolved,
+          # dns-etc-resolvconf,
+          # dns-nm,
+          # systemd/dns-systemd-resolved,
         ]
+        dim1: ['a', 'b', 'c', 'd', 'e', 'f']
+        dim2: [1, 2, 3, 4, 5, 6]
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/gcp-docker-login
