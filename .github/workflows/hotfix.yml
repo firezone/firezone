@@ -31,8 +31,10 @@ jobs:
       # Today that's the same as the latest published one.
       gateway_image: ghcr.io/firezone/gateway
       gateway_tag: latest
-      client_image: ghcr.io/firezone/client
-      client_tag: latest
+      # FIXME: Uncomment this after the next release -- the
+      # client will be published then.
+      # client_image: ghcr.io/firezone/client
+      # client_tag: latest
 
   deploy-production:
     needs: integration-tests
