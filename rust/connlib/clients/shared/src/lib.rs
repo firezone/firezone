@@ -279,7 +279,12 @@ fn upload_interval() -> Interval {
 ///
 /// If not present or parsing as u64 fails, we fall back to a default interval of 5 minutes.
 fn upload_interval_duration_from_env_or_default() -> Duration {
-    const DEFAULT: Duration = Duration::from_secs(60 * 5);
+    // TODO: Log uploads are disabled by default for GA until we expose a way to opt in
+    // to the user. See https://github.com/firezone/firezone/issues/3910
+    //
+    // Until then, we set the default rollover interval to something really high
+    // to avoid breaking existing clients that may have this variable set.
+    const DEFAULT: Duration = Duration::from_secs(u64::MAX);
 
     let Some(interval) = option_env!("CONNLIB_LOG_UPLOAD_INTERVAL_SECS") else {
         tracing::warn!(interval = ?DEFAULT, "Env variable `CONNLIB_LOG_UPLOAD_INTERVAL_SECS` was not set during compile-time, falling back to default");
