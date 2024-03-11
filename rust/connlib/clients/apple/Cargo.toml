@@ -20,8 +20,7 @@ swift-bridge = { workspace = true }
 connlib-client-shared = { workspace = true }
 serde_json = "1"
 tracing = { workspace = true }
-# TODO: https://github.com/Absolucy/tracing-oslog/pull/9
-tracing-oslog = { git = "https://github.com/sbag13/tracing-oslog", rev = "0f82b8051c65de86191e1350afc7a26d5c670c29" }
+tracing-oslog = { git = "https://github.com/Absolucy/tracing-oslog", branch = "main" } # Waiting for a release.
 tracing-subscriber = "0.3"
 tracing-appender = "0.2"
 
