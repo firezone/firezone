@@ -1,4 +1,3 @@
-use async_compression::tokio::bufread::GzipEncoder;
 use bimap::BiMap;
 use connlib_shared::control::{ChannelError, ErrorReply};
 use connlib_shared::messages::{DnsServer, GatewayResponse, IpDnsServer};
@@ -9,6 +8,13 @@ use std::io;
 use std::net::IpAddr;
 use std::path::PathBuf;
 use std::str::FromStr;
+
+// TODO: These are used in the `upload` function, which is currently disabled.
+// See the comment there for more information.
+// use async_compression::tokio::bufread::GzipEncoder;
+// use tokio_util::codec::{BytesCodec, FramedRead};
+// use reqwest::header::{CONTENT_ENCODING, CONTENT_TYPE};
+// use tokio::io::BufReader;
 
 use crate::messages::{
     BroadcastGatewayIceCandidates, Connect, ConnectionDetails, EgressMessages,
@@ -23,10 +29,7 @@ use connlib_shared::{
 };
 
 use firezone_tunnel::Request;
-use reqwest::header::{CONTENT_ENCODING, CONTENT_TYPE};
 use std::collections::HashMap;
-use tokio::io::BufReader;
-use tokio_util::codec::{BytesCodec, FramedRead};
 use url::Url;
 
 const DNS_PORT: u16 = 53;
