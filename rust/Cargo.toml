@@ -48,7 +48,7 @@ phoenix-channel = { path = "phoenix-channel"}
 
 [patch.crates-io]
 boringtun = { git = "https://github.com/cloudflare/boringtun", branch = "master" }
-str0m = { git = "https://github.com/firezone/str0m", branch = "reduce-ice-timeout" }
+str0m = { git = "https://github.com/firezone/str0m", branch = "main" }
 
 [patch."https://github.com/quinn-rs/quinn"]
 # waiting for https://github.com/quinn-rs/quinn/pull/1758
