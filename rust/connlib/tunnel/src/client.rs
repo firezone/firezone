@@ -21,7 +21,7 @@ use hickory_resolver::config::{NameServerConfig, Protocol, ResolverConfig};
 use hickory_resolver::TokioAsyncResolver;
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::net::{IpAddr, Ipv6Addr};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
 use tokio::time::{Interval, MissedTickBehavior};
@@ -689,11 +689,18 @@ impl Default for ClientState {
 
 /// Compares the given [`IpAddr`] against a static set of ignored IPs that are definitely not resources.
 fn is_definitely_not_a_resource(ip: IpAddr) -> bool {
+    /// Source: https://en.wikipedia.org/wiki/Multicast_address#Notable_IPv4_multicast_addresses
+    const IPV4_IGMP_MULTICAST: Ipv4Addr = Ipv4Addr::new(224, 0, 0, 22);
+
     /// Source: <https://en.wikipedia.org/wiki/Multicast_address#Notable_IPv6_multicast_addresses>
     const IPV6_MULTICAST_ALL_ROUTERS: Ipv6Addr = Ipv6Addr::new(0xFF02, 0, 0, 0, 0, 0, 0, 0x0002);
 
     match ip {
-        IpAddr::V4(_) => {}
+        IpAddr::V4(ip4) => {
+            if ip4 == IPV4_IGMP_MULTICAST {
+                return true;
+            }
+        }
         IpAddr::V6(ip6) => {
             if ip6 == IPV6_MULTICAST_ALL_ROUTERS {
                 return true;
@@ -709,9 +716,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn ignores_ip6_multicast_all_routers() {
-        let is_not_a_resource = is_definitely_not_a_resource("ff02::2".parse().unwrap());
+    fn ignores_ip4_igmp_multicast() {
+        assert!(is_definitely_not_a_resource("224.0.0.22".parse().unwrap()))
+    }
 
-        assert!(is_not_a_resource)
+    #[test]
+    fn ignores_ip6_multicast_all_routers() {
+        assert!(is_definitely_not_a_resource("ff02::2".parse().unwrap()))
     }
 }
