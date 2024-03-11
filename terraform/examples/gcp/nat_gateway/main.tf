@@ -40,7 +40,7 @@ resource "google_compute_instance_template" "gateway" {
   description          = "Instance template for the Firezone Gateway"
   instance_description = "Firezone Gateway"
   machine_type         = var.machine_type
-  tags                 = ["gateway"]
+  tags                 = ["firezone-gateway"]
   can_ip_forward       = true
 
   scheduling {
