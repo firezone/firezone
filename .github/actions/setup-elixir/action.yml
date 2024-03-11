@@ -31,6 +31,7 @@ runs:
         key: ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ hashFiles('elixir/mix.lock') }}
     - name: Install Dependencies
       if: ${{ steps.cache.outputs.cache-hit != 'true' }}
+      shell: bash
       run: |
         if [[ -z "${{ inputs.mix_env }}" ]]; then
           mix deps.get
@@ -39,6 +40,7 @@ runs:
         fi
     - name: Compile Dependencies
       if: ${{ steps.cache.outputs.cache-hit != 'true' }}
+      shell: bash
       run: mix deps.compile --skip-umbrella-children
     - uses: actions/cache/save@v4
       name: Save Elixir Deps Cache
@@ -49,4 +51,5 @@ runs:
           elixir/_build/${{ inputs.mix_env }}
         key: ${{ steps.cache.outputs.cache-primary-key }}
     - name: Compile Application
+      shell: bash
       run: mix compile --warnings-as-errors ${{ inputs.force_compile && '--force' || '' }}
