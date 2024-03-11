@@ -6,8 +6,8 @@ defmodule Domain.Auth.Identity do
     belongs_to :provider, Domain.Auth.Provider
 
     field :provider_identifier, :string
-    field :provider_state, :map
-    field :provider_virtual_state, :map, virtual: true
+    field :provider_state, :map, redact: true
+    field :provider_virtual_state, :map, virtual: true, redact: true
 
     field :last_seen_user_agent, :string
     field :last_seen_remote_ip, Domain.Types.IP

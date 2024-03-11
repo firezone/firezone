@@ -8,8 +8,8 @@ defmodule Domain.Auth.Provider do
       values: ~w[email openid_connect google_workspace microsoft_entra okta userpass]a
 
     field :provisioner, Ecto.Enum, values: ~w[manual just_in_time custom]a
-    field :adapter_config, :map
-    field :adapter_state, :map
+    field :adapter_config, :map, redact: true
+    field :adapter_state, :map, redact: true
 
     belongs_to :account, Domain.Accounts.Account
 
