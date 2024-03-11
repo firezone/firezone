@@ -51,15 +51,15 @@ jobs:
       tag_name: ${{ steps.update-release-draft.outputs.tag_name }}
       upload_url: ${{ steps.update-release-draft.outputs.upload_url }}
 
-  build-tauri:
+  tauri:
     needs: update-release-draft
     uses: ./.github/workflows/_tauri.yml
     secrets: inherit
     with:
       release_tag: ${{ needs.update-release-draft.outputs.tag_name }}
 
-  build-control-plane:
-    name: build-${{ matrix.image_name }}
+  control-plane:
+    name: ${{ matrix.image_name }}
     runs-on: ubuntu-22.04
     strategy:
       fail-fast: false
@@ -125,8 +125,8 @@ jobs:
             ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ env.VERSION }}
             ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ env.CACHE_TAG }}
 
-  build-data-plane:
-    name: build-${{ matrix.name.image_name }}-${{ matrix.arch.shortname }}
+  data-plane:
+    name: ${{ matrix.name.image_name }}-${{ matrix.arch.shortname }}
     runs-on: ubuntu-22.04
     defaults:
       run:
@@ -269,6 +269,7 @@ jobs:
           retention-days: 1
 
   merge-docker-artifacts:
+    name: merge-${{ matrix.image_name }}
     needs: build-data-plane
     runs-on: ubuntu-22.04
     strategy:
