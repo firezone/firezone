@@ -43,8 +43,6 @@ jobs:
     secrets: inherit
 
   compatibility-tests:
-    # Allow breaking changes only if the PR contains a '!' in the title
-    if: github.event_name == 'pull_request' && ! contains(github.event.pull_request.title, '!')
     uses: ./.github/workflows/_integration_tests.yml
     needs: build-artifacts
     secrets: inherit
