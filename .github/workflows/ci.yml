@@ -50,6 +50,40 @@ jobs:
     needs: build-artifacts
     secrets: inherit
 
+  snownet-tests:
+    if: ${{ inputs.profile == 'debug' }}
+    name: snownet-tests-${{ matrix.name }}
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: write
+    env:
+      RELAY_IMAGE: 'us-east1-docker.pkg.dev/firezone-staging/firezone/relay'
+      RELAY_TAG: ${{ github.sha }}
+      SNOWNET_IMAGE: 'us-east1-docker.pkg.dev/firezone-staging/firezone/snownet-tests'
+      SNOWNET_TAG: ${{ github.sha }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - file: docker-compose.lan.yml
+            name: lan
+          - file: docker-compose.wan-hp.yml
+            name: wan-hp
+          - file: docker-compose.wan-relay.yml
+            name: wan-relay
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/gcp-docker-login
+        id: login
+        with:
+          project: firezone-staging
+      - name: Run ${{ matrix.file }} test
+        run: |
+          sudo sysctl -w vm.overcommit_memory=1
+          timeout 600 docker compose -f rust/snownet-tests/${{ matrix.file }} up --exit-code-from dialer --abort-on-container-exit
+
   compatibility-tests:
     # Don't run compatibility tests when called from cd.yml on `main` because
     # it'll be red if there was a breaking change we're tring to publish,
@@ -66,6 +100,8 @@ jobs:
       # client_tag: "latest"
 
   perf-tests:
+    # Only the debug images have perf tooling
+    if: ${{ inputs.profile == 'debug' }}
     name: perf-tests-${{ matrix.test_name }}
     needs: build-artifacts
     runs-on: ubuntu-22.04
