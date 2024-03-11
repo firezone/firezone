@@ -32,6 +32,7 @@ runs:
     - name: Install Dependencies
       if: ${{ steps.cache.outputs.cache-hit != 'true' }}
       shell: bash
+      working-directory: ./elixir
       run: |
         if [[ -z "${{ inputs.mix_env }}" ]]; then
           mix deps.get
@@ -41,6 +42,7 @@ runs:
     - name: Compile Dependencies
       if: ${{ steps.cache.outputs.cache-hit != 'true' }}
       shell: bash
+      working-directory: ./elixir
       run: mix deps.compile --skip-umbrella-children
     - uses: actions/cache/save@v4
       name: Save Elixir Deps Cache
@@ -52,4 +54,5 @@ runs:
         key: ${{ steps.cache.outputs.cache-primary-key }}
     - name: Compile Application
       shell: bash
+      working-directory: ./elixir
       run: mix compile --warnings-as-errors ${{ inputs.force_compile && '--force' || '' }}
