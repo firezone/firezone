@@ -30,6 +30,8 @@ jobs:
       - uses: ./.github/actions/setup-elixir
         with:
           mix_env: ${{ env.MIX_ENV }}
+      - name: Compile Application
+        run: mix compile --warnings-as-errors
       - name: Setup Database
         run: |
           mix ecto.create
@@ -63,6 +65,8 @@ jobs:
       - uses: ./.github/actions/setup-elixir
         with:
           mix_env: ${{ env.MIX_ENV }}
+      - name: Compile Application
+        run: mix compile --warnings-as-errors
       - uses: actions/cache/restore@v4
         name: Restore PLT cache
         id: plt_cache
@@ -98,6 +102,8 @@ jobs:
         with:
           mix_env: ${{ env.MIX_ENV }}
           force_compile: true
+      - name: Compile Application
+        run: mix compile --force --warnings-as-errors
       - name: Check Formatting
         run: mix format --check-formatted
       - name: Check For Retired Packages
@@ -139,6 +145,8 @@ jobs:
       - uses: ./.github/actions/setup-elixir
         with:
           mix_env: ${{ env.MIX_ENV }}
+      - name: Compile
+        run: mix compile --warnings-as-errors
       - name: Create Database
         run: mix ecto.create
       - name: Migrate DB to base ref and seed
@@ -203,6 +211,8 @@ jobs:
         with:
           mix_env: ${{ env.MIX_ENV }}
       - uses: ./.github/actions/setup-node
+      - name: Compile Application
+        run: mix compile --warnings-as-errors
       # Front-End deps cache
       - uses: actions/cache/restore@v4
         name: pnpm Web Deps Cache

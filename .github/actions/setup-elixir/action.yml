@@ -5,11 +5,6 @@ inputs:
     description: "Optionally limit deps to mix env"
     type: string
     required: false
-  force_compile:
-    description: "Force recompilation of app"
-    type: boolean
-    required: false
-    default: false
 runs:
   using: "composite"
   steps:
@@ -52,7 +47,3 @@ runs:
           elixir/deps
           elixir/_build/${{ inputs.mix_env }}
         key: ${{ steps.cache.outputs.cache-primary-key }}
-    - name: Compile Application
-      shell: bash
-      working-directory: ./elixir
-      run: mix compile --warnings-as-errors ${{ inputs.force_compile && '--force' || '' }}
