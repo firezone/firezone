@@ -10,7 +10,7 @@ use connlib_shared::{
 };
 use device_channel::Device;
 use futures_util::{task::AtomicWaker, FutureExt};
-use ip_packet::IpPacket;
+use ip_packet::{IpPacket, MutableIpPacket};
 use peer::PacketTransform;
 use peer_store::PeerStore;
 use snownet::Node;
@@ -73,11 +73,7 @@ pub struct GatewayTunnel<CB: Callbacks> {
 
     state: GatewayState,
 
-    device: Option<Device>,
-    no_device_waker: AtomicWaker,
-
-    timeout: Option<Pin<Box<tokio::time::Sleep>>>,
-    sockets: Sockets,
+    io: Io,
 
     write_buf: Box<[u8; MAX_UDP_SIZE]>,
     read_buf: Box<[u8; MAX_UDP_SIZE]>,
@@ -157,71 +153,54 @@ where
         Ok(Self {
             callbacks: CallbackErrorFacade(callbacks),
             state: GatewayState::new(private_key, now),
-            device: None,
-            no_device_waker: AtomicWaker::new(),
-            timeout: None,
-            sockets: Sockets::new()?,
+            io: todo!(),
             write_buf: Box::new([0; MAX_UDP_SIZE]),
             read_buf: Box::new([0; MAX_UDP_SIZE]),
         })
     }
 
     pub fn poll(&mut self, cx: &mut Context<'_>) -> Poll<Result<gateway::Event>> {
-        if let Some(timeout) = self.state.poll_timeout() {
-            let timeout = tokio::time::Instant::from_std(timeout);
+        loop {
+            if let Some(timeout) = self.state.poll_timeout() {
+                self.io.reset_timeout(timeout);
+            }
 
-            match self.timeout.as_mut() {
-                Some(existing_timeout) if existing_timeout.deadline() != timeout => {
-                    existing_timeout.as_mut().reset(timeout)
+            if let Some(event) = self.state.poll_event() {
+                return Poll::Ready(Ok(event));
+            }
+
+            match self.io.poll(cx, self.read_buf.as_mut())? {
+                Poll::Ready(Input::Timeout(timeout)) => {
+                    self.state.handle_timeout(timeout);
+
+                    continue;
                 }
-                Some(_) => {}
-                None => self.timeout = Some(Box::pin(tokio::time::sleep_until(timeout))),
+                Poll::Ready(Input::Device(packet)) => {
+                    let Some(transmit) = self.state.encapsulate(packet) else {
+                        cx.waker().wake_by_ref();
+                        return Poll::Pending;
+                    };
+
+                    self.io.send_network(transmit);
+                    continue;
+                }
+                Poll::Ready(Input::Network(packets)) => {
+                    for received in packets {
+                        let Some(packet) =
+                            self.state.decapsulate(received, self.write_buf.as_mut())
+                        else {
+                            continue;
+                        };
+
+                        self.io.send_device(packet);
+                    }
+
+                    continue;
+                }
+                Poll::Pending => {}
             }
-        }
-
-        if let Some(timeout) = self.timeout.as_mut() {
-            ready!(timeout.poll_unpin(cx));
-            self.state.handle_timeout(timeout.deadline().into());
-
-            cx.waker().wake_by_ref()
-        }
-
-        if let Some(event) = self.state.poll_event() {
-            return Poll::Ready(Ok(event));
-        }
-
-        let Some(device) = self.device.as_mut() else {
-            self.no_device_waker.register(cx.waker());
             return Poll::Pending;
-        };
-
-        ready!(self.sockets.poll_send_ready(cx))?; // Ensure socket is ready before we read from device.
-
-        for received in ready!(self.sockets.poll_recv_from(cx))? {
-            let Some(packet) = self.state.decapsulate(received, self.write_buf.as_mut()) else {
-                continue;
-            };
-
-            device.write(packet)?;
         }
-
-        match device.poll_read(self.read_buf.as_mut(), cx)? {
-            Poll::Ready(packet) => {
-                let Some(transmit) = self.state.encapsulate(packet) else {
-                    cx.waker().wake_by_ref();
-                    return Poll::Pending;
-                };
-
-                let _ = self.sockets.try_send_quinn(transmit);
-
-                cx.waker().wake_by_ref();
-            }
-            Poll::Pending => {
-                // device not ready for reading, moving on ..
-            }
-        }
-
-        Poll::Pending
     }
 }
 
@@ -319,7 +298,7 @@ where
         TTransform: PacketTransform,
         TResource: Clone,
     {
-        let received = match ready!(self.sockets.poll_recv_from(cx)) {
+        let received = match ready!(self.sockets.poll_recv_from(cx, self.write_buf.as_mut())) {
             Ok(received) => received,
             Err(e) => {
                 tracing::warn!("Failed to read socket: {e}");
@@ -443,6 +422,64 @@ where
         // We might want to consider making a `MaybeSleep` type that encapsulates a waker so we don't need to think about it as hard.
         Poll::Pending
     }
+}
+
+struct Io {
+    device: Device,
+    timeout: Option<Pin<Box<tokio::time::Sleep>>>,
+    sockets: Sockets,
+}
+
+impl Io {
+    fn poll<'b>(
+        &mut self,
+        cx: &mut Context<'_>,
+        buffer: &'b mut [u8],
+    ) -> Poll<io::Result<Input<'b, impl Iterator<Item = Received<'b>>>>> {
+        let (buf1, buf2) = buffer.split_at_mut(buffer.len() / 2); // If rustc borrow-checker would be better, we wouldn't need
+
+        if let Some(timeout) = self.timeout.as_mut() {
+            if timeout.poll_unpin(cx).is_ready() {
+                return Poll::Ready(Ok(Input::Timeout(timeout.deadline().into())));
+            }
+        }
+
+        if let Poll::Ready(network) = self.sockets.poll_recv_from(cx, buf1)? {
+            return Poll::Ready(Ok(Input::Network(network)));
+        }
+
+        if let Poll::Ready(packet) = self.device.poll_read(buf2, cx)? {
+            return Poll::Ready(Ok(Input::Device(packet)));
+        }
+
+        Poll::Pending
+    }
+
+    fn reset_timeout(&mut self, timeout: Instant) {
+        let timeout = tokio::time::Instant::from_std(timeout);
+
+        match self.timeout.as_mut() {
+            Some(existing_timeout) if existing_timeout.deadline() != timeout => {
+                existing_timeout.as_mut().reset(timeout)
+            }
+            Some(_) => {}
+            None => self.timeout = Some(Box::pin(tokio::time::sleep_until(timeout))),
+        }
+    }
+
+    fn send_network(&self, transmit: quinn_udp::Transmit) {
+        let _ = self.sockets.try_send_quinn(transmit);
+    }
+
+    fn send_device(&self, packet: IpPacket<'_>) {
+        let _ = self.device.write(packet);
+    }
+}
+
+enum Input<'a, I> {
+    Timeout(Instant),
+    Device(MutableIpPacket<'a>),
+    Network(I),
 }
 
 pub enum Event<TId> {

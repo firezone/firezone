@@ -107,16 +107,23 @@ impl Sockets {
     }
 
     pub fn poll_recv_from<'a>(
-        &'a mut self,
+        &self,
         cx: &mut Context<'_>,
+        buffer: &'a mut [u8],
     ) -> Poll<io::Result<impl Iterator<Item = Received<'a>>>> {
+        let (buf1, buf2) = buffer.split_at_mut(buffer.len() / 2);
+
         let mut iter = PacketIter::new();
 
-        if let Some(Poll::Ready(packets)) = self.socket_v4.as_mut().map(|s| s.poll_recv_from(cx)) {
+        if let Some(Poll::Ready(packets)) =
+            self.socket_v4.as_ref().map(|s| s.poll_recv_from(cx, buf1))
+        {
             iter.ip4 = Some(packets?);
         }
 
-        if let Some(Poll::Ready(packets)) = self.socket_v6.as_mut().map(|s| s.poll_recv_from(cx)) {
+        if let Some(Poll::Ready(packets)) =
+            self.socket_v6.as_ref().map(|s| s.poll_recv_from(cx, buf2))
+        {
             iter.ip6 = Some(packets?);
         }
 
@@ -176,7 +183,6 @@ struct Socket<const N: usize> {
     state: UdpSocketState,
     port: u16,
     socket: UdpSocket,
-    buffer: Box<[u8; N]>,
 }
 
 impl<const N: usize> Socket<N> {
@@ -188,7 +194,6 @@ impl<const N: usize> Socket<N> {
             state: UdpSocketState::new(UdpSockRef::from(&socket))?,
             port,
             socket: tokio::net::UdpSocket::from_std(socket)?,
-            buffer: Box::new([0u8; N]),
         })
     }
 
@@ -200,19 +205,18 @@ impl<const N: usize> Socket<N> {
             state: UdpSocketState::new(UdpSockRef::from(&socket))?,
             port,
             socket: tokio::net::UdpSocket::from_std(socket)?,
-            buffer: Box::new([0u8; N]),
         })
     }
 
     #[allow(clippy::type_complexity)]
     fn poll_recv_from<'b>(
-        &'b mut self,
+        &self,
         cx: &mut Context<'_>,
+        buffer: &'b mut [u8],
     ) -> Poll<io::Result<impl Iterator<Item = Received<'b>>>> {
         let Socket {
             port,
             socket,
-            buffer,
             state,
         } = self;
 
