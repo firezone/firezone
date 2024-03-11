@@ -52,7 +52,7 @@ str0m = { git = "https://github.com/firezone/str0m", branch = "reduce-ice-timeou
 
 [patch."https://github.com/quinn-rs/quinn"]
 # waiting for https://github.com/quinn-rs/quinn/pull/1758
-quinn-udp = { git = "https://github.com/conectado/quinn", branch = "main" }
+quinn-udp = { git = "https://github.com/firezone/quinn", branch = "main" }
 
 [profile.release]
 strip = true

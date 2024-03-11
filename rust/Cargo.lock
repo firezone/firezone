@@ -4723,7 +4723,7 @@ dependencies = [
 [[package]]
 name = "quinn-udp"
 version = "0.5.0"
-source = "git+https://github.com/conectado/quinn?branch=main#86e25140452bdd56e3be2d05ed7b79ad09b88faa"
+source = "git+https://github.com/firezone/quinn?branch=main#2e312721a5c751af6c7d45ac4227b68f92554581"
 dependencies = [
  "bytes",
  "libc",
