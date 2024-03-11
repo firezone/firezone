@@ -135,8 +135,6 @@ jobs:
     steps:
       # Checkout base_ref first
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.base_ref }}
       - uses: ./.github/actions/setup-elixir
         with:
           mix_env: ${{ env.MIX_ENV }}
