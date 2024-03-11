@@ -29,8 +29,9 @@ jobs:
     secrets: inherit
 
   deploy-staging:
-    if: ${{ inputs.deploy-staging }}
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.deploy-staging }}
     runs-on: ubuntu-22.04
+    secrets: inherit
     permissions:
       contents: write
     # Cancel old workflow runs if new code is pushed
