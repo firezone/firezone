@@ -123,6 +123,9 @@ jobs:
             ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ env.CACHE_TAG }}
 
   data-plane:
+    # Runs the job after update-release-draft, regardless of the outcome
+    if: ${{ always() }}
+    needs: update-release-draft
     name: ${{ matrix.name.image_name }}-${{ matrix.arch.shortname }}
     runs-on: ubuntu-22.04
     defaults:
@@ -182,7 +185,7 @@ jobs:
           # Used for Docker images
           cp target/${{ matrix.arch.target }}/${{ inputs.profile }}/${{ matrix.name.package }} ${{ matrix.name.package }}
       - name: Upload Release Assets
-        if: ${{ inputs.profile == 'release' && contains(fromJSON('["client", "gateway"]'),  matrix.name.artifact) }}
+        if: ${{ inputs.profile == 'release' && (matrix.name.image_name == 'gateway' || matrix.name.image_name == 'client') }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
