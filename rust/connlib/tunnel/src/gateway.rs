@@ -16,7 +16,6 @@ use connlib_shared::messages::{
 };
 use connlib_shared::{Callbacks, Dname, Error, PublicKey, Result};
 use ip_network::IpNetwork;
-use pnet_packet::Packet as _;
 use quinn_udp::Transmit;
 use secrecy::{ExposeSecret as _, Secret};
 use snownet::ServerNode;
@@ -283,8 +282,6 @@ impl GatewayState {
                 buffer,
             )
             .inspect_err(|e| tracing::debug!(%local, %from, num_bytes = %packet.len(), "Failed to decapsulate packet: {e}")).ok()??;
-
-        tracing::trace!(target: "wire", %local, %from, bytes = %packet.packet().len(), "read new packet");
 
         let packet = self
             .peers
