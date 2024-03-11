@@ -51,6 +51,7 @@ jobs:
     secrets: inherit
 
   snownet-tests:
+    needs: build-artifacts
     if: ${{ inputs.profile == 'debug' }}
     name: snownet-tests-${{ matrix.name }}
     runs-on: ubuntu-22.04
