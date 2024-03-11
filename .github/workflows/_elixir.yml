@@ -101,7 +101,6 @@ jobs:
       - uses: ./.github/actions/setup-elixir
         with:
           mix_env: ${{ env.MIX_ENV }}
-          force_compile: true
       - name: Compile Application
         run: mix compile --force --warnings-as-errors
       - name: Check Formatting

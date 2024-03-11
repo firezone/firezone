@@ -2,9 +2,9 @@ name: "Setup Elixir"
 description: "Sets up the correct Elixir version and installs deps"
 inputs:
   mix_env:
-    description: "Optionally limit deps to mix env"
+    description: "Limit deps to mix env"
     type: string
-    required: false
+    required: true
 runs:
   using: "composite"
   steps:
@@ -23,17 +23,12 @@ runs:
         path: |
           elixir/deps
           elixir/_build/${{ inputs.mix_env }}
-        key: ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ hashFiles('elixir/mix.lock') }}
+        key: ${{ runner.os }}-${{ inputs.mix_env }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ hashFiles('elixir/mix.lock') }}
     - name: Install Dependencies
       if: ${{ steps.cache.outputs.cache-hit != 'true' }}
       shell: bash
       working-directory: ./elixir
-      run: |
-        if [[ -z "${{ inputs.mix_env }}" ]]; then
-          mix deps.get
-        else
-          mix deps.get --only ${{ inputs.mix_env }}
-        fi
+      run: mix deps.get --only ${{ inputs.mix_env }}
     - name: Compile Dependencies
       if: ${{ steps.cache.outputs.cache-hit != 'true' }}
       shell: bash
