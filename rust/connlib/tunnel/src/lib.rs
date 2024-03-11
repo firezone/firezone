@@ -9,7 +9,7 @@ use connlib_shared::{
     CallbackErrorFacade, Callbacks, Error, Result,
 };
 use device_channel::Device;
-use futures_util::{task::AtomicWaker, FutureExt};
+use futures_util::FutureExt;
 use peer::PacketTransform;
 use peer_store::PeerStore;
 use snownet::{Node, Server};
@@ -60,8 +60,7 @@ pub struct Tunnel<CB: Callbacks, TRoleState, TRole, TId> {
     /// State that differs per role, i.e. clients vs gateways.
     role_state: TRoleState,
 
-    device: Option<Device>,
-    no_device_waker: AtomicWaker,
+    device: Device,
 
     connections_state: ConnectionState<TRole, TId>,
 
@@ -73,14 +72,9 @@ where
     CB: Callbacks + 'static,
 {
     pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Result<Event<GatewayId>>> {
-        let Some(device) = self.device.as_mut() else {
-            self.no_device_waker.register(cx.waker());
-            return Poll::Pending;
-        };
-
         match self.role_state.poll_next_event(cx) {
             Poll::Ready(Event::SendPacket(packet)) => {
-                device.write(packet)?;
+                self.device.write(packet)?;
                 cx.waker().wake_by_ref();
             }
             Poll::Ready(other) => return Poll::Ready(Ok(other)),
@@ -96,10 +90,11 @@ where
             _ => (),
         }
 
-        match self
-            .connections_state
-            .poll_sockets(device, &mut self.role_state.peers, cx)?
-        {
+        match self.connections_state.poll_sockets(
+            &mut self.device,
+            &mut self.role_state.peers,
+            cx,
+        )? {
             Poll::Ready(()) => {
                 cx.waker().wake_by_ref();
             }
@@ -108,7 +103,7 @@ where
 
         ready!(self.connections_state.sockets.poll_send_ready(cx))?; // Ensure socket is ready before we read from device.
 
-        match device.poll_read(&mut self.read_buf, cx)? {
+        match self.device.poll_read(&mut self.read_buf, cx)? {
             Poll::Ready(packet) => {
                 let Some((peer_id, packet)) = self.role_state.encapsulate(packet, Instant::now())
                 else {
@@ -144,11 +139,6 @@ where
             Poll::Pending => {}
         }
 
-        let Some(device) = self.device.as_mut() else {
-            self.no_device_waker.register(cx.waker());
-            return Poll::Pending;
-        };
-
         match self.connections_state.poll_next_event(cx) {
             Poll::Ready(Event::StopPeer(id)) => {
                 self.role_state.peers.remove(&id);
@@ -158,10 +148,11 @@ where
             _ => (),
         }
 
-        match self
-            .connections_state
-            .poll_sockets(device, &mut self.role_state.peers, cx)?
-        {
+        match self.connections_state.poll_sockets(
+            &mut self.device,
+            &mut self.role_state.peers,
+            cx,
+        )? {
             Poll::Ready(()) => {
                 cx.waker().wake_by_ref();
             }
@@ -170,7 +161,7 @@ where
 
         ready!(self.connections_state.sockets.poll_send_ready(cx))?; // Ensure socket is ready before we read from device.
 
-        match device.poll_read(&mut self.read_buf, cx)? {
+        match self.device.poll_read(&mut self.read_buf, cx)? {
             Poll::Ready(packet) => {
                 let Some((peer_id, packet)) = self.role_state.encapsulate(packet) else {
                     cx.waker().wake_by_ref();
@@ -223,10 +214,9 @@ where
         }
 
         Ok(Self {
-            device: Default::default(),
+            device: Device::new(),
             callbacks,
             role_state: Default::default(),
-            no_device_waker: Default::default(),
             connections_state,
             read_buf: [0u8; MAX_UDP_SIZE],
         })

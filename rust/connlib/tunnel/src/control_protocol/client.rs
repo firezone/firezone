@@ -206,23 +206,21 @@ where
 
         let ips: Vec<IpNetwork> = addrs.iter().copied().map(Into::into).collect();
 
-        if let Some(device) = self.device.as_ref() {
-            send_dns_answer(
-                &mut self.role_state,
-                Rtype::Aaaa,
-                device,
-                &resource_description,
-                &addrs,
-            );
+        send_dns_answer(
+            &mut self.role_state,
+            Rtype::Aaaa,
+            &self.device,
+            &resource_description,
+            &addrs,
+        );
 
-            send_dns_answer(
-                &mut self.role_state,
-                Rtype::A,
-                device,
-                &resource_description,
-                &addrs,
-            );
-        }
+        send_dns_answer(
+            &mut self.role_state,
+            Rtype::A,
+            &self.device,
+            &resource_description,
+            &addrs,
+        );
 
         Ok(ips)
     }

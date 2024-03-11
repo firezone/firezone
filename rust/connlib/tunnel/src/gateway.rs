@@ -1,4 +1,3 @@
-use crate::device_channel::Device;
 use crate::ip_packet::MutableIpPacket;
 use crate::peer::{PacketTransformGateway, Peer};
 use crate::peer_store::PeerStore;
@@ -46,16 +45,18 @@ where
     #[tracing::instrument(level = "trace", skip(self))]
     pub fn set_interface(&mut self, config: &InterfaceConfig) -> connlib_shared::Result<()> {
         // Note: the dns fallback strategy is irrelevant for gateways
-        let mut device = Device::new(config, vec![], self.callbacks())?;
+        self.device
+            .initialize(config, vec![], &self.callbacks().clone())?;
 
-        let result_v4 = device.add_route(PEERS_IPV4.parse().unwrap(), self.callbacks());
-        let result_v6 = device.add_route(PEERS_IPV6.parse().unwrap(), self.callbacks());
+        let result_v4 = self
+            .device
+            .add_route(PEERS_IPV4.parse().unwrap(), &self.callbacks().clone());
+        let result_v6 = self
+            .device
+            .add_route(PEERS_IPV6.parse().unwrap(), &self.callbacks().clone());
         result_v4.or(result_v6)?;
 
-        let name = device.name().to_owned();
-
-        self.device = Some(device);
-        self.no_device_waker.wake();
+        let name = self.device.name().to_owned();
 
         tracing::debug!(ip4 = %config.ipv4, ip6 = %config.ipv6, %name, "TUN device initialized");
 
