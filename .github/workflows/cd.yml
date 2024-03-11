@@ -40,13 +40,13 @@ jobs:
       TF_API_TOKEN: "${{ secrets.TF_API_TOKEN }}"
       TF_WORKSPACE: "staging"
     steps:
-      - name: Get Terraform Version
-        run: |
-          TERRAFORM_VERSION=$(cat .tool-versions | grep terraform | awk '{ print $NF; }')
-          echo "TERRAFORM_VERSION=${TERRAFORM_VERSION}" >> $GITHUB_ENV
+      - uses: actions/checkout@v4
+      - name: Tool Versions
+        id: versions
+        uses: marocchino/tool-versions-action@v1.2.0
       - uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_version: ${{ steps.versions.outputs.terraform }}
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.workflow_run.head_branch }}
