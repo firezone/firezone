@@ -200,7 +200,7 @@ where
     pub fn add_ice_candidate(&mut self, conn_id: ClientId, ice_candidate: String) {
         self.connections_state
             .node
-            .add_remote_candidate(conn_id, ice_candidate);
+            .add_remote_candidate(conn_id, ice_candidate, Instant::now());
     }
 
     fn new_peer(

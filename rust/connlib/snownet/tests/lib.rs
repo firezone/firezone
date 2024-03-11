@@ -10,7 +10,7 @@ use str0m::{net::Protocol, Candidate};
 
 #[test]
 fn connection_times_out_after_20_seconds() {
-    let (mut alice, _) = alice_and_bob(Instant::now());
+    let (mut alice, _) = alice_and_bob();
 
     let created_at = Instant::now();
 
@@ -32,7 +32,7 @@ fn connection_without_candidates_times_out_after_10_seconds() {
 
     let start = Instant::now();
 
-    let (mut alice, mut bob) = alice_and_bob(start);
+    let (mut alice, mut bob) = alice_and_bob();
     let answer = send_offer(&mut alice, &mut bob, start);
 
     let accepted_at = start + Duration::from_secs(1);
@@ -49,13 +49,13 @@ fn connection_with_candidates_does_not_time_out_after_10_seconds() {
 
     let start = Instant::now();
 
-    let (mut alice, mut bob) = alice_and_bob(start);
+    let (mut alice, mut bob) = alice_and_bob();
     let answer = send_offer(&mut alice, &mut bob, start);
 
     let accepted_at = start + Duration::from_secs(1);
     alice.accept_answer(1, bob.public_key(), answer, accepted_at);
     alice.add_local_host_candidate(s("10.0.0.2:4444")).unwrap();
-    alice.add_remote_candidate(1, host("10.0.0.1:4444"));
+    alice.add_remote_candidate(1, host("10.0.0.1:4444"), accepted_at);
 
     alice.handle_timeout(accepted_at + Duration::from_secs(10));
 
@@ -69,7 +69,7 @@ fn connection_with_candidates_does_not_time_out_after_10_seconds() {
 fn answer_after_stale_connection_does_not_panic() {
     let start = Instant::now();
 
-    let (mut alice, mut bob) = alice_and_bob(start);
+    let (mut alice, mut bob) = alice_and_bob();
     let answer = send_offer(&mut alice, &mut bob, start);
 
     let now = start + Duration::from_secs(10);
@@ -82,17 +82,11 @@ fn answer_after_stale_connection_does_not_panic() {
 fn only_generate_candidate_event_after_answer() {
     let local_candidate = SocketAddr::new(IpAddr::from(Ipv4Addr::LOCALHOST), 10000);
 
-    let mut alice = ClientNode::<u64>::new(
-        StaticSecret::random_from_rng(rand::thread_rng()),
-        Instant::now(),
-    );
+    let mut alice = ClientNode::<u64>::new(StaticSecret::random_from_rng(rand::thread_rng()));
 
     alice.add_local_host_candidate(local_candidate).unwrap();
 
-    let mut bob = ServerNode::<u64>::new(
-        StaticSecret::random_from_rng(rand::thread_rng()),
-        Instant::now(),
-    );
+    let mut bob = ServerNode::<u64>::new(StaticSecret::random_from_rng(rand::thread_rng()));
 
     let offer = alice.new_connection(
         1,
@@ -130,10 +124,7 @@ fn only_generate_candidate_event_after_answer() {
 
 #[test]
 fn second_connection_with_same_relay_reuses_allocation() {
-    let mut alice = ClientNode::<u64>::new(
-        StaticSecret::random_from_rng(rand::thread_rng()),
-        Instant::now(),
-    );
+    let mut alice = ClientNode::<u64>::new(StaticSecret::random_from_rng(rand::thread_rng()));
 
     let _ = alice.new_connection(
         1,
@@ -158,9 +149,9 @@ fn second_connection_with_same_relay_reuses_allocation() {
     assert!(alice.poll_transmit().is_none());
 }
 
-fn alice_and_bob(start: Instant) -> (ClientNode<u64>, ServerNode<u64>) {
-    let alice = ClientNode::<u64>::new(StaticSecret::random_from_rng(rand::thread_rng()), start);
-    let bob = ServerNode::<u64>::new(StaticSecret::random_from_rng(rand::thread_rng()), start);
+fn alice_and_bob() -> (ClientNode<u64>, ServerNode<u64>) {
+    let alice = ClientNode::<u64>::new(StaticSecret::random_from_rng(rand::thread_rng()));
+    let bob = ServerNode::<u64>::new(StaticSecret::random_from_rng(rand::thread_rng()));
 
     (alice, bob)
 }

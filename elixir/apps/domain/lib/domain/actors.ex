@@ -522,7 +522,7 @@ defmodule Domain.Actors do
     end
   end
 
-  def delete_actor(%Actor{last_synced_at: nil} = actor, %Auth.Subject{} = subject) do
+  def delete_actor(%Actor{} = actor, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
       Actor.Query.by_id(actor.id)
       |> Authorizer.for_subject(subject)

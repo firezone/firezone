@@ -1,0 +1,22 @@
+name: Hotfix Production
+run-name: Triggered by ${{ github.actor }}
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Image tag to deploy. Defaults to the last commit SHA in the branch."
+        type: string
+        default: ${{ github.sha }}
+        required: false
+
+concurrency:
+  group: "hotfix-production-${{ github.workflow }}-${{ github.ref }}"
+  cancel-in-progress: false
+
+jobs:
+  deploy-production:
+    needs: integration-tests
+    secrets: inherit
+    uses: ./.github/workflows/_deploy_production.yml
+    with:
+      tag: ${{ inputs.tag }}
