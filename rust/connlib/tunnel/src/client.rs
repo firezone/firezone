@@ -11,7 +11,7 @@ use connlib_shared::messages::{
 };
 use connlib_shared::{Callbacks, Dname, IpProvider};
 use domain::base::Rtype;
-use futures_bounded::{FuturesMap, FuturesTupleSet, PushError};
+use futures_bounded::FuturesTupleSet;
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
 use itertools::Itertools;
@@ -29,7 +29,6 @@ use tokio::time::{Interval, MissedTickBehavior};
 // Using str here because Ipv4/6Network doesn't support `const` 🙃
 const IPV4_RESOURCES: &str = "100.96.0.0/11";
 const IPV6_RESOURCES: &str = "fd00:2021:1111:8000::/107";
-const MAX_CONNECTION_REQUEST_DELAY: Duration = Duration::from_secs(10);
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct DnsResource {
@@ -218,15 +217,10 @@ where
     #[tracing::instrument(level = "trace", skip(self))]
     pub fn add_route(&mut self, route: IpNetwork) -> connlib_shared::Result<()> {
         let callbacks = self.callbacks().clone();
-        let maybe_new_device = self
-            .device
+        self.device
             .as_mut()
             .ok_or(Error::ControlProtocolError)?
             .add_route(route, &callbacks)?;
-
-        if let Some(new_device) = maybe_new_device {
-            self.device = Some(new_device);
-        }
 
         Ok(())
     }
@@ -234,15 +228,10 @@ where
     #[tracing::instrument(level = "trace", skip(self))]
     pub fn remove_route(&mut self, route: IpNetwork) -> connlib_shared::Result<()> {
         let callbacks = self.callbacks().clone();
-        let maybe_new_device = self
-            .device
+        self.device
             .as_mut()
             .ok_or(Error::ControlProtocolError)?
             .remove_route(route, &callbacks)?;
-
-        if let Some(new_device) = maybe_new_device {
-            self.device = Some(new_device);
-        }
 
         Ok(())
     }
@@ -257,18 +246,6 @@ where
 /// [`Tunnel`] state specific to clients.
 pub struct ClientState {
     awaiting_connection: HashMap<ResourceId, AwaitingConnectionDetails>,
-
-    pub gateway_awaiting_connection: HashSet<GatewayId>,
-    // This timer exist for an unlikely case, on unreliable connections where the RequestConnection message
-    // or the response is lost:
-    // This would remove the "PendingConnection" message and be able to try the connection again.
-    // There are some edge cases that come with this:
-    // * a gateway in a VERY unlikely case could receive the connection request twice. This will stop any connection attempt and make the whole thing start again.
-    // if this would happen often the UX would be awful but this is only in cases where messages are delayed for more than 10 seconds, it's enough that it doesn't break correctness.
-    // * even more unlikely a tunnel could be established in a sort of race condition when this timer goes off. Again a similar behavior to the one above will happen, the webrtc connection will be forcefully terminated from the gateway.
-    // then the old peer will expire, this might take ~180 seconds. This is an even worse experience but the likelihood of this happen is infinitesimaly small, again correctness is the only important part.
-    gateway_awaiting_connection_timers: FuturesMap<GatewayId, ()>,
-
     resources_gateways: HashMap<ResourceId, GatewayId>,
 
     pub dns_resources_internal_ips: HashMap<DnsResource, HashSet<IpAddr>>,
@@ -295,10 +272,10 @@ pub struct ClientState {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct AwaitingConnectionDetails {
-    domain: Option<Dname>,
+pub(crate) struct AwaitingConnectionDetails {
+    pub domain: Option<Dname>,
     gateways: HashSet<GatewayId>,
-    last_intent_sent_at: Instant,
+    pub last_intent_sent_at: Instant,
 }
 
 impl ClientState {
@@ -375,15 +352,13 @@ impl ClientState {
         }
     }
 
-    pub(crate) fn get_awaiting_connection_domain(
+    pub(crate) fn get_awaiting_connection(
         &self,
         resource: &ResourceId,
-    ) -> Result<&Option<Dname>, ConnlibError> {
-        Ok(&self
-            .awaiting_connection
+    ) -> Result<&AwaitingConnectionDetails, ConnlibError> {
+        self.awaiting_connection
             .get(resource)
-            .ok_or(Error::UnexpectedConnectionDetails)?
-            .domain)
+            .ok_or(Error::UnexpectedConnectionDetails)
     }
 
     pub(crate) fn attempt_to_reuse_connection(
@@ -396,7 +371,7 @@ impl ClientState {
             .get(&resource)
             .ok_or(Error::UnknownResource)?;
 
-        let domain = self.get_awaiting_connection_domain(&resource)?.clone();
+        let domain = self.get_awaiting_connection(&resource)?.domain.clone();
 
         if self.is_connected_to(resource, &domain) {
             return Err(Error::UnexpectedConnectionDetails);
@@ -406,31 +381,9 @@ impl ClientState {
             .get_mut(&resource)
             .ok_or(Error::UnexpectedConnectionDetails)?;
 
-        if self.gateway_awaiting_connection.contains(&gateway) {
-            self.awaiting_connection.remove(&resource);
-            return Err(Error::PendingConnection);
-        }
-
         self.resources_gateways.insert(resource, gateway);
 
         if self.peers.get(&gateway).is_none() {
-            match self
-                .gateway_awaiting_connection_timers
-                // Note: we don't need to set a timer here because
-                // the FutureMap already expires things, it seems redundant
-                // to also have timer that expires.
-                .try_push(gateway, std::future::pending())
-            {
-                Ok(_) => {}
-                Err(PushError::BeyondCapacity(_)) => {
-                    tracing::warn!(%gateway, "Too many concurrent connection attempts");
-                    return Err(Error::TooManyConnectionRequests);
-                }
-                Err(PushError::Replaced(_)) => {
-                    // The timers are equivalent for our purpose so we don't really care about this one.
-                }
-            };
-            self.gateway_awaiting_connection.insert(gateway);
             return Ok(None);
         };
 
@@ -448,13 +401,7 @@ impl ClientState {
 
     pub fn on_connection_failed(&mut self, resource: ResourceId) {
         self.awaiting_connection.remove(&resource);
-
-        let Some(gateway) = self.resources_gateways.remove(&resource) else {
-            return;
-        };
-
-        self.gateway_awaiting_connection.remove(&gateway);
-        self.gateway_awaiting_connection_timers.remove(gateway);
+        self.resources_gateways.remove(&resource);
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(resource_address = %resource.address, resource_id = %resource.id))]
@@ -493,9 +440,8 @@ impl ClientState {
         debug_assert!(self.resource_ids.contains_key(&resource));
 
         let gateways = self
-            .gateway_awaiting_connection
-            .iter()
-            .chain(self.resources_gateways.values())
+            .resources_gateways
+            .values()
             .copied()
             .collect::<HashSet<_>>();
 
@@ -531,7 +477,6 @@ impl ClientState {
     pub fn create_peer_config_for_new_connection(
         &mut self,
         resource: ResourceId,
-        gateway: GatewayId,
         domain: &Option<Dname>,
     ) -> Result<Vec<IpNetwork>, ConnlibError> {
         let desc = self
@@ -542,8 +487,6 @@ impl ClientState {
         let ips = self.get_resource_ip(desc, domain);
 
         // Tidy up state once everything succeeded.
-        self.gateway_awaiting_connection.remove(&gateway);
-        self.gateway_awaiting_connection_timers.remove(gateway);
         self.awaiting_connection.remove(&resource);
 
         Ok(ips)
@@ -643,12 +586,6 @@ impl ClientState {
                 return Poll::Ready(event);
             }
 
-            if let Poll::Ready((gateway_id, _)) =
-                self.gateway_awaiting_connection_timers.poll_unpin(cx)
-            {
-                self.gateway_awaiting_connection.remove(&gateway_id);
-            }
-
             if self.refresh_dns_timer.poll_tick(cx).is_ready() {
                 let mut connections = Vec::new();
 
@@ -723,10 +660,6 @@ impl Default for ClientState {
 
         Self {
             awaiting_connection: Default::default(),
-
-            gateway_awaiting_connection: Default::default(),
-            gateway_awaiting_connection_timers: FuturesMap::new(MAX_CONNECTION_REQUEST_DELAY, 100),
-
             resources_gateways: Default::default(),
             forwarded_dns_queries: FuturesTupleSet::new(
                 Duration::from_secs(60),

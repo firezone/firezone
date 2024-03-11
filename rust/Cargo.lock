@@ -1081,6 +1081,7 @@ dependencies = [
  "tracing-android",
  "tracing-appender",
  "tracing-subscriber",
+ "url",
 ]
 
 [[package]]
@@ -1116,6 +1117,7 @@ dependencies = [
  "firezone-tunnel",
  "ip_network",
  "parking_lot",
+ "phoenix-channel",
  "reqwest",
  "secrecy",
  "serde",
@@ -1146,7 +1148,6 @@ dependencies = [
  "futures",
  "futures-util",
  "hickory-resolver",
- "hostname",
  "ip_network",
  "itertools 0.12.1",
  "known-folders",
@@ -1154,6 +1155,7 @@ dependencies = [
  "log",
  "os_info",
  "parking_lot",
+ "phoenix-channel",
  "rand 0.8.5",
  "rand_core 0.6.4",
  "resolv-conf",
@@ -2864,7 +2866,7 @@ dependencies = [
  "httpdate",
  "itoa 1.0.10",
  "pin-project-lite",
- "socket2 0.5.6",
+ "socket2 0.4.10",
  "tokio",
  "tower-service",
  "tracing",
@@ -3339,7 +3341,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2caa5afb8bf9f3a2652760ce7d4f62d21c4d5a423e68466fca30df82f2330164"
 dependencies = [
  "cfg-if",
- "windows-targets 0.48.5",
+ "windows-targets 0.52.4",
 ]
 
 [[package]]
@@ -4387,15 +4389,20 @@ dependencies = [
  "backoff",
  "base64 0.22.0",
  "futures",
+ "hex",
+ "hostname",
+ "libc",
  "rand_core 0.6.4",
  "secrecy",
  "serde",
  "serde_json",
+ "sha2",
  "thiserror",
  "tokio",
  "tokio-tungstenite",
  "tracing",
  "url",
+ "uuid",
 ]
 
 [[package]]
@@ -4716,7 +4723,7 @@ dependencies = [
 [[package]]
 name = "quinn-udp"
 version = "0.5.0"
-source = "git+https://github.com/conectado/quinn?branch=main#86e25140452bdd56e3be2d05ed7b79ad09b88faa"
+source = "git+https://github.com/firezone/quinn?branch=main#2e312721a5c751af6c7d45ac4227b68f92554581"
 dependencies = [
  "bytes",
  "libc",
@@ -5650,6 +5657,7 @@ dependencies = [
  "stun_codec",
  "thiserror",
  "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -5753,7 +5761,7 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 [[package]]
 name = "str0m"
 version = "0.4.1"
-source = "git+https://github.com/firezone/str0m?branch=reduce-ice-timeout#fd192d65695b466b0bac1d9577b589e563f476aa"
+source = "git+https://github.com/firezone/str0m?branch=main#5da11ebbceee63997ab6b34d089f107e78d575b3"
 dependencies = [
  "combine",
  "crc",

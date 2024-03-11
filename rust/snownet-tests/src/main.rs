@@ -82,6 +82,8 @@ async fn main() -> Result<()> {
                 1,
                 stun_server.into_iter().collect(),
                 turn_server.into_iter().collect(),
+                Instant::now(),
+                Instant::now(),
             );
 
             redis_connection
@@ -112,6 +114,7 @@ async fn main() -> Result<()> {
                         password: answer.password,
                     },
                 },
+                Instant::now(),
             );
 
             let rx = spawn_candidate_task(redis_connection.clone(), "listener_candidates");
@@ -178,6 +181,7 @@ async fn main() -> Result<()> {
                 offer.public_key.into(),
                 stun_server.into_iter().collect(),
                 turn_server.into_iter().collect(),
+                Instant::now(),
             );
 
             redis_connection

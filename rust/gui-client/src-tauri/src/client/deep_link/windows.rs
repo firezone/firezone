@@ -2,7 +2,7 @@
 //! Based on reading some of the Windows code from <https://github.com/FabianLars/tauri-plugin-deep-link>, which is licensed "MIT OR Apache-2.0"
 
 use super::{Error, FZ_SCHEME};
-use connlib_shared::{control::SecureUrl, BUNDLE_ID};
+use connlib_shared::BUNDLE_ID;
 use secrecy::{ExposeSecret, Secret, SecretString};
 use std::{ffi::c_void, io, path::Path, str::FromStr};
 use tokio::{io::AsyncReadExt, io::AsyncWriteExt, net::windows::named_pipe};
@@ -75,7 +75,7 @@ impl Server {
     /// I assume this is based on the underlying Windows API.
     /// I tried re-using the server and it acted strange. The official Tokio
     /// examples are not clear on this.
-    pub(crate) async fn accept(mut self) -> Result<Secret<SecureUrl>, Error> {
+    pub(crate) async fn accept(mut self) -> Result<SecretString, Error> {
         self.inner
             .connect()
             .await
@@ -99,9 +99,8 @@ impl Server {
             std::str::from_utf8(bytes.expose_secret()).map_err(Error::LinkNotUtf8)?,
         )
         .expect("Infallible");
-        let url = Secret::new(SecureUrl::from_url(url::Url::parse(s.expose_secret())?));
 
-        Ok(url)
+        Ok(s)
     }
 }
 

@@ -11,8 +11,8 @@ use crate::client::{
 use anyhow::{anyhow, bail, Context, Result};
 use arc_swap::ArcSwap;
 use connlib_client_shared::{file_logger, ResourceDescription};
-use connlib_shared::{control::SecureUrl, messages::ResourceId, BUNDLE_ID};
-use secrecy::{ExposeSecret, Secret, SecretString};
+use connlib_shared::{keypair, messages::ResourceId, LoginUrl, BUNDLE_ID};
+use secrecy::{ExposeSecret, SecretString};
 use std::{net::IpAddr, path::PathBuf, str::FromStr, sync::Arc, time::Duration};
 use system_tray_menu::Event as TrayMenuEvent;
 use tauri::{Manager, SystemTray, SystemTrayEvent};
@@ -423,7 +423,7 @@ pub(crate) enum ControllerRequest {
     },
     Fail(Failure),
     GetAdvancedSettings(oneshot::Sender<AdvancedSettings>),
-    SchemeRequest(Secret<SecureUrl>),
+    SchemeRequest(SecretString),
     SystemTrayMenu(TrayMenuEvent),
     TunnelReady,
     UpdateAvailable(client::updates::Release),
@@ -527,11 +527,17 @@ impl Controller {
             api_url = api_url.to_string(),
             "Calling connlib Session::connect"
         );
-        let connlib = connlib_client_shared::Session::connect(
-            api_url,
-            token,
+        let (private_key, public_key) = keypair();
+        let login = LoginUrl::client(
+            api_url.as_str(),
+            &token,
             self.device_id.clone(),
-            None, // `get_host_name` over in connlib gets the system's name automatically
+            None,
+            public_key.to_bytes(),
+        )?;
+        let connlib = connlib_client_shared::Session::connect(
+            login,
+            private_key,
             None,
             callback_handler.clone(),
             Some(MAX_PARTITION_TIME),
@@ -564,7 +570,7 @@ impl Controller {
         Ok(())
     }
 
-    async fn handle_deep_link(&mut self, url: &Secret<SecureUrl>) -> Result<()> {
+    async fn handle_deep_link(&mut self, url: &SecretString) -> Result<()> {
         let auth_response =
             client::deep_link::parse_auth_callback(url).context("Couldn't parse scheme request")?;
 
@@ -639,11 +645,7 @@ impl Controller {
                 if let Some(req) = self.auth.start_sign_in()? {
                     let url = req.to_url(&self.advanced_settings.auth_base_url);
                     self.refresh_system_tray_menu()?;
-                    tauri::api::shell::open(
-                        &self.app.shell_scope(),
-                        &url.expose_secret().inner,
-                        None,
-                    )?;
+                    tauri::api::shell::open(&self.app.shell_scope(), url.expose_secret(), None)?;
                 }
             }
             Req::SystemTrayMenu(TrayMenuEvent::SignOut) => {
@@ -767,9 +769,8 @@ async fn run_controller(
     advanced_settings: AdvancedSettings,
     notify_controller: Arc<Notify>,
 ) -> Result<()> {
-    let device_id = client::device_id::device_id()
-        .await
-        .context("Failed to read / create device ID")?;
+    let device_id =
+        connlib_shared::device_id::get().context("Failed to read / create device ID")?;
 
     let mut controller = Controller {
         advanced_settings,
