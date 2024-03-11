@@ -438,38 +438,41 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
     }
 }
 
-async fn upload(path: PathBuf, url: Url) -> io::Result<()> {
-    tracing::info!(path = %path.display(), %url, "Uploading log file");
+async fn upload(_path: PathBuf, _url: Url) -> io::Result<()> {
+    // TODO: Log uploads are disabled by default for GA until we expose a way to opt in
+    // to the user. See https://github.com/firezone/firezone/issues/3910
 
-    let file = tokio::fs::File::open(&path).await?;
-
-    let response = reqwest::Client::new()
-        .put(url)
-        .header(CONTENT_TYPE, "text/plain")
-        .header(CONTENT_ENCODING, "gzip")
-        .body(reqwest::Body::wrap_stream(FramedRead::new(
-            GzipEncoder::new(BufReader::new(file)),
-            BytesCodec::default(),
-        )))
-        .send()
-        .await
-        .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
-
-    let status_code = response.status();
-
-    if !status_code.is_success() {
-        let body = response
-            .text()
-            .await
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
-
-        tracing::warn!(%body, %status_code, "Failed to upload logs");
-
-        return Err(io::Error::new(
-            io::ErrorKind::Other,
-            "portal returned non-successful exit code",
-        ));
-    }
+    // tracing::info!(path = %path.display(), %url, "Uploading log file");
+    //
+    // let file = tokio::fs::File::open(&path).await?;
+    //
+    // let response = reqwest::Client::new()
+    //     .put(url)
+    //     .header(CONTENT_TYPE, "text/plain")
+    //     .header(CONTENT_ENCODING, "gzip")
+    //     .body(reqwest::Body::wrap_stream(FramedRead::new(
+    //         GzipEncoder::new(BufReader::new(file)),
+    //         BytesCodec::default(),
+    //     )))
+    //     .send()
+    //     .await
+    //     .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+    //
+    // let status_code = response.status();
+    //
+    // if !status_code.is_success() {
+    //     let body = response
+    //         .text()
+    //         .await
+    //         .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+    //
+    //     tracing::warn!(%body, %status_code, "Failed to upload logs");
+    //
+    //     return Err(io::Error::new(
+    //         io::ErrorKind::Other,
+    //         "portal returned non-successful exit code",
+    //     ));
+    // }
 
     Ok(())
 }
