@@ -87,6 +87,8 @@ pub(crate) enum Error {
     // `client.rs` provides a more user-friendly message when showing the error dialog box
     #[error("WebViewNotInstalled")]
     WebViewNotInstalled,
+    #[error(transparent)]
+    Other(#[from] anyhow::Error),
 }
 
 /// Runs the Tauri GUI and returns on exit or unrecoverable error
@@ -167,7 +169,7 @@ pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
 
     // We know now we're the only instance on the computer, so register our exe
     // to handle deep links
-    deep_link::register()?;
+    deep_link::register().context("Failed to register deep link handler")?;
     tokio::spawn(accept_deep_links(server, ctlr_tx.clone()));
 
     let managed = Managed {
