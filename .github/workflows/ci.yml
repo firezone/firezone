@@ -56,10 +56,10 @@ jobs:
     secrets: inherit
     with:
       gateway_image: "ghcr.io/firezone/gateway"
-      gateway_tag: "1"
+      gateway_tag: "latest"
       # FIXME: Uncomment this after the next release -- the
       # client will be published then.
-      # client_tag: "1"
+      # client_tag: "latest"
 
   perf-tests:
     name: perf-tests-${{ matrix.test_name }}

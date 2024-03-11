@@ -14,28 +14,6 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # This is a hotfix, so we need to be careful that we don't deploy a control plane
-  # that doesn't work with the latest published clients and gateways.
-  integration-tests:
-    uses: ./.github/workflows/_integration_tests.yml
-    secrets: inherit
-    with:
-      api_tag: ${{ inputs.tag }}
-      web_tag: ${{ inputs.tag }}
-      relay_tag: ${{ inputs.tag }}
-      elixir_tag: ${{ inputs.tag }}
-      # Should match relay version
-      snownet_tag: ${{ inputs.tag }}
-
-      # Use the earliest supported version of the gateway and client.
-      # Today that's the same as the latest published one.
-      gateway_image: ghcr.io/firezone/gateway
-      gateway_tag: latest
-      # FIXME: Uncomment this after the next release -- the
-      # client will be published then.
-      # client_image: ghcr.io/firezone/client
-      # client_tag: latest
-
   deploy-production:
     needs: integration-tests
     secrets: inherit
