@@ -27,38 +27,9 @@ jobs:
           --health-retries 5
     steps:
       - uses: actions/checkout@v4
-      - name: Tool Versions
-        id: versions
-        uses: marocchino/tool-versions-action@v1.2.0
-      - uses: erlef/setup-beam@v1
-        id: setup-beam
+      - uses: ./.github/actions/setup-elixir
         with:
-          otp-version: ${{ steps.versions.outputs.erlang }}
-          elixir-version: ${{ steps.versions.outputs.elixir }}
-      - uses: actions/cache/restore@v4
-        name: Restore Elixir Deps Cache
-        id: cache
-        with:
-          path: |
-            elixir/deps
-            elixir/_build/${{ env.MIX_ENV }}
-          key: ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ hashFiles('elixir/mix.lock') }}
-      - name: Install Dependencies
-        if: ${{ steps.cache.outputs.cache-hit != 'true' }}
-        run: mix deps.get --only $MIX_ENV
-      - name: Compile Dependencies
-        if: ${{ steps.cache.outputs.cache-hit != 'true' }}
-        run: mix deps.compile --skip-umbrella-children
-      - uses: actions/cache/save@v4
-        name: Save Elixir Deps Cache
-        if: ${{ steps.cache.outputs.cache-hit != 'true' }}
-        with:
-          path: |
-            elixir/deps
-            elixir/_build/${{ env.MIX_ENV }}
-          key: ${{ steps.cache.outputs.cache-primary-key }}
-      - name: Compile Application
-        run: mix compile --warnings-as-errors
+          mix_env: ${{ env.MIX_ENV }}
       - name: Setup Database
         run: |
           mix ecto.create
@@ -89,38 +60,9 @@ jobs:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
-      - name: Tool Versions
-        id: versions
-        uses: marocchino/tool-versions-action@v1.2.0
-      - uses: erlef/setup-beam@v1
-        id: setup-beam
+      - uses: ./.github/actions/setup-elixir
         with:
-          otp-version: ${{ steps.versions.outputs.erlang }}
-          elixir-version: ${{ steps.versions.outputs.elixir }}
-      - uses: actions/cache/restore@v4
-        name: Restore Elixir Deps Cache
-        id: cache
-        with:
-          path: |
-            elixir/deps
-            elixir/_build/${{ env.MIX_ENV }}
-          key: ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ hashFiles('elixir/mix.lock') }}
-      - name: Install Dependencies
-        if: ${{ steps.cache.outputs.cache-hit != 'true' }}
-        run: mix deps.get --only $MIX_ENV
-      - name: Compile Dependencies
-        if: ${{ steps.cache.outputs.cache-hit != 'true' }}
-        run: mix deps.compile --skip-umbrella-children
-      - uses: actions/cache/save@v4
-        name: Save Elixir Deps Cache
-        if: ${{ steps.cache.outputs.cache-hit != 'true' }}
-        with:
-          path: |
-            elixir/deps
-            elixir/_build/${{ env.MIX_ENV }}
-          key: ${{ steps.cache.outputs.cache-primary-key }}
-      - name: Compile Application
-        run: mix compile --warnings-as-errors
+          mix_env: ${{ env.MIX_ENV }}
       - uses: actions/cache/restore@v4
         name: Restore PLT cache
         id: plt_cache
@@ -152,38 +94,10 @@ jobs:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
-      - name: Tool Versions
-        id: versions
-        uses: marocchino/tool-versions-action@v1.2.0
-      - uses: erlef/setup-beam@v1
-        id: setup-beam
+      - uses: ./.github/actions/setup-elixir
         with:
-          otp-version: ${{ steps.versions.outputs.erlang }}
-          elixir-version: ${{ steps.versions.outputs.elixir }}
-      - uses: actions/cache/restore@v4
-        name: Restore Elixir Deps Cache
-        id: cache
-        with:
-          path: |
-            elixir/deps
-            elixir/_build/${{ env.MIX_ENV }}
-          key: ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ hashFiles('elixir/mix.lock') }}
-      - name: Install Dependencies
-        if: ${{ steps.cache.outputs.cache-hit != 'true' }}
-        run: mix deps.get --only $MIX_ENV
-      - name: Compile Dependencies
-        if: ${{ steps.cache.outputs.cache-hit != 'true' }}
-        run: mix deps.compile --skip-umbrella-children
-      - uses: actions/cache/save@v4
-        name: Save Elixir Deps Cache
-        if: ${{ steps.cache.outputs.cache-hit != 'true' }}
-        with:
-          path: |
-            elixir/deps
-            elixir/_build/${{ env.MIX_ENV }}
-          key: ${{ steps.cache.outputs.cache-primary-key }}
-      - name: Compile Application
-        run: mix compile --force --warnings-as-errors
+          mix_env: ${{ env.MIX_ENV }}
+          force_compile: true
       - name: Check Formatting
         run: mix format --check-formatted
       - name: Check For Retired Packages
@@ -223,71 +137,22 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.base_ref }}
-      - name: Tool Versions
-        id: versions
-        uses: marocchino/tool-versions-action@v1.2.0
-      - uses: erlef/setup-beam@v1
-        id: setup-beam
+      - uses: ./.github/actions/setup-elixir
         with:
-          otp-version: ${{ steps.versions.outputs.erlang }}
-          elixir-version: ${{ steps.versions.outputs.elixir }}
-      - uses: actions/cache/restore@v4
-        name: Restore Elixir Deps Cache
-        id: cache-1
-        with:
-          path: |
-            elixir/deps
-            elixir/_build/${{ env.MIX_ENV }}
-          key: ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ hashFiles('elixir/mix.lock') }}
-      - name: Install Dependencies
-        if: ${{ steps.cache.outputs.cache-hit != 'true' }}
-        run: mix deps.get --only $MIX_ENV
-      - name: Compile Dependencies
-        if: ${{ steps.cache.outputs.cache-hit != 'true' }}
-        run: mix deps.compile --skip-umbrella-children
-      - uses: actions/cache/save@v4
-        name: Save Elixir Deps Cache
-        if: ${{ steps.cache.outputs.cache-hit != 'true'}}
-        with:
-          path: |
-            elixir/deps
-            elixir/_build/${{ env.MIX_ENV }}
-          key: ${{ steps.cache.outputs.cache-primary-key }}
-      - name: Compile
-        run: mix compile --warnings-as-errors
+          mix_env: ${{ env.MIX_ENV }}
       - name: Create Database
         run: mix ecto.create
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.base_ref }}
       - name: Migrate DB to base ref
         run: mix ecto.migrate
-      # Then checkout current ref and run migrations
+      - name: Run Seed
+        run: mix ecto.seed
+      # Then checkout current ref and rerun migrations
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.ref }}
-      - uses: actions/cache/restore@v4
-        name: Restore Elixir Deps Cache
-        id: cache-2
+      - uses: ./.github/actions/setup-elixir
         with:
-          path: |
-            elixir/deps
-            elixir/_build/${{ env.MIX_ENV }}
-          key: ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ hashFiles('elixir/mix.lock') }}
-      - name: Install Dependencies
-        if: ${{ steps.cache.outputs.cache-hit != 'true' }}
-        run: mix deps.get --only $MIX_ENV
-      - name: Compile Dependencies
-        if: ${{ steps.cache.outputs.cache-hit != 'true' }}
-        run: mix deps.compile --skip-umbrella-children
-      - uses: actions/cache/save@v4
-        name: Save Elixir Deps Cache
-        if: ${{ steps.cache.outputs.cache-hit != 'true'}}
-        with:
-          path: |
-            elixir/deps
-            elixir/_build/${{ env.MIX_ENV }}
-          key: ${{ steps.cache.outputs.cache-primary-key }}
+          mix_env: ${{ env.MIX_ENV }}
       - name: Run new migrations
         run: mix ecto.migrate
       - name: Run Seed
@@ -336,42 +201,9 @@ jobs:
           export DISPLAY=:99
           chromedriver --url-base=/wd/hub &
           sudo Xvfb -ac :99 -screen 0 1280x1024x24 > /dev/null 2>&1 &
-      - name: Tool Versions
-        id: versions
-        uses: marocchino/tool-versions-action@v1.2.0
-      - uses: erlef/setup-beam@v1
-        id: setup-beam
+      - uses: ./.github/actions/setup-elixir
         with:
-          otp-version: ${{ steps.versions.outputs.erlang }}
-          elixir-version: ${{ steps.versions.outputs.elixir }}
-      - uses: ./.github/actions/setup-node
-        with:
-          node-version: ${{ steps.versions.outputs.nodejs }}
-      # Elixir cache
-      - uses: actions/cache/restore@v4
-        name: Restore Elixir Deps Cache
-        id: cache
-        with:
-          path: |
-            elixir/deps
-            elixir/_build/${{ env.MIX_ENV }}
-          key: ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ hashFiles('elixir/mix.lock') }}
-      - name: Install Dependencies
-        if: ${{ steps.cache.outputs.cache-hit != 'true' }}
-        run: mix deps.get --only $MIX_ENV
-      - name: Compile Dependencies
-        if: ${{ steps.cache.outputs.cache-hit != 'true' }}
-        run: mix deps.compile --skip-umbrella-children
-      - uses: actions/cache/save@v4
-        name: Save Elixir Deps Cache
-        if: ${{ steps.cache.outputs.cache-hit != 'true' }}
-        with:
-          path: |
-            elixir/deps
-            elixir/_build/${{ env.MIX_ENV }}
-          key: ${{ steps.cache.outputs.cache-primary-key }}
-      - name: Compile Application
-        run: mix compile --warnings-as-errors
+          mix_env: ${{ env.MIX_ENV }}
       # Front-End deps cache
       - uses: actions/cache/restore@v4
         name: pnpm Web Deps Cache

@@ -1,6 +1,13 @@
 name: Continuous Delivery
 on:
-  workflow_dispatch:
+  # Used for debugging the workflow by manually calling
+  worklow_dispatch:
+    inputs:
+      deploy-staging:
+        description: "Also deploy to staging. By default the deploy is not executed when triggering this workflow manually."
+        type: boolean
+        default: "false"
+        required: false
   push:
     branches:
       - main
@@ -22,6 +29,7 @@ jobs:
     secrets: inherit
 
   deploy-staging:
+    if: ${{ inputs.deploy-staging == 'true' }}
     runs-on: ubuntu-22.04
     permissions:
       contents: write

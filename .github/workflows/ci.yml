@@ -42,6 +42,18 @@ jobs:
     needs: build-artifacts
     secrets: inherit
 
+  compatibility-tests:
+    # Allow breaking changes only if the PR contains a '!' in the title
+    if: github.event_name == 'pull_request' && ! contains(github.event.pull_request.title, '!')
+    uses: ./.github/workflows/_integration_tests.yml
+    needs: build-artifacts
+    secrets: inherit
+    with:
+      gateway_image: "ghcr.io/firezone/gateway"
+      gateway_tag: "1"
+      client_image: "ghcr.io/firezone/client"
+      client_tag: "1"
+
   perf-tests:
     name: perf-tests-${{ matrix.test_name }}
     needs: build-artifacts

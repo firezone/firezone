@@ -60,7 +60,6 @@ on:
         type: string
         default: ${{ github.sha }}
 
-
 jobs:
   snownet-integration-tests:
     name: snownet-integration-tests-${{ matrix.name }}
