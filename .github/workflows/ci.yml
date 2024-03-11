@@ -51,8 +51,9 @@ jobs:
     with:
       gateway_image: "ghcr.io/firezone/gateway"
       gateway_tag: "1"
-      client_image: "ghcr.io/firezone/client"
-      client_tag: "1"
+      # TODO: Uncomment when we publish client images
+      # client_image: "ghcr.io/firezone/client"
+      # client_tag: "1"
 
   perf-tests:
     name: perf-tests-${{ matrix.test_name }}

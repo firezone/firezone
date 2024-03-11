@@ -142,21 +142,18 @@ jobs:
           mix_env: ${{ env.MIX_ENV }}
       - name: Create Database
         run: mix ecto.create
-      - name: Migrate DB to base ref
-        run: mix ecto.migrate
-      - name: Run Seed
-        run: mix ecto.seed
+      - name: Migrate DB to base ref and seed
+        run: |
+          git fetch --depth=1 origin ${{ github.base_ref }}
+          git checkout ${{ github.base_ref }}
+          mix ecto.migrate
+          mix ecto.seed
       # Then checkout current ref and rerun migrations
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.ref }}
-      - uses: ./.github/actions/setup-elixir
-        with:
-          mix_env: ${{ env.MIX_ENV }}
       - name: Run new migrations
-        run: mix ecto.migrate
-      - name: Run Seed
-        run: mix ecto.seed
+        run: |
+          git checkout ${{ github.ref }}
+          mix ecto.migrate
+          mix ecto.seed
 
   acceptance-test:
     name: acceptance-test-${{ matrix.MIX_TEST_PARTITION }}
