@@ -54,7 +54,9 @@ runs:
     - if: inputs.targets != ''
       run: rustup target add ${{ inputs.targets }}
       shell: bash
-    - if: ${{ inputs.sccache_enabled == 'true' }}
+
+    # Start sccache
+    - if: ${{ inputs.sccache_backend == 'sccache' }}
       name: Start sccache
       run: $SCCACHE_PATH --start-server
       shell: bash

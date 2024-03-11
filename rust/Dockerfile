@@ -134,7 +134,8 @@ RUN set -xe \
 FROM development AS debug
 
 ARG TARGET
-COPY --from=builder /build/target/${TARGET}/debug/${PACKAGE} .
+## Build first with `cross build --target ${TARGET} -p ${PACKAGE} --debug && mv /target/${TARGET}/release/${PACKAGE} .`
+COPY ${PACKAGE} .
 
 # Build a production image from including a binary compiled on the host
 FROM runtime AS release

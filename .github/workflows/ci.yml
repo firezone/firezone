@@ -4,6 +4,11 @@ on:
   merge_group:
     types: [checks_requested]
   workflow_call:
+    inputs:
+      profile:
+        required: false
+        default: 'debug'
+        type: string
 
 # Cancel old workflow runs if new code is pushed
 concurrency:
@@ -11,16 +16,19 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  elixir:
-    uses: ./.github/workflows/_elixir.yml
-  rust:
-    uses: ./.github/workflows/_rust.yml
-    secrets: inherit
   kotlin:
     uses: ./.github/workflows/_kotlin.yml
     secrets: inherit
   swift:
     uses: ./.github/workflows/_swift.yml
+    secrets: inherit
+  tauri:
+    uses: ./.github/workflows/_tauri.yml
+    secrets: inherit
+  elixir:
+    uses: ./.github/workflows/_elixir.yml
+  rust:
+    uses: ./.github/workflows/_rust.yml
     secrets: inherit
   static-analysis:
     uses: ./.github/workflows/_static-analysis.yml
@@ -31,214 +39,43 @@ jobs:
     uses: ./.github/workflows/_codeql.yml
     secrets: inherit
 
-  # We could build these in GCP with Cloud Build, but for now it's
-  # less overhead to keep things in GH actions. See work on building these
-  # in GCP with Cloud Build: https://github.com/firezone/firezone/pull/2234
-  build-images:
-    name: build-images-${{ matrix.image_name }}
-    runs-on: ubuntu-22.04
-    strategy:
-      matrix:
-        include:
-          - image_name: api
-            target: runtime
-            context: elixir
-            build-args: |
-              APPLICATION_NAME=api
-          - image_name: web
-            target: runtime
-            context: elixir
-            build-args: |
-              APPLICATION_NAME=web
-          - image_name: gateway
-            target: debug
-            context: rust
-            build-args: |
-              PACKAGE=firezone-gateway
-          - image_name: relay
-            target: debug
-            context: rust
-            build-args: |
-              PACKAGE=firezone-relay
-          - image_name: client
-            target: debug
-            context: rust
-            build-args: |
-              PACKAGE=firezone-linux-client
-          - image_name: snownet-tests
-            target: debug
-            context: rust
-            build-args: |
-              PACKAGE=snownet-tests
-          - image_name: elixir
-            target: compiler
-            context: elixir
-            build-args: |
-              APPLICATION_NAME=api
-    permissions:
-      contents: read
-      id-token: write
-    env:
-      # mark:automatic-version
-      VERSION: "1.0.0"
-      APPLICATION_NAME: ${{ matrix.image_name }}
-    steps:
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-        with:
-          # We are overriding the default buildkit version being used by Buildx. We need buildkit >= 12.0 and currently BuildX
-          # supports v0.11.6 https://github.com/docker/buildx/blob/b8739d74417f86aa8fc9aafb830a8ba656bdef0e/Dockerfile#L9.
-          # We should for any updates on buildx and on the setup-buildx-action itself.
-          driver-opts: |
-            image=moby/buildkit:v0.12.0
-      - uses: actions/checkout@v4
-      - name: Sanitize github.ref_name
-        run: |
-          # `ref_name` contains `/` which is not a valid docker image tag
-          REF="${{ github.ref_name }}"
-          CACHE_TAG="${REF//\//-}"
-          echo "CACHE_TAG=$CACHE_TAG" >> "$GITHUB_ENV"
-          echo "BRANCH_TAG=$CACHE_TAG" >> "$GITHUB_ENV"
-      - uses: ./.github/actions/gcp-docker-login
-        id: login
-        with:
-          project: firezone-staging
-      - name: Build Docker Tags
-        id: build_docker_tags
-        run: |
-          set -xe
-
-          TAGS=""
-
-          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
-            MAJOR_VERSION="${VERSION%%.*}"
-            MAJOR_MINOR_VERSION="${VERSION%.*}"
-
-            TAGS="${TAGS},${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${MAJOR_VERSION}"
-            TAGS="${TAGS},${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${MAJOR_MINOR_VERSION}"
-            TAGS="${TAGS},${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ env.VERSION }}-${{ github.sha }}"
-          fi
-
-          TAGS="${TAGS},${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ env.BRANCH_TAG }}"
-          TAGS="${TAGS},${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ github.sha }}"
-
-          echo "tags=$TAGS" >> "$GITHUB_OUTPUT"
-      - name: Build Docker images
-        uses: docker/build-push-action@v5
-        with:
-          platforms: linux/amd64
-          build-args: ${{ matrix.build-args }}
-          context: ${{ matrix.context }}/
-          cache-from: |
-            type=registry,ref=${{ steps.login.outputs.registry }}/cache/${{ matrix.image_name }}:${{ env.CACHE_TAG }}
-            type=registry,ref=${{ steps.login.outputs.registry }}/cache/${{ matrix.image_name }}:main
-          # This will write the cache on main even if integration tests fail,
-          # but it'll just be corrected on the next successful build.
-          cache-to: |
-            type=registry,ref=${{steps.login.outputs.registry}}/cache/${{ matrix.image_name}}:${{ env.CACHE_TAG }},mode=max
-          file: ${{ matrix.context }}/Dockerfile
-          push: true
-          target: ${{ matrix.target }}
-          tags: ${{ steps.build_docker_tags.outputs.tags }}
-
-  snownet-integration-tests:
-    name: snownet-integration-tests-${{ matrix.name }}
-    needs: build-images
-    runs-on: ubuntu-22.04
-    permissions:
-      contents: read
-      id-token: write
-      pull-requests: write
-    env:
-      VERSION: ${{ github.sha }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - file: docker-compose.lan.yml
-            name: lan
-          - file: docker-compose.wan-hp.yml
-            name: wan-hp
-          - file: docker-compose.wan-relay.yml
-            name: wan-relay
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/gcp-docker-login
-        id: login
-        with:
-          project: firezone-staging
-      - name: Run ${{ matrix.file }} test
-        run: |
-          sudo sysctl -w vm.overcommit_memory=1
-          timeout 600 docker compose -f rust/snownet-tests/${{ matrix.file }} up --exit-code-from dialer --abort-on-container-exit
+  build-artifacts:
+    uses: ./.github/workflows/_build_artifacts.yml
+    secrets: inherit
+    with:
+      profile: ${{ inputs.profile || 'debug' }}
 
   integration-tests:
-    name: integration-tests-${{ matrix.test }}
-    needs: build-images
-    runs-on: ubuntu-22.04
-    permissions:
-      contents: read
-      id-token: write
-      pull-requests: write
-    env:
-      VERSION: ${{ github.sha }}
-    strategy:
-      fail-fast: false
-      matrix:
-        test: [
-          direct-curl-portal-restart,
-          relayed-curl-portal-restart,
-          relayed-curl-relay-restart,
-          direct-curl-portal-down,
-          relayed-curl-portal-down,
-          direct-curl-portal-relay-down,
-          dns-etc-resolvconf,
-          dns-nm,
-          systemd/dns-systemd-resolved,
-        ]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/gcp-docker-login
-        id: login
-        with:
-          project: firezone-staging
-      - name: Seed database
-        run: docker compose run elixir /bin/sh -c 'cd apps/domain && mix ecto.seed'
-      - name: Start docker compose in the background
-        run: |
-          # TODO: Order matters here, but it shouldn't. There seems to be some race
-          # condition involved in letting Docker deterime the start order here.
-          docker compose up -d dns.httpbin httpbin
-          docker compose up -d api web
-          docker compose up -d relay
-          docker compose up -d gateway
-          docker compose up -d client
+    uses: ./.github/workflows/_integration_tests.yml
+    needs: build-artifacts
+    secrets: inherit
 
-      - run: ./scripts/tests/${{ matrix.test }}.sh
-
-      - name: Show Client logs
-        if: "!cancelled()"
-        run: docker compose logs client
-      - name: Show Relay logs
-        if: "!cancelled()"
-        run: docker compose logs relay
-      - name: Show Gateway logs
-        if: "!cancelled()"
-        run: docker compose logs gateway
-      - name: Show API logs
-        if: "!cancelled()"
-        run: docker compose logs api
+  compatibility-tests:
+    uses: ./.github/workflows/_integration_tests.yml
+    needs: build-artifacts
+    secrets: inherit
+    with:
+      gateway_image: "ghcr.io/firezone/gateway"
+      gateway_tag: "latest"
+      # FIXME: Uncomment this after the next release -- the
+      # client will be published then.
+      # client_tag: "latest"
 
   perf-tests:
     name: perf-tests-${{ matrix.test_name }}
-    needs: build-images
+    needs: build-artifacts
     runs-on: ubuntu-22.04
     permissions:
       contents: read
       id-token: write
       pull-requests: write
     env:
-      VERSION: ${{ github.sha }}
+      API_TAG: ${{ github.sha }}
+      WEB_TAG: ${{ github.sha }}
+      GATEWAY_TAG: ${{ github.sha }}
+      CLIENT_TAG: ${{ github.sha }}
+      RELAY_TAG: ${{ github.sha }}
+      ELIXIR_TAG: ${{ github.sha }}
     strategy:
       fail-fast: false
       matrix:
@@ -251,7 +88,6 @@ jobs:
           - relayed-tcp-server2client
           - relayed-udp-client2server
           - relayed-udp-server2client
-
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/gcp-docker-login
@@ -309,7 +145,7 @@ jobs:
         run: docker compose logs iperf3
 
   compare-results:
-    if: ${{ github.event_name == 'pull_request' }}
+    if: github.event_name == 'pull_request'
     needs: perf-tests
     runs-on: ubuntu-22.04
     permissions:

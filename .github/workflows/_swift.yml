@@ -34,11 +34,10 @@ jobs:
           targets: aarch64-apple-darwin aarch64-apple-ios x86_64-apple-darwin
       - uses: actions/cache/restore@v4
         name: Restore Swift DerivedData Cache
+        id: cache
         with:
           path: ~/Library/Developer/Xcode/DerivedData
-          key: ${{ matrix.runs-on }}-${{ runner.arch }}-swift-${{ hashFiles('swift/*', 'rust/**/*.rs', 'rust/**/*.toml', 'rust/**/*.lock}') }}
-          restore-keys: |
-            ${{ matrix.runs-on }}-${{ runner.arch }}-swift-
+          key: ${{ matrix.runs-on }}-${{ hashFiles('swift/*', 'rust/**/*.rs', 'rust/**/*.toml', 'rust/**/*.lock}') }}
       - name: Install the Apple build certificate and provisioning profile
         env:
           BUILD_CERT: ${{ secrets.APPLE_BUILD_CERTIFICATE_BASE64 }}
@@ -167,10 +166,10 @@ jobs:
             --apiKey $API_KEY_ID \
             --apiIssuer $ISSUER_ID
       - uses: actions/cache/save@v4
-        if: ${{ github.ref == 'refs/heads/main' }}
+        if: ${{ steps.cache.outputs.cache-hit != 'true'}}
         name: Save Swift DerivedData Cache
         with:
           path: ~/Library/Developer/Xcode/DerivedData
           # Swift benefits heavily from build cache, so aggressively write a new one
           # on each build on `main` and attempt to restore it in PR builds with broader restore-key.
-          key: ${{ matrix.runs-on }}-${{ runner.arch }}-swift-${{ hashFiles('swift/*', 'rust/**/*.rs', 'rust/**/*.toml', 'rust/**/*.lock}') }}
+          key: ${{ steps.cache.outputs.cache-primary-key }}

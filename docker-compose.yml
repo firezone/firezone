@@ -56,7 +56,7 @@ services:
         - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/cache/web:main
       args:
         APPLICATION_NAME: web
-    image: us-east1-docker.pkg.dev/firezone-staging/firezone/web:${VERSION:-main}
+    image: ${WEB_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/firezone/web}:${WEB_TAG:-main}
     hostname: web.cluster.local
     ports:
       - 8080:8080/tcp
@@ -122,7 +122,7 @@ services:
         - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/cache/client:main
       args:
         PACKAGE: firezone-linux-client
-    image: us-east1-docker.pkg.dev/firezone-staging/firezone/client:${VERSION:-main}
+    image: ${CLIENT_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/firezone/client}:${CLIENT_TAG:-main}
     cap_add:
       - NET_ADMIN
     sysctls:
@@ -153,7 +153,7 @@ services:
         - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/cache/gateway:main
       args:
         PACKAGE: firezone-gateway
-    image: us-east1-docker.pkg.dev/firezone-staging/firezone/gateway:${VERSION:-main}
+    image: ${GATEWAY_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/firezone/gateway}:${GATEWAY_TAG:-main}
     cap_add:
       - NET_ADMIN
     sysctls:
@@ -219,7 +219,7 @@ services:
         - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/cache/relay:main
       args:
         PACKAGE: firezone-relay
-    image: us-east1-docker.pkg.dev/firezone-staging/firezone/relay:${VERSION:-main}
+    image: ${RELAY_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/firezone/relay}:${RELAY_TAG:-main}
     healthcheck:
       test: ["CMD-SHELL", "lsof -i UDP | grep firezone-relay"]
       start_period: 10s
@@ -247,7 +247,7 @@ services:
         - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/cache/api:main
       args:
         APPLICATION_NAME: api
-    image: us-east1-docker.pkg.dev/firezone-staging/firezone/api:${VERSION:-main}
+    image: ${API_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/cache/api}:${API_TAG:-main}
     hostname: api.cluster.local
     ports:
       - 8081:8081/tcp
@@ -314,7 +314,7 @@ services:
         - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/cache/elixir:main
       args:
         APPLICATION_NAME: api
-    image: us-east1-docker.pkg.dev/firezone-staging/firezone/elixir:${VERSION:-main}
+    image: ${ELIXIR_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/firezone/elixir}:${ELIXIR_TAG:-main}
     hostname: elixir
     environment:
       # Web Server
