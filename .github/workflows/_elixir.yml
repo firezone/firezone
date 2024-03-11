@@ -149,7 +149,7 @@ jobs:
       # Then checkout current ref and rerun migrations
       - name: Run new migrations
         run: |
-          git checkout ${{ github.ref }}
+          git checkout ${{ github.sha }}
           mix ecto.migrate
           mix ecto.seed
 
