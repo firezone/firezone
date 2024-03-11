@@ -135,9 +135,34 @@ jobs:
     steps:
       # Checkout base_ref first
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node
       - uses: ./.github/actions/setup-elixir
         with:
           mix_env: ${{ env.MIX_ENV }}
+      # Front-End deps cache
+      - uses: actions/cache/restore@v4
+        name: pnpm Web Deps Cache
+        id: pnpm-web-deps-cache
+        with:
+          path: |
+            elixir/apps/web/assets/node_modules
+            elixir/esbuild-*
+            elixir/tailwind-*
+          key: pnpm-${{ runner.os }}-${{ hashFiles('elixir/apps/web/assets/pnpm-lock.yaml') }}
+      - name: Install Front-End Dependencies
+        if: ${{ steps.pnpm-web-deps-cache.outputs.cache-hit != 'true' }}
+        run: |
+          cd apps/web
+          mix assets.setup
+      - uses: actions/cache/save@v4
+        name: Save pnpm Deps Cache
+        if: ${{ steps.pnpm-web-deps-cache.outputs.cache-hit != 'true' }}
+        with:
+          path: |
+            elixir/apps/web/assets/node_modules
+            elixir/esbuild-*
+            elixir/tailwind-*
+          key: ${{ steps.pnpm-web-deps-cache.outputs.cache-primary-key }}
       - name: Create Database
         run: mix ecto.create
       - name: Migrate DB to base ref and seed
