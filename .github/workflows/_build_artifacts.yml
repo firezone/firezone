@@ -4,8 +4,7 @@ on:
   workflow_call:
     inputs:
       profile:
-        required: false
-        default: 'debug'
+        required: true
         type: string
 
 env:

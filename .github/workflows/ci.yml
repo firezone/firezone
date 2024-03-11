@@ -43,7 +43,7 @@ jobs:
     uses: ./.github/workflows/_build_artifacts.yml
     secrets: inherit
     with:
-      profile: ${{ inputs.profile }}
+      profile: ${{ inputs.profile || 'debug' }}
 
   integration-tests:
     uses: ./.github/workflows/_integration_tests.yml
