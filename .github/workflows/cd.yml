@@ -1,7 +1,7 @@
 name: Continuous Delivery
 on:
   # Used for debugging the workflow by manually calling
-  worklow_dispatch:
+  workflow_dispatch:
     inputs:
       deploy-staging:
         description: "Also deploy to staging. By default the deploy is not executed when triggering this workflow manually."
