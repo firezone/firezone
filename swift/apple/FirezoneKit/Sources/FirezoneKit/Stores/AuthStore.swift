@@ -1,6 +1,6 @@
 //
 //  AuthStore.swift
-//  (c) 2023 Firezone, Inc.
+//  (c) 2024 Firezone, Inc.
 //  LICENSE: Apache-2.0
 //
 
@@ -104,7 +104,14 @@ public final class AuthStore: ObservableObject {
   private func upateLoginStatus() {
     Task {
       logger.log("\(#function): Tunnel auth status is \(self.tunnelStore.tunnelAuthStatus)")
-      let loginStatus = await self.getLoginStatus(from: self.tunnelStore.tunnelAuthStatus)
+      let tunnelAuthStatus = tunnelStore.tunnelAuthStatus
+      let loginStatus = await self.getLoginStatus(from: tunnelAuthStatus)
+      if tunnelAuthStatus != self.tunnelStore.tunnelAuthStatus {
+        // The tunnel auth status has changed while we were getting the
+        // login status, so this login status is not to be used.
+        logger.log("\(#function): Ignoring login status \(loginStatus) that's no longer valid.")
+        return
+      }
       logger.log("\(#function): Corresponding login status is \(loginStatus)")
       await MainActor.run {
         self.loginStatus = loginStatus

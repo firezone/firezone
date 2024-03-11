@@ -30,8 +30,16 @@ defmodule Web.HomeController do
   end
 
   def redirect_to_sign_in(conn, %{"account_id_or_slug" => account_id_or_slug} = params) do
-    account_id_or_slug = String.downcase(account_id_or_slug)
     params = Web.Auth.take_sign_in_params(params)
-    redirect(conn, to: ~p"/#{account_id_or_slug}?#{params}")
+
+    case Domain.Accounts.Account.Changeset.validate_account_id_or_slug(account_id_or_slug) do
+      {:ok, account_id_or_slug} ->
+        redirect(conn, to: ~p"/#{account_id_or_slug}?#{params}")
+
+      {:error, reason} ->
+        conn
+        |> put_flash(:error, reason)
+        |> redirect(to: ~p"/?#{params}")
+    end
   end
 end

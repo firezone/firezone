@@ -1,5 +1,5 @@
 //  Adapter.swift
-//  (c) 2023 Firezone, Inc.
+//  (c) 2024 Firezone, Inc.
 //  LICENSE: Apache-2.0
 //
 import FirezoneKit
@@ -190,24 +190,19 @@ class Adapter {
         break
       case .tunnelReady(let session):
         self.logger.log("Adapter.stop: Shutting down connlib")
-        self.state = .stoppingTunnel(session: session, onStopped: completionHandler)
         session.disconnect()
+        self.state = .stoppedTunnel
+        completionHandler()
       case .startingTunnel(let session, let onStarted):
         self.logger.log("Adapter.stop: Shutting down connlib before tunnel ready")
-        self.state = .stoppingTunnel(
-          session: session,
-          onStopped: {
-            onStarted?(AdapterError.stoppedByRequestWhileStarting)
-            completionHandler()
-          })
         session.disconnect()
+        self.state = .stoppedTunnel
+        onStarted?(AdapterError.stoppedByRequestWhileStarting)
+        completionHandler()
       case .stoppingTunnelTemporarily(let session, let onStopped):
-        self.state = .stoppingTunnel(
-          session: session,
-          onStopped: {
-            onStopped?()
-            completionHandler()
-          })
+        self.state = .stoppedTunnel
+        onStopped?()
+        completionHandler()
       case .stoppedTunnelTemporarily:
         self.state = .stoppedTunnel
         completionHandler()
@@ -515,46 +510,31 @@ extension Adapter: CallbackHandlerDelegate {
     }
   }
 
-  public func onDisconnect(error: String?) {
+  public func onDisconnect(error: String) {
     workQueue.async { [weak self] in
       guard let self = self else { return }
 
-      self.logger.log("Adapter.onDisconnect: \(error ?? "No error")")
-      if let errorMessage = error {
-        self.logger.error(
-          "Connlib disconnected with unrecoverable error: \(errorMessage)")
-        switch self.state {
-        case .stoppingTunnel(session: _, let onStopped):
-          onStopped?()
-          self.state = .stoppedTunnel
-        case .stoppingTunnelTemporarily(session: _, let onStopped):
-          onStopped?()
-          self.state = .stoppedTunnel
-        case .stoppedTunnel:
-          // This should not happen
-          break
-        case .stoppedTunnelTemporarily:
-          self.state = .stoppedTunnel
-        default:
-          packetTunnelProvider?.handleTunnelShutdown(
-            dueTo: .connlibDisconnected,
-            errorMessage: errorMessage)
-          self.packetTunnelProvider?.cancelTunnelWithError(
-            AdapterError.connlibFatalError(errorMessage))
-          self.state = .stoppedTunnel
-        }
-      } else {
-        self.logger.log("Connlib disconnected")
-        switch self.state {
-        case .stoppingTunnel(session: _, let onStopped):
-          onStopped?()
-          self.state = .stoppedTunnel
-        case .stoppingTunnelTemporarily(session: _, let onStopped):
-          onStopped?()
-          self.state = .stoppedTunnelTemporarily
-        default:
-          self.state = .stoppedTunnel
-        }
+      self.logger.error(
+        "Connlib disconnected with unrecoverable error: \(error)")
+      switch self.state {
+      case .stoppingTunnel(session: _, let onStopped):
+        onStopped?()
+        self.state = .stoppedTunnel
+      case .stoppingTunnelTemporarily(session: _, let onStopped):
+        onStopped?()
+        self.state = .stoppedTunnel
+      case .stoppedTunnel:
+        // This should not happen
+        break
+      case .stoppedTunnelTemporarily:
+        self.state = .stoppedTunnel
+      default:
+        packetTunnelProvider?.handleTunnelShutdown(
+          dueTo: .connlibDisconnected,
+          errorMessage: error)
+        self.packetTunnelProvider?.cancelTunnelWithError(
+          AdapterError.connlibFatalError(error))
+        self.state = .stoppedTunnel
       }
     }
   }

@@ -15,7 +15,7 @@ use ip_network::IpNetwork;
 use secrecy::{ExposeSecret as _, Secret};
 use snownet::Server;
 use std::task::{ready, Context, Poll};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tokio::time::{interval, Interval, MissedTickBehavior};
 
 const PEERS_IPV4: &str = "100.64.0.0/11";
@@ -113,6 +113,7 @@ where
             turn(&relays, |addr| {
                 self.connections_state.sockets.can_handle(addr)
             }),
+            Instant::now(),
         );
 
         self.new_peer(
@@ -198,7 +199,7 @@ where
     pub fn add_ice_candidate(&mut self, conn_id: ClientId, ice_candidate: String) {
         self.connections_state
             .node
-            .add_remote_candidate(conn_id, ice_candidate);
+            .add_remote_candidate(conn_id, ice_candidate, Instant::now());
     }
 
     fn new_peer(

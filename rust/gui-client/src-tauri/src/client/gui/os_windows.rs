@@ -5,7 +5,12 @@ use connlib_shared::BUNDLE_ID;
 ///
 /// May say "Windows Powershell" and have the wrong icon in dev mode
 /// See <https://github.com/tauri-apps/tauri/issues/3700>
+///
+/// TODO: Warn about silent failure if the AppID is not installed:
+/// <https://github.com/tauri-apps/winrt-notification/issues/17#issuecomment-1988715694>
 pub(crate) fn show_notification(title: &str, body: &str) -> Result<(), Error> {
+    tracing::debug!(?title, ?body, "show_notification");
+
     tauri_winrt_notification::Toast::new(BUNDLE_ID)
         .title(title)
         .text1(body)

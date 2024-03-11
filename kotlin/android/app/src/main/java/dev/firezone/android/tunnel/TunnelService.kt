@@ -1,4 +1,4 @@
-/* Licensed under Apache 2.0 (C) 2023 Firezone, Inc. */
+/* Licensed under Apache 2.0 (C) 2024 Firezone, Inc. */
 package dev.firezone.android.tunnel
 
 import android.app.ActivityManager
@@ -156,16 +156,6 @@ class TunnelService : VpnService() {
                 }.toTypedArray()
             }
 
-            // Something called disconnect() already, so assume it was user or system initiated.
-            override fun onDisconnect(): Boolean {
-                Log.d(TAG, "onDisconnect")
-                Firebase.crashlytics.log("onDisconnect")
-
-                shutdown()
-
-                return true
-            }
-
             // Unexpected disconnect, most likely a 401. Clear the token and initiate a stop of the
             // service.
             override fun onDisconnect(error: String): Boolean {
@@ -211,6 +201,8 @@ class TunnelService : VpnService() {
         connlibSessionPtr!!.let {
             ConnlibSession.disconnect(it)
         }
+
+        shutdown()
     }
 
     private fun shutdown() {
@@ -329,32 +321,31 @@ class TunnelService : VpnService() {
             Firebase.crashlytics.log("IPv6 Address: $tunnelIpv6Address")
             addAddress(tunnelIpv6Address!!, 128)
 
-            appRestrictions.getString("allowedApplications")?.let {
-                if (it.isNotBlank()) {
-                    Firebase.crashlytics.log("Allowed applications: $it")
-                    it.split(",").forEach { p ->
-                        if (p.isNotBlank()) {
-                            addAllowedApplication(p.trim())
-                        }
-                    }
-                }
-            }
-
-            appRestrictions.getString("disallowedApplications")?.let {
-                if (it.isNotBlank()) {
-                    Firebase.crashlytics.log("Disallowed applications: $it")
-                    it.split(",").forEach { p ->
-                        if (p.isNotBlank()) {
-                            addDisallowedApplication(p.trim())
-                        }
-                    }
-                }
-            }
+            updateAllowedDisallowedApplications("allowedApplications", ::addAllowedApplication)
+            updateAllowedDisallowedApplications("disallowedApplications", ::addDisallowedApplication)
 
             setSession(SESSION_NAME)
             setMtu(MTU)
         }.establish()!!.let {
             return it.detachFd()
+        }
+    }
+
+    private fun updateAllowedDisallowedApplications(
+        key: String,
+        allowOrDisallow: (String) -> Unit,
+    ) {
+        val applications = appRestrictions.getString(key)
+        Log.d(TAG, "$key: $applications")
+        Firebase.crashlytics.log("$key: $applications")
+        applications?.let {
+            if (it.isNotBlank()) {
+                it.split(",").forEach { p ->
+                    if (p.isNotBlank()) {
+                        allowOrDisallow(p.trim())
+                    }
+                }
+            }
         }
     }
 
