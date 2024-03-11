@@ -51,6 +51,10 @@ jobs:
     secrets: inherit
 
   compatibility-tests:
+    # Don't run compatibility tests when called from cd.yml on `main` because
+    # it'll be red if there was a breaking change we're tring to publish,
+    # and the publish workflow checks for main to be green.
+    if: github.event_name == 'pull_request'
     uses: ./.github/workflows/_integration_tests.yml
     needs: build-artifacts
     secrets: inherit
