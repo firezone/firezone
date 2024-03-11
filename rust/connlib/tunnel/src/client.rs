@@ -21,7 +21,7 @@ use hickory_resolver::config::{NameServerConfig, Protocol, ResolverConfig};
 use hickory_resolver::TokioAsyncResolver;
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::net::IpAddr;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
 use tokio::time::{Interval, MissedTickBehavior};
@@ -239,7 +239,7 @@ where
     pub fn add_ice_candidate(&mut self, conn_id: GatewayId, ice_candidate: String) {
         self.connections_state
             .node
-            .add_remote_candidate(conn_id, ice_candidate);
+            .add_remote_candidate(conn_id, ice_candidate, Instant::now());
     }
 }
 
@@ -411,6 +411,10 @@ impl ClientState {
 
     #[tracing::instrument(level = "debug", skip_all, fields(resource_ip = %destination, resource_id))]
     fn on_connection_intent_ip(&mut self, destination: IpAddr, now: Instant) {
+        if is_definitely_not_a_resource(destination) {
+            return;
+        }
+
         let Some(resource_id) = self.get_cidr_resource_by_destination(destination) else {
             if let Some(resource) = self
                 .dns_resources_internal_ips
@@ -680,5 +684,44 @@ impl Default for ClientState {
             dns_resolvers: Default::default(),
             buffered_events: Default::default(),
         }
+    }
+}
+
+/// Compares the given [`IpAddr`] against a static set of ignored IPs that are definitely not resources.
+fn is_definitely_not_a_resource(ip: IpAddr) -> bool {
+    /// Source: https://en.wikipedia.org/wiki/Multicast_address#Notable_IPv4_multicast_addresses
+    const IPV4_IGMP_MULTICAST: Ipv4Addr = Ipv4Addr::new(224, 0, 0, 22);
+
+    /// Source: <https://en.wikipedia.org/wiki/Multicast_address#Notable_IPv6_multicast_addresses>
+    const IPV6_MULTICAST_ALL_ROUTERS: Ipv6Addr = Ipv6Addr::new(0xFF02, 0, 0, 0, 0, 0, 0, 0x0002);
+
+    match ip {
+        IpAddr::V4(ip4) => {
+            if ip4 == IPV4_IGMP_MULTICAST {
+                return true;
+            }
+        }
+        IpAddr::V6(ip6) => {
+            if ip6 == IPV6_MULTICAST_ALL_ROUTERS {
+                return true;
+            }
+        }
+    }
+
+    false
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ignores_ip4_igmp_multicast() {
+        assert!(is_definitely_not_a_resource("224.0.0.22".parse().unwrap()))
+    }
+
+    #[test]
+    fn ignores_ip6_multicast_all_routers() {
+        assert!(is_definitely_not_a_resource("ff02::2".parse().unwrap()))
     }
 }

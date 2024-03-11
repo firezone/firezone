@@ -14,7 +14,7 @@ services:
         PACKAGE: snownet-tests
       cache_from:
         - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/cache/snownet-tests:main
-    image: us-east1-docker.pkg.dev/firezone-staging/firezone/snownet-tests:${VERSION:-main}
+    image: ${SNOWNET_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/firezone/snownet-tests}:${SNOWNET_TAG:-main}
     environment:
       ROLE: "dialer"
     cap_add:
@@ -60,7 +60,7 @@ services:
         PACKAGE: snownet-tests
       cache_from:
         - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/cache/snownet-tests:main
-    image: us-east1-docker.pkg.dev/firezone-staging/firezone/snownet-tests:${VERSION:-main}
+    image: ${SNOWNET_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/firezone/snownet-tests}:${SNOWNET_TAG:-main}
     init: true
     environment:
       ROLE: "listener"
@@ -102,7 +102,7 @@ services:
         - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/cache/relay:main
       args:
         PACKAGE: firezone-relay
-    image: us-east1-docker.pkg.dev/firezone-staging/firezone/relay:${VERSION:-main}
+    image: ${RELAY_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/firezone/relay}:${RELAY_TAG:-main}
     init: true
     healthcheck:
       test: ["CMD-SHELL", "lsof -i UDP | grep firezone-relay"]
