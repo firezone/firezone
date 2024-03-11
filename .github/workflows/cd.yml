@@ -17,16 +17,13 @@ env:
   VERSION: "1.0.0"
 
 jobs:
-  # Rebuild and retest artifacts for release mode before deploying to staging
-  build-artifacts:
-    uses: ./.github/workflows/_build_artifacts.yml
+  # Re-run CI checks to make sure everything's green, since "Merging as administrator"
+  # won't trigger these in the merge group.
+  ci:
+    uses: ./.github/workflows/ci.yml
     secrets: inherit
     with:
-      profile: release
-  integration-tests:
-    uses: ./.github/workflows/_integration_tests.yml
-    needs: build-artifacts
-    secrets: inherit
+      profile: "release"
 
   deploy-staging:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.deploy-staging }}

@@ -3,7 +3,12 @@ on:
   pull_request:
   merge_group:
     types: [checks_requested]
-  workflow_dispatch:
+  workflow_call:
+    inputs:
+      profile:
+        required: false
+        default: 'debug'
+        type: string
 
 # Cancel old workflow runs if new code is pushed
 concurrency:
@@ -37,6 +42,9 @@ jobs:
   build-artifacts:
     uses: ./.github/workflows/_build_artifacts.yml
     secrets: inherit
+    with:
+      profile: ${{ inputs.profile }}
+
   integration-tests:
     uses: ./.github/workflows/_integration_tests.yml
     needs: build-artifacts

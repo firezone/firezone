@@ -14,7 +14,21 @@ env:
   VERSION: "1.0.0"
 
 jobs:
+  sanity-check:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Ensure CI passed for the given sha
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "repos/firezone/firezone/actions/runs?head_sha=${{ inputs.tag }}&status=success" \
+            | jq -e '.workflow_runs | length > 0' || exit 1
+
   push:
+    needs: sanity-check
     permissions:
       packages: write
       id-token: write
