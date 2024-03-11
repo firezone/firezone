@@ -127,6 +127,7 @@ jobs:
       MIX_ENV: dev
       POSTGRES_HOST: localhost
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      MAIN_BRANCH: main
     services:
       postgres:
         image: postgres:15.2
