@@ -204,6 +204,7 @@ jobs:
       - uses: ./.github/actions/setup-elixir
         with:
           mix_env: ${{ env.MIX_ENV }}
+      - uses: ./.github/actions/setup-node
       # Front-End deps cache
       - uses: actions/cache/restore@v4
         name: pnpm Web Deps Cache

@@ -138,13 +138,12 @@ jobs:
         run: docker compose run elixir /bin/sh -c 'cd apps/domain && mix ecto.seed'
       - name: Start docker compose in the background
         run: |
-          # TODO: Order matters here, but it shouldn't. There seems to be some race
-          # condition involved in letting Docker deterime the start order here.
+          # Start one-by-one to avoid variability in service startup order
           docker compose up -d dns.httpbin httpbin
-          docker compose up -d api web
-          docker compose up -d relay
-          docker compose up -d gateway
-          docker compose up -d client
+          docker compose up -d api web --no-build
+          docker compose up -d relay --no-build
+          docker compose up -d gateway --no-build
+          docker compose up -d client --no-build
 
       - run: ./scripts/tests/${{ matrix.test }}.sh
 
