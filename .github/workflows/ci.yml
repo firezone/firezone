@@ -52,7 +52,7 @@ jobs:
 
   snownet-tests:
     needs: build-artifacts
-    if: ${{ inputs.profile == 'debug' }}
+    if: ${{ github.event_name != 'workflow_call' || inputs.profile == 'debug' }}
     name: snownet-tests-${{ matrix.name }}
     runs-on: ubuntu-22.04
     permissions:
@@ -102,7 +102,7 @@ jobs:
 
   perf-tests:
     # Only the debug images have perf tooling
-    if: ${{ inputs.profile == 'debug' }}
+    if: ${{ github.event_name != 'workflow_call' || inputs.profile == 'debug' }}
     name: perf-tests-${{ matrix.test_name }}
     needs: build-artifacts
     runs-on: ubuntu-22.04
