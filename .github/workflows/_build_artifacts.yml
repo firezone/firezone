@@ -270,7 +270,7 @@ jobs:
 
   merge-docker-artifacts:
     name: merge-${{ matrix.image_name }}
-    needs: build-data-plane
+    needs: data-plane
     runs-on: ubuntu-22.04
     strategy:
       fail-fast: false
