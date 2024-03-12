@@ -84,6 +84,11 @@ where
                 continue;
             }
 
+            if let Some(transmit) = self.node.poll_transmit() {
+                self.io.send_network(transmit)?;
+                continue;
+            }
+
             if let Some(event) = self.node.poll_event() {
                 match event {
                     snownet::Event::ConnectionFailed(id) => {
@@ -195,6 +200,11 @@ where
     pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Result<Event<ClientId>>> {
         loop {
             if let Poll::Ready(()) = self.role_state.poll(cx) {
+                continue;
+            }
+
+            if let Some(transmit) = self.node.poll_transmit() {
+                self.io.send_network(transmit)?;
                 continue;
             }
 
