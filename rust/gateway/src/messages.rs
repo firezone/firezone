@@ -147,8 +147,8 @@ pub struct ConnectionReady {
 #[cfg(test)]
 mod test {
     use super::*;
-    use connlib_shared::control::PhoenixMessage;
     use phoenix_channel::InitMessage;
+    use phoenix_channel::PhoenixMessage;
 
     #[test]
     fn request_connection_message() {

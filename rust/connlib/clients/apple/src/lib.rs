@@ -78,7 +78,7 @@ mod ffi {
 }
 
 /// This is used by the apple client to interact with our code.
-pub struct WrappedSession(Session<CallbackHandler>);
+pub struct WrappedSession(Session);
 
 // SAFETY: `CallbackHandler.swift` promises to be thread-safe.
 // TODO: Uphold that promise!
