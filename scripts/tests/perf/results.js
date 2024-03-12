@@ -1,8 +1,8 @@
 const fs = require("fs");
 const path = require("path");
 
-function getDiffPercents(main, current) {
-  let diff = -1 * (100 - current / (main / 100));
+function getDiffPercents(base, head) {
+  let diff = -1 * (100 - head / (base / 100));
 
   if (diff > 0) {
     return "+" + diff.toFixed(0) + "%";
@@ -35,7 +35,13 @@ function humanFileSize(bytes, dp = 1) {
   return bytes.toFixed(dp) + " " + units[u];
 }
 
-exports.script = async function (github, context, test_names) {
+exports.script = async function (
+  github,
+  context,
+  base_sha,
+  head_sha,
+  test_names
+) {
   let output = `### Performance Test Results
 
   `;
@@ -52,12 +58,14 @@ exports.script = async function (github, context, test_names) {
 `;
 
   for (const test_name of test_names) {
-    // 1. Read the current results
-    const results = JSON.parse(fs.readFileSync(test_name + ".json")).end;
+    // 1. Read the head ref results
+    const results = JSON.parse(
+      fs.readFileSync(path.join(head_sha, test_name + ".json"))
+    ).end;
 
-    // 2. Read the main results
-    const results_main = JSON.parse(
-      fs.readFileSync(path.join("main", test_name + ".json"))
+    // 2. Read the base ref results
+    const results_base = JSON.parse(
+      fs.readFileSync(path.join(base_sha, test_name + ".json"))
     ).end;
 
     if (test_name.includes("tcp")) {
@@ -65,7 +73,7 @@ exports.script = async function (github, context, test_names) {
         humanFileSize(results.sum_received.bits_per_second) +
         " (" +
         getDiffPercents(
-          results_main.sum_received.bits_per_second,
+          results_base.sum_received.bits_per_second,
           results.sum_received.bits_per_second
         ) +
         ")";
@@ -73,7 +81,7 @@ exports.script = async function (github, context, test_names) {
         humanFileSize(results.sum_sent.bits_per_second) +
         " (" +
         getDiffPercents(
-          results_main.sum_sent.bits_per_second,
+          results_base.sum_sent.bits_per_second,
           results.sum_sent.bits_per_second
         ) +
         ")";
@@ -81,7 +89,7 @@ exports.script = async function (github, context, test_names) {
         results.sum_sent.retransmits +
         " (" +
         getDiffPercents(
-          results_main.sum_sent.retransmits,
+          results_base.sum_sent.retransmits,
           results.sum_sent.retransmits
         ) +
         ")";
@@ -92,20 +100,20 @@ exports.script = async function (github, context, test_names) {
         humanFileSize(results.sum.bits_per_second) +
         " (" +
         getDiffPercents(
-          results_main.sum.bits_per_second,
+          results_base.sum.bits_per_second,
           results.sum.bits_per_second
         ) +
         ")";
       const udp_sum_jitter_ms =
         results.sum.jitter_ms.toFixed(2) +
         "ms (" +
-        getDiffPercents(results_main.sum.jitter_ms, results.sum.jitter_ms) +
+        getDiffPercents(results_base.sum.jitter_ms, results.sum.jitter_ms) +
         ")";
       const udp_sum_lost_percent =
         results.sum.lost_percent.toFixed(2) +
         "% (" +
         getDiffPercents(
-          results_main.sum.lost_percent,
+          results_base.sum.lost_percent,
           results.sum.lost_percent
         ) +
         ")";
