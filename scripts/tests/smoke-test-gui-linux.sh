@@ -23,7 +23,7 @@ function smoke_test() {
     sudo stat "$DEVICE_ID_PATH" && exit 1
 
     # Run the smoke test normally
-    sudo --preserve-env xvfb-run --auto-servernum ../target/debug/"$PACKAGE" smoke-test
+    sudo --preserve-env xvfb-run --auto-servernum ../target/debug/"$PACKAGE" --no-deep-links smoke-test
 
     # Note the device ID
     DEVICE_ID_1=$(cat "$DEVICE_ID_PATH")
