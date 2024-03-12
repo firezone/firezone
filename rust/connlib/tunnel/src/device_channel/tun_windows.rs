@@ -157,16 +157,16 @@ impl Tun {
     }
 
     // It's okay if this blocks until the route is added in the OS.
-    pub fn set_routes(&mut self, routes: HashSet<IpNetwork>) -> Result<()> {
-        for route in routes.difference(&self.routes) {
-            self.add_route(*route)?;
+    pub fn set_routes(&mut self, new_routes: HashSet<IpNetwork>) -> Result<()> {
+        for new_route in new_routes.difference(&self.routes) {
+            self.add_route(*new_route)?;
         }
 
-        for route in self.routes.difference(&routes) {
-            self.remove_route(*route)?;
+        for old_route in self.routes.difference(&new_routes) {
+            self.remove_route(*old_route)?;
         }
 
-        self.routes = routes;
+        self.routes = new_routes;
 
         Ok(())
     }

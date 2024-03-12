@@ -143,14 +143,14 @@ impl Tun {
         })
     }
 
-    pub fn set_routes(&mut self, routes: HashSet<IpNetwork>, _: &impl Callbacks) -> Result<()> {
-        if routes == self.routes {
+    pub fn set_routes(&mut self, new_routes: HashSet<IpNetwork>, _: &impl Callbacks) -> Result<()> {
+        if new_routes == self.routes {
             return Ok(());
         }
 
         let handle = self.handle.clone();
         let current_routes = self.routes.clone();
-        self.routes = routes.clone();
+        self.routes = new_routes.clone();
 
         let set_routes_worker = async move {
             let index = handle
@@ -164,11 +164,11 @@ impl Tun {
                 .header
                 .index;
 
-            for route in routes.difference(&current_routes) {
+            for route in new_routes.difference(&current_routes) {
                 add_route(route, index, &handle).await;
             }
 
-            for route in current_routes.difference(&routes) {
+            for route in current_routes.difference(&new_routes) {
                 delete_route(route, index, &handle).await;
             }
 
