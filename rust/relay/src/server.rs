@@ -417,10 +417,13 @@ where
 
                         channel.bound = false;
 
-                        self.time_events.add(
+                        let wake_deadline = self.time_events.add(
                             now + Duration::from_secs(5 * 60),
                             TimedAction::DeleteChannel((client, chan)),
                         );
+                        self.pending_commands.push_back(Command::Wake {
+                            deadline: wake_deadline,
+                        });
                     }
                 }
                 TimedAction::DeleteChannel((client, chan)) => {
@@ -693,10 +696,13 @@ where
 
             tracing::info!(target: "relay", "Refreshed channel binding");
 
-            self.time_events.add(
+            let wake_deadline = self.time_events.add(
                 channel.expiry,
                 TimedAction::UnbindChannel((sender, requested_channel)),
             );
+            self.pending_commands.push_back(Command::Wake {
+                deadline: wake_deadline,
+            });
             self.send_message(
                 channel_bind_success_response(request.transaction_id()),
                 sender,
@@ -870,10 +876,12 @@ where
         id: AllocationId,
         now: SystemTime,
     ) {
+        let expiry = now + CHANNEL_BINDING_DURATION;
+
         let existing = self.channels_by_client_and_number.insert(
             (client, requested_channel),
             Channel {
-                expiry: now + CHANNEL_BINDING_DURATION,
+                expiry,
                 peer_address: peer,
                 allocation: id,
                 bound: true,
@@ -886,6 +894,14 @@ where
             .insert((client, peer), requested_channel);
 
         debug_assert!(existing.is_none());
+
+        let wake_deadline = self.time_events.add(
+            expiry,
+            TimedAction::UnbindChannel((client, requested_channel)),
+        );
+        self.pending_commands.push_back(Command::Wake {
+            deadline: wake_deadline,
+        });
     }
 
     fn send_message(&mut self, message: Message<Attribute>, recipient: ClientSocket) {
@@ -1076,7 +1092,7 @@ impl Allocation {
     }
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Debug)]
 enum TimedAction {
     ExpireAllocation(AllocationId),
     UnbindChannel((ClientSocket, u16)),
