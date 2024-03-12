@@ -84,24 +84,22 @@ where
             cx.waker().wake_by_ref();
         }
 
-        match self.node.poll_event() {
-            Some(snownet::Event::ConnectionFailed(id)) => {
-                self.role_state.cleanup_connected_gateway(&id);
-                cx.waker().wake_by_ref();
-            }
-            Some(snownet::Event::SignalIceCandidate {
-                connection,
-                candidate,
-            }) => {
-                return Poll::Ready(Ok(Event::SignalIceCandidate {
-                    conn_id: connection,
+        while let Some(event) = self.node.poll_event() {
+            match event {
+                snownet::Event::ConnectionFailed(id) => {
+                    self.role_state.cleanup_connected_gateway(&id);
+                }
+                snownet::Event::SignalIceCandidate {
+                    connection,
                     candidate,
-                }));
+                } => {
+                    return Poll::Ready(Ok(Event::SignalIceCandidate {
+                        conn_id: connection,
+                        candidate,
+                    }));
+                }
+                _ => {}
             }
-            Some(_) => {
-                cx.waker().wake_by_ref();
-            }
-            None => (),
         }
 
         if let Some(timeout) = self.node.poll_timeout() {
@@ -195,24 +193,22 @@ where
             cx.waker().wake_by_ref();
         }
 
-        match self.node.poll_event() {
-            Some(snownet::Event::ConnectionFailed(id)) => {
-                self.role_state.peers.remove(&id);
-                cx.waker().wake_by_ref();
-            }
-            Some(snownet::Event::SignalIceCandidate {
-                connection,
-                candidate,
-            }) => {
-                return Poll::Ready(Ok(Event::SignalIceCandidate {
-                    conn_id: connection,
+        while let Some(event) = self.node.poll_event() {
+            match event {
+                snownet::Event::ConnectionFailed(id) => {
+                    self.role_state.peers.remove(&id);
+                }
+                snownet::Event::SignalIceCandidate {
+                    connection,
                     candidate,
-                }));
+                } => {
+                    return Poll::Ready(Ok(Event::SignalIceCandidate {
+                        conn_id: connection,
+                        candidate,
+                    }));
+                }
+                _ => {}
             }
-            Some(_) => {
-                cx.waker().wake_by_ref();
-            }
-            None => (),
         }
 
         if let Some(timeout) = self.node.poll_timeout() {
