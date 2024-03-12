@@ -164,6 +164,8 @@ jobs:
       - uses: ./.github/actions/setup-rust
         with:
           targets: ${{ matrix.arch.target }}
+          # Cross doesn't support scccache without a lot of work
+          cache_backend: github
       - uses: taiki-e/install-action@v2
         with:
           tool: cross
