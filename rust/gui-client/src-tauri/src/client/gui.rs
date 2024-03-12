@@ -169,6 +169,7 @@ pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
         });
     }
 
+    tracing::debug!(cli.no_deep_links);
     if !cli.no_deep_links {
         // The single-instance check is done, so register our exe
         // to handle deep links
