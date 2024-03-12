@@ -395,7 +395,7 @@ where
             match action {
                 TimedAction::ExpireAllocation(id) => {
                     let Some(allocation) = self.get_allocation(&id) else {
-                        tracing::debug!(target: "relay", "Cannot expire non-existing allocation {id}");
+                        tracing::debug!(target: "relay", allocation = %id, "Cannot expire non-existing allocation");
 
                         continue;
                     };
@@ -407,13 +407,13 @@ where
                 TimedAction::UnbindChannel((client, chan)) => {
                     let Some(channel) = self.channels_by_client_and_number.get_mut(&(client, chan))
                     else {
-                        tracing::debug!(target: "relay", "Cannot expire non-existing channel binding {chan} of client {client}");
+                        tracing::debug!(target: "relay", channel = %chan, %client, "Cannot expire non-existing channel binding");
 
                         continue;
                     };
 
                     if channel.is_expired(now) {
-                        tracing::info!(target: "relay", "Channel {chan} is now expired");
+                        tracing::info!(target: "relay", channel = %chan, %client, peer = %channel.peer_address, allocation = %channel.allocation, "Channel is now expired");
 
                         channel.bound = false;
 
@@ -972,11 +972,12 @@ where
             return;
         };
 
-        let addr = channel.peer_address;
+        let peer = channel.peer_address;
+        let allocation = channel.allocation;
 
         let _peer_channel = self
             .channel_numbers_by_client_and_peer
-            .remove(&(client, addr));
+            .remove(&(client, peer));
         debug_assert_eq!(
             _peer_channel,
             Some(chan),
@@ -984,6 +985,8 @@ where
         );
 
         self.channels_by_client_and_number.remove(&(client, chan));
+
+        tracing::info!(target: "relay", channel = %chan, %client, %peer, %allocation, "Channel binding is now deleted (and can be rebound)");
     }
 }
 
