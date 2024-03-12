@@ -169,9 +169,9 @@ where
 
     pub(crate) fn update_interface(&mut self) -> connlib_shared::Result<()> {
         let dns_mapping = self.role_state.dns_mapping();
-        let config = 
+        let config =
             self.role_state.interface_config.as_ref().expect("Developer error: we should always call update_interface after the interface config is set");
-        
+
         self.device.initialize(
             config,
             // We can just sort in here because sentinel ips are created in order
