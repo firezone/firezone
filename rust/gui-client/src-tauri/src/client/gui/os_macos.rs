@@ -1,5 +1,12 @@
 //! This file is a stub only to do Tauri UI dev natively on a Mac.
+use anyhow::Result;
+use secrecy::SecretString;
 use super::{ControllerRequest, CtlrTx, Error};
+
+pub(crate) fn open_url(_app: &tauri::AppHandle, _url: &SecretString) ->
+Result<()> {
+	unimplemented!()
+}
 
 /// Show a notification in the bottom right of the screen
 pub(crate) fn show_notification(_title: &str, _body: &str) -> Result<(), Error> {
