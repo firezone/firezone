@@ -163,7 +163,7 @@ where
     ) -> Self {
         // TODO: Validate that local IP isn't multicast / loopback etc.
 
-        let meter = opentelemetry_api::global::meter("relay");
+        let meter = opentelemetry::global::meter("relay");
 
         let allocations_up_down_counter = meter
             .i64_up_down_counter("allocations_total")

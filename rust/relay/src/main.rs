@@ -7,7 +7,7 @@ use firezone_relay::{
 };
 use futures::channel::mpsc;
 use futures::{future, FutureExt, SinkExt, StreamExt};
-use opentelemetry::{sdk, KeyValue};
+use opentelemetry::KeyValue;
 use opentelemetry_otlp::WithExportConfig;
 use phoenix_channel::{Event, LoginUrl, PhoenixChannel};
 use rand::rngs::StdRng;
@@ -170,15 +170,14 @@ async fn setup_tracing(args: &Args) -> Result<()> {
                 .tonic()
                 .with_endpoint(grpc_endpoint.clone());
 
-            let tracer =
-                opentelemetry_otlp::new_pipeline()
-                    .tracing()
-                    .with_exporter(exporter)
-                    .with_trace_config(sdk::trace::Config::default().with_resource(
-                        sdk::Resource::new(vec![KeyValue::new("service.name", "relay")]),
-                    ))
-                    .install_batch(opentelemetry::runtime::Tokio)
-                    .context("Failed to create OTLP trace pipeline")?;
+            let tracer = opentelemetry_otlp::new_pipeline()
+                .tracing()
+                .with_exporter(exporter)
+                .with_trace_config(opentelemetry_sdk::trace::Config::default().with_resource(
+                    opentelemetry_sdk::Resource::new(vec![KeyValue::new("service.name", "relay")]),
+                ))
+                .install_batch(opentelemetry_sdk::runtime::Tokio)
+                .context("Failed to create OTLP trace pipeline")?;
 
             tracing::trace!(target: "relay", "Successfully initialized trace provider on tokio runtime");
 
@@ -187,7 +186,7 @@ async fn setup_tracing(args: &Args) -> Result<()> {
                 .with_endpoint(grpc_endpoint);
 
             opentelemetry_otlp::new_pipeline()
-                .metrics(opentelemetry::runtime::Tokio)
+                .metrics(opentelemetry_sdk::runtime::Tokio)
                 .with_exporter(exporter)
                 .build()
                 .context("Failed to create OTLP metrics pipeline")?;

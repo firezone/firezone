@@ -49,6 +49,7 @@ phoenix-channel = { path = "phoenix-channel"}
 [patch.crates-io]
 boringtun = { git = "https://github.com/cloudflare/boringtun", branch = "master" }
 str0m = { git = "https://github.com/firezone/str0m", branch = "main" }
+tracing-stackdriver = { git = "https://github.com/thomaseizinger/tracing-stackdriver", branch = "deps/bump-otel-0.22" }
 
 [profile.release]
 strip = true
