@@ -52,7 +52,7 @@ jobs:
 
   snownet-tests:
     needs: build-artifacts
-    if: ${{ github.event_name = 'pull_request' || github.event_name = 'merge_group' }}
+    if: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
     name: snownet-tests-${{ matrix.name }}
     runs-on: ubuntu-22.04
     permissions:
