@@ -1,4 +1,4 @@
-use connlib_shared::{messages::Interface as InterfaceConfig, Result};
+use connlib_shared::{messages::Interface as InterfaceConfig, Callbacks, Error, Result};
 use ip_network::IpNetwork;
 use std::{
     collections::HashSet,
