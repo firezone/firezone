@@ -45,15 +45,6 @@ jobs:
     with:
       profile: ${{ inputs.profile || 'debug' }}
 
-  # TODO: Add a new Dockerfile target to build release binaries with
-  # the performance tools installed.
-  build-perf-artifacts:
-    uses: ./.github/workflows/_build_artifacts.yml
-    secrets: inherit
-    with:
-      sha: ${{ github.event.pull_request.base.sha }}
-      profile: ${{ inputs.profile || 'debug' }}
-
   integration-tests:
     uses: ./.github/workflows/_integration_tests.yml
     needs: build-artifacts
@@ -106,13 +97,29 @@ jobs:
       # client will be published then.
       # client_tag: "latest"
 
+  build-base-perf-artifacts:
+    uses: ./.github/workflows/_build_artifacts.yml
+    secrets: inherit
+    with:
+      sha: ${{ github.event.pull_request.base.sha }}
+      perf-test: true
+      profile: 'debug'
+
+  build-head-perf-artifacts:
+    uses: ./.github/workflows/_build_artifacts.yml
+    secrets: inherit
+    with:
+      sha: ${{ github.sha }}
+      perf-test: true
+      profile: 'debug'
+
   perf-tests:
     # Only the debug images have perf tooling
     if: ${{ github.event_name == 'pull_request' }}
     name: perf-tests-${{ matrix.test_name }}
     needs:
-      - build-artifacts
-      - build-perf-artifacts
+      - build-base-perf-artifacts
+      - build-head-perf-artifacts
     runs-on: ubuntu-22.04
     permissions:
       contents: read

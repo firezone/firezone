@@ -3,6 +3,10 @@ run-name: Triggered from ${{ github.event_name }} by ${{ github.actor }}
 on:
   workflow_call:
     inputs:
+      perf-test:
+        required: false
+        default: false
+        type: boolean
       sha:
         required: false
         type: string
@@ -181,7 +185,7 @@ jobs:
         run: |
           set -xe
 
-          if [[ "${{ inputs.profile }}" == "release" ]]; then
+          if [[ "${{ inputs.profile }}" == "release" || "${{ inputs.perf-test }}" == "true" ]]; then
             PROFILE="--release"
           else
             PROFILE=""
@@ -190,10 +194,10 @@ jobs:
           cross build $PROFILE -p ${{ matrix.name.package }} --target ${{ matrix.arch.target }}
 
           # Used for release artifact
-          cp target/${{ matrix.arch.target }}/${{ inputs.profile }}/${{ matrix.name.package }} $BINARY_DEST_PATH
+          cp target/${{ matrix.arch.target }}/${{ inputs.perf-test && 'release' || inputs.profile }}/${{ matrix.name.package }} $BINARY_DEST_PATH
 
           # Used for Docker images
-          cp target/${{ matrix.arch.target }}/${{ inputs.profile }}/${{ matrix.name.package }} ${{ matrix.name.package }}
+          cp target/${{ matrix.arch.target }}/${{ inputs.perf-test &&* 'release' || inputs.profile }}/${{ matrix.name.package }} ${{ matrix.name.package }}
       - name: Upload Release Assets
         if: ${{ inputs.profile == 'release' && (matrix.name.image_name == 'gateway' || matrix.name.image_name == 'client') }}
         env:
