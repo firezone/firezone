@@ -49,6 +49,6 @@ resource "google_compute_firewall" "ssh-rule" {
     ports    = ["22"]
   }
 
-  target_tags   = ["gateway"]
+  target_tags   = ["firezone-gateway"]
   source_ranges = ["35.235.240.0/20"] // IAP CIDR
 }
