@@ -226,7 +226,7 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images:
-            ${{ steps.login.outputs.registry }}/firezone/${{matrix.name.image_name }}
+            ${{ steps.login.outputs.registry }}/firezone/${{ matrix.name.image_name }}
           tags: |
             type=raw,value=latest
             type=raw,value=${{ github.sha }}

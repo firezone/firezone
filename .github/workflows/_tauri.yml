@@ -33,17 +33,17 @@ jobs:
             rename-script: ../../scripts/build/tauri-rename-ubuntu.sh
             upload-script: ../../scripts/build/tauri-upload-ubuntu.sh
             artifacts: |
-              firezone-linux-gui-client-amd64
-              firezone-linux-gui-client_amd64.AppImage
-              firezone-linux-gui-client_amd64.deb
+              rust/gui-client/firezone-linux-gui-client-amd64
+              rust/gui-client/firezone-linux-gui-client_amd64.AppImage
+              rust/gui-client/firezone-linux-gui-client_amd64.deb
           - runs-on: windows-2019
             binary-dest-path: firezone-windows-client
             rename-script: ../../scripts/build/tauri-rename-windows.sh
             upload-script: ../../scripts/build/tauri-upload-windows.sh
             artifacts: |
-              firezone-windows-client-x64.exe
-              firezone-windows-client-x64.msi
-              firezone-windows-client-x64.pdb
+              rust/gui-client/firezone-windows-client-x64.exe
+              rust/gui-client/firezone-windows-client-x64.msi
+              rust/gui-client/firezone-windows-client-x64.pdb
     env:
       BINARY_DEST_PATH: ${{ matrix.binary-dest-path }}
       CONNLIB_LOG_UPLOAD_INTERVAL_SECS: 300
@@ -80,6 +80,7 @@ jobs:
       - name: Rename artifacts and compute SHA256
         shell: bash
         run: ${{ matrix.rename-script }}
+
       - name: Upload workflow artifacts
         uses: actions/upload-artifact@v4
         with:
