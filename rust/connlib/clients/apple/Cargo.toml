@@ -23,6 +23,7 @@ tracing = { workspace = true }
 tracing-oslog = { git = "https://github.com/Absolucy/tracing-oslog", branch = "main" } # Waiting for a release.
 tracing-subscriber = "0.3"
 tracing-appender = "0.2"
+url = "2.5.0"
 
 [lib]
 name = "connlib"
