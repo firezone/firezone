@@ -13,6 +13,11 @@ provider "google" {
   zone    = var.zone
 }
 
+resource "google_project_service" "compute-api" {
+  project = var.project_id
+  service = "compute.googleapis.com"
+}
+
 resource "google_service_account" "firezone" {
   account_id   = "firezone-gateway"
   display_name = "Firezone Gateway Service Account"
@@ -21,6 +26,7 @@ resource "google_service_account" "firezone" {
 resource "google_compute_network" "firezone" {
   name                    = "firezone-gateway"
   auto_create_subnetworks = true
+  depends_on              = [google_project_service.compute-api]
 }
 
 resource "google_compute_router" "firezone" {
