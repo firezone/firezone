@@ -49,6 +49,10 @@ jobs:
     uses: ./.github/workflows/_integration_tests.yml
     needs: build-artifacts
     secrets: inherit
+    with:
+      gateway_tag: ${{ github.sha }}-debug
+      relay_tag: ${{ github.sha }}-debug
+      client_tag: ${{ github.sha }}-debug
 
   snownet-tests:
     needs: build-artifacts
@@ -61,9 +65,9 @@ jobs:
       pull-requests: write
     env:
       RELAY_IMAGE: 'us-east1-docker.pkg.dev/firezone-staging/firezone/relay'
-      RELAY_TAG: ${{ github.sha }}
+      RELAY_TAG: ${{ github.sha }}-debug
       SNOWNET_IMAGE: 'us-east1-docker.pkg.dev/firezone-staging/firezone/snownet-tests'
-      SNOWNET_TAG: ${{ github.sha }}
+      SNOWNET_TAG: ${{ github.sha }}-debug
     strategy:
       fail-fast: false
       matrix:
@@ -93,6 +97,8 @@ jobs:
     with:
       gateway_image: "ghcr.io/firezone/gateway"
       gateway_tag: "latest"
+      relay_tag: ${{ github.sha }}-debug
+      client_tag: ${{ github.sha }}-debug
       # FIXME: Uncomment this after the next release -- the
       # client will be published then.
       # client_tag: "latest"
@@ -128,10 +134,10 @@ jobs:
     env:
       API_TAG: ${{ matrix.sha }}
       WEB_TAG: ${{ matrix.sha }}
-      GATEWAY_TAG: ${{ matrix.sha }}
-      CLIENT_TAG: ${{ matrix.sha }}
-      RELAY_TAG: ${{ matrix.sha }}
       ELIXIR_TAG: ${{ matrix.sha }}
+      GATEWAY_TAG: ${{ matrix.sha }}-release
+      CLIENT_TAG: ${{ matrix.sha }}-release
+      RELAY_TAG: ${{ matrix.sha }}-release
     strategy:
       fail-fast: false
       matrix:

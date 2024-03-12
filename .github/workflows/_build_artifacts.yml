@@ -242,6 +242,7 @@ jobs:
           tags: |
             type=raw,value=latest
             type=raw,value=${{ inputs.sha }}
+            type=raw,value=${{ inputs.sha }}-${{ inputs.profile }}
             type=raw,value=${{ env.VERSION }}
             type=raw,value=${{ env.VERSION }}-${{ inputs.sha }}
             type=raw,value=${{ env.MAJOR_VERSION }}
@@ -331,6 +332,7 @@ jobs:
           tags: |
             type=raw,value=latest
             type=raw,value=${{ inputs.sha }}
+            type=raw,value=${{ inputs.sha }}-${{ inputs.profile }}
             type=raw,value=${{ env.VERSION }}
             type=raw,value=${{ env.VERSION }}-${{ inputs.sha }}
             type=raw,value=${{ env.MAJOR_VERSION }}
