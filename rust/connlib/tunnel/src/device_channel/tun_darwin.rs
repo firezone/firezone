@@ -1,3 +1,4 @@
+use crate::device_channel::{ipv4, ipv6};
 use connlib_shared::{messages::Interface as InterfaceConfig, Callbacks, Error, Result};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use libc::{

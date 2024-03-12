@@ -1,8 +1,7 @@
 use crate::device_channel::{ioctl, ipv4, ipv6};
 use connlib_shared::{messages::Interface as InterfaceConfig, Callbacks, Error, Result};
-use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
+use ip_network::IpNetwork;
 use std::net::IpAddr;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::task::{Context, Poll};
 use std::{
     collections::HashSet,
@@ -62,7 +61,7 @@ impl Tun {
     }
 
     pub fn set_routes(
-        &self,
+        &mut self,
         routes: HashSet<IpNetwork>,
         callbacks: &impl Callbacks<Error = Error>,
     ) -> Result<()> {
