@@ -24,6 +24,7 @@ jobs:
     secrets: inherit
     with:
       profile: "release"
+      stage: "release"
 
   deploy-staging:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.deploy-staging }}

@@ -4,14 +4,19 @@ on:
   workflow_call:
     inputs:
       image_suffix:
+        description: "The suffix to append to the image name to prevent SHA conflicts"
         required: false
         type: string
-        default: null
       sha:
         required: false
         type: string
         default: ${{ github.sha }}
       profile:
+        description: "The Rust profile to build data plane components with"
+        required: true
+        type: string
+      stage:
+        description: "The stage of the data plane component images to build"
         required: true
         type: string
 
@@ -28,7 +33,7 @@ permissions:
 
 jobs:
   update-release-draft:
-    if: inputs.profile == 'release'
+    if: inputs.profile == 'release' && inputs.stage == 'release'
     runs-on: ubuntu-22.04
     concurrency:
       group: "staging-draft-release-${{ github.workflow }}-${{ github.ref }}"
@@ -96,7 +101,7 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images:
-            ${{ steps.login.outputs.registry }}/firezone/${{matrix.image_name }}${{ inputs.image_suffix }}
+            ${{ steps.login.outputs.registry }}/firezone/${{matrix.image_name }}
           tags: |
             type=raw,value=${{ inputs.sha }}
             type=raw,value=${{ env.VERSION }}-${{ inputs.sha }}
@@ -114,16 +119,16 @@ jobs:
           target: ${{ matrix.target }}
           context: elixir
           cache-from: |
-            type=registry,ref=${{ steps.login.outputs.registry }}/cache/${{ matrix.image_name }}${{ inputs.image_suffix }}:${{ env.CACHE_TAG }}
-            type=registry,ref=${{ steps.login.outputs.registry }}/cache/${{ matrix.image_name }}${{ inputs.image_suffix }}:main
+            type=registry,ref=${{ steps.login.outputs.registry }}/cache/${{ matrix.image_name }}:${{ env.CACHE_TAG }}
+            type=registry,ref=${{ steps.login.outputs.registry }}/cache/${{ matrix.image_name }}:main
           cache-to: |
-            type=registry,ref=${{steps.login.outputs.registry}}/cache/${{ matrix.image_name}}${{ inputs.image_suffix }}:${{ env.CACHE_TAG }},mode=max
+            type=registry,ref=${{steps.login.outputs.registry}}/cache/${{ matrix.image_name}}:${{ env.CACHE_TAG }},mode=max
           push: true
           tags: |
-            ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}${{ inputs.image_suffix }}:${{ inputs.sha }}
-            ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}${{ inputs.image_suffix }}:${{ env.VERSION }}-${{ inputs.sha }}
-            ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}${{ inputs.image_suffix }}:${{ env.VERSION }}
-            ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}${{ inputs.image_suffix }}:${{ env.CACHE_TAG }}
+            ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ inputs.sha }}
+            ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ env.VERSION }}-${{ inputs.sha }}
+            ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ env.VERSION }}
+            ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ env.CACHE_TAG }}
 
   data-plane:
     # Runs the job after update-release-draft, regardless of the outcome
@@ -192,7 +197,7 @@ jobs:
           # Used for Docker images
           cp target/${{ matrix.arch.target }}/${{ inputs.profile }}/${{ matrix.name.package }} ${{ matrix.name.package }}
       - name: Upload Release Assets
-        if: ${{ inputs.profile == 'release' && (matrix.name.image_name == 'gateway' || matrix.name.image_name == 'client') }}
+        if: ${{ inputs.profile == 'release' && inputs.stage == 'release' && (matrix.name.image_name == 'gateway' || matrix.name.image_name == 'client') }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -255,11 +260,11 @@ jobs:
             TARGET=${{ matrix.arch.target }}
           context: rust
           cache-from: |
-            type=registry,ref=${{ steps.login.outputs.registry }}/cache/${{ matrix.name.image_name }}${{ inputs.image_suffix }}:${{ env.CACHE_TAG }}
-            type=registry,ref=${{ steps.login.outputs.registry }}/cache/${{ matrix.name.image_name }}${{ inputs.image_suffix }}:main
+            type=registry,ref=${{ steps.login.outputs.registry }}/cache/${{ matrix.name.image_name }}:${{ env.CACHE_TAG }}
+            type=registry,ref=${{ steps.login.outputs.registry }}/cache/${{ matrix.name.image_name }}:main
           cache-to: |
-            type=registry,ref=${{ steps.login.outputs.registry }}/cache/${{ matrix.name.image_name }}${{ inputs.image_suffix }}:${{ env.CACHE_TAG }},mode=max
-          target: ${{ inputs.profile }}
+            type=registry,ref=${{ steps.login.outputs.registry }}/cache/${{ matrix.name.image_name }}:${{ env.CACHE_TAG }},mode=max
+          target: ${{ inputs.stage }}
           outputs:
             type=image,name=${{ steps.login.outputs.registry }}/firezone/${{ matrix.name.image_name }}${{ inputs.image_suffix }},push-by-digest=true,name-canonical=true,push=true
       - name: Export digest
