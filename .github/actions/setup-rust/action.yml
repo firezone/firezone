@@ -4,7 +4,7 @@ inputs:
   cache_backend:
     description: "Choose between sccache or github"
     required: false
-    default: 'sccache'
+    default: "sccache"
   targets:
     description: "Additional targets to install"
     required: false
@@ -56,7 +56,7 @@ runs:
       shell: bash
 
     # Start sccache
-    - if: ${{ inputs.sccache_backend == 'sccache' }}
+    - if: ${{ inputs.cache_backend == 'sccache' }}
       name: Start sccache
       run: $SCCACHE_PATH --start-server
       shell: bash
