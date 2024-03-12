@@ -37,19 +37,6 @@ upgrades with minimal downtime, see
    for instructions on how to obtain a Firezone Gateway token that can be used
    across multiple instances.
 
-## Input variables
-
-Variables in **bold** are required.
-
-| Name           | Description                                                                     |  Type  |  Default   |
-| -------------- | ------------------------------------------------------------------------------- | :----: | :--------: |
-| **project_id** | The project ID to deploy the Firezone Gateway(s) into.                          | string |     -      |
-| **region**     | The region to deploy the Firezone Gateway(s) into. E.g. `us-west1`              | string |     -      |
-| **zone**       | The availability zone to deploy the Firezone Gateway(s) into. E.g. `us-west1-a` | string |     -      |
-| **token**      | The token used to authenticate the Firezone Gateway with Firezone.              | string |     -      |
-| machine_type   | The type of GCP instance to deploy the Firezone Gateway(s) as.                  | string | `f1-micro` |
-| replicas       | The number of Firezone Gateways to deploy.                                      | number |     3      |
-
 ## Sizing
 
 Simply update the number of replicas to deploy more or fewer Firezone Gateways.
@@ -64,13 +51,16 @@ have a high volume of traffic or lots of concurrent connections.
 
 1. Configure the necessary Terraform
    [variables](https://developer.hashicorp.com/terraform/language/values/variables).
-   Here's an example `terraform.tfvars`:
+   Here's an example `terraform.tfvars` you can use as a starting point:
 
    ```hcl
-   project_id = "my-gcp-project"
-   region     = "us-west1"
-   zone       = "us-west1-a"
-   token      = "<YOUR GATEWAY TOKEN>"
+   project_id     = "my-gcp-project"
+   region         = "us-west1"
+   zone           = "us-west1-a"
+   token          = "<YOUR GATEWAY TOKEN>"
+   replicas       = 3
+   machine_type   = "f1-micro"
+   log_level      = "info"
    ```
 
 1. Run `terraform init` to initialize the working directory and download the
@@ -111,3 +101,7 @@ a `terraform apply` in between. We recommend 3 or more
 
 This will ensure that at least two groups of Firezone Gateways are always online
 and serving traffic as you roll over the old ones.
+
+```
+
+```

@@ -1,7 +1,7 @@
 # Terraform Examples
 
 This directory contains examples of how to use Terraform to deploy Firezone
-infrastructure.
+Gateways to your infrastructure.
 
 ## Examples
 
