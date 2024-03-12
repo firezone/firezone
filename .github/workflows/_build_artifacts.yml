@@ -6,6 +6,7 @@ on:
       perf-test:
         required: false
         default: 'false'
+        type: string
       sha:
         required: false
         type: string

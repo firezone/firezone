@@ -64,9 +64,7 @@ jobs:
       id-token: write
       pull-requests: write
     env:
-      RELAY_IMAGE: 'us-east1-docker.pkg.dev/firezone-staging/firezone/relay'
       RELAY_TAG: ${{ github.sha }}-debug
-      SNOWNET_IMAGE: 'us-east1-docker.pkg.dev/firezone-staging/firezone/snownet-tests'
       SNOWNET_TAG: ${{ github.sha }}-debug
     strategy:
       fail-fast: false
