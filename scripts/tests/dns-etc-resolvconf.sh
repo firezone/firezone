@@ -22,7 +22,7 @@ function gateway() {
 }
 
 # Re-up the gateway since a local dev setup may run this back-to-back
-docker compose up -d gateway
+docker compose up -d gateway --no-build
 
 echo "# check original resolv.conf"
 client sh -c "cat /etc/resolv.conf.before-firezone"
