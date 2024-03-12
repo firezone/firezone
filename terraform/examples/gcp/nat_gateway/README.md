@@ -20,9 +20,7 @@ this example:
 ## High availability
 
 All Firezone Gateways deployed in this example will automatically failover and
-load balance for each other. No other configuration is necessary. To perform
-upgrades with minimal downtime, see
-[minimal downtime upgrades](#minimal-downtime-upgrades).
+load balance for each other. No other configuration is necessary.
 
 ## Prerequisites
 
