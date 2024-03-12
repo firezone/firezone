@@ -100,10 +100,10 @@ pub enum ConnlibError {
     #[error("No MTU found")]
     NoMtu,
     /// A panic occurred.
-    #[error("Panicked: {0}")]
+    #[error("Connlib panicked: {0}")]
     Panic(String),
     /// The task was cancelled
-    #[error("The task was cancelled")]
+    #[error("Connlib task was cancelled")]
     Cancelled,
     /// A panic occurred with a non-string payload.
     #[error("Panicked with a non-string payload")]
