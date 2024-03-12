@@ -154,6 +154,11 @@ pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
         }
     });
 
+    // Make sure we're single-instance
+    // We register our deep links to call the `open-deep-link` subcommand,
+    // so if we're at this point, we know we've been launched manually
+    let server = deep_link::Server::new()?;
+
     if let Some(client::Cmd::SmokeTest) = &cli.command {
         let ctlr_tx = ctlr_tx.clone();
         tokio::spawn(async move {
@@ -163,16 +168,13 @@ pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
             }
         });
     }
-
-    // Make sure we're single-instance
-    // We register our deep links to call the `open-deep-link` subcommand,
-    // so if we're at this point, we know we've been launched manually
-    let server = deep_link::Server::new()?;
-
-    // We know now we're the only instance on the computer, so register our exe
-    // to handle deep links
-    deep_link::register().context("Failed to register deep link handler")?;
-    tokio::spawn(accept_deep_links(server, ctlr_tx.clone()));
+    else {
+        // Don't register deep links for smoke tests yet
+        // The single-instance check is done, so register our exe
+        // to handle deep links
+        deep_link::register().context("Failed to register deep link handler")?;
+        tokio::spawn(accept_deep_links(server, ctlr_tx.clone()));
+    }
 
     let managed = Managed {
         ctlr_tx: ctlr_tx.clone(),
