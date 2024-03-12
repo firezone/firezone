@@ -405,7 +405,7 @@ async fn add_route(route: &IpNetwork, idx: u32, handle: &Handle) {
         // TODO: we should be able to surface this error and handle it depending on
         // if any of the added routes succeeded.
         Err(err) => {
-            tracing::error!(%route, "failed to add route: {err:#?}");
+            tracing::error!(%route, "failed to add route: {err}");
         }
     }
 }
