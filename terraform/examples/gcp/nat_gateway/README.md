@@ -91,7 +91,7 @@ Firezone Gateway(s).
 This will incur about a minute or two of downtime as Terraform destroys the
 existing Firezone Gateway(s) and deploys new ones in their place.
 
-### Minimal downtime upgrades
+### Minimal downtime upgrades (optional)
 
 To achieve a minimal downtime upgrade, add more
 `google_compute_instance_template`s, each with their own `token`. When it comes
@@ -101,7 +101,3 @@ a `terraform apply` in between. We recommend 3 or more
 
 This will ensure that at least two groups of Firezone Gateways are always online
 and serving traffic as you roll over the old ones.
-
-```
-
-```
