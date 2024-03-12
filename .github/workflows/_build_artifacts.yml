@@ -56,13 +56,6 @@ jobs:
       tag_name: ${{ steps.update-release-draft.outputs.tag_name }}
       upload_url: ${{ steps.update-release-draft.outputs.upload_url }}
 
-  tauri:
-    needs: update-release-draft
-    uses: ./.github/workflows/_tauri.yml
-    secrets: inherit
-    with:
-      release_tag: ${{ needs.update-release-draft.outputs.tag_name }}
-
   control-plane:
     name: ${{ matrix.image_name }}
     runs-on: ubuntu-22.04
