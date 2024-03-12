@@ -5,6 +5,7 @@ on:
       release_tag:
         required: false
         type: string
+        default: ${{ env.VERSION }}
   workflow_dispatch:
 
 permissions:
