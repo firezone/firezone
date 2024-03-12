@@ -72,7 +72,7 @@ impl Tun {
             )?
             .ok_or(Error::NoFd)?;
 
-        // SAFETY: we expect the callback to return a vaild file descriptor
+        // SAFETY: we expect the callback to return a valid file descriptor
         unsafe { self.replace_fd(fd)? };
 
         Ok(())
