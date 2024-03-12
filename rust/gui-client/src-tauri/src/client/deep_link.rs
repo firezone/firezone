@@ -33,8 +33,6 @@ pub enum Error {
 pub(crate) use imp::{open, register, Server};
 
 pub(crate) fn parse_auth_callback(url: &SecretString) -> Result<AuthResponse> {
-    // TODO: Delete this before opening PR
-    tracing::debug!(secret = url.expose_secret(), "Parsing URL");
     let url = Url::parse(url.expose_secret())?;
     if Some(url::Host::Domain("handle_client_sign_in_callback")) != url.host() {
         bail!("URL host should be `handle_client_sign_in_callback`");
