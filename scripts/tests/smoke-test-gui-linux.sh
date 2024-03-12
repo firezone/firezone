@@ -14,6 +14,11 @@ PACKAGE=firezone-gui-client
 export RUST_LOG=firezone_gui_client=debug,warn
 export WEBKIT_DISABLE_COMPOSITING_MODE=1
 
+# Contains `xdg-desktop-menu` for deep link registration.
+# `ubuntu-desktop` has this by default.
+sudo apt-get install xdg-utils
+which xdg-desktop-menu
+
 cargo build -p "$PACKAGE"
 
 function smoke_test() {
