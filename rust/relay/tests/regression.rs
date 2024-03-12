@@ -291,7 +291,6 @@ fn ping_pong_relay(
     #[strategy(firezone_relay::proptest::transaction_id())] allocate_transaction_id: TransactionId,
     #[strategy(firezone_relay::proptest::transaction_id())]
     channel_bind_transaction_id: TransactionId,
-    #[strategy(firezone_relay::proptest::allocation_lifetime())] lifetime: Lifetime,
     #[strategy(firezone_relay::proptest::username_salt())] username_salt: String,
     #[strategy(firezone_relay::proptest::channel_number())] channel: ChannelNumber,
     source: SocketAddrV4,
@@ -306,6 +305,7 @@ fn ping_pong_relay(
 
     let mut server = TestServer::new(public_relay_addr).with_nonce(nonce);
     let secret = server.auth_secret().to_owned();
+    let lifetime = Lifetime::new(Duration::from_secs(60 * 60)).unwrap(); // Lifetime longer than channel expiry
 
     server.assert_commands(
         from_client(
@@ -350,10 +350,10 @@ fn ping_pong_relay(
             ),
             now,
         ),
-        [send_message(
-            source,
-            channel_bind_response(channel_bind_transaction_id),
-        )],
+        [
+            Wake(now + Duration::from_secs(60 * 10)),
+            send_message(source, channel_bind_response(channel_bind_transaction_id)),
+        ],
     );
 
     let now = now + Duration::from_secs(1);
@@ -396,7 +396,7 @@ fn allows_rebind_channel_after_expiry(
 
     let mut server = TestServer::new(public_relay_addr).with_nonce(nonce);
     let secret = server.auth_secret().to_owned();
-    let lifetime = Lifetime::new(Duration::from_secs(60 * 60)).unwrap();
+    let lifetime = Lifetime::new(Duration::from_secs(60 * 60)).unwrap(); // Lifetime longer than channel expiry
 
     server.assert_commands(
         from_client(
@@ -487,7 +487,6 @@ fn ping_pong_ip6_relay(
     #[strategy(firezone_relay::proptest::transaction_id())] allocate_transaction_id: TransactionId,
     #[strategy(firezone_relay::proptest::transaction_id())]
     channel_bind_transaction_id: TransactionId,
-    #[strategy(firezone_relay::proptest::allocation_lifetime())] lifetime: Lifetime,
     #[strategy(firezone_relay::proptest::username_salt())] username_salt: String,
     #[strategy(firezone_relay::proptest::channel_number())] channel: ChannelNumber,
     source: SocketAddrV6,
@@ -504,6 +503,7 @@ fn ping_pong_ip6_relay(
     let mut server =
         TestServer::new((public_relay_ip4_addr, public_relay_ip6_addr)).with_nonce(nonce);
     let secret = server.auth_secret().to_owned();
+    let lifetime = Lifetime::new(Duration::from_secs(60 * 60)).unwrap(); // Lifetime longer than channel expiry
 
     server.assert_commands(
         from_client(
@@ -548,10 +548,10 @@ fn ping_pong_ip6_relay(
             ),
             now,
         ),
-        [send_message(
-            source,
-            channel_bind_response(channel_bind_transaction_id),
-        )],
+        [
+            Wake(now + Duration::from_secs(60 * 10)),
+            send_message(source, channel_bind_response(channel_bind_transaction_id)),
+        ],
     );
 
     let now = now + Duration::from_secs(1);
