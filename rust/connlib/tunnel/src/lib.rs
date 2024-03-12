@@ -23,6 +23,7 @@ pub use control_protocol::client::Request;
 pub use gateway::{GatewayState, ResolvedResourceDescriptionDns};
 use io::Io;
 use stats::Stats;
+use utils::earliest;
 
 mod client;
 mod io;
@@ -74,7 +75,7 @@ where
 
     pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Result<ClientEvent>> {
         loop {
-            if let Poll::Ready(other) = self.role_state.poll_next_event(cx) {
+            if let Some(other) = self.role_state.poll_event() {
                 return Poll::Ready(Ok(other));
             }
 
@@ -113,12 +114,16 @@ where
                 continue;
             }
 
-            if let Some(timeout) = self.node.poll_timeout() {
+            let node_timeout = self.node.poll_timeout();
+            let state_timeout = self.role_state.poll_timeout();
+
+            if let Some(timeout) = earliest(node_timeout, state_timeout) {
                 self.io.reset_timeout(timeout);
             }
 
             match self.io.poll(cx, self.read_buf.as_mut())? {
                 Poll::Ready(io::Input::Timeout(timeout)) => {
+                    self.role_state.handle_timeout(timeout);
                     self.node.handle_timeout(timeout);
                     continue;
                 }

@@ -21,9 +21,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::iter;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::str::FromStr;
-use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
-use tokio::time::{Interval, MissedTickBehavior};
 
 // Using str here because Ipv4/6Network doesn't support `const` 🙃
 const IPV4_RESOURCES: &str = "100.96.0.0/11";
@@ -32,6 +30,11 @@ const IPV6_RESOURCES: &str = "fd00:2021:1111:8000::/107";
 const DNS_PORT: u16 = 53;
 const DNS_SENTINELS_V4: &str = "100.100.111.0/24";
 const DNS_SENTINELS_V6: &str = "fd00:2021:1111:8000:100:100:111:0/120";
+
+// With this single timer this might mean that some DNS are refreshed too often
+// however... this also mean any resource is refresh within a 5 mins interval
+// therefore, only the first time it's added that happens, after that it doesn't matter.
+const DNS_REFRESH_INTERVAL: Duration = Duration::from_secs(300);
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct DnsResource {
@@ -240,8 +243,6 @@ pub struct ClientState {
 
     pub ip_provider: IpProvider,
 
-    refresh_dns_timer: Interval,
-
     dns_mapping: BiMap<IpAddr, DnsServer>,
 
     buffered_events: VecDeque<ClientEvent>,
@@ -250,6 +251,8 @@ pub struct ClientState {
 
     /// DNS queries that we need to forward to the system resolver.
     buffered_dns_queries: VecDeque<DnsQuery<'static>>,
+
+    next_dns_refresh: Option<Instant>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -555,48 +558,50 @@ impl ClientState {
         self.buffered_dns_queries.pop_front()
     }
 
-    pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<ClientEvent> {
-        if let Some(event) = self.buffered_events.pop_front() {
-            return Poll::Ready(event);
-        }
+    pub fn poll_timeout(&self) -> Option<Instant> {
+        self.next_dns_refresh
+    }
 
-        if self.refresh_dns_timer.poll_tick(cx).is_ready() {
-            let mut connections = Vec::new();
+    pub fn handle_timeout(&mut self, now: Instant) {
+        match self.next_dns_refresh {
+            Some(next_dns_refresh) if now >= next_dns_refresh => {
+                let mut connections = Vec::new();
 
-            self.peers
-                .iter_mut()
-                .for_each(|p| p.transform.expire_dns_track());
+                self.peers
+                    .iter_mut()
+                    .for_each(|p| p.transform.expire_dns_track());
 
-            for resource in self.dns_resources_internal_ips.keys() {
-                let Some(gateway_id) = self.resources_gateways.get(&resource.id) else {
-                    continue;
-                };
-                // filter inactive connections
-                if self.peers.get(gateway_id).is_none() {
-                    continue;
+                for resource in self.dns_resources_internal_ips.keys() {
+                    let Some(gateway_id) = self.resources_gateways.get(&resource.id) else {
+                        continue;
+                    };
+                    // filter inactive connections
+                    if self.peers.get(gateway_id).is_none() {
+                        continue;
+                    }
+
+                    connections.push(ReuseConnection {
+                        resource_id: resource.id,
+                        gateway_id: *gateway_id,
+                        payload: Some(resource.address.clone()),
+                    });
                 }
 
-                connections.push(ReuseConnection {
-                    resource_id: resource.id,
-                    gateway_id: *gateway_id,
-                    payload: Some(resource.address.clone()),
-                });
+                self.buffered_events
+                    .push_back(ClientEvent::RefreshResources { connections });
             }
-            return Poll::Ready(ClientEvent::RefreshResources { connections });
+            None => self.next_dns_refresh = Some(now + DNS_REFRESH_INTERVAL),
+            Some(_) => {}
         }
+    }
 
-        Poll::Pending
+    pub fn poll_event(&mut self) -> Option<ClientEvent> {
+        self.buffered_events.pop_front()
     }
 }
 
 impl Default for ClientState {
     fn default() -> Self {
-        // With this single timer this might mean that some DNS are refreshed too often
-        // however... this also mean any resource is refresh within a 5 mins interval
-        // therefore, only the first time it's added that happens, after that it doesn't matter.
-        let mut interval = tokio::time::interval(Duration::from_secs(300));
-        interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
-
         Self {
             awaiting_connection: Default::default(),
             resources_gateways: Default::default(),
@@ -610,12 +615,12 @@ impl Default for ClientState {
             resource_ids: Default::default(),
             peers: Default::default(),
             deferred_dns_queries: Default::default(),
-            refresh_dns_timer: interval,
             dns_mapping: Default::default(),
             buffered_events: Default::default(),
             interface_config: Default::default(),
             buffered_packets: Default::default(),
             buffered_dns_queries: Default::default(),
+            next_dns_refresh: Default::default(),
         }
     }
 }
