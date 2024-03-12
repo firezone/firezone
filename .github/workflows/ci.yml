@@ -106,7 +106,7 @@ jobs:
       - name: Run docker-compose.${{ matrix.name }}.yml test
         run: |
           sudo sysctl -w vm.overcommit_memory=1
-          timeout 600 docker compose -f rust/snownet-tests/docker-compose.${{ matrix.name }}.yml up --no-build --exit-code-from dialer --abort-on-container-exit
+          timeout 600 docker compose -f rust/snownet-tests/docker-compose.${{ matrix.name }}.yml up --exit-code-from dialer --abort-on-container-exit
 
   compatibility-tests:
     # Don't run compatibility tests when called from cd.yml on `main` because
