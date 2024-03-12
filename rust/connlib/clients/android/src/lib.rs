@@ -181,6 +181,18 @@ impl Callbacks for CallbackHandler {
         })
     }
 
+    fn on_tunnel_ready(&self) -> Result<(), Self::Error> {
+        self.env(|mut env| {
+            call_method(
+                &mut env,
+                &self.callback_handler,
+                "onTunnelReady",
+                "()Z",
+                &[],
+            )
+        })
+    }
+
     fn on_update_routes(
         &self,
         route_list_4: Vec<Ipv4Network>,
@@ -210,18 +222,6 @@ impl Callbacks for CallbackHandler {
             .and_then(|val| val.i())
             .map(Some)
             .map_err(|source| CallbackError::CallMethodFailed { name, source })
-        })
-    }
-
-    fn on_tunnel_ready(&self) -> Result<(), Self::Error> {
-        self.env(|mut env| {
-            call_method(
-                &mut env,
-                &self.callback_handler,
-                "onTunnelReady",
-                "()Z",
-                &[],
-            )
         })
     }
 
