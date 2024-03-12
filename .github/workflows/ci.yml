@@ -6,7 +6,7 @@ on:
   workflow_call:
     inputs:
       image_prefix:
-        description: 'The prefix for the image name, e.g. "debug", "perf" or "release"'
+        description: 'The prefix for the image name, "debug" or "perf"'
         required: false
         type: string
       stage:
