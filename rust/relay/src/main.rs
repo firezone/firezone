@@ -498,12 +498,8 @@ where
                     tracing::info!(target: "relay", "Successfully joined room '{topic}'");
                     continue;
                 }
-                Some(Poll::Ready(Ok(Event::ErrorResponse {
-                    topic,
-                    req_id,
-                    reason,
-                }))) => {
-                    tracing::warn!(target: "relay", "Request with ID {req_id} on topic {topic} failed: {reason:?}");
+                Some(Poll::Ready(Ok(Event::ErrorResponse { topic, req_id, res }))) => {
+                    tracing::warn!(target: "relay", "Request with ID {req_id} on topic {topic} failed: {res:?}");
                     continue;
                 }
                 Some(Poll::Ready(Ok(Event::HeartbeatSent))) => {

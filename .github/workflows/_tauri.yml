@@ -32,18 +32,18 @@ jobs:
             binary-dest-path: firezone-linux-gui-client
             rename-script: ../../scripts/build/tauri-rename-ubuntu.sh
             upload-script: ../../scripts/build/tauri-upload-ubuntu.sh
-            artifacts:
-              - target/release/firezone-linux-gui-client-amd64
-              - target/release/firezone-linux-gui-client_amd64.AppImage
-              - target/release/firezone-linux-gui-client_amd64.deb
+            artifacts: |
+              rust/gui-client/firezone-linux-gui-client-amd64
+              rust/gui-client/firezone-linux-gui-client_amd64.AppImage
+              rust/gui-client/firezone-linux-gui-client_amd64.deb
           - runs-on: windows-2019
             binary-dest-path: firezone-windows-client
             rename-script: ../../scripts/build/tauri-rename-windows.sh
             upload-script: ../../scripts/build/tauri-upload-windows.sh
-            artifacts:
-              - target/release/firezone-windows-client-x64.exe
-              - target/release/firezone-windows-client-x64.msi
-              - target/release/firezone-windows-client-x64.pdb
+            artifacts: |
+              rust/gui-client/firezone-windows-client-x64.exe
+              rust/gui-client/firezone-windows-client-x64.msi
+              rust/gui-client/firezone-windows-client-x64.pdb
     env:
       BINARY_DEST_PATH: ${{ matrix.binary-dest-path }}
       CONNLIB_LOG_UPLOAD_INTERVAL_SECS: 300
@@ -86,9 +86,10 @@ jobs:
           name: ${{ matrix.binary-dest-path }}
           path: |
             ${{ matrix.artifacts }}
+          if-no-files-found: error
       # Only for builds on main
       - name: Upload Release Assets
-        if: ${{ inputs.release_tag }}
+        if: ${{ inputs.release_tag || env.VERSION }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPOSITORY: ${{ github.repository }}

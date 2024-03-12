@@ -238,8 +238,19 @@ impl Allocation {
                         tracing::warn!("Request did not contain a `CHANNEL-NUMBER`");
                         return true;
                     };
+                    let Some(peer) = original_request
+                        .get_attribute::<XorPeerAddress>()
+                        .map(|c| c.address())
+                    else {
+                        tracing::warn!("Request did not contain a `XOR-PEER-ADDRESS`");
+                        return true;
+                    };
 
                     self.channel_bindings.handle_failed_binding(channel);
+
+                    // Duplicate log here because we want to attach "channel number" and "peer".
+                    tracing::warn!(error = %error.reason_phrase(), %channel, %peer);
+                    return true;
                 }
                 REFRESH => {
                     self.invalidate_allocation();
@@ -248,10 +259,7 @@ impl Allocation {
                 _ => {}
             }
 
-            // TODO: Handle error codes such as:
-            // - Failed allocations
-
-            tracing::warn!(error = %error.reason_phrase(), "STUN request failed");
+            tracing::warn!(error = %error.reason_phrase());
 
             return true;
         }

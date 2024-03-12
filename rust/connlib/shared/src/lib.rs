@@ -5,7 +5,6 @@
 
 mod callbacks;
 mod callbacks_error_facade;
-pub mod control;
 pub mod error;
 pub mod messages;
 
