@@ -27,10 +27,13 @@ impl Server {
 
         // Figure out who we were before `sudo`, if using sudo
         if let Ok(username) = std::env::var("SUDO_USER") {
+            // chown so that when the non-privileged browser launches us,
+            // we can send a message to our privileged main process
             std::process::Command::new("chown")
                 .arg(username)
                 .arg(&path)
-                .status()?;
+                .status()
+                .context("couldn't chown Unix domain socket")?;
         }
 
         Ok(Self { listener })
