@@ -14,7 +14,6 @@ use firezone_tunnel::ClientTunnel;
 use phoenix_channel::{ErrorReply, OutboundRequestId, PhoenixChannel};
 use std::{
     collections::HashMap,
-    convert::Infallible,
     io,
     path::PathBuf,
     task::{Context, Poll},
@@ -28,14 +27,22 @@ pub struct Eventloop<C: Callbacks> {
     tunnel_init: bool,
 
     portal: PhoenixChannel<(), IngressMessages, ReplyMessages>,
+    rx: tokio::sync::mpsc::Receiver<Command>,
+
     connection_intents: SentConnectionIntents,
     log_upload_interval: tokio::time::Interval,
+}
+
+/// Commands that can be sent to the [`Eventloop`].
+pub enum Command {
+    Stop,
 }
 
 impl<C: Callbacks> Eventloop<C> {
     pub(crate) fn new(
         tunnel: ClientTunnel<C>,
         portal: PhoenixChannel<(), IngressMessages, ReplyMessages>,
+        rx: tokio::sync::mpsc::Receiver<Command>,
     ) -> Self {
         Self {
             tunnel,
@@ -43,6 +50,7 @@ impl<C: Callbacks> Eventloop<C> {
             tunnel_init: false,
             connection_intents: SentConnectionIntents::default(),
             log_upload_interval: upload_interval(),
+            rx,
         }
     }
 }
@@ -52,11 +60,13 @@ where
     C: Callbacks + 'static,
 {
     #[tracing::instrument(name = "Eventloop::poll", skip_all, level = "debug")]
-    pub fn poll(
-        &mut self,
-        cx: &mut Context<'_>,
-    ) -> Poll<Result<Infallible, phoenix_channel::Error>> {
+    pub fn poll(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), phoenix_channel::Error>> {
         loop {
+            match self.rx.poll_recv(cx) {
+                Poll::Ready(Some(Command::Stop)) | Poll::Ready(None) => return Poll::Ready(Ok(())),
+                Poll::Pending => {}
+            }
+
             match self.tunnel.poll_next_event(cx) {
                 Poll::Ready(Ok(event)) => {
                     self.handle_tunnel_event(event);

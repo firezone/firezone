@@ -38,7 +38,7 @@ fn main() -> Result<()> {
         public_key.to_bytes(),
     )?;
 
-    let mut session =
+    let session =
         Session::connect(login, private_key, None, callbacks, max_partition_time).unwrap();
 
     block_on_ctrl_c();

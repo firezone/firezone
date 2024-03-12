@@ -15,8 +15,7 @@ mod messages;
 
 const PHOENIX_TOPIC: &str = "client";
 
-struct StopRuntime;
-
+use eventloop::Command;
 pub use eventloop::Eventloop;
 use secrecy::Secret;
 
@@ -29,7 +28,8 @@ const MAX_RECONNECT_INTERVAL: Duration = Duration::from_secs(5);
 ///
 /// A session is created using [Session::connect], then to stop a session we use [Session::disconnect].
 pub struct Session {
-    runtime_stopper: tokio::sync::mpsc::Sender<StopRuntime>,
+    channel: tokio::sync::mpsc::Sender<Command>,
+    _runtime: tokio::runtime::Runtime,
 }
 
 impl Session {
@@ -60,7 +60,7 @@ impl Session {
         // but then platforms should know that this function is blocking.
 
         let callbacks = CallbackErrorFacade(callbacks);
-        let (tx, mut rx) = tokio::sync::mpsc::channel(1);
+        let (tx, rx) = tokio::sync::mpsc::channel(1);
 
         // In android we get an stack-overflow due to tokio
         // taking too much of the stack-space:
@@ -95,40 +95,22 @@ impl Session {
             os_version_override,
             callbacks,
             max_partition_time,
+            rx,
         ));
 
-        std::thread::spawn(move || {
-            rx.blocking_recv();
-            runtime.shutdown_background();
-        });
-
         Ok(Self {
-            runtime_stopper: tx,
+            channel: tx,
+            _runtime: runtime,
         })
     }
 
     fn disconnect_inner<CB: Callbacks + 'static>(
-        runtime_stopper: tokio::sync::mpsc::Sender<StopRuntime>,
+        channel: tokio::sync::mpsc::Sender<Command>,
         callbacks: &CallbackErrorFacade<CB>,
         error: Option<Error>,
     ) {
-        // 1. Close the websocket connection
-        // 2. Free the device handle (Linux)
-        // 3. Close the file descriptor (Linux/Android)
-        // 4. Remove the mapping
-
-        // The way we cleanup the tasks is we drop the runtime
-        // this means we don't need to keep track of different tasks
-        // but if any of the tasks never yields this will block forever!
-        // So always yield and if you spawn a blocking tasks rewrite this.
-        // Furthermore, we will depend on Drop impls to do the list above so,
-        // implement them :)
-        // if there's no receiver the runtime is already stopped
-        // there's an edge case where this is called before the thread is listening for stop threads.
-        // but I believe in that case the channel will be in a signaled state achieving the same result
-
-        if let Err(err) = runtime_stopper.try_send(StopRuntime) {
-            tracing::error!("Couldn't stop runtime: {err}");
+        if let Err(err) = channel.try_send(Command::Stop) {
+            tracing::error!("Couldn't stop eventloop: {err}");
         }
 
         if let Some(error) = error {
@@ -136,14 +118,11 @@ impl Session {
         }
     }
 
-    /// Cleanup a [Session].
+    /// Disconnect a [`Session`].
     ///
-    /// For now this just drops the runtime, which should drop all pending tasks.
-    /// Further cleanup should be done here. (Otherwise we can just drop [Session]).
-    pub fn disconnect(&mut self) {
-        if let Err(err) = self.runtime_stopper.try_send(StopRuntime) {
-            tracing::error!("Couldn't stop runtime: {err}");
-        }
+    /// This consumes [`Session`] which cleans up all state associated with it.
+    pub fn disconnect(self) {
+        let _ = self.channel.try_send(Command::Stop);
     }
 }
 
@@ -156,6 +135,7 @@ async fn connect<CB>(
     os_version_override: Option<String>,
     callbacks: CB,
     max_partition_time: Option<Duration>,
+    rx: tokio::sync::mpsc::Receiver<Command>,
 ) where
     CB: Callbacks + 'static,
 {
@@ -179,10 +159,10 @@ async fn connect<CB>(
             .build(),
     );
 
-    let mut eventloop = Eventloop::new(tunnel, portal);
+    let mut eventloop = Eventloop::new(tunnel, portal, rx);
 
     match std::future::poll_fn(|cx| eventloop.poll(cx)).await {
-        Ok(never) => match never {},
+        Ok(()) => {} // `Ok(())` means the eventloop exited gracefully.
         Err(e) => {
             tracing::error!("Eventloop failed: {e}");
             let _ = callbacks.on_disconnect(&Error::PortalConnectionFailed); // TMP Error until we have a narrower API for `onDisconnect`
