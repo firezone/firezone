@@ -102,10 +102,13 @@ product documentation, organized as follows:
 - [swift/](../swift/apple): macOS / iOS clients.
 - [kotlin/](../kotlin/android): Android / ChromeOS clients.
 - [website/](../website): Marketing website and product documentation.
-- [terraform/](../terraform): Terraform files for our cloud infrastructure:
+- [terraform/](../terraform): Terraform files for various example deployments.
+  - [terraform/examples/gcp/nat_gateway](../terraform/examples/gcp/nat_gateway):
+    Example Terraform configurations for deploying a cluster of Firezone
+    gateways behind a NAT gateway on GCP with single egress IP.
   - [terraform/modules/gateway-google-cloud-compute](../terraform/modules/gateway-google-cloud-compute):
-    Example Terraform module for deploying a Gateway to a Google Compute
-    Regional Instance Group.
+    Production-ready Terraform module for deploying regional Firezone gateways
+    to Google Cloud Compute.
 
 ## Quickstart
 

@@ -1,7 +1,8 @@
 # Ignore Terraform state and temporary files
-.terraform
-*.tfstate.backup
-terraform.tfstate.d
+**/.terraform
+**/*.tfstate.backup
+**/terraform.tfstate.d
+**/terraform.tfvars
 out.plan
 
 # Don't ever commit these files to git
