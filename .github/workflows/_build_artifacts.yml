@@ -271,15 +271,15 @@ jobs:
             type=image,name=${{ steps.login.outputs.registry }}/firezone/${{ matrix.name.image_name }}${{ inputs.image_suffix }},push-by-digest=true,name-canonical=true,push=true
       - name: Export digest
         run: |
-          mkdir -p /tmp/digests/${{ matrix.name.image_name }}${{ inputs.image_suffix }}
+          mkdir -p /tmp/digests/${{ matrix.name.image_name }}
           digest="${{ steps.build.outputs.digest }}"
-          touch "/tmp/digests/${{ matrix.name.image_name }}${{ inputs.image_suffix }}/${digest#sha256:}"
+          touch "/tmp/digests/${{ matrix.name.image_name }}/${digest#sha256:}"
       - name: Upload digest artifact
         uses: actions/upload-artifact@v4
         with:
           overwrite: true
           name: ${{ matrix.name.image_name }}${{ inputs.image_suffix }}-${{ matrix.arch.shortname }}-${{ inputs.sha }}-digest
-          path: /tmp/digests/${{ matrix.name.image_name }}${{ inputs.image_suffix }}
+          path: /tmp/digests/${{ matrix.name.image_name }}
           if-no-files-found: error
           retention-days: 1
 
@@ -309,7 +309,7 @@ jobs:
         with:
           pattern: ${{ matrix.image_name }}${{ inputs.image_suffix }}-*-${{ inputs.sha }}-digest
           merge-multiple: true
-          path: /tmp/digests/${{ matrix.image_name }}${{ inputs.image_suffix }}
+          path: /tmp/digests/${{ matrix.image_name }}
       - name: Display structure of downloaded artifacts
         run: ls -R /tmp/digests
       - name: Set up Docker Buildx
@@ -336,7 +336,7 @@ jobs:
             type=raw,value=${{ env.MAJOR_VERSION }}
             type=raw,value=${{ env.MAJOR_MINOR_VERSION }}
       - name: Create manifest list and push
-        working-directory: /tmp/digests/${{ matrix.image_name }}${{ inputs.image_suffix }}
+        working-directory: /tmp/digests/${{ matrix.image_name }}
         run: |
           tags=$(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON")
           sources=$(printf '${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}${{ inputs.image_suffix }}@sha256:%s ' *)
