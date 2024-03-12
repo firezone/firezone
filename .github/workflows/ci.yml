@@ -6,12 +6,10 @@ on:
   workflow_call:
     inputs:
       stage:
-        required: false
-        default: 'debug'
+        required: true
         type: string
       profile:
-        required: false
-        default: 'debug'
+        required: true
         type: string
 
 # Cancel old workflow runs if new code is pushed
@@ -47,8 +45,8 @@ jobs:
     uses: ./.github/workflows/_build_artifacts.yml
     secrets: inherit
     with:
-      profile: ${{ inputs.profile }}
-      stage: ${{ inputs.stage }}
+      profile: ${{ inputs.profile || 'debug' }}
+      stage: ${{ inputs.stage || 'debug' }}
 
   build-base-perf-artifacts:
     if: ${{ github.event_name == 'pull_request' }}
