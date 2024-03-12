@@ -397,12 +397,17 @@ async fn accept_deep_links(mut server: deep_link::Server, ctlr_tx: CtlrTx) -> Re
     loop {
         match server.accept().await {
             Ok(bytes) => {
-            let url = SecretString::from_str(std::str::from_utf8(bytes.expose_secret()).context("Incoming deep link was not valid UTF-8")?).context("Impossible: can't wrap String into SecretString")?;
-            // Ignore errors from this, it would only happen if the app is shutting down, otherwise we would wait
-            ctlr_tx
-                .send(ControllerRequest::SchemeRequest(url))
-                .await
-                .ok();}
+                let url = SecretString::from_str(
+                    std::str::from_utf8(bytes.expose_secret())
+                        .context("Incoming deep link was not valid UTF-8")?,
+                )
+                .context("Impossible: can't wrap String into SecretString")?;
+                // Ignore errors from this, it would only happen if the app is shutting down, otherwise we would wait
+                ctlr_tx
+                    .send(ControllerRequest::SchemeRequest(url))
+                    .await
+                    .ok();
+            }
             Err(error) => tracing::error!(?error, "error while accepting deep link"),
         }
         // We re-create the named pipe server every time we get a link, because of an oddity in the Windows API.

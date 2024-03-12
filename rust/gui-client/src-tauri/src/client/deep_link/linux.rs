@@ -1,7 +1,10 @@
-use anyhow::{bail, Context, Result};
 use crate::client::known_dirs;
+use anyhow::{bail, Context, Result};
 use secrecy::{ExposeSecret, Secret};
-use tokio::{io::{AsyncReadExt, AsyncWriteExt}, net::{UnixListener, UnixStream}};
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    net::{UnixListener, UnixStream},
+};
 
 const SOCK_NAME: &str = "deep_link.sock";
 
@@ -17,9 +20,9 @@ impl Server {
         // TODO: This breaks single instance. Can we enforce it some other way?
         std::fs::remove_file(&path).ok();
         std::fs::create_dir_all(&dir).context("Can't create dir for deep link socket")?;
-        
+
         let listener = UnixListener::bind(&path).context("Couldn't bind listener Unix socket")?;
-        
+
         // Figure out who we were before `sudo`, if using sudo
         if let Ok(username) = std::env::var("SUDO_USER") {
             std::process::Command::new("chown")
@@ -27,39 +30,43 @@ impl Server {
                 .arg(&path)
                 .status()?;
         }
-        
-        Ok(Self {
-            listener,
-        })
+
+        Ok(Self { listener })
     }
 
     /// Await one incoming deep link
-    /// 
+    ///
     /// To match the Windows API, this consumes the `Server`.
     pub(crate) async fn accept(self) -> Result<Secret<Vec<u8>>> {
         tracing::debug!("deep_link::accept");
         let (mut stream, _) = self.listener.accept().await?;
         tracing::debug!("Accepted Unix domain socket connection");
-        
+
         // TODO: Limit reads to 4,096 bytes. Partial reads will probably never happen
         // since it's a local socket transferring very small data.
         let mut bytes = vec![];
-        stream.read_to_end(&mut bytes).await.context("failed to read incoming deep link over Unix socket stream")?;
+        stream
+            .read_to_end(&mut bytes)
+            .await
+            .context("failed to read incoming deep link over Unix socket stream")?;
         let bytes = Secret::new(bytes);
-        tracing::debug!(len = bytes.expose_secret().len(), "Got data from Unix domain socket");
+        tracing::debug!(
+            len = bytes.expose_secret().len(),
+            "Got data from Unix domain socket"
+        );
         Ok(bytes)
     }
 }
 
 pub(crate) async fn open(url: &url::Url) -> Result<()> {
     crate::client::logging::debug_command_setup()?;
-    
+
     let dir = known_dirs::runtime().context("deep_link::open couldn't find runtime dir")?;
     let path = dir.join(SOCK_NAME);
     let mut stream = UnixStream::connect(&path).await?;
-    
+
     stream.write_all(url.to_string().as_bytes()).await?;
-    
+
     Ok(())
 }
 

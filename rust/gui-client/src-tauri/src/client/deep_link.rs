@@ -1,7 +1,7 @@
 //! A module for registering, catching, and parsing deep links that are sent over to the app's already-running instance
 
-use anyhow::{bail, Context, Result};
 use crate::client::auth::Response as AuthResponse;
+use anyhow::{bail, Context, Result};
 use secrecy::{ExposeSecret, SecretString};
 use std::io;
 use url::Url;
@@ -116,14 +116,13 @@ mod tests {
         assert_eq!(actual.fragment.expose_secret(), "a_very_secret_string");
         assert_eq!(actual.state.expose_secret(), "a_less_secret_string");
 
-        
         let input = "firezone-fd0020211111://handle_client_sign_in_callback?account_name=Firezone&account_slug=firezone&actor_name=Reactor+Scram&fragment=a_very_secret_string&identity_provider_identifier=1234&state=a_less_secret_string";
         let actual = parse_callback_wrapper(input)?;
-        
+
         assert_eq!(actual.actor_name, "Reactor Scram");
         assert_eq!(actual.fragment.expose_secret(), "a_very_secret_string");
         assert_eq!(actual.state.expose_secret(), "a_less_secret_string");
-        
+
         // Empty string "" `actor_name` is fine
         let input = "firezone://handle_client_sign_in_callback/?actor_name=&fragment=&state=&identity_provider_identifier=12345";
         let actual = parse_callback_wrapper(input)?;
@@ -155,7 +154,7 @@ mod tests {
     fn parse_callback_wrapper(s: &str) -> Result<super::AuthResponse> {
         super::parse_auth_callback(&SecretString::new(s.to_owned()))
     }
-    
+
     /// Tests the named pipe or Unix domain socket, doesn't test the URI scheme itself
     ///
     /// Will fail if any other Firezone Client instance is running
@@ -170,7 +169,7 @@ mod tests {
         let id = uuid::Uuid::new_v4().to_string();
         let expected_url = url::Url::parse(&format!("bogus-test-schema://{id}"))?;
         super::open(&expected_url).await?;
-        
+
         let bytes = server_task.await??;
         let s = std::str::from_utf8(bytes.expose_secret())?;
         let url = url::Url::parse(s)?;

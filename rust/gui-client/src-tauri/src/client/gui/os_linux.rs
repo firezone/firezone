@@ -18,7 +18,7 @@ pub(crate) fn open_url(_app: &tauri::AppHandle, url: &SecretString) -> Result<()
         .arg(url.expose_secret())
         // Detach, since web browsers, and therefore xdg-open, typically block if there are no windows open and you're opening the first tab from CLI
         .spawn()?;
-    
+
     Ok(())
 }
 
