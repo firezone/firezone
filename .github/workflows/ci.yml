@@ -45,6 +45,11 @@ jobs:
     with:
       profile: ${{ inputs.profile || 'debug' }}
 
+  foo:
+    runs-on: ubuntu-22.04
+    steps:
+      - run: echo "${{ github.event_name }}"
+
   integration-tests:
     uses: ./.github/workflows/_integration_tests.yml
     needs: build-artifacts
