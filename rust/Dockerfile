@@ -4,8 +4,10 @@ ARG CARGO_CHEF_VERSION="0.1.62"
 ARG RUSTUP_VERSION="1.26.0"
 ARG RUSTUP_x86_DOWNLOAD_SHA256="7aa9e2a380a9958fc1fc426a3323209b2c86181c6816640979580f62ff7d48d4"
 ARG RUSTUP_aarch64_DOWNLOAD_SHA256="b1962dfc18e1fd47d01341e6897cace67cddfabf547ef394e8883939bd6e002e"
-ARG RUST_VERSION="1.74.1"
+# Keep synced with `rust-toolchain.toml`
+ARG RUST_VERSION="1.76.0"
 
+# TODO: Document why we don't use `rust:1.76.0-alpine` here
 FROM alpine:${ALPINE_VERSION} as rust
 
 # Important!  Update this no-op ENV variable when this Dockerfile
@@ -132,7 +134,8 @@ RUN set -xe \
 FROM development AS debug
 
 ARG TARGET
-COPY --from=builder /build/target/${TARGET}/debug/${PACKAGE} .
+## Build first with `cross build --target ${TARGET} -p ${PACKAGE} --debug && mv /target/${TARGET}/release/${PACKAGE} .`
+COPY ${PACKAGE} .
 
 # Build a production image from including a binary compiled on the host
 FROM runtime AS release

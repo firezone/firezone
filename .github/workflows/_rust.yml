@@ -81,6 +81,7 @@ jobs:
     runs-on: ${{ matrix.runs-on }}
     defaults:
       run:
+        # Must be in this dir for `pnpm` to work
         working-directory: ./rust/gui-client
     env:
       CONNLIB_LOG_UPLOAD_INTERVAL_SECS: 300
@@ -88,11 +89,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node
-        with:
-          node-version: '20'
       - uses: ./.github/actions/setup-rust
         with:
-          cache_backend: github
+          cache_backend: 'github'
       - uses: ./.github/actions/setup-tauri
       - name: pnpm install
         run: |
@@ -110,70 +109,3 @@ jobs:
       - name: Run smoke tests (Windows)
         if: ${{ runner.os == 'Windows' }}
         run: bash ../../scripts/tests/smoke-test-gui-windows.sh
-
-  # This should be identical to `build-push-windows-release-artifacts` in `cd.yml` except for the Github permissions, needs tag, and uploading step
-  build-gui:
-    name: build-gui-${{ matrix.runs-on }}
-    runs-on: ${{ matrix.runs-on }}
-    defaults:
-      run:
-        working-directory: ./rust/gui-client
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - runs-on: ubuntu-20.04
-            binary-dest-path: firezone-linux-gui-client
-            rename-script: ../../scripts/build/tauri-rename-ubuntu.sh
-          - runs-on: windows-2019
-            binary-dest-path: firezone-windows-client
-            rename-script: ../../scripts/build/tauri-rename-windows.sh
-    env:
-      BINARY_DEST_PATH: ${{ matrix.binary-dest-path }}
-      CONNLIB_LOG_UPLOAD_INTERVAL_SECS: 300
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/setup-node
-        with:
-          node-version: '20'
-      - uses: ./.github/actions/setup-rust
-        with:
-          cache_backend: github
-      - uses: ./.github/actions/setup-tauri
-      - name: Install pnpm deps
-        run: pnpm install
-      - name: Build release exe and MSI
-        run: pnpm build
-      - name: Rename artifacts and compute SHA256
-        shell: bash
-        run: ${{ matrix.rename-script }}
-      - name: Save Linux client
-        if: ${{ runner.os == 'Linux' }}
-        uses: ./.github/actions/upload-gui-artifact
-        with:
-          base: ${{ env.BINARY_DEST_PATH }}-amd64
-      - name: Save Linux AppImage
-        if: ${{ runner.os == 'Linux' }}
-        uses: ./.github/actions/upload-gui-artifact
-        with:
-          base: ${{ env.BINARY_DEST_PATH }}_amd64.AppImage
-      - name: Save Linux deb package
-        if: ${{ runner.os == 'Linux' }}
-        uses: ./.github/actions/upload-gui-artifact
-        with:
-          base: ${{ env.BINARY_DEST_PATH }}_amd64.deb
-      - name: Save Windows client
-        if: ${{ runner.os == 'Windows' }}
-        uses: ./.github/actions/upload-gui-artifact
-        with:
-          base: ${{ env.BINARY_DEST_PATH }}-x64.exe
-      - name: Save Windows MSI installer
-        if: ${{ runner.os == 'Windows' }}
-        uses: ./.github/actions/upload-gui-artifact
-        with:
-          base: ${{ env.BINARY_DEST_PATH }}-x64.msi
-      - name: Save Windows debug symbols
-        if: ${{ runner.os == 'Windows' }}
-        uses: ./.github/actions/upload-gui-artifact
-        with:
-          base: ${{ env.BINARY_DEST_PATH }}-x64.pdb

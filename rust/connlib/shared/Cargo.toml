@@ -9,6 +9,7 @@ edition = "2021"
 mock = []
 
 [dependencies]
+anyhow = "1.0.80"
 # Will be needed to safely modify `/etc/resolv.conf`
 atomicwrites = "0.4.3"
 secrecy = { workspace = true, features = ["serde", "bytes"] }
@@ -17,8 +18,6 @@ boringtun = { workspace = true }
 chrono = { workspace = true }
 futures =  { version = "0.3", default-features = false, features = ["std", "async-await", "executor"] }
 futures-util =  { version = "0.3", default-features = false, features = ["std", "async-await", "async-await-macro"] }
-# Hickory already depends on `hostname` so this isn't new
-hostname = "0.3.1"
 ip_network = { version = "0.4", default-features = false, features = ["serde"] }
 os_info = { version = "3", default-features = false }
 parking_lot = "0.12"
@@ -28,7 +27,7 @@ resolv-conf = "0.7.0"
 serde = { version = "1.0", default-features = false, features = ["derive", "std"] }
 serde_json = { version = "1.0", default-features = false, features = ["std"] }
 thiserror = { version = "1.0", default-features = false }
-tokio = { version = "1.36", default-features = false, features = ["rt", "rt-multi-thread"]}
+tokio = { version = "1.36", default-features = false, features = ["fs", "rt", "rt-multi-thread"]}
 tokio-stream = { version = "0.1", features = ["time"] }
 tokio-tungstenite = { version = "0.21", default-features = false, features = ["connect", "handshake", "rustls-tls-webpki-roots"] }
 tracing = { workspace = true }
@@ -42,6 +41,7 @@ libc = "0.2"
 dns-lookup = { workspace = true }
 known-folders = "1.1.0"
 snownet = { workspace = true }
+phoenix-channel = { workspace = true }
 
 # Needed for Android logging until tracing is working
 log = "0.4"

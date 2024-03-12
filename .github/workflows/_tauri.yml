@@ -1,0 +1,98 @@
+name: Tauri
+on:
+  workflow_call:
+    inputs:
+      release_tag:
+        required: false
+        type: string
+  workflow_dispatch:
+
+permissions:
+  # For saving to release
+  contents: write
+  id-token: write
+
+env:
+  # mark:automatic-version
+  VERSION: "1.0.0"
+
+defaults:
+  run:
+    working-directory: ./rust/gui-client
+
+jobs:
+  build-gui:
+    name: build-gui-${{ matrix.runs-on }}
+    runs-on: ${{ matrix.runs-on }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runs-on: ubuntu-20.04
+            binary-dest-path: firezone-linux-gui-client
+            rename-script: ../../scripts/build/tauri-rename-ubuntu.sh
+            upload-script: ../../scripts/build/tauri-upload-ubuntu.sh
+            artifacts: |
+              rust/gui-client/firezone-linux-gui-client-amd64
+              rust/gui-client/firezone-linux-gui-client_amd64.AppImage
+              rust/gui-client/firezone-linux-gui-client_amd64.deb
+          - runs-on: windows-2019
+            binary-dest-path: firezone-windows-client
+            rename-script: ../../scripts/build/tauri-rename-windows.sh
+            upload-script: ../../scripts/build/tauri-upload-windows.sh
+            artifacts: |
+              rust/gui-client/firezone-windows-client-x64.exe
+              rust/gui-client/firezone-windows-client-x64.msi
+              rust/gui-client/firezone-windows-client-x64.pdb
+    env:
+      BINARY_DEST_PATH: ${{ matrix.binary-dest-path }}
+      CONNLIB_LOG_UPLOAD_INTERVAL_SECS: 300
+      AZURE_KEY_VAULT_URI: ${{ secrets.AZURE_KEY_VAULT_URI }}
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+      AZURE_CERT_NAME: ${{ secrets.AZURE_CERT_NAME }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node
+      - uses: ./.github/actions/setup-rust
+        with:
+          cache_backend: "github"
+      - uses: ./.github/actions/setup-tauri
+      - name: Install pnpm deps
+        run: pnpm install
+      - name: Install AzureSignTool
+        if: ${{ runner.os == 'Windows' }}
+        shell: bash
+        run: dotnet tool install --global AzureSignTool
+      - name: Build release exe and MSI
+        # Signs the exe before bundling it into the MSI
+        run: pnpm build
+      # We need to sign the exe inside the MSI. Currently
+      # we do this in a "beforeBundleCommand" hook in tauri.windows.conf.json.
+      # But this will soon be natively supported in Tauri.
+      # TODO: Use Tauri's native MSI signing with support for EV certs
+      # See https://github.com/tauri-apps/tauri/pull/8718
+      - name: Sign the MSI
+        if: ${{ runner.os == 'Windows' }}
+        shell: bash
+        run: ../../scripts/build/sign.sh ../target/release/bundle/msi/Firezone_${{ env.VERSION }}_x64_en-US.msi
+      - name: Rename artifacts and compute SHA256
+        shell: bash
+        run: ${{ matrix.rename-script }}
+      - name: Upload workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.binary-dest-path }}
+          path: |
+            ${{ matrix.artifacts }}
+          if-no-files-found: error
+      # Only for builds on main
+      - name: Upload Release Assets
+        if: ${{ inputs.release_tag || env.VERSION }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+          TAG_NAME: ${{ needs.update-release-draft.outputs.tag_name }}
+        shell: bash
+        run: ${{ matrix.upload_script }}

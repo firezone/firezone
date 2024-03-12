@@ -1,8 +1,7 @@
 //! Placeholder
 
 use super::Error;
-use connlib_shared::control::SecureUrl;
-use secrecy::Secret;
+use secrecy::{Secret, SecretString};
 
 pub(crate) struct Server {}
 
@@ -13,7 +12,7 @@ impl Server {
         Ok(Self {})
     }
 
-    pub(crate) async fn accept(self) -> Result<Secret<SecureUrl>, Error> {
+    pub(crate) async fn accept(self) -> Result<SecretString, Error> {
         futures::future::pending().await
     }
 }

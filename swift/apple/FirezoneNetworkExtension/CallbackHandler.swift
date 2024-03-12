@@ -26,7 +26,7 @@ public protocol CallbackHandlerDelegate: AnyObject {
   func onAddRoute(_: String)
   func onRemoveRoute(_: String)
   func onUpdateResources(resourceList: String)
-  func onDisconnect(error: String?)
+  func onDisconnect(error: String)
 }
 
 public class CallbackHandler {
@@ -86,13 +86,9 @@ public class CallbackHandler {
   }
 
   func onDisconnect(error: RustString) {
-    logger.log("CallbackHandler.onDisconnect: \(error.toString())")
     let error = error.toString()
-    var optionalError = Optional.some(error)
-    if error.isEmpty {
-      optionalError = Optional.none
-    }
-    delegate?.onDisconnect(error: optionalError)
+    logger.log("CallbackHandler.onDisconnect: \(error)")
+    delegate?.onDisconnect(error: error)
   }
 
   func setSystemDefaultResolvers(resolvers: [String]) {

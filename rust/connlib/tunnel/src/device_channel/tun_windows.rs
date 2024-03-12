@@ -154,7 +154,11 @@ impl Tun {
     }
 
     // It's okay if this blocks until the route is added in the OS.
-    pub fn add_route(&self, route: IpNetwork) -> Result<()> {
+    pub fn add_route(
+        &self,
+        route: IpNetwork,
+        _: &impl connlib_shared::Callbacks<Error = connlib_shared::Error>,
+    ) -> Result<()> {
         const DUPLICATE_ERR: u32 = 0x80071392;
         let entry = self.forward_entry(route);
 
@@ -170,7 +174,11 @@ impl Tun {
     }
 
     // It's okay if this blocks until the route is added in the OS.
-    pub fn remove_route(&self, route: IpNetwork) -> Result<()> {
+    pub fn remove_route(
+        &self,
+        route: IpNetwork,
+        _: &impl connlib_shared::Callbacks<Error = connlib_shared::Error>,
+    ) -> Result<()> {
         let entry = self.forward_entry(route);
 
         // SAFETY: Windows shouldn't store the reference anywhere, it's just a way to pass lots of arguments at once. And no other thread sees this variable.

@@ -7,7 +7,7 @@ edition = "2021"
 [dependencies]
 secrecy = { workspace = true }
 anyhow = "1.0.80"
-clap = { version = "4.4.18", features = ["derive", "env"] }
+clap = { version = "4.5.2", features = ["derive", "env"] }
 bytecodec = "0.4.15"
 futures = "0.3.29"
 hex = "0.4.3"
@@ -41,7 +41,7 @@ axum = { version = "0.7.3", default-features = false, features = ["http1", "toki
 backoff = "0.4"
 
 [dev-dependencies]
-redis = { version = "0.24.0", default-features = false, features = ["tokio-comp"] }
+redis = { version = "0.25.0", default-features = false, features = ["tokio-comp"] }
 difference = "2.0.0"
 
 [[test]]

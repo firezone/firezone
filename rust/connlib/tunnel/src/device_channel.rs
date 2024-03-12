@@ -26,44 +26,63 @@ use ip_network::IpNetwork;
 use pnet_packet::Packet;
 use std::io;
 use std::net::IpAddr;
-use std::task::{Context, Poll};
+use std::task::{Context, Poll, Waker};
 use std::time::{Duration, Instant};
 use tun::Tun;
 
 pub struct Device {
     mtu: usize,
-    tun: Tun,
+    tun: Option<Tun>,
+    waker: Option<Waker>,
     mtu_refreshed_at: Instant,
 }
 
 impl Device {
+    pub(crate) fn new() -> Self {
+        Self {
+            tun: None,
+            mtu: 1_280,
+            waker: None,
+            mtu_refreshed_at: Instant::now(),
+        }
+    }
+
     #[cfg(target_family = "unix")]
-    pub(crate) fn new(
+    pub(crate) fn initialize(
+        &mut self,
         config: &Interface,
         dns_config: Vec<IpAddr>,
         callbacks: &impl Callbacks<Error = Error>,
-    ) -> Result<Device, ConnlibError> {
+    ) -> Result<(), ConnlibError> {
         let tun = Tun::new(config, dns_config, callbacks)?;
         let mtu = ioctl::interface_mtu_by_name(tun.name())?;
 
-        Ok(Device {
-            mtu,
-            tun,
-            mtu_refreshed_at: Instant::now(),
-        })
+        self.tun = Some(tun);
+        self.mtu = mtu;
+
+        if let Some(waker) = self.waker.take() {
+            waker.wake();
+        }
+
+        Ok(())
     }
 
     #[cfg(target_family = "windows")]
-    pub(crate) fn new(
+    pub(crate) fn initialize(
+        &mut self,
         config: &Interface,
         dns_config: Vec<IpAddr>,
         _: &impl Callbacks<Error = Error>,
-    ) -> Result<Device, ConnlibError> {
-        Ok(Device {
-            tun: Tun::new(config, dns_config)?,
-            mtu: 1_280,
-            mtu_refreshed_at: Instant::now(),
-        })
+    ) -> Result<(), ConnlibError> {
+        let tun = Tun::new(config, dns_config)?;
+
+        self.tun = Some(tun);
+
+        if let Some(waker) = self.waker.take() {
+            waker.wake();
+        }
+
+        Ok(())
     }
 
     #[cfg(target_family = "unix")]
@@ -71,17 +90,27 @@ impl Device {
         &mut self,
         buf: &'b mut [u8],
         cx: &mut Context<'_>,
-    ) -> Poll<io::Result<Option<MutableIpPacket<'b>>>> {
+    ) -> Poll<io::Result<MutableIpPacket<'b>>> {
+        let Some(tun) = self.tun.as_mut() else {
+            self.waker = Some(cx.waker().clone());
+            return Poll::Pending;
+        };
+
         use pnet_packet::Packet as _;
 
         if self.mtu_refreshed_at.elapsed() > Duration::from_secs(30) {
-            self.refresh_mtu()?;
+            let mtu = ioctl::interface_mtu_by_name(tun.name())?;
+            self.mtu = mtu;
+            self.mtu_refreshed_at = Instant::now();
         }
 
-        let n = std::task::ready!(self.tun.poll_read(&mut buf[..self.mtu()], cx))?;
+        let n = std::task::ready!(tun.poll_read(&mut buf[..self.mtu], cx))?;
 
         if n == 0 {
-            return Poll::Ready(Ok(None));
+            return Poll::Ready(Err(io::Error::new(
+                io::ErrorKind::UnexpectedEof,
+                "device is closed",
+            )));
         }
 
         let packet = MutableIpPacket::new(&mut buf[..n]).ok_or_else(|| {
@@ -91,27 +120,35 @@ impl Device {
             )
         })?;
 
-        tracing::trace!(target: "wire", action = "read", from = "device", dest = %packet.destination(), bytes = %packet.packet().len());
+        tracing::trace!(target: "wire", from = "device", dest = %packet.destination(), bytes = %packet.packet().len());
 
-        Poll::Ready(Ok(Some(packet)))
+        Poll::Ready(Ok(packet))
     }
 
     #[cfg(target_family = "windows")]
     pub(crate) fn poll_read<'b>(
-        &self,
+        &mut self,
         buf: &'b mut [u8],
         cx: &mut Context<'_>,
-    ) -> Poll<io::Result<Option<MutableIpPacket<'b>>>> {
+    ) -> Poll<io::Result<MutableIpPacket<'b>>> {
+        let Some(tun) = self.tun.as_mut() else {
+            self.waker = Some(cx.waker().clone());
+            return Poll::Pending;
+        };
+
         use pnet_packet::Packet as _;
 
         if self.mtu_refreshed_at.elapsed() > Duration::from_secs(30) {
-            self.refresh_mtu()?;
+            // TODO
         }
 
-        let n = std::task::ready!(self.tun.poll_read(&mut buf[..self.mtu()], cx))?;
+        let n = std::task::ready!(tun.poll_read(&mut buf[..self.mtu], cx))?;
 
         if n == 0 {
-            return Poll::Ready(Ok(None));
+            return Poll::Ready(Err(io::Error::new(
+                io::ErrorKind::UnexpectedEof,
+                "device is closed",
+            )));
         }
 
         let packet = MutableIpPacket::new(&mut buf[..n]).ok_or_else(|| {
@@ -121,99 +158,58 @@ impl Device {
             )
         })?;
 
-        tracing::trace!(target: "wire", action = "read", from = "device", dest = %packet.destination(), bytes = %packet.packet().len());
+        tracing::trace!(target: "wire", from = "device", dest = %packet.destination(), bytes = %packet.packet().len());
 
-        Poll::Ready(Ok(Some(packet)))
-    }
-
-    pub(crate) fn mtu(&self) -> usize {
-        self.mtu
+        Poll::Ready(Ok(packet))
     }
 
     pub(crate) fn name(&self) -> &str {
-        self.tun.name()
+        self.tun
+            .as_ref()
+            .map(|t| t.name())
+            .unwrap_or("uninitialized")
     }
 
-    #[cfg(target_family = "unix")]
-    pub(crate) fn add_route(
-        &mut self,
-        route: IpNetwork,
-        callbacks: &impl Callbacks<Error = Error>,
-    ) -> Result<Option<Device>, Error> {
-        let Some(tun) = self.tun.add_route(route, callbacks)? else {
-            return Ok(None);
-        };
-        let mtu = ioctl::interface_mtu_by_name(tun.name())?;
-
-        Ok(Some(Device {
-            mtu,
-            tun,
-            mtu_refreshed_at: Instant::now(),
-        }))
-    }
-
-    #[cfg(target_family = "unix")]
     pub(crate) fn remove_route(
         &mut self,
         route: IpNetwork,
         callbacks: &impl Callbacks<Error = Error>,
     ) -> Result<Option<Device>, Error> {
-        let Some(tun) = self.tun.remove_route(route, callbacks)? else {
-            return Ok(None);
-        };
-        let mtu = ioctl::interface_mtu_by_name(tun.name())?;
+        self.tun_mut()?.remove_route(route, callbacks)?;
 
-        Ok(Some(Device {
-            mtu,
-            tun,
-            mtu_refreshed_at: Instant::now(),
-        }))
-    }
-
-    #[cfg(target_family = "windows")]
-    pub(crate) fn remove_route(
-        &mut self,
-        route: IpNetwork,
-        _callbacks: &impl Callbacks<Error = Error>,
-    ) -> Result<Option<Device>, Error> {
-        self.tun.remove_route(route)?;
         Ok(None)
     }
 
-    #[cfg(target_family = "windows")]
     #[allow(unused_mut)]
     pub(crate) fn add_route(
         &mut self,
         route: IpNetwork,
-        _: &impl Callbacks<Error = Error>,
+        callbacks: &impl Callbacks<Error = Error>,
     ) -> Result<Option<Device>, Error> {
-        self.tun.add_route(route)?;
+        self.tun_mut()?.add_route(route, callbacks)?;
         Ok(None)
     }
 
-    #[cfg(target_family = "unix")]
-    fn refresh_mtu(&mut self) -> io::Result<()> {
-        let mtu = ioctl::interface_mtu_by_name(self.tun.name())?;
-        self.mtu = mtu;
-        self.mtu_refreshed_at = Instant::now();
-
-        Ok(())
-    }
-
-    #[cfg(target_family = "windows")]
-    fn refresh_mtu(&self) -> io::Result<()> {
-        // TODO
-        Ok(())
-    }
-
     pub fn write(&self, packet: IpPacket<'_>) -> io::Result<usize> {
-        tracing::trace!(target: "wire", action = "write", to = "device", bytes = %packet.packet().len());
+        tracing::trace!(target: "wire", to = "device", bytes = %packet.packet().len());
 
         match packet {
-            IpPacket::Ipv4Packet(msg) => self.tun.write4(msg.packet()),
-            IpPacket::Ipv6Packet(msg) => self.tun.write6(msg.packet()),
+            IpPacket::Ipv4Packet(msg) => self.tun()?.write4(msg.packet()),
+            IpPacket::Ipv6Packet(msg) => self.tun()?.write6(msg.packet()),
         }
     }
+
+    fn tun(&self) -> io::Result<&Tun> {
+        self.tun.as_ref().ok_or_else(io_error_not_initialized)
+    }
+
+    fn tun_mut(&mut self) -> io::Result<&mut Tun> {
+        self.tun.as_mut().ok_or_else(io_error_not_initialized)
+    }
+}
+
+fn io_error_not_initialized() -> io::Error {
+    io::Error::new(io::ErrorKind::NotConnected, "device is not initialized yet")
 }
 
 #[cfg(target_family = "unix")]

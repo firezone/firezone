@@ -1,7 +1,9 @@
 // Swift bridge generated code triggers this below
 #![allow(clippy::unnecessary_cast, improper_ctypes, non_camel_case_types)]
 
-use connlib_client_shared::{file_logger, Callbacks, Error, ResourceDescription, Session};
+use connlib_client_shared::{
+    file_logger, keypair, Callbacks, Error, LoginUrl, ResourceDescription, Session,
+};
 use ip_network::IpNetwork;
 use secrecy::SecretString;
 use std::{
@@ -76,7 +78,7 @@ mod ffi {
 }
 
 /// This is used by the apple client to interact with our code.
-pub struct WrappedSession(Session<CallbackHandler>);
+pub struct WrappedSession(Session);
 
 // SAFETY: `CallbackHandler.swift` promises to be thread-safe.
 // TODO: Uphold that promise!
@@ -136,9 +138,8 @@ impl Callbacks for CallbackHandler {
         Ok(())
     }
 
-    fn on_disconnect(&self, error: Option<&Error>) -> Result<(), Self::Error> {
-        self.inner
-            .on_disconnect(error.map(ToString::to_string).unwrap_or_default());
+    fn on_disconnect(&self, error: &Error) -> Result<(), Self::Error> {
+        self.inner.on_disconnect(error.to_string());
         Ok(())
     }
 
@@ -192,11 +193,19 @@ impl WrappedSession {
     ) -> Result<Self, String> {
         let secret = SecretString::from(token);
 
-        let session = Session::connect(
+        let (private_key, public_key) = keypair();
+        let login = LoginUrl::client(
             api_url.as_str(),
-            secret,
+            &secret,
             device_id,
             device_name_override,
+            public_key.to_bytes(),
+        )
+        .map_err(|e| e.to_string())?;
+
+        let session = Session::connect(
+            login,
+            private_key,
             os_version_override,
             CallbackHandler {
                 inner: Arc::new(callback_handler),
@@ -210,6 +219,6 @@ impl WrappedSession {
     }
 
     fn disconnect(&mut self) {
-        self.0.disconnect(None)
+        self.0.disconnect()
     }
 }

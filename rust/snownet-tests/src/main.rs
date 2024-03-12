@@ -76,12 +76,14 @@ async fn main() -> Result<()> {
 
     match role {
         Role::Dialer => {
-            let mut pool = ClientNode::<u64>::new(private_key, Instant::now());
+            let mut pool = ClientNode::<u64>::new(private_key);
 
             let offer = pool.new_connection(
                 1,
                 stun_server.into_iter().collect(),
                 turn_server.into_iter().collect(),
+                Instant::now(),
+                Instant::now(),
             );
 
             redis_connection
@@ -112,6 +114,7 @@ async fn main() -> Result<()> {
                         password: answer.password,
                     },
                 },
+                Instant::now(),
             );
 
             let rx = spawn_candidate_task(redis_connection.clone(), "listener_candidates");
@@ -158,7 +161,7 @@ async fn main() -> Result<()> {
             }
         }
         Role::Listener => {
-            let mut pool = ServerNode::<u64>::new(private_key, Instant::now());
+            let mut pool = ServerNode::<u64>::new(private_key);
 
             let offer = redis_connection
                 .blpop::<_, (String, wire::Offer)>("offers", 10.0)
@@ -178,6 +181,7 @@ async fn main() -> Result<()> {
                 offer.public_key.into(),
                 stun_server.into_iter().collect(),
                 turn_server.into_iter().collect(),
+                Instant::now(),
             );
 
             redis_connection
@@ -354,7 +358,7 @@ impl<T> Eventloop<T> {
     }
 
     fn send_to(&mut self, id: u64, packet: IpPacket<'_>) -> Result<()> {
-        let Some(transmit) = self.pool.encapsulate(id, packet)? else {
+        let Some(transmit) = self.pool.encapsulate(id, packet, Instant::now())? else {
             return Ok(());
         };
 
@@ -398,7 +402,8 @@ impl<T> Eventloop<T> {
         if let Poll::Ready(Some(wire::Candidate { conn, candidate })) =
             self.candidate_rx.poll_next_unpin(cx)
         {
-            self.pool.add_remote_candidate(conn, candidate);
+            self.pool
+                .add_remote_candidate(conn, candidate, Instant::now());
 
             cx.waker().wake_by_ref();
             return Poll::Pending;
