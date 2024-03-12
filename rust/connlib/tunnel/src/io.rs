@@ -8,7 +8,7 @@ use snownet::Transmit;
 use std::{
     io,
     pin::Pin,
-    task::{Context, Poll},
+    task::{ready, Context, Poll},
     time::Instant,
 };
 
@@ -49,6 +49,8 @@ impl Io {
         if let Poll::Ready(network) = self.sockets.poll_recv_from(buf1, cx)? {
             return Poll::Ready(Ok(Input::Network(network)));
         }
+
+        ready!(self.sockets.poll_send_ready(cx))?; // Packets read from the device need to be written to a socket, let's make sure the socket can take more packets.
 
         if let Poll::Ready(packet) = self.device.poll_read(buf2, cx)? {
             return Poll::Ready(Ok(Input::Device(packet)));
