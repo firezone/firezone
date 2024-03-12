@@ -278,7 +278,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           overwrite: true
-          name: ${{ matrix.name.image_name }}${{ inputs.image_suffix }}-${{ inputs.sha }}-digest-*
+          name: ${{ matrix.name.image_name }}${{ inputs.image_suffix }}-${{ inputs.sha }}-digest-${{ matrix.arch.shortname }}
           path: /tmp/digests/${{ matrix.name.image_name }}
           if-no-files-found: error
           retention-days: 1
