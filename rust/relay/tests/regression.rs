@@ -377,6 +377,112 @@ fn ping_pong_relay(
 }
 
 #[proptest]
+fn allows_rebind_channel_after_expiry(
+    #[strategy(firezone_relay::proptest::transaction_id())] allocate_transaction_id: TransactionId,
+    #[strategy(firezone_relay::proptest::transaction_id())]
+    channel_bind_transaction_id: TransactionId,
+    #[strategy(firezone_relay::proptest::transaction_id())]
+    channel_bind_2_transaction_id: TransactionId,
+    #[strategy(firezone_relay::proptest::username_salt())] username_salt: String,
+    #[strategy(firezone_relay::proptest::channel_number())] channel: ChannelNumber,
+    source: SocketAddrV4,
+    peer: SocketAddrV4,
+    peer2: SocketAddrV4,
+    public_relay_addr: Ipv4Addr,
+    #[strategy(firezone_relay::proptest::now())] now: SystemTime,
+    #[strategy(firezone_relay::proptest::nonce())] nonce: Uuid,
+) {
+    let _ = env_logger::try_init();
+
+    let mut server = TestServer::new(public_relay_addr).with_nonce(nonce);
+    let secret = server.auth_secret().to_owned();
+    let lifetime = Lifetime::new(Duration::from_secs(60 * 60)).unwrap();
+
+    server.assert_commands(
+        from_client(
+            source,
+            Allocate::new_authenticated_udp_implicit_ip4(
+                allocate_transaction_id,
+                Some(lifetime.clone()),
+                valid_username(now, &username_salt),
+                &secret,
+                nonce,
+            ),
+            now,
+        ),
+        [
+            Wake(now + lifetime.lifetime()),
+            CreateAllocation(49152, AddressFamily::V4),
+            send_message(
+                source,
+                allocate_response(
+                    allocate_transaction_id,
+                    public_relay_addr,
+                    49152,
+                    source,
+                    &lifetime,
+                ),
+            ),
+        ],
+    );
+
+    let now = now + Duration::from_secs(1);
+
+    server.assert_commands(
+        from_client(
+            source,
+            ChannelBind::new(
+                channel_bind_transaction_id,
+                channel,
+                XorPeerAddress::new(peer.into()),
+                valid_username(now, &username_salt),
+                &secret,
+                nonce,
+            ),
+            now,
+        ),
+        [
+            Wake(now + Duration::from_secs(60 * 10)), // For channel expiry
+            send_message(source, channel_bind_response(channel_bind_transaction_id)),
+        ],
+    );
+
+    let now = now + Duration::from_secs(60 * 10 + 1);
+
+    server.assert_commands(
+        forward_time_to(now),
+        [
+            Wake(now + Duration::from_secs(60 * 5)), // For channel deletion
+        ],
+    );
+
+    let now = now + Duration::from_secs(60 * 5 + 1);
+
+    server.assert_commands(forward_time_to(now), []);
+
+    let now = now + Duration::from_secs(1);
+
+    server.assert_commands(
+        from_client(
+            source,
+            ChannelBind::new(
+                channel_bind_2_transaction_id,
+                channel,
+                XorPeerAddress::new(peer2.into()),
+                valid_username(now, &username_salt),
+                &secret,
+                nonce,
+            ),
+            now,
+        ),
+        [
+            Wake(now + Duration::from_secs(60 * 10)), // For channel expiry
+            send_message(source, channel_bind_response(channel_bind_2_transaction_id)),
+        ],
+    );
+}
+
+#[proptest]
 fn ping_pong_ip6_relay(
     #[strategy(firezone_relay::proptest::transaction_id())] allocate_transaction_id: TransactionId,
     #[strategy(firezone_relay::proptest::transaction_id())]
@@ -578,6 +684,15 @@ impl TestServer {
                             .unwrap()
                             .as_secs(),
                         parse_message(&payload)
+                    )
+                }
+                (Output::SendMessage((_, message)), Command::Wake { deadline, .. }) => {
+                    panic!(
+                        "Expected `SendMessage({message:?})`, got `Wake({})`",
+                        deadline
+                            .duration_since(SystemTime::UNIX_EPOCH)
+                            .unwrap()
+                            .as_secs(),
                     )
                 }
                 (
