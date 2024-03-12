@@ -5,6 +5,9 @@ use secrecy::{ExposeSecret, SecretString};
 /// Open a URL in the user's default browser
 pub(crate) fn open_url(_app: &tauri::AppHandle, url: &SecretString) -> Result<()> {
     // This is silly but it might work.
+    // Once <https://github.com/firezone/firezone/issues/3713> closes,
+    // just go back to using Tauri's shell open like we do on Windows.
+    //
     // Figure out who we were before `sudo`
     let username = std::env::var("SUDO_USER")?;
     std::process::Command::new("sudo")
