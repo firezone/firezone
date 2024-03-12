@@ -6,7 +6,7 @@ on:
       image_suffix:
         required: false
         type: string
-        default: ""
+        default: null
       sha:
         required: false
         type: string
