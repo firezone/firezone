@@ -27,40 +27,9 @@ jobs:
           --health-retries 5
     steps:
       - uses: actions/checkout@v4
-      - name: Tool Versions
-        id: versions
-        uses: marocchino/tool-versions-action@v1.2.0
-      - uses: erlef/setup-beam@v1
-        id: setup-beam
+      - uses: ./.github/actions/setup-elixir
         with:
-          otp-version: ${{ steps.versions.outputs.erlang }}
-          elixir-version: ${{ steps.versions.outputs.elixir }}
-      - uses: actions/cache/restore@v4
-        name: Restore Elixir Deps Cache
-        id: cache
-        env:
-          cache-name: elixir-deps-${{ env.MIX_ENV }}
-        with:
-          path: |
-            elixir/deps
-            elixir/_build/${{ env.MIX_ENV }}
-          key: ubuntu-22.04-${{ runner.arch }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-${{ hashFiles('elixir/mix.lock') }}
-      - name: Install Dependencies
-        if: ${{ steps.cache.outputs.cache-hit != 'true' }}
-        run: mix deps.get --only $MIX_ENV
-      - name: Compile Dependencies
-        if: ${{ steps.cache.outputs.cache-hit != 'true' }}
-        run: mix deps.compile --skip-umbrella-children
-      - uses: actions/cache/save@v4
-        name: Save Elixir Deps Cache
-        if: ${{ github.ref_name == 'main' }}
-        env:
-          cache-name: elixir-deps-${{ env.MIX_ENV }}
-        with:
-          path: |
-            elixir/deps
-            elixir/_build/${{ env.MIX_ENV }}
-          key: ubuntu-22.04-${{ runner.arch }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-${{ hashFiles('elixir/mix.lock') }}
+          mix_env: ${{ env.MIX_ENV }}
       - name: Compile Application
         run: mix compile --warnings-as-errors
       - name: Setup Database
@@ -93,40 +62,9 @@ jobs:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
-      - name: Tool Versions
-        id: versions
-        uses: marocchino/tool-versions-action@v1.2.0
-      - uses: erlef/setup-beam@v1
-        id: setup-beam
+      - uses: ./.github/actions/setup-elixir
         with:
-          otp-version: ${{ steps.versions.outputs.erlang }}
-          elixir-version: ${{ steps.versions.outputs.elixir }}
-      - uses: actions/cache/restore@v4
-        name: Restore Elixir Deps Cache
-        id: cache
-        env:
-          cache-name: elixir-deps-${{ env.MIX_ENV }}
-        with:
-          path: |
-            elixir/deps
-            elixir/_build/${{ env.MIX_ENV }}
-          key: ubuntu-22.04-${{ runner.arch }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-${{ hashFiles('elixir/mix.lock') }}
-      - name: Install Dependencies
-        if: ${{ steps.cache.outputs.cache-hit != 'true' }}
-        run: mix deps.get --only $MIX_ENV
-      - name: Compile Dependencies
-        if: ${{ steps.cache.outputs.cache-hit != 'true' }}
-        run: mix deps.compile --skip-umbrella-children
-      - uses: actions/cache/save@v4
-        name: Save Elixir Deps Cache
-        if: ${{ github.ref_name == 'main' }}
-        env:
-          cache-name: elixir-deps-${{ env.MIX_ENV }}
-        with:
-          path: |
-            elixir/deps
-            elixir/_build/${{ env.MIX_ENV }}
-          key: ubuntu-22.04-${{ runner.arch }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-${{ hashFiles('elixir/mix.lock') }}
+          mix_env: ${{ env.MIX_ENV }}
       - name: Compile Application
         run: mix compile --warnings-as-errors
       - uses: actions/cache/restore@v4
@@ -160,40 +98,9 @@ jobs:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
-      - name: Tool Versions
-        id: versions
-        uses: marocchino/tool-versions-action@v1.2.0
-      - uses: erlef/setup-beam@v1
-        id: setup-beam
+      - uses: ./.github/actions/setup-elixir
         with:
-          otp-version: ${{ steps.versions.outputs.erlang }}
-          elixir-version: ${{ steps.versions.outputs.elixir }}
-      - uses: actions/cache/restore@v4
-        name: Restore Elixir Deps Cache
-        id: cache
-        env:
-          cache-name: elixir-deps-${{ env.MIX_ENV }}
-        with:
-          path: |
-            elixir/deps
-            elixir/_build/${{ env.MIX_ENV }}
-          key: ubuntu-22.04-${{ runner.arch }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-${{ hashFiles('elixir/mix.lock') }}
-      - name: Install Dependencies
-        if: ${{ steps.cache.outputs.cache-hit != 'true' }}
-        run: mix deps.get --only $MIX_ENV
-      - name: Compile Dependencies
-        if: ${{ steps.cache.outputs.cache-hit != 'true' }}
-        run: mix deps.compile --skip-umbrella-children
-      - uses: actions/cache/save@v4
-        name: Save Elixir Deps Cache
-        if: ${{ github.ref_name == 'main' }}
-        env:
-          cache-name: elixir-deps-${{ env.MIX_ENV }}
-        with:
-          path: |
-            elixir/deps
-            elixir/_build/${{ env.MIX_ENV }}
-          key: ubuntu-22.04-${{ runner.arch }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-${{ hashFiles('elixir/mix.lock') }}
+          mix_env: ${{ env.MIX_ENV }}
       - name: Compile Application
         run: mix compile --force --warnings-as-errors
       - name: Check Formatting
@@ -232,46 +139,9 @@ jobs:
           --health-retries 5
     steps:
       - uses: actions/checkout@v4
-      - name: Install package dependencies
-        run: |
-          sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
-          wget -qO- https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo tee /etc/apt/trusted.gpg.d/pgdg.asc &>/dev/null
-          sudo apt update
-          sudo apt-get install -q -y postgresql-client
-      - name: Tool Versions
-        id: versions
-        uses: marocchino/tool-versions-action@v1.2.0
-      - uses: erlef/setup-beam@v1
-        id: setup-beam
+      - uses: ./.github/actions/setup-elixir
         with:
-          otp-version: ${{ steps.versions.outputs.erlang }}
-          elixir-version: ${{ steps.versions.outputs.elixir }}
-      - uses: actions/cache/restore@v4
-        name: Restore Elixir Deps Cache
-        id: cache
-        env:
-          cache-name: elixir-deps-${{ env.MIX_ENV }}
-        with:
-          path: |
-            elixir/deps
-            elixir/_build/${{ env.MIX_ENV }}
-          key: ubuntu-22.04-${{ runner.arch }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-${{ hashFiles('elixir/mix.lock') }}
-      - name: Install Dependencies
-        if: ${{ steps.cache.outputs.cache-hit != 'true' }}
-        run: mix deps.get --only $MIX_ENV
-      - name: Compile Dependencies
-        if: ${{ steps.cache.outputs.cache-hit != 'true' }}
-        run: mix deps.compile --skip-umbrella-children
-      - uses: actions/cache/save@v4
-        name: Save Elixir Deps Cache
-        if: ${{ github.ref_name == 'main' }}
-        env:
-          cache-name: elixir-deps-${{ env.MIX_ENV }}
-        with:
-          path: |
-            elixir/deps
-            elixir/_build/${{ env.MIX_ENV }}
-          key: ubuntu-22.04-${{ runner.arch }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-${{ hashFiles('elixir/mix.lock') }}
+          mix_env: ${{ env.MIX_ENV }}
       - name: Compile
         run: mix compile --warnings-as-errors
       - name: Create Database
@@ -334,44 +204,10 @@ jobs:
           export DISPLAY=:99
           chromedriver --url-base=/wd/hub &
           sudo Xvfb -ac :99 -screen 0 1280x1024x24 > /dev/null 2>&1 &
-      - name: Tool Versions
-        id: versions
-        uses: marocchino/tool-versions-action@v1.2.0
-      - uses: erlef/setup-beam@v1
-        id: setup-beam
+      - uses: ./.github/actions/setup-elixir
         with:
-          otp-version: ${{ steps.versions.outputs.erlang }}
-          elixir-version: ${{ steps.versions.outputs.elixir }}
+          mix_env: ${{ env.MIX_ENV }}
       - uses: ./.github/actions/setup-node
-        with:
-          node-version: ${{ steps.versions.outputs.nodejs }}
-      # Elixir cache
-      - uses: actions/cache/restore@v4
-        name: Restore Elixir Deps Cache
-        id: cache
-        env:
-          cache-name: elixir-deps-${{ env.MIX_ENV }}
-        with:
-          path: |
-            elixir/deps
-            elixir/_build/${{ env.MIX_ENV }}
-          key: ubuntu-22.04-${{ runner.arch }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-${{ hashFiles('elixir/mix.lock') }}
-      - name: Install Dependencies
-        if: ${{ steps.cache.outputs.cache-hit != 'true' }}
-        run: mix deps.get --only $MIX_ENV
-      - name: Compile Dependencies
-        if: ${{ steps.cache.outputs.cache-hit != 'true' }}
-        run: mix deps.compile --skip-umbrella-children
-      - uses: actions/cache/save@v4
-        name: Save Elixir Deps Cache
-        if: ${{ github.ref_name == 'main' }}
-        env:
-          cache-name: elixir-deps-${{ env.MIX_ENV }}
-        with:
-          path: |
-            elixir/deps
-            elixir/_build/${{ env.MIX_ENV }}
-          key: ubuntu-22.04-${{ runner.arch }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ env.cache-name }}-${{ hashFiles('elixir/mix.lock') }}
       - name: Compile Application
         run: mix compile --warnings-as-errors
       # Front-End deps cache
