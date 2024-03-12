@@ -96,6 +96,7 @@ jobs:
       # client_tag: "latest"
 
   build-base-perf-artifacts:
+    if: ${{ github.event_name == 'pull_request' }}
     uses: ./.github/workflows/_build_artifacts.yml
     secrets: inherit
     with:
@@ -104,6 +105,7 @@ jobs:
       profile: 'debug'
 
   build-head-perf-artifacts:
+    if: ${{ github.event_name == 'pull_request' }}
     uses: ./.github/workflows/_build_artifacts.yml
     secrets: inherit
     with:
