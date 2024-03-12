@@ -78,7 +78,9 @@ pub(crate) fn run() -> Result<()> {
         Some(Cmd::Elevated) => run_gui(cli),
         Some(Cmd::OpenDeepLink(deep_link)) => {
             let rt = tokio::runtime::Runtime::new()?;
-            rt.block_on(deep_link::open(&deep_link.url))?;
+            if let Err(error) = rt.block_on(deep_link::open(&deep_link.url)) {
+                tracing::error!(?error, "Error in `OpenDeepLink`");
+            }
             Ok(())
         }
         Some(Cmd::SmokeTest) => {
@@ -212,6 +214,7 @@ pub enum Cmd {
 
 #[derive(Args)]
 pub struct DeepLink {
+    // TODO: Should be `Secret`?
     pub url: url::Url,
 }
 

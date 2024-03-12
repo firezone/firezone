@@ -395,11 +395,15 @@ async fn check_for_updates(ctlr_tx: CtlrTx, always_show_update_notification: boo
 /// * `server` An initial named pipe server to consume before making new servers. This lets us also use the named pipe to enforce single-instance
 async fn accept_deep_links(mut server: deep_link::Server, ctlr_tx: CtlrTx) -> Result<()> {
     loop {
-        if let Ok(url) = server.accept().await {
+        match server.accept().await {
+            Ok(bytes) => {
+            let url = SecretString::from_str(std::str::from_utf8(bytes.expose_secret()).context("Incoming deep link was not valid UTF-8")?).context("Impossible: can't wrap String into SecretString")?;
+            // Ignore errors from this, it would only happen if the app is shutting down, otherwise we would wait
             ctlr_tx
                 .send(ControllerRequest::SchemeRequest(url))
                 .await
-                .ok();
+                .ok();}
+            Err(error) => tracing::error!(?error, "error while accepting deep link"),
         }
         // We re-create the named pipe server every time we get a link, because of an oddity in the Windows API.
         server = deep_link::Server::new()?;
@@ -647,7 +651,7 @@ impl Controller {
                 if let Some(req) = self.auth.start_sign_in()? {
                     let url = req.to_url(&self.advanced_settings.auth_base_url);
                     self.refresh_system_tray_menu()?;
-                    tauri::api::shell::open(&self.app.shell_scope(), url.expose_secret(), None)?;
+                    os::open_url(&self.app, &url)?;
                 }
             }
             Req::SystemTrayMenu(TrayMenuEvent::SignOut) => {

@@ -1,26 +1,65 @@
-//! TODO: Not implemented for Linux yet
-
-use super::Error;
 use anyhow::{bail, Context, Result};
-use secrecy::SecretString;
+use crate::client::known_dirs;
+use secrecy::{ExposeSecret, Secret};
+use tokio::{io::{AsyncReadExt, AsyncWriteExt}, net::{UnixListener, UnixStream}};
 
-pub(crate) struct Server {}
+const SOCK_NAME: &str = "deep_link.sock";
+
+pub(crate) struct Server {
+    listener: UnixListener,
+}
 
 impl Server {
-    pub(crate) fn new() -> Result<Self, Error> {
-        tracing::error!("`deep_link::Server::new` not implemented yet");
-        Ok(Self {})
+    /// Create a new deep link server to make sure we're the only instance
+    pub(crate) fn new() -> Result<Self> {
+        let dir = known_dirs::runtime().context("couldn't find runtime dir")?;
+        let path = dir.join(SOCK_NAME);
+        // TODO: This breaks single instance. Can we enforce it some other way?
+        std::fs::remove_file(&path).ok();
+        std::fs::create_dir_all(&dir).context("Can't create dir for deep link socket")?;
+        
+        let listener = UnixListener::bind(&path).context("Couldn't bind listener Unix socket")?;
+        
+        // Figure out who we were before `sudo`, if using sudo
+        if let Ok(username) = std::env::var("SUDO_USER") {
+            std::process::Command::new("chown")
+                .arg(username)
+                .arg(&path)
+                .status()?;
+        }
+        
+        Ok(Self {
+            listener,
+        })
     }
 
-    pub(crate) async fn accept(self) -> Result<SecretString, Error> {
-        tracing::error!("Deep links not implemented yet on Linux");
-        futures::future::pending().await
+    /// Await one incoming deep link
+    /// 
+    /// To match the Windows API, this consumes the `Server`.
+    pub(crate) async fn accept(self) -> Result<Secret<Vec<u8>>> {
+        tracing::debug!("deep_link::accept");
+        let (mut stream, _) = self.listener.accept().await?;
+        tracing::debug!("Accepted Unix domain socket connection");
+        
+        // TODO: Limit reads to 4,096 bytes. Partial reads will probably never happen
+        // since it's a local socket transferring very small data.
+        let mut bytes = vec![];
+        stream.read_to_end(&mut bytes).await.context("failed to read incoming deep link over Unix socket stream")?;
+        let bytes = Secret::new(bytes);
+        tracing::debug!(len = bytes.expose_secret().len(), "Got data from Unix domain socket");
+        Ok(bytes)
     }
 }
 
-pub(crate) async fn open(_url: &url::Url) -> Result<()> {
+pub(crate) async fn open(url: &url::Url) -> Result<()> {
     crate::client::logging::debug_command_setup()?;
-    tracing::error!("Deep link callback handling not implemented yet for Linux");
+    
+    let dir = known_dirs::runtime().context("deep_link::open couldn't find runtime dir")?;
+    let path = dir.join(SOCK_NAME);
+    let mut stream = UnixStream::connect(&path).await?;
+    
+    stream.write_all(url.to_string().as_bytes()).await?;
+    
     Ok(())
 }
 

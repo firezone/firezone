@@ -2,9 +2,10 @@
 //! Based on reading some of the Windows code from <https://github.com/FabianLars/tauri-plugin-deep-link>, which is licensed "MIT OR Apache-2.0"
 
 use super::{Error, FZ_SCHEME};
+use anyhow::Result;
 use connlib_shared::BUNDLE_ID;
-use secrecy::{ExposeSecret, Secret, SecretString};
-use std::{ffi::c_void, io, path::Path, str::FromStr};
+use secrecy::Secret;
+use std::{ffi::c_void, io, path::Path};
 use tokio::{io::AsyncReadExt, io::AsyncWriteExt, net::windows::named_pipe};
 use windows::Win32::Security as WinSec;
 
@@ -18,7 +19,7 @@ impl Server {
     /// Construct a server, but don't await client connections yet
     ///
     /// Panics if there is no Tokio runtime
-    pub(crate) fn new() -> Result<Self, Error> {
+    pub(crate) fn new() -> Result<Self> {
         // This isn't air-tight - We recreate the whole server on each loop,
         // rather than binding 1 socket and accepting many streams like a normal socket API.
         // I can only assume Tokio is following Windows' underlying API.
@@ -75,7 +76,7 @@ impl Server {
     /// I assume this is based on the underlying Windows API.
     /// I tried re-using the server and it acted strange. The official Tokio
     /// examples are not clear on this.
-    pub(crate) async fn accept(mut self) -> Result<SecretString, Error> {
+    pub(crate) async fn accept(mut self) -> Result<Secret<Vec<u8>>> {
         self.inner
             .connect()
             .await
@@ -93,14 +94,7 @@ impl Server {
         let bytes = Secret::new(bytes);
 
         self.inner.disconnect().ok();
-
-        tracing::debug!("Server read");
-        let s = SecretString::from_str(
-            std::str::from_utf8(bytes.expose_secret()).map_err(Error::LinkNotUtf8)?,
-        )
-        .expect("Infallible");
-
-        Ok(s)
+        Ok(bytes)
     }
 }
 
