@@ -48,11 +48,11 @@ impl Eventloop {
     #[tracing::instrument(name = "Eventloop::poll", skip_all, level = "debug")]
     pub fn poll(&mut self, cx: &mut Context<'_>) -> Poll<Result<Infallible>> {
         loop {
-            match self.tunnel.poll_next_event(cx)? {
-                Poll::Ready(firezone_tunnel::GatewayEvent::SignalIceCandidate {
+            match self.tunnel.poll_next_event(cx) {
+                Poll::Ready(Ok(firezone_tunnel::GatewayEvent::SignalIceCandidate {
                     conn_id: client,
                     candidate,
-                }) => {
+                })) => {
                     tracing::debug!(%client, %candidate, "Sending ICE candidate to client");
 
                     self.portal.send(
@@ -64,6 +64,9 @@ impl Eventloop {
                     );
 
                     continue;
+                }
+                Poll::Ready(Err(e)) => {
+                    tracing::warn!("Tunnel error: {e}");
                 }
                 Poll::Pending => {}
             }
