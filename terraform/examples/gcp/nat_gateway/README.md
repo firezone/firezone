@@ -29,6 +29,7 @@ upgrades with minimal downtime, see
 1. [Terraform](https://www.terraform.io/downloads.html)
 1. [Google Cloud Platform (GCP) account](https://cloud.google.com/)
 1. [Google Cloud SDK](https://cloud.google.com/sdk/docs/install)
+1. [Enable the Compute Engine API](https://console.cloud.google.com/flows/enableapi?apiid=compute.googleapis.com)
 1. A [Firezone Site](https://www.firezone.dev/kb/deploy/sites) dedicated to use
    for this example. This Site should contain **only** the Firezone Gateway(s)
    deployed in this example and any associated Resources.
