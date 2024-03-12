@@ -183,16 +183,19 @@ where
         let dns_mapping = sentinel_dns_mapping(&effective_dns_servers);
         self.role_state.set_dns_mapping(dns_mapping.clone());
 
-        self.device.initialize(
+        let callbacks = self.callbacks().clone();
+
+        self.io.device_mut().initialize(
             config,
             // We can just sort in here because sentinel ips are created in order
             dns_mapping.left_values().copied().sorted().collect(),
-            &self.callbacks().clone(),
+            &callbacks,
         )?;
 
-        self.device
+        self.io
+            .device_mut()
             .set_routes(self.role_state.routes().collect(), &self.callbacks)?;
-        let name = self.device.name().to_owned();
+        let name = self.io.device_mut().name().to_owned();
 
         self.callbacks.on_tunnel_ready()?;
 
@@ -210,15 +213,15 @@ where
 
     #[tracing::instrument(level = "trace", skip(self))]
     pub fn update_routes(&mut self) -> connlib_shared::Result<()> {
-        self.device
+        self.io
+            .device_mut()
             .set_routes(self.role_state.routes().collect(), &self.callbacks)?;
 
         Ok(())
     }
 
     pub fn add_ice_candidate(&mut self, conn_id: GatewayId, ice_candidate: String) {
-        self.connections_state
-            .node
+        self.node
             .add_remote_candidate(conn_id, ice_candidate, Instant::now());
     }
 }

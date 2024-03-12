@@ -46,14 +46,16 @@ where
     #[tracing::instrument(level = "trace", skip(self))]
     pub fn set_interface(&mut self, config: &InterfaceConfig) -> connlib_shared::Result<()> {
         // Note: the dns fallback strategy is irrelevant for gateways
-        self.device
-            .initialize(config, vec![], &self.callbacks().clone())?;
-        self.device.set_routes(
+        let callbacks = self.callbacks().clone();
+        self.io
+            .device_mut()
+            .initialize(config, vec![], &callbacks)?;
+        self.io.device_mut().set_routes(
             HashSet::from([PEERS_IPV4.parse().unwrap(), PEERS_IPV6.parse().unwrap()]),
-            &self.callbacks,
+            &callbacks,
         )?;
 
-        let name = self.device.name().to_owned();
+        let name = self.io.device_mut().name().to_owned();
 
         tracing::debug!(ip4 = %config.ipv4, ip6 = %config.ipv6, %name, "TUN device initialized");
 
@@ -95,7 +97,7 @@ where
             ResourceDescription::Cidr(ref cidr) => vec![cidr.address],
         };
 
-        let answer = self.connections_state.node.accept_connection(
+        let answer = self.node.accept_connection(
             client_id,
             snownet::Offer {
                 session_key: key.expose_secret().0.into(),
@@ -105,12 +107,8 @@ where
                 },
             },
             client,
-            stun(&relays, |addr| {
-                self.connections_state.sockets.can_handle(addr)
-            }),
-            turn(&relays, |addr| {
-                self.connections_state.sockets.can_handle(addr)
-            }),
+            stun(&relays, |addr| self.io.sockets_ref().can_handle(addr)),
+            turn(&relays, |addr| self.io.sockets_ref().can_handle(addr)),
             Instant::now(),
         );
 
@@ -195,8 +193,7 @@ where
     }
 
     pub fn add_ice_candidate(&mut self, conn_id: ClientId, ice_candidate: String) {
-        self.connections_state
-            .node
+        self.node
             .add_remote_candidate(conn_id, ice_candidate, Instant::now());
     }
 
