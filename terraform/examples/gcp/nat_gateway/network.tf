@@ -18,7 +18,7 @@ resource "google_compute_router" "firezone" {
 
 resource "google_compute_address" "firezone" {
   name   = "firezone-nat-address"
-  region = google_compute_subnetwork.firezone.region
+  region = var.region
 }
 
 resource "google_compute_router_nat" "firezone" {
