@@ -114,10 +114,9 @@ where
                 continue;
             }
 
-            let node_timeout = self.node.poll_timeout();
-            let state_timeout = self.role_state.poll_timeout();
-
-            if let Some(timeout) = earliest(node_timeout, state_timeout) {
+            if let Some(timeout) =
+                earliest(self.node.poll_timeout(), self.role_state.poll_timeout())
+            {
                 self.io.reset_timeout(timeout);
             }
 
@@ -208,10 +207,6 @@ where
 {
     pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Result<GatewayEvent>> {
         loop {
-            if let Poll::Ready(()) = self.role_state.poll(cx) {
-                continue;
-            }
-
             if let Some(transmit) = self.node.poll_transmit() {
                 self.io.send_network(transmit)?;
                 continue;
@@ -237,12 +232,15 @@ where
                 continue;
             }
 
-            if let Some(timeout) = self.node.poll_timeout() {
+            if let Some(timeout) =
+                earliest(self.node.poll_timeout(), self.role_state.poll_timeout())
+            {
                 self.io.reset_timeout(timeout);
             }
 
             match self.io.poll(cx, self.read_buf.as_mut())? {
                 Poll::Ready(io::Input::Timeout(timeout)) => {
+                    self.role_state.handle_timeout(timeout);
                     self.node.handle_timeout(timeout);
                     continue;
                 }

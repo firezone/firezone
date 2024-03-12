@@ -14,12 +14,12 @@ use ip_network::IpNetwork;
 use secrecy::{ExposeSecret as _, Secret};
 use snownet::Server;
 use std::collections::HashSet;
-use std::task::{ready, Context, Poll};
 use std::time::{Duration, Instant};
-use tokio::time::{interval, Interval, MissedTickBehavior};
 
 const PEERS_IPV4: &str = "100.64.0.0/11";
 const PEERS_IPV6: &str = "fd00:2021:1111::/107";
+
+const EXPIRE_RESOURCES_INTERVAL: Duration = Duration::from_secs(1);
 
 /// Description of a resource that maps to a DNS record which had its domain already resolved.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -219,9 +219,10 @@ where
 }
 
 /// [`Tunnel`] state specific to gateways.
+#[derive(Default)]
 pub struct GatewayState {
     pub peers: PeerStore<ClientId, PacketTransformGateway, ()>,
-    expire_interval: Interval,
+    next_expiry_resources_check: Option<Instant>,
 }
 
 impl GatewayState {
@@ -237,27 +238,21 @@ impl GatewayState {
         Some((peer.conn_id, packet))
     }
 
-    pub fn poll(&mut self, cx: &mut Context<'_>) -> Poll<()> {
-        ready!(self.expire_interval.poll_tick(cx));
-        self.expire_resources();
-        Poll::Ready(())
+    pub fn poll_timeout(&self) -> Option<Instant> {
+        // TODO: This should check when the next resource actually expires instead of doing it at a fixed interval.
+        self.next_expiry_resources_check
     }
 
-    fn expire_resources(&mut self) {
-        self.peers
-            .iter_mut()
-            .for_each(|p| p.transform.expire_resources());
-        self.peers.retain(|_, p| !p.transform.is_emptied());
-    }
-}
-
-impl Default for GatewayState {
-    fn default() -> Self {
-        let mut expire_interval = interval(Duration::from_secs(1));
-        expire_interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
-        Self {
-            peers: Default::default(),
-            expire_interval,
+    pub fn handle_timeout(&mut self, now: Instant) {
+        match self.next_expiry_resources_check {
+            Some(next_expiry_resources_check) if now >= next_expiry_resources_check => {
+                self.peers
+                    .iter_mut()
+                    .for_each(|p| p.transform.expire_resources());
+                self.peers.retain(|_, p| !p.transform.is_emptied());
+            }
+            None => self.next_expiry_resources_check = Some(now + EXPIRE_RESOURCES_INTERVAL),
+            Some(_) => {}
         }
     }
 }
