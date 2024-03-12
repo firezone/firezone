@@ -4,7 +4,11 @@ on:
   workflow_call:
     inputs:
       image_prefix:
-        description: "The prefix to prepend to the image name to prevent SHA conflicts"
+        description: |
+          The prefix to prepend to the image name to prevent SHA conflicts.
+          * Use "debug" to build debug binaries inside debug stage images + with debug tooling installed.
+          * Use "perf" to build release binaries inside debug stage images + with debug tooling installed.
+          * Leave blank to build release binaries inside release stage images.
         required: false
         type: string
       sha:
