@@ -169,7 +169,7 @@ pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
         });
     }
 
-    if ! cli.no_deep_links {
+    if !cli.no_deep_links {
         // The single-instance check is done, so register our exe
         // to handle deep links
         deep_link::register().context("Failed to register deep link handler")?;

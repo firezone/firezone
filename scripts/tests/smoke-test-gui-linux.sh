@@ -14,11 +14,6 @@ PACKAGE=firezone-gui-client
 export RUST_LOG=firezone_gui_client=debug,warn
 export WEBKIT_DISABLE_COMPOSITING_MODE=1
 
-# Contains `xdg-desktop-menu` for deep link registration.
-# `ubuntu-desktop` has this by default.
-sudo apt-get install xdg-utils
-which xdg-desktop-menu
-
 cargo build -p "$PACKAGE"
 
 function smoke_test() {
@@ -41,7 +36,7 @@ function smoke_test() {
     sudo stat "$DEVICE_ID_PATH"
 
     # Run the test again and make sure the device ID is not changed
-    sudo --preserve-env xvfb-run --auto-servernum ../target/debug/"$PACKAGE" smoke-test --no-deep-links
+    sudo --preserve-env xvfb-run --auto-servernum ../target/debug/"$PACKAGE"  --no-deep-links smoke-test
     DEVICE_ID_2=$(cat "$DEVICE_ID_PATH")
 
     if [ "$DEVICE_ID_1" != "$DEVICE_ID_2" ]
