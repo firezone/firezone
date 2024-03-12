@@ -504,7 +504,7 @@ struct Controller {
 /// Everything related to a signed-in user session
 struct Session {
     callback_handler: CallbackHandler,
-    connlib: connlib_client_shared::Session<CallbackHandler>,
+    connlib: connlib_client_shared::Session,
 }
 
 impl Controller {

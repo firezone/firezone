@@ -38,6 +38,9 @@ const HANDSHAKE_RATE_LIMIT: u64 = 100;
 /// How long we will at most wait for a candidate from the remote.
 const CANDIDATE_TIMEOUT: Duration = Duration::from_secs(10);
 
+/// How long we will at most wait for an [`Answer`] from the remote.
+const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(20);
+
 const MAX_UDP_SIZE: usize = (1 << 16) - 1;
 
 /// Manages a set of wireguard connections for a server.
@@ -439,7 +442,6 @@ where
         self.buffered_transmits.pop_front()
     }
 
-    #[allow(clippy::too_many_arguments)]
     #[must_use]
     #[allow(clippy::too_many_arguments)]
     fn init_connection(
@@ -1213,7 +1215,7 @@ impl InitialConnection {
     where
         TId: fmt::Display,
     {
-        if now.duration_since(self.created_at) >= Duration::from_secs(20) {
+        if now.duration_since(self.created_at) >= HANDSHAKE_TIMEOUT {
             tracing::info!(%id, "Connection setup timed out (no answer received)");
             self.is_failed = true;
         }

@@ -177,6 +177,9 @@ pub enum ConnlibError {
     // Error variants for `systemd-resolved` DNS control
     #[error("Failed to control system DNS with `resolvectl`")]
     ResolvectlFailed,
+
+    #[error("connection to the portal failed")]
+    PortalConnectionFailed,
 }
 
 impl ConnlibError {

@@ -50,7 +50,41 @@ jobs:
     needs: build-artifacts
     secrets: inherit
 
+  snownet-tests:
+    needs: build-artifacts
+    if: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
+    name: snownet-tests-${{ matrix.name }}
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: write
+    env:
+      RELAY_TAG: ${{ github.sha }}
+      SNOWNET_TAG: ${{ github.sha }}
+    strategy:
+      fail-fast: false
+      matrix:
+        name:
+          - lan
+          - wan-hp
+          - wan-relay
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/gcp-docker-login
+        id: login
+        with:
+          project: firezone-staging
+      - name: Run docker-compose.${{ matrix.name }}.yml test
+        run: |
+          sudo sysctl -w vm.overcommit_memory=1
+          timeout 600 docker compose -f rust/snownet-tests/docker-compose.${{ matrix.name }}.yml up --exit-code-from dialer --abort-on-container-exit
+
   compatibility-tests:
+    # Don't run compatibility tests when called from cd.yml on `main` because
+    # it'll be red if there was a breaking change we're tring to publish,
+    # and the publish workflow checks for main to be green.
+    if: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
     uses: ./.github/workflows/_integration_tests.yml
     needs: build-artifacts
     secrets: inherit
@@ -61,24 +95,55 @@ jobs:
       # client will be published then.
       # client_tag: "latest"
 
+  build-base-perf-artifacts:
+    if: ${{ github.event_name == 'pull_request' }}
+    uses: ./.github/workflows/_build_artifacts.yml
+    secrets: inherit
+    with:
+      sha: ${{ github.event.pull_request.base.sha }}
+      image_suffix: '-perf'
+      profile: 'debug'
+
+  build-head-perf-artifacts:
+    if: ${{ github.event_name == 'pull_request' }}
+    uses: ./.github/workflows/_build_artifacts.yml
+    secrets: inherit
+    with:
+      sha: ${{ github.sha }}
+      image_suffix: '-perf'
+      profile: 'debug'
+
   perf-tests:
+    # Only the debug images have perf tooling
+    if: ${{ github.event_name == 'pull_request' }}
     name: perf-tests-${{ matrix.test_name }}
-    needs: build-artifacts
+    needs:
+      - build-base-perf-artifacts
+      - build-head-perf-artifacts
     runs-on: ubuntu-22.04
     permissions:
       contents: read
       id-token: write
       pull-requests: write
     env:
-      API_TAG: ${{ github.sha }}
-      WEB_TAG: ${{ github.sha }}
-      GATEWAY_TAG: ${{ github.sha }}
-      CLIENT_TAG: ${{ github.sha }}
-      RELAY_TAG: ${{ github.sha }}
-      ELIXIR_TAG: ${{ github.sha }}
+      API_IMAGE: 'us-east1-docker.pkg.dev/firezone-staging/firezone/api-perf'
+      API_TAG: ${{ matrix.sha }}
+      WEB_IMAGE: 'us-east1-docker.pkg.dev/firezone-staging/firezone/web-perf'
+      WEB_TAG: ${{ matrix.sha }}
+      ELIXIR_IMAGE: 'us-east1-docker.pkg.dev/firezone-staging/firezone/elixir-perf'
+      ELIXIR_TAG: ${{ matrix.sha }}
+      GATEWAY_IMAGE: 'us-east1-docker.pkg.dev/firezone-staging/firezone/gateway-perf'
+      GATEWAY_TAG: ${{ matrix.sha }}
+      CLIENT_IMAGE: 'us-east1-docker.pkg.dev/firezone-staging/firezone/client-perf'
+      CLIENT_TAG: ${{ matrix.sha }}
+      RELAY_IMAGE: 'us-east1-docker.pkg.dev/firezone-staging/firezone/relay-perf'
+      RELAY_TAG: ${{ matrix.sha }}
     strategy:
       fail-fast: false
       matrix:
+        sha:
+          - ${{ github.sha }}
+          - ${{ github.event.pull_request.base.sha }}
         test_name:
           - direct-tcp-client2server
           - direct-tcp-server2client
@@ -90,6 +155,8 @@ jobs:
           - relayed-udp-server2client
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ matrix.sha }}
       - uses: ./.github/actions/gcp-docker-login
         id: login
         with:
@@ -110,7 +177,6 @@ jobs:
           docker compose up -d relay
           docker compose up -d gateway
           docker compose up -d client
-
       - name: 'Performance test: ${{ matrix.test_name }}'
         timeout-minutes: 5
         env:
@@ -120,7 +186,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           overwrite: true
-          name: ${{ matrix.test_name }}-${{ github.ref_name == 'main' && 'main' || github.sha }}-iperf3results
+          name: ${{ matrix.test_name }}-${{ matrix.sha }}-iperf3results
           path: ./${{ matrix.test_name }}.json
       - name: Show Client logs
         if: "!cancelled()"
@@ -154,41 +220,25 @@ jobs:
       pull-requests: write
     steps:
       - uses: actions/checkout@v4
-      - name: Download PR performance test results
+      - name: Download base ref performance test results
+        uses: actions/download-artifact@v4
+        with:
+          pattern: '*-${{ github.event.pull_request.base.sha }}-iperf3results'
+          merge-multiple: true
+          path: ./${{ github.event.pull_request.base.sha }}
+      - name: Download head ref performance test results
         uses: actions/download-artifact@v4
         with:
           pattern: '*-${{ github.sha }}-iperf3results'
           merge-multiple: true
-          path: ./
-      - name: Get last Continous Delivery workflow run Id
-        uses: actions/github-script@v7
-        id: get_last_cd_run
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          script: |
-            const { data } = await github.rest.actions.listWorkflowRuns({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              workflow_id: "cd.yml",
-              status: 'success',
-              per_page: 1
-            });
-            return data.workflow_runs[0].id;
-      - name: Download main branch performance test results
-        uses: actions/download-artifact@v4
-        with:
-          pattern: '*-main-iperf3results'
-          merge-multiple: true
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          run-id: ${{ steps.get_last_cd_run.outputs.result }}
-          path: ./main
+          path: ./${{ github.sha }}
       - name: Update PR with results
         uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const { script } = require('./scripts/tests/perf/results.js');
-            script(github, context, [
+            script(github, context, '${{ github.event.pull_request.base.sha }}', '${{ github.sha }}', [
               'direct-tcp-client2server',
               'direct-tcp-server2client',
               'direct-udp-client2server',
