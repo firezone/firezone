@@ -40,7 +40,6 @@ mod sockets;
 mod utils;
 
 const MAX_UDP_SIZE: usize = (1 << 16) - 1;
-const DNS_QUERIES_QUEUE_SIZE: usize = 100;
 
 const REALM: &str = "firezone";
 
@@ -86,6 +85,11 @@ where
 
             if let Some(transmit) = self.node.poll_transmit() {
                 self.io.send_network(transmit)?;
+                continue;
+            }
+
+            if let Some(dns_query) = self.role_state.poll_dns_queries() {
+                self.io.perform_dns_query(dns_query);
                 continue;
             }
 
