@@ -5,7 +5,6 @@ on:
       release_tag:
         required: false
         type: string
-        default: ${{ env.VERSION }}
   workflow_dispatch:
 
 permissions:
@@ -90,7 +89,7 @@ jobs:
           if-no-files-found: error
       # Only for builds on main
       - name: Upload Release Assets
-        if: ${{ inputs.release_tag }}
+        if: ${{ inputs.release_tag || env.VERSION }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPOSITORY: ${{ github.repository }}
