@@ -70,10 +70,10 @@ where
     CB: Callbacks + 'static,
 {
     pub fn reconnect(&mut self) {
-        self.connections_state.node.reconnect(Instant::now());
+        self.node.reconnect(Instant::now());
     }
 
-    pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Result<Event<GatewayId>>> {
+    pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Result<ClientEvent>> {
         loop {
             if let Poll::Ready(other) = self.role_state.poll_next_event(cx) {
                 return Poll::Ready(Ok(other));
@@ -98,7 +98,7 @@ where
                         connection,
                         candidate,
                     } => {
-                        return Poll::Ready(Ok(Event::SignalIceCandidate {
+                        return Poll::Ready(Ok(ClientEvent::SignalIceCandidate {
                             conn_id: connection,
                             candidate,
                         }));
@@ -197,7 +197,7 @@ impl<CB> Tunnel<CB, GatewayState, Server, ClientId>
 where
     CB: Callbacks + 'static,
 {
-    pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Result<Event<ClientId>>> {
+    pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Result<GatewayEvent>> {
         loop {
             if let Poll::Ready(()) = self.role_state.poll(cx) {
                 continue;
@@ -217,7 +217,7 @@ where
                         connection,
                         candidate,
                     } => {
-                        return Poll::Ready(Ok(Event::SignalIceCandidate {
+                        return Poll::Ready(Ok(GatewayEvent::SignalIceCandidate {
                             conn_id: connection,
                             candidate,
                         }));
@@ -353,9 +353,9 @@ where
     }
 }
 
-pub enum Event<TId> {
+pub enum ClientEvent {
     SignalIceCandidate {
-        conn_id: TId,
+        conn_id: GatewayId,
         candidate: String,
     },
     ConnectionIntent {
@@ -364,5 +364,12 @@ pub enum Event<TId> {
     },
     RefreshResources {
         connections: Vec<ReuseConnection>,
+    },
+}
+
+pub enum GatewayEvent {
+    SignalIceCandidate {
+        conn_id: ClientId,
+        candidate: String,
     },
 }

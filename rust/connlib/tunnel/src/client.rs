@@ -1,7 +1,7 @@
 use crate::ip_packet::{IpPacket, MutableIpPacket};
 use crate::peer::PacketTransformClient;
 use crate::peer_store::PeerStore;
-use crate::{dns, dns::DnsQuery, Event, Tunnel, DNS_QUERIES_QUEUE_SIZE};
+use crate::{dns, dns::DnsQuery, Tunnel, DNS_QUERIES_QUEUE_SIZE};
 use bimap::BiMap;
 use connlib_shared::error::{ConnlibError as Error, ConnlibError};
 use connlib_shared::messages::{
@@ -16,6 +16,7 @@ use ip_network_table::IpNetworkTable;
 use itertools::Itertools;
 use snownet::Client;
 
+use crate::ClientEvent;
 use hickory_resolver::config::{NameServerConfig, Protocol, ResolverConfig};
 use hickory_resolver::TokioAsyncResolver;
 use std::collections::hash_map::Entry;
@@ -251,7 +252,7 @@ pub struct ClientState {
     dns_mapping: BiMap<IpAddr, DnsServer>,
     dns_resolvers: HashMap<IpAddr, TokioAsyncResolver>,
 
-    buffered_events: VecDeque<Event<GatewayId>>,
+    buffered_events: VecDeque<ClientEvent>,
     interface_config: Option<InterfaceConfig>,
     buffered_packets: VecDeque<IpPacket<'static>>,
 }
@@ -456,10 +457,11 @@ impl ClientState {
 
         tracing::debug!("Sending connection intent");
 
-        self.buffered_events.push_back(Event::ConnectionIntent {
-            resource,
-            connected_gateway_ids: gateways,
-        });
+        self.buffered_events
+            .push_back(ClientEvent::ConnectionIntent {
+                resource,
+                connected_gateway_ids: gateways,
+            });
     }
 
     pub fn create_peer_config_for_new_connection(
@@ -581,7 +583,7 @@ impl ClientState {
         self.buffered_packets.pop_front()
     }
 
-    pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Event<GatewayId>> {
+    pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<ClientEvent> {
         loop {
             if let Some(event) = self.buffered_events.pop_front() {
                 return Poll::Ready(event);
@@ -609,7 +611,7 @@ impl ClientState {
                         payload: Some(resource.address.clone()),
                     });
                 }
-                return Poll::Ready(Event::RefreshResources { connections });
+                return Poll::Ready(ClientEvent::RefreshResources { connections });
             }
 
             match self.forwarded_dns_queries.poll_unpin(cx) {
