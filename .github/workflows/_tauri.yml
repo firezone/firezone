@@ -84,7 +84,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.binary-dest-path }}
-          path: |
+          path: >
             ${{ matrix.artifacts }}
           if-no-files-found: error
       # Only for builds on main
