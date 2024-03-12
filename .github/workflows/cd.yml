@@ -28,14 +28,13 @@ jobs:
   deploy-staging:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.deploy-staging }}
     runs-on: ubuntu-22.04
-    secrets: inherit
     permissions:
       contents: write
     # Cancel old workflow runs if new code is pushed
     concurrency:
       group: "staging-deploy-${{ github.workflow }}-${{ github.ref }}"
       cancel-in-progress: false
-    needs: integration-tests
+    needs: ci
     env:
       TF_CLOUD_ORGANIZATION: "firezone"
       TF_API_TOKEN: "${{ secrets.TF_API_TOKEN }}"
