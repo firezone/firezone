@@ -17,17 +17,15 @@ fn smoke() {
         .with_env_filter("debug")
         .try_init();
 
-    let (mut alice, mut bob) = alice_and_bob();
-    alice.add_local_host_candidate(s("1.1.1.1:80")).unwrap();
-    bob.add_local_host_candidate(s("1.1.1.2:80")).unwrap();
+    let (alice, bob) = alice_and_bob();
 
-    let start = Instant::now();
+    let mut alice = TestNode::new(info_span!("Alice"), alice);
+    alice.add_local_host_candidate("1.1.1.1:80");
 
-    let answer = send_offer(&mut alice, &mut bob, start);
-    alice.accept_answer(1, bob.public_key(), answer, start);
+    let mut bob = TestNode::new(info_span!("Bob"), bob);
+    bob.add_local_host_candidate("1.1.1.2:80");
 
-    let mut alice = TestNode::new(info_span!("Alice"), EitherNode::Client(alice));
-    let mut bob = TestNode::new(info_span!("Bob"), EitherNode::Server(bob));
+    handshake(&mut alice, &mut bob);
 
     loop {
         if alice.is_connected_to(1) && bob.is_connected_to(1) {
@@ -237,6 +235,18 @@ enum EitherNode {
     Client(ClientNode<u64>),
 }
 
+impl From<ClientNode<u64>> for EitherNode {
+    fn from(value: ClientNode<u64>) -> Self {
+        Self::Client(value)
+    }
+}
+
+impl From<ServerNode<u64>> for EitherNode {
+    fn from(value: ServerNode<u64>) -> Self {
+        Self::Server(value)
+    }
+}
+
 impl EitherNode {
     fn poll_transmit(&mut self) -> Option<Transmit> {
         match self {
@@ -266,7 +276,28 @@ impl EitherNode {
         }
     }
 
-    pub fn decapsulate<'s>(
+    fn add_local_host_candidate(&mut self, socket: &str) {
+        match self {
+            EitherNode::Client(n) => n.add_local_host_candidate(s(socket)).unwrap(),
+            EitherNode::Server(n) => n.add_local_host_candidate(s(socket)).unwrap(),
+        }
+    }
+
+    fn as_client_mut(&mut self) -> Option<&mut ClientNode<u64>> {
+        match self {
+            EitherNode::Server(_) => None,
+            EitherNode::Client(c) => Some(c),
+        }
+    }
+
+    fn as_server_mut(&mut self) -> Option<&mut ServerNode<u64>> {
+        match self {
+            EitherNode::Server(s) => Some(s),
+            EitherNode::Client(_) => None,
+        }
+    }
+
+    fn decapsulate<'s>(
         &mut self,
         local: SocketAddr,
         from: SocketAddr,
@@ -289,10 +320,10 @@ impl EitherNode {
 }
 
 impl TestNode {
-    pub fn new(span: Span, node: EitherNode) -> Self {
+    pub fn new(span: Span, node: impl Into<EitherNode>) -> Self {
         let now = Instant::now();
         TestNode {
-            node,
+            node: node.into(),
             span,
             progress_count: 0,
             time: now,
@@ -305,6 +336,39 @@ impl TestNode {
     fn is_connected_to(&self, id: u64) -> bool {
         self.connection_state.get(&id).copied().unwrap_or_default()
     }
+
+    fn add_local_host_candidate(&mut self, socket: &str) {
+        self.span
+            .in_scope(|| self.node.add_local_host_candidate(socket))
+    }
+}
+
+fn handshake(client: &mut TestNode, server: &mut TestNode) {
+    let client_node = &mut client.node.as_client_mut().unwrap();
+    let server_node = &mut server.node.as_server_mut().unwrap();
+
+    let offer = client.span.in_scope(|| {
+        client_node.new_connection(
+            1,
+            HashSet::default(),
+            HashSet::default(),
+            client.time,
+            client.time,
+        )
+    });
+    let answer = server.span.in_scope(|| {
+        server_node.accept_connection(
+            1,
+            offer,
+            client_node.public_key(),
+            HashSet::default(),
+            HashSet::default(),
+            server.time,
+        )
+    });
+    client
+        .span
+        .in_scope(|| client_node.accept_answer(1, server_node.public_key(), answer, client.time));
 }
 
 fn progress(a1: &mut TestNode, a2: &mut TestNode) {
