@@ -167,8 +167,9 @@ pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
                 std::process::exit(1);
             }
         });
-    } else {
-        // Don't register deep links for smoke tests yet
+    }
+
+    if ! cli.no_deep_links {
         // The single-instance check is done, so register our exe
         // to handle deep links
         deep_link::register().context("Failed to register deep link handler")?;

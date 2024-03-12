@@ -163,6 +163,9 @@ struct Cli {
     /// If true, show a fake update notification that opens the Firezone release page when clicked
     #[arg(long, hide = true)]
     test_update_notification: bool,
+    /// Disable deep link registration and handling, for headless CI environments
+    #[arg(long, hide = true)]
+    no_deep_links: bool,
 }
 
 impl Cli {

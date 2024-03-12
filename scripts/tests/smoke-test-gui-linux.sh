@@ -41,7 +41,7 @@ function smoke_test() {
     sudo stat "$DEVICE_ID_PATH"
 
     # Run the test again and make sure the device ID is not changed
-    sudo --preserve-env xvfb-run --auto-servernum ../target/debug/"$PACKAGE" smoke-test
+    sudo --preserve-env xvfb-run --auto-servernum ../target/debug/"$PACKAGE" smoke-test --no-deep-links
     DEVICE_ID_2=$(cat "$DEVICE_ID_PATH")
 
     if [ "$DEVICE_ID_1" != "$DEVICE_ID_2" ]
@@ -61,7 +61,7 @@ function crash_test() {
     sudo rm -f "$DUMP_PATH"
 
     # Fail if it returns success, this is supposed to crash
-    sudo --preserve-env xvfb-run --auto-servernum ../target/debug/"$PACKAGE" --crash && exit 1
+    sudo --preserve-env xvfb-run --auto-servernum ../target/debug/"$PACKAGE" --crash --no-deep-links && exit 1
 
     # Fail if the crash file wasn't written
     sudo stat "$DUMP_PATH"
