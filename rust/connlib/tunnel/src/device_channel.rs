@@ -22,8 +22,9 @@ use crate::ip_packet::{IpPacket, MutableIpPacket};
 use connlib_shared::error::ConnlibError;
 use connlib_shared::messages::Interface;
 use connlib_shared::{Callbacks, Error};
-use ip_network::IpNetwork;
+use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use pnet_packet::Packet;
+use std::collections::HashSet;
 use std::io;
 use std::net::IpAddr;
 use std::task::{Context, Poll, Waker};
@@ -35,6 +36,22 @@ pub struct Device {
     tun: Option<Tun>,
     waker: Option<Waker>,
     mtu_refreshed_at: Instant,
+}
+
+#[allow(dead_code)]
+fn ipv4(ip: &IpNetwork) -> Option<&Ipv4Network> {
+    match ip {
+        IpNetwork::V4(v4) => Some(v4),
+        IpNetwork::V6(_) => None,
+    }
+}
+
+#[allow(dead_code)]
+fn ipv6(ip: &IpNetwork) -> Option<&Ipv6Network> {
+    match ip {
+        IpNetwork::V4(_) => None,
+        IpNetwork::V6(v6) => Some(v6),
+    }
 }
 
 impl Device {
@@ -170,24 +187,13 @@ impl Device {
             .unwrap_or("uninitialized")
     }
 
-    pub(crate) fn remove_route(
+    pub(crate) fn set_routes(
         &mut self,
-        route: IpNetwork,
+        routes: HashSet<IpNetwork>,
         callbacks: &impl Callbacks<Error = Error>,
-    ) -> Result<Option<Device>, Error> {
-        self.tun_mut()?.remove_route(route, callbacks)?;
-
-        Ok(None)
-    }
-
-    #[allow(unused_mut)]
-    pub(crate) fn add_route(
-        &mut self,
-        route: IpNetwork,
-        callbacks: &impl Callbacks<Error = Error>,
-    ) -> Result<Option<Device>, Error> {
-        self.tun_mut()?.add_route(route, callbacks)?;
-        Ok(None)
+    ) -> Result<(), Error> {
+        self.tun_mut()?.set_routes(routes, callbacks)?;
+        Ok(())
     }
 
     pub fn write(&self, packet: IpPacket<'_>) -> io::Result<usize> {

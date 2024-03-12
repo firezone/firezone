@@ -1,6 +1,7 @@
-use connlib_shared::{messages::Interface as InterfaceConfig, Result};
+use connlib_shared::{messages::Interface as InterfaceConfig, Callbacks, Error, Result};
 use ip_network::IpNetwork;
 use std::{
+    collections::HashSet,
     io,
     net::{IpAddr, SocketAddrV4, SocketAddrV6},
     os::windows::process::CommandExt,
@@ -34,6 +35,7 @@ pub struct Tun {
     packet_rx: std::sync::Mutex<mpsc::Receiver<wintun::Packet>>,
     _recv_thread: std::thread::JoinHandle<()>,
     session: Arc<wintun::Session>,
+    routes: HashSet<IpNetwork>,
 }
 
 impl Drop for Tun {
@@ -150,15 +152,31 @@ impl Tun {
             _recv_thread: recv_thread,
             packet_rx,
             session: Arc::clone(&session),
+            routes: HashSet::new(),
         })
     }
 
     // It's okay if this blocks until the route is added in the OS.
-    pub fn add_route(
-        &self,
-        route: IpNetwork,
-        _: &impl connlib_shared::Callbacks<Error = connlib_shared::Error>,
+    pub fn set_routes(
+        &mut self,
+        new_routes: HashSet<IpNetwork>,
+        _callbacks: &impl Callbacks<Error = Error>,
     ) -> Result<()> {
+        for new_route in new_routes.difference(&self.routes) {
+            self.add_route(*new_route)?;
+        }
+
+        for old_route in self.routes.difference(&new_routes) {
+            self.remove_route(*old_route)?;
+        }
+
+        self.routes = new_routes;
+
+        Ok(())
+    }
+
+    // It's okay if this blocks until the route is added in the OS.
+    fn add_route(&self, route: IpNetwork) -> Result<()> {
         const DUPLICATE_ERR: u32 = 0x80071392;
         let entry = self.forward_entry(route);
 
@@ -173,12 +191,8 @@ impl Tun {
         }
     }
 
-    // It's okay if this blocks until the route is added in the OS.
-    pub fn remove_route(
-        &self,
-        route: IpNetwork,
-        _: &impl connlib_shared::Callbacks<Error = connlib_shared::Error>,
-    ) -> Result<()> {
+    // It's okay if this blocks until the route is removed in the OS.
+    fn remove_route(&self, route: IpNetwork) -> Result<()> {
         let entry = self.forward_entry(route);
 
         // SAFETY: Windows shouldn't store the reference anywhere, it's just a way to pass lots of arguments at once. And no other thread sees this variable.

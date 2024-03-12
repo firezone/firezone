@@ -6,7 +6,7 @@
 use connlib_client_shared::{
     file_logger, keypair, Callbacks, Error, LoginUrl, LoginUrlError, ResourceDescription, Session,
 };
-use ip_network::IpNetwork;
+use ip_network::{Ipv4Network, Ipv6Network};
 use jni::{
     objects::{GlobalRef, JByteArray, JClass, JObject, JObjectArray, JString, JValue, JValueGen},
     strings::JNIString,
@@ -193,21 +193,31 @@ impl Callbacks for CallbackHandler {
         })
     }
 
-    fn on_add_route(&self, route: IpNetwork) -> Result<Option<RawFd>, Self::Error> {
+    fn on_update_routes(
+        &self,
+        route_list_4: Vec<Ipv4Network>,
+        route_list_6: Vec<Ipv6Network>,
+    ) -> Result<Option<RawFd>, Self::Error> {
         self.env(|mut env| {
-            let ip = env
-                .new_string(route.network_address().to_string())
+            let route_list_4 = env
+                .new_string(serde_json::to_string(&route_list_4)?)
                 .map_err(|source| CallbackError::NewStringFailed {
-                    name: "route_ip",
+                    name: "route_list_4",
+                    source,
+                })?;
+            let route_list_6 = env
+                .new_string(serde_json::to_string(&route_list_6)?)
+                .map_err(|source| CallbackError::NewStringFailed {
+                    name: "route_list_6",
                     source,
                 })?;
 
-            let name = "onAddRoute";
+            let name = "onUpdateRoutes";
             env.call_method(
                 &self.callback_handler,
                 name,
-                "(Ljava/lang/String;I)I",
-                &[JValue::from(&ip), JValue::Int(route.netmask().into())],
+                "(Ljava/lang/String;Ljava/lang/String;)I",
+                &[JValue::from(&route_list_4), JValue::from(&route_list_6)],
             )
             .and_then(|val| val.i())
             .map(Some)
@@ -225,28 +235,6 @@ impl Callbacks for CallbackHandler {
                 "(I)V",
                 &[JValue::Int(file_descriptor)],
             )
-        })
-    }
-
-    fn on_remove_route(&self, route: IpNetwork) -> Result<Option<RawFd>, Self::Error> {
-        self.env(|mut env| {
-            let ip = env
-                .new_string(route.network_address().to_string())
-                .map_err(|source| CallbackError::NewStringFailed {
-                    name: "route_ip",
-                    source,
-                })?;
-
-            let name = "onRemoveRoute";
-            env.call_method(
-                &self.callback_handler,
-                name,
-                "(Ljava/lang/String;I)I",
-                &[JValue::from(&ip), JValue::Int(route.netmask().into())],
-            )
-            .and_then(|val| val.i())
-            .map(Some)
-            .map_err(|source| CallbackError::CallMethodFailed { name, source })
         })
     }
 

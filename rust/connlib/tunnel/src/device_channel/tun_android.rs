@@ -1,10 +1,10 @@
-use crate::device_channel::ioctl;
+use crate::device_channel::{ioctl, ipv4, ipv6};
 use connlib_shared::{messages::Interface as InterfaceConfig, Callbacks, Error, Result};
 use ip_network::IpNetwork;
 use std::net::IpAddr;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::task::{Context, Poll};
 use std::{
+    collections::HashSet,
     io,
     os::fd::{AsRawFd, RawFd},
 };
@@ -60,6 +60,24 @@ impl Tun {
         self.name.as_str()
     }
 
+    pub fn set_routes(
+        &mut self,
+        routes: HashSet<IpNetwork>,
+        callbacks: &impl Callbacks<Error = Error>,
+    ) -> Result<()> {
+        let fd = callbacks
+            .on_update_routes(
+                routes.iter().filter_map(ipv4).copied().collect(),
+                routes.iter().filter_map(ipv6).copied().collect(),
+            )?
+            .ok_or(Error::NoFd)?;
+
+        // SAFETY: we expect the callback to return a valid file descriptor
+        unsafe { self.replace_fd(fd)? };
+
+        Ok(())
+    }
+
     // SAFETY: must be called with a valid file descriptor
     unsafe fn replace_fd(&mut self, fd: RawFd) -> Result<()> {
         if self.fd.as_raw_fd() != fd {
@@ -67,30 +85,6 @@ impl Tun {
             self.fd = AsyncFd::new(fd)?;
             self.name = interface_name(fd)?;
         }
-
-        Ok(())
-    }
-
-    pub fn add_route(
-        &mut self,
-        route: IpNetwork,
-        callbacks: &impl Callbacks<Error = Error>,
-    ) -> Result<()> {
-        let fd = callbacks.on_add_route(route)?.ok_or(Error::NoFd)?;
-        // SAFETY: we expect a valid fd from FFI
-        unsafe { self.replace_fd(fd)? };
-
-        Ok(())
-    }
-
-    pub fn remove_route(
-        &mut self,
-        route: IpNetwork,
-        callbacks: &impl Callbacks<Error = Error>,
-    ) -> Result<()> {
-        let fd = callbacks.on_remove_route(route)?.ok_or(Error::NoFd)?;
-        // SAFETY: we expect a valid fd from FFI
-        unsafe { self.replace_fd(fd)? };
 
         Ok(())
     }

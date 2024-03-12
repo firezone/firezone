@@ -447,36 +447,24 @@ extension Adapter: CallbackHandlerDelegate {
     }
   }
 
-  public func onAddRoute(_ route: String) {
+  public func onUpdateRoutes(routeList4: String, routeList6: String) {
     workQueue.async { [weak self] in
       guard let self = self else { return }
 
-      self.logger.log("Adapter.onAddRoute(\(route))")
+      self.logger.log("Adapter.onUpdateRoutes")
+
+      let routes4 = try! JSONDecoder().decode([String].self, from: routeList4.data(using: .utf8)!)
+      let routes6 = try! JSONDecoder().decode([String].self, from: routeList6.data(using: .utf8)!)
+
       guard let networkSettings = self.networkSettings else {
-        self.logger.error("Adapter.onAddRoute: No network settings")
+        self.logger.error("Adapter.onUpdateRoutes: No network settings")
         return
       }
 
-      networkSettings.addRoute(route)
-      if case .tunnelReady = self.state {
-        networkSettings.apply(on: packetTunnelProvider, logger: self.logger, completionHandler: nil)
-      }
-    }
-  }
+      networkSettings.routes4 = NetworkSettings.parseRoutes4(routes4: routes4)
+      networkSettings.routes6 = NetworkSettings.parseRoutes6(routes6: routes6)
 
-  public func onRemoveRoute(_ route: String) {
-    workQueue.async { [weak self] in
-      guard let self = self else { return }
-
-      self.logger.log("Adapter.onRemoveRoute(\(route))")
-      guard let networkSettings = self.networkSettings else {
-        self.logger.error("Adapter.onRemoveRoute: No network settings")
-        return
-      }
-      networkSettings.removeRoute(route)
-      if case .tunnelReady = self.state {
-        networkSettings.apply(on: packetTunnelProvider, logger: self.logger, completionHandler: nil)
-      }
+      networkSettings.apply(on: packetTunnelProvider, logger: self.logger, completionHandler: nil)
     }
   }
 

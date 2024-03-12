@@ -77,6 +77,10 @@ where
                 self.device.write(packet)?;
                 cx.waker().wake_by_ref();
             }
+            Poll::Ready(Event::DeviceConfigUpdated) => {
+                self.update_interface()?;
+                cx.waker().wake_by_ref()
+            }
             Poll::Ready(other) => return Poll::Ready(Ok(other)),
             _ => (),
         }
@@ -419,4 +423,5 @@ pub enum Event<TId> {
     },
     SendPacket(IpPacket<'static>),
     StopPeer(TId),
+    DeviceConfigUpdated,
 }
