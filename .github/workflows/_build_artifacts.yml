@@ -278,7 +278,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           overwrite: true
-          name: ${{ matrix.name.image_name }}${{ inputs.image_suffix }}-${{ matrix.arch.shortname }}-${{ inputs.sha }}-digest
+          name: ${{ matrix.name.image_name }}${{ inputs.image_suffix }}-${{ inputs.sha }}-digest-*
           path: /tmp/digests/${{ matrix.name.image_name }}
           if-no-files-found: error
           retention-days: 1
@@ -307,7 +307,7 @@ jobs:
       - name: Download digests
         uses: actions/download-artifact@v4
         with:
-          pattern: ${{ matrix.image_name }}${{ inputs.image_suffix }}-*-${{ inputs.sha }}-digest
+          pattern: ${{ matrix.image_name }}${{ inputs.image_suffix }}-${{ inputs.sha }}-digest-*
           merge-multiple: true
           path: /tmp/digests/${{ matrix.image_name }}
       - name: Display structure of downloaded artifacts
