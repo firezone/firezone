@@ -97,3 +97,6 @@ existing Firezone Gateway(s) and deploys new ones in their place.
 - Minimal downtime upgrades using a regional instance manager.
 - Expose the ability to select an existing subnetwork instead of auto-creating a
   new one.
+- Expose the ability to select an existing
+  [regional external IP address](https://cloud.google.com/nat/docs/ports-and-addresses)
+  instead of auto-creating a new one.
