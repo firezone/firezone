@@ -398,7 +398,7 @@ fn connect(
     log_dir: JString,
     log_filter: JString,
     callback_handler: GlobalRef,
-) -> Result<Session<CallbackHandler>, ConnectError> {
+) -> Result<Session, ConnectError> {
     let api_url = string_from_jstring!(env, api_url);
     let secret = SecretString::from(string_from_jstring!(env, token));
     let device_id = string_from_jstring!(env, device_id);
@@ -451,7 +451,7 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_co
     log_dir: JString,
     log_filter: JString,
     callback_handler: JObject,
-) -> *const Session<CallbackHandler> {
+) -> *const Session {
     let Ok(callback_handler) = env.new_global_ref(callback_handler) else {
         return std::ptr::null();
     };
@@ -489,7 +489,7 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_co
 pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_disconnect(
     mut env: JNIEnv,
     _: JClass,
-    session: *mut Session<CallbackHandler>,
+    session: *mut Session,
 ) {
     catch_and_throw(&mut env, |_| {
         Box::from_raw(session).disconnect();

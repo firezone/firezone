@@ -1,0 +1,36 @@
+name: Hotfix Production
+run-name: Triggered by ${{ github.actor }}
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Image tag to deploy. Defaults to the last commit SHA in the branch."
+        type: string
+        default: ${{ github.sha }}
+        required: false
+
+concurrency:
+  group: "hotfix-production-${{ github.workflow }}-${{ github.ref }}"
+  cancel-in-progress: false
+
+jobs:
+  # This is *not* run in CI on main in order to allow
+  # breaking changes to be merged as administrator and have the
+  # resulting CI green on main.
+  # So run them here.
+  compatibility-tests:
+    uses: ./.github/workflows/_integration_tests.yml
+    secrets: inherit
+    with:
+      gateway_image: "ghcr.io/firezone/gateway"
+      gateway_tag: "latest"
+      # FIXME: Uncomment this after the next release -- the
+      # client will be published then.
+      # client_tag: "latest"
+
+  deploy-production:
+    needs: compatibility-tests
+    secrets: inherit
+    uses: ./.github/workflows/_deploy_production.yml
+    with:
+      tag: ${{ inputs.tag }}

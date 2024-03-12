@@ -1,5 +1,13 @@
 name: Continuous Delivery
 on:
+  # Used for debugging the workflow by manually calling it
+  workflow_dispatch:
+    inputs:
+      deploy-staging:
+        description: "Also deploy to staging. By default the deploy is not executed when triggering this workflow manually."
+        type: boolean
+        default: false
+        required: false
   push:
     branches:
       - main
@@ -9,21 +17,25 @@ env:
   VERSION: "1.0.0"
 
 jobs:
+  # Re-run CI checks to make sure everything's green, since "Merging as administrator"
+  # won't trigger these in the merge group.
   ci:
     uses: ./.github/workflows/ci.yml
     secrets: inherit
+    with:
+      profile: "release"
+      stage: "release"
 
   deploy-staging:
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.deploy-staging }}
     runs-on: ubuntu-22.04
-    # if: ${{ github.event.workflow_run.conclusion == 'success' }}
     permissions:
       contents: write
     # Cancel old workflow runs if new code is pushed
     concurrency:
       group: "staging-deploy-${{ github.workflow }}-${{ github.ref }}"
       cancel-in-progress: false
-    needs:
-      - ci
+    needs: ci
     env:
       TF_CLOUD_ORGANIZATION: "firezone"
       TF_API_TOKEN: "${{ secrets.TF_API_TOKEN }}"
@@ -63,307 +75,3 @@ jobs:
         with:
           run: ${{ steps.apply-run.outputs.run_id }}
           comment: "Apply Run from GitHub Actions CI ${{ github.sha }}"
-
-  update-release-draft:
-    needs: deploy-staging
-    runs-on: ubuntu-22.04
-    permissions:
-      # write permission is required to create a github release
-      contents: write
-      # autolabeler
-      pull-requests: write
-    concurrency:
-      group: "staging-draft-release-${{ github.workflow }}-${{ github.ref }}"
-      cancel-in-progress: true
-    steps:
-      - uses: release-drafter/release-drafter@v6
-        id: update-release-draft
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          prerelease: true
-          include-pre-releases: true
-          version: ${{ env.VERSION }}
-      - name: Delete stale artifacts
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -xe
-
-          gh release view ${{ steps.update-release-draft.outputs.tag_name }} \
-            --repo ${{ github.repository }} \
-            --json assets \
-            --jq '.assets[] | .name' \
-            | xargs -I{} gh release delete-asset ${{ steps.update-release-draft.outputs.tag_name }} {} --repo ${{ github.repository }} --yes
-    outputs:
-      name: ${{ steps.update-release-draft.outputs.name }}
-      tag_name: ${{ steps.update-release-draft.outputs.tag_name }}
-      upload_url: ${{ steps.update-release-draft.outputs.upload_url }}
-
-  build-push-linux-release-artifacts:
-    permissions:
-      id-token: write
-      contents: write
-    needs: update-release-draft
-    runs-on: ubuntu-22.04
-    defaults:
-      run:
-        working-directory: ./rust
-    strategy:
-      fail-fast: false
-      matrix:
-        arch:
-          - target: x86_64-unknown-linux-musl
-            shortname: x64
-            platform: linux/amd64
-          - target: aarch64-unknown-linux-musl  # E.g. AWS Graviton
-            shortname: arm64
-            platform: linux/arm64
-          - target: armv7-unknown-linux-musleabihf  # E.g. Raspberry Pi
-            platform: linux/arm/v7
-            shortname: arm
-          # Requires ring v0.17 which a number of our dependencies don't yet support
-          # - target: mips64-unknown-linux-muslabi64 # E.g. UniFi Routers
-          #   platform: linux/mips64le
-        name:
-          - package: firezone-linux-client
-            artifact: linux-client
-            image_name: client
-          - package: firezone-relay
-            artifact: relay
-            image_name: relay
-          - package: firezone-gateway
-            artifact: gateway
-            image_name: gateway
-    env:
-      BINARY_DEST_PATH: ${{ matrix.name.artifact }}-${{ matrix.arch.shortname }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/setup-rust
-        with:
-          targets: aarch64-unknown-linux-musl armv7-unknown-linux-musleabihf x86_64-unknown-linux-musl
-      - uses: taiki-e/install-action@v2
-        with:
-          tool: cross
-      - name: Build release binaries
-        run: |
-          set -xe
-
-          cross build --release -p ${{ matrix.name.package }} --target ${{ matrix.arch.target }}
-
-          # Used for release artifact
-          cp target/${{ matrix.arch.target }}/release/${{ matrix.name.package }} $BINARY_DEST_PATH
-
-          # Used for Docker images
-          cp target/${{ matrix.arch.target }}/release/${{ matrix.name.package }} ${{ matrix.name.package }}
-          sha256sum $BINARY_DEST_PATH > $BINARY_DEST_PATH.sha256sum.txt
-
-          ls -la $BINARY_DEST_PATH
-          ls -la $BINARY_DEST_PATH.sha256sum.txt
-      - name: Upload Release Assets
-        if: ${{ matrix.name.artifact != 'relay' }}  # Hide relay binary from public releases
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -xe
-
-          gh release upload ${{ needs.update-release-draft.outputs.tag_name }} \
-            ${{ env.BINARY_DEST_PATH }} \
-            ${{ env.BINARY_DEST_PATH }}.sha256sum.txt \
-            --clobber \
-            --repo ${{ github.repository }}
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-        with:
-          # We are overriding the default buildkit version being used by Buildx. We need buildkit >= 12.0 and currently BuildX
-          # supports v0.11.6 https://github.com/docker/buildx/blob/b8739d74417f86aa8fc9aafb830a8ba656bdef0e/Dockerfile#L9.
-          # We should for any updates on buildx and on the setup-buildx-action itself.
-          driver-opts: |
-            image=moby/buildkit:v0.12.0
-      - uses: ./.github/actions/gcp-docker-login
-        id: login
-        with:
-          project: firezone-staging
-      - name: Build Version Tags
-        run: |
-          set -xe
-          MAJOR_VERSION="${VERSION%%.*}"
-          MAJOR_MINOR_VERSION="${VERSION%.*}"
-
-          echo "MAJOR_VERSION=${MAJOR_VERSION}" >> $GITHUB_ENV
-          echo "MAJOR_MINOR_VERSION=${MAJOR_MINOR_VERSION}" >> $GITHUB_ENV
-      - name: Docker meta
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images:
-            ${{ steps.login.outputs.registry }}/firezone/${{matrix.name.image_name }}
-          tags: |
-            type=raw,value=${{ github.sha }}
-            type=raw,value=${{ env.VERSION }}
-            type=raw,value=${{ env.MAJOR_VERSION }}
-            type=raw,value=${{ env.MAJOR_MINOR_VERSION }}
-      - name: Build and push release Docker images by digest
-        id: build
-        uses: docker/build-push-action@v5
-        with:
-          platforms: ${{ matrix.arch.platform }}
-          build-args: |
-            PACKAGE=${{ matrix.name.package }}
-            TARGET=${{ matrix.arch.target }}
-          context: rust
-          cache-from: |
-            type=registry,ref=${{ steps.login.outputs.registry }}/cache/${{ matrix.name.image_name }}:main
-          cache-to: |
-            type=registry,ref=${{ steps.login.outputs.registry }}/cache/${{ matrix.name.image_name }}:main,mode=max
-          target: release
-          outputs:
-            type=image,name=${{ steps.login.outputs.registry }}/firezone/${{ matrix.name.image_name }},push-by-digest=true,name-canonical=true,push=true
-      - name: Export digest
-        run: |
-          mkdir -p /tmp/digests/${{ matrix.name.image_name }}
-          digest="${{ steps.build.outputs.digest }}"
-          touch "/tmp/digests/${{ matrix.name.image_name }}/${digest#sha256:}"
-      - name: Upload digest
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.name.image_name }}-${{ matrix.arch.shortname }}-digest
-          path: /tmp/digests/${{ matrix.name.image_name }}
-          if-no-files-found: error
-          retention-days: 1
-
-  # Build GUI for Windows / Linux
-  build-push-gui-release-artifacts:
-    name: build-gui-${{ matrix.runs-on }}
-    runs-on: ${{ matrix.runs-on }}
-    permissions:
-      id-token: write
-      contents: write
-    needs: update-release-draft
-    defaults:
-      run:
-        working-directory: ./rust/gui-client
-    strategy:
-      fail-fast: false
-      # The matrix is 1x1 to match the style of build-push-linux-release-artifacts
-      # In the future we could try to cross-compile aarch64-windows here.
-      # Match with `updates.rs` in gui-client, `git grep WCPYPXZF`
-      matrix:
-        include:
-          - runs-on: ubuntu-20.04
-            binary-dest-path: firezone-linux-gui-client
-            rename-script: ../../scripts/build/tauri-rename-ubuntu.sh
-          - runs-on: windows-2019
-            binary-dest-path: firezone-windows-client
-            rename-script: ../../scripts/build/tauri-rename-windows.sh
-    env:
-      BINARY_DEST_PATH: ${{ matrix.binary-dest-path }}
-      CONNLIB_LOG_UPLOAD_INTERVAL_SECS: 300
-      AZURE_KEY_VAULT_URI: ${{ secrets.AZURE_KEY_VAULT_URI }}
-      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-      AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-      AZURE_CERT_NAME: ${{ secrets.AZURE_CERT_NAME }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/setup-node
-        with:
-          node-version: '20'
-      - uses: ./.github/actions/setup-rust
-        with:
-          cache_backend: github
-      - uses: ./.github/actions/setup-tauri
-      - name: Install pnpm deps
-        run: pnpm install
-      - name: Install AzureSignTool
-        if: ${{ runner.os == 'Windows' }}
-        shell: bash
-        run: dotnet tool install --global AzureSignTool
-      - name: Build release exe and MSI
-        run: pnpm build
-      # We need to sign the exe inside the MSI. Currently
-      # we do this in a "beforeBundleCommand" hook in tauri.windows.conf.json.
-      # But this will soon be natively supported in Tauri.
-      # TODO: Use Tauri's native MSI signing with support for EV certs
-      # See https://github.com/tauri-apps/tauri/pull/8718
-      - name: Sign the MSI
-        if: ${{ runner.os == 'Windows' }}
-        shell: bash
-        run: ../../scripts/build/sign.sh ../target/release/bundle/msi/Firezone_${{ env.VERSION }}_x64_en-US.msi
-      - name: Rename artifacts and compute SHA256
-        shell: bash
-        run: ${{ matrix.rename-script }}
-      - name: Upload Release Assets (Linux)
-        if: ${{ runner.os == 'Linux' }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPOSITORY: ${{ github.repository }}
-          TAG_NAME: ${{ needs.update-release-draft.outputs.tag_name }}
-        shell: bash
-        run: ../../scripts/build/tauri-upload-ubuntu.sh
-      - name: Upload Release Assets (Windows)
-        if: ${{ runner.os == 'Windows' }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPOSITORY: ${{ github.repository }}
-          TAG_NAME: ${{ needs.update-release-draft.outputs.tag_name }}
-        shell: bash
-        run: ../../scripts/build/tauri-upload-windows.sh
-
-  merge-release-artifacts:
-    permissions:
-      id-token: write
-    needs: build-push-linux-release-artifacts
-    runs-on: ubuntu-22.04
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - image_name: relay
-          - image_name: gateway
-          - image_name: client
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/gcp-docker-login
-        id: login
-        with:
-          project: firezone-staging
-      - name: Download digests
-        uses: actions/download-artifact@v4
-        with:
-          pattern: ${{ matrix.image_name }}-*-digest
-          merge-multiple: true
-          path: /tmp/digests/${{ matrix.image_name }}
-      - name: Display structure of downloaded artifacts
-        run: ls -R /tmp/digests
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-      - name: Build Version Tags
-        run: |
-          set -xe
-          MAJOR_VERSION="${VERSION%%.*}"
-          MAJOR_MINOR_VERSION="${VERSION%.*}"
-
-          echo "MAJOR_VERSION=${MAJOR_VERSION}" >> $GITHUB_ENV
-          echo "MAJOR_MINOR_VERSION=${MAJOR_MINOR_VERSION}" >> $GITHUB_ENV
-      - name: Docker meta
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images:
-            ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}
-          tags: |
-            type=raw,value=${{ github.sha }}
-            type=raw,value=${{ env.VERSION }}
-            type=raw,value=${{ env.MAJOR_VERSION }}
-            type=raw,value=${{ env.MAJOR_MINOR_VERSION }}
-      - name: Create manifest list and push
-        working-directory: /tmp/digests/${{ matrix.image_name }}
-        run: |
-          tags=$(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON")
-          sources=$(printf '${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}@sha256:%s ' *)
-          echo "$sources"
-          docker buildx imagetools create $tags $sources
-          docker buildx imagetools inspect "${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}"
