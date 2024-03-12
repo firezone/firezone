@@ -18,6 +18,7 @@ const PHOENIX_TOPIC: &str = "client";
 use eventloop::Command;
 pub use eventloop::Eventloop;
 use secrecy::Secret;
+use tokio::task::JoinHandle;
 
 /// Max interval to retry connections to the portal if it's down or the client has network
 /// connectivity changes. Set this to something short so that the end-user experiences
@@ -69,53 +70,21 @@ impl Session {
             .thread_stack_size(3 * 1024 * 1024)
             .enable_all()
             .build()?;
-        {
-            let callbacks = callbacks.clone();
-            let default_panic_hook = std::panic::take_hook();
-            std::panic::set_hook(Box::new({
-                let tx = tx.clone();
-                move |info| {
-                    let tx = tx.clone();
-                    let err = info
-                        .payload()
-                        .downcast_ref::<&str>()
-                        .map(|s| Error::Panic(s.to_string()))
-                        .unwrap_or(Error::PanicNonStringPayload(
-                            info.location().map(ToString::to_string),
-                        ));
-                    Self::disconnect_inner(tx, &callbacks, Some(err));
-                    default_panic_hook(info);
-                }
-            }));
-        }
 
-        runtime.spawn(connect(
+        let connect_handle = runtime.spawn(connect(
             url,
             private_key,
             os_version_override,
-            callbacks,
+            callbacks.clone(),
             max_partition_time,
             rx,
         ));
+        runtime.spawn(connect_supervisor(connect_handle, callbacks));
 
         Ok(Self {
             channel: tx,
             _runtime: runtime,
         })
-    }
-
-    fn disconnect_inner<CB: Callbacks + 'static>(
-        channel: tokio::sync::mpsc::Sender<Command>,
-        callbacks: &CallbackErrorFacade<CB>,
-        error: Option<Error>,
-    ) {
-        if let Err(err) = channel.try_send(Command::Stop) {
-            tracing::error!("Couldn't stop eventloop: {err}");
-        }
-
-        if let Some(error) = error {
-            let _ = callbacks.on_disconnect(&error);
-        }
     }
 
     /// Disconnect a [`Session`].
@@ -136,17 +105,11 @@ async fn connect<CB>(
     callbacks: CB,
     max_partition_time: Option<Duration>,
     rx: tokio::sync::mpsc::Receiver<Command>,
-) where
+) -> Result<(), Error>
+where
     CB: Callbacks + 'static,
 {
-    let tunnel = match Tunnel::new(private_key, callbacks.clone()) {
-        Ok(tunnel) => tunnel,
-        Err(e) => {
-            tracing::error!("Failed to make tunnel: {e}");
-            let _ = callbacks.on_disconnect(&e);
-            return;
-        }
-    };
+    let tunnel = Tunnel::new(private_key, callbacks.clone())?;
 
     let portal = PhoenixChannel::connect(
         Secret::new(url),
@@ -161,11 +124,39 @@ async fn connect<CB>(
 
     let mut eventloop = Eventloop::new(tunnel, portal, rx);
 
-    match std::future::poll_fn(|cx| eventloop.poll(cx)).await {
-        Ok(()) => {} // `Ok(())` means the eventloop exited gracefully.
-        Err(e) => {
-            tracing::error!("Eventloop failed: {e}");
-            let _ = callbacks.on_disconnect(&Error::PortalConnectionFailed); // TMP Error until we have a narrower API for `onDisconnect`
+    std::future::poll_fn(|cx| eventloop.poll(cx))
+        .await
+        .map_err(Error::PortalConnectionFailed)?;
+
+    Ok(())
+}
+
+/// A supervisor task that handles, when [`connect`] exits.
+async fn connect_supervisor<CB>(connect_handle: JoinHandle<Result<(), Error>>, callbacks: CB)
+where
+    CB: Callbacks,
+{
+    match connect_handle.await {
+        Ok(Ok(())) => {
+            tracing::info!("connlib exited gracefully");
         }
+        Ok(Err(e)) => {
+            tracing::error!("connlib failed: {e}");
+            let _ = callbacks.on_disconnect(&e);
+        }
+        Err(e) => match e.try_into_panic() {
+            Ok(panic) => {
+                if let Some(msg) = panic.downcast_ref::<&str>() {
+                    let _ = callbacks.on_disconnect(&Error::Panic(msg.to_string()));
+                    return;
+                }
+
+                let _ = callbacks.on_disconnect(&Error::PanicNonStringPayload);
+            }
+            Err(_) => {
+                tracing::error!("connlib task was cancelled");
+                let _ = callbacks.on_disconnect(&Error::Cancelled);
+            }
+        },
     }
 }

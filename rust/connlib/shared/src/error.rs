@@ -102,9 +102,12 @@ pub enum ConnlibError {
     /// A panic occurred.
     #[error("Panicked: {0}")]
     Panic(String),
+    /// The task was cancelled
+    #[error("The task was cancelled")]
+    Cancelled,
     /// A panic occurred with a non-string payload.
     #[error("Panicked with a non-string payload")]
-    PanicNonStringPayload(Option<String>),
+    PanicNonStringPayload,
     /// Received connection details that might be stale
     #[error("Unexpected connection details")]
     UnexpectedConnectionDetails,
@@ -176,8 +179,8 @@ pub enum ConnlibError {
     #[error("Failed to control system DNS with `resolvectl`")]
     ResolvectlFailed,
 
-    #[error("connection to the portal failed")]
-    PortalConnectionFailed,
+    #[error("connection to the portal failed: {0}")]
+    PortalConnectionFailed(phoenix_channel::Error),
 }
 
 impl ConnlibError {
