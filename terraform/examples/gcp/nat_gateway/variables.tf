@@ -32,6 +32,11 @@ variable "machine_type" {
   default = "n1-standard-1"
 }
 
+variable "firezone_subnet_cidr" {
+  type        = string
+  description = "CIDR Range to use for subnet where Gateway(s) are deployed"
+}
+
 ################################################################################
 ## Observability
 ################################################################################

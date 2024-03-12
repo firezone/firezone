@@ -53,13 +53,14 @@ have a high volume of traffic or lots of concurrent connections.
    Here's an example `terraform.tfvars` you can use as a starting point:
 
    ```hcl
-   project_id     = "my-gcp-project"
-   region         = "us-west1"
-   zone           = "us-west1-a"
-   token          = "<YOUR GATEWAY TOKEN>"
-   replicas       = 3
-   machine_type   = "f1-micro"
-   log_level      = "info"
+   project_id           = "my-gcp-project"
+   region               = "us-west1"
+   zone                 = "us-west1-a"
+   token                = "<YOUR GATEWAY TOKEN>"
+   replicas             = 3
+   machine_type         = "f1-micro"
+   log_level            = "info"
+   firezone_subnet_cidr = "10.1.2.0/24"
    ```
 
 1. Run `terraform init` to initialize the working directory and download the
@@ -93,8 +94,3 @@ existing Firezone Gateway(s) and deploys new ones in their place.
 ## Future improvements
 
 - Minimal downtime upgrades using a regional instance manager.
-- Expose the ability to select an existing subnetwork instead of auto-creating a
-  new one.
-- Expose the ability to select an existing
-  [regional external IP address](https://cloud.google.com/nat/docs/ports-and-addresses)
-  instead of auto-creating a new one.

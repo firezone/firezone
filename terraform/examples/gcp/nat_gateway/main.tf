@@ -2,7 +2,7 @@ terraform {
   required_providers {
     google = {
       source  = "hashicorp/google"
-      version = "5.19.0"
+      version = "5.20.0"
     }
   }
 }
@@ -25,8 +25,15 @@ resource "google_service_account" "firezone" {
 
 resource "google_compute_network" "firezone" {
   name                    = "firezone-gateway"
-  auto_create_subnetworks = true
+  auto_create_subnetworks = false
   depends_on              = [google_project_service.compute-api]
+}
+
+resource "google_compute_subnetwork" "firezone" {
+  name          = "firezone-subnet"
+  network       = google_compute_network.firezone.id
+  ip_cidr_range = var.firezone_subnet_cidr
+  region        = var.region
 }
 
 resource "google_compute_router" "firezone" {
@@ -34,11 +41,23 @@ resource "google_compute_router" "firezone" {
   network = google_compute_network.firezone.id
 }
 
+resource "google_compute_address" "firezone" {
+  name    = "firezone-nat-address"
+  region  = google_compute_subnetwork.firezone.region
+}
+
 resource "google_compute_router_nat" "firezone" {
-  name                               = "firezone-gateway-nat"
-  router                             = google_compute_router.firezone.name
-  nat_ip_allocate_option             = "AUTO_ONLY"
-  source_subnetwork_ip_ranges_to_nat = "ALL_SUBNETWORKS_ALL_IP_RANGES"
+  name   = "firezone-gateway-nat"
+  router = google_compute_router.firezone.name
+
+  nat_ip_allocate_option = "MANUAL_ONLY"
+  nat_ips                = [google_compute_address.firezone.self_link]
+
+  source_subnetwork_ip_ranges_to_nat = "LIST_OF_SUBNETWORKS"
+  subnetwork {
+    name                    = google_compute_subnetwork.firezone.id
+    source_ip_ranges_to_nat = ["ALL_IP_RANGES"]
+  }
 }
 
 resource "google_compute_instance_template" "gateway" {
@@ -61,7 +80,7 @@ resource "google_compute_instance_template" "gateway" {
   }
 
   network_interface {
-    network = google_compute_network.firezone.id
+    subnetwork = google_compute_subnetwork.firezone.id
   }
 
   service_account {
@@ -86,7 +105,7 @@ resource "google_compute_firewall" "ssh-rule" {
   }
 
   target_tags   = ["gateway"]
-  source_ranges = ["0.0.0.0/0"]
+  source_ranges = ["35.235.240.0/20"] // IAP CIDR
 }
 
 resource "google_compute_instance_from_template" "gateway" {
