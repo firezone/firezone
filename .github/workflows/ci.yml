@@ -110,7 +110,9 @@ jobs:
     # Only the debug images have perf tooling
     if: ${{ github.event_name == 'pull_request' }}
     name: perf-tests-${{ matrix.test_name }}
-    needs: build-artifacts
+    needs:
+      - build-artifacts
+      - build-perf-artifacts
     runs-on: ubuntu-22.04
     permissions:
       contents: read

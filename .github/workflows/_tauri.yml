@@ -80,7 +80,6 @@ jobs:
       - name: Rename artifacts and compute SHA256
         shell: bash
         run: ${{ matrix.rename-script }}
-
       - name: Upload workflow artifacts
         uses: actions/upload-artifact@v4
         with:
