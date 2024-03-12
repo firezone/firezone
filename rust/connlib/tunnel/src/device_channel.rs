@@ -190,9 +190,9 @@ impl Device {
     pub(crate) fn set_routes(
         &mut self,
         routes: HashSet<IpNetwork>,
-        _callbacks: &impl Callbacks<Error = Error>,
+        callbacks: &impl Callbacks<Error = Error>,
     ) -> Result<(), Error> {
-        self.tun_mut()?.set_routes(routes, _callbacks)?;
+        self.tun_mut()?.set_routes(routes, callbacks)?;
         Ok(())
     }
 
