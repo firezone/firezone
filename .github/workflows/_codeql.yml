@@ -2,6 +2,8 @@ name: "CodeQL"
 on:
   workflow_call:
   push:
+    branches:
+      - main
 
 jobs:
   analyze:

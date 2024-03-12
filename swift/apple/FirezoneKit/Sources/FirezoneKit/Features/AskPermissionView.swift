@@ -1,6 +1,6 @@
 //
 //  AskPermissionView.swift
-//  (c) 2023 Firezone, Inc.
+//  (c) 2024 Firezone, Inc.
 //  LICENSE: Apache-2.0
 //
 
@@ -11,6 +11,7 @@ import SwiftUI
 @MainActor
 public final class AskPermissionViewModel: ObservableObject {
   public var tunnelStore: TunnelStore
+  private var sessionNotificationHelper: SessionNotificationHelper
 
   private var cancellables: Set<AnyCancellable> = []
 
@@ -26,8 +27,11 @@ public final class AskPermissionViewModel: ObservableObject {
     }
   }
 
-  public init(tunnelStore: TunnelStore) {
+  @Published var needsNotificationDecision = false
+
+  public init(tunnelStore: TunnelStore, sessionNotificationHelper: SessionNotificationHelper) {
     self.tunnelStore = tunnelStore
+    self.sessionNotificationHelper = sessionNotificationHelper
 
     tunnelStore.$tunnelAuthStatus
       .filter { $0.isInitialized }
@@ -40,6 +44,23 @@ public final class AskPermissionViewModel: ObservableObject {
               self.needsTunnelPermission = true
             } else {
               self.needsTunnelPermission = false
+            }
+          }
+        }
+      }
+      .store(in: &cancellables)
+
+    sessionNotificationHelper.$notificationDecision
+      .filter { $0.isInitialized }
+      .sink { [weak self] notificationDecision in
+        guard let self = self else { return }
+
+        Task {
+          await MainActor.run {
+            if case .notDetermined = notificationDecision {
+              self.needsNotificationDecision = true
+            } else {
+              self.needsNotificationDecision = false
             }
           }
         }
@@ -62,6 +83,12 @@ public final class AskPermissionViewModel: ObservableObject {
     }
   }
 
+  #if os(iOS)
+    func grantNotificationButtonTapped() {
+      self.sessionNotificationHelper.askUserForNotificationPermissions()
+    }
+  #endif
+
   #if os(macOS)
     func closeAskPermissionWindow() {
       AppStore.WindowDefinition.askPermission.window()?.close()
@@ -82,6 +109,10 @@ public struct AskPermissionView: View {
       content: {
         Spacer()
         Image("LogoText")
+          .resizable()
+          .scaledToFit()
+          .frame(maxWidth: 600)
+          .padding(.horizontal, 10)
         Spacer()
         if $model.needsTunnelPermission.wrappedValue {
 
@@ -97,6 +128,10 @@ public struct AskPermissionView: View {
             )
             .font(.body)
             .multilineTextAlignment(.center)
+            .padding(EdgeInsets(top: 0, leading: 5, bottom: 0, trailing: 5))
+            Spacer()
+            Image(systemName: "network.badge.shield.half.filled")
+              .imageScale(.large)
           #endif
           Spacer()
           Button("Grant VPN Permission") {
@@ -114,12 +149,36 @@ public struct AskPermissionView: View {
             .multilineTextAlignment(.center)
           #elseif os(iOS)
             Text(
-              "After tapping on the above button, tap on 'Allow' when prompted."
+              "After tapping the above button, tap 'Allow' when prompted."
             )
             .font(.caption)
             .multilineTextAlignment(.center)
           #endif
-
+        } else if $model.needsNotificationDecision.wrappedValue {
+          #if os(iOS)
+            Text(
+              "Firezone requires your permission to show local notifications when you need to sign in again."
+            )
+            .font(.body)
+            .multilineTextAlignment(.center)
+            .padding(EdgeInsets(top: 0, leading: 5, bottom: 0, trailing: 5))
+            Spacer()
+            Image(systemName: "bell")
+              .imageScale(.large)
+            Spacer()
+            Button("Grant Notification Permission") {
+              model.grantNotificationButtonTapped()
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            Spacer()
+              .frame(maxHeight: 20)
+            Text(
+              "After tapping the above button, tap 'Allow' when prompted."
+            )
+            .font(.caption)
+            .multilineTextAlignment(.center)
+          #endif
         } else {
 
           #if os(macOS)

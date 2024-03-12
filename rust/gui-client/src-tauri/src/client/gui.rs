@@ -11,8 +11,8 @@ use crate::client::{
 use anyhow::{anyhow, bail, Context, Result};
 use arc_swap::ArcSwap;
 use connlib_client_shared::{file_logger, ResourceDescription};
-use connlib_shared::{control::SecureUrl, messages::ResourceId, BUNDLE_ID};
-use secrecy::{ExposeSecret, Secret, SecretString};
+use connlib_shared::{keypair, messages::ResourceId, LoginUrl, BUNDLE_ID};
+use secrecy::{ExposeSecret, SecretString};
 use std::{net::IpAddr, path::PathBuf, str::FromStr, sync::Arc, time::Duration};
 use system_tray_menu::Event as TrayMenuEvent;
 use tauri::{Manager, SystemTray, SystemTrayEvent};
@@ -23,6 +23,11 @@ mod system_tray_menu;
 
 #[cfg(target_os = "linux")]
 #[path = "gui/os_linux.rs"]
+mod os;
+
+// Stub only
+#[cfg(target_os = "macos")]
+#[path = "gui/os_macos.rs"]
 mod os;
 
 #[cfg(target_os = "windows")]
@@ -309,7 +314,7 @@ async fn smoke_test(ctlr_tx: CtlrTx) -> Result<()> {
     let quit_time = tokio::time::Instant::now() + Duration::from_secs(delay);
 
     // Write the settings so we can check the path for those
-    settings::apply_advanced_settings_inner(&settings::AdvancedSettings::default()).await?;
+    settings::save(&settings::AdvancedSettings::default()).await?;
 
     // Test log exporting
     let path = PathBuf::from("smoke_test_log_export.zip");
@@ -408,8 +413,9 @@ fn handle_system_tray_event(app: &tauri::AppHandle, event: TrayMenuEvent) -> Res
 }
 
 pub(crate) enum ControllerRequest {
+    /// The GUI wants us to use these settings in-memory, they've already been saved to disk
+    ApplySettings(AdvancedSettings),
     Disconnected,
-    DisconnectedTokenExpired,
     /// The same as the arguments to `client::logging::export_logs_to`
     ExportLogs {
         path: PathBuf,
@@ -417,7 +423,7 @@ pub(crate) enum ControllerRequest {
     },
     Fail(Failure),
     GetAdvancedSettings(oneshot::Sender<AdvancedSettings>),
-    SchemeRequest(Secret<SecureUrl>),
+    SchemeRequest(SecretString),
     SystemTrayMenu(TrayMenuEvent),
     TunnelReady,
     UpdateAvailable(client::updates::Release),
@@ -444,18 +450,9 @@ enum CallbackError {
 impl connlib_client_shared::Callbacks for CallbackHandler {
     type Error = CallbackError;
 
-    fn on_disconnect(
-        &self,
-        error: Option<&connlib_client_shared::Error>,
-    ) -> Result<(), Self::Error> {
+    fn on_disconnect(&self, error: &connlib_client_shared::Error) -> Result<(), Self::Error> {
         tracing::debug!("on_disconnect {error:?}");
-        self.ctlr_tx.try_send(match error {
-            Some(connlib_client_shared::Error::ClosedByPortal) => {
-                // TODO: this can happen for other reasons
-                ControllerRequest::DisconnectedTokenExpired
-            }
-            _ => ControllerRequest::Disconnected,
-        })?;
+        self.ctlr_tx.try_send(ControllerRequest::Disconnected)?;
         Ok(())
     }
 
@@ -501,12 +498,13 @@ struct Controller {
     /// Tells us when to wake up and look for a new resource list. Tokio docs say that memory reads and writes are synchronized when notifying, so we don't need an extra mutex on the resources.
     notify_controller: Arc<Notify>,
     tunnel_ready: bool,
+    uptime: client::uptime::Tracker,
 }
 
 /// Everything related to a signed-in user session
 struct Session {
     callback_handler: CallbackHandler,
-    connlib: connlib_client_shared::Session<CallbackHandler>,
+    connlib: connlib_client_shared::Session,
 }
 
 impl Controller {
@@ -529,11 +527,17 @@ impl Controller {
             api_url = api_url.to_string(),
             "Calling connlib Session::connect"
         );
-        let connlib = connlib_client_shared::Session::connect(
-            api_url,
-            token,
+        let (private_key, public_key) = keypair();
+        let login = LoginUrl::client(
+            api_url.as_str(),
+            &token,
             self.device_id.clone(),
-            None, // `get_host_name` over in connlib gets the system's name automatically
+            None,
+            public_key.to_bytes(),
+        )?;
+        let connlib = connlib_client_shared::Session::connect(
+            login,
+            private_key,
             None,
             callback_handler.clone(),
             Some(MAX_PARTITION_TIME),
@@ -566,7 +570,7 @@ impl Controller {
         Ok(())
     }
 
-    async fn handle_deep_link(&mut self, url: &Secret<SecureUrl>) -> Result<()> {
+    async fn handle_deep_link(&mut self, url: &SecretString) -> Result<()> {
         let auth_response =
             client::deep_link::parse_auth_callback(url).context("Couldn't parse scheme request")?;
 
@@ -580,18 +584,16 @@ impl Controller {
 
     async fn handle_request(&mut self, req: ControllerRequest) -> Result<()> {
         match req {
-            Req::Disconnected => {
-                tracing::debug!("connlib disconnected, tearing down Session");
-                self.tunnel_ready = false;
-                if let Some(mut session) = self.session.take() {
-                    tracing::info!("disconnecting connlib");
-                    // This is probably redundant since connlib shuts itself down if it's disconnected.
-                    session.connlib.disconnect(None);
-                }
-                self.refresh_system_tray_menu()?;
+            Req::ApplySettings(settings) => {
+                self.advanced_settings = settings;
+                // TODO: Update the logger here if we can. I can't remember if there
+                // was a reason why the reloading didn't work.
+                tracing::info!(
+                    "Applied new settings. Log level will take effect at next app start."
+                );
             }
-            Req::DisconnectedTokenExpired => {
-                tracing::info!("Token expired");
+            Req::Disconnected => {
+                tracing::info!("Disconnected by connlib");
                 self.sign_out()?;
                 os::show_notification(
                     "Firezone disconnected",
@@ -624,8 +626,17 @@ impl Controller {
                     self.sign_out()?;
                 }
             }
-            Req::SystemTrayMenu(TrayMenuEvent::ToggleWindow(window)) => {
-                self.toggle_window(window)?
+            Req::SystemTrayMenu(TrayMenuEvent::ShowWindow(window)) => {
+                self.show_window(window)?;
+                // When the About or Settings windows are hidden / shown, log the
+                // run ID and uptime. This makes it easy to check client stability on
+                // dev or test systems without parsing the whole log file.
+                let uptime_info = self.uptime.info();
+                tracing::debug!(
+                    uptime_s = uptime_info.uptime.as_secs(),
+                    run_id = uptime_info.run_id.to_string(),
+                    "Uptime info"
+                );
             }
             Req::SystemTrayMenu(TrayMenuEvent::Resource { id }) => self
                 .copy_resource(&id)
@@ -634,11 +645,7 @@ impl Controller {
                 if let Some(req) = self.auth.start_sign_in()? {
                     let url = req.to_url(&self.advanced_settings.auth_base_url);
                     self.refresh_system_tray_menu()?;
-                    tauri::api::shell::open(
-                        &self.app.shell_scope(),
-                        &url.expose_secret().inner,
-                        None,
-                    )?;
+                    tauri::api::shell::open(&self.app.shell_scope(), url.expose_secret(), None)?;
                 }
             }
             Req::SystemTrayMenu(TrayMenuEvent::SignOut) => {
@@ -726,7 +733,7 @@ impl Controller {
             tracing::debug!("disconnecting connlib");
             // This is redundant if the token is expired, in that case
             // connlib already disconnected itself.
-            session.connlib.disconnect(None);
+            session.connlib.disconnect();
         } else {
             // Might just be because we got a double sign-out or
             // the user canceled the sign-in or something innocent.
@@ -736,7 +743,7 @@ impl Controller {
         Ok(())
     }
 
-    fn toggle_window(&self, window: system_tray_menu::Window) -> Result<()> {
+    fn show_window(&self, window: system_tray_menu::Window) -> Result<()> {
         let id = match window {
             system_tray_menu::Window::About => "about",
             system_tray_menu::Window::Settings => "settings",
@@ -762,9 +769,8 @@ async fn run_controller(
     advanced_settings: AdvancedSettings,
     notify_controller: Arc<Notify>,
 ) -> Result<()> {
-    let device_id = client::device_id::device_id()
-        .await
-        .context("Failed to read / create device ID")?;
+    let device_id =
+        connlib_shared::device_id::get().context("Failed to read / create device ID")?;
 
     let mut controller = Controller {
         advanced_settings,
@@ -776,6 +782,7 @@ async fn run_controller(
         logging_handles,
         notify_controller,
         tunnel_ready: false,
+        uptime: Default::default(),
     };
 
     if let Some(token) = controller

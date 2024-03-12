@@ -7,13 +7,15 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+# Will be needed to safely revert `/etc/resolv.conf`
+atomicwrites = "0.4.3"
 secrecy = { workspace = true }
 connlib-client-shared = { workspace = true }
 connlib-shared = { workspace = true }
 firezone-cli-utils = { workspace = true }
 anyhow = { version = "1.0" }
 tracing = { workspace = true }
-clap = { version = "4.4", features = ["derive",  "env"] }
+clap = { version = "4.5", features = ["derive",  "env"] }
 tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
 humantime = "2.1"
 resolv-conf = "0.7.0"

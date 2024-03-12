@@ -2,15 +2,41 @@ pub(crate) use imp::{check, elevate};
 
 #[cfg(target_os = "linux")]
 mod imp {
-    use anyhow::Result;
+    use anyhow::{Context, Result};
 
     pub(crate) fn check() -> Result<bool> {
-        // TODO
+        // Must use `eprintln` here because `tracing` won't be initialized yet.
+
+        let user = std::env::var("USER").context("USER env var should be set")?;
+        if user != "root" {
+            eprintln!("Firezone must run with root permissions to set up DNS. Re-run it with `sudo --preserve-env`");
+            return Ok(false);
+        }
+        let home = std::env::var("HOME").context("HOME env var should be set")?;
+        if home == "/root" {
+            eprintln!("If Firezone is run with `$HOME == /root`, deep links will not work. Re-run it with `sudo --preserve-env`");
+            // If we don't bail out here, this message will probably never be read.
+            return Ok(false);
+        }
         Ok(true)
     }
 
     pub(crate) fn elevate() -> Result<()> {
-        todo!()
+        anyhow::bail!("Firezone does not self-elevate on Linux.");
+    }
+}
+
+// Stub only
+#[cfg(target_os = "macos")]
+mod imp {
+    use anyhow::Result;
+
+    pub(crate) fn check() -> Result<bool> {
+        Ok(true)
+    }
+
+    pub(crate) fn elevate() -> Result<()> {
+        unimplemented!()
     }
 }
 

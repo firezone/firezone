@@ -1,6 +1,6 @@
 //
 //  SettingsView.swift
-//  (c) 2023 Firezone, Inc.
+//  (c) 2024 Firezone, Inc.
 //  LICENSE: Apache-2.0
 //
 
@@ -409,9 +409,10 @@ public struct SettingsView: View {
         Form {
           Section(
             content: {
-              HStack(spacing: 15) {
+              VStack(alignment: .leading, spacing: 2) {
                 Text("Auth Base URL")
                   .foregroundStyle(.secondary)
+                  .font(.caption)
                 TextField(
                   PlaceholderText.authBaseURL,
                   text: Binding(
@@ -423,9 +424,10 @@ public struct SettingsView: View {
                 .textInputAutocapitalization(.never)
                 .submitLabel(.done)
               }
-              HStack(spacing: 15) {
+              VStack(alignment: .leading, spacing: 2) {
                 Text("API URL")
                   .foregroundStyle(.secondary)
+                  .font(.caption)
                 TextField(
                   PlaceholderText.apiURL,
                   text: Binding(
@@ -437,9 +439,10 @@ public struct SettingsView: View {
                 .textInputAutocapitalization(.never)
                 .submitLabel(.done)
               }
-              HStack(spacing: 15) {
+              VStack(alignment: .leading, spacing: 2) {
                 Text("Log Filter")
                   .foregroundStyle(.secondary)
+                  .font(.caption)
                 TextField(
                   PlaceholderText.logFilter,
                   text: Binding(

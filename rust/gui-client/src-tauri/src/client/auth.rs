@@ -1,9 +1,8 @@
 //! Fulfills <https://github.com/firezone/firezone/issues/2823>
 
 use crate::client::known_dirs;
-use connlib_shared::control::SecureUrl;
 use rand::{thread_rng, RngCore};
-use secrecy::{ExposeSecret, Secret, SecretString};
+use secrecy::{ExposeSecret, SecretString};
 use std::path::PathBuf;
 use subtle::ConstantTimeEq;
 use url::Url;
@@ -64,13 +63,14 @@ pub(crate) struct Request {
 }
 
 impl Request {
-    pub fn to_url(&self, auth_base_url: &Url) -> Secret<SecureUrl> {
+    pub fn to_url(&self, auth_base_url: &Url) -> SecretString {
         let mut url = auth_base_url.clone();
         url.query_pairs_mut()
             .append_pair("as", "client")
             .append_pair("nonce", self.nonce.expose_secret())
             .append_pair("state", self.state.expose_secret());
-        Secret::from(SecureUrl::from_url(url))
+
+        SecretString::new(url.to_string())
     }
 }
 
@@ -267,6 +267,14 @@ mod tests {
         SecretString::new(x.into())
     }
 
+    #[test]
+    fn actor_name_path() {
+        assert!(super::actor_name_path()
+            .expect("`actor_name_path` should return Ok")
+            .components()
+            .any(|x| x == std::path::Component::Normal("dev.firezone.client".as_ref())));
+    }
+
     /// Runs everything in one test so that `cargo test` can't multi-thread it
     /// This should work around a bug we had <https://github.com/firezone/firezone/issues/3256>
     #[test]
@@ -301,9 +309,8 @@ mod tests {
             state: bogus_secret("some_state"),
         };
         assert_eq!(
-            req.to_url(&auth_base_url).expose_secret().inner,
-            Url::parse("https://app.firez.one?as=client&nonce=some_nonce&state=some_state")
-                .unwrap()
+            req.to_url(&auth_base_url).expose_secret(),
+            "https://app.firez.one/?as=client&nonce=some_nonce&state=some_state"
         );
     }
 

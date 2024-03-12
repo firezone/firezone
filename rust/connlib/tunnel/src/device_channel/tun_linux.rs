@@ -1,7 +1,9 @@
 use crate::device_channel::ioctl;
 use crate::FIREZONE_MARK;
 use connlib_shared::{
-    linux::DnsControlMethod, messages::Interface as InterfaceConfig, Callbacks, Error, Result,
+    linux::{etc_resolv_conf, DnsControlMethod},
+    messages::Interface as InterfaceConfig,
+    Callbacks, Error, Result,
 };
 use futures::TryStreamExt;
 use futures_util::future::BoxFuture;
@@ -29,7 +31,6 @@ use std::{
 };
 use tokio::io::unix::AsyncFd;
 
-mod etc_resolv_conf;
 mod utils;
 
 pub(crate) const SIOCGIFMTU: libc::c_ulong = libc::SIOCGIFMTU;
@@ -142,13 +143,9 @@ impl Tun {
         })
     }
 
-    pub fn set_routes(
-        &mut self,
-        routes: HashSet<IpNetwork>,
-        _: &impl Callbacks,
-    ) -> Result<Option<Self>> {
+    pub fn set_routes(&mut self, routes: HashSet<IpNetwork>, _: &impl Callbacks) -> Result<()> {
         if routes == self.routes {
-            return Ok(None);
+            return Ok(());
         }
 
         let handle = self.handle.clone();
@@ -193,7 +190,7 @@ impl Tun {
             }
         }
 
-        Ok(None)
+        Ok(())
     }
 
     pub fn name(&self) -> &str {

@@ -7,7 +7,6 @@ mod auth;
 mod crash_handling;
 mod debug_commands;
 mod deep_link;
-mod device_id;
 mod elevation;
 mod gui;
 mod known_dirs;
@@ -16,6 +15,7 @@ mod network_changes;
 mod resolvers;
 mod settings;
 mod updates;
+mod uptime;
 
 #[cfg(target_os = "windows")]
 mod wintun_install;

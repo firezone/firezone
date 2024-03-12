@@ -1,6 +1,6 @@
 //
 //  PacketTunnelProvider.swift
-//  (c) 2023 Firezone, Inc.
+//  (c) 2024 Firezone, Inc.
 //  LICENSE: Apache-2.0
 //
 
@@ -109,6 +109,12 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
   func handleTunnelShutdown(dueTo reason: TunnelShutdownEvent.Reason, errorMessage: String) {
     TunnelShutdownEvent.saveToDisk(reason: reason, errorMessage: errorMessage, logger: self.logger)
+
+    #if os(iOS)
+      if reason.action == .signoutImmediately {
+        SessionNotificationHelper.showSignedOutNotificationiOS(logger: self.logger)
+      }
+    #endif
   }
 }
 

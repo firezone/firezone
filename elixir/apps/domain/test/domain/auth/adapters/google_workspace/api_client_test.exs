@@ -32,21 +32,9 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.APIClientTest do
 
       assert conn.params == %{
                "customer" => "my_customer",
-               "fields" =>
-                 Enum.join(
-                   ~w[
-                        users/id
-                        users/primaryEmail
-                        users/name/fullName
-                        users/orgUnitPath
-                        users/creationTime
-                        users/isEnforcedIn2Sv
-                        users/isEnrolledIn2Sv
-                      ],
-                   ","
-                 ),
                "query" => "isSuspended=false isArchived=false",
-               "showDeleted" => "false"
+               "showDeleted" => "false",
+               "maxResults" => "350"
              }
 
       assert Plug.Conn.get_req_header(conn, "authorization") == ["Bearer #{api_token}"]
@@ -77,7 +65,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.APIClientTest do
       end
 
       assert_receive {:bypass_request, conn}
-      assert conn.params == %{}
+      assert conn.params == %{"maxResults" => "350"}
       assert Plug.Conn.get_req_header(conn, "authorization") == ["Bearer #{api_token}"]
     end
 
@@ -109,7 +97,8 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.APIClientTest do
       assert_receive {:bypass_request, conn}
 
       assert conn.params == %{
-               "customer" => "my_customer"
+               "customer" => "my_customer",
+               "maxResults" => "350"
              }
 
       assert Plug.Conn.get_req_header(conn, "authorization") == ["Bearer #{api_token}"]
@@ -141,7 +130,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.APIClientTest do
       end
 
       assert_receive {:bypass_request, conn}
-      assert conn.params == %{"includeDerivedMembership" => "true"}
+      assert conn.params == %{"includeDerivedMembership" => "true", "maxResults" => "350"}
       assert Plug.Conn.get_req_header(conn, "authorization") == ["Bearer #{api_token}"]
     end
 

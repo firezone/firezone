@@ -1,14 +1,19 @@
 //! A module for registering, catching, and parsing deep links that are sent over to the app's already-running instance
 
 use crate::client::auth::Response as AuthResponse;
-use connlib_shared::control::SecureUrl;
-use secrecy::{ExposeSecret, Secret, SecretString};
+use secrecy::{ExposeSecret, SecretString};
 use std::io;
+use url::Url;
 
 pub(crate) const FZ_SCHEME: &str = "firezone-fd0020211111";
 
 #[cfg(target_os = "linux")]
 #[path = "deep_link/linux.rs"]
+mod imp;
+
+// Stub only
+#[cfg(target_os = "macos")]
+#[path = "deep_link/macos.rs"]
 mod imp;
 
 #[cfg(target_os = "windows")]
@@ -49,8 +54,8 @@ pub enum Error {
 
 pub(crate) use imp::{open, register, Server};
 
-pub(crate) fn parse_auth_callback(url: &Secret<SecureUrl>) -> Option<AuthResponse> {
-    let url = &url.expose_secret().inner;
+pub(crate) fn parse_auth_callback(url: &SecretString) -> Option<AuthResponse> {
+    let url = Url::parse(url.expose_secret()).ok()?;
     match url.host() {
         Some(url::Host::Domain("handle_client_sign_in_callback")) => {}
         _ => return None,
@@ -100,14 +105,13 @@ pub(crate) fn parse_auth_callback(url: &Secret<SecureUrl>) -> Option<AuthRespons
 #[cfg(test)]
 mod tests {
     use anyhow::Result;
-    use connlib_shared::control::SecureUrl;
-    use secrecy::{ExposeSecret, Secret};
+    use secrecy::{ExposeSecret, SecretString};
 
     #[test]
     fn parse_auth_callback() -> Result<()> {
         // Positive cases
         let input = "firezone://handle_client_sign_in_callback/?actor_name=Reactor+Scram&fragment=a_very_secret_string&state=a_less_secret_string&identity_provider_identifier=12345";
-        let actual = parse_callback_wrapper(input)?.unwrap();
+        let actual = parse_callback_wrapper(input).unwrap();
 
         assert_eq!(actual.actor_name, "Reactor Scram");
         assert_eq!(actual.fragment.expose_secret(), "a_very_secret_string");
@@ -115,7 +119,7 @@ mod tests {
 
         // Empty string "" `actor_name` is fine
         let input = "firezone://handle_client_sign_in_callback/?actor_name=&fragment=&state=&identity_provider_identifier=12345";
-        let actual = parse_callback_wrapper(input)?.unwrap();
+        let actual = parse_callback_wrapper(input).unwrap();
 
         assert_eq!(actual.actor_name, "");
         assert_eq!(actual.fragment.expose_secret(), "");
@@ -125,24 +129,23 @@ mod tests {
 
         // URL host is wrong
         let input = "firezone://not_handle_client_sign_in_callback/?actor_name=Reactor+Scram&fragment=a_very_secret_string&state=a_less_secret_string&identity_provider_identifier=12345";
-        let actual = parse_callback_wrapper(input)?;
+        let actual = parse_callback_wrapper(input);
         assert!(actual.is_none());
 
         // `actor_name` is not just blank but totally missing
         let input = "firezone://handle_client_sign_in_callback/?fragment=&state=&identity_provider_identifier=12345";
-        let actual = parse_callback_wrapper(input)?;
+        let actual = parse_callback_wrapper(input);
         assert!(actual.is_none());
 
         // URL is nonsense
         let input = "?????????";
         let actual_result = parse_callback_wrapper(input);
-        assert!(actual_result.is_err());
+        assert!(actual_result.is_none());
 
         Ok(())
     }
 
-    fn parse_callback_wrapper(s: &str) -> Result<Option<super::AuthResponse>> {
-        let url = Secret::new(SecureUrl::from_url(url::Url::parse(s)?));
-        Ok(super::parse_auth_callback(&url))
+    fn parse_callback_wrapper(s: &str) -> Option<super::AuthResponse> {
+        super::parse_auth_callback(&SecretString::new(s.to_owned()))
     }
 }

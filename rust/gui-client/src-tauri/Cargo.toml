@@ -10,11 +10,11 @@ anyhow = { version = "1.0" }
 tauri-build = { version = "1.5", features = [] }
 
 [dependencies]
-arboard = { version = "3.3.1", default-features = false }
+arboard = { version = "3.3.2", default-features = false }
 anyhow = { version = "1.0" }
-arc-swap = "1.6.0"
+arc-swap = "1.7.0"
 chrono = { workspace = true }
-clap = { version = "4.4", features = ["derive",  "env"] }
+clap = { version = "4.5", features = ["derive",  "env"] }
 connlib-client-shared = { workspace = true }
 connlib-shared = { workspace = true }
 crash-handler = "0.6.1"
@@ -31,7 +31,7 @@ minidumper = "0.8.2"
 native-dialog = "0.7.0"
 output_vt100 = "0.1"
 rand = "0.8.5"
-reqwest = { version = "0.11.22", default-features = false, features = ["stream", "rustls-tls"] }
+reqwest = { version = "0.11.25", default-features = false, features = ["stream", "rustls-tls"] }
 ring = "0.17"
 sadness-generator = "0.5.0"
 secrecy = { workspace = true }
@@ -39,7 +39,7 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 semver = { version = "1.0.22", features = ["serde"] }
 subtle = "2.5.0"
-tauri = { version = "1.5", features = [ "dialog", "shell-open-api", "system-tray" ] }
+tauri = { version = "1.6", features = [ "dialog", "shell-open-api", "system-tray" ] }
 tauri-runtime = "0.14.2"
 tauri-utils = "1.5.3"
 thiserror = { version = "1.0", default-features = false }
@@ -57,14 +57,19 @@ dirs = "5.0.1"
 # Used for infinite `pending` on not-yet-implemented functions
 futures = "0.3.30"
 
+[target.'cfg(target_os = "macos")'.dependencies]
+dirs = "5.0.1"
+# Used for infinite `pending` on not-implemented functions
+futures = "0.3.30"
+
 [target.'cfg(target_os = "windows")'.dependencies]
 tauri-winrt-notification = "0.1.3"
-windows-implement = "0.52.0"
+windows-implement = "0.53.0"
 winreg = "0.52.0"
 wintun = "0.4.0"
 
 [target.'cfg(target_os = "windows")'.dependencies.windows]
-version = "0.52.0"
+version = "0.54.0"
 features = [
   # For implementing COM interfaces
   "implement",
@@ -87,4 +92,6 @@ features = [
 [features]
 # this feature is used for production builds or when `devPath` points to the filesystem
 # DO NOT REMOVE!!
+# TODO: We can probably remove this, per <https://github.com/tauri-apps/tauri/releases/tag/tauri-v2.0.0-beta.8>
+# I don't know how to verify this change, so I won't do it right now.
 custom-protocol = ["tauri/custom-protocol"]

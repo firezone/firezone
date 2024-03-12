@@ -67,7 +67,7 @@ impl<CB: Callbacks> Callbacks for CallbackErrorFacade<CB> {
         result
     }
 
-    fn on_disconnect(&self, error: Option<&Error>) -> Result<()> {
+    fn on_disconnect(&self, error: &Error) -> Result<()> {
         if let Err(err) = self.0.on_disconnect(error) {
             tracing::error!(?err, "`on_disconnect` failed");
         }

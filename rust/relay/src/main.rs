@@ -9,7 +9,7 @@ use futures::channel::mpsc;
 use futures::{future, FutureExt, SinkExt, StreamExt};
 use opentelemetry::{sdk, KeyValue};
 use opentelemetry_otlp::WithExportConfig;
-use phoenix_channel::{Error, Event, PhoenixChannel, SecureUrl};
+use phoenix_channel::{Event, LoginUrl, PhoenixChannel};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use secrecy::{Secret, SecretString};
@@ -60,6 +60,10 @@ struct Args {
     /// If omitted, we won't connect to the portal on startup.
     #[arg(env = "FIREZONE_TOKEN")]
     token: Option<SecretString>,
+    /// Used as the human name for this Relay to display in the portal. If not provided,
+    /// the system hostname is used by default.
+    #[arg(env = "FIREZONE_NAME")]
+    name: Option<String>,
     /// A seed to use for all randomness operations.
     ///
     /// Only available in debug builds.
@@ -246,30 +250,21 @@ fn env_filter() -> EnvFilter {
 async fn connect_to_portal(
     args: &Args,
     token: &SecretString,
-    mut url: Url,
+    url: Url,
     stamp_secret: &SecretString,
 ) -> Result<Option<PhoenixChannel<JoinMessage, (), ()>>> {
     use secrecy::ExposeSecret;
 
-    if !url.path().is_empty() {
-        tracing::warn!(target: "relay", "Overwriting path component of portal URL with '/relay/websocket'");
-    }
-
-    url.set_path("relay/websocket");
-    url.query_pairs_mut()
-        .append_pair("token", token.expose_secret().as_str());
-
-    if let Some(public_ip4_addr) = args.public_ip4_addr {
-        url.query_pairs_mut()
-            .append_pair("ipv4", &public_ip4_addr.to_string());
-    }
-    if let Some(public_ip6_addr) = args.public_ip6_addr {
-        url.query_pairs_mut()
-            .append_pair("ipv6", &public_ip6_addr.to_string());
-    }
+    let login = LoginUrl::relay(
+        url,
+        token,
+        args.name.clone(),
+        args.public_ip4_addr,
+        args.public_ip6_addr,
+    )?;
 
     let (channel, Init {}) = phoenix_channel::init::<_, Init, _, _>(
-        Secret::from(SecureUrl::from_url(url)),
+        Secret::new(login),
         format!("relay/{}", env!("CARGO_PKG_VERSION")),
         "relay",
         JoinMessage {
@@ -494,13 +489,6 @@ where
 
             // Priority 5: Handle portal messages
             match self.channel.as_mut().map(|c| c.poll(cx)) {
-                Some(Poll::Ready(Ok(Event::Disconnect(reason)))) => {
-                    return Poll::Ready(Err(anyhow!("Connection closed by portal: {reason}")));
-                }
-                Some(Poll::Ready(Err(Error::Serde(e)))) => {
-                    tracing::warn!(target: "relay", "Failed to deserialize portal message: {e}");
-                    continue; // This is not a hard-error, we can continue.
-                }
                 Some(Poll::Ready(Err(e))) => {
                     return Poll::Ready(Err(anyhow!("Portal connection failed: {e}")));
                 }
@@ -511,21 +499,15 @@ where
                     tracing::info!(target: "relay", "Successfully joined room '{topic}'");
                     continue;
                 }
-                Some(Poll::Ready(Ok(Event::ErrorResponse {
-                    topic,
-                    req_id,
-                    reason,
-                }))) => {
-                    tracing::warn!(target: "relay", "Request with ID {req_id} on topic {topic} failed: {reason:?}");
+                Some(Poll::Ready(Ok(Event::ErrorResponse { topic, req_id, res }))) => {
+                    tracing::warn!(target: "relay", "Request with ID {req_id} on topic {topic} failed: {res:?}");
                     continue;
                 }
                 Some(Poll::Ready(Ok(Event::HeartbeatSent))) => {
                     tracing::debug!(target: "relay", "Heartbeat sent to portal");
                     continue;
                 }
-                Some(Poll::Ready(Ok(
-                    Event::InboundMessage { msg: (), .. } | Event::InboundReq { req: (), .. },
-                )))
+                Some(Poll::Ready(Ok(Event::InboundMessage { msg: (), .. })))
                 | Some(Poll::Pending)
                 | None => {}
             }

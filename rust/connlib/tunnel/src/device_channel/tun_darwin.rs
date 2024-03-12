@@ -148,13 +148,14 @@ impl Tun {
         &self,
         routes: HashSet<IpNetwork>,
         callbacks: &impl Callbacks<Error = Error>,
-    ) -> Result<Option<Self>> {
+    ) -> Result<()> {
         // This will always be None in macos
         callbacks.on_update_routes(
             routes.iter().filter_map(ipv4).copied().collect(),
             routes.iter().filter_map(ipv6).copied().collect(),
         )?;
-        Ok(None)
+
+        Ok(())
     }
 
     pub fn name(&self) -> &str {
