@@ -62,7 +62,7 @@ pub struct Tunnel<CB: Callbacks, TRoleState, TRole, TId> {
     stats: Stats,
 
     write_buf: Box<[u8; MAX_UDP_SIZE]>,
-    read_buf: Box<[u8; MAX_UDP_SIZE]>,
+    read_buf: Box<[u8; MAX_UDP_SIZE * 4]>, // We are splitting the buffer in half two times before reading into it.
 }
 
 impl<CB> Tunnel<CB, ClientState, snownet::Client, GatewayId>
@@ -328,7 +328,7 @@ where
             role_state: Default::default(),
             node: Node::new(private_key),
             write_buf: Box::new([0u8; MAX_UDP_SIZE]),
-            read_buf: Box::new([0u8; MAX_UDP_SIZE]),
+            read_buf: Box::new([0u8; MAX_UDP_SIZE * 4]),
             io,
             stats: Stats::new(Duration::from_secs(60)),
         })
