@@ -5,8 +5,7 @@ on:
     inputs:
       perf-test:
         required: false
-        default: false
-        type: boolean
+        default: 'false'
       sha:
         required: false
         type: string
@@ -194,10 +193,10 @@ jobs:
           cross build $PROFILE -p ${{ matrix.name.package }} --target ${{ matrix.arch.target }}
 
           # Used for release artifact
-          cp target/${{ matrix.arch.target }}/${{ inputs.perf-test && 'release' || inputs.profile }}/${{ matrix.name.package }} $BINARY_DEST_PATH
+          cp target/${{ matrix.arch.target }}/${{ inputs.perf-test == 'true' && 'release' || inputs.profile }}/${{ matrix.name.package }} $BINARY_DEST_PATH
 
           # Used for Docker images
-          cp target/${{ matrix.arch.target }}/${{ inputs.perf-test && 'release' || inputs.profile }}/${{ matrix.name.package }} ${{ matrix.name.package }}
+          cp target/${{ matrix.arch.target }}/${{ inputs.perf-test == 'true' && 'release' || inputs.profile }}/${{ matrix.name.package }} ${{ matrix.name.package }}
       - name: Upload Release Assets
         if: ${{ inputs.profile == 'release' && (matrix.name.image_name == 'gateway' || matrix.name.image_name == 'client') }}
         env:
@@ -242,7 +241,7 @@ jobs:
           tags: |
             type=raw,value=latest
             type=raw,value=${{ inputs.sha }}
-            type=raw,value=${{ inputs.sha }}-${{ inputs.perf-test && 'perf' || inputs.profile }}
+            type=raw,value=${{ inputs.sha }}-${{ inputs.perf-test == 'true' && 'perf' || inputs.profile }}
             type=raw,value=${{ env.VERSION }}
             type=raw,value=${{ env.VERSION }}-${{ inputs.sha }}
             type=raw,value=${{ env.MAJOR_VERSION }}
@@ -332,7 +331,7 @@ jobs:
           tags: |
             type=raw,value=latest
             type=raw,value=${{ inputs.sha }}
-            type=raw,value=${{ inputs.sha }}-${{ inputs.perf-test && 'perf' || inputs.profile }}
+            type=raw,value=${{ inputs.sha }}-${{ inputs.perf-test == 'true' && 'perf' || inputs.profile }}
             type=raw,value=${{ env.VERSION }}
             type=raw,value=${{ env.VERSION }}-${{ inputs.sha }}
             type=raw,value=${{ env.MAJOR_VERSION }}

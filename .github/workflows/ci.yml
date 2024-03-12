@@ -108,7 +108,7 @@ jobs:
     secrets: inherit
     with:
       sha: ${{ github.event.pull_request.base.sha }}
-      perf-test: true
+      perf-test: 'true'
       profile: 'debug'
 
   build-head-perf-artifacts:
@@ -116,7 +116,7 @@ jobs:
     secrets: inherit
     with:
       sha: ${{ github.sha }}
-      perf-test: true
+      perf-test: 'true'
       profile: 'debug'
 
   perf-tests:
