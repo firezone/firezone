@@ -80,7 +80,7 @@ where
                     continue;
                 }
                 Poll::Ready(Err(e)) => {
-                    tracing::error!("Tunnel failed: {e}");
+                    tracing::warn!("Tunnel error: {e}");
                     continue;
                 }
                 Poll::Pending => {}
