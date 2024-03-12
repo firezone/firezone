@@ -23,9 +23,11 @@ pub use control_protocol::client::Request;
 pub use gateway::{GatewayState, ResolvedResourceDescriptionDns};
 use io::Io;
 use ip_packet::IpPacket;
+use stats::Stats;
 
 mod client;
 mod io;
+mod stats;
 mod control_protocol {
     pub mod client;
 }
@@ -58,7 +60,7 @@ pub struct Tunnel<CB: Callbacks, TRoleState, TRole, TId> {
     node: Node<TRole, TId>,
 
     io: Io,
-    stats_timer: tokio::time::Interval,
+    stats: Stats,
 
     write_buf: Box<[u8; MAX_UDP_SIZE]>,
     read_buf: Box<[u8; MAX_UDP_SIZE]>,
@@ -176,15 +178,7 @@ where
             Poll::Pending => {}
         }
 
-        if self.stats_timer.poll_tick(cx).is_ready() {
-            let (node_stats, conn_stats) = self.node.stats();
-
-            tracing::debug!(target: "connlib::stats", "{node_stats:?}");
-
-            for (id, stats) in conn_stats {
-                tracing::debug!(target: "connlib::stats", %id, "{stats:?}");
-            }
-
+        if self.stats.poll(&self.node, cx).is_ready() {
             cx.waker().wake_by_ref();
         }
 
@@ -294,15 +288,7 @@ where
             Poll::Pending => {}
         }
 
-        if self.stats_timer.poll_tick(cx).is_ready() {
-            let (node_stats, conn_stats) = self.node.stats();
-
-            tracing::debug!(target: "connlib::stats", "{node_stats:?}");
-
-            for (id, stats) in conn_stats {
-                tracing::debug!(target: "connlib::stats", %id, "{stats:?}");
-            }
-
+        if self.stats.poll(&self.node, cx).is_ready() {
             cx.waker().wake_by_ref();
         }
 
@@ -344,7 +330,7 @@ where
             write_buf: Box::new([0u8; MAX_UDP_SIZE]),
             read_buf: Box::new([0u8; MAX_UDP_SIZE]),
             io,
-            stats_timer: tokio::time::interval(Duration::from_secs(60)),
+            stats: Stats::new(Duration::from_secs(60)),
         })
     }
 
