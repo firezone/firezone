@@ -189,10 +189,6 @@ jobs:
       # Then, run tests on the head ref
       - run: docker compose down -v
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/gcp-docker-login
-        id: login
-        with:
-          project: firezone-staging
       - name: Seed database
         run:
           docker compose run elixir /bin/sh -c 'cd apps/domain && mix ecto.seed'
