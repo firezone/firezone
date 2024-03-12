@@ -9,7 +9,7 @@ use connlib_shared::{
     CallbackErrorFacade, Callbacks, Error, Result,
 };
 use device_channel::Device;
-use futures_util::{future::BoxFuture, task::AtomicWaker, FutureExt};
+use futures_util::FutureExt;
 use peer::PacketTransform;
 use peer_store::PeerStore;
 use snownet::{Node, Server};
@@ -19,6 +19,7 @@ use std::{
     fmt,
     hash::Hash,
     io,
+    pin::Pin,
     task::{ready, Context, Poll},
     time::{Duration, Instant},
 };
@@ -59,8 +60,7 @@ pub struct Tunnel<CB: Callbacks, TRoleState, TRole, TId> {
     /// State that differs per role, i.e. clients vs gateways.
     role_state: TRoleState,
 
-    device: Option<Device>,
-    no_device_waker: AtomicWaker,
+    device: Device,
 
     connections_state: ConnectionState<TRole, TId>,
 
@@ -72,15 +72,14 @@ where
     CB: Callbacks + 'static,
 {
     pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Result<Event<GatewayId>>> {
-        let Some(device) = self.device.as_mut() else {
-            self.no_device_waker.register(cx.waker());
-            return Poll::Pending;
-        };
-
         match self.role_state.poll_next_event(cx) {
             Poll::Ready(Event::SendPacket(packet)) => {
-                device.write(packet)?;
+                self.device.write(packet)?;
                 cx.waker().wake_by_ref();
+            }
+            Poll::Ready(Event::DeviceConfigUpdated) => {
+                self.update_interface()?;
+                cx.waker().wake_by_ref()
             }
             Poll::Ready(other) => return Poll::Ready(Ok(other)),
             _ => (),
@@ -95,10 +94,11 @@ where
             _ => (),
         }
 
-        match self
-            .connections_state
-            .poll_sockets(device, &mut self.role_state.peers, cx)?
-        {
+        match self.connections_state.poll_sockets(
+            &mut self.device,
+            &mut self.role_state.peers,
+            cx,
+        )? {
             Poll::Ready(()) => {
                 cx.waker().wake_by_ref();
             }
@@ -107,7 +107,7 @@ where
 
         ready!(self.connections_state.sockets.poll_send_ready(cx))?; // Ensure socket is ready before we read from device.
 
-        match device.poll_read(&mut self.read_buf, cx)? {
+        match self.device.poll_read(&mut self.read_buf, cx)? {
             Poll::Ready(packet) => {
                 let Some((peer_id, packet)) = self.role_state.encapsulate(packet, Instant::now())
                 else {
@@ -120,6 +120,11 @@ where
                 cx.waker().wake_by_ref();
             }
             Poll::Pending => {}
+        }
+
+        // After any state change, check what the new timeout is and reset it if necessary.
+        if self.connections_state.poll_timeout(cx).is_ready() {
+            cx.waker().wake_by_ref()
         }
 
         Poll::Pending
@@ -138,11 +143,6 @@ where
             Poll::Pending => {}
         }
 
-        let Some(device) = self.device.as_mut() else {
-            self.no_device_waker.register(cx.waker());
-            return Poll::Pending;
-        };
-
         match self.connections_state.poll_next_event(cx) {
             Poll::Ready(Event::StopPeer(id)) => {
                 self.role_state.peers.remove(&id);
@@ -152,10 +152,11 @@ where
             _ => (),
         }
 
-        match self
-            .connections_state
-            .poll_sockets(device, &mut self.role_state.peers, cx)?
-        {
+        match self.connections_state.poll_sockets(
+            &mut self.device,
+            &mut self.role_state.peers,
+            cx,
+        )? {
             Poll::Ready(()) => {
                 cx.waker().wake_by_ref();
             }
@@ -164,7 +165,7 @@ where
 
         ready!(self.connections_state.sockets.poll_send_ready(cx))?; // Ensure socket is ready before we read from device.
 
-        match device.poll_read(&mut self.read_buf, cx)? {
+        match self.device.poll_read(&mut self.read_buf, cx)? {
             Poll::Ready(packet) => {
                 let Some((peer_id, packet)) = self.role_state.encapsulate(packet) else {
                     cx.waker().wake_by_ref();
@@ -178,6 +179,11 @@ where
             Poll::Pending => {
                 // device not ready for reading, moving on ..
             }
+        }
+
+        // After any state change, check what the new timeout is and reset it if necessary.
+        if self.connections_state.poll_timeout(cx).is_ready() {
+            cx.waker().wake_by_ref()
         }
 
         Poll::Pending
@@ -212,10 +218,9 @@ where
         }
 
         Ok(Self {
-            device: Default::default(),
+            device: Device::new(),
             callbacks,
             role_state: Default::default(),
-            no_device_waker: Default::default(),
             connections_state,
             read_buf: [0u8; MAX_UDP_SIZE],
         })
@@ -229,7 +234,7 @@ where
 struct ConnectionState<TRole, TId> {
     pub node: Node<TRole, TId>,
     write_buf: Box<[u8; MAX_UDP_SIZE]>,
-    connection_pool_timeout: BoxFuture<'static, std::time::Instant>,
+    timeout: Option<Pin<Box<tokio::time::Sleep>>>,
     stats_timer: tokio::time::Interval,
     sockets: Sockets,
 }
@@ -240,11 +245,11 @@ where
 {
     fn new(private_key: StaticSecret) -> Result<Self> {
         Ok(ConnectionState {
-            node: Node::new(private_key, std::time::Instant::now()),
+            node: Node::new(private_key),
             write_buf: Box::new([0; MAX_UDP_SIZE]),
-            connection_pool_timeout: sleep_until(std::time::Instant::now()).boxed(),
             sockets: Sockets::new()?,
             stats_timer: tokio::time::interval(Duration::from_secs(60)),
+            timeout: None,
         })
     }
 
@@ -258,7 +263,7 @@ where
 
     fn try_send(&mut self, id: TId, packet: IpPacket) -> Result<()> {
         // TODO: handle NotConnected
-        let Some(transmit) = self.node.encapsulate(id, packet.into())? else {
+        let Some(transmit) = self.node.encapsulate(id, packet.into(), Instant::now())? else {
             return Ok(());
         };
 
@@ -373,15 +378,33 @@ where
             _ => {}
         }
 
-        if let Poll::Ready(instant) = self.connection_pool_timeout.poll_unpin(cx) {
-            self.node.handle_timeout(instant);
-            if let Some(timeout) = self.node.poll_timeout() {
-                self.connection_pool_timeout = sleep_until(timeout).boxed();
-            }
+        Poll::Pending
+    }
 
-            cx.waker().wake_by_ref();
+    fn poll_timeout(&mut self, cx: &mut Context<'_>) -> Poll<()> {
+        if let Some(timeout) = self.node.poll_timeout() {
+            let timeout = tokio::time::Instant::from_std(timeout);
+
+            match self.timeout.as_mut() {
+                Some(existing_timeout) if existing_timeout.deadline() != timeout => {
+                    existing_timeout.as_mut().reset(timeout)
+                }
+                Some(_) => {}
+                None => self.timeout = Some(Box::pin(tokio::time::sleep_until(timeout))),
+            }
         }
 
+        if let Some(timeout) = self.timeout.as_mut() {
+            ready!(timeout.poll_unpin(cx));
+            self.node.handle_timeout(timeout.deadline().into());
+
+            return Poll::Ready(());
+        }
+
+        // Technically, we should set a waker here because we don't have a timer.
+        // But the only place where we set a timer is a few lines up.
+        // That is the same path that will re-poll it so there is no point in using a waker.
+        // We might want to consider making a `MaybeSleep` type that encapsulates a waker so we don't need to think about it as hard.
         Poll::Pending
     }
 }
@@ -400,10 +423,5 @@ pub enum Event<TId> {
     },
     SendPacket(IpPacket<'static>),
     StopPeer(TId),
-}
-
-async fn sleep_until(deadline: Instant) -> Instant {
-    tokio::time::sleep_until(deadline.into()).await;
-
-    deadline
+    DeviceConfigUpdated,
 }

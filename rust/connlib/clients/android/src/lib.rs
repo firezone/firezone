@@ -3,8 +3,10 @@
 // However, this consideration has made it idiomatic for Java FFI in the Rust
 // ecosystem, so it's used here for consistency.
 
-use connlib_client_shared::{file_logger, Callbacks, Error, ResourceDescription, Session};
-use ip_network::IpNetwork;
+use connlib_client_shared::{
+    file_logger, keypair, Callbacks, Error, LoginUrl, LoginUrlError, ResourceDescription, Session,
+};
+use ip_network::{Ipv4Network, Ipv6Network};
 use jni::{
     objects::{GlobalRef, JByteArray, JClass, JObject, JObjectArray, JString, JValue, JValueGen},
     strings::JNIString,
@@ -191,21 +193,31 @@ impl Callbacks for CallbackHandler {
         })
     }
 
-    fn on_add_route(&self, route: IpNetwork) -> Result<Option<RawFd>, Self::Error> {
+    fn on_update_routes(
+        &self,
+        route_list_4: Vec<Ipv4Network>,
+        route_list_6: Vec<Ipv6Network>,
+    ) -> Result<Option<RawFd>, Self::Error> {
         self.env(|mut env| {
-            let ip = env
-                .new_string(route.network_address().to_string())
+            let route_list_4 = env
+                .new_string(serde_json::to_string(&route_list_4)?)
                 .map_err(|source| CallbackError::NewStringFailed {
-                    name: "route_ip",
+                    name: "route_list_4",
+                    source,
+                })?;
+            let route_list_6 = env
+                .new_string(serde_json::to_string(&route_list_6)?)
+                .map_err(|source| CallbackError::NewStringFailed {
+                    name: "route_list_6",
                     source,
                 })?;
 
-            let name = "onAddRoute";
+            let name = "onUpdateRoutes";
             env.call_method(
                 &self.callback_handler,
                 name,
-                "(Ljava/lang/String;I)I",
-                &[JValue::from(&ip), JValue::Int(route.netmask().into())],
+                "(Ljava/lang/String;Ljava/lang/String;)I",
+                &[JValue::from(&route_list_4), JValue::from(&route_list_6)],
             )
             .and_then(|val| val.i())
             .map(Some)
@@ -223,28 +235,6 @@ impl Callbacks for CallbackHandler {
                 "(I)V",
                 &[JValue::Int(file_descriptor)],
             )
-        })
-    }
-
-    fn on_remove_route(&self, route: IpNetwork) -> Result<Option<RawFd>, Self::Error> {
-        self.env(|mut env| {
-            let ip = env
-                .new_string(route.network_address().to_string())
-                .map_err(|source| CallbackError::NewStringFailed {
-                    name: "route_ip",
-                    source,
-                })?;
-
-            let name = "onRemoveRoute";
-            env.call_method(
-                &self.callback_handler,
-                name,
-                "(Ljava/lang/String;I)I",
-                &[JValue::from(&ip), JValue::Int(route.netmask().into())],
-            )
-            .and_then(|val| val.i())
-            .map(Some)
-            .map_err(|source| CallbackError::CallMethodFailed { name, source })
         })
     }
 
@@ -269,10 +259,10 @@ impl Callbacks for CallbackHandler {
         })
     }
 
-    fn on_disconnect(&self, error: Option<&Error>) -> Result<(), Self::Error> {
+    fn on_disconnect(&self, error: &Error) -> Result<(), Self::Error> {
         self.env(|mut env| {
             let error = env
-                .new_string(serde_json::to_string(&error.map(ToString::to_string))?)
+                .new_string(serde_json::to_string(&error.to_string())?)
                 .map_err(|source| CallbackError::NewStringFailed {
                     name: "error",
                     source,
@@ -366,6 +356,8 @@ enum ConnectError {
     GetJavaVmFailed(#[source] jni::errors::Error),
     #[error(transparent)]
     ConnectFailed(#[from] Error),
+    #[error(transparent)]
+    InvalidLoginUrl(#[from] LoginUrlError<url::ParseError>),
 }
 
 macro_rules! string_from_jstring {
@@ -394,7 +386,7 @@ fn connect(
     log_dir: JString,
     log_filter: JString,
     callback_handler: GlobalRef,
-) -> Result<Session<CallbackHandler>, ConnectError> {
+) -> Result<Session, ConnectError> {
     let api_url = string_from_jstring!(env, api_url);
     let secret = SecretString::from(string_from_jstring!(env, token));
     let device_id = string_from_jstring!(env, device_id);
@@ -411,11 +403,18 @@ fn connect(
         handle,
     };
 
-    let session = Session::connect(
+    let (private_key, public_key) = keypair();
+    let login = LoginUrl::client(
         api_url.as_str(),
-        secret,
+        &secret,
         device_id,
         Some(device_name),
+        public_key.to_bytes(),
+    )?;
+
+    let session = Session::connect(
+        login,
+        private_key,
         Some(os_version),
         callback_handler,
         Some(MAX_PARTITION_TIME),
@@ -440,7 +439,7 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_co
     log_dir: JString,
     log_filter: JString,
     callback_handler: JObject,
-) -> *const Session<CallbackHandler> {
+) -> *const Session {
     let Ok(callback_handler) = env.new_global_ref(callback_handler) else {
         return std::ptr::null();
     };
@@ -478,9 +477,9 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_co
 pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_disconnect(
     mut env: JNIEnv,
     _: JClass,
-    session: *mut Session<CallbackHandler>,
+    session: *mut Session,
 ) {
     catch_and_throw(&mut env, |_| {
-        Box::from_raw(session).disconnect(None);
+        Box::from_raw(session).disconnect();
     });
 }

@@ -1,5 +1,5 @@
 use crate::messages::ResourceDescription;
-use ip_network::IpNetwork;
+use ip_network::{Ipv4Network, Ipv6Network};
 use std::error::Error;
 use std::fmt::{Debug, Display};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
@@ -32,25 +32,17 @@ pub trait Callbacks: Clone + Send + Sync {
         Ok(())
     }
 
-    /// Called when when a route is added.
-    ///
-    /// This should return a new `fd` if there is one.
-    /// (Only happens on android for now)
-    fn on_add_route(&self, _: IpNetwork) -> Result<Option<RawFd>, Self::Error> {
-        Ok(None)
-    }
-
-    /// Called when when a route is removed.
-    fn on_remove_route(&self, _: IpNetwork) -> Result<Option<RawFd>, Self::Error> {
+    /// Called when the route list changes.
+    fn on_update_routes(
+        &self,
+        _: Vec<Ipv4Network>,
+        _: Vec<Ipv6Network>,
+    ) -> Result<Option<RawFd>, Self::Error> {
         Ok(None)
     }
 
     /// Called when the resource list changes.
-    fn on_update_resources(
-        &self,
-        resource_list: Vec<ResourceDescription>,
-    ) -> Result<(), Self::Error> {
-        tracing::trace!(?resource_list, "resource_updated");
+    fn on_update_resources(&self, _: Vec<ResourceDescription>) -> Result<(), Self::Error> {
         Ok(())
     }
 
@@ -58,7 +50,7 @@ pub trait Callbacks: Clone + Send + Sync {
     ///
     /// If the tunnel disconnected due to a fatal error, `error` is the error
     /// that caused the disconnect.
-    fn on_disconnect(&self, error: Option<&crate::Error>) -> Result<(), Self::Error> {
+    fn on_disconnect(&self, error: &crate::Error) -> Result<(), Self::Error> {
         tracing::error!(error = ?error, "tunnel_disconnected");
         // Note that we can't panic here, since we already hooked the panic to this function.
         std::process::exit(0);

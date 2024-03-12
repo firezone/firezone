@@ -15,7 +15,7 @@ secrecy = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 tracing-appender = { version = "0.2.2" }
-tracing-stackdriver = { version = "0.8.0" }
+tracing-stackdriver = { version = "0.10.0" }
 async-trait = { version = "0.1", default-features = false }
 connlib-shared = { workspace = true }
 firezone-tunnel = { workspace = true }
@@ -23,12 +23,14 @@ serde = { version = "1.0", default-features = false, features = ["std", "derive"
 backoff = { workspace = true }
 url = { version = "2.4.1", features = ["serde"] }
 time = { version = "0.3.34", features = ["formatting"] }
-reqwest = { version = "0.11.22", default-features = false, features = ["stream", "rustls-tls"] }
+reqwest = { version = "0.11.25", default-features = false, features = ["stream", "rustls-tls"] }
 tokio-tungstenite = { version = "0.21", default-features = false, features = ["connect", "handshake", "rustls-tls-webpki-roots"] }
 async-compression = { version = "0.4.6", features = ["tokio", "gzip"] }
 parking_lot = "0.12"
 bimap = "0.6"
 ip_network = { version = "0.4", default-features = false }
+phoenix-channel = { workspace = true }
+
 
 [target.'cfg(target_os = "android")'.dependencies]
 tracing = { workspace = true, features = ["std", "attributes"] }

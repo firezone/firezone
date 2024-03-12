@@ -3,7 +3,7 @@ use crate::messages::{
     EgressMessages, IngressMessages, RejectAccess, RequestConnection,
 };
 use crate::CallbackHandler;
-use anyhow::{anyhow, bail, Result};
+use anyhow::{bail, Result};
 use boringtun::x25519::PublicKey;
 use connlib_shared::{
     messages::{GatewayResponse, ResourceAccepted, ResourceDescription},
@@ -221,9 +221,6 @@ impl Eventloop {
                 }) => {
                     // TODO: Handle `init` message during operation.
                     continue;
-                }
-                Poll::Ready(phoenix_channel::Event::Disconnect(reason)) => {
-                    return Poll::Ready(Err(anyhow!("Disconnected by portal: {reason}")));
                 }
                 _ => {}
             }

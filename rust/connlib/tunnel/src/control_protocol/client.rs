@@ -1,4 +1,4 @@
-use std::{collections::HashSet, net::IpAddr};
+use std::{collections::HashSet, net::IpAddr, time::Instant};
 
 use boringtun::x25519::PublicKey;
 use connlib_shared::{
@@ -64,9 +64,13 @@ where
             return Ok(Request::ReuseConnection(connection));
         }
 
-        let domain = self
+        if self.connections_state.node.is_expecting_answer(gateway_id) {
+            return Err(Error::PendingConnection);
+        }
+
+        let awaiting_connection = self
             .role_state
-            .get_awaiting_connection_domain(&resource_id)?
+            .get_awaiting_connection(&resource_id)?
             .clone();
 
         let offer = self.connections_state.node.new_connection(
@@ -77,6 +81,8 @@ where
             turn(&relays, |addr| {
                 self.connections_state.sockets.can_handle(addr)
             }),
+            awaiting_connection.last_intent_sent_at,
+            Instant::now(),
         );
 
         Ok(Request::NewConnection(RequestConnection {
@@ -88,7 +94,7 @@ where
                     username: offer.credentials.username,
                     password: offer.credentials.password,
                 },
-                domain,
+                domain: awaiting_connection.domain,
             },
         }))
     }
@@ -101,7 +107,6 @@ where
     ) -> Result<()> {
         let ips = self.role_state.create_peer_config_for_new_connection(
             resource_id,
-            gateway_id,
             &domain_response.as_ref().map(|d| d.domain.clone()),
         )?;
 
@@ -151,6 +156,7 @@ where
                     password: rtc_ice_params.password,
                 },
             },
+            Instant::now(),
         );
 
         self.new_peer(resource_id, gateway_id, domain_response)?;
@@ -200,23 +206,21 @@ where
 
         let ips: Vec<IpNetwork> = addrs.iter().copied().map(Into::into).collect();
 
-        if let Some(device) = self.device.as_ref() {
-            send_dns_answer(
-                &mut self.role_state,
-                Rtype::Aaaa,
-                device,
-                &resource_description,
-                &addrs,
-            );
+        send_dns_answer(
+            &mut self.role_state,
+            Rtype::Aaaa,
+            &self.device,
+            &resource_description,
+            &addrs,
+        );
 
-            send_dns_answer(
-                &mut self.role_state,
-                Rtype::A,
-                device,
-                &resource_description,
-                &addrs,
-            );
-        }
+        send_dns_answer(
+            &mut self.role_state,
+            Rtype::A,
+            &self.device,
+            &resource_description,
+            &addrs,
+        );
 
         Ok(ips)
     }

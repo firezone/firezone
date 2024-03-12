@@ -1,4 +1,3 @@
-use crate::device_channel::Device;
 use crate::ip_packet::{IpPacket, MutableIpPacket};
 use crate::peer::PacketTransformClient;
 use crate::peer_store::PeerStore;
@@ -6,12 +5,12 @@ use crate::{dns, dns::DnsQuery, Event, Tunnel, DNS_QUERIES_QUEUE_SIZE};
 use bimap::BiMap;
 use connlib_shared::error::{ConnlibError as Error, ConnlibError};
 use connlib_shared::messages::{
-    DnsServer, GatewayId, Interface as InterfaceConfig, ResourceDescription,
+    DnsServer, GatewayId, Interface as InterfaceConfig, IpDnsServer, ResourceDescription,
     ResourceDescriptionCidr, ResourceDescriptionDns, ResourceId, ReuseConnection,
 };
 use connlib_shared::{Callbacks, Dname, IpProvider};
 use domain::base::Rtype;
-use futures_bounded::{FuturesMap, FuturesTupleSet, PushError};
+use futures_bounded::FuturesTupleSet;
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
 use itertools::Itertools;
@@ -21,7 +20,9 @@ use hickory_resolver::config::{NameServerConfig, Protocol, ResolverConfig};
 use hickory_resolver::TokioAsyncResolver;
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::net::IpAddr;
+use std::iter;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+use std::str::FromStr;
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
 use tokio::time::{Interval, MissedTickBehavior};
@@ -29,7 +30,10 @@ use tokio::time::{Interval, MissedTickBehavior};
 // Using str here because Ipv4/6Network doesn't support `const` 🙃
 const IPV4_RESOURCES: &str = "100.96.0.0/11";
 const IPV6_RESOURCES: &str = "fd00:2021:1111:8000::/107";
-const MAX_CONNECTION_REQUEST_DELAY: Duration = Duration::from_secs(10);
+
+const DNS_PORT: u16 = 53;
+const DNS_SENTINELS_V4: &str = "100.100.111.0/24";
+const DNS_SENTINELS_V6: &str = "fd00:2021:1111:8000:100:100:111:0/120";
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct DnsResource {
@@ -54,36 +58,37 @@ where
     ///
     /// Once added, when a packet for the resource is intercepted a new data channel will be created
     /// and packets will be wrapped with wireguard and sent through it.
-    pub fn add_resource(
+    pub fn add_resources(
         &mut self,
-        resource_description: ResourceDescription,
+        resources: &[ResourceDescription],
     ) -> connlib_shared::Result<()> {
-        if let Some(resource) = self.role_state.resource_ids.get(&resource_description.id()) {
-            if resource.has_different_address(resource) {
-                self.remove_resource(resource.id());
+        for resource_description in resources {
+            if let Some(resource) = self.role_state.resource_ids.get(&resource_description.id()) {
+                if resource.has_different_address(resource) {
+                    self.remove_resource(resource.id());
+                }
             }
+
+            match &resource_description {
+                ResourceDescription::Dns(dns) => {
+                    self.role_state
+                        .dns_resources
+                        .insert(dns.address.clone(), dns.clone());
+                }
+                ResourceDescription::Cidr(cidr) => {
+                    self.role_state
+                        .cidr_resources
+                        .insert(cidr.address, cidr.clone());
+                }
+            }
+
+            self.role_state
+                .resource_ids
+                .insert(resource_description.id(), resource_description.clone());
         }
-
-        match &resource_description {
-            ResourceDescription::Dns(dns) => {
-                self.role_state
-                    .dns_resources
-                    .insert(dns.address.clone(), dns.clone());
-            }
-            ResourceDescription::Cidr(cidr) => {
-                self.add_route(cidr.address)?;
-
-                self.role_state
-                    .cidr_resources
-                    .insert(cidr.address, cidr.clone());
-            }
-        }
-
-        self.role_state
-            .resource_ids
-            .insert(resource_description.id(), resource_description);
 
         self.update_resource_list()?;
+        self.update_routes()?;
 
         Ok(())
     }
@@ -100,12 +105,10 @@ where
             .deferred_dns_queries
             .retain(|(r, _), _| r.id != id);
 
-        if let Some(ResourceDescription::Cidr(resource)) = self.role_state.resource_ids.remove(&id)
-        {
-            // Note: hopefully the os doesn't coalece routes in a way that removing a more general route deletes the most specific
-            if let Err(err) = self.remove_route(resource.address) {
-                tracing::error!(%id, %resource.address, "failed to remove route: {err:?}");
-            }
+        self.role_state.resource_ids.remove(&id);
+
+        if let Err(err) = self.update_routes() {
+            tracing::error!(%id, "Failed to update routes: {err:?}");
         }
 
         if let Err(err) = self.update_resource_list() {
@@ -164,48 +167,45 @@ where
         Ok(())
     }
 
-    /// Sets the interface configuration and starts background tasks.
-    #[tracing::instrument(level = "trace", skip(self))]
-    pub fn set_interface(
-        &mut self,
-        config: &InterfaceConfig,
-        dns_mapping: BiMap<IpAddr, DnsServer>,
-    ) -> connlib_shared::Result<()> {
-        let device = Device::new(
+    pub(crate) fn update_interface(&mut self) -> connlib_shared::Result<()> {
+        let dns_mapping = self.role_state.dns_mapping();
+        let config =
+            self.role_state.interface_config.as_ref().expect("Developer error: we should always call update_interface after the interface config is set");
+
+        self.device.initialize(
             config,
             // We can just sort in here because sentinel ips are created in order
             dns_mapping.left_values().copied().sorted().collect(),
-            self.callbacks(),
+            &self.callbacks().clone(),
         )?;
 
-        let name = device.name().to_owned();
-
-        self.device = Some(device);
-        self.no_device_waker.wake();
-
-        let mut errs = Vec::new();
-        for sentinel in dns_mapping.left_values() {
-            if let Err(e) = self.add_route((*sentinel).into()) {
-                tracing::warn!(err = ?e, %sentinel , "couldn't add route for sentinel");
-                errs.push(e);
-            }
-        }
-
-        if errs.len() == dns_mapping.left_values().len() && dns_mapping.left_values().len() > 0 {
-            return Err(errs.pop().unwrap());
-        }
-
-        self.role_state.set_dns_mapping(dns_mapping);
-
-        let res_v4 = self.add_route(IPV4_RESOURCES.parse().unwrap());
-        let res_v6 = self.add_route(IPV6_RESOURCES.parse().unwrap());
-        res_v4.or(res_v6)?;
+        self.device
+            .set_routes(self.role_state.routes().collect(), &self.callbacks)?;
+        let name = self.device.name().to_owned();
 
         self.callbacks.on_tunnel_ready()?;
 
         tracing::debug!(ip4 = %config.ipv4, ip6 = %config.ipv6, %name, "TUN device initialized");
 
         Ok(())
+    }
+
+    /// Sets the interface configuration and starts background tasks.
+    #[tracing::instrument(level = "trace", skip(self))]
+    pub fn set_interface(&mut self, config: &InterfaceConfig) -> connlib_shared::Result<()> {
+        self.role_state.interface_config = Some(config.clone());
+        let effective_dns_servers = effective_dns_servers(
+            config.upstream_dns.clone(),
+            self.callbacks()
+                .get_system_default_resolvers()
+                .ok()
+                .flatten()
+                .unwrap_or_default(),
+        );
+
+        let dns_mapping = sentinel_dns_mapping(&effective_dns_servers);
+        self.role_state.set_dns_mapping(dns_mapping);
+        self.update_interface()
     }
 
     /// Clean up a connection to a resource.
@@ -216,33 +216,9 @@ where
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    pub fn add_route(&mut self, route: IpNetwork) -> connlib_shared::Result<()> {
-        let callbacks = self.callbacks().clone();
-        let maybe_new_device = self
-            .device
-            .as_mut()
-            .ok_or(Error::ControlProtocolError)?
-            .add_route(route, &callbacks)?;
-
-        if let Some(new_device) = maybe_new_device {
-            self.device = Some(new_device);
-        }
-
-        Ok(())
-    }
-
-    #[tracing::instrument(level = "trace", skip(self))]
-    pub fn remove_route(&mut self, route: IpNetwork) -> connlib_shared::Result<()> {
-        let callbacks = self.callbacks().clone();
-        let maybe_new_device = self
-            .device
-            .as_mut()
-            .ok_or(Error::ControlProtocolError)?
-            .remove_route(route, &callbacks)?;
-
-        if let Some(new_device) = maybe_new_device {
-            self.device = Some(new_device);
-        }
+    pub fn update_routes(&mut self) -> connlib_shared::Result<()> {
+        self.device
+            .set_routes(self.role_state.routes().collect(), &self.callbacks)?;
 
         Ok(())
     }
@@ -250,25 +226,13 @@ where
     pub fn add_ice_candidate(&mut self, conn_id: GatewayId, ice_candidate: String) {
         self.connections_state
             .node
-            .add_remote_candidate(conn_id, ice_candidate);
+            .add_remote_candidate(conn_id, ice_candidate, Instant::now());
     }
 }
 
 /// [`Tunnel`] state specific to clients.
 pub struct ClientState {
     awaiting_connection: HashMap<ResourceId, AwaitingConnectionDetails>,
-
-    pub gateway_awaiting_connection: HashSet<GatewayId>,
-    // This timer exist for an unlikely case, on unreliable connections where the RequestConnection message
-    // or the response is lost:
-    // This would remove the "PendingConnection" message and be able to try the connection again.
-    // There are some edge cases that come with this:
-    // * a gateway in a VERY unlikely case could receive the connection request twice. This will stop any connection attempt and make the whole thing start again.
-    // if this would happen often the UX would be awful but this is only in cases where messages are delayed for more than 10 seconds, it's enough that it doesn't break correctness.
-    // * even more unlikely a tunnel could be established in a sort of race condition when this timer goes off. Again a similar behavior to the one above will happen, the webrtc connection will be forcefully terminated from the gateway.
-    // then the old peer will expire, this might take ~180 seconds. This is an even worse experience but the likelihood of this happen is infinitesimaly small, again correctness is the only important part.
-    gateway_awaiting_connection_timers: FuturesMap<GatewayId, ()>,
-
     resources_gateways: HashMap<ResourceId, GatewayId>,
 
     pub dns_resources_internal_ips: HashMap<DnsResource, HashSet<IpAddr>>,
@@ -292,13 +256,14 @@ pub struct ClientState {
     dns_resolvers: HashMap<IpAddr, TokioAsyncResolver>,
 
     buffered_events: VecDeque<Event<GatewayId>>,
+    interface_config: Option<InterfaceConfig>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct AwaitingConnectionDetails {
-    domain: Option<Dname>,
+pub(crate) struct AwaitingConnectionDetails {
+    pub domain: Option<Dname>,
     gateways: HashSet<GatewayId>,
-    last_intent_sent_at: Instant,
+    pub last_intent_sent_at: Instant,
 }
 
 impl ClientState {
@@ -375,15 +340,13 @@ impl ClientState {
         }
     }
 
-    pub(crate) fn get_awaiting_connection_domain(
+    pub(crate) fn get_awaiting_connection(
         &self,
         resource: &ResourceId,
-    ) -> Result<&Option<Dname>, ConnlibError> {
-        Ok(&self
-            .awaiting_connection
+    ) -> Result<&AwaitingConnectionDetails, ConnlibError> {
+        self.awaiting_connection
             .get(resource)
-            .ok_or(Error::UnexpectedConnectionDetails)?
-            .domain)
+            .ok_or(Error::UnexpectedConnectionDetails)
     }
 
     pub(crate) fn attempt_to_reuse_connection(
@@ -396,7 +359,7 @@ impl ClientState {
             .get(&resource)
             .ok_or(Error::UnknownResource)?;
 
-        let domain = self.get_awaiting_connection_domain(&resource)?.clone();
+        let domain = self.get_awaiting_connection(&resource)?.domain.clone();
 
         if self.is_connected_to(resource, &domain) {
             return Err(Error::UnexpectedConnectionDetails);
@@ -406,31 +369,9 @@ impl ClientState {
             .get_mut(&resource)
             .ok_or(Error::UnexpectedConnectionDetails)?;
 
-        if self.gateway_awaiting_connection.contains(&gateway) {
-            self.awaiting_connection.remove(&resource);
-            return Err(Error::PendingConnection);
-        }
-
         self.resources_gateways.insert(resource, gateway);
 
         if self.peers.get(&gateway).is_none() {
-            match self
-                .gateway_awaiting_connection_timers
-                // Note: we don't need to set a timer here because
-                // the FutureMap already expires things, it seems redundant
-                // to also have timer that expires.
-                .try_push(gateway, std::future::pending())
-            {
-                Ok(_) => {}
-                Err(PushError::BeyondCapacity(_)) => {
-                    tracing::warn!(%gateway, "Too many concurrent connection attempts");
-                    return Err(Error::TooManyConnectionRequests);
-                }
-                Err(PushError::Replaced(_)) => {
-                    // The timers are equivalent for our purpose so we don't really care about this one.
-                }
-            };
-            self.gateway_awaiting_connection.insert(gateway);
             return Ok(None);
         };
 
@@ -448,13 +389,7 @@ impl ClientState {
 
     pub fn on_connection_failed(&mut self, resource: ResourceId) {
         self.awaiting_connection.remove(&resource);
-
-        let Some(gateway) = self.resources_gateways.remove(&resource) else {
-            return;
-        };
-
-        self.gateway_awaiting_connection.remove(&gateway);
-        self.gateway_awaiting_connection_timers.remove(gateway);
+        self.resources_gateways.remove(&resource);
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(resource_address = %resource.address, resource_id = %resource.id))]
@@ -464,6 +399,10 @@ impl ClientState {
 
     #[tracing::instrument(level = "debug", skip_all, fields(resource_ip = %destination, resource_id))]
     fn on_connection_intent_ip(&mut self, destination: IpAddr, now: Instant) {
+        if is_definitely_not_a_resource(destination) {
+            return;
+        }
+
         let Some(resource_id) = self.get_cidr_resource_by_destination(destination) else {
             if let Some(resource) = self
                 .dns_resources_internal_ips
@@ -493,9 +432,8 @@ impl ClientState {
         debug_assert!(self.resource_ids.contains_key(&resource));
 
         let gateways = self
-            .gateway_awaiting_connection
-            .iter()
-            .chain(self.resources_gateways.values())
+            .resources_gateways
+            .values()
             .copied()
             .collect::<HashSet<_>>();
 
@@ -531,7 +469,6 @@ impl ClientState {
     pub fn create_peer_config_for_new_connection(
         &mut self,
         resource: ResourceId,
-        gateway: GatewayId,
         domain: &Option<Dname>,
     ) -> Result<Vec<IpNetwork>, ConnlibError> {
         let desc = self
@@ -542,8 +479,6 @@ impl ClientState {
         let ips = self.get_resource_ip(desc, domain);
 
         // Tidy up state once everything succeeded.
-        self.gateway_awaiting_connection.remove(&gateway);
-        self.gateway_awaiting_connection_timers.remove(gateway);
         self.awaiting_connection.remove(&resource);
 
         Ok(ips)
@@ -553,7 +488,7 @@ impl ClientState {
         self.resources_gateways.get(resource).copied()
     }
 
-    pub fn set_dns_mapping(&mut self, mapping: BiMap<IpAddr, DnsServer>) {
+    fn set_dns_mapping(&mut self, mapping: BiMap<IpAddr, DnsServer>) {
         self.dns_mapping = mapping.clone();
         self.dns_resolvers = create_resolvers(mapping);
     }
@@ -605,6 +540,15 @@ impl ClientState {
         });
     }
 
+    fn routes(&self) -> impl Iterator<Item = IpNetwork> + '_ {
+        self.cidr_resources
+            .iter()
+            .map(|(ip, _)| ip)
+            .chain(iter::once(IpNetwork::from_str(IPV4_RESOURCES).unwrap()))
+            .chain(iter::once(IpNetwork::from_str(IPV6_RESOURCES).unwrap()))
+            .chain(self.dns_mapping.left_values().copied().map(Into::into))
+    }
+
     fn get_cidr_resource_by_destination(&self, destination: IpAddr) -> Option<ResourceId> {
         self.cidr_resources
             .longest_match(destination)
@@ -641,12 +585,6 @@ impl ClientState {
         loop {
             if let Some(event) = self.buffered_events.pop_front() {
                 return Poll::Ready(event);
-            }
-
-            if let Poll::Ready((gateway_id, _)) =
-                self.gateway_awaiting_connection_timers.poll_unpin(cx)
-            {
-                self.gateway_awaiting_connection.remove(&gateway_id);
             }
 
             if self.refresh_dns_timer.poll_tick(cx).is_ready() {
@@ -723,10 +661,6 @@ impl Default for ClientState {
 
         Self {
             awaiting_connection: Default::default(),
-
-            gateway_awaiting_connection: Default::default(),
-            gateway_awaiting_connection_timers: FuturesMap::new(MAX_CONNECTION_REQUEST_DELAY, 100),
-
             resources_gateways: Default::default(),
             forwarded_dns_queries: FuturesTupleSet::new(
                 Duration::from_secs(60),
@@ -746,6 +680,92 @@ impl Default for ClientState {
             dns_mapping: Default::default(),
             dns_resolvers: Default::default(),
             buffered_events: Default::default(),
+            interface_config: Default::default(),
         }
+    }
+}
+
+fn effective_dns_servers(
+    upstream_dns: Vec<DnsServer>,
+    default_resolvers: Vec<IpAddr>,
+) -> Vec<DnsServer> {
+    if !upstream_dns.is_empty() {
+        return upstream_dns;
+    }
+
+    let mut dns_servers = default_resolvers
+        .into_iter()
+        .filter(|ip| !IpNetwork::from_str(DNS_SENTINELS_V4).unwrap().contains(*ip))
+        .filter(|ip| !IpNetwork::from_str(DNS_SENTINELS_V6).unwrap().contains(*ip))
+        .peekable();
+
+    if dns_servers.peek().is_none() {
+        tracing::error!("No system default DNS servers available! Can't initialize resolver. DNS interception will be disabled.");
+        return Vec::new();
+    }
+
+    dns_servers
+        .map(|ip| {
+            DnsServer::IpPort(IpDnsServer {
+                address: (ip, DNS_PORT).into(),
+            })
+        })
+        .collect()
+}
+
+fn sentinel_dns_mapping(dns: &[DnsServer]) -> BiMap<IpAddr, DnsServer> {
+    let mut ip_provider = IpProvider::new(
+        DNS_SENTINELS_V4.parse().unwrap(),
+        DNS_SENTINELS_V6.parse().unwrap(),
+    );
+
+    dns.iter()
+        .cloned()
+        .map(|i| {
+            (
+                ip_provider
+                    .get_proxy_ip_for(&i.ip())
+                    .expect("We only support up to 256 IPv4 DNS servers and 256 IPv6 DNS servers"),
+                i,
+            )
+        })
+        .collect()
+}
+/// Compares the given [`IpAddr`] against a static set of ignored IPs that are definitely not resources.
+fn is_definitely_not_a_resource(ip: IpAddr) -> bool {
+    /// Source: https://en.wikipedia.org/wiki/Multicast_address#Notable_IPv4_multicast_addresses
+    const IPV4_IGMP_MULTICAST: Ipv4Addr = Ipv4Addr::new(224, 0, 0, 22);
+
+    /// Source: <https://en.wikipedia.org/wiki/Multicast_address#Notable_IPv6_multicast_addresses>
+    const IPV6_MULTICAST_ALL_ROUTERS: Ipv6Addr = Ipv6Addr::new(0xFF02, 0, 0, 0, 0, 0, 0, 0x0002);
+
+    match ip {
+        IpAddr::V4(ip4) => {
+            if ip4 == IPV4_IGMP_MULTICAST {
+                return true;
+            }
+        }
+        IpAddr::V6(ip6) => {
+            if ip6 == IPV6_MULTICAST_ALL_ROUTERS {
+                return true;
+            }
+        }
+    }
+
+    false
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ignores_ip4_igmp_multicast() {
+        assert!(is_definitely_not_a_resource("224.0.0.22".parse().unwrap()))
+    }
+
+    #[test]
+    fn ignores_ip6_multicast_all_routers() {
+        assert!(is_definitely_not_a_resource("ff02::2".parse().unwrap()))
     }
 }

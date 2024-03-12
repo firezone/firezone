@@ -50,13 +50,19 @@ defmodule Web.HomeControllerTest do
   describe "redirect_to_sign_in/2" do
     test "redirects to the sign in page", %{conn: conn} do
       id = Ecto.UUID.generate()
-      conn = post(conn, ~p"/", %{"account_id_or_slug" => id})
-      assert redirected_to(conn) == ~p"/#{id}"
+      conn = post(conn, ~p"/", %{"account_id_or_slug" => id, "as" => "client"})
+      assert redirected_to(conn) == ~p"/#{id}?as=client"
     end
 
     test "downcases account slug on redirect", %{conn: conn} do
-      conn = post(conn, ~p"/", %{"account_id_or_slug" => "FOO"})
-      assert redirected_to(conn) == ~p"/foo"
+      conn = post(conn, ~p"/", %{"account_id_or_slug" => "FOO", "as" => "client"})
+      assert redirected_to(conn) == ~p"/foo?as=client"
+    end
+
+    test "puts an error flash when slug is invalid", %{conn: conn} do
+      conn = post(conn, ~p"/", %{"account_id_or_slug" => "?1", "as" => "client"})
+      assert redirected_to(conn) == ~p"/?as=client"
+      assert conn.assigns.flash["error"] == "Account ID or Slug contains invalid characters"
     end
   end
 end

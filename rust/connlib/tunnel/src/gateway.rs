@@ -1,4 +1,3 @@
-use crate::device_channel::Device;
 use crate::ip_packet::MutableIpPacket;
 use crate::peer::{PacketTransformGateway, Peer};
 use crate::peer_store::PeerStore;
@@ -14,8 +13,9 @@ use connlib_shared::{Callbacks, Dname, Error, Result};
 use ip_network::IpNetwork;
 use secrecy::{ExposeSecret as _, Secret};
 use snownet::Server;
+use std::collections::HashSet;
 use std::task::{ready, Context, Poll};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tokio::time::{interval, Interval, MissedTickBehavior};
 
 const PEERS_IPV4: &str = "100.64.0.0/11";
@@ -46,16 +46,14 @@ where
     #[tracing::instrument(level = "trace", skip(self))]
     pub fn set_interface(&mut self, config: &InterfaceConfig) -> connlib_shared::Result<()> {
         // Note: the dns fallback strategy is irrelevant for gateways
-        let mut device = Device::new(config, vec![], self.callbacks())?;
+        self.device
+            .initialize(config, vec![], &self.callbacks().clone())?;
+        self.device.set_routes(
+            HashSet::from([PEERS_IPV4.parse().unwrap(), PEERS_IPV6.parse().unwrap()]),
+            &self.callbacks,
+        )?;
 
-        let result_v4 = device.add_route(PEERS_IPV4.parse().unwrap(), self.callbacks());
-        let result_v6 = device.add_route(PEERS_IPV6.parse().unwrap(), self.callbacks());
-        result_v4.or(result_v6)?;
-
-        let name = device.name().to_owned();
-
-        self.device = Some(device);
-        self.no_device_waker.wake();
+        let name = self.device.name().to_owned();
 
         tracing::debug!(ip4 = %config.ipv4, ip6 = %config.ipv6, %name, "TUN device initialized");
 
@@ -113,6 +111,7 @@ where
             turn(&relays, |addr| {
                 self.connections_state.sockets.can_handle(addr)
             }),
+            Instant::now(),
         );
 
         self.new_peer(
@@ -198,7 +197,7 @@ where
     pub fn add_ice_candidate(&mut self, conn_id: ClientId, ice_candidate: String) {
         self.connections_state
             .node
-            .add_remote_candidate(conn_id, ice_candidate);
+            .add_remote_candidate(conn_id, ice_candidate, Instant::now());
     }
 
     fn new_peer(

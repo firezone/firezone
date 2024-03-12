@@ -68,13 +68,21 @@ A single Client connection to a single Gateway can typically reach speeds of **1
 Gbps** or more. This scales linearly with each Client connection up to the
 number of CPU cores available to the Gateway.
 
-Use the table below as a rough guide for sizing your Gateway deployments:
+In our tests, we've found that even a single `f1.micro` instance on Google Cloud
+Platform, equipped with a single shared vCPU core, can effortlessly handle up to
+1 Gbps of tunneled traffic. This performance is attributed to the efficiency of
+the WireGuard® protocol and the Rust programming language.
 
-| Gateway size | Users served | CPU cores | Memory | Network link |
-| ------------ | ------------ | --------- | ------ | ------------ |
-| Small        | 100          | 2         | 2 GB   | 1 Gbps       |
-| Medium       | 1,000        | 8         | 8 GB   | 10 Gbps      |
-| Large        | 10,000       | 32        | 32 GB  | 40 Gbps      |
+Use the table below as a rough guide for sizing your Gateway deployments. These
+are general recommendations and may not be accurate for your specific use case.
+If you're unsure, start with a smaller Gateway and scale up as needed.
+
+| Gateway size | Users served   | CPU cores | Memory | Network link |
+| ------------ | -------------- | --------- | ------ | ------------ |
+| Micro        | 10 - 100       | 1         | 512 MB | 1 Gbps       |
+| Small        | 100 - 250      | 2         | 1 GB   | 1 Gbps       |
+| Medium       | 250 - 1,000    | 4         | 4 GB   | 10 Gbps      |
+| Large        | 1,000 - 10,000 | 16        | 16 GB  | 25 Gbps      |
 
 To go beyond the table above, you can deploy additional Gateways and use
 Firezone's [automatic load balancing](#load-balancing) to distribute Client
