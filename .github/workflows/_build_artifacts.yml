@@ -197,7 +197,7 @@ jobs:
           cp target/${{ matrix.arch.target }}/${{ inputs.perf-test && 'release' || inputs.profile }}/${{ matrix.name.package }} $BINARY_DEST_PATH
 
           # Used for Docker images
-          cp target/${{ matrix.arch.target }}/${{ inputs.perf-test &&* 'release' || inputs.profile }}/${{ matrix.name.package }} ${{ matrix.name.package }}
+          cp target/${{ matrix.arch.target }}/${{ inputs.perf-test && 'release' || inputs.profile }}/${{ matrix.name.package }} ${{ matrix.name.package }}
       - name: Upload Release Assets
         if: ${{ inputs.profile == 'release' && (matrix.name.image_name == 'gateway' || matrix.name.image_name == 'client') }}
         env:
