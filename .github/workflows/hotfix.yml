@@ -6,7 +6,6 @@ on:
       tag:
         description: "Image tag to deploy. Defaults to the last commit SHA in the branch."
         type: string
-        default: ${{ github.sha }}
         required: false
 
 concurrency:
@@ -33,4 +32,4 @@ jobs:
     secrets: inherit
     uses: ./.github/workflows/_deploy_production.yml
     with:
-      tag: ${{ inputs.tag }}
+      tag: ${{ inputs.tag || github.sha }}
