@@ -1,4 +1,3 @@
-use crate::device_channel::Device;
 use crate::ip_packet::{IpPacket, MutableIpPacket};
 use crate::peer::PacketTransformClient;
 use crate::peer_store::PeerStore;
@@ -170,17 +169,14 @@ where
         config: &InterfaceConfig,
         dns_mapping: BiMap<IpAddr, DnsServer>,
     ) -> connlib_shared::Result<()> {
-        let device = Device::new(
+        self.device.initialize(
             config,
             // We can just sort in here because sentinel ips are created in order
             dns_mapping.left_values().copied().sorted().collect(),
-            self.callbacks(),
+            &self.callbacks().clone(),
         )?;
 
-        let name = device.name().to_owned();
-
-        self.device = Some(device);
-        self.no_device_waker.wake();
+        let name = self.device.name().to_owned();
 
         let mut errs = Vec::new();
         for sentinel in dns_mapping.left_values() {
@@ -217,10 +213,7 @@ where
     #[tracing::instrument(level = "trace", skip(self))]
     pub fn add_route(&mut self, route: IpNetwork) -> connlib_shared::Result<()> {
         let callbacks = self.callbacks().clone();
-        self.device
-            .as_mut()
-            .ok_or(Error::ControlProtocolError)?
-            .add_route(route, &callbacks)?;
+        self.device.add_route(route, &callbacks)?;
 
         Ok(())
     }
@@ -228,10 +221,7 @@ where
     #[tracing::instrument(level = "trace", skip(self))]
     pub fn remove_route(&mut self, route: IpNetwork) -> connlib_shared::Result<()> {
         let callbacks = self.callbacks().clone();
-        self.device
-            .as_mut()
-            .ok_or(Error::ControlProtocolError)?
-            .remove_route(route, &callbacks)?;
+        self.device.remove_route(route, &callbacks)?;
 
         Ok(())
     }
@@ -239,7 +229,7 @@ where
     pub fn add_ice_candidate(&mut self, conn_id: GatewayId, ice_candidate: String) {
         self.connections_state
             .node
-            .add_remote_candidate(conn_id, ice_candidate);
+            .add_remote_candidate(conn_id, ice_candidate, Instant::now());
     }
 }
 
