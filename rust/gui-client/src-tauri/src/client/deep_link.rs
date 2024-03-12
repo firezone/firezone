@@ -36,9 +36,6 @@ pub enum Error {
     /// Something went wrong finding the path to our own exe
     #[error(transparent)]
     CurrentExe(io::Error),
-    /// We got some data but it's not UTF-8
-    #[error(transparent)]
-    LinkNotUtf8(std::str::Utf8Error),
     #[cfg(target_os = "windows")]
     #[error("Couldn't set up security descriptor for deep link server")]
     SecurityDescriptor,

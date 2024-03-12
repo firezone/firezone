@@ -2,10 +2,11 @@ use super::{ControllerRequest, CtlrTx, Error};
 use anyhow::Result;
 use connlib_shared::BUNDLE_ID;
 use secrecy::{ExposeSecret, SecretString};
+use tauri::Manager;
 
 /// Open a URL in the user's default browser
 pub(crate) fn open_url(app: &tauri::AppHandle, url: &SecretString) -> Result<()> {
-    tauri::api::shell::open(app.shell_scope(), url.expose_secret(), None)?;
+    tauri::api::shell::open(&app.shell_scope(), url.expose_secret(), None)?;
     Ok(())
 }
 
