@@ -30,7 +30,7 @@ on:
       relay_image:
         required: false
         type: string
-        default: 'us-east1-docker.pkg.dev/firezone-staging/firezone/relay'
+        default: 'us-east1-docker.pkg.dev/firezone-staging/firezone/debug/relay'
       relay_tag:
         required: false
         type: string
@@ -38,7 +38,7 @@ on:
       gateway_image:
         required: false
         type: string
-        default: 'us-east1-docker.pkg.dev/firezone-staging/firezone/gateway'
+        default: 'us-east1-docker.pkg.dev/firezone-staging/firezone/debug/gateway'
       gateway_tag:
         required: false
         type: string
@@ -46,7 +46,7 @@ on:
       client_image:
         required: false
         type: string
-        default: 'us-east1-docker.pkg.dev/firezone-staging/firezone/client'
+        default: 'us-east1-docker.pkg.dev/firezone-staging/firezone/debug/client'
       client_tag:
         required: false
         type: string
