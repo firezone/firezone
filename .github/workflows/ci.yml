@@ -135,9 +135,9 @@ jobs:
       API_TAG: ${{ matrix.sha }}
       WEB_TAG: ${{ matrix.sha }}
       ELIXIR_TAG: ${{ matrix.sha }}
-      GATEWAY_TAG: ${{ matrix.sha }}-release
-      CLIENT_TAG: ${{ matrix.sha }}-release
-      RELAY_TAG: ${{ matrix.sha }}-release
+      GATEWAY_TAG: ${{ matrix.sha }}-perf
+      CLIENT_TAG: ${{ matrix.sha }}-perf
+      RELAY_TAG: ${{ matrix.sha }}-perf
     strategy:
       fail-fast: false
       matrix:
