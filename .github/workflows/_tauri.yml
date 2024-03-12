@@ -84,8 +84,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.binary-dest-path }}
-          path: |
-            ${{ join(matrix.artifacts, '\n') }}
+          path: ${{ join(matrix.artifacts) }}
+          if-no-files-found: error
       # Only for builds on main
       - name: Upload Release Assets
         if: ${{ inputs.release_tag }}
