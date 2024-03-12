@@ -152,13 +152,11 @@ pub enum EgressMessages {
 mod test {
     use std::collections::HashSet;
 
-    use connlib_shared::{
-        control::PhoenixMessage,
-        messages::{
-            DnsServer, Interface, IpDnsServer, Relay, ResourceDescription, ResourceDescriptionCidr,
-            ResourceDescriptionDns, Stun, Turn,
-        },
+    use connlib_shared::messages::{
+        DnsServer, Interface, IpDnsServer, Relay, ResourceDescription, ResourceDescriptionCidr,
+        ResourceDescriptionDns, Stun, Turn,
     };
+    use phoenix_channel::{OutboundRequestId, PhoenixMessage};
 
     use chrono::DateTime;
 
@@ -171,7 +169,7 @@ mod test {
     #[test]
     fn connection_ready_deserialization() {
         let message = r#"{
-            "ref": "0",
+            "ref": 0,
             "topic": "client",
             "event": "phx_reply",
             "payload": {
@@ -204,7 +202,7 @@ mod test {
 
     #[test]
     fn config_updated() {
-        let m = PhoenixMessage::new(
+        let m = PhoenixMessage::new_message(
             "client",
             IngressMessages::ConfigChanged(ConfigUpdate {
                 interface: Interface {
@@ -243,7 +241,7 @@ mod test {
 
     #[test]
     fn init_phoenix_message() {
-        let m = PhoenixMessage::new(
+        let m = PhoenixMessage::new_message(
             "client",
             IngressMessages::Init(InitClient {
                 interface: Interface {
@@ -301,7 +299,7 @@ mod test {
 
     #[test]
     fn list_relays_message() {
-        let m = PhoenixMessage::<EgressMessages, ()>::new(
+        let m = PhoenixMessage::<EgressMessages, ()>::new_message(
             "client",
             EgressMessages::PrepareConnection {
                 resource_id: "f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3".parse().unwrap(),
@@ -326,7 +324,7 @@ mod test {
 
     #[test]
     fn connection_details_reply() {
-        let m = PhoenixMessage::<IngressMessages, ReplyMessages>::new_ok_reply(
+        let m = PhoenixMessage::<EgressMessages, ReplyMessages>::new_ok_reply(
             "client",
             ReplyMessages::ConnectionDetails(ConnectionDetails {
                 gateway_id: "73037362-715d-4a83-a749-f18eadd970e6".parse().unwrap(),
@@ -397,30 +395,15 @@ mod test {
     }
 
     #[test]
-    fn create_log_sink_error_response() {
-        let json = r#"{"event":"phx_reply","ref":"unique_log_sink_ref","topic":"client","payload":{"status":"error","response":{"reason": "disabled"}}}"#;
-
-        let actual =
-            serde_json::from_str::<PhoenixMessage<EgressMessages, ReplyMessages>>(json).unwrap();
-        let expected = PhoenixMessage::new_err_reply(
-            "client",
-            connlib_shared::control::ErrorReply::Disabled,
-            "unique_log_sink_ref".to_owned(),
-        );
-
-        assert_eq!(actual, expected)
-    }
-
-    #[test]
     fn create_log_sink_ok_response() {
-        let json = r#"{"event":"phx_reply","ref":"unique_log_sink_ref","topic":"client","payload":{"status":"ok","response":"https://storage.googleapis.com/foo/bar"}}"#;
+        let json = r#"{"event":"phx_reply","ref":2,"topic":"client","payload":{"status":"ok","response":"https://storage.googleapis.com/foo/bar"}}"#;
 
         let actual =
             serde_json::from_str::<PhoenixMessage<EgressMessages, ReplyMessages>>(json).unwrap();
         let expected = PhoenixMessage::new_ok_reply(
             "client",
             ReplyMessages::SignedLogUrl("https://storage.googleapis.com/foo/bar".parse().unwrap()),
-            "unique_log_sink_ref".to_owned(),
+            Some(OutboundRequestId::for_test(2)),
         );
 
         assert_eq!(actual, expected)

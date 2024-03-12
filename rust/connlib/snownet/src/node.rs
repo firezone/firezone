@@ -38,6 +38,9 @@ const HANDSHAKE_RATE_LIMIT: u64 = 100;
 /// How long we will at most wait for a candidate from the remote.
 const CANDIDATE_TIMEOUT: Duration = Duration::from_secs(10);
 
+/// How long we will at most wait for an [`Answer`] from the remote.
+const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(20);
+
 const MAX_UDP_SIZE: usize = (1 << 16) - 1;
 
 /// Manages a set of wireguard connections for a server.
@@ -49,6 +52,27 @@ pub enum Server {}
 pub enum Client {}
 
 /// A node within a `snownet` network maintains connections to several other nodes.
+///
+/// [`Node`] is built in a SANS-IO fashion, meaning it neither advances time nor network state on its own.
+/// Instead, you need to call one of the following functions:
+///
+/// - [`Node::decapsulate`] for handling incoming network traffic
+/// - [`Node::encapsulate`] for handling outgoing network traffic
+/// - [`Node::handle_timeout`] for waking the [`Node`]
+///
+/// As a counterpart, the following functions inform you about state changes and "actions" the [`Node`] would like to take:
+///
+/// - [`Node::poll_timeout`] for learning when to "wake" the [`Node`]
+/// - [`Node::poll_transmit`] for transferring buffered data
+/// - [`Node::poll_event`] for learning about state changes
+///
+/// These sets of functions need to be combined into an event-loop by the caller.
+/// Any time you change a [`Node`]'s state, you should call [`Node::poll_timeout`] to accurately update, when the [`Node`] wants to be woken up for any time-based actions.
+/// In other words, it should be a loop of:
+///
+/// 1. Change [`Node`]'s state (either via network messages, adding a new connection, etc)
+/// 2. Check [`Node::poll_timeout`] for when to wake the [`Node`]
+/// 3. Call [`Node::handle_timeout`] once that time is reached
 pub struct Node<T, TId> {
     private_key: StaticSecret,
     index: IndexLfsr,
@@ -63,8 +87,6 @@ pub struct Node<T, TId> {
 
     connections: Connections<TId>,
     pending_events: VecDeque<Event<TId>>,
-
-    last_now: Instant,
 
     buffer: Box<[u8; MAX_UDP_SIZE]>,
 
@@ -95,7 +117,7 @@ impl<T, TId> Node<T, TId>
 where
     TId: Eq + Hash + Copy + fmt::Display,
 {
-    pub fn new(private_key: StaticSecret, now: Instant) -> Self {
+    pub fn new(private_key: StaticSecret) -> Self {
         let public_key = &(&private_key).into();
         Self {
             private_key,
@@ -109,7 +131,6 @@ where
             buffer: Box::new([0u8; MAX_UDP_SIZE]),
             bindings: HashMap::default(),
             allocations: HashMap::default(),
-            last_now: now,
             connections: Default::default(),
             stats: Default::default(),
         }
@@ -153,7 +174,7 @@ where
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(%id))]
-    pub fn add_remote_candidate(&mut self, id: TId, candidate: String) {
+    pub fn add_remote_candidate(&mut self, id: TId, candidate: String, now: Instant) {
         let candidate = match Candidate::from_sdp_string(&candidate) {
             Ok(c) => c,
             Err(e) => {
@@ -174,8 +195,6 @@ where
             }
 
             CandidateKind::Relayed => {
-                let now = self.last_now;
-
                 // Optimisatically try to bind the channel only on the same relay as the remote peer.
                 if let Some(allocation) = self.same_relay_as_peer(id, &candidate) {
                     allocation.bind_channel(candidate.addr(), now);
@@ -191,7 +210,7 @@ where
                 continue;
             };
 
-            allocation.bind_channel(candidate.addr(), self.last_now);
+            allocation.bind_channel(candidate.addr(), now);
         }
     }
 
@@ -273,6 +292,7 @@ where
         &'s mut self,
         connection: TId,
         packet: IpPacket<'_>,
+        now: Instant,
     ) -> Result<Option<Transmit<'s>>, Error> {
         let conn = self
             .connections
@@ -302,8 +322,7 @@ where
                     tracing::warn!(%relay, "No allocation");
                     return Ok(None);
                 };
-                let Some(total_length) =
-                    allocation.encode_to_slice(peer, packet, header, self.last_now)
+                let Some(total_length) = allocation.encode_to_slice(peer, packet, header, now)
                 else {
                     tracing::warn!(%peer, "No channel");
                     return Ok(None);
@@ -326,111 +345,6 @@ where
     /// Returns a pending [`Event`] from the pool.
     #[must_use]
     pub fn poll_event(&mut self) -> Option<Event<TId>> {
-        let binding_events = self.bindings.iter_mut().flat_map(|(server, binding)| {
-            iter::from_fn(|| binding.poll_event().map(|e| (*server, e)))
-        });
-        let allocation_events = self
-            .allocations
-            .iter_mut()
-            .flat_map(|(server, allocation)| {
-                iter::from_fn(|| allocation.poll_event().map(|e| (*server, e)))
-            });
-
-        for (server, event) in binding_events.chain(allocation_events) {
-            match event {
-                CandidateEvent::New(candidate) => {
-                    add_candidates(
-                        server,
-                        candidate,
-                        &mut self.connections,
-                        &mut self.pending_events,
-                    );
-                }
-                CandidateEvent::Invalid(candidate) => {
-                    for (_, agent) in self.connections.agents_mut() {
-                        agent.invalidate_candidate(&candidate);
-                    }
-                }
-            }
-        }
-
-        let mut failed_connections = vec![];
-
-        for (id, conn) in self.connections.iter_established_mut() {
-            while let Some(event) = conn.agent.poll_event() {
-                match event {
-                    IceAgentEvent::DiscoveredRecv { source, .. } => {
-                        conn.possible_sockets.insert(source);
-                    }
-                    IceAgentEvent::IceConnectionStateChange(IceConnectionState::Disconnected) => {
-                        failed_connections.push(id);
-                    }
-                    IceAgentEvent::NominatedSend {
-                        destination,
-                        source,
-                        ..
-                    } => {
-                        let candidate = conn
-                            .local_candidate(source)
-                            .expect("to only nominate existing candidates");
-
-                        let remote_socket = match candidate.kind() {
-                            CandidateKind::Relayed => {
-                                let relay =
-                                    self.allocations.iter().find_map(|(relay, allocation)| {
-                                        allocation.has_socket(source).then_some(*relay)
-                                    });
-
-                                let Some(relay) = relay else {
-                                    debug_assert!(
-                                        false,
-                                        "Should only nominate candidates from known relays"
-                                    );
-                                    continue;
-                                };
-
-                                PeerSocket::Relay {
-                                    relay,
-                                    dest: destination,
-                                }
-                            }
-                            CandidateKind::ServerReflexive | CandidateKind::Host => {
-                                PeerSocket::Direct {
-                                    dest: destination,
-                                    source,
-                                }
-                            }
-                            CandidateKind::PeerReflexive => {
-                                unreachable!("local candidate is never `PeerReflexive`")
-                            }
-                        };
-
-                        if conn.peer_socket != Some(remote_socket) {
-                            let is_first_connection = conn.peer_socket.is_none();
-
-                            tracing::info!(old = ?conn.peer_socket, new = ?remote_socket, duration_since_intent = ?conn.duration_since_intent(self.last_now), "Updating remote socket");
-                            conn.peer_socket = Some(remote_socket);
-
-                            conn.invalidate_candiates();
-                            conn.force_handshake(&mut self.allocations, self.last_now);
-
-                            if is_first_connection {
-                                return Some(Event::ConnectionEstablished(id));
-                            }
-                        }
-                    }
-                    _ => {}
-                }
-            }
-        }
-
-        for conn in failed_connections {
-            tracing::info!(id = %conn, "Connection failed (ICE timeout)");
-
-            self.connections.established.remove(&conn);
-            self.pending_events.push_back(Event::ConnectionFailed(conn));
-        }
-
         self.pending_events.pop_front()
     }
 
@@ -457,40 +371,35 @@ where
 
     /// Advances time within the [`Node`].
     ///
-    /// This advances time within the ICE agent, updates timers within all wireguard connections as well as resets wireguard's rate limiter (if necessary).
+    /// This function is the main "work-horse" outside of encapsulating or decapsulating network packets.
+    /// Any significant state changes happen in here.
+    ///
+    /// ## Implementation note
+    ///
+    /// [`Node`] composes several other components that are also designed in a SANS-IO fashion.
+    /// They all have similar functions like `poll_transmit`, `poll_event` etc.
+    ///
+    /// It might be tempting to e.g. define [`Node::poll_event`] as a composition of the lower-level `poll_event` functions.
+    /// Counter-intuitively, this is not a good design.
+    /// The reason is simple: An event generated by a lower-level components does not necessarily translate to an event for [`Node`].
+    /// Instead, it might translate into something completely different, like a [`Transmit`].
+    ///
+    /// As such, it ends up being cleaner to "drain" all lower-level components of their events, transmits etc within this function.
     pub fn handle_timeout(&mut self, now: Instant) {
-        self.last_now = now;
+        self.bindings_and_allocations_drain_events();
 
-        let mut expired_connections = vec![];
-        let mut no_candidates_received = vec![];
-
-        for (id, c) in self.connections.iter_established_mut() {
-            match c.handle_timeout(now, &mut self.allocations) {
-                Ok(()) => {}
-                Err(ConnectionError::Wireguard(WireGuardError::ConnectionExpired)) => {
-                    expired_connections.push(id);
-                }
-                Err(ConnectionError::CandidateTimeout) => {
-                    no_candidates_received.push(id);
-                }
-                Err(ConnectionError::Wireguard(e)) => {
-                    tracing::warn!(%id, ?e);
-                }
-            };
+        for (id, connection) in self.connections.iter_established_mut() {
+            connection.handle_timeout(
+                id,
+                now,
+                &mut self.allocations,
+                &mut self.pending_events,
+                &mut self.buffered_transmits,
+            );
         }
 
-        for conn in expired_connections {
-            tracing::info!(id = %conn, "Connection failed (wireguard tunnel expired)");
-
-            self.connections.established.remove(&conn);
-            self.pending_events.push_back(Event::ConnectionFailed(conn))
-        }
-
-        for conn in no_candidates_received {
-            tracing::info!(id = %conn, "Connection failed (no candidates received)");
-
-            self.connections.established.remove(&conn);
-            self.pending_events.push_back(Event::ConnectionFailed(conn))
+        for (id, connection) in self.connections.initial.iter_mut() {
+            connection.handle_timeout(id, now);
         }
 
         for binding in self.bindings.values_mut() {
@@ -508,32 +417,12 @@ where
             self.next_rate_limiter_reset = Some(now + Duration::from_secs(1));
         }
 
-        let stale_connections = self
-            .connections
-            .initial
-            .iter()
-            .filter_map(|(id, conn)| {
-                (now.duration_since(conn.created_at) >= Duration::from_secs(20)).then_some(*id)
-            })
-            .collect::<Vec<_>>();
-
-        for conn in stale_connections {
-            tracing::info!(id = %conn, "Connection setup timed out (no answer received)");
-
-            self.connections.initial.remove(&conn);
-            self.pending_events.push_back(Event::ConnectionFailed(conn));
-        }
+        self.connections.remove_failed(&mut self.pending_events);
     }
 
     /// Returns buffered data that needs to be sent on the socket.
     #[must_use]
     pub fn poll_transmit(&mut self) -> Option<Transmit<'static>> {
-        for (_, conn) in self.connections.iter_established_mut() {
-            if let Some(transmit) = conn.poll_transmit(&mut self.allocations, self.last_now) {
-                return Some(transmit);
-            }
-        }
-
         for binding in self.bindings.values_mut() {
             if let Some(transmit) = binding.poll_transmit() {
                 self.stats.stun_bytes_to_relays += transmit.payload.len();
@@ -565,7 +454,7 @@ where
         intent_sent_at: Instant,
         now: Instant,
     ) -> Connection {
-        agent.handle_timeout(self.last_now);
+        agent.handle_timeout(now);
 
         /// We set a Wireguard keep-alive to ensure the WG session doesn't timeout on an idle connection.
         ///
@@ -584,13 +473,13 @@ where
             ),
             stun_servers: allowed_stun_servers,
             turn_servers: allowed_turn_servers,
-            next_timer_update: self.last_now,
+            next_timer_update: now,
             peer_socket: None,
             possible_sockets: Default::default(),
             stats: Default::default(),
-            buffered_transmits: Default::default(),
             buffer: Box::new([0u8; MAX_UDP_SIZE]),
             intent_sent_at,
+            is_failed: false,
             signalling_completed_at: now,
         }
     }
@@ -736,6 +625,7 @@ where
                 relayed,
                 buffer,
                 &mut self.allocations,
+                &mut self.buffered_transmits,
                 now,
             );
 
@@ -755,6 +645,36 @@ where
         ControlFlow::Break(Err(Error::UnhandledPacket {
             num_tunnels: self.connections.iter_established_mut().count(),
         }))
+    }
+
+    fn bindings_and_allocations_drain_events(&mut self) {
+        let binding_events = self.bindings.iter_mut().flat_map(|(server, binding)| {
+            iter::from_fn(|| binding.poll_event().map(|e| (*server, e)))
+        });
+        let allocation_events = self
+            .allocations
+            .iter_mut()
+            .flat_map(|(server, allocation)| {
+                iter::from_fn(|| allocation.poll_event().map(|e| (*server, e)))
+            });
+
+        for (server, event) in binding_events.chain(allocation_events) {
+            match event {
+                CandidateEvent::New(candidate) => {
+                    add_candidates(
+                        server,
+                        candidate,
+                        &mut self.connections,
+                        &mut self.pending_events,
+                    );
+                }
+                CandidateEvent::Invalid(candidate) => {
+                    for (_, agent) in self.connections.agents_mut() {
+                        agent.invalidate_candidate(&candidate);
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -784,8 +704,8 @@ where
             tracing::info!("Replacing existing established connection");
         };
 
-        self.upsert_stun_servers(&allowed_stun_servers);
-        self.upsert_turn_servers(&allowed_turn_servers);
+        self.upsert_stun_servers(&allowed_stun_servers, now);
+        self.upsert_turn_servers(&allowed_turn_servers, now);
 
         let allowed_turn_servers = allowed_turn_servers
             .iter()
@@ -814,6 +734,7 @@ where
             turn_servers: allowed_turn_servers,
             created_at: now,
             intent_sent_at,
+            is_failed: false,
         };
         let duration_since_intent = initial_connection.duration_since_intent(now);
 
@@ -898,8 +819,8 @@ where
             tracing::info!("Replacing existing established connection");
         };
 
-        self.upsert_stun_servers(&allowed_stun_servers);
-        self.upsert_turn_servers(&allowed_turn_servers);
+        self.upsert_stun_servers(&allowed_stun_servers, now);
+        self.upsert_turn_servers(&allowed_turn_servers, now);
 
         let allowed_turn_servers = allowed_turn_servers
             .iter()
@@ -950,18 +871,22 @@ impl<T, TId> Node<T, TId>
 where
     TId: Eq + Hash + Copy + fmt::Display,
 {
-    fn upsert_stun_servers(&mut self, servers: &HashSet<SocketAddr>) {
+    fn upsert_stun_servers(&mut self, servers: &HashSet<SocketAddr>, now: Instant) {
         for server in servers {
             if !self.bindings.contains_key(server) {
                 tracing::info!(address = %server, "Adding new STUN server");
 
                 self.bindings
-                    .insert(*server, StunBinding::new(*server, self.last_now));
+                    .insert(*server, StunBinding::new(*server, now));
             }
         }
     }
 
-    fn upsert_turn_servers(&mut self, servers: &HashSet<(SocketAddr, String, String, String)>) {
+    fn upsert_turn_servers(
+        &mut self,
+        servers: &HashSet<(SocketAddr, String, String, String)>,
+        now: Instant,
+    ) {
         for (server, username, password, realm) in servers {
             let Ok(username) = Username::new(username.to_owned()) else {
                 tracing::debug!(%username, "Invalid TURN username");
@@ -973,13 +898,13 @@ where
             };
 
             if let Some(existing) = self.allocations.get_mut(server) {
-                existing.refresh(username, password, realm, self.last_now);
+                existing.refresh(username, password, realm, now);
                 continue;
             }
 
             self.allocations.insert(
                 *server,
-                Allocation::new(*server, username, password.clone(), realm, self.last_now),
+                Allocation::new(*server, username, password.clone(), realm, now),
             );
 
             tracing::info!(address = %server, "Added new TURN server");
@@ -1050,6 +975,26 @@ impl<TId> Connections<TId>
 where
     TId: Eq + Hash + Copy,
 {
+    fn remove_failed(&mut self, events: &mut VecDeque<Event<TId>>) {
+        self.initial.retain(|id, conn| {
+            if conn.is_failed {
+                events.push_back(Event::ConnectionFailed(*id));
+                return false;
+            }
+
+            true
+        });
+
+        self.established.retain(|id, conn| {
+            if conn.is_failed {
+                events.push_back(Event::ConnectionFailed(*id));
+                return false;
+            }
+
+            true
+        });
+    }
+
     fn stats(&self) -> impl Iterator<Item = (TId, ConnectionStats)> + '_ {
         self.established.iter().map(move |(id, c)| (*id, c.stats))
     }
@@ -1261,9 +1206,21 @@ struct InitialConnection {
 
     created_at: Instant,
     intent_sent_at: Instant,
+
+    is_failed: bool,
 }
 
 impl InitialConnection {
+    fn handle_timeout<TId>(&mut self, id: TId, now: Instant)
+    where
+        TId: fmt::Display,
+    {
+        if now.duration_since(self.created_at) >= HANDSHAKE_TIMEOUT {
+            tracing::info!(%id, "Connection setup timed out (no answer received)");
+            self.is_failed = true;
+        }
+    }
+
     fn duration_since_intent(&self, now: Instant) -> Duration {
         now.duration_since(self.intent_sent_at)
     }
@@ -1280,8 +1237,6 @@ struct Connection {
     // Socket addresses from which we might receive data (even before we are connected).
     possible_sockets: HashSet<SocketAddr>,
 
-    buffered_transmits: VecDeque<Transmit<'static>>,
-
     stun_servers: HashSet<SocketAddr>,
     turn_servers: HashSet<SocketAddr>,
 
@@ -1289,6 +1244,8 @@ struct Connection {
 
     buffer: Box<[u8; MAX_UDP_SIZE]>,
     intent_sent_at: Instant,
+
+    is_failed: bool,
 
     signalling_completed_at: Instant,
 }
@@ -1381,18 +1338,127 @@ impl Connection {
         Some(self.signalling_completed_at + CANDIDATE_TIMEOUT)
     }
 
-    #[must_use]
-    fn poll_transmit(
+    fn handle_timeout<TId>(
         &mut self,
-        allocations: &mut HashMap<SocketAddr, Allocation>,
+        id: TId,
         now: Instant,
-    ) -> Option<Transmit<'static>> {
-        if let Some(transmit) = self.buffered_transmits.pop_front() {
-            return Some(transmit);
+        allocations: &mut HashMap<SocketAddr, Allocation>,
+        events: &mut VecDeque<Event<TId>>,
+        transmits: &mut VecDeque<Transmit<'static>>,
+    ) where
+        TId: fmt::Display + Copy,
+    {
+        self.agent.handle_timeout(now);
+
+        if self
+            .candidate_timeout()
+            .is_some_and(|timeout| now >= timeout)
+        {
+            tracing::info!(%id, "Connection failed (no candidates received)");
+            self.is_failed = true;
+            return;
         }
 
-        loop {
-            let transmit = self.agent.poll_transmit()?;
+        // TODO: `boringtun` is impure because it calls `Instant::now`.
+
+        if now >= self.next_timer_update {
+            self.next_timer_update = now + Duration::from_secs(1);
+
+            // Don't update wireguard timers until we are connected.
+            let Some(peer_socket) = self.peer_socket else {
+                return;
+            };
+
+            /// [`boringtun`] requires us to pass buffers in where it can construct its packets.
+            ///
+            /// When updating the timers, the largest packet that we may have to send is `148` bytes as per `HANDSHAKE_INIT_SZ` constant in [`boringtun`].
+            const MAX_SCRATCH_SPACE: usize = 148;
+
+            let mut buf = [0u8; MAX_SCRATCH_SPACE];
+
+            match self.tunnel.update_timers(&mut buf) {
+                TunnResult::Done => {}
+                TunnResult::Err(WireGuardError::ConnectionExpired) => {
+                    tracing::info!(%id, "Connection failed (wireguard tunnel expired)");
+                    self.is_failed = true;
+                }
+                TunnResult::Err(e) => {
+                    tracing::warn!(%id, ?e);
+                }
+                TunnResult::WriteToNetwork(b) => {
+                    transmits.extend(make_owned_transmit(peer_socket, b, allocations, now));
+                }
+                _ => panic!("Unexpected result from update_timers"),
+            };
+        }
+
+        while let Some(event) = self.agent.poll_event() {
+            match event {
+                IceAgentEvent::DiscoveredRecv { source, .. } => {
+                    self.possible_sockets.insert(source);
+                }
+                IceAgentEvent::IceConnectionStateChange(IceConnectionState::Disconnected) => {
+                    tracing::info!(%id, "Connection failed (ICE timeout)");
+                    self.is_failed = true;
+                }
+                IceAgentEvent::NominatedSend {
+                    destination,
+                    source,
+                    ..
+                } => {
+                    let candidate = self
+                        .local_candidate(source)
+                        .expect("to only nominate existing candidates");
+
+                    let remote_socket = match candidate.kind() {
+                        CandidateKind::Relayed => {
+                            let relay = allocations.iter().find_map(|(relay, allocation)| {
+                                allocation.has_socket(source).then_some(*relay)
+                            });
+
+                            let Some(relay) = relay else {
+                                debug_assert!(
+                                    false,
+                                    "Should only nominate candidates from known relays"
+                                );
+                                continue;
+                            };
+
+                            PeerSocket::Relay {
+                                relay,
+                                dest: destination,
+                            }
+                        }
+                        CandidateKind::ServerReflexive | CandidateKind::Host => {
+                            PeerSocket::Direct {
+                                dest: destination,
+                                source,
+                            }
+                        }
+                        CandidateKind::PeerReflexive => {
+                            unreachable!("local candidate is never `PeerReflexive`")
+                        }
+                    };
+
+                    if self.peer_socket != Some(remote_socket) {
+                        let is_first_connection = self.peer_socket.is_none();
+
+                        tracing::info!(old = ?self.peer_socket, new = ?remote_socket, duration_since_intent = ?self.duration_since_intent(now), "Updating remote socket");
+                        self.peer_socket = Some(remote_socket);
+
+                        self.invalidate_candiates();
+                        self.force_handshake(allocations, transmits, now);
+
+                        if is_first_connection {
+                            events.push_back(Event::ConnectionEstablished(id))
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        while let Some(transmit) = self.agent.poll_transmit() {
             let source = transmit.source;
             let dst = transmit.destination;
             let packet = transmit.contents;
@@ -1406,11 +1472,12 @@ impl Connection {
                 self.stats.stun_bytes_to_peer_direct += packet.len();
 
                 // `source` did not match any of our allocated sockets, must be a local one then!
-                return Some(Transmit {
+                transmits.push_back(Transmit {
                     src: Some(source),
                     dst,
                     payload: Cow::Owned(packet.into()),
                 });
+                continue;
             };
 
             // Payload should be sent from a "remote socket", let's wrap it in a channel data message!
@@ -1422,61 +1489,12 @@ impl Connection {
 
             self.stats.stun_bytes_to_peer_relayed += channel_data.len();
 
-            return Some(Transmit {
+            transmits.push_back(Transmit {
                 src: None,
                 dst: *relay,
                 payload: Cow::Owned(channel_data),
             });
         }
-    }
-
-    fn handle_timeout(
-        &mut self,
-        now: Instant,
-        allocations: &mut HashMap<SocketAddr, Allocation>,
-    ) -> Result<(), ConnectionError> {
-        self.agent.handle_timeout(now);
-
-        if self
-            .candidate_timeout()
-            .is_some_and(|timeout| now >= timeout)
-        {
-            return Err(ConnectionError::CandidateTimeout);
-        }
-
-        // TODO: `boringtun` is impure because it calls `Instant::now`.
-
-        if now >= self.next_timer_update {
-            self.next_timer_update = now + Duration::from_secs(1);
-
-            // Don't update wireguard timers until we are connected.
-            let Some(peer_socket) = self.peer_socket else {
-                return Ok(());
-            };
-
-            /// [`boringtun`] requires us to pass buffers in where it can construct its packets.
-            ///
-            /// When updating the timers, the largest packet that we may have to send is `148` bytes as per `HANDSHAKE_INIT_SZ` constant in [`boringtun`].
-            const MAX_SCRATCH_SPACE: usize = 148;
-
-            let mut buf = [0u8; MAX_SCRATCH_SPACE];
-
-            match self.tunnel.update_timers(&mut buf) {
-                TunnResult::Done => {}
-                TunnResult::Err(e) => return Err(ConnectionError::Wireguard(e)),
-                TunnResult::WriteToNetwork(b) => {
-                    self.buffered_transmits.extend(make_owned_transmit(
-                        peer_socket,
-                        b,
-                        allocations,
-                        now,
-                    ));
-                }
-                _ => panic!("Unexpected result from update_timers"),
-            };
-        }
-
-        Ok(())
     }
 
     fn encapsulate<'b>(
@@ -1505,6 +1523,7 @@ impl Connection {
         relayed: Option<Socket>,
         buffer: &'b mut [u8],
         allocations: &mut HashMap<SocketAddr, Allocation>,
+        transmits: &mut VecDeque<Transmit<'static>>,
         now: Instant,
     ) -> ControlFlow<Result<(), Error>, MutableIpPacket<'b>> {
         match self.tunnel.decapsulate(None, packet, buffer) {
@@ -1541,22 +1560,12 @@ impl Connection {
             TunnResult::WriteToNetwork(bytes) => {
                 let socket = self.set_remote_from_wg_activity(local, from, relayed);
 
-                self.buffered_transmits.extend(make_owned_transmit(
-                    socket,
-                    bytes,
-                    allocations,
-                    now,
-                ));
+                transmits.extend(make_owned_transmit(socket, bytes, allocations, now));
 
                 while let TunnResult::WriteToNetwork(packet) =
                     self.tunnel.decapsulate(None, &[], self.buffer.as_mut())
                 {
-                    self.buffered_transmits.extend(make_owned_transmit(
-                        socket,
-                        packet,
-                        allocations,
-                        now,
-                    ));
+                    transmits.extend(make_owned_transmit(socket, packet, allocations, now));
                 }
 
                 ControlFlow::Break(Ok(()))
@@ -1564,7 +1573,12 @@ impl Connection {
         }
     }
 
-    fn force_handshake(&mut self, allocations: &mut HashMap<SocketAddr, Allocation>, now: Instant) {
+    fn force_handshake(
+        &mut self,
+        allocations: &mut HashMap<SocketAddr, Allocation>,
+        transmits: &mut VecDeque<Transmit<'static>>,
+        now: Instant,
+    ) {
         /// [`boringtun`] requires us to pass buffers in where it can construct its packets.
         ///
         /// When updating the timers, the largest packet that we may have to send is `148` bytes as per `HANDSHAKE_INIT_SZ` constant in [`boringtun`].
@@ -1582,8 +1596,7 @@ impl Connection {
             .peer_socket
             .expect("cannot force handshake without socket");
 
-        self.buffered_transmits
-            .extend(make_owned_transmit(socket, bytes, allocations, now));
+        transmits.extend(make_owned_transmit(socket, bytes, allocations, now));
     }
 
     /// Invalidates all local candidates with a lower or equal priority compared to the nominated one.
@@ -1645,10 +1658,4 @@ fn make_owned_transmit(
     };
 
     Some(transmit)
-}
-
-#[derive(Debug)]
-enum ConnectionError {
-    Wireguard(WireGuardError),
-    CandidateTimeout,
 }
