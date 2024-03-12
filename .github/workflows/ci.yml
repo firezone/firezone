@@ -45,6 +45,15 @@ jobs:
     with:
       profile: ${{ inputs.profile || 'debug' }}
 
+  # TODO: Add a new Dockerfile target to build release binaries with
+  # the performance tools installed.
+  build-perf-artifacts:
+    uses: ./.github/workflows/_build_artifacts.yml
+    secrets: inherit
+    with:
+      sha: ${{ github.event.pull_request.base.sha }}
+      profile: ${{ inputs.profile || 'debug' }}
+
   integration-tests:
     uses: ./.github/workflows/_integration_tests.yml
     needs: build-artifacts

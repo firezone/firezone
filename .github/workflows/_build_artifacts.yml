@@ -3,6 +3,10 @@ run-name: Triggered from ${{ github.event_name }} by ${{ github.actor }}
 on:
   workflow_call:
     inputs:
+      sha:
+        required: false
+        type: string
+        default: ${{ github.sha }}
       profile:
         required: true
         type: string
@@ -76,6 +80,8 @@ jobs:
               APPLICATION_NAME=api
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.sha }}
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
         with:
@@ -95,8 +101,8 @@ jobs:
           images:
             ${{ steps.login.outputs.registry }}/firezone/${{matrix.image_name }}
           tags: |
-            type=raw,value=${{ github.sha }}
-            type=raw,value=${{ env.VERSION }}-${{ github.sha }}
+            type=raw,value=${{ inputs.sha }}
+            type=raw,value=${{ env.VERSION }}-${{ inputs.sha }}
       - name: Sanitize github.ref_name
         run: |
           # `ref_name` contains `/` which is not a valid docker image tag
@@ -117,8 +123,8 @@ jobs:
             type=registry,ref=${{steps.login.outputs.registry}}/cache/${{ matrix.image_name}}:${{ env.CACHE_TAG }},mode=max
           push: true
           tags: |
-            ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ github.sha }}
-            ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ env.VERSION }}-${{ github.sha }}
+            ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ inputs.sha }}
+            ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ env.VERSION }}-${{ inputs.sha }}
             ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ env.VERSION }}
             ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ env.CACHE_TAG }}
 
@@ -161,6 +167,8 @@ jobs:
       BINARY_DEST_PATH: ${{ matrix.name.artifact }}-${{ matrix.arch.shortname }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.sha }}
       - uses: ./.github/actions/setup-rust
         with:
           targets: ${{ matrix.arch.target }}
@@ -229,9 +237,9 @@ jobs:
             ${{ steps.login.outputs.registry }}/firezone/${{ matrix.name.image_name }}
           tags: |
             type=raw,value=latest
-            type=raw,value=${{ github.sha }}
+            type=raw,value=${{ inputs.sha }}
             type=raw,value=${{ env.VERSION }}
-            type=raw,value=${{ env.VERSION }}-${{ github.sha }}
+            type=raw,value=${{ env.VERSION }}-${{ inputs.sha }}
             type=raw,value=${{ env.MAJOR_VERSION }}
             type=raw,value=${{ env.MAJOR_MINOR_VERSION }}
       - name: Sanitize github.ref_name
@@ -285,6 +293,8 @@ jobs:
           - snownet-tests
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.sha }}
       - uses: ./.github/actions/gcp-docker-login
         id: login
         with:
@@ -315,9 +325,9 @@ jobs:
             ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}
           tags: |
             type=raw,value=latest
-            type=raw,value=${{ github.sha }}
+            type=raw,value=${{ inputs.sha }}
             type=raw,value=${{ env.VERSION }}
-            type=raw,value=${{ env.VERSION }}-${{ github.sha }}
+            type=raw,value=${{ env.VERSION }}-${{ inputs.sha }}
             type=raw,value=${{ env.MAJOR_VERSION }}
             type=raw,value=${{ env.MAJOR_MINOR_VERSION }}
       - name: Create manifest list and push
