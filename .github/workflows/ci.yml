@@ -5,9 +5,11 @@ on:
     types: [checks_requested]
   workflow_call:
     inputs:
+      stage:
+        required: true
+        type: string
       profile:
-        required: false
-        default: 'debug'
+        required: true
         type: string
 
 # Cancel old workflow runs if new code is pushed
@@ -44,6 +46,27 @@ jobs:
     secrets: inherit
     with:
       profile: ${{ inputs.profile || 'debug' }}
+      stage: ${{ inputs.stage || 'debug' }}
+
+  build-base-perf-artifacts:
+    if: ${{ github.event_name == 'pull_request' }}
+    uses: ./.github/workflows/_build_artifacts.yml
+    secrets: inherit
+    with:
+      sha: ${{ github.event.pull_request.base.sha }}
+      image_suffix: '-perf'
+      profile: 'release'
+      stage: 'debug'
+
+  build-head-perf-artifacts:
+    if: ${{ github.event_name == 'pull_request' }}
+    uses: ./.github/workflows/_build_artifacts.yml
+    secrets: inherit
+    with:
+      sha: ${{ github.sha }}
+      image_suffix: '-perf'
+      profile: 'release'
+      stage: 'debug'
 
   integration-tests:
     uses: ./.github/workflows/_integration_tests.yml
@@ -94,24 +117,6 @@ jobs:
       # FIXME: Uncomment this after the next release -- the
       # client will be published then.
       # client_tag: "latest"
-
-  build-base-perf-artifacts:
-    if: ${{ github.event_name == 'pull_request' }}
-    uses: ./.github/workflows/_build_artifacts.yml
-    secrets: inherit
-    with:
-      sha: ${{ github.event.pull_request.base.sha }}
-      image_suffix: '-perf'
-      profile: 'debug'
-
-  build-head-perf-artifacts:
-    if: ${{ github.event_name == 'pull_request' }}
-    uses: ./.github/workflows/_build_artifacts.yml
-    secrets: inherit
-    with:
-      sha: ${{ github.sha }}
-      image_suffix: '-perf'
-      profile: 'debug'
 
   perf-tests:
     # Only the debug images have perf tooling
