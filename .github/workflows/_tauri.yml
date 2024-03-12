@@ -33,17 +33,17 @@ jobs:
             rename-script: ../../scripts/build/tauri-rename-ubuntu.sh
             upload-script: ../../scripts/build/tauri-upload-ubuntu.sh
             artifacts: |
-              ../target/release/firezone-linux-gui-client-amd64
-              ../target/release/firezone-linux-gui-client_amd64.AppImage
-              ../target/release/firezone-linux-gui-client_amd64.deb
+              firezone-linux-gui-client-amd64
+              firezone-linux-gui-client_amd64.AppImage
+              firezone-linux-gui-client_amd64.deb
           - runs-on: windows-2019
             binary-dest-path: firezone-windows-client
             rename-script: ../../scripts/build/tauri-rename-windows.sh
             upload-script: ../../scripts/build/tauri-upload-windows.sh
             artifacts: |
-              ../target/release/firezone-windows-client-x64.exe
-              ../target/release/firezone-windows-client-x64.msi
-              ../target/release/firezone-windows-client-x64.pdb
+              firezone-windows-client-x64.exe
+              firezone-windows-client-x64.msi
+              firezone-windows-client-x64.pdb
     env:
       BINARY_DEST_PATH: ${{ matrix.binary-dest-path }}
       CONNLIB_LOG_UPLOAD_INTERVAL_SECS: 300
