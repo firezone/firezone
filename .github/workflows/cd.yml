@@ -27,7 +27,7 @@ jobs:
       stage: "release"
 
   deploy-staging:
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.deploy-staging }}
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.deploy-staging }}
     runs-on: ubuntu-22.04
     permissions:
       contents: write
