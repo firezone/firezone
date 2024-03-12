@@ -83,8 +83,9 @@ impl Callbacks for CallbackHandler {
     }
 
     fn on_disconnect(&self, error: &connlib_client_shared::Error) -> Result<(), Self::Error> {
-        tracing::error!(?error, "Disconnected");
-        Ok(())
+        tracing::error!("Disconnected: {error}");
+
+        std::process::exit(1);
     }
 
     fn roll_log_file(&self) -> Option<PathBuf> {
