@@ -400,7 +400,7 @@ fn progress(a1: &mut TestNode, a2: &mut TestNode) {
 
     if let Some(trans) = f.span.in_scope(|| f.node.poll_transmit()) {
         let Some(src) = trans.src else {
-            return;
+            return; // Drop all packets to relays, we don't have any in these tests.
         };
 
         if let Some((_, packet)) = t
