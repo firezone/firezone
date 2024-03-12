@@ -386,13 +386,7 @@ where
         self.bindings_and_allocations_drain_events();
 
         for (id, connection) in self.connections.iter_established_mut() {
-            connection.handle_timeout(
-                id,
-                now,
-                &mut self.allocations,
-                &mut self.pending_events,
-                &mut self.buffered_transmits,
-            );
+            connection.handle_timeout(id, now, &mut self.allocations, &mut self.buffered_transmits);
         }
 
         for (id, connection) in self.connections.initial.iter_mut() {
@@ -632,6 +626,9 @@ where
             // I can't think of a better way to detect this ...
             if !handshake_complete_before_decapsulate && handshake_complete_after_decapsulate {
                 tracing::info!(%id, duration_since_intent = ?conn.duration_since_intent(now), "Completed wireguard handshake");
+
+                self.pending_events
+                    .push_back(Event::ConnectionEstablished(id))
             }
 
             return match control_flow {
@@ -1341,7 +1338,6 @@ impl Connection {
         id: TId,
         now: Instant,
         allocations: &mut HashMap<SocketAddr, Allocation>,
-        events: &mut VecDeque<Event<TId>>,
         transmits: &mut VecDeque<Transmit<'static>>,
     ) where
         TId: fmt::Display + Copy,
@@ -1439,17 +1435,11 @@ impl Connection {
                     };
 
                     if self.peer_socket != Some(remote_socket) {
-                        let is_first_connection = self.peer_socket.is_none();
-
                         tracing::info!(old = ?self.peer_socket, new = ?remote_socket, duration_since_intent = ?self.duration_since_intent(now), "Updating remote socket");
                         self.peer_socket = Some(remote_socket);
 
                         self.invalidate_candiates();
                         self.force_handshake(allocations, transmits, now);
-
-                        if is_first_connection {
-                            events.push_back(Event::ConnectionEstablished(id))
-                        }
                     }
                 }
                 _ => {}
