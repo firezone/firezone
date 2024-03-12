@@ -49,10 +49,6 @@ jobs:
     uses: ./.github/workflows/_integration_tests.yml
     needs: build-artifacts
     secrets: inherit
-    with:
-      gateway_tag: ${{ github.sha }}-debug
-      relay_tag: ${{ github.sha }}-debug
-      client_tag: ${{ github.sha }}-debug
 
   snownet-tests:
     needs: build-artifacts
@@ -64,8 +60,8 @@ jobs:
       id-token: write
       pull-requests: write
     env:
-      RELAY_TAG: ${{ github.sha }}-debug
-      SNOWNET_TAG: ${{ github.sha }}-debug
+      RELAY_TAG: ${{ github.sha }}
+      SNOWNET_TAG: ${{ github.sha }}
     strategy:
       fail-fast: false
       matrix:
@@ -95,8 +91,6 @@ jobs:
     with:
       gateway_image: "ghcr.io/firezone/gateway"
       gateway_tag: "latest"
-      relay_tag: ${{ github.sha }}-debug
-      client_tag: ${{ github.sha }}-debug
       # FIXME: Uncomment this after the next release -- the
       # client will be published then.
       # client_tag: "latest"
@@ -106,7 +100,7 @@ jobs:
     secrets: inherit
     with:
       sha: ${{ github.event.pull_request.base.sha }}
-      perf-test: 'true'
+      image-suffix: '-perf'
       profile: 'debug'
 
   build-head-perf-artifacts:
@@ -114,7 +108,7 @@ jobs:
     secrets: inherit
     with:
       sha: ${{ github.sha }}
-      perf-test: 'true'
+      image-suffix: '-perf'
       profile: 'debug'
 
   perf-tests:
@@ -130,12 +124,18 @@ jobs:
       id-token: write
       pull-requests: write
     env:
+      API_IMAGE: 'us-east1-docker.pkg.dev/firezone-staging/firezone/api-perf'
       API_TAG: ${{ matrix.sha }}
+      WEB_IMAGE: 'us-east1-docker.pkg.dev/firezone-staging/firezone/web-perf'
       WEB_TAG: ${{ matrix.sha }}
+      ELIXIR_IMAGE: 'us-east1-docker.pkg.dev/firezone-staging/firezone/elixir-perf'
       ELIXIR_TAG: ${{ matrix.sha }}
-      GATEWAY_TAG: ${{ matrix.sha }}-perf
-      CLIENT_TAG: ${{ matrix.sha }}-perf
-      RELAY_TAG: ${{ matrix.sha }}-perf
+      GATEWAY_IMAGE: 'us-east1-docker.pkg.dev/firezone-staging/firezone/gateway-perf'
+      GATEWAY_TAG: ${{ matrix.sha }}
+      CLIENT_IMAGE: 'us-east1-docker.pkg.dev/firezone-staging/firezone/client-perf'
+      CLIENT_TAG: ${{ matrix.sha }}
+      RELAY_IMAGE: 'us-east1-docker.pkg.dev/firezone-staging/firezone/relay-perf'
+      RELAY_TAG: ${{ matrix.sha }}
     strategy:
       fail-fast: false
       matrix:
