@@ -1,4 +1,3 @@
-use crate::device_channel::Device;
 use crate::ip_packet::{IpPacket, MutableIpPacket};
 use crate::peer::PacketTransformClient;
 use crate::peer_store::PeerStore;
@@ -21,7 +20,7 @@ use hickory_resolver::config::{NameServerConfig, Protocol, ResolverConfig};
 use hickory_resolver::TokioAsyncResolver;
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::net::IpAddr;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
 use tokio::time::{Interval, MissedTickBehavior};
@@ -170,17 +169,14 @@ where
         config: &InterfaceConfig,
         dns_mapping: BiMap<IpAddr, DnsServer>,
     ) -> connlib_shared::Result<()> {
-        let device = Device::new(
+        self.device.initialize(
             config,
             // We can just sort in here because sentinel ips are created in order
             dns_mapping.left_values().copied().sorted().collect(),
-            self.callbacks(),
+            &self.callbacks().clone(),
         )?;
 
-        let name = device.name().to_owned();
-
-        self.device = Some(device);
-        self.no_device_waker.wake();
+        let name = self.device.name().to_owned();
 
         let mut errs = Vec::new();
         for sentinel in dns_mapping.left_values() {
@@ -217,10 +213,7 @@ where
     #[tracing::instrument(level = "trace", skip(self))]
     pub fn add_route(&mut self, route: IpNetwork) -> connlib_shared::Result<()> {
         let callbacks = self.callbacks().clone();
-        self.device
-            .as_mut()
-            .ok_or(Error::ControlProtocolError)?
-            .add_route(route, &callbacks)?;
+        self.device.add_route(route, &callbacks)?;
 
         Ok(())
     }
@@ -228,10 +221,7 @@ where
     #[tracing::instrument(level = "trace", skip(self))]
     pub fn remove_route(&mut self, route: IpNetwork) -> connlib_shared::Result<()> {
         let callbacks = self.callbacks().clone();
-        self.device
-            .as_mut()
-            .ok_or(Error::ControlProtocolError)?
-            .remove_route(route, &callbacks)?;
+        self.device.remove_route(route, &callbacks)?;
 
         Ok(())
     }
@@ -239,7 +229,7 @@ where
     pub fn add_ice_candidate(&mut self, conn_id: GatewayId, ice_candidate: String) {
         self.connections_state
             .node
-            .add_remote_candidate(conn_id, ice_candidate);
+            .add_remote_candidate(conn_id, ice_candidate, Instant::now());
     }
 }
 
@@ -272,10 +262,10 @@ pub struct ClientState {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct AwaitingConnectionDetails {
-    domain: Option<Dname>,
+pub(crate) struct AwaitingConnectionDetails {
+    pub domain: Option<Dname>,
     gateways: HashSet<GatewayId>,
-    last_intent_sent_at: Instant,
+    pub last_intent_sent_at: Instant,
 }
 
 impl ClientState {
@@ -352,15 +342,13 @@ impl ClientState {
         }
     }
 
-    pub(crate) fn get_awaiting_connection_domain(
+    pub(crate) fn get_awaiting_connection(
         &self,
         resource: &ResourceId,
-    ) -> Result<&Option<Dname>, ConnlibError> {
-        Ok(&self
-            .awaiting_connection
+    ) -> Result<&AwaitingConnectionDetails, ConnlibError> {
+        self.awaiting_connection
             .get(resource)
-            .ok_or(Error::UnexpectedConnectionDetails)?
-            .domain)
+            .ok_or(Error::UnexpectedConnectionDetails)
     }
 
     pub(crate) fn attempt_to_reuse_connection(
@@ -373,7 +361,7 @@ impl ClientState {
             .get(&resource)
             .ok_or(Error::UnknownResource)?;
 
-        let domain = self.get_awaiting_connection_domain(&resource)?.clone();
+        let domain = self.get_awaiting_connection(&resource)?.domain.clone();
 
         if self.is_connected_to(resource, &domain) {
             return Err(Error::UnexpectedConnectionDetails);
@@ -413,6 +401,10 @@ impl ClientState {
 
     #[tracing::instrument(level = "debug", skip_all, fields(resource_ip = %destination, resource_id))]
     fn on_connection_intent_ip(&mut self, destination: IpAddr, now: Instant) {
+        if is_definitely_not_a_resource(destination) {
+            return;
+        }
+
         let Some(resource_id) = self.get_cidr_resource_by_destination(destination) else {
             if let Some(resource) = self
                 .dns_resources_internal_ips
@@ -682,5 +674,44 @@ impl Default for ClientState {
             dns_resolvers: Default::default(),
             buffered_events: Default::default(),
         }
+    }
+}
+
+/// Compares the given [`IpAddr`] against a static set of ignored IPs that are definitely not resources.
+fn is_definitely_not_a_resource(ip: IpAddr) -> bool {
+    /// Source: https://en.wikipedia.org/wiki/Multicast_address#Notable_IPv4_multicast_addresses
+    const IPV4_IGMP_MULTICAST: Ipv4Addr = Ipv4Addr::new(224, 0, 0, 22);
+
+    /// Source: <https://en.wikipedia.org/wiki/Multicast_address#Notable_IPv6_multicast_addresses>
+    const IPV6_MULTICAST_ALL_ROUTERS: Ipv6Addr = Ipv6Addr::new(0xFF02, 0, 0, 0, 0, 0, 0, 0x0002);
+
+    match ip {
+        IpAddr::V4(ip4) => {
+            if ip4 == IPV4_IGMP_MULTICAST {
+                return true;
+            }
+        }
+        IpAddr::V6(ip6) => {
+            if ip6 == IPV6_MULTICAST_ALL_ROUTERS {
+                return true;
+            }
+        }
+    }
+
+    false
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ignores_ip4_igmp_multicast() {
+        assert!(is_definitely_not_a_resource("224.0.0.22".parse().unwrap()))
+    }
+
+    #[test]
+    fn ignores_ip6_multicast_all_routers() {
+        assert!(is_definitely_not_a_resource("ff02::2".parse().unwrap()))
     }
 }

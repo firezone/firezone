@@ -1,0 +1,326 @@
+name: Build Artifacts
+run-name: Triggered from ${{ github.event_name }} by ${{ github.actor }}
+on:
+  workflow_call:
+    inputs:
+      profile:
+        required: true
+        type: string
+
+env:
+  # mark:automatic-version
+  VERSION: "1.0.0"
+
+permissions:
+  # write permission is required to create a github release
+  contents: write
+  # autolabeler
+  pull-requests: write
+  id-token: write
+
+jobs:
+  update-release-draft:
+    if: inputs.profile == 'release'
+    runs-on: ubuntu-22.04
+    concurrency:
+      group: "staging-draft-release-${{ github.workflow }}-${{ github.ref }}"
+      cancel-in-progress: true
+    steps:
+      - uses: release-drafter/release-drafter@v6
+        id: update-release-draft
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          prerelease: true
+          include-pre-releases: true
+          version: ${{ env.VERSION }}
+      - name: Delete stale artifacts
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -xe
+
+          gh release view ${{ steps.update-release-draft.outputs.tag_name }} \
+            --repo ${{ github.repository }} \
+            --json assets \
+            --jq '.assets[] | .name' \
+            | xargs -I{} gh release delete-asset ${{ steps.update-release-draft.outputs.tag_name }} {} --repo ${{ github.repository }} --yes
+    outputs:
+      name: ${{ steps.update-release-draft.outputs.name }}
+      tag_name: ${{ steps.update-release-draft.outputs.tag_name }}
+      upload_url: ${{ steps.update-release-draft.outputs.upload_url }}
+
+  tauri:
+    needs: update-release-draft
+    uses: ./.github/workflows/_tauri.yml
+    secrets: inherit
+    with:
+      release_tag: ${{ needs.update-release-draft.outputs.tag_name }}
+
+  control-plane:
+    name: ${{ matrix.image_name }}
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image_name: api
+            target: runtime
+            build-args: |
+              APPLICATION_NAME=api
+          - image_name: web
+            target: runtime
+            build-args: |
+              APPLICATION_NAME=web
+          - image_name: elixir
+            target: compiler
+            build-args: |
+              APPLICATION_NAME=api
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          # We are overriding the default buildkit version being used by Buildx. We need buildkit >= 12.0 and currently BuildX
+          # supports v0.11.6 https://github.com/docker/buildx/blob/b8739d74417f86aa8fc9aafb830a8ba656bdef0e/Dockerfile#L9.
+          # We should for any updates on buildx and on the setup-buildx-action itself.
+          driver-opts: |
+            image=moby/buildkit:v0.12.0
+      - uses: ./.github/actions/gcp-docker-login
+        id: login
+        with:
+          project: firezone-staging
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images:
+            ${{ steps.login.outputs.registry }}/firezone/${{matrix.image_name }}
+          tags: |
+            type=raw,value=${{ github.sha }}
+            type=raw,value=${{ env.VERSION }}-${{ github.sha }}
+      - name: Sanitize github.ref_name
+        run: |
+          # `ref_name` contains `/` which is not a valid docker image tag
+          REF="${{ github.ref_name }}"
+          CACHE_TAG="${REF//\//-}"
+          echo "CACHE_TAG=$CACHE_TAG" >> "$GITHUB_ENV"
+      - name: Build and push control plane images
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          build-args: ${{ matrix.build-args }}
+          target: ${{ matrix.target }}
+          context: elixir
+          cache-from: |
+            type=registry,ref=${{ steps.login.outputs.registry }}/cache/${{ matrix.image_name }}:${{ env.CACHE_TAG }}
+            type=registry,ref=${{ steps.login.outputs.registry }}/cache/${{ matrix.image_name }}:main
+          cache-to: |
+            type=registry,ref=${{steps.login.outputs.registry}}/cache/${{ matrix.image_name}}:${{ env.CACHE_TAG }},mode=max
+          push: true
+          tags: |
+            ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ github.sha }}
+            ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ env.VERSION }}-${{ github.sha }}
+            ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ env.VERSION }}
+            ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ env.CACHE_TAG }}
+
+  data-plane:
+    name: ${{ matrix.name.image_name }}-${{ matrix.arch.shortname }}
+    runs-on: ubuntu-22.04
+    defaults:
+      run:
+        working-directory: rust
+    strategy:
+      fail-fast: false
+      matrix:
+        arch:
+          - target: x86_64-unknown-linux-musl
+            shortname: x64
+            platform: linux/amd64
+          - target: aarch64-unknown-linux-musl  # E.g. AWS Graviton
+            shortname: arm64
+            platform: linux/arm64
+          - target: armv7-unknown-linux-musleabihf  # E.g. Raspberry Pi
+            platform: linux/arm/v7
+            shortname: arm
+        name:
+          - package: firezone-linux-client
+            artifact: linux-client
+            image_name: client
+          - package: firezone-relay
+            artifact: relay
+            image_name: relay
+          - package: firezone-gateway
+            artifact: gateway
+            image_name: gateway
+          - package: snownet-tests
+            artifact: snownet-tests
+            image_name: snownet-tests
+    env:
+      BINARY_DEST_PATH: ${{ matrix.name.artifact }}-${{ matrix.arch.shortname }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-rust
+        with:
+          targets: ${{ matrix.arch.target }}
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cross
+      - name: Build binaries
+        run: |
+          set -xe
+
+          if [[ "${{ inputs.profile }}" == "release" ]]; then
+            PROFILE="--release"
+          else
+            PROFILE=""
+          fi
+
+          cross build $PROFILE -p ${{ matrix.name.package }} --target ${{ matrix.arch.target }}
+
+          # Used for release artifact
+          cp target/${{ matrix.arch.target }}/${{ inputs.profile }}/${{ matrix.name.package }} $BINARY_DEST_PATH
+
+          # Used for Docker images
+          cp target/${{ matrix.arch.target }}/${{ inputs.profile }}/${{ matrix.name.package }} ${{ matrix.name.package }}
+      - name: Upload Release Assets
+        if: ${{ inputs.profile == 'release' && contains(fromJSON('["client", "gateway"]'),  matrix.name.artifact) }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -xe
+
+          sha256sum $BINARY_DEST_PATH > $BINARY_DEST_PATH.sha256sum.txt
+          gh release upload ${{ needs.update-release-draft.outputs.tag_name }} \
+            ${{ env.BINARY_DEST_PATH }} \
+            ${{ env.BINARY_DEST_PATH }}.sha256sum.txt \
+            --clobber \
+            --repo ${{ github.repository }}
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          # We are overriding the default buildkit version being used by Buildx. We need buildkit >= 12.0 and currently BuildX
+          # supports v0.11.6 https://github.com/docker/buildx/blob/b8739d74417f86aa8fc9aafb830a8ba656bdef0e/Dockerfile#L9.
+          # We should for any updates on buildx and on the setup-buildx-action itself.
+          driver-opts: |
+            image=moby/buildkit:v0.12.0
+      - uses: ./.github/actions/gcp-docker-login
+        id: login
+        with:
+          project: firezone-staging
+      - name: Build Version Tags
+        run: |
+          set -xe
+
+          MAJOR_VERSION="${VERSION%%.*}"
+          MAJOR_MINOR_VERSION="${VERSION%.*}"
+          echo "MAJOR_VERSION=${MAJOR_VERSION}" >> $GITHUB_ENV
+          echo "MAJOR_MINOR_VERSION=${MAJOR_MINOR_VERSION}" >> $GITHUB_ENV
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images:
+            ${{ steps.login.outputs.registry }}/firezone/${{matrix.name.image_name }}
+          tags: |
+            type=raw,value=latest
+            type=raw,value=${{ github.sha }}
+            type=raw,value=${{ env.VERSION }}
+            type=raw,value=${{ env.VERSION }}-${{ github.sha }}
+            type=raw,value=${{ env.MAJOR_VERSION }}
+            type=raw,value=${{ env.MAJOR_MINOR_VERSION }}
+      - name: Sanitize github.ref_name
+        run: |
+          # `ref_name` contains `/` which is not a valid docker image tag
+          REF="${{ github.ref_name }}"
+          CACHE_TAG="${REF//\//-}"
+          echo "CACHE_TAG=$CACHE_TAG" >> "$GITHUB_ENV"
+      - name: Build and push Docker images by digest
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          platforms: ${{ matrix.arch.platform }}
+          build-args: |
+            PACKAGE=${{ matrix.name.package }}
+            TARGET=${{ matrix.arch.target }}
+          context: rust
+          cache-from: |
+            type=registry,ref=${{ steps.login.outputs.registry }}/cache/${{ matrix.name.image_name }}:${{ env.CACHE_TAG }}
+            type=registry,ref=${{ steps.login.outputs.registry }}/cache/${{ matrix.name.image_name }}:main
+          cache-to: |
+            type=registry,ref=${{ steps.login.outputs.registry }}/cache/${{ matrix.name.image_name }}:${{ env.CACHE_TAG }},mode=max
+          target: ${{ inputs.profile }}
+          outputs:
+            type=image,name=${{ steps.login.outputs.registry }}/firezone/${{ matrix.name.image_name }},push-by-digest=true,name-canonical=true,push=true
+      - name: Export digest
+        run: |
+          mkdir -p /tmp/digests/${{ matrix.name.image_name }}
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${{ matrix.name.image_name }}/${digest#sha256:}"
+      - name: Upload digest artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name.image_name }}-${{ matrix.arch.shortname }}-digest
+          path: /tmp/digests/${{ matrix.name.image_name }}
+          if-no-files-found: error
+          retention-days: 1
+
+  merge-docker-artifacts:
+    name: merge-${{ matrix.image_name }}
+    needs: data-plane
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        image_name:
+          - relay
+          - gateway
+          - client
+          - snownet-tests
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/gcp-docker-login
+        id: login
+        with:
+          project: firezone-staging
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          pattern: ${{ matrix.image_name }}-*-digest
+          merge-multiple: true
+          path: /tmp/digests/${{ matrix.image_name }}
+      - name: Display structure of downloaded artifacts
+        run: ls -R /tmp/digests
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Build Version Tags
+        run: |
+          set -xe
+          MAJOR_VERSION="${VERSION%%.*}"
+          MAJOR_MINOR_VERSION="${VERSION%.*}"
+
+          echo "MAJOR_VERSION=${MAJOR_VERSION}" >> $GITHUB_ENV
+          echo "MAJOR_MINOR_VERSION=${MAJOR_MINOR_VERSION}" >> $GITHUB_ENV
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images:
+            ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}
+          tags: |
+            type=raw,value=latest
+            type=raw,value=${{ github.sha }}
+            type=raw,value=${{ env.VERSION }}
+            type=raw,value=${{ env.VERSION }}-${{ github.sha }}
+            type=raw,value=${{ env.MAJOR_VERSION }}
+            type=raw,value=${{ env.MAJOR_MINOR_VERSION }}
+      - name: Create manifest list and push
+        working-directory: /tmp/digests/${{ matrix.image_name }}
+        run: |
+          tags=$(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON")
+          sources=$(printf '${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}@sha256:%s ' *)
+          echo "$sources"
+          docker buildx imagetools create $tags $sources
+          docker buildx imagetools inspect "${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}"

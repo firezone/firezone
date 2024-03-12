@@ -68,9 +68,9 @@ where
             return Err(Error::PendingConnection);
         }
 
-        let domain = self
+        let awaiting_connection = self
             .role_state
-            .get_awaiting_connection_domain(&resource_id)?
+            .get_awaiting_connection(&resource_id)?
             .clone();
 
         let offer = self.connections_state.node.new_connection(
@@ -81,6 +81,8 @@ where
             turn(&relays, |addr| {
                 self.connections_state.sockets.can_handle(addr)
             }),
+            awaiting_connection.last_intent_sent_at,
+            Instant::now(),
         );
 
         Ok(Request::NewConnection(RequestConnection {
@@ -92,7 +94,7 @@ where
                     username: offer.credentials.username,
                     password: offer.credentials.password,
                 },
-                domain,
+                domain: awaiting_connection.domain,
             },
         }))
     }
@@ -204,23 +206,21 @@ where
 
         let ips: Vec<IpNetwork> = addrs.iter().copied().map(Into::into).collect();
 
-        if let Some(device) = self.device.as_ref() {
-            send_dns_answer(
-                &mut self.role_state,
-                Rtype::Aaaa,
-                device,
-                &resource_description,
-                &addrs,
-            );
+        send_dns_answer(
+            &mut self.role_state,
+            Rtype::Aaaa,
+            &self.device,
+            &resource_description,
+            &addrs,
+        );
 
-            send_dns_answer(
-                &mut self.role_state,
-                Rtype::A,
-                device,
-                &resource_description,
-                &addrs,
-            );
-        }
+        send_dns_answer(
+            &mut self.role_state,
+            Rtype::A,
+            &self.device,
+            &resource_description,
+            &addrs,
+        );
 
         Ok(ips)
     }
