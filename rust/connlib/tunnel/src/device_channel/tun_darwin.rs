@@ -228,17 +228,3 @@ fn name(fd: RawFd) -> Result<String> {
 
     Ok(String::from_utf8_lossy(&tunnel_name[..(tunnel_name_len - 1) as usize]).to_string())
 }
-
-fn ipv4(ip: &IpNetwork) -> Option<&Ipv4Network> {
-    match ip {
-        IpNetwork::V4(v4) => Some(v4),
-        IpNetwork::V6(_) => None,
-    }
-}
-
-fn ipv6(ip: &IpNetwork) -> Option<&Ipv6Network> {
-    match ip {
-        IpNetwork::V4(_) => None,
-        IpNetwork::V6(v6) => Some(v6),
-    }
-}
