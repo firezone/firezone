@@ -3,6 +3,14 @@ run-name: Triggered from ${{ github.event_name }} by ${{ github.actor }}
 on:
   workflow_call:
     inputs:
+      image_suffix:
+        required: false
+        type: string
+        default: null
+      sha:
+        required: false
+        type: string
+        default: ${{ github.sha }}
       profile:
         required: true
         type: string
@@ -76,6 +84,8 @@ jobs:
               APPLICATION_NAME=api
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.sha }}
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
         with:
@@ -93,10 +103,10 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images:
-            ${{ steps.login.outputs.registry }}/firezone/${{matrix.image_name }}
+            ${{ steps.login.outputs.registry }}/firezone/${{matrix.image_name }}${{ inputs.image_suffix }}
           tags: |
-            type=raw,value=${{ github.sha }}
-            type=raw,value=${{ env.VERSION }}-${{ github.sha }}
+            type=raw,value=${{ inputs.sha }}
+            type=raw,value=${{ env.VERSION }}-${{ inputs.sha }}
       - name: Sanitize github.ref_name
         run: |
           # `ref_name` contains `/` which is not a valid docker image tag
@@ -111,16 +121,16 @@ jobs:
           target: ${{ matrix.target }}
           context: elixir
           cache-from: |
-            type=registry,ref=${{ steps.login.outputs.registry }}/cache/${{ matrix.image_name }}:${{ env.CACHE_TAG }}
-            type=registry,ref=${{ steps.login.outputs.registry }}/cache/${{ matrix.image_name }}:main
+            type=registry,ref=${{ steps.login.outputs.registry }}/cache/${{ matrix.image_name }}${{ inputs.image_suffix }}:${{ env.CACHE_TAG }}
+            type=registry,ref=${{ steps.login.outputs.registry }}/cache/${{ matrix.image_name }}${{ inputs.image_suffix }}:main
           cache-to: |
-            type=registry,ref=${{steps.login.outputs.registry}}/cache/${{ matrix.image_name}}:${{ env.CACHE_TAG }},mode=max
+            type=registry,ref=${{steps.login.outputs.registry}}/cache/${{ matrix.image_name}}${{ inputs.image_suffix }}:${{ env.CACHE_TAG }},mode=max
           push: true
           tags: |
-            ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ github.sha }}
-            ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ env.VERSION }}-${{ github.sha }}
-            ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ env.VERSION }}
-            ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ env.CACHE_TAG }}
+            ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}${{ inputs.image_suffix }}:${{ inputs.sha }}
+            ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}${{ inputs.image_suffix }}:${{ env.VERSION }}-${{ inputs.sha }}
+            ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}${{ inputs.image_suffix }}:${{ env.VERSION }}
+            ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}${{ inputs.image_suffix }}:${{ env.CACHE_TAG }}
 
   data-plane:
     # Runs the job after update-release-draft, regardless of the outcome
@@ -161,6 +171,8 @@ jobs:
       BINARY_DEST_PATH: ${{ matrix.name.artifact }}-${{ matrix.arch.shortname }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.sha }}
       - uses: ./.github/actions/setup-rust
         with:
           targets: ${{ matrix.arch.target }}
@@ -226,12 +238,12 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images:
-            ${{ steps.login.outputs.registry }}/firezone/${{matrix.name.image_name }}
+            ${{ steps.login.outputs.registry }}/firezone/${{ matrix.name.image_name }}${{ inputs.image_suffix }}
           tags: |
             type=raw,value=latest
-            type=raw,value=${{ github.sha }}
+            type=raw,value=${{ inputs.sha }}
             type=raw,value=${{ env.VERSION }}
-            type=raw,value=${{ env.VERSION }}-${{ github.sha }}
+            type=raw,value=${{ env.VERSION }}-${{ inputs.sha }}
             type=raw,value=${{ env.MAJOR_VERSION }}
             type=raw,value=${{ env.MAJOR_MINOR_VERSION }}
       - name: Sanitize github.ref_name
@@ -250,13 +262,13 @@ jobs:
             TARGET=${{ matrix.arch.target }}
           context: rust
           cache-from: |
-            type=registry,ref=${{ steps.login.outputs.registry }}/cache/${{ matrix.name.image_name }}:${{ env.CACHE_TAG }}
-            type=registry,ref=${{ steps.login.outputs.registry }}/cache/${{ matrix.name.image_name }}:main
+            type=registry,ref=${{ steps.login.outputs.registry }}/cache/${{ matrix.name.image_name }}${{ inputs.image_suffix }}:${{ env.CACHE_TAG }}
+            type=registry,ref=${{ steps.login.outputs.registry }}/cache/${{ matrix.name.image_name }}${{ inputs.image_suffix }}:main
           cache-to: |
-            type=registry,ref=${{ steps.login.outputs.registry }}/cache/${{ matrix.name.image_name }}:${{ env.CACHE_TAG }},mode=max
+            type=registry,ref=${{ steps.login.outputs.registry }}/cache/${{ matrix.name.image_name }}${{ inputs.image_suffix }}:${{ env.CACHE_TAG }},mode=max
           target: ${{ inputs.profile }}
           outputs:
-            type=image,name=${{ steps.login.outputs.registry }}/firezone/${{ matrix.name.image_name }},push-by-digest=true,name-canonical=true,push=true
+            type=image,name=${{ steps.login.outputs.registry }}/firezone/${{ matrix.name.image_name }}${{ inputs.image_suffix }},push-by-digest=true,name-canonical=true,push=true
       - name: Export digest
         run: |
           mkdir -p /tmp/digests/${{ matrix.name.image_name }}
@@ -265,7 +277,8 @@ jobs:
       - name: Upload digest artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.name.image_name }}-${{ matrix.arch.shortname }}-digest
+          overwrite: true
+          name: ${{ matrix.name.image_name }}${{ inputs.image_suffix }}-${{ inputs.sha }}-digest-${{ matrix.arch.shortname }}
           path: /tmp/digests/${{ matrix.name.image_name }}
           if-no-files-found: error
           retention-days: 1
@@ -285,6 +298,8 @@ jobs:
           - snownet-tests
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.sha }}
       - uses: ./.github/actions/gcp-docker-login
         id: login
         with:
@@ -292,7 +307,7 @@ jobs:
       - name: Download digests
         uses: actions/download-artifact@v4
         with:
-          pattern: ${{ matrix.image_name }}-*-digest
+          pattern: ${{ matrix.image_name }}${{ inputs.image_suffix }}-${{ inputs.sha }}-digest-*
           merge-multiple: true
           path: /tmp/digests/${{ matrix.image_name }}
       - name: Display structure of downloaded artifacts
@@ -312,19 +327,19 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images:
-            ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}
+            ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}${{ inputs.image_suffix }}
           tags: |
             type=raw,value=latest
-            type=raw,value=${{ github.sha }}
+            type=raw,value=${{ inputs.sha }}
             type=raw,value=${{ env.VERSION }}
-            type=raw,value=${{ env.VERSION }}-${{ github.sha }}
+            type=raw,value=${{ env.VERSION }}-${{ inputs.sha }}
             type=raw,value=${{ env.MAJOR_VERSION }}
             type=raw,value=${{ env.MAJOR_MINOR_VERSION }}
       - name: Create manifest list and push
         working-directory: /tmp/digests/${{ matrix.image_name }}
         run: |
           tags=$(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON")
-          sources=$(printf '${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}@sha256:%s ' *)
+          sources=$(printf '${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}${{ inputs.image_suffix }}@sha256:%s ' *)
           echo "$sources"
           docker buildx imagetools create $tags $sources
-          docker buildx imagetools inspect "${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}"
+          docker buildx imagetools inspect "${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}${{ inputs.image_suffix }}"
