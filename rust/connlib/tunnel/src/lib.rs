@@ -74,113 +74,117 @@ where
     }
 
     pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Result<Event<GatewayId>>> {
-        match self.role_state.poll_next_event(cx) {
-            Poll::Ready(other) => return Poll::Ready(Ok(other)),
-            _ => (),
-        }
+        loop {
+            if let Poll::Ready(other) = self.role_state.poll_next_event(cx) {
+                return Poll::Ready(Ok(other));
+            }
 
-        if let Some(packet) = self.role_state.poll_packets() {
-            self.io.send_device(packet)?;
-            cx.waker().wake_by_ref();
-        }
+            if let Some(packet) = self.role_state.poll_packets() {
+                self.io.send_device(packet)?;
+                continue;
+            }
 
-        while let Some(event) = self.node.poll_event() {
-            match event {
-                snownet::Event::ConnectionFailed(id) => {
-                    self.role_state.cleanup_connected_gateway(&id);
-                }
-                snownet::Event::SignalIceCandidate {
-                    connection,
-                    candidate,
-                } => {
-                    return Poll::Ready(Ok(Event::SignalIceCandidate {
-                        conn_id: connection,
+            if let Some(event) = self.node.poll_event() {
+                match event {
+                    snownet::Event::ConnectionFailed(id) => {
+                        self.role_state.cleanup_connected_gateway(&id);
+                    }
+                    snownet::Event::SignalIceCandidate {
+                        connection,
                         candidate,
-                    }));
-                }
-                _ => {}
-            }
-        }
-
-        if let Some(timeout) = self.node.poll_timeout() {
-            self.io.reset_timeout(timeout);
-        }
-
-        match self.io.poll(cx, self.read_buf.as_mut())? {
-            Poll::Ready(io::Input::Timeout(timeout)) => {
-                self.node.handle_timeout(timeout);
-                cx.waker().wake_by_ref();
-            }
-            Poll::Ready(io::Input::Device(packet)) => {
-                let Some((peer_id, packet)) = self.role_state.encapsulate(packet, Instant::now())
-                else {
-                    cx.waker().wake_by_ref();
-                    return Poll::Pending;
-                };
-
-                if let Some(transmit) =
-                    self.node
-                        .encapsulate(peer_id, packet.as_immutable().into(), Instant::now())?
-                {
-                    self.io.send_network(transmit)?;
+                    } => {
+                        return Poll::Ready(Ok(Event::SignalIceCandidate {
+                            conn_id: connection,
+                            candidate,
+                        }));
+                    }
+                    _ => {}
                 }
 
-                cx.waker().wake_by_ref();
+                continue;
             }
-            Poll::Ready(io::Input::Network(packets)) => {
-                for received in packets {
-                    let Received {
-                        local,
-                        from,
-                        packet,
-                    } = received;
 
-                    let (conn_id, packet) = match self.node.decapsulate(
-                        local,
-                        from,
-                        packet.as_ref(),
-                        std::time::Instant::now(),
-                        self.write_buf.as_mut(),
-                    ) {
-                        Ok(Some(packet)) => packet,
-                        Ok(None) => {
-                            continue;
-                        }
-                        Err(e) => {
-                            tracing::warn!(%local, %from, num_bytes = %packet.len(), "Failed to decapsulate incoming packet: {e}");
+            if let Some(timeout) = self.node.poll_timeout() {
+                self.io.reset_timeout(timeout);
+            }
 
-                            continue;
-                        }
-                    };
-
-                    let Some(peer) = self.role_state.peers.get_mut(&conn_id) else {
-                        tracing::error!(%conn_id, %local, %from, "Couldn't find connection");
-
+            match self.io.poll(cx, self.read_buf.as_mut())? {
+                Poll::Ready(io::Input::Timeout(timeout)) => {
+                    self.node.handle_timeout(timeout);
+                    continue;
+                }
+                Poll::Ready(io::Input::Device(packet)) => {
+                    let Some((peer_id, packet)) =
+                        self.role_state.encapsulate(packet, Instant::now())
+                    else {
                         continue;
                     };
 
-                    let packet = match peer.untransform(packet.into()) {
-                        Ok(packet) => packet,
-                        Err(e) => {
-                            tracing::warn!(%conn_id, %local, %from, "Failed to transform packet: {e}");
+                    if let Some(transmit) = self.node.encapsulate(
+                        peer_id,
+                        packet.as_immutable().into(),
+                        Instant::now(),
+                    )? {
+                        self.io.send_network(transmit)?;
+                    }
+
+                    continue;
+                }
+                Poll::Ready(io::Input::Network(packets)) => {
+                    for received in packets {
+                        let Received {
+                            local,
+                            from,
+                            packet,
+                        } = received;
+
+                        let (conn_id, packet) = match self.node.decapsulate(
+                            local,
+                            from,
+                            packet.as_ref(),
+                            std::time::Instant::now(),
+                            self.write_buf.as_mut(),
+                        ) {
+                            Ok(Some(packet)) => packet,
+                            Ok(None) => {
+                                continue;
+                            }
+                            Err(e) => {
+                                tracing::warn!(%local, %from, num_bytes = %packet.len(), "Failed to decapsulate incoming packet: {e}");
+
+                                continue;
+                            }
+                        };
+
+                        let Some(peer) = self.role_state.peers.get_mut(&conn_id) else {
+                            tracing::error!(%conn_id, %local, %from, "Couldn't find connection");
 
                             continue;
-                        }
-                    };
+                        };
 
-                    self.io.device_mut().write(packet.as_immutable())?;
+                        let packet = match peer.untransform(packet.into()) {
+                            Ok(packet) => packet,
+                            Err(e) => {
+                                tracing::warn!(%conn_id, %local, %from, "Failed to transform packet: {e}");
+
+                                continue;
+                            }
+                        };
+
+                        self.io.device_mut().write(packet.as_immutable())?;
+                    }
+
+                    continue;
                 }
-
-                cx.waker().wake_by_ref();
+                Poll::Pending => {}
             }
-            Poll::Pending => {}
-        }
 
-        if self.stats.poll(&self.node, cx).is_ready() {
-            cx.waker().wake_by_ref();
-        }
+            if self.stats.poll(&self.node, cx).is_ready() {
+                continue;
+            }
 
-        Poll::Pending
+            return Poll::Pending;
+        }
     }
 }
 
@@ -189,106 +193,110 @@ where
     CB: Callbacks + 'static,
 {
     pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Result<Event<ClientId>>> {
-        if let Poll::Ready(()) = self.role_state.poll(cx) {
-            cx.waker().wake_by_ref();
-        }
+        loop {
+            if let Poll::Ready(()) = self.role_state.poll(cx) {
+                continue;
+            }
 
-        while let Some(event) = self.node.poll_event() {
-            match event {
-                snownet::Event::ConnectionFailed(id) => {
-                    self.role_state.peers.remove(&id);
-                }
-                snownet::Event::SignalIceCandidate {
-                    connection,
-                    candidate,
-                } => {
-                    return Poll::Ready(Ok(Event::SignalIceCandidate {
-                        conn_id: connection,
+            if let Some(event) = self.node.poll_event() {
+                match event {
+                    snownet::Event::ConnectionFailed(id) => {
+                        self.role_state.peers.remove(&id);
+                    }
+                    snownet::Event::SignalIceCandidate {
+                        connection,
                         candidate,
-                    }));
-                }
-                _ => {}
-            }
-        }
-
-        if let Some(timeout) = self.node.poll_timeout() {
-            self.io.reset_timeout(timeout);
-        }
-
-        match self.io.poll(cx, self.read_buf.as_mut())? {
-            Poll::Ready(io::Input::Timeout(timeout)) => {
-                self.node.handle_timeout(timeout);
-                cx.waker().wake_by_ref();
-            }
-            Poll::Ready(io::Input::Device(packet)) => {
-                let Some((peer_id, packet)) = self.role_state.encapsulate(packet) else {
-                    cx.waker().wake_by_ref();
-                    return Poll::Pending;
-                };
-
-                if let Some(transmit) =
-                    self.node
-                        .encapsulate(peer_id, packet.as_immutable().into(), Instant::now())?
-                {
-                    self.io.send_network(transmit)?;
+                    } => {
+                        return Poll::Ready(Ok(Event::SignalIceCandidate {
+                            conn_id: connection,
+                            candidate,
+                        }));
+                    }
+                    _ => {}
                 }
 
-                cx.waker().wake_by_ref();
+                continue;
             }
-            Poll::Ready(io::Input::Network(packets)) => {
-                for received in packets {
-                    let Received {
-                        local,
-                        from,
-                        packet,
-                    } = received;
 
-                    let (conn_id, packet) = match self.node.decapsulate(
-                        local,
-                        from,
-                        packet.as_ref(),
-                        std::time::Instant::now(),
-                        self.write_buf.as_mut(),
-                    ) {
-                        Ok(Some(packet)) => packet,
-                        Ok(None) => {
-                            continue;
-                        }
-                        Err(e) => {
-                            tracing::warn!(%local, %from, num_bytes = %packet.len(), "Failed to decapsulate incoming packet: {e}");
+            if let Some(timeout) = self.node.poll_timeout() {
+                self.io.reset_timeout(timeout);
+            }
 
-                            continue;
-                        }
-                    };
-
-                    let Some(peer) = self.role_state.peers.get_mut(&conn_id) else {
-                        tracing::error!(%conn_id, %local, %from, "Couldn't find connection");
-
+            match self.io.poll(cx, self.read_buf.as_mut())? {
+                Poll::Ready(io::Input::Timeout(timeout)) => {
+                    self.node.handle_timeout(timeout);
+                    continue;
+                }
+                Poll::Ready(io::Input::Device(packet)) => {
+                    let Some((peer_id, packet)) = self.role_state.encapsulate(packet) else {
                         continue;
                     };
 
-                    let packet = match peer.untransform(packet.into()) {
-                        Ok(packet) => packet,
-                        Err(e) => {
-                            tracing::warn!(%conn_id, %local, %from, "Failed to transform packet: {e}");
+                    if let Some(transmit) = self.node.encapsulate(
+                        peer_id,
+                        packet.as_immutable().into(),
+                        Instant::now(),
+                    )? {
+                        self.io.send_network(transmit)?;
+                    }
+
+                    continue;
+                }
+                Poll::Ready(io::Input::Network(packets)) => {
+                    for received in packets {
+                        let Received {
+                            local,
+                            from,
+                            packet,
+                        } = received;
+
+                        let (conn_id, packet) = match self.node.decapsulate(
+                            local,
+                            from,
+                            packet.as_ref(),
+                            std::time::Instant::now(),
+                            self.write_buf.as_mut(),
+                        ) {
+                            Ok(Some(packet)) => packet,
+                            Ok(None) => {
+                                continue;
+                            }
+                            Err(e) => {
+                                tracing::warn!(%local, %from, num_bytes = %packet.len(), "Failed to decapsulate incoming packet: {e}");
+
+                                continue;
+                            }
+                        };
+
+                        let Some(peer) = self.role_state.peers.get_mut(&conn_id) else {
+                            tracing::error!(%conn_id, %local, %from, "Couldn't find connection");
 
                             continue;
-                        }
-                    };
+                        };
 
-                    self.io.device_mut().write(packet.as_immutable())?;
+                        let packet = match peer.untransform(packet.into()) {
+                            Ok(packet) => packet,
+                            Err(e) => {
+                                tracing::warn!(%conn_id, %local, %from, "Failed to transform packet: {e}");
+
+                                continue;
+                            }
+                        };
+
+                        self.io.device_mut().write(packet.as_immutable())?;
+                    }
+
+                    continue;
                 }
-
-                cx.waker().wake_by_ref();
+                Poll::Pending => {}
             }
-            Poll::Pending => {}
-        }
 
-        if self.stats.poll(&self.node, cx).is_ready() {
-            cx.waker().wake_by_ref();
-        }
+            if self.stats.poll(&self.node, cx).is_ready() {
+                continue;
+            }
 
-        Poll::Pending
+            return Poll::Pending;
+        }
     }
 }
 
