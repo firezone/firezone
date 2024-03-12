@@ -49,7 +49,7 @@ jobs:
     uses: ./.github/workflows/_build_artifacts.yml
     secrets: inherit
     with:
-      image_prefix: ${{ inputs.image_prefix || 'debug/' }}
+      image_prefix: ${{ inputs.image_prefix || 'debug' }}
       profile: ${{ inputs.profile || 'debug' }}
       stage: ${{ inputs.stage || 'debug' }}
 
@@ -59,7 +59,7 @@ jobs:
     secrets: inherit
     with:
       sha: ${{ github.event.pull_request.base.sha }}
-      image_prefix: 'perf/'
+      image_prefix: 'perf'
       profile: 'release'
       stage: 'debug'
 
@@ -69,7 +69,7 @@ jobs:
     secrets: inherit
     with:
       sha: ${{ github.sha }}
-      image_prefix: 'perf/'
+      image_prefix: 'perf'
       profile: 'release'
       stage: 'debug'
 
