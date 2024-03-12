@@ -253,6 +253,7 @@ pub struct ClientState {
 
     buffered_events: VecDeque<Event<GatewayId>>,
     interface_config: Option<InterfaceConfig>,
+    buffered_packets: VecDeque<IpPacket<'static>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -270,8 +271,7 @@ impl ClientState {
     ) -> Option<(GatewayId, MutableIpPacket<'a>)> {
         let (packet, dest) = match self.handle_dns(packet, now) {
             Ok(response) => {
-                self.buffered_events
-                    .push_back(Event::SendPacket(response?.to_owned()));
+                self.buffered_packets.push_back(response?.to_owned());
                 return None;
             }
             Err(non_dns_packet) => non_dns_packet,
@@ -577,6 +577,10 @@ impl ClientState {
         }
     }
 
+    pub fn poll_packets(&mut self) -> Option<IpPacket<'static>> {
+        self.buffered_packets.pop_front()
+    }
+
     pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Event<GatewayId>> {
         loop {
             if let Some(event) = self.buffered_events.pop_front() {
@@ -611,7 +615,10 @@ impl ClientState {
             match self.forwarded_dns_queries.poll_unpin(cx) {
                 Poll::Ready((Ok(response), query)) => {
                     match dns::build_response_from_resolve_result(query.query, response) {
-                        Ok(Some(packet)) => return Poll::Ready(Event::SendPacket(packet)),
+                        Ok(Some(packet)) => {
+                            self.buffered_packets.push_back(packet);
+                            continue;
+                        }
                         Ok(None) => continue,
                         Err(e) => {
                             tracing::warn!("Failed to build DNS response from lookup result: {e}");
@@ -677,6 +684,7 @@ impl Default for ClientState {
             dns_resolvers: Default::default(),
             buffered_events: Default::default(),
             interface_config: Default::default(),
+            buffered_packets: Default::default(),
         }
     }
 }

@@ -140,9 +140,6 @@ where
                         .send(PHOENIX_TOPIC, EgressMessages::ReuseConnection(connection));
                 }
             }
-            firezone_tunnel::Event::SendPacket { .. } => {
-                unreachable!("Handled internally")
-            }
         }
     }
 

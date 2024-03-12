@@ -22,7 +22,6 @@ pub use client::ClientState;
 pub use control_protocol::client::Request;
 pub use gateway::{GatewayState, ResolvedResourceDescriptionDns};
 use io::Io;
-use ip_packet::IpPacket;
 use stats::Stats;
 
 mod client;
@@ -76,12 +75,13 @@ where
 
     pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Result<Event<GatewayId>>> {
         match self.role_state.poll_next_event(cx) {
-            Poll::Ready(Event::SendPacket(packet)) => {
-                self.io.send_device(packet)?;
-                cx.waker().wake_by_ref();
-            }
             Poll::Ready(other) => return Poll::Ready(Ok(other)),
             _ => (),
+        }
+
+        if let Some(packet) = self.role_state.poll_packets() {
+            self.io.send_device(packet)?;
+            cx.waker().wake_by_ref();
         }
 
         match self.node.poll_event() {
@@ -351,5 +351,4 @@ pub enum Event<TId> {
     RefreshResources {
         connections: Vec<ReuseConnection>,
     },
-    SendPacket(IpPacket<'static>),
 }
