@@ -3,7 +3,6 @@
 use crate::client::auth::Response as AuthResponse;
 use anyhow::{bail, Context, Result};
 use secrecy::{ExposeSecret, SecretString};
-use std::io;
 use url::Url;
 
 pub(crate) const FZ_SCHEME: &str = "firezone-fd0020211111";
@@ -27,27 +26,8 @@ mod imp;
 pub enum Error {
     #[error("named pipe server couldn't start listening, we are probably the second instance")]
     CantListen,
-    /// Error from client's POV
     #[error(transparent)]
-    ClientCommunications(io::Error),
-    /// Error while connecting to the server
-    #[error(transparent)]
-    Connect(io::Error),
-    /// Something went wrong finding the path to our own exe
-    #[error(transparent)]
-    CurrentExe(io::Error),
-    #[cfg(target_os = "windows")]
-    #[error("Couldn't set up security descriptor for deep link server")]
-    SecurityDescriptor,
-    /// Error from server's POV
-    #[error(transparent)]
-    ServerCommunications(io::Error),
-    #[error(transparent)]
-    UrlParse(#[from] url::ParseError),
-    /// Something went wrong setting up the registry
-    #[cfg(target_os = "windows")]
-    #[error(transparent)]
-    WindowsRegistry(io::Error),
+    Other(#[from] anyhow::Error),
 }
 
 pub(crate) use imp::{open, register, Server};

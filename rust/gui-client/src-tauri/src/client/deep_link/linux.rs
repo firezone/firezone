@@ -14,7 +14,9 @@ pub(crate) struct Server {
 
 impl Server {
     /// Create a new deep link server to make sure we're the only instance
-    pub(crate) fn new() -> Result<Self> {
+    ///
+    /// Still uses `thiserror` so we can catch the deep_link `CantListen` error
+    pub(crate) fn new() -> Result<Self, super::Error> {
         let dir = known_dirs::runtime().context("couldn't find runtime dir")?;
         let path = dir.join(SOCK_NAME);
         // TODO: This breaks single instance. Can we enforce it some other way?

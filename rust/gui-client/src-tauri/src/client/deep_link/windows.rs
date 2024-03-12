@@ -1,8 +1,8 @@
 //! A module for registering, catching, and parsing deep links that are sent over to the app's already-running instance
 //! Based on reading some of the Windows code from <https://github.com/FabianLars/tauri-plugin-deep-link>, which is licensed "MIT OR Apache-2.0"
 
-use super::{Error, FZ_SCHEME};
-use anyhow::Result;
+use super::FZ_SCHEME;
+use anyhow::{Context, Result};
 use connlib_shared::BUNDLE_ID;
 use secrecy::Secret;
 use std::{ffi::c_void, io, path::Path};
@@ -19,7 +19,8 @@ impl Server {
     /// Construct a server, but don't await client connections yet
     ///
     /// Panics if there is no Tokio runtime
-    pub(crate) fn new() -> Result<Self> {
+    /// Still uses `thiserror` so we can catch the deep_link `CantListen` error
+    pub(crate) fn new() -> Result<Self, super::Error> {
         // This isn't air-tight - We recreate the whole server on each loop,
         // rather than binding 1 socket and accepting many streams like a normal socket API.
         // I can only assume Tokio is following Windows' underlying API.
@@ -43,9 +44,9 @@ impl Server {
                 psd,
                 windows::Win32::System::SystemServices::SECURITY_DESCRIPTOR_REVISION,
             )
-            .map_err(|_| Error::SecurityDescriptor)?;
+            .context("InitializeSecurityDescriptor failed")?;
             WinSec::SetSecurityDescriptorDacl(psd, true, None, false)
-                .map_err(|_| Error::SecurityDescriptor)?;
+                .context("SetSecurityDescriptorDacl failed")?;
         }
 
         let mut sa = WinSec::SECURITY_ATTRIBUTES {
@@ -65,7 +66,7 @@ impl Server {
         // or lifetime problems because we only pass pointers to our local vars to
         // Win32, and Win32 shouldn't save them anywhere.
         let server = unsafe { server_options.create_with_security_attributes_raw(path, sa_ptr) }
-            .map_err(|_| Error::CantListen)?;
+            .map_err(|_| super::Error::CantListen)?;
 
         tracing::debug!("server is bound");
         Ok(Server { inner: server })
@@ -80,7 +81,7 @@ impl Server {
         self.inner
             .connect()
             .await
-            .map_err(Error::ServerCommunications)?;
+            .context("Couldn't accept connection from named pipe client")?;
         tracing::debug!("server got connection");
 
         // TODO: Limit the read size here. Our typical callback is 350 bytes, so 4,096 bytes should be more than enough.
@@ -90,7 +91,7 @@ impl Server {
         self.inner
             .read_to_end(&mut bytes)
             .await
-            .map_err(Error::ServerCommunications)?;
+            .context("Couldn't read bytes from named pipe client")?;
         let bytes = Secret::new(bytes);
 
         self.inner.disconnect().ok();
@@ -99,15 +100,15 @@ impl Server {
 }
 
 /// Open a deep link by sending it to the already-running instance of the app
-pub async fn open(url: &url::Url) -> Result<(), Error> {
+pub async fn open(url: &url::Url) -> Result<()> {
     let path = named_pipe_path(BUNDLE_ID);
     let mut client = named_pipe::ClientOptions::new()
         .open(path)
-        .map_err(Error::Connect)?;
+        .context("Couldn't connect to named pipe server")?;
     client
         .write_all(url.as_str().as_bytes())
         .await
-        .map_err(Error::ClientCommunications)?;
+        .context("Couldn't write bytes to named pipe server")?;
     Ok(())
 }
 
@@ -115,14 +116,14 @@ pub async fn open(url: &url::Url) -> Result<(), Error> {
 ///
 /// This is copied almost verbatim from tauri-plugin-deep-link's `register` fn, with an improvement
 /// that we send the deep link to a subcommand so the URL won't confuse `clap`
-pub fn register() -> Result<(), Error> {
+pub fn register() -> Result<()> {
     let exe = tauri_utils::platform::current_exe()
-        .map_err(Error::CurrentExe)?
+        .context("Can't find our own exe path")?
         .display()
         .to_string()
         .replace("\\\\?\\", "");
 
-    set_registry_values(BUNDLE_ID, &exe).map_err(Error::WindowsRegistry)?;
+    set_registry_values(BUNDLE_ID, &exe).context("Can't set Windows Registry values")?;
 
     Ok(())
 }
