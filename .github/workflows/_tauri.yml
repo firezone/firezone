@@ -85,7 +85,7 @@ jobs:
         with:
           name: ${{ matrix.binary-dest-path }}
           path: |
-            ${{ matrix.artifacts }}
+            ${{ join(matrix.artifacts, '\n') }}
       # Only for builds on main
       - name: Upload Release Assets
         if: ${{ inputs.release_tag }}

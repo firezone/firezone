@@ -31,8 +31,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          prerelease: true
-          include-pre-releases: true
           version: ${{ env.VERSION }}
       - name: Delete stale artifacts
         env:
@@ -125,6 +123,9 @@ jobs:
             ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ env.CACHE_TAG }}
 
   data-plane:
+    # Runs the job after update-release-draft, regardless of the outcome
+    if: ${{ always() }}
+    needs: update-release-draft
     name: ${{ matrix.name.image_name }}-${{ matrix.arch.shortname }}
     runs-on: ubuntu-22.04
     defaults:
@@ -163,6 +164,8 @@ jobs:
       - uses: ./.github/actions/setup-rust
         with:
           targets: ${{ matrix.arch.target }}
+          # Cross doesn't support scccache without a lot of work
+          cache_backend: github
       - uses: taiki-e/install-action@v2
         with:
           tool: cross
@@ -184,7 +187,7 @@ jobs:
           # Used for Docker images
           cp target/${{ matrix.arch.target }}/${{ inputs.profile }}/${{ matrix.name.package }} ${{ matrix.name.package }}
       - name: Upload Release Assets
-        if: ${{ inputs.profile == 'release' && contains(fromJSON('["client", "gateway"]'),  matrix.name.artifact) }}
+        if: ${{ inputs.profile == 'release' && (matrix.name.image_name == 'gateway' || matrix.name.image_name == 'client') }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -270,6 +273,7 @@ jobs:
   merge-docker-artifacts:
     name: merge-${{ matrix.image_name }}
     needs: data-plane
+    if: ${{ always() }}
     runs-on: ubuntu-22.04
     strategy:
       fail-fast: false

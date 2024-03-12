@@ -51,49 +51,8 @@ on:
         required: false
         type: string
         default: ${{ github.sha }}
-      snownet_image:
-        required: false
-        type: string
-        default: 'us-east1-docker.pkg.dev/firezone-staging/firezone/snownet-tests'
-      snownet_tag:
-        required: false
-        type: string
-        default: ${{ github.sha }}
 
 jobs:
-  snownet-integration-tests:
-    name: snownet-integration-tests-${{ matrix.name }}
-    runs-on: ubuntu-22.04
-    permissions:
-      contents: read
-      id-token: write
-      pull-requests: write
-    env:
-      RELAY_IMAGE: ${{ inputs.relay_image }}
-      RELAY_TAG: ${{ inputs.relay_tag }}
-      SNOWNET_IMAGE: ${{ inputs.snownet_image }}
-      SNOWNET_TAG: ${{ inputs.snownet_tag }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - file: docker-compose.lan.yml
-            name: lan
-          - file: docker-compose.wan-hp.yml
-            name: wan-hp
-          - file: docker-compose.wan-relay.yml
-            name: wan-relay
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/gcp-docker-login
-        id: login
-        with:
-          project: firezone-staging
-      - name: Run ${{ matrix.file }} test
-        run: |
-          sudo sysctl -w vm.overcommit_memory=1
-          timeout 600 docker compose -f rust/snownet-tests/${{ matrix.file }} up --exit-code-from dialer --abort-on-container-exit
-
   integration-tests:
     name: integration-tests-${{ matrix.test }}
     runs-on: ubuntu-22.04
