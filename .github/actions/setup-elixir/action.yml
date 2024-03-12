@@ -1,0 +1,44 @@
+name: "Setup Elixir"
+description: "Sets up the correct Elixir version and installs deps"
+inputs:
+  mix_env:
+    description: "Limit deps to mix env"
+    type: string
+    required: true
+runs:
+  using: "composite"
+  steps:
+    - name: Tool Versions
+      id: versions
+      uses: marocchino/tool-versions-action@v1.2.0
+    - uses: erlef/setup-beam@v1
+      id: setup-beam
+      with:
+        otp-version: ${{ steps.versions.outputs.erlang }}
+        elixir-version: ${{ steps.versions.outputs.elixir }}
+    - uses: actions/cache/restore@v4
+      name: Restore Elixir Deps Cache
+      id: cache
+      with:
+        path: |
+          elixir/deps
+          elixir/_build/${{ inputs.mix_env }}
+        key: ${{ runner.os }}-${{ inputs.mix_env }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ hashFiles('elixir/mix.lock') }}
+    - name: Install Dependencies
+      if: ${{ steps.cache.outputs.cache-hit != 'true' }}
+      shell: bash
+      working-directory: ./elixir
+      run: mix deps.get --only ${{ inputs.mix_env }}
+    - name: Compile Dependencies
+      if: ${{ steps.cache.outputs.cache-hit != 'true' }}
+      shell: bash
+      working-directory: ./elixir
+      run: mix deps.compile --skip-umbrella-children
+    - uses: actions/cache/save@v4
+      name: Save Elixir Deps Cache
+      if: ${{ steps.cache.outputs.cache-hit != 'true' }}
+      with:
+        path: |
+          elixir/deps
+          elixir/_build/${{ inputs.mix_env }}
+        key: ${{ steps.cache.outputs.cache-primary-key }}
