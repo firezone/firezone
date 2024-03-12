@@ -5,6 +5,14 @@ version = "1.0.0"
 description = "Firezone"
 edition = "2021"
 
+[[bin]]
+name = "firezone_gui_client_multi_process_test"
+path = "src/multi_process_test.rs"
+test = true
+doctest = true
+harness = false
+edition = "2021"
+
 [build-dependencies]
 anyhow = { version = "1.0" }
 tauri-build = { version = "1.5", features = [] }

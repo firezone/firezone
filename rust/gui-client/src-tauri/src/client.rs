@@ -29,7 +29,7 @@ mod wintun_install;
 /// * `ed5437c88` is the Git commit hash
 /// * `-modified` is present if the working dir has any changes from that commit number
 pub const GIT_VERSION: &str =
-    git_version::git_version!(args = ["--always", "--dirty=-modified", "--tags"]);
+    git_version::git_version!(args = ["--always", "--dirty=-modified", "--tags"], fallback = "Unknown");
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum Error {
