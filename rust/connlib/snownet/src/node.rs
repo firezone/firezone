@@ -439,7 +439,6 @@ where
         self.buffered_transmits.pop_front()
     }
 
-    #[allow(clippy::too_many_arguments)]
     #[must_use]
     #[allow(clippy::too_many_arguments)]
     fn init_connection(
