@@ -27,7 +27,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     logger.log("\(#function)")
 
     guard let controlPlaneURLString = protocolConfiguration.serverAddress else {
-      logger.error("serverAddress is missing")
+      logger.error("\(#function): serverAddress is missing")
       self.handleTunnelShutdown(
         dueTo: .badTunnelConfiguration,
         errorMessage: "serverAddress is missing")
@@ -37,7 +37,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     }
 
     guard let tokenRef = protocolConfiguration.passwordReference else {
-      logger.error("passwordReference is missing")
+      logger.error("\(#function): passwordReference is missing")
       self.handleTunnelShutdown(
         dueTo: .badTunnelConfiguration,
         errorMessage: "passwordReference is missing")
@@ -50,7 +50,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
     guard let connlibLogFilter = providerConfig?[TunnelProviderKeys.keyConnlibLogFilter] as? String
     else {
-      logger.error("connlibLogFilter is missing")
+      logger.error("\(#function): connlibLogFilter is missing")
       self.handleTunnelShutdown(
         dueTo: .badTunnelConfiguration,
         errorMessage: "connlibLogFilter is missing")
@@ -62,6 +62,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     Task {
       let keychain = Keychain()
       guard let token = await keychain.load(persistentRef: tokenRef) else {
+        logger.error("\(#function): Token not found in keychain")
         self.handleTunnelShutdown(
           dueTo: .tokenNotFound,
           errorMessage: "Token not found in keychain")

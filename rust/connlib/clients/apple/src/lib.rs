@@ -57,9 +57,6 @@ mod ffi {
             dnsAddresses: String,
         );
 
-        #[swift_bridge(swift_name = "onTunnelReady")]
-        fn on_tunnel_ready(&self);
-
         #[swift_bridge(swift_name = "onUpdateRoutes")]
         fn on_update_routes(&self, routeList4: String, routeList6: String);
 
@@ -68,9 +65,6 @@ mod ffi {
 
         #[swift_bridge(swift_name = "onDisconnect")]
         fn on_disconnect(&self, error: String);
-
-        #[swift_bridge(swift_name = "getSystemDefaultResolvers")]
-        fn get_system_default_resolvers(&self) -> String;
     }
 }
 
@@ -113,10 +107,6 @@ impl Callbacks for CallbackHandler {
         None
     }
 
-    fn on_tunnel_ready(&self) {
-        self.inner.on_tunnel_ready();
-    }
-
     fn on_update_routes(
         &self,
         route_list_4: Vec<Cidrv4>,
@@ -139,19 +129,6 @@ impl Callbacks for CallbackHandler {
 
     fn on_disconnect(&self, error: &Error) {
         self.inner.on_disconnect(error.to_string());
-    }
-
-    fn get_system_default_resolvers(&self) -> Option<Vec<IpAddr>> {
-        let resolvers_json = self.inner.get_system_default_resolvers();
-        tracing::debug!(
-            "get_system_default_resolvers returned: {:?}",
-            resolvers_json
-        );
-
-        let resolvers: Vec<IpAddr> = serde_json::from_str(&resolvers_json)
-            .expect("developer error: failed to deserialize resolvers");
-
-        Some(resolvers)
     }
 
     fn roll_log_file(&self) -> Option<PathBuf> {
