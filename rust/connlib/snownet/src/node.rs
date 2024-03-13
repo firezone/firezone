@@ -902,7 +902,7 @@ where
             };
 
             if let Some(existing) = self.allocations.get_mut(server) {
-                existing.refresh(username, password, realm, now);
+                existing.update_credentials(username, password, realm, now);
                 continue;
             }
 
