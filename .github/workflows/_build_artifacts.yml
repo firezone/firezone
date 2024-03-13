@@ -26,13 +26,13 @@ on:
     outputs:
       client_image:
         description: "The client image that was built"
-        value: ${{ jobs.data-plane.steps.image-name.outputs.client_image }}
+        value: ${{ jobs.data-plane.outputs.client_image }}
       relay_image:
         description: "The relay image that was built"
-        value: ${{ jobs.data-plane.steps.image-name.outputs.relay_image }}
+        value: ${{ jobs.data-plane.outputs.relay_image }}
       gateway_image:
         description: "The gateway image that was built"
-        value: ${{ jobs.data-plane.steps.image-name.outputs.gateway_image }}
+        value: ${{ jobs.data-plane.outputs.gateway_image }}
 
 env:
   # mark:automatic-version
@@ -181,6 +181,10 @@ jobs:
             image_name: snownet-tests
     env:
       BINARY_DEST_PATH: ${{ matrix.name.artifact }}-${{ matrix.arch.shortname }}
+    outputs:
+      client_image: ${{ steps.image-name.outputs.client_image }}
+      relay_image: ${{ steps.image-name.outputs.relay_image }}
+      gateway_image: ${{ steps.image-name.outputs.gateway_image }}
     steps:
       - uses: actions/checkout@v4
         with:
