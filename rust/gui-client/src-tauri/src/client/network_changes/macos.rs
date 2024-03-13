@@ -9,7 +9,7 @@ pub(crate) fn run_debug() -> Result<()> {
     unimplemented!()
 }
 
-pub(crate) fn run_debug() -> Result<()> {
+pub(crate) fn run_dns_debug() -> Result<()> {
     unimplemented!()
 }
 
