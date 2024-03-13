@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       confirmation:
-        description: "Are you SURE you want to hotfix product?"
+        description: "Are you SURE you want to hotfix production? You will be responsible if something goes wrong."
         type: boolean
       tag:
         description: "Image tag to deploy. Defaults to the last commit SHA in the branch."
