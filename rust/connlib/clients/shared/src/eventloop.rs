@@ -6,33 +6,22 @@ use crate::{
     PHOENIX_TOPIC,
 };
 use anyhow::Result;
-use bimap::BiMap;
 use connlib_shared::{
-    messages::{
-        ConnectionAccepted, DnsServer, GatewayId, GatewayResponse, IpDnsServer, ResourceAccepted,
-        ResourceId,
-    },
-    Callbacks, IpProvider,
+    messages::{ConnectionAccepted, GatewayId, GatewayResponse, ResourceAccepted, ResourceId},
+    Callbacks,
 };
 use firezone_tunnel::ClientTunnel;
-use ip_network::IpNetwork;
 use phoenix_channel::{ErrorReply, OutboundRequestId, PhoenixChannel};
 use std::{
     collections::HashMap,
     convert::Infallible,
     io,
-    net::IpAddr,
     path::PathBuf,
-    str::FromStr,
     task::{Context, Poll},
     time::Duration,
 };
 use tokio::time::{Instant, Interval, MissedTickBehavior};
 use url::Url;
-
-const DNS_PORT: u16 = 53;
-const DNS_SENTINELS_V4: &str = "100.100.111.0/24";
-const DNS_SENTINELS_V6: &str = "fd00:2021:1111:8000:100:100:111:0/120";
 
 pub struct Eventloop<C: Callbacks> {
     tunnel: ClientTunnel<C>,
@@ -176,33 +165,15 @@ where
                 interface,
                 resources,
             }) => {
-                let effective_dns_servers = effective_dns_servers(
-                    interface.upstream_dns.clone(),
-                    self.tunnel
-                        .callbacks()
-                        .get_system_default_resolvers()
-                        .ok()
-                        .flatten()
-                        .unwrap_or_default(),
-                );
-
-                let sentinel_mapping = sentinel_dns_mapping(&effective_dns_servers);
-
                 if !self.tunnel_init {
-                    if let Err(e) = self
-                        .tunnel
-                        .set_interface(&interface, sentinel_mapping.clone())
-                    {
+                    if let Err(e) = self.tunnel.set_interface(&interface) {
                         tracing::warn!("Failed to set interface on tunnel: {e}");
                         return;
                     }
 
                     self.tunnel_init = true;
                     tracing::info!("Firezone Started!");
-
-                    for resource_description in resources {
-                        let _ = self.tunnel.add_resource(resource_description);
-                    }
+                    let _ = self.tunnel.add_resources(&resources);
                 } else {
                     tracing::info!("Firezone reinitializated");
                 }
@@ -210,7 +181,7 @@ where
             IngressMessages::ResourceCreatedOrUpdated(resource) => {
                 let resource_id = resource.id();
 
-                if let Err(e) = self.tunnel.add_resource(resource) {
+                if let Err(e) = self.tunnel.add_resources(&[resource]) {
                     tracing::warn!(%resource_id, "Failed to add resource: {e}");
                 }
             }
@@ -375,53 +346,6 @@ async fn upload(_path: PathBuf, _url: Url) -> io::Result<()> {
     // }
 
     Ok(())
-}
-
-fn effective_dns_servers(
-    upstream_dns: Vec<DnsServer>,
-    default_resolvers: Vec<IpAddr>,
-) -> Vec<DnsServer> {
-    if !upstream_dns.is_empty() {
-        return upstream_dns;
-    }
-
-    let mut dns_servers = default_resolvers
-        .into_iter()
-        .filter(|ip| !IpNetwork::from_str(DNS_SENTINELS_V4).unwrap().contains(*ip))
-        .filter(|ip| !IpNetwork::from_str(DNS_SENTINELS_V6).unwrap().contains(*ip))
-        .peekable();
-
-    if dns_servers.peek().is_none() {
-        tracing::error!("No system default DNS servers available! Can't initialize resolver. DNS will be broken.");
-        return Vec::new();
-    }
-
-    dns_servers
-        .map(|ip| {
-            DnsServer::IpPort(IpDnsServer {
-                address: (ip, DNS_PORT).into(),
-            })
-        })
-        .collect()
-}
-
-fn sentinel_dns_mapping(dns: &[DnsServer]) -> BiMap<IpAddr, DnsServer> {
-    let mut ip_provider = IpProvider::new(
-        DNS_SENTINELS_V4.parse().unwrap(),
-        DNS_SENTINELS_V6.parse().unwrap(),
-    );
-
-    dns.iter()
-        .cloned()
-        .map(|i| {
-            (
-                ip_provider
-                    .get_proxy_ip_for(&i.ip())
-                    .expect("We only support up to 256 IpV4 DNS servers and 256 IpV6 DNS servers"),
-                i,
-            )
-        })
-        .collect()
 }
 
 fn upload_interval() -> Interval {

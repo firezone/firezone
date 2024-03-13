@@ -13,6 +13,7 @@ use connlib_shared::{Callbacks, Dname, Error, Result};
 use ip_network::IpNetwork;
 use secrecy::{ExposeSecret as _, Secret};
 use snownet::Server;
+use std::collections::HashSet;
 use std::task::{ready, Context, Poll};
 use std::time::{Duration, Instant};
 use tokio::time::{interval, Interval, MissedTickBehavior};
@@ -47,14 +48,10 @@ where
         // Note: the dns fallback strategy is irrelevant for gateways
         self.device
             .initialize(config, vec![], &self.callbacks().clone())?;
-
-        let result_v4 = self
-            .device
-            .add_route(PEERS_IPV4.parse().unwrap(), &self.callbacks().clone());
-        let result_v6 = self
-            .device
-            .add_route(PEERS_IPV6.parse().unwrap(), &self.callbacks().clone());
-        result_v4.or(result_v6)?;
+        self.device.set_routes(
+            HashSet::from([PEERS_IPV4.parse().unwrap(), PEERS_IPV6.parse().unwrap()]),
+            &self.callbacks,
+        )?;
 
         let name = self.device.name().to_owned();
 

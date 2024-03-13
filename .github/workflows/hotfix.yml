@@ -1,12 +1,11 @@
 name: Hotfix Production
-run-name: Triggered by ${{ github.actor }}
+run-name: Triggered by ${{ github.actor }} on ${{ github.event_name }}
 on:
   workflow_dispatch:
     inputs:
       tag:
         description: "Image tag to deploy. Defaults to the last commit SHA in the branch."
         type: string
-        default: ${{ github.sha }}
         required: false
 
 concurrency:
@@ -22,9 +21,11 @@ jobs:
     uses: ./.github/workflows/_integration_tests.yml
     secrets: inherit
     with:
+      relay_image: 'us-east1-docker.pkg.dev/firezone-staging/firezone/relay'
       gateway_image: "ghcr.io/firezone/gateway"
       gateway_tag: "latest"
       # FIXME: Uncomment this after the next release -- the
+      client_image: 'us-east1-docker.pkg.dev/firezone-staging/firezone/client'
       # client will be published then.
       # client_tag: "latest"
 
@@ -33,4 +34,4 @@ jobs:
     secrets: inherit
     uses: ./.github/workflows/_deploy_production.yml
     with:
-      tag: ${{ inputs.tag }}
+      tag: ${{ inputs.tag || github.sha }}

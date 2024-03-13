@@ -1,4 +1,5 @@
 name: Continuous Integration
+run-name: Triggered by ${{ github.actor }} on ${{ github.event_name }}
 on:
   pull_request:
   merge_group:
@@ -45,6 +46,8 @@ jobs:
     uses: ./.github/workflows/_build_artifacts.yml
     secrets: inherit
     with:
+      # Build debug/ on PRs and merge group, no prefix for production release images
+      image_prefix: ${{ ((github.event_name == 'pull_request' || github.event_name == 'merge_group') && 'debug') || '' }}
       profile: ${{ inputs.profile || 'debug' }}
       stage: ${{ inputs.stage || 'debug' }}
 
@@ -54,7 +57,7 @@ jobs:
     secrets: inherit
     with:
       sha: ${{ github.event.pull_request.base.sha }}
-      image_suffix: '-perf'
+      image_prefix: 'perf'
       profile: 'release'
       stage: 'debug'
 
@@ -64,7 +67,7 @@ jobs:
     secrets: inherit
     with:
       sha: ${{ github.sha }}
-      image_suffix: '-perf'
+      image_prefix: 'perf'
       profile: 'release'
       stage: 'debug'
 
@@ -72,6 +75,10 @@ jobs:
     uses: ./.github/workflows/_integration_tests.yml
     needs: build-artifacts
     secrets: inherit
+    with:
+      gateway_image: ${{ needs.build-artifacts.outputs.gateway_image }}
+      client_image: ${{ needs.build-artifacts.outputs.client_image }}
+      relay_image: ${{ needs.build-artifacts.outputs.relay_image }}
 
   snownet-tests:
     needs: build-artifacts
@@ -104,9 +111,9 @@ jobs:
           timeout 600 docker compose -f rust/snownet-tests/docker-compose.${{ matrix.name }}.yml up --exit-code-from dialer --abort-on-container-exit
 
   compatibility-tests:
-    # Don't run compatibility tests when called from cd.yml on `main` because
+    # Don't run compatibility tests when called from hotfix.yml or publish.yml on `main` because
     # it'll be red if there was a breaking change we're tring to publish,
-    # and the publish workflow checks for main to be green.
+    # and the deploy_production workflow checks for main to be green.
     if: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
     uses: ./.github/workflows/_integration_tests.yml
     needs: build-artifacts
@@ -131,17 +138,17 @@ jobs:
       id-token: write
       pull-requests: write
     env:
-      API_IMAGE: 'us-east1-docker.pkg.dev/firezone-staging/firezone/api-perf'
+      API_IMAGE: 'us-east1-docker.pkg.dev/firezone-staging/firezone/api'
       API_TAG: ${{ matrix.sha }}
-      WEB_IMAGE: 'us-east1-docker.pkg.dev/firezone-staging/firezone/web-perf'
+      WEB_IMAGE: 'us-east1-docker.pkg.dev/firezone-staging/firezone/web'
       WEB_TAG: ${{ matrix.sha }}
-      ELIXIR_IMAGE: 'us-east1-docker.pkg.dev/firezone-staging/firezone/elixir-perf'
+      ELIXIR_IMAGE: 'us-east1-docker.pkg.dev/firezone-staging/firezone/elixir'
       ELIXIR_TAG: ${{ matrix.sha }}
-      GATEWAY_IMAGE: 'us-east1-docker.pkg.dev/firezone-staging/firezone/gateway-perf'
+      GATEWAY_IMAGE: 'us-east1-docker.pkg.dev/firezone-staging/firezone/perf/gateway'
       GATEWAY_TAG: ${{ matrix.sha }}
-      CLIENT_IMAGE: 'us-east1-docker.pkg.dev/firezone-staging/firezone/client-perf'
+      CLIENT_IMAGE: 'us-east1-docker.pkg.dev/firezone-staging/firezone/perf/client'
       CLIENT_TAG: ${{ matrix.sha }}
-      RELAY_IMAGE: 'us-east1-docker.pkg.dev/firezone-staging/firezone/relay-perf'
+      RELAY_IMAGE: 'us-east1-docker.pkg.dev/firezone-staging/firezone/perf/relay'
       RELAY_TAG: ${{ matrix.sha }}
     strategy:
       fail-fast: false
@@ -178,10 +185,10 @@ jobs:
 
           # Start services in the same order each time for the tests
           docker compose up -d iperf3
-          docker compose up -d api web
-          docker compose up -d relay
-          docker compose up -d gateway
-          docker compose up -d client
+          docker compose up -d api web --no-build
+          docker compose up -d relay --no-build
+          docker compose up -d gateway --no-build
+          docker compose up -d client --no-build
       - name: 'Performance test: ${{ matrix.test_name }}'
         timeout-minutes: 5
         env:

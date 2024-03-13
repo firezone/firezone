@@ -31,7 +31,7 @@ jobs:
       - uses: ./.github/actions/gcp-docker-login
         id: login
         with:
-          project: firezone-staging
+          project: firezone-prod
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
         with:

@@ -29,6 +29,7 @@ jobs:
 
   push:
     needs: sanity-check
+    runs-on: ubuntu-22.04
     permissions:
       packages: write
       id-token: write
@@ -47,7 +48,7 @@ jobs:
       - name: Pull and push images
         run: |
           set -xe
-          IMAGES=(relay api gateway web)
+          IMAGES=(client relay gateway api web)
           MAJOR_VERSION="${VERSION%%.*}"
           MAJOR_MINOR_VERSION="${VERSION%.*}"
 
@@ -76,13 +77,13 @@ jobs:
       TF_API_TOKEN: "${{ secrets.TF_API_TOKEN }}"
       TF_WORKSPACE: "production"
     steps:
-      - name: Get Terraform Version
-        run: |
-          TERRAFORM_VERSION=$(cat .tool-versions | grep terraform | awk '{ print $NF; }')
-          echo "TERRAFORM_VERSION=${TERRAFORM_VERSION}" >> $GITHUB_ENV
+      - uses: actions/checkout@v4
+      - name: Tool Versions
+        id: versions
+        uses: marocchino/tool-versions-action@v1.2.0
       - uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_version: ${{ steps.versions.outputs.terraform }}
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.workflow_run.head_branch }}

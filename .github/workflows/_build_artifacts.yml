@@ -3,8 +3,12 @@ run-name: Triggered from ${{ github.event_name }} by ${{ github.actor }}
 on:
   workflow_call:
     inputs:
-      image_suffix:
-        description: "The suffix to append to the image name to prevent SHA conflicts"
+      image_prefix:
+        description: |
+          The prefix to prepend to the image name to prevent SHA conflicts.
+          * Use "debug" to build debug binaries inside debug stage images + with debug tooling installed.
+          * Use "perf" to build release binaries inside debug stage images + with debug tooling installed.
+          * Leave blank to build release binaries inside release stage images.
         required: false
         type: string
       sha:
@@ -19,6 +23,16 @@ on:
         description: "The stage of the data plane component images to build"
         required: true
         type: string
+    outputs:
+      client_image:
+        description: "The client image that was built"
+        value: ${{ jobs.data-plane.outputs.client_image }}
+      relay_image:
+        description: "The relay image that was built"
+        value: ${{ jobs.data-plane.outputs.relay_image }}
+      gateway_image:
+        description: "The gateway image that was built"
+        value: ${{ jobs.data-plane.outputs.gateway_image }}
 
 env:
   # mark:automatic-version
@@ -167,6 +181,10 @@ jobs:
             image_name: snownet-tests
     env:
       BINARY_DEST_PATH: ${{ matrix.name.artifact }}-${{ matrix.arch.shortname }}
+    outputs:
+      client_image: ${{ steps.image-name.outputs.client_image }}
+      relay_image: ${{ steps.image-name.outputs.relay_image }}
+      gateway_image: ${{ steps.image-name.outputs.gateway_image }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -236,7 +254,7 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images:
-            ${{ steps.login.outputs.registry }}/firezone/${{ matrix.name.image_name }}${{ inputs.image_suffix }}
+            ${{ steps.login.outputs.registry }}/firezone/${{ inputs.image_prefix && format('{0}/', inputs.image_prefix) || '' }}${{ matrix.name.image_name }}
           tags: |
             type=raw,value=latest
             type=raw,value=${{ inputs.sha }}
@@ -266,7 +284,7 @@ jobs:
             type=registry,ref=${{ steps.login.outputs.registry }}/cache/${{ matrix.name.image_name }}:${{ env.CACHE_TAG }},mode=max
           target: ${{ inputs.stage }}
           outputs:
-            type=image,name=${{ steps.login.outputs.registry }}/firezone/${{ matrix.name.image_name }}${{ inputs.image_suffix }},push-by-digest=true,name-canonical=true,push=true
+            type=image,name=${{ steps.login.outputs.registry }}/firezone/${{ inputs.image_prefix && format('{0}/', inputs.image_prefix) || '' }}${{ matrix.name.image_name }},push-by-digest=true,name-canonical=true,push=true
       - name: Export digest
         run: |
           mkdir -p /tmp/digests/${{ matrix.name.image_name }}
@@ -276,10 +294,13 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           overwrite: true
-          name: ${{ matrix.name.image_name }}${{ inputs.image_suffix }}-${{ inputs.sha }}-digest-${{ matrix.arch.shortname }}
+          name: ${{ inputs.image_prefix && format('{0}-', inputs.image_prefix) || '' }}${{ matrix.name.image_name }}-${{ inputs.sha }}-digest-${{ matrix.arch.shortname }}
           path: /tmp/digests/${{ matrix.name.image_name }}
           if-no-files-found: error
           retention-days: 1
+      - name: Output image name
+        id: image-name
+        run: echo "${{ matrix.name.image_name }}_image=${{ steps.login.outputs.registry }}/firezone/${{ inputs.image_prefix && format('{0}/', inputs.image_prefix) || '' }}${{ matrix.name.image_name }}" >> $GITHUB_OUTPUT
 
   merge-docker-artifacts:
     name: merge-${{ matrix.image_name }}
@@ -305,7 +326,7 @@ jobs:
       - name: Download digests
         uses: actions/download-artifact@v4
         with:
-          pattern: ${{ matrix.image_name }}${{ inputs.image_suffix }}-${{ inputs.sha }}-digest-*
+          pattern: ${{ inputs.image_prefix && format('{0}-', inputs.image_prefix) || '' }}${{ matrix.image_name }}-${{ inputs.sha }}-digest-*
           merge-multiple: true
           path: /tmp/digests/${{ matrix.image_name }}
       - name: Display structure of downloaded artifacts
@@ -325,7 +346,7 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images:
-            ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}${{ inputs.image_suffix }}
+            ${{ steps.login.outputs.registry }}/firezone/${{ inputs.image_prefix && format('{0}/', inputs.image_prefix) || '' }}${{ matrix.image_name }}
           tags: |
             type=raw,value=latest
             type=raw,value=${{ inputs.sha }}
@@ -337,7 +358,7 @@ jobs:
         working-directory: /tmp/digests/${{ matrix.image_name }}
         run: |
           tags=$(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON")
-          sources=$(printf '${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}${{ inputs.image_suffix }}@sha256:%s ' *)
+          sources=$(printf '${{ steps.login.outputs.registry }}/firezone/${{ inputs.image_prefix && format('{0}/', inputs.image_prefix) || '' }}${{ matrix.image_name }}@sha256:%s ' *)
           echo "$sources"
           docker buildx imagetools create $tags $sources
-          docker buildx imagetools inspect "${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}${{ inputs.image_suffix }}"
+          docker buildx imagetools inspect "${{ steps.login.outputs.registry }}/firezone/${{ inputs.image_prefix && format('{0}/', inputs.image_prefix) || '' }}${{ matrix.image_name }}"
