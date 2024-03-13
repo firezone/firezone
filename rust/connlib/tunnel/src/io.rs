@@ -69,12 +69,13 @@ impl Io {
                         Ok(Some(packet)) => {
                             self.device.write(packet)?;
                         }
-                        Ok(None) => continue,
+                        Ok(None) => {}
                         Err(e) => {
                             tracing::warn!("Failed to build DNS response from lookup result: {e}");
-                            continue;
                         }
                     }
+
+                    continue;
                 }
                 Poll::Ready((Err(resolve_timeout), query)) => {
                     tracing::warn!(name = %query.name, server = %query.query.destination(), "DNS query timed out: {resolve_timeout}");

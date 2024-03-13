@@ -67,6 +67,7 @@ impl Eventloop {
                 }
                 Poll::Ready(Err(e)) => {
                     tracing::warn!("Tunnel error: {e}");
+                    continue;
                 }
                 Poll::Pending => {}
             }
@@ -96,17 +97,16 @@ impl Eventloop {
                             );
 
                             // TODO: If outbound request fails, cleanup connection.
-                            continue;
                         }
                         Err(e) => {
                             let client = req.client.id;
 
                             self.tunnel.cleanup_connection(&client);
                             tracing::debug!(%client, "Connection request failed: {:#}", anyhow::Error::new(e));
-
-                            continue;
                         }
                     }
+
+                    continue;
                 }
                 Poll::Ready((Ok(Ok(resource)), Either::Right(req))) => {
                     let maybe_domain_response = self.tunnel.allow_access(
@@ -126,8 +126,9 @@ impl Eventloop {
                                 ),
                             }),
                         );
-                        continue;
                     }
+
+                    continue;
                 }
                 Poll::Ready((Ok(Err(dns_error)), Either::Left(req))) => {
                     tracing::debug!(client = %req.client.id, reference = %req.reference, "Failed to resolve domains as part of connection request: {dns_error}");
