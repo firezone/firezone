@@ -1,5 +1,5 @@
 name: Continuous Integration
-description: Triggered by ${{ github.actor }} on ${{ github.event_name }}
+run-name: Triggered by ${{ github.actor }} on ${{ github.event_name }}
 on:
   pull_request:
   merge_group:
