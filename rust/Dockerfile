@@ -130,11 +130,16 @@ FROM runtime as development
 RUN set -xe \
   && apk add --no-cache iperf3 bind-tools iproute2 jq
 
+# used for local development
+FROM development AS local
+ARG TARGET
+COPY --from=builder /build/target/${TARGET}/debug/${PACKAGE} .
+
 # Build an image for GitHub Actions which includes debug asserts and test utilities
 FROM development AS debug
 
 ARG TARGET
-## Build first with `cross build --target ${TARGET} -p ${PACKAGE} --debug && mv /target/${TARGET}/release/${PACKAGE} .`
+## Build first with `cross build --target ${TARGET} -p ${PACKAGE} && mv /target/${TARGET}/release/${PACKAGE} .`
 COPY ${PACKAGE} .
 
 # Build a production image from including a binary compiled on the host
