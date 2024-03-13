@@ -123,9 +123,7 @@ where
                         .send(PHOENIX_TOPIC, EgressMessages::ReuseConnection(connection));
                 }
             }
-            firezone_tunnel::Event::SendPacket { .. }
-            | firezone_tunnel::Event::StopPeer { .. }
-            | firezone_tunnel::Event::DeviceConfigUpdated => {
+            firezone_tunnel::Event::SendPacket { .. } | firezone_tunnel::Event::StopPeer { .. } => {
                 unreachable!("Handled internally")
             }
         }
