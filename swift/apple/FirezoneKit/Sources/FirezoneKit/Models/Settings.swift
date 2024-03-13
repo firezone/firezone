@@ -6,49 +6,62 @@
 
 import Foundation
 
-struct AdvancedSettings: Equatable {
-  var authBaseURLString: String {
-    didSet { if oldValue != authBaseURLString { isSavedToDisk = false } }
-  }
-  var apiURLString: String {
-    didSet { if oldValue != apiURLString { isSavedToDisk = false } }
-  }
-  var connlibLogFilterString: String {
-    didSet { if oldValue != connlibLogFilterString { isSavedToDisk = false } }
-  }
-
-  var isSavedToDisk = true
+struct Settings: Equatable {
+  var authBaseURL: String
+  var apiURL: String
+  var logFilter: String
 
   var isValid: Bool {
-    URL(string: authBaseURLString) != nil
-      && URL(string: apiURLString) != nil
-      && !connlibLogFilterString.isEmpty
+    URL(string: authBaseURL) != nil
+      && URL(string: apiURL) != nil
+      && !logFilter.isEmpty
   }
 
-  static let defaultValue: AdvancedSettings = {
+  // Convert provider configuration (which may have empty fields if it was tampered with) to Settings
+  static func fromProviderConfiguration(providerConfiguration: Dictionary<String, String>?) -> Settings {
+    if let providerConfiguration = providerConfiguration {
+      return Settings(
+        authBaseURL: providerConfiguration[TunnelStoreKeys.authBaseURL] ?? Settings.defaultValue.authBaseURL,
+        apiURL: providerConfiguration[TunnelStoreKeys.apiURL] ?? Settings.defaultValue.apiURL,
+        logFilter: providerConfiguration[TunnelStoreKeys.logFilter] ?? Settings.defaultValue.logFilter
+      )
+    } else {
+      return Settings.defaultValue
+    }
+  }
+
+  // Used for initializing a new providerConfiguration from Settings
+  func toProviderConfiguration() -> [String: String] {
+    return [
+      "authBaseURL": authBaseURL,
+      "apiURL": apiURL,
+      "logFilter": logFilter
+    ]
+  }
+
+  static let defaultValue: Settings = {
+    // Note: To see what the connlibLogFilterString values mean, see:
+    // https://docs.rs/tracing-subscriber/latest/tracing_subscriber/filter/struct.EnvFilter.html
     #if DEBUG
-      AdvancedSettings(
-        authBaseURLString: "https://app.firez.one/",
-        apiURLString: "wss://api.firez.one/",
-        connlibLogFilterString:
-          "firezone_tunnel=trace,phoenix_channel=debug,connlib_shared=debug,connlib_client_shared=debug,str0m=info,debug"
+      Settings(
+        authBaseURL: "https://app.firez.one",
+        apiURL: "wss://api.firez.one",
+        logFilter:
+          "firezone_tunnel=trace,phoenix_channel=debug,connlib_shared=debug,connlib_client_shared=debug,snownet=debug,str0m=info,warn"
       )
     #else
-      AdvancedSettings(
-        authBaseURLString: "https://app.firezone.dev/",
-        apiURLString: "wss://api.firezone.dev/",
-        connlibLogFilterString:
+      Settings(
+        authBaseURL: "https://app.firezone.dev",
+        apiURL: "wss://api.firezone.dev",
+        logFilter:
           "firezone_tunnel=info,connlib_shared=info,phoenix_channel=info,connlib_client_shared=info,boringtun=info,snownet=info,str0m=info,warn"
       )
     #endif
   }()
-
-  // Note: To see what the connlibLogFilterString values mean, see:
-  // https://docs.rs/tracing-subscriber/latest/tracing_subscriber/filter/struct.EnvFilter.html
 }
 
-extension AdvancedSettings: CustomStringConvertible {
+extension Settings: CustomStringConvertible {
   var description: String {
-    "(\(authBaseURLString), \(apiURLString), \(connlibLogFilterString))"
+    "(\(authBaseURL), \(apiURL), \(logFilter)"
   }
 }

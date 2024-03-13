@@ -7,7 +7,7 @@
 import Foundation
 
 public enum KeychainError: Error {
-  case securityError(Status)
+  case securityError(KeychainStatus)
   case appleSecError(call: String, status: Keychain.SecStatus)
   case nilResultFromAppleSecCall(call: String)
   case resultFromAppleSecCallIsInvalid(call: String)
@@ -18,23 +18,22 @@ public enum KeychainError: Error {
 }
 
 public actor Keychain {
-  private static let account = "Firezone"
+  private let label = "Firezone token"
+  private let description = "Firezone access token used to authenticate the client."
+  private let account = "Firezone"
+  private let service = Bundle.main.bundleIdentifier!
+
   private let workQueue = DispatchQueue(label: "FirezoneKeychainWorkQueue")
 
   public typealias Token = String
   public typealias PersistentRef = Data
 
-  public struct TokenAttributes {
-    let authBaseURLString: String
-    let actorName: String
-  }
-
   public enum SecStatus: Equatable {
-    case status(Status)
+    case status(KeychainStatus)
     case unknownStatus(OSStatus)
 
     init(_ osStatus: OSStatus) {
-      if let status = Status(rawValue: osStatus) {
+      if let status = KeychainStatus(rawValue: osStatus) {
         self = .status(status)
       } else {
         self = .unknownStatus(osStatus)
@@ -48,40 +47,29 @@ public actor Keychain {
 
   public init() {}
 
-  func store(token: Token, tokenAttributes: TokenAttributes) async throws -> PersistentRef {
+  func add(token: Token) async throws -> PersistentRef {
+    var query: [CFString: Any] = [
+      // Common for both iOS and macOS:
+      kSecClass: kSecClassGenericPassword,
+      kSecAttrLabel: label,
+      kSecAttrDescription: description,
+      kSecAttrAccount: account,
+      kSecAttrService: service,
+      kSecValueData: token.data(using: .utf8) as Any,
+      kSecReturnPersistentRef: true,
+      kSecAttrAccessible: kSecAttrAccessibleAfterFirstUnlock,
+    ]
+
     #if os(iOS)
-      let query =
-        [
-          // Common for both iOS and macOS:
-          kSecClass: kSecClassGenericPassword,
-          kSecAttrLabel: "Firezone access token (\(tokenAttributes.actorName))",
-          kSecAttrDescription: "Firezone access token",
-          kSecAttrService: tokenAttributes.authBaseURLString,
-          // The UUID uniquifies this item in the keychain
-          kSecAttrAccount: "\(tokenAttributes.actorName): \(UUID().uuidString)",
-          kSecValueData: token.data(using: .utf8) as Any,
-          kSecReturnPersistentRef: true,
-          kSecAttrAccessible: kSecAttrAccessibleAfterFirstUnlock,
-          // Specific to iOS:
-          kSecAttrAccessGroup: AppInfoPlistConstants.appGroupId as CFString as Any,
-        ] as [CFString: Any]
+    query.merge([
+      kSecAttrAccessGroup: AppInfoPlistConstants.appGroupId as CFString as Any
+    ], uniquingKeysWith: {_, _ in })
     #elseif os(macOS)
-      let query =
-        [
-          // Common for both iOS and macOS:
-          kSecClass: kSecClassGenericPassword,
-          kSecAttrLabel: "Firezone access token (\(tokenAttributes.actorName))",
-          kSecAttrDescription: "Firezone access token",
-          kSecAttrService: tokenAttributes.authBaseURLString,
-          // The UUID uniquifies this item in the keychain
-          kSecAttrAccount: "\(tokenAttributes.actorName): \(UUID().uuidString)",
-          kSecValueData: token.data(using: .utf8) as Any,
-          kSecReturnPersistentRef: true,
-          kSecAttrAccessible: kSecAttrAccessibleAfterFirstUnlock,
-          // Specific to macOS:
-          kSecAttrAccess: try secAccessForAppAndNetworkExtension(),
-        ] as [CFString: Any]
+    query.merge([
+      kSecAttrAccess: try secAccessForAppAndNetworkExtension()
+    ], uniquingKeysWith: {_, _ in })
     #endif
+
     return try await withCheckedThrowingContinuation { [weak self] continuation in
       self?.workQueue.async {
         var ref: CFTypeRef?
@@ -95,33 +83,42 @@ public actor Keychain {
           continuation.resume(throwing: KeychainError.nilResultFromAppleSecCall(call: "SecItemAdd"))
           return
         }
-        // Remove any other keychain items for the same service URL
-        var checkForStaleItemsResult: CFTypeRef?
-        let checkForStaleItemsQuery =
-          [
-            kSecClass: kSecClassGenericPassword,
-            kSecAttrService: tokenAttributes.authBaseURLString,
-            kSecMatchLimit: kSecMatchLimitAll,
-            kSecReturnPersistentRef: true,
-          ] as [CFString: Any]
-        let checkRet =
-          SecStatus(
-            SecItemCopyMatching(checkForStaleItemsQuery as CFDictionary, &checkForStaleItemsResult))
-        var isSavedItemFound = false
-        if checkRet.isSuccess, let allRefs = checkForStaleItemsResult as? [Data] {
-          for ref in allRefs {
-            if ref == savedPersistentRef {
-              isSavedItemFound = true
-            } else {
-              SecItemDelete([kSecValuePersistentRef: ref] as CFDictionary)
-            }
-          }
-        }
-        guard isSavedItemFound else {
-          continuation.resume(throwing: KeychainError.unableToFindSavedItem)
+        continuation.resume(returning: savedPersistentRef)
+        return
+      }
+    }
+  }
+
+  func update(token: Token) async throws {
+    var query: [CFString: Any] = [
+      kSecClass: kSecClassGenericPassword,
+      kSecAttrAccount: account,
+      kSecAttrService: service,
+    ]
+
+    let attributesToUpdate = [
+      kSecValueData: token.data(using: .utf8) as Any,
+    ]
+
+    #if os(iOS)
+    query.merge([
+      kSecAttrAccessGroup: AppInfoPlistConstants.appGroupId as CFString as Any
+    ], uniquingKeysWith: {_, _ in })
+    #elseif os(macOS)
+    query.merge([
+      kSecAttrAccess: try secAccessForAppAndNetworkExtension()
+    ], uniquingKeysWith: {_, _ in })
+    #endif
+
+    return try await withCheckedThrowingContinuation { [weak self] continuation in
+      self?.workQueue.async {
+        let ret = SecStatus(SecItemUpdate(query as CFDictionary, attributesToUpdate as CFDictionary))
+        guard ret.isSuccess else {
+          continuation.resume(
+            throwing: KeychainError.appleSecError(call: "SecItemUpdate", status: ret))
           return
         }
-        continuation.resume(returning: savedPersistentRef)
+        continuation.resume()
       }
     }
   }
@@ -194,64 +191,16 @@ public actor Keychain {
     }
   }
 
-  func loadAttributes(persistentRef: PersistentRef) async -> TokenAttributes? {
+  func search() async -> PersistentRef? {
     return await withCheckedContinuation { [weak self] continuation in
-      self?.workQueue.async {
-        let query =
-          [
-            kSecValuePersistentRef: persistentRef,
-            kSecReturnAttributes: true,
-          ] as [CFString: Any]
-        var result: CFTypeRef?
-        let ret = SecStatus(SecItemCopyMatching(query as CFDictionary, &result))
-        if ret.isSuccess, let result = result {
-          if CFGetTypeID(result) == CFDictionaryGetTypeID() {
-            let cfDict = result as! CFDictionary
-            let dict = cfDict as NSDictionary
-            if let service = dict[kSecAttrService] as? String,
-              let account = dict[kSecAttrAccount] as? String
-            {
-              let actorName = String(
-                account[
-                  account
-                    .startIndex..<(account.lastIndex(of: ":")
-                    ?? account.endIndex)])
-              let attributes = TokenAttributes(
-                authBaseURLString: service,
-                actorName: actorName)
-              continuation.resume(returning: attributes)
-              return
-            }
-          }
-        }
-        continuation.resume(returning: nil)
-      }
-    }
-  }
-
-  func delete(persistentRef: PersistentRef) async throws {
-    return try await withCheckedThrowingContinuation { [weak self] continuation in
-      self?.workQueue.async {
-        let query = [kSecValuePersistentRef: persistentRef] as [CFString: Any]
-        let ret = SecStatus(SecItemDelete(query as CFDictionary))
-        guard ret.isSuccess || ret == .status(.itemNotFound) else {
-          continuation.resume(
-            throwing: KeychainError.appleSecError(call: "SecItemDelete", status: ret))
-          return
-        }
-        continuation.resume(returning: ())
-      }
-    }
-  }
-
-  func search(authBaseURLString: String) async -> PersistentRef? {
-    return await withCheckedContinuation { [weak self] continuation in
-      self?.workQueue.async {
+      guard let self = self else { return }
+      self.workQueue.async {
         let query =
           [
             kSecClass: kSecClassGenericPassword,
-            kSecAttrDescription: "Firezone access token",
-            kSecAttrService: authBaseURLString,
+            kSecAttrAccount: self.account,
+            kSecAttrDescription: self.description,
+            kSecAttrService: self.service,
             kSecReturnPersistentRef: true,
           ] as [CFString: Any]
         var result: CFTypeRef?
@@ -266,6 +215,6 @@ public actor Keychain {
   }
 
   private func securityError(_ status: OSStatus) -> Error {
-    KeychainError.securityError(Status(rawValue: status)!)
+    KeychainError.securityError(KeychainStatus(rawValue: status)!)
   }
 }

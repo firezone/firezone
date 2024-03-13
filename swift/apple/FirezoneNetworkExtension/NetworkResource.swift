@@ -31,7 +31,7 @@ public struct NetworkResource: Decodable {
   let resourceLocation: ResourceLocation
 
   var displayableResource: DisplayableResources.Resource {
-    DisplayableResources.Resource(name: name, location: resourceLocation.toString())
+    DisplayableResources.Resource(name: name, address: resourceLocation.toString())
   }
 }
 
