@@ -178,11 +178,10 @@ jobs:
       - uses: ./.github/actions/setup-rust
         with:
           targets: ${{ matrix.arch.target }}
-          # Cross doesn't support scccache without a lot of work
-          cache_backend: github
+      - uses: goto-bus-stop/setup-zig@v2
       - uses: taiki-e/install-action@v2
         with:
-          tool: cross
+          tool: cargo-zigbuild
       - name: Build binaries
         run: |
           set -xe
@@ -193,7 +192,7 @@ jobs:
             PROFILE=""
           fi
 
-          cross build $PROFILE -p ${{ matrix.name.package }} --target ${{ matrix.arch.target }}
+          cargo zigbuild $PROFILE -p ${{ matrix.name.package }} --target ${{ matrix.arch.target }}
 
           # Used for release artifact
           cp target/${{ matrix.arch.target }}/${{ inputs.profile }}/${{ matrix.name.package }} $BINARY_DEST_PATH
