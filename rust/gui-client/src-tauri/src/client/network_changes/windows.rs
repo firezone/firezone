@@ -66,7 +66,7 @@ use windows::{
             INetworkEvents, INetworkEvents_Impl, INetworkListManager, NetworkListManager,
             NLM_CONNECTIVITY, NLM_NETWORK_PROPERTY_CHANGE,
         },
-        System::{ Com, Registry },
+        System::{Com, Registry},
     },
 };
 
@@ -133,7 +133,12 @@ pub(crate) fn run_dns_debug() -> Result<()> {
     // TODO: Use WaitForMultipleObjects or whatever to async await both IPv4 and IPv6 DNS changes
 
     let hklm = winreg::RegKey::predef(winreg::enums::HKEY_LOCAL_MACHINE);
-    let path = std::path::Path::new("SYSTEM").join("CurrentControlSet").join("Services").join("Tcpip").join("Parameters").join("Interfaces");
+    let path = std::path::Path::new("SYSTEM")
+        .join("CurrentControlSet")
+        .join("Services")
+        .join("Tcpip")
+        .join("Parameters")
+        .join("Interfaces");
     let key = hklm.open_subkey_with_flags(&path, winreg::enums::KEY_NOTIFY)?;
     let key_handle = Registry::HKEY(key.raw_handle());
     let notify_flags = Registry::REG_NOTIFY_CHANGE_NAME | Registry::REG_NOTIFY_CHANGE_LAST_SET;
