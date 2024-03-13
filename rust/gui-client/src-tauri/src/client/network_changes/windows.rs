@@ -66,7 +66,7 @@ use windows::{
             INetworkEvents, INetworkEvents_Impl, INetworkListManager, NetworkListManager,
             NLM_CONNECTIVITY, NLM_NETWORK_PROPERTY_CHANGE,
         },
-        System::Com,
+        System::{ Com, Registry },
     },
 };
 
@@ -102,7 +102,7 @@ pub(crate) fn run_debug() -> Result<()> {
         Ok((Com::APTTYPE_MTA, Com::APTTYPEQUALIFIER_NONE))
     );
 
-    let rt = Runtime::new().unwrap();
+    let rt = Runtime::new()?;
 
     tracing::info!("Listening for network events...");
 
@@ -119,6 +119,46 @@ pub(crate) fn run_debug() -> Result<()> {
             tracing::info!(have_internet = %check_internet()?);
         }
     })
+}
+
+/// Runs a debug subcommand that listens to the registry for DNS changes
+///
+/// This actually listens to the entire IPv4 key, so it will have lots of false positives,
+/// including when connlib changes anything on the Firezone tunnel.
+/// It will often fire multiple events in quick succession.
+pub(crate) fn run_dns_debug() -> Result<()> {
+    tracing_subscriber::fmt::init();
+    tracing::info!("Listening for network events...");
+
+    // TODO: Use WaitForMultipleObjects or whatever to async await both IPv4 and IPv6 DNS changes
+
+    let hklm = winreg::RegKey::predef(winreg::enums::HKEY_LOCAL_MACHINE);
+    let path = std::path::Path::new("SYSTEM").join("CurrentControlSet").join("Services").join("Tcpip").join("Parameters").join("Interfaces");
+    let key = hklm.open_subkey_with_flags(&path, winreg::enums::KEY_NOTIFY)?;
+    let key_handle = Registry::HKEY(key.raw_handle());
+    let notify_flags = Registry::REG_NOTIFY_CHANGE_NAME | Registry::REG_NOTIFY_CHANGE_LAST_SET;
+
+    loop {
+        // SAFETY: No buffers or pointers involved, just the handle to the reg key.
+        unsafe {
+            Registry::RegNotifyChangeKeyValue(key_handle, true, notify_flags, None, false);
+        }
+
+        // TODO: It's possible we could miss an event here:
+        //
+        // - We call `RegNotifyChangeKeyValue`
+        // - Some un-important change happens and spuriously wake up
+        // - We notify connlib
+        // - Connlib does nothing since the change didn't matter
+        // - An important change happens but our thread hasn't looped over yet
+        // - We call `RegNotifyChangeKeyValue` again, having missed the second change
+        //
+        // Switching to async may offer a way to close this gap, since we can re-register
+        // the notify before notifying connlib. Then the second change should cause us to
+        // immediately re-notify connlib.
+
+        tracing::info!("Something changed.");
+    }
 }
 
 /// Returns true if Windows thinks we have Internet access per [IsConnectedToInternet](https://learn.microsoft.com/en-us/windows/win32/api/netlistmgr/nf-netlistmgr-inetworklistmanager-get_isconnectedtointernet)

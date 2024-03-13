@@ -10,4 +10,4 @@ mod imp;
 #[path = "network_changes/windows.rs"]
 mod imp;
 
-pub(crate) use imp::{check_internet, run_debug, Worker};
+pub(crate) use imp::{check_internet, run_dns_debug, run_debug, Worker};
