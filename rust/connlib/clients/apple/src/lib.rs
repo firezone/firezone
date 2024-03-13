@@ -44,6 +44,9 @@ mod ffi {
             callback_handler: CallbackHandler,
         ) -> Result<WrappedSession, String>;
 
+        fn reconnect(&mut self);
+        #[swift_bridge(swift_name = "setDns")]
+        fn set_dns(&mut self, dns_servers: String);
         fn disconnect(self);
     }
 
@@ -58,9 +61,6 @@ mod ffi {
             dnsAddresses: String,
         );
 
-        #[swift_bridge(swift_name = "onTunnelReady")]
-        fn on_tunnel_ready(&self);
-
         #[swift_bridge(swift_name = "onUpdateRoutes")]
         fn on_update_routes(&self, routeList4: String, routeList6: String);
 
@@ -69,10 +69,6 @@ mod ffi {
 
         #[swift_bridge(swift_name = "onDisconnect")]
         fn on_disconnect(&self, error: String);
-
-        // TODO: remove in favor of set_dns
-        #[swift_bridge(swift_name = "getSystemDefaultResolvers")]
-        fn get_system_default_resolvers(&self) -> String;
     }
 }
 
@@ -113,10 +109,6 @@ impl Callbacks for CallbackHandler {
         );
 
         None
-    }
-
-    fn on_tunnel_ready(&self) {
-        self.inner.on_tunnel_ready();
     }
 
     fn on_update_routes(
@@ -182,10 +174,6 @@ impl WrappedSession {
         let handle = init_logging(log_dir.into(), log_filter).map_err(|e| e.to_string())?;
         let secret = SecretString::from(token);
 
-        let resolvers_json = callback_handler.get_system_default_resolvers();
-        let resolvers: Vec<IpAddr> = serde_json::from_str(&resolvers_json)
-            .expect("developer error: failed to deserialize resolvers");
-
         let (private_key, public_key) = keypair();
         let login = LoginUrl::client(
             api_url.as_str(),
@@ -217,12 +205,19 @@ impl WrappedSession {
         )
         .map_err(|err| err.to_string())?;
 
-        session.set_dns(resolvers);
-
         Ok(Self {
             inner: session,
             runtime,
         })
+    }
+
+    fn reconnect(&mut self) {
+        self.inner.reconnect()
+    }
+
+    fn set_dns(&mut self, dns_servers: String) {
+        self.inner
+            .set_dns(serde_json::from_str(&dns_servers).unwrap())
     }
 
     fn disconnect(self) {

@@ -49,7 +49,8 @@ import SwiftUINavigationCore
       self.appStore = appStore
       self.settingsViewModel = appStore.settingsViewModel
 
-      let sessionNotificationHelper = SessionNotificationHelper(logger: appStore.logger, authStore: appStore.authStore)
+      let sessionNotificationHelper =
+        SessionNotificationHelper(logger: appStore.logger, tunnelStore: appStore.tunnelStore)
       self.sessionNotificationHelper = sessionNotificationHelper
 
       appStore.objectWillChange
@@ -58,28 +59,26 @@ import SwiftUINavigationCore
         .store(in: &cancellables)
 
       Publishers.CombineLatest(
-        appStore.authStore.$loginStatus,
+        appStore.tunnelStore.$status,
         sessionNotificationHelper.$notificationDecision
       )
       .receive(on: mainQueue)
-      .sink(receiveValue: { [weak self] loginStatus, notificationDecision in
-        guard let self else {
-          return
-        }
-        switch (loginStatus, notificationDecision) {
-        case (.uninitialized, _), (_, .uninitialized):
+      .sink(receiveValue: { [weak self] status, notificationDecision in
+        guard let self = self else { return }
+        switch (status, notificationDecision) {
+        case (.disconnected, .determined):
+          self.state = .unauthenticated(AuthViewModel(tunnelStore: appStore.tunnelStore))
+        case (_, .determined):
+          self.state = .authenticated(MainViewModel(tunnelStore: appStore.tunnelStore, logger: appStore.logger))
+        case (_, .uninitialized):
           self.state = .uninitialized
-        case (.needsTunnelCreationPermission, _), (_, .notDetermined):
+        case (_, .notDetermined):
           self.state = .needsPermission(
             AskPermissionViewModel(
               tunnelStore: self.appStore.tunnelStore,
-              sessionNotificationHelper: self.sessionNotificationHelper
+              sessionNotificationHelper: sessionNotificationHelper
             )
           )
-        case (.signedOut, .determined):
-          self.state = .unauthenticated(AuthViewModel(authStore: self.appStore.authStore))
-        case (.signedIn, .determined):
-          self.state = .authenticated(MainViewModel(appStore: self.appStore))
         }
       })
       .store(in: &cancellables)
