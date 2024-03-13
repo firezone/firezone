@@ -13,6 +13,7 @@ use std::{
     sync::Arc,
     time::Duration,
 };
+use tokio::runtime::Runtime;
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::EnvFilter;
 
@@ -75,7 +76,12 @@ mod ffi {
 }
 
 /// This is used by the apple client to interact with our code.
-pub struct WrappedSession(Session);
+pub struct WrappedSession {
+    inner: Session,
+
+    #[allow(dead_code)]
+    runtime: Runtime,
+}
 
 // SAFETY: `CallbackHandler.swift` promises to be thread-safe.
 // TODO: Uphold that promise!
@@ -202,6 +208,11 @@ impl WrappedSession {
         )
         .map_err(|e| e.to_string())?;
 
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|e| e.to_string())?;
+
         let session = Session::connect(
             login,
             private_key,
@@ -211,14 +222,17 @@ impl WrappedSession {
                 handle: init_logging(log_dir.into(), log_filter),
             },
             Some(MAX_PARTITION_TIME),
-            tokio::runtime::Handle::current(), // `swift-bridge` already starts a runtime
+            runtime.handle().clone(),
         )
         .map_err(|err| err.to_string())?;
 
-        Ok(Self(session))
+        Ok(Self {
+            inner: session,
+            runtime,
+        })
     }
 
     fn disconnect(self) {
-        self.0.disconnect()
+        self.inner.disconnect()
     }
 }
