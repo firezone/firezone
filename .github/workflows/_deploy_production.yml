@@ -29,6 +29,7 @@ jobs:
 
   push:
     needs: sanity-check
+    runs-on: ubuntu-22.04
     permissions:
       packages: write
       id-token: write
