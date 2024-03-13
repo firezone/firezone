@@ -295,7 +295,7 @@ jobs:
           if-no-files-found: error
           retention-days: 1
       - name: Output image name
-        id: output
+        id: image-name
         run: echo "${{ matrix.name.image_name }}_image=${{ steps.login.outputs.registry }}/firezone/${{ inputs.image_prefix && format('{0}/', inputs.image_prefix) }}${{ matrix.name.image_name }}" >> $GITHUB_ENV
 
   merge-docker-artifacts:
