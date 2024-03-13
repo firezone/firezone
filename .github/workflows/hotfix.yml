@@ -3,10 +3,9 @@ run-name: Triggered by ${{ github.actor }} on ${{ github.event_name }}
 on:
   workflow_dispatch:
     inputs:
-      hotfix_pass:
-        description: "Password to allow the hotfix. Find this in 1Pass."
-        type: string
-        required: true
+      confirmation:
+        description: "Are you SURE you want to hotfix product?"
+        type: boolean
       tag:
         description: "Image tag to deploy. Defaults to the last commit SHA in the branch."
         type: string
@@ -34,7 +33,7 @@ jobs:
       # client_tag: "latest"
 
   deploy-production:
-    if: ${{ secrets.HOTFIX_PASS == inputs.hotfix_pass }}
+    if: ${{ inputs.confirmation }}
     needs: compatibility-tests
     secrets: inherit
     uses: ./.github/workflows/_deploy_production.yml
