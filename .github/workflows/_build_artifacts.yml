@@ -23,6 +23,16 @@ on:
         description: "The stage of the data plane component images to build"
         required: true
         type: string
+    outputs:
+      client_image:
+        description: "The client image that was built"
+        value: ${{ jobs.data-plane.outputs.client_image }}
+      relay_image:
+        description: "The relay image that was built"
+        value: ${{ jobs.data-plane.outputs.relay_image }}
+      gateway_image:
+        description: "The gateway image that was built"
+        value: ${{ jobs.data-plane.outputs.gateway_image }}
 
 env:
   # mark:automatic-version
@@ -171,6 +181,10 @@ jobs:
             image_name: snownet-tests
     env:
       BINARY_DEST_PATH: ${{ matrix.name.artifact }}-${{ matrix.arch.shortname }}
+    outputs:
+      client_image: ${{ steps.image-name.outputs.client_image }}
+      relay_image: ${{ steps.image-name.outputs.relay_image }}
+      gateway_image: ${{ steps.image-name.outputs.gateway_image }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -284,6 +298,9 @@ jobs:
           path: /tmp/digests/${{ matrix.name.image_name }}
           if-no-files-found: error
           retention-days: 1
+      - name: Output image name
+        id: image-name
+        run: echo "${{ matrix.name.image_name }}_image=${{ steps.login.outputs.registry }}/firezone/${{ inputs.image_prefix && format('{0}/', inputs.image_prefix) }}${{ matrix.name.image_name }}" >> $GITHUB_ENV
 
   merge-docker-artifacts:
     name: merge-${{ matrix.image_name }}
