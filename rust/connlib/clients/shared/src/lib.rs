@@ -60,6 +60,22 @@ impl Session {
         Ok(Self { channel: tx })
     }
 
+    /// Attempts to reconnect a [`Session`].
+    ///
+    /// This can and should be called by client applications on any network state changes.
+    /// It is a signal to connlib to:
+    ///
+    /// - validate all currently used network paths to relays and peers
+    /// - ensure we are connected to the portal
+    ///
+    /// Reconnect is non-destructive and can be called several times in a row.
+    ///
+    /// In case of destructive network state changes, i.e. the user switched from wifi to cellular,
+    /// reconnect allows connlib to re-establish connections faster because we don't have to wait for timeouts first.
+    pub fn reconnect(&mut self) {
+        let _ = self.channel.try_send(Command::Reconnect);
+    }
+
     /// Disconnect a [`Session`].
     ///
     /// This consumes [`Session`] which cleans up all state associated with it.

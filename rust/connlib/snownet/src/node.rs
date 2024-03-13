@@ -136,6 +136,20 @@ where
         }
     }
 
+    pub fn reconnect(&mut self, now: Instant) {
+        for binding in self.bindings.values_mut() {
+            binding.refresh(now);
+        }
+
+        for allocation in self.allocations.values_mut() {
+            allocation.refresh(now);
+        }
+
+        for (_, agent) in self.connections.agents_mut() {
+            agent.ice_restart(IceCreds::new(), true)
+        }
+    }
+
     pub fn public_key(&self) -> PublicKey {
         (&self.private_key).into()
     }
