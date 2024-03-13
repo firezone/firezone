@@ -1,5 +1,28 @@
 //! A module for getting callbacks from Windows when we gain / lose Internet connectivity
 //!
+//! # Changes detected / not detected
+//!
+//! Tested manually one time each, with `RUST_LOG=info cargo run -p firezone-gui-client -- debug network-changes`
+//!
+//! Some network changes will fire multiple events with `have_internet = true` in a row.
+//! Others will report `have_internet = false` and then `have_internet = true` once they reconnect.
+//!
+//! We could attempt to listen for DNS changes by subscribing to changes in the Windows Registry: <https://stackoverflow.com/a/64482724>
+//!
+//! - Manually changing DNS servers on Wi-Fi, not detected
+//!
+//! - Wi-Fi-only, enable Airplane Mode, <1 second
+//! - Disable Airplane Mode, return to Wi-Fi, <5 seconds
+//! - Wi-Fi-only, disable Wi-Fi, <1 second
+//! - Wi-Fi-only, enable Wi-Fi, <5 seconds
+//! - Switching to hotspot Wi-Fi from a phone, instant (once Windows connects)
+//! - Stopping the phone's hotspot and switching back to home Wi-Fi, instant (once Windows connects)
+//! - On Wi-Fi, connect Ethernet, <4 seconds
+//! - On Ethernet and Wi-Fi, disconnect Ethernet, not detected
+//! - On Ethernet, Wi-Fi enabled but not connected, disconnect Ethernet, <2 seconds
+//! - On Wi-Fi, WLAN loses Internet, 1 minute (Windows doesn't figure it out immediately)
+//! - On Wi-Fi, WLAN regains Internet, 6 seconds (Some of that is the AP)
+//!
 //! # Latency
 //!
 //! 2 or 3 seconds for the user clicking "Connect" or "Disconnect" on Wi-Fi,
