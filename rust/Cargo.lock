@@ -1116,6 +1116,7 @@ dependencies = [
  "secrecy",
  "serde_json",
  "thiserror",
+ "tokio",
  "tracing",
  "tracing-android",
  "tracing-appender",
@@ -1135,6 +1136,7 @@ dependencies = [
  "serde_json",
  "swift-bridge",
  "swift-bridge-build",
+ "tokio",
  "tracing",
  "tracing-appender",
  "tracing-oslog",
@@ -1987,6 +1989,7 @@ dependencies = [
  "resolv-conf",
  "secrecy",
  "thiserror",
+ "tokio",
  "tracing",
  "tracing-subscriber",
 ]

@@ -211,6 +211,7 @@ impl WrappedSession {
                 handle: init_logging(log_dir.into(), log_filter),
             },
             Some(MAX_PARTITION_TIME),
+            tokio::runtime::Handle::current(), // `swift-bridge` already starts a runtime
         )
         .map_err(|err| err.to_string())?;
 

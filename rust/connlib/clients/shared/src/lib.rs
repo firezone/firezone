@@ -30,7 +30,6 @@ const MAX_RECONNECT_INTERVAL: Duration = Duration::from_secs(5);
 /// A session is created using [Session::connect], then to stop a session we use [Session::disconnect].
 pub struct Session {
     channel: tokio::sync::mpsc::Sender<Command>,
-    _runtime: tokio::runtime::Runtime,
 }
 
 impl Session {
@@ -53,6 +52,7 @@ impl Session {
         os_version_override: Option<String>,
         callbacks: CB,
         max_partition_time: Option<Duration>,
+        handle: tokio::runtime::Handle,
     ) -> connlib_shared::Result<Self> {
         // TODO: We could use tokio::runtime::current() to get the current runtime
         // which could work with swift-rust that already runs a runtime. But IDK if that will work
@@ -63,11 +63,7 @@ impl Session {
         let callbacks = CallbackErrorFacade(callbacks);
         let (tx, rx) = tokio::sync::mpsc::channel(1);
 
-        let runtime = tokio::runtime::Builder::new_multi_thread()
-            .enable_all()
-            .build()?;
-
-        let connect_handle = runtime.spawn(connect(
+        let connect_handle = handle.spawn(connect(
             url,
             private_key,
             os_version_override,
@@ -75,12 +71,9 @@ impl Session {
             max_partition_time,
             rx,
         ));
-        runtime.spawn(connect_supervisor(connect_handle, callbacks));
+        handle.spawn(connect_supervisor(connect_handle, callbacks));
 
-        Ok(Self {
-            channel: tx,
-            _runtime: runtime,
-        })
+        Ok(Self { channel: tx })
     }
 
     /// Disconnect a [`Session`].
