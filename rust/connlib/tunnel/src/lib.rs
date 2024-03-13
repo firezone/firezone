@@ -64,7 +64,7 @@ pub struct Tunnel<CB: Callbacks, TRoleState, TRole, TId> {
 
     connections_state: ConnectionState<TRole, TId>,
 
-    read_buf: [u8; MAX_UDP_SIZE],
+    read_buf: Box<[u8; MAX_UDP_SIZE]>,
 }
 
 impl<CB> Tunnel<CB, ClientState, snownet::Client, GatewayId>
@@ -103,7 +103,7 @@ where
 
         ready!(self.connections_state.sockets.poll_send_ready(cx))?; // Ensure socket is ready before we read from device.
 
-        match self.device.poll_read(&mut self.read_buf, cx)? {
+        match self.device.poll_read(self.read_buf.as_mut(), cx)? {
             Poll::Ready(packet) => {
                 let Some((peer_id, packet)) = self.role_state.encapsulate(packet, Instant::now())
                 else {
@@ -161,7 +161,7 @@ where
 
         ready!(self.connections_state.sockets.poll_send_ready(cx))?; // Ensure socket is ready before we read from device.
 
-        match self.device.poll_read(&mut self.read_buf, cx)? {
+        match self.device.poll_read(self.read_buf.as_mut(), cx)? {
             Poll::Ready(packet) => {
                 let Some((peer_id, packet)) = self.role_state.encapsulate(packet) else {
                     cx.waker().wake_by_ref();
@@ -218,7 +218,7 @@ where
             callbacks,
             role_state: Default::default(),
             connections_state,
-            read_buf: [0u8; MAX_UDP_SIZE],
+            read_buf: Box::new([0u8; MAX_UDP_SIZE]),
         })
     }
 
