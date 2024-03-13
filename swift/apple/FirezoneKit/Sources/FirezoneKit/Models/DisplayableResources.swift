@@ -11,24 +11,24 @@ import Foundation
 public class DisplayableResources {
 
   public struct Resource: Identifiable {
-    public var id: String { location }
+    public var id: String { address }
     public let name: String
-    public let location: String
+    public let address: String
 
-    public init(name: String, location: String) {
+    public init(name: String, address: String) {
       self.name = name
-      self.location = location
+      self.address = address
     }
   }
 
   public private(set) var version: UInt64
   public private(set) var versionString: String
-  public private(set) var orderedResources: [Resource]
+  public private(set) var resources: [Resource]
 
   public init(version: UInt64, resources: [Resource]) {
     self.version = version
     self.versionString = "\(version)"
-    self.orderedResources = resources
+    self.resources = resources
   }
 
   public convenience init() {
@@ -38,14 +38,14 @@ public class DisplayableResources {
   public func update(resources: [Resource]) {
     self.version = self.version &+ 1  // Overflow is ok
     self.versionString = "\(version)"
-    self.orderedResources = resources
+    self.resources = resources
   }
 }
 
 extension DisplayableResources {
   public func toData() -> Data? {
     ("\(versionString),"
-      + (orderedResources.flatMap { [$0.name, $0.location] })
+      + (resources.flatMap { [$0.name, $0.address] })
       .map { $0.addingPercentEncoding(withAllowedCharacters: .alphanumerics) }.compactMap { $0 }
       .joined(separator: ",")).data(using: .utf8)
   }
@@ -60,11 +60,11 @@ extension DisplayableResources {
     var resources: [Resource] = []
     for index in stride(from: 2, to: components.count, by: 2) {
       guard let name = components[index - 1].removingPercentEncoding,
-        let location = components[index].removingPercentEncoding
+        let address = components[index].removingPercentEncoding
       else {
         continue
       }
-      resources.append(Resource(name: name, location: location))
+      resources.append(Resource(name: name, address: address))
     }
     self.init(version: version, resources: resources)
   }

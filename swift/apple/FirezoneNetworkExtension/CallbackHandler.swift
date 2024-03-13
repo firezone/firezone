@@ -22,7 +22,6 @@ public protocol CallbackHandlerDelegate: AnyObject {
     tunnelAddressIPv6: String,
     dnsAddresses: [String]
   )
-  func onTunnelReady()
   func onUpdateRoutes(routeList4: String, routeList6: String)
   func onUpdateResources(resourceList: String)
   func onDisconnect(error: String)
@@ -30,12 +29,12 @@ public protocol CallbackHandlerDelegate: AnyObject {
 
 public class CallbackHandler {
   public weak var delegate: CallbackHandlerDelegate?
-  private var systemDefaultResolvers: [String] = []
   private let logger: AppLogger
 
   init(logger: AppLogger) {
     self.logger = logger
   }
+
   func onSetInterfaceConfig(
     tunnelAddressIPv4: RustString,
     tunnelAddressIPv6: RustString,
@@ -49,24 +48,14 @@ public class CallbackHandler {
           DNS: \(dnsAddresses.toString())
       """)
 
-    guard let dnsData = dnsAddresses.toString().data(using: .utf8) else {
-      return
-    }
-    guard let dnsArray = try? JSONDecoder().decode([String].self, from: dnsData)
-    else {
-      return
-    }
+    let dnsData = dnsAddresses.toString().data(using: .utf8)!
+    let dnsArray = try! JSONDecoder().decode([String].self, from: dnsData)
 
     delegate?.onSetInterfaceConfig(
       tunnelAddressIPv4: tunnelAddressIPv4.toString(),
       tunnelAddressIPv6: tunnelAddressIPv6.toString(),
       dnsAddresses: dnsArray
     )
-  }
-
-  func onTunnelReady() {
-    logger.log("CallbackHandler.onTunnelReady")
-    delegate?.onTunnelReady()
   }
 
   func onUpdateRoutes(routeList4: RustString, routeList6: RustString) {
@@ -83,22 +72,5 @@ public class CallbackHandler {
     let error = error.toString()
     logger.log("CallbackHandler.onDisconnect: \(error)")
     delegate?.onDisconnect(error: error)
-  }
-
-  func setSystemDefaultResolvers(resolvers: [String]) {
-    logger.log(
-      "CallbackHandler.setSystemDefaultResolvers: \(resolvers)")
-    self.systemDefaultResolvers = resolvers
-  }
-
-  func getSystemDefaultResolvers() -> RustString {
-    logger.log(
-      "CallbackHandler.getSystemDefaultResolvers: \(self.systemDefaultResolvers)"
-    )
-
-    return try! String(
-      decoding: JSONEncoder().encode(self.systemDefaultResolvers),
-      as: UTF8.self
-    ).intoRustString()
   }
 }

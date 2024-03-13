@@ -10,7 +10,7 @@
 
 import Foundation
 
-public enum Status: OSStatus, Error {
+public enum KeychainStatus: OSStatus, Error {
   case success = 0
   case unimplemented = -4
   case diskFull = -34
@@ -416,12 +416,12 @@ public enum Status: OSStatus, Error {
   case unexpectedError = -99999
 }
 
-extension Status {
-  static func == (lhs: OSStatus, rhs: Status) -> Bool {
+extension KeychainStatus {
+  static func == (lhs: OSStatus, rhs: KeychainStatus) -> Bool {
     lhs == rhs.rawValue
   }
 
-  static func != (lhs: OSStatus, rhs: Status) -> Bool {
+  static func != (lhs: OSStatus, rhs: KeychainStatus) -> Bool {
     lhs != rhs.rawValue
   }
 }

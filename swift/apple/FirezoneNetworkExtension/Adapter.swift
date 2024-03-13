@@ -7,48 +7,23 @@ import Foundation
 import NetworkExtension
 import OSLog
 
-#if os(iOS)
-  import UIKit.UIDevice
-#endif
-
 public enum AdapterError: Error {
   /// Failure to perform an operation in such state.
   case invalidState
 
   /// connlib failed to start
   case connlibConnectError(Error)
-
-  /// connlib fatal error
-  case connlibFatalError(String)
-
-  /// No network settings were provided
-  case noNetworkSettings
-
-  /// Failure to set network settings.
-  case setNetworkSettings(Error)
-
-  /// stop() called before the tunnel became ready
-  case stoppedByRequestWhileStarting
 }
 
 /// Enum representing internal state of the  adapter
 private enum AdapterState: CustomStringConvertible {
-  case startingTunnel(session: WrappedSession, onStarted: Adapter.StartTunnelCompletionHandler?)
-  case tunnelReady(session: WrappedSession)
-  case stoppingTunnel(session: WrappedSession, onStopped: Adapter.StopTunnelCompletionHandler?)
-  case stoppedTunnel
-  case stoppingTunnelTemporarily(
-    session: WrappedSession, onStopped: Adapter.StopTunnelCompletionHandler?)
-  case stoppedTunnelTemporarily
+  case tunnelStarted(session: WrappedSession)
+  case tunnelStopped
 
   var description: String {
     switch self {
-    case .startingTunnel: return "startingTunnel"
-    case .tunnelReady: return "tunnelReady"
-    case .stoppingTunnel: return "stoppingTunnel"
-    case .stoppedTunnel: return "stoppedTunnel"
-    case .stoppingTunnelTemporarily: return "stoppingTunnelTemporarily"
-    case .stoppedTunnelTemporarily: return "stoppedTunnelTemporarily"
+    case .tunnelStarted: return "tunnelStarted"
+    case .tunnelStopped: return "tunnelStopped"
     }
   }
 }
@@ -57,7 +32,6 @@ private enum AdapterState: CustomStringConvertible {
 class Adapter {
 
   typealias StartTunnelCompletionHandler = ((AdapterError?) -> Void)
-  typealias StopTunnelCompletionHandler = (() -> Void)
 
   private let logger: AppLogger
 
@@ -72,7 +46,18 @@ class Adapter {
   /// Network routes monitor.
   private var networkMonitor: NWPathMonitor?
 
-  /// Private queue used to synchronize access to `WireGuardAdapter` members.
+  /// Used to avoid path update callback cycles on iOS
+  #if os(iOS)
+    private var gateways: [Network.NWEndpoint] = []
+  #endif
+
+  /// Track our last fetched DNS resolvers to know whether to tell connlib they've updated
+  private var lastFetchedResolvers: [String] = []
+
+  /// Used to avoid needlessly sending reconnects to connlib
+  private var primaryInterfaceName: String?
+
+  /// Private queue used to ensure consistent ordering among path update and connlib callbacks
   private let workQueue = DispatchQueue(label: "FirezoneAdapterWorkQueue")
 
   /// Adapter state.
@@ -86,129 +71,104 @@ class Adapter {
   private var displayableResources = DisplayableResources()
 
   /// Starting parameters
-  private var controlPlaneURLString: String
+  private var apiURL: String
   private var token: String
 
   private let logFilter: String
   private let connlibLogFolderPath: String
-  private let firezoneIdFileURL: URL
 
   init(
-    controlPlaneURLString: String, token: String,
-    logFilter: String, packetTunnelProvider: PacketTunnelProvider
+    apiURL: String,
+    token: String,
+    logFilter: String,
+    packetTunnelProvider: PacketTunnelProvider
   ) {
-    self.controlPlaneURLString = controlPlaneURLString
+    self.apiURL = apiURL
     self.token = token
     self.packetTunnelProvider = packetTunnelProvider
     self.callbackHandler = CallbackHandler(logger: packetTunnelProvider.logger)
-    self.state = .stoppedTunnel
+    self.state = .tunnelStopped
     self.logFilter = logFilter
     self.connlibLogFolderPath = SharedAccess.connlibLogFolderURL?.path ?? ""
-    self.firezoneIdFileURL = SharedAccess.baseFolderURL.appendingPathComponent("firezone-id")
     self.logger = packetTunnelProvider.logger
+    self.networkSettings = nil
   }
 
+  // Could happen abruptly if the process is killed.
   deinit {
-    self.logger.log("Adapter.deinit")
+    logger.log("Adapter.deinit")
+    
     // Cancel network monitor
     networkMonitor?.cancel()
 
     // Shutdown the tunnel
-    if case .tunnelReady(let session) = self.state {
+    if case .tunnelStarted(let session) = self.state {
       logger.log("Adapter.deinit: Shutting down connlib")
       session.disconnect()
     }
   }
 
-  /// Start the tunnel tunnel.
+  /// Start the tunnel.
   /// - Parameters:
   ///   - completionHandler: completion handler.
   public func start(completionHandler: @escaping (AdapterError?) -> Void) throws {
-    workQueue.async { [weak self] in
-      guard let self = self else { return }
+    logger.log("Adapter.start")
+    guard case .tunnelStopped = self.state else {
+      logger.error("\(#function): Invalid Adapter state")
+      completionHandler(.invalidState)
+      return
+    }
 
-      self.logger.log("Adapter.start")
-      guard case .stoppedTunnel = self.state else {
-        logger.error("\(#function): Invalid Adapter state")
-        completionHandler(.invalidState)
-        return
-      }
+    callbackHandler.delegate = self
 
-      self.callbackHandler.delegate = self
+    if connlibLogFolderPath.isEmpty {
+      logger.error("Cannot get shared log folder for connlib")
+    }
 
-      if self.connlibLogFolderPath.isEmpty {
-        self.logger.error("Cannot get shared log folder for connlib")
-      }
-
-      self.logger.log("Adapter.start: Starting connlib")
-      do {
-        // We can only get the system's default resolvers before connlib starts, and then they'll
-        // be overwritten by the ones from connlib. So cache them here for getSystemDefaultResolvers
-        // to retrieve them later.
-        self.callbackHandler.setSystemDefaultResolvers(
-          resolvers: Resolv().getservers().map(Resolv.getnameinfo)
+    self.logger.log("Adapter.start: Starting connlib")
+    do {
+      let session =
+        try WrappedSession.connect(
+          apiURL,
+          token,
+          DeviceMetadata.getOrCreateFirezoneId(logger: self.logger),
+          DeviceMetadata.getDeviceName(),
+          DeviceMetadata.getOSVersion(),
+          connlibLogFolderPath,
+          logFilter,
+          callbackHandler
         )
-        self.state = .startingTunnel(
-          session: try WrappedSession.connect(
-            self.controlPlaneURLString,
-            self.token,
-            self.getOrCreateFirezoneId(from: self.firezoneIdFileURL),
-            self.getDeviceName(),
-            self.getOSVersion(),
-            self.connlibLogFolderPath,
-            self.logFilter,
-            self.callbackHandler
-          ),
-          onStarted: completionHandler
-        )
-      } catch let error {
-        self.logger.error("Adapter.start: Error: \(error)")
-        packetTunnelProvider?.handleTunnelShutdown(
-          dueTo: .connlibConnectFailure,
-          errorMessage: error.localizedDescription)
-        self.state = .stoppedTunnel
-        completionHandler(AdapterError.connlibConnectError(error))
-      }
+      self.state = .tunnelStarted(session: session)
+      beginPathMonitoring()
+      completionHandler(nil)
+    } catch let error {
+      logger.error("\(#function): Adapter.start: Error: \(error)")
+      state = .tunnelStopped
+      completionHandler(AdapterError.connlibConnectError(error))
     }
   }
 
-  /// Stop the tunnel
-  public func stop(reason: NEProviderStopReason, completionHandler: @escaping () -> Void) {
-    workQueue.async { [weak self] in
-      guard let self = self else { return }
+  /// Final callback called by packetTunnelProvider when tunnel is to be stopped.
+  /// Can happen due to:
+  ///  - User toggles VPN off in Settings.app
+  ///  - User signs out
+  ///  - User clicks "Disconnect and Quit" (macOS)
+  ///  - connlib sends onDisconnect
+  ///
+  ///  This can happen before the tunnel is in the tunnelReady state, such as if the portal
+  ///  is slow to send the init.
+  public func stop() {
+    logger.log("Adapter.stop")
 
-      self.logger.log("Adapter.stop")
+    if case .tunnelStarted(let session) = state {
+      state = .tunnelStopped
 
-      packetTunnelProvider?.handleTunnelShutdown(
-        dueTo: .stopped(reason),
-        errorMessage: "\(reason)")
-
-      switch self.state {
-      case .stoppedTunnel, .stoppingTunnel:
-        break
-      case .tunnelReady(let session):
-        self.logger.log("Adapter.stop: Shutting down connlib")
-        session.disconnect()
-        self.state = .stoppedTunnel
-        completionHandler()
-      case .startingTunnel(let session, let onStarted):
-        self.logger.log("Adapter.stop: Shutting down connlib before tunnel ready")
-        session.disconnect()
-        self.state = .stoppedTunnel
-        onStarted?(AdapterError.stoppedByRequestWhileStarting)
-        completionHandler()
-      case .stoppingTunnelTemporarily(let session, let onStopped):
-        self.state = .stoppedTunnel
-        onStopped?()
-        completionHandler()
-      case .stoppedTunnelTemporarily:
-        self.state = .stoppedTunnel
-        completionHandler()
-      }
-
-      self.networkMonitor?.cancel()
-      self.networkMonitor = nil
+      // user-initiated, tell connlib to shut down
+      session.disconnect()
     }
+
+    networkMonitor?.cancel()
+    networkMonitor = nil
   }
 
   /// Get the current set of resources in the completionHandler.
@@ -218,67 +178,12 @@ class Adapter {
   ) {
     workQueue.async { [weak self] in
       guard let self = self else { return }
-
-      if referenceVersionString == self.displayableResources.versionString {
+      
+      if referenceVersionString == displayableResources.versionString {
         completionHandler(nil)
       } else {
-        completionHandler(self.displayableResources)
+        completionHandler(displayableResources)
       }
-    }
-  }
-}
-
-// MARK: Device metadata
-
-extension Adapter {
-  func getDeviceName() -> String? {
-    // Returns a generic device name on iOS 16 and higher
-    // See https://github.com/firezone/firezone/issues/3034
-    #if os(iOS)
-      return UIDevice.current.name
-    #else
-      // Fallback to connlib's gethostname()
-      return nil
-    #endif
-  }
-
-  func getOSVersion() -> String? {
-    // Returns the OS version
-    // See https://github.com/firezone/firezone/issues/3034
-    #if os(iOS)
-      return UIDevice.current.systemVersion
-    #else
-      // Fallback to connlib's osinfo
-      return nil
-    #endif
-  }
-
-  // Returns the Firezone ID as cached by the application or generates and persists a new one
-  // if that doesn't exist. The Firezone ID is a UUIDv4 that is used to dedup this device
-  // for upsert and identification in the admin portal.
-  func getOrCreateFirezoneId(from fileURL: URL) -> String {
-    do {
-      let storedID = try String(contentsOf: fileURL, encoding: .utf8)
-      self.logger.log("Adapter.getOrCreateFirezoneId: Returning ID from disk: \(storedID)")
-      return storedID
-    } catch {
-      self.logger.log(
-        "Adapter.getOrCreateFirezoneId: Could not read firezone-id file \(fileURL.path): \(error)"
-      )
-      // Handle the error if the file doesn't exist or isn't readable
-      // Recreate the file, save a new UUIDv4, and return it
-      let newUUIDString = UUID().uuidString
-
-      do {
-        try newUUIDString.write(to: fileURL, atomically: true, encoding: .utf8)
-        self.logger.log("Adapter.getOrCreateFirezoneId: Written ID to disk: \(newUUIDString)")
-      } catch {
-        self.logger.error(
-          "Adapter.getOrCreateFirezoneId: Could not save firezone-id file \(fileURL.path)! Error: \(error)"
-        )
-      }
-
-      return newUUIDString
     }
   }
 }
@@ -286,24 +191,6 @@ extension Adapter {
 // MARK: Responding to path updates
 
 extension Adapter {
-  private func resetToSystemDNS() {
-    // Setting this to anything but an empty string will populate /etc/resolv.conf with
-    // the default interface's DNS servers, which we read later from connlib
-    // during tunnel setup.
-    self.networkSettings?.setMatchDomains(["firezone-fd0020211111"])
-    self.networkSettings?.apply(
-      on: self.packetTunnelProvider,
-      logger: self.logger,
-      completionHandler: { _ in
-        // We can only get the system's default resolvers before connlib starts, and then they'll
-        // be overwritten by the ones from connlib. So cache them here for getSystemDefaultResolvers
-        // to retrieve them later.
-        self.callbackHandler.setSystemDefaultResolvers(
-          resolvers: Resolv().getservers().map(Resolv.getnameinfo)
-        )
-      })
-  }
-
   private func beginPathMonitoring() {
     self.logger.log("Beginning path monitoring")
     let networkMonitor = NWPathMonitor()
@@ -313,71 +200,105 @@ extension Adapter {
     networkMonitor.start(queue: self.workQueue)
   }
 
+  /// Primary callback we receive whenever:
+  /// - Network connectivity changes
+  /// - System DNS servers change, including when we set them
+  /// - Routes change, including when we set them
+  ///
+  /// Apple doesn't give us very much info in this callback, so we don't know which of the
+  /// events above triggered the callback.
+  ///
+  /// On iOS this creates a problem:
+  ///
+  /// We have no good way to get the System's default resolvers. We use a workaround which
+  /// involves reading the resolvers from Bind (i.e. /etc/resolv.conf) but this will be set to connlib's
+  /// DNS sentinel while the tunnel is active, which isn't helpful to us. To get around this, we can
+  /// very briefly update the Tunnel's matchDomains config to *not* be the catch-all [""], which
+  /// causes iOS to write the actual system resolvers into /etc/resolv.conf, which we can then read.
+  /// The issue is that this in itself causes a didReceivePathUpdate callback, which makes it hard to
+  /// differentiate between us changing the DNS configuration and the system actually receiving new
+  /// default resolvers.
+  ///
+  /// So we solve this problem by only doing this DNS dance if the gateways available to the path have
+  /// changed. This means we only call setDns when the physical network has changed, and therefore
+  /// we're blind to path updates where only the DNS resolvers have changed. That will happen in two
+  /// cases most commonly:
+  /// - New DNS servers were set by DHCP
+  /// - The user manually changed the DNS servers in the system settings
+  ///
+  /// For now, this will break DNS if the old servers connlib is using are no longer valid, and
+  /// can only be fixed with a sign out and sign back in which restarts the NetworkExtension.
+  ///
+  /// On macOS, Apple has exposed the SystemConfiguration framework which makes this easy and
+  /// doesn't suffer from this issue.
+  ///
+  /// See the following issues for discussion around the above issue:
+  /// - https://github.com/firezone/firezone/issues/3302
+  /// - https://github.com/firezone/firezone/issues/3343
+  /// - https://github.com/firezone/firezone/issues/3235
+  /// - https://github.com/firezone/firezone/issues/3175
   private func didReceivePathUpdate(path: Network.NWPath) {
-    // Will be invoked in the workQueue by the path monitor
-    switch self.state {
+    guard case .tunnelStarted(let session) = state else { return }
 
-    case .startingTunnel(let session, let onStarted):
-      if path.status != .satisfied {
-        self.logger.log("Adapter.didReceivePathUpdate: Offline. Shutting down connlib.")
-        onStarted?(nil)
-        resetToSystemDNS()
-        self.packetTunnelProvider?.reasserting = true
-        self.state = .stoppingTunnelTemporarily(session: session, onStopped: nil)
-        session.disconnect()
+    if path.status == .unsatisfied {
+      logger.log("\(#function): Detected network change: Offline.")
+
+      // Check if we need to set reasserting, avoids OS log spam and potentially other side effects
+      if packetTunnelProvider?.reasserting == false {
+        // Tell the UI we're not connected
+        packetTunnelProvider?.reasserting = true
+      }
+    } else {
+      self.logger.log("\(#function): Detected network change: Online.")
+
+      // Hint to connlib we're back online, but only do so if our primary interface changes,
+      // and therefore we need to bump sockets. On darwin, this is needed to send packets
+      // out of a different interface even when 0.0.0.0 is used as the source.
+      // If our primary interface changes, we can be certain the old socket shouldn't be
+      // used anymore.
+      if (path.availableInterfaces.first?.name != primaryInterfaceName) {
+        session.reconnect()
+        primaryInterfaceName = path.availableInterfaces.first?.name
       }
 
-    case .tunnelReady(let session):
-      if path.status != .satisfied {
-        self.logger.log("Adapter.didReceivePathUpdate: Offline. Shutting down connlib.")
-        resetToSystemDNS()
-        self.packetTunnelProvider?.reasserting = true
-        self.state = .stoppingTunnelTemporarily(session: session, onStopped: nil)
-        session.disconnect()
-      }
+      if shouldFetchSystemResolvers(path: path) {
+        // Spawn a new thread to avoid blocking the UI on iOS
+        Task {
+          let resolvers = getSystemDefaultResolvers(interfaceName: path.availableInterfaces.first?.name)
 
-    case .stoppingTunnelTemporarily:
-      break
+          if lastFetchedResolvers != resolvers {
+            session.setDns(
+              try! String(
+                decoding: JSONEncoder().encode(resolvers),
+                as: UTF8.self
+              ).intoRustString()
+            )
 
-    case .stoppedTunnelTemporarily:
-      guard path.status == .satisfied else { return }
-
-      self.logger.log("Adapter.didReceivePathUpdate: Back online. Starting connlib.")
-
-      do {
-        self.state = .startingTunnel(
-          session: try WrappedSession.connect(
-            controlPlaneURLString,
-            token,
-            self.getOrCreateFirezoneId(from: self.firezoneIdFileURL),
-            self.getDeviceName(),
-            self.getOSVersion(),
-            self.connlibLogFolderPath,
-            self.logFilter,
-            self.callbackHandler
-          ),
-          onStarted: { error in
-            if let error = error {
-              self.logger.error(
-                "Adapter.didReceivePathUpdate: Error starting connlib: \(error)")
-              self.packetTunnelProvider?.cancelTunnelWithError(error)
-            } else {
-              self.packetTunnelProvider?.reasserting = false
-            }
+            lastFetchedResolvers = resolvers
           }
-        )
-      } catch let error as AdapterError {
-        self.logger.error("Adapter.didReceivePathUpdate: Error: \(error)")
-      } catch {
-        self.logger.error(
-          "Adapter.didReceivePathUpdate: Unknown error: \(error) (fatal)")
+        }
       }
 
-    case .stoppingTunnel, .stoppedTunnel:
-      // no-op
-      break
+      if packetTunnelProvider?.reasserting == true {
+        packetTunnelProvider?.reasserting = false
+      }
     }
   }
+
+  #if os(iOS)
+    private func shouldFetchSystemResolvers(path: Network.NWPath) -> Bool {
+      if path.gateways != gateways {
+        gateways = path.gateways
+        return true
+      }
+
+      return false
+    }
+  #else
+    private func shouldFetchSystemResolvers(path _: Network.NWPath) -> Bool {
+      return true
+    }
+  #endif
 }
 
 // MARK: Implementing CallbackHandlerDelegate
@@ -388,57 +309,24 @@ extension Adapter: CallbackHandlerDelegate {
   ) {
     workQueue.async { [weak self] in
       guard let self = self else { return }
-
-      self.logger.log("Adapter.onSetInterfaceConfig")
-
-      switch self.state {
-      case .startingTunnel:
-        self.networkSettings = NetworkSettings(
-          tunnelAddressIPv4: tunnelAddressIPv4, tunnelAddressIPv6: tunnelAddressIPv6,
-          dnsAddresses: dnsAddresses)
-      case .tunnelReady:
-        if let networkSettings = self.networkSettings {
-          networkSettings.apply(
-            on: packetTunnelProvider,
-            logger: self.logger,
-            completionHandler: nil
-          )
-        }
-
-      case .stoppingTunnel, .stoppedTunnel, .stoppingTunnelTemporarily, .stoppedTunnelTemporarily:
-        // This is not expected to happen
-        break
-      }
-    }
-  }
-
-  public func onTunnelReady() {
-    workQueue.async { [weak self] in
-      guard let self = self else { return }
-
-      self.logger.log("Adapter.onTunnelReady")
-      guard case .startingTunnel(let session, let onStarted) = self.state else {
-        self.logger.error(
-          "Adapter.onTunnelReady: Unexpected state: \(self.state)")
-        return
-      }
-      guard let networkSettings = self.networkSettings else {
-        self.logger.error("Adapter.onTunnelReady: No network settings")
-        return
+      if networkSettings == nil {
+        // First time receiving this callback
+        networkSettings = NetworkSettings(packetTunnelProvider: packetTunnelProvider, logger: logger)
       }
 
-      // Connlib's up, set it as the default DNS
-      networkSettings.setMatchDomains([""])
-      networkSettings.apply(on: packetTunnelProvider, logger: self.logger) { error in
-        if let error = error {
-          self.logger.error("\(#function): \(error)")
-          onStarted?(AdapterError.setNetworkSettings(error))
-          self.state = .stoppedTunnel
-        } else {
-          onStarted?(nil)
-          self.state = .tunnelReady(session: session)
-          self.beginPathMonitoring()
-        }
+      logger.log(
+        "\(#function): \(tunnelAddressIPv4) \(tunnelAddressIPv6) \(dnsAddresses)")
+
+      switch state {
+      case .tunnelStarted(session: _):
+        guard let networkSettings = networkSettings else { return }
+        networkSettings.tunnelAddressIPv4 = tunnelAddressIPv4
+        networkSettings.tunnelAddressIPv6 = tunnelAddressIPv6
+        networkSettings.dnsAddresses = dnsAddresses
+        networkSettings.apply()
+      case .tunnelStopped:
+        logger.error(
+          "\(#function): Unexpected state: \(self.state)")
       }
     }
   }
@@ -446,13 +334,12 @@ extension Adapter: CallbackHandlerDelegate {
   public func onUpdateRoutes(routeList4: String, routeList6: String) {
     workQueue.async { [weak self] in
       guard let self = self else { return }
-
-      self.logger.log("Adapter.onUpdateRoutes \(routeList4) \(routeList6)")
-
-      guard let networkSettings = self.networkSettings else {
-        self.logger.error("Adapter.onUpdateRoutes: No network settings")
-        return
+      guard let networkSettings = networkSettings
+      else {
+        fatalError("onUpdateRoutes called before network settings was initialized!")
       }
+
+      logger.log("\(#function): \(routeList4) \(routeList6)")
 
       networkSettings.routes4 = try! JSONDecoder().decode(
         [NetworkSettings.Cidr].self, from: routeList4.data(using: .utf8)!
@@ -460,9 +347,8 @@ extension Adapter: CallbackHandlerDelegate {
       networkSettings.routes6 = try! JSONDecoder().decode(
         [NetworkSettings.Cidr].self, from: routeList6.data(using: .utf8)!
       ).compactMap { $0.asNEIPv6Route }
-      networkSettings.hasUnappliedChanges = true
 
-      networkSettings.apply(on: packetTunnelProvider, logger: self.logger, completionHandler: nil)
+      networkSettings.apply()
     }
   }
 
@@ -470,58 +356,93 @@ extension Adapter: CallbackHandlerDelegate {
     workQueue.async { [weak self] in
       guard let self = self else { return }
 
-      self.logger.log("Adapter.onUpdateResources")
-      let jsonString = resourceList
-      guard let jsonData = jsonString.data(using: .utf8) else {
-        return
-      }
-      guard let networkResources = try? JSONDecoder().decode([NetworkResource].self, from: jsonData)
-      else {
-        return
-      }
+      logger.log("\(#function)")
 
-      // Note down the resources
-      self.displayableResources.update(resources: networkResources.map { $0.displayableResource })
+      let networkResources = try! JSONDecoder().decode(
+        [NetworkResource].self, from: resourceList.data(using: .utf8)!)
 
-      // Update DNS in case resource domains is changing
-      guard let networkSettings = self.networkSettings else {
-        self.logger.error("Adapter.onUpdateResources: No network settings")
-        return
-      }
-      let updatedResourceDomains = networkResources.compactMap { $0.resourceLocation.domain }
-      networkSettings.setResourceDomains(updatedResourceDomains)
-      if case .tunnelReady = self.state {
-        networkSettings.apply(on: packetTunnelProvider, logger: self.logger, completionHandler: nil)
-      }
+      // Update resource list
+      displayableResources.update(resources: networkResources.map { $0.displayableResource })
     }
   }
 
   public func onDisconnect(error: String) {
     workQueue.async { [weak self] in
       guard let self = self else { return }
+      logger.log("\(#function)")
 
-      self.logger.error(
-        "Connlib disconnected with unrecoverable error: \(error)")
-      switch self.state {
-      case .stoppingTunnel(session: _, let onStopped):
-        onStopped?()
-        self.state = .stoppedTunnel
-      case .stoppingTunnelTemporarily(session: _, let onStopped):
-        onStopped?()
-        self.state = .stoppedTunnel
-      case .stoppedTunnel:
-        // This should not happen
-        break
-      case .stoppedTunnelTemporarily:
-        self.state = .stoppedTunnel
-      default:
-        packetTunnelProvider?.handleTunnelShutdown(
-          dueTo: .connlibDisconnected,
-          errorMessage: error)
-        self.packetTunnelProvider?.cancelTunnelWithError(
-          AdapterError.connlibFatalError(error))
-        self.state = .stoppedTunnel
+      var reason: NEProviderStopReason = .connectionFailed
+
+      // connlib-initiated; session is already disconnected, move directly to .tunnelStopped
+      // provider will call our stop() at the end.
+      state = .tunnelStopped
+
+      // HACK: Define more connlib error types across the FFI so we can switch on them
+      // directly and not just sign the user out every time this is called.
+      if error.contains("401 Unauthorized") {
+        reason = .authenticationCanceled
       }
+
+      self.packetTunnelProvider?.stopTunnel(with: reason) {}
     }
   }
+
+  private func getSystemDefaultResolvers(interfaceName: String? = nil) -> [String] {
+    #if os(macOS)
+      let resolvers = SystemConfigurationResolvers(logger: logger).getDefaultDNSServers(
+        interfaceName: interfaceName)
+    #elseif os(iOS)
+      let resolvers =
+        if case .tunnelStarted = state {
+          resetToSystemDNSGettingBindResolvers()
+        } else {
+          // NetworkSettings isn't applied yet, so we can grab them directly
+          BindResolvers().getservers().map(BindResolvers.getnameinfo)
+        }
+    #endif
+
+    logger.log("\(#function): \(resolvers)")
+
+    return resolvers
+  }
 }
+
+// MARK: Getting System Resolvers on iOS
+#if os(iOS)
+  extension Adapter {
+    // When the tunnel is up, we can only get the system's default resolvers
+    // by reading /etc/resolv.conf when matchDomains is set to a non-empty string.
+    // If matchDomains is an empty string, /etc/resolv.conf will contain connlib's
+    // sentinel, which isn't helpful to us.
+    private func resetToSystemDNSGettingBindResolvers() -> [String] {
+      guard let networkSettings = networkSettings
+      else {
+        // Network Settings hasn't been applied yet, so our sentinal isn't
+        // the system's resolver and we can grab it directly.
+        // If we try to continue below without valid tunnel addresses assigned
+        // to the interface, we'll crash.
+        return BindResolvers().getservers().map(BindResolvers.getnameinfo)
+      }
+
+      var resolvers: [String] = []
+      let semaphore = DispatchSemaphore(value: 0)
+
+      // Set tunnel's matchDomains to a dummy string that will never match any name
+      networkSettings.matchDomains = ["firezone-fd0020211111"]
+
+      // Call apply to populate /etc/resolv.conf with the system's default resolvers
+      networkSettings.apply {
+        guard let networkSettings = self.networkSettings else { return }
+        // Only now can we get the system resolvers
+        resolvers = BindResolvers().getservers().map(BindResolvers.getnameinfo)
+
+        // Restore connlib's DNS resolvers
+        networkSettings.matchDomains = [""]
+        networkSettings.apply { semaphore.signal() }
+      }
+
+      semaphore.wait()
+      return resolvers
+    }
+  }
+#endif
