@@ -125,18 +125,18 @@ ENV PACKAGE=${PACKAGE}
 CMD $PACKAGE
 
 # used for local development
-FROM runtime as development
+FROM runtime as testing
 
 RUN set -xe \
   && apk add --no-cache iperf3 bind-tools iproute2 jq
 
 # used for local development
-FROM development AS local
+FROM testing AS dev
 ARG TARGET
 COPY --from=builder /build/target/${TARGET}/debug/${PACKAGE} .
 
 # Build an image for GitHub Actions which includes debug asserts and test utilities
-FROM development AS debug
+FROM testing AS debug
 
 ARG TARGET
 ## Build first with `cross build --target ${TARGET} -p ${PACKAGE} && mv /target/${TARGET}/release/${PACKAGE} .`
