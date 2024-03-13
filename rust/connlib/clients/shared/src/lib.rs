@@ -33,19 +33,9 @@ pub struct Session {
 }
 
 impl Session {
-    /// Starts a session in the background.
+    /// Creates a new [`Session`].
     ///
-    /// This will:
-    /// 1. Create and start a tokio runtime
-    /// 2. Connect to the control plane to the portal
-    /// 3. Start the tunnel in the background and forward control plane messages to it.
-    ///
-    /// The generic parameter `CB` should implement all the handlers and that's how errors will be surfaced.
-    ///
-    /// On a fatal error you should call `[Session::disconnect]` and start a new one.
-    ///
-    /// * `device_id` - The cleartext device ID. connlib will obscure this with a hash internally.
-    // TODO: token should be something like SecretString but we need to think about FFI compatibility
+    /// This connects to the portal a specified using [`LoginUrl`] and creates a wireguard tunnel using the provided private key.
     pub fn connect<CB: Callbacks + 'static>(
         url: LoginUrl,
         private_key: StaticSecret,
