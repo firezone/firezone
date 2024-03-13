@@ -6,13 +6,14 @@
 use connlib_client_shared::{
     file_logger, keypair, Callbacks, Error, LoginUrl, LoginUrlError, ResourceDescription, Session,
 };
-use ip_network::{Ipv4Network, Ipv6Network};
+use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use jni::{
     objects::{GlobalRef, JByteArray, JClass, JObject, JObjectArray, JString, JValue, JValueGen},
     strings::JNIString,
     JNIEnv, JavaVM,
 };
 use secrecy::SecretString;
+use serde::Serialize;
 use std::{io, net::IpAddr, path::Path};
 use std::{
     net::{Ipv4Addr, Ipv6Addr},
@@ -34,6 +35,21 @@ pub struct CallbackHandler {
     vm: JavaVM,
     callback_handler: GlobalRef,
     handle: file_logger::Handle,
+}
+
+#[derive(Serialize, Clone, Copy)]
+struct Cidr {
+    address: IpAddr,
+    prefix: u8,
+}
+
+impl From<IpNetwork> for Cidr {
+    fn from(val: IpNetwork) -> Cidr {
+        Cidr {
+            address: val.network_address(),
+            prefix: val.netmask(),
+        }
+    }
 }
 
 impl Clone for CallbackHandler {
@@ -200,6 +216,16 @@ impl Callbacks for CallbackHandler {
         route_list_6: Vec<Ipv6Network>,
     ) -> Result<Option<RawFd>, Self::Error> {
         self.env(|mut env| {
+            let route_list_4: Vec<_> = route_list_4
+                .into_iter()
+                .map(IpNetwork::from)
+                .map(Cidr::from)
+                .collect();
+            let route_list_6: Vec<_> = route_list_6
+                .into_iter()
+                .map(IpNetwork::from)
+                .map(Cidr::from)
+                .collect();
             let route_list_4 = env
                 .new_string(serde_json::to_string(&route_list_4)?)
                 .map_err(|source| CallbackError::NewStringFailed {
