@@ -1,7 +1,7 @@
-use boringtun::x25519::StaticSecret;
+use boringtun::x25519::{PublicKey, StaticSecret};
 use snownet::{Answer, ClientNode, Event, MutableIpPacket, ServerNode, Transmit};
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashSet,
     iter,
     net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4},
     time::{Duration, Instant},
@@ -28,7 +28,7 @@ fn smoke() {
     handshake(&mut alice, &mut bob);
 
     loop {
-        if alice.is_connected_to(1) && bob.is_connected_to(1) {
+        if alice.is_connected_to(&bob) && bob.is_connected_to(&alice) {
             break;
         }
         progress(&mut alice, &mut bob);
@@ -225,8 +225,6 @@ struct TestNode {
     progress_count: u64,
     time: Instant,
 
-    connection_state: HashMap<u64, bool>,
-
     buffer: Box<[u8; 10_000]>,
 }
 
@@ -283,6 +281,20 @@ impl EitherNode {
         }
     }
 
+    fn is_connected_to(&self, key: PublicKey) -> bool {
+        match self {
+            EitherNode::Client(n) => n.is_connected_to(key),
+            EitherNode::Server(n) => n.is_connected_to(key),
+        }
+    }
+
+    fn public_key(&self) -> PublicKey {
+        match self {
+            EitherNode::Client(n) => n.public_key(),
+            EitherNode::Server(n) => n.public_key(),
+        }
+    }
+
     fn as_client_mut(&mut self) -> Option<&mut ClientNode<u64>> {
         match self {
             EitherNode::Server(_) => None,
@@ -329,12 +341,11 @@ impl TestNode {
             time: now,
             received_packets: vec![],
             buffer: Box::new([0u8; 10_000]),
-            connection_state: HashMap::default(),
         }
     }
 
-    fn is_connected_to(&self, id: u64) -> bool {
-        self.connection_state.get(&id).copied().unwrap_or_default()
+    fn is_connected_to(&self, other: &TestNode) -> bool {
+        self.node.is_connected_to(other.node.public_key())
     }
 
     fn add_local_host_candidate(&mut self, socket: &str) {
@@ -389,12 +400,8 @@ fn progress(a1: &mut TestNode, a2: &mut TestNode) {
                 connection,
                 candidate,
             } => f.node.add_remote_candidate(connection, candidate, f.time),
-            Event::ConnectionEstablished(id) => {
-                *t.connection_state.entry(id).or_default() = true;
-            }
-            Event::ConnectionFailed(id) => {
-                *t.connection_state.entry(id).or_default() = false;
-            }
+            Event::ConnectionEstablished(_) => {}
+            Event::ConnectionFailed(_) => {}
         };
     }
 
