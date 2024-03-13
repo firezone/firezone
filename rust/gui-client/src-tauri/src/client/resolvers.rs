@@ -11,7 +11,8 @@ pub enum Error {
 
 #[cfg(target_os = "linux")]
 pub fn get() -> Result<Vec<IpAddr>, Error> {
-    todo!()
+    tracing::error!("Resolvers module not yet implemented for Linux, returning empty Vec");
+    Ok(Vec::default())
 }
 
 #[cfg(target_os = "macos")]

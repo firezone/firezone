@@ -87,9 +87,13 @@ pub(crate) enum Error {
     // `client.rs` provides a more user-friendly message when showing the error dialog box
     #[error("WebViewNotInstalled")]
     WebViewNotInstalled,
+    #[error(transparent)]
+    Other(#[from] anyhow::Error),
 }
 
 /// Runs the Tauri GUI and returns on exit or unrecoverable error
+///
+/// Still uses `thiserror` so we can catch the deep_link `CantListen` error
 pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
     let advanced_settings = settings::load_advanced_settings().unwrap_or_default();
 
@@ -150,6 +154,11 @@ pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
         }
     });
 
+    // Make sure we're single-instance
+    // We register our deep links to call the `open-deep-link` subcommand,
+    // so if we're at this point, we know we've been launched manually
+    let server = deep_link::Server::new()?;
+
     if let Some(client::Cmd::SmokeTest) = &cli.command {
         let ctlr_tx = ctlr_tx.clone();
         tokio::spawn(async move {
@@ -160,15 +169,13 @@ pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
         });
     }
 
-    // Make sure we're single-instance
-    // We register our deep links to call the `open-deep-link` subcommand,
-    // so if we're at this point, we know we've been launched manually
-    let server = deep_link::Server::new()?;
-
-    // We know now we're the only instance on the computer, so register our exe
-    // to handle deep links
-    deep_link::register()?;
-    tokio::spawn(accept_deep_links(server, ctlr_tx.clone()));
+    tracing::debug!(cli.no_deep_links);
+    if !cli.no_deep_links {
+        // The single-instance check is done, so register our exe
+        // to handle deep links
+        deep_link::register().context("Failed to register deep link handler")?;
+        tokio::spawn(accept_deep_links(server, ctlr_tx.clone()));
+    }
 
     let managed = Managed {
         ctlr_tx: ctlr_tx.clone(),
@@ -393,11 +400,20 @@ async fn check_for_updates(ctlr_tx: CtlrTx, always_show_update_notification: boo
 /// * `server` An initial named pipe server to consume before making new servers. This lets us also use the named pipe to enforce single-instance
 async fn accept_deep_links(mut server: deep_link::Server, ctlr_tx: CtlrTx) -> Result<()> {
     loop {
-        if let Ok(url) = server.accept().await {
-            ctlr_tx
-                .send(ControllerRequest::SchemeRequest(url))
-                .await
-                .ok();
+        match server.accept().await {
+            Ok(bytes) => {
+                let url = SecretString::from_str(
+                    std::str::from_utf8(bytes.expose_secret())
+                        .context("Incoming deep link was not valid UTF-8")?,
+                )
+                .context("Impossible: can't wrap String into SecretString")?;
+                // Ignore errors from this, it would only happen if the app is shutting down, otherwise we would wait
+                ctlr_tx
+                    .send(ControllerRequest::SchemeRequest(url))
+                    .await
+                    .ok();
+            }
+            Err(error) => tracing::error!(?error, "error while accepting deep link"),
         }
         // We re-create the named pipe server every time we get a link, because of an oddity in the Windows API.
         server = deep_link::Server::new()?;
@@ -645,7 +661,7 @@ impl Controller {
                 if let Some(req) = self.auth.start_sign_in()? {
                     let url = req.to_url(&self.advanced_settings.auth_base_url);
                     self.refresh_system_tray_menu()?;
-                    tauri::api::shell::open(&self.app.shell_scope(), url.expose_secret(), None)?;
+                    os::open_url(&self.app, &url)?;
                 }
             }
             Req::SystemTrayMenu(TrayMenuEvent::SignOut) => {
