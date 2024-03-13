@@ -6,7 +6,6 @@ mod sleep;
 mod time_events;
 mod udp_socket;
 
-pub mod health_check;
 #[cfg(feature = "proptest")]
 pub mod proptest;
 

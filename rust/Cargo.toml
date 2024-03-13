@@ -13,6 +13,7 @@ members = [
   "phoenix-channel",
   "relay",
   "gui-client/src-tauri",
+  "http-health-check",
 ]
 
 resolver = "2"
@@ -45,6 +46,7 @@ firezone-relay = { path = "relay"}
 connlib-shared = { path = "connlib/shared"}
 firezone-tunnel = { path = "connlib/tunnel"}
 phoenix-channel = { path = "phoenix-channel"}
+http-health-check = { path = "http-health-check"}
 
 [patch.crates-io]
 boringtun = { git = "https://github.com/cloudflare/boringtun", branch = "master" }
