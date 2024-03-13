@@ -36,11 +36,6 @@ struct Args {
     /// The public (i.e. internet-reachable) IPv6 address of the relay server.
     #[arg(long, env)]
     public_ip6_addr: Option<Ipv6Addr>,
-    /// The address of the local interface where we should serve our health-check endpoint.
-    ///
-    /// The actual health-check endpoint will be at `http://<health_check_addr>/healthz`.
-    #[arg(long, env, hide = true, default_value = "0.0.0.0:8080")]
-    health_check_addr: SocketAddr,
     // See https://www.rfc-editor.org/rfc/rfc8656.html#name-allocations
     /// The lowest port used for TURN allocations.
     #[arg(long, env, hide = true, default_value = "49152")]
@@ -86,6 +81,9 @@ struct Args {
     /// OTLP is vendor-agnostic but for spans to be correctly recognised by Google Cloud, they need the project ID to be set.
     #[arg(long, env, hide = true)]
     google_cloud_project_id: Option<String>,
+
+    #[command(flatten)]
+    health_check: http_health_check::HealthCheckArgs,
 }
 
 #[derive(clap::ValueEnum, Debug, Clone, Copy)]
@@ -134,7 +132,9 @@ async fn main() -> Result<()> {
 
     let mut eventloop = Eventloop::new(server, channel, public_addr)?;
 
-    tokio::spawn(firezone_relay::health_check::serve(args.health_check_addr));
+    tokio::spawn(http_health_check::serve(
+        args.health_check.health_check_addr,
+    ));
 
     tracing::info!(target: "relay", "Listening for incoming traffic on UDP port 3478");
 

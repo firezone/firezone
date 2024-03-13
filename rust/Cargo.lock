@@ -1995,7 +1995,6 @@ name = "firezone-relay"
 version = "1.0.0"
 dependencies = [
  "anyhow",
- "axum 0.7.4",
  "backoff",
  "base64 0.22.0",
  "bytecodec",
@@ -2007,6 +2006,7 @@ dependencies = [
  "futures",
  "hex",
  "hex-literal",
+ "http-health-check",
  "once_cell",
  "opentelemetry",
  "opentelemetry-otlp",
@@ -2875,6 +2875,15 @@ dependencies = [
  "http 1.1.0",
  "http-body 1.0.0",
  "pin-project-lite",
+]
+
+[[package]]
+name = "http-health-check"
+version = "1.0.0"
+dependencies = [
+ "axum 0.7.4",
+ "clap",
+ "tokio",
 ]
 
 [[package]]
