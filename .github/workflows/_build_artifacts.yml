@@ -82,10 +82,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - image_name: client
+          - image_name: api
             target: runtime
             build-args: |
-              APPLICATION_NAME=client
+              APPLICATION_NAME=api
           - image_name: web
             target: runtime
             build-args: |
@@ -93,7 +93,7 @@ jobs:
           - image_name: elixir
             target: compiler
             build-args: |
-              APPLICATION_NAME=client
+              APPLICATION_NAME=api
     steps:
       - uses: actions/checkout@v4
         with:
