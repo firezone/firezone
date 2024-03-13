@@ -139,7 +139,7 @@ pub(crate) fn run_dns_debug() -> Result<()> {
         .join("Tcpip")
         .join("Parameters")
         .join("Interfaces");
-    let key = hklm.open_subkey_with_flags(&path, winreg::enums::KEY_NOTIFY)?;
+    let key = hklm.open_subkey_with_flags(path, winreg::enums::KEY_NOTIFY)?;
     let key_handle = Registry::HKEY(key.raw_handle());
     let notify_flags = Registry::REG_NOTIFY_CHANGE_NAME | Registry::REG_NOTIFY_CHANGE_LAST_SET;
 
