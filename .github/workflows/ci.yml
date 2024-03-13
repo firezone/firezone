@@ -49,7 +49,7 @@ jobs:
     uses: ./.github/workflows/_build_artifacts.yml
     secrets: inherit
     with:
-      image_prefix: ${{ (github.event_name == 'pull_request' && 'debug') || inputs.image_prefix }}
+      image_prefix: ${{ (github.event_name != 'workflow_call' && 'debug') || inputs.image_prefix }}
       profile: ${{ inputs.profile || 'debug' }}
       stage: ${{ inputs.stage || 'debug' }}
 
