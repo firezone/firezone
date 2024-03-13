@@ -1117,11 +1117,11 @@ defmodule Domain.ActorsTest do
     end
 
     test "returns error on invalid attrs", %{account: account} do
-      attrs = %{name: String.duplicate("A", 65)}
+      attrs = %{name: String.duplicate("A", 256)}
       assert {:error, changeset} = create_managed_group(account, attrs)
 
       assert errors_on(changeset) == %{
-               name: ["should be at most 64 character(s)"],
+               name: ["should be at most 255 character(s)"],
                membership_rules: ["can't be blank"]
              }
 
@@ -1178,11 +1178,11 @@ defmodule Domain.ActorsTest do
     end
 
     test "returns error on invalid attrs", %{account: account, subject: subject} do
-      attrs = %{name: String.duplicate("A", 65), type: :foo}
+      attrs = %{name: String.duplicate("A", 256), type: :foo}
       assert {:error, changeset} = create_group(attrs, subject)
 
       assert errors_on(changeset) == %{
-               name: ["should be at most 64 character(s)"],
+               name: ["should be at most 255 character(s)"],
                type: ["is invalid"]
              }
 
@@ -1315,9 +1315,9 @@ defmodule Domain.ActorsTest do
     test "returns error on invalid attrs", %{account: account, subject: subject} do
       group = Fixtures.Actors.create_group(account: account)
 
-      attrs = %{name: String.duplicate("A", 65)}
+      attrs = %{name: String.duplicate("A", 256)}
       assert {:error, changeset} = update_group(group, attrs, subject)
-      assert errors_on(changeset) == %{name: ["should be at most 64 character(s)"]}
+      assert errors_on(changeset) == %{name: ["should be at most 255 character(s)"]}
 
       Fixtures.Actors.create_group(account: account, name: "foo")
       attrs = %{name: "foo"}

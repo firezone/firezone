@@ -57,7 +57,7 @@ defmodule Domain.Actors.Group.Changeset do
   defp changeset(changeset) do
     changeset
     |> trim_change(:name)
-    |> validate_length(:name, min: 1, max: 64)
+    |> validate_length(:name, min: 1, max: 255)
     |> unique_constraint(:name, name: :actor_groups_account_id_name_index)
   end
 
