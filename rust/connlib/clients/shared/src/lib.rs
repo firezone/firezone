@@ -20,11 +20,6 @@ pub use eventloop::Eventloop;
 use secrecy::Secret;
 use tokio::task::JoinHandle;
 
-/// Max interval to retry connections to the portal if it's down or the client has network
-/// connectivity changes. Set this to something short so that the end-user experiences
-/// minimal disruption to their Firezone resources when switching networks.
-const MAX_RECONNECT_INTERVAL: Duration = Duration::from_secs(5);
-
 /// A session is the entry-point for connlib, maintains the runtime and the tunnel.
 ///
 /// A session is created using [Session::connect], then to stop a session we use [Session::disconnect].
@@ -107,7 +102,6 @@ where
         (),
         ExponentialBackoffBuilder::default()
             .with_max_elapsed_time(max_partition_time)
-            .with_max_interval(MAX_RECONNECT_INTERVAL)
             .build(),
     );
 
