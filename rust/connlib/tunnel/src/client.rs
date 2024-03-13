@@ -167,10 +167,21 @@ where
         Ok(())
     }
 
-    pub(crate) fn update_interface(&mut self) -> connlib_shared::Result<()> {
-        let dns_mapping = self.role_state.dns_mapping();
-        let config =
-            self.role_state.interface_config.as_ref().expect("Developer error: we should always call update_interface after the interface config is set");
+    /// Sets the interface configuration and starts background tasks.
+    #[tracing::instrument(level = "trace", skip(self))]
+    pub fn set_interface(&mut self, config: &InterfaceConfig) -> connlib_shared::Result<()> {
+        self.role_state.interface_config = Some(config.clone());
+        let effective_dns_servers = effective_dns_servers(
+            config.upstream_dns.clone(),
+            self.callbacks()
+                .get_system_default_resolvers()
+                .ok()
+                .flatten()
+                .unwrap_or_default(),
+        );
+
+        let dns_mapping = sentinel_dns_mapping(&effective_dns_servers);
+        self.role_state.set_dns_mapping(dns_mapping.clone());
 
         self.device.initialize(
             config,
@@ -188,24 +199,6 @@ where
         tracing::debug!(ip4 = %config.ipv4, ip6 = %config.ipv6, %name, "TUN device initialized");
 
         Ok(())
-    }
-
-    /// Sets the interface configuration and starts background tasks.
-    #[tracing::instrument(level = "trace", skip(self))]
-    pub fn set_interface(&mut self, config: &InterfaceConfig) -> connlib_shared::Result<()> {
-        self.role_state.interface_config = Some(config.clone());
-        let effective_dns_servers = effective_dns_servers(
-            config.upstream_dns.clone(),
-            self.callbacks()
-                .get_system_default_resolvers()
-                .ok()
-                .flatten()
-                .unwrap_or_default(),
-        );
-
-        let dns_mapping = sentinel_dns_mapping(&effective_dns_servers);
-        self.role_state.set_dns_mapping(dns_mapping);
-        self.update_interface()
     }
 
     /// Clean up a connection to a resource.
