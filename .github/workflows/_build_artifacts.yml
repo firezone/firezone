@@ -23,6 +23,16 @@ on:
         description: "The stage of the data plane component images to build"
         required: true
         type: string
+    outputs:
+      client_image:
+        description: "The client image that was built"
+        value: ${{ steps.data-plane.outputs.client_image }}
+      relay_image:
+        description: "The relay image that was built"
+        value: ${{ steps.data-plane.outputs.relay_image }}
+      gateway_image:
+        description: "The gateway image that was built"
+        value: ${{ steps.data-plane.outputs.gateway_image }}
 
 env:
   # mark:automatic-version
@@ -72,10 +82,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - image_name: api
+          - image_name: client
             target: runtime
             build-args: |
-              APPLICATION_NAME=api
+              APPLICATION_NAME=client
           - image_name: web
             target: runtime
             build-args: |
@@ -83,7 +93,7 @@ jobs:
           - image_name: elixir
             target: compiler
             build-args: |
-              APPLICATION_NAME=api
+              APPLICATION_NAME=client
     steps:
       - uses: actions/checkout@v4
         with:
@@ -284,6 +294,9 @@ jobs:
           path: /tmp/digests/${{ matrix.name.image_name }}
           if-no-files-found: error
           retention-days: 1
+      - name: Output image name
+        id: output
+        run: echo "${{ matrix.name.image_name }}_image=${{ steps.login.outputs.registry }}/firezone/${{ inputs.image_prefix && format('{0}/', inputs.image_prefix) }}${{ matrix.name.image_name }}" >> $GITHUB_ENV
 
   merge-docker-artifacts:
     name: merge-${{ matrix.image_name }}

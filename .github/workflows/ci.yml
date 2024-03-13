@@ -77,6 +77,10 @@ jobs:
     uses: ./.github/workflows/_integration_tests.yml
     needs: build-artifacts
     secrets: inherit
+    with:
+      gateway_image: ${{ needs.build-artifacts.outputs.gateway_image }}
+      client_image: ${{ needs.build-artifacts.outputs.client_image }}
+      relay_image: ${{ needs.build-artifacts.outputs.relay_image }}
 
   snownet-tests:
     needs: build-artifacts
