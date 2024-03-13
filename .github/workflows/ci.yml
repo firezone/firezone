@@ -111,9 +111,9 @@ jobs:
           timeout 600 docker compose -f rust/snownet-tests/docker-compose.${{ matrix.name }}.yml up --exit-code-from dialer --abort-on-container-exit
 
   compatibility-tests:
-    # Don't run compatibility tests when called from cd.yml on `main` because
+    # Don't run compatibility tests when called from hotfix.yml or publish.yml on `main` because
     # it'll be red if there was a breaking change we're tring to publish,
-    # and the publish workflow checks for main to be green.
+    # and the deploy_production workflow checks for main to be green.
     if: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
     uses: ./.github/workflows/_integration_tests.yml
     needs: build-artifacts
