@@ -1,14 +1,11 @@
 name: Continuous Integration
+description: Triggered by ${{ github.actor }} on ${{ github.event_name }}
 on:
   pull_request:
   merge_group:
     types: [checks_requested]
   workflow_call:
     inputs:
-      image_prefix:
-        description: 'The prefix for the image name, "debug" or "perf"'
-        required: false
-        type: string
       stage:
         required: true
         type: string
@@ -49,7 +46,8 @@ jobs:
     uses: ./.github/workflows/_build_artifacts.yml
     secrets: inherit
     with:
-      image_prefix: ${{ (github.event_name != 'workflow_call' && 'debug') || inputs.image_prefix }}
+      # Build debug/ on PRs and merge group, no prefix for production release images
+      image_prefix: ${{ ((github.event_name == 'pull_request' || github.event_name == 'merge_group') && 'debug') }}
       profile: ${{ inputs.profile || 'debug' }}
       stage: ${{ inputs.stage || 'debug' }}
 
