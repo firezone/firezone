@@ -2,7 +2,7 @@ use axum::routing::get;
 use axum::Router;
 use std::net::SocketAddr;
 
-/// Serves an HTTP serves that always responds to `GET /healthz` with 200 OK.
+/// Runs an HTTP server that always responds to `GET /healthz` with 200 OK.
 ///
 /// To signal an unhealthy state, simply stop the task.
 pub async fn serve(addr: impl Into<SocketAddr>) -> std::io::Result<()> {
