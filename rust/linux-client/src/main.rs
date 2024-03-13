@@ -38,7 +38,7 @@ fn main() -> Result<()> {
         public_key.to_bytes(),
     )?;
 
-    let mut session =
+    let session =
         Session::connect(login, private_key, None, callbacks, max_partition_time).unwrap();
 
     block_on_ctrl_c();
@@ -83,8 +83,9 @@ impl Callbacks for CallbackHandler {
     }
 
     fn on_disconnect(&self, error: &connlib_client_shared::Error) -> Result<(), Self::Error> {
-        tracing::error!(?error, "Disconnected");
-        Ok(())
+        tracing::error!("Disconnected: {error}");
+
+        std::process::exit(1);
     }
 
     fn roll_log_file(&self) -> Option<PathBuf> {

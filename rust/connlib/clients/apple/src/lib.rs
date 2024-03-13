@@ -43,7 +43,7 @@ mod ffi {
             callback_handler: CallbackHandler,
         ) -> Result<WrappedSession, String>;
 
-        fn disconnect(&mut self);
+        fn disconnect(self);
     }
 
     extern "Swift" {
@@ -217,7 +217,7 @@ impl WrappedSession {
         Ok(Self(session))
     }
 
-    fn disconnect(&mut self) {
+    fn disconnect(self) {
         self.0.disconnect()
     }
 }
