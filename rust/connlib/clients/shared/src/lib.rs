@@ -54,12 +54,6 @@ impl Session {
         max_partition_time: Option<Duration>,
         handle: tokio::runtime::Handle,
     ) -> connlib_shared::Result<Self> {
-        // TODO: We could use tokio::runtime::current() to get the current runtime
-        // which could work with swift-rust that already runs a runtime. But IDK if that will work
-        // in all platforms, a couple of new threads shouldn't bother none.
-        // Big question here however is how do we get the result? We could block here await the result and spawn a new task.
-        // but then platforms should know that this function is blocking.
-
         let callbacks = CallbackErrorFacade(callbacks);
         let (tx, rx) = tokio::sync::mpsc::channel(1);
 
