@@ -140,6 +140,12 @@ where
         (&self.private_key).into()
     }
 
+    pub fn is_connected_to(&self, key: PublicKey) -> bool {
+        self.connections
+            .iter_established()
+            .any(|(_, c)| c.remote_pub_key == key && c.tunnel.time_since_last_handshake().is_some())
+    }
+
     pub fn stats(&self) -> (NodeStats, impl Iterator<Item = (TId, ConnectionStats)> + '_) {
         (self.stats, self.connections.stats())
     }
@@ -475,6 +481,7 @@ where
             intent_sent_at,
             is_failed: false,
             signalling_completed_at: now,
+            remote_pub_key: remote,
         }
     }
 
@@ -1032,6 +1039,10 @@ where
         initial.chain(established)
     }
 
+    fn iter_established(&self) -> impl Iterator<Item = (TId, &Connection)> {
+        self.established.iter().map(|(id, conn)| (*id, conn))
+    }
+
     fn iter_established_mut(&mut self) -> impl Iterator<Item = (TId, &mut Connection)> {
         self.established.iter_mut().map(|(id, conn)| (*id, conn))
     }
@@ -1225,6 +1236,8 @@ impl InitialConnection {
 
 struct Connection {
     agent: IceAgent,
+
+    remote_pub_key: PublicKey,
 
     tunnel: Tunn,
     next_timer_update: Instant,
