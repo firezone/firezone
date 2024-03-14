@@ -11,7 +11,6 @@ use connlib_shared::{
 use domain::base::Rtype;
 use ip_network::IpNetwork;
 use secrecy::{ExposeSecret, Secret};
-use snownet::Client;
 
 use crate::{
     client::DnsResource,
@@ -19,8 +18,9 @@ use crate::{
     dns,
     peer::PacketTransformClient,
     utils::{stun, turn},
+    ClientTunnel,
 };
-use crate::{peer::Peer, ClientState, Error, Result, Tunnel};
+use crate::{peer::Peer, ClientState, Error, Result};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Request {
@@ -28,7 +28,7 @@ pub enum Request {
     ReuseConnection(ReuseConnection),
 }
 
-impl<CB> Tunnel<CB, ClientState, Client, GatewayId>
+impl<CB> ClientTunnel<CB>
 where
     CB: Callbacks + 'static,
 {

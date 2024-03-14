@@ -1,7 +1,7 @@
 use crate::ip_packet::{IpPacket, MutableIpPacket};
 use crate::peer::PacketTransformClient;
 use crate::peer_store::PeerStore;
-use crate::{dns, dns::DnsQuery, Tunnel};
+use crate::{dns, dns::DnsQuery};
 use bimap::BiMap;
 use connlib_shared::error::{ConnlibError as Error, ConnlibError};
 use connlib_shared::messages::{
@@ -13,9 +13,8 @@ use domain::base::Rtype;
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
 use itertools::Itertools;
-use snownet::Client;
 
-use crate::ClientEvent;
+use crate::{ClientEvent, ClientTunnel};
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::iter;
@@ -51,7 +50,7 @@ impl DnsResource {
     }
 }
 
-impl<CB> Tunnel<CB, ClientState, Client, GatewayId>
+impl<CB> ClientTunnel<CB>
 where
     CB: Callbacks + 'static,
 {

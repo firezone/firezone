@@ -67,7 +67,7 @@ pub struct Tunnel<CB: Callbacks, TRoleState, TRole, TId> {
     device_read_buf: Box<[u8; MAX_UDP_SIZE]>,
 }
 
-impl<CB> Tunnel<CB, ClientState, snownet::Client, GatewayId>
+impl<CB> ClientTunnel<CB>
 where
     CB: Callbacks + 'static,
 {
@@ -208,7 +208,7 @@ where
     }
 }
 
-impl<CB> Tunnel<CB, GatewayState, Server, ClientId>
+impl<CB> GatewayTunnel<CB>
 where
     CB: Callbacks + 'static,
 {

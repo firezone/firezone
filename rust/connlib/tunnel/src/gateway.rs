@@ -2,7 +2,7 @@ use crate::ip_packet::MutableIpPacket;
 use crate::peer::{PacketTransformGateway, Peer};
 use crate::peer_store::PeerStore;
 use crate::utils::{stun, turn};
-use crate::Tunnel;
+use crate::GatewayTunnel;
 use boringtun::x25519::PublicKey;
 use chrono::{DateTime, Utc};
 use connlib_shared::messages::{
@@ -12,7 +12,6 @@ use connlib_shared::messages::{
 use connlib_shared::{Callbacks, Dname, Error, Result};
 use ip_network::IpNetwork;
 use secrecy::{ExposeSecret as _, Secret};
-use snownet::Server;
 use std::collections::HashSet;
 use std::time::{Duration, Instant};
 
@@ -38,7 +37,7 @@ pub struct ResolvedResourceDescriptionDns {
 pub type ResourceDescription =
     connlib_shared::messages::ResourceDescription<ResolvedResourceDescriptionDns>;
 
-impl<CB> Tunnel<CB, GatewayState, Server, ClientId>
+impl<CB> GatewayTunnel<CB>
 where
     CB: Callbacks + 'static,
 {
