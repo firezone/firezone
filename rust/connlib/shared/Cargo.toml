@@ -19,6 +19,8 @@ chrono = { workspace = true }
 futures =  { version = "0.3", default-features = false, features = ["std", "async-await", "executor"] }
 futures-util =  { version = "0.3", default-features = false, features = ["std", "async-await", "async-await-macro"] }
 ip_network = { version = "0.4", default-features = false, features = ["serde"] }
+# Needed to mark functions as exempt from `cargo-mutants` testing
+mutants = "0.0.3"
 os_info = { version = "3", default-features = false }
 parking_lot = "0.12"
 rand = { version = "0.8", default-features = false, features = ["std"] }
