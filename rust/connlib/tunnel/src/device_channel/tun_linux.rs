@@ -49,6 +49,7 @@ const TUN_FILE: &CStr = unsafe { CStr::from_bytes_with_nul_unchecked(b"/dev/net/
 pub struct Tun {
     handle: Handle,
     connection: tokio::task::JoinHandle<()>,
+    dns_control_method: DnsControlMethod,
     fd: AsyncFd<RawFd>,
 
     worker: Option<BoxFuture<'static, Result<()>>>,
@@ -69,6 +70,9 @@ impl Drop for Tun {
     fn drop(&mut self) {
         unsafe { close(self.fd.as_raw_fd()) };
         self.connection.abort();
+        if let Some(DnsControlMethod::EtcResolvConf) = self.dns_control_method {
+            etc_resolv_conf::revert().await?;
+        }
     }
 }
 
@@ -135,6 +139,7 @@ impl Tun {
         Ok(Self {
             handle: handle.clone(),
             connection: join_handle,
+            dns_control_method,
             fd: AsyncFd::new(fd)?,
             worker: Some(
                 set_iface_config(config.clone(), dns_config, handle, dns_control_method).boxed(),

@@ -1,6 +1,6 @@
 //! Module to handle Windows system-wide DNS resolvers
 
-pub(crate) use imp::{get, revert, Error};
+pub(crate) use imp::{get, Error};
 
 #[cfg(target_os = "linux")]
 mod imp {
@@ -16,17 +16,6 @@ mod imp {
         tracing::error!("Resolvers module not yet implemented for Linux, returning empty Vec");
         Ok(Vec::default())
     }
-
-    // TODO: This should be integrated into connlib somehow.
-    // I think it's in the client because `tun_linux.rs` has no cleanup method.
-    // That might be fixable.
-    pub async fn revert() -> Result<()> {
-        let dns_control_method = get_dns_control_from_env();
-        if let Some(DnsControlMethod::EtcResolvConf) = dns_control_method {
-            etc_resolv_conf::revert().await?;
-        }
-        Ok(())
-    }
 }
 
 #[cfg(target_os = "macos")]
@@ -37,10 +26,6 @@ mod imp {
     pub type Error = anyhow::Error;
 
     pub fn get() -> Result<Vec<IpAddr>> {
-        unimplemented!()
-    }
-
-    pub async fn revert() -> Result<()> {
         unimplemented!()
     }
 }
@@ -67,10 +52,5 @@ mod imp {
             })
             .copied()
             .collect())
-    }
-
-    pub async fn revert() -> Result<()> {
-        // The only DNS control method on Windows doesn't need special reverting
-        Ok(())
     }
 }
