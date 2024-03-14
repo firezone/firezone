@@ -154,47 +154,18 @@ enum IPv4SubnetMaskLookup {
   ]
 }
 
+
 extension NetworkSettings {
-  static func parseRoutes4(routes4: [String]) -> [NEIPv4Route] {
-    return routes4.map { route4 in
-      let components = route4.split(separator: "/")
-      let address = String(components[0])
-      let prefix: Int = Int(components[1])!
-      let mask = IPv4SubnetMaskLookup.table[prefix]!
-      return NEIPv4Route(destinationAddress: address, subnetMask: mask)
-    }
-  }
+  struct Cidr: Codable {
+      let address: String
+      let prefix: Int
 
-  static func parseRoutes6(routes6: [String]) -> [NEIPv6Route] {
-    routes6.map { route6 in
-        let components = route6.split(separator: "/")
-        let address = String(components[0])
-        let prefix: NSNumber = NSNumber(value: Int(components.last!)!)
-        return NEIPv6Route(destinationAddress: address, networkPrefixLength: prefix)
-    }
-  }
+      var asNEIPv4Route: NEIPv4Route {
+          return NEIPv4Route(destinationAddress: address, subnetMask: String(prefix))
+      }
 
-  private static func validNetworkPrefixLength(fromString string: String, maximumValue: Int) -> Int
-  {
-    guard let networkPrefixLength = Int(string) else { return 0 }
-    if networkPrefixLength < 0 { return 0 }
-    if networkPrefixLength > maximumValue { return maximumValue }
-    return networkPrefixLength
-  }
-
-  private static func ipv4SubnetMask(networkPrefixLength: Int) -> String {
-    precondition(networkPrefixLength >= 0 && networkPrefixLength <= 32)
-    let mask: UInt32 = 0xFFFF_FFFF
-    let maxPrefixLength = 32
-    let octets = 4
-
-    let subnetMask = mask & (mask << (maxPrefixLength - networkPrefixLength))
-    var parts: [String] = []
-    for idx in 0...(octets - 1) {
-      let part = String(UInt32(0x0000_00FF) & (subnetMask >> ((octets - 1 - idx) * 8)), radix: 10)
-      parts.append(part)
-    }
-
-    return parts.joined(separator: ".")
+      var asNEIPv6Route: NEIPv6Route {
+          return NEIPv6Route(destinationAddress: address, networkPrefixLength: NSNumber(value: prefix))
+      }
   }
 }

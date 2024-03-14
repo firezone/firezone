@@ -2,9 +2,8 @@
 #![allow(clippy::unnecessary_cast, improper_ctypes, non_camel_case_types)]
 
 use connlib_client_shared::{
-    file_logger, keypair, Callbacks, Error, LoginUrl, ResourceDescription, Session,
+    file_logger, keypair, Callbacks, Cidrv4, Cidrv6, Error, LoginUrl, ResourceDescription, Session,
 };
-use ip_network::{Ipv4Network, Ipv6Network};
 use secrecy::SecretString;
 use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
@@ -122,8 +121,8 @@ impl Callbacks for CallbackHandler {
 
     fn on_update_routes(
         &self,
-        route_list_4: Vec<Ipv4Network>,
-        route_list_6: Vec<Ipv6Network>,
+        route_list_4: Vec<Cidrv4>,
+        route_list_6: Vec<Cidrv6>,
     ) -> Result<Option<RawFd>, Self::Error> {
         self.inner.on_update_routes(
             serde_json::to_string(&route_list_4).unwrap(),
