@@ -28,7 +28,7 @@ defmodule Domain.Gateways do
       Group.Query.all()
       |> Group.Query.by_id(id)
       |> Authorizer.for_subject(subject)
-      |> Repo.fetch(Gateway.Query, opts)
+      |> Repo.fetch(Group.Query, opts)
     else
       false -> {:error, :not_found}
       other -> other
@@ -41,6 +41,12 @@ defmodule Domain.Gateways do
       |> Authorizer.for_subject(subject)
       |> Repo.list(Group.Query, opts)
     end
+  end
+
+  def all_groups!(%Auth.Subject{} = subject) do
+    Group.Query.not_deleted()
+    |> Authorizer.for_subject(subject)
+    |> Repo.all()
   end
 
   def new_group(attrs \\ %{}) do
@@ -121,7 +127,7 @@ defmodule Domain.Gateways do
 
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_gateways_permission()),
          {:ok, token} <- Tokens.create_token(attrs, subject) do
-      {:ok, Tokens.encode_fragment!(token)}
+      {:ok, %{token | secret_nonce: nil, secret_fragment: nil}, Tokens.encode_fragment!(token)}
     end
   end
 
@@ -199,33 +205,11 @@ defmodule Domain.Gateways do
     end)
   end
 
-  # TODO: this should be replaced with a filter in list_gateways
-  def list_gateways_for_group(%Group{} = group, %Auth.Subject{} = subject, opts \\ []) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_gateways_permission()) do
-      Gateway.Query.not_deleted()
-      |> Gateway.Query.by_group_id(group.id)
-      |> Authorizer.for_subject(subject)
-      |> Repo.list(Gateway.Query, opts)
-    end
-  end
-
-  # TODO: this should be replaced with a filter in list_gateways
-  def list_connected_gateways_for_group(%Group{} = group, %Auth.Subject{} = subject, opts \\ []) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_gateways_permission()) do
-      connected_gateways_ids = group.id |> group_presence_topic() |> Presence.list() |> Map.keys()
-
-      {:ok, gateways} =
-        Gateway.Query.not_deleted()
-        |> Gateway.Query.by_ids(connected_gateways_ids)
-        |> Gateway.Query.by_group_id(group.id)
-        |> Authorizer.for_subject(subject)
-        |> Repo.list(Gateway.Query, opts)
-
-      gateways =
-        Enum.map(gateways, &%{&1 | online?: true})
-
-      {:ok, gateways}
-    end
+  def all_online_gateway_ids_by_group_id!(group_id) do
+    group_id
+    |> group_presence_topic()
+    |> Presence.list()
+    |> Map.keys()
   end
 
   def all_connected_gateways_for_resource(
@@ -281,8 +265,8 @@ defmodule Domain.Gateways do
     Gateway.Changeset.update(gateway, attrs)
   end
 
-  def upsert_gateway(%Group{} = group, attrs, %Auth.Context{} = context) do
-    changeset = Gateway.Changeset.upsert(group, attrs, context)
+  def upsert_gateway(%Group{} = group, %Tokens.Token{} = token, attrs, %Auth.Context{} = context) do
+    changeset = Gateway.Changeset.upsert(group, token, attrs, context)
 
     Ecto.Multi.new()
     |> Ecto.Multi.insert(:gateway, changeset,

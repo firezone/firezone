@@ -142,7 +142,7 @@ defmodule Domain.Repo.FilterTest do
     test "validates that value is whitelisted" do
       filter = %Filter{
         type: :string,
-        values: ["foo", "bar"]
+        values: [{"Foo", "foo"}, {"Bar", "bar"}]
       }
 
       assert validate_value(filter, "foo") == :ok
@@ -150,6 +150,18 @@ defmodule Domain.Repo.FilterTest do
 
       assert validate_value(filter, "baz") ==
                {:error, {:invalid_value, values: filter.values, value: "baz"}}
+    end
+
+    test "validates that all values are whitelisted" do
+      filter = %Filter{
+        type: {:list, :string},
+        values: [{"Foo", "foo"}, {"Bar", "bar"}]
+      }
+
+      assert validate_value(filter, ["foo", "bar"]) == :ok
+
+      assert validate_value(filter, ["foo", "baz"]) ==
+               {:error, {:invalid_value, values: filter.values, value: ["foo", "baz"]}}
     end
 
     test "returns error when type is invalid" do

@@ -888,6 +888,7 @@ defmodule Domain.ResourcesTest do
       assert {:error, changeset} = create_resource(%{}, subject)
 
       assert errors_on(changeset) == %{
+               name: ["can't be blank"],
                address: ["can't be blank"],
                address_description: ["can't be blank"],
                type: ["can't be blank"],

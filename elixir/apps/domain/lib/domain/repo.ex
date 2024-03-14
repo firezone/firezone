@@ -16,7 +16,8 @@ defmodule Domain.Repo do
     do: false
 
   @doc """
-  Similar to `Ecto.Repo.one/2`, fetches a single result from the query.
+  Similar to `Ecto.Repo.one/2`, fetches a single result from the query
+  but supports custom preloads and filters.
 
   Returns `{:ok, schema}` or `{:error, :not_found}` if no result was found.
 
@@ -26,35 +27,50 @@ defmodule Domain.Repo do
           queryable :: Ecto.Queryable.t(),
           query_module :: module(),
           opts ::
-            [{:preload, term()}]
+            [
+              {:preload, term()}
+              | {:filter, Domain.Repo.Filter.filters()}
+            ]
             | Keyword.t()
         ) ::
-          {:ok, Ecto.Schema.t()} | {:error, :not_found}
+          {:ok, Ecto.Schema.t()}
+          | {:error, :not_found}
+          | {:error, {:unknown_filter, metadata :: Keyword.t()}}
+          | {:error, {:invalid_type, metadata :: Keyword.t()}}
+          | {:error, {:invalid_value, metadata :: Keyword.t()}}
   def fetch(queryable, query_module, opts \\ []) do
     {preload, opts} = Keyword.pop(opts, :preload, [])
+    {filter, opts} = Keyword.pop(opts, :filter, [])
 
-    if schema = __MODULE__.one(queryable, opts) do
+    with {:ok, queryable} <- Filter.filter(queryable, query_module, filter),
+         schema when not is_nil(schema) <- __MODULE__.one(queryable, opts) do
       {schema, ecto_preloads} = Preloader.preload(schema, preload, query_module)
       schema = __MODULE__.preload(schema, ecto_preloads)
       {:ok, schema}
     else
-      {:error, :not_found}
+      nil -> {:error, :not_found}
+      {:error, reason} -> {:error, reason}
     end
   end
 
   @doc """
-  Alias of `Ecto.Repo.one!/2` added for naming convenience.
+  Alias of `Ecto.Repo.one!/2` that supports preloads and filters.
   """
   @spec fetch!(
           queryable :: Ecto.Queryable.t(),
           opts ::
-            [{:preload, term()}]
+            [
+              {:preload, term()}
+              | {:filter, Domain.Repo.Filter.filters()}
+            ]
             | Keyword.t()
         ) ::
           Ecto.Schema.t()
   def fetch!(queryable, query_module, opts \\ []) do
     {preload, opts} = Keyword.pop(opts, :preload, [])
+    {filter, opts} = Keyword.pop(opts, :filter, [])
 
+    {:ok, queryable} = Filter.filter(queryable, query_module, filter)
     schema = __MODULE__.one!(queryable, opts)
     {schema, ecto_preloads} = Preloader.preload(schema, preload, query_module)
     __MODULE__.preload(schema, ecto_preloads)
@@ -86,50 +102,57 @@ defmodule Domain.Repo do
           query_module :: module(),
           opts ::
             [
-              {:with, changeset_fun()},
-              {:preload, term()},
-              {:after_callback, after_commit() | [after_commit()]}
+              {:with, changeset_fun()}
+              | {:preload, term()}
+              | {:filter, Domain.Repo.Filter.filters()}
+              | {:after_callback, after_commit() | [after_commit()]}
             ]
             | Keyword.t()
         ) ::
           {:ok, Ecto.Schema.t()}
           | {:error, :not_found}
+          | {:error, {:unknown_filter, metadata :: Keyword.t()}}
+          | {:error, {:invalid_type, metadata :: Keyword.t()}}
+          | {:error, {:invalid_value, metadata :: Keyword.t()}}
           | {:error, Ecto.Changeset.t()}
           | {:error, term()}
   def fetch_and_update(queryable, query_module, opts) do
     {preload, opts} = Keyword.pop(opts, :preload, [])
+    {filter, opts} = Keyword.pop(opts, :filter, [])
     {after_commit, opts} = Keyword.pop(opts, :after_commit, [])
     {changeset_fun, repo_shared_opts} = Keyword.pop!(opts, :with)
 
     queryable = Ecto.Query.lock(queryable, "FOR NO KEY UPDATE")
 
-    fn ->
-      if schema = __MODULE__.one(queryable, repo_shared_opts) do
-        case changeset_fun.(schema) do
-          %Ecto.Changeset{} = changeset ->
-            {update(changeset, mode: :savepoint), changeset}
+    with {:ok, queryable} <- Filter.filter(queryable, query_module, filter) do
+      fn ->
+        if schema = __MODULE__.one(queryable, repo_shared_opts) do
+          case changeset_fun.(schema) do
+            %Ecto.Changeset{} = changeset ->
+              {update(changeset, mode: :savepoint), changeset}
 
-          reason ->
-            {:error, reason}
+            reason ->
+              {:error, reason}
+          end
+        else
+          {:error, :not_found}
         end
-      else
-        {:error, :not_found}
       end
-    end
-    |> transaction(repo_shared_opts)
-    |> case do
-      {:ok, {{:ok, schema}, changeset}} ->
-        :ok = execute_after_commit(schema, changeset, after_commit)
-        {:ok, execute_preloads(schema, query_module, preload)}
+      |> transaction(repo_shared_opts)
+      |> case do
+        {:ok, {{:ok, schema}, changeset}} ->
+          :ok = execute_after_commit(schema, changeset, after_commit)
+          {:ok, execute_preloads(schema, query_module, preload)}
 
-      {:ok, {{:error, reason}, _changeset}} ->
-        {:error, reason}
+        {:ok, {{:error, reason}, _changeset}} ->
+          {:error, reason}
 
-      {:ok, {:error, reason}} ->
-        {:error, reason}
+        {:ok, {:error, reason}} ->
+          {:error, reason}
 
-      {:error, reason} ->
-        {:error, reason}
+        {:error, reason} ->
+          {:error, reason}
+      end
     end
   end
 

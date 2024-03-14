@@ -150,6 +150,11 @@ defmodule Domain.Resources.Resource.Query do
         type: {:string, :uuid},
         values: [],
         fun: &filter_by_gateway_group_id/2
+      },
+      %Domain.Repo.Filter{
+        name: :deleted?,
+        type: :boolean,
+        fun: &filter_deleted/1
       }
     ]
 
@@ -165,5 +170,9 @@ defmodule Domain.Resources.Resource.Query do
   def filter_by_gateway_group_id(queryable, gateway_group_id) do
     {with_joined_connections(queryable),
      dynamic([connections: connections], connections.gateway_group_id == ^gateway_group_id)}
+  end
+
+  def filter_deleted(queryable) do
+    {queryable, dynamic([resources: resources], not is_nil(resources.deleted_at))}
   end
 end

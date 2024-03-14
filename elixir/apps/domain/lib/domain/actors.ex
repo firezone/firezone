@@ -46,14 +46,13 @@ defmodule Domain.Actors do
     end
   end
 
-  def all_group_options!(%Auth.Subject{} = subject) do
+  def all_groups!(%Auth.Subject{} = subject, opts \\ []) do
+    {preload, _opts} = Keyword.pop(opts, :preload, [])
+
     Group.Query.not_deleted()
-    |> Group.Query.by_account_id(subject.account.id)
     |> Authorizer.for_subject(subject)
     |> Repo.all()
-    |> Enum.map(fn group ->
-      {group.name, group.id}
-    end)
+    |> Repo.preload(preload)
   end
 
   # TODO: this should be a filter
@@ -297,7 +296,7 @@ defmodule Domain.Actors do
   def group_managed?(%Group{}), do: false
 
   def group_editable?(%Group{} = group),
-    do: not group_synced?(group) and not group_managed?(group)
+    do: not group_deleted?(group) and not group_synced?(group) and not group_managed?(group)
 
   def group_deleted?(%Group{deleted_at: nil}), do: false
   def group_deleted?(%Group{}), do: true
@@ -347,19 +346,9 @@ defmodule Domain.Actors do
     |> Repo.all()
   end
 
-  def all_actor_options!(%Auth.Subject{} = subject) do
-    Actor.Query.not_deleted()
-    |> Actor.Query.by_account_id(subject.account.id)
-    |> Authorizer.for_subject(subject)
-    |> Repo.all()
-    |> Enum.map(fn actor ->
-      {actor.name, actor.id}
-    end)
-  end
-
   def preload_last_seen_at(actors) do
     actor_ids = Enum.map(actors, & &1.id)
-    last_seen_at = Auth.min_last_seen_at_by_actor_ids(actor_ids)
+    last_seen_at = Auth.max_last_seen_at_by_actor_ids(actor_ids)
 
     Enum.map(actors, fn actor ->
       %{actor | last_seen_at: Map.get(last_seen_at, actor.id)}

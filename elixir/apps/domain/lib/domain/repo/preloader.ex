@@ -78,6 +78,18 @@ defmodule Domain.Repo.Preloader do
           preloads
         }
 
+      {nil, nested_preload_funs} ->
+        results = Domain.Repo.preload(results, preload)
+
+        {results, nested_ecto_preloads} =
+          handle_nested_preloads(results, preload, nested_preloads, nested_preload_funs)
+
+        {
+          results,
+          [{preload, nested_ecto_preloads}] ++ ecto_preloads,
+          preloads
+        }
+
       # if we got a query and also nested preloads - we have to execute it right away to proceed
       {%Ecto.Query{} = query, nested_preload_funs} ->
         results = Domain.Repo.preload(results, [{preload, query}])
@@ -160,6 +172,9 @@ defmodule Domain.Repo.Preloader do
 
       nil ->
         nil
+
+      nested_preload_funs when is_list(nested_preload_funs) ->
+        {nil, nested_preload_funs}
 
       preload_fun ->
         {preload_fun, []}

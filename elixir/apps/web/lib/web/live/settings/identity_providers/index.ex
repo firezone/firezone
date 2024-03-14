@@ -8,36 +8,44 @@ defmodule Web.Settings.IdentityProviders.Index do
            Auth.fetch_identities_count_grouped_by_provider_id(socket.assigns.subject),
          {:ok, groups_count_by_provider_id} <-
            Actors.fetch_groups_count_grouped_by_provider_id(socket.assigns.subject) do
-      sortable_fields = [
-        {:providers, :name}
-      ]
+      socket =
+        socket
+        |> assign(
+          page_title: "Identity Providers",
+          identities_count_by_provider_id: identities_count_by_provider_id,
+          groups_count_by_provider_id: groups_count_by_provider_id
+        )
+        |> assign_live_table("providers",
+          query_module: Auth.Provider.Query,
+          sortable_fields: [
+            {:providers, :name}
+          ],
+          callback: &handle_providers_update!/2
+        )
 
-      {:ok,
-       assign(socket,
-         page_title: "Identity Providers",
-         sortable_fields: sortable_fields,
-         identities_count_by_provider_id: identities_count_by_provider_id,
-         groups_count_by_provider_id: groups_count_by_provider_id
-       )}
+      {:ok, socket}
     else
       _ -> raise Web.LiveErrors.NotFoundError
     end
   end
 
   def handle_params(params, uri, socket) do
-    {socket, list_opts} =
-      handle_rich_table_params(params, uri, socket, "providers", Auth.Provider.Query)
+    socket = handle_live_tables_params(socket, params, uri)
+    {:noreply, socket}
+  end
 
+  def handle_providers_update!(socket, list_opts) do
     with {:ok, providers, metadata} <- Auth.list_providers(socket.assigns.subject, list_opts) do
-      socket =
-        assign(socket,
-          providers: providers,
-          metadata: metadata
-        )
-
-      {:noreply, socket}
+      assign(socket,
+        providers: providers,
+        providers_metadata: metadata
+      )
     else
-      _ -> raise Web.LiveErrors.NotFoundError
+      {:error, :invalid_cursor} -> raise Web.LiveErrors.InvalidRequestError
+      {:error, {:unknown_filter, _metadata}} -> raise Web.LiveErrors.InvalidRequestError
+      {:error, {:invalid_type, _metadata}} -> raise Web.LiveErrors.InvalidRequestError
+      {:error, {:invalid_value, _metadata}} -> raise Web.LiveErrors.InvalidRequestError
+      {:error, _reason} -> raise Web.LiveErrors.NotFoundError
     end
   end
 
@@ -65,49 +73,51 @@ defmodule Web.Settings.IdentityProviders.Index do
       </:help>
       <:content>
         <.flash_group flash={@flash} />
-        <div class="bg-white overflow-hidden">
-          <.rich_table
-            id="providers"
-            rows={@providers}
-            row_id={&"providers-#{&1.id}"}
-            sortable_fields={@sortable_fields}
-            filters={@filters}
-            filter={@filter}
-            metadata={@metadata}
-          >
-            <:col :let={provider} label="Name">
-              <.link navigate={view_provider(@account, provider)} class={[link_style()]}>
-                <%= provider.name %>
-              </.link>
-            </:col>
-            <:col :let={provider} label="Type"><%= adapter_name(provider.adapter) %></:col>
-            <:col :let={provider} label="Status">
-              <.status provider={provider} />
-            </:col>
-            <:col :let={provider} label="Sync Status">
-              <.sync_status
-                account={@account}
-                provider={provider}
-                identities_count_by_provider_id={@identities_count_by_provider_id}
-                groups_count_by_provider_id={@groups_count_by_provider_id}
-              />
-            </:col>
-            <:empty>
-              <div class="flex justify-center text-center text-neutral-500 p-4">
-                <div class="w-auto">
-                  <div class="pb-4">
-                    No identity providers to display
-                  </div>
-                  <.add_button navigate={~p"/#{@account}/settings/identity_providers/new"}>
-                    Add Identity Provider
-                  </.add_button>
+
+        <.live_table
+          id="providers"
+          rows={@providers}
+          row_id={&"providers-#{&1.id}"}
+          filters={@filters_by_table_id["providers"]}
+          filter={@filter_form_by_table_id["providers"]}
+          ordered_by={@order_by_table_id["providers"]}
+          metadata={@providers_metadata}
+        >
+          <:col :let={provider} field={{:providers, :name}} label="Name">
+            <.link navigate={view_provider(@account, provider)} class={[link_style()]}>
+              <%= provider.name %>
+            </.link>
+          </:col>
+          <:col :let={provider} label="Type"><%= adapter_name(provider.adapter) %></:col>
+          <:col :let={provider} label="Status">
+            <.status provider={provider} />
+          </:col>
+          <:col :let={provider} label="Sync Status">
+            <.sync_status
+              account={@account}
+              provider={provider}
+              identities_count_by_provider_id={@identities_count_by_provider_id}
+              groups_count_by_provider_id={@groups_count_by_provider_id}
+            />
+          </:col>
+          <:empty>
+            <div class="flex justify-center text-center text-neutral-500 p-4">
+              <div class="w-auto">
+                <div class="pb-4">
+                  No identity providers to display
                 </div>
+                <.add_button navigate={~p"/#{@account}/settings/identity_providers/new"}>
+                  Add Identity Provider
+                </.add_button>
               </div>
-            </:empty>
-          </.rich_table>
-        </div>
+            </div>
+          </:empty>
+        </.live_table>
       </:content>
     </.section>
     """
   end
+
+  def handle_event(event, params, socket) when event in ["paginate", "order_by", "filter"],
+    do: handle_live_table_event(event, params, socket)
 end

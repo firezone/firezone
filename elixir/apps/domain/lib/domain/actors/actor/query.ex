@@ -153,6 +153,13 @@ defmodule Domain.Actors.Actor.Query do
         fun: &filter_by_name_or_email_fts/2
       },
       %Domain.Repo.Filter{
+        name: :provider_id,
+        title: "Provider",
+        type: {:string, :uuid},
+        values: &Domain.Auth.all_providers!/1,
+        fun: &filter_by_identity_provider_id/2
+      },
+      %Domain.Repo.Filter{
         name: :type,
         title: "Type",
         type: :string,
@@ -165,17 +172,29 @@ defmodule Domain.Actors.Actor.Query do
         fun: &filter_by_type/2
       },
       %Domain.Repo.Filter{
-        name: :provider_id,
-        title: "Provider",
-        type: {:string, :uuid},
-        values: [],
-        fun: &filter_by_identity_provider_id/2
+        name: :types,
+        type: {:list, :string},
+        values: [
+          {"Account User", "account_user"},
+          {"Account Admin User", "account_admin_user"},
+          {"Service Account", "service_account"},
+          {"API Client", "api_client"}
+        ],
+        fun: &filter_by_types/2
+      },
+      %Domain.Repo.Filter{
+        name: :deleted?,
+        type: :boolean,
+        fun: &filter_deleted/1
       }
     ]
 
   def filter_by_type(queryable, type) do
-    type = String.to_existing_atom(type)
     {queryable, dynamic([actors: actors], actors.type == ^type)}
+  end
+
+  def filter_by_types(queryable, types) do
+    {queryable, dynamic([actors: actors], actors.type in ^types)}
   end
 
   def filter_by_name_or_email_fts(queryable, name_or_email) do
@@ -208,5 +227,9 @@ defmodule Domain.Actors.Actor.Query do
       )
 
     {queryable, dynamic(exists(subquery))}
+  end
+
+  def filter_deleted(queryable) do
+    {queryable, dynamic([actors: actors], not is_nil(actors.deleted_at))}
   end
 end

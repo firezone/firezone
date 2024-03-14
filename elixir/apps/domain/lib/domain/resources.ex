@@ -65,14 +65,11 @@ defmodule Domain.Resources do
     end
   end
 
-  def all_resource_options!(%Auth.Subject{} = subject) do
+  def all_resources!(%Auth.Subject{} = subject) do
     Resource.Query.not_deleted()
     |> Resource.Query.by_account_id(subject.account.id)
     |> Authorizer.for_subject(Resource, subject)
     |> Repo.all()
-    |> Enum.map(fn resource ->
-      {resource.name, resource.id}
-    end)
   end
 
   def list_resources(%Auth.Subject{} = subject, opts \\ []) do
@@ -81,6 +78,15 @@ defmodule Domain.Resources do
       |> Authorizer.for_subject(Resource, subject)
       |> Repo.list(Resource.Query, opts)
     end
+  end
+
+  def all_resources!(%Auth.Subject{} = subject, opts \\ []) do
+    {preload, _opts} = Keyword.pop(opts, :preload, [])
+
+    Resource.Query.not_deleted()
+    |> Authorizer.for_subject(Resource, subject)
+    |> Repo.all()
+    |> Repo.preload(preload)
   end
 
   def count_resources_for_gateway(%Gateways.Gateway{} = gateway, %Auth.Subject{} = subject) do

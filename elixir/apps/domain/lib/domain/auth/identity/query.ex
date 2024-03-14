@@ -182,12 +182,12 @@ defmodule Domain.Auth.Identity.Query do
     })
   end
 
-  def min_last_seen_at_grouped_by_actor_id(queryable) do
+  def max_last_seen_at_grouped_by_actor_id(queryable) do
     queryable
     |> group_by([identities: identities], identities.actor_id)
     |> select([identities: identities], %{
       actor_id: identities.actor_id,
-      count: min(identities.last_seen_at)
+      max: max(identities.last_seen_at)
     })
   end
 

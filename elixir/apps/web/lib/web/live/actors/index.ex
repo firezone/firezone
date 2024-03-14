@@ -4,30 +4,40 @@ defmodule Web.Actors.Index do
   alias Domain.Actors
 
   def mount(_params, _session, socket) do
-    sortable_fields = [
-      {:actors, :name}
-    ]
+    socket =
+      socket
+      |> assign(page_title: "Actors")
+      |> assign_live_table("actors",
+        query_module: Actors.Actor.Query,
+        sortable_fields: [
+          {:actors, :name}
+        ],
+        callback: &handle_actors_update!/2
+      )
 
-    {:ok, assign(socket, page_title: "Actors", sortable_fields: sortable_fields)}
+    {:ok, socket}
   end
 
   def handle_params(params, uri, socket) do
-    {socket, list_opts} =
-      handle_rich_table_params(params, uri, socket, "actors", Actors.Actor.Query,
-        preload: [identities: :provider]
-      )
+    socket = handle_live_tables_params(socket, params, uri)
+    {:noreply, socket}
+  end
+
+  def handle_actors_update!(socket, list_opts) do
+    list_opts = Keyword.put(list_opts, :preload, [:last_seen_at, identities: :provider])
 
     with {:ok, actors, metadata} <- Actors.list_actors(socket.assigns.subject, list_opts),
          {:ok, actor_groups} <- Actors.peek_actor_groups(actors, 3, socket.assigns.subject) do
-      socket =
-        assign(socket,
-          actors: actors,
-          actor_groups: actor_groups,
-          metadata: metadata
-        )
-
-      {:noreply, socket}
+      assign(socket,
+        actors: actors,
+        actors_metadata: metadata,
+        actor_groups: actor_groups
+      )
     else
+      {:error, :invalid_cursor} -> raise Web.LiveErrors.InvalidRequestError
+      {:error, {:unknown_filter, _metadata}} -> raise Web.LiveErrors.InvalidRequestError
+      {:error, {:invalid_type, _metadata}} -> raise Web.LiveErrors.InvalidRequestError
+      {:error, {:invalid_value, _metadata}} -> raise Web.LiveErrors.InvalidRequestError
       {:error, _reason} -> raise Web.LiveErrors.NotFoundError
     end
   end
@@ -50,16 +60,17 @@ defmodule Web.Actors.Index do
         Actors are the people and services that can access your resources.
       </:help>
       <:content>
-        <.rich_table
+        <.flash_group flash={@flash} />
+        <.live_table
           id="actors"
           rows={@actors}
           row_id={&"user-#{&1.id}"}
-          sortable_fields={@sortable_fields}
-          filters={@filters}
-          filter={@filter}
-          metadata={@metadata}
+          filters={@filters_by_table_id["actors"]}
+          filter={@filter_form_by_table_id["actors"]}
+          ordered_by={@order_by_table_id["actors"]}
+          metadata={@actors_metadata}
         >
-          <:col :let={actor} label="name" field={{:actors, :name}} order_by={@order_by}>
+          <:col :let={actor} field={{:actors, :name}} label="name">
             <.actor_name_and_role account={@account} actor={actor} />
           </:col>
 
@@ -92,14 +103,14 @@ defmodule Web.Actors.Index do
           </:col>
 
           <:col :let={actor} label="last signed in">
-            <.relative_datetime datetime={last_seen_at(actor.identities)} />
+            <.relative_datetime datetime={actor.last_seen_at} />
           </:col>
-        </.rich_table>
+        </.live_table>
       </:content>
     </.section>
     """
   end
 
   def handle_event(event, params, socket) when event in ["paginate", "order_by", "filter"],
-    do: handle_rich_table_event(event, params, socket)
+    do: handle_live_table_event(event, params, socket)
 end

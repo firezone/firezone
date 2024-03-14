@@ -116,6 +116,7 @@ defmodule Domain.Policies.Policy.Query do
         name: :resource_id,
         title: "Resource",
         type: {:string, :uuid},
+        values: &Domain.Resources.all_resources!/1,
         fun: &filter_by_resource_id/2
       },
       %Domain.Repo.Filter{
@@ -133,6 +134,11 @@ defmodule Domain.Policies.Policy.Query do
           {"Disabled", "disabled"}
         ],
         fun: &filter_by_status/2
+      },
+      %Domain.Repo.Filter{
+        name: :deleted?,
+        type: :boolean,
+        fun: &filter_deleted/1
       }
     ]
 
@@ -150,5 +156,9 @@ defmodule Domain.Policies.Policy.Query do
 
   def filter_by_status(queryable, "disabled") do
     {queryable, dynamic([policies: policies], not is_nil(policies.disabled_at))}
+  end
+
+  def filter_deleted(queryable) do
+    {queryable, dynamic([policies: policies], not is_nil(policies.deleted_at))}
   end
 end

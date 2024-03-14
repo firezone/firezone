@@ -6,11 +6,11 @@ defmodule Domain.AuthTest do
 
   # Providers
 
-  describe "list_user_provisioned_provider_adapters!/1" do
+  describe "all_user_provisioned_provider_adapters!/1" do
     test "returns list of enabled adapters for an account" do
       account = Fixtures.Accounts.create_account(features: %{idp_sync: true})
 
-      assert Enum.sort(list_user_provisioned_provider_adapters!(account)) == [
+      assert Enum.sort(all_user_provisioned_provider_adapters!(account)) == [
                google_workspace: [enabled: true],
                microsoft_entra: [enabled: true],
                okta: [enabled: true],
@@ -19,7 +19,7 @@ defmodule Domain.AuthTest do
 
       account = Fixtures.Accounts.create_account(features: %{idp_sync: false})
 
-      assert Enum.sort(list_user_provisioned_provider_adapters!(account)) == [
+      assert Enum.sort(all_user_provisioned_provider_adapters!(account)) == [
                google_workspace: [enabled: false],
                microsoft_entra: [enabled: false],
                okta: [enabled: false],
@@ -493,7 +493,7 @@ defmodule Domain.AuthTest do
         sync_disabled_at: DateTime.utc_now()
       })
 
-      assert list_providers_pending_sync_by_adapter(:google_workspace) == {:ok, []}
+      assert all_providers_pending_sync_by_adapter!(:google_workspace) == []
     end
   end
 
@@ -1270,6 +1270,29 @@ defmodule Domain.AuthTest do
 
   # Identities
 
+  describe "max_last_seen_at_by_actor_ids/1" do
+    test "returns maximum last seen at for given actor ids" do
+      account = Fixtures.Accounts.create_account()
+      actor = Fixtures.Actors.create_actor(account: account)
+      now = DateTime.utc_now()
+
+      identity =
+        Fixtures.Auth.create_identity(
+          account: account,
+          actor: actor,
+          last_seen_at: now
+        )
+
+      Fixtures.Auth.create_identity(
+        account: account,
+        actor: actor,
+        last_seen_at: DateTime.add(now, -1, :hour)
+      )
+
+      assert max_last_seen_at_by_actor_ids([actor.id]) == %{actor.id => identity.last_seen_at}
+    end
+  end
+
   describe "fetch_active_identity_by_provider_and_identifier/3" do
     test "returns nothing when identity doesn't exist" do
       account = Fixtures.Accounts.create_account()
@@ -1748,8 +1771,8 @@ defmodule Domain.AuthTest do
       assert Enum.all?(provider_identifiers, &(&1 in delete))
       assert deleted_identity1.provider_identifier in delete
       assert deleted_identity2.provider_identifier in delete
-      assert Repo.aggregate(Auth.Identity, :count) == 6
-      assert Repo.aggregate(Auth.Identity.Query.not_deleted(), :count) == 4
+      assert Repo.aggregate(Auth.Identity, :count) == 9
+      assert Repo.aggregate(Auth.Identity.Query.not_deleted(), :count) == 7
 
       assert Enum.empty?(actor_ids_by_provider_identifier)
 

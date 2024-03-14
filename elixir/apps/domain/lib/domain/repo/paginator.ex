@@ -270,6 +270,7 @@ defmodule Domain.Repo.Paginator do
         %NaiveDateTime{} = ndt -> {NaiveDateTime, NaiveDateTime.to_iso8601(ndt)}
         %Date{} = date -> {Date, Date.to_iso8601(date)}
         %Time{} = time -> {Time, Time.to_iso8601(time)}
+        nil -> nil
         other -> {:t, other}
       end
     end)
@@ -278,8 +279,9 @@ defmodule Domain.Repo.Paginator do
   defp decode_cursor(encoded) do
     with {:ok, etf} <- Base.url_decode64(encoded, padding: false),
          {direction, values} <- Plug.Crypto.non_executable_binary_to_term(etf, [:safe]),
+         values = decompress_cursor(values),
          false <- Enum.any?(values, &is_nil/1) do
-      {:ok, {direction, decompress_cursor(values)}}
+      {:ok, {direction, values}}
     else
       _ -> {:error, :invalid_cursor}
     end
@@ -289,6 +291,7 @@ defmodule Domain.Repo.Paginator do
 
   defp decompress_cursor(cursor_fields) do
     Enum.map(cursor_fields, fn
+      nil -> nil
       {:t, term} -> term
       {DateTime, iso8601} -> DateTime.from_unix!(iso8601, :nanosecond)
       {NaiveDateTime, iso8601} -> NaiveDateTime.from_iso8601!(iso8601)

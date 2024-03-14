@@ -232,7 +232,7 @@ defmodule Web.Auth do
   ## Controller Helpers
   ###########################
 
-  def list_recent_account_ids(conn) do
+  def all_recent_account_ids(conn) do
     conn = Plug.Conn.fetch_cookies(conn, signed: [@recent_accounts_cookie_name])
 
     if recent_account_ids = Map.get(conn.cookies, @recent_accounts_cookie_name) do
@@ -249,7 +249,7 @@ defmodule Web.Auth do
   end
 
   def update_recent_account_ids(conn, callback) when is_function(callback, 1) do
-    {:ok, recent_account_ids, conn} = list_recent_account_ids(conn)
+    {:ok, recent_account_ids, conn} = all_recent_account_ids(conn)
 
     recent_account_ids =
       recent_account_ids

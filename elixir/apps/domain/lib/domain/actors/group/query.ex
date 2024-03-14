@@ -160,7 +160,18 @@ defmodule Domain.Actors.Group.Query do
         name: :provider_id,
         title: "Provider",
         type: {:string, :uuid},
+        values: &Domain.Auth.all_third_party_providers!/1,
         fun: &filter_by_provider_id/2
+      },
+      %Domain.Repo.Filter{
+        name: :deleted?,
+        type: :boolean,
+        fun: &filter_deleted/1
+      },
+      %Domain.Repo.Filter{
+        name: :editable?,
+        type: :boolean,
+        fun: &filter_editable/1
       }
     ]
 
@@ -170,5 +181,19 @@ defmodule Domain.Actors.Group.Query do
 
   def filter_by_provider_id(queryable, provider_id) do
     {queryable, dynamic([groups: groups], groups.provider_id == ^provider_id)}
+  end
+
+  def filter_deleted(queryable) do
+    {queryable, dynamic([groups: groups], not is_nil(groups.deleted_at))}
+  end
+
+  def filter_editable(queryable) do
+    {queryable,
+     dynamic(
+       [groups: groups],
+       is_nil(groups.provider_id) and
+         is_nil(groups.deleted_at) and
+         groups.type == :static
+     )}
   end
 end

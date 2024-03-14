@@ -62,6 +62,8 @@ defmodule Domain.Repo.Filter do
           | (Ecto.Queryable.t() ->
                {Ecto.Queryable.t(), %Ecto.Query.DynamicExpr{}})
 
+  @type values :: [{value :: term(), name :: String.t()}] | [{group_name :: String.t(), values()}]
+
   @doc """
   Defines a filter.
 
@@ -71,7 +73,7 @@ defmodule Domain.Repo.Filter do
           name: atom(),
           title: String.t() | nil,
           type: type(),
-          values: [{value :: term(), name :: String.t()}] | Range.t() | nil,
+          values: values() | Range.t() | (Domain.Auth.Subject.t() -> values() | Range.t()) | nil,
           fun: fun()
         }
 
@@ -206,12 +208,24 @@ defmodule Domain.Repo.Filter do
       values == [] or values == nil ->
         :ok
 
-      Enum.any?(values, fn {_name, val} -> val == value end) ->
+      value_valid?(type, value, values) ->
         :ok
 
       true ->
         {:error, {:invalid_value, values: values, value: value}}
     end
+  end
+
+  defp value_valid?(_type, _value, values) when is_function(values, 1) do
+    :ok
+  end
+
+  defp value_valid?({:list, subtype}, value, values) do
+    Enum.all?(value, &value_valid?(subtype, &1, values))
+  end
+
+  defp value_valid?(_type, value, values) do
+    Enum.any?(values, fn {_k, v} -> v == value end)
   end
 
   defp value_type_valid?({:range, type}, %Range{from: from, to: to}) do

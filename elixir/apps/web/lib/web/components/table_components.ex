@@ -6,50 +6,62 @@ defmodule Web.TableComponents do
   use Web, :verified_routes
   import Web.Gettext
   import Web.CoreComponents
-  import Web.FormComponents
 
+  attr :table_id, :string, required: true, doc: "id of the parent table"
   attr :columns, :any, required: true, doc: "col slot taken from parent component"
   attr :actions, :any, required: true, doc: "action slot taken from parent component"
-  attr :sortable_fields, :list, default: [], doc: "the list of fields that can be sorted"
+
+  # LiveTable component attributes
+  attr :ordered_by, :any, default: nil, doc: "the current order for the table"
 
   def table_header(assigns) do
     ~H"""
-    <thead class="text-xs text-neutral-700 uppercase bg-neutral-50">
+    <thead id={"#{@table_id}-header"} class="text-xs text-neutral-700 uppercase bg-neutral-50">
       <tr>
         <th :for={col <- @columns} class={["px-4 py-3 font-medium", Map.get(col, :class, "")]}>
           <%= col[:label] %>
-          <span :if={col[:field] in @sortable_fields}>
-            <% {assoc_name, field_name} = col[:field] %>
-            <% current_order =
-              if match?({^assoc_name, _, ^field_name}, col[:order_by]),
-                do: elem(col[:order_by], 1) %>
-            <button
-              phx-click="order_by"
-              phx-value-order_by={"#{assoc_name}:#{current_order || :asc}:#{field_name}"}
-            >
-              <.icon
-                name={
-                  cond do
-                    current_order == :asc ->
-                      "hero-chevron-up-solid"
-
-                    current_order == :desc ->
-                      "hero-chevron-down-solid"
-
-                    true ->
-                      "hero-chevron-up-down-solid"
-                  end
-                }
-                class="w-4 h-4 ml-1"
-              />
-            </button>
-          </span>
+          <.table_header_order_buttons
+            :if={col[:field]}
+            field={col[:field]}
+            table_id={@table_id}
+            ordered_by={@ordered_by}
+          />
         </th>
         <th :if={not Enum.empty?(@actions)} class="px-4 py-3">
           <span class="sr-only"><%= gettext("Actions") %></span>
         </th>
       </tr>
     </thead>
+    """
+  end
+
+  defp table_header_order_buttons(assigns) do
+    ~H"""
+    <% {assoc_name, field_name} = @field %>
+    <% current_order =
+      if match?({^assoc_name, _, ^field_name}, @ordered_by),
+        do: elem(@ordered_by, 1) %>
+    <button
+      phx-click="order_by"
+      phx-value-table_id={@table_id}
+      phx-value-order_by={"#{assoc_name}:#{current_order || :asc}:#{field_name}"}
+    >
+      <.icon
+        name={
+          cond do
+            current_order == :asc ->
+              "hero-chevron-up-solid"
+
+            current_order == :desc ->
+              "hero-chevron-down-solid"
+
+            true ->
+              "hero-chevron-up-down-solid"
+          end
+        }
+        class="w-4 h-4 ml-1"
+      />
+    </button>
     """
   end
 
@@ -120,261 +132,17 @@ defmodule Web.TableComponents do
   attr :rows, :list, required: true
   attr :row_id, :any, default: nil, doc: "the function for generating the row id"
   attr :row_click, :any, default: nil, doc: "the function for handling phx-click on each row"
+  attr :class, :string, default: nil, doc: "the class for the table"
 
   attr :row_item, :any,
     default: &Function.identity/1,
     doc: "the function for mapping each row before calling the :col and :action slots"
 
-  attr :sortable_fields, :list, default: [], doc: "the list of fields that can be sorted"
-  attr :filters, :list, required: true, doc: "the query filters enabled for the table"
-  attr :filter, :map, required: true, doc: "the filter form for the table"
-
-  attr :metadata, :map,
-    required: true,
-    doc: "the metadata for the table pagination as returned by Repo.list/3"
+  attr :ordered_by, :any, required: false, default: nil, doc: "the current order for the table"
 
   slot :col, required: true do
     attr :label, :string
-    attr :field, :any
-    attr :order_by, :any
-    attr :class, :string
-  end
-
-  slot :action, doc: "the slot for showing user actions in the last table column"
-  slot :empty, doc: "the slot for showing a message or content when there are no rows"
-
-  def rich_table(assigns) do
-    assigns =
-      with %{rows: %Phoenix.LiveView.LiveStream{}} <- assigns do
-        assign(assigns, row_id: assigns.row_id || fn {id, _item} -> id end)
-      end
-
-    ~H"""
-    <div class="overflow-x-auto">
-      <.resource_filter id={"#{@id}-filters"} form={@filter} filters={@filters} />
-
-      <table class="w-full text-sm text-left text-neutral-500 table-fixed" id={@id}>
-        <.table_header columns={@col} actions={@action} sortable_fields={@sortable_fields} />
-        <tbody
-          id={"#{@id}-rows"}
-          phx-update={match?(%Phoenix.LiveView.LiveStream{}, @rows) && "stream"}
-        >
-          <.table_row
-            :for={row <- @rows}
-            columns={@col}
-            actions={@action}
-            row={row}
-            id={@row_id && @row_id.(row)}
-            click={@row_click}
-            mapper={@row_item}
-          />
-        </tbody>
-      </table>
-      <div :if={Enum.empty?(@rows)} id={"#{@id}-empty"}>
-        <%= render_slot(@empty) %>
-      </div>
-
-      <.paginator metadata={@metadata} />
-    </div>
-    """
-  end
-
-  def resource_filter(assigns) do
-    ~H"""
-    <.form id={@id} for={@form} phx-change="filter" phx-debounce="100">
-      <div
-        :for={filter <- @filters}
-        class="flex flex-col md:flex-row items-center justify-between space-y-3 md:space-y-0 md:space-x-4 pb-4"
-      >
-        <div class="w-full md:w-1/2">
-          <.filter form={@form} filter={filter} />
-        </div>
-      </div>
-    </.form>
-    """
-  end
-
-  def filter(%{filter: %{type: {:string, :websearch}}} = assigns) do
-    ~H"""
-    <div class={["relative w-full"]} phx-feedback-for={@form[@filter.name].name}>
-      <div class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
-        <.icon name="hero-magnifying-glass" class="w-5 h-5 text-neutral-500" />
-      </div>
-
-      <input
-        type="text"
-        name={@form[@filter.name].name}
-        id={@form[@filter.name].id}
-        value={Phoenix.HTML.Form.normalize_value("text", @form[@filter.name].value)}
-        placeholder={"Search by " <> @filter.title}
-        class={[
-          "bg-neutral-50 border border-neutral-300 text-neutral-900 text-sm rounded",
-          "block w-full pl-10 p-2",
-          "phx-no-feedback:border-neutral-300",
-          "disabled:bg-neutral-50 disabled:text-neutral-500 disabled:border-neutral-200 disabled:shadow-none",
-          "focus:outline-none focus:border-1 focus:ring-0",
-          "border-neutral-300",
-          @form[@filter.name].errors != [] && "border-rose-400"
-        ]}
-      />
-      <.error
-        :for={msg <- @form[@filter.name].errors}
-        data-validation-error-for={@form[@filter.name].name}
-      >
-        <%= msg %>
-      </.error>
-    </div>
-    """
-  end
-
-  def filter(%{filter: %{type: {:string, :email}}} = assigns) do
-    ~H"""
-    <div class={["relative w-full"]} phx-feedback-for={@form[@filter.name].name}>
-      <div class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
-        <.icon name="hero-magnifying-glass" class="w-5 h-5 text-neutral-500" />
-      </div>
-
-      <input
-        type="text"
-        name={@form[@filter.name].name}
-        id={@form[@filter.name].id}
-        value={Phoenix.HTML.Form.normalize_value("text", @form[@filter.name].value)}
-        placeholder={"Search by " <> @filter.title}
-        class={[
-          "bg-neutral-50 border border-neutral-300 text-neutral-900 text-sm rounded",
-          "block w-full pl-10 p-2",
-          "phx-no-feedback:border-neutral-300",
-          "disabled:bg-neutral-50 disabled:text-neutral-500 disabled:border-neutral-200 disabled:shadow-none",
-          "focus:outline-none focus:border-1 focus:ring-0",
-          "border-neutral-300",
-          @form[@filter.name].errors != [] && "border-rose-400"
-        ]}
-      />
-      <.error
-        :for={msg <- @form[@filter.name].errors}
-        data-validation-error-for={@form[@filter.name].name}
-      >
-        <%= msg %>
-      </.error>
-    </div>
-    """
-  end
-
-  def filter(%{filter: %{type: {:string, :uuid}}} = assigns) do
-    ~H"""
-    <.input
-      type="group_select"
-      field={@form[@filter.name]}
-      options={[
-        {nil, [{"For any " <> @filter.title, nil}]},
-        {@filter.title, @filter.values}
-      ]}
-    />
-    """
-  end
-
-  # TODO: {:list, {:string, :uuid}}
-  # |> assign_new(:name, fn -> if assigns.multiple, do: field.name <> "[]", else: field.name end)
-
-  def filter(%{filter: %{type: :string, values: values}} = assigns) when length(values) > 0 do
-    ~H"""
-    <.input
-      type="group_select"
-      field={@form[@filter.name]}
-      options={[
-        {nil, [{"For any " <> @filter.title, nil}]},
-        {@filter.title, @filter.values}
-      ]}
-    />
-    """
-  end
-
-  # def filter(assigns) do
-  #   ~H"""
-  #   <.button_group>
-  #     <:first>
-  #       All
-  #     </:first>
-  #     <:middle>
-  #       Online
-  #     </:middle>
-  #     <:last>
-  #       Deleted
-  #     </:last>
-  #   </.button_group>
-  #   """
-  # end
-
-  def paginator(assigns) do
-    ~H"""
-    <nav
-      class="flex flex-col md:flex-row justify-between items-start md:items-center space-y-3 md:space-y-0 p-4"
-      aria-label="Table navigation"
-    >
-      <span class="text-sm text-neutral-500">
-        Showing
-        <span class="font-medium text-neutral-900"><%= min(@metadata.limit, @metadata.count) %></span>
-        of <span class="font-medium text-neutral-900"><%= @metadata.count %></span>
-      </span>
-      <ul class="inline-flex items-stretch -space-x-px">
-        <li>
-          <button
-            disabled={is_nil(@metadata.previous_page_cursor)}
-            class={[pagination_button_class(), "rounded-l"]}
-            phx-click="paginate"
-            phx-value-cursor={@metadata.previous_page_cursor}
-          >
-            <span class="sr-only">Previous</span>
-            <.icon name="hero-chevron-left" class="w-5 h-5" />
-          </button>
-        </li>
-        <li>
-          <button
-            disabled={is_nil(@metadata.next_page_cursor)}
-            class={[pagination_button_class(), "rounded-r"]}
-            phx-click="paginate"
-            phx-value-cursor={@metadata.next_page_cursor}
-          >
-            <span class="sr-only">Next</span>
-            <.icon name="hero-chevron-right" class="w-5 h-5" />
-          </button>
-        </li>
-      </ul>
-    </nav>
-    """
-  end
-
-  defp pagination_button_class do
-    ~w[
-      flex items-center justify-center h-full py-1.5 px-3 ml-0 text-neutral-500 bg-white
-      border border-neutral-300 hover:bg-neutral-100 hover:text-neutral-700
-      disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-neutral-100
-    ]
-  end
-
-  @doc ~S"""
-  Renders a table with generic styling.
-
-  ## Examples
-
-      <.table id="users" rows={@users}>
-        <:col :let={user} label="id"><%= user.id %></:col>
-        <:col :let={user} label="username"><%= user.username %></:col>
-        <:empty><div class="text-center">No users found</div></:empty>
-      </.table>
-  """
-  attr :id, :string, required: true
-  attr :rows, :list, required: true
-  attr :row_id, :any, default: nil, doc: "the function for generating the row id"
-  attr :row_click, :any, default: nil, doc: "the function for handling phx-click on each row"
-
-  attr :row_item, :any,
-    default: &Function.identity/1,
-    doc: "the function for mapping each row before calling the :col and :action slots"
-
-  slot :col, required: true do
-    attr :label, :string
-    attr :sortable, :string
+    attr :field, :any, doc: "the cursor field that to be used for ordering for this column"
     attr :class, :string
   end
 
@@ -389,8 +157,8 @@ defmodule Web.TableComponents do
 
     ~H"""
     <div class="overflow-x-auto">
-      <table class="w-full text-sm text-left text-neutral-500" id={@id}>
-        <.table_header columns={@col} actions={@action} />
+      <table class={["w-full text-sm text-left text-neutral-500", @class]} id={@id}>
+        <.table_header table_id={@id} columns={@col} actions={@action} ordered_by={@ordered_by} />
         <tbody
           id={"#{@id}-rows"}
           phx-update={match?(%Phoenix.LiveView.LiveStream{}, @rows) && "stream"}
@@ -446,7 +214,6 @@ defmodule Web.TableComponents do
 
   slot :col, required: true do
     attr :label, :string
-    attr :sortable, :string
     attr :class, :string
   end
 
@@ -463,7 +230,7 @@ defmodule Web.TableComponents do
 
     ~H"""
     <table class="w-full text-sm text-left text-neutral-500" id={@id}>
-      <.table_header columns={@col} actions={@action} />
+      <.table_header table_id={@id} columns={@col} actions={@action} />
 
       <tbody :for={group <- @groups} data-group-id={@group_id && @group_id.(group)}>
         <tr class="bg-neutral-100">

@@ -110,7 +110,7 @@ defmodule Domain.Relays do
       })
 
     with {:ok, token} <- Tokens.create_token(attrs) do
-      {:ok, Tokens.encode_fragment!(token)}
+      {:ok, %{token | secret_nonce: nil, secret_fragment: nil}, Tokens.encode_fragment!(token)}
     end
   end
 
@@ -131,7 +131,7 @@ defmodule Domain.Relays do
 
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_relays_permission()),
          {:ok, token} <- Tokens.create_token(attrs, subject) do
-      {:ok, Tokens.encode_fragment!(token)}
+      {:ok, %{token | secret_nonce: nil, secret_fragment: nil}, Tokens.encode_fragment!(token)}
     end
   end
 
@@ -276,8 +276,8 @@ defmodule Domain.Relays do
     |> Base.encode64(padding: false)
   end
 
-  def upsert_relay(%Group{} = group, attrs, %Auth.Context{} = context) do
-    changeset = Relay.Changeset.upsert(group, attrs, context)
+  def upsert_relay(%Group{} = group, %Tokens.Token{} = token, attrs, %Auth.Context{} = context) do
+    changeset = Relay.Changeset.upsert(group, token, attrs, context)
 
     Ecto.Multi.new()
     |> Ecto.Multi.insert(:relay, changeset,

@@ -91,6 +91,11 @@ defmodule Domain.Gateways.Gateway.Query do
         name: :ids,
         type: {:list, {:string, :uuid}},
         fun: &filter_by_ids/2
+      },
+      %Domain.Repo.Filter{
+        name: :deleted?,
+        type: :boolean,
+        fun: &filter_deleted/1
       }
     ]
 
@@ -100,5 +105,9 @@ defmodule Domain.Gateways.Gateway.Query do
 
   def filter_by_ids(queryable, ids) do
     {queryable, dynamic([gateways: gateways], gateways.id in ^ids)}
+  end
+
+  def filter_deleted(queryable) do
+    {queryable, dynamic([gateways: gateways], not is_nil(gateways.deleted_at))}
   end
 end

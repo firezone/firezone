@@ -56,7 +56,7 @@ defmodule Web do
       use Phoenix.LiveView,
         layout: Keyword.get(unquote(opts), :layout, {Web.Layouts, :app})
 
-      import Web.LiveHelpers
+      import Web.LiveTable
 
       unquote(html_helpers())
 

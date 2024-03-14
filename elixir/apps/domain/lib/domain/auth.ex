@@ -102,7 +102,7 @@ defmodule Domain.Auth do
 
   # Providers
 
-  def list_user_provisioned_provider_adapters!(%Accounts.Account{} = account) do
+  def all_user_provisioned_provider_adapters!(%Accounts.Account{} = account) do
     idp_sync_enabled? = Accounts.idp_sync_enabled?(account)
 
     Adapters.list_user_provisioned_adapters!()
@@ -166,25 +166,19 @@ defmodule Domain.Auth do
     |> Repo.all()
   end
 
-  def all_third_party_provider_options!(%Subject{} = subject) do
+  def all_third_party_providers!(%Subject{} = subject) do
     Provider.Query.not_deleted()
     |> Provider.Query.by_account_id(subject.account.id)
     |> Provider.Query.by_adapter({:not_in, [:email, :userpass]})
     |> Authorizer.for_subject(Provider, subject)
     |> Repo.all()
-    |> Enum.map(fn provider ->
-      {provider.name, provider.id}
-    end)
   end
 
-  def all_provider_options!(%Subject{} = subject) do
+  def all_providers!(%Subject{} = subject) do
     Provider.Query.not_deleted()
     |> Provider.Query.by_account_id(subject.account.id)
     |> Authorizer.for_subject(Provider, subject)
     |> Repo.all()
-    |> Enum.map(fn provider ->
-      {provider.name, provider.id}
-    end)
   end
 
   def all_providers_pending_token_refresh_by_adapter!(adapter) do
@@ -305,6 +299,16 @@ defmodule Domain.Auth do
 
   # Identities
 
+  def max_last_seen_at_by_actor_ids(actor_ids) do
+    Identity.Query.not_deleted()
+    |> Identity.Query.by_actor_id({:in, actor_ids})
+    |> Identity.Query.max_last_seen_at_grouped_by_actor_id()
+    |> Repo.all()
+    |> Enum.reduce(%{}, fn %{actor_id: id, max: max}, acc ->
+      Map.put(acc, id, max)
+    end)
+  end
+
   # used during magic link auth flow
   def fetch_active_identity_by_provider_and_identifier(
         %Provider{adapter: :email} = provider,
@@ -344,6 +348,15 @@ defmodule Domain.Auth do
         end)
 
       {:ok, identities}
+    end
+  end
+
+  def list_identities_for(%Actors.Actor{} = actor, %Subject{} = subject, opts \\ []) do
+    with :ok <- ensure_has_permissions(subject, Authorizer.manage_identities_permission()) do
+      Identity.Query.not_deleted()
+      |> Identity.Query.by_actor_id(actor.id)
+      |> Authorizer.for_subject(Identity, subject)
+      |> Repo.list(Identity.Query, opts)
     end
   end
 

@@ -30,6 +30,20 @@ defmodule Domain.Gateways.Group.Query do
   @impl Domain.Repo.Query
   def preloads,
     do: [
-      gateway: Domain.Gateways.Gateway.Query.preloads()
+      gateways: Domain.Gateways.Gateway.Query.preloads()
     ]
+
+  @impl Domain.Repo.Query
+  def filters,
+    do: [
+      %Domain.Repo.Filter{
+        name: :deleted?,
+        type: :boolean,
+        fun: &filter_deleted/1
+      }
+    ]
+
+  def filter_deleted(queryable) do
+    {queryable, dynamic([groups: groups], not is_nil(groups.deleted_at))}
+  end
 end

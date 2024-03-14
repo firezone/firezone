@@ -267,7 +267,7 @@ defmodule Web.Settings.IdentityProviders.Components do
       <span class="ml-3">
         Synced
         <.link
-          navigate={~p"/#{@account}/actors?#{%{"filter[actors][provider_id]" => @provider.id}}"}
+          navigate={~p"/#{@account}/actors?#{%{"actors_filter[provider_id]" => @provider.id}}"}
           class={link_style()}
         >
           <% identities_count_by_provider_id = @identities_count_by_provider_id[@provider.id] || 0 %>
@@ -280,7 +280,7 @@ defmodule Web.Settings.IdentityProviders.Components do
         </.link>
         and
         <.link
-          navigate={~p"/#{@account}/groups?#{%{"filter[groups][provider_id]" => @provider.id}}"}
+          navigate={~p"/#{@account}/groups?#{%{"groups_filter[provider_id]" => @provider.id}}"}
           class={link_style()}
         >
           <% groups_count_by_provider_id = @groups_count_by_provider_id[@provider.id] || 0 %>
@@ -308,7 +308,7 @@ defmodule Web.Settings.IdentityProviders.Components do
       <span class="ml-3">
         Created
         <.link
-          navigate={~p"/#{@account}/actors?#{%{"filter[actors][provider_id]" => @provider.id}}"}
+          navigate={~p"/#{@account}/actors?#{%{"actors_filter[provider_id]" => @provider.id}}"}
           class={link_style()}
         >
           <% identities_count_by_provider_id = @identities_count_by_provider_id[@provider.id] || 0 %>
@@ -321,7 +321,7 @@ defmodule Web.Settings.IdentityProviders.Components do
         </.link>
         and
         <.link
-          navigate={~p"/#{@account}/groups?#{%{"filter[groups][provider_id]" => @provider.id}}"}
+          navigate={~p"/#{@account}/groups?#{%{"groups_filter[provider_id]" => @provider.id}}"}
           class={link_style()}
         >
           <% groups_count_by_provider_id = @groups_count_by_provider_id[@provider.id] || 0 %>

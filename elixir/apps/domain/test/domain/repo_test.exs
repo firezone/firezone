@@ -42,6 +42,15 @@ defmodule Domain.RepoTest do
       assert Enum.all?(account.clients, &Ecto.assoc_loaded?(&1.actor))
     end
 
+    test "allows to use filters" do
+      account = Fixtures.Accounts.create_account()
+      query_module = Domain.Accounts.Account.Query
+      queryable = query_module.all()
+
+      assert {:ok, _account} = fetch(queryable, query_module, filter: [slug: account.slug])
+      assert fetch(queryable, query_module, filter: [slug: "foo"]) == {:error, :not_found}
+    end
+
     test "raises when the query returns more than one row" do
       Fixtures.Accounts.create_account()
       Fixtures.Accounts.create_account()
@@ -138,6 +147,60 @@ defmodule Domain.RepoTest do
 
       assert_receive {:broadcast, ^updated_account}
     end
+
+    test "allows to preload deeply nested fields" do
+      account = Fixtures.Accounts.create_account()
+      Fixtures.Auth.create_userpass_provider(account: account)
+      Fixtures.Actors.create_actor(account: account)
+      Fixtures.Clients.create_client(account: account)
+      Fixtures.Policies.create_policy(account: account)
+
+      query_module = Domain.Accounts.Account.Query
+      queryable = query_module.all()
+      new_value = Ecto.UUID.generate()
+      changeset_cb = fn account -> Ecto.Changeset.change(account, name: new_value) end
+
+      assert {:ok, updated_account} =
+               fetch_and_update(queryable, query_module,
+                 with: changeset_cb,
+                 preload: [
+                   :auth_providers,
+                   policies: [],
+                   actors: [identities: :provider],
+                   clients: [:online?, :actor]
+                 ]
+               )
+
+      assert Ecto.assoc_loaded?(updated_account.auth_providers)
+
+      assert Ecto.assoc_loaded?(updated_account.policies)
+
+      assert Ecto.assoc_loaded?(updated_account.actors)
+      assert Enum.all?(updated_account.actors, &Ecto.assoc_loaded?(&1.identities))
+
+      assert Ecto.assoc_loaded?(updated_account.clients)
+      assert Enum.all?(updated_account.clients, &(&1.online? == false))
+      assert Enum.all?(updated_account.clients, &Ecto.assoc_loaded?(&1.actor))
+    end
+
+    test "allows to use filters" do
+      account = Fixtures.Accounts.create_account()
+      query_module = Domain.Accounts.Account.Query
+      queryable = query_module.all()
+      new_value = Ecto.UUID.generate()
+      changeset_cb = fn account -> Ecto.Changeset.change(account, name: new_value) end
+
+      assert {:ok, _updated_account} =
+               fetch_and_update(queryable, query_module,
+                 with: changeset_cb,
+                 filter: [slug: account.slug]
+               )
+
+      assert fetch_and_update(queryable, query_module,
+               with: changeset_cb,
+               filter: [slug: "foo"]
+             ) == {:error, :not_found}
+    end
   end
 
   describe "list/2" do
@@ -153,7 +216,7 @@ defmodule Domain.RepoTest do
       query_module: query_module,
       queryable: queryable
     } do
-      empty_metadata = %Domain.Repo.Paginator.Metadata{limit: 50}
+      empty_metadata = %Domain.Repo.Paginator.Metadata{limit: 50, count: 0}
 
       assert list(queryable, query_module) == {:ok, [], empty_metadata}
       assert list(queryable, query_module, limit: 1000) == {:ok, [], empty_metadata}
