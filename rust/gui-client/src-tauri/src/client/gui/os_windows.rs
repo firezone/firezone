@@ -1,5 +1,5 @@
-use super::{ControllerRequest, CtlrTx, Error};
-use anyhow::Result;
+use super::{ControllerRequest, CtlrTx};
+use anyhow::{Context, Result};
 use connlib_shared::BUNDLE_ID;
 use secrecy::{ExposeSecret, SecretString};
 use tauri::Manager;
