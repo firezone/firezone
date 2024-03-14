@@ -451,18 +451,15 @@ extension Adapter: CallbackHandlerDelegate {
     workQueue.async { [weak self] in
       guard let self = self else { return }
 
-      self.logger.log("Adapter.onUpdateRoutes")
-
-      let routes4 = try! JSONDecoder().decode([String].self, from: routeList4.data(using: .utf8)!)
-      let routes6 = try! JSONDecoder().decode([String].self, from: routeList6.data(using: .utf8)!)
+      self.logger.log("Adapter.onUpdateRoutes \(routeList4) \(routeList6)")
 
       guard let networkSettings = self.networkSettings else {
         self.logger.error("Adapter.onUpdateRoutes: No network settings")
         return
       }
 
-      networkSettings.routes4 = NetworkSettings.parseRoutes4(routes4: routes4)
-      networkSettings.routes6 = NetworkSettings.parseRoutes6(routes6: routes6)
+      networkSettings.routes4 = try! JSONDecoder().decode([NetworkSettings.Cidr].self, from: routeList4.data(using: .utf8)!).compactMap { $0.asNEIPv4Route }
+      networkSettings.routes6 = try! JSONDecoder().decode([NetworkSettings.Cidr].self, from: routeList6.data(using: .utf8)!).compactMap { $0.asNEIPv6Route }
 
       networkSettings.apply(on: packetTunnelProvider, logger: self.logger, completionHandler: nil)
     }

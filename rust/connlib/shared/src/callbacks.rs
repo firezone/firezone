@@ -1,5 +1,6 @@
 use crate::messages::ResourceDescription;
 use ip_network::{Ipv4Network, Ipv6Network};
+use serde::Serialize;
 use std::error::Error;
 use std::fmt::{Debug, Display};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
@@ -7,6 +8,36 @@ use std::path::PathBuf;
 
 // Avoids having to map types for Windows
 type RawFd = i32;
+
+#[derive(Serialize, Clone, Copy, Debug)]
+pub struct Cidrv4 {
+    address: Ipv4Addr,
+    prefix: u8,
+}
+
+#[derive(Serialize, Clone, Copy, Debug)]
+pub struct Cidrv6 {
+    address: Ipv6Addr,
+    prefix: u8,
+}
+
+impl From<Ipv4Network> for Cidrv4 {
+    fn from(value: Ipv4Network) -> Self {
+        Self {
+            address: value.network_address(),
+            prefix: value.netmask(),
+        }
+    }
+}
+
+impl From<Ipv6Network> for Cidrv6 {
+    fn from(value: Ipv6Network) -> Self {
+        Self {
+            address: value.network_address(),
+            prefix: value.netmask(),
+        }
+    }
+}
 
 /// Traits that will be used by connlib to callback the client upper layers.
 pub trait Callbacks: Clone + Send + Sync {
@@ -35,8 +66,8 @@ pub trait Callbacks: Clone + Send + Sync {
     /// Called when the route list changes.
     fn on_update_routes(
         &self,
-        _: Vec<Ipv4Network>,
-        _: Vec<Ipv6Network>,
+        _: Vec<Cidrv4>,
+        _: Vec<Cidrv6>,
     ) -> Result<Option<RawFd>, Self::Error> {
         Ok(None)
     }

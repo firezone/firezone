@@ -4,7 +4,8 @@
 // ecosystem, so it's used here for consistency.
 
 use connlib_client_shared::{
-    file_logger, keypair, Callbacks, Error, LoginUrl, LoginUrlError, ResourceDescription, Session,
+    file_logger, keypair, Callbacks, Cidrv4, Cidrv6, Error, LoginUrl, LoginUrlError,
+    ResourceDescription, Session,
 };
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use jni::{
@@ -35,12 +36,6 @@ pub struct CallbackHandler {
     vm: JavaVM,
     callback_handler: GlobalRef,
     handle: file_logger::Handle,
-}
-
-#[derive(Serialize, Clone, Copy)]
-struct Cidr {
-    address: IpAddr,
-    prefix: u8,
 }
 
 impl From<IpNetwork> for Cidr {
@@ -212,20 +207,10 @@ impl Callbacks for CallbackHandler {
 
     fn on_update_routes(
         &self,
-        route_list_4: Vec<Ipv4Network>,
-        route_list_6: Vec<Ipv6Network>,
+        route_list_4: Vec<Cidrv4>,
+        route_list_6: Vec<Cidrv6>,
     ) -> Result<Option<RawFd>, Self::Error> {
         self.env(|mut env| {
-            let route_list_4: Vec<_> = route_list_4
-                .into_iter()
-                .map(IpNetwork::from)
-                .map(Cidr::from)
-                .collect();
-            let route_list_6: Vec<_> = route_list_6
-                .into_iter()
-                .map(IpNetwork::from)
-                .map(Cidr::from)
-                .collect();
             let route_list_4 = env
                 .new_string(serde_json::to_string(&route_list_4)?)
                 .map_err(|source| CallbackError::NewStringFailed {

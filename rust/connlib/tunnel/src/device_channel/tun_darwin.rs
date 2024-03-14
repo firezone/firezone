@@ -152,8 +152,8 @@ impl Tun {
     ) -> Result<()> {
         // This will always be None in macos
         callbacks.on_update_routes(
-            routes.iter().filter_map(ipv4).copied().collect(),
-            routes.iter().filter_map(ipv6).copied().collect(),
+            routes.iter().copied().filter_map(ipv4).collect(),
+            routes.iter().copied().filter_map(ipv6).collect(),
         )?;
 
         Ok(())
