@@ -415,7 +415,9 @@ fn connect(
         public_key.to_bytes(),
     )?;
 
-    let runtime = tokio::runtime::Builder::new_current_thread()
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(1)
+        .thread_name("connlib")
         .enable_all()
         .build()?;
 
