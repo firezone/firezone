@@ -250,9 +250,50 @@ impl GatewayState {
                     .iter_mut()
                     .for_each(|p| p.transform.expire_resources());
                 self.peers.retain(|_, p| !p.transform.is_emptied());
+
+                self.next_expiry_resources_check = Some(now + EXPIRE_RESOURCES_INTERVAL);
             }
             None => self.next_expiry_resources_check = Some(now + EXPIRE_RESOURCES_INTERVAL),
             Some(_) => {}
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn initial_poll_timeout_is_none() {
+        let state = GatewayState::default();
+
+        assert!(state.poll_timeout().is_none())
+    }
+
+    #[test]
+    fn first_timeout_is_after_expire_resources_interval() {
+        let start = Instant::now();
+        let mut state = GatewayState::default();
+
+        state.handle_timeout(start);
+
+        assert_eq!(
+            state.poll_timeout().unwrap(),
+            start + EXPIRE_RESOURCES_INTERVAL
+        )
+    }
+
+    #[test]
+    fn does_not_advance_time_before_timeout() {
+        let start = Instant::now();
+        let mut state = GatewayState::default();
+
+        state.handle_timeout(start);
+
+        let before = state.poll_timeout().unwrap();
+        state.handle_timeout(start + EXPIRE_RESOURCES_INTERVAL / 2);
+        let after = state.poll_timeout().unwrap();
+
+        assert_eq!(before, after)
     }
 }

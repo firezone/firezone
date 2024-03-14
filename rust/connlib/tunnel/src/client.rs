@@ -589,6 +589,8 @@ impl ClientState {
 
                 self.buffered_events
                     .push_back(ClientEvent::RefreshResources { connections });
+
+                self.next_dns_refresh = Some(now + DNS_REFRESH_INTERVAL);
             }
             None => self.next_dns_refresh = Some(now + DNS_REFRESH_INTERVAL),
             Some(_) => {}
@@ -707,5 +709,36 @@ mod tests {
     #[test]
     fn ignores_ip6_multicast_all_routers() {
         assert!(is_definitely_not_a_resource("ff02::2".parse().unwrap()))
+    }
+
+    #[test]
+    fn initial_poll_timeout_is_none() {
+        let state = ClientState::default();
+
+        assert!(state.poll_timeout().is_none())
+    }
+
+    #[test]
+    fn first_timeout_is_after_dns_refresh_interval() {
+        let start = Instant::now();
+        let mut state = ClientState::default();
+
+        state.handle_timeout(start);
+
+        assert_eq!(state.poll_timeout().unwrap(), start + DNS_REFRESH_INTERVAL)
+    }
+
+    #[test]
+    fn does_not_advance_time_before_timeout() {
+        let start = Instant::now();
+        let mut state = ClientState::default();
+
+        state.handle_timeout(start);
+
+        let before = state.poll_timeout().unwrap();
+        state.handle_timeout(start + DNS_REFRESH_INTERVAL / 2);
+        let after = state.poll_timeout().unwrap();
+
+        assert_eq!(before, after)
     }
 }
