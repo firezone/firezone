@@ -557,6 +557,7 @@ impl Controller {
             None,
             callback_handler.clone(),
             Some(MAX_PARTITION_TIME),
+            tokio::runtime::Handle::current(),
         )?;
 
         self.session = Some(Session {

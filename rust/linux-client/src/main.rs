@@ -6,11 +6,12 @@ use connlib_shared::{
     linux::{etc_resolv_conf, get_dns_control_from_env, DnsControlMethod},
     LoginUrl,
 };
-use firezone_cli_utils::{block_on_ctrl_c, setup_global_subscriber, CommonArgs};
+use firezone_cli_utils::{setup_global_subscriber, CommonArgs};
 use secrecy::SecretString;
 use std::{net::IpAddr, path::PathBuf, str::FromStr};
 
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     let cli = Cli::parse();
     let max_partition_time = cli.max_partition_time.map(|d| d.into());
 
@@ -38,10 +39,17 @@ fn main() -> Result<()> {
         public_key.to_bytes(),
     )?;
 
-    let session =
-        Session::connect(login, private_key, None, callbacks, max_partition_time).unwrap();
+    let session = Session::connect(
+        login,
+        private_key,
+        None,
+        callbacks,
+        max_partition_time,
+        tokio::runtime::Handle::current(),
+    )
+    .unwrap();
 
-    block_on_ctrl_c();
+    tokio::signal::ctrl_c().await?;
 
     if let Some(DnsControlMethod::EtcResolvConf) = dns_control_method {
         etc_resolv_conf::unconfigure_dns()?;
