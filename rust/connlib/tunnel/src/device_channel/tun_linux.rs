@@ -353,9 +353,8 @@ fn set_non_blocking(fd: RawFd) -> Result<()> {
 fn create_tun_device(dns_control_method: &Option<DnsControlMethod>) -> Result<()> {
     // TODO: Where should this go?
     // Before creating the iface, do a cleanup step that nmcli needs to avoid duplicate connections
-    match dns_control_method {
-        Some(DnsControlMethod::NetworkManager) => cleanup_network_manager()?,
-        _ => {}
+    if let Some(DnsControlMethod::NetworkManager) = dns_control_method {
+        cleanup_network_manager()?;
     }
 
     let path = Path::new(TUN_FILE.to_str().expect("path is valid utf-8"));
