@@ -7,7 +7,7 @@ use crate::{
 };
 use anyhow::Result;
 use connlib_shared::{
-    messages::{ConnectionAccepted, GatewayId, GatewayResponse, ResourceAccepted, ResourceId},
+    messages::{ConnectionAccepted, GatewayResponse, ResourceAccepted, ResourceId},
     Callbacks,
 };
 use firezone_tunnel::ClientTunnel;
@@ -80,7 +80,7 @@ where
                     continue;
                 }
                 Poll::Ready(Err(e)) => {
-                    tracing::error!("Tunnel failed: {e}");
+                    tracing::warn!("Tunnel error: {e}");
                     continue;
                 }
                 Poll::Pending => {}
@@ -104,9 +104,9 @@ where
         }
     }
 
-    fn handle_tunnel_event(&mut self, event: firezone_tunnel::Event<GatewayId>) {
+    fn handle_tunnel_event(&mut self, event: firezone_tunnel::ClientEvent) {
         match event {
-            firezone_tunnel::Event::SignalIceCandidate {
+            firezone_tunnel::ClientEvent::SignalIceCandidate {
                 conn_id: gateway,
                 candidate,
             } => {
@@ -120,7 +120,7 @@ where
                     }),
                 );
             }
-            firezone_tunnel::Event::ConnectionIntent {
+            firezone_tunnel::ClientEvent::ConnectionIntent {
                 connected_gateway_ids,
                 resource,
                 ..
@@ -134,14 +134,11 @@ where
                 );
                 self.connection_intents.register_new_intent(id, resource);
             }
-            firezone_tunnel::Event::RefreshResources { connections } => {
+            firezone_tunnel::ClientEvent::RefreshResources { connections } => {
                 for connection in connections {
                     self.portal
                         .send(PHOENIX_TOPIC, EgressMessages::ReuseConnection(connection));
                 }
-            }
-            firezone_tunnel::Event::SendPacket { .. } | firezone_tunnel::Event::StopPeer { .. } => {
-                unreachable!("Handled internally")
             }
         }
     }

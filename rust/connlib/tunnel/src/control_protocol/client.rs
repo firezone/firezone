@@ -64,7 +64,7 @@ where
             return Ok(Request::ReuseConnection(connection));
         }
 
-        if self.connections_state.node.is_expecting_answer(gateway_id) {
+        if self.node.is_expecting_answer(gateway_id) {
             return Err(Error::PendingConnection);
         }
 
@@ -73,14 +73,10 @@ where
             .get_awaiting_connection(&resource_id)?
             .clone();
 
-        let offer = self.connections_state.node.new_connection(
+        let offer = self.node.new_connection(
             gateway_id,
-            stun(&relays, |addr| {
-                self.connections_state.sockets.can_handle(addr)
-            }),
-            turn(&relays, |addr| {
-                self.connections_state.sockets.can_handle(addr)
-            }),
+            stun(&relays, |addr| self.io.sockets_ref().can_handle(addr)),
+            turn(&relays, |addr| self.io.sockets_ref().can_handle(addr)),
             awaiting_connection.last_intent_sent_at,
             Instant::now(),
         );
@@ -147,7 +143,7 @@ where
             .gateway_by_resource(&resource_id)
             .ok_or(Error::UnknownResource)?;
 
-        self.connections_state.node.accept_answer(
+        self.node.accept_answer(
             gateway_id,
             gateway_public_key,
             snownet::Answer {
@@ -209,7 +205,7 @@ where
         send_dns_answer(
             &mut self.role_state,
             Rtype::Aaaa,
-            &self.device,
+            self.io.device_mut(),
             &resource_description,
             &addrs,
         );
@@ -217,7 +213,7 @@ where
         send_dns_answer(
             &mut self.role_state,
             Rtype::A,
-            &self.device,
+            self.io.device_mut(),
             &resource_description,
             &addrs,
         );
