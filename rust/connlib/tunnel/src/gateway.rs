@@ -46,7 +46,7 @@ where
     #[tracing::instrument(level = "trace", skip(self))]
     pub fn set_interface(&mut self, config: &InterfaceConfig) -> connlib_shared::Result<()> {
         // Note: the dns fallback strategy is irrelevant for gateways
-        let callbacks = self.callbacks().clone();
+        let callbacks = self.callbacks.clone();
         self.io
             .device_mut()
             .initialize(config, vec![], &callbacks)?;

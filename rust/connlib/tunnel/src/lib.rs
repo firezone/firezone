@@ -52,7 +52,7 @@ pub type ClientTunnel<CB> = Tunnel<CB, ClientState, snownet::Client, GatewayId>;
 
 /// Tunnel is a wireguard state machine that uses webrtc's ICE channels instead of UDP sockets to communicate between peers.
 pub struct Tunnel<CB: Callbacks, TRoleState, TRole, TId> {
-    callbacks: CallbackErrorFacade<CB>,
+    pub callbacks: CallbackErrorFacade<CB>,
 
     /// State that differs per role, i.e. clients vs gateways.
     role_state: TRoleState,
@@ -349,10 +349,6 @@ where
             device_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
             stats: Stats::new(Duration::from_secs(60)),
         })
-    }
-
-    pub fn callbacks(&self) -> &CallbackErrorFacade<CB> {
-        &self.callbacks
     }
 }
 

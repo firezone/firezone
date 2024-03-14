@@ -174,7 +174,7 @@ where
         self.role_state.interface_config = Some(config.clone());
         let effective_dns_servers = effective_dns_servers(
             config.upstream_dns.clone(),
-            self.callbacks()
+            self.callbacks
                 .get_system_default_resolvers()
                 .ok()
                 .flatten()
@@ -185,7 +185,7 @@ where
         self.role_state.set_dns_mapping(dns_mapping.clone());
         self.io.set_upstream_dns_servers(dns_mapping.clone());
 
-        let callbacks = self.callbacks().clone();
+        let callbacks = self.callbacks.clone();
 
         self.io.device_mut().initialize(
             config,
