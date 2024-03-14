@@ -1,7 +1,7 @@
 use crate::ip_packet::{IpPacket, MutableIpPacket};
 use crate::peer::PacketTransformClient;
 use crate::peer_store::PeerStore;
-use crate::{dns, dns::DnsQuery, Event, Tunnel, DNS_QUERIES_QUEUE_SIZE};
+use crate::{dns, dns::DnsQuery, Tunnel};
 use bimap::BiMap;
 use connlib_shared::error::{ConnlibError as Error, ConnlibError};
 use connlib_shared::messages::{
@@ -10,22 +10,18 @@ use connlib_shared::messages::{
 };
 use connlib_shared::{Callbacks, Dname, IpProvider};
 use domain::base::Rtype;
-use futures_bounded::FuturesTupleSet;
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
 use itertools::Itertools;
 use snownet::Client;
 
-use hickory_resolver::config::{NameServerConfig, Protocol, ResolverConfig};
-use hickory_resolver::TokioAsyncResolver;
+use crate::ClientEvent;
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::iter;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::str::FromStr;
-use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
-use tokio::time::{Interval, MissedTickBehavior};
 
 // Using str here because Ipv4/6Network doesn't support `const` 🙃
 const IPV4_RESOURCES: &str = "100.96.0.0/11";
@@ -34,6 +30,11 @@ const IPV6_RESOURCES: &str = "fd00:2021:1111:8000::/107";
 const DNS_PORT: u16 = 53;
 const DNS_SENTINELS_V4: &str = "100.100.111.0/24";
 const DNS_SENTINELS_V6: &str = "fd00:2021:1111:8000:100:100:111:0/120";
+
+// With this single timer this might mean that some DNS are refreshed too often
+// however... this also mean any resource is refresh within a 5 mins interval
+// therefore, only the first time it's added that happens, after that it doesn't matter.
+const DNS_REFRESH_INTERVAL: Duration = Duration::from_secs(300);
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct DnsResource {
@@ -182,17 +183,21 @@ where
 
         let dns_mapping = sentinel_dns_mapping(&effective_dns_servers);
         self.role_state.set_dns_mapping(dns_mapping.clone());
+        self.io.set_upstream_dns_servers(dns_mapping.clone());
 
-        self.device.initialize(
+        let callbacks = self.callbacks().clone();
+
+        self.io.device_mut().initialize(
             config,
             // We can just sort in here because sentinel ips are created in order
             dns_mapping.left_values().copied().sorted().collect(),
-            &self.callbacks().clone(),
+            &callbacks,
         )?;
 
-        self.device
+        self.io
+            .device_mut()
             .set_routes(self.role_state.routes().collect(), &self.callbacks)?;
-        let name = self.device.name().to_owned();
+        let name = self.io.device_mut().name().to_owned();
 
         self.callbacks.on_tunnel_ready()?;
 
@@ -210,15 +215,15 @@ where
 
     #[tracing::instrument(level = "trace", skip(self))]
     pub fn update_routes(&mut self) -> connlib_shared::Result<()> {
-        self.device
+        self.io
+            .device_mut()
             .set_routes(self.role_state.routes().collect(), &self.callbacks)?;
 
         Ok(())
     }
 
     pub fn add_ice_candidate(&mut self, conn_id: GatewayId, ice_candidate: String) {
-        self.connections_state
-            .node
+        self.node
             .add_remote_candidate(conn_id, ice_candidate, Instant::now());
     }
 }
@@ -236,20 +241,18 @@ pub struct ClientState {
 
     pub peers: PeerStore<GatewayId, PacketTransformClient, HashSet<ResourceId>>,
 
-    forwarded_dns_queries: FuturesTupleSet<
-        Result<hickory_resolver::lookup::Lookup, hickory_resolver::error::ResolveError>,
-        DnsQuery<'static>,
-    >,
-
     pub ip_provider: IpProvider,
 
-    refresh_dns_timer: Interval,
-
     dns_mapping: BiMap<IpAddr, DnsServer>,
-    dns_resolvers: HashMap<IpAddr, TokioAsyncResolver>,
 
-    buffered_events: VecDeque<Event<GatewayId>>,
+    buffered_events: VecDeque<ClientEvent>,
     interface_config: Option<InterfaceConfig>,
+    buffered_packets: VecDeque<IpPacket<'static>>,
+
+    /// DNS queries that we need to forward to the system resolver.
+    buffered_dns_queries: VecDeque<DnsQuery<'static>>,
+
+    next_dns_refresh: Option<Instant>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -267,8 +270,7 @@ impl ClientState {
     ) -> Option<(GatewayId, MutableIpPacket<'a>)> {
         let (packet, dest) = match self.handle_dns(packet, now) {
             Ok(response) => {
-                self.buffered_events
-                    .push_back(Event::SendPacket(response?.to_owned()));
+                self.buffered_packets.push_back(response?.to_owned());
                 return None;
             }
             Err(non_dns_packet) => non_dns_packet,
@@ -315,7 +317,7 @@ impl ClientState {
                     }
                 }
 
-                self.add_pending_dns_query(query);
+                self.buffered_dns_queries.push_back(query.into_owned());
 
                 Ok(None)
             }
@@ -453,10 +455,11 @@ impl ClientState {
 
         tracing::debug!("Sending connection intent");
 
-        self.buffered_events.push_back(Event::ConnectionIntent {
-            resource,
-            connected_gateway_ids: gateways,
-        });
+        self.buffered_events
+            .push_back(ClientEvent::ConnectionIntent {
+                resource,
+                connected_gateway_ids: gateways,
+            });
     }
 
     pub fn create_peer_config_for_new_connection(
@@ -483,7 +486,6 @@ impl ClientState {
 
     fn set_dns_mapping(&mut self, mapping: BiMap<IpAddr, DnsServer>) {
         self.dns_mapping = mapping.clone();
-        self.dns_resolvers = create_resolvers(mapping);
     }
 
     pub fn dns_mapping(&self) -> BiMap<IpAddr, DnsServer> {
@@ -548,39 +550,21 @@ impl ClientState {
             .map(|(_, res)| res.id)
     }
 
-    fn add_pending_dns_query(&mut self, query: DnsQuery) {
-        let upstream = query.query.destination();
-        let Some(resolver) = self.dns_resolvers.get(&upstream).cloned() else {
-            tracing::warn!(%upstream, "Dropping DNS query because of unknown upstream DNS server");
-            return;
-        };
-
-        let query = query.into_owned();
-
-        if self
-            .forwarded_dns_queries
-            .try_push(
-                {
-                    let name = query.name.clone();
-                    let record_type = query.record_type;
-
-                    async move { resolver.lookup(&name, record_type).await }
-                },
-                query,
-            )
-            .is_err()
-        {
-            tracing::warn!("Too many DNS queries, dropping existing one");
-        }
+    pub fn poll_packets(&mut self) -> Option<IpPacket<'static>> {
+        self.buffered_packets.pop_front()
     }
 
-    pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Event<GatewayId>> {
-        loop {
-            if let Some(event) = self.buffered_events.pop_front() {
-                return Poll::Ready(event);
-            }
+    pub fn poll_dns_queries(&mut self) -> Option<DnsQuery<'static>> {
+        self.buffered_dns_queries.pop_front()
+    }
 
-            if self.refresh_dns_timer.poll_tick(cx).is_ready() {
+    pub fn poll_timeout(&self) -> Option<Instant> {
+        self.next_dns_refresh
+    }
+
+    pub fn handle_timeout(&mut self, now: Instant) {
+        match self.next_dns_refresh {
+            Some(next_dns_refresh) if now >= next_dns_refresh => {
                 let mut connections = Vec::new();
 
                 self.peers
@@ -602,63 +586,27 @@ impl ClientState {
                         payload: Some(resource.address.clone()),
                     });
                 }
-                return Poll::Ready(Event::RefreshResources { connections });
-            }
 
-            match self.forwarded_dns_queries.poll_unpin(cx) {
-                Poll::Ready((Ok(response), query)) => {
-                    match dns::build_response_from_resolve_result(query.query, response) {
-                        Ok(Some(packet)) => return Poll::Ready(Event::SendPacket(packet)),
-                        Ok(None) => continue,
-                        Err(e) => {
-                            tracing::warn!("Failed to build DNS response from lookup result: {e}");
-                            continue;
-                        }
-                    }
-                }
-                Poll::Ready((Err(resolve_timeout), query)) => {
-                    tracing::warn!(name = %query.name, server = %query.query.destination(), "DNS query timed out: {resolve_timeout}");
-                    continue;
-                }
-                Poll::Pending => {}
-            }
+                self.buffered_events
+                    .push_back(ClientEvent::RefreshResources { connections });
 
-            return Poll::Pending;
+                self.next_dns_refresh = Some(now + DNS_REFRESH_INTERVAL);
+            }
+            None => self.next_dns_refresh = Some(now + DNS_REFRESH_INTERVAL),
+            Some(_) => {}
         }
     }
-}
 
-fn create_resolvers(
-    sentinel_mapping: BiMap<IpAddr, DnsServer>,
-) -> HashMap<IpAddr, TokioAsyncResolver> {
-    sentinel_mapping
-        .into_iter()
-        .map(|(sentinel, srv)| {
-            let mut resolver_config = ResolverConfig::new();
-            resolver_config.add_name_server(NameServerConfig::new(srv.address(), Protocol::Udp));
-            (
-                sentinel,
-                TokioAsyncResolver::tokio(resolver_config, Default::default()),
-            )
-        })
-        .collect()
+    pub fn poll_event(&mut self) -> Option<ClientEvent> {
+        self.buffered_events.pop_front()
+    }
 }
 
 impl Default for ClientState {
     fn default() -> Self {
-        // With this single timer this might mean that some DNS are refreshed too often
-        // however... this also mean any resource is refresh within a 5 mins interval
-        // therefore, only the first time it's added that happens, after that it doesn't matter.
-        let mut interval = tokio::time::interval(Duration::from_secs(300));
-        interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
-
         Self {
             awaiting_connection: Default::default(),
             resources_gateways: Default::default(),
-            forwarded_dns_queries: FuturesTupleSet::new(
-                Duration::from_secs(60),
-                DNS_QUERIES_QUEUE_SIZE,
-            ),
             ip_provider: IpProvider::new(
                 IPV4_RESOURCES.parse().unwrap(),
                 IPV6_RESOURCES.parse().unwrap(),
@@ -669,11 +617,12 @@ impl Default for ClientState {
             resource_ids: Default::default(),
             peers: Default::default(),
             deferred_dns_queries: Default::default(),
-            refresh_dns_timer: interval,
             dns_mapping: Default::default(),
-            dns_resolvers: Default::default(),
             buffered_events: Default::default(),
             interface_config: Default::default(),
+            buffered_packets: Default::default(),
+            buffered_dns_queries: Default::default(),
+            next_dns_refresh: Default::default(),
         }
     }
 }
@@ -760,5 +709,36 @@ mod tests {
     #[test]
     fn ignores_ip6_multicast_all_routers() {
         assert!(is_definitely_not_a_resource("ff02::2".parse().unwrap()))
+    }
+
+    #[test]
+    fn initial_poll_timeout_is_none() {
+        let state = ClientState::default();
+
+        assert!(state.poll_timeout().is_none())
+    }
+
+    #[test]
+    fn first_timeout_is_after_dns_refresh_interval() {
+        let start = Instant::now();
+        let mut state = ClientState::default();
+
+        state.handle_timeout(start);
+
+        assert_eq!(state.poll_timeout().unwrap(), start + DNS_REFRESH_INTERVAL)
+    }
+
+    #[test]
+    fn does_not_advance_time_before_timeout() {
+        let start = Instant::now();
+        let mut state = ClientState::default();
+
+        state.handle_timeout(start);
+
+        let before = state.poll_timeout().unwrap();
+        state.handle_timeout(start + DNS_REFRESH_INTERVAL / 2);
+        let after = state.poll_timeout().unwrap();
+
+        assert_eq!(before, after)
     }
 }

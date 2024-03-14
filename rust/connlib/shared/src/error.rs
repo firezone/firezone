@@ -170,10 +170,6 @@ pub enum ConnlibError {
     Snownet(#[from] snownet::Error),
     #[error("Detected non-allowed packet in channel")]
     UnallowedPacket,
-    #[error("No available ipv4 socket")]
-    NoIpv4,
-    #[error("No available ipv6 socket")]
-    NoIpv6,
 
     // Error variants for `systemd-resolved` DNS control
     #[error("Failed to control system DNS with `resolvectl`")]

@@ -13,5 +13,5 @@ function remove_iptables_drop_rules() {
 }
 
 function client_curl_resource() {
-    docker compose exec -it client curl --fail -i 172.20.0.100
+    docker compose exec -it client curl --max-time 30 --fail -i 172.20.0.100
 }
