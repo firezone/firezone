@@ -1,6 +1,6 @@
 defmodule Domain.Tokens do
   use Supervisor
-  alias Domain.{Repo}
+  alias Domain.Repo
   alias Domain.{Auth, Actors, Relays, Gateways}
   alias Domain.Tokens.{Token, Authorizer, Jobs}
   require Ecto.Query

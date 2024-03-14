@@ -65,7 +65,7 @@ defmodule Domain.Auth do
   """
   use Supervisor
   require Ecto.Query
-  alias Domain.{Repo}
+  alias Domain.Repo
   alias Domain.{Accounts, Actors, Tokens}
   alias Domain.Auth.{Authorizer, Subject, Context, Permission, Roles, Role}
   alias Domain.Auth.{Adapters, Provider}

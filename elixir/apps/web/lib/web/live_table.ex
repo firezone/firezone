@@ -7,7 +7,7 @@ defmodule Web.LiveTable do
   import Web.TableComponents
   import Web.CoreComponents
   import Web.FormComponents
-  alias Domain.{Actors}
+  alias Domain.Actors
 
   @doc """
   A drop-in replacement of `Web.TableComponents.table/1` component that adds sorting, filtering and pagination.
