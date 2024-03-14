@@ -66,23 +66,13 @@ impl Managed {
 }
 
 // TODO: Replace with `anyhow` gradually per <https://github.com/firezone/firezone/pull/3546#discussion_r1477114789>
-#[cfg_attr(target_os = "linux", allow(dead_code))]
+#[cfg_attr(target_os = "macos", allow(dead_code))]
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum Error {
-    #[error(r#"Couldn't show clickable notification titled "{0}""#)]
-    ClickableNotification(String),
     #[error("Deep-link module error: {0}")]
     DeepLink(#[from] deep_link::Error),
-    #[error("Can't show log filter error dialog: {0}")]
-    LogFilterErrorDialog(native_dialog::Error),
     #[error("Logging module error: {0}")]
     Logging(#[from] logging::Error),
-    #[error(r#"Couldn't show notification titled "{0}""#)]
-    Notification(String),
-    #[error(transparent)]
-    Tauri(#[from] tauri::Error),
-    #[error("tokio::runtime::Runtime::new failed: {0}")]
-    TokioRuntimeNew(std::io::Error),
 
     // `client.rs` provides a more user-friendly message when showing the error dialog box
     #[error("WebViewNotInstalled")]
@@ -110,7 +100,7 @@ pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
                     )
                     .set_type(native_dialog::MessageType::Error)
                     .show_alert()
-                    .map_err(Error::LogFilterErrorDialog)?;
+                    .context("Can't show log filter error dialog")?;
 
                 AdvancedSettings {
                     log_filter: AdvancedSettings::default().log_filter,
@@ -138,7 +128,7 @@ pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
     };
 
     // Needed for the deep link server
-    let rt = tokio::runtime::Runtime::new().map_err(Error::TokioRuntimeNew)?;
+    let rt = tokio::runtime::Runtime::new().context("Couldn't start Tokio runtime")?;
     let _guard = rt.enter();
 
     let (ctlr_tx, ctlr_rx) = mpsc::channel(5);
@@ -300,7 +290,7 @@ pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
                 tauri::Error::Runtime(tauri_runtime::Error::CreateWebview(_)) => {
                     return Err(Error::WebViewNotInstalled);
                 }
-                error => Err(error)?,
+                error => Err(anyhow::Error::from(error).context("Tauri error"))?,
             }
         }
     };
