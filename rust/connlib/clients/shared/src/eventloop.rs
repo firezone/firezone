@@ -36,6 +36,7 @@ pub struct Eventloop<C: Callbacks> {
 /// Commands that can be sent to the [`Eventloop`].
 pub enum Command {
     Stop,
+    Reconnect,
 }
 
 impl<C: Callbacks> Eventloop<C> {
@@ -64,6 +65,12 @@ where
         loop {
             match self.rx.poll_recv(cx) {
                 Poll::Ready(Some(Command::Stop)) | Poll::Ready(None) => return Poll::Ready(Ok(())),
+                Poll::Ready(Some(Command::Reconnect)) => {
+                    self.portal.reconnect();
+                    self.tunnel.reconnect();
+
+                    continue;
+                }
                 Poll::Pending => {}
             }
 

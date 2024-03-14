@@ -71,6 +71,10 @@ impl<CB> Tunnel<CB, ClientState, snownet::Client, GatewayId>
 where
     CB: Callbacks + 'static,
 {
+    pub fn reconnect(&mut self) {
+        self.connections_state.node.reconnect(Instant::now());
+    }
+
     pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Result<Event<GatewayId>>> {
         match self.role_state.poll_next_event(cx) {
             Poll::Ready(Event::SendPacket(packet)) => {
