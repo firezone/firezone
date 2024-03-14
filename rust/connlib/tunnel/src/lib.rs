@@ -343,20 +343,9 @@ where
     #[tracing::instrument(level = "trace", skip(private_key, callbacks))]
     pub fn new(private_key: StaticSecret, callbacks: CB) -> Result<Self> {
         let callbacks = CallbackErrorFacade(callbacks);
-        let io = Io::new()?;
-
-        // TODO: Eventually, this should move into the `connlib-client-android` crate.
-        #[cfg(target_os = "android")]
-        {
-            if let Some(ip4_socket) = io.sockets_ref().ip4_socket_fd() {
-                callbacks.protect_file_descriptor(ip4_socket)?;
-            }
-            if let Some(ip6_socket) = io.sockets_ref().ip6_socket_fd() {
-                callbacks.protect_file_descriptor(ip6_socket)?;
-            }
-        }
 
         Ok(Self {
+            io: new_io(&callbacks)?,
             callbacks,
             role_state: Default::default(),
             node: Node::new(private_key),
@@ -364,7 +353,6 @@ where
             ip4_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
             ip6_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
             device_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
-            io,
             stats: Stats::new(Duration::from_secs(60)),
         })
     }
@@ -372,6 +360,27 @@ where
     pub fn callbacks(&self) -> &CallbackErrorFacade<CB> {
         &self.callbacks
     }
+}
+
+#[cfg_attr(not(target_os = "android"), allow(unused_variables))]
+fn new_io<CB>(callbacks: &CallbackErrorFacade<CB>) -> Result<Io>
+where
+    CB: Callbacks,
+{
+    let io = Io::new()?;
+
+    // TODO: Eventually, this should move into the `connlib-client-android` crate.
+    #[cfg(target_os = "android")]
+    {
+        if let Some(ip4_socket) = io.sockets_ref().ip4_socket_fd() {
+            callbacks.protect_file_descriptor(ip4_socket)?;
+        }
+        if let Some(ip6_socket) = io.sockets_ref().ip6_socket_fd() {
+            callbacks.protect_file_descriptor(ip6_socket)?;
+        }
+    }
+
+    Ok(io)
 }
 
 pub enum ClientEvent {
