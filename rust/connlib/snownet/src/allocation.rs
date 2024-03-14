@@ -149,6 +149,7 @@ impl Allocation {
     /// Refresh this allocation.
     ///
     /// In case refreshing the allocation fails, we will attempt to make a new one.
+    #[tracing::instrument(level = "debug", skip_all, fields(relay = %self.server))]
     pub fn refresh(&mut self, now: Instant) {
         self.update_now(now);
 
