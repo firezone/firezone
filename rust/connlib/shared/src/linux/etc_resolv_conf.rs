@@ -55,10 +55,10 @@ async fn configure_at_paths(dns_config: &[IpAddr], paths: &ResolvPaths) -> Resul
         // The last run of Firezone crashed. Revert, re-read, and then continue.
         let resolv_path = &paths.resolv;
         let paths = paths.clone();
-        tokio::task::spawn_blocking(move || {
-            revert_at_paths(&paths)
-        }).await.context("`spawn_blocking` failed while trying to run `revert_at_paths`")?
-        .context("Failed to revert `'resolv.conf`")?;
+        tokio::task::spawn_blocking(move || revert_at_paths(&paths))
+            .await
+            .context("`spawn_blocking` failed while trying to run `revert_at_paths`")?
+            .context("Failed to revert `'resolv.conf`")?;
         tokio::fs::read_to_string(resolv_path)
             .await
             .context("Failed to re-read `resolv.conf` after reverting it")?
@@ -122,8 +122,7 @@ async fn configure_at_paths(dns_config: &[IpAddr], paths: &ResolvPaths) -> Resul
 }
 
 fn revert_at_paths(paths: &ResolvPaths) -> Result<()> {
-    std::fs::copy(&paths.backup, &paths.resolv)
-        .context("Failed to restore backup")?;
+    std::fs::copy(&paths.backup, &paths.resolv).context("Failed to restore backup")?;
     // Don't delete the backup file - If we lose power here, and the revert is rolled back,
     // we may want it. Filesystems are not atomic by default, and have weak ordering,
     // so we don't want to end up in a state where the backup is deleted and the revert was rolled back.

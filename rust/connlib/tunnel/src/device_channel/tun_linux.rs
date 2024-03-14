@@ -143,7 +143,13 @@ impl Tun {
             dns_control_method: dns_control_method.clone(),
             fd: AsyncFd::new(fd)?,
             worker: Some(
-                set_iface_config(config.clone(), dns_config, handle, dns_control_method.clone()).boxed(),
+                set_iface_config(
+                    config.clone(),
+                    dns_config,
+                    handle,
+                    dns_control_method.clone(),
+                )
+                .boxed(),
             ),
             routes: HashSet::new(),
         })
