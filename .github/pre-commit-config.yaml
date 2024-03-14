@@ -48,3 +48,4 @@ repos:
     rev: v1.0
     hooks:
       - id: fmt
+        name: "Cargo fmt"
