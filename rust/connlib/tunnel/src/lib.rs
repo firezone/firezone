@@ -335,12 +335,6 @@ where
     TId: Eq + Hash + Copy + fmt::Display,
     TRoleState: Default,
 {
-    /// Creates a new tunnel.
-    ///
-    /// # Parameters
-    /// - `private_key`: wireguard's private key.
-    /// -  `control_signaler`: this is used to send SDP from the tunnel to the control plane.
-    #[tracing::instrument(level = "trace", skip(private_key, callbacks))]
     pub fn new(private_key: StaticSecret, callbacks: CB) -> Result<Self> {
         let callbacks = CallbackErrorFacade(callbacks);
 
