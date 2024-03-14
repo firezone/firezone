@@ -260,6 +260,11 @@ pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
                     .await
                 });
 
+                // Clean up
+                if let Err(error) = client::resolvers::revert().await {
+                    tracing::error!(?error, "Failed to revert DNS");
+                }
+
                 // See <https://github.com/tauri-apps/tauri/issues/8631>
                 // This should be the ONLY place we call `app.exit` or `app_handle.exit`,
                 // because it exits the entire process without dropping anything.
