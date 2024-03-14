@@ -272,7 +272,7 @@ async fn set_iface_config(
         None => {}
         Some(DnsControlMethod::EtcResolvConf) => etc_resolv_conf::configure(&dns_config)
             .await
-            .map_err(|e| Error::ResolvConf(e))?,
+            .map_err(Error::ResolvConf)?,
         Some(DnsControlMethod::NetworkManager) => configure_network_manager(&dns_config).await?,
         Some(DnsControlMethod::Systemd) => configure_systemd_resolved(&dns_config).await?,
     }
