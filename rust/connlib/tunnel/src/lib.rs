@@ -6,7 +6,7 @@
 use boringtun::x25519::StaticSecret;
 use connlib_shared::{
     messages::{ClientId, GatewayId, ResourceId, ReuseConnection},
-    CallbackErrorFacade, Callbacks, Error, Result,
+    CallbackErrorFacade, Callbacks, Result,
 };
 use snownet::{Node, Server};
 use sockets::Received;
@@ -16,26 +16,22 @@ use std::{
     time::{Duration, Instant},
 };
 
-pub use client::ClientState;
-pub use control_protocol::client::Request;
+pub use client::{ClientState, Request};
 pub use gateway::{GatewayState, ResolvedResourceDescriptionDns};
 use io::Io;
 use stats::Stats;
 use utils::earliest;
 
 mod client;
-mod io;
-mod stats;
-mod control_protocol {
-    pub mod client;
-}
 mod device_channel;
 mod dns;
 mod gateway;
+mod io;
 mod ip_packet;
 mod peer;
 mod peer_store;
 mod sockets;
+mod stats;
 mod utils;
 
 const MAX_UDP_SIZE: usize = (1 << 16) - 1;
