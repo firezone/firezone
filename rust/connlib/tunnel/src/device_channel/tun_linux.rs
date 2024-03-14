@@ -111,7 +111,7 @@ impl Tun {
         let dns_control_method = connlib_shared::linux::get_dns_control_from_env();
         tracing::info!(?dns_control_method);
 
-        create_tun_device()?;
+        create_tun_device(&dns_control_method)?;
 
         let fd = match unsafe { open(TUN_FILE.as_ptr() as _, O_RDWR) } {
             -1 => return Err(get_last_error()),
@@ -350,7 +350,14 @@ fn set_non_blocking(fd: RawFd) -> Result<()> {
     }
 }
 
-fn create_tun_device() -> Result<()> {
+fn create_tun_device(dns_control_method: &Option<DnsControlMethod>) -> Result<()> {
+    // TODO: Where should this go?
+    // Before creating the iface, do cleanup that nmcli needs to avoid duplicate connections
+    match dns_control_method {
+        Some(DnsControlMethod::NetworkManager) => cleanup_network_manager()?,
+        _ => {}
+    }
+
     let path = Path::new(TUN_FILE.to_str().expect("path is valid utf-8"));
 
     if path.exists() {
@@ -438,10 +445,78 @@ impl ioctl::Request<SetTunFlagsPayload> {
     }
 }
 
-async fn configure_network_manager(_dns_config: &[IpAddr]) -> Result<()> {
-    Err(Error::Other(
-        "DNS control with NetworkManager is not implemented yet",
-    ))
+async fn _detect_safe_dns_method() -> Option<DnsControlMethod> {
+    // If systemd-resolved is in use, it takes precedence over NetworkManager
+    if let Ok(true) = tokio::fs::try_exists("/run/systemd/resolve/stub-resolv.conf").await {
+        return Some(DnsControlMethod::Systemd);
+    }
+
+    // If NetworkManager is installed, that's also safe
+    if let Ok(true) = tokio::fs::try_exists("/lib/systemd/system/NetworkManager.service").await {
+        return Some(DnsControlMethod::NetworkManager);
+    }
+
+    // Rewriting `/etc/resolv.conf` is not generally safe. Only do it if asked.
+    None
+}
+
+fn cleanup_network_manager() -> Result<()> {
+    // TODO: Instead of shelling out to `nmcli`, we can call NetworkManager
+    // via D-Bus.
+    std::process::Command::new("nmcli")
+        .arg("con")
+        .arg("del")
+        .arg(IFACE_NAME)
+        .status()
+        .map_err(|_| Error::NmcliFailed)?;
+    // If it fails, just assume the connection didn't exist, which is what we wanted. `nmcli` doesn't seem to provide an `-f` equivalent to catch this.
+    Ok(())
+}
+
+async fn configure_network_manager(dns_config: &[IpAddr]) -> Result<()> {
+    let dns_ipv4 = dns_config.iter().filter(|ip| ip.is_ipv4()).collect::<Vec<_>>();
+    let dns_ipv6 = dns_config.iter().filter(|ip| ip.is_ipv6()).collect::<Vec<_>>();
+
+    // TODO: Since the CLI arg here is complicated, it should get a unit test
+    let mut cmd = tokio::process::Command::new("nmcli");
+    cmd
+        .arg("con")
+        .arg("mod")
+        .arg(IFACE_NAME);
+
+    if !dns_ipv4.is_empty() {
+        cmd
+            .arg("ipv4.dns")
+            .arg(dns_ipv4.iter().map(ToString::to_string).collect::<Vec<_>>().join(" "))
+            .arg("ipv4.dns-priority")
+            .arg("-1");
+    }
+    if !dns_ipv6.is_empty() {
+        cmd
+            .arg("ipv6.dns")
+            .arg(dns_ipv6.iter().map(ToString::to_string).collect::<Vec<_>>().join(" "))
+            .arg("ipv6.dns-priority")
+            .arg("-1");
+    }
+    let status = cmd
+        .status()
+        .await
+        .map_err(|_| Error::NmcliFailed)?;
+    if !status.success() {
+        return Err(Error::NmcliFailed);
+    }
+
+    let status = tokio::process::Command::new("nmcli")
+        .arg("con")
+        .arg("up")
+        .arg(IFACE_NAME)
+        .status()
+        .await
+        .map_err(|_| Error::NmcliFailed)?;
+    if !status.success() {
+        return Err(Error::NmcliFailed);
+    }
+    Ok(())
 }
 
 async fn configure_systemd_resolved(dns_config: &[IpAddr]) -> Result<()> {

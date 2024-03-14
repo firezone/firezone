@@ -71,7 +71,7 @@ impl Callbacks for CallbackHandler {
     /// May return Firezone's own servers, e.g. `100.100.111.1`.
     fn get_system_default_resolvers(&self) -> Result<Option<Vec<IpAddr>>, Self::Error> {
         let default_resolvers = match self.dns_control_method {
-            None => get_system_default_resolvers_resolv_conf()?,
+            None => vec![[1, 1, 1, 1].into()],
             Some(DnsControlMethod::EtcResolvConf) => get_system_default_resolvers_resolv_conf()?,
             Some(DnsControlMethod::NetworkManager) => {
                 get_system_default_resolvers_network_manager()?
@@ -117,8 +117,17 @@ fn get_system_default_resolvers_resolv_conf() -> Result<Vec<IpAddr>> {
 }
 
 fn get_system_default_resolvers_network_manager() -> Result<Vec<IpAddr>> {
-    tracing::error!("get_system_default_resolvers_network_manager not implemented yet");
-    Ok(vec![])
+    // TODO: Use libnm or D-Bus or something cleaner and safer
+    let output = std::process::Command::new("nmcli")
+        .arg("device")
+        .arg("show")
+        .output()
+        .context("Failed to run `nmcli dev show` and read output")?;
+    if !output.status.success(){
+        anyhow::bail!("`nmcli dev show` returned non-zero exit code");
+    }
+    let output = String::from_utf8(output.stdout).context("`nmcli dev show` output was not UTF-8")?;
+    Ok(parse_nmcli_dev_output(&output))
 }
 
 /// Returns the DNS servers listed in `resolvectl dns`
@@ -143,6 +152,18 @@ fn get_system_default_resolvers_systemd_resolved() -> Result<Vec<IpAddr>> {
 /// Cannot fail. If the parsing code is wrong, the IP address vec will just be incomplete.
 fn parse_resolvectl_output(s: &str) -> Vec<IpAddr> {
     s.lines()
+        .flat_map(|line| line.split(' '))
+        .filter_map(|word| IpAddr::from_str(word).ok())
+        .collect()
+}
+
+/// Parses the text output of `nmcli dev show`
+///
+/// Cannot fail. If the parsing code is wrong, the Vec's contents are empty
+/// or incorrect.
+fn parse_nmcli_dev_output(s: &str) -> Vec<IpAddr> {
+    s.lines()
+        .filter(|line| line.starts_with("IP4.DNS") || line.starts_with("IP6.DNS"))
         .flat_map(|line| line.split(' '))
         .filter_map(|word| IpAddr::from_str(word).ok())
         .collect()
@@ -200,5 +221,49 @@ Link 2 (enp0s3): 192.168.1.1",
             let actual = super::parse_resolvectl_output(input);
             assert_eq!(actual, expected, "Case {i} failed");
         }
+    }
+
+    #[test]
+    fn parse_nmcli_dev_output() {
+        let input = r"
+GENERAL.DEVICE:                         enp0s6
+GENERAL.TYPE:                           ethernet
+GENERAL.HWADDR:                         52:54:00:12:34:56
+GENERAL.MTU:                            1500
+GENERAL.STATE:                          100 (connected)
+GENERAL.CONNECTION:                     Wired connection 1
+GENERAL.CON-PATH:                       /org/freedesktop/NetworkManager/ActiveConnection/2
+WIRED-PROPERTIES.CARRIER:               on
+IP4.ADDRESS[1]:                         10.0.2.15/24
+IP4.GATEWAY:                            10.0.2.2
+IP4.ROUTE[1]:                           dst = 10.0.2.0/24, nh = 0.0.0.0, mt = 100
+IP4.ROUTE[2]:                           dst = 0.0.0.0/0, nh = 10.0.2.2, mt = 100
+IP4.DNS[1]:                             10.0.2.3
+IP6.ADDRESS[1]:                         fec0::db8e:615:d31c:6406/64
+IP6.ADDRESS[2]:                         fec0::5054:ff:fe12:3456/64
+IP6.ADDRESS[3]:                         fe80::5054:ff:fe12:3456/64
+IP6.GATEWAY:                            fe80::2
+IP6.ROUTE[1]:                           dst = fe80::/64, nh = ::, mt = 1024
+IP6.ROUTE[2]:                           dst = fec0::/64, nh = ::, mt = 100
+IP6.ROUTE[3]:                           dst = ::/0, nh = fe80::2, mt = 100
+IP6.DNS[1]:                             fec0::3
+
+GENERAL.DEVICE:                         lo
+GENERAL.TYPE:                           loopback
+GENERAL.HWADDR:                         00:00:00:00:00:00
+GENERAL.MTU:                            65536
+GENERAL.STATE:                          100 (connected (externally))
+GENERAL.CONNECTION:                     lo
+GENERAL.CON-PATH:                       /org/freedesktop/NetworkManager/ActiveConnection/1
+IP4.ADDRESS[1]:                         127.0.0.1/8
+IP4.GATEWAY:                            --
+IP6.ADDRESS[1]:                         ::1/128
+IP6.GATEWAY:                            --
+        ";
+        let actual = super::parse_nmcli_dev_output(input);
+        assert_eq!(actual, vec![
+            IpAddr::from([10, 0, 2, 3]),
+            IpAddr::from([0xfec0, 0, 0, 0, 0, 0, 0, 0x3]),
+        ]);
     }
 }

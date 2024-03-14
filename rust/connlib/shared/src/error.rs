@@ -175,6 +175,8 @@ pub enum ConnlibError {
     #[error("No available ipv6 socket")]
     NoIpv6,
 
+    #[error("Failed to control system DNS with `nmcli`")]
+    NmcliFailed,
     // Error variants for `systemd-resolved` DNS control
     #[error("Failed to control system DNS with `resolvectl`")]
     ResolvectlFailed,
