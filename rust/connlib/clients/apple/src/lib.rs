@@ -208,7 +208,9 @@ impl WrappedSession {
         )
         .map_err(|e| e.to_string())?;
 
-        let runtime = tokio::runtime::Builder::new_current_thread()
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(1)
+            .thread_name("connlib")
             .enable_all()
             .build()
             .map_err(|e| e.to_string())?;
